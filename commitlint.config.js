@@ -19,6 +19,7 @@ export default {
                 'docs',
                 'ci',
                 'deps',
+                'deps-dev',
                 'repo',
             ],
         ],

@@ -8,6 +8,33 @@ const domainPurity = 'Domain code is pure: depend on a port (interface), and wir
 const portable =
     'Shared contracts must run in Node, Workers and browsers: use Web APIs (fetch, crypto.subtle, streams).';
 
+/**
+ * Flat config replaces, not merges, a rule set in a later block. Every area-specific
+ * `no-restricted-imports` must go through this helper so the vm ban always stays on, and a
+ * block whose files overlap another area (e.g. a dashboard rule covering `src/domain/**`)
+ * must pass that area's patterns too, such as `...domainPatterns`.
+ */
+function restrictImports(...patterns) {
+    return {
+        'no-restricted-imports': [
+            'error',
+            {
+                paths: [
+                    { name: 'vm', message: dynamicCodeBan },
+                    { name: 'node:vm', message: dynamicCodeBan },
+                ],
+                patterns,
+            },
+        ],
+    };
+}
+
+const platformImports = { group: ['node:*', 'cloudflare:*', 'bun:*'], message: portable };
+const domainPatterns = [
+    { group: ['node:*', 'cloudflare:*'], message: domainPurity },
+    { group: ['**/adapters/**', '**/app/**'], message: domainPurity },
+];
+
 export default tseslint.config(
     { ignores: ['**/dist/**', '**/build/**', '**/coverage/**', '**/.wrangler/**', 'docs/spec/**'] },
     js.configs.recommended,
@@ -21,15 +48,7 @@ export default tseslint.config(
             'no-eval': 'error',
             'no-new-func': 'error',
             '@typescript-eslint/no-implied-eval': 'error',
-            'no-restricted-imports': [
-                'error',
-                {
-                    paths: [
-                        { name: 'vm', message: dynamicCodeBan },
-                        { name: 'node:vm', message: dynamicCodeBan },
-                    ],
-                },
-            ],
+            ...restrictImports(),
             'no-restricted-exports': ['error', { restrictDefaultExports: { direct: true } }],
             '@typescript-eslint/consistent-type-imports': 'error',
             '@typescript-eslint/consistent-type-definitions': ['error', 'interface'],
@@ -37,55 +56,26 @@ export default tseslint.config(
         },
     },
     {
-        files: ['apps/*/src/domain/**/*.ts'],
-        rules: {
-            'no-restricted-imports': [
-                'error',
-                {
-                    paths: [
-                        { name: 'vm', message: dynamicCodeBan },
-                        { name: 'node:vm', message: dynamicCodeBan },
-                    ],
-                    patterns: [
-                        { group: ['node:*', 'cloudflare:*'], message: domainPurity },
-                        { group: ['**/adapters/**', '**/app/**'], message: domainPurity },
-                    ],
-                },
-            ],
-        },
+        files: ['apps/*/src/domain/**/*.{ts,tsx}'],
+        rules: restrictImports(...domainPatterns),
     },
     {
         files: ['packages/protocol/src/**/*.ts', 'packages/engine-api/src/**/*.ts'],
-        rules: {
-            'no-restricted-imports': [
-                'error',
-                {
-                    paths: [
-                        { name: 'vm', message: dynamicCodeBan },
-                        { name: 'node:vm', message: dynamicCodeBan },
-                    ],
-                    patterns: [{ group: ['node:*', 'cloudflare:*', 'bun:*', '@ptbk/*'], message: portable }],
-                },
-            ],
-        },
+        rules: restrictImports(platformImports, { group: ['@ptbk/*'], message: portable }),
+    },
+    {
+        files: ['packages/conformance/src/**/*.ts'],
+        rules: restrictImports(platformImports, {
+            group: ['@ptbk/*', '!@ptbk/protocol', '!@ptbk/engine-api'],
+            message: 'The conformance suite imports only the contracts.',
+        }),
     },
     {
         files: ['packages/ui/src/**/*.{ts,tsx}'],
-        rules: {
-            'no-restricted-imports': [
-                'error',
-                {
-                    paths: [
-                        { name: 'vm', message: dynamicCodeBan },
-                        { name: 'node:vm', message: dynamicCodeBan },
-                    ],
-                    patterns: [
-                        { group: ['@ptbk/*'], message: 'The design system imports no app and no contract package.' },
-                        { group: ['node:*', 'cloudflare:*', 'bun:*'], message: portable },
-                    ],
-                },
-            ],
-        },
+        rules: restrictImports(platformImports, {
+            group: ['@ptbk/*'],
+            message: 'The design system imports no app and no contract package.',
+        }),
     },
     {
         // Frameworks and runtimes require a default export here.

@@ -28,11 +28,8 @@ jobs:
         with:
           node-version-file: .nvmrc
       - run: bun install --frozen-lockfile
-      - run: bun run lint
-      - run: bun run format:check
-      - run: bun run typecheck
-      - run: bun run test
-      - run: bun run plan --check
+      # One step on purpose: whatever `check` runs locally runs in CI, so new checks cannot be forgotten here.
+      - run: bun run check
 
   workflows:
     runs-on: ubuntu-24.04

@@ -7,19 +7,25 @@
   "engines": {
     "node": ">=24"
   },
-  "workspaces": [
-    "apps/*",
-    "packages/*"
-  ],
+  "workspaces": {
+    "packages": [
+      "apps/*",
+      "packages/*"
+    ],
+    "catalog": {
+      "zod": "4.6.6"
+    }
+  },
   "scripts": {
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "typecheck": "bun run --filter '*' typecheck",
     "test": "bun run --filter '*' test",
-    "check": "bun run lint && bun run format:check && bun run typecheck && bun run test && bun run plan --check",
+    "check": "bun run generate && bun run lint && bun run format:check && bun run typecheck && bun run test && bun run plan --check",
     "prepare": "husky",
-    "plan": "node scripts/plan.ts"
+    "plan": "node scripts/plan.ts",
+    "generate": "bun run --filter '*' --if-present generate"
   },
   "lint-staged": {
     "*.{ts,tsx,js,mjs}": [
@@ -28,6 +34,11 @@
     ],
     "*.{json,md,yml,yaml}": "prettier --write"
   },
+  "trustedDependencies": [
+    "esbuild",
+    "sharp",
+    "workerd"
+  ],
   "devDependencies": {
     "@commitlint/cli": "21.2.3",
     "@commitlint/config-conventional": "21.2.3",
@@ -42,6 +53,6 @@
     "prettier": "3.9.10",
     "typescript": "6.0.3",
     "typescript-eslint": "8.71.1",
-    "vitest": "5.0.4"
+    "vitest": "4.1.11"
   }
 }
