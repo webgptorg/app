@@ -15,6 +15,7 @@ The **engine** is open source in [`webgptorg/promptbook`](https://github.com/web
 | `packages/protocol`    | Wire contracts between engine, relay and dashboard (MIT)            | Everywhere          |
 | `packages/engine-api`  | Engine HTTP API contract and typed client (MIT)                     | Everywhere          |
 | `packages/conformance` | Test suite any engine must pass (MIT)                               | CI                  |
+| `packages/ui`          | Shared design system for engine-ui and the dashboard                | Browser             |
 | `infra`                | Relay hosts, DNS, Cloudflare resources                              | —                   |
 | `docs`                 | Architecture, engineering guide, ADRs, implementation plan, spec    | —                   |
 

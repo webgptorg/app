@@ -10,3 +10,6 @@ One file per decision. Copy [0000-template.md](0000-template.md), take the next 
 | [0004](0004-mock-engine-and-conformance.md) | A mock engine and a conformance suite                                 | Accepted |
 | [0005](0005-modular-architecture.md)        | Modules with explicit contracts, ports and adapters                   | Accepted |
 | [0006](0006-organizations-and-roles.md)     | Organizations, members and roles from day one                         | Accepted |
+| [0007](0007-frontend-stack.md)              | One frontend stack: Vite SPAs on TanStack, shared design system       | Accepted |
+| [0008](0008-hono-for-http-apis.md)          | Hono for every HTTP API; contracts stay framework-agnostic            | Accepted |
+| [0009](0009-drizzle-and-migrations.md)      | Drizzle for D1, with generated and guarded migrations                 | Accepted |

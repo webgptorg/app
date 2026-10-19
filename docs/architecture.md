@@ -38,6 +38,8 @@ flowchart TD
     mock-engine --> protocol
     mock-engine --> engine-api
     engine-ui --> engine-api
+    engine-ui --> ui
+    dashboard --> ui
     conformance --> protocol
     conformance --> engine-api
 ```
@@ -50,13 +52,13 @@ Owns the server side of the tunnel protocol (spec, Interfaces 3). Caches registr
 
 ### `apps/dashboard`
 
-app.ptbk.io. TanStack Start on Cloudflare Workers, D1 for accounts and the engine registry, a Durable Object per engine for status and offline alarms, Stripe for billing, Cron Triggers for monitoring jobs (CT watch, abuse feeds, public-face check).
+app.ptbk.io. One Cloudflare Worker serving a Vite SPA (TanStack Router, Query and Table, `@ptbk/ui`) and a Hono API ([ADR 0007](adr/0007-frontend-stack.md), [ADR 0008](adr/0008-hono-for-http-apis.md)). D1 via Drizzle with generated, guarded migrations ([ADR 0009](adr/0009-drizzle-and-migrations.md)) for accounts, organizations and the engine registry, a Durable Object per engine for status and offline alarms, Stripe for billing, Cron Triggers for monitoring jobs (CT watch, abuse feeds, public-face check).
 
 Owns engine registration (Interfaces 1), the relay registry lookup (2, internal) and heartbeat ingest (4). Stores accounts, engine IDs, public keys, hostnames and their signed claims, heartbeat metadata and billing state. Nothing else.
 
 ### `apps/engine-ui`
 
-The full app for engine owners and members: agents, agent creation and editing, chat, security panel, secrets metadata, audit log. Vite, React, TanStack Router and Query, Tailwind. Talks only to the engine API through the `EngineApiClient` interface from `engine-api`. Built to a hashed static bundle with a manifest, signed and logged as part of a release.
+The full app for engine owners and members: agents, agent creation and editing, chat, security panel, secrets metadata, audit log. Vite, React, TanStack Router, Query and Table, Tailwind, `@ptbk/ui`, Paraglide (English and Czech). Talks only to the engine API through the `EngineApiClient` interface from `engine-api`. Built to a hashed static bundle with a manifest, signed and logged as part of a release.
 
 ### `apps/mock-engine`
 
@@ -69,6 +71,10 @@ Wire contracts between engine, relay and dashboard: registration, registry looku
 ### `packages/engine-api`
 
 The engine HTTP API that engine-ui consumes and every engine implements: zod schemas, the `EngineApiClient` interface and a `fetch` implementation, and the generated OpenAPI document. Web APIs only.
+
+### `packages/ui`
+
+The private design system shared by engine-ui and the dashboard: tokens, accessible components, forms, `DataTable`, i18n helpers. CSP-safe by construction; imports no app or contract package.
 
 ### `packages/conformance`
 
@@ -85,18 +91,21 @@ Relay hosts, DNS (Cloudflare, DNS-only, so TLS stays end to end) and Cloudflare 
 ## Dependency rules
 
 - `apps/*` may depend on `packages/*`. Apps never import from each other.
+- `ui` imports no app and no contract package.
 - `protocol` and `engine-api` depend on nothing in this repo and use only Web APIs, so they run in Node, Workers and browsers and can move to the public repo unchanged.
 - Cross-app communication goes over the documented interfaces, never shared code paths or a shared database.
 
 ## Stack
 
-| Concern         | Choice                                                                                |
-| --------------- | ------------------------------------------------------------------------------------- |
-| Package manager | Bun workspaces ([ADR 0001](adr/0001-bun-workspaces-monorepo.md))                      |
-| Runtime         | Node 24 LTS (relay, mock engine), Cloudflare Workers (dashboard), browser (engine-ui) |
-| Language        | TypeScript, strict                                                                    |
-| Validation      | zod                                                                                   |
-| UI              | Vite, React, TanStack Router and Query, Tailwind                                      |
-| Lint and format | ESLint (typescript-eslint, type-checked) and Prettier                                 |
-| Tests           | Vitest; Playwright for e2e                                                            |
-| Commits         | Conventional Commits, commitlint, husky                                               |
+| Concern         | Choice                                                                                        |
+| --------------- | --------------------------------------------------------------------------------------------- |
+| Package manager | Bun workspaces ([ADR 0001](adr/0001-bun-workspaces-monorepo.md))                              |
+| Runtime         | Node 24 LTS (relay, mock engine), Cloudflare Workers (dashboard), browser (engine-ui)         |
+| Language        | TypeScript, strict                                                                            |
+| Validation      | zod                                                                                           |
+| HTTP APIs       | Hono (dashboard Worker, mock engine); relay uses plain `node:net`/`node:tls` + `ws`           |
+| Database        | D1 via Drizzle ORM, generated and guarded migrations                                          |
+| UI              | Vite SPAs: React, TanStack Router, Query and Table, Tailwind, Paraglide; shared `packages/ui` |
+| Lint and format | ESLint (typescript-eslint, type-checked) and Prettier                                         |
+| Tests           | Vitest; Playwright for e2e                                                                    |
+| Commits         | Conventional Commits, commitlint, husky                                                       |

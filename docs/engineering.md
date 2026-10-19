@@ -6,7 +6,7 @@ How code in this repo is structured. The goal: every module can be replaced by a
 
 A module is a workspace package under `apps/` or `packages/`.
 
-- **It owns a contract.** Packages expose exactly one entry (`"exports": { ".": "./src/index.ts" }`); deep imports are impossible. Apps expose nothing in code; their contract is the network interface they serve.
+- **It owns a contract.** Packages expose exactly one code entry (`"exports": { ".": "./src/index.ts" }`); deep imports are impossible. The one exception is `@ptbk/ui`, which may also export its stylesheet (`"./styles.css"`). Apps expose nothing in code; their contract is the network interface they serve.
 - **It declares what it uses.** The isolated linker makes undeclared imports fail. Workspace dependencies use `"workspace:*"`.
 - **Apps never import from apps.** They talk over the documented HTTP and tunnel interfaces only.
 - **Contracts live in packages.** `protocol` (engine, relay, dashboard wire formats) and `engine-api` (engine HTTP API for the UI) are portable: no `node:*`, `cloudflare:*` or `bun:*` imports, Web APIs only (ESLint enforces it).
@@ -18,6 +18,8 @@ flowchart TD
     mock-engine --> protocol
     mock-engine --> engine-api
     engine-ui --> engine-api
+    engine-ui --> ui
+    dashboard --> ui
     conformance --> protocol
     conformance --> engine-api
 ```

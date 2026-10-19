@@ -7,9 +7,10 @@ Read this before changing anything. It applies to Claude Code, Codex and any oth
 The private, commercial half of the Promptbook zero-trust interface:
 
 - `apps/relay`: SNI passthrough relay. Browsers reach engines behind NAT through it; it never decrypts.
-- `apps/dashboard`: app.ptbk.io. Account, engine list, billing, status. Stores no engine content.
+- `apps/dashboard`: app.ptbk.io. Account, engine list, billing, status. Vite SPA + Hono API in one Worker, D1 via Drizzle. Stores no engine content.
 - `apps/engine-ui`: the full app UI, shipped as a signed static bundle that the engine downloads, verifies and serves ([ADR 0003](docs/adr/0003-ui-as-signed-bundle.md)).
 - `apps/mock-engine`: a real process that speaks the real contracts with fake data, so everything works here without the real engine ([ADR 0004](docs/adr/0004-mock-engine-and-conformance.md)).
+- `packages/ui`: the design system both frontends share. Private, CSP-safe, imports no app.
 - `packages/protocol`, `packages/engine-api`, `packages/conformance`: the contracts. MIT, portable, and moving to the public repo later ([ADR 0002](docs/adr/0002-public-private-split.md)).
 
 The engine is open source in `webgptorg/promptbook`, built by the engine team. Never commit there.
@@ -72,7 +73,7 @@ Several agents work in parallel. This procedure keeps them out of each other's w
 
 ## Conventions
 
-- Conventional Commits; scopes: `relay`, `dashboard`, `engine-ui`, `mock-engine`, `protocol`, `engine-api`, `conformance`, `e2e`, `infra`, `docs`, `ci`, `deps`, `repo`. See [docs/conventions.md](docs/conventions.md).
+- Conventional Commits; scopes: `relay`, `dashboard`, `engine-ui`, `mock-engine`, `protocol`, `engine-api`, `conformance`, `ui`, `e2e`, `infra`, `docs`, `ci`, `deps`, `repo`. See [docs/conventions.md](docs/conventions.md).
 - The PR title becomes the commit on `main`, so it must be a good commit message.
 - Apps never import other apps. Contract packages import nothing from `@ptbk/*`.
 - Comment the why, not the what.
