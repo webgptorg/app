@@ -2,8 +2,120 @@
 
 app.ptbk.io: account sign-up with passkeys, engine list, billing (Stripe), engine status, and links to engines. Also the HTTP API engines and relays talk to:
 
-- `POST /v1/engines/register`: engine registration (spec, Interfaces 1)
-- `GET /internal/v1/engines/{engineId}`: registry lookup for relays, relay-key authenticated (Interfaces 2)
-- `POST /v1/engines/{engineId}/heartbeat`: signed heartbeat (Interfaces 4)
+- `POST /v1/engines/register`: engine registration (spec, Interfaces 1; D-03)
+- `GET /internal/v1/engines/{engineId}`: registry lookup for relays, relay-key authenticated (Interfaces 2; D-04)
+- `POST /v1/engines/{engineId}/heartbeat`: signed heartbeat (Interfaces 4; D-05)
+- `GET /v1/health`: `{ "ok": true, "environment": "<env>" }`, never cached
 
-Vite SPA (TanStack Router, Query, Table and Form, `@ptbk/ui`) plus a Hono API in one Cloudflare Worker; D1 via Drizzle with generated, guarded migrations; a Durable Object per engine; Cron Triggers. Stores no engine content. Not scaffolded yet.
+It stores no engine content, not even encrypted (AGENTS.md rule 2), and no page of it loads anything from an engine hostname: the CSP's `connect-src 'self'` and `frame-src 'none'` enforce that in the browser.
+
+## Stack
+
+One Cloudflare Worker serves a Vite single-page app and a Hono API ([ADR 0007](../../docs/adr/0007-frontend-stack.md), [ADR 0008](../../docs/adr/0008-hono-for-http-apis.md)). React with TanStack Router (file routes, code-split) and Query, Tailwind 4, Paraglide JS 2 for English and Czech; `@ptbk/ui` components arrive with the first screens (D-09). D1 through Drizzle with generated, guarded migrations ([ADR 0009](../../docs/adr/0009-drizzle-and-migrations.md)). Durable Objects (D-05) and Cron Triggers (I-04) come later.
+
+The Worker renders nothing on the server. Every request except Vite's fingerprinted `/assets/*` runs the Worker first (`run_worker_first`), so the security headers (strict CSP with Trusted Types, HSTS, `no-referrer`, `nosniff`, COOP) are set on the HTML shell too. Under `vite dev` only, and only in `dev`, the CSP allows React Refresh's inline preamble and HSTS is left out; builds, the dev container and every test use the production policy. The SPA sets zod to `jitless` before any schema exists, because zod's `new Function` probe is a reported Trusted Types violation even though it is caught.
+
+## Layout
+
+```
+src/
+  worker.ts     Workers entry: default export { fetch }; Durable Object classes from D-05
+  domain/       Pure logic, types and ports (Clock, Random, Logger, Authorizer). No I/O, no platform imports
+  adapters/     Port implementations and in-memory fakes; adapters/db/ is the only place that imports drizzle-orm
+  app/          Composition root (create-dashboard.ts), config, i18n for what the Worker renders, Hono app in app/http/
+  shared/api/   The UI API: a zod route table used by both the Hono routes and the SPA client
+  client/       The SPA: main.tsx, routes/ (TanStack Router file routes), features/, api/, i18n/
+messages/       en.json and cs.json, the only place user-facing text lives
+migrations/     drizzle-kit output, committed
+scripts/        Migration guards, bundle budget check, dev container entry point
+test/           Node-side tests: build output, catalogues, lint rules
+```
+
+ESLint keeps the boundaries: the SPA imports only `src/client`, `src/shared`, the generated messages, `@ptbk/ui` and `@ptbk/protocol`; Worker code never imports the SPA; `drizzle-orm` only inside `src/adapters/db/`, where Drizzle's relational query API (`db.query`, `relations`) is banned until Drizzle 1.0.
+
+The Hono app mounts four routers: `/api` (the SPA's own API, session-authenticated from D-02), `/v1` (engines), `/internal` (relays) and `/webhooks` (Stripe). Machine routes bind contracts from `@ptbk/protocol`; the UI API's contracts live in `src/shared/api/routes.ts`. Every request is validated with the contract's strict zod schema before the handler runs, and every error is RFC 9457 `application/problem+json` with a stable `code`, never a stack trace or an echo of the input. An unknown path under one of the four prefixes is a 404 problem, never the SPA shell.
+
+Config is parsed once in `src/app/config.ts` into a frozen `DashboardConfig`; nothing else reads `env`. It fails closed on a missing var, an unknown var or an unknown value, and refuses `fake` or `memory` adapters outside `dev`. Runtime objects in `env` (D1, ASSETS, service bindings) are wired by the composition root, not parsed as config.
+
+### Tenancy and authorization
+
+An organization owns engines and billing; users join through a membership with a role ([ADR 0006](../../docs/adr/0006-organizations-and-roles.md)). Every authorization decision goes through `Authorizer.can(actor, action, resource)` in `src/domain/authz/`, deny by default, with one policy table in `policy.ts`. Rules for every later task:
+
+- Add the action to `DASHBOARD_POLICY`; handlers and components check actions, never role names.
+- Org-owned repositories take `orgId` as the first argument and put it in every `where`. Each org-scoped adapter test includes "org B cannot read or change org A's rows".
+- Timestamps are integers in milliseconds since the Unix epoch.
+
+### API client
+
+The SPA calls `/api/*` only through `src/client/api/api-client.ts`, a small fetch client over the shared route table, wrapped in TanStack Query hooks; components never call `fetch`. It parses every response with the contract's schema and returns an outcome union (`ok`, `problem` with a declared code, `invalid-response`, `network-error`).
+
+We chose this over Hono's RPC client `hc`: each HTTP contract stays explicit as data (method, path, schemas, error codes), the same style as `engine-api`'s `EngineApiClient`; responses are validated at runtime, not just typed; and the SPA does not depend on the inferred type of the whole Hono app, which slows type-checking as the API grows and lets a server refactor change the client silently. The cost is writing the route table by hand, which is the point.
+
+### i18n
+
+Paraglide compiles `messages/*.json` into typed functions at build time (no runtime parser, no eval); its message-format plugin is loaded from `node_modules`, never from a CDN. The SPA picks the locale from the `ptbk_locale` cookie, then the browser's languages, then English; once signed in (D-02) the user's saved locale wins and is written to the cookie. `<html lang>` follows the locale, and the language switcher sits in the shell. What the Worker renders itself (emails from D-02) uses `resolveRequestLocale`: user locale, cookie, `Accept-Language`, English. ESLint rejects literal text in `src/client/**/*.tsx`.
+
+## Commands
+
+| Command                    | What it does                                                                                                                                                                                 |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bun run dev`              | Applies migrations to the local D1, then `vite dev` with the Worker in workerd                                                                                                               |
+| `bun run dev:https`        | The same over HTTPS on a real hostname, for passkeys (see below)                                                                                                                             |
+| `bun run build`            | Builds SPA and Worker; `CLOUDFLARE_ENV=staging` or `production` builds that environment                                                                                                      |
+| `bun run preview`          | Serves the build in workerd with the production CSP                                                                                                                                          |
+| `bun run generate`         | Paraglide messages, the route tree and `wrangler types`; generated files are never committed                                                                                                 |
+| `bun run typecheck`        | `tsc -b` over the client (DOM, no Workers types), worker (Workers types, no DOM) and node projects                                                                                           |
+| `bun run test`             | `db:check`, build, the `unit` and `client` Vitest projects with coverage (≥ 90% lines and branches; `src/domain/**` and `config.ts` at 100%), the `workers` project, then the bundle budgets |
+| `bun run db:generate`      | `drizzle-kit generate`; pass `--name <what>` after a schema change                                                                                                                           |
+| `bun run db:migrate:local` | `wrangler d1 migrations apply DB --local`                                                                                                                                                    |
+| `bun run db:check`         | Migration guards: drizzle-kit output only, no drift, no unmarked destructive change                                                                                                          |
+
+Root `bun run check` reaches all of it, so CI runs every guard. There is no deploy script; deploys come with I-03.
+
+## Environments
+
+`wrangler.jsonc`: the top level is local development only; `env.staging` and `env.production` have their own D1 database, vars and routes. Their values are placeholders until I-02. Vars: `ENVIRONMENT`, `DASHBOARD_ORIGIN`, `ENGINE_DOMAIN`, `RELAYS` (non-empty list of `{ relayId, region }`, `relayId` being the relay's hostname) and `ADAPTERS` (`email`, `billing`, `rateLimit`).
+
+The compatibility date stays within what the workerd bundled with `@cloudflare/vitest-pool-workers` supports, so the Workers tests run the same date as production.
+
+## Migrations
+
+The schema is TypeScript in `src/adapters/db/schema.ts`. After changing it, run `bun run db:generate --name <what>` and commit the SQL and `migrations/meta/`. Nobody runs `drizzle-kit push` or `migrate`, and nobody writes schema SQL by hand; a data backfill is its own reviewed migration from `drizzle-kit generate --custom`. Migrations are applied with `wrangler d1 migrations apply DB` (`--local` here; staging and production through I-03).
+
+**Expand, deploy, contract.** Migration and deploy are not atomic and `wrangler rollback` does not undo a migration, so every migration must work with the Worker that is live: add the new shape (expand), deploy code that uses it, and remove the old one (contract) in a later PR once nothing reads it.
+
+`db:check` enforces:
+
+- **Layout:** `migrations/` holds only files drizzle-kit journaled.
+- **Drift:** `drizzle-kit check` and `drizzle-kit generate` on a copy of `migrations/` must produce nothing, so a schema change without its migration fails.
+- **Destructive changes:** a migration with `DROP TABLE`, `DROP COLUMN`, any `RENAME` or a table rebuild (`__new_` tables, `PRAGMA foreign_keys=OFF`) fails unless its first line is `-- contract: <what is removed>; unused since <migration or PR>`. That marker is the only hand edit allowed in a generated file; reviewers check the contract step follows the rule above. If drizzle-kit rebuilds a table for what looks like a small change (a new CHECK, a changed default), prefer a different schema change over the marker.
+
+`src/adapters/db/schema-allowlist.test.ts` compares every table and column after all migrations with a checked-in allowlist, so each new column is a visible review point for "no engine content".
+
+## HTTPS development and the dev container
+
+Passkeys need a secure context on a real hostname. Both modes take a certificate and key by path; for a local pair:
+
+```sh
+openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -days 30 \
+  -subj "/CN=app.ptbk.test" -addext "subjectAltName=DNS:app.ptbk.test" -keyout key.pem -out cert.pem
+```
+
+`dev:https` runs `vite dev --mode https`; the Worker's `DASHBOARD_ORIGIN` (and so the WebAuthn rpID) follows the served origin:
+
+```sh
+DASHBOARD_ORIGIN=https://app.ptbk.test:5173 DASHBOARD_TLS_CERT=cert.pem DASHBOARD_TLS_KEY=key.pem bun run dev:https
+```
+
+`Dockerfile.dev` builds the app and runs the built SPA and Worker in workerd (`vite preview` through the Cloudflare plugin), with the committed migrations applied to a local D1 at start and the production CSP. The origin is set at start, so one image serves any dev hostname. X-05 runs it in the e2e stack:
+
+```sh
+docker build -f apps/dashboard/Dockerfile.dev -t ptbk-dashboard-dev .
+docker run --rm -p 443:443 -v "$PWD/tls:/tls:ro" \
+  -e DASHBOARD_ORIGIN=https://app.ptbk.test -e DASHBOARD_TLS_CERT=/tls/cert.pem -e DASHBOARD_TLS_KEY=/tls/key.pem \
+  ptbk-dashboard-dev
+```
+
+## Bundle budgets
+
+`bundle-budgets.json` caps the gzipped JavaScript of the entry (with its static imports) and of each route chunk; `scripts/check-bundle-budgets.ts` reads Vite's build manifest and fails the test run when one is over. A route that needs more gets its own entry under `routes`, keyed by its source file.

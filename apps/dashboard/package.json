@@ -5,7 +5,44 @@
   "type": "module",
   "description": "app.ptbk.io: entry point, engine list, registry API, heartbeat ingest (Cloudflare Workers)",
   "scripts": {
-    "typecheck": "tsc --noEmit -p .",
-    "test": "vitest run --passWithNoTests"
+    "generate": "paraglide-js compile --project ./project.inlang && tsr generate && wrangler types",
+    "dev": "bun run db:migrate:local && vite dev",
+    "dev:https": "bun run db:migrate:local && vite dev --mode https",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -b",
+    "test": "bun run db:check && bun run build && vitest run --coverage --project unit --project client && vitest run --project workers && node scripts/check-bundle-budgets.ts",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate:local": "wrangler d1 migrations apply DB --local",
+    "db:check": "node scripts/check-migrations.ts"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "catalog:",
+    "@tanstack/react-router": "catalog:",
+    "drizzle-orm": "0.45.4",
+    "hono": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "1.63.1",
+    "@cloudflare/vitest-pool-workers": "0.23.0",
+    "@inlang/paraglide-js": "catalog:",
+    "@inlang/plugin-message-format": "catalog:",
+    "@tailwindcss/vite": "catalog:",
+    "@tanstack/router-cli": "catalog:",
+    "@tanstack/router-plugin": "catalog:",
+    "@testing-library/dom": "catalog:",
+    "@testing-library/react": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@vitejs/plugin-react": "catalog:",
+    "drizzle-kit": "0.31.11",
+    "eslint": "catalog:",
+    "jsdom": "catalog:",
+    "tailwindcss": "catalog:",
+    "vite": "catalog:",
+    "wrangler": "4.149.0"
   }
 }

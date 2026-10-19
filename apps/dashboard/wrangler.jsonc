@@ -1,0 +1,70 @@
+// Top level is local development only. Staging and production values are placeholders that I-02 fills in.
+// The compatibility date stays within what the workerd bundled with @cloudflare/vitest-pool-workers supports, so the
+// Workers tests run the same date as production.
+{
+    "$schema": "node_modules/wrangler/config-schema.json",
+    "name": "ptbk-dashboard",
+    "main": "src/worker.ts",
+    "compatibility_date": "2026-08-15",
+    "compatibility_flags": ["nodejs_compat"],
+    "observability": { "enabled": true },
+    "assets": {
+        "binding": "ASSETS",
+        "not_found_handling": "single-page-application",
+        // The Worker sets the security headers on the HTML shell, so only Vite's fingerprinted files bypass it.
+        "run_worker_first": ["/*", "!/assets/*"],
+    },
+    "d1_databases": [
+        {
+            "binding": "DB",
+            "database_name": "ptbk-dashboard-dev",
+            "database_id": "00000000-0000-0000-0000-000000000000",
+            "migrations_dir": "migrations",
+        },
+    ],
+    "vars": {
+        "ENVIRONMENT": "dev",
+        "DASHBOARD_ORIGIN": "http://localhost:5173",
+        "ENGINE_DOMAIN": "engines.ptbk.test",
+        "RELAYS": [{ "relayId": "relay.ptbk.test", "region": "local" }],
+        "ADAPTERS": { "email": "fake", "billing": "fake", "rateLimit": "memory" },
+    },
+    "env": {
+        "staging": {
+            "routes": [{ "pattern": "app.staging.<placeholder>", "custom_domain": true }],
+            "d1_databases": [
+                {
+                    "binding": "DB",
+                    "database_name": "ptbk-dashboard-staging",
+                    "database_id": "<staging-d1-id>",
+                    "migrations_dir": "migrations",
+                },
+            ],
+            "vars": {
+                "ENVIRONMENT": "staging",
+                "DASHBOARD_ORIGIN": "https://app.staging.<placeholder>",
+                "ENGINE_DOMAIN": "<staging-engine-domain>",
+                "RELAYS": [{ "relayId": "relay-1.staging.<placeholder>", "region": "eu-central" }],
+                "ADAPTERS": { "email": "cloudflare", "billing": "stripe", "rateLimit": "workers" },
+            },
+        },
+        "production": {
+            "routes": [{ "pattern": "app.ptbk.io", "custom_domain": true }],
+            "d1_databases": [
+                {
+                    "binding": "DB",
+                    "database_name": "ptbk-dashboard-production",
+                    "database_id": "<production-d1-id>",
+                    "migrations_dir": "migrations",
+                },
+            ],
+            "vars": {
+                "ENVIRONMENT": "production",
+                "DASHBOARD_ORIGIN": "https://app.ptbk.io",
+                "ENGINE_DOMAIN": "<engine-domain>",
+                "RELAYS": [{ "relayId": "relay-1.<engine-domain>", "region": "eu-central" }],
+                "ADAPTERS": { "email": "cloudflare", "billing": "stripe", "rateLimit": "workers" },
+            },
+        },
+    },
+}

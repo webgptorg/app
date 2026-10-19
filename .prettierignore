@@ -1,2 +1,9 @@
 bun.lock
 docs/spec/
+apps/dashboard/migrations/meta/
+apps/dashboard/src/paraglide/
+**/routeTree.gen.ts
+**/worker-configuration.d.ts
+apps/dashboard/project.inlang/*
+!apps/dashboard/project.inlang/settings.json
+!apps/dashboard/project.inlang/paraglide.config.js

@@ -2,7 +2,7 @@
 
 - **Lane:** D · **Module:** `apps/dashboard` · **Milestone:** M3
 - **Depends on:** —
-- **Status:** todo
+- **Status:** done (#2)
 - **Spec:** Hosting and stack; One address for users; What our platform can and cannot do; Enterprise-ready engine architecture; ADRs: [0001](../../adr/0001-bun-workspaces-monorepo.md), [0005](../../adr/0005-modular-architecture.md), [0006](../../adr/0006-organizations-and-roles.md), [0007](../../adr/0007-frontend-stack.md), [0008](../../adr/0008-hono-for-http-apis.md), [0009](../../adr/0009-drizzle-and-migrations.md)
 
 ## Goal
@@ -125,19 +125,19 @@ D-01 is large and may land as several PRs (for example toolchain and Worker shel
 
 ## Acceptance criteria
 
-- [ ] `bun run --filter @ptbk/dashboard dev` serves the home page and `/v1/health` with a local D1; `build` works for `CLOUDFLARE_ENV=staging` and `production`.
-- [ ] Workers tests: health 200 with `no-store`; `/` and a deep link such as `/engines/x` return the SPA shell with the full header set (CSP without `unsafe-inline` or `unsafe-eval`, with `require-trusted-types-for 'script'` and `frame-ancestors 'none'`; HSTS); unknown `/api/*` and `/v1/*` → 404 problem+json, not HTML. A build test asserts `index.html` has no inline `<script>` or `<style>`. Unit: config fails closed on a missing or unknown var.
-- [ ] Authorizer unit tests: owner allowed on own org; non-member denied `not-member`; platform-only action denied for a normal user; sensitive action denied `recovery-cooldown` at 71 h 59 min after recovery and allowed at 72 h.
-- [ ] i18n: a test fails if `messages/en.json` and `messages/cs.json` do not have exactly the same keys or any value is empty; the home page renders in Czech when the browser prefers `cs` and no cookie is set (client test); `resolveRequestLocale` honours user locale, cookie and `Accept-Language` in that order (unit); the literal-string lint rule is active.
-- [ ] Migrations: `migrations/` holds only drizzle-kit output; the drift check passes on a clean tree and fails after a schema edit without `db:generate`; the destructive guard fails on fixture migrations with `DROP COLUMN`, a `RENAME` and a table rebuild, and passes when the `-- contract:` marker is present (tests of the guard script).
-- [ ] The API client rejects a response that does not match its contract (client test); `drizzle-orm` imports outside `src/adapters/db/` and `db.query` usage fail lint.
-- [ ] The dev container starts, serves `https://<dev hostname>/v1/health` with the supplied certificate, and config refuses `adapters.billing = 'fake'` with `environment = 'staging'` (unit test).
-- [ ] Bundle budget check, build test, drift and destructive guards all run from root `bun run check` (no separate CI step).
-- [ ] Generated files are git-ignored and absent from the tree; `bun run check` passes on a fresh clone because `generate` runs before lint and typecheck; ESLint and Prettier ignore them and `migrations/meta/`.
-- [ ] `typecheck` runs the client, worker and node tsconfigs; the client project has no Workers types and the worker project has no DOM lib.
-- [ ] Schema allowlist test passes; `domain/` has no platform or adapter imports.
-- [ ] `bun run check` passes.
-- [ ] **Status** line above set to `done (#<last PR>)`.
+- [x] `bun run --filter @ptbk/dashboard dev` serves the home page and `/v1/health` with a local D1; `build` works for `CLOUDFLARE_ENV=staging` and `production`.
+- [x] Workers tests: health 200 with `no-store`; `/` and a deep link such as `/engines/x` return the SPA shell with the full header set (CSP without `unsafe-inline` or `unsafe-eval`, with `require-trusted-types-for 'script'` and `frame-ancestors 'none'`; HSTS); unknown `/api/*` and `/v1/*` → 404 problem+json, not HTML. A build test asserts `index.html` has no inline `<script>` or `<style>`. Unit: config fails closed on a missing or unknown var.
+- [x] Authorizer unit tests: owner allowed on own org; non-member denied `not-member`; platform-only action denied for a normal user; sensitive action denied `recovery-cooldown` at 71 h 59 min after recovery and allowed at 72 h.
+- [x] i18n: a test fails if `messages/en.json` and `messages/cs.json` do not have exactly the same keys or any value is empty; the home page renders in Czech when the browser prefers `cs` and no cookie is set (client test); `resolveRequestLocale` honours user locale, cookie and `Accept-Language` in that order (unit); the literal-string lint rule is active.
+- [x] Migrations: `migrations/` holds only drizzle-kit output; the drift check passes on a clean tree and fails after a schema edit without `db:generate`; the destructive guard fails on fixture migrations with `DROP COLUMN`, a `RENAME` and a table rebuild, and passes when the `-- contract:` marker is present (tests of the guard script).
+- [x] The API client rejects a response that does not match its contract (client test); `drizzle-orm` imports outside `src/adapters/db/` and `db.query` usage fail lint.
+- [x] The dev container starts, serves `https://<dev hostname>/v1/health` with the supplied certificate, and config refuses `adapters.billing = 'fake'` with `environment = 'staging'` (unit test).
+- [x] Bundle budget check, build test, drift and destructive guards all run from root `bun run check` (no separate CI step).
+- [x] Generated files are git-ignored and absent from the tree; `bun run check` passes on a fresh clone because `generate` runs before lint and typecheck; ESLint and Prettier ignore them and `migrations/meta/`.
+- [x] `typecheck` runs the client, worker and node tsconfigs; the client project has no Workers types and the worker project has no DOM lib.
+- [x] Schema allowlist test passes; `domain/` has no platform or adapter imports.
+- [x] `bun run check` passes.
+- [x] **Status** line above set to `done (#<last PR>)`.
 
 ## Risks and open points
 

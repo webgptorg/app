@@ -1,0 +1,14 @@
+{
+  "$schema": "https://inlang.com/schema/inlang-message-format",
+  "app_name": "Promptbook",
+  "home_title": "Vaše enginy",
+  "home_intro": "Přihlaste se, abyste viděli a otevřeli enginy, které provozujete.",
+  "language_label": "Jazyk",
+  "locale_en": "English",
+  "locale_cs": "Čeština",
+  "environment_label": "Prostředí: {environment}",
+  "not_found_title": "Stránka nenalezena",
+  "not_found_back": "Zpět na začátek",
+  "error_title": "Něco se pokazilo",
+  "error_retry": "Zkusit znovu"
+}
