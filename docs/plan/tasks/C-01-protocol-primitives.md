@@ -2,7 +2,7 @@
 
 - **Lane:** Contracts · **Module:** `packages/protocol` · **Milestone:** M1
 - **Depends on:** —
-- **Status:** todo
+- **Status:** in progress (feat/c-01-protocol-primitives)
 - **Spec:** Interfaces (draft) 1–3, Pairing and identity, Relay and tunnel (Enterprise custom domains); ADRs: [0002](../../adr/0002-public-private-split.md), [0005](../../adr/0005-modular-architecture.md), [0014](../../adr/0014-cryptography.md)
 
 ## Goal
