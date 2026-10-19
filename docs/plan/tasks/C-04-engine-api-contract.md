@@ -2,7 +2,7 @@
 
 - **Lane:** Contracts · **Module:** `packages/engine-api` · **Milestone:** M2
 - **Depends on:** —
-- **Status:** todo
+- **Status:** in progress (feat/c-04-engine-api-contract)
 - **Spec:** Security hardening (preamble, items 1, 5, 7, 8), Transparency and verifiability (3. Self-checks), Engine security baseline, Enterprise-ready engine architecture (API, Authorisation, Audit), Interfaces (draft) 6; ADRs: [0003](../../adr/0003-ui-as-signed-bundle.md), [0004](../../adr/0004-mock-engine-and-conformance.md)
 
 ## Goal
