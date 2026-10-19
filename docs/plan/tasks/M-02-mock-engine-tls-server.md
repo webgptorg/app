@@ -3,7 +3,7 @@
 - **Lane:** Mock engine · **Module:** `apps/mock-engine` · **Milestone:** M1
 - **Depends on:** M-01
 - **Status:** todo
-- **Spec:** Relay and tunnel; Build plan (Spike acceptance criteria); Operations (Bandwidth and cost); Engine security baseline; ADRs: [0004](../../adr/0004-mock-engine-and-conformance.md)
+- **Spec:** Relay and tunnel; Build plan (Spike acceptance criteria); Operations (Bandwidth and cost); Engine security baseline; ADRs: [0004](../../adr/0004-mock-engine-and-conformance.md), [0014](../../adr/0014-cryptography.md)
 
 ## Goal
 
@@ -16,7 +16,8 @@ This is the engine half of the passthrough: the relay pipes bytes (R-04), the mo
 ## Scope
 
 - `src/domain/tls/certificate-source.ts`: port `CertificateSource { current(hostname: Hostname): TlsCredentials | undefined; onChange(listener): () => void }` where `TlsCredentials` holds PEM certificate chain and key.
-- `src/adapters/dev-ca.ts` (with `@peculiar/x509` 1.x on Node's WebCrypto): `createDevCa()` returns an ECDSA P-256 CA; `issueLeaf(ca, hostnames, clock)` returns a 30-day leaf with SANs. `DevCaCertificateSource` uses CA files from `MOCK_DEV_CA_CERT_FILE` and `MOCK_DEV_CA_KEY_FILE` when set (X-01 generates them so Playwright and curl can trust the CA before the engine starts), otherwise generates a CA into `PTBK_DATA_DIR/dev-ca/` (0600). Tests generate everything in memory. No mkcert, no committed keys.
+- `src/adapters/dev-ca.ts` (with `@peculiar/x509@2.1.0`, exact, on Node's WebCrypto; ADR 0014): `createDevCa(permittedDomains)` returns an ECDSA P-256 CA whose certificate is constrained so a leaked dev CA cannot vouch for real sites: a critical name constraints extension permitting only the dev engine domain and test domains (`PTBK_ENGINE_DOMAIN` plus the e2e domains from config) and excluding all IP addresses, `basicConstraints` CA with `pathLen 0`, key usage `keyCertSign` and `cRLSign` only. `issueLeaf(ca, hostnames, clock)` returns a short-lived (7-day) leaf with SANs, key usage `digitalSignature` and EKU `serverAuth`; `DevCaCertificateSource` re-issues it before expiry and emits `onChange`. `DevCaCertificateSource` uses CA files from `MOCK_DEV_CA_CERT_FILE` and `MOCK_DEV_CA_KEY_FILE` when set (X-01 generates them so Playwright and curl can trust the CA before the engine starts), otherwise generates a CA into `PTBK_DATA_DIR/dev-ca/` (0600). Tests generate everything in memory. No mkcert, no committed keys.
+- Name constraints construction: `@peculiar/x509@2.1.0` has no `NameConstraints` class, so build the extension with `@peculiar/asn1-x509@2.10.0` and `@peculiar/asn1-schema@2.10.0` (exact, from the workspace catalog): `new x509.Extension('2.5.29.30', true, AsnConvert.serialize(new NameConstraints({ permittedSubtrees: new GeneralSubtrees(domains.map((d) => new GeneralSubtree({ base: new GeneralName({ dNSName: d }) }))), excludedSubtrees: new GeneralSubtrees([ipv4Any, ipv6Any]) })))`, where `ipv4Any` and `ipv6Any` are `GeneralSubtree`s whose `iPAddress` is `0.0.0.0/0` and `::/0` (RFC 5280 §4.2.1.10: address plus mask, 8 and 32 zero octets). If the library's `IpConverter` does not accept CIDR strings, build those two `GeneralName`s from raw octets; the test asserts the DER either way. The extension is critical (second argument `true`).
 - `src/adapters/tls-stream-server.ts`: one `tls.Server` (TLS 1.3 minimum, ALPN `http/1.1`, plus `h2` if added below) fed by `server.emit('connection', duplex)` for each tunnel stream from M-01. Certificates are chosen per SNI through `SNICallback` from the `CertificateSource`, so a renewal (M-03) applies to new connections without restart. Unknown SNI: handshake fails.
 - `src/adapters/http/http-app.ts`: a Hono 4.13.x app served through `@hono/node-server` 1.x (`getRequestListener`) on a `node:http` server fed by `httpServer.emit('connection', tlsSocket)`. WebSocket upgrades go through the HTTP server's `upgrade` event to `ws` (`noServer: true`) with a small route table.
 - `src/adapters/http/spike-routes.ts`, all under `/__spike/`:
@@ -41,7 +42,7 @@ This is the engine half of the passthrough: the relay pipes bytes (R-04), the mo
 
 ## Acceptance criteria
 
-- [ ] Dev CA tests: the leaf verifies against the CA, SANs match, validity uses the injected clock, keys are non-exportable from logs (never printed).
+- [ ] Dev CA tests: the leaf verifies against the CA, SANs match, validity (7 days) uses the injected clock and the source re-issues before expiry, keys are never printed; the CA certificate carries the name constraints as a critical extension (DER decoded in the test: permitted DNS subtrees as configured, excluded `0.0.0.0/0` and `::/0`), `pathLen 0` and only `keyCertSign`/`cRLSign`; a leaf the CA issues for a name outside the permitted domains fails `tls.connect` verification, and so does a leaf whose SAN is an IP address (`127.0.0.1`), connected to by IP.
 - [ ] In-process test without a relay: a pair of linked duplexes stands in for a tunnel stream; `tls.connect` with the dev CA trusted and the engine SNI gets `GET /__spike/whoami` with the injected client IP; a wrong SNI fails the handshake.
 - [ ] Tests for SSE (N events, reconnect with `Last-Event-ID`), WebSocket echo (text, binary, 1 MB), screencast (requested fps within 10 % over 5 s using fake time where possible), download (exact byte count, backpressure: memory stays bounded with a paused reader).
 - [ ] Invalid query params return 400; values over caps return 400.

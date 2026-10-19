@@ -1,5 +1,5 @@
 <!--
-Snapshot of the spec, rev 125 (2026-10-19). The living version is the Claude Doc:
+Snapshot of the spec, rev 143 (2026-10-19). The living version is the Claude Doc:
 https://claude.ai/code/artifact/cd422fa3-3ccb-4d1a-b7fe-79a10c32802b
 Decisions taken after this snapshot are recorded as ADRs in docs/adr.
 -->
@@ -114,7 +114,7 @@ We control DNS for `<engine>.<domain>`, so we could get a valid certificate, int
 - The engine obtains its own certificate with TLS-ALPN-01 through the passthrough relay, so normal operation needs no DNS action from us.
 - Every publicly trusted certificate must appear in Certificate Transparency logs. The engine checks those logs for its hostname every hour and alerts the owner (UI, email, push) when it finds a certificate whose key is not its own.
 - A CAA record with `accounturi` ([RFC 8657](https://www.rfc-editor.org/rfc/rfc8657)) pins issuance to the engine's ACME account. This blocks third parties, not us, because we could change the record.
-- **Custom domain (strict mode):** the user points their own subdomain at the relay. We never control the DNS, so we cannot get a certificate. This is the recommended setup for companies.
+- **Custom domain (strict mode):** the user points their own subdomain at the engine's default hostname with a CNAME. We never control the DNS, so we cannot get a certificate. This is the recommended setup for companies.
 - Put the engine domain on the Public Suffix List. That isolates cookies and passkeys between engines and lifts Let's Encrypt's per-domain rate limits.
 
 **2. Engine updates**
@@ -123,14 +123,14 @@ The engine updates itself (blue/green, through the separate updater), so code we
 
 - Builds are reproducible. A regular release carries two signatures: a keyless Sigstore signature from the release workflow identity (this repo, this workflow, this commit), and a signature from the release key, held by a person on a hardware key. Both are logged in [Sigstore Rekor](https://blog.sigstore.dev/rekor-v2-ga/). The engine requires both and refuses releases that are not in the log, so a compromised CI alone cannot ship.
 - Auto-update is the default. A regular release installs only after it has been public for 72 h, and a security fix after 24 h. Nothing ever installs automatically in under 24 h. The delay gives independent monitors time to rebuild the release from source and compare.
-- A security fix needs signatures from 2 of 3 maintainers, held on separate hardware keys, plus a published advisory. So one stolen key, or one insider, cannot use the "security" label to shorten the delay.
+- A security fix needs the release workflow's provenance and the release key, plus signatures from 2 of 3 maintainers held on separate hardware keys, and a published advisory. So one stolen key, or one insider, cannot use the "security" label to shorten the delay.
 - After the delay, engines install at a random moment within the next 24 h (staged rollout). Before installing, an engine checks the log for a revocation entry, so a release flagged by a monitor stops spreading.
 - The owner picks the update policy in the engine UI: automatic after the public delay (the default, so small teams stay patched), manual approval of each release, or a pinned version. The policy lives on the engine, changing it needs a fresh passkey assertion and is logged, and we cannot change it. Every mode installs only signed, logged releases; manual approval may install a release before the delay ends. Fleets later set the policy through a signed fleet policy.
 - The install command pins the release hash, so a tampered installer fails.
 
 **Release keys and dependencies:** updates are the main remaining path to customer data, so both ends need an owner before v0.
 
-- A named holder of the release key and three named key holders for the 2-of-3 security signatures, each on a hardware key, with a written key ceremony and a procedure for replacing a holder.
+- A named holder of the release key and three named key holders for the 2-of-3 security signatures, each on a hardware key, with a written key ceremony and a procedure for replacing a holder. The release key is Ed25519 on a hardware key (e.g. YubiKey 5.7 or later, PIV), and the ceremony is rehearsed before the formats freeze.
 - A signed release is only as good as what went into it: lockfile-pinned npm dependencies, an SBOM published with each release, and review of every dependency change. Dependency updates go through the same delay as our own code.
 
 **3. Our dashboard**
@@ -165,6 +165,7 @@ We never see the setup secret, so we cannot claim the owner seat. Only someone w
 - **More devices:** synced passkeys (iCloud Keychain, Google Password Manager, 1Password) work on new devices automatically. For a non-synced device, the owner shows a one-time link QR from the engine UI.
 - **Revoke:** remove a passkey in the engine UI or with the engine CLI. All of its sessions end.
 - **Lose every device:** run `engine owner --reset` on the server. It revokes all passkeys and prints a fresh setup link. Nothing is lost, because the data never left the engine.
+- **Engine key compromised:** engine keys cannot rotate in place, because the engine ID is the key's hash. The owner revokes the engine in the dashboard, which suspends it so relays cut its tunnels, then sets it up again with a new identity.
 - **Members later:** the owner creates an invite link in the engine UI. The invitee registers their own passkey on the engine. Roles live on the engine. Our dashboard learns only a member count, if billing needs it.
 
 **Devices without a built-in passkey**
@@ -225,7 +226,7 @@ Engines relaying traffic for each other is rejected: customer servers would carr
 
 **Escape hatches:** a user can run a relay on their own VPS (ours under licence, or their own implementation of the open tunnel protocol) and take us out of the traffic path. Direct mode (public IP, open port, the engine's own certificates) stays for advanced self-hosters only and is not offered in onboarding. Encrypted Client Hello (ECH) can later hide the SNI from network observers; the relay itself still sees it.
 
-**Enterprise custom domains (supported from v0, set up by hand):** the relay registry maps several hostnames to one engine, and the engine obtains its own certificate for each. A custom domain is therefore one DNS record on the customer's side plus one registry entry on ours. It is agreed individually with Enterprise customers and is not part of the standard plan or self-service settings; everyone else gets the default engine domain automatically. The relay routes a custom hostname only with a claim signed by the engine key, so neither we nor an attacker in the dashboard can point it at another engine.
+**Enterprise custom domains (supported from v0, set up by hand):** the relay registry maps several hostnames to one engine, and the engine obtains its own certificate for each. A custom domain is therefore one DNS record on the customer's side plus one registry entry on ours. It is agreed individually with Enterprise customers and is not part of the standard plan or self-service settings; everyone else gets the default engine domain automatically. The customer creates a CNAME from the custom hostname to the engine's default hostname, \<engineId>.\<engine domain>. The relay routes a custom hostname only if the engine-signed claim verifies and the hostname's CNAME points to that same engine's default hostname. Only the customer controls their DNS, so neither we nor an attacker in the dashboard can attach the domain to another engine. Apex domains are not supported in v0, and if two connected engines claim the same hostname, the relay routes neither.
 
 ## What our platform can and cannot do
 
@@ -304,7 +305,7 @@ The engine API is a typed HTTP API (Hono recommended; see Hosting and stack). Ev
 | Agent sandbox | Each agent in a rootless container (later gVisor or Firecracker); network only through the engine's egress proxy (see Security hardening) |
 | Supply chain | pnpm with a locked lockfile, a minimum release age for new versions, and install scripts disabled except an allowlist; SBOM (CycloneDX) per release; Renovate; OpenSSF Scorecard |
 | Verification | CodeQL or Semgrep in CI, schema fuzzing of the API, a pentest before general availability, then a bug bounty |
-| Audit | Append-only, hash-chained audit log of every authenticated action, visible in the security panel |
+| Audit | Append-only, hash-chained audit log of every authenticated action, visible in the security panel; the engine signs checkpoints of the chain (ptbk-audit-checkpoint-v1), so someone with database write access cannot silently rewrite history |
 
 ## Security hardening
 
@@ -405,6 +406,7 @@ The whole stack can be TypeScript, and everything runs on Cloudflare except the 
 | Engine UI | Vite, React, TanStack Router, Query and Table, Tailwind; a design system shared with the dashboard; Paraglide i18n (English and Czech); CodeMirror 6 for the book editor (works under strict CSP). Static hashed bundle, closed, served by the engine |
 | Engine API | Hono on Node recommended (the same framework as our mock engine and dashboard API). Contracts are framework-agnostic zod schemas with a generated OpenAPI document |
 | Passkeys | `@simplewebauthn/server` and `@simplewebauthn/browser` |
+| Signatures | Ed25519 keys generated and signatures made with WebCrypto; verification everywhere with `@noble/curves` in strict RFC 8032 mode, so every runtime accepts exactly the same signatures |
 | Certificates | `acme-client`, plus a small TLS-ALPN-01 responder on `node:tls` and `@peculiar/x509`; or Caddy in front of the engine as a ready-made alternative |
 | Tunnel client | `node:tls` with HTTP/2 or yamux multiplexing |
 | Relay | Plain Node `node:net` and `node:tls` plus `ws`, no HTTP framework, by design: parse the SNI from the ClientHello, then pipe bytes. About 1,000 lines, small enough to rewrite in Go if memory per connection ever matters |
@@ -460,7 +462,7 @@ Customers on the predecessor (a public IP with nginx and Let's Encrypt) move to 
 | `local` | 127.0.0.1 only | Development, air-gapped use |
 
 - **Import:** `engine import <export>` (proposal) loads the agents, books, files, users and settings exported from the old deployment into a fresh engine. The old deployment keeps running until the owner switches over.
-- **Switching:** `engine connect --link <code>` generates the keys, registers the engine, gets the certificate and binds to localhost. A domain the old deployment used can stay as the custom domain (CNAME to the relay).
+- **Switching:** `engine connect --link <code>` generates the keys, registers the engine, gets the certificate and binds to localhost. A domain the old deployment used can stay as the custom domain (CNAME to the engine's default hostname).
 - **Users:** imported password users must register a passkey at their next sign-in. Password sign-in switches off after a grace period (proposal: 14 days), or immediately in strict mode.
 - **API tokens:** imported `ptbk_` tokens keep working, but they are stored hashed, scoped to explicit permissions, and given an expiry.
 - **Secrets:** imported secrets are encrypted at rest during the import (Security hardening item 7).
@@ -478,14 +480,16 @@ We never process the content, only transmit it, so the customer stays the contro
 
 These are draft contracts to start building against. The spike confirms or changes them, and every one is versioned (`v1`) from day one. All schemas are strict: unknown fields are rejected.
 
-**Protocol design principles.** Every message carries a version, and peers negotiate the version they speak. Changes are additions: a new version ships next to the previous one, which stays supported. Every signature is versioned and domain-separated (`ptbk-<purpose>-v<n>`), signed JSON is canonicalised with JCS (RFC 8785), and the algorithm is fixed per protocol version (Ed25519 in v1). Limits are explicit and errors are typed. The formats freeze when the contracts are published, after review by the engine team and Pavol.
+**Protocol design principles.** Every message carries a version, and peers negotiate the version they speak. Changes are additions: a new version ships next to the previous one, which stays supported. Every signature is versioned and domain-separated (`ptbk-<purpose>-v<n>`), and the algorithm is fixed per protocol version (Ed25519 in v1). Limits are explicit and errors are typed. The formats freeze when the contracts are published, after review by the engine team and Pavol.
+
+**Signature encoding.** Every signature input is built by `signingInput(context, ...parts)` = `"ptbk-sig\0" ‖ u8 len(context) ‖ context ‖ (u32be len ‖ bytes)` for each part, with binary values as raw bytes. The notation `"ptbk-x-v1" | a | b` in the interfaces below means exactly this encoding. No signature covers re-serialised JSON: release log entries are signed as exact bytes in DSSE envelopes (Interface 5). Binary values are base64url without padding everywhere, except payload and sig inside DSSE envelopes, which use standard base64 with padding as DSSE and Sigstore do.
 
 **1. Engine registration** (engine to dashboard API, HTTPS)
 
 ```json
 POST /v1/engines/register
 { "v": 1, "linkCode": "<one-time, 30 min>", "enginePublicKey": "<Ed25519, base64url>", "engineVersion": "1.8.2", "mode": "tunnel",
-  "sig": "<base64url Ed25519 over \"ptbk-register-v1\" | linkCode | enginePublicKey | engineVersion>" }
+  "sig": "<base64url Ed25519 over \"ptbk-register-v1\" | v | linkCode | enginePublicKey | engineVersion | mode>" }
 
 200 { "engineId": "<26 chars base32 of SHA-256(enginePublicKey)>",
       "hostname": "<engineId>.<engine domain>",
@@ -506,16 +510,16 @@ GET /internal/v1/engines/{engineId}
 
 The relay calls this when an engine authenticates its tunnel, using the engine ID the engine presents. It keeps a hostname → engine map only for engines connected to it, refreshes each entry every 5 minutes, and keeps stale entries for at most 24 hours if the dashboard is unreachable. After that the entry counts as unavailable and the relay refuses the tunnel. A relay never has to route a hostname whose engine has no tunnel to it, so no lookup by hostname is needed. `suspended` (abuse or unpaid) refuses the tunnel; an engine suspended while connected is cut off at the next 5-minute refresh, or within 24 hours during a dashboard outage.
 
-Each custom hostname has an entry in `claims`: an Ed25519 signature by the engine key over `"ptbk-hostname-v1" | hostname | engineId`. The relay drops any hostname whose claim does not verify. Default hostnames need no claim, because they are derived from the key.
+Each custom hostname has an entry in `claims`: an Ed25519 signature by the engine key over `"ptbk-hostname-v1" | hostname | engineId`. The relay routes a custom hostname only if its claim verifies and the hostname's DNS CNAME points to that engine's default hostname; if two connected engines claim the same hostname, it routes neither. Default hostnames need no claim, because they are derived from the key.
 
 **3. Tunnel protocol** (engine to relay)
 
 - The engine connects to `wss://relay-<region>.<domain>/v1/tunnel` with the WebSocket subprotocol `ptbk-tunnel`; the protocol version is negotiated in the handshake. The relay terminates TLS only for its own name. WebSocket passes HTTP proxies and TLS-inspecting company proxies, and even an inspecting proxy sees only the browser's TLS bytes inside, which stay encrypted end to end.
 - Handshake:
-  1. Relay sends `{type: "challenge", nonce: <32 bytes>, relayId}`. `relayId` is the relay's own hostname (e.g. `relay-fsn.<domain>`), so the signature binds to the relay the engine meant to dial.
-  2. Engine replies `{type: "auth", engineId, version, protocolVersions, features, sig}`, where sig = Ed25519 over `"ptbk-tunnel-v1" | relayId | nonce`.
-  3. Relay looks the engine up in the registry (Interface 2), checks the signature and answers `{type: "ready", protocolVersion, features, hostnames}` with the chosen version and the agreed features.
-  4. Instead of `ready`, the relay may send `{type: "reject", reason}` with reason `auth-failed`, `suspended`, `unsupported-version`, `timeout` or `rate-limited`, then close with a code in the 4000–4999 range (replaced, auth-failed, protocol-error, shutting-down, suspended). The reasons are deliberately coarse, so a failed attempt learns nothing finer.
+  1. Relay sends `{type: "challenge", nonce: <32 bytes>, relayId, protocolVersions, features}`. `relayId` is the relay's own hostname (e.g. `relay-fsn.<domain>`), so the signature binds to the relay the engine meant to dial.
+  2. Engine replies `{type: "auth", engineId, version, protocolVersions, features, sig}`, where sig = Ed25519 over `"ptbk-tunnel-v1" | relayId | nonce | engineId | version | relay protocolVersions | relay features | engine protocolVersions | engine features`. Each list is one part: `protocolVersions` as decimal numbers in ascending numeric order, `features` in ascending byte order, no duplicates.
+  3. Relay looks the engine up in the registry (Interface 2), checks the signature and answers `{type: "ready", protocolVersion, features, hostnames}`. The engine checks that `ready` picks the highest common version and exactly the intersection of the feature lists, so nobody can downgrade the session.
+  4. Instead of `ready`, the relay may send `{type: "reject", reason}` with reason `auth-failed`, `suspended`, `unsupported-version`, `timeout` or `rate-limited`, then close: `rate-limited` with 1013 (Try Again Later), the others with a code in the 4000–4999 range (replaced, auth-failed, protocol-error, shutting-down, suspended). The reasons are deliberately coarse, so a failed attempt learns nothing finer.
 - Framing: binary WebSocket messages `[u8 type][u32 streamId][payload]`. Types: `OPEN` (carries the client IP, so the engine can rate-limit and audit), `DATA`, `CLOSE`, and `WINDOW` (flow-control credit in bytes). Bit 7 of the type byte marks a frame type as ignorable: an unknown ignorable frame is skipped, and an unknown non-ignorable frame is a protocol error. WebSocket ping every 25 s. The spike may swap this for yamux over WebSocket.
 - Browser side: the relay listens on 443 and reads the SNI from the ClientHello. Its own name is handled locally. A registered engine hostname gets a new `OPEN` stream and raw bytes are piped. A missing or unknown SNI is closed.
 
@@ -523,7 +527,7 @@ Each custom hostname has an entry in `claims`: an Ed25519 signature by the engin
 
 ```json
 POST /v1/engines/{engineId}/heartbeat
-Ptbk-Signature: ed25519=<base64url Ed25519 over "ptbk-heartbeat-v1" | sha256(raw body, base64url)>
+Ptbk-Signature: ed25519=<base64url Ed25519 over "ptbk-heartbeat-v1" | sha256(raw body)>
 { "v": 1, "engineId": "...", "seq": 1042, "ts": "2026-10-16T12:00:00Z",
   "version": "1.8.2", "uptimeS": 86400,
   "diskPct": 40, "ramPct": 60, "cpuLoad": "low" | "medium" | "high",
@@ -531,23 +535,28 @@ Ptbk-Signature: ed25519=<base64url Ed25519 over "ptbk-heartbeat-v1" | sha256(raw
   "agents": 7, "members": 3 }
 ```
 
-Percentages are rounded to tens. `seq` must increase and `ts` must be within 2 minutes, which stops replays. The signed input is the purpose string plus the hash of the raw body, so a heartbeat signature cannot be reused for any other message.
+Percentages are rounded to tens. `seq` must increase and `ts` must be within 2 minutes, which stops replays. The signed input is the purpose string plus the raw 32-byte SHA-256 digest of the body, so a heartbeat signature cannot be reused for any other message. A stale-ts rejection includes the server time, so the engine can show the clock skew.
 
 **5. Release log entry** (published to Sigstore Rekor and on R2)
 
 ```json
+// DSSE envelope, over the exact entry bytes
+{ "payloadType": "application/vnd.ptbk.release+json; v=1",
+  "payload": "<standard base64 with padding of the entry JSON bytes>",
+  "signatures": [{ "keyid": "<base64url(SHA-256(raw public key))>", "sig": "<standard base64 with padding: Ed25519 over the DSSE PAE>" }] }
+
+// entry
 { "v": 1, "version": "1.8.2", "gitTag": "v1.8.2", "commit": "<sha>",
   "artifacts": [{ "name": "engine-linux-x64.tar.zst", "sha256": "...", "kind": "engine" },
                 { "name": "engine-ui.tar.zst", "sha256": "...", "kind": "ui" }],
-  "kind": "regular" | "security", "advisory": "<url>" | null,
-  "publishedAt": "...",
-  "provenance": "<Sigstore bundle: keyless signature of the release workflow identity>",
-  "signatures": [{ "keyId": "<release key or maintainer key>", "sig": "..." }] }
+  "kind": "regular" | "security", "advisory": "<url>" | null, "publishedAt": "..." }
 
-{ "v": 1, "revokes": "1.8.2", "reason": "...", "signatures": [...] }
+// revocation list, payloadType application/vnd.ptbk.revocation+json; v=1
+{ "v": 1, "issuedAt": "...", "expiresAt": "...",
+  "revoked": [{ "version": "1.8.2", "reason": "..." }] }
 ```
 
-Before installing, the engine checks four things: the signatures meet the threshold (for regular releases, both the release workflow's Sigstore signature and the release key; for `security`, 2 of 3 maintainers); Rekor holds an inclusion proof; the delay has passed; and no revocation entry exists. The delay counts from the later of `publishedAt` and the Rekor log timestamp, so a backdated `publishedAt` cannot shorten it.
+Before installing, the engine checks four things: the envelope's signatures meet the threshold (for regular releases, the release key plus a Sigstore attestation of the same envelope from the release workflow; for `security`, the same two plus 2 of 3 maintainer keys); Rekor holds an inclusion proof; the delay has passed; and the version is not on the current revocation list. The Sigstore identity is pinned exactly, never by pattern: issuer, repository, repository ID, workflow path, tag, commit digest and a GitHub-hosted runner, checked against a pinned trust root that ships with each release. The delay counts from the latest of `publishedAt`, a verified trusted timestamp (RFC 3161 TSA or Rekor integrated time) and the time the engine first saw the release, which it persists. Revocations are one signed list with an expiry; with no unexpired list, the engine keeps its current version and alerts the owner.
 
 The UI bundle is an artifact of the same release (`"kind": "ui"`), so engine and UI versions always match and pass the same four checks. The engine's loader downloads it from R2 or a mirror, compares the SHA-256, unpacks it into a read-only directory and serves only those files. A bundle that fails a check is never served; the engine keeps the previous one.
 
@@ -557,7 +566,7 @@ The UI bundle is an artifact of the same release (`"kind": "ui"`), so engine and
 | --- | --- |
 | `PTBK_MODE` | `tunnel`, `direct`, `local` |
 | `PTBK_UPDATE_POLICY` | `auto` (default), `manual`, `pinned` (with `PTBK_PINNED_VERSION`) |
-| `PTBK_CUSTOM_DOMAIN` | Optional hostname, verified by a CNAME to the relay |
+| `PTBK_CUSTOM_DOMAIN` | Optional hostname (no apex in v0) with a CNAME to the engine's default hostname; the relay checks the CNAME and the signed claim |
 | `HTTPS_PROXY`, `NO_PROXY` | Standard proxy settings for the tunnel and updates |
 | `PTBK_DATA_DIR` | Keys, certificates, database and audit log; mode 0700 |
 
@@ -642,7 +651,7 @@ The work splits between two repos that share one contracts package. The engine s
 
 - [ ] Engine domain name: not chosen yet. It must be a separate registrable domain from ptbk.io; apply for the Public Suffix List entry as soon as it is chosen.
 - [x] One full app: decided. The browser connects to the engine and the engine serves the whole app; app.ptbk.io is the entry point and engine list only. No frontend on app.ptbk.io loads engine data (see One address for users).
-- [x] Update delays: decided. 72 h for regular releases, 24 h for security fixes signed by 2 of 3 maintainers, never under 24 h automatically.
+- [x] Update delays: decided. 72 h for regular releases, 24 h for security fixes that also carry 2 of 3 maintainer signatures, never under 24 h automatically.
 - [x] Custom domains: decided. Enterprise only, set up individually; not in the standard plan or self-service.
 - [ ] Exact heartbeat scope beyond agent count and availability: open, decided by real product needs. Agent names and content never go in.
 - [x] Storage: decided. All engine data stays on the engine host (SQLite by default, or the customer's own Postgres); no hosted database service.
@@ -653,6 +662,7 @@ The work splits between two repos that share one contracts package. The engine s
 - [x] UI delivery: decided. Our closed UI bundle, verified and served by the engine; the engine stays open and holds only the loader (see Architecture).
 - [ ] Contracts package: moves to the public repo (or is published to npm) before the real engine depends on it. Pick the moment and the package name with the engine team.
 - [ ] Revocation threshold: who may sign a revocation entry? Proposal: the release key or any one maintainer, so a bad release can be stopped fast.
+- [ ] Revocation list signer and re-signing cadence, and the maximum validity of a list (proposal: re-signed weekly by the release key holder, valid 14 days).
 - [x] **Billing: decided.** no technical enforcement against a modified engine; the terms of service cover it. Revisit only if abuse becomes a real economic problem.
 
 **Engine work this spec needs** (for the engine team)

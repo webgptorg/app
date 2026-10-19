@@ -133,17 +133,18 @@ C-01 and R-01 both live in `packages/protocol` and touch its `package.json` and 
 - Preassigned ADR numbers: 0011 infrastructure as code (I-01/I-02), 0012 monitoring backend (I-04), 0013 book editor (U-04).
 - Tooling: Vitest 4.1 repo-wide; shared versions through the Bun workspace catalog; install scripts only for esbuild, sharp and workerd; generated code not committed, `bun run check` runs `generate` and is the single CI step.
 - No branch protection on the current GitHub plan: agents enforce green CI by the procedure in AGENTS.md.
+- Cryptography ([ADR 0014](../adr/0014-cryptography.md)): WebCrypto signs, `@noble/curves` verifies in strict mode; length-prefixed signature inputs; DSSE envelopes instead of JSON canonicalisation; signed tunnel negotiation; trusted time for the update delay; exact Sigstore identity pinning.
 - Engine registration is signed by the engine key; regular releases need both the CI's keyless signature and a human-held release key; our own npm scope is exempt from the 7-day release age.
 - Organizations, members and roles are modelled from day one ([ADR 0006](../adr/0006-organizations-and-roles.md)).
 
 **Still needed** (each blocks specific tasks, not the start):
 
-| Decision                                                                                             | Blocks                                    | Owner       |
-| ---------------------------------------------------------------------------------------------------- | ----------------------------------------- | ----------- |
-| Engine domain name (separate from ptbk.io)                                                           | I-02 (local and staging use placeholders) | Team        |
-| Cloudflare accounts and relay VPS provider accounts                                                  | I-01, I-02                                | Team        |
-| Release key holder and the three maintainer key holders (2 of 3 for security releases), key ceremony | X-03 for production signing, I-03         | Team        |
-| Who builds the engine side, and when                                                                 | E-03                                      | Engine team |
+| Decision                                                                                                                                                               | Blocks                                    | Owner       |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- | ----------- |
+| Engine domain name (separate from ptbk.io)                                                                                                                             | I-02 (local and staging use placeholders) | Team        |
+| Cloudflare accounts and relay VPS provider accounts                                                                                                                    | I-01, I-02                                | Team        |
+| Release key holder and the three maintainer key holders (2 of 3 for security releases), hardware keys (e.g. YubiKey 5.7+ PIV for Ed25519) and a rehearsed key ceremony | X-03 for production signing, I-03         | Team        |
+| Who builds the engine side, and when                                                                                                                                   | E-03                                      | Engine team |
 
 ## How to work a task
 

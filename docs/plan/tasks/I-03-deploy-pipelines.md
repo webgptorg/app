@@ -3,7 +3,7 @@
 - **Lane:** I · **Module:** `.github/workflows`, `infra/relay` (deploy script), `apps/relay/Dockerfile` if missing · **Milestone:** M4
 - **Depends on:** I-01, I-02, X-03
 - **Status:** todo
-- **Spec:** Security hardening item 10; Hosting and stack (Releases; Release artifacts; Engine UI bundle); Residual risks (Release keys and dependencies); ADRs: [0003](../../adr/0003-ui-as-signed-bundle.md)
+- **Spec:** Security hardening item 10; Hosting and stack (Releases; Release artifacts; Engine UI bundle); Residual risks (Release keys and dependencies); ADRs: [0003](../../adr/0003-ui-as-signed-bundle.md), [0014](../../adr/0014-cryptography.md)
 
 ## Goal
 
@@ -19,9 +19,9 @@ The engine UI bundle runs on customers' engines and sees decrypted data, so its 
 - `deploy-dashboard.yml`: on push to `main`, job `staging` builds with `CLOUDFLARE_ENV=staging`, runs `wrangler d1 migrations apply DB --env staging --remote`, then `wrangler deploy --env staging` (Worker and SPA assets in one upload), then smoke-tests `/v1/health` and that `/` serves the SPA shell with its CSP. Job `production` needs `staging`, waits for approval, rebuilds the same commit with `CLOUDFLARE_ENV=production` (the Vite plugin bakes the environment in at build time), applies migrations, deploys and smoke-tests. Uses I-02's per-environment deploy token. Application secrets (Stripe, relay tokens) are set by humans with `wrangler secret put` and documented, not carried by CI.
 - `release-relay.yml`: on push to `main` touching `apps/relay` or `packages/protocol`, or manual dispatch:
   - build `apps/relay/Dockerfile` (multi-stage, Node 24 base pinned by digest, non-root user, no build cache), push to `ghcr.io/webgptorg/relay` by digest;
-  - sign keylessly with cosign (`id-token: write` in this job only), attach an SBOM and a build provenance attestation;
-  - deploy to staging relays, then (after `production` approval) to production relays, strictly one host at a time: SSH with the forced-command deploy key from I-01, which pulls the digest, runs `cosign verify` on the host against the expected workflow identity and issuer, swaps the systemd unit to the new digest and restarts. Wait until the relay answers on its own hostname and its tunnel count recovers (engines reconnect within 10 s per the spike criteria; time out at 60 s) before the next host; on failure stop, roll that host back to the previous digest and fail the job.
-- Engine-ui release: X-03 owns `.github/workflows/ui-release.yml` (build, sign, publish); I-03 wires its deployment and approvals: the `release` environment gate and an R2 token scoped to the release bucket only. Do not duplicate the workflow.
+  - sign keylessly with cosign (`id-token: write` in this job only) with a Rekor entry and an RFC 3161 TSA timestamp (`--timestamp-server-url`), attach an SBOM and a build provenance attestation;
+  - deploy to staging relays, then (after `production` approval) to production relays, strictly one host at a time: SSH with the forced-command deploy key from I-01, which pulls the digest, runs `cosign verify` on the host with the exact identity (ADR 0014): `--certificate-identity https://github.com/webgptorg/app/.github/workflows/release-relay.yml@refs/heads/main --certificate-oidc-issuer https://token.actions.githubusercontent.com --certificate-github-workflow-repository webgptorg/app`, never `--certificate-identity-regexp`, swaps the systemd unit to the new digest and restarts. Wait until the relay answers on its own hostname and its tunnel count recovers (engines reconnect within 10 s per the spike criteria; time out at 60 s) before the next host; on failure stop, roll that host back to the previous digest and fail the job.
+- Engine-ui release: X-03 owns `.github/workflows/ui-release.yml` (build, sign, publish); I-03 wires its deployment and approvals: the `release` environment gate and an R2 token scoped to the release bucket only. Do not duplicate the workflow, but check it signs as M-05 verifies: `sigstore.attest()` over the release entry's DSSE envelope with `tsaServerURL` set, so the bundle carries the TSA timestamp the loader requires as trusted time, from a GitHub-hosted runner on a `refs/tags/` ref, with the pinned `trusted_root.json` published next to the release.
 - Rollback: `workflow_dispatch` input `digest` on `release-relay.yml` (must be a digest signed by our workflow); dashboard rollback documented with `wrangler rollback`.
 - `docs/runbooks/deploy.md`: approvals, rollback, rotating each token, what to do if a token leaks.
 
@@ -42,7 +42,7 @@ The engine UI bundle runs on customers' engines and sees decrypted data, so its 
 
 - [ ] zizmor passes with no findings at medium or above on all new workflows.
 - [ ] A push to `main` deploys the dashboard to staging; production waits for an approver who is not the pusher (screenshot or run link in the PR).
-- [ ] A relay release produces a signed image; `cosign verify` with the expected identity succeeds, and an unsigned or differently signed image is refused by the host script (tested on staging).
+- [ ] A relay release produces a signed image with a TSA timestamp; `cosign verify` with the exact identity flags succeeds, and an unsigned image, or one signed by another workflow, branch or repository, is refused by the host script (tested on staging); no workflow or script uses `--certificate-identity-regexp`.
 - [ ] Rolling deploy across two relays (staging can temporarily run two) keeps a browser connection test passing throughout; a deliberately broken image stops the rollout after the first host and rolls it back.
 - [ ] The UI release cannot publish without `release` approval by a second maintainer.
 - [ ] Runbook written; `bun run check` passes.

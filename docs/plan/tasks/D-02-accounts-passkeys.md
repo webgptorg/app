@@ -3,7 +3,7 @@
 - **Lane:** D · **Module:** `apps/dashboard` · **Milestone:** M3
 - **Depends on:** D-01
 - **Status:** todo
-- **Spec:** Pairing and identity (Promptbook account row); Engine security baseline (Sessions row); Security hardening item 8; Metadata we still see; Hosting and stack (Passkeys); ADRs: [0006](../../adr/0006-organizations-and-roles.md), [0007](../../adr/0007-frontend-stack.md), [0009](../../adr/0009-drizzle-and-migrations.md)
+- **Spec:** Pairing and identity (Promptbook account row); Engine security baseline (Sessions row); Security hardening item 8; Metadata we still see; Hosting and stack (Passkeys); ADRs: [0006](../../adr/0006-organizations-and-roles.md), [0007](../../adr/0007-frontend-stack.md), [0009](../../adr/0009-drizzle-and-migrations.md), [0014](../../adr/0014-cryptography.md)
 
 ## Goal
 
@@ -17,7 +17,7 @@ This task is the API and the server side only, so the dashboard lane does not wa
 
 ## Scope
 
-- Dependencies: `@simplewebauthn/server` 14 and `@simplewebauthn/browser` 14, exact versions.
+- Dependencies (exact): `@simplewebauthn/server@14.0.3` and `@simplewebauthn/browser@14.0.0`.
 - Tables in `src/adapters/db/schema.ts` (drizzle-kit generates the migration on top of D-01's `organizations`, `users`, `memberships`):
 
   ```ts
@@ -36,6 +36,8 @@ This task is the API and the server side only, so the dashboard lane does not wa
       addedVia: text('added_via', { enum: ['signup', 'account', 'recovery'] }).notNull(),
       createdAt: integer('created_at').notNull(),
       lastUsedAt: integer('last_used_at'),
+      // set on a signature counter regression; see Design notes
+      counterRegressedAt: integer('counter_regressed_at'),
     },
     (t) => [check('passkeys_added_via_check', sql`${t.addedVia} in ('signup', 'account', 'recovery')`)],
   );
@@ -105,6 +107,7 @@ This task is the API and the server side only, so the dashboard lane does not wa
 ## Design notes
 
 - WebAuthn: `rpID` is the hostname of `dashboardOrigin` and the expected origin is `dashboardOrigin`, both from D-01's config, never hard-coded (`app.ptbk.io` in production, the dev hostname such as `app.ptbk.test` in the dev container and e2e); `residentKey: 'required'`, `userVerification: 'required'`, `attestationType: 'none'`, algorithms `[-8, -7, -257]`. Challenges single-use, 5-minute TTL, bound by a `__Host-ptbk_chal` cookie and, for token flows, to the token hash.
+- WebAuthn hardening (ADR 0014): every `verify` first consumes the challenge atomically (`delete … where id = ? and expires_at > ? returning`), so a failed or concurrent verify can never reuse it; verification always passes `requireUserVerification: true`. Usernameless sign-in looks up the credential, then requires `response.userHandle` to equal its owner's `webauthnUserId` (401 otherwise). Store `newCounter` on success; when the new counter is not greater than a non-zero stored one, set `counter_regressed_at` and log `auth.passkey-counter-regression` (credential owner's user ID only) for I-04 to alert on. Counters of 0 (synced passkeys) are never flagged.
 - Email tokens: 256 bits from `Random`, base64url, only SHA-256 stored, 15-minute TTL, consumed atomically with one Drizzle `update ... where used_at is null and expires_at > ? returning`; a new request invalidates the user's older tokens of the same purpose. Emails are sent with `ctx.waitUntil` so response time does not depend on whether the address exists.
 - Session cookie `__Host-ptbk_session`: `Secure`, `HttpOnly`, `Path=/`, `SameSite=Lax`. Lax because links from alert emails and the engine UI's "back to dashboard" link must arrive signed in; CSRF is covered by Fetch Metadata and Origin. 256-bit ID, SHA-256 stored, new ID on every sign-in, idle 7 days, absolute 30 days, row read on every request.
 - Never log emails, tokens, credential IDs, challenges or cookies.
@@ -112,7 +115,7 @@ This task is the API and the server side only, so the dashboard lane does not wa
 ## Acceptance criteria
 
 - [ ] Signup creates exactly one user, one `personal` org and one `owner` membership; the session's `active_org_id` is that org.
-- [ ] Workers tests (software authenticator or SimpleWebAuthn fixtures): signup and signin round trips; replayed, expired, wrong-purpose challenges rejected; wrong origin and rpID rejected; cross-site POST and foreign `Origin` → 403; revoked session fails on the next request; last passkey cannot be deleted; rate limits → 429.
+- [ ] Workers tests (software authenticator or SimpleWebAuthn fixtures): signup and signin round trips; replayed, expired, wrong-purpose challenges rejected; wrong origin and rpID rejected; an assertion without user verification rejected; a second verify with an already consumed challenge rejected even after the first failed; usernameless sign-in with a `userHandle` that is not the credential owner's `webauthnUserId` → 401; a counter regression from a non-zero counter sets `counter_regressed_at` and logs the event, while counter 0 does not; cross-site POST and foreign `Origin` → 403; revoked session fails on the next request; last passkey cannot be deleted; rate limits → 429.
 - [ ] Recovery, each as a test: the token is 256-bit random, stored only hashed, single-use, rejected after 15 minutes; `recovery/request` returns byte-identical responses for existing and unknown emails; per-email and per-IP limits apply; the token authorizes only `recovery/options` and `recovery/verify` (any other endpoint with it fails, and no session exists before the passkey is registered); after recovery all earlier sessions are revoked, a `recovery-notice` email is sent, old passkeys are listed and removable; `engine.remove`, `engine.hostnames.manage` and `billing.owner.change` are denied with `recovery-cooldown` for 72 hours.
 - [ ] `GET /api/session` without a session → 401.
 - [ ] `/api/__dev/emails` returns 404 when the email adapter is not `fake`, and the config cannot select `fake` outside dev (test).
