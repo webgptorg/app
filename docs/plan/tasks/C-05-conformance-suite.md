@@ -50,6 +50,7 @@ ADR 0004: the real engine replaces the mock only by passing this suite. v1 cover
 ## Acceptance criteria
 
 - [ ] Self-test: an in-process fake target (`fetch` handler) that is deliberately broken fails the matching check for each defect: leaked secret value, extra response field, missing auth, missing permission check on one mutating route, 403 with a plain-text body, duplicate page item, missing audit entry, audit entry with the wrong `memberId`, wrong problem content type. A correct fake passes everything.
+- [ ] A viewer can list and revoke their own sessions and passkeys under `/me`, and gets 404 (not 403) for another member's session or passkey ID.
 - [ ] The suite passes against the mock engine in CI on every PR; a failing check fails the job.
 - [ ] The bundled CLI (declared under `bin` in `package.json`, run with Node 24) works against any URL with only `protocol` and `engine-api` as workspace dependencies, as the README describes; a failing run exits non-zero.
 - [ ] `bun run check` passes.
