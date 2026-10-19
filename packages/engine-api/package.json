@@ -10,7 +10,7 @@
   "sideEffects": false,
   "scripts": {
     "typecheck": "tsc --noEmit -p . && tsc --noEmit -p scripts",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run --coverage",
     "openapi": "node --import ./scripts/resolve-ts.ts scripts/write-openapi.ts && prettier --write openapi.json"
   },
   "dependencies": {

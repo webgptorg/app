@@ -336,6 +336,7 @@ function operationOf(route: RouteDefinition, components: ComponentCollector): Js
     return {
         operationId: route.id,
         summary: route.summary,
+        ...(route.description === undefined ? {} : { description: route.description }),
         tags: [tagOf(route)],
         'x-required-permission': route.permission,
         ...(route.stepUp ? { 'x-step-up': true } : {}),

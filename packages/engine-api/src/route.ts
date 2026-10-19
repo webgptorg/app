@@ -30,7 +30,12 @@ export interface RouteDefinition {
     /** Relative to `ENGINE_API_PREFIX`, with `{name}` placeholders matching `params`. */
     readonly path: `/${string}`;
     readonly summary: string;
-    /** `null` only for `/me` and `/engine`, which any signed-in member may call. */
+    /** Behaviour a client relies on beyond the summary; emitted as the OpenAPI operation description. */
+    readonly description?: string;
+    /**
+     * `null` only for `/me`, `/me/**` and `/engine`, which any signed-in member may call. `null` is not "no
+     * authorization": routes under `/me` act only on the caller's own resources and answer 404 for anyone else's.
+     */
     readonly permission: Permission | null;
     readonly params?: z.ZodObject;
     readonly query?: z.ZodObject;

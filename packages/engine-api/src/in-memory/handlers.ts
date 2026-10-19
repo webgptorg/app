@@ -8,6 +8,7 @@ import type { Message, ReplyStreamEvent } from '../chats';
 import { MAX_FILE_BYTES } from '../constants';
 import type { EngineEvent } from '../events';
 import type { Member } from '../members';
+import type { Passkey } from '../passkeys';
 import type { Permission } from '../permissions';
 import { createProblem } from '../problem';
 import type { ProblemExtras } from '../problem';
@@ -101,10 +102,9 @@ function liveAgent(ctx: HandlerContext, agentId: string): HandlerResult<Agent> {
 }
 
 function setRunState(ctx: HandlerContext, agentId: AgentId, state: AgentRunState): HandlerResult<AgentRunStatus> {
-    const found = liveAgent(ctx, agentId);
-    if (found.kind === 'problem') return found;
     const record = agentRecord(ctx, agentId);
     if (!record) return notFound('agent');
+    if (record.agent.deletedAt !== null) return fail('agent-deleted');
     if (record.runStatus.state !== state) {
         record.runStatus = { state, since: ctx.now() };
         ctx.publish({ type: 'agent.status', agentId, state, since: record.runStatus.since });
@@ -128,6 +128,42 @@ export const HANDLERS: Handlers = {
             role: ctx.member.role,
             permissions: [...ctx.permissions],
         }),
+    listMyPasskeys: ({ query }, ctx) => {
+        const own = [...ctx.state.passkeys.values()].filter(({ memberId }) => memberId === ctx.member.id);
+        return page(
+            own,
+            sortBy('-createdAt', (passkey) => time(passkey.createdAt), true),
+            query,
+        );
+    },
+    revokeMyPasskey: ({ params }, ctx) => {
+        const passkey = ctx.state.passkeys.get(params.passkeyId);
+        // Someone else's passkey is reported exactly like a missing one, so IDs cannot be probed.
+        if (passkey?.memberId !== ctx.member.id) return notFound('passkey');
+        return revokePasskey(ctx, passkey);
+    },
+    listMySessions: ({ query }, ctx) => {
+        const own = [...ctx.state.sessions.values()].filter(({ memberId }) => memberId === ctx.member.id);
+        return page(
+            own,
+            sortBy('-lastSeenAt', (session) => time(session.lastSeenAt), true),
+            query,
+        );
+    },
+    revokeMySession: ({ params }, ctx) => {
+        if (ctx.state.sessions.get(params.sessionId)?.memberId !== ctx.member.id) return notFound('session');
+        ctx.state.sessions.delete(params.sessionId);
+        return ok(null);
+    },
+    revokeMyOtherSessions: (_, ctx) => {
+        let revoked = 0;
+        for (const session of [...ctx.state.sessions.values()]) {
+            if (session.memberId !== ctx.member.id || session.current) continue;
+            ctx.state.sessions.delete(session.id);
+            revoked++;
+        }
+        return ok({ revoked });
+    },
     getEngine: (_, ctx) => ok(ctx.state.engine),
 
     listAgents: ({ query }, ctx) => {
@@ -296,7 +332,16 @@ export const HANDLERS: Handlers = {
         return ok(record.runStatus);
     },
 
-    streamEvents: ({ lastEventId }, ctx) => ok(streamEvents(ctx, lastEventId)),
+    streamEvents: ({ lastEventId }, ctx) => {
+        // Fixed now, not on the first read: the stream starts when the member subscribed.
+        const events = ctx.state.events;
+        return ok(
+            streamEvents(
+                ctx,
+                lastEventId === null ? events.length : events.findIndex(({ id }) => id === lastEventId) + 1,
+            ),
+        );
+    },
 
     listFolders: ({ query }, ctx) =>
         page(
@@ -520,11 +565,7 @@ export const HANDLERS: Handlers = {
     },
     revokePasskey: ({ params }, ctx) => {
         const passkey = ctx.state.passkeys.get(params.passkeyId);
-        if (!passkey) return notFound('passkey');
-        const remaining = [...ctx.state.passkeys.values()].filter(({ memberId }) => memberId === passkey.memberId);
-        if (remaining.length === 1) return fail('last-passkey');
-        ctx.state.passkeys.delete(passkey.id);
-        return ok(null);
+        return passkey ? revokePasskey(ctx, passkey) : notFound('passkey');
     },
     listSessions: ({ query }, ctx) => {
         const sessions = [...ctx.state.sessions.values()].filter(
@@ -661,6 +702,13 @@ function saveAgent(ctx: HandlerContext, agent: Agent): HandlerResult<Agent> {
     return ok(agent);
 }
 
+function revokePasskey(ctx: HandlerContext, passkey: Passkey): HandlerResult<null> {
+    const remaining = [...ctx.state.passkeys.values()].filter(({ memberId }) => memberId === passkey.memberId);
+    if (remaining.length === 1) return fail('last-passkey');
+    ctx.state.passkeys.delete(passkey.id);
+    return ok(null);
+}
+
 function folderNameTaken(ctx: HandlerContext, name: string, except?: string): boolean {
     const lower = name.toLowerCase();
     return [...ctx.state.folders.values()].some(
@@ -674,12 +722,9 @@ const EVENT_PERMISSION: Record<EngineEvent['type'], Permission> = {
     'chat.changed': 'chats.read',
 };
 
-async function* streamEvents(
-    ctx: HandlerContext,
-    lastEventId: string | null,
-): AsyncIterable<EngineApiStreamItem<EngineEvent>> {
+async function* streamEvents(ctx: HandlerContext, start: number): AsyncIterable<EngineApiStreamItem<EngineEvent>> {
     const events: readonly EventRecord[] = ctx.state.events;
-    let next = lastEventId === null ? events.length : events.findIndex(({ id }) => id === lastEventId) + 1;
+    let next = start;
     for (;;) {
         while (next < events.length) {
             const record = events[next++];

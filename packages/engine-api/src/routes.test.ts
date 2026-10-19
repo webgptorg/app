@@ -5,7 +5,10 @@ import { isReadPermission } from './permissions';
 import type { RouteDefinition } from './route';
 import { ENGINE_API_ROUTES, ENGINE_API_ROUTE_LIST } from './routes';
 
-const UNAUTHENTICATED_READS = new Set(['getMe', 'getEngine']);
+/** Any signed-in member may call these; `/me/**` acts only on the caller's own resources. */
+function isSelfService(route: RouteDefinition): boolean {
+    return route.path === '/engine' || route.path === '/me' || route.path.startsWith('/me/');
+}
 const FORBIDDEN_RESPONSE_KEYS = new Set(['value', 'secret', 'token']);
 
 function placeholders(path: string): string[] {
@@ -66,17 +69,30 @@ describe('ENGINE_API_ROUTES', () => {
         }
     });
 
-    it('requires a permission on every route except /me and /engine', () => {
+    it('requires a permission on every route except /me, /me/** and /engine', () => {
         for (const route of ENGINE_API_ROUTE_LIST) {
-            if (UNAUTHENTICATED_READS.has(route.id)) expect(route.permission, route.id).toBeNull();
+            if (isSelfService(route)) expect(route.permission, route.id).toBeNull();
             else expect(route.permission, route.id).not.toBeNull();
         }
         expect(ENGINE_API_ROUTES.getMe.path).toBe('/me');
         expect(ENGINE_API_ROUTES.getEngine.path).toBe('/engine');
     });
 
-    it('requires a non-read permission on every mutating route', () => {
+    it('documents that self-service credential routes answer 404 for anyone else', () => {
+        for (const route of [ENGINE_API_ROUTES.revokeMyPasskey, ENGINE_API_ROUTES.revokeMySession]) {
+            expect(route.description, route.id).toContain('404');
+        }
+        expect(ENGINE_API_ROUTES.revokeMyPasskey.stepUp).toBe(true);
+        expect(ENGINE_API_ROUTES.revokeMyPasskey.problems).toContain('last-passkey');
+        expect(ENGINE_API_ROUTES.revokePasskey.permission).toBe('members.manage');
+        expect(ENGINE_API_ROUTES.revokeSession.permission).toBe('members.manage');
+        expect(ENGINE_API_ROUTES.listPasskeys.permission).toBe('security.read');
+        expect(ENGINE_API_ROUTES.listSessions.permission).toBe('security.read');
+    });
+
+    it('requires a non-read permission on every mutating route outside /me/**', () => {
         for (const route of ENGINE_API_ROUTE_LIST.filter((candidate) => candidate.method !== 'GET')) {
+            if (isSelfService(route)) continue;
             expect(route.permission, route.id).not.toBeNull();
             if (route.permission !== null) expect(isReadPermission(route.permission), route.id).toBe(false);
         }

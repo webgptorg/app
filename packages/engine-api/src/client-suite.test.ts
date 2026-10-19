@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
 import type { EngineApiClient, EngineApiResponse } from './client';
-import { AgentId, ChatId, FolderId, MessageId, RevisionId, SecretId } from './common';
+import { AgentId, ChatId, FolderId, MessageId, PasskeyId, RevisionId, SecretId, SessionId } from './common';
 import { ENGINE_API_PREFIX } from './constants';
 import { createFetchEngineApiClient } from './fetch-client';
 import { createInMemoryEngineApiClient, createInMemoryEngineApiTransport } from './in-memory-client';
 import type { InMemoryEngineApiOptions } from './in-memory-client';
 import { PERMISSIONS } from './permissions';
+import type { Permission } from './permissions';
 import type { EngineApiStreamItem } from './route';
 import { createInProcessHandler } from './testing/in-process-handler';
 
@@ -367,6 +368,110 @@ describe.each(VARIANTS)('%s', (_, make) => {
             status: 'intact',
             checkedEntries: 2,
             lastSeq: 2,
+        });
+    });
+
+    describe('own credentials under /me', () => {
+        const at = '2026-10-19T08:00:00Z';
+        const later = '2026-10-19T20:00:00Z';
+        const session = (id: string, memberId: string, current = false) => ({
+            id,
+            memberId,
+            current,
+            client: null,
+            createdAt: at,
+            lastSeenAt: at,
+            expiresAt: later,
+        });
+        const passkey = (id: string, memberId: string) => ({ id, memberId, name: id, createdAt: at, lastUsedAt: null });
+        const credentialsOf = (permissions: readonly Permission[], stepUp: 'satisfied' | 'required' = 'satisfied') =>
+            make({
+                clock: steppingClock(),
+                stepUp,
+                member: { id: 'member-viewer', role: 'viewer', permissions },
+                seed: {
+                    members: [
+                        {
+                            id: 'member-other',
+                            displayName: 'Other',
+                            role: 'admin',
+                            status: 'active',
+                            createdAt: at,
+                            lastSeenAt: null,
+                        },
+                    ],
+                    sessions: [
+                        session('session-here', 'member-viewer', true),
+                        session('session-laptop', 'member-viewer'),
+                        session('session-phone', 'member-viewer'),
+                        session('session-other', 'member-other', true),
+                    ],
+                    passkeys: [
+                        passkey('passkey-a', 'member-viewer'),
+                        passkey('passkey-b', 'member-viewer'),
+                        passkey('passkey-other', 'member-other'),
+                    ],
+                },
+            });
+        const viewer = () => credentialsOf(['agents.read', 'chats.read', 'files.read', 'members.read']);
+        const ids = (items: readonly { readonly id: string }[]) => items.map(({ id }) => id).sort();
+
+        it("lets a viewer list and revoke their own sessions, and hides everyone else's", async () => {
+            const client = viewer();
+            expect(ids(ok(await client.me.listSessions({}, signal())).items)).toEqual([
+                'session-here',
+                'session-laptop',
+                'session-phone',
+            ]);
+            expect(ok(await client.me.revokeSession(SessionId.parse('session-laptop'), signal()))).toBeNull();
+            for (const id of ['session-other', 'session-laptop', 'session-unknown']) {
+                expect(problem(await client.me.revokeSession(SessionId.parse(id), signal())), id).toMatchObject({
+                    status: 404,
+                    code: 'not-found',
+                });
+            }
+            expect(problem(await client.sessions.list({}, signal()))).toMatchObject({
+                status: 403,
+                requiredPermission: 'security.read',
+            });
+            expect(problem(await client.sessions.revoke(SessionId.parse('session-other'), signal()))).toMatchObject({
+                status: 403,
+                requiredPermission: 'members.manage',
+            });
+        });
+
+        it("lets a viewer revoke their own passkeys but never the last one, and hides everyone else's", async () => {
+            const client = viewer();
+            expect(ids(ok(await client.me.listPasskeys({}, signal())).items)).toEqual(['passkey-a', 'passkey-b']);
+            for (const id of ['passkey-other', 'passkey-unknown']) {
+                expect(problem(await client.me.revokePasskey(PasskeyId.parse(id), signal())), id).toMatchObject({
+                    status: 404,
+                    code: 'not-found',
+                });
+            }
+            expect(ok(await client.me.revokePasskey(PasskeyId.parse('passkey-a'), signal()))).toBeNull();
+            expect(problem(await client.me.revokePasskey(PasskeyId.parse('passkey-b'), signal()))).toMatchObject({
+                status: 409,
+                code: 'last-passkey',
+            });
+            expect(ids(ok(await client.me.listPasskeys({}, signal())).items)).toEqual(['passkey-b']);
+        });
+
+        it('asks for step-up before revoking an own passkey', async () => {
+            const client = credentialsOf(['agents.read'], 'required');
+            expect(problem(await client.me.revokePasskey(PasskeyId.parse('passkey-a'), signal()))).toMatchObject({
+                status: 401,
+                code: 'step-up-required',
+            });
+            expect(ids(ok(await client.me.listPasskeys({}, signal())).items)).toEqual(['passkey-a', 'passkey-b']);
+        });
+
+        it('signs out everywhere else without touching other members', async () => {
+            const client = credentialsOf(['security.read']);
+            expect(ok(await client.me.revokeOtherSessions(signal()))).toEqual({ revoked: 2 });
+            expect(ids(ok(await client.me.listSessions({}, signal())).items)).toEqual(['session-here']);
+            expect(ids(ok(await client.sessions.list({}, signal())).items)).toEqual(['session-here', 'session-other']);
+            expect(ok(await client.me.revokeOtherSessions(signal()))).toEqual({ revoked: 0 });
         });
     });
 

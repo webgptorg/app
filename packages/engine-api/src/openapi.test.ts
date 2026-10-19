@@ -78,6 +78,17 @@ describe('buildOpenApiDocument', () => {
         expect(operation('/engine', 'GET')['x-required-permission']).toBeNull();
     });
 
+    it('documents 404, not 403, on self-service credential routes', () => {
+        for (const path of ['/me/passkeys/{passkeyId}', '/me/sessions/{sessionId}']) {
+            const op = operation(path, 'DELETE');
+            const responses = op['responses'] as Readonly<Record<string, unknown>>;
+            expect(op['x-required-permission'], path).toBeNull();
+            expect(op['description'], path).toContain('404');
+            expect(responses['404'], path).toMatchObject({ 'x-problem-codes': ['not-found'] });
+            expect(responses['403'], path).toBeUndefined();
+        }
+    });
+
     it('marks step-up and draft operations', () => {
         for (const route of ENGINE_API_ROUTE_LIST) {
             const op = operation(route.path, route.method);

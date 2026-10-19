@@ -66,8 +66,15 @@ export interface StreamOptions {
  * reject, problem+json resolves as `{ kind: 'problem' }`.
  */
 export interface EngineApiClient {
+    /** The caller and their own credentials; none of these need a permission. */
     readonly me: {
         get(signal: AbortSignal): Result<'getMe'>;
+        listPasskeys(query: Query<'listMyPasskeys'>, signal: AbortSignal): Result<'listMyPasskeys'>;
+        revokePasskey(passkeyId: Param<'revokeMyPasskey', 'passkeyId'>, signal: AbortSignal): Result<'revokeMyPasskey'>;
+        listSessions(query: Query<'listMySessions'>, signal: AbortSignal): Result<'listMySessions'>;
+        revokeSession(sessionId: Param<'revokeMySession', 'sessionId'>, signal: AbortSignal): Result<'revokeMySession'>;
+        /** Sign out everywhere else. */
+        revokeOtherSessions(signal: AbortSignal): Result<'revokeMyOtherSessions'>;
     };
     readonly engine: {
         get(signal: AbortSignal): Result<'getEngine'>;
@@ -219,7 +226,14 @@ export function createEngineApiClient(transport: EngineApiTransport): EngineApiC
         transport(route, request as EngineApiTransportRequest, signal) as Promise<EngineApiResponse<RouteData<Route>>>;
 
     return {
-        me: { get: (signal) => call(R.getMe, {}, signal) },
+        me: {
+            get: (signal) => call(R.getMe, {}, signal),
+            listPasskeys: (query, signal) => call(R.listMyPasskeys, { query }, signal),
+            revokePasskey: (passkeyId, signal) => call(R.revokeMyPasskey, { params: { passkeyId } }, signal),
+            listSessions: (query, signal) => call(R.listMySessions, { query }, signal),
+            revokeSession: (sessionId, signal) => call(R.revokeMySession, { params: { sessionId } }, signal),
+            revokeOtherSessions: (signal) => call(R.revokeMyOtherSessions, {}, signal),
+        },
         engine: { get: (signal) => call(R.getEngine, {}, signal) },
         agents: {
             list: (query, signal) => call(R.listAgents, { query }, signal),

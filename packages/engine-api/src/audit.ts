@@ -21,6 +21,7 @@ export const AUDIT_ACTIONS = [
     'passkey.register',
     'passkey.revoke',
     'session.revoke',
+    'session.revoke-others',
     'agent.create',
     'agent.update',
     'agent.delete',
