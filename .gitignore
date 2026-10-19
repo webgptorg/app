@@ -23,4 +23,5 @@ apps/dashboard/project.inlang/*
 !apps/dashboard/project.inlang/settings.json
 !apps/dashboard/project.inlang/paraglide.config.js
 **/routeTree.gen.ts
+**/.tanstack/
 **/worker-configuration.d.ts

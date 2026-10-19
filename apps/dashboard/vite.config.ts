@@ -39,12 +39,8 @@ export default defineConfig(({ mode }) => {
     return {
         plugins: [
             paraglideVitePlugin({ project: './project.inlang', outdir: './src/paraglide' }),
-            tanstackRouter({
-                target: 'react',
-                routesDirectory: './src/client/routes',
-                generatedRouteTree: './src/client/routeTree.gen.ts',
-                autoCodeSplitting: true,
-            }),
+            // Options live in tsr.config.json, which `generate` (the router CLI) reads too.
+            tanstackRouter(),
             react(),
             tailwindcss(),
             cloudflare(

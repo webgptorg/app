@@ -35,6 +35,8 @@ describe('dashboard lint rules', { timeout: 30_000 }, () => {
         ['src/client/app.tsx', "import { sql } from 'drizzle-orm';\nexport const x = sql;\n"],
         ['src/app/config.ts', "import { sql } from 'drizzle-orm';\nexport const x = sql;\n"],
         ['src/app/config.ts', "import { App } from '../client/app';\nexport const x = App;\n"],
+        ['src/worker.ts', "import { App } from './client/app';\nexport const x = App;\n"],
+        ['src/app/config.ts', "import { useState } from 'react';\nexport const x = useState;\n"],
         ['src/app/config.ts', "import vm from 'node:vm';\nexport const x = vm;\n"],
         [
             'src/domain/ids.ts',

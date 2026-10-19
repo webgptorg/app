@@ -1,13 +1,14 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 
+import { environmentSchema } from '../../shared/environment';
 import type { DashboardConfig } from '../config';
 
 export const V1_MOUNT = '/v1';
 
 export const healthResponseSchema = z.strictObject({
     ok: z.literal(true),
-    environment: z.enum(['dev', 'staging', 'production']),
+    environment: environmentSchema,
 });
 
 /** Machine API for engines. Cookies are ignored here; registration (D-03) and heartbeat (D-05) bind protocol contracts. */
