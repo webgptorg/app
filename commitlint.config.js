@@ -13,6 +13,7 @@ export default {
                 'protocol',
                 'engine-api',
                 'conformance',
+                'ui',
                 'e2e',
                 'infra',
                 'docs',

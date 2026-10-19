@@ -1,0 +1,14 @@
+{
+  "name": "@ptbk/ui",
+  "private": true,
+  "license": "UNLICENSED",
+  "type": "module",
+  "description": "Shared design system for engine-ui and the dashboard: tokens, components, tables, forms, i18n helpers",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p .",
+    "test": "vitest run --passWithNoTests"
+  }
+}

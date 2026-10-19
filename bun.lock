@@ -42,6 +42,9 @@
     "packages/protocol": {
       "name": "@ptbk/protocol",
     },
+    "packages/ui": {
+      "name": "@ptbk/ui",
+    },
   },
   "packages": {
     "@babel/code-frame": ["@babel/code-frame@7.29.7", "", { "dependencies": { "@babel/helper-validator-identifier": "^7.29.7", "js-tokens": "^4.0.0", "picocolors": "^1.1.1" } }, "sha512-Aup7aUOfpbAUg2ROOJN6Iw5f9DMBlzu0mIkm/malLQFN/YQgO48wCj0Kxa3sEHJvPVFg7siR+qRInwXd2qhQKw=="],
@@ -141,6 +144,8 @@
     "@ptbk/protocol": ["@ptbk/protocol@workspace:packages/protocol"],
 
     "@ptbk/relay": ["@ptbk/relay@workspace:apps/relay"],
+
+    "@ptbk/ui": ["@ptbk/ui@workspace:packages/ui"],
 
     "@rolldown/binding-android-arm-eabi": ["@rolldown/binding-android-arm-eabi@1.2.13", "", { "os": "android", "cpu": "arm" }, "sha512-Vu/NICrgdRvUOeaJZIyB2FP63s6fO/4ud5l8dXmxDx9yDyn+mN0y+gsvsVviSli+T361Aqo0h46EuMoobrwawA=="],
 

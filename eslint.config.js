@@ -70,6 +70,24 @@ export default tseslint.config(
         },
     },
     {
+        files: ['packages/ui/src/**/*.{ts,tsx}'],
+        rules: {
+            'no-restricted-imports': [
+                'error',
+                {
+                    paths: [
+                        { name: 'vm', message: dynamicCodeBan },
+                        { name: 'node:vm', message: dynamicCodeBan },
+                    ],
+                    patterns: [
+                        { group: ['@ptbk/*'], message: 'The design system imports no app and no contract package.' },
+                        { group: ['node:*', 'cloudflare:*', 'bun:*'], message: portable },
+                    ],
+                },
+            ],
+        },
+    },
+    {
         // Frameworks and runtimes require a default export here.
         files: ['**/*.config.{js,ts}', 'apps/*/src/worker.ts', 'apps/*/src/routes/**'],
         rules: { 'no-restricted-exports': 'off' },
