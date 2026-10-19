@@ -53,6 +53,10 @@ export default tseslint.config(
             '@typescript-eslint/consistent-type-imports': 'error',
             '@typescript-eslint/consistent-type-definitions': ['error', 'interface'],
             '@typescript-eslint/switch-exhaustiveness-check': 'error',
+            'no-restricted-properties': [
+                'error',
+                { object: 'Math', property: 'random', message: 'Use the Random port (crypto.getRandomValues).' },
+            ],
         },
     },
     {

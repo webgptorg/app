@@ -13,6 +13,19 @@
       "packages/*"
     ],
     "catalog": {
+      "@noble/curves": "2.4.0",
+      "@peculiar/asn1-schema": "2.10.0",
+      "@peculiar/asn1-x509": "2.10.0",
+      "@peculiar/x509": "2.1.0",
+      "@sigstore/bundle": "5.0.0",
+      "@sigstore/protobuf-specs": "0.5.2",
+      "@sigstore/verify": "4.1.2",
+      "@simplewebauthn/browser": "14.0.0",
+      "@simplewebauthn/server": "14.0.3",
+      "hono": "4.13.13",
+      "sigstore": "5.0.0",
+      "stripe": "22.6.2",
+      "ws": "8.22.0",
       "zod": "4.6.6"
     }
   },
