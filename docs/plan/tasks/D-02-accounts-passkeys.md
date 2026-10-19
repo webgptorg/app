@@ -2,7 +2,7 @@
 
 - **Lane:** D · **Module:** `apps/dashboard` · **Milestone:** M3
 - **Depends on:** D-01
-- **Status:** todo
+- **Status:** in progress (feat/d-02-accounts-passkeys)
 - **Spec:** Pairing and identity (Promptbook account row); Engine security baseline (Sessions row); Security hardening item 8; Metadata we still see; Hosting and stack (Passkeys); ADRs: [0006](../../adr/0006-organizations-and-roles.md), [0007](../../adr/0007-frontend-stack.md), [0009](../../adr/0009-drizzle-and-migrations.md), [0014](../../adr/0014-cryptography.md)
 
 ## Goal
