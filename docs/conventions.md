@@ -14,7 +14,7 @@
 
 **Types:** `feat`, `fix`, `perf`, `refactor`, `test`, `docs`, `build`, `ci`, `chore`, `revert`, `style`.
 
-**Scopes** (optional, but must be one of these): `relay`, `dashboard`, `engine-ui`, `mock-engine`, `protocol`, `engine-api`, `conformance`, `ui`, `e2e`, `infra`, `docs`, `ci`, `deps`, `repo`.
+**Scopes** (optional, but must be one of these): `relay`, `dashboard`, `engine-ui`, `mock-engine`, `protocol`, `engine-api`, `conformance`, `ui`, `e2e`, `infra`, `docs`, `ci`, `deps`, `deps-dev`, `repo`.
 
 **Subject:** imperative, lower case, no trailing period, about 50 characters.
 

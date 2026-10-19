@@ -6,4 +6,4 @@ Infrastructure that does not belong to a single app:
 - **Engine DNS:** Cloudflare DNS, DNS-only (never proxied, so TLS stays end to end). A wildcard for the engine domain pointing at every relay.
 - **Cloudflare resources** shared across apps. App-specific bindings stay in each app's `wrangler` config.
 
-Tooling (OpenTofu, Ansible or plain scripts) is not decided yet; record it as an ADR.
+Tooling: OpenTofu (Hetzner and Cloudflare providers) plus cloud-init; monitoring is Cloudflare-first (see tasks I-01, I-02, I-04).

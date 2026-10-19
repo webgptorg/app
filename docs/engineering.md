@@ -7,7 +7,7 @@ How code in this repo is structured. The goal: every module can be replaced by a
 A module is a workspace package under `apps/` or `packages/`.
 
 - **It owns a contract.** Packages expose exactly one code entry (`"exports": { ".": "./src/index.ts" }`); deep imports are impossible. The one exception is `@ptbk/ui`, which may also export its stylesheet (`"./styles.css"`). Apps expose nothing in code; their contract is the network interface they serve.
-- **It declares what it uses.** The isolated linker makes undeclared imports fail. Workspace dependencies use `"workspace:*"`.
+- **It declares what it uses.** The isolated linker makes undeclared transitive dependencies fail to resolve. Root dev tools stay visible to every package by directory lookup, so declare what you import anyway. Workspace dependencies use `"workspace:*"`; shared third-party versions come from the root `catalog`.
 - **Apps never import from apps.** They talk over the documented HTTP and tunnel interfaces only.
 - **Contracts live in packages.** `protocol` (engine, relay, dashboard wire formats) and `engine-api` (engine HTTP API for the UI) are portable: no `node:*`, `cloudflare:*` or `bun:*` imports, Web APIs only (ESLint enforces it).
 
@@ -23,6 +23,10 @@ flowchart TD
     conformance --> protocol
     conformance --> engine-api
 ```
+
+## Contracts
+
+Wire formats follow [ADR 0010](adr/0010-protocol-design-principles.md): versioned messages, negotiation in the handshake, change by addition, domain-separated signatures, canonical encodings, explicit limits. Formats freeze when the contracts are published (task E-02), after review by the engine team and Pavol.
 
 ## Inside an app: ports and adapters
 

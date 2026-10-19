@@ -18,5 +18,5 @@ The zero-trust argument does not depend on the relay's code: the relay only ever
 ## Consequences
 
 - The engine team integrates last, against stable contracts and a passing conformance suite ([ADR 0004](0004-mock-engine-and-conformance.md)).
-- ESLint keeps the contract packages portable and free of `@ptbk/*` imports, so moving them is a copy, not a refactor.
+- ESLint keeps the contract packages portable: `protocol` and `engine-api` import nothing from `@ptbk/*`, and `conformance` imports only those two, so moving them is a copy, not a refactor.
 - Relay federation with independent operators (spec roadmap, later) will need the relay, or a reference implementation, to be shareable. Revisit then.

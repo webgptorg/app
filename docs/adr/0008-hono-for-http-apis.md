@@ -13,7 +13,7 @@ We serve HTTP APIs in two runtimes: the dashboard on Cloudflare Workers (its own
 - **Contracts stay framework-agnostic.** `protocol` and `engine-api` define zod schemas and route tables; each app binds them to Hono. The OpenAPI document is generated from the contracts, not from Hono.
 - Each Hono app validates every request with the contract's zod schema before a handler runs, and answers errors as RFC 9457 problem+json.
 - The dashboard's SPA calls its own `/api/*` through a typed client over the same schemas.
-- **The relay uses no HTTP framework**: `node:net`, `node:tls` and `ws`. Its only HTTP surface is the tunnel upgrade and a health check, and less code there is less attack surface.
+- **The relay uses no HTTP framework**: `node:net`, `node:tls` and `ws`. Its only HTTP surface, on its own hostname, is the tunnel upgrade, a health check and an authenticated metrics endpoint (task I-04); less code there is less attack surface.
 
 ## Consequences
 

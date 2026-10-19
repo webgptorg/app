@@ -15,22 +15,25 @@ This also points git at the hooks in `.husky/`: `pre-commit` runs ESLint and Pre
 
 ## Commands
 
-| Command                                 | What it does                                   |
-| --------------------------------------- | ---------------------------------------------- |
-| `bun run check`                         | Everything CI runs: lint, format, types, tests |
-| `bun run lint`                          | ESLint, type-aware                             |
-| `bun run format`                        | Prettier, writes changes                       |
-| `bun run typecheck`                     | `tsc --noEmit` in every package                |
-| `bun run test`                          | Vitest in every package                        |
-| `bun run --filter @ptbk/relay <script>` | A script in one package                        |
+| Command                                 | What it does                                                           |
+| --------------------------------------- | ---------------------------------------------------------------------- |
+| `bun run check`                         | Everything CI runs: generate, lint, format, types, tests, plan         |
+| `bun run generate`                      | Generated code (Paraglide, route trees, wrangler types); not committed |
+| `bun run lint`                          | ESLint, type-aware                                                     |
+| `bun run format`                        | Prettier, writes changes                                               |
+| `bun run typecheck`                     | `tsc --noEmit` in every package                                        |
+| `bun run test`                          | Vitest in every package                                                |
+| `bun run --filter @ptbk/relay <script>` | A script in one package                                                |
 
 ## Dependencies
 
 Supply-chain rules (spec, Security hardening item 10):
 
 - `bunfig.toml` refuses versions published less than **7 days** ago and saves **exact** versions. `bun.lock` is committed and CI installs with `--frozen-lockfile`.
-- Bun does not run install scripts of dependencies. If a package truly needs one, add it to `trustedDependencies` in `package.json` in its own PR and say why.
-- The isolated linker means a package can only import what its own `package.json` declares.
+- Install scripts run only for the packages listed in `trustedDependencies` in the root `package.json` (esbuild, sharp, workerd). Adding one is its own PR, approved by a human, with the reason.
+- A third-party package used by more than one module is pinned once in the root workspace `catalog` and referenced as `"catalog:"`.
+- Vitest is pinned to 4.1 repo-wide because Cloudflare's Workers test pool supports only that major; Dependabot ignores TypeScript, Vitest and `@types/node` majors until the toolchain catches up.
+- The isolated linker makes undeclared transitive dependencies fail; declare everything you import.
 - Dependabot opens weekly grouped updates with the same 7-day cooldown.
 - Before adding a dependency, check whether Node, Workers or the Web platform already does the job.
 
@@ -59,7 +62,7 @@ Workspace packages are referenced as `"@ptbk/protocol": "workspace:*"`, so they 
 
 GitHub Actions in `.github/workflows`:
 
-- `ci.yml`: install, lint, format check, typecheck, tests; and a zizmor audit of the workflows themselves.
+- `ci.yml`: install, then `bun run check` as one step (generate, lint, format, types, tests, plan), so whatever runs locally runs in CI; and a zizmor audit of the workflows themselves.
 - `commits.yml`: commitlint on every commit in a PR and on the PR title.
 
 Workflow rules: actions pinned to full commit SHAs, `permissions: contents: read` by default, `persist-credentials: false`, no caches, no `pull_request_target`, untrusted values (PR title, branch names) passed through `env`, never interpolated into scripts.

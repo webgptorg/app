@@ -13,3 +13,4 @@ One file per decision. Copy [0000-template.md](0000-template.md), take the next 
 | [0007](0007-frontend-stack.md)              | One frontend stack: Vite SPAs on TanStack, shared design system       | Accepted |
 | [0008](0008-hono-for-http-apis.md)          | Hono for every HTTP API; contracts stay framework-agnostic            | Accepted |
 | [0009](0009-drizzle-and-migrations.md)      | Drizzle for D1, with generated and guarded migrations                 | Accepted |
+| [0010](0010-protocol-design-principles.md)  | Protocol design principles                                            | Accepted |

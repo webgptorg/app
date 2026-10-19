@@ -46,9 +46,9 @@ flowchart TD
 
 ### `apps/relay`
 
-Node 24 on plain VPSs (raw TCP on 443 rules out Workers). One listener on 443, split by SNI: its own hostname terminates TLS and accepts engine tunnels (`/v1/tunnel`); any other SNI is looked up in the registry and piped raw into that engine's tunnel. Unknown or missing SNI is closed.
+Node 24 on plain VPSs (raw TCP on 443 rules out Workers). One listener on 443, split by SNI: its own hostname terminates TLS and accepts engine tunnels (`/v1/tunnel`); any other SNI is matched against the hostnames of engines connected to this relay (looked up by engine ID at tunnel auth) and piped raw into that engine's tunnel. Unknown or missing SNI is closed.
 
-Owns the server side of the tunnel protocol (spec, Interfaces 3). Caches registry entries for 5 minutes and keeps serving stale ones if the dashboard is down. Routes a custom hostname only with a valid claim signed by the engine key.
+Owns the server side of the tunnel protocol (spec, Interfaces 3). Caches registry entries for 5 minutes and keeps serving stale ones for at most 24 hours if the dashboard is down. Routes a custom hostname only with a valid claim signed by the engine key.
 
 ### `apps/dashboard`
 

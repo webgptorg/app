@@ -10,7 +10,7 @@ The private, commercial half of the Promptbook zero-trust interface:
 - `apps/dashboard`: app.ptbk.io. Account, engine list, billing, status. Vite SPA + Hono API in one Worker, D1 via Drizzle. Stores no engine content.
 - `apps/engine-ui`: the full app UI, shipped as a signed static bundle that the engine downloads, verifies and serves ([ADR 0003](docs/adr/0003-ui-as-signed-bundle.md)).
 - `apps/mock-engine`: a real process that speaks the real contracts with fake data, so everything works here without the real engine ([ADR 0004](docs/adr/0004-mock-engine-and-conformance.md)).
-- `packages/ui`: the design system both frontends share. Private, CSP-safe, imports no app.
+- `packages/ui`: the design system both frontends share. Private, CSP-safe, imports no app or contract package.
 - `packages/protocol`, `packages/engine-api`, `packages/conformance`: the contracts. MIT, portable, and moving to the public repo later ([ADR 0002](docs/adr/0002-public-private-split.md)).
 
 The engine is open source in `webgptorg/promptbook`, built by the engine team. Never commit there.
@@ -44,43 +44,64 @@ These are the zero-trust guarantees. A change that weakens one needs an ADR and 
 
 ## Working on a task
 
-Several agents work in parallel. This procedure keeps them out of each other's way.
+Several agents work in parallel, and `main` has no branch protection yet: **you are the gate**. This procedure keeps agents out of each other's way and `main` green.
 
-1. **Pick a task.** Run `bun run plan --next` on fresh `main` and take the first task listed, unless you were assigned one. Check open PRs and remote branches (`gh pr list`, `git branch -r`) so you don't take one someone else is on.
-2. **Isolate.** Create a worktree and branch from fresh `main`:
+1. **Prepare.** `nvm use` (Node 24, from `.nvmrc`); `gh auth status` works.
+2. **Pick a task.** Take the task you were assigned. Otherwise run `bun run plan --next` on fresh `main`, then check that nobody has claimed it: claims live on unmerged branches, so look at `gh pr list --state open --json number,title,headRefName,body` for its task ID. Take the first unclaimed one.
+3. **Isolate.** One worktree and branch per task, from fresh `main`, and install in it (this also installs the git hooks there):
    ```sh
    git fetch origin
-   git worktree add ../app-<task-id> -b <type>/<task-id>-<slug> origin/main
+   git worktree add --no-track -b <type>/<task-id>-<slug> ../app-<task-id> origin/main
+   cd ../app-<task-id> && bun install
    ```
-   e.g. `feat/r-01-sni-parser`. Work only in that worktree.
-3. **Claim it.** First commit: set the **Status** line in your task's brief to `in progress (<branch>)`, then push the branch and open a draft PR titled like the final commit (e.g. `feat(relay): parse SNI from the TLS ClientHello`), with `Refs: <task-id>` in the body.
-4. **Build it.** Follow the brief and [engineering.md](docs/engineering.md). Stay inside the task's module. If you must touch another module or a root file (workspaces, ESLint, commitlint scopes), keep that change minimal and say so in the PR.
-5. **Test it.** Tests come with the code, not after. A bug fix starts with a failing test.
-6. **Self-review** before you mark the PR ready:
+   e.g. `feat/c-01-protocol-primitives`. Work only in that worktree.
+4. **Claim it immediately**, before writing code: set the **Status** line in your brief to `in progress (<branch>)`, commit, then
+   ```sh
+   git push -u origin HEAD
+   gh pr create --draft --title "<type>(<scope>): <subject>" --body "Refs: <task-id>"
+   ```
+   The title must be the final squash commit message. If another open PR already claims the same task, the later one closes its PR and picks another task.
+5. **Build it.** Follow the brief and [engineering.md](docs/engineering.md). Stay inside the task's module. If you must touch another module or a shared root file (`package.json`, `eslint.config.js`, `commitlint.config.js`, a package's `src/index.ts`), keep the change minimal and say so in the PR. A large task may land as several PRs, each with `Refs: <task-id>`; the Status becomes `done (#<last PR>)` with the last one.
+6. **Test it.** Tests come with the code, not after. A bug fix starts with a failing test.
+7. **Stay current.** Rebase on `main` before marking ready and whenever it moved:
+   ```sh
+   git fetch origin && git rebase origin/main
+   ```
+   On a `bun.lock` conflict, take `main`'s version, run `bun install`, and commit the result. Force-push only your own branch, with `git push --force-with-lease`.
+8. **Self-review** before marking ready:
    - Every acceptance criterion in the brief is met, and you can point to the test or output that shows it.
    - `bun run check` passes locally; e2e passes if your task touches a flow it covers.
    - None of the rules above is weakened; no secrets, no content in logs.
    - No dead code, no TODOs without a task ID, comments explain why, not what.
    - Docs updated where behaviour or architecture changed (module README, architecture.md, an ADR for a decision).
-7. **Finish.** Set the brief's **Status** line to `done (#<PR>)`, mark the PR ready, wait for CI to go green, then squash-merge:
+9. **Finish.** Set the brief's **Status** line to `done (#<PR>)`, push, then:
    ```sh
-   gh pr merge --squash --delete-branch
+   gh pr ready <PR>
+   gh pr checks <PR> --watch --fail-fast   # must end green; if not, fix and repeat
+   gh pr merge <PR> --squash --subject "<PR title> (#<PR>)" --body "Refs: <task-id>"
+   git push origin --delete <branch>
    ```
-   If `main` moved, rebase on it and rerun the checks first. Never force-push `main`, never merge with red CI, never bypass hooks (`--no-verify`).
-8. **Clean up.** `git worktree remove ../app-<task-id>`.
+   Pass `--subject` and `--body` explicitly: the repo's default would use a commit subject and list every commit. Never merge with red or pending checks, never force-push `main`, never bypass hooks (`--no-verify`).
+10. **Verify `main`.** `gh run list --branch main --limit 1` must turn green. If your merge broke it, fix it right away or revert your PR.
+11. **Clean up** from the primary checkout: `git worktree remove ../app-<task-id>` and `git branch -D <branch>`.
 
-**When to stop and ask a human instead:** the brief is ambiguous in a way that changes behaviour; a rule above would bend; a dependency would add install scripts or a new runtime service; the task turns out to need a decision listed under "Decisions needed from humans" in the plan.
+**When to stop and ask a human instead:** the brief is ambiguous in a way that changes behaviour; a rule above would bend; a dependency needs install scripts beyond the approved list or adds a runtime service; the task needs a decision listed under "Still needed" in the plan.
 
 ## Conventions
 
-- Conventional Commits; scopes: `relay`, `dashboard`, `engine-ui`, `mock-engine`, `protocol`, `engine-api`, `conformance`, `ui`, `e2e`, `infra`, `docs`, `ci`, `deps`, `repo`. See [docs/conventions.md](docs/conventions.md).
+- Conventional Commits; scopes: `relay`, `dashboard`, `engine-ui`, `mock-engine`, `protocol`, `engine-api`, `conformance`, `ui`, `e2e`, `infra`, `docs`, `ci`, `deps`, `deps-dev`, `repo`. See [docs/conventions.md](docs/conventions.md).
 - The PR title becomes the commit on `main`, so it must be a good commit message.
-- Apps never import other apps. Contract packages import nothing from `@ptbk/*`.
+- Apps never import other apps. `protocol` and `engine-api` import nothing from `@ptbk/*`; `conformance` imports only those two; `ui` imports no app or contract package. ESLint enforces it.
 - Comment the why, not the what.
 
 ## Dependencies
 
-Prefer none. If one is needed: it must be at least 7 days old (Bun enforces it), maintained, and small for what it does. Its install scripts stay blocked; adding it to `trustedDependencies` needs a human. Runtime dependencies go into the module that uses them; shared dev tooling stays at the root.
+Prefer none. If one is needed: it must be at least 7 days old (Bun enforces it), maintained, and small for what it does.
+
+- Runtime dependencies go into the module that uses them; shared dev tooling stays at the root.
+- A dependency used by more than one module is pinned once in the root workspace `catalog` and referenced as `"<name>": "catalog:"`, so there is only ever one version.
+- Install scripts run only for the packages in the root `trustedDependencies` (esbuild, sharp, workerd). Adding one needs a human-approved PR.
+- Generated code (Paraglide output, route trees, wrangler types) is not committed. A module that has some defines a `generate` script; `bun run check` runs `bun run generate` first.
 
 ## Predecessor code
 
