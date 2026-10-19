@@ -7,8 +7,16 @@
   "exports": {
     ".": "./src/index.ts"
   },
+  "sideEffects": false,
   "scripts": {
-    "typecheck": "tsc --noEmit -p .",
-    "test": "vitest run --passWithNoTests"
+    "typecheck": "tsc --noEmit -p . && tsc --noEmit -p scripts",
+    "test": "vitest run --passWithNoTests",
+    "openapi": "node --import ./scripts/resolve-ts.ts scripts/write-openapi.ts && prettier --write openapi.json"
+  },
+  "dependencies": {
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@seriousme/openapi-schema-validator": "2.11.0"
   }
 }
