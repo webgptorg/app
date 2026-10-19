@@ -14,3 +14,4 @@ One file per decision. Copy [0000-template.md](0000-template.md), take the next 
 | [0008](0008-hono-for-http-apis.md)          | Hono for every HTTP API; contracts stay framework-agnostic            | Accepted |
 | [0009](0009-drizzle-and-migrations.md)      | Drizzle for D1, with generated and guarded migrations                 | Accepted |
 | [0010](0010-protocol-design-principles.md)  | Protocol design principles                                            | Accepted |
+| [0014](0014-cryptography.md)                | Cryptographic primitives, encodings and libraries                     | Accepted |

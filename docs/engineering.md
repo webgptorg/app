@@ -49,7 +49,7 @@ src/
 - Adapters implement ports. Every port gets an in-memory adapter too, used by unit tests and local development.
 - Dependencies are passed in explicitly, as a `deps` object to a factory function or constructor. No DI container, no module-level singletons, no hidden global state.
 - Configuration is parsed once in `app/` with zod into a typed, frozen object. Nothing else reads `process.env` or Workers bindings.
-- Time, randomness and crypto are ports (`Clock`, `Random`, `Signer`) so tests are deterministic.
+- Time, randomness and crypto are ports (`Clock`, `Random`, `Signer`) so tests are deterministic. The production `Random` uses `crypto.getRandomValues`; seeded fakes are refused outside tests.
 
 engine-ui follows the same idea in React terms: components depend on hooks, hooks depend on an `EngineApiClient` interface from `engine-api`, and the composition root decides whether that client talks HTTP or an in-memory fake.
 

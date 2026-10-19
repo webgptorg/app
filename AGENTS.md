@@ -100,6 +100,7 @@ Prefer none. If one is needed: it must be at least 7 days old (Bun enforces it),
 
 - Runtime dependencies go into the module that uses them; shared dev tooling stays at the root.
 - A dependency used by more than one module is pinned once in the root workspace `catalog` and referenced as `"<name>": "catalog:"`, so there is only ever one version.
+- Crypto, auth and network libraries are already pinned in the catalog at reviewed versions ([ADR 0014](docs/adr/0014-cryptography.md)): `@noble/curves`, `@sigstore/*`, `sigstore`, `@simplewebauthn/*`, `@peculiar/*`, `stripe`, `hono`, `ws`, `zod`. Always use `catalog:` for them; changing one of those versions needs a human.
 - Install scripts run only for the packages in the root `trustedDependencies` (esbuild, sharp, workerd). Adding one needs a human-approved PR.
 - Generated code (Paraglide output, route trees, wrangler types) is not committed. A module that has some defines a `generate` script; `bun run check` runs `bun run generate` first.
 
