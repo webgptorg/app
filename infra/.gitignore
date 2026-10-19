@@ -1,0 +1,7 @@
+# OpenTofu working directories, state and plans. State lives encrypted in R2 (ADR 0011), never here.
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan
+crash.log
