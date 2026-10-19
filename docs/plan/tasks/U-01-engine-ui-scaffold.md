@@ -2,7 +2,7 @@
 
 - **Lane:** U · **Module:** `apps/engine-ui` · **Milestone:** M2
 - **Depends on:** C-04
-- **Status:** todo
+- **Status:** in progress (feat/u-01-engine-ui-scaffold)
 - **Spec:** Architecture (UI delivery), Engine security baseline (Browser headers), Security hardening (5, 6), Hosting and stack (TypeScript stack); ADRs: [0003](../../adr/0003-ui-as-signed-bundle.md), [0004](../../adr/0004-mock-engine-and-conformance.md), [0005](../../adr/0005-modular-architecture.md)
 
 ## Goal
