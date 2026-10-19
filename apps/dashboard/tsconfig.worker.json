@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/worker.tsbuildinfo",
+    "lib": ["ES2024"],
+    "types": ["./worker-configuration.d.ts", "@cloudflare/vitest-pool-workers/types"]
+  },
+  "include": [
+    "src/worker.ts",
+    "src/worker-env.d.ts",
+    "src/app/**/*",
+    "src/domain/**/*",
+    "src/adapters/**/*",
+    "src/shared/**/*",
+    "src/paraglide/**/*.d.ts"
+  ]
+}

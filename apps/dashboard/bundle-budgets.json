@@ -1,0 +1,6 @@
+{
+  "$comment": "Gzipped bytes of JavaScript a route loads, its static imports included. The entry covers the shell; a route lists its source file.",
+  "entry": 160000,
+  "routeDefault": 30000,
+  "routes": {}
+}

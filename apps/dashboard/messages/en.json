@@ -1,0 +1,14 @@
+{
+  "$schema": "https://inlang.com/schema/inlang-message-format",
+  "app_name": "Promptbook",
+  "home_title": "Your engines",
+  "home_intro": "Sign in to see and open the engines you run.",
+  "language_label": "Language",
+  "locale_en": "English",
+  "locale_cs": "Čeština",
+  "environment_label": "Environment: {environment}",
+  "not_found_title": "Page not found",
+  "not_found_back": "Back to the start",
+  "error_title": "Something went wrong",
+  "error_retry": "Try again"
+}

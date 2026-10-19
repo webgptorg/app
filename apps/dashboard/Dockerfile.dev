@@ -1,0 +1,21 @@
+# The dashboard as X-05 and local HTTPS development run it: the built SPA and Worker in workerd (`vite preview` through
+# the Cloudflare plugin), local D1 with the committed migrations applied at start, the production CSP in force.
+# Build from the repository root: docker build -f apps/dashboard/Dockerfile.dev -t ptbk-dashboard-dev .
+FROM oven/bun:1.4.3-slim@sha256:14a223fa35747ec728bce300ef85888bc5f7958164d15bbba6a54b22b52a3288 AS bun
+
+FROM node:24.22.0-bookworm-slim@sha256:a5f4366e834695d5f363b920c104953a535d3a9864d1bdf74566a0ebe01daee5
+COPY --from=bun /usr/local/bin/bun /usr/local/bin/bun
+
+# No git hooks in the image.
+ENV HUSKY=0
+WORKDIR /repo
+COPY . .
+RUN bun install --frozen-lockfile \
+    && bun run --filter @ptbk/dashboard generate \
+    && bun run --filter @ptbk/dashboard build
+
+WORKDIR /repo/apps/dashboard
+# Required at run time: DASHBOARD_ORIGIN (e.g. https://app.ptbk.test), DASHBOARD_TLS_CERT and DASHBOARD_TLS_KEY (paths
+# to a mounted PEM certificate and key for that hostname). The port comes from the origin, 443 by default.
+EXPOSE 443
+CMD ["sh", "scripts/dev-container.sh"]

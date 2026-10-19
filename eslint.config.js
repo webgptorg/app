@@ -30,13 +30,32 @@ function restrictImports(...patterns) {
 }
 
 const platformImports = { group: ['node:*', 'cloudflare:*', 'bun:*'], message: portable };
+const dashboardClientOnly = {
+    group: ['**/client/**', 'react', 'react-dom', 'react-dom/*', '@tanstack/react-*'],
+    message: 'Worker code never imports the SPA.',
+};
+const drizzleOnlyInDbAdapter = {
+    group: ['drizzle-orm', 'drizzle-orm/*'],
+    message: 'Drizzle lives only in src/adapters/db/ (ADR 0009); depend on a repository port.',
+};
 const domainPatterns = [
     { group: ['node:*', 'cloudflare:*'], message: domainPurity },
     { group: ['**/adapters/**', '**/app/**'], message: domainPurity },
 ];
 
 export default tseslint.config(
-    { ignores: ['**/dist/**', '**/build/**', '**/coverage/**', '**/.wrangler/**', 'docs/spec/**'] },
+    {
+        ignores: [
+            '**/dist/**',
+            '**/build/**',
+            '**/coverage/**',
+            '**/.wrangler/**',
+            'docs/spec/**',
+            '**/routeTree.gen.ts',
+            '**/worker-configuration.d.ts',
+            'apps/dashboard/src/paraglide/',
+        ],
+    },
     js.configs.recommended,
     tseslint.configs.strictTypeChecked,
     {
@@ -80,6 +99,75 @@ export default tseslint.config(
             group: ['@ptbk/*'],
             message: 'The design system imports no app and no contract package.',
         }),
+    },
+    {
+        files: [
+            'apps/dashboard/src/worker.ts',
+            'apps/dashboard/src/app/**/*.ts',
+            'apps/dashboard/src/adapters/**/*.ts',
+        ],
+        ignores: ['apps/dashboard/src/adapters/db/**'],
+        rules: restrictImports(dashboardClientOnly, drizzleOnlyInDbAdapter),
+    },
+    {
+        files: ['apps/dashboard/src/domain/**/*.ts'],
+        rules: restrictImports(...domainPatterns, dashboardClientOnly, drizzleOnlyInDbAdapter),
+    },
+    {
+        files: ['apps/dashboard/src/adapters/db/**/*.ts'],
+        rules: {
+            ...restrictImports(dashboardClientOnly),
+            // The relational query API changes in Drizzle 1.0 (ADR 0009); the core query builder is enough.
+            'no-restricted-syntax': [
+                'error',
+                {
+                    selector: "MemberExpression[property.name='query']",
+                    message: 'Use the core query builder, not db.query.',
+                },
+                {
+                    selector: "ImportSpecifier[imported.name='relations']",
+                    message: 'The relational query API is banned until Drizzle 1.0.',
+                },
+            ],
+        },
+    },
+    {
+        files: ['apps/dashboard/src/shared/**/*.ts'],
+        rules: restrictImports(drizzleOnlyInDbAdapter, {
+            group: ['**/app/**', '**/domain/**', '**/adapters/**', '**/client/**', 'hono', 'hono/*', 'react'],
+            message: 'Shared API contracts are plain zod, used by both the Worker and the SPA.',
+        }),
+    },
+    {
+        files: ['apps/dashboard/src/client/**/*.{ts,tsx}'],
+        rules: restrictImports(platformImports, drizzleOnlyInDbAdapter, {
+            group: [
+                '**/app/**',
+                '**/domain/**',
+                '**/adapters/**',
+                '**/worker',
+                'hono',
+                'hono/*',
+                '@ptbk/*',
+                '!@ptbk/ui',
+                '!@ptbk/protocol',
+            ],
+            message:
+                'The SPA imports only src/client, src/shared, the generated messages, @ptbk/ui and @ptbk/protocol.',
+        }),
+    },
+    {
+        files: ['apps/dashboard/src/client/**/*.tsx'],
+        ignores: ['**/*.test.tsx'],
+        rules: {
+            'no-restricted-syntax': [
+                'error',
+                {
+                    selector: 'JSXText[value=/\\p{L}/u]',
+                    message: 'User-facing text goes through the message catalogues (messages/*.json).',
+                },
+            ],
+        },
     },
     {
         // Frameworks and runtimes require a default export here.
