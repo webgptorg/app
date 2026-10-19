@@ -2,7 +2,7 @@
 
 - **Lane:** Relay · **Module:** `packages/protocol` (`src/tls/`) · **Milestone:** M1
 - **Depends on:** —
-- **Status:** todo
+- **Status:** in progress (feat/r-01-sni-parser)
 - **Spec:** Relay and tunnel; Interfaces (draft) 3 "Browser side"; Metadata we still see; ADRs: [0005](../../adr/0005-modular-architecture.md)
 
 ## Goal
