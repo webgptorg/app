@@ -50,10 +50,11 @@ export function createApiClient(deps: { readonly fetch: typeof fetch; readonly t
     return {
         async call<C extends RouteContract>(contract: C, input: RouteInput<C>, signal?: AbortSignal) {
             const parts = input as Readonly<Record<string, unknown>>;
+            const path = buildPath(contract, parts);
             const timeout = AbortSignal.timeout(timeoutMs);
             let response: Response;
             try {
-                response = await deps.fetch(buildPath(contract, parts), {
+                response = await deps.fetch(path, {
                     method: contract.method,
                     headers: {
                         Accept: 'application/json',

@@ -24,6 +24,7 @@ describe('resolveRequestLocale', () => {
     it('uses Accept-Language by quality, matching the primary language', () => {
         expect(resolveRequestLocale({ ...none, acceptLanguage: 'de;q=0.9, cs-CZ;q=0.95, en;q=0.5' })).toBe('cs');
         expect(resolveRequestLocale({ ...none, acceptLanguage: 'fr, en-GB;q=0.8, cs;q=0.7' })).toBe('en');
+        expect(resolveRequestLocale({ ...none, acceptLanguage: 'cs;level=1, en;q=0.5' })).toBe('cs');
     });
 
     it('skips values that are not supported locales', () => {

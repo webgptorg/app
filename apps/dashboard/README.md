@@ -57,18 +57,18 @@ Paraglide compiles `messages/*.json` into typed functions at build time (no runt
 
 ## Commands
 
-| Command                    | What it does                                                                                       |
-| -------------------------- | -------------------------------------------------------------------------------------------------- |
-| `bun run dev`              | Applies migrations to the local D1, then `vite dev` with the Worker in workerd                     |
-| `bun run dev:https`        | The same over HTTPS on a real hostname, for passkeys (see below)                                   |
-| `bun run build`            | Builds SPA and Worker; `CLOUDFLARE_ENV=staging` or `production` builds that environment            |
-| `bun run preview`          | Serves the build in workerd with the production CSP                                                |
-| `bun run generate`         | Paraglide messages, the route tree and `wrangler types`; generated files are never committed       |
-| `bun run typecheck`        | `tsc -b` over the client (DOM, no Workers types), worker (Workers types, no DOM) and node projects |
-| `bun run test`             | `db:check`, build, the `unit`, `workers` and `client` Vitest projects, then the bundle budgets     |
-| `bun run db:generate`      | `drizzle-kit generate`; pass `--name <what>` after a schema change                                 |
-| `bun run db:migrate:local` | `wrangler d1 migrations apply DB --local`                                                          |
-| `bun run db:check`         | Migration guards: drizzle-kit output only, no drift, no unmarked destructive change                |
+| Command                    | What it does                                                                                                                                                                                 |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bun run dev`              | Applies migrations to the local D1, then `vite dev` with the Worker in workerd                                                                                                               |
+| `bun run dev:https`        | The same over HTTPS on a real hostname, for passkeys (see below)                                                                                                                             |
+| `bun run build`            | Builds SPA and Worker; `CLOUDFLARE_ENV=staging` or `production` builds that environment                                                                                                      |
+| `bun run preview`          | Serves the build in workerd with the production CSP                                                                                                                                          |
+| `bun run generate`         | Paraglide messages, the route tree and `wrangler types`; generated files are never committed                                                                                                 |
+| `bun run typecheck`        | `tsc -b` over the client (DOM, no Workers types), worker (Workers types, no DOM) and node projects                                                                                           |
+| `bun run test`             | `db:check`, build, the `unit` and `client` Vitest projects with coverage (≥ 90% lines and branches; `src/domain/**` and `config.ts` at 100%), the `workers` project, then the bundle budgets |
+| `bun run db:generate`      | `drizzle-kit generate`; pass `--name <what>` after a schema change                                                                                                                           |
+| `bun run db:migrate:local` | `wrangler d1 migrations apply DB --local`                                                                                                                                                    |
+| `bun run db:check`         | Migration guards: drizzle-kit output only, no drift, no unmarked destructive change                                                                                                          |
 
 Root `bun run check` reaches all of it, so CI runs every guard. There is no deploy script; deploys come with I-03.
 

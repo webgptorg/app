@@ -11,7 +11,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc -b",
-    "test": "bun run db:check && bun run build && vitest run && node scripts/check-bundle-budgets.ts",
+    "test": "bun run db:check && bun run build && vitest run --coverage --project unit --project client && vitest run --project workers && node scripts/check-bundle-budgets.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate:local": "wrangler d1 migrations apply DB --local",
     "db:check": "node scripts/check-migrations.ts"

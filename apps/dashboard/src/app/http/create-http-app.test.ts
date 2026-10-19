@@ -41,6 +41,21 @@ function app(options: {
 }
 
 describe('createHttpApp', () => {
+    it('serves health and the UI API without caching, and 404s unknown API paths as problems', async () => {
+        const { http } = app({ environment: 'staging', viteDevServer: false });
+        const health = await http.request('/v1/health');
+        expect(await health.json()).toEqual({ ok: true, environment: 'staging' });
+        expect(health.headers.get('Cache-Control')).toBe('no-store');
+        const environment = await http.request('/api/environment');
+        expect(await environment.json()).toEqual({ environment: 'staging' });
+        expect(environment.headers.get('Cache-Control')).toBe('no-store');
+        const unknown = await http.request('/internal/v1/engines/x');
+        expect(unknown.status).toBe(404);
+        expect(unknown.headers.get('Content-Type')).toBe('application/problem+json');
+        const page = await http.request('/engines/x');
+        expect(page.headers.get('Cache-Control')).toBeNull();
+    });
+
     it('relaxes the CSP and drops HSTS only under the Vite dev server in dev', async () => {
         const response = await app({ environment: 'dev', viteDevServer: true }).http.request('/');
         expect(response.headers.get('Content-Security-Policy')).toContain("script-src 'self' 'unsafe-inline'");

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import type { Clock } from '../domain/ports/clock';
 import type { Random } from '../domain/ports/random';
@@ -45,25 +45,33 @@ describe('fake adapters', () => {
 
     it('record log entries in memory', () => {
         const logger = createMemoryLogger();
+        logger.info('boot');
         logger.warn('config.invalid', { paths: 'ENVIRONMENT' });
-        expect(logger.entries).toEqual([{ level: 'warn', event: 'config.invalid', fields: { paths: 'ENVIRONMENT' } }]);
+        expect(logger.entries).toEqual([
+            { level: 'info', event: 'boot', fields: {} },
+            { level: 'warn', event: 'config.invalid', fields: { paths: 'ENVIRONMENT' } },
+        ]);
     });
 });
 
 describe('console logger', () => {
-    it('writes one JSON line per event, base fields winning over event fields', () => {
+    it('writes one JSON line per event at its level, base fields winning over event fields', () => {
         const lines: string[] = [];
-        const original = console.error;
-        console.error = (line: string) => lines.push(line);
+        const write = (line: string) => lines.push(line);
+        vi.spyOn(console, 'info').mockImplementation(write);
+        vi.spyOn(console, 'warn').mockImplementation(write);
+        vi.spyOn(console, 'error').mockImplementation(write);
         try {
-            createConsoleLogger({ service: 'dashboard' }).error('http.unhandled-error', {
-                service: 'spoof',
-                error: 'TypeError',
-            });
+            const logger = createConsoleLogger({ service: 'dashboard' });
+            logger.info('boot');
+            logger.warn('slow', { ms: 900 });
+            logger.error('http.unhandled-error', { service: 'spoof', error: 'TypeError' });
         } finally {
-            console.error = original;
+            vi.restoreAllMocks();
         }
         expect(lines.map((line) => JSON.parse(line) as unknown)).toEqual([
+            { service: 'dashboard', level: 'info', event: 'boot' },
+            { ms: 900, service: 'dashboard', level: 'warn', event: 'slow' },
             { service: 'dashboard', level: 'error', event: 'http.unhandled-error', error: 'TypeError' },
         ]);
     });

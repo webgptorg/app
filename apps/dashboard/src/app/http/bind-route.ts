@@ -3,13 +3,13 @@ import type { z } from 'zod';
 
 import type { ParsedRouteInput, RouteContract, RouteErrorCode, RouteResponse } from '../../shared/api/contract';
 import type { CommonProblemCode } from '../../shared/api/problem';
-import { problemResponse } from './problem';
+import { problemResponse, type ProblemStatus } from './problem';
 
 export type RouteResult<C extends RouteContract> =
     | { readonly kind: 'ok'; readonly body: RouteResponse<C> }
     | {
           readonly kind: 'problem';
-          readonly status: number;
+          readonly status: ProblemStatus;
           readonly code: RouteErrorCode<C> | CommonProblemCode;
       };
 

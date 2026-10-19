@@ -73,6 +73,47 @@ describe('API client', () => {
         expect((await client.call(getEngine, { params: { engineId: 'e' } })).kind).toBe('invalid-response');
     });
 
+    it('builds the query string from defined values only', async () => {
+        const listEngines = defineRoute({
+            method: 'GET',
+            path: '/api/engines',
+            params: null,
+            query: z.strictObject({ status: z.string().optional(), q: z.string().optional() }),
+            body: null,
+            response: z.strictObject({ engines: z.array(z.string()) }),
+            errorCodes: [],
+        });
+        const { client, requests } = respond(200, { engines: [] });
+        await client.call(listEngines, { query: { status: 'online' } });
+        await client.call(listEngines, { query: {} });
+        expect(requests.map((request) => request.url)).toEqual([
+            'https://app.ptbk.test/api/engines?status=online',
+            'https://app.ptbk.test/api/engines',
+        ]);
+    });
+
+    it('sends a JSON body for contracts that declare one', async () => {
+        const rename = defineRoute({
+            method: 'POST',
+            path: '/api/engines/:engineId/name',
+            params: z.strictObject({ engineId: z.string() }),
+            query: null,
+            body: z.strictObject({ name: z.string() }),
+            response: z.strictObject({ name: z.string() }),
+            errorCodes: [],
+        });
+        const { client, requests } = respond(200, { name: 'Office' });
+        expect((await client.call(rename, { params: { engineId: 'e' }, body: { name: 'Office' } })).kind).toBe('ok');
+        expect(requests[0]?.headers.get('Content-Type')).toBe('application/json');
+        expect(await requests[0]?.json()).toEqual({ name: 'Office' });
+    });
+
+    it('treats a missing path parameter as a bug', async () => {
+        const { client } = respond(200, {});
+        const call = client.call(getEngine, { params: {} as { engineId: string } });
+        await expect(call).rejects.toThrow(/engineId/);
+    });
+
     it('reports a network failure as an outcome, not an exception', async () => {
         const client = createApiClient({ fetch: () => Promise.reject(new TypeError('offline')) });
         expect(await client.call(apiRoutes.getEnvironment, {})).toEqual({ kind: 'network-error' });

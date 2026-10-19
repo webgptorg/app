@@ -1,6 +1,8 @@
 import { PROBLEM_CONTENT_TYPE, type Problem } from '../../shared/api/problem';
 
-const TITLES: Readonly<Record<number, string>> = {
+export type ProblemStatus = 400 | 401 | 403 | 404 | 413 | 429 | 500 | 503;
+
+const TITLES: Readonly<Record<ProblemStatus, string>> = {
     400: 'Bad Request',
     401: 'Unauthorized',
     403: 'Forbidden',
@@ -11,13 +13,12 @@ const TITLES: Readonly<Record<number, string>> = {
     503: 'Service Unavailable',
 };
 
-export function problemResponse(status: number, code: string, detail?: string): Response {
+export function problemResponse(status: ProblemStatus, code: string): Response {
     const problem: Problem = {
         type: 'about:blank',
-        title: TITLES[status] ?? 'Error',
+        title: TITLES[status],
         status,
         code,
-        ...(detail === undefined ? {} : { detail }),
     };
     return new Response(JSON.stringify(problem), {
         status,

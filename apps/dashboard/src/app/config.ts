@@ -113,7 +113,7 @@ export function parseConfig(env: object): DashboardConfig {
             result.error.issues.flatMap((issue) =>
                 issue.code === 'unrecognized_keys'
                     ? issue.keys.map((key) => [...issue.path, key].join('.'))
-                    : [issue.path.join('.') || '(root)'],
+                    : [issue.path.join('.')],
             ),
         );
     }
