@@ -94,6 +94,7 @@ engine-ui follows the same idea in React terms: components depend on hooks, hook
 
 - Tests are deterministic: inject `Clock` and `Random`, seed fake data, no sleeps (use fake timers or events).
 - A bug fix starts with a failing test.
+- A module with code has no `--passWithNoTests`. Contract packages and security-relevant code keep coverage thresholds of at least 90% lines and branches (`@vitest/coverage-v8`).
 
 ## Logging and metadata
 

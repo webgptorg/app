@@ -63,6 +63,9 @@ Several agents work in parallel, and `main` has no branch protection yet: **you 
    The title must be the final squash commit message. If another open PR already claims the same task, the later one closes its PR and picks another task.
 5. **Build it.** Follow the brief and [engineering.md](docs/engineering.md). Stay inside the task's module. If you must touch another module or a shared root file (`package.json`, `eslint.config.js`, `commitlint.config.js`, a package's `src/index.ts`), keep the change minimal and say so in the PR. A large task may land as several PRs, each with `Refs: <task-id>`; the Status becomes `done (#<last PR>)` with the last one.
 6. **Test it.** Tests come with the code, not after. A bug fix starts with a failing test.
+   - When your task adds the first code to a module, remove `--passWithNoTests` from that module's `test` script, so a module with code can never pass CI without tests.
+   - `protocol`, `engine-api` and any code that verifies signatures, tokens, sessions or permissions run `vitest run --coverage` with thresholds of at least 90% lines and branches, set in the module's `vitest.config.ts`. Never lower a threshold to get CI green.
+   - Cover the reject paths, not just the happy path: every brief's negative cases (forged signature, replay, downgrade, missing permission) are tests.
 7. **Stay current.** Rebase on `main` before marking ready and whenever it moved:
    ```sh
    git fetch origin && git rebase origin/main
