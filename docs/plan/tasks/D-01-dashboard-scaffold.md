@@ -2,7 +2,7 @@
 
 - **Lane:** D · **Module:** `apps/dashboard` · **Milestone:** M3
 - **Depends on:** —
-- **Status:** todo
+- **Status:** in progress (feat/d-01-dashboard-scaffold)
 - **Spec:** Hosting and stack; One address for users; What our platform can and cannot do; Enterprise-ready engine architecture; ADRs: [0001](../../adr/0001-bun-workspaces-monorepo.md), [0005](../../adr/0005-modular-architecture.md), [0006](../../adr/0006-organizations-and-roles.md), [0007](../../adr/0007-frontend-stack.md), [0008](../../adr/0008-hono-for-http-apis.md), [0009](../../adr/0009-drizzle-and-migrations.md)
 
 ## Goal
