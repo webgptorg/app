@@ -2,7 +2,7 @@
 
 - **Lane:** Relay · **Module:** `packages/protocol` (`src/tls/`) · **Milestone:** M1
 - **Depends on:** —
-- **Status:** todo
+- **Status:** done (#3)
 - **Spec:** Relay and tunnel; Interfaces (draft) 3 "Browser side"; Metadata we still see; ADRs: [0005](../../adr/0005-modular-architecture.md)
 
 ## Goal
@@ -48,14 +48,14 @@ It lives in `packages/protocol`, not in the relay, because the mock engine (M-03
 
 ## Acceptance criteria
 
-- [ ] Fixtures from Chromium, Firefox and WebKit (captured ad hoc via Playwright), curl, `openssl s_client -servername` and `-noservername`, Node `tls.connect`, and a Go client offering only `acme-tls/1` (Pebble or `crypto/tls`) all parse to the expected outcome.
-- [ ] Unit tests cover: SNI missing, empty name, two names, non-ASCII byte, trailing dot, uppercase input (lowercased), 254-byte name, duplicate extension, extension length past the end, ClientHello split across two records, an HTTP request (`GET /`) instead of TLS (`not-handshake`), an SSLv2-style hello (`not-handshake`), a ServerHello (`not-client-hello`).
-- [ ] Property: for every fixture and every split into chunks, feeding the buffer chunk by chunk gives the same result as parsing in one go, and every strict prefix gives `need-more`.
-- [ ] Property: arbitrary byte arrays (up to 20 KiB) and random byte flips of valid fixtures never throw and always return one of the five kinds.
-- [ ] Property: a generated valid ClientHello (random hostname from an LDH arbitrary, random extension order, random padding) returns `sni` with that hostname.
-- [ ] Inputs reaching `maxBytes` without a complete hello, and a first record or handshake header declaring a length past `maxBytes`, return `too-large`, never `need-more`; a complete hello of exactly `maxBytes` bytes parses.
-- [ ] `bun run check` passes.
-- [ ] **Status** line above set to `done (#<PR>)`.
+- [x] Fixtures from Chromium, Firefox and WebKit (captured ad hoc via Playwright), curl, `openssl s_client -servername` and `-noservername`, Node `tls.connect`, and a Go client offering only `acme-tls/1` (Pebble or `crypto/tls`) all parse to the expected outcome.
+- [x] Unit tests cover: SNI missing, empty name, two names, non-ASCII byte, trailing dot, uppercase input (lowercased), 254-byte name, duplicate extension, extension length past the end, ClientHello split across two records, an HTTP request (`GET /`) instead of TLS (`not-handshake`), an SSLv2-style hello (`not-handshake`), a ServerHello (`not-client-hello`).
+- [x] Property: for every fixture and every split into chunks, feeding the buffer chunk by chunk gives the same result as parsing in one go, and every strict prefix gives `need-more`.
+- [x] Property: arbitrary byte arrays (up to 20 KiB) and random byte flips of valid fixtures never throw and always return one of the five kinds.
+- [x] Property: a generated valid ClientHello (random hostname from an LDH arbitrary, random extension order, random padding) returns `sni` with that hostname.
+- [x] Inputs reaching `maxBytes` without a complete hello, and a first record or handshake header declaring a length past `maxBytes`, return `too-large`, never `need-more`; a complete hello of exactly `maxBytes` bytes parses.
+- [x] `bun run check` passes.
+- [x] **Status** line above set to `done (#<PR>)`.
 
 ## Risks and open points
 
