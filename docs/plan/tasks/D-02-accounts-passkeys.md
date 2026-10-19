@@ -1,9 +1,9 @@
 # D-02. Accounts, passkeys, sessions
 
 - **Lane:** D · **Module:** `apps/dashboard` · **Milestone:** M3
-- **Depends on:** D-01 · **Unblocks:** D-03, D-07, D-09
+- **Depends on:** D-01
 - **Status:** todo
-- **Spec:** Pairing and identity (Promptbook account row); Engine security baseline (Sessions row); Security hardening item 8; Metadata we still see; Hosting and stack (Passkeys); ADRs: [0006](../../adr/) (Organizations, members and roles from day one), [0007](../../adr/0007-frontend-stack.md), [0009](../../adr/0009-drizzle-and-migrations.md)
+- **Spec:** Pairing and identity (Promptbook account row); Engine security baseline (Sessions row); Security hardening item 8; Metadata we still see; Hosting and stack (Passkeys); ADRs: [0006](../../adr/0006-organizations-and-roles.md), [0007](../../adr/0007-frontend-stack.md), [0009](../../adr/0009-drizzle-and-migrations.md)
 
 ## Goal
 
@@ -104,7 +104,7 @@ This task is the API and the server side only, so the dashboard lane does not wa
 
 ## Design notes
 
-- WebAuthn: `rpID` and origin from config (`app.ptbk.io` in production, `localhost` in dev); `residentKey: 'required'`, `userVerification: 'required'`, `attestationType: 'none'`, algorithms `[-8, -7, -257]`. Challenges single-use, 5-minute TTL, bound by a `__Host-ptbk_chal` cookie and, for token flows, to the token hash.
+- WebAuthn: `rpID` is the hostname of `dashboardOrigin` and the expected origin is `dashboardOrigin`, both from D-01's config, never hard-coded (`app.ptbk.io` in production, the dev hostname such as `app.ptbk.test` in the dev container and e2e); `residentKey: 'required'`, `userVerification: 'required'`, `attestationType: 'none'`, algorithms `[-8, -7, -257]`. Challenges single-use, 5-minute TTL, bound by a `__Host-ptbk_chal` cookie and, for token flows, to the token hash.
 - Email tokens: 256 bits from `Random`, base64url, only SHA-256 stored, 15-minute TTL, consumed atomically with one Drizzle `update ... where used_at is null and expires_at > ? returning`; a new request invalidates the user's older tokens of the same purpose. Emails are sent with `ctx.waitUntil` so response time does not depend on whether the address exists.
 - Session cookie `__Host-ptbk_session`: `Secure`, `HttpOnly`, `Path=/`, `SameSite=Lax`. Lax because links from alert emails and the engine UI's "back to dashboard" link must arrive signed in; CSRF is covered by Fetch Metadata and Origin. 256-bit ID, SHA-256 stored, new ID on every sign-in, idle 7 days, absolute 30 days, row read on every request.
 - Never log emails, tokens, credential IDs, challenges or cookies.

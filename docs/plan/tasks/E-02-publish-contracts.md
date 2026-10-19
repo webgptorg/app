@@ -1,7 +1,7 @@
 # E-02. Move the contracts public and consume published versions
 
 - **Lane:** Engine integration · **Module:** `packages/protocol`, `packages/engine-api`, `packages/conformance`, `docs/engine-integration/`, every `package.json` that depends on them · **Milestone:** M5
-- **Depends on:** C-05, E-01 · **Unblocks:** E-03
+- **Depends on:** C-05, E-01
 - **Status:** todo
 - **Spec:** Build plan (One source for contracts), Transparency and verifiability (1. Open source), Security hardening 10, Decisions (Contracts package open question); ADRs: [0002](../../adr/0002-public-private-split.md)
 
@@ -15,11 +15,11 @@ ADR 0002: contracts start here so they can iterate with the relay and mock engin
 
 ## Scope
 
-- Agree with the engine team (human decision, record it in an ADR): destination (`webgptorg/promptbook` monorepo `packages/` or a separate public repo), npm scope and package names, and the moment of the move.
+- Agree with the engine team (human decision, record it in a new ADR that supersedes ADR 0002; ADR 0002 itself is not edited): destination (`webgptorg/promptbook` monorepo `packages/` or a separate public repo), npm scope and package names, and the moment of the move.
 - In the destination: copy `packages/protocol`, `packages/engine-api`, `packages/conformance` and `docs/engine-integration/` with git history if practical (`git filter-repo`), keep MIT licences, keep tests and golden vectors, and keep their CI green there.
 - Release workflow in the destination: npm trusted publishing (OIDC, no long-lived npm token), `--provenance`, a protected environment with a second maintainer's approval, SHA-pinned actions, read-only default permissions, no caches, no `pull_request_target` (spec, Security hardening 10). Packages use SemVer; message versions (`v1`, `v2`) stay independent of package versions.
 - Changelog per package. A breaking contract change is a major version and ships `v2` messages beside `v1`.
-- In this repo, one PR: replace `"workspace:*"` with exact published versions in every consumer (`apps/relay`, `apps/dashboard`, `apps/mock-engine`, `apps/engine-ui`), delete the three package directories and `docs/engine-integration/` (leave a short pointer in `docs/architecture.md`), update ESLint blocks that target `packages/protocol|engine-api|conformance`, update `docs/architecture.md`, `AGENTS.md` and ADR 0002 consequences, and point the conformance CI job at the published CLI.
+- In this repo, one PR: replace `"workspace:*"` with exact published versions in every consumer (`apps/relay`, `apps/dashboard`, `apps/mock-engine`, `apps/engine-ui`), delete the three package directories and `docs/engine-integration/` (leave a short pointer in `docs/architecture.md`), update ESLint blocks that target `packages/protocol|engine-api|conformance`, update `docs/architecture.md` and `AGENTS.md`, set ADR 0002's status to `Superseded by NNNN` (the only change to it; its text stays, per the ADR process), and point the conformance CI job at the published CLI.
 - Supply-chain fit: `bunfig.toml` refuses versions younger than 7 days. Decided 2026-10-19: exempt exactly our own npm scope from the 7-day minimum release age (our packages are built by our pipeline with provenance); record it in the ADR and keep the rule for everything else.
 - Verify provenance in CI here: a step runs `npm audit signatures` (or equivalent) for the contract packages and fails on missing provenance.
 - Document the cross-repo development loop: link a local checkout of the contracts into this repo for a change that touches both sides, then publish and bump.
@@ -32,7 +32,7 @@ ADR 0002: contracts start here so they can iterate with the relay and mock engin
 
 - Before the move, run a check that the packages contain no private references: no `@ptbk/*` imports outside the three packages, no internal hostnames, no fixtures with real data, licence headers present. ESLint already blocks platform and `@ptbk/*` imports in `protocol` and `engine-api`; C-05 extends it to `conformance`.
 - Rename the workspace scope `@ptbk/*` to the chosen public scope in the same change, so imports change once.
-- Dependabot here picks up new contract versions; its 7-day cooldown matches `bunfig.toml`.
+- Dependabot here picks up new contract versions. Its 7-day cooldown must exempt our own scope too (`cooldown.exclude`), matching the `bunfig.toml` exemption, or contract bumps wait a week.
 
 ## Acceptance criteria
 
@@ -41,7 +41,7 @@ ADR 0002: contracts start here so they can iterate with the relay and mock engin
 - [ ] This repo contains no copy of the contract sources; `grep -r "workspace:\*"` finds no contract package.
 - [ ] `bun install --frozen-lockfile` and `bun run check` pass here with the published versions; the e2e suite and the conformance job against the mock engine still pass.
 - [ ] The integration guide is reachable publicly and its links work there.
-- [ ] ADR recording destination, names and the release-age decision is merged.
+- [ ] The new ADR (superseding ADR 0002) recording destination, names and the release-age decision, including the Dependabot exemption, is merged.
 - [ ] **Status** line above set to `done (#<PR>)`.
 
 ## Risks and open points

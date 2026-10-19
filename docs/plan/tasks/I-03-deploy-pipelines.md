@@ -1,7 +1,7 @@
 # I-03. Deploy and release pipelines
 
 - **Lane:** I · **Module:** `.github/workflows`, `infra/relay` (deploy script), `apps/relay/Dockerfile` if missing · **Milestone:** M4
-- **Depends on:** I-01, I-02, X-03 · **Unblocks:** I-06
+- **Depends on:** I-01, I-02, X-03
 - **Status:** todo
 - **Spec:** Security hardening item 10; Hosting and stack (Releases; Release artifacts; Engine UI bundle); Residual risks (Release keys and dependencies); ADRs: [0003](../../adr/0003-ui-as-signed-bundle.md)
 
@@ -21,20 +21,20 @@ The engine UI bundle runs on customers' engines and sees decrypted data, so its 
   - build `apps/relay/Dockerfile` (multi-stage, Node 24 base pinned by digest, non-root user, no build cache), push to `ghcr.io/webgptorg/relay` by digest;
   - sign keylessly with cosign (`id-token: write` in this job only), attach an SBOM and a build provenance attestation;
   - deploy to staging relays, then (after `production` approval) to production relays, strictly one host at a time: SSH with the forced-command deploy key from I-01, which pulls the digest, runs `cosign verify` on the host against the expected workflow identity and issuer, swaps the systemd unit to the new digest and restarts. Wait until the relay answers on its own hostname and its tunnel count recovers (engines reconnect within 10 s per the spike criteria; time out at 60 s) before the next host; on failure stop, roll that host back to the previous digest and fail the job.
-- Engine-ui release: wire X-03's build, sign and publish steps into `release-ui.yml` gated by the `release` environment; publishing to R2 uses a token scoped to the release bucket only. If X-03 already created the workflow, add the gate and token scoping rather than duplicating it.
+- Engine-ui release: X-03 owns `.github/workflows/ui-release.yml` (build, sign, publish); I-03 wires its deployment and approvals: the `release` environment gate and an R2 token scoped to the release bucket only. Do not duplicate the workflow.
 - Rollback: `workflow_dispatch` input `digest` on `release-relay.yml` (must be a digest signed by our workflow); dashboard rollback documented with `wrangler rollback`.
 - `docs/runbooks/deploy.md`: approvals, rollback, rotating each token, what to do if a token leaks.
 
 ## Out of scope
 
-- Release key ceremony and production signing keys for the 2-of-3 threshold (X-03 and the human decision in the plan README).
+- The key ceremony for the release key (human-held, hardware key) and the three maintainer keys (2 of 3 for security releases): a human decision in the plan's "Still needed" table, owned by neither I-03 nor X-03.
 - Engine releases (public repo); hosts and DNS (I-01, I-02).
 
 ## Design notes
 
 - Every workflow: `permissions: {}` at top and minimal per job (`contents: read`; `packages: write` only for push; `id-token: write` and `attestations: write` only for signing), `persist-credentials: false`, actions pinned to full SHAs, untrusted values through `env`, `timeout-minutes` set, `concurrency` per environment without cancelling a running deploy.
 - No `actions/cache`, no `cache:` inputs on setup actions, no Docker layer cache from the registry or GHA.
-- D1 migrations are the committed drizzle-kit output ([ADR 0009](../../adr/0009-drizzle-and-migrations.md)); the pipeline applies them only with `wrangler d1 migrations apply` and never runs `drizzle-kit push` or `migrate` against a remote database. They must be backward compatible with the currently deployed code (expand, deploy, then contract in a later PR), because migration and deploy are not atomic and `wrangler rollback` does not undo a migration. D-01's drift and destructive-change guards (a contract step carries a `-- contract:` marker) run in `bun run check` before any deploy job. D-01 states the rule in `apps/dashboard/README.md`; link it from the runbook.
+- D1 migrations are the committed drizzle-kit output ([ADR 0009](../../adr/0009-drizzle-and-migrations.md)); the pipeline applies them only with `wrangler d1 migrations apply` and never runs `drizzle-kit push` or `migrate` against a remote database. They must be backward compatible with the currently deployed code (expand, deploy, then contract in a later PR), because migration and deploy are not atomic and `wrangler rollback` does not undo a migration. D-01's drift and destructive-change guards (a contract step carries a `-- contract:` marker) are part of `bun run check`, which CI runs as one step before any deploy job. D-01 states the rule in `apps/dashboard/README.md`; link it from the runbook.
 - The host-side cosign check means a leaked deploy key can only deploy images our workflow signed.
 - GHCR pull access from hosts: a read-only token placed by I-01's secret mechanism, or a public image if the team accepts that the relay image is visible (it contains no secrets but is commercial code).
 
@@ -52,4 +52,4 @@ The engine UI bundle runs on customers' engines and sees decrypted data, so its 
 
 - Cloudflare has no OIDC federation for wrangler, so the deploy token is a long-lived secret; keep it environment-scoped and rotated.
 - SSH from GitHub-hosted runners means the allowlist cannot be tight; the forced command and host-side signature check are the mitigation. A pull-based deploy is the alternative if the team prefers.
-- Release key holders are a pending human decision; production UI signing waits on it.
+- Release key holders and the key ceremony are a pending human decision (plan's "Still needed" table); production UI signing waits on it.

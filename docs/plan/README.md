@@ -40,7 +40,7 @@ M2 and M3 can run in parallel once M1's contracts exist. E-01 (the engine integr
 
 ## Tasks
 
-Each brief in [tasks/](tasks/) carries its own **Depends on** and **Status** (`todo`, `in progress (<branch>)`, `done (#<PR>)`), so parallel PRs never edit the same line. For the live table:
+Each brief in [tasks/](tasks/) carries its own **Depends on** and **Status** (`todo`, `in progress (<branch>)`, `done (#<PR>)`), so parallel PRs never edit the same line. What a task unblocks is derived from the others' dependencies. For the live table:
 
 ```sh
 bun run plan          # all tasks with dependencies and status
@@ -102,18 +102,20 @@ bun run plan --check  # validates statuses and dependencies (part of bun run che
 
 Tasks in the same wave have no dependencies on each other and can run at the same time, in separate worktrees. Computed from the briefs; regenerate with `bun run plan --waves` after changing dependencies.
 
-| Wave | Tasks                                                            |
-| ---- | ---------------------------------------------------------------- |
-| 1    | C-01, D-01, R-01                                                 |
-| 2    | C-02, C-03, C-04, C-06, D-02, I-02, R-02                         |
-| 3    | D-03, E-01, M-01, R-03, U-01                                     |
-| 4    | D-04, D-05, M-02, M-06, R-04, U-02, X-03                         |
-| 5    | D-07, D-08, D-09, I-01, M-04, R-05, U-03, U-05, U-06, U-07, X-01 |
-| 6    | C-05, D-06, I-03, I-04, I-05, M-03, M-05, U-04, X-02             |
-| 7    | E-02, X-04, X-05                                                 |
-| 8    | E-03, I-06                                                       |
+| Wave | Tasks                                          |
+| ---- | ---------------------------------------------- |
+| 1    | C-01, C-04, D-01, R-01                         |
+| 2    | C-02, C-03, C-06, D-02, I-02, U-01             |
+| 3    | E-01, M-01, R-02, U-02, X-03                   |
+| 4    | D-09, M-02, M-06, R-03, U-03, U-05, U-06, U-07 |
+| 5    | D-03, D-07, M-04, R-04, U-04                   |
+| 6    | C-05, D-04, D-05, R-05, X-01                   |
+| 7    | D-06, D-08, E-02, I-01, M-03, M-05, X-02       |
+| 8    | I-03, I-04, X-04, X-05                         |
+| 9    | E-03, I-05                                     |
+| 10   | I-06                                           |
 
-Waves 4 and 5 are the widest: up to ten agents can work at once without touching the same module.
+C-01 and R-01 both live in `packages/protocol` and touch its `package.json` and `src/index.ts`; whoever merges second rebases (AGENTS.md, step 7). Wave 1 starts four agents at once; wave 4 is the widest with eight.
 
 ## Decisions
 
@@ -127,17 +129,21 @@ Waves 4 and 5 are the widest: up to ten agents can work at once without touching
 - Dashboard auth: email-first sign-up, `SameSite=Lax` session with Fetch Metadata CSRF checks, platform admin role. Engine roles: owner, admin, member, viewer.
 - Infrastructure as code: OpenTofu and cloud-init. Monitoring: Cloudflare-first; external uptime provider to be specified by Seb.
 - Relays route from a stale registry cache for at most 24 hours while the dashboard is unreachable.
+- Protocol design principles ([ADR 0010](../adr/0010-protocol-design-principles.md)); wire formats freeze at publication (E-02), after review by the engine team and Pavol. C-01 merges without waiting for it.
+- Preassigned ADR numbers: 0011 infrastructure as code (I-01/I-02), 0012 monitoring backend (I-04), 0013 book editor (U-04).
+- Tooling: Vitest 4.1 repo-wide; shared versions through the Bun workspace catalog; install scripts only for esbuild, sharp and workerd; generated code not committed, `bun run check` runs `generate` and is the single CI step.
+- No branch protection on the current GitHub plan: agents enforce green CI by the procedure in AGENTS.md.
 - Engine registration is signed by the engine key; regular releases need both the CI's keyless signature and a human-held release key; our own npm scope is exempt from the 7-day release age.
 - Organizations, members and roles are modelled from day one ([ADR 0006](../adr/0006-organizations-and-roles.md)).
 
 **Still needed** (each blocks specific tasks, not the start):
 
-| Decision                                            | Blocks                                    | Owner       |
-| --------------------------------------------------- | ----------------------------------------- | ----------- |
-| Engine domain name (separate from ptbk.io)          | I-02 (local and staging use placeholders) | Team        |
-| Cloudflare accounts and relay VPS provider accounts | I-01, I-02                                | Team        |
-| Release key holders (2 of 3)                        | X-03 for production signing, I-03         | Team        |
-| Who builds the engine side, and when                | E-03                                      | Engine team |
+| Decision                                                                                             | Blocks                                    | Owner       |
+| ---------------------------------------------------------------------------------------------------- | ----------------------------------------- | ----------- |
+| Engine domain name (separate from ptbk.io)                                                           | I-02 (local and staging use placeholders) | Team        |
+| Cloudflare accounts and relay VPS provider accounts                                                  | I-01, I-02                                | Team        |
+| Release key holder and the three maintainer key holders (2 of 3 for security releases), key ceremony | X-03 for production signing, I-03         | Team        |
+| Who builds the engine side, and when                                                                 | E-03                                      | Engine team |
 
 ## How to work a task
 

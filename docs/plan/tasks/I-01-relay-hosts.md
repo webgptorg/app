@@ -1,7 +1,7 @@
 # I-01. Relay hosts: provisioning and hardening
 
 - **Lane:** I · **Module:** `infra/relay` · **Milestone:** M4
-- **Depends on:** R-04 · **Unblocks:** I-03, I-04
+- **Depends on:** R-04, R-05 (host sizing comes from its results)
 - **Status:** todo
 - **Spec:** Relay and tunnel (Hosting; No single point of failure; Fairness and DoS); Hosting and stack; Operations; Metadata we still see; Legal and GDPR (sub-processors)
 
@@ -15,7 +15,7 @@ The relay needs raw TCP on 443 and long-lived connections, so it runs on plain V
 
 ## Scope
 
-- Tooling (decided 2026-10-19): **OpenTofu** with the Hetzner and Cloudflare providers, and **cloud-init** to harden the host and run the signed relay container under systemd. State in an encrypted remote backend (R2), no secrets in plain state. Record the details (backend, module layout, secrets handling) as an ADR with the next free number; I-02 reuses the same setup.
+- Tooling (decided 2026-10-19): **OpenTofu** with the Hetzner and Cloudflare providers, and **cloud-init** to harden the host and run the signed relay container under systemd. State in an encrypted remote backend (R2), no secrets in plain state. Record the details (backend, module layout, secrets handling) as ADR 0011 (infrastructure as code), shared with I-02: whichever of the two starts first writes it, the other reuses it.
 - `infra/relay/`: host definitions for `staging` (1 host) and `production` (2 hosts, e.g. `relay-fsn` and `relay-hel`), IPv4 and IPv6, smallest instance that R-05's load test supports.
 - Hardening, all from code:
   - Debian stable (or Ubuntu LTS) image; unattended security upgrades with automatic reboot in a staggered window per host so both production relays never reboot together;
@@ -42,7 +42,7 @@ The relay needs raw TCP on 443 and long-lived connections, so it runs on plain V
 
 ## Acceptance criteria
 
-- [ ] ADR merged with status `Accepted` and listed in `docs/adr/README.md`.
+- [ ] ADR 0011 merged (by this task or I-02) with status `Accepted` and listed in `docs/adr/README.md`.
 - [ ] Staging relay created from code; `verify.sh` passes against it; the e2e or spike suite runs green against it with the mock engine.
 - [ ] Staging relay destroyed and recreated from code with no manual steps beyond secret placement, documented with timings in the PR.
 - [ ] Production hosts defined (created once provider accounts exist); `verify.sh` passes on both.

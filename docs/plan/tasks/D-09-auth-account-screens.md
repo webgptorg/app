@@ -1,7 +1,7 @@
 # D-09. Dashboard sign-up, sign-in, recovery and account screens
 
 - **Lane:** D · **Module:** `apps/dashboard` · **Milestone:** M3
-- **Depends on:** D-02, U-02 · **Unblocks:** D-06, X-05
+- **Depends on:** D-02, U-02
 - **Status:** todo
 - **Spec:** Pairing and identity (Promptbook account row); ADRs: [0006](../../adr/0006-organizations-and-roles.md), [0007](../../adr/0007-frontend-stack.md)
 
@@ -11,7 +11,7 @@ The SPA screens for D-02's API: a person can sign up, sign in, recover access an
 
 ## Context
 
-D-02 delivers the API and server side without waiting for the design system. This task wires `@ptbk/ui` into the dashboard SPA (Tailwind 4 `@source` for the package, its tokens and shell) and builds the first real screens, so later dashboard screens (D-06, D-07, D-08) reuse the same shell and patterns.
+D-02 delivers the API and server side without waiting for the design system. This task wires `@ptbk/ui` into the dashboard SPA (Tailwind 4 `@source` for the package, its tokens and shell) and builds the first real screens, so later dashboard screens (D-03's `/engines/new`, D-06, D-07, D-08) reuse the same shell and patterns.
 
 ## Scope
 

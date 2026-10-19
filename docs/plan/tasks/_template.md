@@ -1,7 +1,7 @@
 # <ID>. <Title>
 
 - **Lane:** <lane> · **Module:** `<path>` · **Milestone:** <M#>
-- **Depends on:** <IDs or —> · **Unblocks:** <IDs>
+- **Depends on:** <IDs or —>
 - **Status:** todo
 - **Spec:** <section names in docs/spec/zero-trust-spec.md>; ADRs: <links if relevant>
 

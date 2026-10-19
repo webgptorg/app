@@ -1,5 +1,5 @@
 <!--
-Snapshot of the spec, rev 121 (2026-10-19). The living version is the Claude Doc:
+Snapshot of the spec, rev 125 (2026-10-19). The living version is the Claude Doc:
 https://claude.ai/code/artifact/cd422fa3-3ccb-4d1a-b7fe-79a10c32802b
 Decisions taken after this snapshot are recorded as ADRs in docs/adr.
 -->
@@ -478,11 +478,13 @@ We never process the content, only transmit it, so the customer stays the contro
 
 These are draft contracts to start building against. The spike confirms or changes them, and every one is versioned (`v1`) from day one. All schemas are strict: unknown fields are rejected.
 
+**Protocol design principles.** Every message carries a version, and peers negotiate the version they speak. Changes are additions: a new version ships next to the previous one, which stays supported. Every signature is versioned and domain-separated (`ptbk-<purpose>-v<n>`), signed JSON is canonicalised with JCS (RFC 8785), and the algorithm is fixed per protocol version (Ed25519 in v1). Limits are explicit and errors are typed. The formats freeze when the contracts are published, after review by the engine team and Pavol.
+
 **1. Engine registration** (engine to dashboard API, HTTPS)
 
 ```json
 POST /v1/engines/register
-{ "linkCode": "<one-time, 30 min>", "enginePublicKey": "<Ed25519, base64url>", "engineVersion": "1.8.2", "mode": "tunnel",
+{ "v": 1, "linkCode": "<one-time, 30 min>", "enginePublicKey": "<Ed25519, base64url>", "engineVersion": "1.8.2", "mode": "tunnel",
   "sig": "<base64url Ed25519 over \"ptbk-register-v1\" | linkCode | enginePublicKey | engineVersion>" }
 
 200 { "engineId": "<26 chars base32 of SHA-256(enginePublicKey)>",
@@ -508,19 +510,20 @@ Each custom hostname has an entry in `claims`: an Ed25519 signature by the engin
 
 **3. Tunnel protocol** (engine to relay)
 
-- The engine connects to `wss://relay-<region>.<domain>/v1/tunnel`. The relay terminates TLS only for its own name. WebSocket passes HTTP proxies and TLS-inspecting company proxies, and even an inspecting proxy sees only the browser's TLS bytes inside, which stay encrypted end to end.
+- The engine connects to `wss://relay-<region>.<domain>/v1/tunnel` with the WebSocket subprotocol `ptbk-tunnel`; the protocol version is negotiated in the handshake. The relay terminates TLS only for its own name. WebSocket passes HTTP proxies and TLS-inspecting company proxies, and even an inspecting proxy sees only the browser's TLS bytes inside, which stay encrypted end to end.
 - Handshake:
   1. Relay sends `{type: "challenge", nonce: <32 bytes>, relayId}`. `relayId` is the relay's own hostname (e.g. `relay-fsn.<domain>`), so the signature binds to the relay the engine meant to dial.
-  2. Engine replies `{type: "auth", engineId, version, sig}`, where sig = Ed25519 over `"ptbk-tunnel-v1" | relayId | nonce`.
-  3. Relay looks the engine up in the registry (Interface 2), checks the signature and answers `{type: "ready", hostnames}`.
-- Framing: binary WebSocket messages `[u8 type][u32 streamId][payload]`. Types: `OPEN` (carries the client IP, so the engine can rate-limit and audit), `DATA`, `CLOSE`, and `WINDOW` (flow-control credit in bytes). WebSocket ping every 25 s. The spike may swap this for yamux over WebSocket.
+  2. Engine replies `{type: "auth", engineId, version, protocolVersions, features, sig}`, where sig = Ed25519 over `"ptbk-tunnel-v1" | relayId | nonce`.
+  3. Relay looks the engine up in the registry (Interface 2), checks the signature and answers `{type: "ready", protocolVersion, features, hostnames}` with the chosen version and the agreed features.
+  4. Instead of `ready`, the relay may send `{type: "reject", reason}` with reason `auth-failed`, `suspended`, `unsupported-version`, `timeout` or `rate-limited`, then close with a code in the 4000–4999 range (replaced, auth-failed, protocol-error, shutting-down, suspended). The reasons are deliberately coarse, so a failed attempt learns nothing finer.
+- Framing: binary WebSocket messages `[u8 type][u32 streamId][payload]`. Types: `OPEN` (carries the client IP, so the engine can rate-limit and audit), `DATA`, `CLOSE`, and `WINDOW` (flow-control credit in bytes). Bit 7 of the type byte marks a frame type as ignorable: an unknown ignorable frame is skipped, and an unknown non-ignorable frame is a protocol error. WebSocket ping every 25 s. The spike may swap this for yamux over WebSocket.
 - Browser side: the relay listens on 443 and reads the SNI from the ClientHello. Its own name is handled locally. A registered engine hostname gets a new `OPEN` stream and raw bytes are piped. A missing or unknown SNI is closed.
 
 **4. Heartbeat** (engine to dashboard API, every 60 s)
 
 ```json
 POST /v1/engines/{engineId}/heartbeat
-Ptbk-Signature: ed25519=<base64url over the raw body>
+Ptbk-Signature: ed25519=<base64url Ed25519 over "ptbk-heartbeat-v1" | sha256(raw body, base64url)>
 { "v": 1, "engineId": "...", "seq": 1042, "ts": "2026-10-16T12:00:00Z",
   "version": "1.8.2", "uptimeS": 86400,
   "diskPct": 40, "ramPct": 60, "cpuLoad": "low" | "medium" | "high",
@@ -528,7 +531,7 @@ Ptbk-Signature: ed25519=<base64url over the raw body>
   "agents": 7, "members": 3 }
 ```
 
-Percentages are rounded to tens. `seq` must increase and `ts` must be within 2 minutes, which stops replays.
+Percentages are rounded to tens. `seq` must increase and `ts` must be within 2 minutes, which stops replays. The signed input is the purpose string plus the hash of the raw body, so a heartbeat signature cannot be reused for any other message.
 
 **5. Release log entry** (published to Sigstore Rekor and on R2)
 

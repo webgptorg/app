@@ -1,7 +1,7 @@
 # X-04. E2E UI flows through relay and loader, CSP violations fail
 
 - **Lane:** X · **Module:** `e2e/` · **Milestone:** M2
-- **Depends on:** X-01, M-05, U-03, U-04, U-05, U-06, U-07 · **Unblocks:** — (closes M2)
+- **Depends on:** X-01, M-05, U-03, U-04, U-05, U-06, U-07
 - **Status:** todo
 - **Spec:** Architecture (UI delivery), Security hardening (5, 7), Transparency and verifiability (3), Interfaces (5); ADRs: [0003](../../adr/0003-ui-as-signed-bundle.md), [0004](../../adr/0004-mock-engine-and-conformance.md)
 
@@ -20,7 +20,7 @@ This is the M2 done criterion. Unit tests in engine-ui run against an in-memory 
   - any `securitypolicyviolation` event, console message mentioning Content Security Policy or Trusted Types, or uncaught page error;
   - any request to an origin other than the engine hostname;
   - any `dialog` event (alert, confirm, prompt).
-- Sign-in: through the mock engine's gateway pages with a Playwright virtual WebAuthn authenticator (CDP `WebAuthn.addVirtualAuthenticator`); the setup secret is read the way an operator would (mock engine output or its dev control endpoint), never through a session backdoor. Store the signed-in state per worker.
+- Sessions: tests get their session cookie from the mock engine's dev-only `POST /__mock/sessions` on the control listener (`{ subject: { kind: 'owner' } | { kind: 'member', role } | { kind: 'member', permissions } }`) and store it per worker. Real WebAuthn sign-in belongs to the engine gateway (engine team) and is not tested here; the only pre-auth check is that an anonymous visitor gets nothing but the sign-in page (flow 9).
 - Flows (one file each):
   1. **Loader and headers:** the HTML response carries exactly `ENGINE_UI_CSP`; the served `index.html` and every asset match the signed manifest hashes; a tampered bundle (one byte changed, re-served through the control endpoint) is refused and the previous bundle keeps being served.
   2. **Agents:** seeded list visible, search, paging, filters in the URL, detail, start/stop, visibility to public with confirmation, delete with typed name.
@@ -30,7 +30,7 @@ This is the M2 done criterion. Unit tests in engine-ui run against an in-memory 
   6. **Security panel:** engine version, both relays connected, hostnames, certificate fingerprint equal to the engine certificate the browser received, last heartbeat text equal to the payload the mock engine reports it sent, UI bundle hash equal to the SHA-256 of the archive under test.
   7. **Secrets:** create with a random canary value, replace with a second canary, revoke, delete. Neither canary appears in `page.content()`, any response body (all responses recorded), `localStorage`, `sessionStorage`, IndexedDB or console output.
   8. **Audit:** the actions from the flows above appear with filters by action and target working.
-  9. **Capabilities:** a mock engine scenario signs in a member whose permission list lacks `agents.delete`, `secrets.read` and `audit.read`: those actions and nav items are absent, the routes show "no access", and a forced API call returns 403.
+  9. **Capabilities:** a session for a member with a custom permission set lacking `agents.delete`, `secrets.read`, `secrets.manage` and `audit.read`: those actions and nav items are absent, the routes show "no access", and a forced API call returns 403; a session per role shows only what that role's permissions allow. Without a session, every UI route leads to the sign-in page (`SIGN_IN_PATH`), no engine-ui file is served and every API call returns 401.
   10. **Faults:** with mock engine fault injection, a dropped chat stream shows "interrupted"; an API 500 shows the error banner with retry; a slow tunnel shows skeletons and then data; killing relay-a mid-session leaves the app usable after a retry.
   11. **Accessibility and i18n:** `@axe-core/playwright` on each main page reports no serious or critical violations; switching to Czech changes visible text and `<html lang>`; dark mode renders without violations; at a 360 px viewport the main pages have no horizontal overflow.
 - CI: part of the existing `e2e` job (X-01).
@@ -58,6 +58,5 @@ This is the M2 done criterion. Unit tests in engine-ui run against an in-memory 
 
 ## Risks and open points
 
-- Dependencies in the plan omit X-01 (the harness) and U-07 (the audit flow, part of M2); both should be added.
-- The mock engine must implement gateway sign-in with WebAuthn, the setup secret, members with permission lists, the hostile-reply scenario and bundle tampering through the control endpoint; if M-04 or M-05 lack any of these, raise it with the M lane before working around it.
+- The mock engine must implement `POST /__mock/sessions`, the hostile-reply scenario and bundle tampering through the control endpoint; if M-04 or M-05 lack any of these, raise it with the M lane before working around it.
 - Firefox may still lack Trusted Types; the Chromium run is the gate.

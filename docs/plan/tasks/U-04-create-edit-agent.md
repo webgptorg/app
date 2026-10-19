@@ -1,9 +1,9 @@
 # U-04. Create and edit agent: wizard and book editor
 
 - **Lane:** U · **Module:** `apps/engine-ui` · **Milestone:** M2
-- **Depends on:** U-03, U-05 · **Unblocks:** X-04
+- **Depends on:** U-03, U-05
 - **Status:** todo
-- **Spec:** Security hardening (5, 6), Engine security baseline (Browser headers); ADRs: [0003](../../adr/0003-ui-as-signed-bundle.md), new ADR for the editor
+- **Spec:** Security hardening (5, 6), Engine security baseline (Browser headers); ADRs: [0003](../../adr/0003-ui-as-signed-bundle.md), 0013 book editor (written by this task)
 
 ## Goal
 
@@ -17,17 +17,17 @@ The UX follows the predecessor "ManGo" new-agent wizard (brief, book, knowledge,
 
 ## Scope
 
-- **Editor ADR** (`docs/adr/<next free number>-book-editor.md`): CodeMirror 6 versus Monaco bundled locally. Recommended: CodeMirror 6. It is modular and small, needs no workers, and its `style-mod` styles mount through constructable stylesheets (`adoptedStyleSheets`), with an `EditorView.cspNonce` fallback; `@codemirror/merge` gives the history diff. Monaco would need workers served as files (`worker-src 'self'`, no `blob:`), several Trusted Types policy names, and it creates `<style>` elements for decorations, which `style-src 'self'` blocks. The ADR cites the CSP test below as evidence.
+- **Editor ADR** (`docs/adr/0013-book-editor.md`, number preassigned): CodeMirror 6 versus Monaco bundled locally. Recommended: CodeMirror 6. It is modular and small, needs no workers, and its `style-mod` styles mount through constructable stylesheets (`adoptedStyleSheets`), with an `EditorView.cspNonce` fallback; `@codemirror/merge` gives the history diff. Monaco would need workers served as files (`worker-src 'self'`, no `blob:`), several Trusted Types policy names, and it creates `<style>` elements for decorations, which `style-src 'self'` blocks. The ADR cites the CSP test below as evidence.
 - **Book language** in `src/features/book/language/`: a `StreamLanguage` tokenizer (first line is the agent name; lines starting with a commitment keyword such as `PERSONA`, `RULE`, `KNOWLEDGE`, `META …` are highlighted; comments, URLs and `{parameters}` too). The keyword list comes from the engine API when C-04 offers it, with a built-in fallback, so new engine commitments highlight without a UI release.
 - **Diagnostics**: debounced (500 ms) call to the API's book validation, mapped to `@codemirror/lint` markers and a problems list below the editor (click jumps to the range). Stale responses are discarded (abort the previous request).
-- **Wizard** at `/agents/new` (guarded by `requirePermission('agents.create')`), step in the URL (`?step=brief|book|knowledge|test|done`):
+- **Wizard** at `/agents/new` (guarded by `requirePermission('agents.write')`), step in the URL (`?step=brief|book|knowledge|test|done`):
   1. Brief: name and description, a `@ptbk/ui` form with a zod schema; server validation errors from the create call are mapped onto the fields with `applyServerErrors`.
-  2. Book: a draft book from the API's draft endpoint if C-04 has one, else a template filled with name and description; editable in the same editor. Leaving this step creates the agent (create call), so later steps have an agent ID.
+  2. Book: a draft book from the API's draft endpoint if C-04 has one, else a template filled with name and description; editable in the same editor. Leaving this step creates the agent (create call), so later steps have an agent ID; a 422 `invalid-book` keeps the user on the step with its `diagnostics` shown in the editor.
   3. Knowledge: drop zone plus an accessible file input; per-file progress, size and type limits from the API, remove before or after upload. Upload goes through the client port (it accepts `onProgress` and `signal`).
   4. Test chat: the `ChatPanel` from U-05 against the new agent.
   5. Done: links to the agent detail, chat and book editor.
   - Unsaved brief or book triggers TanStack Router's `useBlocker` on navigation. Cancelling after creation offers to delete the created agent. Nothing is written to browser storage.
-- **Book editor** at `/agents/$agentId/book`: editor, problems list, save (`Mod-s` and a button) with the version the editor started from; a 409 conflict shows "changed elsewhere" with options to reload or view the diff. A 422 with diagnostics shows them and saves nothing. History panel: list of versions (author, time; `DataTable` with cursor paging), read-only view, diff against current (`@codemirror/merge`), restore (creates a new version, never rewrites history). Save and restore wait for the server (no optimistic update: conflicts are expected) and report their outcome with a toast.
+- **Book editor** at `/agents/$agentId/book`: editor, problems list, save (`Mod-s` and a button) with the version the editor started from; a 409 conflict shows "changed elsewhere" with options to reload or view the diff. A 422 `invalid-book` problem carries `diagnostics` (C-04); they are shown as markers and in the problems list, and nothing is saved. History panel: list of versions (author, time; `DataTable` with cursor paging), read-only view, diff against current (`@codemirror/merge`), restore (creates a new version, never rewrites history). Save and restore wait for the server (no optimistic update: conflicts are expected) and report their outcome with a toast.
 - **States and loading:** skeletons for the editor and history while loading, empty history, error states with retry, and the route error boundary for the rest (U-02). The editor and its language chunks are code-split with the route; the "Edit book" and "New agent" links preload them on intent. The editor route and the wizard get their own entries in `bundle-budget.json`, sized with the reason in the PR.
 
 ## Out of scope
@@ -52,12 +52,11 @@ The UX follows the predecessor "ManGo" new-agent wizard (brief, book, knowledge,
 - [ ] Save and restore show success and failure toasts; loading, empty-history and error states each have a test.
 - [ ] `test:csp` passes the UX checks (360 px without overflow, layout shift, reduced motion) on the wizard and the editor; both routes stay within their recorded bundle budgets.
 - [ ] Ported files are listed in the PR description with their source path; none uses `innerHTML`, a CDN or a `<style>` element.
-- [ ] `/agents/new` requires `agents.create` and the book editor's save and restore require `agents.update` (rendered through `can()`, guarded with `requirePermission`); a read-only member sees the book and history but no save or restore.
+- [ ] `/agents/new` requires `agents.write` and the book editor's save and restore require `agents.write` (rendered through `can()`, guarded with `requirePermission`); a read-only member sees the book and history but no save or restore.
 - [ ] `bun run check` passes.
 - [ ] **Status** line above set to `done (#<PR>)`.
 
 ## Risks and open points
 
-- The plan lists only U-03 as a dependency, but the test-chat step needs U-05's `ChatPanel`. Start after U-05 has merged, or ship the step behind a minimal panel and switch when U-05 lands.
-- Contract gaps to fix in C-04 first if missing: book validation with ranges, version list and restore, optimistic concurrency token, knowledge upload with limits, the keyword list, a draft-book endpoint.
+- Contract gaps to fix in C-04 first if missing: restore of a revision, knowledge upload limits, the keyword list, a draft-book endpoint.
 - Constructable stylesheets are not governed by `style-src` in current browsers; if a browser starts enforcing it, CodeMirror would need a nonce the engine does not issue. The CSP test is the tripwire.

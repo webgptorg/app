@@ -1,7 +1,7 @@
 # I-02. DNS and Cloudflare environments
 
 - **Lane:** I · **Module:** `infra/cloudflare` (and `apps/dashboard/wrangler.jsonc` IDs) · **Milestone:** M4
-- **Depends on:** D-01 · **Unblocks:** I-03, I-04
+- **Depends on:** D-01
 - **Status:** todo
 - **Spec:** One address for users; Residual risks (1. Certificate mis-issuance); Abuse on our domains (items 1, 2 and Before the PSL entry lands); Hosting and stack (Engine DNS); Operations
 
@@ -15,7 +15,7 @@ Engine hostnames must never be proxied by Cloudflare: proxying would terminate T
 
 ## Scope
 
-- OpenTofu with the Cloudflare provider (decided 2026-10-19; if I-02 starts before I-01, write the tooling ADR here). Code under `infra/cloudflare/` with one stack per environment.
+- OpenTofu with the Cloudflare provider (decided 2026-10-19), recorded in ADR 0011 (infrastructure as code), shared with I-01: whichever of the two starts first writes it, the other reuses it. Code under `infra/cloudflare/` with one stack per environment.
 - Environments: separate Cloudflare accounts (or at minimum separate zones and API tokens) for staging and production, so a staging token can never change production. Dev stays local.
 - Engine domain zone (placeholder `ENGINE_DOMAIN`, a separate staging domain or subdomain):
   - `*.<engine domain>` A and AAAA to every relay in that environment, `proxied = false`, TTL 60 s;

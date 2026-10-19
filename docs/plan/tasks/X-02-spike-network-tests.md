@@ -1,7 +1,7 @@
 # X-02. Spike network tests: NAT, 443-only, proxies, failover, packet capture
 
 - **Lane:** X · **Module:** `e2e/` · **Milestone:** M1
-- **Depends on:** X-01 · **Unblocks:** — (closes M1 together with M-03 and R-05)
+- **Depends on:** X-01
 - **Status:** todo
 - **Spec:** Build plan (Spike acceptance criteria), Relay and tunnel (proxy, failover), Interfaces (3 tunnel protocol), Security goals (Confidentiality); ADRs: [0004](../../adr/0004-mock-engine-and-conformance.md)
 
@@ -29,7 +29,7 @@ These tests are the evidence behind the zero-trust claim for the relay and the M
 
 ## Out of scope
 
-- ACME TLS-ALPN-01 (M-03). Screencast throughput and bandwidth (R-05 or a follow-up; see Risks). Load (R-05).
+- ACME TLS-ALPN-01 (M-03). Screencast throughput and bandwidth (R-05). Load (R-05).
 - Real Let's Encrypt staging certificates (M-03 runs against Pebble).
 
 ## Design notes
@@ -53,5 +53,5 @@ These tests are the evidence behind the zero-trust claim for the relay and the M
 
 - The pause (blackhole) variant depends on how fast Chromium gives up on the first address; if it exceeds 15 s, record the value and raise it with the team rather than loosening the limit silently.
 - Reconnect under 10 s depends on M-01's backoff schedule; if it caps too high, fix it in M-01.
-- The spike criterion "screencast at 5 fps or better, bandwidth per hour measured" has no owner in the plan; suggest assigning it to R-05.
+- The spike criterion "screencast at 5 fps or better, bandwidth per hour measured" is covered by R-05, so the M1 row ticks it only when R-05 is done as well.
 - A stronger check would decrypt the outer tunnel TLS with a relay test keylog and confirm the inner bytes are still TLS; it needs relay support and is optional.

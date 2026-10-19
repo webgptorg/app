@@ -1,7 +1,7 @@
 # R-04. Browser listener: SNI routing, stream piping, flow control, limits
 
 - **Lane:** Relay · **Module:** `apps/relay` · **Milestone:** M1
-- **Depends on:** R-01, R-03 · **Unblocks:** X-01, R-05, I-01, I-05
+- **Depends on:** R-01, R-03
 - **Status:** todo
 - **Spec:** Relay and tunnel (incl. Fairness and DoS); Interfaces (draft) 3 "Browser side"; Metadata we still see; Operations; ADRs: [0005](../../adr/0005-modular-architecture.md)
 

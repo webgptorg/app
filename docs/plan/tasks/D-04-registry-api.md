@@ -1,13 +1,13 @@
 # D-04. Registry API for relays and the relay's HTTP registry adapter
 
 - **Lane:** D · **Module:** `apps/dashboard` and `apps/relay` (two modules, see Context) · **Milestone:** M3
-- **Depends on:** D-03, R-02 · **Unblocks:** D-08, X-05
+- **Depends on:** D-03, R-03
 - **Status:** todo
 - **Spec:** Interfaces (draft) 2; Relay and tunnel (Enterprise custom domains); Operations (Dashboard or Cloudflare down); Abuse on our domains (item 8); ADRs: [0005](../../adr/0005-modular-architecture.md)
 
 ## Goal
 
-Relays read the engine registry from the dashboard: `GET /internal/v1/engines/{engineId}` serves it, authenticated with a relay key, and the relay gets an HTTP registry adapter with a 5-minute cache and stale-on-error, replacing the static file adapter in deployed environments.
+Relays read the engine registry from the dashboard: `GET /internal/v1/engines/{engineId}` serves it, authenticated with a relay key, and the relay gets an HTTP registry adapter, wrapped by R-02's cache (5-minute TTL, stale-on-error for at most 24 h), replacing the static file adapter in deployed environments.
 
 ## Context
 
@@ -32,17 +32,18 @@ Dashboard (`apps/dashboard`):
   ```
 
 - `scripts/mint-relay-key.ts` (run locally against an environment with wrangler): creates a relay row, prints the token once.
-- `GET /internal/v1/engines/{engineId}` in the Hono `/internal` router, bound to the C-03 contract: `Authorization: Bearer <token>` → SHA-256 → lookup of a non-revoked relay, else 401. Path parsed with the protocol `EngineId` schema (400). Unknown engine → 404. Otherwise 200 with the C-03 registry response: `enginePublicKey`, `hostnames` (default hostname plus active custom hostnames with their engine-signed claims, `"ptbk-hostname-v1" | hostname | engineId`), `status: 'active' | 'suspended'`. `Cache-Control: no-store`. Per-relay rate limit (600 per minute).
+- `GET /internal/v1/engines/{engineId}` in the Hono `/internal` router, bound to the C-03 contract: `Authorization: Bearer <token>` → SHA-256 → lookup of a non-revoked relay, else 401. Path parsed with the protocol `EngineId` schema (400). Unknown engine → 404. Otherwise 200 with C-03's `RegistryEntry`: `enginePublicKey`, `hostnames` (default hostname plus active custom hostnames), `claims: [{ hostname, sig }]` (one engine-signed claim per custom hostname, over `"ptbk-hostname-v1" | hostname | engineId`), `status: 'active' | 'suspended'`. `Cache-Control: no-store`. Per-relay rate limit (600 per minute).
 - The response carries nothing about the owning organization, its users or billing; relays need routing data only. This endpoint is not org-scoped (relays are platform actors), so it reads through a dedicated `RegistryReader` port rather than the org-scoped `EngineStore` methods.
 - Custom hostnames come from the `engine_hostnames` table that D-08 adds; until then the list holds only the default hostname. Read it through an `EngineHostnameStore` port so D-08 only adds an adapter and rows.
 
 Relay (`apps/relay`):
 
-- `src/adapters/http-engine-registry.ts` implementing R-02's registry port, with deps `{ fetch, clock, logger, config }`. Config: `REGISTRY_URL`, `REGISTRY_TOKEN`, `REGISTRY_TTL_MS` (300000), `REGISTRY_TIMEOUT_MS` (3000), `REGISTRY_NEGATIVE_TTL_MS` (60000).
-- Every response parsed with the C-03 schema. Before caching, the adapter checks that `engineId` equals the protocol derivation of `enginePublicKey` (reject the whole entry otherwise) and verifies every custom hostname claim with the C-01 function, dropping hostnames that fail and logging only the engine ID and the count dropped.
-- Cache: fresh for the TTL; on timeout, network error, 5xx, 401/403 or schema failure, serve the stale entry and log `registry-stale`; 404 removes the entry and is negatively cached; concurrent lookups for one engine share one request.
+- `src/adapters/http-engine-registry.ts`: a plain fetch adapter implementing R-02's `EngineRegistry` port, with deps `{ fetch, logger, config }`. It sends one `GET` with the bearer token and a timeout, parses the body with C-03's `RegistryEntry` schema and maps the result: 200 → `found`, 404 → `not-found`, and timeout, network error, 5xx, 401/403 or schema failure → `unavailable` (logged as `registry.error` with the engine ID and the failure kind only). It holds no cache and verifies no claims.
+- The composition root wraps it in R-02's `createCachedRegistry`, which owns freshness (`RELAY_REGISTRY_TTL_S`, 300), stale-on-error up to `maxStaleMs` (`RELAY_REGISTRY_MAX_STALE_S`, 86400), negative caching and request sharing. Do not re-implement any of it here.
+- Hostname routing uses C-03's `resolveRoutableHostnames` (through R-02's hostname policy), the single implementation of the default-hostname derivation and claim verification. The entry's `enginePublicKey` must equal the key the engine proved at tunnel auth (R-03); otherwise the tunnel is refused with `auth-failed`.
+- Config, added to R-02's `parseRelayConfig` schema: `RELAY_REGISTRY_KIND=http` selects this adapter, with `RELAY_REGISTRY_URL` (dashboard base URL), `RELAY_REGISTRY_TOKEN` (relay key, secret) and `RELAY_REGISTRY_TIMEOUT_MS` (default 3000); the schema requires the three when the kind is `http` and rejects them when it is `static`.
 - Connected tunnels are re-checked every TTL: `suspended` or 404 closes the tunnel, changed hostnames update the routing map. If R-03's session manager already does this, reuse it; otherwise add it there.
-- Composition root picks the HTTP adapter when `REGISTRY_URL` is set; the static file adapter stays for local dev and e2e until X-05 switches them.
+- The composition root picks the adapter from `RELAY_REGISTRY_KIND`; `static` (with `RELAY_REGISTRY_FILE`) stays for local dev and e2e until X-05 switches them.
 
 ## Out of scope
 
@@ -51,22 +52,21 @@ Relay (`apps/relay`):
 
 ## Design notes
 
-- Interface 2 is keyed by engine ID, not hostname. The relay looks up by engine ID when an engine authenticates its tunnel, then routes SNI against the hostnames of connected engines. A browser SNI never triggers a registry call: a default hostname whose engine has no tunnel is closed locally. If R-02's port is hostname-keyed, adapt in the relay's domain layer (parse the engine ID from a default hostname; resolve custom ones through the connected-engine map) and note it in the PR.
-- Unbounded stale serving matches the spec ("keeps serving stale entries"); make a maximum stale age configurable with no default limit.
+- Interface 2 is keyed by engine ID, not hostname. The relay looks up by engine ID when an engine authenticates its tunnel, then routes SNI against the hostnames of connected engines. A browser SNI never triggers a registry call: a default hostname whose engine has no tunnel is closed locally.
+- Stale entries are served for at most 24 h (R-02's `maxStaleMs`, `RELAY_REGISTRY_MAX_STALE_S`=86400); after that the entry is `unavailable` and the tunnel is refused or closed.
 - Relay tokens are secrets: never logged, compared only through their hash.
 
 ## Acceptance criteria
 
 - [ ] Dashboard migration is drizzle-kit output and passes D-01's guards; schema allowlist updated.
 - [ ] Dashboard Workers tests: no header, wrong token and revoked relay → 401; malformed engine ID → 400; unknown → 404; active engine → 200 matching the C-03 schema with no org, user or billing fields; suspended engine → `status: "suspended"`; a session cookie alone does not authenticate.
-- [ ] Relay adapter tests (injected `fetch` and `Clock`): fresh hit makes no request; expiry refetches; dashboard 500, timeout and invalid JSON serve stale; 404 evicts and negative-caches; key/engine ID mismatch rejected; custom hostname with a bad claim dropped, good one kept; ten concurrent lookups make one request.
+- [ ] Relay adapter tests (injected `fetch`): 200 → `found` with a parsed entry; 404 → `not-found`; dashboard 500, 401, timeout and invalid JSON → `unavailable`; the token is sent and never logged. Through `createCachedRegistry` with a fake `Clock`: fresh hit makes no request; dashboard down serves stale until 24 h, then `unavailable`; ten concurrent lookups make one request. An entry whose key differs from the tunnel's key → `auth-failed`; through `resolveRoutableHostnames`, a custom hostname with a bad claim is dropped and a good one kept.
 - [ ] The shared registry port test suite from R-02 runs against the in-memory, static and HTTP adapters.
-- [ ] A relay test shows a connected tunnel closed within one TTL after its entry turns `suspended`.
+- [ ] A relay test shows a connected tunnel closed within one TTL after its entry turns `suspended`, and closed or refused once the stale entry passes 24 h during a dashboard outage.
 - [ ] `bun run check` passes.
 - [ ] **Status** line above set to `done (#<PR>)`.
 
 ## Risks and open points
 
-- Exact JSON shape of claims inside `hostnames` is C-03's call; follow it.
 - Suspension reaches relays only after the TTL (up to 5 minutes), which meets the "within hours" takedown target. A push or relay admin endpoint for instant cuts is not planned.
 - Where relay tokens are stored on hosts is part of I-01 and I-03.

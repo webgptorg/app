@@ -1,4 +1,5 @@
-// Status lives in each brief, not in a shared table: parallel agents would otherwise conflict on every update.
+// Status and dependencies live in each brief, not in a shared table: parallel agents would otherwise conflict
+// on every update. "Unblocks" is derived from "Depends on" so the two can never disagree.
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
@@ -86,12 +87,19 @@ function printWaves(tasks: readonly Task[]): void {
     }
 }
 
-function printTable(tasks: readonly Task[]): void {
-    console.log('| ID | Task | Milestone | Depends on | Status |');
-    console.log('| --- | --- | --- | --- | --- |');
+function printTable(tasks: readonly Task[], all: readonly Task[]): void {
+    const unblocks = (id: string): string =>
+        all
+            .filter((other) => other.dependsOn.includes(id))
+            .map((other) => other.id)
+            .join(', ') || '—';
+    console.log('| ID | Task | Milestone | Depends on | Unblocks | Status |');
+    console.log('| --- | --- | --- | --- | --- | --- |');
     for (const task of tasks) {
         const deps = task.dependsOn.join(', ') || '—';
-        console.log(`| ${task.id} | ${task.title} | ${task.milestone} | ${deps} | ${task.status} |`);
+        console.log(
+            `| ${task.id} | ${task.title} | ${task.milestone} | ${deps} | ${unblocks(task.id)} | ${task.status} |`,
+        );
     }
 }
 
@@ -118,7 +126,7 @@ if (values.waves) {
     const ready = tasks.filter(
         (task) => task.status === 'todo' && task.dependsOn.every((dep) => isDone(byId.get(dep))),
     );
-    printTable(ready);
+    printTable(ready, tasks);
 } else {
-    printTable(tasks);
+    printTable(tasks, tasks);
 }

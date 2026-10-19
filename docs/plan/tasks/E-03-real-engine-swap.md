@@ -1,7 +1,7 @@
 # E-03. Run conformance and e2e against the real engine
 
 - **Lane:** Engine integration · **Module:** `e2e/`, CI workflows; contract fixes in the public contracts repo · **Milestone:** M5
-- **Depends on:** E-02 · **Unblocks:** M5 done
+- **Depends on:** E-02, X-02, X-04, X-05
 - **Status:** todo
 - **Spec:** Build plan (Mock engine first, real engine last; Spike acceptance criteria; v0 epics "Mock engine and conformance", "Engine UI"); ADRs: [0004](../../adr/0004-mock-engine-and-conformance.md)
 
@@ -24,7 +24,7 @@ ADR 0004 promises that swapping in the real engine means pointing the e2e and co
 
 ## Out of scope
 
-- Implementing engine features (engine team). Production rollout of real engines, migration of existing engines (spec, Migrating existing engines).
+- Implementing engine features (engine team). Production rollout of real engines, migration of existing engines (spec, Moving existing deployments).
 
 ## Design notes
 
@@ -44,6 +44,6 @@ ADR 0004 promises that swapping in the real engine means pointing the e2e and co
 
 ## Risks and open points
 
-- Blocked on a human decision: who builds the engine side and when (plan, Decisions needed).
-- The real engine may still run Next.js behind the gateway during its strangler migration; CSP or streaming differences may surface here first.
+- Blocked on a human decision: who builds the engine side and when (plan, [Still needed](../README.md#decisions)).
+- CSP or streaming differences between the real engine and the mock may surface here first.
 - Running the real engine in CI needs its image to be publicly pullable and its ACME and update endpoints configurable for tests; confirm with the engine team early.

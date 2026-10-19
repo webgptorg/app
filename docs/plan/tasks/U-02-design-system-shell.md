@@ -1,7 +1,7 @@
 # U-02. Shared UI package, design system, app shell, i18n
 
 - **Lane:** U · **Module:** `packages/ui`, `apps/engine-ui` (two modules, see Context) · **Milestone:** M2
-- **Depends on:** U-01 · **Unblocks:** U-03, U-05, U-06, U-07, and the dashboard UI tasks (D-02, D-06, D-07, D-08)
+- **Depends on:** U-01
 - **Status:** todo
 - **Spec:** One address for users, Enterprise-ready engine architecture (roles in one policy module), Security hardening (5), Engine security baseline; ADRs: [0003](../../adr/0003-ui-as-signed-bundle.md), [0005](../../adr/0005-modular-architecture.md), [0007](../../adr/0007-frontend-stack.md)
 
@@ -11,11 +11,11 @@
 
 ## Context
 
-The feature tasks U-03 to U-07 run in parallel after this one, so the primitives, the shell, error handling, permissions and i18n must exist first. The dashboard is a Vite SPA on the same stack (TanStack Router, Query, Table, Paraglide, Tailwind 4) and shares the engine UI's visual language, so the design system lives in a package both apps consume: dashboard UI tasks (D-02, D-06, D-07, D-08) depend on this task.
+The feature tasks U-03 to U-07 run in parallel after this one, so the primitives, the shell, error handling, permissions and i18n must exist first. The dashboard is a Vite SPA on the same stack (TanStack Router, Query, Table, Paraglide, Tailwind 4) and shares the engine UI's visual language, so the design system lives in a package both apps consume: D-09 depends on this task, and the other dashboard screens (D-03, D-06, D-07, D-08) build on it through D-09.
 
 **Two modules, one brief.** The package is only proven by a real consumer, so it lands together with the engine-ui shell that uses it. It may ship as two PRs (`packages/ui` first, then `apps/engine-ui`); the status line takes the last one. What goes where:
 
-- **`packages/ui` (`@ptbk/ui`, UNLICENSED, already scaffolded empty):** design tokens and theme CSS, theme preference helpers, accessible components, form layer, `DataTable`, i18n helpers (`UiProvider`, `Intl` formatters). Framework-level only: it depends on React, TanStack Table, TanStack Virtual, the form library and zod, and on nothing app-specific. It must not import `@ptbk/engine-api`, `@ptbk/protocol`, any app, TanStack Router or TanStack Query, and it ships no message catalogue and no permission code.
+- **`packages/ui` (`@ptbk/ui`, UNLICENSED, already scaffolded empty):** design tokens and theme CSS, theme preference helpers, accessible components, form layer, `DataTable`, i18n helpers (`UiProvider`, `Intl` formatters). Framework-level only: it depends on React, TanStack Table, TanStack Virtual, TanStack Form and zod, and on nothing app-specific. It must not import `@ptbk/engine-api`, `@ptbk/protocol`, any app, TanStack Router or TanStack Query, and it ships no message catalogue and no permission code.
 - **`apps/engine-ui`:** the Tailwind entry that imports the theme, the Paraglide catalogues and the `UiMessages` they feed, the router `Link` built from the package's `Anchor`, layout and navigation, route guards, `useCurrentMember`, `usePermissions`, `<Can>`, `requirePermission`, route-level error, pending and not-found components, step-up handling, query and mutation conventions.
 
 **Predecessor code may be ported** (the license gate is lifted): the ManGo wizard and agents-server UI in the public `promptbook` repo and the TanStack prototype's hand-rolled `Button`, `Card`, `Field`, `Badge`, `Banner` (agents-server repo, `src/modules/onboarding/`). Port into `packages/ui`, then adapt: Tailwind 4 tokens instead of Tailwind 3 config, no router coupling (router links are built by each app), named exports, strict types, no Google Fonts `@import`, no runtime `<style>`, nothing from a CDN.
@@ -26,7 +26,7 @@ The feature tasks U-03 to U-07 run in parallel after this one, so the primitives
 
 ### `packages/ui`
 
-- Package: `react` and `react-dom` 19.3 and `zod` 4.6 as peer dependencies; `@tanstack/react-table` 9.3.x, `@tanstack/react-virtual` 3.14.x, the form library (see Design notes), `lucide-react`, self-hosted OFL variable fonts (a sans and a mono, e.g. `@fontsource-variable/*`) as dependencies. Vitest, Testing Library, jsdom and `axe-core` as dev dependencies. One public entry, `src/index.ts`; the theme CSS is reached through the same entry's `style` condition (Design notes).
+- Package: `react` and `react-dom` 19.3 and `zod` 4.6 as peer dependencies; `@tanstack/react-table` 9.3.x, `@tanstack/react-virtual` 3.14.x, `@tanstack/react-form` (Design notes), `lucide-react`, self-hosted OFL variable fonts (a sans and a mono, e.g. `@fontsource-variable/*`) as dependencies. Versions shared with engine-ui or the dashboard (react, react-dom, zod, the TanStack packages) come from the root workspace catalog (`catalog:`), so both apps resolve one copy. Testing Library, jsdom and `axe-core` as dev dependencies; Vitest is the repo-wide 4.1.11 from the root. One public entry, `src/index.ts`; the theme CSS is reached through the same entry's `style` condition (Design notes).
 - Layout:
   ```
   packages/ui/src/
@@ -35,7 +35,7 @@ The feature tasks U-03 to U-07 run in parallel after this one, so the primitives
     fonts/             woff2 files referenced by theme.css
     theme/             ThemePreference, applyTheme(), read/persist with an injected storage
     components/        one file per component
-    forms/             form layer over the chosen library
+    forms/             form layer over TanStack Form
     data-table/        DataTable, column helpers, card layout, virtualised body
     i18n/              UiMessages, UiProvider, useLocale(), Intl formatters
   ```
@@ -58,11 +58,11 @@ The feature tasks U-03 to U-07 run in parallel after this one, so the primitives
 
 - Wiring: `@ptbk/ui` as a `workspace:*` dependency. `src/styles/app.css` imports `tailwindcss`, then `@ptbk/ui`, and adds the package's `src` as an `@source`. `applyTheme()` runs as the first statement of `main.tsx` (inline scripts are not allowed). `UiProvider` and `Toaster` in `src/app/providers.tsx`. `src/app/link.tsx` builds the app's typed `Link` with TanStack Router's `createLink(Anchor)`.
 - Session and permissions in `src/features/session/`: `useCurrentMember()` (member ID, display name, organization ID, role label, permissions, from C-04); `usePermissions()` returning `can(permission)`; `<Can permission>`; `requirePermission(permission)` for route `beforeLoad`, which renders a "no access" page. Permissions are the string union C-04 exports (`agents.read`, `agents.delete`, `secrets.manage`, `audit.read`, …); unknown strings from a newer engine are ignored. The role is shown as a label only.
-- App shell (`src/routes/__root.tsx`, `src/features/shell/`): header with engine name and hostname (engine info endpoint), link back to the dashboard (URL from engine info; hidden when absent, e.g. direct or local mode), user menu (member name and role label, language, theme, sign out through the engine's sign-out endpoint, then full-page navigation). Sidebar: Agents, Security, Members, Secrets, Audit log, Settings, each shown only when `can()` allows it; becomes a `Drawer` below 768 px. Skip-to-content link.
+- App shell (`src/routes/__root.tsx`, `src/features/shell/`): header with engine name and hostname (C-04's `GET /engine`, through U-01's `engineInfoQueryOptions()`), link back to the dashboard (`dashboardUrl`; hidden when `null`, e.g. direct or local mode), user menu (member name and role label, language, theme, sign out through C-04's `SIGN_OUT_PATH`, then full-page navigation). Sidebar: Agents, Security, Members, Secrets, Audit log, Settings, each shown only when `can()` allows it; becomes a `Drawer` below 768 px. Skip-to-content link.
 - Route stubs for `/security`, `/members`, `/secrets`, `/audit`, `/settings` with their `requirePermission` guards (filled by U-06, U-07); `/settings` gets language and theme now. Router defaults replacing U-01's placeholders: `defaultErrorComponent` (`ErrorState` with retry that resets the query error boundary and invalidates the route), `defaultPendingComponent` (layout-shaped skeleton, shown after `defaultPendingMs` so fast loads do not flash), `defaultNotFoundComponent`, and a root error boundary.
-- Step-up: when the API returns the step-up-required error (C-04), a dialog explains why and navigates to the engine's step-up page with `returnTo`. Helper `useStepUpAwareMutation`. A 403 shows a "not allowed" message, never a crash.
+- Step-up: when the API returns the step-up-required error (C-04), a dialog explains why and navigates to C-04's `STEP_UP_PATH` with `returnTo`. Helper `useStepUpAwareMutation`. A 403 shows a "not allowed" message, never a crash.
 - Mutation conventions in `src/app/mutations.ts`, used by every feature: `useStepUpAwareMutation` accepts an optional optimistic `{ apply, rollback }` (snapshot in `onMutate`, restore in `onError`, invalidate in `onSettled`) and reports outcomes through toasts (errors always, success where the brief asks for it). Query-key factory and `queryOptions` convention from U-01.
-- i18n with **Paraglide JS 2** (`@inlang/paraglide-js`): catalogues `messages/en.json` (source) and `messages/cs.json`, compiled by the Vite plugin into typed, tree-shakable functions (`m.agents_title()`). Plurals as Paraglide variants over `Intl.PluralRules` (Czech: one, few, many, other). Locale strategy: `localStorage`, then `preferredLanguage`, then `en`; no cookie, no URL prefix. `<html lang>` follows the locale. Dates, numbers and relative times through `@ptbk/ui`'s `Intl` formatters. `src/app/ui-messages.ts` maps the catalogue onto `UiMessages`.
+- i18n with **Paraglide JS 2** (`@inlang/paraglide-js`): catalogues `messages/en.json` (source) and `messages/cs.json`, compiled into typed, tree-shakable functions (`m.agents_title()`). The compiled output is generated, not committed: engine-ui's `generate` script (U-01) also runs the Paraglide compiler, so `bun run check` produces it before lint and typecheck; the Vite plugin does the same in dev and build. Plurals as Paraglide variants over `Intl.PluralRules` (Czech: one, few, many, other). Locale strategy: `localStorage`, then `preferredLanguage`, then `en`; no cookie, no URL prefix. `<html lang>` follows the locale. Dates, numbers and relative times through `@ptbk/ui`'s `Intl` formatters. `src/app/ui-messages.ts` maps the catalogue onto `UiMessages`.
 - `test:csp` build mode (`VITE_UI_GALLERY=1`) adds a `/__gallery` route rendering `@ptbk/ui`'s gallery; it is tree-shaken from production builds and a test proves it, like the in-memory client in U-01.
 
 ## Out of scope
@@ -75,7 +75,7 @@ The feature tasks U-03 to U-07 run in parallel after this one, so the primitives
 ## Design notes
 
 - **CSS through the single entry.** `packages/ui/package.json` keeps one `exports` key: `".": { "style": "./src/theme.css", "default": "./src/index.ts" }`. Tailwind 4's CSS `@import "@ptbk/ui"` resolves the `style` condition; TypeScript and Vite resolve `default`. Font files are referenced relatively from `theme.css`, so Vite emits them as hashed assets (`assetsInlineLimit: 0` from U-01 keeps them out of `data:` URLs).
-- **Forms: TanStack Form** (`@tanstack/react-form` 1.x, newest patch at least 7 days old). It is headless and keeps state in React, so it adds no DOM or style injection; it validates with zod 4 schemas directly through Standard Schema, without a resolver package; field paths are typed; async validation supports debounce and abort; and it matches the rest of the stack. Considered: react-hook-form (mature, but needs `@hookform/resolvers` and fights controlled components), an in-house `useZodForm` (smallest, but re-implements touched, dirty, async and array fields). A different choice needs its reasons in the PR description. Secret values never enter any form store: `SensitiveInput` exists for that.
+- **Forms: TanStack Form** (decided; `@tanstack/react-form` 1.x, newest patch at least 7 days old). It is headless and keeps state in React, so it adds no DOM or style injection; it validates with zod 4 schemas directly through Standard Schema, without a resolver package; field paths are typed; async validation supports debounce and abort; and it matches the rest of the stack. Considered: react-hook-form (mature, but needs `@hookform/resolvers` and fights controlled components), an in-house `useZodForm` (smallest, but re-implements touched, dirty, async and array fields). Secret values never enter any form store: `SensitiveInput` exists for that.
 - **CSP-safe by construction.** No runtime `<style>` elements, no `insertRule`, no string `style` attributes, no inline scripts, no `innerHTML`. React's `style` prop is fine (CSSOM; U-01). Native elements first, no headless UI library: several append `<style>` or scroll-lock styles at runtime. TanStack Table and Virtual are headless and render nothing themselves. Dev tools that inject styles (TanStack devtools) stay behind `import.meta.env.DEV`.
 - Why Paraglide: messages compile to plain functions at build time, so there is no runtime message parser and no eval; unused messages are tree-shaken; calls are type-checked; output is deterministic (X-03 reproducibility); and the dashboard's Vite SPA uses the same tool, so both apps share one approach and one `UiMessages` contract with `@ptbk/ui`. Rejected: i18next (runtime interpretation, loose typing, larger), FormatJS (runtime ICU parsing unless precompiled), Lingui (needs a Babel macro step).
 - No user-visible string literal in JSX, in either module: an ESLint rule (`no-restricted-syntax` on JSX text with letters, allowing an ignore list) keeps strings in the catalogues.
@@ -113,7 +113,6 @@ The feature tasks U-03 to U-07 run in parallel after this one, so the primitives
 
 ## Risks and open points
 
-- C-04 must provide the current-member endpoint (member, organization, role, permissions), the permission union and the engine info endpoint (name, hostname, dashboard URL, sign-out and step-up paths). Amend the contract first if missing.
 - If Tailwind's resolver or the isolated linker does not honour the `style` condition, flag it instead of adding a second `exports` entry or a relative path into the package.
 - `@tanstack/react-table` 9 changed its API from v8; ported table code and online examples are mostly v8. If 9.3.x lacks something `DataTable` needs, flag it rather than dropping to v8.
 - The dashboard (D-01, Vite SPA with Paraglide) consumes the same package: once it does, a change to `UiMessages` or to component props is breaking for both apps.

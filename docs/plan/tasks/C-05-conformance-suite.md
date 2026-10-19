@@ -1,7 +1,7 @@
 # C-05. Conformance suite v1, run against the mock engine
 
 - **Lane:** Contracts · **Module:** `packages/conformance` (plus one CI job) · **Milestone:** M2
-- **Depends on:** C-04, M-04 · **Unblocks:** E-02 (and E-03)
+- **Depends on:** C-03, C-04, M-04
 - **Status:** todo
 - **Spec:** Build plan (Mock engine first, real engine last), Security hardening 7 and 8, What our platform can and cannot do; ADRs: [0004](../../adr/0004-mock-engine-and-conformance.md), [0002](../../adr/0002-public-private-split.md)
 
@@ -15,7 +15,7 @@ ADR 0004: the real engine replaces the mock only by passing this suite. v1 cover
 
 ## Scope
 
-- `src/target.ts`: `ConformanceTarget` port: `{ baseUrl: URL; fetch: typeof fetch; session(subject: SessionSubject): Promise<SessionCredential | null> }`, `SessionSubject = { kind: 'owner' } | { kind: 'member', permissions: readonly Permission[] }`, `SessionCredential = { cookie: string } | { bearer: string }`. Each engine implements `session` its own way (mock: dev control endpoint that creates a member with exactly those permissions; real engine: test hook); `null` skips checks that need that subject. Subjects are described by permissions, not role names, because the role-to-permission mapping is engine policy (C-04).
+- `src/target.ts`: `ConformanceTarget` port: `{ baseUrl: URL; fetch: typeof fetch; session(subject: SessionSubject): Promise<SessionCredential | null> }`, `SessionSubject = { kind: 'owner' } | { kind: 'member', permissions: readonly Permission[] }`, `SessionCredential = { cookie: string } | { bearer: string }`. Each engine implements `session` its own way. Mock engine: `POST /__mock/sessions { subject }` on its dev-only control listener (M-04), with `subject` `{ kind: 'owner' }` or `{ kind: 'member', permissions }`, returns a session cookie for a member with exactly those permissions; the mock target ships in `src/targets/mock-engine.ts`. Real engine: open point for the engine team (see Risks); `null` skips checks that need that subject. Subjects are described by permissions, not role names, because the role-to-permission mapping is engine policy (C-04).
 - `src/check.ts`: `ConformanceCheck { id: 'engine-api.secrets.never-returned', suite, title, run(ctx): Promise<CheckOutcome> }`, `CheckOutcome = { kind: 'pass' } | { kind: 'fail', detail } | { kind: 'skip', reason }`. `ctx` holds the target, a seeded `Random`, an `AbortSignal` and a per-run resource tracker for cleanup.
 - `src/runner.ts`: `runConformance({ target, suites, filter?, timeoutMs, signal }) → ConformanceReport { startedAt, engineVersion | null, results[] }`; checks run sequentially, each with its own timeout; cleanup runs even after failure.
 - `src/report.ts`: JSON and JUnit XML writers (JUnit for CI annotations).
@@ -32,7 +32,7 @@ ADR 0004: the real engine replaces the mock only by passing this suite. v1 cover
   - **Security panel:** `lastHeartbeat.body` parses with the protocol `Heartbeat` schema.
   - **Cross-member:** a second member with the same permissions gets 403 or 404 on resources the engine policy keeps private to the first (skip when the target reports no such resources in v0).
   - **Gateway:** a state-changing request with `Sec-Fetch-Site: cross-site` returns 403.
-- `bin/ptbk-conformance.ts` (Node, outside `src/`): CLI `--base-url`, `--suite`, `--filter`, `--report json|junit`, `--out`; credentials from a `--target-module` exporting a `ConformanceTarget` (needed for permission checks), or, for owner-only runs, `PTBK_CONFORMANCE_OWNER_COOKIE` (permission checks then skip). Exit code 0 only when nothing failed.
+- `bin/ptbk-conformance.ts` (Node, outside `src/`), bundled to `dist/ptbk-conformance.js` by a `build` script (`bun build --target=node`, no new dependency) because extensionless imports do not run under plain Node type stripping; `bin` in `package.json` points to the bundle, and in development the source runs with `bun` or `tsx`: CLI `--base-url`, `--suite`, `--filter`, `--report json|junit`, `--out`; credentials from a `--target-module` exporting a `ConformanceTarget` (needed for permission checks), or, for owner-only runs, `PTBK_CONFORMANCE_OWNER_COOKIE` (permission checks then skip). Exit code 0 only when nothing failed.
 - CI job in `.github/workflows/ci.yml`: start the mock engine with a fixed seed, run the CLI, upload the JUnit report.
 - `README.md` for engine teams: install, run, write a target, read the report.
 
@@ -50,12 +50,12 @@ ADR 0004: the real engine replaces the mock only by passing this suite. v1 cover
 
 - [ ] Self-test: an in-process fake target (`fetch` handler) that is deliberately broken fails the matching check for each defect: leaked secret value, extra response field, missing auth, missing permission check on one mutating route, 403 with a plain-text body, duplicate page item, missing audit entry, audit entry with the wrong `memberId`, wrong problem content type. A correct fake passes everything.
 - [ ] The suite passes against the mock engine in CI on every PR; a failing check fails the job.
-- [ ] The CLI (declared under `bin` in `package.json`, run with Node 24 type stripping) works against any URL with only `protocol` and `engine-api` as workspace dependencies, as the README describes; a failing run exits non-zero.
+- [ ] The bundled CLI (declared under `bin` in `package.json`, run with Node 24) works against any URL with only `protocol` and `engine-api` as workspace dependencies, as the README describes; a failing run exits non-zero.
 - [ ] `bun run check` passes.
 - [ ] **Status** line above set to `done (#<PR>)`.
 
 ## Risks and open points
 
-- How the suite gets sessions on the real engine (passkeys only), including members with chosen permissions while v0 has no member features, is undecided: a test-only bootstrap behind a flag, scoped API tokens, or WebAuthn virtual authenticators. Agree with the engine team before E-03.
+- How the suite gets sessions on the real engine (passkeys only), including members with chosen permissions while v0 has no member features, is an open point for the engine team: a test-only bootstrap behind a flag, scoped API tokens, or WebAuthn virtual authenticators. Agree before E-03; the mock's `/__mock/sessions` is never copied into the real engine.
 - The gateway check assumes the gateway runs in front of the API in the tested deployment; for an engine API run without the gateway it must be skippable.
 - Suites that act as relay or dashboard (tunnel, heartbeat, registration) need to host servers and are Node-only; keep them under `bin/` or a second entry decided then.

@@ -1,7 +1,7 @@
 # M-03. ACME TLS-ALPN-01 through the relay against Pebble
 
 - **Lane:** Mock engine · **Module:** `apps/mock-engine`, plus `e2e/` compose services (touches two modules) · **Milestone:** M1
-- **Depends on:** M-02, X-01 · **Unblocks:** — (closes the first spike criterion)
+- **Depends on:** R-01, M-02, X-01
 - **Status:** todo
 - **Spec:** Residual risks: certificates and engine updates (1); Hosting and stack (Known hard problems, TypeScript stack "Certificates"); Build plan (Spike acceptance criteria); Relay and tunnel; ADRs: [0004](../../adr/0004-mock-engine-and-conformance.md)
 
@@ -15,7 +15,7 @@ The CA's validation server connects to `<engineId>.<domain>:443` with SNI set to
 
 ## Scope
 
-- `src/domain/tls/alpn-dispatch.ts`: peeks at the first bytes of each tunnel stream with the ClientHello parser from `@ptbk/protocol` (R-01) and decides `{ kind: 'acme-challenge'; hostname } | { kind: 'normal' } | { kind: 'reject' }`. ALPN offering exactly `acme-tls/1` with a pending challenge for that hostname goes to the responder; `acme-tls/1` with no pending challenge is rejected.
+- `src/domain/tls/alpn-dispatch.ts`: peeks at the first bytes of each tunnel stream with the ClientHello parser imported from `@ptbk/protocol` (R-01; SNI and ALPN, never a local parser) and decides `{ kind: 'acme-challenge'; hostname } | { kind: 'normal' } | { kind: 'reject' }`. ALPN offering exactly `acme-tls/1` with a pending challenge for that hostname goes to the responder; `acme-tls/1` with no pending challenge is rejected.
 - `src/adapters/tls-alpn-responder.ts`: a `tls.Server` with `ALPNProtocols: ['acme-tls/1']` serving the challenge certificate from `acme.crypto.createAlpnCertificate(authz, keyAuthorization, key)`; peeked bytes are `unshift`ed back onto the duplex before handing it over.
 - `src/adapters/acme-certificate-source.ts` (acme-client 5.4.x): implements M-02's `CertificateSource`. Account key in `PTBK_DATA_DIR/acme/account-key.pem` (0600), created once. Issue flow: order for each engine hostname, choose the `tls-alpn-01` challenge, register it with the responder, `completeChallenge`, wait for valid, finalize with a CSR from a locally generated ECDSA P-256 key, store chain and key in `PTBK_DATA_DIR/tls/` (0600), emit `onChange`. Removes the challenge certificate as soon as the authorization settles.
 - `src/domain/tls/renewal-policy.ts`: pure `renewalDue(cert, now)`: renew when less than a third of the lifetime remains; check every 12 h and at startup. Failures retry with backoff and keep serving the current certificate.
@@ -49,5 +49,5 @@ The CA's validation server connects to `<engineId>.<domain>:443` with SNI set to
 ## Risks and open points
 
 - The ClientHello parser comes from `@ptbk/protocol` (R-01). Do not copy or fork it; if it lacks something, extend it there.
-- The spike criterion names a Let's Encrypt **staging** certificate. Pebble covers CI; a staging run needs a public relay and public DNS (I-01, I-02). Write a manual runbook in the spike doc and record the result when that infra exists. Let's Encrypt validates from several vantage points, which may hit different relays: the engine must hold tunnels to every relay DNS returns, and relay per-IP limits must not throttle validators.
+- The spike criterion names a Let's Encrypt **staging** certificate. CI uses Pebble only. A real staging run needs a public relay and public DNS, so it is a manual run after I-01 and I-02 land: write the runbook in the spike doc now and record the result then. Until that run passes, the spike criterion stays open. Let's Encrypt validates from several vantage points, which may hit different relays: the engine must hold tunnels to every relay DNS returns, and relay per-IP limits must not throttle validators.
 - Let's Encrypt is moving to shorter certificate lifetimes and ARI; the renewal policy should accept an ARI hint later without redesign.

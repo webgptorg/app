@@ -1,9 +1,9 @@
 # D-07. Billing with Stripe
 
 - **Lane:** D · **Module:** `apps/dashboard` · **Milestone:** M3
-- **Depends on:** D-02, U-02 · **Unblocks:** — (M3 completion; I-05 uses its billing state)
+- **Depends on:** D-02, D-09
 - **Status:** todo
-- **Spec:** Goal and scope; Decisions (Billing); Metadata we still see (Account email, billing details); Legal and GDPR (sub-processors); Abuse on our domains (item 4); ADRs: [0006](../../adr/) (Organizations, members and roles from day one), [0007](../../adr/0007-frontend-stack.md), [0009](../../adr/0009-drizzle-and-migrations.md)
+- **Spec:** Goal and scope; Decisions (Billing); Metadata we still see (Account email, billing details); Legal and GDPR (sub-processors); Abuse on our domains (item 4); ADRs: [0006](../../adr/0006-organizations-and-roles.md), [0007](../../adr/0007-frontend-stack.md), [0009](../../adr/0009-drizzle-and-migrations.md)
 
 ## Goal
 
@@ -46,7 +46,7 @@ Per ADR 0006 the organization, not the user, owns the Stripe customer and the su
 
 - `BillingProvider` port (`createCustomer`, `createCheckoutSession`, `createPortalSession`, `getSubscription`, `verifyWebhook`) with a Stripe adapter and an in-memory fake. The fake is selectable with `adapters.billing = 'fake'` (dev and the X-05 e2e stack only; D-01's config refuses it elsewhere): its Checkout session completes at once, upserting the org's subscription as `active` through the same code path the webhook uses, and returns `/billing?checkout=success` as the URL; its portal returns `/billing`. So billing never blocks linking an engine in tests. Use the official `stripe` package (newest version at least 7 days old) with its fetch HTTP client and SubtleCrypto provider, or plain `fetch` plus WebCrypto if the SDK does not run cleanly on Workers.
 - Authorizer actions: `billing.read` and `billing.manage` (`owner` in v0); `billing.owner.change` already exists from D-02 as `sensitive` (no route for it yet, since v0 orgs have one owner).
-- SPA routes built from `@ptbk/ui` components (U-02), strings through i18n, and `/api/*` endpoints declared in D-01's route table:
+- SPA routes built from `@ptbk/ui` components in D-09's shell, strings through i18n, and `/api/*` endpoints declared in D-01's route table:
   - `/billing`: plan, status, renewal date, buttons "Subscribe" (Checkout) or "Manage billing" (portal); data from `GET /api/billing`.
   - `POST /api/billing/checkout` and `POST /api/billing/portal` create the Stripe customer on first use (email = the acting owner's email, metadata `org_id` only), then a Checkout session in subscription mode with the configured price ID, or a portal session, and return `{ url }`; the SPA navigates to it top-level. Success and cancel URLs point back to `/billing`. No Stripe.js on our pages, so the CSP stays `script-src 'self'`.
   - `/admin/billing` (platform admin, via `Authorizer`, data from `GET /api/admin/billing`): a `DataTable` of organizations whose status is `past_due`, `unpaid` or `canceled`, with a link to their engines for the manual suspend action (I-05).

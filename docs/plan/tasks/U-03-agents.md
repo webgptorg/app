@@ -1,7 +1,7 @@
 # U-03. Agents: list, detail, control
 
 - **Lane:** U · **Module:** `apps/engine-ui` · **Milestone:** M2
-- **Depends on:** U-02 · **Unblocks:** U-04, X-04
+- **Depends on:** U-02
 - **Status:** todo
 - **Spec:** Security hardening ("None of this limits the owner", 1 on public agents), What our platform can and cannot do; ADRs: [0003](../../adr/0003-ui-as-signed-bundle.md)
 
@@ -16,10 +16,10 @@ The spec is explicit: isolation is aimed at agents, visitors and Promptbook, nev
 ## Scope
 
 - Routes:
-  - `/agents`: list. Search params validated with zod in `validateSearch`: `q` (string), `status`, `visibility`, `sort` (`updated` | `name`), `cursor`. The URL is the state, so back and forward work and links are shareable.
+  - `/agents`: list. Search params validated with zod in `validateSearch`: `q` (string), `status` (C-04's run state: `idle | running | stopped | error`), `visibility`, `sort` (`name` | `updatedAt` | `createdAt`, `-` prefix for descending, default `-updatedAt`), `cursor`. All of them are sent to C-04's `GET /agents`; nothing is sorted or filtered on the client. The URL is the state, so back and forward work and links are shareable.
   - `/agents/$agentId`: detail with overview, status, visibility, owner/creator, created and updated times, last activity, model, and links to chat (U-05) and the book editor (U-04).
 - List: `DataTable` from `@ptbk/ui` in server-side mode, its sorting, filters and cursor bound to the typed search params above; its card layout below 768 px. Columns: name (link), description (truncated), status badge, visibility badge, created by, last activity (`RelativeTime`); column visibility from the table menu, persisted per device. Debounced search (300 ms), status and visibility filters, cursor paging with previous/next, total count when the API provides it. Row selection stays off (no bulk actions). Row actions in the table's actions menu. "New agent" button to `/agents/new` (route added by U-04; until then a stub).
-- Status: badge with text (running, idle, stopped, error, as C-04 defines). Prefer an event stream from the API written into the query cache with `setQueryData`; C-04 has none today, so until it does, refresh with `refetchInterval: 10_000` while the tab is visible, isolated in `useAgentStatus` so the switch touches one hook.
+- Status: badge with text (running, idle, stopped, error, as C-04 defines). Driven by C-04's `GET /events` SSE: one app-wide subscription (`src/app/engine-events.ts`, resumable with `Last-Event-ID`; U-05 reuses it) writes each `agent.status` event into the cached status of that agent in list and detail with `setQueryData`, and `agent.changed` invalidates that agent's detail and the list. If the stream cannot resume, the agent queries are invalidated once on reconnect. Nothing polls.
 - Actions on detail and in the row menu: start, stop, toggle visibility, delete.
   - Visibility to public: `ConfirmDialog` explaining that anyone with the link can chat with the agent without signing in.
   - Delete: `ConfirmDialog` requiring the agent's name to be typed; then navigate to `/agents` and show a toast.
@@ -52,7 +52,9 @@ The spec is explicit: isolation is aimed at agents, visitors and Promptbook, nev
 - [ ] Visibility: making an agent public requires confirmation; a failed toggle rolls back the badge.
 - [ ] Start/stop update the status badge after the server confirms.
 - [ ] A step-up-required error on delete opens the step-up dialog (U-02).
-- [ ] With a permission list lacking `agents.delete` and `agents.update`, delete and the visibility toggle are absent from detail and row menu; with only `agents.read`, the "New agent" button is absent too.
+- [ ] An `agent.status` event from the in-memory client's event stream updates the badge in list and detail without a refetch (client call count unchanged).
+- [ ] Sorting writes `sort` to the URL and the request carries it; reloading keeps the order.
+- [ ] With a permission list lacking `agents.delete` and `agents.write`, delete and the visibility toggle are absent from detail and row menu; with only `agents.read`, the "New agent" button is absent too.
 - [ ] Empty, no-results, error and not-found states each have a test.
 - [ ] Hovering a row link fetches the agent detail once before navigation (in-memory client call count); a hidden column stays hidden after reload.
 - [ ] Each mutation shows a success or failure toast; a failed visibility toggle shows the failure toast and the rolled-back badge.
@@ -63,7 +65,6 @@ The spec is explicit: isolation is aimed at agents, visitors and Promptbook, nev
 
 ## Risks and open points
 
-- The agent status set, the visibility values and whether the API returns a total count are C-04 decisions; if the contract lacks start/stop or creator fields, amend it first.
-- C-04's agent list has no `sort` or `status` query parameter and no status event stream. Ask C-04 for them (sorting and filtering must happen on the server, since the list is paged); until then hide the unsupported controls rather than sorting one page on the client, and keep the 10 s refresh.
+- Run control (start, stop, status, `agents.run`) is draft in C-04 and may change with the engine team; keep it inside `useAgentMutations` and the status hook so a change touches one place.
 - Whether public agents are allowed on the default engine domain is open in the spec. The UI shows the toggle; the engine decides whether to accept it, and a refusal is shown as an error message.
 - Whether delete needs step-up is the engine's policy; the UI must handle both.

@@ -1,7 +1,7 @@
 # I-04. Monitoring without content
 
 - **Lane:** I · **Module:** `apps/relay` (metrics), `apps/dashboard` (metrics, uptime and alert jobs), `infra/` · **Milestone:** M4
-- **Depends on:** I-01, I-02 · **Unblocks:** I-06
+- **Depends on:** I-01, I-02, D-04, D-05
 - **Status:** todo
 - **Spec:** Metadata we still see; Operations (Availability and failure modes); Hosting and stack (Monitoring jobs); Legal and GDPR (sub-processors); docs/engineering.md (Logging and metadata)
 
@@ -15,8 +15,9 @@ The relay pipes ciphertext and must log only what "Metadata we still see" lists,
 
 ## Scope
 
-- Backend (decided 2026-10-19): **Cloudflare-first**, recorded as an ADR with the next free number: relays expose metrics on an authenticated `GET /metrics` on their own hostname; a dashboard Cron Trigger scrapes every relay every minute, writes to Workers Analytics Engine, evaluates alert rules and sends alerts. The scrape doubles as a relay uptime check. No other vendor in this task.
+- Backend (decided 2026-10-19): **Cloudflare-first**, recorded as ADR 0012 (monitoring backend): relays expose metrics on an authenticated `GET /metrics` on their own hostname (permitted by [ADR 0008](../../adr/0008-hono-for-http-apis.md), which is being amended to allow it alongside the tunnel upgrade and health check); a dashboard Cron Trigger scrapes every relay every minute, writes to Workers Analytics Engine, evaluates alert rules and sends alerts. The scrape doubles as a relay uptime check. No other vendor in this task.
 - Relay metrics (counters and gauges, Prometheus text format, a `Metrics` port with an in-memory fake): active tunnels; tunnel connects, disconnects and auth failures by reason; active browser connections; browser connections by outcome (`routed`, `unknown-sni`, `no-sni`, `limit`); bytes in and out (aggregate); time from ClientHello to stream open (histogram); registry lookups by result (`fresh`, `stale`, `miss`, `error`) and latency; process memory, event-loop lag, open file descriptors; own certificate expiry timestamp. `/metrics` requires a separate metrics token (not the registry token).
+- Dashboard `scheduled` dispatcher: I-04 owns the Worker's single `scheduled` handler, which dispatches by cron expression to registered jobs, records runs and failures, and isolates one job's failure from the others. I-05 registers its jobs with it.
 - Dashboard metrics: requests by route template (never the raw path) and status; heartbeats by outcome; registrations by outcome; Durable Object alarms fired; emails sent and failed; cron job runs and failures.
 - Uptime checks (Cron Trigger, every minute): each relay's TLS handshake and `/healthz` on its own hostname; dashboard `/v1/health`; the relay certificate's days to expiry. An external uptime check from outside Cloudflare comes later; Seb will specify the provider. Leave a documented hook (health endpoints and alert routing) for it.
 - Alert rules (initial thresholds in config, documented): relay unreachable 2 checks in a row; active tunnels drop by more than 50 % within 5 minutes; registry `error` or `stale` rate above 5 % for 10 minutes; heartbeat rejections spike; relay cert expires in under 14 days; any cron job failing 3 times; email send failures. Alerts go to an `AlertSink` port (email via `EmailSender` to an ops address by default).
@@ -38,7 +39,7 @@ The relay pipes ciphertext and must log only what "Metadata we still see" lists,
 
 ## Acceptance criteria
 
-- [ ] ADR merged and listed in `docs/adr/README.md`.
+- [ ] ADR 0012 merged and listed in `docs/adr/README.md`.
 - [ ] Relay unit tests for the metrics port; `/metrics` returns 401 without the token and the documented series with it; no series carries an engine ID, hostname or IP label (test).
 - [ ] Staging: dashboards or queries show tunnels, connections, bytes, errors and latency for the staging relay while the mock engine runs through it (screenshot in the PR).
 - [ ] Stopping the staging relay raises an alert within 3 minutes; restarting it clears it.

@@ -1,9 +1,9 @@
 # D-03. Link codes and engine registration API
 
 - **Lane:** D · **Module:** `apps/dashboard` · **Milestone:** M3
-- **Depends on:** D-02, C-03 · **Unblocks:** D-04, D-05
+- **Depends on:** D-02, C-03, D-09
 - **Status:** todo
-- **Spec:** Pairing and identity (First setup); Interfaces (draft) 1; Abuse on our domains (items 3 and 4); Metadata we still see; ADRs: [0006](../../adr/) (Organizations, members and roles from day one), [0008](../../adr/0008-hono-for-http-apis.md), [0009](../../adr/0009-drizzle-and-migrations.md)
+- **Spec:** Pairing and identity (First setup); Interfaces (draft) 1; Abuse on our domains (items 3 and 4); Metadata we still see; ADRs: [0006](../../adr/0006-organizations-and-roles.md), [0008](../../adr/0008-hono-for-http-apis.md), [0009](../../adr/0009-drizzle-and-migrations.md)
 
 ## Goal
 
@@ -37,7 +37,7 @@ The link code only ties an engine to an organization (the tenant that owns engin
         .references(() => organizations.id),
       publicKey: text('public_key').notNull().unique(),
       hostname: text('hostname').notNull().unique(),
-      mode: text('mode').notNull(),
+      mode: text('mode', { enum: ['tunnel', 'direct'] }).notNull(),
       engineVersion: text('engine_version').notNull(),
       status: text('status', { enum: ['active', 'suspended'] })
         .notNull()
@@ -46,14 +46,18 @@ The link code only ties an engine to an organization (the tenant that owns engin
       createdAt: integer('created_at').notNull(),
       updatedAt: integer('updated_at').notNull(),
     },
-    (t) => [check('engines_status_check', sql`${t.status} in ('active', 'suspended')`)],
+    (t) => [
+      check('engines_status_check', sql`${t.status} in ('active', 'suspended')`),
+      check('engines_mode_check', sql`${t.mode} in ('tunnel', 'direct')`),
+    ],
   );
   ```
 
-- Link code issuance: SPA route `/engines/new` (built from `@ptbk/ui`) and `POST /api/engines/link-codes` (contract in `src/shared/api/`), allowed by `Authorizer.can(actor, 'engine.link', { kind: 'org', orgId })` (new action: `owner` only in v0). All strings through i18n. Shows the code once inside the install command, with a 30-minute countdown and a copy button. Only `SHA-256(code)` is stored.
-- `POST /v1/engines/register` in the Hono `/v1` router, bound to the C-03 contract, in this order: per-IP rate limit (20 per hour) → body size cap (4 KiB, 413) → strict parse with the C-03 schema (400) → derive `engineId` and `hostname` with protocol functions → atomically consume the link code and insert the engine in one D1 batch (`db.batch([...])`) → 200 with the C-03 response (`engineId`, `hostname = <engineId>.<engineDomain>`, `relays` from config).
-- Outcomes and status codes (use C-03's error schema if it defines one; otherwise problem+json with `code`, per ADR 0008):
+- Link code issuance: SPA route `/engines/new` (built from `@ptbk/ui` in D-09's shell) and `POST /api/engines/link-codes` (contract in `src/shared/api/`), allowed by `Authorizer.can(actor, 'engine.link', { kind: 'org', orgId })` (new action: `owner` only in v0). All strings through i18n. Shows the code once inside the install command, with a 30-minute countdown and a copy button. The code is C-03's `LinkCode`: 128 bits from `Random`, lowercase RFC 4648 base32 without padding. Only `SHA-256(code)` is stored.
+- `POST /v1/engines/register` in the Hono `/v1` router, bound to the C-03 contract, in this order: per-IP rate limit (20 per hour) → body size cap (4 KiB, 413) → strict parse with the C-03 schema (400) → verify the engine's signature with C-03's `verifyRegistration` (401 `bad-signature`) → derive `engineId` and `hostname` with protocol functions → atomically consume the link code and insert the engine in one D1 batch (`db.batch([...])`) → 200 with the C-03 response (`engineId`, `hostname = <engineId>.<engineDomain>`, `relays`: the `relayId` hostnames from D-01's `relays` config).
+- Outcomes and status codes, as C-03's `ProblemDetails` (RFC 9457 problem+json with `code`, ADR 0008):
   - unknown, expired or used link code → 401 `invalid-link-code` (one code for all three, so it is not an oracle);
+  - signature does not verify → 401 `bad-signature`;
   - key already registered to the same organization → 200 with the existing data (the code is still consumed);
   - key registered to another organization → 409 `engine-exists`;
   - key belongs to a suspended engine → 403 `engine-suspended`;
@@ -69,12 +73,11 @@ The link code only ties an engine to an organization (the tenant that owns engin
 
 ## Design notes
 
-- Registration is signed by the engine key (decided 2026-10-19, spec Interface 1): verify it with C-03's `verifyRegistration` before touching the link code, and reject with 401 problem+json on a bad signature. Test: a valid link code with a signature from another key is rejected and the code stays unused.
-
-- Link code: use the format C-03 defines. If C-03 leaves it open: 160 bits from `Random`, Crockford base32 without padding, 32 characters, compared only through its hash.
+- Registration is signed by the engine key (decided 2026-10-19, spec Interface 1): verify it with C-03's `verifyRegistration` before touching the link code, and reject with 401 `bad-signature` on failure. Test: a valid link code with a signature from another key is rejected and the code stays unused.
+- Link code: C-03's format only (128-bit, lowercase base32 without padding); never re-implement or widen it. Compared only through its hash.
 - Consumption must be atomic: one Drizzle `update(linkCodes).set({ usedAt, engineId }).where(and(eq(linkCodes.codeHash, hash), isNull(linkCodes.usedAt), gt(linkCodes.expiresAt, now))).returning({ orgId: linkCodes.orgId })`, in the same batch as the engine insert, so a database error does not burn the code and two concurrent registrations cannot both win.
 - The install command is rendered from a config template with a `{linkCode}` placeholder. Its real shape comes from the engine team (E-01); use a placeholder until then.
-- `mode` is stored as sent (`tunnel`, `direct` or `local`, per C-03); relays are returned regardless, the engine decides.
+- `mode` is stored as sent (`tunnel | direct`, per C-03); relays are returned regardless, the engine decides.
 - Registration responses carry `Cache-Control: no-store`. Log engine ID and outcome kind only; never the link code or its hash.
 
 ## Acceptance criteria

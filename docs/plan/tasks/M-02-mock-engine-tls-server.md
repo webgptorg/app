@@ -1,7 +1,7 @@
 # M-02. TLS and HTTP server inside the tunnel, dev CA, spike endpoints
 
 - **Lane:** Mock engine · **Module:** `apps/mock-engine` · **Milestone:** M1
-- **Depends on:** M-01 · **Unblocks:** X-01, M-03, M-04, M-05
+- **Depends on:** M-01
 - **Status:** todo
 - **Spec:** Relay and tunnel; Build plan (Spike acceptance criteria); Operations (Bandwidth and cost); Engine security baseline; ADRs: [0004](../../adr/0004-mock-engine-and-conformance.md)
 

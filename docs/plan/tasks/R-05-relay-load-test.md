@@ -1,7 +1,7 @@
 # R-05. Relay load and throughput test
 
 - **Lane:** Relay · **Module:** `apps/relay` (load tooling in `apps/relay/load/`) · **Milestone:** M1
-- **Depends on:** R-04, M-01 · **Unblocks:** — (closes the relay epic's load criterion and the spike's screencast criterion)
+- **Depends on:** R-04, M-01
 - **Status:** todo
 - **Spec:** Build plan (Spike acceptance criteria; v0 epics "Relay"); Operations (Bandwidth and cost); Hosting and stack; ADRs: [0005](../../adr/0005-modular-architecture.md)
 

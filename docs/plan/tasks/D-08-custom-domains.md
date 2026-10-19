@@ -1,9 +1,9 @@
 # D-08. Enterprise custom domains (manual admin flow)
 
 - **Lane:** D · **Module:** `apps/dashboard` · **Milestone:** M3
-- **Depends on:** D-04, U-02 · **Unblocks:** — (part of the M4 security review scope)
+- **Depends on:** D-04, D-09
 - **Status:** todo
-- **Spec:** Relay and tunnel (Enterprise custom domains); Residual risks (Custom domain, strict mode); Interfaces (draft) 2 and 6 (`PTBK_CUSTOM_DOMAIN`); Migrating existing engines; ADRs: [0006](../../adr/) (Organizations, members and roles from day one)
+- **Spec:** Relay and tunnel (Enterprise custom domains); Residual risks (Custom domain, strict mode); Interfaces (draft) 2 and 6 (`PTBK_CUSTOM_DOMAIN`); Moving existing deployments; ADRs: [0006](../../adr/0006-organizations-and-roles.md)
 
 ## Goal
 
@@ -38,7 +38,7 @@ Custom domains are Enterprise only and set up by hand with each customer; there 
 
 - D1 adapter (Drizzle) for D-04's `EngineHostnameStore` returning only `active` rows with their claims, so the registry response includes them.
 - Authorizer action `admin.hostnames.manage`: platform admin only, `requiresStepUp`. Every change writes `admin_audit_log` (action, engine ID, hostname).
-- Admin SPA route `/admin/engines/$engineId/hostnames`, built from `@ptbk/ui` components (U-02) with the hostnames in a `DataTable`, strings through i18n; each action below is an `/api/admin/engines/:engineId/hostnames` endpoint declared in D-01's route table:
+- Admin SPA route `/admin/engines/$engineId/hostnames`, built from `@ptbk/ui` components in D-09's admin shell, with the hostnames in a `DataTable`, strings through i18n; each action below is an `/api/admin/engines/:engineId/hostnames` endpoint declared in D-01's route table:
   - Add: hostname + claim signature (base64url). Server checks in order: hostname normalised (lowercase, trailing dot removed, IDNs as A-labels, max 253 chars) and valid per the protocol `Hostname` schema; not an IP; no wildcard; not under the engine domain, `ptbk.io` or a relay domain (config list); not already assigned; claim verifies against the engine's public key with the C-01 function. Stored as `pending-dns`.
   - "Check DNS": resolves through a `DnsResolver` port; `active` when the hostname's CNAME target equals the expected target (see open points). Otherwise shows what was found.
   - Remove: deletes the row after confirmation.
