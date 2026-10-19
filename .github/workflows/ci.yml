@@ -32,6 +32,7 @@ jobs:
       - run: bun run format:check
       - run: bun run typecheck
       - run: bun run test
+      - run: bun run plan --check
 
   workflows:
     runs-on: ubuntu-24.04
