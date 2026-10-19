@@ -24,11 +24,13 @@ The security panel is how a customer checks our claims without trusting us, so i
   - **Hostnames:** default hostname and custom domains, each with certificate status and, for custom domains, whether the signed claim is registered.
   - **Outbound destinations:** the list the engine reports (spec, hardening item 4).
   - **Last heartbeat:** the exact payload the engine sent, shown as the raw string in a `<pre>` (no parse and re-serialise), with the sent time, the signature header value, and a "copy" button. A collapsible field table below explains each field.
-- `/members` (`requirePermission('members.read')`): read-only table: display name, role label, number of passkeys, last seen, joined. No invite or role editing in v0; leave room for an actions column later.
+- `/members` (`requirePermission('members.read')`): read-only `DataTable` from `@ptbk/ui` (server-side mode, cursor paging in typed search params, column visibility, card layout below 768 px): display name, role label, number of passkeys, last seen, joined. No invite or role editing in v0 and no row selection; the table's row actions slot leaves room for actions later.
 - Passkeys (section on `/security` or `/settings/passkeys`): the current member's passkeys (name, created, last used, authenticator kind), revoke with `ConfirmDialog` and step-up; revoking the passkey of the current session warns that it signs you out. Owners with `members.passkeys.revoke` see all members' passkeys.
-- `/secrets` (`requirePermission('secrets.read')`): table of name, scope (engine-wide or one agent), created, last rotated, last used, state (`active | revoked`). Actions behind `can()`: create (name, scope, value), replace value, revoke, delete (typed confirmation). The value field is `type="password"`, `autocomplete="new-password"`, `spellcheck={false}`, without a reveal toggle; it is uncontrolled and read once on submit, so the value never enters React state, the query cache or the URL.
+- `/secrets` (`requirePermission('secrets.read')`): `DataTable` of name, scope (engine-wide or one agent), created, last rotated, last used, state (`active | revoked`), with sorting and a scope and state filter bound to typed search params (client-side mode while C-04 returns secrets unpaged; server-side mode with cursor paging if it becomes paged). Actions behind `can()`: create (name, scope, value), replace value, revoke, delete (typed confirmation). Name and scope use the `@ptbk/ui` form layer with a zod schema. The value uses `SensitiveInput` from `@ptbk/ui`: `type="password"`, `autocomplete="new-password"`, `spellcheck={false}`, without a reveal toggle; it is uncontrolled, never registered with the form store and read once on submit, so the value never enters React state, the form store, the query cache or the URL.
+- Mutations (update policy, passkey revoke, all secret actions) wait for the server; none is optimistic, because each is security-relevant and may need step-up. Every outcome is reported with a toast that names the object, never a value.
 - `/settings`: language and theme (from U-02), link to passkeys.
-- Hooks in `src/features/security/`, `src/features/members/`, `src/features/secrets/` with query-key factories.
+- Hooks in `src/features/security/`, `src/features/members/`, `src/features/secrets/` with query-key factories and `queryOptions` helpers shared with the route loaders.
+- States: skeletons shaped like each card and table, empty states (no secrets yet, no custom domains, no outbound destinations), error states with retry per section so one failing endpoint does not blank the panel; the route error boundary catches the rest (U-02).
 
 ## Out of scope
 
@@ -47,11 +49,13 @@ The security panel is how a customer checks our claims without trusting us, so i
 - [ ] Security panel renders every section from the in-memory client; the heartbeat `<pre>` text equals the raw string byte for byte (test with unusual key order and spacing).
 - [ ] UI version mismatch shows the warning; a foreign CT certificate shows the danger banner; a relay `down` shows text, not only colour.
 - [ ] Update policy change: step-up path tested; without `engine.update-policy` the control is read-only.
-- [ ] Secrets: create, replace, revoke and delete work; after create and replace, the value is absent from `document.body` (including attributes), from the serialised query cache and from any toast; the input is cleared after submit and after a failed submit.
+- [ ] Secrets: create, replace, revoke and delete work; after create and replace, the value is absent from `document.body` (including attributes), from the serialised query cache, from the form store and from any toast; the input is cleared after submit and after a failed submit.
 - [ ] A secret response containing `value` is rejected by the client schema and the UI shows an error, not the value.
 - [ ] Members table is read-only: no invite, edit or remove controls exist; with an empty permission list `/members`, `/secrets` and `/security` show "no access".
 - [ ] Passkey revoke requires confirmation and step-up; revoking the current passkey warns first.
-- [ ] `axe-core` passes on each page; `test:csp` visits each page with zero violations.
+- [ ] The members table pages through a `large-fleet`-sized in-memory data set; members cursor and secrets sorting and filters are restored from the URL on reload.
+- [ ] A failing security section shows its own error state with retry while the other sections render; empty states each have a test; each mutation shows a success or failure toast.
+- [ ] `axe-core` passes on each page; `test:csp` visits each page with zero violations and passes the UX checks (360 px without overflow, layout shift, reduced motion); each route stays within its bundle budget.
 - [ ] `bun run check` passes.
 - [ ] **Status** line above set to `done (#<PR>)`.
 

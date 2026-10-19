@@ -1,9 +1,9 @@
 # D-06. Engine list and status UI
 
 - **Lane:** D · **Module:** `apps/dashboard` · **Milestone:** M3
-- **Depends on:** D-05 · **Unblocks:** X-05
+- **Depends on:** D-05, D-09 · **Unblocks:** X-05
 - **Status:** todo
-- **Spec:** One address for users; What our platform can and cannot do; Residual risks (3. Our dashboard); Abuse on our domains (Before the Public Suffix List entry lands); ADRs: [0006](../../adr/) (Organizations, members and roles from day one)
+- **Spec:** One address for users; What our platform can and cannot do; Residual risks (3. Our dashboard); Abuse on our domains (Before the Public Suffix List entry lands); ADRs: [0006](../../adr/) (Organizations, members and roles from day one), [0007](../../adr/0007-frontend-stack.md)
 
 ## Goal
 
@@ -15,15 +15,15 @@ This is the dashboard's main screen and the M3 demo: sign up, link the mock engi
 
 ## Scope
 
-- Routes (all strings through D-01's i18n, English and Czech):
-  - `/engines` (also the post-sign-in landing page): table or cards per engine with status badge, engine ID (shortened with a copy-full button), default hostname and active custom hostnames, last seen (relative, exact on hover), engine version, update state, agents, members, disk and RAM buckets, CPU load.
+- SPA routes built from `@ptbk/ui` components (U-02), all strings through D-01's i18n, English and Czech:
+  - `/engines` (also the post-sign-in landing page): a `DataTable` (TanStack Table, virtualized with TanStack Virtual past a page of rows) with one row per engine: status badge, engine ID (shortened with a copy-full button), default hostname and active custom hostnames, last seen (relative, exact on hover), engine version, update state, agents, members, disk and RAM buckets, CPU load.
   - `/engines/$engineId`: the same fields plus the last heartbeat payload as a read-only field list (the spec wants owners able to see exactly what we receive).
   - Empty state: explanation and a button to `/engines/new` (D-03).
-- Server functions (`createServerFn`) `listEngines()` and `getEngine(engineId)`: resolve the session's actor, call `Authorizer.can(actor, 'engine.read', resource)` (new action, `owner` in v0), read engines from the org-scoped `EngineStore` with the session's `orgId`, then fetch each engine's `EngineStatus.getStatus()` over RPC in parallel (cap concurrency at 10, 2-second timeout per call; a timeout shows `unknown` for that engine, not an error page).
+- Endpoints `GET /api/engines` and `GET /api/engines/:engineId` in the Hono `/api` router, declared in D-01's `src/shared/api/` route table and called through the typed client: resolve the session's actor, call `Authorizer.can(actor, 'engine.read', resource)` (new action, `owner` in v0), read engines from the org-scoped `EngineStore` with the session's `orgId`, then fetch each engine's `EngineStatus.getStatus()` over RPC in parallel (cap concurrency at 10, 2-second timeout per call; a timeout shows `unknown` for that engine, not an error page).
 - Pure domain function `deriveEngineDisplayStatus(engine, snapshot) → 'suspended' | 'never-seen' | 'online' | 'offline' | 'unknown'`; suspended wins over heartbeat state.
 - "Open" link: `<a href="https://<hostname>/" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">`. Built from the stored hostname, never from user input.
-- Refresh: refetch on window focus and every 60 seconds while visible.
-- An org switcher component in the header that lists the user's memberships (one in v0) and changes `active_org_id` through a POST action guarded by membership. Kept minimal; it exists so the session model is exercised.
+- Refresh through TanStack Query: refetch on window focus and every 60 seconds while visible (`refetchInterval`, no background refetch).
+- An org switcher component in the header that lists the user's memberships (one in v0, from D-02's `GET /api/session`) and changes `active_org_id` through `POST /api/session/active-org`, guarded by membership. Kept minimal; it exists so the session model is exercised.
 
 ## Out of scope
 
@@ -32,17 +32,17 @@ This is the dashboard's main screen and the M3 demo: sign up, link the mock engi
 
 ## Design notes
 
-- `getEngine` for an engine of another organization returns the same 404 as for a missing one.
+- `GET /api/engines/:engineId` for an engine of another organization returns the same 404 as for a missing one.
 - Never call the DO for engines the actor may not read; authorization comes before status fetches.
 - Accessibility: status is conveyed by text, not colour alone; table is keyboard navigable.
-- Keep components dependent on hooks and the server functions behind an interface, so tests can render with fake data.
+- Components depend on TanStack Query hooks, and the hooks on the typed API client interface, so client tests render with a fake client and fake data.
 
 ## Acceptance criteria
 
 - [ ] Unit tests for `deriveEngineDisplayStatus`, covering all five outcomes.
-- [ ] Workers or component tests: a user of org A sees only org A's engines; `getEngine` with org B's engine ID → 404; signed-out → redirect to `/signin`; a DO timeout renders `unknown` for that engine and the rest normally.
+- [ ] Workers tests: a user of org A sees only org A's engines; `GET /api/engines/:engineId` with org B's engine ID → 404; no session → 401; a DO timeout returns `unknown` for that engine and the rest normally. Client tests: signed-out → redirect to `/signin`; an `unknown` engine renders as such without an error page.
 - [ ] A rendered "Open" link has `target="_blank"`, `rel="noopener noreferrer"`, `referrerpolicy="no-referrer"` and the exact `https://<engineId>.<engine domain>/` URL.
-- [ ] A test asserts the engine pages' HTML contains no reference to the engine domain other than those anchor `href`s (no `src`, `link rel=prefetch|preconnect|dns-prefetch`, no `fetch` target).
+- [ ] A test asserts the rendered engine pages' DOM contains no reference to the engine domain other than those anchor `href`s (no `src`, `link rel=prefetch|preconnect|dns-prefetch`, no `fetch` target), and that the typed client only targets `/api/*`.
 - [ ] Both locales render the list and detail pages without missing keys.
 - [ ] `bun run check` passes.
 - [ ] **Status** line above set to `done (#<PR>)`.

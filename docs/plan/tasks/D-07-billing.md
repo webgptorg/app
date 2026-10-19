@@ -1,9 +1,9 @@
 # D-07. Billing with Stripe
 
 - **Lane:** D · **Module:** `apps/dashboard` · **Milestone:** M3
-- **Depends on:** D-02 · **Unblocks:** — (M3 completion; I-05 uses its billing state)
+- **Depends on:** D-02, U-02 · **Unblocks:** — (M3 completion; I-05 uses its billing state)
 - **Status:** todo
-- **Spec:** Goal and scope; Decisions (Billing); Metadata we still see (Account email, billing details); Legal and GDPR (sub-processors); Abuse on our domains (item 4); ADRs: [0006](../../adr/) (Organizations, members and roles from day one)
+- **Spec:** Goal and scope; Decisions (Billing); Metadata we still see (Account email, billing details); Legal and GDPR (sub-processors); Abuse on our domains (item 4); ADRs: [0006](../../adr/) (Organizations, members and roles from day one), [0007](../../adr/0007-frontend-stack.md), [0009](../../adr/0009-drizzle-and-migrations.md)
 
 ## Goal
 
@@ -15,17 +15,42 @@ Per ADR 0006 the organization, not the user, owns the Stripe customer and the su
 
 ## Scope
 
-- Migration `0005_billing.sql`:
-  - `billing_customers(org_id TEXT PK REFERENCES organizations, stripe_customer_id TEXT UNIQUE NOT NULL, created_at INTEGER NOT NULL)`
-  - `subscriptions(org_id TEXT PK, stripe_subscription_id TEXT UNIQUE NOT NULL, status TEXT NOT NULL, price_id TEXT NOT NULL, quantity INTEGER, current_period_end INTEGER, cancel_at_period_end INTEGER NOT NULL, updated_at INTEGER NOT NULL)`
-  - `stripe_events(event_id TEXT PK, type TEXT NOT NULL, received_at INTEGER NOT NULL)` for idempotency, pruned after 30 days.
-- `BillingProvider` port (`createCustomer`, `createCheckoutSession`, `createPortalSession`, `getSubscription`, `verifyWebhook`) with a Stripe adapter and an in-memory fake. The fake is selectable with `adapters.billing = 'fake'` (dev and the X-05 e2e stack only; D-01's config refuses it elsewhere): Checkout and portal redirect to a local `/billing?fake=success` page that marks the org `active`, so billing never blocks linking an engine in tests. Use the official `stripe` package (newest version at least 7 days old) with its fetch HTTP client and SubtleCrypto provider, or plain `fetch` plus WebCrypto if the SDK does not run cleanly on Workers.
+- Tables in `src/adapters/db/schema.ts` (drizzle-kit generates the migration); `stripe_events` is for idempotency, pruned after 30 days:
+
+  ```ts
+  export const billingCustomers = sqliteTable('billing_customers', {
+    orgId: text('org_id')
+      .primaryKey()
+      .references(() => organizations.id),
+    stripeCustomerId: text('stripe_customer_id').notNull().unique(),
+    createdAt: integer('created_at').notNull(),
+  });
+
+  export const subscriptions = sqliteTable('subscriptions', {
+    orgId: text('org_id').primaryKey(),
+    stripeSubscriptionId: text('stripe_subscription_id').notNull().unique(),
+    status: text('status').notNull(),
+    priceId: text('price_id').notNull(),
+    quantity: integer('quantity'),
+    currentPeriodEnd: integer('current_period_end'),
+    cancelAtPeriodEnd: integer('cancel_at_period_end', { mode: 'boolean' }).notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  });
+
+  export const stripeEvents = sqliteTable('stripe_events', {
+    eventId: text('event_id').primaryKey(),
+    type: text('type').notNull(),
+    receivedAt: integer('received_at').notNull(),
+  });
+  ```
+
+- `BillingProvider` port (`createCustomer`, `createCheckoutSession`, `createPortalSession`, `getSubscription`, `verifyWebhook`) with a Stripe adapter and an in-memory fake. The fake is selectable with `adapters.billing = 'fake'` (dev and the X-05 e2e stack only; D-01's config refuses it elsewhere): its Checkout session completes at once, upserting the org's subscription as `active` through the same code path the webhook uses, and returns `/billing?checkout=success` as the URL; its portal returns `/billing`. So billing never blocks linking an engine in tests. Use the official `stripe` package (newest version at least 7 days old) with its fetch HTTP client and SubtleCrypto provider, or plain `fetch` plus WebCrypto if the SDK does not run cleanly on Workers.
 - Authorizer actions: `billing.read` and `billing.manage` (`owner` in v0); `billing.owner.change` already exists from D-02 as `sensitive` (no route for it yet, since v0 orgs have one owner).
-- Routes (strings through i18n):
-  - `/billing`: plan, status, renewal date, buttons "Subscribe" (Checkout) or "Manage billing" (portal).
-  - POST actions create the Stripe customer on first use (email = the acting owner's email, metadata `org_id` only), then a Checkout session in subscription mode with the configured price ID, or a portal session; redirect to the returned URL. Success and cancel URLs point back to `/billing`.
-  - `/admin/billing` (platform admin, via `Authorizer`): organizations whose status is `past_due`, `unpaid` or `canceled`, with a link to their engines for the manual suspend action (I-05).
-- `POST /webhooks/stripe` in the API router: raw body, `Stripe-Signature` verified with the webhook secret and a 5-minute tolerance (400 on failure), event ID deduplicated, then handled: `checkout.session.completed`, `customer.subscription.created|updated|deleted`, `invoice.paid`, `invoice.payment_failed`. Unknown types → 200 and ignored. For subscription events, re-fetch the subscription from Stripe and upsert it, so out-of-order delivery cannot leave stale state.
+- SPA routes built from `@ptbk/ui` components (U-02), strings through i18n, and `/api/*` endpoints declared in D-01's route table:
+  - `/billing`: plan, status, renewal date, buttons "Subscribe" (Checkout) or "Manage billing" (portal); data from `GET /api/billing`.
+  - `POST /api/billing/checkout` and `POST /api/billing/portal` create the Stripe customer on first use (email = the acting owner's email, metadata `org_id` only), then a Checkout session in subscription mode with the configured price ID, or a portal session, and return `{ url }`; the SPA navigates to it top-level. Success and cancel URLs point back to `/billing`. No Stripe.js on our pages, so the CSP stays `script-src 'self'`.
+  - `/admin/billing` (platform admin, via `Authorizer`, data from `GET /api/admin/billing`): a `DataTable` of organizations whose status is `past_due`, `unpaid` or `canceled`, with a link to their engines for the manual suspend action (I-05).
+- `POST /webhooks/stripe` in the Hono `/webhooks` router: raw body read once (the signature covers the bytes, so no JSON validator middleware before verification), `Stripe-Signature` verified with the webhook secret and a 5-minute tolerance (400 on failure), event ID deduplicated, then handled: `checkout.session.completed`, `customer.subscription.created|updated|deleted`, `invoice.paid`, `invoice.payment_failed`. Unknown types → 200 and ignored. For subscription events, re-fetch the subscription from Stripe and upsert it, so out-of-order delivery cannot leave stale state.
 - Config and secrets: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` (Workers secrets), `STRIPE_PRICE_ID` (var). Test-mode keys in dev and staging, live keys only in production.
 
 ## Out of scope
@@ -48,7 +73,7 @@ Per ADR 0006 the organization, not the user, owns the Stripe customer and the su
 - [ ] Org scoping: a user of org B cannot open org A's billing page or create a portal session for org A's customer (403); the Stripe customer is keyed by `org_id`, not user.
 - [ ] `/admin/billing` is denied to non-admins and lists only problem states.
 - [ ] Manual check against Stripe test mode recorded in the PR: Checkout completes, webhook arrives, portal opens.
-- [ ] Schema allowlist updated; `bun run check` passes.
+- [ ] Migration is drizzle-kit output and passes D-01's guards; schema allowlist updated; `bun run check` passes.
 - [ ] **Status** line above set to `done (#<PR>)`.
 
 ## Risks and open points

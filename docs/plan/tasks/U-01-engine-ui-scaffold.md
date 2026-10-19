@@ -13,9 +13,11 @@
 
 The engine downloads our bundle, verifies it and serves it from its own origin (ADR 0003). The open engine owns the pre-auth gateway, sign-in, setup and WebAuthn pages and the CSP headers; engine-ui loads only after the user is signed in. Whatever this scaffold allows (inline styles, a CDN font, a `<style>` injected by a library) every later task inherits, so the CSP is enforced from the first commit. Every later U task builds on the layout and test helpers defined here.
 
+The same holds for quality: the router and query conventions, the bundle budgets and the accessibility, responsive and layout-shift checks are set up here, so U-02 to U-07 only have to meet them. The full UX bar is listed in U-02; components come from the shared `@ptbk/ui` package that U-02 builds ([ADR 0007](../../adr/0007-frontend-stack.md)).
+
 ## Scope
 
-- Package setup: Vite 8.3, React 19.3, `@vitejs/plugin-react`, TanStack Router 1.170 with `@tanstack/router-plugin` (file-based routes, `autoCodeSplitting: true`), TanStack Query 5.104, Tailwind 4.3 via `@tailwindcss/vite`, zod 4.6, Vitest 5 + `@testing-library/react` + `@testing-library/user-event` + jsdom, `@playwright/test` 1.64. Scripts: `dev`, `build`, `preview`, `typecheck`, `test`, `test:csp`.
+- Package setup: Vite 8.3, React 19.3, `@vitejs/plugin-react`, `@tanstack/react-router` 1.170.x with `@tanstack/router-plugin` (file-based routes, `autoCodeSplitting: true`), `@tanstack/react-query` 5.104.x, Tailwind 4.3 via `@tailwindcss/vite`, zod 4.6, `@ptbk/ui` (`workspace:*`, empty until U-02), Vitest 5 + `@testing-library/react` + `@testing-library/user-event` + jsdom + `axe-core`, `@playwright/test` 1.64 + `@axe-core/playwright`. TanStack Table and Virtual come in through `@ptbk/ui` (U-02). Scripts: `dev`, `build`, `preview`, `typecheck`, `test`, `test:csp`.
 - Layout:
   ```
   apps/engine-ui/
@@ -26,19 +28,24 @@ The engine downloads our bundle, verifies it and serves it from its own origin (
     src/routeTree.gen.ts         generated, committed
     src/features/                one folder per feature (filled by U-03..U-07)
     src/security/                csp-violation-listener.ts, safe-url.ts
-    src/test/                    renderWithProviders(), in-memory client wiring
-    tests/csp/                   Playwright CSP smoke test
+    src/test/                    renderWithProviders(), in-memory client wiring, expectNoAxeViolations()
+    tests/csp/                   Playwright CSP smoke test and UX checks
+    bundle-budget.json           per-route gzip budgets
   ```
 - `EngineApiProvider` (React context) and `useEngineApi()`; the client is also put in the router context so route loaders can prefetch with `queryClient.ensureQueryData`. Production uses the HTTP client from `@ptbk/engine-api`; tests use the in-memory client.
+- Router conventions: `defaultPreload: 'intent'` (route code and loader data on hover and focus) with `defaultPreloadStaleTime: 0`, so TanStack Query alone decides freshness; search params typed with zod schemas in `validateSearch` (Standard Schema, no adapter), with `.catch()` defaults so a bad URL falls back instead of throwing; placeholder `defaultErrorComponent`, `defaultPendingComponent` and `defaultNotFoundComponent` (U-02 replaces them with `@ptbk/ui` components).
+- Query conventions: one query-key factory per resource (`src/features/<feature>/<feature>-keys.ts`) and `queryOptions()` helpers shared by loaders and hooks, so a loader's prefetch and a component's read hit the same cache entry. TanStack devtools only in dev, through a dynamic import behind `import.meta.env.DEV` (they inject styles).
+- Bundle budgets: a small Vite plugin in `vite.config.ts` computes, at `generateBundle`, the gzip size of the entry chunk with its static imports and of each route chunk, compares them with `bundle-budget.json` and fails the build when `CI` is set and a budget is exceeded. It writes its report outside `dist/`, so `dist/` stays exactly what X-03 ships. Starting budgets: entry 150 kB, each route 50 kB, CSS 30 kB (gzip); a task that needs more raises its route's budget in the same PR with the reason.
 - Dev mode: `vite dev` proxies the engine API prefix (from C-04) to the mock engine (M-04) at `MOCK_ENGINE_URL`. `VITE_ENGINE_API=memory` swaps in the in-memory client via a dynamic import guarded by `import.meta.env.DEV`, so it is tree-shaken from production builds.
 - A 401 from the API triggers a full-page navigation to the engine's sign-in path (from C-04) with a `next` parameter; engine-ui never renders a sign-in form.
 - CSP violation listener (`securitypolicyviolation` on `document`): in dev it logs loudly; in test and in `test:csp` it records violations on `window.__ptbkCspViolations` so tests fail.
 - ESLint override for `apps/engine-ui/**`: browser globals, `eslint-plugin-react-hooks`, `eslint-plugin-jsx-a11y`, and bans on `dangerouslySetInnerHTML`, `innerHTML`, `outerHTML`, `insertAdjacentHTML`, `document.write`, `setAttribute('style', ...)` and `new Worker(<string>)` everywhere except `src/security/trusted-html.ts` (created by the first task that truly needs HTML, see U-05). Ignore `routeTree.gen.ts` in ESLint and Prettier.
 - `test:csp`: build, serve `dist/` with `vite preview` sending the engine's CSP header, load `/` and `/agents` in Chromium, and fail on any recorded violation, console CSP or Trusted Types error, uncaught page error, or request to a non-`'self'` origin. Wire it into a CI job (separate from `check`, Chromium installed with `playwright install --with-deps chromium`).
+- UX checks in the same Playwright fixture, reused by every later U task through a `visit(path)` helper: `@axe-core/playwright` with no serious or critical violations; at a 360 × 740 viewport `document.documentElement.scrollWidth` does not exceed the viewport width; cumulative layout shift from a `layout-shift` `PerformanceObserver` stays below 0.1 after load; a run with `reducedMotion: 'reduce'` emulated. Unit tests get `expectNoAxeViolations(container)` over `axe-core`.
 
 ## Out of scope
 
-- Design system, shell, i18n, dark mode (U-02). Feature screens (U-03 to U-07).
+- The shared `@ptbk/ui` package, design system, shell, i18n, dark mode (U-02). Feature screens (U-03 to U-07).
 - Sign-in, setup, step-up and WebAuthn pages: engine gateway, open source.
 - Manifest, packing, signing (X-03). Serving the bundle through the loader (M-05).
 
@@ -48,7 +55,8 @@ The engine downloads our bundle, verifies it and serves it from its own origin (
 - Vite config: `build.assetsInlineLimit: 0` (fonts or SVGs inlined as `data:` would break `font-src 'self'`), `build.modulePreload.polyfill: false`, `build.sourcemap: false`, `base: '/'`, content-hashed file names under `assets/`. Nothing in `index.html` besides one `<script type="module" src>` and one stylesheet link.
 - The Vite dev server injects inline scripts and `<style>` for HMR, so the strict CSP is only checked against the built bundle; dev keeps the listener but no enforced CSP.
 - React's `style` prop is allowed because React applies it through CSSOM, which CSP does not block. Libraries that append `<style>` elements or set `style` attributes as strings are not allowed.
-- Query client defaults: no retry on 4xx, at most 2 retries on network errors and 5xx, `refetchOnWindowFocus` on.
+- Query client defaults: no retry on 4xx, at most 2 retries on network errors and 5xx, `refetchOnWindowFocus` on. Server-sent event streams feed the cache or a reducer directly; nothing polls to follow a stream.
+- Front-end practice the scaffold commits to (full UX bar in U-02): every route has loading, empty and error states and sits under an error boundary; mutations report their outcome and roll back optimistic changes on error; links preload on intent; nothing shifts on load; every route stays within its bundle budget; every string goes through i18n (U-02 adds Paraglide, so U-01 has no user-visible text beyond the placeholder).
 - Errors from the client are the typed unions C-04 defines; map them in one place (`src/app/api-errors.ts`), not per component.
 
 ## Acceptance criteria
@@ -58,6 +66,9 @@ The engine downloads our bundle, verifies it and serves it from its own origin (
 - [ ] Unit test renders the root route with the in-memory client and shows the placeholder agents route; a 401 from the client triggers navigation to the sign-in path.
 - [ ] The production bundle contains no in-memory client code (test greps `dist/` for a marker string exported by it).
 - [ ] ESLint fails on `dangerouslySetInnerHTML` in a component (rule covered by a lint fixture or `RuleTester`).
+- [ ] Bundle budgets: the CI build fails when a route chunk exceeds its budget (verified once with a temporarily lowered budget, noted in the PR); the report lists every route.
+- [ ] Hovering or focusing a link to `/agents` preloads its route chunk and loader data (unit test on the router or Playwright request log); an invalid search param on the placeholder route falls back to its default.
+- [ ] `test:csp` runs the UX checks (axe, 360 px overflow, layout shift, reduced motion) on `/agents` and passes; a fixture page with a fixed 400 px element makes the overflow check fail.
 - [ ] CI job for `test:csp` exists, uses SHA-pinned actions, no caches.
 - [ ] `bun run check` passes.
 - [ ] **Status** line above set to `done (#<PR>)`.

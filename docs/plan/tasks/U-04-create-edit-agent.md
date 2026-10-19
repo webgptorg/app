@@ -13,7 +13,7 @@ The owner can create an agent with a guided wizard and edit any agent's book in 
 
 The UX follows the predecessor "ManGo" new-agent wizard (brief, book, knowledge, test chat, done) and the predecessor book editor page. Those used Monaco from a CDN, injected `<style>` at runtime and needed `blob:` workers, all of which the engine's CSP blocks. This task picks an editor that works under the CSP and records the choice as an ADR.
 
-**Predecessor code may be ported** (the license gate is lifted): the ManGo wizard (`promptbook`, `apps/agents-server/src/components/NewAgentDialog/ManGoNewAgentWizard/`), the book editor page (`apps/agents-server/src/app/agents/[agentName]/book/`) and the TanStack prototype (`agents-server` repo, `src/modules/onboarding/`). Port, then adapt: replace Next.js routing and server actions with TanStack Router and `EngineApiClient` calls, Tailwind 3 classes with U-02 tokens, strings with Paraglide messages, default exports with named ones; drop CDN Monaco, runtime `<style>` injection and anything else the CSP blocks. Ported code meets [engineering.md](../../engineering.md) like new code.
+**Predecessor code may be ported** (the license gate is lifted): the ManGo wizard (`promptbook`, `apps/agents-server/src/components/NewAgentDialog/ManGoNewAgentWizard/`), the book editor page (`apps/agents-server/src/app/agents/[agentName]/book/`) and the TanStack prototype (`agents-server` repo, `src/modules/onboarding/`). Port, then adapt: replace Next.js routing and server actions with TanStack Router and `EngineApiClient` calls (through TanStack Query), Tailwind 3 classes and hand-rolled controls with `@ptbk/ui` tokens and components, ad-hoc form state with the `@ptbk/ui` form layer, strings with Paraglide messages, default exports with named ones; drop CDN Monaco, runtime `<style>` injection and anything else the CSP blocks. Ported code meets [engineering.md](../../engineering.md) like new code.
 
 ## Scope
 
@@ -21,13 +21,14 @@ The UX follows the predecessor "ManGo" new-agent wizard (brief, book, knowledge,
 - **Book language** in `src/features/book/language/`: a `StreamLanguage` tokenizer (first line is the agent name; lines starting with a commitment keyword such as `PERSONA`, `RULE`, `KNOWLEDGE`, `META …` are highlighted; comments, URLs and `{parameters}` too). The keyword list comes from the engine API when C-04 offers it, with a built-in fallback, so new engine commitments highlight without a UI release.
 - **Diagnostics**: debounced (500 ms) call to the API's book validation, mapped to `@codemirror/lint` markers and a problems list below the editor (click jumps to the range). Stale responses are discarded (abort the previous request).
 - **Wizard** at `/agents/new` (guarded by `requirePermission('agents.create')`), step in the URL (`?step=brief|book|knowledge|test|done`):
-  1. Brief: name and description (`Field` validation with zod).
+  1. Brief: name and description, a `@ptbk/ui` form with a zod schema; server validation errors from the create call are mapped onto the fields with `applyServerErrors`.
   2. Book: a draft book from the API's draft endpoint if C-04 has one, else a template filled with name and description; editable in the same editor. Leaving this step creates the agent (create call), so later steps have an agent ID.
   3. Knowledge: drop zone plus an accessible file input; per-file progress, size and type limits from the API, remove before or after upload. Upload goes through the client port (it accepts `onProgress` and `signal`).
   4. Test chat: the `ChatPanel` from U-05 against the new agent.
   5. Done: links to the agent detail, chat and book editor.
   - Unsaved brief or book triggers TanStack Router's `useBlocker` on navigation. Cancelling after creation offers to delete the created agent. Nothing is written to browser storage.
-- **Book editor** at `/agents/$agentId/book`: editor, problems list, save (`Mod-s` and a button) with the version the editor started from; a 409 conflict shows "changed elsewhere" with options to reload or view the diff. A 422 with diagnostics shows them and saves nothing. History panel: list of versions (author, time), read-only view, diff against current (`@codemirror/merge`), restore (creates a new version, never rewrites history).
+- **Book editor** at `/agents/$agentId/book`: editor, problems list, save (`Mod-s` and a button) with the version the editor started from; a 409 conflict shows "changed elsewhere" with options to reload or view the diff. A 422 with diagnostics shows them and saves nothing. History panel: list of versions (author, time; `DataTable` with cursor paging), read-only view, diff against current (`@codemirror/merge`), restore (creates a new version, never rewrites history). Save and restore wait for the server (no optimistic update: conflicts are expected) and report their outcome with a toast.
+- **States and loading:** skeletons for the editor and history while loading, empty history, error states with retry, and the route error boundary for the rest (U-02). The editor and its language chunks are code-split with the route; the "Edit book" and "New agent" links preload them on intent. The editor route and the wizard get their own entries in `bundle-budget.json`, sized with the reason in the PR.
 
 ## Out of scope
 
@@ -37,7 +38,7 @@ The UX follows the predecessor "ManGo" new-agent wizard (brief, book, knowledge,
 
 ## Design notes
 
-- Editor component `src/features/book/book-editor.tsx` owns one `EditorView`; extensions: line numbers, history, search, bracket matching, lint, the book language, a theme built from U-02 tokens (CSS variables, so dark mode needs no re-mount).
+- Editor component `src/features/book/book-editor.tsx` owns one `EditorView`; extensions: line numbers, history, search, bracket matching, lint, the book language, a theme built from `@ptbk/ui` tokens (CSS variables, so dark mode needs no re-mount). The editor stays in engine-ui, not in `@ptbk/ui`: the dashboard does not need it.
 - Highlight styles use `classHighlighter` classes styled in `app.css`, not inline themes, so the bundle CSS holds everything static.
 - Uploaded files are never read into the DOM or evaluated; only metadata is shown.
 
@@ -47,7 +48,9 @@ The UX follows the predecessor "ManGo" new-agent wizard (brief, book, knowledge,
 - [ ] `test:csp` opens the book editor and the wizard book step under the engine CSP, types a book, sees highlighting classes and a diagnostic marker for an invalid line, opens the diff view, and records zero CSP or Trusted Types violations.
 - [ ] Wizard unit tests: step validation blocks progress; the agent is created exactly once even if "Next" is double-clicked; upload progress, an over-limit file (rejected before upload) and an upload error are shown; cancel after creation offers deletion.
 - [ ] Editor unit tests: diagnostics from the in-memory client appear and update; an out-of-order validation response is ignored; save sends the base version; 409 and 422 paths; restore creates a new version and the history list grows.
-- [ ] Every wizard step and the editor page are keyboard-operable and pass `axe-core`.
+- [ ] Every wizard step and the editor page are keyboard-operable and pass `axe-core`; on each step change focus moves to the step heading; the drop zone has a keyboard-operable file input.
+- [ ] Save and restore show success and failure toasts; loading, empty-history and error states each have a test.
+- [ ] `test:csp` passes the UX checks (360 px without overflow, layout shift, reduced motion) on the wizard and the editor; both routes stay within their recorded bundle budgets.
 - [ ] Ported files are listed in the PR description with their source path; none uses `innerHTML`, a CDN or a `<style>` element.
 - [ ] `/agents/new` requires `agents.create` and the book editor's save and restore require `agents.update` (rendered through `can()`, guarded with `requirePermission`); a read-only member sees the book and history but no save or restore.
 - [ ] `bun run check` passes.

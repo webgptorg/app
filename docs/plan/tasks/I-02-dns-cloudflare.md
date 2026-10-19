@@ -15,7 +15,7 @@ Engine hostnames must never be proxied by Cloudflare: proxying would terminate T
 
 ## Scope
 
-- Use the IaC tooling from I-01's ADR (if I-02 starts first, write that ADR here). Code under `infra/cloudflare/` with one stack per environment.
+- OpenTofu with the Cloudflare provider (decided 2026-10-19; if I-02 starts before I-01, write the tooling ADR here). Code under `infra/cloudflare/` with one stack per environment.
 - Environments: separate Cloudflare accounts (or at minimum separate zones and API tokens) for staging and production, so a staging token can never change production. Dev stays local.
 - Engine domain zone (placeholder `ENGINE_DOMAIN`, a separate staging domain or subdomain):
   - `*.<engine domain>` A and AAAA to every relay in that environment, `proxied = false`, TTL 60 s;

@@ -15,15 +15,15 @@ The heartbeat is the platform's only input from a running engine: numbers only, 
 
 ## Scope
 
-- Durable Object class `EngineStatus` exported from `src/worker.ts`, binding `ENGINE_STATUS`, SQLite-backed (`new_sqlite_classes` migration tag `v1` in `wrangler.jsonc`), addressed by `idFromName(engineId)`.
+- Durable Object class `EngineStatus` as a named export of `src/worker.ts` next to the Hono default export, binding `ENGINE_STATUS`, SQLite-backed (`new_sqlite_classes` migration tag `v1` in `wrangler.jsonc`), addressed by `idFromName(engineId)`. Durable Object changes keep using wrangler migration tags; the DO's own storage is not part of the D1 schema or drizzle-kit.
 - RPC methods on `EngineStatus`, each delegating to a pure domain state machine in `src/domain/status/`:
   - `recordHeartbeat({ engineId, orgId, seq, ts, receivedAt, payload }) → { kind: 'accepted' } | { kind: 'replay' }` (`replay` when `seq <= lastSeq`);
   - `getStatus() → EngineStatusSnapshot` = `{ state: 'never-seen' } | { state: 'online' | 'offline', lastSeenAt, lastSeq, payload, offlineSince? }`;
   - `reset()` deletes all storage (for engine removal later).
 - `alarm()`: if `now - lastSeenAt >= missedLimit * intervalS` (defaults 3 and 60 s, plus 15 s grace) and no alert has been sent for this outage, mark `offline`, resolve recipients and send one `engine-offline` email. A later heartbeat sets `online` and arms the next outage. Failed sends retry with backoff up to 3 times. Thirty days after the last heartbeat, the alarm deletes the stored payload (spec retention) and keeps only `state` and `lastSeenAt`.
-- Route in the API router, in this order: per-IP and per-engine rate limits (per engine 5 per minute) → body cap 2 KiB (413) → engine ID path parse (400) → `Ptbk-Signature: ed25519=<base64url>` header parse (401) → load engine from D1 (404 unknown, 403 suspended) → verify the signature over the exact raw body bytes with the protocol function (401) → JSON parse and strict C-03 schema (400) → `body.engineId` equals the path (400) → `|now - ts| <= 120 s` (401 `stale-timestamp`) → `recordHeartbeat` (409 on `replay`) → success per C-03 (204 if C-03 says nothing).
+- Route in the Hono `/v1` router, in this order: per-IP and per-engine rate limits (per engine 5 per minute) → body cap 2 KiB (413) → engine ID path parse (400) → `Ptbk-Signature: ed25519=<base64url>` header parse (401) → load engine from D1 (404 unknown, 403 suspended) → verify the signature over the exact raw body bytes with the protocol function (401) → JSON parse and strict C-03 schema (400) → `body.engineId` equals the path (400) → `|now - ts| <= 120 s` (401 `stale-timestamp`) → `recordHeartbeat` (409 on `replay`) → success per C-03 (204 if C-03 says nothing).
 - `engine-offline` email template in English and Czech: engine ID, hostname, last seen time, link to the dashboard engine page. Nothing else; there is nothing else to send.
-- `AlertRecipients` port: `forEngineOffline(orgId, signal) → readonly { email, locale }[]`; the D1 adapter returns the org's `owner` members with verified emails. Later roles or settings change only this adapter.
+- `AlertRecipients` port: `forEngineOffline(orgId, signal) → readonly { email, locale }[]`; the D1 adapter (Drizzle, in `src/adapters/db/`) returns the org's `owner` members with verified emails. Later roles or settings change only this adapter.
 
 ## Out of scope
 
@@ -32,7 +32,7 @@ The heartbeat is the platform's only input from a running engine: numbers only, 
 
 ## Design notes
 
-- Read the body once as `ArrayBuffer`, verify, then decode and parse; never re-serialize JSON for verification.
+- Read the body once as `ArrayBuffer` (`c.req.arrayBuffer()`), verify, then decode and parse with the C-03 schema; never re-serialize JSON for verification. So this route parses inside the handler after verification instead of using a JSON validator middleware, which would parse before the signature is checked.
 - Verify before touching the Durable Object, so unauthenticated traffic never wakes it.
 - The Worker passes `orgId` from the D1 engine row into the DO, so the alarm never needs an org lookup by engine for scoping.
 - Every `recordHeartbeat` calls `setAlarm(receivedAt + missedLimit * intervalS + grace)`, replacing the previous alarm.

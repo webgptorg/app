@@ -15,10 +15,10 @@ The relay pipes ciphertext and must log only what "Metadata we still see" lists,
 
 ## Scope
 
-- ADR (the next free ADR number) choosing the metrics and alerting backend. Default proposal: relays expose metrics on an authenticated `GET /metrics` on their own hostname; a dashboard Cron Trigger scrapes every relay every minute, writes to Workers Analytics Engine, evaluates alert rules and sends alerts. The scrape doubles as a relay uptime check. Alternatives to weigh: Grafana Cloud EU with an agent on each host, or self-hosted Prometheus. Criteria: no new sub-processor if avoidable, works when one relay is down, cost.
+- Backend (decided 2026-10-19): **Cloudflare-first**, recorded as an ADR with the next free number: relays expose metrics on an authenticated `GET /metrics` on their own hostname; a dashboard Cron Trigger scrapes every relay every minute, writes to Workers Analytics Engine, evaluates alert rules and sends alerts. The scrape doubles as a relay uptime check. No other vendor in this task.
 - Relay metrics (counters and gauges, Prometheus text format, a `Metrics` port with an in-memory fake): active tunnels; tunnel connects, disconnects and auth failures by reason; active browser connections; browser connections by outcome (`routed`, `unknown-sni`, `no-sni`, `limit`); bytes in and out (aggregate); time from ClientHello to stream open (histogram); registry lookups by result (`fresh`, `stale`, `miss`, `error`) and latency; process memory, event-loop lag, open file descriptors; own certificate expiry timestamp. `/metrics` requires a separate metrics token (not the registry token).
 - Dashboard metrics: requests by route template (never the raw path) and status; heartbeats by outcome; registrations by outcome; Durable Object alarms fired; emails sent and failed; cron job runs and failures.
-- Uptime checks (Cron Trigger, every minute): each relay's TLS handshake and `/healthz` on its own hostname; dashboard `/v1/health`; the relay certificate's days to expiry. An external check of the dashboard from outside Cloudflare (so a Cloudflare outage still alerts) is listed as an open point.
+- Uptime checks (Cron Trigger, every minute): each relay's TLS handshake and `/healthz` on its own hostname; dashboard `/v1/health`; the relay certificate's days to expiry. An external uptime check from outside Cloudflare comes later; Seb will specify the provider. Leave a documented hook (health endpoints and alert routing) for it.
 - Alert rules (initial thresholds in config, documented): relay unreachable 2 checks in a row; active tunnels drop by more than 50 % within 5 minutes; registry `error` or `stale` rate above 5 % for 10 minutes; heartbeat rejections spike; relay cert expires in under 14 days; any cron job failing 3 times; email send failures. Alerts go to an `AlertSink` port (email via `EmailSender` to an ops address by default).
 - Log retention per the spec's table, enforced and documented in `docs/runbooks/observability.md`:
   - relay: engine IP and tunnel connect/disconnect events at most 7 days (journald `MaxRetentionSec=7day` from I-01); browser IPs not logged by default; per-engine byte counts, if kept for abuse handling, aggregated per day and dropped after 24 h, never linked to accounts; SNI never stored;
@@ -49,5 +49,5 @@ The relay pipes ciphertext and must log only what "Metadata we still see" lists,
 ## Risks and open points
 
 - Backend choice (ADR) and any new sub-processor need team sign-off and a privacy policy update.
-- An uptime check from outside Cloudflare means a third party (or a relay host) probes the dashboard; pick one.
+- The external uptime provider (to be specified by Seb) will be a new sub-processor; add it to the privacy policy then.
 - Where alerts go besides email (chat, phone) and who is on call are team decisions.

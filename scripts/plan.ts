@@ -57,6 +57,35 @@ function validate(tasks: readonly Task[]): string[] {
     ]);
 }
 
+/** Wave = longest dependency chain below a task; tasks in the same wave can run in parallel. */
+function computeWaves(tasks: readonly Task[]): Map<string, number> {
+    const byId = new Map(tasks.map((task) => [task.id, task]));
+    const waves = new Map<string, number>();
+    const visiting = new Set<string>();
+    const visit = (id: string): number => {
+        const known = waves.get(id);
+        if (known !== undefined) return known;
+        if (visiting.has(id)) throw new Error(`dependency cycle through ${id}`);
+        visiting.add(id);
+        const deps = byId.get(id)?.dependsOn ?? [];
+        const wave = deps.length === 0 ? 1 : 1 + Math.max(...deps.map(visit));
+        visiting.delete(id);
+        waves.set(id, wave);
+        return wave;
+    };
+    for (const task of tasks) visit(task.id);
+    return waves;
+}
+
+function printWaves(tasks: readonly Task[]): void {
+    const waves = computeWaves(tasks);
+    const max = Math.max(...waves.values());
+    for (let wave = 1; wave <= max; wave++) {
+        const ids = tasks.filter((task) => waves.get(task.id) === wave).map((task) => task.id);
+        console.log(`Wave ${String(wave)}: ${ids.join(', ')}`);
+    }
+}
+
 function printTable(tasks: readonly Task[]): void {
     console.log('| ID | Task | Milestone | Depends on | Status |');
     console.log('| --- | --- | --- | --- | --- |');
@@ -66,16 +95,25 @@ function printTable(tasks: readonly Task[]): void {
     }
 }
 
-const { values } = parseArgs({ options: { next: { type: 'boolean' }, check: { type: 'boolean' } } });
+const { values } = parseArgs({
+    options: { next: { type: 'boolean' }, check: { type: 'boolean' }, waves: { type: 'boolean' } },
+});
 const tasks = readTasks();
 const problems = validate(tasks);
+try {
+    computeWaves(tasks);
+} catch (error) {
+    problems.push(error instanceof Error ? error.message : String(error));
+}
 
 if (values.check) {
     for (const problem of problems) console.error(problem);
     process.exit(problems.length === 0 ? 0 : 1);
 }
 
-if (values.next) {
+if (values.waves) {
+    printWaves(tasks);
+} else if (values.next) {
     const byId = new Map(tasks.map((task) => [task.id, task]));
     const ready = tasks.filter(
         (task) => task.status === 'todo' && task.dependsOn.every((dep) => isDone(byId.get(dep))),

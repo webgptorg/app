@@ -19,9 +19,20 @@ The relay must not trust the dashboard more than necessary: default hostnames ar
 
 Dashboard (`apps/dashboard`):
 
-- Migration `0004_relays.sql`: `relays(relay_id TEXT PK, name TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE, created_at INTEGER NOT NULL, revoked_at INTEGER)`. Two rows per relay may be live during rotation.
+- Table in `src/adapters/db/schema.ts` (drizzle-kit generates the migration); two rows per relay may be live during rotation:
+
+  ```ts
+  export const relays = sqliteTable('relays', {
+    relayId: text('relay_id').primaryKey(),
+    name: text('name').notNull(),
+    tokenHash: text('token_hash').notNull().unique(),
+    createdAt: integer('created_at').notNull(),
+    revokedAt: integer('revoked_at'),
+  });
+  ```
+
 - `scripts/mint-relay-key.ts` (run locally against an environment with wrangler): creates a relay row, prints the token once.
-- `GET /internal/v1/engines/{engineId}`: `Authorization: Bearer <token>` → SHA-256 → lookup of a non-revoked relay, else 401. Path parsed with the protocol `EngineId` schema (400). Unknown engine → 404. Otherwise 200 with the C-03 registry response: `enginePublicKey`, `hostnames` (default hostname plus active custom hostnames with their engine-signed claims, `"ptbk-hostname-v1" | hostname | engineId`), `status: 'active' | 'suspended'`. `Cache-Control: no-store`. Per-relay rate limit (600 per minute).
+- `GET /internal/v1/engines/{engineId}` in the Hono `/internal` router, bound to the C-03 contract: `Authorization: Bearer <token>` → SHA-256 → lookup of a non-revoked relay, else 401. Path parsed with the protocol `EngineId` schema (400). Unknown engine → 404. Otherwise 200 with the C-03 registry response: `enginePublicKey`, `hostnames` (default hostname plus active custom hostnames with their engine-signed claims, `"ptbk-hostname-v1" | hostname | engineId`), `status: 'active' | 'suspended'`. `Cache-Control: no-store`. Per-relay rate limit (600 per minute).
 - The response carries nothing about the owning organization, its users or billing; relays need routing data only. This endpoint is not org-scoped (relays are platform actors), so it reads through a dedicated `RegistryReader` port rather than the org-scoped `EngineStore` methods.
 - Custom hostnames come from the `engine_hostnames` table that D-08 adds; until then the list holds only the default hostname. Read it through an `EngineHostnameStore` port so D-08 only adds an adapter and rows.
 
@@ -46,6 +57,7 @@ Relay (`apps/relay`):
 
 ## Acceptance criteria
 
+- [ ] Dashboard migration is drizzle-kit output and passes D-01's guards; schema allowlist updated.
 - [ ] Dashboard Workers tests: no header, wrong token and revoked relay → 401; malformed engine ID → 400; unknown → 404; active engine → 200 matching the C-03 schema with no org, user or billing fields; suspended engine → `status: "suspended"`; a session cookie alone does not authenticate.
 - [ ] Relay adapter tests (injected `fetch` and `Clock`): fresh hit makes no request; expiry refetches; dashboard 500, timeout and invalid JSON serve stale; 404 evicts and negative-caches; key/engine ID mismatch rejected; custom hostname with a bad claim dropped, good one kept; ten concurrent lookups make one request.
 - [ ] The shared registry port test suite from R-02 runs against the in-memory, static and HTTP adapters.

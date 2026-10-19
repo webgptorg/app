@@ -11,7 +11,7 @@ The owner flows (agents, create agent, edit book, chat, security panel, secrets,
 
 ## Context
 
-This is the M2 done criterion. Unit tests in engine-ui run against an in-memory client and `vite preview`; here the bundle comes from the release path (X-03 packing, M-05 verification), the CSP header comes from the mock engine, and every byte goes through the relay. The mock engine has no shortcuts the real engine would not have (ADR 0004), so the same suite later runs against the real engine (E-03).
+This is the M2 done criterion. Unit tests in engine-ui run against an in-memory client and `vite preview`; here the bundle (engine-ui plus the shared `@ptbk/ui` code it compiles in) comes from the release path (X-03 packing, M-05 verification), the CSP header comes from the mock engine, and every byte goes through the relay. The mock engine has no shortcuts the real engine would not have (ADR 0004), so the same suite later runs against the real engine (E-03).
 
 ## Scope
 
@@ -32,7 +32,7 @@ This is the M2 done criterion. Unit tests in engine-ui run against an in-memory 
   8. **Audit:** the actions from the flows above appear with filters by action and target working.
   9. **Capabilities:** a mock engine scenario signs in a member whose permission list lacks `agents.delete`, `secrets.read` and `audit.read`: those actions and nav items are absent, the routes show "no access", and a forced API call returns 403.
   10. **Faults:** with mock engine fault injection, a dropped chat stream shows "interrupted"; an API 500 shows the error banner with retry; a slow tunnel shows skeletons and then data; killing relay-a mid-session leaves the app usable after a retry.
-  11. **Accessibility and i18n:** `@axe-core/playwright` on each main page reports no serious or critical violations; switching to Czech changes visible text and `<html lang>`; dark mode renders without violations.
+  11. **Accessibility and i18n:** `@axe-core/playwright` on each main page reports no serious or critical violations; switching to Czech changes visible text and `<html lang>`; dark mode renders without violations; at a 360 px viewport the main pages have no horizontal overflow.
 - CI: part of the existing `e2e` job (X-01).
 
 ## Out of scope

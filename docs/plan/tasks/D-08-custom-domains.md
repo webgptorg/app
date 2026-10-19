@@ -1,7 +1,7 @@
 # D-08. Enterprise custom domains (manual admin flow)
 
 - **Lane:** D · **Module:** `apps/dashboard` · **Milestone:** M3
-- **Depends on:** D-04 · **Unblocks:** — (part of the M4 security review scope)
+- **Depends on:** D-04, U-02 · **Unblocks:** — (part of the M4 security review scope)
 - **Status:** todo
 - **Spec:** Relay and tunnel (Enterprise custom domains); Residual risks (Custom domain, strict mode); Interfaces (draft) 2 and 6 (`PTBK_CUSTOM_DOMAIN`); Migrating existing engines; ADRs: [0006](../../adr/) (Organizations, members and roles from day one)
 
@@ -15,10 +15,30 @@ Custom domains are Enterprise only and set up by hand with each customer; there 
 
 ## Scope
 
-- Migration `0006_engine_hostnames.sql`: `engine_hostnames(hostname TEXT PK, engine_id TEXT NOT NULL REFERENCES engines, org_id TEXT NOT NULL, claim_sig TEXT NOT NULL, status TEXT NOT NULL CHECK (status IN ('pending-dns','active')), dns_checked_at INTEGER, created_at INTEGER NOT NULL, created_by_user_id TEXT NOT NULL)`.
-- D1 adapter for D-04's `EngineHostnameStore` returning only `active` rows with their claims, so the registry response includes them.
+- Table in `src/adapters/db/schema.ts` (drizzle-kit generates the migration):
+
+  ```ts
+  export const engineHostnames = sqliteTable(
+    'engine_hostnames',
+    {
+      hostname: text('hostname').primaryKey(),
+      engineId: text('engine_id')
+        .notNull()
+        .references(() => engines.engineId),
+      orgId: text('org_id').notNull(),
+      claimSig: text('claim_sig').notNull(),
+      status: text('status', { enum: ['pending-dns', 'active'] }).notNull(),
+      dnsCheckedAt: integer('dns_checked_at'),
+      createdAt: integer('created_at').notNull(),
+      createdByUserId: text('created_by_user_id').notNull(),
+    },
+    (t) => [check('engine_hostnames_status_check', sql`${t.status} in ('pending-dns', 'active')`)],
+  );
+  ```
+
+- D1 adapter (Drizzle) for D-04's `EngineHostnameStore` returning only `active` rows with their claims, so the registry response includes them.
 - Authorizer action `admin.hostnames.manage`: platform admin only, `requiresStepUp`. Every change writes `admin_audit_log` (action, engine ID, hostname).
-- Admin pages (strings through i18n) at `/admin/engines/$engineId/hostnames`:
+- Admin SPA route `/admin/engines/$engineId/hostnames`, built from `@ptbk/ui` components (U-02) with the hostnames in a `DataTable`, strings through i18n; each action below is an `/api/admin/engines/:engineId/hostnames` endpoint declared in D-01's route table:
   - Add: hostname + claim signature (base64url). Server checks in order: hostname normalised (lowercase, trailing dot removed, IDNs as A-labels, max 253 chars) and valid per the protocol `Hostname` schema; not an IP; no wildcard; not under the engine domain, `ptbk.io` or a relay domain (config list); not already assigned; claim verifies against the engine's public key with the C-01 function. Stored as `pending-dns`.
   - "Check DNS": resolves through a `DnsResolver` port; `active` when the hostname's CNAME target equals the expected target (see open points). Otherwise shows what was found.
   - Remove: deletes the row after confirmation.
@@ -43,7 +63,7 @@ Custom domains are Enterprise only and set up by hand with each customer; there 
 - [ ] Hostname normalisation tests: uppercase, trailing dot, Unicode IDN, IP literal, `*.example.com`, a subdomain of the engine domain, a 254-character name.
 - [ ] Workers tests: non-admin → 403; admin without fresh step-up → 403; add, check DNS with the fake resolver (`pending-dns` stays on a wrong target, `active` on the right one), and the registry endpoint from D-04 then lists the hostname with its claim; removal drops it from the registry; audit rows written.
 - [ ] Relay integration test (in `apps/relay`, using the HTTP adapter against a fake registry) shows an active custom hostname routed and a tampered claim dropped; reuse D-04's tests if they already cover it.
-- [ ] Runbook written; schema allowlist updated; `bun run check` passes.
+- [ ] Runbook written; migration is drizzle-kit output and passes D-01's guards; schema allowlist updated; `bun run check` passes.
 - [ ] **Status** line above set to `done (#<PR>)`.
 
 ## Risks and open points

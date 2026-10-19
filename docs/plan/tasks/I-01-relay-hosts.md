@@ -7,7 +7,7 @@
 
 ## Goal
 
-Relay hosts are created and hardened from code: one in staging, two in production (Hetzner, EU, different locations), each running the relay as an unprivileged service on raw TCP 443, with the tooling choice recorded as an ADR.
+Relay hosts are created and hardened from code: one in staging, two in production (Hetzner, EU, different locations), each running the relay as an unprivileged service on raw TCP 443, with OpenTofu and cloud-init.
 
 ## Context
 
@@ -15,7 +15,7 @@ The relay needs raw TCP on 443 and long-lived connections, so it runs on plain V
 
 ## Scope
 
-- ADR (the next free ADR number) choosing the provisioning tooling: OpenTofu with the Hetzner and Cloudflare providers, Ansible, cloud-init only, or a combination. Criteria: reviewable diffs, state handling (no secrets in state, or encrypted state), reuse by I-02 for DNS, a second provider in v1. Whichever of I-01 and I-02 starts first writes the ADR; the other follows it.
+- Tooling (decided 2026-10-19): **OpenTofu** with the Hetzner and Cloudflare providers, and **cloud-init** to harden the host and run the signed relay container under systemd. State in an encrypted remote backend (R2), no secrets in plain state. Record the details (backend, module layout, secrets handling) as an ADR with the next free number; I-02 reuses the same setup.
 - `infra/relay/`: host definitions for `staging` (1 host) and `production` (2 hosts, e.g. `relay-fsn` and `relay-hel`), IPv4 and IPv6, smallest instance that R-05's load test supports.
 - Hardening, all from code:
   - Debian stable (or Ubuntu LTS) image; unattended security upgrades with automatic reboot in a staggered window per host so both production relays never reboot together;

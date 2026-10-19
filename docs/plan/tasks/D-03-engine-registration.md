@@ -3,7 +3,7 @@
 - **Lane:** D · **Module:** `apps/dashboard` · **Milestone:** M3
 - **Depends on:** D-02, C-03 · **Unblocks:** D-04, D-05
 - **Status:** todo
-- **Spec:** Pairing and identity (First setup); Interfaces (draft) 1; Abuse on our domains (items 3 and 4); Metadata we still see; ADRs: [0006](../../adr/) (Organizations, members and roles from day one)
+- **Spec:** Pairing and identity (First setup); Interfaces (draft) 1; Abuse on our domains (items 3 and 4); Metadata we still see; ADRs: [0006](../../adr/) (Organizations, members and roles from day one), [0008](../../adr/0008-hono-for-http-apis.md), [0009](../../adr/0009-drizzle-and-migrations.md)
 
 ## Goal
 
@@ -15,12 +15,44 @@ The link code only ties an engine to an organization (the tenant that owns engin
 
 ## Scope
 
-- Migration `0003_engines.sql`:
-  - `link_codes(code_hash TEXT PK, org_id TEXT NOT NULL, created_by_user_id TEXT NOT NULL, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, used_at INTEGER, engine_id TEXT)`
-  - `engines(engine_id TEXT PK, org_id TEXT NOT NULL REFERENCES organizations, public_key TEXT NOT NULL UNIQUE, hostname TEXT NOT NULL UNIQUE, mode TEXT NOT NULL, engine_version TEXT NOT NULL, status TEXT NOT NULL CHECK (status IN ('active','suspended')) DEFAULT 'active', status_reason TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`
-- Link code issuance: page `/engines/new` and a POST action, allowed by `Authorizer.can(actor, 'engine.link', { kind: 'org', orgId })` (new action: `owner` only in v0). All strings through i18n. Shows the code once inside the install command, with a 30-minute countdown and a copy button. Only `SHA-256(code)` is stored.
-- `POST /v1/engines/register` in the API router, in this order: per-IP rate limit (20 per hour) → body size cap (4 KiB, 413) → strict parse with the C-03 schema (400) → derive `engineId` and `hostname` with protocol functions → atomically consume the link code and insert the engine in one `DB.batch` → 200 with the C-03 response (`engineId`, `hostname = <engineId>.<engineDomain>`, `relays` from config).
-- Outcomes and status codes (use C-03's error schema if it defines one; otherwise `{ "error": code }`):
+- Tables in `src/adapters/db/schema.ts` (drizzle-kit generates the migration):
+
+  ```ts
+  export const linkCodes = sqliteTable('link_codes', {
+    codeHash: text('code_hash').primaryKey(),
+    orgId: text('org_id').notNull(),
+    createdByUserId: text('created_by_user_id').notNull(),
+    createdAt: integer('created_at').notNull(),
+    expiresAt: integer('expires_at').notNull(),
+    usedAt: integer('used_at'),
+    engineId: text('engine_id'),
+  });
+
+  export const engines = sqliteTable(
+    'engines',
+    {
+      engineId: text('engine_id').primaryKey(),
+      orgId: text('org_id')
+        .notNull()
+        .references(() => organizations.id),
+      publicKey: text('public_key').notNull().unique(),
+      hostname: text('hostname').notNull().unique(),
+      mode: text('mode').notNull(),
+      engineVersion: text('engine_version').notNull(),
+      status: text('status', { enum: ['active', 'suspended'] })
+        .notNull()
+        .default('active'),
+      statusReason: text('status_reason'),
+      createdAt: integer('created_at').notNull(),
+      updatedAt: integer('updated_at').notNull(),
+    },
+    (t) => [check('engines_status_check', sql`${t.status} in ('active', 'suspended')`)],
+  );
+  ```
+
+- Link code issuance: SPA route `/engines/new` (built from `@ptbk/ui`) and `POST /api/engines/link-codes` (contract in `src/shared/api/`), allowed by `Authorizer.can(actor, 'engine.link', { kind: 'org', orgId })` (new action: `owner` only in v0). All strings through i18n. Shows the code once inside the install command, with a 30-minute countdown and a copy button. Only `SHA-256(code)` is stored.
+- `POST /v1/engines/register` in the Hono `/v1` router, bound to the C-03 contract, in this order: per-IP rate limit (20 per hour) → body size cap (4 KiB, 413) → strict parse with the C-03 schema (400) → derive `engineId` and `hostname` with protocol functions → atomically consume the link code and insert the engine in one D1 batch (`db.batch([...])`) → 200 with the C-03 response (`engineId`, `hostname = <engineId>.<engineDomain>`, `relays` from config).
+- Outcomes and status codes (use C-03's error schema if it defines one; otherwise problem+json with `code`, per ADR 0008):
   - unknown, expired or used link code → 401 `invalid-link-code` (one code for all three, so it is not an oracle);
   - key already registered to the same organization → 200 with the existing data (the code is still consumed);
   - key registered to another organization → 409 `engine-exists`;
@@ -40,7 +72,7 @@ The link code only ties an engine to an organization (the tenant that owns engin
 - Registration is signed by the engine key (decided 2026-10-19, spec Interface 1): verify it with C-03's `verifyRegistration` before touching the link code, and reject with 401 problem+json on a bad signature. Test: a valid link code with a signature from another key is rejected and the code stays unused.
 
 - Link code: use the format C-03 defines. If C-03 leaves it open: 160 bits from `Random`, Crockford base32 without padding, 32 characters, compared only through its hash.
-- Consumption must be atomic: `UPDATE link_codes SET used_at = ?, engine_id = ? WHERE code_hash = ? AND used_at IS NULL AND expires_at > ? RETURNING org_id`, in the same batch as the engine insert, so a database error does not burn the code and two concurrent registrations cannot both win.
+- Consumption must be atomic: one Drizzle `update(linkCodes).set({ usedAt, engineId }).where(and(eq(linkCodes.codeHash, hash), isNull(linkCodes.usedAt), gt(linkCodes.expiresAt, now))).returning({ orgId: linkCodes.orgId })`, in the same batch as the engine insert, so a database error does not burn the code and two concurrent registrations cannot both win.
 - The install command is rendered from a config template with a `{linkCode}` placeholder. Its real shape comes from the engine team (E-01); use a placeholder until then.
 - `mode` is stored as sent (`tunnel`, `direct` or `local`, per C-03); relays are returned regardless, the engine decides.
 - Registration responses carry `Cache-Control: no-store`. Log engine ID and outcome kind only; never the link code or its hash.
@@ -50,8 +82,8 @@ The link code only ties an engine to an organization (the tenant that owns engin
 - [ ] Unit tests for `registerEngine` with fakes: success links the engine to the code's org; expired code (injected `Clock`, 30 min + 1 s); used code; unknown code; same key twice from the same org; same key from another org; suspended engine; engine cap reached.
 - [ ] Org isolation: a user of org B cannot create link codes for org A (403) and `EngineStore` reads for org B never return org A's engines.
 - [ ] Workers tests through `SELF.fetch`: success response validates against the C-03 response schema and `engineId` equals the protocol derivation of the posted key; unknown field in the body → 400; malformed public key → 400; 5 KiB body → 413; rate limit → 429; two concurrent registrations with one code → exactly one 200; link code row holds only a hash (assert no column contains the plaintext code).
-- [ ] Link code page: signed-out access redirects to `/signin`; the plaintext code is not retrievable after the page is left.
-- [ ] Schema allowlist updated.
+- [ ] Link codes: `POST /api/engines/link-codes` without a session → 401 and the SPA route redirects to `/signin`; no endpoint returns the plaintext code after issuance.
+- [ ] Migration is drizzle-kit output and passes D-01's guards; schema allowlist updated.
 - [ ] `bun run check` passes.
 - [ ] **Status** line above set to `done (#<PR>)`.
 

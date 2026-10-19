@@ -32,7 +32,7 @@ M2 and M3 can run in parallel once M1's contracts exist. E-01 (the engine integr
 | Contracts          | `packages/protocol`, `packages/engine-api`, `packages/conformance` | C      |
 | Relay              | `apps/relay`                                                       | R      |
 | Mock engine        | `apps/mock-engine`                                                 | M      |
-| Engine UI          | `apps/engine-ui`                                                   | U      |
+| Engine UI          | `apps/engine-ui`, `packages/ui`                                    | U      |
 | Dashboard          | `apps/dashboard`                                                   | D      |
 | Cross-cutting      | `e2e/`, release tooling                                            | X      |
 | Infra              | `infra/`, deploy workflows                                         | I      |
@@ -68,7 +68,7 @@ bun run plan --check  # validates statuses and dependencies (part of bun run che
 | [M-04](tasks/M-04-mock-engine-api.md)                    | Mock engine API: seeded data, scenarios, fault injection, streaming              | M    | M2        |
 | [C-05](tasks/C-05-conformance-suite.md)                  | Conformance suite v1, run against the mock engine                                | C    | M2        |
 | [U-01](tasks/U-01-engine-ui-scaffold.md)                 | Engine UI scaffold under the engine's CSP                                        | U    | M2        |
-| [U-02](tasks/U-02-design-system-shell.md)                | Design system, app shell, i18n                                                   | U    | M2        |
+| [U-02](tasks/U-02-design-system-shell.md)                | Shared UI package, design system, app shell, i18n                                | U    | M2        |
 | [U-03](tasks/U-03-agents.md)                             | Agents: list, detail, control                                                    | U    | M2        |
 | [U-04](tasks/U-04-create-edit-agent.md)                  | Create and edit agent: wizard and book editor                                    | U    | M2        |
 | [U-05](tasks/U-05-chat.md)                               | Chat with streaming                                                              | U    | M2        |
@@ -78,14 +78,15 @@ bun run plan --check  # validates statuses and dependencies (part of bun run che
 | [M-05](tasks/M-05-ui-loader.md)                          | UI loader in the mock engine (reference implementation)                          | M    | M2        |
 | [X-04](tasks/X-04-e2e-ui-flows.md)                       | E2E UI flows through relay and loader, CSP violations fail                       | X    | M2        |
 | [E-01](tasks/E-01-engine-integration-guide.md)           | Engine integration guide for the engine team                                     | E    | M2        |
-| [D-01](tasks/D-01-dashboard-scaffold.md)                 | Dashboard scaffold: TanStack Start on Workers, D1, environments                  | D    | M3        |
-| [D-02](tasks/D-02-accounts-passkeys.md)                  | Accounts, passkeys, sessions                                                     | D    | M3        |
+| [D-01](tasks/D-01-dashboard-scaffold.md)                 | Dashboard scaffold: Vite SPA and Hono API on Workers, D1, environments           | D    | M3        |
+| [D-02](tasks/D-02-accounts-passkeys.md)                  | Accounts, passkeys, sessions (API)                                               | D    | M3        |
 | [D-03](tasks/D-03-engine-registration.md)                | Link codes and engine registration API                                           | D    | M3        |
 | [D-04](tasks/D-04-registry-api.md)                       | Registry API for relays and the relay's HTTP registry adapter                    | D    | M3        |
 | [D-05](tasks/D-05-heartbeat-status.md)                   | Heartbeat ingest, Durable Object per engine, offline alerts                      | D    | M3        |
 | [D-06](tasks/D-06-engine-list-ui.md)                     | Engine list and status UI                                                        | D    | M3        |
 | [D-07](tasks/D-07-billing.md)                            | Billing with Stripe                                                              | D    | M3        |
 | [D-08](tasks/D-08-custom-domains.md)                     | Enterprise custom domains (manual admin flow)                                    | D    | M3        |
+| [D-09](tasks/D-09-auth-account-screens.md)               | Sign-up, sign-in, recovery and account screens                                   | D    | M3        |
 | [M-06](tasks/M-06-mock-engine-registration-heartbeat.md) | Mock engine registration and heartbeat client                                    | M    | M3        |
 | [X-05](tasks/X-05-e2e-dashboard-flow.md)                 | E2E: sign up, link engine, see it online, open it                                | X    | M3        |
 | [I-01](tasks/I-01-relay-hosts.md)                        | Relay hosts: provisioning and hardening                                          | I    | M4        |
@@ -99,29 +100,20 @@ bun run plan --check  # validates statuses and dependencies (part of bun run che
 
 ## Parallel waves
 
-What can run at the same time, assuming each wave's dependencies have merged:
+Tasks in the same wave have no dependencies on each other and can run at the same time, in separate worktrees. Computed from the briefs; regenerate with `bun run plan --waves` after changing dependencies.
 
-```mermaid
-flowchart LR
-    subgraph W1[Wave 1]
-        C01[C-01] & R01[R-01] & D01[D-01]
-    end
-    subgraph W2[Wave 2]
-        C02[C-02] & C03[C-03] & C04[C-04] & C06[C-06] & R02[R-02] & D02[D-02]
-    end
-    subgraph W3[Wave 3]
-        R03[R-03] & M01[M-01] & U01[U-01] & D03[D-03] & D07[D-07]
-    end
-    subgraph W4[Wave 4]
-        R04[R-04] & M02[M-02] & U02[U-02] & D05[D-05] & M06[M-06] & E01[E-01]
-    end
-    subgraph W5[Wave 5]
-        X01[X-01] & M04[M-04] & U03[U-03] & U05[U-05] & U06[U-06] & U07[U-07] & X03[X-03] & D04[D-04] & D06[D-06]
-    end
-    W1 --> W2 --> W3 --> W4 --> W5
-```
+| Wave | Tasks                                                            |
+| ---- | ---------------------------------------------------------------- |
+| 1    | C-01, D-01, R-01                                                 |
+| 2    | C-02, C-03, C-04, C-06, D-02, I-02, R-02                         |
+| 3    | D-03, E-01, M-01, R-03, U-01                                     |
+| 4    | D-04, D-05, M-02, M-06, R-04, U-02, X-03                         |
+| 5    | D-07, D-08, D-09, I-01, M-04, R-05, U-03, U-05, U-06, U-07, X-01 |
+| 6    | C-05, D-06, I-03, I-04, I-05, M-03, M-05, U-04, X-02             |
+| 7    | E-02, X-04, X-05                                                 |
+| 8    | E-03, I-06                                                       |
 
-After wave 5: M-03, X-02, R-05, C-05, U-04, M-05, D-08, X-05, then X-04 and M4. Up to six agents can work at once without touching the same module.
+Waves 4 and 5 are the widest: up to ten agents can work at once without touching the same module.
 
 ## Decisions
 
@@ -131,6 +123,11 @@ After wave 5: M-03, X-02, R-05, C-05, U-04, M-05, D-08, X-05, then X-04 and M4. 
 - Dashboard account recovery: email link that only allows registering a new passkey, under the conditions in D-02.
 - Email: `EmailSender` port; Cloudflare Email Service is the current adapter.
 - Languages: English and Czech, with i18n from day one in engine-ui and the dashboard.
+- Stack: Vite SPAs on TanStack Router, Query, Table and Form with a shared `packages/ui` ([ADR 0007](../adr/0007-frontend-stack.md)); Hono for every HTTP API ([ADR 0008](../adr/0008-hono-for-http-apis.md)); Drizzle with generated, guarded migrations ([ADR 0009](../adr/0009-drizzle-and-migrations.md)).
+- Dashboard auth: email-first sign-up, `SameSite=Lax` session with Fetch Metadata CSRF checks, platform admin role. Engine roles: owner, admin, member, viewer.
+- Infrastructure as code: OpenTofu and cloud-init. Monitoring: Cloudflare-first; external uptime provider to be specified by Seb.
+- Relays route from a stale registry cache for at most 24 hours while the dashboard is unreachable.
+- Engine registration is signed by the engine key; regular releases need both the CI's keyless signature and a human-held release key; our own npm scope is exempt from the 7-day release age.
 - Organizations, members and roles are modelled from day one ([ADR 0006](../adr/0006-organizations-and-roles.md)).
 
 **Still needed** (each blocks specific tasks, not the start):

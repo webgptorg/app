@@ -18,15 +18,15 @@ The spec is explicit: isolation is aimed at agents, visitors and Promptbook, nev
 - Routes:
   - `/agents`: list. Search params validated with zod in `validateSearch`: `q` (string), `status`, `visibility`, `sort` (`updated` | `name`), `cursor`. The URL is the state, so back and forward work and links are shareable.
   - `/agents/$agentId`: detail with overview, status, visibility, owner/creator, created and updated times, last activity, model, and links to chat (U-05) and the book editor (U-04).
-- List: `Table` on desktop, cards below 768 px. Columns: name (link), description (truncated), status badge, visibility badge, created by, last activity (`RelativeTime`). Debounced search (300 ms), status and visibility filters, cursor paging with previous/next, total count when the API provides it. "New agent" button to `/agents/new` (route added by U-04; until then a stub).
-- Status: badge with text (running, idle, stopped, error, as C-04 defines). Refresh with `refetchInterval: 10_000` while the tab is visible; switch to the API's event stream if C-04 offers one.
+- List: `DataTable` from `@ptbk/ui` in server-side mode, its sorting, filters and cursor bound to the typed search params above; its card layout below 768 px. Columns: name (link), description (truncated), status badge, visibility badge, created by, last activity (`RelativeTime`); column visibility from the table menu, persisted per device. Debounced search (300 ms), status and visibility filters, cursor paging with previous/next, total count when the API provides it. Row selection stays off (no bulk actions). Row actions in the table's actions menu. "New agent" button to `/agents/new` (route added by U-04; until then a stub).
+- Status: badge with text (running, idle, stopped, error, as C-04 defines). Prefer an event stream from the API written into the query cache with `setQueryData`; C-04 has none today, so until it does, refresh with `refetchInterval: 10_000` while the tab is visible, isolated in `useAgentStatus` so the switch touches one hook.
 - Actions on detail and in the row menu: start, stop, toggle visibility, delete.
   - Visibility to public: `ConfirmDialog` explaining that anyone with the link can chat with the agent without signing in.
   - Delete: `ConfirmDialog` requiring the agent's name to be typed; then navigate to `/agents` and show a toast.
-  - Each action is shown only when `can()` allows it: `agents.create`, `agents.start`, `agents.stop`, `agents.update` (visibility), `agents.delete` (exact names from C-04). A hidden action that the API still refuses with 403 shows "not allowed".
-  - Mutations use `useStepUpAwareMutation` (U-02). Visibility toggles optimistically with rollback on error; delete and start/stop wait for the server.
-- Hooks in `src/features/agents/`: `useAgentList(params)`, `useAgent(id)`, `useAgentMutations()`, query-key factory `agentKeys`. Mutations invalidate list and detail.
-- States: loading skeletons, empty (no agents yet, with a call to action), no search results, API error banner with retry, agent not found (404 from API).
+  - Each action is shown only when `can()` allows it: `agents.write` (create, change visibility or folder), `agents.run` (start and stop; draft in C-04), `agents.delete` (exact names from C-04). A hidden action that the API still refuses with 403 shows "not allowed".
+  - Mutations use `useStepUpAwareMutation` (U-02). Visibility toggles optimistically in list and detail with rollback on error; delete and start/stop wait for the server. Every outcome is reported with a toast (success and failure).
+- Hooks in `src/features/agents/`: `useAgentList(params)`, `useAgent(id)`, `useAgentMutations()`, query-key factory `agentKeys` and `queryOptions` helpers shared with the route loaders. Mutations invalidate list and detail.
+- States: loading skeletons shaped like rows and the detail layout, empty (no agents yet, with a call to action), no search results, API error state with retry, agent not found (404 from API); anything else falls to the route error boundary (U-02).
 - Translations for every string in `cs` and `en`.
 
 ## Out of scope
@@ -37,7 +37,7 @@ The spec is explicit: isolation is aimed at agents, visitors and Promptbook, nev
 ## Design notes
 
 - `useAgentList` keeps the previous page visible while the next loads (`placeholderData: keepPreviousData`).
-- Route loaders prefetch list and detail with `ensureQueryData` so navigation shows data without a spinner when cached.
+- Route loaders prefetch list and detail with `ensureQueryData` so navigation shows data without a spinner when cached; with the router's intent preloading (U-01), hovering or focusing a row link loads the detail before the click.
 - Agent names and descriptions are user content: render them as text only, never as markdown or HTML.
 - If the API returns an agent status the UI does not know, show it as "unknown" with the raw value as text; the exhaustive `switch` over the known union plus a fallback for forward compatibility.
 
@@ -54,13 +54,16 @@ The spec is explicit: isolation is aimed at agents, visitors and Promptbook, nev
 - [ ] A step-up-required error on delete opens the step-up dialog (U-02).
 - [ ] With a permission list lacking `agents.delete` and `agents.update`, delete and the visibility toggle are absent from detail and row menu; with only `agents.read`, the "New agent" button is absent too.
 - [ ] Empty, no-results, error and not-found states each have a test.
-- [ ] `axe-core` reports no violations on list and detail; every action is reachable by keyboard.
-- [ ] `test:csp` visits `/agents` and `/agents/$agentId` with zero violations.
+- [ ] Hovering a row link fetches the agent detail once before navigation (in-memory client call count); a hidden column stays hidden after reload.
+- [ ] Each mutation shows a success or failure toast; a failed visibility toggle shows the failure toast and the rolled-back badge.
+- [ ] `axe-core` reports no violations on list and detail; every action is reachable by keyboard and dialogs return focus to the triggering control.
+- [ ] `test:csp` visits `/agents` and `/agents/$agentId` with zero violations and passes the UX checks (360 px without overflow, layout shift, reduced motion); both routes stay within their bundle budgets.
 - [ ] `bun run check` passes.
 - [ ] **Status** line above set to `done (#<PR>)`.
 
 ## Risks and open points
 
 - The agent status set, the visibility values and whether the API returns a total count are C-04 decisions; if the contract lacks start/stop or creator fields, amend it first.
+- C-04's agent list has no `sort` or `status` query parameter and no status event stream. Ask C-04 for them (sorting and filtering must happen on the server, since the list is paged); until then hide the unsupported controls rather than sorting one page on the client, and keep the 10 s refresh.
 - Whether public agents are allowed on the default engine domain is open in the spec. The UI shows the toggle; the engine decides whether to accept it, and a refusal is shown as an error message.
 - Whether delete needs step-up is the engine's policy; the UI must handle both.
