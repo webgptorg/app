@@ -1,0 +1,14 @@
+{
+  "name": "@ptbk/engine-api",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "description": "Engine HTTP API contract consumed by engine-ui (MIT; moves to the public repo, ADR 0002)",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p .",
+    "test": "vitest run --passWithNoTests"
+  }
+}

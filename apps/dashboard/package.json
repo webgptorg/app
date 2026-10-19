@@ -1,0 +1,11 @@
+{
+  "name": "@ptbk/dashboard",
+  "private": true,
+  "license": "UNLICENSED",
+  "type": "module",
+  "description": "app.ptbk.io: entry point, engine list, registry API, heartbeat ingest (Cloudflare Workers)",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p .",
+    "test": "vitest run --passWithNoTests"
+  }
+}

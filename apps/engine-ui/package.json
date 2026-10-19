@@ -1,0 +1,11 @@
+{
+  "name": "@ptbk/engine-ui",
+  "private": true,
+  "license": "UNLICENSED",
+  "type": "module",
+  "description": "Private engine UI: static bundle the engine downloads, verifies and serves",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p .",
+    "test": "vitest run --passWithNoTests"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "name": "@ptbk/relay",
+  "private": true,
+  "license": "UNLICENSED",
+  "type": "module",
+  "description": "SNI passthrough relay and tunnel endpoint (Node on VPS)",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p .",
+    "test": "vitest run --passWithNoTests"
+  }
+}

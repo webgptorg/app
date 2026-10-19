@@ -1,0 +1,11 @@
+{
+  "name": "@ptbk/mock-engine",
+  "private": true,
+  "license": "UNLICENSED",
+  "type": "module",
+  "description": "Mock engine that speaks the real protocol and engine API, for development and tests",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p .",
+    "test": "vitest run --passWithNoTests"
+  }
+}

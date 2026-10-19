@@ -1,0 +1,14 @@
+{
+  "name": "@ptbk/conformance",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "description": "Conformance suite any engine must pass to replace the mock engine (MIT; moves to the public repo, ADR 0002)",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p .",
+    "test": "vitest run --passWithNoTests"
+  }
+}
