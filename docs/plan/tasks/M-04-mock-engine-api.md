@@ -2,7 +2,7 @@
 
 - **Lane:** Mock engine · **Module:** `apps/mock-engine`, `packages/engine-api` (two modules, see Context) · **Milestone:** M2
 - **Depends on:** C-04, M-02
-- **Status:** todo
+- **Status:** in progress (feat/m-04-mock-engine-api)
 - **Spec:** Security hardening (1, 5, 7, 8); Engine security baseline; Enterprise-ready engine architecture; What our platform can and cannot do; ADRs: [0004](../../adr/0004-mock-engine-and-conformance.md), [0005](../../adr/0005-modular-architecture.md), [0006](../../adr/0006-organizations-and-roles.md)
 
 ## Goal
