@@ -7,6 +7,7 @@ export interface FakeTransport extends TunnelTransport {
     /** Every frame sent while open, decoded. */
     readonly frames: Frame[];
     readonly closes: { readonly code: number; readonly reason: string }[];
+    /** Sets the buffer and, as a flush would, wakes the `whenBufferedBelow` waiters it now satisfies. */
     setBufferedBytes(bytes: number): void;
 }
 
@@ -15,6 +16,7 @@ export function createFakeTransport(): FakeTransport {
     const frames: Frame[] = [];
     const closes: { code: number; reason: string }[] = [];
     let buffered = 0;
+    const waiters = new Set<{ readonly below: number; readonly callback: () => void }>();
     return {
         frames,
         closes,
@@ -29,8 +31,21 @@ export function createFakeTransport(): FakeTransport {
             closes.push({ code, reason });
         },
         bufferedBytes: () => buffered,
+        whenBufferedBelow(below, callback) {
+            const waiter = { below, callback };
+            waiters.add(waiter);
+            return () => {
+                waiters.delete(waiter);
+            };
+        },
         setBufferedBytes(bytes) {
             buffered = bytes;
+            for (const waiter of [...waiters]) {
+                if (buffered < waiter.below) {
+                    waiters.delete(waiter);
+                    waiter.callback();
+                }
+            }
         },
     };
 }

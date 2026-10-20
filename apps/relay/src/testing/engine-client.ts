@@ -46,6 +46,8 @@ export interface ConnectOptions {
     readonly path?: string;
     /** `false` lets a test withhold pongs. */
     readonly autoPong?: boolean;
+    /** Replaces the TLS connection `ws` would open, e.g. to control how its bytes reach the relay. */
+    readonly createConnection?: ClientOptions['createConnection'];
 }
 
 export function connectEngine(options: ConnectOptions): TestEngineClient {
@@ -56,6 +58,7 @@ export function connectEngine(options: ConnectOptions): TestEngineClient {
         servername: relayId,
         perMessageDeflate: false,
         autoPong: options.autoPong ?? true,
+        ...(options.createConnection === undefined ? {} : { createConnection: options.createConnection }),
     };
     const ws = new WebSocket(`wss://127.0.0.1:${String(port)}${path}`, [...protocols], clientOptions);
     const queue: RelayMessage[] = [];

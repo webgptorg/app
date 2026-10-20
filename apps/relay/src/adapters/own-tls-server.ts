@@ -48,8 +48,11 @@ export interface OwnTlsServerOptions {
 }
 
 export interface OwnTlsServer {
-    /** A TCP connection for the relay's own hostname, from its listener or, later, R-04's SNI dispatcher. */
-    acceptSocket(socket: Socket): void;
+    /**
+     * A TCP connection for the relay's own hostname, from its listener or R-04's SNI dispatcher, which passes when it
+     * accepted the connection (on the endpoint's clock) so the handshake deadline still counts from TCP accept.
+     */
+    acceptSocket(socket: Socket, acceptedAtMs?: number): void;
     /** Resolves with the bound port. */
     listen(port: number, host: string): Promise<number>;
     /** Stops accepting, closes every tunnel with `SHUTTING_DOWN`, and resolves once every socket is gone. */
@@ -131,15 +134,19 @@ export function createOwnTlsServer(options: OwnTlsServerOptions): OwnTlsServer {
         socket.destroy();
     });
 
-    function acceptSocket(socket: Socket): void {
+    function acceptSocket(socket: Socket, acceptedAtMs?: number): void {
         socket.on('error', () => undefined);
         const ip = clientIp(socket.remoteAddress);
         const pending =
             ip === undefined
                 ? null
-                : endpoint.accept(ip, () => {
-                      socket.destroy();
-                  });
+                : endpoint.accept(
+                      ip,
+                      () => {
+                          socket.destroy();
+                      },
+                      acceptedAtMs,
+                  );
         if (pending === null) {
             socket.destroy();
             return;
@@ -161,7 +168,9 @@ export function createOwnTlsServer(options: OwnTlsServerOptions): OwnTlsServer {
     return {
         acceptSocket,
         listen(port, host) {
-            const server = createNetServer({ noDelay: true }, acceptSocket);
+            const server = createNetServer({ noDelay: true }, (socket) => {
+                acceptSocket(socket);
+            });
             netServer = server;
             return new Promise((resolve, reject) => {
                 server.once('error', reject);

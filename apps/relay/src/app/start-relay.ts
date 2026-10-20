@@ -17,6 +17,8 @@ import type { TunnelSession } from '../domain/tunnel/tunnel-session';
 import { createNodeDnsResolver } from '../adapters/node-dns-resolver';
 import { createOwnTlsServer } from '../adapters/own-tls-server';
 import { createStaticFileRegistry } from '../adapters/static-file-registry';
+import type { BrowserListenerMetrics } from '../adapters/tcp-listener';
+import { createBrowserListener } from '../adapters/tcp-listener';
 import type { RelayConfig } from './config';
 
 /** Long enough that a newly registered engine is not refused for a whole registry TTL. */
@@ -47,10 +49,15 @@ export interface Relay {
     close(): Promise<void>;
 }
 
-export interface TunnelListener {
+export interface RelayListener {
     readonly port: number;
     readonly sessions: SessionTable<TunnelSession>;
-    /** Stops revalidation and accepting, closes every tunnel with `SHUTTING_DOWN`, and waits for the sockets. */
+    /** Counters of the browser side, for I-04. */
+    readonly browser: BrowserListenerMetrics;
+    /**
+     * Stops revalidation and accepting, destroys browser connections, closes every tunnel with `SHUTTING_DOWN`, and
+     * waits for the sockets.
+     */
     close(): Promise<void>;
 }
 
@@ -122,15 +129,15 @@ async function readRelayTls(config: RelayConfig): Promise<{ readonly cert: strin
 }
 
 /**
- * The tunnel endpoint on `RELAY_LISTEN_PORT`, its session table and revalidation. Takes the services so integration
- * tests can run it on an in-memory registry and resolver. R-04 puts an SNI dispatcher in front of it on port 443.
+ * The listener on `RELAY_LISTEN_PORT`: the SNI dispatcher in front of the tunnel endpoint's TLS server, the session
+ * table and revalidation. Takes the services so integration tests can run it on an in-memory registry and resolver.
  */
-export async function startTunnelListener(
+export async function startRelayListener(
     config: RelayConfig,
     services: Pick<RelayServices, 'registry' | 'dns'>,
     tls: { readonly cert: string; readonly key: string },
     deps: RelayDeps,
-): Promise<TunnelListener> {
+): Promise<RelayListener> {
     const { logger, clock, livenessClock, random } = deps;
     const { registry, dns } = services;
     const table = createSessionTable<TunnelSession>({ logger });
@@ -158,7 +165,16 @@ export async function startTunnelListener(
             throw new RelayTlsError();
         }
     })();
-    const port = await server.listen(config.listen.port, config.listen.host);
+    const browser = createBrowserListener({
+        relayId: config.relayId,
+        engineDomain: config.engineDomain,
+        sessions: table,
+        own: server,
+        limits: config.browser,
+        clock,
+        logger,
+    });
+    const port = await browser.listen(config.listen.port, config.listen.host);
     const revalidator = createRevalidator({
         clock,
         intervalMs: config.registry.ttlMs,
@@ -172,9 +188,11 @@ export async function startTunnelListener(
     return {
         port,
         sessions: table,
+        browser,
         async close() {
             revalidator.stop();
-            await server.close();
+            // The TCP server waits for every connection, the tunnels too, so both close together.
+            await Promise.all([browser.close(), server.close()]);
         },
     };
 }
@@ -183,19 +201,19 @@ export async function startTunnelListener(
 export async function startRelay(config: RelayConfig, deps: RelayDeps): Promise<Relay> {
     const { logger } = deps;
     const services = await createRelayServices(config, deps);
-    const tunnels = await startTunnelListener(config, services, await readRelayTls(config), deps);
+    const listener = await startRelayListener(config, services, await readRelayTls(config), deps);
     const onHangup = (): void => {
         void services.reload();
     };
     process.on('SIGHUP', onHangup);
-    logger.info('relay.started', { relayId: config.relayId, registry: config.registry.kind, port: tunnels.port });
+    logger.info('relay.started', { relayId: config.relayId, registry: config.registry.kind, port: listener.port });
     let closing: Promise<void> | null = null;
     return {
-        port: tunnels.port,
+        port: listener.port,
         close() {
             closing ??= (async () => {
                 process.off('SIGHUP', onHangup);
-                await tunnels.close();
+                await listener.close();
                 logger.info('relay.stopped', {});
             })();
             return closing;

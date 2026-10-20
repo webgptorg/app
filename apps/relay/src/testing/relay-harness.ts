@@ -8,8 +8,8 @@ import type { MemoryLogger } from '../adapters/memory-logger';
 import { systemClock } from '../adapters/system-clock';
 import type { RelayConfig } from '../app/config';
 import { parseRelayConfig } from '../app/config';
-import type { TunnelListener } from '../app/start-relay';
-import { REGISTRY_NEGATIVE_TTL_MS, startTunnelListener } from '../app/start-relay';
+import type { RelayListener } from '../app/start-relay';
+import { REGISTRY_NEGATIVE_TTL_MS, startRelayListener } from '../app/start-relay';
 import { createCachedDnsResolver } from '../domain/cached-dns';
 import { createCachedRegistry } from '../domain/cached-registry';
 import type { Clock } from '../domain/clock';
@@ -27,7 +27,7 @@ export const RELAY_ID: RelayId = RelayIdSchema.parse('relay-a.ptbk.test');
 
 export interface RelayHarness {
     readonly config: RelayConfig;
-    readonly listener: TunnelListener;
+    readonly listener: RelayListener;
     readonly port: number;
     readonly certificate: TestCertificate;
     readonly clock: FakeClock;
@@ -91,7 +91,7 @@ export async function startHarness(options: HarnessOptions = {}): Promise<RelayH
         maxStaleMs: config.registry.maxStaleMs,
         timeoutMs: config.dns.timeoutMs,
     });
-    const listener = await startTunnelListener(config, { registry: cachedRegistry, dns: cachedDns }, certificate, {
+    const listener = await startRelayListener(config, { registry: cachedRegistry, dns: cachedDns }, certificate, {
         logger,
         clock,
         livenessClock: options.livenessClock ?? systemClock,

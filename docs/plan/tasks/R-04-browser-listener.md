@@ -2,7 +2,7 @@
 
 - **Lane:** Relay · **Module:** `apps/relay` · **Milestone:** M1
 - **Depends on:** R-01, R-03
-- **Status:** todo
+- **Status:** done (#24)
 - **Spec:** Relay and tunnel (incl. Fairness and DoS); Interfaces (draft) 3 "Browser side"; Metadata we still see; Operations; ADRs: [0005](../../adr/0005-modular-architecture.md)
 
 ## Goal

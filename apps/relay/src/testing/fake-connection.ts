@@ -34,6 +34,7 @@ export function createFakeConnection(): FakeConnection {
                 closes.push(code);
             },
             bufferedBytes: () => 0,
+            whenBufferedBelow: () => () => undefined,
         },
     };
 }

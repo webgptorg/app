@@ -87,6 +87,27 @@ describe('attachWsTunnel', () => {
         expect(connection.transport.bufferedBytes()).toBeGreaterThanOrEqual(0);
     });
 
+    it('wakes a drain waiter once a written frame leaves less than its mark queued', async () => {
+        const connection = await attached;
+        const woken: string[] = [];
+        connection.transport.whenBufferedBelow(1, () => woken.push('drained'));
+        connection.transport.whenBufferedBelow(0, () => woken.push('never: nothing is below 0'));
+        const cancel = connection.transport.whenBufferedBelow(1, () => woken.push('cancelled'));
+        cancel();
+        const frame = received();
+        connection.transport.send(new Uint8Array(1000));
+        await frame;
+        await vi.waitFor(() => {
+            expect(woken).toEqual(['drained']);
+        });
+        connection.transport.whenBufferedBelow(1, () => woken.push('after close'));
+        const clientClosed = new Promise((resolve) => client.once('close', resolve));
+        connection.transport.send(new Uint8Array(1000));
+        connection.transport.close(4003, '');
+        await clientClosed;
+        expect(woken).toEqual(['drained']);
+    });
+
     it('reports the close code once and ignores sends after closing', async () => {
         const connection = await attached;
         const clientClosed = new Promise<number>((resolve) => client.once('close', resolve));

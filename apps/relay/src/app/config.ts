@@ -11,6 +11,8 @@ const MAX_DNS_SERVERS = 8;
 const MAX_PATH_LENGTH = 4096;
 const MAX_TIMEOUT_MS = 60_000;
 const MAX_CONNECTION_LIMIT = 1_000_000;
+/** 10 Gbit/s: more than any relay host's NIC. */
+const MAX_BANDWIDTH_BYTES_PER_S = 1_250_000_000;
 
 /** A secret that never shows up in `JSON.stringify`, `String()` or `util.inspect`. */
 export interface Secret {
@@ -92,6 +94,13 @@ const common = {
     RELAY_MAX_PENDING_HANDSHAKES: integer(1, MAX_CONNECTION_LIMIT).default(1000),
     RELAY_MAX_PENDING_HANDSHAKES_PER_IP: integer(1, MAX_CONNECTION_LIMIT).default(10),
     RELAY_MAX_TUNNELS_PER_IP: integer(1, MAX_CONNECTION_LIMIT).default(50),
+    RELAY_CLIENT_HELLO_TIMEOUT_MS: integer(1, MAX_TIMEOUT_MS).default(5000),
+    RELAY_MAX_CONNECTIONS: integer(1, MAX_CONNECTION_LIMIT).default(10_000),
+    RELAY_MAX_CONNECTIONS_PER_IP: integer(1, MAX_CONNECTION_LIMIT).default(256),
+    RELAY_NEW_CONNECTIONS_PER_IP_PER_S: integer(1, MAX_CONNECTION_LIMIT).default(50),
+    RELAY_MAX_STREAMS_PER_ENGINE: integer(1, MAX_CONNECTION_LIMIT).default(1024),
+    RELAY_NEW_STREAMS_PER_ENGINE_PER_S: integer(1, MAX_CONNECTION_LIMIT).default(200),
+    RELAY_ENGINE_BANDWIDTH_BYTES_PER_S: integer(1, MAX_BANDWIDTH_BYTES_PER_S).default(12_500_000),
     LOG_LEVEL: value(z.enum(LOG_LEVELS), `must be one of ${LOG_LEVELS.join(', ')}`).default('info'),
 };
 
@@ -154,6 +163,19 @@ export interface RelayConfig {
         readonly maxPendingHandshakes: number;
         readonly maxPendingHandshakesPerIp: number;
         readonly maxTunnelsPerIp: number;
+    };
+    /** The listener on `listen.port`: every TCP connection, whichever way its SNI routes it. */
+    readonly browser: {
+        /** From TCP accept until the ClientHello can be judged. */
+        readonly clientHelloTimeoutMs: number;
+        /** Open connections, relay-wide and per client IP (IPv6 per /64). */
+        readonly maxConnections: number;
+        readonly maxConnectionsPerIp: number;
+        readonly newConnectionsPerIpPerS: number;
+        readonly maxStreamsPerEngine: number;
+        readonly newStreamsPerEnginePerS: number;
+        /** Both directions together. */
+        readonly engineBandwidthBytesPerS: number;
     };
     readonly logLevel: LogLevel;
 }
@@ -218,6 +240,15 @@ export function parseRelayConfig(env: Readonly<Record<string, string | undefined
             maxPendingHandshakes: parsed.RELAY_MAX_PENDING_HANDSHAKES,
             maxPendingHandshakesPerIp: parsed.RELAY_MAX_PENDING_HANDSHAKES_PER_IP,
             maxTunnelsPerIp: parsed.RELAY_MAX_TUNNELS_PER_IP,
+        }),
+        browser: Object.freeze({
+            clientHelloTimeoutMs: parsed.RELAY_CLIENT_HELLO_TIMEOUT_MS,
+            maxConnections: parsed.RELAY_MAX_CONNECTIONS,
+            maxConnectionsPerIp: parsed.RELAY_MAX_CONNECTIONS_PER_IP,
+            newConnectionsPerIpPerS: parsed.RELAY_NEW_CONNECTIONS_PER_IP_PER_S,
+            maxStreamsPerEngine: parsed.RELAY_MAX_STREAMS_PER_ENGINE,
+            newStreamsPerEnginePerS: parsed.RELAY_NEW_STREAMS_PER_ENGINE_PER_S,
+            engineBandwidthBytesPerS: parsed.RELAY_ENGINE_BANDWIDTH_BYTES_PER_S,
         }),
         logLevel: parsed.LOG_LEVEL,
     });

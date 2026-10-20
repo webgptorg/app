@@ -4,7 +4,7 @@ SNI passthrough relay. Engines dial in over `wss://relay-<region>.<domain>/v1/tu
 
 Runs on Node 24 on plain VPSs, several in parallel. Must never hold an engine key or terminate TLS for an engine hostname.
 
-So far: configuration, ports, the cached registry, the CNAME check for custom hostnames, the static registry and the tunnel endpoint on `RELAY_LISTEN_PORT`. The browser listener (R-04) will put an SNI dispatcher in front of it on port 443 and hand it sockets through `acceptSocket`.
+One TCP listener on `RELAY_LISTEN_PORT` reads the SNI of every connection: the relay's own hostname goes to the tunnel endpoint (the only place it terminates TLS), an engine's hostname is piped raw into that engine's tunnel, anything else is closed without a byte.
 
 ## Run
 
@@ -41,6 +41,13 @@ Only `RELAY_*` and `LOG_LEVEL` are read; an unknown `RELAY_*` name is an error, 
 | `RELAY_MAX_PENDING_HANDSHAKES`        | `1000`              | Connections between TCP accept and `ready`, relay-wide                                                                           |
 | `RELAY_MAX_PENDING_HANDSHAKES_PER_IP` | `10`                | The same per client IP                                                                                                           |
 | `RELAY_MAX_TUNNELS_PER_IP`            | `50`                | Authenticated tunnels per client IP                                                                                              |
+| `RELAY_CLIENT_HELLO_TIMEOUT_MS`       | `5000`              | From TCP accept until the ClientHello can be judged; a slower client is closed                                                   |
+| `RELAY_MAX_CONNECTIONS`               | `10000`             | Open connections on the listener, relay-wide (tunnels included)                                                                  |
+| `RELAY_MAX_CONNECTIONS_PER_IP`        | `256`               | The same per client IP; IPv6 counts per /64                                                                                      |
+| `RELAY_NEW_CONNECTIONS_PER_IP_PER_S`  | `50`                | New connections per client IP (or /64) per second, also the burst                                                                |
+| `RELAY_MAX_STREAMS_PER_ENGINE`        | `1024`              | Open browser streams per engine                                                                                                  |
+| `RELAY_NEW_STREAMS_PER_ENGINE_PER_S`  | `200`               | New browser streams per engine per second, also the burst                                                                        |
+| `RELAY_ENGINE_BANDWIDTH_BYTES_PER_S`  | `12500000`          | Bytes per second per engine, both directions together; one second's worth is the burst                                           |
 | `LOG_LEVEL`                           | `info`              | `info`, `warn` or `error`                                                                                                        |
 
 ## Static registry file
@@ -73,9 +80,21 @@ Every registry adapter is wrapped by `createCachedRegistry`: entries are fresh f
 The relay terminates TLS here and nowhere else, with its own certificate: TLS 1.2 minimum, and for TLS 1.2 only ECDHE with AES-GCM or ChaCha20-Poly1305 (ADR 0014). `GET /v1/tunnel` with the `ptbk-tunnel` subprotocol upgrades to the tunnel WebSocket, `GET /healthz` answers `ok`, everything else is 404.
 
 - **Handshake** (C-02): the relay sends `challenge` with a fresh 32-byte nonce and its versions and features; the engine answers `auth`; the relay looks the engine up in the cached registry, checks that the engine ID derives from the registry key, verifies the signature against the challenge it sent (strict Ed25519), then checks suspension and negotiates the version, and answers `ready` with the routable hostnames. Refusals map onto C-02's coarse reasons in `src/domain/tunnel/reject-mapping.ts`: unknown engine, bad signature, ID/key mismatch and registry outage all look like `auth-failed`; malformed input closes with `PROTOCOL_ERROR` and no `reject`.
-- **Limits:** the handshake deadline and the pending-handshake limits count from TCP accept, so a slow TLS client holds its slot too. A connection over a limit may finish TLS only to receive `reject` `rate-limited` and close code 1013; those connections have a pool as large as the limit, and beyond it sockets are dropped before TLS.
+- **Limits:** the handshake deadline counts from TCP accept (the listener passes its accept time on), so a slow ClientHello or TLS client spends it too; the pending-handshake limits count from the hand-off. A connection over a limit may finish TLS only to receive `reject` `rate-limited` and close code 1013; those connections have a pool as large as the limit, and beyond it sockets are dropped before TLS.
 - **Sessions:** after `ready`, binary frames only. Only the relay opens streams; each direction has `WINDOW` credit, and an engine that sends beyond its credit, sends `OPEN`, names a stream that never existed or sends an invalid frame loses the whole tunnel (`PROTOCOL_ERROR`). A second tunnel of the same engine replaces the first (`REPLACED`). A hostname claimed by two connected engines routes to neither (`hostname.conflict`).
 - **Revalidation:** every `RELAY_REGISTRY_TTL_S` each connected engine is looked up again: suspended engines are closed with `SUSPENDED`, unknown ones, key mismatches and registry answers past the 24-hour stale window with `AUTH_FAILED`, and routable hostnames are recomputed.
 - **Liveness:** a WebSocket ping every 25 s; a tunnel without a pong 10 s later is terminated.
 
 Logged: `tunnel.connected` and `tunnel.disconnected` (engine ID, engine IP, relay ID, close code), `tunnel.rejected` (the internal reason, engine IP and the claimed engine ID once `auth` parsed), `tunnel.revoked`. Never nonces, signatures, keys, engine versions, hostnames or payload bytes.
+
+## Browser listener
+
+Every connection on `RELAY_LISTEN_PORT` is admitted against the per-IP and global limits, then read until R-01's parser can judge its ClientHello (at most 16 KiB, within `RELAY_CLIENT_HELLO_TIMEOUT_MS`). The SNI alone decides; ALPN is never read, so an ACME `acme-tls/1` validation reaches the engine like a browser.
+
+- **Own hostname:** the bytes read so far are put back and the socket goes to the tunnel endpoint.
+- **Engine hostname** (a connected engine's default hostname, or a custom one whose claim and CNAME checked out): the per-engine stream limits apply, the relay opens a stream with the browser's address in `OPEN`, sends everything it read (the ClientHello and anything after it) as the first `DATA`, and from then on pipes bytes it cannot read. It holds no engine key or certificate; TLS ends on the engine.
+- **Anything else** (no SNI, not a ClientHello, too large, too slow, an unknown or conflicting hostname, an engine without a tunnel here, a limit reached): the socket is destroyed without a byte written, so the relay never answers as a TLS endpoint for an engine's name.
+
+Flow control keeps memory per stream bounded. Towards the engine, a browser socket is read one chunk at a time and only while the stream has credit; the streams of one tunnel take turns in 16 KiB slices, and all of them stop while the tunnel's WebSocket holds more than 512 KiB, until it drains below 128 KiB. Towards the browser, credit goes back to the engine only once the socket has flushed the bytes, so a browser that stops reading costs at most one window (256 KiB). The engine's bandwidth budget delays both. Streams have no idle timeout (SSE and WebSockets live long); TCP keepalive finds vanished browsers, and a tunnel that closes takes its browser sockets with it.
+
+Nothing is logged per connection (spec: no access logs). In memory, for I-04: refusals per reason (never the SNI or IP), bytes in and out per engine per UTC day (today and yesterday), open connections and bytes held.
