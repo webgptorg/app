@@ -1,4 +1,4 @@
-import { useId } from 'react';
+import { Fragment, useId } from 'react';
 import type { KeyboardEvent, ReactNode } from 'react';
 
 import { cx } from '../../internal/cx';
@@ -10,6 +10,18 @@ export interface TabDefinition {
     readonly disabled?: boolean;
 }
 
+/** Everything a tab trigger needs for the ARIA tabs pattern; spread it onto a custom trigger such as a router link. */
+export interface TabTriggerProps {
+    readonly id: string;
+    readonly role: 'tab';
+    readonly 'aria-selected': boolean;
+    readonly 'aria-controls': string | undefined;
+    readonly tabIndex: 0 | -1;
+    readonly onKeyDown: (event: KeyboardEvent<HTMLElement>) => void;
+    readonly className: string;
+    readonly children: ReactNode;
+}
+
 export interface TabsProps {
     /** The tab list's accessible name. */
     readonly label: string;
@@ -19,17 +31,23 @@ export interface TabsProps {
     readonly tabs: readonly TabDefinition[];
     /** `automatic` selects on arrow keys; `manual` only moves focus until Enter or Space. */
     readonly activation?: 'automatic' | 'manual';
+    /**
+     * Renders each trigger instead of a `<button>`, e.g. as a router link so the URL selects the tab and the link
+     * preloads on intent. A custom trigger activates itself on click (a link navigates); arrow keys still move focus
+     * and, with `automatic` activation, call `onSelect`.
+     */
+    readonly renderTab?: (tab: TabDefinition, props: TabTriggerProps) => ReactNode;
 }
 
 /** The ARIA tabs pattern: one tab stop for the list, arrows, Home and End between tabs, only the selected panel rendered. */
-export function Tabs({ label, selectedId, onSelect, tabs, activation = 'automatic' }: TabsProps) {
+export function Tabs({ label, selectedId, onSelect, tabs, activation = 'automatic', renderTab }: TabsProps) {
     const baseId = useId();
     const enabled = tabs.filter((tab) => tab.disabled !== true);
     const selected = tabs.find((tab) => tab.id === selectedId) ?? enabled[0];
     const tabId = (id: string) => `${baseId}-tab-${id}`;
     const panelId = (id: string) => `${baseId}-panel-${id}`;
 
-    const onKeyDown = (event: KeyboardEvent<HTMLButtonElement>, id: string) => {
+    const onKeyDown = (event: KeyboardEvent<HTMLElement>, id: string) => {
         const currentIndex = enabled.findIndex((tab) => tab.id === id);
         const count = enabled.length;
         let next: number;
@@ -67,33 +85,38 @@ export function Tabs({ label, selectedId, onSelect, tabs, activation = 'automati
             >
                 {tabs.map((tab) => {
                     const isSelected = tab.id === selected?.id;
+                    const triggerProps: TabTriggerProps = {
+                        id: tabId(tab.id),
+                        role: 'tab',
+                        'aria-selected': isSelected,
+                        'aria-controls': isSelected ? panelId(tab.id) : undefined,
+                        tabIndex: isSelected ? 0 : -1,
+                        onKeyDown: (event) => {
+                            onKeyDown(event, tab.id);
+                        },
+                        className: cx(
+                            '-mb-px shrink-0 cursor-pointer border-b-2 px-3 py-2 text-sm font-medium whitespace-nowrap',
+                            'motion-safe:transition-colors motion-safe:duration-(--motion-state)',
+                            'disabled:cursor-not-allowed disabled:opacity-50',
+                            isSelected
+                                ? 'border-(--tabs-indicator) text-(--tabs-text-selected)'
+                                : 'border-transparent text-(--tabs-text) hover:not-disabled:text-(--tabs-text-hover)',
+                        ),
+                        children: tab.label,
+                    };
+                    if (renderTab !== undefined) {
+                        return <Fragment key={tab.id}>{renderTab(tab, triggerProps)}</Fragment>;
+                    }
                     return (
                         <button
                             key={tab.id}
                             type="button"
-                            role="tab"
-                            id={tabId(tab.id)}
-                            aria-selected={isSelected}
-                            aria-controls={isSelected ? panelId(tab.id) : undefined}
+                            {...triggerProps}
                             disabled={tab.disabled}
-                            tabIndex={isSelected ? 0 : -1}
                             onClick={() => {
                                 onSelect(tab.id);
                             }}
-                            onKeyDown={(event) => {
-                                onKeyDown(event, tab.id);
-                            }}
-                            className={cx(
-                                '-mb-px shrink-0 cursor-pointer border-b-2 px-3 py-2 text-sm font-medium whitespace-nowrap',
-                                'motion-safe:transition-colors motion-safe:duration-(--motion-state)',
-                                'disabled:cursor-not-allowed disabled:opacity-50',
-                                isSelected
-                                    ? 'border-(--tabs-indicator) text-(--tabs-text-selected)'
-                                    : 'border-transparent text-(--tabs-text) hover:enabled:text-(--tabs-text-hover)',
-                            )}
-                        >
-                            {tab.label}
-                        </button>
+                        />
                     );
                 })}
             </div>

@@ -80,7 +80,7 @@ export type {
     MenuTriggerProps,
 } from './components/menu/menu';
 export { Tabs } from './components/tabs/tabs';
-export type { TabDefinition, TabsProps } from './components/tabs/tabs';
+export type { TabDefinition, TabsProps, TabTriggerProps } from './components/tabs/tabs';
 export { Toaster } from './components/toaster/toaster';
 export { DEFAULT_TOAST_DURATION_MS, useToast } from './components/toaster/toast-store';
 export type {

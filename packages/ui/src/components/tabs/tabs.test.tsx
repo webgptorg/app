@@ -98,4 +98,34 @@ describe('Tabs', () => {
         renderUi(<Tabs label="Empty" tabs={[]} selectedId="x" onSelect={() => undefined} />);
         expect(screen.getAllByRole('tabpanel')).toHaveLength(1);
     });
+
+    it('renders custom triggers, such as links, that keep the tabs pattern', async () => {
+        const onSelect = vi.fn();
+        const { container, user } = renderUi(
+            <Tabs
+                label="Agent"
+                tabs={TABS}
+                selectedId="chat"
+                onSelect={onSelect}
+                activation="manual"
+                renderTab={(tab, { children, ...props }) => (
+                    <a href={`#${tab.id}`} {...props}>
+                        {children}
+                    </a>
+                )}
+            />,
+        );
+        const chat = screen.getByRole('tab', { name: 'Chat' });
+        expect(chat.tagName).toBe('A');
+        expect(chat.getAttribute('aria-selected')).toBe('true');
+        expect(chat.getAttribute('aria-controls')).toBe(screen.getByRole('tabpanel', { name: 'Chat' }).id);
+        await expectNoAxeViolations(container);
+
+        await user.tab();
+        expect(document.activeElement).toBe(chat);
+        await user.keyboard('{ArrowRight}');
+        expect(document.activeElement).toBe(screen.getByRole('tab', { name: 'Runs' }));
+        await user.click(screen.getByRole('tab', { name: 'Overview' }));
+        expect(onSelect).not.toHaveBeenCalled();
+    });
 });
