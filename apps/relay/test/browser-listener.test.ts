@@ -533,11 +533,15 @@ describe('browser listener over real sockets', () => {
             }, PATIENTLY);
             const delivered = piped.reduce((total, { stream }) => total + stream.received(), 0);
             expect(delivered).toBeLessThan(piped.length * upload.length);
+            // Bounded while backed up. After the resume, a WINDOW may flush the one slice a stream queued beyond its
+            // credit straight to the WebSocket: bytes the relay already held, moved, not added.
+            const queuedWhileBackedUp = maxQueued();
+            stopSampling();
             target.client.ws.resume();
             const digest = sha256(upload);
             for (const result of await Promise.all(uploaded)) expect(result).toBe(digest);
-            // One slice may cross the mark, plus frame headers and the engine's WINDOW traffic.
-            expect(maxQueued()).toBeLessThanOrEqual(TUNNEL_HIGH_WATER_BYTES + SCHEDULER_SLICE_BYTES + 4096);
+            // One slice may cross the mark, plus frame headers.
+            expect(queuedWhileBackedUp).toBeLessThanOrEqual(TUNNEL_HIGH_WATER_BYTES + SCHEDULER_SLICE_BYTES + 4096);
         },
         SLOW_TEST_MS,
     );
