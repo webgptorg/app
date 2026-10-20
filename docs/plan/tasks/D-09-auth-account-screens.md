@@ -2,7 +2,7 @@
 
 - **Lane:** D · **Module:** `apps/dashboard` · **Milestone:** M3
 - **Depends on:** D-02, U-02
-- **Status:** todo
+- **Status:** in progress (feat/d-09-auth-account-screens)
 - **Spec:** Pairing and identity (Promptbook account row); ADRs: [0006](../../adr/0006-organizations-and-roles.md), [0007](../../adr/0007-frontend-stack.md)
 
 ## Goal
