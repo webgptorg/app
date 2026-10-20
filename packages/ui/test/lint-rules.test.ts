@@ -6,7 +6,15 @@ import { describe, expect, it } from 'vitest';
 import { packageDir } from './theme-sources.ts';
 
 const repoRoot = join(packageDir, '..', '..');
-const eslint = new ESLint({ cwd: repoRoot });
+/**
+ * Only the rules under test, without type information: building the repo-wide TypeScript program is what makes
+ * type-aware linting slow, and none of these rules needs it.
+ */
+const eslint = new ESLint({
+    cwd: repoRoot,
+    overrideConfig: { languageOptions: { parserOptions: { projectService: false } } },
+    ruleFilter: ({ ruleId }) => !ruleId.startsWith('@typescript-eslint/'),
+});
 
 /** Lints `code` as if it were the given existing file, so the type-aware parser finds its project. */
 async function ruleIds(code: string, path: string): Promise<string[]> {
