@@ -65,9 +65,10 @@
     "format:check": "prettier --check .",
     "typecheck": "bun run --filter '*' typecheck",
     "test": "bun run --filter '*' --sequential test",
-    "check": "bun run generate && bun run lint && bun run format:check && bun run typecheck && bun run test && bun run plan --check",
+    "check": "bun run generate && bun run lint && bun run format:check && bun run typecheck && bun run test && bun run plan --check && bun run engine-guide",
     "prepare": "husky",
     "plan": "node scripts/plan.ts",
+    "engine-guide": "node scripts/check-engine-guide.ts",
     "generate": "bun run --filter '*' --if-present generate"
   },
   "lint-staged": {
