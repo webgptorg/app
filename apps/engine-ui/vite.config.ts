@@ -21,7 +21,6 @@ const uiVersion =
 
 export default defineConfig({
     base: '/',
-    define: { __PTBK_UI_VERSION__: JSON.stringify(uiVersion) },
     plugins: [
         // Options live in project.inlang/paraglide.config.js, which `generate` (the Paraglide CLI) reads too.
         paraglideVitePlugin({ project: './project.inlang', outdir: './src/paraglide' }),
@@ -33,6 +32,7 @@ export default defineConfig({
         bundleBudget({ appDir, enforce: process.env['CI'] !== undefined && process.env['VITE_UI_GALLERY'] !== '1' }),
     ],
     define: {
+        __PTBK_UI_VERSION__: JSON.stringify(uiVersion),
         // A literal, so the minifier drops the gallery route's lazy import entirely unless `test:csp` builds it.
         'import.meta.env.VITE_UI_GALLERY': JSON.stringify(process.env['VITE_UI_GALLERY'] ?? '0'),
     },
