@@ -2,7 +2,7 @@
 
 - **Lane:** Contracts · **Module:** `packages/protocol` · **Milestone:** M2
 - **Depends on:** C-01
-- **Status:** todo
+- **Status:** in progress (feat/c-06-release-log)
 - **Spec:** Interfaces (draft) 5. Release log entry, Residual risks: certificates and engine updates (2. Engine updates, Release keys), Transparency and verifiability, Security hardening 9 and 10; ADRs: [0003](../../adr/0003-ui-as-signed-bundle.md), [0014](../../adr/0014-cryptography.md)
 
 ## Goal
