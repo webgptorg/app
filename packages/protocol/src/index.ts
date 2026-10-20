@@ -88,7 +88,7 @@ export {
 } from './tunnel/handshake';
 export type { HandshakeParse, TunnelNegotiation, TunnelOffer, TunnelReadyCheck } from './tunnel/handshake';
 export { signTunnelAuth, tunnelAuthInput, verifyTunnelAuth } from './tunnel/auth';
-export type { EngineTunnelOffer, TunnelAuthOffer } from './tunnel/auth';
+export type { DialledRelay, EngineTunnelOffer, TunnelAuthOffer, TunnelAuthSigning } from './tunnel/auth';
 export {
     CLOSE_CODE,
     FRAME_HEADER_BYTES,

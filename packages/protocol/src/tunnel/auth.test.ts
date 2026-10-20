@@ -5,7 +5,7 @@ import type { Bytes } from '../bytes';
 import type { Signer } from '../ed25519';
 import { createWebCryptoSigner, importEd25519PrivateKey } from '../ed25519';
 import { deriveEngineId } from '../engine-id';
-import { EngineId, EngineVersion, ed25519SignatureFromBytes } from '../ids';
+import { EngineId, EngineVersion, RelayId, ed25519SignatureFromBytes } from '../ids';
 import type { Ed25519Signature } from '../ids';
 import { SIGNING_CONTEXT, signingInput } from '../signing-input';
 import { createSeededRandom } from '../testing/seeded-random';
@@ -38,14 +38,48 @@ let auth: TunnelAuth;
 beforeAll(async () => {
     signer = await signerFromSeed(random.bytes(32));
     other = await signerFromSeed(random.bytes(32));
-    auth = await signTunnelAuth(signer, challenge, offer);
+    const signed = await signTunnelAuth(signer, challenge, offer, { dialledRelayId: challenge.relayId });
+    if (signed.kind !== 'signed') throw new Error('expected a signed auth');
+    auth = signed.auth;
 });
+
+function countingSigner(inner: Signer): Signer & { calls: () => number } {
+    let calls = 0;
+    return {
+        publicKey: () => inner.publicKey(),
+        sign(message, signal) {
+            calls++;
+            return inner.sign(message, signal);
+        },
+        calls: () => calls,
+    };
+}
 
 const withChallenge = (changes: Partial<Record<keyof TunnelChallenge, unknown>>) =>
     TunnelChallenge.parse({ ...challenge, ...changes });
 const withAuth = (changes: Partial<Record<keyof TunnelAuth, unknown>>) => TunnelAuth.parse({ ...auth, ...changes });
 
 describe('signTunnelAuth', () => {
+    const dialled = { dialledRelayId: challenge.relayId };
+
+    it('refuses a challenge from a relay other than the one dialled, without signing', async () => {
+        const counting = countingSigner(signer);
+        const result = await signTunnelAuth(counting, challenge, offer, {
+            dialledRelayId: RelayId.parse('relay-hel.example.net'),
+        });
+        expect(result).toEqual({ kind: 'wrong-relay' });
+        expect(counting.calls()).toBe(0);
+    });
+
+    it('compares the parsed, lowercased relay IDs', async () => {
+        const counting = countingSigner(signer);
+        const result = await signTunnelAuth(counting, challenge, offer, {
+            dialledRelayId: RelayId.parse('Relay-FSN.Example.NET'),
+        });
+        expect(result).toEqual({ kind: 'signed', auth });
+        expect(counting.calls()).toBe(1);
+    });
+
     it('builds an auth message that parses and carries the derived engine ID', async () => {
         expect(TunnelAuth.parse(auth)).toEqual(auth);
         expect(auth).toMatchObject({ v: 1, type: 'auth', version: '1.8.2', protocolVersions: [2, 10, 1] });
@@ -58,11 +92,11 @@ describe('signTunnelAuth', () => {
         ['a version above u16', { ...offer, protocolVersions: [65_536] }],
         ['duplicate features', { ...offer, features: features('ab', 'ab') }],
     ])('refuses to sign %s', async (_, bad) => {
-        await expect(signTunnelAuth(signer, challenge, bad)).rejects.toThrow();
+        await expect(signTunnelAuth(signer, challenge, bad, dialled)).rejects.toThrow();
     });
 
     it('stops when the signal aborts', async () => {
-        await expect(signTunnelAuth(signer, challenge, offer, AbortSignal.abort())).rejects.toThrow();
+        await expect(signTunnelAuth(signer, challenge, offer, dialled, AbortSignal.abort())).rejects.toThrow();
     });
 });
 

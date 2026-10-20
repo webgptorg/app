@@ -79,12 +79,9 @@ describe('golden handshake vector', () => {
         const signer = await createWebCryptoSigner(
             await importEd25519PrivateKey(fromHex(handshake.seed), { extractable: false }),
         );
-        const signed = await signTunnelAuth(signer, challenge, {
-            version: auth.version,
-            protocolVersions: auth.protocolVersions,
-            features: auth.features,
-        });
-        expect(JSON.stringify(signed)).toBe(handshake.auth);
+        const offer = { version: auth.version, protocolVersions: auth.protocolVersions, features: auth.features };
+        const signed = await signTunnelAuth(signer, challenge, offer, { dialledRelayId: challenge.relayId });
+        expect(signed.kind === 'signed' && JSON.stringify(signed.auth)).toBe(handshake.auth);
         expect(verifyTunnelAuth(publicKey, challenge, auth)).toBe(true);
     });
 

@@ -3,7 +3,7 @@ import type { Bytes } from '../bytes';
 import type { Signer } from '../ed25519';
 import { verifyEd25519 } from '../ed25519';
 import { deriveEngineId } from '../engine-id';
-import type { EngineId, EngineVersion } from '../ids';
+import type { EngineId, EngineVersion, RelayId } from '../ids';
 import { ed25519SignatureFromBytes, ed25519SignatureToBytes } from '../ids';
 import { SIGNING_CONTEXT, signingInput } from '../signing-input';
 import { MAX_PROTOCOL_VERSION } from './constants';
@@ -69,17 +69,31 @@ export interface TunnelAuthOffer {
     readonly features: readonly TunnelFeature[];
 }
 
+export interface DialledRelay {
+    /** The relay hostname the engine connected to, from its own relay list, never from the challenge. */
+    readonly dialledRelayId: RelayId;
+}
+
+export type TunnelAuthSigning =
+    | { readonly kind: 'signed'; readonly auth: TunnelAuth }
+    /** The challenge names another relay: close without answering, or a relay could relay another's challenge. */
+    | { readonly kind: 'wrong-relay' };
+
 /**
  * Engine side: builds the whole `auth` message for `challenge`, with the engine ID derived from the signer's key.
- * The caller must first check that `challenge.relayId` is the relay hostname it dialled, so the signature cannot be
- * used at another relay. Throws (a ZodError) if the offer would not pass the `auth` schema.
+ * Signs only when `challenge.relayId` equals the relay the engine dialled; otherwise a malicious relay could forward
+ * another relay's challenge and obtain an `auth` that relay accepts. Throws (a ZodError) if the offer would not pass
+ * the `auth` schema.
  */
 export async function signTunnelAuth(
     signer: Signer,
     challenge: TunnelChallenge,
     offer: TunnelAuthOffer,
+    { dialledRelayId }: DialledRelay,
     signal?: AbortSignal,
-): Promise<TunnelAuth> {
+): Promise<TunnelAuthSigning> {
+    // Both are parsed `RelayId`s, lowercased by the schema, so plain equality is the hostname comparison.
+    if (challenge.relayId !== dialledRelayId) return { kind: 'wrong-relay' };
     const engineId = await deriveEngineId(signer.publicKey());
     const unsigned = TunnelAuthSchema.omit({ sig: true }).parse({
         v: 1,
@@ -94,7 +108,8 @@ export async function signTunnelAuth(
         versions: unsigned.protocolVersions,
         features: unsigned.features,
     });
-    return { ...unsigned, sig: ed25519SignatureFromBytes(await signer.sign(input, signal)) };
+    const sig = ed25519SignatureFromBytes(await signer.sign(input, signal));
+    return { kind: 'signed', auth: { ...unsigned, sig } };
 }
 
 /**
