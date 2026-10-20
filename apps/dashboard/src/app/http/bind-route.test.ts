@@ -152,6 +152,49 @@ describe('route binder', () => {
         expect(seen).toEqual([]);
     });
 
+    it('stops reading a chunked body as soon as it passes the cap, and cancels the stream', async () => {
+        const { app, seen } = harness();
+        let pulled = 0;
+        let cancelled = false;
+        // Endless and without Content-Length: buffering it whole would never finish.
+        const body = new ReadableStream<Uint8Array>({
+            pull(controller) {
+                pulled++;
+                controller.enqueue(new Uint8Array(100).fill(0x20));
+            },
+            cancel() {
+                cancelled = true;
+            },
+        });
+        const response = await app.request(`/api/engines/${ENGINE}/name`, {
+            method: 'POST',
+            body,
+            duplex: 'half',
+        } as RequestInit);
+        expect(response.status).toBe(413);
+        expect(cancelled).toBe(true);
+        // 256-byte cap, 100-byte chunks: the third chunk crosses it; the stream may have queued one more.
+        expect(pulled).toBeLessThanOrEqual(4);
+        expect(seen).toEqual([]);
+    });
+
+    it('treats a missing body as invalid JSON', async () => {
+        const { app, seen } = harness();
+        expect((await app.request(`/api/engines/${ENGINE}/name`, { method: 'POST' })).status).toBe(400);
+        expect(seen).toEqual([]);
+    });
+
+    it.each(['abc', '-1', '1e3', ''])('refuses a malformed Content-Length %j with 400', async (length) => {
+        const { app, seen } = harness();
+        const response = await app.request(`/api/engines/${ENGINE}/name`, {
+            method: 'POST',
+            body: '{"name":"x"}',
+            headers: { 'Content-Length': length },
+        });
+        expect(response.status).toBe(400);
+        expect(seen).toEqual([]);
+    });
+
     it('applies the route’s rate limit before anything else and fails closed when the limiter cannot decide', async () => {
         const limited = harness({ limit: 'limited' });
         expect((await post(limited.app, `/api/engines/${ENGINE}/name`, '{"name":"x"}')).status).toBe(429);

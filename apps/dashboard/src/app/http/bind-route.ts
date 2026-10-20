@@ -106,17 +106,52 @@ function parseWith(schema: z.ZodType | null, value: unknown): ParseOutcome {
     return result.success ? { kind: 'ok', value: result.data } : { kind: 'invalid' };
 }
 
+/** Reads at most `maxBytes`; past that it cancels the stream, so a chunked body is never buffered beyond the cap. */
+async function readCapped(
+    stream: ReadableStream<Uint8Array> | null,
+    maxBytes: number,
+): Promise<Uint8Array<ArrayBuffer> | 'too-large'> {
+    if (stream === null) {
+        return new Uint8Array(0);
+    }
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    const reader = stream.getReader();
+    for (;;) {
+        const next = await reader.read();
+        if (next.done) {
+            break;
+        }
+        total += next.value.byteLength;
+        if (total > maxBytes) {
+            await reader.cancel();
+            return 'too-large';
+        }
+        chunks.push(next.value);
+    }
+    const bytes = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of chunks) {
+        bytes.set(chunk, offset);
+        offset += chunk.byteLength;
+    }
+    return bytes;
+}
+
 async function readBody(context: Context, contract: RouteContract): Promise<ParseOutcome> {
     const { body, maxBodyBytes } = contract.input;
     if (body === null) {
         return { kind: 'ok', value: undefined };
     }
-    const declared = Number(context.req.header('Content-Length') ?? '0');
-    if (declared > maxBodyBytes) {
+    const declared = context.req.header('Content-Length');
+    if (declared !== undefined && !/^\d{1,15}$/.test(declared)) {
+        return { kind: 'invalid' };
+    }
+    if (declared !== undefined && Number(declared) > maxBodyBytes) {
         return { kind: 'too-large' };
     }
-    const bytes = new Uint8Array(await context.req.arrayBuffer());
-    if (bytes.length > maxBodyBytes) {
+    const bytes = await readCapped(context.req.raw.body, maxBodyBytes);
+    if (bytes === 'too-large') {
         return { kind: 'too-large' };
     }
     try {
