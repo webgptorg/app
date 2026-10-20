@@ -2,7 +2,7 @@
 
 - **Lane:** Contracts · **Module:** `packages/protocol` · **Milestone:** M2
 - **Depends on:** C-01
-- **Status:** todo
+- **Status:** done (#16)
 - **Spec:** Interfaces (draft) 5. Release log entry, Residual risks: certificates and engine updates (2. Engine updates, Release keys), Transparency and verifiability, Security hardening 9 and 10; ADRs: [0003](../../adr/0003-ui-as-signed-bundle.md), [0014](../../adr/0014-cryptography.md)
 
 ## Goal
@@ -14,6 +14,13 @@
 Updates are the main remaining path to customer data, so this check is the core of the update and UI-loader trust story. The same function is used by the mock engine's UI loader (M-05, reference implementation for the engine team), by the UI bundle pipeline to self-check what it publishes (X-03), and later by the real engine's updater and loader. It must be pure and deterministic: time, first-seen time, provenance verification and keys are inputs.
 
 Decided 2026-10-19 (ADR 0014): no JSON canonicalisation. Signed documents are DSSE envelopes carrying the exact payload bytes; every signature (release key, maintainer keys, CI provenance via `sigstore.attest()`) covers the same DSSE PAE.
+
+Decided 2026-10-20 (Seb), so the engine team implements the same rules before E-02:
+
+1. **Revocation time bounds:** a list whose `issuedAt` is more than `REVOCATION_MAX_FUTURE_SKEW_MS` (5 min) after `clock.now()` is `revocations-unverifiable` with reason `invalid` and yields no `revocationsIssuedAt` to persist, so a far-future list cannot make later genuine lists look rolled back. `expiresAt − issuedAt` may be at most `REVOCATION_MAX_VALIDITY_MS` (30 days); a longer list is `invalid`.
+2. **Duplicate JSON keys:** a release or revocation payload in which any object, at any depth, repeats a key (compared after unescaping, so `"a"` and `"\u0061"` collide) is invalid, even when validly signed. The check runs over the exact payload text before `JSON.parse`, which would otherwise keep the last duplicate where other parsers keep the first.
+3. **Build trigger:** `expectedWorkflowClaims` also pins Fulcio OID `1.3.6.1.4.1.57264.1.20` to exactly `push`. A `workflow_dispatch` (or any other trigger) run of the same workflow is refused, so dispatched runs are dry runs only.
+4. **Manifest paths are strict ASCII:** segments match `[A-Za-z0-9._-]+`, are separated by single `/`, and none starts with a dot, which excludes `.`, `..` and hidden files. `?`, `#`, `%`, spaces and non-ASCII are refused. Vite's hashed asset names (`assets/index-BxD3f9_a.js`) pass.
 
 ## Scope
 
@@ -57,6 +64,6 @@ Decided 2026-10-19 (ADR 0014): no JSON canonicalisation. Signed documents are DS
 ## Risks and open points
 
 - Revocation threshold is not in the spec. Default proposal: release key or any one maintainer (stopping a release is the safe direction), configurable in `TrustPolicy`. Rekor search by payload hash as a second revocation channel is open.
-- Open (ADR 0014 follow-ups): who signs the revocation list and how often it is re-signed, and the maximum validity `expiresAt − issuedAt` the verifier accepts; an optional pin of Fulcio OID `1.3.6.1.4.1.57264.1.20` (build trigger, e.g. `push` only) in `expectedWorkflowClaims`, since X-03 also allows `workflow_dispatch`; an optional torsion-free engine-key check at registration (C-03, D-03), beyond noble's small-order check.
+- Open (ADR 0014 follow-ups): who signs the revocation list and how often it is re-signed, and (maximum validity and future skew decided 2026-10-20, see Context; the build trigger is pinned to `push`, so X-03's `workflow_dispatch` dry runs no longer verify); an optional torsion-free engine-key check at registration (C-03, D-03), beyond noble's small-order check.
 - M-05 (loader) and the engine must persist `firstSeenAt` and gain the `revocations-unverifiable` refusal; `SignedRelease` replaces `ReleaseEntry.provenance`.
 - Staged rollout (random install moment within 24 h after the delay) is the updater's job, not this function's.

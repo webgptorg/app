@@ -4,6 +4,10 @@ export { createClientHelloBuffer } from './tls/client-hello-buffer';
 export type { ClientHelloBuffer } from './tls/client-hello-buffer';
 export { decodeBase64Url, encodeBase64Url } from './base64url';
 export type { Base64UrlDecode } from './base64url';
+export { decodeBase64Std, encodeBase64Std } from './base64std';
+export type { Base64StdDecode } from './base64std';
+export { createFixedClock } from './clock';
+export type { Clock } from './clock';
 export { encodeBase32Lower } from './base32';
 export { bytesEqual, concatBytes, utf8Encode } from './bytes';
 export type { Bytes } from './bytes';
@@ -127,3 +131,88 @@ export {
     TUNNEL_PROTOCOL_VERSIONS,
     TUNNEL_SUBPROTOCOL,
 } from './tunnel/constants';
+export {
+    DSSE_MAX_PAYLOAD_BYTES,
+    DSSE_MAX_SIGNATURES,
+    DsseEnvelope,
+    DsseSignature,
+    RELEASE_PAYLOAD_TYPE,
+    REVOCATION_PAYLOAD_TYPE,
+    dsseKeyId,
+    dssePayload,
+    pae,
+    signDsse,
+    verifyDsseSignatures,
+} from './release/dsse';
+export {
+    Artifact,
+    ArtifactName,
+    GitCommit,
+    GitTag,
+    MAX_PROVENANCE_BYTES,
+    MAX_RELEASE_ARTIFACTS,
+    ReleaseEntry,
+    ReleaseKind,
+    Sha256Hex,
+    SignedRelease,
+    parseReleaseEntry,
+} from './release/entry';
+export {
+    MAX_REVOCATION_REASON_LENGTH,
+    MAX_REVOKED_VERSIONS,
+    REVOCATION_MAX_FUTURE_SKEW_MS,
+    REVOCATION_MAX_VALIDITY_MS,
+    RevocationList,
+    RevokedVersion,
+    parseRevocationList,
+} from './release/revocation';
+export {
+    BundlePath,
+    EngineApiRange,
+    MAX_UI_BUNDLE_FILES,
+    MAX_UI_BUNDLE_PATH_LENGTH,
+    UI_BUNDLE_ENTRY,
+    UiBundleFile,
+    UiBundleManifest,
+    satisfiesEngineApiRange,
+} from './release/manifest';
+export {
+    DEFAULT_REVOCATION_RULE,
+    GITHUB_ACTIONS_ISSUER,
+    KeyRef,
+    MAINTAINER_KEY_COUNT,
+    MAX_RELEASE_KEYS,
+    RELEASE_DELAYS,
+    RevocationRule,
+    SECURITY_THRESHOLD,
+    TrustPolicy,
+    WorkflowIdentity,
+} from './release/trust';
+export {
+    FULCIO_OID,
+    GITHUB_HOSTED_RUNNER,
+    RELEASE_BUILD_TRIGGER,
+    checkCertificateClaims,
+    expectedWorkflowClaims,
+} from './release/provenance';
+export type {
+    CertificateClaims,
+    CertificateClaimsCheck,
+    ExpectedWorkflowClaims,
+    FulcioOid,
+    ProvenanceVerification,
+    ProvenanceVerifier,
+} from './release/provenance';
+export { createFakeProvenanceVerifier } from './release/fake-provenance-verifier';
+export type { FakeAttestation } from './release/fake-provenance-verifier';
+export { compareEngineVersions } from './release/version';
+export { verifyArtifact, verifyManifestFiles, verifyRelease } from './release/verify';
+export type {
+    HashCheck,
+    ManifestFilesCheck,
+    MissingSignature,
+    ReleaseVerification,
+    RevocationsUnverifiableReason,
+    VerifyReleaseDeps,
+    VerifyReleaseInput,
+} from './release/verify';
