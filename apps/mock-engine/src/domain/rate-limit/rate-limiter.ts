@@ -1,11 +1,17 @@
 import type { Clock } from '../clock';
 
-/** Named per-client-IP policies; every non-session route names one (AGENTS.md rule 6). */
+/** Named per-client-IP policies; every route names one, session routes included (AGENTS.md rule 6). */
 export const RATE_LIMITS = {
     /** Pages, JSON, SSE and the echo socket. */
     'spike-ip': { limit: 600, windowMs: 60_000 },
     /** Download and screencast, which send far more than they receive. */
     'spike-bulk-ip': { limit: 60, windowMs: 60_000 },
+    /** The engine API: a busy UI makes a few requests a second per member, plus streams. */
+    'engine-api-ip': { limit: 1_200, windowMs: 60_000 },
+    /** Gateway pages and forms: sign-in, sign-out, step-up. */
+    'gateway-ip': { limit: 60, windowMs: 60_000 },
+    /** The dev-only control listener, driven by test suites. */
+    control: { limit: 6_000, windowMs: 60_000 },
 } as const satisfies Readonly<Record<string, { readonly limit: number; readonly windowMs: number }>>;
 
 export type RateLimitRule = keyof typeof RATE_LIMITS;

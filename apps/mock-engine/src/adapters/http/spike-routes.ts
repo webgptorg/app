@@ -161,6 +161,8 @@ export function createSpikeRoutes(deps: SpikeRouteDeps): readonly Route[] {
     const pageRoute = (path: '/' | '/__spike/') =>
         defineHttpRoute({
             transport: 'http',
+            params: null,
+            body: null,
             method: 'GET',
             path,
             auth: 'public',
@@ -177,6 +179,8 @@ export function createSpikeRoutes(deps: SpikeRouteDeps): readonly Route[] {
         pageRoute('/__spike/'),
         defineHttpRoute({
             transport: 'http',
+            params: null,
+            body: null,
             method: 'GET',
             path: '/__spike/whoami',
             auth: 'public',
@@ -195,6 +199,8 @@ export function createSpikeRoutes(deps: SpikeRouteDeps): readonly Route[] {
         }),
         defineHttpRoute({
             transport: 'http',
+            params: null,
+            body: null,
             method: 'GET',
             path: '/__spike/sse',
             auth: 'public',
@@ -216,6 +222,7 @@ export function createSpikeRoutes(deps: SpikeRouteDeps): readonly Route[] {
         }),
         defineWebSocketRoute({
             transport: 'websocket',
+            params: null,
             method: 'GET',
             path: '/__spike/ws',
             auth: 'public',
@@ -228,6 +235,7 @@ export function createSpikeRoutes(deps: SpikeRouteDeps): readonly Route[] {
         }),
         defineWebSocketRoute({
             transport: 'websocket',
+            params: null,
             method: 'GET',
             path: '/__spike/screencast',
             auth: 'public',
@@ -246,6 +254,8 @@ export function createSpikeRoutes(deps: SpikeRouteDeps): readonly Route[] {
         }),
         defineHttpRoute({
             transport: 'http',
+            params: null,
+            body: null,
             method: 'GET',
             path: '/__spike/download',
             auth: 'public',

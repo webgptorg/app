@@ -27,6 +27,7 @@ import { createMemoryLogger } from '../testing/memory-logger';
 import { createSeededRandom } from '../testing/seeded-random';
 import type { MockEngineConfig } from './config';
 import { DEFAULT_TUNNEL_OFFER, startMockEngine } from './start-mock-engine';
+import { DEFAULT_MOCK_SETTINGS } from '../testing/mock-settings';
 
 function relay(name: string): RelayTarget {
     return { url: `wss://${name}/v1/tunnel`, relayId: RelayId.parse(name), port: 443 };
@@ -43,6 +44,7 @@ const CONFIG: MockEngineConfig = {
     devCaFiles: null,
     devCaDomains: [],
     logLevel: 'info',
+    ...DEFAULT_MOCK_SETTINGS,
 };
 
 async function start(certificates?: ManagedCertificateSource) {
@@ -129,6 +131,8 @@ describe('startMockEngine', () => {
                 version: '0.1.0',
                 relays: 2,
                 proxy: false,
+                scenario: 'small-team',
+                seed: 1,
             },
         });
     });

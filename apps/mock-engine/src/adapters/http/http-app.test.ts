@@ -94,7 +94,7 @@ describe('route table', () => {
                 rateLimiter: { consume: () => ({ kind: 'allowed' }) },
                 logger: createMemoryLogger(),
             }),
-        ).toThrow('refusing to mount http / twice');
+        ).toThrow('refusing to mount http GET / twice');
     });
 });
 
@@ -136,6 +136,8 @@ describe('responses', () => {
             routes: [
                 defineHttpRoute({
                     transport: 'http',
+                    params: null,
+                    body: null,
                     method: 'GET',
                     path: '/boom',
                     auth: 'public',
@@ -223,6 +225,7 @@ describe('WebSocket upgrades', () => {
             routes: [
                 defineWebSocketRoute({
                     transport: 'websocket',
+                    params: null,
                     method: 'GET',
                     path: '/needs-header',
                     auth: 'public',
@@ -239,7 +242,7 @@ describe('WebSocket upgrades', () => {
         });
         const missing = await raw(engine, upgrade('GET', '/needs-header'));
         expect(missing).toMatch(/^HTTP\/1\.1 400 Bad Request\r\n/);
-        expect(missing).toContain('"detail":"invalid request headers"');
+        expect(missing).toContain('"path":"headers.x-mode"');
         const wrong = await raw(
             engine,
             upgrade('GET', '/needs-header').replace('\r\n\r\n', '\r\nX-Mode: other\r\n\r\n'),
