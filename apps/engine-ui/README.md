@@ -53,12 +53,16 @@ export const runsFeature = defineFeature({
   id: 'runs',
   requires: { capability: KNOWN_CAPABILITIES.runs, permission: 'agents.read' },
   nav: { group: 'work', order: 40, label: m.nav_runs, icon: Activity, to: '/runs' },
-  agentTabs: [{ id: 'runs', order: 30, label: m.agent_tab_runs, to: '/agents/$agentId/runs' }],
+  agentTabs: [{ ...AGENT_TABS.runs, label: m.agent_tab_runs, to: '/agents/$agentId/runs' }],
   liveIndicator: { useActiveCount: useActiveRunCount },
 });
 ```
 
 The shell, guards and (later) the command palette and activity feed read these descriptions; nothing else knows features by name. A feature appears only when `GET /engine` advertises its capability (`supports` from `@ptbk/engine-api`; an engine on API 1.0 advertises none) and the member holds its permission; nested entries (`agentTabs`, `agentOverviewCards`, `commands`) are filtered the same way. Its routes call `requireFeature(id)` in `beforeLoad`, which renders "not available on this engine" or "no access" instead of the screen. `to` is typed against the route tree, so renaming a route breaks the entries that name it.
+
+Agent detail tabs take their ID and order from `AGENT_TABS` (the order of docs/design/ui.md); the agent page (U-03) renders whatever tabs are visible, offers "Chat" and "Edit" in its header when the `chat` and `book` tabs exist, and never imports a tab's code. A tab route guards itself with `requireFeature(featureId, { agentTab })`, which also checks the tab's own `requires` (`anyPermission` for "any of these"). Until a feature ships its tab route, `/agents/$agentId/$tab` explains a registered but hidden tab ("not available", "no access") and answers "not found" otherwise. `agentOverviewCards` render in order, each inside its own error boundary and suspense fallback. The first visible `agentStatusProvider` supplies agent state; without one, the agents feature reads C-04's draft `GET /agents/{id}/status`.
+
+Change events come from one shared subscription to `GET /events` (`src/app/engine-events.ts`, used through `useEngineEvents()`): it connects while any component listens, resumes with `Last-Event-ID`, backs off when the stream drops, and calls each subscriber's `onReconnect` after a gap so it can refetch what it derived from events.
 
 Code checks permissions (`usePermissions().can()`, `<Can>`, `requirePermission()`), never role names; the role is a label. A test fails on any role-name comparison in `src/`.
 

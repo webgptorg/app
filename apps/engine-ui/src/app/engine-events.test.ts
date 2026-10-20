@@ -112,6 +112,29 @@ describe('engine events', () => {
         expect(onReconnect).toHaveBeenCalledOnce();
     });
 
+    it('backs off a stream that keeps closing without events, and starts over once one delivers', async () => {
+        const { client } = createInMemoryEngine();
+        const { stream, connections } = scriptedStream();
+        const timers = manualTimers();
+        const retryDelayMs = vi.fn((attempt: number) => attempt);
+        const events = createEngineEvents({ engineApi: { ...client, events: { stream } }, retryDelayMs, ...timers });
+        events.subscribe({ onEvent: () => undefined });
+        await flush();
+        connections[0]?.end();
+        await flush();
+        timers.runNext();
+        await flush();
+        connections[1]?.end();
+        await flush();
+        timers.runNext();
+        await flush();
+        connections[2]?.push('1', changed('a1'));
+        connections[2]?.end();
+        await flush();
+
+        expect(retryDelayMs.mock.calls.map(([attempt]) => attempt)).toEqual([1, 2, 1]);
+    });
+
     it('disconnects when the last subscriber leaves and resumes when one comes back', async () => {
         const { events, connections, stream } = setUp();
         const onReconnect = vi.fn();

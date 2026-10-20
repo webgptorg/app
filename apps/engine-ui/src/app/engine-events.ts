@@ -100,8 +100,10 @@ export function createEngineEvents(deps: EngineEventsDeps): EngineEvents {
             }
             if (connectedOnce) notify((subscriber) => subscriber.onReconnect?.());
             connectedOnce = true;
-            attempt = 0;
             for await (const item of response.data) {
+                // Only a stream that delivers resets the backoff, so one that keeps closing at once is retried ever
+                // more slowly instead of refetching every second.
+                attempt = 0;
                 if (item.id !== null) lastEventId = item.id;
                 notify((subscriber) => {
                     subscriber.onEvent(item.event);

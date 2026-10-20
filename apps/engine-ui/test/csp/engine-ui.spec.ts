@@ -1,12 +1,13 @@
 import { ENGINE_API_PREFIX } from '@ptbk/engine-api';
 
+import { FAKE_AGENT_ID } from './fake-engine-api.ts';
 import { expect, expectCleanPage, readBuiltIndexHtml, test } from './fixtures.ts';
 
 test.describe('the built bundle under the engine CSP', () => {
     test('/ redirects to the agents route and runs without a violation', async ({ page, visit }) => {
         const report = await visit('/');
 
-        await expect(page).toHaveURL(/\/agents\?sort=name$/);
+        await expect(page).toHaveURL(/\/agents$/);
         await expect(page.getByRole('heading', { name: 'Agents' })).toBeVisible();
         expectCleanPage(report);
     });
@@ -14,8 +15,41 @@ test.describe('the built bundle under the engine CSP', () => {
     test('/agents loads its data and meets the UX checks', async ({ page, visit }) => {
         const report = await visit('/agents');
 
-        await expect(page.getByRole('listitem').filter({ hasText: 'Ada' })).toBeVisible();
+        await expect(page.getByRole('link', { name: 'Ada' })).toBeVisible();
+        await expect(page.getByRole('row').filter({ hasText: 'Grace' }).getByText('Jana Nováková')).toBeVisible();
         expectCleanPage(report);
+    });
+
+    test(`/agents/${FAKE_AGENT_ID} and its Settings tab meet the UX checks`, async ({ page, visit }) => {
+        const overview = await visit(`/agents/${FAKE_AGENT_ID}`);
+        await expect(page.getByRole('heading', { level: 1, name: 'Ada' })).toBeVisible();
+        await expect(page.getByRole('tab', { name: 'Overview' })).toHaveAttribute('aria-selected', 'true');
+        expectCleanPage(overview);
+
+        const settings = await visit(`/agents/${FAKE_AGENT_ID}/settings`);
+        await expect(page.getByRole('combobox', { name: 'Visibility' })).toHaveValue('public');
+        expectCleanPage(settings);
+    });
+
+    test('row actions and the delete dialog work by keyboard and return focus', async ({ page, visit }) => {
+        expectCleanPage(await visit('/agents'));
+        const trigger = page.getByRole('button', { name: 'Actions for Ada' });
+        await trigger.focus();
+        await page.keyboard.press('ArrowDown');
+        const menu = page.getByRole('menu', { name: 'Actions for Ada' });
+        await expect(menu).toBeVisible();
+        await page.keyboard.press('End');
+        await expect(menu.getByRole('menuitem', { name: 'Delete' })).toBeFocused();
+        await page.keyboard.press('Enter');
+
+        const dialog = page.getByRole('dialog', { name: 'Delete Ada?' });
+        await expect(dialog).toBeVisible();
+        await expect(dialog.getByRole('textbox', { name: 'Type Ada to confirm' })).toBeFocused();
+        await expect(dialog.getByRole('button', { name: 'Delete' })).toBeDisabled();
+        await page.keyboard.press('Escape');
+        await expect(dialog).toHaveCount(0);
+        await expect(trigger).toBeFocused();
+        expect(await page.evaluate(() => window.__ptbkCspViolations ?? [])).toEqual([]);
     });
 
     for (const intent of ['hover', 'focus'] as const) {
