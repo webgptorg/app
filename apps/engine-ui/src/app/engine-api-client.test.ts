@@ -1,4 +1,5 @@
-import { ENGINE_API_PREFIX, IN_MEMORY_CLIENT_MARKER } from '@ptbk/engine-api';
+import { ENGINE_API_PREFIX } from '@ptbk/engine-api';
+import { IN_MEMORY_CLIENT_MARKER } from '@ptbk/engine-api/in-memory';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createAppEngineApiClient } from './engine-api-client';

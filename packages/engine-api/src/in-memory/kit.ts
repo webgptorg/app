@@ -6,7 +6,7 @@ import type { ActivityActor } from '../capabilities/activity';
 import { supports } from '../capabilities/capability';
 import type { CapabilityRef } from '../capabilities/capability';
 import { ActivityId } from '../common';
-import type { ProblemDetails, Timestamp } from '../common';
+import type { ChatId, ClientInfo, MemberId, ProblemDetails, SessionId, Timestamp } from '../common';
 import type { EngineEvent } from '../events';
 import type { Member } from '../members';
 import type { Permission } from '../permissions';
@@ -22,13 +22,55 @@ import type { InMemoryState } from './state';
 export type HandlerResult<T> =
     { readonly kind: 'ok'; readonly data: T } | { readonly kind: 'problem'; readonly problem: ProblemDetails };
 
+/** One piece of a scripted reply; `delayMs` is how long the engine "thinks" before producing it. */
+export interface ReplyChunk {
+    readonly text: string;
+    readonly delayMs?: number;
+}
+
 export interface ScriptedReply {
-    readonly chunks: readonly string[];
+    /**
+     * A reply whose chunks carry no `delayMs` generates as it is streamed, as in C-04's in-memory client. With a delay
+     * on any chunk it is paced: it generates on its own from the moment it is sent, whether or not anyone reads it,
+     * and only the cancel route stops it.
+     */
+    readonly chunks: readonly (string | ReplyChunk)[];
     /** `failed` ends the stream with `reply-failed` after the chunks. */
     readonly outcome?: 'completed' | 'failed';
 }
 
-export type ReplyScript = (input: { readonly agent: Agent; readonly content: string }) => ScriptedReply;
+export interface ReplyScriptInput {
+    readonly agent: Agent;
+    readonly content: string;
+    readonly chatId: ChatId;
+    /** How many messages the chat held before this exchange, so a script can vary per turn deterministically. */
+    readonly messageIndex: number;
+}
+
+export type ReplyScript = (input: ReplyScriptInput) => ScriptedReply;
+
+/** Resolves after `ms`, rejects when `signal` aborts first. */
+export type Sleep = (ms: number, signal: AbortSignal) => Promise<void>;
+
+/** Who makes a request, as the engine's gateway resolved it. The engine API decides everything from this. */
+export interface Actor {
+    readonly memberId: MemberId;
+    /** The session making the request; it is the one listed as `current`. */
+    readonly sessionId: SessionId;
+    /** Recorded in audit entries. */
+    readonly client: ClientInfo;
+    readonly permissions: ReadonlySet<Permission>;
+    /** Whether the member confirmed with a fresh passkey assertion recently enough for `stepUp` routes. */
+    readonly stepUpFresh: boolean;
+}
+
+/** Waits for paced replies to produce something new. */
+export interface ReplyProgress {
+    readonly sleep: Sleep;
+    notify(messageId: string): void;
+    /** Resolves on the next progress of `messageId` (a chunk or the end), rejects when `signal` aborts. */
+    next(messageId: string, signal: AbortSignal): Promise<void>;
+}
 
 /** What the engine itself needs to act, with or without a member request (the controller acts as the system). */
 export interface EngineContext {
@@ -36,13 +78,15 @@ export interface EngineContext {
     readonly now: () => Timestamp;
     readonly newId: <Schema extends z.ZodType<string, string>>(schema: Schema, prefix: string) => z.output<Schema>;
     readonly publish: (event: EngineEvent) => void;
+    readonly replies: ReplyProgress;
 }
 
 export interface HandlerContext extends EngineContext {
     readonly member: Member;
+    readonly actor: Actor;
     readonly permissions: ReadonlySet<Permission>;
-    /** Resolves when an event after `count` events exists, rejects when `signal` aborts. */
-    readonly nextEvent: (count: number, signal: AbortSignal) => Promise<void>;
+    /** Resolves once an event with a sequence number above `afterSeq` exists, rejects when `signal` aborts. */
+    readonly nextEvent: (afterSeq: number, signal: AbortSignal) => Promise<void>;
     readonly replyScript: ReplyScript;
     readonly signal: AbortSignal;
 }
@@ -113,6 +157,13 @@ export function liveAgent(ctx: EngineContext, agentId: string): HandlerResult<Ag
 
 export function advertises(ctx: EngineContext, capability: CapabilityRef): boolean {
     return supports(ctx.state.engine, capability);
+}
+
+/** A chat changed: its activity time moves and listeners are told. */
+export function touchChat(ctx: EngineContext, chatId: ChatId): void {
+    const chat = ctx.state.chats.get(chatId);
+    if (chat) ctx.state.chats.set(chatId, { ...chat, updatedAt: ctx.now() });
+    ctx.publish({ type: 'chat.changed', chatId });
 }
 
 export function memberActor(ctx: HandlerContext): ActivityActor {

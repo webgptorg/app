@@ -1,4 +1,4 @@
-import { createInMemoryEngineApiClient } from '@ptbk/engine-api';
+import { createInMemoryEngineApiClient } from '@ptbk/engine-api/in-memory';
 import type { EngineApiClient } from '@ptbk/engine-api';
 
 /** Offline development (`VITE_ENGINE_API=memory`): fake data with the contract's rules, no mock engine needed. */

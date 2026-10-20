@@ -14,7 +14,7 @@ import type { Run } from './capabilities/runs';
 import { Trigger, TriggerFire } from './capabilities/triggers';
 import { Chat, Message } from './chats';
 import { createEngineApiClient, EngineApiContractError } from './client';
-import type { EngineApiClient, EngineApiResponse, EngineApiTransport } from './client';
+import type { EngineApiClient, EngineApiResponse, EngineApiTransport, EngineApiTransportRequest } from './client';
 import {
     AgentId,
     AgentPermanentId,
@@ -25,6 +25,7 @@ import {
     OpaqueId,
     OrgId,
     RevisionId,
+    SessionId,
     Timestamp,
 } from './common';
 import type { ProblemDetails } from './common';
@@ -34,9 +35,9 @@ import { Folder } from './folders';
 import { hashAuditEntry } from './in-memory/audit-chain';
 import { checkBook } from './in-memory/book';
 import { HANDLERS } from './in-memory/handlers';
-import type { HandlerContext, ReplyScript } from './in-memory/handlers';
+import type { HandlerContext } from './in-memory/handlers';
 import { recordActivity } from './in-memory/kit';
-import type { ActivityInput, EngineContext } from './in-memory/kit';
+import type { ActivityInput, Actor, EngineContext, ReplyProgress, ReplyScript, Sleep } from './in-memory/kit';
 import { advanceRun } from './in-memory/runs';
 import type { RunOutcome } from './in-memory/runs';
 import type { FileRecord, InMemoryState } from './in-memory/state';
@@ -137,22 +138,108 @@ export interface InMemorySeedFile {
     readonly versions?: readonly { readonly version: Unbranded<z.input<typeof FileVersion>>; readonly content: Blob }[];
 }
 
-export interface InMemoryEngineApiOptions {
+/** What a core is built from. Who acts is not an option: every request names its {@link Actor}. */
+export interface InMemoryEngineCoreOptions {
     readonly seed?: InMemorySeed;
     readonly clock?: Clock;
+    /** The member the seed's defaults belong to (one passkey and one session); added if the seed lacks them. */
+    readonly member?: Omit<InMemoryMember, 'permissions'>;
+    readonly replyScript?: ReplyScript;
+    /** What `GET /engine` advertises; routes of any other capability answer 404 `capability-not-supported`. */
+    readonly capabilities?: readonly Unbranded<CapabilityRef>[];
+    /** Runs for every route with a permission; the default allows exactly the actor's permissions. */
+    readonly authorizer?: Authorizer;
+    /** How many events `GET /events` can replay after a reconnect (default 1,000). */
+    readonly eventBufferSize?: number;
+    /** Paces scripted replies; defaults to a timer. */
+    readonly sleep?: Sleep;
+}
+
+export interface InMemoryEngineApiOptions extends InMemoryEngineCoreOptions {
     readonly member?: InMemoryMember;
     /** `required` makes every `stepUp` route answer 401 `step-up-required`, as the gateway does without a fresh assertion. */
     readonly stepUp?: 'satisfied' | 'required';
-    readonly replyScript?: ReplyScript;
     /** Recorded in audit entries as the request's origin. */
     readonly client?: Unbranded<z.input<typeof ClientInfo>>;
-    /** What `GET /engine` advertises; routes of any other capability answer 404 `capability-not-supported`. */
-    readonly capabilities?: readonly Unbranded<CapabilityRef>[];
+}
+
+export const RESOURCE_KINDS = [
+    'agent',
+    'revision',
+    'folder',
+    'chat',
+    'message',
+    'member',
+    'invite',
+    'api-token',
+    'passkey',
+    'session',
+    'secret',
+    'file',
+    'run',
+    'trigger',
+    'integration',
+] as const;
+export type ResourceKind = (typeof RESOURCE_KINDS)[number];
+
+/**
+ * The one resource a route acts on, from its last path parameter. `createdBy` is the member who owns it (for passkeys
+ * and sessions, the member they belong to); it is absent when the resource has no owner or does not exist, in which
+ * case the route answers 404 itself.
+ */
+export interface AuthorizationResource {
+    readonly kind: ResourceKind;
+    readonly id: string;
+    readonly createdBy?: MemberId | null;
+}
+
+export type AuthorizationDecision = { readonly kind: 'allow' } | { readonly kind: 'deny'; readonly reason: string };
+
+/**
+ * The engine's policy port (ADR 0006), asked before every route that declares a permission. A denial answers like a
+ * missing permission: 403 `forbidden` with the route's `requiredPermission`, audited as `denied`. Lists and events are
+ * filtered by permission only.
+ */
+export interface Authorizer {
+    can(actor: Actor, permission: Permission, resource: AuthorizationResource | null): AuthorizationDecision;
+}
+
+export const PERMISSION_AUTHORIZER: Authorizer = {
+    can: (actor, permission) =>
+        actor.permissions.has(permission) ? { kind: 'allow' } : { kind: 'deny', reason: 'missing-permission' },
+};
+
+/** Counts and members for an engine's own reporting, read without a request and without an audit entry. */
+export interface InMemoryEngineSnapshot {
+    readonly counts: Readonly<
+        Record<
+            | 'members'
+            | 'agents'
+            | 'folders'
+            | 'chats'
+            | 'messages'
+            | 'secrets'
+            | 'apiTokens'
+            | 'passkeys'
+            | 'sessions'
+            | 'files'
+            | 'runs'
+            | 'triggers'
+            | 'integrations'
+            | 'activity'
+            | 'auditEntries',
+            number
+        >
+    >;
+    readonly members: readonly Member[];
+    /** As stored: `current` is always `false` here, since no request is making them current. */
+    readonly sessions: readonly Session[];
 }
 
 /**
- * Test-only levers on the in-memory engine, for what the engine does on its own: runs progressing, schedules coming
- * due, things happening elsewhere. Timestamps come from the injected clock, so UI tests stay deterministic.
+ * Levers for what the engine does on its own, outside any request: runs progressing, schedules coming due, the
+ * gateway signing members in and out, the process reporting its relays. Timestamps come from the injected clock, and
+ * levers write no audit entries; only requests are audited.
  */
 export interface InMemoryEngineController {
     /** Appends to the activity feed (stamped with an ID and the clock) and announces it on the event stream. */
@@ -163,10 +250,28 @@ export interface InMemoryEngineController {
     fireTrigger(triggerId: string): TriggerFire;
     /** Sends an event as is, e.g. a change made by another member. */
     emit(event: Unbranded<z.input<typeof EngineEvent>>): void;
+    /** E.g. the dashboard URL once the engine is linked. `capabilities` come from the core's options. */
+    updateEngine(patch: Partial<Omit<Unbranded<z.input<typeof EngineInfo>>, 'capabilities'>>): EngineInfo;
+    /** E.g. each relay's link state. */
+    updateSecurity(patch: Partial<Unbranded<z.input<typeof SecurityOverview>>>): SecurityOverview;
+    /** Throws if the ID is taken. */
+    addMember(member: Unbranded<z.input<typeof Member>>): Member;
+    /** A sign-in; throws for an unknown member or a taken ID. `current` is decided per request. */
+    addSession(session: Omit<Unbranded<z.input<typeof Session>>, 'current'>): Session;
+    /** A sign-out or expiry; `false` if the session was not listed. */
+    removeSession(sessionId: string): boolean;
+    inspect(): InMemoryEngineSnapshot;
 }
 
 export interface InMemoryEngine {
     readonly client: EngineApiClient;
+    readonly controller: InMemoryEngineController;
+}
+
+/** One engine, many members: each request runs as the actor its transport was made for. */
+export interface InMemoryEngineCore {
+    /** Resolves with exactly what an engine would send (strictly checked), so it can be served over HTTP. */
+    transport(actor: Actor): EngineApiTransport;
     readonly controller: InMemoryEngineController;
 }
 
@@ -179,13 +284,29 @@ export function createInMemoryEngineApiClient(options: InMemoryEngineApiOptions 
     return createInMemoryEngine(options).client;
 }
 
-/** The in-memory client together with its test-only controller. */
+/** The in-memory client, acting as one member, together with the core's controller. */
 export function createInMemoryEngine(options: InMemoryEngineApiOptions = {}): InMemoryEngine {
-    const engine = createEngine(options);
-    const client = createEngineApiClient(withClientReading(engine.transport));
+    const core = createInMemoryEngineCore(options);
+    const client = createEngineApiClient(withClientReading(core.transport(actorFromOptions(options))));
     return {
         client: Object.defineProperty(client, Symbol.toStringTag, { value: IN_MEMORY_CLIENT_MARKER }),
-        controller: engine.controller,
+        controller: core.controller,
+    };
+}
+
+const DEFAULT_MEMBER_ID = 'member-owner';
+const DEFAULT_SESSION_ID = 'session-current';
+
+/** The member the options describe, signed in on the seed's current session for them. */
+export function actorFromOptions(options: InMemoryEngineApiOptions): Actor {
+    const memberId = options.member?.id ?? DEFAULT_MEMBER_ID;
+    const current = options.seed?.sessions?.find((session) => session.memberId === memberId && session.current);
+    return {
+        memberId: MemberId.parse(memberId),
+        sessionId: SessionId.parse(current?.id ?? DEFAULT_SESSION_ID),
+        client: ClientInfo.parse(options.client ?? { ip: '127.0.0.1', userAgent: 'in-memory engine API client' }),
+        permissions: new Set(options.member?.permissions ?? OWNER_PERMISSIONS),
+        stepUpFresh: options.stepUp !== 'required',
     };
 }
 
@@ -193,44 +314,77 @@ const DEFAULT_REPLY_SCRIPT: ReplyScript = ({ agent, content }) => ({
     chunks: `${agent.name} received: ${content}`.split(/(?<= )/),
 });
 
-/**
- * The engine side of the in-memory client: it resolves with exactly what an engine would send (strictly checked), so
- * the tests can serve it over HTTP to drive the fetch client.
- */
-export function createInMemoryEngineApiTransport(options: InMemoryEngineApiOptions = {}): EngineApiTransport {
-    return createEngine(options).transport;
+export const DEFAULT_EVENT_BUFFER_SIZE = 1_000;
+
+const timerSleep: Sleep = (ms, signal) =>
+    new Promise((resolve, reject) => {
+        if (signal.aborted) {
+            reject(signal.reason as Error);
+            return;
+        }
+        const abort = (): void => {
+            clearTimeout(timer);
+            reject(signal.reason as Error);
+        };
+        const timer = setTimeout(() => {
+            signal.removeEventListener('abort', abort);
+            resolve();
+        }, ms);
+        signal.addEventListener('abort', abort, { once: true });
+    });
+
+/** Resolves when `ready()` holds after a `wake`, rejects when `signal` aborts. */
+function waitFor(waiters: Set<() => void>, ready: () => boolean, signal: AbortSignal): Promise<void> {
+    return new Promise((resolve, reject) => {
+        if (ready()) {
+            resolve();
+            return;
+        }
+        const wake = (): void => {
+            cleanup();
+            resolve();
+        };
+        const abort = (): void => {
+            cleanup();
+            reject(signal.reason as Error);
+        };
+        const cleanup = (): void => {
+            waiters.delete(wake);
+            signal.removeEventListener('abort', abort);
+        };
+        if (signal.aborted) {
+            abort();
+            return;
+        }
+        waiters.add(wake);
+        signal.addEventListener('abort', abort, { once: true });
+    });
 }
 
-/** Engine transport and controller over one state, for tests that drive the fetch client and the engine together. */
-export function createInMemoryEngineParts(options: InMemoryEngineApiOptions = {}): {
-    readonly transport: EngineApiTransport;
-    readonly controller: InMemoryEngineController;
-} {
-    return createEngine(options);
-}
-
-function createEngine(options: InMemoryEngineApiOptions): {
-    readonly transport: EngineApiTransport;
-    readonly controller: InMemoryEngineController;
-} {
+/** The in-memory engine as a server sees it: one shared state, a transport per request's actor, and its levers. */
+export function createInMemoryEngineCore(options: InMemoryEngineCoreOptions = {}): InMemoryEngineCore {
     const clock = options.clock ?? { now: () => new Date() };
     const now = (): Timestamp => Timestamp.parse(clock.now().toISOString());
-    const permissions = new Set(options.member?.permissions ?? OWNER_PERMISSIONS);
-    const member = Member.parse({
-        id: options.member?.id ?? 'member-owner',
+    const authorizer = options.authorizer ?? PERMISSION_AUTHORIZER;
+    const eventBufferSize = options.eventBufferSize ?? DEFAULT_EVENT_BUFFER_SIZE;
+    if (!Number.isSafeInteger(eventBufferSize) || eventBufferSize < 1) {
+        throw new RangeError('eventBufferSize must be a positive integer');
+    }
+    const seedMember = Member.parse({
+        id: options.member?.id ?? DEFAULT_MEMBER_ID,
         displayName: options.member?.displayName ?? 'Owner',
         role: options.member?.role ?? 'owner',
         status: 'active',
         createdAt: now(),
         lastSeenAt: now(),
     });
-    const client = ClientInfo.parse(options.client ?? { ip: '127.0.0.1', userAgent: 'in-memory engine API client' });
     const capabilities = (options.capabilities ?? Object.values(KNOWN_CAPABILITIES)).map((ref) =>
         CapabilityRef.parse(ref),
     );
-    const state = createState(options.seed ?? {}, member, now, capabilities);
+    const state = createState(options.seed ?? {}, seedMember, now, capabilities);
     const counters = new Map<string, number>();
-    const waiters = new Set<() => void>();
+    const eventWaiters = new Set<() => void>();
+    const replyWaiters = new Map<string, Set<() => void>>();
     // Appends are serialised so each entry hashes over the previous one.
     let auditTail: Promise<unknown> = seedAudit(state, options.seed?.auditEntries ?? []);
 
@@ -243,35 +397,38 @@ function createEngine(options: InMemoryEngineApiOptions): {
         }
     };
     const publish = (event: EngineEvent): void => {
-        state.events.push({ id: String(state.events.length + 1), event });
-        for (const wake of waiters) wake();
+        state.eventSeq++;
+        state.events.push({ id: String(state.eventSeq), seq: state.eventSeq, event });
+        if (state.events.length > eventBufferSize) state.events.splice(0, state.events.length - eventBufferSize);
+        for (const wake of [...eventWaiters]) wake();
     };
-    const nextEvent = (count: number, signal: AbortSignal): Promise<void> =>
-        new Promise((resolve, reject) => {
-            if (state.events.length > count) {
-                resolve();
-                return;
+    const nextEvent: HandlerContext['nextEvent'] = (afterSeq, signal) =>
+        waitFor(eventWaiters, () => state.eventSeq > afterSeq, signal);
+    const replies: ReplyProgress = {
+        sleep: options.sleep ?? timerSleep,
+        notify: (messageId) => {
+            for (const wake of [...(replyWaiters.get(messageId) ?? [])]) wake();
+        },
+        next: (messageId, signal) => {
+            let waiters = replyWaiters.get(messageId);
+            if (!waiters) {
+                waiters = new Set();
+                replyWaiters.set(messageId, waiters);
             }
-            const wake = (): void => {
-                cleanup();
-                resolve();
+            const settled = waitFor(waiters, () => false, signal);
+            const forget = (): void => {
+                if (waiters.size === 0) replyWaiters.delete(messageId);
             };
-            const abort = (): void => {
-                cleanup();
-                reject(signal.reason as Error);
-            };
-            const cleanup = (): void => {
-                waiters.delete(wake);
-                signal.removeEventListener('abort', abort);
-            };
-            if (signal.aborted) {
-                abort();
-                return;
-            }
-            waiters.add(wake);
-            signal.addEventListener('abort', abort, { once: true });
-        });
-    const audit = (action: AuditAction, target: AuditEntry['target'], outcome: AuditEntry['outcome']): void => {
+            settled.then(forget, forget);
+            return settled;
+        },
+    };
+    const audit = (
+        actor: Actor,
+        action: AuditAction,
+        target: AuditEntry['target'],
+        outcome: AuditEntry['outcome'],
+    ): void => {
         const at = now();
         auditTail = auditTail.then(async () => {
             const previous = state.audit.at(-1);
@@ -280,18 +437,18 @@ function createEngine(options: InMemoryEngineApiOptions): {
                 id: AuditEntryId.parse(`audit-${String(seq).padStart(6, '0')}`),
                 seq,
                 at,
-                actor: { kind: 'member' as const, memberId: member.id },
+                actor: { kind: 'member' as const, memberId: actor.memberId },
                 action,
                 target,
                 outcome,
-                client,
+                client: actor.client,
                 prevHash: previous?.hash ?? null,
             };
             state.audit.push({ ...entry, hash: await hashAuditEntry(entry) });
         });
     };
 
-    const system: EngineContext = { state, now, newId, publish };
+    const system: EngineContext = { state, now, newId, publish, replies };
     const controller: InMemoryEngineController = {
         appendActivity: (activity) => recordActivity(system, activity as ActivityInput),
         advanceRun: (runId, outcome) => advanceRun(system, runId, outcome),
@@ -299,57 +456,181 @@ function createEngine(options: InMemoryEngineApiOptions): {
         emit: (event) => {
             publish(EngineEvent.parse(event));
         },
+        updateEngine: (patch) => {
+            state.engine = EngineInfo.parse({ ...state.engine, ...patch, capabilities: state.engine.capabilities });
+            return state.engine;
+        },
+        updateSecurity: (patch) => {
+            state.security = SecurityOverview.parse({ ...state.security, ...patch });
+            return state.security;
+        },
+        addMember: (input) => {
+            const member = Member.parse(input);
+            if (state.members.has(member.id)) throw new Error('member ID already taken');
+            state.members.set(member.id, member);
+            return member;
+        },
+        addSession: (input) => {
+            const session = Session.parse({ ...input, current: false });
+            if (!state.members.has(session.memberId)) throw new Error('session for an unknown member');
+            if (state.sessions.has(session.id)) throw new Error('session ID already taken');
+            state.sessions.set(session.id, session);
+            return session;
+        },
+        removeSession: (sessionId) => state.sessions.delete(sessionId),
+        inspect: () => ({
+            counts: {
+                members: state.members.size,
+                agents: state.agents.size,
+                folders: state.folders.size,
+                chats: state.chats.size,
+                messages: state.messages.size,
+                secrets: state.secrets.size,
+                apiTokens: state.apiTokens.size,
+                passkeys: state.passkeys.size,
+                sessions: state.sessions.size,
+                files: state.files.size,
+                runs: state.runs.size,
+                triggers: state.triggers.size,
+                integrations: state.integrations.size,
+                activity: state.activity.length,
+                auditEntries: state.audit.length,
+            },
+            members: [...state.members.values()],
+            sessions: [...state.sessions.values()].map((session) => ({ ...session, current: false })),
+        }),
     };
 
-    const transport: EngineApiTransport = async (route, request, signal) => {
-        signal.throwIfAborted();
-        await auditTail;
-        // An engine without the capability has no such route, whoever asks.
-        if (route.capability && !supports(state.engine, route.capability)) {
-            return { kind: 'problem', problem: createProblem('capability-not-supported') };
-        }
-        const routeId = route.id as EngineApiRouteId;
-        const audited = AUDITED[routeId];
-        const deny = (problem: ProblemDetails): EngineApiResponse<never> => {
-            if (audited) audit(audited.action, auditTarget(audited, request.params, undefined), 'denied');
-            return { kind: 'problem', problem };
+    const transport =
+        (actor: Actor): EngineApiTransport =>
+        async (route, request, signal) => {
+            signal.throwIfAborted();
+            await auditTail;
+            // An engine without the capability has no such route, whoever asks.
+            if (route.capability && !supports(state.engine, route.capability)) {
+                return { kind: 'problem', problem: createProblem('capability-not-supported') };
+            }
+            // Read on every request, so a removed member is signed out and a changed role applies at once.
+            const member = state.members.get(actor.memberId);
+            if (!member) return { kind: 'problem', problem: createProblem('unauthenticated') };
+            const routeId = route.id as EngineApiRouteId;
+            const audited = AUDITED[routeId];
+            const deny = (problem: ProblemDetails): EngineApiResponse<never> => {
+                if (audited) audit(actor, audited.action, auditTarget(audited, request.params, undefined), 'denied');
+                return { kind: 'problem', problem };
+            };
+            if (route.permission !== null) {
+                const decision = authorizer.can(actor, route.permission, resourceOf(state, route, request.params));
+                if (decision.kind === 'deny') {
+                    return deny(createProblem('forbidden', { requiredPermission: route.permission }));
+                }
+            }
+            if (route.stepUp && !actor.stepUpFresh) return deny(createProblem('step-up-required'));
+            const parsed = parseRequest(route, request);
+            if (parsed.kind === 'problem') {
+                if (audited) audit(actor, audited.action, auditTarget(audited, request.params, undefined), 'failed');
+                return parsed;
+            }
+            const handler = HANDLERS[routeId] as (
+                request: ParsedRouteRequest<RouteDefinition>,
+                ctx: HandlerContext,
+            ) => ReturnType<(typeof HANDLERS)[EngineApiRouteId]>;
+            const result = await handler(parsed.request, {
+                ...system,
+                member,
+                actor,
+                permissions: actor.permissions,
+                nextEvent,
+                replyScript: options.replyScript ?? DEFAULT_REPLY_SCRIPT,
+                signal,
+            });
+            if (audited) {
+                const outcome = result.kind === 'ok' ? 'success' : 'failed';
+                audit(
+                    actor,
+                    audited.action,
+                    auditTarget(audited, parsed.request.params, result.kind === 'ok' ? result.data : undefined),
+                    outcome,
+                );
+            }
+            if (result.kind === 'problem') return result;
+            return { kind: 'ok', data: checkSuccess(route, result.data) };
         };
-        if (route.permission !== null && !permissions.has(route.permission)) {
-            return deny(createProblem('forbidden', { requiredPermission: route.permission }));
-        }
-        if (route.stepUp && options.stepUp === 'required') return deny(createProblem('step-up-required'));
-        const parsed = parseRequest(route, request);
-        if (parsed.kind === 'problem') {
-            if (audited) audit(audited.action, auditTarget(audited, request.params, undefined), 'failed');
-            return parsed;
-        }
-        const handler = HANDLERS[routeId] as (
-            request: ParsedRouteRequest<RouteDefinition>,
-            ctx: HandlerContext,
-        ) => ReturnType<(typeof HANDLERS)[EngineApiRouteId]>;
-        const result = await handler(parsed.request, {
-            state,
-            member,
-            permissions,
-            now,
-            newId,
-            publish,
-            nextEvent,
-            replyScript: options.replyScript ?? DEFAULT_REPLY_SCRIPT,
-            signal,
-        });
-        if (audited) {
-            const outcome = result.kind === 'ok' ? 'success' : 'failed';
-            audit(
-                audited.action,
-                auditTarget(audited, parsed.request.params, result.kind === 'ok' ? result.data : undefined),
-                outcome,
-            );
-        }
-        if (result.kind === 'problem') return result;
-        return { kind: 'ok', data: checkSuccess(route, result.data) };
-    };
     return { transport, controller };
+}
+
+const PARAM_RESOURCES: Readonly<Record<string, ResourceKind>> = {
+    agentId: 'agent',
+    revisionId: 'revision',
+    folderId: 'folder',
+    chatId: 'chat',
+    messageId: 'message',
+    memberId: 'member',
+    inviteId: 'invite',
+    apiTokenId: 'api-token',
+    passkeyId: 'passkey',
+    sessionId: 'session',
+    secretId: 'secret',
+    fileId: 'file',
+    runId: 'run',
+    triggerId: 'trigger',
+    integrationId: 'integration',
+};
+
+/** The resource named by the route's last path parameter, before the input is parsed (so a bad ID stays a 400). */
+function resourceOf(
+    state: InMemoryState,
+    route: RouteDefinition,
+    params: EngineApiTransportRequest['params'],
+): AuthorizationResource | null {
+    const name = [...route.path.matchAll(/\{(\w+)\}/g)].at(-1)?.[1];
+    const kind = name === undefined ? undefined : PARAM_RESOURCES[name];
+    const id = name === undefined ? undefined : params?.[name];
+    if (kind === undefined || typeof id !== 'string') return null;
+    const createdBy = ownerOf(state, kind, id, params);
+    return createdBy === undefined ? { kind, id } : { kind, id, createdBy };
+}
+
+function ownerOf(
+    state: InMemoryState,
+    kind: ResourceKind,
+    id: string,
+    params: EngineApiTransportRequest['params'],
+): MemberId | null | undefined {
+    switch (kind) {
+        case 'agent':
+            return state.agents.get(id)?.agent.createdBy;
+        case 'revision': {
+            const agentId = params?.['agentId'];
+            const agent = typeof agentId === 'string' ? state.agents.get(agentId) : undefined;
+            return agent?.revisions.find((revision) => revision.id === id)?.createdBy;
+        }
+        case 'chat':
+            return state.chats.get(id)?.createdBy;
+        case 'message':
+            return state.messages.get(id)?.createdBy;
+        case 'invite':
+            return state.invites.get(id)?.createdBy;
+        case 'api-token':
+            return state.apiTokens.get(id)?.createdBy;
+        case 'passkey':
+            return state.passkeys.get(id)?.memberId;
+        case 'session':
+            return state.sessions.get(id)?.memberId;
+        case 'secret':
+            return state.secrets.get(id)?.createdBy;
+        case 'file':
+            return state.files.get(id)?.metadata.createdBy;
+        case 'run':
+            return state.runs.get(id)?.createdBy;
+        case 'trigger':
+            return state.triggers.get(id)?.trigger.createdBy;
+        case 'integration':
+            return state.integrations.get(id)?.createdBy;
+        case 'folder':
+        case 'member':
+            return undefined;
+    }
 }
 
 type ParseOutcome =
@@ -616,6 +897,7 @@ function createState(
         activity: (seed.activity ?? []).map((record) => Activity.parse(record)),
         audit: [],
         events: [],
+        eventSeq: 0,
     };
     for (const [index, seedAgent] of (seed.agents ?? []).entries()) {
         const book = checkBook(seedAgent.source);

@@ -6,7 +6,7 @@ import type { EngineApiStreamItem, RouteDefinition, RouteResponse } from '../rou
 import { ENGINE_API_ROUTE_LIST } from '../routes';
 import { encodeSseMessage } from '../sse';
 
-export type InProcessHandler = (request: Request) => Promise<Response>;
+export type EngineApiHttpHandler = (request: Request) => Promise<Response>;
 
 interface RouteMatch {
     readonly route: RouteDefinition;
@@ -14,40 +14,54 @@ interface RouteMatch {
 }
 
 /**
- * The HTTP side of the contract over any transport, so the fetch client can be tested end to end against the
- * in-memory engine without a socket. Validation and authorisation stay in the transport, as in a real engine.
+ * The HTTP binding of the contract over any transport, framework-agnostic so an engine can mount it on Hono, Fastify or
+ * plain `fetch` handlers: every path under `ENGINE_API_PREFIX` is matched against the route table, anything else is
+ * 404 problem+json. Validation and authorisation stay in the transport.
  */
-export function createInProcessHandler(transport: EngineApiTransport): InProcessHandler {
+export function createEngineApiHttpHandler(transport: EngineApiTransport): EngineApiHttpHandler {
     return async (request) => {
         const url = new URL(request.url);
         if (!url.pathname.startsWith(`${ENGINE_API_PREFIX}/`)) return problemResponse(createProblem('not-found'));
         const match = matchRoute(request.method, url.pathname.slice(ENGINE_API_PREFIX.length));
         if (!match) return problemResponse(createProblem('not-found'));
-        const { route, params } = match;
-
-        const query: Record<string, string> = {};
-        for (const [name, value] of url.searchParams) {
-            if (name in query) {
-                return problemResponse(
-                    createProblem('validation-failed', {
-                        errors: [{ path: `query.${name}`, message: 'Repeated query parameter' }],
-                    }),
-                );
-            }
-            query[name] = value;
-        }
-
-        const body = await readBody(route, request);
-        if (body.kind === 'problem') return problemResponse(body.problem);
-
-        const lastEventId = request.headers.get('last-event-id');
-        const result = await transport(
-            route,
-            { params, query, body: body.value, ...(lastEventId === null ? {} : { lastEventId }) },
-            request.signal,
-        );
-        return writeResult(route, result);
+        return serveEngineApiRoute(transport, match.route, match.params, request);
     };
+}
+
+/**
+ * Serves one operation whose route and path parameters the caller already matched: reads the query (a repeated
+ * parameter is a 400), the body by the route's media type and `Last-Event-ID`, then writes the transport's answer as
+ * JSON, an empty body, a `nosniff` attachment, SSE or problem+json. The request's signal ends an SSE stream.
+ */
+export async function serveEngineApiRoute(
+    transport: EngineApiTransport,
+    route: RouteDefinition,
+    params: Readonly<Record<string, string>>,
+    request: Request,
+): Promise<Response> {
+    const url = new URL(request.url);
+    const query: Record<string, string> = {};
+    for (const [name, value] of url.searchParams) {
+        if (Object.hasOwn(query, name)) {
+            return problemResponse(
+                createProblem('validation-failed', {
+                    errors: [{ path: `query.${name}`, message: 'Repeated query parameter' }],
+                }),
+            );
+        }
+        query[name] = value;
+    }
+
+    const body = await readBody(route, request);
+    if (body.kind === 'problem') return problemResponse(body.problem);
+
+    const lastEventId = request.headers.get('last-event-id');
+    const result = await transport(
+        route,
+        { params, query, body: body.value, ...(lastEventId === null ? {} : { lastEventId }) },
+        request.signal,
+    );
+    return writeResult(route, result);
 }
 
 function matchRoute(method: string, path: string): RouteMatch | undefined {

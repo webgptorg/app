@@ -26,8 +26,13 @@ export interface AgentRecord {
 }
 
 export interface ReplyRecord {
-    readonly chunks: readonly string[];
+    readonly chunks: readonly { readonly text: string; readonly delayMs: number }[];
     readonly outcome: 'completed' | 'failed';
+    /** Paced replies generate on their own; `generated` counts the chunks produced so far. */
+    readonly paced: boolean;
+    generated: number;
+    /** Stops a paced reply's generation; only the cancel route uses it. */
+    readonly stop: AbortController;
 }
 
 export interface FileVersionRecord {
@@ -48,11 +53,14 @@ export interface TriggerRecord {
 }
 
 export interface EventRecord {
+    /** The SSE id: `seq` as a string. */
     readonly id: string;
+    /** Increases by one per event, across drops from the buffer. */
+    readonly seq: number;
     readonly event: EngineEvent;
 }
 
-/** Mutable on purpose: this is the in-memory engine's database, owned by one transport. */
+/** Mutable on purpose: this is the in-memory engine's database, owned by one core. */
 export interface InMemoryState {
     readonly orgId: OrgId;
     engine: EngineInfo;
@@ -77,5 +85,8 @@ export interface InMemoryState {
     /** Oldest first. */
     readonly activity: Activity[];
     readonly audit: AuditEntry[];
+    /** The newest events, oldest first; older ones drop once the buffer is full. */
     readonly events: EventRecord[];
+    /** Sequence number of the last event published, buffered or not. */
+    eventSeq: number;
 }
