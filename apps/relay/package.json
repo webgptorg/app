@@ -5,7 +5,19 @@
   "type": "module",
   "description": "SNI passthrough relay and tunnel endpoint (Node on VPS)",
   "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "build": "tsdown",
+    "start": "node dist/main.mjs",
     "typecheck": "tsc --noEmit -p .",
-    "test": "vitest run --passWithNoTests"
+    "test": "tsdown --log-level warn && vitest run --coverage"
+  },
+  "dependencies": {
+    "@ptbk/protocol": "workspace:*",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "eslint": "catalog:",
+    "tsdown": "0.23.1",
+    "tsx": "4.23.15"
   }
 }

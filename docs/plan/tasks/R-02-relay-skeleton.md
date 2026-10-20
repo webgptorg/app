@@ -2,7 +2,7 @@
 
 - **Lane:** Relay · **Module:** `apps/relay` · **Milestone:** M1
 - **Depends on:** C-01, C-03
-- **Status:** todo
+- **Status:** done (#14)
 - **Spec:** Relay and tunnel; Interfaces (draft) 2; Metadata we still see; Hosting and stack; ADRs: [0001](../../adr/0001-bun-workspaces-monorepo.md), [0005](../../adr/0005-modular-architecture.md), [0014](../../adr/0014-cryptography.md)
 
 ## Goal
