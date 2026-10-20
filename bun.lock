@@ -147,6 +147,13 @@
     },
     "packages/conformance": {
       "name": "@ptbk/conformance",
+      "bin": {
+        "ptbk-conformance": "./dist/ptbk-conformance.js",
+      },
+      "dependencies": {
+        "@ptbk/engine-api": "workspace:*",
+        "@ptbk/protocol": "workspace:*",
+      },
     },
     "packages/engine-api": {
       "name": "@ptbk/engine-api",
