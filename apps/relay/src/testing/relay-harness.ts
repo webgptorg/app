@@ -1,0 +1,127 @@
+import type { RelayId } from '@ptbk/protocol';
+import { RelayId as RelayIdSchema } from '@ptbk/protocol';
+
+import type { FakeClock } from '../adapters/fake-clock';
+import type { InMemoryDnsResolver } from '../adapters/in-memory-dns-resolver';
+import type { InMemoryRegistry } from '../adapters/in-memory-registry';
+import type { MemoryLogger } from '../adapters/memory-logger';
+import { systemClock } from '../adapters/system-clock';
+import type { RelayConfig } from '../app/config';
+import { parseRelayConfig } from '../app/config';
+import type { TunnelListener } from '../app/start-relay';
+import { REGISTRY_NEGATIVE_TTL_MS, startTunnelListener } from '../app/start-relay';
+import { createCachedDnsResolver } from '../domain/cached-dns';
+import { createCachedRegistry } from '../domain/cached-registry';
+import type { Clock } from '../domain/clock';
+import type { ConnectOptions, TestEngineClient } from './engine-client';
+import { connectEngine } from './engine-client';
+import type { TestEngine } from './engines';
+import { ENGINE_DOMAIN } from './engines';
+import type { FakeRandom } from './fake-random';
+import { createFakeRandom } from './fake-random';
+import type { TestCertificate } from './test-pki';
+import { createTestCertificate } from './test-pki';
+import { createTestDeps } from './test-deps';
+
+export const RELAY_ID: RelayId = RelayIdSchema.parse('relay-a.ptbk.test');
+
+export interface RelayHarness {
+    readonly config: RelayConfig;
+    readonly listener: TunnelListener;
+    readonly port: number;
+    readonly certificate: TestCertificate;
+    readonly clock: FakeClock;
+    readonly logger: MemoryLogger;
+    /** The source behind the cached registry, as R-02 wires it. */
+    readonly registry: InMemoryRegistry;
+    /** The resolver behind the cached DNS resolver. */
+    readonly dns: InMemoryDnsResolver;
+    readonly random: FakeRandom;
+    connect(engine: TestEngine, options?: Partial<ConnectOptions>): TestEngineClient;
+    close(): Promise<void>;
+}
+
+let sharedCertificate: TestCertificate | undefined;
+
+/** The relay's certificate, generated once per test file. */
+export function relayCertificate(): TestCertificate {
+    sharedCertificate ??= createTestCertificate([RELAY_ID]);
+    return sharedCertificate;
+}
+
+export interface HarnessOptions {
+    readonly env?: Readonly<Record<string, string>>;
+    /** Real time by default; a test of pings passes a fake one. */
+    readonly livenessClock?: Clock;
+}
+
+/**
+ * The tunnel listener on 127.0.0.1 and a free port, wired as `startRelay` wires it (cached registry and resolver over
+ * in-memory sources), with a fake clock for deadlines, caching and revalidation.
+ */
+export async function startHarness(options: HarnessOptions = {}): Promise<RelayHarness> {
+    const { clock, logger, registry, dns } = createTestDeps();
+    const random = createFakeRandom();
+    const certificate = relayCertificate();
+    const config = parseRelayConfig({
+        RELAY_HOSTNAME: RELAY_ID,
+        RELAY_LISTEN_HOST: '127.0.0.1',
+        RELAY_LISTEN_PORT: '0',
+        RELAY_ENGINE_DOMAIN: ENGINE_DOMAIN,
+        RELAY_TLS_CERT_FILE: '/unused/cert.pem',
+        RELAY_TLS_KEY_FILE: '/unused/key.pem',
+        RELAY_REGISTRY_KIND: 'static',
+        RELAY_REGISTRY_FILE: '/unused/registry.json',
+        ...options.env,
+    });
+    const cachedRegistry = createCachedRegistry({
+        inner: registry,
+        clock,
+        logger,
+        ttlMs: config.registry.ttlMs,
+        maxStaleMs: config.registry.maxStaleMs,
+        negativeTtlMs: REGISTRY_NEGATIVE_TTL_MS,
+        lookupTimeoutMs: config.registry.timeoutMs,
+    });
+    const cachedDns = createCachedDnsResolver({
+        inner: dns,
+        clock,
+        logger,
+        ttlMs: config.registry.ttlMs,
+        maxStaleMs: config.registry.maxStaleMs,
+        timeoutMs: config.dns.timeoutMs,
+    });
+    const listener = await startTunnelListener(config, { registry: cachedRegistry, dns: cachedDns }, certificate, {
+        logger,
+        clock,
+        livenessClock: options.livenessClock ?? systemClock,
+        random,
+    });
+    const clients: TestEngineClient[] = [];
+    return {
+        config,
+        listener,
+        port: listener.port,
+        certificate,
+        clock,
+        logger,
+        registry,
+        dns,
+        random,
+        connect(engine, overrides = {}) {
+            const client = connectEngine({
+                port: listener.port,
+                relayId: RELAY_ID,
+                ca: certificate.cert,
+                signer: engine.signer,
+                ...overrides,
+            });
+            clients.push(client);
+            return client;
+        },
+        async close() {
+            for (const client of clients) client.ws.terminate();
+            await listener.close();
+        },
+    };
+}

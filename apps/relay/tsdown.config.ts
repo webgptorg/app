@@ -14,7 +14,7 @@ export default defineConfig({
     clean: true,
     deps: {
         alwaysBundle: [/.*/],
-        onlyBundle: ['zod'],
+        onlyBundle: ['zod', 'ws', /^@noble\//],
         onlyImport: [],
     },
 });

@@ -1,4 +1,4 @@
-import type { EngineId, Hostname, RegistryEntry } from '@ptbk/protocol';
+import type { EngineId, Hostname, RegistryEntry, Signer } from '@ptbk/protocol';
 import {
     Hostname as HostnameSchema,
     createWebCryptoSigner,
@@ -16,6 +16,8 @@ export interface TestEngine {
     readonly engineId: EngineId;
     readonly defaultHostname: Hostname;
     readonly entry: RegistryEntry;
+    /** The engine key, to sign tunnel `auth` in tests. */
+    readonly signer: Signer;
 }
 
 /** A deterministic engine (key from `seed`) whose entry lists its default hostname and validly claimed `custom` ones. */
@@ -41,5 +43,6 @@ export async function createTestEngine(seed: number, custom: readonly string[] =
             claims,
             status: 'active',
         },
+        signer,
     };
 }
