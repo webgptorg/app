@@ -40,6 +40,10 @@ This is the engine half of the passthrough: the relay pipes bytes (R-04), the mo
 - Spike responses send `Cache-Control: no-store` and `X-Content-Type-Options: nosniff`; the full header set is M-05's.
 - Destroy the TLS socket when the tunnel stream closes, and vice versa; no leaked handles after a test.
 
+## Decided 2026-10-20 (Seb)
+
+`apps/mock-engine` builds certificates with an in-repo DER writer/reader plus `node:crypto`, verified through `node:tls` and OpenSSL in tests, instead of `@peculiar/x509` (whose catalog version needs a `reflect-metadata` polyfill). ADR 0014's library list still applies to production code.
+
 ## Acceptance criteria
 
 - [ ] Dev CA tests: the leaf verifies against the CA, SANs match, validity (7 days) uses the injected clock and the source re-issues before expiry, keys are never printed; the CA certificate carries the name constraints as a critical extension (DER decoded in the test: permitted DNS subtrees as configured, excluded `0.0.0.0/0` and `::/0`), `pathLen 0` and only `keyCertSign`/`cRLSign`; a leaf the CA issues for a name outside the permitted domains fails `tls.connect` verification, and so does a leaf whose SAN is an IP address (`127.0.0.1`), connected to by IP.
