@@ -43,6 +43,8 @@ describe('parseMockEngineConfig', () => {
             engineVersion: packageJson.version,
             proxy: null,
             extraCaFile: null,
+            devCaFiles: null,
+            devCaDomains: [],
             logLevel: 'info',
         });
         expect(Object.isFrozen(config)).toBe(true);
@@ -67,6 +69,40 @@ describe('parseMockEngineConfig', () => {
         expect(config.engineVersion).toBe('1.8.2-beta.1');
         expect(config.extraCaFile).toBe('/etc/ptbk/dev-ca.pem');
         expect(config.logLevel).toBe('warn');
+    });
+
+    describe('dev CA', () => {
+        it('takes the CA files together and the extra permitted domains', () => {
+            const config = parseMockEngineConfig({
+                ...BASE,
+                MOCK_DEV_CA_CERT_FILE: '/run/ptbk/ca-cert.pem',
+                MOCK_DEV_CA_KEY_FILE: '/run/ptbk/ca-key.pem',
+                MOCK_DEV_CA_DOMAINS: ' engine.test , PTBK.test,',
+            });
+            expect(config.devCaFiles).toEqual({ certFile: '/run/ptbk/ca-cert.pem', keyFile: '/run/ptbk/ca-key.pem' });
+            expect(config.devCaDomains).toEqual(['engine.test', 'ptbk.test']);
+            expect(Object.isFrozen(config.devCaDomains)).toBe(true);
+        });
+
+        it('refuses one CA file without the other', () => {
+            expect(problemsOf({ ...BASE, MOCK_DEV_CA_KEY_FILE: '/run/ptbk/ca-key.pem' })).toEqual([
+                'MOCK_DEV_CA_CERT_FILE: must be set together with MOCK_DEV_CA_KEY_FILE',
+            ]);
+            expect(problemsOf({ ...BASE, MOCK_DEV_CA_CERT_FILE: '/run/ptbk/ca-cert.pem' })).toEqual([
+                'MOCK_DEV_CA_CERT_FILE: must be set together with MOCK_DEV_CA_KEY_FILE',
+            ]);
+        });
+
+        it('refuses domains that are not hostnames, and too many of them', () => {
+            expect(problemsOf({ ...BASE, MOCK_DEV_CA_DOMAINS: 'engine.test,127.0.0.1,*.ptbk.test' })).toEqual([
+                'MOCK_DEV_CA_DOMAINS: entry 2 must be a hostname',
+                'MOCK_DEV_CA_DOMAINS: entry 3 must be a hostname',
+            ]);
+            const many = Array.from({ length: 17 }, (_, index) => `d${String(index)}.test`).join(',');
+            expect(problemsOf({ ...BASE, MOCK_DEV_CA_DOMAINS: many })).toEqual([
+                'MOCK_DEV_CA_DOMAINS: must list at most 16 domains',
+            ]);
+        });
     });
 
     it('treats empty values as unset', () => {

@@ -3,8 +3,9 @@ import { createSecureContext } from 'node:tls';
 
 import { describe, expect, it } from 'vitest';
 
+import { unsignedInteger as integer } from '../adapters/x509/der';
 import { createSeededRandom } from './seeded-random';
-import { createTestCa, integer } from './test-pki';
+import { createTestCa } from './test-pki';
 
 const hex = (bytes: Uint8Array): string => Buffer.from(bytes).toString('hex');
 

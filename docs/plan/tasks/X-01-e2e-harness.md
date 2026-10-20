@@ -56,6 +56,7 @@ From this task on, every PR must keep the e2e suite green (plan, principle 5). T
 - Dockerfiles install with `bun install --frozen-lockfile` and run on Node 24, matching production. Base images pinned by digest.
 - No sleeps: wait on healthchecks and `expect.poll`.
 - Keep the stack configurable through compose overlays (`compose.<scenario>.yaml`) so X-02, X-04 and X-05 add services without editing the base file much.
+- Engine certificate (2026-10-20, after M-02): the mock engine issues its own leaf certificates from the dev CA (`MOCK_DEV_CA_CERT_FILE`, `MOCK_DEV_CA_KEY_FILE`), so `init` generates only the CA, not the engine certificate, and `engineCertSha256` comes from the TLS peer. Any CA `init` generates must carry the constraints in the mock engine README (critical name constraints permitting the engine domain plus `MOCK_DEV_CA_DOMAINS` and excluding every IP range, `pathLen 0`, key usage `keyCertSign` and `cRLSign` only), with a key file not readable by group or others, or the mock engine refuses to start.
 
 ## Acceptance criteria
 

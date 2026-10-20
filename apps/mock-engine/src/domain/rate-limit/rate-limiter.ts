@@ -1,0 +1,65 @@
+import type { Clock } from '../clock';
+
+/** Named per-client-IP policies; every non-session route names one (AGENTS.md rule 6). */
+export const RATE_LIMITS = {
+    /** Pages, JSON, SSE and the echo socket. */
+    'spike-ip': { limit: 600, windowMs: 60_000 },
+    /** Download and screencast, which send far more than they receive. */
+    'spike-bulk-ip': { limit: 60, windowMs: 60_000 },
+} as const satisfies Readonly<Record<string, { readonly limit: number; readonly windowMs: number }>>;
+
+export type RateLimitRule = keyof typeof RATE_LIMITS;
+
+export function isRateLimitRule(name: string): name is RateLimitRule {
+    return Object.hasOwn(RATE_LIMITS, name);
+}
+
+export type RateLimitDecision =
+    { readonly kind: 'allowed' } | { readonly kind: 'limited'; readonly retryAfterMs: number };
+
+export interface RateLimiter {
+    consume(rule: RateLimitRule, key: string): RateLimitDecision;
+}
+
+/** Above this many live windows, new keys are refused until old windows expire, so memory stays bounded. */
+export const MAX_RATE_LIMIT_KEYS = 10_000;
+
+interface Window {
+    readonly startMs: number;
+    readonly windowMs: number;
+    count: number;
+}
+
+/** Fixed windows in memory: one engine process, no shared store needed. */
+export function createWindowRateLimiter(deps: { readonly clock: Clock; readonly maxKeys?: number }): RateLimiter {
+    const maxKeys = deps.maxKeys ?? MAX_RATE_LIMIT_KEYS;
+    const windows = new Map<string, Window>();
+
+    function sweep(nowMs: number): void {
+        for (const [key, window] of windows) {
+            if (nowMs >= window.startMs + window.windowMs) windows.delete(key);
+        }
+    }
+
+    return {
+        consume(rule, key) {
+            const { limit, windowMs } = RATE_LIMITS[rule];
+            const nowMs = deps.clock.nowMs();
+            const id = `${rule}\0${key}`;
+            let window = windows.get(id);
+            if (window !== undefined && nowMs >= window.startMs + window.windowMs) {
+                windows.delete(id);
+                window = undefined;
+            }
+            if (window === undefined) {
+                if (windows.size >= maxKeys) sweep(nowMs);
+                if (windows.size >= maxKeys) return { kind: 'limited', retryAfterMs: windowMs };
+                window = { startMs: nowMs, windowMs, count: 0 };
+                windows.set(id, window);
+            }
+            if (window.count >= limit) return { kind: 'limited', retryAfterMs: window.startMs + windowMs - nowMs };
+            window.count++;
+            return { kind: 'allowed' };
+        },
+    };
+}

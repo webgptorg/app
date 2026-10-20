@@ -2,7 +2,7 @@
 
 - **Lane:** Mock engine · **Module:** `apps/mock-engine` · **Milestone:** M1
 - **Depends on:** M-01
-- **Status:** todo
+- **Status:** done (#21)
 - **Spec:** Relay and tunnel; Build plan (Spike acceptance criteria); Operations (Bandwidth and cost); Engine security baseline; ADRs: [0004](../../adr/0004-mock-engine-and-conformance.md), [0014](../../adr/0014-cryptography.md)
 
 ## Goal
@@ -39,6 +39,10 @@ This is the engine half of the passthrough: the relay pipes bytes (R-04), the mo
 - Every endpoint has limits (`count`, `fps`, `bytes` validated by zod, unknown query params rejected) so the spike routes cannot become an amplification tool.
 - Spike responses send `Cache-Control: no-store` and `X-Content-Type-Options: nosniff`; the full header set is M-05's.
 - Destroy the TLS socket when the tunnel stream closes, and vice versa; no leaked handles after a test.
+
+## Decided 2026-10-20 (Seb)
+
+`apps/mock-engine` builds certificates with an in-repo DER writer/reader plus `node:crypto`, verified through `node:tls` and OpenSSL in tests, instead of `@peculiar/x509` (whose catalog version needs a `reflect-metadata` polyfill). ADR 0014's library list still applies to production code.
 
 ## Acceptance criteria
 

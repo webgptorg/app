@@ -1,5 +1,6 @@
 import { createCryptoRandom } from '@ptbk/protocol';
 
+import { DevCaError, createDevCaCertificateSource, loadOrCreateDevCa } from './adapters/dev-ca';
 import { TrustedRootsError, loadTrustedRoots } from './adapters/extra-ca';
 import { IdentityStoreError, createFsIdentityStore } from './adapters/fs-identity-store';
 import { createJsonLogger } from './adapters/json-logger';
@@ -14,7 +15,12 @@ const SHUTDOWN_TIMEOUT_MS = 10_000;
 
 // Our own startup errors name settings and paths, never values; anything else may carry values, so only its name.
 function problemOf(error: unknown): string {
-    if (error instanceof ConfigError || error instanceof IdentityStoreError || error instanceof TrustedRootsError) {
+    if (
+        error instanceof ConfigError ||
+        error instanceof IdentityStoreError ||
+        error instanceof TrustedRootsError ||
+        error instanceof DevCaError
+    ) {
         return error.message;
     }
     return error instanceof Error ? error.name : 'unknown';
@@ -25,6 +31,13 @@ async function start(): Promise<{ readonly engine: MockEngine; readonly logger: 
     try {
         const config = parseMockEngineConfig(process.env);
         logger = createJsonLogger({ level: config.logLevel, clock: systemClock });
+        const devCa = await loadOrCreateDevCa({
+            files: config.devCaFiles,
+            dataDir: config.dataDir,
+            permittedDomains: [config.engineDomain, ...config.devCaDomains],
+            clock: systemClock,
+            logger,
+        });
         const engine = await startMockEngine(config, {
             logger,
             clock: systemClock,
@@ -35,6 +48,7 @@ async function start(): Promise<{ readonly engine: MockEngine; readonly logger: 
                 proxy: config.proxy,
                 ca: await loadTrustedRoots(config.extraCaFile),
             }),
+            certificates: createDevCaCertificateSource({ ca: devCa, clock: systemClock, logger }),
         });
         return { engine, logger };
     } catch (error) {
