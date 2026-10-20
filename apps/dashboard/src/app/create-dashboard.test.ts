@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import worker from '../worker';
+import { DEV_RATE_LIMIT_HMAC_KEY } from './config';
 import { createDashboard } from './create-dashboard';
+import { createDevAdapters } from './dev-adapters';
 
 const vars = {
     ENVIRONMENT: 'dev',
@@ -9,6 +10,15 @@ const vars = {
     ENGINE_DOMAIN: 'engines.ptbk.test',
     RELAYS: [{ relayId: 'relay.ptbk.test', region: 'local' }],
     ADAPTERS: { email: 'fake', billing: 'fake', rateLimit: 'memory' },
+    EMAIL_FROM: 'no-reply@ptbk.test',
+    RATE_LIMIT_HMAC_KEY: DEV_RATE_LIMIT_HMAC_KEY,
+};
+const stagingVars = {
+    ...vars,
+    ENVIRONMENT: 'staging',
+    DASHBOARD_ORIGIN: 'https://app.staging.ptbk.test',
+    ADAPTERS: { email: 'cloudflare', billing: 'stripe', rateLimit: 'workers' },
+    RATE_LIMIT_HMAC_KEY: 'c3RhZ2luZy1zZWNyZXQta2V5LWZvci1yYXRlLWxpbWl0cy0zMmI',
 };
 
 class FakeBinding {
@@ -21,7 +31,40 @@ function env(overrides: Record<string, unknown> = {}): Env {
     return { ...vars, DB: new FakeBinding(), ASSETS: new FakeBinding(), ...overrides } as unknown as Env;
 }
 
-const ctx = {} as ExecutionContext;
+/** Runtime bindings are objects with their own prototype; config treats plain objects as vars. */
+function runtime<T extends object>(members: T): T {
+    return Object.assign(Object.create({}) as T, members);
+}
+
+function executionContext() {
+    const pending: Promise<unknown>[] = [];
+    const ctx = { waitUntil: (task: Promise<unknown>) => pending.push(task) } as unknown as ExecutionContext;
+    return { ctx, settle: () => Promise.all(pending) };
+}
+
+function productionBindings() {
+    const keys: string[] = [];
+    const names: string[] = [];
+    const sent: unknown[] = [];
+    const binding = runtime({
+        limit: ({ key }: { key: string }) => (keys.push(key), Promise.resolve({ success: true })),
+    });
+    return {
+        keys,
+        names,
+        sent,
+        bindings: {
+            RATE_LIMIT_OPTIONS: binding,
+            RATE_LIMIT_VERIFY: binding,
+            RATE_LIMIT_PUBLIC_READ: binding,
+            HOURLY_RATE_LIMITER: runtime({
+                idFromName: (name: string) => (names.push(name), { name }),
+                get: () => ({ consume: () => Promise.resolve('allowed') }),
+            }),
+            EMAIL: runtime({ send: (message: unknown) => (sent.push(message), Promise.resolve({ messageId: 'm' })) }),
+        },
+    };
+}
 
 afterEach(() => {
     vi.restoreAllMocks();
@@ -67,9 +110,68 @@ describe('createDashboard', () => {
     });
 });
 
-describe('Worker entry', () => {
-    it('hands every request to the composition root', async () => {
-        const response = await worker.fetch(new Request('https://app.ptbk.test/v1/health'), env(), ctx);
-        expect(response.status).toBe(200);
+describe('createDashboard adapter selection', () => {
+    it('fails closed when the Cloudflare email adapter has no send_email binding', async () => {
+        const errors: string[] = [];
+        vi.spyOn(console, 'error').mockImplementation((line: string) => errors.push(line));
+        const response = await createDashboard(env(stagingVars), { viteDevServer: false }).fetch(
+            new Request('https://app.ptbk.test/v1/health'),
+        );
+        expect(response.status).toBe(503);
+        expect(JSON.parse(errors[0] ?? '{}')).toMatchObject({ event: 'config.invalid', paths: 'EMAIL' });
+    });
+
+    it('keys production rate limits by HMAC, per-minute rules on the binding and hourly ones on the Durable Object', async () => {
+        const { keys, names, bindings } = productionBindings();
+        const dashboard = createDashboard(env({ ...stagingVars, ...bindings }), { viteDevServer: false });
+        const headers = { 'CF-Connecting-IP': '192.0.2.44', 'Sec-Fetch-Site': 'same-origin' };
+        expect((await dashboard.fetch(new Request('https://app.ptbk.test/api/environment', { headers }))).status).toBe(
+            200,
+        );
+        const { ctx } = executionContext();
+        const signup = await dashboard.fetch(
+            new Request('https://app.ptbk.test/api/auth/signup/start', {
+                method: 'POST',
+                headers: { ...headers, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: 'person@example.test' }),
+            }),
+            {},
+            ctx,
+        );
+        expect(signup.status).toBe(202);
+        expect(keys).toHaveLength(1);
+        expect(names).toHaveLength(1);
+        for (const key of [...keys, ...names]) {
+            expect(key).toMatch(/^[A-Za-z0-9_-]{43}$/);
+            expect(key).not.toContain('192.0.2.44');
+        }
+        expect(keys[0]).not.toBe(names[0]);
+    });
+
+    it('serves the isolate’s dev outbox, which outlives each per-request composition', async () => {
+        const devAdapters = createDevAdapters();
+        const { ctx, settle } = executionContext();
+        const request = new Request('http://localhost:5173/api/auth/signup/start', {
+            method: 'POST',
+            headers: { 'Sec-Fetch-Site': 'same-origin', 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: 'a@example.test' }),
+        });
+        const db = runtime({
+            prepare: () => ({
+                bind: () => ({ raw: () => Promise.resolve([]), all: () => Promise.resolve({ results: [] }) }),
+            }),
+        });
+        expect(
+            (await createDashboard(env({ DB: db }), { viteDevServer: false, devAdapters }).fetch(request, {}, ctx))
+                .status,
+        ).toBe(202);
+        await settle();
+        await devAdapters.outbox.send(
+            { template: 'signup-link', to: 'a@example.test', locale: 'en', link: 'http://localhost:5173/signup#x' },
+            new AbortController().signal,
+        );
+        const next = createDashboard(env(), { viteDevServer: false, devAdapters });
+        const response = await next.fetch(new Request('http://localhost:5173/api/__dev/emails?to=a@example.test'));
+        expect((await response.json<{ emails: { template: string }[] }>()).emails.at(-1)?.template).toBe('signup-link');
     });
 });

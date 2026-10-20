@@ -12,6 +12,8 @@
     "src/domain/**/*",
     "src/adapters/**/*",
     "src/shared/**/*",
-    "src/paraglide/**/*.d.ts"
+    "src/testing/**/*",
+    "src/paraglide/**/*.d.ts",
+    "test/http/**/*"
   ]
 }

@@ -1,0 +1,34 @@
+const MINUTE_MS = 60 * 1000;
+const HOUR_MS = 60 * MINUTE_MS;
+
+export interface RateLimitRule {
+    readonly limit: number;
+    readonly windowMs: number;
+}
+
+/**
+ * Rules ending in `-ip` are keyed by the client IP and may be a route's `rateLimit`; the email rules are applied by the
+ * flows that send mail. Production adapters only ever see an HMAC of the key.
+ */
+export const RATE_LIMITS = {
+    'signup-start-ip': { limit: 10, windowMs: HOUR_MS },
+    'signup-start-email': { limit: 3, windowMs: HOUR_MS },
+    'recovery-request-ip': { limit: 10, windowMs: HOUR_MS },
+    'recovery-request-email': { limit: 3, windowMs: HOUR_MS },
+    // One budget for every endpoint that hands out a WebAuthn challenge to an anonymous caller.
+    'options-ip': { limit: 30, windowMs: MINUTE_MS },
+    // One budget shared by every WebAuthn verify endpoint.
+    'verify-ip': { limit: 30, windowMs: MINUTE_MS },
+    // Cheap public reads: the environment, health, the dev outbox.
+    'public-read-ip': { limit: 120, windowMs: MINUTE_MS },
+} as const satisfies Readonly<Record<string, RateLimitRule>>;
+
+export type RateLimitRuleName = keyof typeof RATE_LIMITS;
+
+/** `unavailable`: the limiter could not decide; callers fail closed and treat it as `limited`. */
+export type RateLimitOutcome = 'allowed' | 'limited' | 'unavailable';
+
+export interface RateLimiter {
+    /** Counts one attempt against `rule` for `key`. */
+    consume(rule: RateLimitRuleName, key: string, signal: AbortSignal): Promise<RateLimitOutcome>;
+}

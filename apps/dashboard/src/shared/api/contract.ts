@@ -3,17 +3,38 @@ import type { z } from 'zod';
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
 /**
- * One `/api` endpoint as data. The Hono route and the SPA client are both derived from it, so the contract is explicit
- * and reviewable, and neither side infers the other's types.
+ * How a route authenticates; there is no default. `public` routes are an allowlist checked by the route-table test.
+ * Machine modes (relay token, engine signature, webhook signature) join this union with the tasks that verify them.
+ */
+export type AuthMode = 'public' | 'session';
+
+export interface RouteInput {
+    readonly params: z.ZodType<Readonly<Record<string, string>>> | null;
+    readonly query: z.ZodType<Readonly<Partial<Record<string, string>>>> | null;
+    /** Only the headers the route reads, lowercase names; the rest are ignored. */
+    readonly headers: z.ZodType<Readonly<Partial<Record<string, string>>>> | null;
+    readonly body: z.ZodType | null;
+    /** Refused with 413 above this size; 0 when the route takes no body. */
+    readonly maxBodyBytes: number;
+}
+
+/**
+ * One HTTP endpoint as data: strict input schemas, the auth mode, the permission a session needs, the rate limit an
+ * anonymous caller is held to, and the output. The server binds a handler to it (`bindRoute`), the SPA calls it
+ * through the typed client, and neither side infers the other's types.
  */
 export interface RouteContract {
     readonly method: HttpMethod;
     /** Full path with Hono-style parameters, e.g. `/api/engines/:engineId`. */
-    readonly path: `/api/${string}`;
-    readonly params: z.ZodType<Readonly<Record<string, string>>> | null;
-    readonly query: z.ZodType<Readonly<Partial<Record<string, string>>>> | null;
-    readonly body: z.ZodType | null;
-    readonly response: z.ZodType;
+    readonly path: `/${string}`;
+    readonly auth: AuthMode;
+    /** An action of the app's policy table; required for `session` routes. */
+    readonly permission: string | null;
+    /** A per-IP rate limit rule; required for every non-session route. */
+    readonly rateLimit: string | null;
+    readonly input: RouteInput;
+    /** Strict, so tests prove the server sends no undeclared field; the client reads it tolerantly. */
+    readonly output: z.ZodType;
     /** Endpoint-specific problem codes, on top of the common ones. */
     readonly errorCodes: readonly string[];
 }
@@ -22,18 +43,22 @@ type Part<S, K extends string> = S extends z.ZodType ? { readonly [P in K]: z.in
 type ParsedPart<S, K extends string> = S extends z.ZodType ? { readonly [P in K]: z.output<S> } : unknown;
 
 /** What the caller supplies. */
-export type RouteInput<C extends RouteContract> = Part<C['params'], 'params'> &
-    Part<C['query'], 'query'> &
-    Part<C['body'], 'body'>;
+export type RouteCallInput<C extends RouteContract> = Part<C['input']['params'], 'params'> &
+    Part<C['input']['query'], 'query'> &
+    Part<C['input']['body'], 'body'>;
 
 /** What the handler receives after validation. */
-export type ParsedRouteInput<C extends RouteContract> = ParsedPart<C['params'], 'params'> &
-    ParsedPart<C['query'], 'query'> &
-    ParsedPart<C['body'], 'body'>;
+export type ParsedRouteInput<C extends RouteContract> = ParsedPart<C['input']['params'], 'params'> &
+    ParsedPart<C['input']['query'], 'query'> &
+    ParsedPart<C['input']['headers'], 'headers'> &
+    ParsedPart<C['input']['body'], 'body'>;
 
-export type RouteResponse<C extends RouteContract> = z.output<C['response']>;
+export type RouteResponse<C extends RouteContract> = z.output<C['output']>;
 export type RouteErrorCode<C extends RouteContract> = C['errorCodes'][number];
 
 export function defineRoute<const C extends RouteContract>(contract: C): C {
     return contract;
 }
+
+/** Input of a route that takes nothing. */
+export const NO_INPUT = { params: null, query: null, headers: null, body: null, maxBodyBytes: 0 } as const;

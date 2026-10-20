@@ -1,7 +1,11 @@
 import { Hono } from 'hono';
 
+import { createAccountFlows } from '../../domain/auth/account';
+import { toBase64Url } from '../../domain/auth/secrets';
+import type { RouteContract } from '../../shared/api/contract';
 import type { DashboardDeps } from '../deps';
 import { API_MOUNT, createApiRouter } from './api-router';
+import { createRouteBinder } from './bind-route';
 import { createInternalRouter, INTERNAL_MOUNT } from './internal-router';
 import { problemResponse } from './problem';
 import { securityHeaders, withHeaders } from './security-headers';
@@ -21,7 +25,13 @@ function isUnder(path: string, mount: string): boolean {
     return path === mount || path.startsWith(`${mount}/`);
 }
 
-export function createHttpApp(deps: HttpAppDeps): Hono {
+export interface HttpApp {
+    readonly app: Hono;
+    /** Every route mounted through the route helper, for the route-table test. */
+    readonly routes: readonly RouteContract[];
+}
+
+export function createHttpApp(deps: HttpAppDeps): HttpApp {
     const headers = securityHeaders(
         deps.viteDevServer && deps.config.environment === 'dev' ? 'vite-dev-server' : 'production',
     );
@@ -33,9 +43,16 @@ export function createHttpApp(deps: HttpAppDeps): Hono {
         context.res = withHeaders(context.res, isApi ? { ...headers, 'Cache-Control': 'no-store' } : headers);
     });
 
+    const accounts = createAccountFlows(deps);
+    const routes = createRouteBinder({
+        authorizer: deps.authorizer,
+        rateLimiter: deps.rateLimiter,
+        logger: deps.logger,
+        resolveSession: (token) => accounts.resolveSession(token),
+    });
     const routers = [
-        [API_MOUNT, createApiRouter(deps)],
-        [V1_MOUNT, createV1Router(deps)],
+        [API_MOUNT, createApiRouter({ ...deps, routes })],
+        [V1_MOUNT, createV1Router({ config: deps.config, routes })],
         [INTERNAL_MOUNT, createInternalRouter()],
         [WEBHOOKS_MOUNT, createWebhooksRouter()],
     ] as const;
@@ -49,9 +66,10 @@ export function createHttpApp(deps: HttpAppDeps): Hono {
 
     app.notFound(() => problemResponse(404, 'not-found'));
     app.onError((error) => {
-        deps.logger.error('http.unhandled-error', { error: error.name });
-        return problemResponse(500, 'internal');
+        const correlationId = toBase64Url(deps.random.bytes(12));
+        deps.logger.error('http.unhandled-error', { error: error.name, correlationId });
+        return problemResponse(500, 'internal', correlationId);
     });
 
-    return app;
+    return { app, routes: routes.routes };
 }

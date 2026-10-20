@@ -2,7 +2,7 @@
 
 - **Lane:** D · **Module:** `apps/dashboard` · **Milestone:** M3
 - **Depends on:** D-01
-- **Status:** todo
+- **Status:** done (#7)
 - **Spec:** Pairing and identity (Promptbook account row); Engine security baseline (Sessions row); Security hardening item 8; Metadata we still see; Hosting and stack (Passkeys); ADRs: [0006](../../adr/0006-organizations-and-roles.md), [0007](../../adr/0007-frontend-stack.md), [0009](../../adr/0009-drizzle-and-migrations.md), [0014](../../adr/0014-cryptography.md)
 
 ## Goal
@@ -98,6 +98,7 @@ This task is the API and the server side only, so the dashboard lane does not wa
 - Authorizer actions added: `passkey.manage`, `session.manage`, and, flagged `sensitive` so the 72-hour cooldown already covers them when later tasks build the routes: `engine.remove`, `engine.hostnames.manage`, `billing.owner.change`. Actor gains `steppedUpAt`; a policy flag `requiresStepUp` (5 minutes) for platform admin actions.
 - CSRF middleware for every state-changing `/api/*` request: 403 when `Sec-Fetch-Site` is present and not `same-origin`; when absent, `Origin` must equal `dashboardOrigin`. Machine routes (`/v1`, `/internal`, `/webhooks`) never read cookies and are exempt.
 - `RateLimiter` port (Workers Rate Limiting binding adapter, in-memory fake). Defaults: `signup/start` and `recovery/request` 10 per hour per IP and 3 per hour per email hash; `signin/options` 30 per minute per IP; every `verify` 30 per minute per IP. Over limit → 429 (for the two email endpoints the per-email limit is silent: still 202, no email sent).
+  - Hourly limits use a Durable Object limiter (decided 2026-10-19, Seb); the Workers binding only supports 10 s/60 s periods. The DO is named by `HMAC-SHA-256(secret, rule ‖ IP-or-email)` with the secret from config, keeps its counter only for the 1-hour window, and fails closed.
 - `scripts/make-admin.md`: the `wrangler d1 execute` command that sets `platform_role = 'admin'`. No UI grants it.
 
 ## Out of scope
@@ -110,6 +111,7 @@ This task is the API and the server side only, so the dashboard lane does not wa
 
 - WebAuthn: `rpID` is the hostname of `dashboardOrigin` and the expected origin is `dashboardOrigin`, both from D-01's config, never hard-coded (`app.ptbk.io` in production, the dev hostname such as `app.ptbk.test` in the dev container and e2e); `residentKey: 'required'`, `userVerification: 'required'`, `attestationType: 'none'`, algorithms `[-8, -7, -257]`. Challenges single-use, 5-minute TTL, bound by a `__Host-ptbk_chal` cookie and, for token flows, to the token hash.
 - WebAuthn hardening (ADR 0014): every `verify` first consumes the challenge atomically (`delete … where id = ? and expires_at > ? returning`), so a failed or concurrent verify can never reuse it; verification always passes `requireUserVerification: true`. Usernameless sign-in looks up the credential, then requires `response.userHandle` to equal its owner's `webauthnUserId` (401 otherwise). Store `newCounter` on success; when the new counter is not greater than a non-zero stored one, set `counter_regressed_at` and log `auth.passkey-counter-regression` (credential owner's user ID only) for I-04 to alert on. Counters of 0 (synced passkeys) are never flagged.
+  - Decided 2026-10-20 (Seb): a counter regression also rejects the sign-in (fail closed, SimpleWebAuthn default).
 - Email tokens: 256 bits from `Random`, base64url, only SHA-256 stored, 15-minute TTL, consumed atomically with one Drizzle `update ... where used_at is null and expires_at > ? returning`; a new request invalidates the user's older tokens of the same purpose. Emails are sent with `ctx.waitUntil` so response time does not depend on whether the address exists.
 - Session cookie `__Host-ptbk_session`: `Secure`, `HttpOnly`, `Path=/`, `SameSite=Lax`. Lax because links from alert emails and the engine UI's "back to dashboard" link must arrive signed in; CSRF is covered by Fetch Metadata and Origin. 256-bit ID, SHA-256 stored, new ID on every sign-in, idle 7 days, absolute 30 days, row read on every request.
 - Never log emails, tokens, credential IDs, challenges or cookies.

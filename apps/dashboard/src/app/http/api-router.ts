@@ -1,16 +1,38 @@
 import { Hono } from 'hono';
 
 import { apiRoutes } from '../../shared/api/routes';
-import type { DashboardConfig } from '../config';
-import { bindRoute } from './bind-route';
+import type { DashboardDeps } from '../deps';
+import { renderEmail } from '../i18n/render-email';
+import { bindAuthRoutes } from './auth-routes';
+import type { RouteBinder } from './bind-route';
+import { crossSiteRequestGuard } from './csrf';
 
 export const API_MOUNT = '/api';
 
-/** The SPA's own API. Session authentication arrives with D-02; every handler then authorizes on its own. */
-export function createApiRouter(deps: { readonly config: DashboardConfig }): Hono {
+/** The SPA's own API: every state change must come from the dashboard's own pages. */
+export function createApiRouter(deps: DashboardDeps & { readonly routes: RouteBinder }): Hono {
     const router = new Hono();
-    bindRoute(router, API_MOUNT, apiRoutes.getEnvironment, () =>
+    router.use('*', crossSiteRequestGuard(deps.config.dashboardOrigin));
+    deps.routes.bind(router, API_MOUNT, apiRoutes.getEnvironment, () =>
         Promise.resolve({ kind: 'ok', body: { environment: deps.config.environment } }),
     );
+    bindAuthRoutes(router, API_MOUNT, deps);
+    const { devOutbox } = deps;
+    // Not mounted at all otherwise: the fake adapter, and with it this route, exists only in dev (config.ts).
+    if (devOutbox !== null && deps.config.adapters.email === 'fake') {
+        deps.routes.bind(router, API_MOUNT, apiRoutes.devEmails, ({ input }) =>
+            Promise.resolve({
+                kind: 'ok',
+                body: {
+                    emails: devOutbox.sentTo(input.query.to.trim().toLowerCase()).map((message) => ({
+                        template: message.template,
+                        to: message.to,
+                        locale: message.locale,
+                        ...renderEmail(message),
+                    })),
+                },
+            }),
+        );
+    }
     return router;
 }

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { fromBase64Url } from '../domain/auth/secrets';
 import { environmentSchema, type Environment } from '../shared/environment';
 
 export type { Environment };
@@ -44,6 +45,15 @@ const originSchema = z.url({ protocol: /^https?$/ }).transform((value, ctx) => {
 });
 
 /**
+ * The dev-only HMAC key for rate-limit keys, committed in wrangler.jsonc's top-level vars. Every other environment gets
+ * its own from `wrangler secret put RATE_LIMIT_HMAC_KEY`; this value is refused there.
+ */
+export const DEV_RATE_LIMIT_HMAC_KEY = 'ZGV2LW9ubHktcmF0ZS1saW1pdC1rZXktbm90LXNlY3JldA';
+
+/** At least 256 bits, base64url without padding. */
+const hmacKeySchema = z.string().regex(/^[A-Za-z0-9_-]{43,86}$/);
+
+/**
  * Vars and secrets are JSON values. Anything else (D1, ASSETS, service bindings the runtime or the test pool adds) is a
  * runtime object that the composition root wires up; config never reads it. Every JSON value must be a known var.
  */
@@ -62,6 +72,8 @@ const varsSchema = z
         ENGINE_DOMAIN: hostnameSchema,
         RELAYS: z.array(relaySchema).min(1).max(16),
         ADAPTERS: adaptersSchema,
+        EMAIL_FROM: z.email().max(254),
+        RATE_LIMIT_HMAC_KEY: hmacKeySchema,
     })
     .superRefine((vars, ctx) => {
         if (vars.ENVIRONMENT === 'dev') {
@@ -79,6 +91,9 @@ const varsSchema = z
         if (!vars.DASHBOARD_ORIGIN.startsWith('https://')) {
             ctx.addIssue({ code: 'custom', path: ['DASHBOARD_ORIGIN'], message: 'must be https outside dev' });
         }
+        if (vars.RATE_LIMIT_HMAC_KEY === DEV_RATE_LIMIT_HMAC_KEY) {
+            ctx.addIssue({ code: 'custom', path: ['RATE_LIMIT_HMAC_KEY'], message: 'the dev key runs only in dev' });
+        }
     });
 
 export type AdapterSelection = z.infer<typeof adaptersSchema>;
@@ -90,6 +105,10 @@ export interface DashboardConfig {
     readonly engineDomain: string;
     readonly relays: readonly Readonly<RelayConfig>[];
     readonly adapters: Readonly<AdapterSelection>;
+    /** The sender address for the `send_email` binding. */
+    readonly emailFrom: string;
+    /** Secret: keys rate-limit counters, so raw IPs and emails are never stored. */
+    readonly rateLimitHmacKey: Uint8Array;
 }
 
 export class ConfigError extends Error {
@@ -124,5 +143,7 @@ export function parseConfig(env: object): DashboardConfig {
         engineDomain: parsed.ENGINE_DOMAIN,
         relays: Object.freeze(parsed.RELAYS.map((relay) => Object.freeze({ ...relay }))),
         adapters: Object.freeze({ ...parsed.ADAPTERS }),
+        emailFrom: parsed.EMAIL_FROM,
+        rateLimitHmacKey: fromBase64Url(parsed.RATE_LIMIT_HMAC_KEY),
     });
 }

@@ -1,9 +1,14 @@
-import type { Database } from '../adapters/db/client';
+import type { FakeEmailSender } from '../adapters/email/fake-email-sender';
+import type { AuthLinks } from '../domain/auth/auth-deps';
+import type { AuthStore } from '../domain/auth/auth-store';
 import type { Authorizer } from '../domain/authz/authorizer';
 import type { DashboardAction } from '../domain/authz/policy';
 import type { Clock } from '../domain/ports/clock';
+import type { EmailSender } from '../domain/ports/email-sender';
 import type { Logger } from '../domain/ports/logger';
 import type { Random } from '../domain/ports/random';
+import type { RateLimiter } from '../domain/ports/rate-limiter';
+import type { RelyingParty } from '../domain/ports/relying-party';
 import type { DashboardConfig } from './config';
 
 /** Everything handlers may use. Later tasks add their ports here, built from the adapters `config.adapters` selects. */
@@ -12,6 +17,21 @@ export interface DashboardDeps {
     readonly clock: Clock;
     readonly random: Random;
     readonly logger: Logger;
-    readonly db: Database;
     readonly authorizer: Authorizer<DashboardAction>;
+    readonly store: AuthStore;
+    readonly relyingParty: RelyingParty;
+    readonly email: EmailSender;
+    readonly rateLimiter: RateLimiter;
+    readonly links: AuthLinks;
+    /** The fake outbox behind `email` when `config.adapters.email` is `fake` (dev only), else null. */
+    readonly devOutbox: FakeEmailSender | null;
+}
+
+export function authLinks(dashboardOrigin: string): AuthLinks {
+    return {
+        signup: (token) => `${dashboardOrigin}/signup#${token}`,
+        recovery: (token) => `${dashboardOrigin}/recover#${token}`,
+        signIn: () => `${dashboardOrigin}/signin`,
+        recover: () => `${dashboardOrigin}/recover`,
+    };
 }

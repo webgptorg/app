@@ -7,9 +7,48 @@ import { describe, expect, it } from 'vitest';
  * no prompts, messages, files or agent output, not even encrypted.
  */
 const ALLOWLIST: Readonly<Record<string, readonly string[]>> = {
+    // Insert-only record of platform admin actions: who, what, on which target, why. No engine content.
+    admin_audit_log: ['id', 'admin_user_id', 'action', 'target_type', 'target_id', 'reason', 'created_at'],
+    // Signup and recovery links: the token only as SHA-256, the address it was sent to, 15-minute lifetime.
+    email_tokens: ['token_hash', 'purpose', 'email', 'user_id', 'created_at', 'expires_at', 'used_at'],
     memberships: ['org_id', 'user_id', 'role', 'created_at'],
     organizations: ['id', 'kind', 'name', 'created_at'],
-    users: ['id', 'email', 'email_verified_at', 'locale', 'platform_role', 'recovered_at', 'created_at'],
+    // Dashboard passkeys: public keys and counters only; private keys never leave the authenticator.
+    passkeys: [
+        'credential_id',
+        'user_id',
+        'public_key',
+        'counter',
+        'transports',
+        'backed_up',
+        'added_via',
+        'created_at',
+        'last_used_at',
+        'counter_regressed_at',
+    ],
+    // Session IDs only as SHA-256.
+    sessions: [
+        'id_hash',
+        'user_id',
+        'active_org_id',
+        'created_at',
+        'last_seen_at',
+        'expires_at',
+        'stepped_up_at',
+        'revoked_at',
+    ],
+    users: [
+        'id',
+        'email',
+        'email_verified_at',
+        'locale',
+        'platform_role',
+        'recovered_at',
+        'created_at',
+        'webauthn_user_id',
+    ],
+    // Live WebAuthn ceremonies, at most 5 minutes each.
+    webauthn_challenges: ['id', 'challenge', 'purpose', 'user_id', 'token_hash', 'webauthn_user_id', 'expires_at'],
 };
 
 async function storedColumns(): Promise<Record<string, string[]>> {

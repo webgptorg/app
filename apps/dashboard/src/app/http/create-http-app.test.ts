@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
+import { createFakeEmailSender } from '../../adapters/email/fake-email-sender';
 import { createMemoryLogger } from '../../adapters/memory-logger';
-import type { Database } from '../../adapters/db/client';
+import { createMemoryRateLimiter } from '../../adapters/rate-limit/memory-rate-limiter';
+import { createSimpleWebAuthnRelyingParty } from '../../adapters/webauthn/simple-webauthn-relying-party';
 import { createAuthorizer } from '../../domain/authz/authorizer';
 import { DASHBOARD_POLICY } from '../../domain/authz/policy';
-import { parseConfig } from '../config';
+import { createMemoryAuthStore } from '../../testing/memory-auth-store';
+import { DEV_RATE_LIMIT_HMAC_KEY, parseConfig } from '../config';
+import { authLinks } from '../deps';
 import { createHttpApp } from './create-http-app';
 
 const clock = { nowMs: () => 0 };
@@ -23,17 +27,23 @@ function app(options: {
             options.environment === 'dev'
                 ? { email: 'fake', billing: 'fake', rateLimit: 'memory' }
                 : { email: 'cloudflare', billing: 'stripe', rateLimit: 'workers' },
+        EMAIL_FROM: 'no-reply@ptbk.test',
+        RATE_LIMIT_HMAC_KEY: options.environment === 'dev' ? DEV_RATE_LIMIT_HMAC_KEY : 'k'.repeat(43),
     });
     const logger = createMemoryLogger();
     const assets = options.assets ?? (() => Promise.resolve(new Response('<!doctype html>')));
-    const http = createHttpApp({
+    const { app: http } = createHttpApp({
         config,
         clock,
         random: { bytes: (n) => new Uint8Array(n) },
         logger,
-        // No handler touches D1 yet; the Workers tests run the real binding.
-        db: {} as Database,
         authorizer: createAuthorizer({ clock, policy: DASHBOARD_POLICY }),
+        store: createMemoryAuthStore(),
+        relyingParty: createSimpleWebAuthnRelyingParty({ origin: 'https://app.ptbk.test', rpName: 'Promptbook' }),
+        email: createFakeEmailSender(),
+        rateLimiter: createMemoryRateLimiter(clock),
+        links: authLinks('https://app.ptbk.test'),
+        devOutbox: null,
         assets: { fetch: assets } as unknown as Fetcher,
         viteDevServer: options.viteDevServer,
     });
@@ -78,7 +88,14 @@ describe('createHttpApp', () => {
         });
         const response = await http.request('/');
         expect(response.status).toBe(500);
-        expect(await response.json()).toMatchObject({ status: 500, code: 'internal' });
-        expect(logger.entries).toEqual([{ level: 'error', event: 'http.unhandled-error', fields: { error: 'Error' } }]);
+        const problem = await response.json<{ correlationId: string }>();
+        expect(problem).toMatchObject({ status: 500, code: 'internal', correlationId: expect.any(String) as string });
+        expect(logger.entries).toEqual([
+            {
+                level: 'error',
+                event: 'http.unhandled-error',
+                fields: { error: 'Error', correlationId: problem.correlationId },
+            },
+        ]);
     });
 });

@@ -28,7 +28,19 @@
         "ENGINE_DOMAIN": "engines.ptbk.test",
         "RELAYS": [{ "relayId": "relay.ptbk.test", "region": "local" }],
         "ADAPTERS": { "email": "fake", "billing": "fake", "rateLimit": "memory" },
+        "EMAIL_FROM": "no-reply@ptbk.test",
+        // Dev only; config refuses it elsewhere. Staging and production: `wrangler secret put RATE_LIMIT_HMAC_KEY`.
+        "RATE_LIMIT_HMAC_KEY": "ZGV2LW9ubHktcmF0ZS1saW1pdC1rZXktbm90LXNlY3JldA",
     },
+    // Hourly rate limits (D-02): the Workers Rate Limiting binding only has 10 s and 60 s periods.
+    "durable_objects": { "bindings": [{ "name": "HOURLY_RATE_LIMITER", "class_name": "HourlyRateLimiter" }] },
+    "migrations": [{ "tag": "v1", "new_sqlite_classes": ["HourlyRateLimiter"] }],
+    // Per-minute rate limits; limit and period must match RATE_LIMITS in src/domain/ports/rate-limiter.ts.
+    "ratelimits": [
+        { "name": "RATE_LIMIT_OPTIONS", "namespace_id": "1001", "simple": { "limit": 30, "period": 60 } },
+        { "name": "RATE_LIMIT_VERIFY", "namespace_id": "1002", "simple": { "limit": 30, "period": 60 } },
+        { "name": "RATE_LIMIT_PUBLIC_READ", "namespace_id": "1003", "simple": { "limit": 120, "period": 60 } },
+    ],
     "env": {
         "staging": {
             "routes": [{ "pattern": "app.staging.<placeholder>", "custom_domain": true }],
@@ -46,7 +58,22 @@
                 "ENGINE_DOMAIN": "<staging-engine-domain>",
                 "RELAYS": [{ "relayId": "relay-1.staging.<placeholder>", "region": "eu-central" }],
                 "ADAPTERS": { "email": "cloudflare", "billing": "stripe", "rateLimit": "workers" },
+                "EMAIL_FROM": "no-reply@<staging-sending-domain>",
             },
+            "send_email": [{ "name": "EMAIL" }],
+            "durable_objects": {
+                "bindings": [{ "name": "HOURLY_RATE_LIMITER", "class_name": "HourlyRateLimiter" }],
+            },
+            "migrations": [{ "tag": "v1", "new_sqlite_classes": ["HourlyRateLimiter"] }],
+            "ratelimits": [
+                { "name": "RATE_LIMIT_OPTIONS", "namespace_id": "2001", "simple": { "limit": 30, "period": 60 } },
+                { "name": "RATE_LIMIT_VERIFY", "namespace_id": "2002", "simple": { "limit": 30, "period": 60 } },
+                {
+                    "name": "RATE_LIMIT_PUBLIC_READ",
+                    "namespace_id": "2003",
+                    "simple": { "limit": 120, "period": 60 },
+                },
+            ],
         },
         "production": {
             "routes": [{ "pattern": "app.ptbk.io", "custom_domain": true }],
@@ -64,7 +91,22 @@
                 "ENGINE_DOMAIN": "<engine-domain>",
                 "RELAYS": [{ "relayId": "relay-1.<engine-domain>", "region": "eu-central" }],
                 "ADAPTERS": { "email": "cloudflare", "billing": "stripe", "rateLimit": "workers" },
+                "EMAIL_FROM": "no-reply@<production-sending-domain>",
             },
+            "send_email": [{ "name": "EMAIL" }],
+            "durable_objects": {
+                "bindings": [{ "name": "HOURLY_RATE_LIMITER", "class_name": "HourlyRateLimiter" }],
+            },
+            "migrations": [{ "tag": "v1", "new_sqlite_classes": ["HourlyRateLimiter"] }],
+            "ratelimits": [
+                { "name": "RATE_LIMIT_OPTIONS", "namespace_id": "3001", "simple": { "limit": 30, "period": 60 } },
+                { "name": "RATE_LIMIT_VERIFY", "namespace_id": "3002", "simple": { "limit": 30, "period": 60 } },
+                {
+                    "name": "RATE_LIMIT_PUBLIC_READ",
+                    "namespace_id": "3003",
+                    "simple": { "limit": 120, "period": 60 },
+                },
+            ],
         },
     },
 }
