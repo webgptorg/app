@@ -25,3 +25,8 @@ apps/dashboard/project.inlang/*
 **/routeTree.gen.ts
 **/.tanstack/
 **/worker-configuration.d.ts
+
+# engine-ui build and browser test output.
+apps/engine-ui/reports/
+apps/engine-ui/playwright-report/
+apps/engine-ui/test-results/

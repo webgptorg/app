@@ -1,5 +1,7 @@
 import js from '@eslint/js';
 import prettier from 'eslint-config-prettier';
+import jsxA11y from 'eslint-plugin-jsx-a11y';
+import reactHooks from 'eslint-plugin-react-hooks';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
@@ -38,6 +40,29 @@ const drizzleOnlyInDbAdapter = {
     group: ['drizzle-orm', 'drizzle-orm/*'],
     message: 'Drizzle lives only in src/adapters/db/ (ADR 0009); depend on a repository port.',
 };
+const htmlSink =
+    'engine-ui runs under Trusted Types: HTML goes only through src/security/trusted-html.ts (U-05), never a raw sink.';
+/**
+ * The engine's CSP (rule 4) refuses these at runtime; lint catches them before a browser does. One array, so a later
+ * engine-ui `no-restricted-syntax` block spreads it instead of replacing it.
+ */
+const engineUiDomBans = [
+    { selector: "JSXAttribute[name.name='dangerouslySetInnerHTML']", message: htmlSink },
+    { selector: 'MemberExpression[property.name=/^(innerHTML|outerHTML)$/]', message: htmlSink },
+    { selector: 'MemberExpression[computed=true][property.value=/^(innerHTML|outerHTML)$/]', message: htmlSink },
+    { selector: "CallExpression[callee.property.name='insertAdjacentHTML']", message: htmlSink },
+    { selector: "MemberExpression[object.name='document'][property.name=/^(write|writeln)$/]", message: htmlSink },
+    {
+        selector: "CallExpression[callee.property.name='setAttribute'][arguments.0.value='style']",
+        message:
+            "`style-src 'self'` blocks style attributes set as strings; use a class or React's style prop (CSSOM).",
+    },
+    {
+        selector: 'NewExpression[callee.name=/^(Shared)?Worker$/][arguments.0.type=/^(Literal|TemplateLiteral)$/]',
+        message:
+            "Load workers from a bundled module: new Worker(new URL('./x.ts', import.meta.url), { type: 'module' }).",
+    },
+];
 const domainPatterns = [
     { group: ['node:*', 'cloudflare:*'], message: domainPurity },
     { group: ['**/adapters/**', '**/app/**'], message: domainPurity },
@@ -54,6 +79,8 @@ export default tseslint.config(
             '**/routeTree.gen.ts',
             '**/worker-configuration.d.ts',
             'apps/dashboard/src/paraglide/',
+            'apps/engine-ui/playwright-report/**',
+            'apps/engine-ui/test-results/**',
         ],
     },
     js.configs.recommended,
@@ -175,6 +202,17 @@ export default tseslint.config(
                 },
             ],
         },
+    },
+    {
+        files: ['apps/engine-ui/src/**/*.{ts,tsx}'],
+        extends: [reactHooks.configs.flat['recommended-latest'], jsxA11y.flatConfigs.recommended],
+        languageOptions: { globals: globals.browser },
+    },
+    {
+        files: ['apps/engine-ui/**/*.{ts,tsx}'],
+        // The one module allowed to create TrustedHTML (U-05).
+        ignores: ['apps/engine-ui/src/security/trusted-html.ts'],
+        rules: { 'no-restricted-syntax': ['error', ...engineUiDomBans] },
     },
     {
         // Frameworks and runtimes require a default export here.

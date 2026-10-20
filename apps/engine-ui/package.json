@@ -5,7 +5,41 @@
   "type": "module",
   "description": "Private engine UI: static bundle the engine downloads, verifies and serves",
   "scripts": {
-    "typecheck": "tsc --noEmit -p .",
-    "test": "vitest run --passWithNoTests"
+    "generate": "tsr generate",
+    "dev": "vite dev --configLoader runner",
+    "build": "vite build --configLoader runner",
+    "preview": "vite preview --configLoader runner",
+    "typecheck": "tsc -b",
+    "test": "bun run build && vitest run --coverage",
+    "test:csp": "bun run build && playwright test"
+  },
+  "dependencies": {
+    "@ptbk/engine-api": "workspace:*",
+    "@ptbk/ui": "workspace:*",
+    "@tanstack/react-query": "catalog:",
+    "@tanstack/react-router": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
+    "@playwright/test": "1.64.0",
+    "@tailwindcss/vite": "catalog:",
+    "@tanstack/react-query-devtools": "5.104.2",
+    "@tanstack/react-router-devtools": "1.167.2",
+    "@tanstack/router-cli": "catalog:",
+    "@tanstack/router-plugin": "catalog:",
+    "@testing-library/dom": "catalog:",
+    "@testing-library/react": "catalog:",
+    "@testing-library/user-event": "14.6.7",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@vitejs/plugin-react": "catalog:",
+    "axe-core": "4.13.0",
+    "eslint": "catalog:",
+    "jsdom": "catalog:",
+    "tailwindcss": "catalog:",
+    "vite": "catalog:"
   }
 }
