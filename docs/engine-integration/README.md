@@ -84,17 +84,17 @@ Golden vectors, which an implementation in any language must reproduce:
 
 ## Status of the reference implementation
 
-The mock engine implements the engine side of every contract, one task at a time. On `main` today: identity, tunnel client and TLS inside the tunnel. Sections whose mock engine task is not merged say `Reference implementation: pending M-0x`; whoever merges that task updates the section and its checklist rows.
+The mock engine implements the engine side of every contract, one task at a time. On `main` today: identity, tunnel client, TLS inside the tunnel, and the engine API with a gateway stand-in. Sections whose mock engine task is not merged say `Reference implementation: pending M-0x`; whoever merges that task updates the section and its checklist rows.
 
-| Task | What the mock engine adds                          | Status                                      |
-| ---- | -------------------------------------------------- | ------------------------------------------- |
-| M-01 | Identity, tunnel client, proxy, reconnect          | merged                                      |
-| M-02 | TLS and HTTP inside the tunnel, dev CA             | merged                                      |
-| M-03 | ACME TLS-ALPN-01 through the relay                 | not started                                 |
-| M-04 | Engine API, gateway stand-in, faults               | in progress (engine-api core merged in #28) |
-| M-05 | UI loader and security headers                     | not started                                 |
-| M-06 | Registration and heartbeat client                  | not started                                 |
-| M-07 | Capabilities (runs, files, triggers, integrations) | not started                                 |
+| Task | What the mock engine adds                          | Status      |
+| ---- | -------------------------------------------------- | ----------- |
+| M-01 | Identity, tunnel client, proxy, reconnect          | merged      |
+| M-02 | TLS and HTTP inside the tunnel, dev CA             | merged      |
+| M-03 | ACME TLS-ALPN-01 through the relay                 | not started |
+| M-04 | Engine API, gateway stand-in, faults               | merged      |
+| M-05 | UI loader and security headers                     | not started |
+| M-06 | Registration and heartbeat client                  | not started |
+| M-07 | Capabilities (runs, files, triggers, integrations) | not started |
 
 ## Open points
 
@@ -116,8 +116,8 @@ These are not decided yet. Do not build against a guess: ask, or wait for the de
    - `permanentId` is assumed stable across renames; `profile` is assumed derived from the book and read-only; the file upload format.
    - The permission list, and which routes besides the update policy, API token creation and passkey removal need step-up.
    - The four capability models follow the predecessor and need your review. `GET /activity` uses `agents.read`; an `activity.read` permission is the alternative.
-   - The mock engine's policy guesses (M-04, merging as two pull requests), to align with you before the freeze:
-     - Role to permission table, in `apps/mock-engine/src/domain/authorization/policy.ts` once merged. C-04 fixes only that the owner holds every permission; the mock gives `admin` everything except `settings.manage`. Role mapping is engine policy.
+   - The mock engine's policy guesses (M-04), to align with you before the freeze:
+     - Role to permission table, in [policy.ts](../../apps/mock-engine/src/domain/authorization/policy.ts). C-04 fixes only that the owner holds every permission; the mock gives `admin` everything except `settings.manage`. Role mapping is engine policy.
      - Ownership: without `members.manage`, a member may change (write, delete or run) only agents they created.
      - CSRF: every request other than `GET`, `HEAD` and `OPTIONS` needs a same-origin `Origin` and a `Sec-Fetch-Site` of `same-origin` or `none`. Non-browser clients, such as the conformance runner, must then send both headers.
      - Sign-in counts as a fresh step-up for 5 minutes.
