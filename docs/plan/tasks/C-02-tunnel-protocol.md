@@ -2,7 +2,7 @@
 
 - **Lane:** Contracts · **Module:** `packages/protocol` · **Milestone:** M1
 - **Depends on:** C-01
-- **Status:** in progress (feat/c-02-tunnel-protocol)
+- **Status:** done (#11)
 - **Spec:** Interfaces (draft) 3. Tunnel protocol, Relay and tunnel; ADRs: [0004](../../adr/0004-mock-engine-and-conformance.md), [0005](../../adr/0005-modular-architecture.md), [0014](../../adr/0014-cryptography.md)
 
 ## Goal

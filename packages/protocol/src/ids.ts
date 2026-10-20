@@ -58,7 +58,8 @@ export type EngineVersion = z.infer<typeof EngineVersion>;
 export const Timestamp = z.iso.datetime().brand<'Timestamp'>();
 export type Timestamp = z.infer<typeof Timestamp>;
 
-function base64UrlOfLength(bytes: number) {
+/** Canonical base64url (see `decodeBase64Url`) of exactly `bytes` bytes; brand it at the call site. */
+export function base64UrlOfLength(bytes: number) {
     return z
         .string()
         .length(Math.ceil((bytes * 4) / 3))
