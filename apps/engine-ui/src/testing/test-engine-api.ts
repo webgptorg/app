@@ -1,5 +1,7 @@
-import { createInMemoryEngineApiClient, createProblem } from '@ptbk/engine-api';
-import type { EngineApiClient, EngineApiResponse, InMemoryEngineApiOptions, ProblemCode } from '@ptbk/engine-api';
+import { createProblem } from '@ptbk/engine-api';
+import type { EngineApiClient, EngineApiResponse, ProblemCode } from '@ptbk/engine-api';
+import { createInMemoryEngineApiClient } from '@ptbk/engine-api/in-memory';
+import type { InMemoryEngineApiOptions } from '@ptbk/engine-api/in-memory';
 
 export const TEST_NOW = new Date('2026-10-01T12:00:00.000Z');
 

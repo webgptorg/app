@@ -2,11 +2,11 @@ import { AgentPermanentId, AgentId, RevisionId } from '../common';
 import type { Agent, AgentRunState, AgentRunStatus } from '../agents';
 import { KNOWN_CAPABILITIES } from '../capabilities/capability';
 import { ApiTokenId, ChatId, FolderId, InviteId, MessageId, SecretId } from '../common';
-import type { Message, ReplyStreamEvent } from '../chats';
+import type { Message } from '../chats';
 import type { EngineEvent } from '../events';
 import type { Passkey } from '../passkeys';
-import { createProblem } from '../problem';
 import type { EngineApiStreamItem } from '../route';
+import type { Session } from '../sessions';
 import { ACTIVITY_HANDLERS, canSeeEvent } from './activity';
 import { verifyAuditChain } from './audit-chain';
 import { checkBook } from './book';
@@ -25,12 +25,14 @@ import {
     sortBy,
     sortParam,
     time,
+    touchChat,
     within,
 } from './kit';
 import type { HandlerContext, HandlerResult, Handlers } from './kit';
-import { advanceRun, queueRun, runForMessage, RUN_HANDLERS } from './runs';
+import { cancelReply, startReply, streamReply } from './replies';
+import { advanceRun, queueRun, RUN_HANDLERS } from './runs';
 import { TRIGGER_HANDLERS } from './triggers';
-import type { EventRecord } from './state';
+import type { InMemoryState } from './state';
 
 export type { HandlerContext, HandlerResult, ReplyScript, ScriptedReply } from './kit';
 
@@ -45,10 +47,9 @@ function setRunState(ctx: HandlerContext, agentId: AgentId, state: AgentRunState
     return ok(record.runStatus);
 }
 
-function touchChat(ctx: HandlerContext, chatId: ChatId): void {
-    const chat = ctx.state.chats.get(chatId);
-    if (chat) ctx.state.chats.set(chatId, { ...chat, updatedAt: ctx.now() });
-    ctx.publish({ type: 'chat.changed', chatId });
+/** `current` is not stored: it is whether the session is the one making this request. */
+function asSeenBy(ctx: HandlerContext, session: Session): Session {
+    return { ...session, current: session.id === ctx.actor.sessionId };
 }
 
 /** The in-memory engine's behaviour for every route, after the transport checked permission and parsed the input. */
@@ -76,7 +77,9 @@ export const HANDLERS: Handlers = {
         return revokePasskey(ctx, passkey);
     },
     listMySessions: ({ query }, ctx) => {
-        const own = [...ctx.state.sessions.values()].filter(({ memberId }) => memberId === ctx.member.id);
+        const own = [...ctx.state.sessions.values()]
+            .filter(({ memberId }) => memberId === ctx.member.id)
+            .map((session) => asSeenBy(ctx, session));
         return page(
             own,
             sortBy('-lastSeenAt', (session) => time(session.lastSeenAt), true),
@@ -91,7 +94,7 @@ export const HANDLERS: Handlers = {
     revokeMyOtherSessions: (_, ctx) => {
         let revoked = 0;
         for (const session of [...ctx.state.sessions.values()]) {
-            if (session.memberId !== ctx.member.id || session.current) continue;
+            if (session.memberId !== ctx.member.id || session.id === ctx.actor.sessionId) continue;
             ctx.state.sessions.delete(session.id);
             revoked++;
         }
@@ -265,16 +268,8 @@ export const HANDLERS: Handlers = {
         return ok(record.runStatus);
     },
 
-    streamEvents: ({ lastEventId }, ctx) => {
-        // Fixed now, not on the first read: the stream starts when the member subscribed.
-        const events = ctx.state.events;
-        return ok(
-            streamEvents(
-                ctx,
-                lastEventId === null ? events.length : events.findIndex(({ id }) => id === lastEventId) + 1,
-            ),
-        );
-    },
+    // Fixed now, not on the first read: the stream starts when the member subscribed.
+    streamEvents: ({ lastEventId }, ctx) => ok(streamEvents(ctx, resumeAfter(ctx.state, lastEventId))),
 
     listFolders: ({ query }, ctx) =>
         page(
@@ -381,10 +376,11 @@ export const HANDLERS: Handlers = {
             createdBy: null,
             createdAt: now,
         };
-        const script = ctx.replyScript({ agent: found.data, content: body.content });
+        let messageIndex = 0;
+        for (const message of ctx.state.messages.values()) if (message.chatId === chat.id) messageIndex++;
+        const script = ctx.replyScript({ agent: found.data, content: body.content, chatId: chat.id, messageIndex });
         ctx.state.messages.set(userMessage.id, userMessage);
         ctx.state.messages.set(reply.id, reply);
-        ctx.state.replies.set(reply.id, { chunks: [...script.chunks], outcome: script.outcome ?? 'completed' });
         if (advertises(ctx, KNOWN_CAPABILITIES.runs)) {
             const run = queueRun(ctx, {
                 agentId: chat.agentId,
@@ -397,6 +393,7 @@ export const HANDLERS: Handlers = {
             advanceRun(ctx, run.id);
         }
         touchChat(ctx, chat.id);
+        startReply(ctx, reply.id, script);
         return ok({ userMessage, replyMessageId: reply.id });
     },
     streamChatReply: ({ params, lastEventId }, ctx) => {
@@ -408,14 +405,9 @@ export const HANDLERS: Handlers = {
     cancelChatReply: ({ params }, ctx) => {
         const message = ctx.state.messages.get(params.messageId);
         if (message?.chatId !== params.chatId || !ctx.state.replies.has(message.id)) return notFound('reply');
-        if (message.status === 'cancelled') return ok(message);
-        if (message.status !== 'streaming') return fail('reply-finished');
-        const cancelled: Message = { ...message, status: 'cancelled' };
-        ctx.state.messages.set(message.id, cancelled);
-        const run = runForMessage(ctx, message.id);
-        if (run) advanceRun(ctx, run.id, { status: 'cancelled' });
-        touchChat(ctx, message.chatId);
-        return ok(cancelled);
+        if (!cancelReply(ctx, message)) return fail('reply-finished');
+        const cancelled = ctx.state.messages.get(message.id);
+        return cancelled ? ok(cancelled) : notFound('reply');
     },
 
     listMembers: ({ query }, ctx) =>
@@ -437,6 +429,10 @@ export const HANDLERS: Handlers = {
     },
     removeMember: ({ params }, ctx) => {
         if (!ctx.state.members.delete(params.memberId)) return notFound('member');
+        // A removed member is signed out everywhere: the gateway accepts only sessions the engine still lists.
+        for (const session of [...ctx.state.sessions.values()]) {
+            if (session.memberId === params.memberId) ctx.state.sessions.delete(session.id);
+        }
         return ok(null);
     },
     listInvites: ({ query }, ctx) =>
@@ -527,9 +523,9 @@ export const HANDLERS: Handlers = {
         return passkey ? revokePasskey(ctx, passkey) : notFound('passkey');
     },
     listSessions: ({ query }, ctx) => {
-        const sessions = [...ctx.state.sessions.values()].filter(
-            (session) => query.memberId === undefined || session.memberId === query.memberId,
-        );
+        const sessions = [...ctx.state.sessions.values()]
+            .filter((session) => query.memberId === undefined || session.memberId === query.memberId)
+            .map((session) => asSeenBy(ctx, session));
         return page(
             sessions,
             sortBy('-lastSeenAt', (session) => time(session.lastSeenAt), true),
@@ -652,65 +648,28 @@ function folderNameTaken(ctx: HandlerContext, name: string, except?: string): bo
     );
 }
 
-async function* streamEvents(ctx: HandlerContext, start: number): AsyncIterable<EngineApiStreamItem<EngineEvent>> {
-    const events: readonly EventRecord[] = ctx.state.events;
-    let next = start;
-    for (;;) {
-        while (next < events.length) {
-            const record = events[next++];
-            if (record && canSeeEvent(ctx.permissions, record.event)) {
-                yield { id: record.id, event: record.event };
-            }
-        }
-        await ctx.nextEvent(next, ctx.signal);
-    }
+/**
+ * Where a stream starts: after the last buffered event for a new subscriber, after `Last-Event-ID` while it is still
+ * buffered, and otherwise (unknown or dropped) from the oldest buffered event.
+ */
+function resumeAfter(state: InMemoryState, lastEventId: string | null): number {
+    if (lastEventId === null) return state.eventSeq;
+    const buffered = state.events.find(({ id }) => id === lastEventId);
+    if (buffered) return buffered.seq;
+    const oldest = state.events[0];
+    return oldest ? oldest.seq - 1 : state.eventSeq;
 }
 
-/**
- * The in-memory engine has no model, so a reply "generates" as it is streamed: reading the stream to its end
- * completes the reply, and a cancel before that ends it with `cancelled`. Terminal events carry no SSE id of their
- * own, so they report the last delta's, exactly as an SSE parser would.
- */
-async function* streamReply(
-    ctx: HandlerContext,
-    messageId: MessageId,
-    lastEventId: string | null,
-): AsyncIterable<EngineApiStreamItem<ReplyStreamEvent>> {
-    const reply = ctx.state.replies.get(messageId);
-    if (!reply) return;
-    let id: string | null = null;
-    const resumeAfter = lastEventId === null ? 0 : Number.parseInt(lastEventId, 10) || 0;
-    for (let index = resumeAfter; index < reply.chunks.length; index++) {
-        if (ctx.state.messages.get(messageId)?.status === 'cancelled') break;
-        const seq = index + 1;
-        id = String(seq);
-        yield { id, event: { type: 'delta', seq, text: reply.chunks[index] ?? '' } };
-        await Promise.resolve();
-    }
-    const message = ctx.state.messages.get(messageId);
-    if (!message) return;
-    if (message.status === 'cancelled') {
-        yield { id, event: { type: 'failed', problem: createProblem('cancelled') } };
-        return;
-    }
-    if (message.status === 'streaming') {
-        const content = reply.chunks.join('');
-        const finished: Message = { ...message, content, status: reply.outcome === 'failed' ? 'failed' : 'completed' };
-        ctx.state.messages.set(messageId, finished);
-        const run = runForMessage(ctx, messageId);
-        if (run) {
-            advanceRun(
-                ctx,
-                run.id,
-                finished.status === 'failed'
-                    ? { status: 'failed', error: { code: 'reply-failed', summary: 'The reply failed.' } }
-                    : { status: 'completed' },
-            );
+async function* streamEvents(ctx: HandlerContext, start: number): AsyncIterable<EngineApiStreamItem<EngineEvent>> {
+    let after = start;
+    for (;;) {
+        // Looked up again each time: the buffer may have dropped events while this stream waited.
+        const record = ctx.state.events.find(({ seq }) => seq > after);
+        if (!record) {
+            await ctx.nextEvent(after, ctx.signal);
+            continue;
         }
-        touchChat(ctx, finished.chatId);
+        after = record.seq;
+        if (canSeeEvent(ctx.permissions, record.event)) yield { id: record.id, event: record.event };
     }
-    const final = ctx.state.messages.get(messageId) ?? message;
-    yield final.status === 'failed'
-        ? { id, event: { type: 'failed', problem: createProblem('reply-failed') } }
-        : { id, event: { type: 'completed', message: final } };
 }

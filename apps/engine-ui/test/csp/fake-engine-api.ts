@@ -1,4 +1,5 @@
-import { createInMemoryEngineApiClient, createProblem, ENGINE_API_PREFIX } from '@ptbk/engine-api';
+import { createProblem, ENGINE_API_PREFIX } from '@ptbk/engine-api';
+import { createInMemoryEngineApiClient } from '@ptbk/engine-api/in-memory';
 import type { EngineApiResponse } from '@ptbk/engine-api';
 import type { Page, Route } from '@playwright/test';
 

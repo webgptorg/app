@@ -3,7 +3,7 @@ import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { IN_MEMORY_CLIENT_MARKER } from '@ptbk/engine-api';
+import { IN_MEMORY_CLIENT_MARKER } from '@ptbk/engine-api/in-memory';
 import { describe, expect, it } from 'vitest';
 
 import { listRouteFiles } from '../tooling/bundle-budget.ts';

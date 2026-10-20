@@ -58,7 +58,8 @@ export const EVENT_ROUTES = {
         path: '/events',
         summary:
             "Server-sent engine events, filtered by the member's permissions; every event has an SSE id and the stream resumes after `Last-Event-ID`",
-        description: 'Clients ignore event types they do not know, so engines may add types within a version.',
+        description:
+            'Clients ignore event types they do not know, so engines may add types within a version. The engine keeps a bounded buffer of recent events: a `Last-Event-ID` that is unknown or no longer buffered resumes from the oldest buffered event. Event IDs keep increasing across dropped events and gaps are not signalled, so a client refetches what it shows on every reconnect.',
         permission: 'agents.read',
         responses: { 200: { kind: 'sse', event: EngineEvent, read: EngineEventReader } },
     }),

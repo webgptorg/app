@@ -5,7 +5,10 @@
   "type": "module",
   "description": "Engine HTTP API contract consumed by engine-ui (MIT; moves to the public repo, ADR 0002)",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./in-memory": "./src/in-memory.ts",
+    "./http": "./src/http.ts",
+    "./testing": "./src/testing/client-suite.ts"
   },
   "sideEffects": false,
   "scripts": {

@@ -15,7 +15,8 @@ import {
     SessionId,
 } from '../common';
 import { MAX_FILE_BYTES } from '../constants';
-import { createInMemoryEngineApiClient, createInMemoryEngineApiTransport } from '../in-memory-client';
+import { createInMemoryEngineApiClient } from '../in-memory-client';
+import { createInMemoryEngineApiTransport } from '../testing/in-memory-transport';
 import type { InMemoryEngineApiOptions } from '../in-memory-client';
 import { PERMISSIONS } from '../permissions';
 import { ENGINE_API_ROUTES } from '../routes';
@@ -379,7 +380,7 @@ describe('in-memory audit and transport', () => {
     });
 
     it('records validation failures and refuses input a route does not take', async () => {
-        const transport = createInMemoryEngineApiTransport();
+        const { transport } = createInMemoryEngineApiTransport();
         const refused = await transport(ENGINE_API_ROUTES.getMe, { query: { extra: '1' }, body: { x: 1 } }, signal());
         expect(refused.kind === 'problem' && refused.problem.errors?.map(({ path }) => path)).toEqual([
             'query',
