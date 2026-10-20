@@ -180,6 +180,7 @@ export interface RequestContext {
  * request for handlers that hand it on, such as the engine API binding).
  */
 export async function runHttpRoute(route: HttpRoute, context: RequestContext): Promise<Response> {
+    if (route.validation === 'engine-api') return runEngineApiRoute(route, context);
     const { request } = context;
     const admitted = admitQueryAndHeaders(
         route,
@@ -196,23 +197,59 @@ export async function runHttpRoute(route: HttpRoute, context: RequestContext): P
     if (!('kind' in decoded)) return problemResponse(decoded);
     const body = route.body === null ? null : check('body', route.body.schema, decoded.value, errors);
     if (errors.length > 0) return problemResponse({ code: 'validation-failed', extras: { errors } });
-    const copy = new Request(request.url, {
-        method: request.method,
-        headers: request.headers,
-        signal: request.signal,
-        ...(read.bytes === null ? {} : { body: read.bytes }),
-    });
     return route.handle({
         params,
         query: admitted.query,
         headers: admitted.headers,
         body,
-        request: copy,
+        request: copyOf(request, read.bytes),
         connection: context.connection,
         clientIp: context.clientIp,
         actor: context.actor,
         signal: request.signal,
     } as Parameters<HttpRoute['handle']>[0]);
+}
+
+function copyOf(request: Request, bytes: Uint8Array<ArrayBuffer> | null): Request {
+    return new Request(request.url, {
+        method: request.method,
+        headers: request.headers,
+        signal: request.signal,
+        ...(bytes === null ? {} : { body: bytes }),
+    });
+}
+
+/**
+ * The engine API binding parses params, query and body itself, strictly and with these same schemas, but only after
+ * the capability and permission checks, as C-04 orders them: a caller without the permission learns 403, not whether
+ * their input was valid. The helper still caps the body and checks the headers it declares.
+ */
+async function runEngineApiRoute(route: HttpRoute, context: RequestContext): Promise<Response> {
+    const { request } = context;
+    const errors: ValidationError[] = [];
+    const headers =
+        route.headers === null
+            ? null
+            : check(
+                  'headers',
+                  route.headers,
+                  headersOf(route.headers, (name) => request.headers.get(name) ?? undefined),
+                  errors,
+              );
+    if (errors.length > 0) return problemResponse({ code: 'validation-failed', extras: { errors } });
+    const read = await readBounded(request, route.body?.maxBytes ?? STRAY_BODY_MAX_BYTES);
+    if (!('kind' in read)) return problemResponse(read);
+    return route.handle({
+        params: context.params,
+        query: null,
+        headers,
+        body: null,
+        request: copyOf(request, read.bytes),
+        connection: context.connection,
+        clientIp: context.clientIp,
+        actor: context.actor,
+        signal: request.signal,
+    } as unknown as Parameters<HttpRoute['handle']>[0]);
 }
 
 /** Hono's `:name` form of a `{name}` path. */

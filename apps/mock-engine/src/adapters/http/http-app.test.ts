@@ -201,6 +201,13 @@ describe.each([
         );
     });
 
+    it('lets only the engine API routes delegate input validation to the engine API binding', () => {
+        for (const route of routes) {
+            const delegated = route.transport === 'http' && route.validation === 'engine-api';
+            expect(delegated, key(route)).toBe(route.path.startsWith('/api/'));
+        }
+    });
+
     it('keeps everything else off the reserved paths, except the gateway under /auth/', () => {
         for (const route of routes) {
             const reserved = ENGINE_RESERVED_PATHS.find((prefix) => route.path.startsWith(prefix));

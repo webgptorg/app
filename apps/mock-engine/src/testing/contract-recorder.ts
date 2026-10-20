@@ -4,7 +4,7 @@ import {
     ENGINE_API_ROUTE_LIST,
     PROBLEM_STATUS,
     ProblemDetails,
-    parseSseStream,
+    createSseParser,
 } from '@ptbk/engine-api';
 
 const ROUTE_PATTERNS = ENGINE_API_ROUTE_LIST.map((route) => ({
@@ -72,31 +72,50 @@ export function createContractRecorder(): ContractRecorder {
         }
     }
 
-    async function checkStream(route: RouteDefinition, stream: ReadableStream<Uint8Array>): Promise<void> {
+    /** Reads the response itself and hands each chunk on, so the client's cancel also ends this reading. */
+    function checkStream(route: RouteDefinition, response: Response, body: ReadableStream<Uint8Array>): Response {
         const success = Object.values(route.responses)[0];
-        if (success?.kind !== 'sse') {
-            violation(route, 'unexpected event stream');
-            return;
-        }
-        const [forBytes, forEvents] = stream.tee();
-        const collect = (async () => {
-            const reader = forBytes.getReader();
-            for (;;) {
-                const next = await reader.read();
-                if (next.done) return;
-                chunks.push(Buffer.from(next.value));
+        if (success?.kind !== 'sse') violation(route, 'unexpected event stream');
+        const parser = createSseParser();
+        const reader = body.getReader();
+        let finish = (): void => undefined;
+        const done = new Promise<void>((resolve) => {
+            finish = resolve;
+        });
+        pending.add(done);
+        void done.then(() => pending.delete(done));
+        const inspect = (bytes: Uint8Array): void => {
+            chunks.push(Buffer.from(bytes));
+            if (success?.kind !== 'sse') return;
+            for (const message of parser.push(bytes)) {
+                if (!success.event.safeParse(JSON.parse(message.data)).success) {
+                    violation(route, 'event does not match its strict schema');
+                }
             }
-        })();
-        try {
-            for await (const message of parseSseStream(forEvents)) {
-                const event: unknown = JSON.parse(message.data);
-                const result = success.event.safeParse(event);
-                if (!result.success) violation(route, `event does not match its strict schema`);
-            }
-        } catch {
-            // The client went away or a fault cut the stream; what arrived was still checked.
-        }
-        await collect.catch(() => undefined);
+        };
+        const stream = new ReadableStream<Uint8Array>({
+            async pull(controller) {
+                try {
+                    const next = await reader.read();
+                    if (next.done) {
+                        finish();
+                        controller.close();
+                        return;
+                    }
+                    inspect(next.value);
+                    controller.enqueue(next.value);
+                } catch (error) {
+                    // The client went away or a fault cut the stream; what arrived was still checked.
+                    finish();
+                    controller.error(error);
+                }
+            },
+            async cancel(reason) {
+                finish();
+                await reader.cancel(reason);
+            },
+        });
+        return new Response(stream, { status: response.status, headers: response.headers });
     }
 
     return {
@@ -115,11 +134,7 @@ export function createContractRecorder(): ContractRecorder {
             answered.add(route.id);
             const mediaType = response.headers.get('content-type')?.split(';')[0]?.trim();
             if (mediaType === 'text/event-stream' && response.body !== null) {
-                const [mine, theirs] = response.body.tee();
-                const check = checkStream(route, mine);
-                pending.add(check);
-                void check.finally(() => pending.delete(check));
-                return new Response(theirs, { status: response.status, headers: response.headers });
+                return checkStream(route, response, response.body);
             }
             const bytes = Buffer.from(await response.arrayBuffer());
             chunks.push(bytes);

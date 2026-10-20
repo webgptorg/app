@@ -45,6 +45,7 @@ export function createEngineApiRoutes(deps: { readonly core: () => InMemoryEngin
             method: route.method,
             path: `${ENGINE_API_PREFIX}${route.path}`,
             auth: 'session',
+            validation: 'engine-api',
             permission: route.permission,
             rateLimit: 'engine-api-ip',
             params: route.params ?? null,
@@ -55,13 +56,7 @@ export function createEngineApiRoutes(deps: { readonly core: () => InMemoryEngin
                 serveEngineApiRoute(
                     deps.core().transport(actor),
                     route,
-                    // Parsed IDs are the decoded path segments; the core parses them into branded IDs itself.
-                    Object.fromEntries(
-                        Object.entries(params ?? {}).map(([name, value]) => [
-                            name,
-                            typeof value === 'string' ? value : '',
-                        ]),
-                    ),
+                    params as unknown as Readonly<Record<string, string>>,
                     request,
                 ),
         }),

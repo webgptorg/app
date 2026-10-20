@@ -77,6 +77,8 @@ describe('engine runtime', () => {
         runtime.setRelayStatus('relay-b.ptbk.test', 'disconnected');
         runtime.setHostnames([IDENTITY.hostname, 'agents.customer.test']);
         runtime.setDashboardUrl('https://app.ptbk.test/engines/abc');
+        const heartbeat = { sentAt: '2026-10-20T08:00:02Z', body: '{"v":1}' };
+        runtime.setLastHeartbeat(heartbeat);
         const listened: string[] = [];
         runtime.onReset(() => listened.push('reset'));
         const before = ok(await client().security.get(signal()));
@@ -86,6 +88,7 @@ describe('engine runtime', () => {
         expect(runtime.controller().inspect().counts).toMatchObject({ members: 1, agents: 0 });
         const after = ok(await client().security.get(signal()));
         expect(after.relays).toEqual(before.relays);
+        expect(after.lastHeartbeat).toEqual(heartbeat);
         expect(after.relays).toEqual([
             { hostname: 'relay-a.ptbk.test', status: 'connected', since: '2026-10-20T08:00:01Z' },
             { hostname: 'relay-b.ptbk.test', status: 'disconnected', since: '2026-10-20T08:00:02Z' },

@@ -79,6 +79,11 @@ export interface HttpRoute<
 > extends RouteContract<P, Q, H, A> {
     readonly transport: 'http';
     readonly body: B;
+    /**
+     * `engine-api`: only the engine API routes, whose binding validates params, query and body with these same strict
+     * schemas after checking capability and permission (C-04's order). The handler then gets the raw path parameters.
+     */
+    readonly validation?: 'engine-api';
     // Method syntax on purpose: routes with different schemas are stored in one table.
     handle(request: RouteRequest<P, Q, H, B, A>): Response | Promise<Response>;
 }

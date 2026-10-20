@@ -196,6 +196,30 @@ describe('authorisation matrix', () => {
     });
 });
 
+describe('order of checks', () => {
+    it('answers a missing permission with 403 even when the input is invalid', async () => {
+        const cookie = harness.signIn({ memberId: memberOf('viewer') });
+        const denied = await call(harness, cookie, ENGINE_API_ROUTES.createSecret, {}, { surprise: true });
+        expect(denied.status).toBe(403);
+        expect(denied.body).toMatchObject({ code: 'forbidden', requiredPermission: 'secrets.manage' });
+        const allowed = await call(
+            harness,
+            harness.signIn({ memberId: memberOf('owner') }),
+            ENGINE_API_ROUTES.createSecret,
+            {},
+            { surprise: true },
+        );
+        expect(allowed.status).toBe(400);
+    });
+
+    it('answers an unadvertised capability route with 404 even when the input is invalid', async () => {
+        const cookie = harness.signIn({ memberId: memberOf('owner') });
+        const result = await call(harness, cookie, ENGINE_API_ROUTES.createTrigger, {}, { surprise: true });
+        expect(result.status).toBe(404);
+        expect(result.body?.['code']).toBe('capability-not-supported');
+    });
+});
+
 describe('ownership', () => {
     async function agents() {
         const owner = harness.signIn({ memberId: memberOf('owner') });

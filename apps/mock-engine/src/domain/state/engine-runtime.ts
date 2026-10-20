@@ -38,6 +38,8 @@ export interface EngineRuntime {
     setDashboardUrl(url: string | null): void;
     setRelayStatus(relayHostname: string, status: RelayStatus): void;
     setHostnames(hostnames: readonly string[]): void;
+    /** The heartbeat the engine last sent, exactly as sent (M-06 reports it). */
+    setLastHeartbeat(heartbeat: SecurityOverview['lastHeartbeat']): void;
 }
 
 function clockSleep(clock: Clock): Sleep {
@@ -69,6 +71,7 @@ export function createEngineRuntime(options: EngineRuntimeOptions): EngineRuntim
         dashboardUrl: null as string | null,
         relays: new Map<string, { readonly status: RelayStatus; readonly since: string }>(),
         hostnames: [identity.hostname] as readonly string[],
+        lastHeartbeat: null as SecurityOverview['lastHeartbeat'],
     };
     const listeners: (() => void)[] = [];
     let current = { seed: options.seed, scenario: options.scenario };
@@ -120,6 +123,7 @@ export function createEngineRuntime(options: EngineRuntimeOptions): EngineRuntim
 
     function applySecurity(core: InMemoryEngineCore): void {
         core.controller.updateSecurity({
+            lastHeartbeat: sticky.lastHeartbeat,
             relays: [...sticky.relays].map(([hostname, relay]) => ({ hostname, ...relay })),
             hostnames: sticky.hostnames.map((hostname, index) => ({
                 hostname,
@@ -149,6 +153,10 @@ export function createEngineRuntime(options: EngineRuntimeOptions): EngineRuntim
         setRelayStatus(relayHostname, status) {
             if (sticky.relays.get(relayHostname)?.status === status) return;
             sticky.relays.set(relayHostname, { status, since: now() });
+            applySecurity(core);
+        },
+        setLastHeartbeat(heartbeat) {
+            sticky.lastHeartbeat = heartbeat;
             applySecurity(core);
         },
         setHostnames(hostnames) {
