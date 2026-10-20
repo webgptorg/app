@@ -4,10 +4,12 @@ import { spawn } from 'node:child_process';
 import { createWriteStream } from 'node:fs';
 import { mkdir, rm } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
+import { Writable } from 'node:stream';
 
 const E2E_DIR = dirname(import.meta.dirname);
 const RESULTS_DIR = join(E2E_DIR, 'test-results');
 const CONTAINER_RESULTS_DIR = '/repo/e2e/test-results';
+const DOCKER_SOCKET = '/var/run/docker.sock';
 const WAIT_TIMEOUT_S = 300;
 /** Every service except `playwright`, which `run` starts on its own; naming the last one brings up the rest. */
 const STACK_ENTRY_SERVICE = 'mock-engine';
@@ -87,6 +89,48 @@ function docker(
     });
 }
 
+async function dockerOutput(args: readonly string[]): Promise<string> {
+    const chunks: Buffer[] = [];
+    const sink = new Writable({
+        write(chunk: Buffer, _encoding, callback) {
+            chunks.push(chunk);
+            callback();
+        },
+    });
+    const code = await docker(args, sink);
+    if (code !== 0) throw new Error(`docker ${args.slice(0, 3).join(' ')} … exited with ${String(code)}`);
+    return Buffer.concat(chunks).toString('utf8');
+}
+
+export function parseGid(output: string): string {
+    const gid = output.trim();
+    if (!/^\d{1,10}$/.test(gid)) throw new Error('could not read the group of the Docker socket');
+    return gid;
+}
+
+/**
+ * The Docker socket's group as containers see it, for the playwright service's `group_add`. Read from inside a
+ * container because on macOS (OrbStack, Docker Desktop) the host's socket file is not the one Docker mounts.
+ */
+async function dockerSocketGid(target: ComposeTarget): Promise<string> {
+    return parseGid(
+        await dockerOutput([
+            'run',
+            '--rm',
+            '--network',
+            'none',
+            '--entrypoint',
+            'stat',
+            '--volume',
+            `${DOCKER_SOCKET}:${DOCKER_SOCKET}:ro`,
+            `${target.project}-playwright`,
+            '--format',
+            '%g',
+            DOCKER_SOCKET,
+        ]),
+    );
+}
+
 /** Removes a leftover playwright run container; absent is fine. */
 function removeRunContainer(target: ComposeTarget): Promise<number> {
     return docker(['rm', '--force', '--volumes', playwrightContainerName(target)], 'ignore', 'ignore');
@@ -131,6 +175,7 @@ async function saveLogs(target: ComposeTarget): Promise<void> {
 async function runTests(target: ComposeTarget, playwrightArgs: readonly string[]): Promise<number> {
     // Cheap when nothing changed, and picks up edited tests against a running stack.
     await must(composeArgs(target, '--profile', 'test', 'build', 'playwright'));
+    process.env['E2E_DOCKER_GID'] = await dockerSocketGid(target);
     await removeRunContainer(target);
     const code = await docker(runArgs(target, playwrightArgs));
     await mkdir(RESULTS_DIR, { recursive: true });

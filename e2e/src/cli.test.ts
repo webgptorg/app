@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { composeArgs, parseOverlays, projectName, runArgs } from './cli.ts';
+import { composeArgs, parseGid, parseOverlays, projectName, runArgs } from './cli.ts';
 
 const TARGET = { project: 'ptbk-e2e-app', e2eDir: '/repo/e2e', overlays: ['proxy'] } as const;
 
@@ -51,5 +51,14 @@ describe('composeArgs and runArgs', () => {
             '--grep',
             'sse',
         ]);
+    });
+});
+
+describe('parseGid', () => {
+    it("takes stat's numeric group and nothing else", () => {
+        expect(parseGid('988\n')).toBe('988');
+        expect(parseGid('0')).toBe('0');
+        expect(() => parseGid('docker')).toThrow('group of the Docker socket');
+        expect(() => parseGid('')).toThrow('group of the Docker socket');
     });
 });

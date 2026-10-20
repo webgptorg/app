@@ -170,11 +170,20 @@ services:
     depends_on:
       mock-engine:
         condition: service_healthy
+    # Not root, and Chromium keeps its own sandbox (playwright.config.ts). The sandbox needs user namespaces, which
+    # Docker's default seccomp profile refuses; Playwright's published profile is an older Docker default plus exactly
+    # that (docker/seccomp_profile.json, vendored unchanged; source in docs/development.md).
+    user: pwuser
+    security_opt:
+      - seccomp=./docker/seccomp_profile.json
+    # The compose fixture stops, kills and reads logs of this project's services through the socket (src/compose.ts).
+    # cli.ts sets the socket's group as Docker sees it; without it, pwuser gets no access.
+    group_add:
+      - ${E2E_DOCKER_GID:-nogroup}
     environment:
       CI: ${CI:-}
     volumes:
       - public:/pki:ro
-      # The compose fixture stops, kills and reads logs of this project's services (src/compose.ts).
       - /var/run/docker.sock:/var/run/docker.sock
     dns: [10.89.231.53]
     init: true

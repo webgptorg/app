@@ -17,6 +17,9 @@ export default defineConfig({
         ...devices['Desktop Chrome'],
         trace: 'retain-on-failure',
         screenshot: 'only-on-failure',
+        // Playwright turns Chromium's sandbox off by default; a renderer bug must not reach a container that holds the
+        // Docker socket.
+        launchOptions: { chromiumSandbox: true },
     },
     projects: [{ name: 'chromium' }],
 });

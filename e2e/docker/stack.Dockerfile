@@ -47,8 +47,11 @@ CMD ["node", "--enable-source-maps", "/app/main.mjs"]
 # The official image already holds the browsers for this exact @playwright/test version; nothing is downloaded at
 # install time (no install scripts) or at run time.
 FROM ${PLAYWRIGHT_IMAGE} AS playwright
+# Exactly the version of the image's own libnss3, which libnss3-tools requires. Ubuntu keeps only the newest
+# version in noble-updates, so once it ships a newer NSS this pin fails the build loudly: bump the image digest and
+# this version together.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libnss3-tools \
+    && apt-get install -y --no-install-recommends libnss3-tools=2:3.98-1ubuntu0.2 \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=bun /usr/local/bin/bun /usr/local/bin/bun
 WORKDIR /repo
@@ -56,6 +59,9 @@ COPY --from=manifests /src/ ./
 RUN bun install --frozen-lockfile --filter @ptbk/e2e
 COPY tsconfig.base.json ./
 COPY e2e e2e
+# Tests run as pwuser, which owns nothing else in the tree.
+RUN install -d -o pwuser -g pwuser /repo/e2e/test-results
 WORKDIR /repo/e2e
+USER pwuser
 ENTRYPOINT ["/repo/e2e/docker/playwright-entrypoint.sh"]
 CMD ["node_modules/.bin/playwright", "test"]
