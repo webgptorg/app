@@ -19,7 +19,7 @@
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@types/ws": "8.18.2",
+    "@types/ws": "catalog:",
     "eslint": "catalog:",
     "tsdown": "0.23.1",
     "tsx": "4.23.15"

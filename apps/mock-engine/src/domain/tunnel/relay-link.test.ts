@@ -397,6 +397,23 @@ describe('reject and close handling', () => {
         expectBackoff(ctx, 1);
     });
 
+    it('backs off, escalating, when the relay closes malformed input with PROTOCOL_ERROR and no reject', async () => {
+        const ctx = await setup();
+        for (let attempt = 1; attempt <= 4; attempt++) {
+            const { connection } = await toAuth(ctx);
+            connection.relayClose(TUNNEL_CLOSE_CODE.PROTOCOL_ERROR);
+            expect(ctx.logger.entries.at(-2)).toEqual({
+                level: 'warn',
+                event: 'tunnel.closed',
+                fields: { relay: TARGET.url, attempt, code: TUNNEL_CLOSE_CODE.PROTOCOL_ERROR, phase: 'await-ready' },
+            });
+            const delay = expectBackoff(ctx, attempt);
+            expect(ctx.dialer.dials).toHaveLength(attempt);
+            ctx.clock.advance(delay);
+        }
+        expect(events(ctx)).not.toContain('tunnel.rejected');
+    });
+
     it('escalates the backoff over consecutive failures up to the cap', async () => {
         const ctx = await setup();
         ctx.link.start();
