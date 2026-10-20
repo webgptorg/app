@@ -5,6 +5,9 @@ import { createAgentsEngine } from '../../testing/agents-engine';
 import { renderWithProviders } from '../../testing/render-with-providers';
 import { problemResponse } from '../../testing/test-engine-api';
 
+// Each test renders the whole app on the in-memory engine; a shared CI runner is several times slower than a laptop.
+const TIMEOUT_MS = 20_000;
+
 const rowOf = (name: string) => screen.getByRole('link', { name }).closest('tr') as HTMLElement;
 
 async function renderList(engine = createAgentsEngine({ agentCount: 6 })) {
@@ -18,7 +21,7 @@ async function openRowMenu(user: ReturnType<typeof renderWithProviders>['user'],
     return screen.getByRole('menu', { name: `Actions for ${name}` });
 }
 
-describe('deleting an agent', () => {
+describe('deleting an agent', { timeout: TIMEOUT_MS }, () => {
     it('needs the exact name, then removes the agent, reports it and moves focus to the search', async () => {
         const { user, engine } = await renderList();
         await user.click(within(await openRowMenu(user, 'Agent 002')).getByRole('menuitem', { name: 'Delete' }));
@@ -92,7 +95,7 @@ describe('deleting an agent', () => {
     });
 });
 
-describe('changing visibility', () => {
+describe('changing visibility', { timeout: TIMEOUT_MS }, () => {
     it('asks before making an agent public, and changes nothing when cancelled', async () => {
         const { user, engine } = await renderList();
         // Agent 003 starts private (index % 3 === 0).
@@ -148,7 +151,7 @@ describe('changing visibility', () => {
     });
 });
 
-describe('starting and stopping', () => {
+describe('starting and stopping', { timeout: TIMEOUT_MS }, () => {
     it('updates the badge once the engine confirms, and reports each outcome', async () => {
         const { user, engine } = await renderList();
         // Agent 004 starts idle (index % 4 === 0).

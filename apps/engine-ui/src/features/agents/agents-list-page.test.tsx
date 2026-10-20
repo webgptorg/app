@@ -7,6 +7,9 @@ import { renderWithProviders } from '../../testing/render-with-providers';
 import { problemResponse, TEST_NOW } from '../../testing/test-engine-api';
 import { AGENT_COLUMNS_STORAGE_KEY } from './agents-list-page';
 
+// Each test renders the whole app on the in-memory engine; a shared CI runner is several times slower than a laptop.
+const TIMEOUT_MS = 20_000;
+
 const table = () => screen.getByRole('table', { name: 'Agents' });
 const agentLinks = () =>
     within(table())
@@ -19,7 +22,7 @@ async function renderList(path = '/agents', engine = createAgentsEngine()) {
     return { ...app, engine };
 }
 
-describe('agents list', () => {
+describe('agents list', { timeout: TIMEOUT_MS }, () => {
     it('reaches all 120 agents through paging, including the second member’s, without any filter', async () => {
         const { user, engine } = await renderList();
         const seen = new Set<string | undefined>();
@@ -212,7 +215,7 @@ describe('agents list', () => {
     });
 });
 
-describe('agents list states', () => {
+describe('agents list states', { timeout: TIMEOUT_MS }, () => {
     it('invites the first agent when there are none', async () => {
         renderWithProviders({ path: '/agents', engineApi: createAgentsEngine({ agentCount: 0 }).client });
         expect(await screen.findByText('No agents yet')).toBeDefined();
@@ -245,7 +248,7 @@ describe('agents list states', () => {
     });
 });
 
-describe('agents list permissions', () => {
+describe('agents list permissions', { timeout: TIMEOUT_MS }, () => {
     it('offers no delete or visibility change without agents.delete and agents.write', async () => {
         const engine = createAgentsEngine({ permissions: ['agents.read', 'agents.run'] });
         const { user } = await renderList('/agents', engine);

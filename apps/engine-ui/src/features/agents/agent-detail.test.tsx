@@ -14,6 +14,9 @@ import type { AgentsEngineOptions } from '../../testing/agents-engine';
 import { renderWithProviders } from '../../testing/render-with-providers';
 import { problemResponse, TEST_NOW } from '../../testing/test-engine-api';
 
+// Each test renders the whole app on the in-memory engine; a shared CI runner is several times slower than a laptop.
+const TIMEOUT_MS = 20_000;
+
 const label = (text: string) => () => text;
 
 /** What U-04, U-05 and U-09 to U-12 will register; their routes do not exist yet, so the paths are untyped here. */
@@ -70,7 +73,7 @@ async function renderAgent(
 
 const allBut = (...missing: readonly Permission[]) => PERMISSIONS.filter((permission) => !missing.includes(permission));
 
-describe('agent tabs', () => {
+describe('agent tabs', { timeout: TIMEOUT_MS }, () => {
     it('shows all eight tabs in the order of the design brief with every capability and permission', async () => {
         await renderAgent('/agents/agent-001', { features: [...FEATURES, ...OTHER_TABS] });
         expect(tabNames()).toEqual([
@@ -158,7 +161,7 @@ describe('agent tabs', () => {
     });
 });
 
-describe('agent overview', () => {
+describe('agent overview', { timeout: TIMEOUT_MS }, () => {
     it('shows identity, state, visibility, creator, times, last activity and model', async () => {
         const { engine } = await renderAgent('/agents/agent-003');
         expect(screen.getByRole('heading', { level: 1, name: 'Agent 003' })).toBeDefined();
@@ -244,7 +247,7 @@ describe('agent overview', () => {
     });
 });
 
-describe('agent live state', () => {
+describe('agent live state', { timeout: TIMEOUT_MS }, () => {
     function createFakeRunsState(initial: AgentLiveState) {
         let state = initial;
         const listeners = new Set<() => void>();
@@ -325,7 +328,7 @@ describe('agent live state', () => {
     });
 });
 
-describe('agent header', () => {
+describe('agent header', { timeout: TIMEOUT_MS }, () => {
     it('offers Chat and Edit where those tabs exist and the member may edit', async () => {
         await renderAgent('/agents/agent-001', { features: [...FEATURES, ...OTHER_TABS] });
         const header = agentHeader();
@@ -348,7 +351,7 @@ describe('agent header', () => {
     });
 });
 
-describe('agent settings', () => {
+describe('agent settings', { timeout: TIMEOUT_MS }, () => {
     it('changes visibility, asking first only when making the agent public', async () => {
         const { user, engine } = await renderAgent('/agents/agent-003/settings');
         const select = await screen.findByRole('combobox', { name: 'Visibility' });
@@ -421,7 +424,7 @@ describe('agent settings', () => {
     });
 });
 
-describe('agent not found', () => {
+describe('agent not found', { timeout: TIMEOUT_MS }, () => {
     it.each([
         ['an unknown agent', '/agents/agent-999'],
         ['an ID that cannot be one', '/agents/not%20an%20id'],
