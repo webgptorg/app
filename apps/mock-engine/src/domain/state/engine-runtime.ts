@@ -39,7 +39,7 @@ export interface EngineRuntime {
     setRelayStatus(relayHostname: string, status: RelayStatus): void;
     setHostnames(hostnames: readonly string[]): void;
     /** The heartbeat the engine last sent, exactly as sent (M-06 reports it). */
-    setLastHeartbeat(heartbeat: SecurityOverview['lastHeartbeat']): void;
+    setLastHeartbeat(heartbeat: { readonly sentAt: string; readonly body: string } | null): void;
 }
 
 function clockSleep(clock: Clock): Sleep {
@@ -71,7 +71,7 @@ export function createEngineRuntime(options: EngineRuntimeOptions): EngineRuntim
         dashboardUrl: null as string | null,
         relays: new Map<string, { readonly status: RelayStatus; readonly since: string }>(),
         hostnames: [identity.hostname] as readonly string[],
-        lastHeartbeat: null as SecurityOverview['lastHeartbeat'],
+        lastHeartbeat: null as { readonly sentAt: string; readonly body: string } | null,
     };
     const listeners: (() => void)[] = [];
     let current = { seed: options.seed, scenario: options.scenario };
