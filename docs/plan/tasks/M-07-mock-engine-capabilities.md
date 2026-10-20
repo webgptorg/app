@@ -1,6 +1,6 @@
 # M-07. Mock engine capabilities: runs, files, triggers, integrations, live simulation
 
-- **Lane:** Mock engine · **Module:** `apps/mock-engine`, `packages/conformance` (two modules, see Context) · **Milestone:** M2
+- **Lane:** Mock engine · **Module:** `apps/mock-engine`, `packages/conformance`, and `packages/engine-api` for missing controller levers (see Context) · **Milestone:** M2
 - **Depends on:** C-07, M-04, C-05
 - **Status:** todo
 - **Spec:** Build plan (Mock engine first, real engine last); Security hardening (5, 7); Enterprise-ready engine architecture; ADRs: [0004](../../adr/0004-mock-engine-and-conformance.md), [0016](../../adr/0016-engine-capabilities.md), [0006](../../adr/0006-organizations-and-roles.md)
@@ -11,12 +11,12 @@ The mock engine advertises and serves every C-07 capability (`runs@1`, `files@1`
 
 ## Context
 
-engine-ui's feature modules (U-08 to U-12) are built and demoed against this server, so the data has to look like a real engine's: runs with steps, tool calls, costs and diffs, failures that read like real ones, schedules that fire. Like M-04, it has no shortcuts the real engine would not have (ADR 0004). Authorisation, sessions, faults and the event ring buffer come from M-04 and are extended, not duplicated. **Two modules:** the conformance checks for the new capabilities live in `packages/conformance`, so this task depends on C-05 as well as M-04. It may ship as two PRs (mock engine first), and the status line takes the last one.
+engine-ui's feature modules (U-08 to U-12) are built and demoed against this server, so the data has to look like a real engine's: runs with steps, tool calls, costs and diffs, failures that read like real ones, schedules that fire. Like M-04, it has no shortcuts the real engine would not have (ADR 0004). State, handlers, capability gating, events and C-07's rules (cancel, retry, pause, the 409s) already live in `engine-api`'s in-memory core (C-07), which M-04 serves; sessions, the policy and faults come from M-04. This task adds seed data, the live simulation and faults on top. The simulation changes state only through the core's controller; a lever the core lacks is added there with a test, never as a second implementation in the mock. **Two modules:** the conformance checks for the new capabilities live in `packages/conformance`, so this task depends on C-05 as well as M-04. It may ship as two PRs (mock engine first), and the status line takes the last one.
 
 ## Scope
 
-- `src/domain/state/engine-state.ts` gains runs (with tool calls, outputs and report), files (with versions and scan state), triggers (with fire history), integrations and an activity log. Every entity has `orgId`. Mutations go through functions that validate with C-07 schemas, append audit entries and emit activity and events.
-- `src/domain/state/seed.ts` and `scenarios.ts` extend the existing scenarios. The same seed, scenario and epoch still give byte-identical state.
+- Controller levers in `@ptbk/engine-api/in-memory`, only those still missing: for example start a scripted run with steps, attach output files and project changes to a run, set a file's scan state, set an integration's status. Each validates with C-07 schemas, appends audit entries and emits activity and events like the existing levers.
+- `src/domain/state/seed.ts` and `scenarios.ts` extend the existing scenarios' `InMemorySeed`. The same seed, scenario and epoch still give byte-identical state.
   - `empty`: capabilities advertised, no data.
   - `small-team`: about 200 runs over 14 days across all agents.
     - Every `source` and terminal `status` is represented. Failures carry believable error codes and summaries (tool timeout, rate limit, invalid credentials).
@@ -27,13 +27,12 @@ engine-ui's feature modules (U-08 to U-12) are built and demoed against this ser
   - `small-team` integrations: MCP servers, a calendar and a GitHub repository, engine-wide and per agent. One is in `error` and one `needs-attention`. Secret refs point to seeded secrets by name, with one `missing` and one `revoked`. Tools are listed.
   - `large-fleet`: the same mix scaled for paging (about 20,000 runs, 3,000 files, 500 triggers, 300 integrations, 50,000 activity items). It seeds in under 3 s.
 - `src/domain/simulation/` with `Scheduler` and `Clock` ports. Real timers live only in an adapter.
-  - `run-simulator.ts`: each chat turn (M-04's reply stream) creates a `web` run tied to the chat and message, and it completes, fails or cancels with the reply.
-  - Other runs move `queued → running`, then through progress items and tool calls (`pending → partial → complete | error`), and end `completed` or `failed` with seeded probability.
-  - Cancel sets `cancelRequestedAt` and ends the run `cancelled` at the next step. Retry creates a new run with `retryOf`. Both follow C-07, including 409 `run-finished` and `run-not-retryable`.
+  - `run-simulator.ts`: the core already starts a `web` run for each chat turn and ends it with the reply. Other runs move `queued → running`, then through progress items and tool calls (`pending → partial → complete | error`), and end `completed` or `failed` with seeded probability, all through controller levers.
+  - Cancel and retry come from the core's handlers (C-07, including 409 `run-finished` and `run-not-retryable`); the simulator ends a run with `cancelRequestedAt` as `cancelled` at its next step.
   - Completed runs may produce output files (`file.created`) and project changes.
-  - `schedule-simulator.ts`: schedules fire at `nextFireAt` and produce `schedule` runs and fire records. They honour `startsAt`, `endsAt` and `maxRunCount`, then end with the right `endedReason`. Paused triggers do not fire.
-  - Every change emits C-07 activity (`run.*`, `file.*`, `trigger.*`, `integration.*`) and change hints (`activity`, `run.changed`, `trigger.changed`, `file.changed`, `integration.changed`) on `GET /events`. Events go through M-04's permission filter and resumable ring buffer. `GET /activity` serves the same log, filtered per C-07.
-- `src/adapters/http/api-routes.ts`: the generic binder picks up C-07's capability routes from `ENGINE_API_ROUTES`. Requests to a capability that `MOCK_CAPABILITIES` does not enable get 404 `capability-not-supported`. `GET /engine` reports `engineId` and the enabled `capabilities`. Permissions are checked through the existing `Authorizer` from each route's `permission`, and `policy.ts` maps the new permissions per role.
+  - `schedule-simulator.ts`: calls the controller's `fireTrigger` at `nextFireAt`, producing `schedule` runs and fire records. The lifecycle rules (`startsAt`, `endsAt`, `maxRunCount`, the right `endedReason`, paused triggers never fire) belong in the core's `fireTrigger`; add them there if missing.
+  - The core emits C-07 activity and change hints on `GET /events` for every lever, through its permission filter and bounded buffer, and serves the same log on `GET /activity`. The simulator emits nothing itself.
+- `MOCK_CAPABILITIES` sets the core's `capabilities` option; the 404 `capability-not-supported` gating and `GET /engine`'s `engineId` and `capabilities` come from the core. `policy.ts` maps the new permissions per role.
 - Faults: `FaultPlan` gains `runFailureRate` (0–1), `stuckQueue` (runs stay `queued`, so `oldestQueuedAt` grows), `scanInfectedRate` (0–1) and `integrationErrorRate` (0–1).
 - Config: `MOCK_CAPABILITIES` (comma-separated, default all four), `MOCK_SIMULATION` (`running | paused`, default `running`), `MOCK_SIMULATION_SPEED` (default 1).
 - Control routes on M-04's control listener (bodies are strict zod):
@@ -66,7 +65,7 @@ engine-ui's feature modules (U-08 to U-12) are built and demoed against this ser
 ## Acceptance criteria
 
 - [ ] Seed snapshot test: `small-team`, seed 42, fixed epoch gives a stable hash including the new entities. A different seed changes it, and `large-fleet` seeds in under 3 s.
-- [ ] Contract test: every C-07 operation has a handler, and every response in the test run validates against its C-07 schema. With `MOCK_CAPABILITIES=runs`, the files, triggers and integrations routes return 404 `capability-not-supported`, and `GET /engine` lists only `runs@1`.
+- [ ] Contract test: every C-07 operation answers through the mock's HTTP server, and every response in the test run validates against its C-07 schema. With `MOCK_CAPABILITIES=runs`, the files, triggers and integrations routes return 404 `capability-not-supported`, and `GET /engine` lists only `runs@1`.
 - [ ] Simulation tests with the fake clock: a scripted run passes through its steps and tool-call states and ends as scripted; a chat turn creates a linked `web` run; cancel ends a running run `cancelled`, then gives 409; retry of a failed run creates a linked run; an interval schedule fires the expected number of times over a simulated hour and stops at `maxRunCount`; a paused trigger does not fire; an inbound email starts an `email` run.
 - [ ] Events test: run progress emits `run.changed` and `activity` events in order. A member without `runs.read` receives neither, and reconnecting with `Last-Event-ID` replays missed events.
 - [ ] Authorisation matrix test covers every new route for each role and for explicit permission sets.
