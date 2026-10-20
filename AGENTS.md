@@ -22,6 +22,7 @@ The engine is open source in `webgptorg/promptbook`, built by the engine team. N
 3. [docs/engineering.md](docs/engineering.md): module design and TypeScript rules. Non-negotiable.
 4. [docs/architecture.md](docs/architecture.md) and the [ADRs](docs/adr/).
 5. The sections of the [spec](docs/spec/zero-trust-spec.md) your brief names.
+6. For UI work: [docs/design/ui.md](docs/design/ui.md) and ADRs [0015](docs/adr/0015-ui-architecture-and-design-system.md) and [0016](docs/adr/0016-engine-capabilities.md).
 
 ## Commands
 
@@ -38,9 +39,10 @@ These are the zero-trust guarantees. A change that weakens one needs an ADR and 
 2. **The dashboard stores no engine content**, not even encrypted: no prompts, messages, files or agent output.
 3. **Nothing we host serves code that runs on an engine's origin.** The UI reaches engines only as a signed, logged release.
 4. **engine-ui runs under the engine's strict CSP**: no inline scripts or styles, no `eval`, no external origins, Trusted Types. Model output never becomes executable.
-5. **Contracts are strict and versioned.** Schemas reject unknown fields. A breaking change is a new version next to the old one.
-6. **No dynamic code execution** (`eval`, `new Function`, `vm`). ESLint enforces it.
-7. **No secrets in the repo, logs, fixtures or snapshots.** Logs never contain content, tokens, keys or cookies.
+5. **Contracts are strict and versioned.** Servers parse input strictly and reject unknown fields; clients read responses tolerantly (validate known fields, strip unknown). A breaking change is a new version next to the old one.
+6. **Every HTTP route is declared through the typed route helper** with strict input validation, an explicit auth mode and a permission or rate limit; roles and permissions are closed allowlists, deny by default ([engineering.md](docs/engineering.md#request-handling-every-http-endpoint)).
+7. **No dynamic code execution** (`eval`, `new Function`, `vm`). ESLint enforces it.
+8. **No secrets in the repo, logs, fixtures or snapshots.** Logs never contain content, tokens, keys or cookies.
 
 ## Working on a task
 

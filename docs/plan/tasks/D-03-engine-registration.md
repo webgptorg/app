@@ -1,9 +1,9 @@
 # D-03. Link codes and engine registration API
 
 - **Lane:** D · **Module:** `apps/dashboard` · **Milestone:** M3
-- **Depends on:** D-02, C-03, D-09
+- **Depends on:** D-02, C-03, D-09, D-07
 - **Status:** todo
-- **Spec:** Pairing and identity (First setup); Interfaces (draft) 1; Abuse on our domains (items 3 and 4); Metadata we still see; ADRs: [0006](../../adr/0006-organizations-and-roles.md), [0008](../../adr/0008-hono-for-http-apis.md), [0009](../../adr/0009-drizzle-and-migrations.md), [0014](../../adr/0014-cryptography.md)
+- **Spec:** Pairing and identity (First setup); Interfaces (draft) 1; Abuse on our domains (items 3 and 4); Metadata we still see; ADRs: [0006](../../adr/0006-organizations-and-roles.md), [0008](../../adr/0008-hono-for-http-apis.md), [0009](../../adr/0009-drizzle-and-migrations.md), [0014](../../adr/0014-cryptography.md), [0017](../../adr/0017-billing-entitlements.md)
 
 ## Goal
 
@@ -60,8 +60,8 @@ The link code only ties an engine to an organization (the tenant that owns engin
   - signature does not verify → 401 `bad-signature`;
   - key belongs to a suspended engine → 403 `engine-suspended`;
   - key whose derived `engineId` already exists in **the link code's organization** and is active → idempotent 200 with the existing engine's data, the code consumed, and the engine row's `engineVersion` and `mode` updated from the signed request (an engine that lost its local registration state but kept its key can re-link with a fresh code; the signature proves the key, the code proves the org's intent); in **another organization** → 409 `engine-exists` (the code stays unused); suspended or owner-revoked → 403 `engine-suspended`. A second key can never claim an existing engine ID, because the ID is the key's hash, so there is no "same ID, different key" case;
-  - organization over its engine limit or creation policy → 403 `engine-limit`.
-- `EngineCreationPolicy` port: `check(orgId, signal) → { kind: 'allowed' } | { kind: 'denied', reason: 'engine-limit' | 'billing-required' | 'rate-limited' }`. Default adapter enforces at most 5 active link codes and 10 link codes per hour per organization, and a configurable engine cap per organization (default 10). I-05 adds the "card on file" rule using D-07's billing state.
+  - organization not entitled to create engines → 403 `not-entitled`; at its `engines.max` quota → 403 `engine-limit`; over the link-code rate limits → 429 `rate-limited`. The SPA shows an upgrade path to `/billing` for the first two (ADR 0017).
+- `EngineCreationPolicy` port: `check(orgId, signal) → { kind: 'allowed' } | { kind: 'denied', reason: 'not-entitled' | 'engine-limit' | 'rate-limited' }`. It enforces only rate limits itself (at most 5 active link codes and 10 link codes per hour per organization) and delegates the rest to D-07's `Entitlements` port: `entitlements.allows(orgId, 'engines.create')` (else `not-entitled`) and `entitlements.limit(orgId, 'engines.max')` against the org's active engines (else `engine-limit`; `null` is unlimited). It never checks plan names, cards or Stripe state. Checked both when issuing a link code (so the UI shows the upgrade path before the install command) and at registration.
 - Domain service `registerEngine(deps, request) → RegisterOutcome` in `src/domain/registration/`, with ports `LinkCodeStore`, `EngineStore` (D1 adapters plus in-memory fakes). Org-facing store methods take `orgId` first and scope every query by it; the registration path is the one place that resolves the org from the link code.
 
 ## Out of scope
@@ -81,7 +81,7 @@ The link code only ties an engine to an organization (the tenant that owns engin
 
 ## Acceptance criteria
 
-- [ ] Unit tests for `registerEngine` with fakes: success links the engine to the code's org; expired code (injected `Clock`, 30 min + 1 s); used code; unknown code; same key twice from the same org (idempotent 200, no duplicate row, `engineVersion` and `mode` updated to the second request's values) and from another org (409 `engine-exists`, code unused); owner-revoked engine re-registering (403); suspended engine; engine cap reached.
+- [ ] Unit tests for `registerEngine` with fakes: success links the engine to the code's org; expired code (injected `Clock`, 30 min + 1 s); used code; unknown code; same key twice from the same org (idempotent 200, no duplicate row, `engineVersion` and `mode` updated to the second request's values) and from another org (409 `engine-exists`, code unused); owner-revoked engine re-registering (403); suspended engine; with fake `Entitlements`, `engines.create` denied → `not-entitled` and `engines.max` reached → `engine-limit`, each leaving the code unused; link-code rate limits → `rate-limited`.
 - [ ] Org isolation: a user of org B cannot create link codes for org A (403) and `EngineStore` reads for org B never return org A's engines.
 - [ ] Workers tests through `SELF.fetch`: success response validates against the C-03 response schema and `engineId` equals the protocol derivation of the posted key; unknown field in the body → 400; malformed public key → 400; 5 KiB body → 413; rate limit → 429; two concurrent registrations with one code → exactly one 200; link code row holds only a hash (assert no column contains the plaintext code).
 - [ ] Link codes: `POST /api/engines/link-codes` without a session → 401 and the SPA route redirects to `/signin`; no endpoint returns the plaintext code after issuance.

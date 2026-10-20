@@ -20,6 +20,9 @@ Even with the guarantees above, the relay and the dashboard see metadata: client
 
 ## Code rules
 
+- Every HTTP route goes through the typed route helper: strict input schemas, explicit `auth` mode, a permission for session routes, a rate limit for anonymous and machine routes; a route-table test enforces it ([engineering.md](engineering.md#request-handling-every-http-endpoint)).
+- Roles and permissions are closed allowlists; deny by default; 404 for resources the actor may not see.
+
 - No `eval`, `new Function` or `vm` (ESLint).
 - zod at every boundary; schemas reject unknown fields.
 - Secrets come from Workers secrets or the host environment, never from the repo. `.dev.vars` and `.env` are git-ignored.

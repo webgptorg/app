@@ -15,7 +15,7 @@ Anyone can modify the open-source engine and serve anything on `<engineId>.<engi
 
 ## Scope
 
-- **Rate limits review** (dashboard): confirm every anonymous endpoint has one (signup, sign-in, recovery, registration, heartbeat, registry, webhooks) and move the values into one documented config block. Add D-03's "card on file" rule: an `EngineCreationPolicy` adapter that denies `billing-required` unless the org's D-07 billing state is `active` or `trialing` (fake billing in dev and e2e passes).
+- **Rate limits review** (dashboard): confirm every anonymous endpoint has one (signup, sign-in, recovery, registration, heartbeat, registry, webhooks) and move the values into one documented config block. Abuse limits on engine creation go through D-07's `Entitlements` (ADR 0017), never a plan or card check: `entitlements.allows(org, 'engines.create')` and `limit(org, 'engines.max')`; D-03 already calls them.
 - **Relay fairness** (relay): R-04 implements the limit mechanics; here set production values per engine (concurrent browser connections, new connections per second, bandwidth as a token bucket) and per client IP (connections to the browser listener, tunnel auth attempts), add any limit R-04 left out, and expose them in config. Prove them with a test where one engine is flooded while another engine's connection latency stays within 2x its baseline.
 - **Suspend flow** (dashboard): admin page `/admin/engines/$engineId` with suspend and unsuspend (reason required), via `Authorizer` action `admin.engine.suspend` (platform admin, `requiresStepUp`), audit-logged. Suspension sets `engines.status = 'suspended'`; D-04's registry returns it, relays close the tunnel within one cache TTL and refuse new ones (if the registry is unreachable, relays keep using a stale entry for at most 24 h, `RELAY_REGISTRY_MAX_STALE_S`, per R-02); registration with that key returns 403 (D-03). Unsuspend never lifts an owner revocation (`status_reason = 'owner-revoked'`, D-06): only a platform-admin suspension can be undone here; a revoked engine stays revoked. Custom hostnames of a suspended engine are withheld from the registry. The org owner sees "suspended" in D-06 with the abuse contact.
 - **Abuse contact**: `abuse@` address (and on the engine domain's registrar record), a public `/abuse` page on the dashboard (English and Czech) with how to report and what we can and cannot see, `security.txt` on the dashboard.
@@ -38,7 +38,7 @@ Anyone can modify the open-source engine and serve anything on `<engineId>.<engi
 
 ## Acceptance criteria
 
-- [ ] Workers tests: suspend requires platform admin and fresh step-up; audit row written; registry returns `suspended` and omits custom hostnames; registration with a suspended key → 403; `billing-required` denies link codes for an org without an active subscription.
+- [ ] Workers tests: suspend requires platform admin and fresh step-up; audit row written; registry returns `suspended` and omits custom hostnames; registration with a suspended key → 403; an org without the `engines.create` entitlement gets 403 `not-entitled` (D-03).
 - [ ] Relay test: a suspended entry closes an open tunnel within one TTL (fake clock); flood test for fairness passes.
 - [ ] CT watch tests with recorded fixtures from both sources: wildcard, foreign issuer, unknown hostname each alert once; a source timing out does not fail the run.
 - [ ] Public-face tests: match, mismatch, unreachable, redirect to another host treated as mismatch.

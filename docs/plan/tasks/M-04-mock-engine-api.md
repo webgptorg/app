@@ -37,6 +37,8 @@ engine-ui (U-*) is built against this server, and the conformance suite (C-05) i
 
 ## Design notes
 
+- Every route is declared through the app's typed `defineRoute` helper and covered by the route-table test ([engineering.md](../../engineering.md#request-handling-every-http-endpoint)): strict input schemas, explicit `auth`, a permission for session routes, a rate limit for anonymous and machine routes. If the helper does not exist yet in this app, create it first in this task.
+
 - Audit entries record actor member ID and role, action, target ID and time from `Clock`, hash-chained (SHA-256 of previous hash plus entry, through a `Sha256` port).
 - Secrets are write-only: no response schema ever contains a value. Assert it with a test that scans every response.
 - Faker runs only at seed time; request handling uses the seeded `Random`, so runs stay reproducible.

@@ -3,19 +3,20 @@
 - **Lane:** U · **Module:** `apps/engine-ui` · **Milestone:** M2
 - **Depends on:** U-02
 - **Status:** todo
-- **Spec:** Transparency and verifiability (3 self-checks), What our platform can and cannot do (heartbeat, write-only credentials), Residual risks (update policy, CT), Security hardening (4 outbound list, 7 secrets), Pairing and identity (revoke), Enterprise-ready engine architecture; ADRs: [0003](../../adr/0003-ui-as-signed-bundle.md)
+- **Spec:** Transparency and verifiability (3 self-checks), What our platform can and cannot do (heartbeat, write-only credentials), Residual risks (update policy, CT), Security hardening (4 outbound list, 7 secrets), Pairing and identity (revoke), Enterprise-ready engine architecture; ADRs: [0003](../../adr/0003-ui-as-signed-bundle.md), [0015](../../adr/0015-ui-architecture-and-design-system.md); design: [ui.md](../../design/ui.md) (Trust mark, Security)
 
 ## Goal
 
-The owner can verify the engine's security claims from the UI (version and log entries, UI bundle hash, certificate, CT check, relays, hostnames, the exact last heartbeat), set the update policy, see members, manage passkeys, and manage secrets whose values are never shown back.
+The owner can verify the engine's security claims from the UI (engine identity and fingerprint, version and log entries, UI bundle hash, certificate, CT check, relays, hostnames, the exact last heartbeat), set the update policy, see members, manage passkeys, and manage secrets whose values are never shown back.
 
 ## Context
 
-The security panel is how a customer checks our claims without trusting us, so it must show the engine's own values verbatim, not reformatted guesses. Secrets are write-only by design: a stolen session can replace a secret but never read it. v0 has a single owner, but members and roles are modelled from day one; the members screen is read-only and every action is rendered through `can()` (U-02).
+The security panel is how a customer checks our claims without trusting us, so it must show the engine's own values verbatim, not reformatted guesses. Per [ui.md](../../design/ui.md), trust should be felt rather than read: the page opens with the Promptbook trust mark and the engine fingerprint, which the dashboard shows for the same engine (D-06), so users can compare them across devices the way Signal users compare safety numbers. Secrets are write-only by design: a stolen session can replace a secret but never read it. v0 has a single owner, but members and roles are modelled from day one; the members screen is read-only and every action is rendered through `can()` (U-02).
 
 ## Scope
 
 - `/security` (`requirePermission('security.read')`), sections as `Card`s:
+  - **Trust panel** (first, above the fold): the headline "Private engine: your data stays on your server", then engine identity: the `TrustMark` from `@ptbk/ui` (U-02) at large size with its fingerprint pattern and short code, derived from `GET /engine`'s `engineId` (C-07), the full engine ID and default hostname as copyable `CodeText`, and short copy explaining that the same pattern and code appear in the dashboard's engine list (D-06) and that a different fingerprint means a different engine. The seal plays its calm verify animation once when the security data has loaded and the bundle version matches. The shell's `TrustMark` (U-02) links here; this task wires that link.
   - **Engine:** version, release log entry (Rekor log index and entry UUID as copyable text, plus an `ExternalLink` to a public Rekor search), update status (`none | available | pending | installing`) with the pending version and its earliest install time.
   - **Update policy:** `auto | manual | pinned` (with version). Changing it (C-04's `PUT /settings/update-policy`) needs `can('settings.manage')` and a fresh passkey assertion (step-up via `useStepUpAwareMutation`); the panel says the change is logged.
   - **UI bundle:** version, SHA-256 and log entry as reported by the engine's loader. Also show the version compiled into the bundle and a warning banner if the two differ.
@@ -46,6 +47,7 @@ The security panel is how a customer checks our claims without trusting us, so i
 
 ## Acceptance criteria
 
+- [ ] Trust panel: the fingerprint code rendered for the in-memory client's seeded engine ID equals the shared `@ptbk/ui` test vector for that ID; the mark's accessible name contains the code; with `reducedMotion: 'reduce'` the verify animation does not run; activating the shell's trust mark navigates to `/security` and moves focus to the trust panel heading.
 - [ ] Security panel renders every section from the in-memory client; the heartbeat `<pre>` text equals the raw string byte for byte (test with unusual key order and spacing).
 - [ ] UI version mismatch shows the warning; a foreign CT certificate shows the danger banner; a relay `disconnected` shows text, not only colour.
 - [ ] Update policy change: step-up path tested; without `settings.manage` the control is read-only.
@@ -61,6 +63,7 @@ The security panel is how a customer checks our claims without trusting us, so i
 
 ## Risks and open points
 
+- `engineId` in `GET /engine` arrives with C-07, which this task does not depend on; until it lands the trust panel shows the mark without a fingerprint (and says so), and the fingerprint criterion runs once C-07 is merged.
 - Many fields here (log entry IDs, bundle hash from the loader, CT result, relay round trip, outbound list, raw heartbeat, passkeys) must exist in C-04; list missing ones and amend the contract first.
 - Revoke versus delete for secrets: assumed revoke keeps metadata for the audit trail and blocks use, delete removes it. Confirm with the engine team.
 - A malicious UI could lie in this panel; its value is against everything except the UI itself. The engine CLI should offer the same self-checks (engine team, E-01).

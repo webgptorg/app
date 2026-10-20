@@ -70,6 +70,32 @@ engine-ui follows the same idea in React terms: components depend on hooks, hook
 - Exceptions are for bugs and broken infrastructure. Catch them at the edge (request handler, connection handler), log without content, and fail closed.
 - No generic `Result` library: a union named for the operation reads better.
 
+## Request handling (every HTTP endpoint)
+
+Security comes from construction, not from remembering. Every route is declared through one typed helper per app, and the router refuses to mount anything else:
+
+```ts
+defineRoute({
+  method: 'POST',
+  path: '/v1/engines/register',
+  auth: 'engine-signature', // 'public' | 'session' | 'relay-token' | 'engine-signature' | 'stripe-signature'
+  permission: null, // or a permission from the closed union; required when auth is 'session'
+  input: { params, query, headers, body }, // zod schemas, strict; body size cap
+  output: RegisterEngineResponse, // responses are validated in tests
+  rateLimit: 'registration', // named policy; required for every non-session route
+  handler,
+});
+```
+
+- **Validate everything that comes in:** path params, query, headers that matter, body, cookies. Strict zod schemas (unknown fields rejected), length and size limits on every string, array and body, branded types after parsing. Handlers never see unparsed input. Signed bodies are verified over the exact bytes before parsing.
+- **Authentication is mandatory and explicit.** `auth` has no default. `public` routes are an explicit allowlist checked by a test (sign-in, sign-up, recovery requests, health). Everything else requires a session, a relay token, an engine signature or a webhook signature, verified before the handler runs.
+- **Authorization is allowlisted.** Roles and permissions are closed unions; a role or permission not in the list fails to parse (from the database too). The role-to-permission mapping lives in one policy module per app. `Authorizer.can()` runs for every session route, deny by default, and checks ownership for self-scoped routes; resources the actor may not see answer 404, not 403, so IDs cannot be probed.
+- **Fail closed and quietly.** Errors are problem+json with stable codes and no internals (no stack traces, SQL, or upstream messages). Unexpected exceptions become 500 with a correlation ID; details go to logs without content or secrets.
+- **Defence in depth on the edge:** CSRF via Fetch Metadata and Origin for cookie-authenticated mutations, no CORS (same origin only), strict security headers, cookies `__Host-`, `Secure`, `HttpOnly`, rate limits on every anonymous or machine endpoint.
+- **A route-table test** enumerates every mounted route and fails if one lacks an input schema, an `auth` mode, a permission for session routes, or a rate limit for non-session routes, or if a `public` route is not on the allowlist.
+
+The relay applies the same rules to its non-HTTP input: every ClientHello, frame and handshake message is size-bounded and parsed by the protocol package before anything acts on it.
+
 ## Authorization
 
 - One policy port per app, `Authorizer.can(actor, action, resource)`, deny by default ([ADR 0006](adr/0006-organizations-and-roles.md)).
@@ -94,6 +120,7 @@ engine-ui follows the same idea in React terms: components depend on hooks, hook
 
 - Tests are deterministic: inject `Clock` and `Random`, seed fake data, no sleeps (use fake timers or events).
 - A bug fix starts with a failing test.
+- **Where tests live:** unit and adapter tests sit next to the code they test (`foo.ts` and `foo.test.ts`; property tests as `foo.property.test.ts`), so a module carries its tests when it moves and gaps are visible in review. Cross-module integration tests of an app (its HTTP app with real adapters wired) live in `apps/<app>/test/`. Browser and multi-process flows live in `e2e/`, the engine contract in `packages/conformance`. Shared fixtures go in a `fixtures/` folder next to their tests; reusable fakes and test helpers in `src/testing/`. Bundlers only include what entry points import, and coverage and builds exclude `*.test.ts`, so tests never ship.
 - A module with code has no `--passWithNoTests`. Contract packages and security-relevant code keep coverage thresholds of at least 90% lines and branches (`@vitest/coverage-v8`).
 
 ## Logging and metadata

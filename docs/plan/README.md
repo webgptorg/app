@@ -67,6 +67,8 @@ bun run plan --check  # validates statuses and dependencies (part of bun run che
 | [C-06](tasks/C-06-release-log.md)                        | Release log entry and verification (engine and UI artifacts)                     | C    | M2        |
 | [M-04](tasks/M-04-mock-engine-api.md)                    | Mock engine API: seeded data, scenarios, fault injection, streaming              | M    | M2        |
 | [C-05](tasks/C-05-conformance-suite.md)                  | Conformance suite v1, run against the mock engine                                | C    | M2        |
+| [C-07](tasks/C-07-engine-capabilities.md)                | Engine capabilities: runs, files, triggers, integrations, activity               | C    | M2        |
+| [M-07](tasks/M-07-mock-engine-capabilities.md)           | Mock engine capabilities: runs, files, triggers, integrations, live simulation   | M    | M2        |
 | [U-01](tasks/U-01-engine-ui-scaffold.md)                 | Engine UI scaffold under the engine's CSP                                        | U    | M2        |
 | [U-02](tasks/U-02-design-system-shell.md)                | Shared UI package, design system, app shell, i18n                                | U    | M2        |
 | [U-03](tasks/U-03-agents.md)                             | Agents: list, detail, control                                                    | U    | M2        |
@@ -74,6 +76,11 @@ bun run plan --check  # validates statuses and dependencies (part of bun run che
 | [U-05](tasks/U-05-chat.md)                               | Chat with streaming                                                              | U    | M2        |
 | [U-06](tasks/U-06-security-settings.md)                  | Security panel, settings, members, secrets                                       | U    | M2        |
 | [U-07](tasks/U-07-audit-log.md)                          | Audit log view                                                                   | U    | M2        |
+| [U-08](tasks/U-08-home-and-activity.md)                  | Home, activity feed and command palette                                          | U    | M2        |
+| [U-09](tasks/U-09-runs.md)                               | Runs: timeline, run detail, cancel and retry                                     | U    | M2        |
+| [U-10](tasks/U-10-files-and-knowledge.md)                | Files and knowledge                                                              | U    | M2        |
+| [U-11](tasks/U-11-triggers-and-schedules.md)             | Triggers and schedules                                                           | U    | M2        |
+| [U-12](tasks/U-12-integrations-and-tools.md)             | Integrations and tools                                                           | U    | M2        |
 | [X-03](tasks/X-03-ui-bundle-release.md)                  | UI bundle build, manifest, signing and publishing                                | X    | M2        |
 | [M-05](tasks/M-05-ui-loader.md)                          | UI loader in the mock engine (reference implementation)                          | M    | M2        |
 | [X-04](tasks/X-04-e2e-ui-flows.md)                       | E2E UI flows through relay and loader, CSP violations fail                       | X    | M2        |
@@ -84,7 +91,7 @@ bun run plan --check  # validates statuses and dependencies (part of bun run che
 | [D-04](tasks/D-04-registry-api.md)                       | Registry API for relays and the relay's HTTP registry adapter                    | D    | M3        |
 | [D-05](tasks/D-05-heartbeat-status.md)                   | Heartbeat ingest, Durable Object per engine, offline alerts                      | D    | M3        |
 | [D-06](tasks/D-06-engine-list-ui.md)                     | Engine list and status UI                                                        | D    | M3        |
-| [D-07](tasks/D-07-billing.md)                            | Billing with Stripe                                                              | D    | M3        |
+| [D-07](tasks/D-07-billing.md)                            | Billing with Stripe and entitlements                                             | D    | M3        |
 | [D-08](tasks/D-08-custom-domains.md)                     | Enterprise custom domains (manual admin flow)                                    | D    | M3        |
 | [D-09](tasks/D-09-auth-account-screens.md)               | Sign-up, sign-in, recovery and account screens                                   | D    | M3        |
 | [M-06](tasks/M-06-mock-engine-registration-heartbeat.md) | Mock engine registration and heartbeat client                                    | M    | M3        |
@@ -102,20 +109,20 @@ bun run plan --check  # validates statuses and dependencies (part of bun run che
 
 Tasks in the same wave have no dependencies on each other and can run at the same time, in separate worktrees. Computed from the briefs; regenerate with `bun run plan --waves` after changing dependencies.
 
-| Wave | Tasks                                          |
-| ---- | ---------------------------------------------- |
-| 1    | C-01, C-04, D-01, R-01                         |
-| 2    | C-02, C-03, C-06, D-02, I-02, U-01             |
-| 3    | E-01, M-01, R-02, U-02, X-03                   |
-| 4    | D-09, M-02, M-06, R-03, U-03, U-05, U-06, U-07 |
-| 5    | D-03, D-07, M-04, R-04, U-04                   |
-| 6    | C-05, D-04, D-05, R-05, X-01                   |
-| 7    | D-06, D-08, E-02, I-01, M-03, M-05, X-02       |
-| 8    | I-03, I-04, X-04, X-05                         |
-| 9    | E-03, I-05                                     |
-| 10   | I-06                                           |
+| Wave | Tasks                                                                        |
+| ---- | ---------------------------------------------------------------------------- |
+| 1    | C-01, C-04, D-01, R-01                                                       |
+| 2    | C-02, C-03, C-06, C-07, D-02, I-02, U-01                                     |
+| 3    | E-01, M-01, R-02, U-02, X-03                                                 |
+| 4    | D-09, M-02, M-06, R-03, U-03, U-05, U-06, U-07, U-08, U-09, U-10, U-11, U-12 |
+| 5    | D-07, M-04, R-04, U-04                                                       |
+| 6    | C-05, D-03, R-05, X-01                                                       |
+| 7    | D-04, D-05, E-02, I-01, M-03, M-05, M-07, X-02                               |
+| 8    | D-06, D-08, I-03, I-04, X-04                                                 |
+| 9    | I-05, X-05                                                                   |
+| 10   | E-03, I-06                                                                   |
 
-C-01 and R-01 both live in `packages/protocol` and touch its `package.json` and `src/index.ts`; whoever merges second rebases (AGENTS.md, step 7). Wave 1 starts four agents at once; wave 4 is the widest with eight.
+C-01 and R-01 both live in `packages/protocol` and touch its `package.json` and `src/index.ts`; whoever merges second rebases (AGENTS.md, step 7). Wave 1 starts four agents at once; wave 4 is the widest with thirteen.
 
 ## Decisions
 
@@ -133,6 +140,9 @@ C-01 and R-01 both live in `packages/protocol` and touch its `package.json` and 
 - Preassigned ADR numbers: 0011 infrastructure as code (I-01/I-02), 0012 monitoring backend (I-04), 0013 book editor (U-04).
 - Tooling: Vitest 4.1 repo-wide; shared versions through the Bun workspace catalog; install scripts only for esbuild, sharp and workerd; generated code not committed, `bun run check` runs `generate` and is the single CI step.
 - No branch protection on the current GitHub plan: agents enforce green CI by the procedure in AGENTS.md.
+- UI: product brief [docs/design/ui.md](../design/ui.md); three-layer design tokens and one component per module so a later visual pass is a theme change ([ADR 0015](../adr/0015-ui-architecture-and-design-system.md)); role-aware home, guided wizard plus pro editor, mobile-ready core, Stripe-style engine switcher, a distinctive trust mark with an engine fingerprint.
+- Engine capabilities discovery with typed contract and UI feature modules: runs, files, triggers, integrations ([ADR 0016](../adr/0016-engine-capabilities.md)).
+- Billing through an entitlements port; plans are configuration mapped from Stripe ([ADR 0017](../adr/0017-billing-entitlements.md)).
 - Cryptography ([ADR 0014](../adr/0014-cryptography.md)): WebCrypto signs, `@noble/curves` verifies in strict mode; length-prefixed signature inputs; DSSE envelopes instead of JSON canonicalisation; signed tunnel negotiation; trusted time for the update delay; exact Sigstore identity pinning.
 - Engine registration is signed by the engine key; regular releases need both the CI's keyless signature and a human-held release key; our own npm scope is exempt from the 7-day release age.
 - Organizations, members and roles are modelled from day one ([ADR 0006](../adr/0006-organizations-and-roles.md)).
