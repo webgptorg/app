@@ -16,6 +16,7 @@ describe('safeReturnTo', () => {
 
     it.each([
         ['protocol-relative', '//evil.example/account'],
+        ['unparsable', '//['],
         ['backslash', '/\\evil.example'],
         ['absolute', 'https://evil.example/account'],
         ['relative', 'account'],

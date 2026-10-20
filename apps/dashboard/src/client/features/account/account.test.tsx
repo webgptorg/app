@@ -139,6 +139,16 @@ describe('account page', () => {
         expect(app.api.callsTo(apiRoutes.revokeAllSessions)).toHaveLength(1);
     });
 
+    it('keeps the session when "sign out everywhere" is cancelled', async () => {
+        const app = renderApp({ path: '/account', session: session(), script: accountScript() });
+        await screen.findByRole('table', { name: 'Sessions' });
+        await app.user.click(screen.getByRole('button', { name: 'Sign out everywhere' }));
+        const dialog = await screen.findByRole('dialog', { name: 'Sign out everywhere?' });
+        await app.user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+        expect(app.history.location.pathname).toBe('/account');
+        expect(app.api.callsTo(apiRoutes.revokeAllSessions)).toHaveLength(0);
+    });
+
     it('shows load errors in each table with a retry', async () => {
         const app = renderApp({
             path: '/account',
