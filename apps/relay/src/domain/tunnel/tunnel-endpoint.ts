@@ -73,6 +73,8 @@ type Phase =
     | { readonly kind: 'ready'; readonly session: TunnelSession }
     | { readonly kind: 'ended' };
 
+type HandshakePhase = Extract<Phase, { readonly kind: 'awaiting-auth' | 'verifying' }>;
+
 interface Live {
     phase: Phase;
     readonly abandon: () => void;
@@ -127,8 +129,9 @@ export function createTunnelEndpoint(options: TunnelEndpointOptions): TunnelEndp
                 if (phase.kind === 'tcp') {
                     settle({ kind: 'ended' });
                     abandon();
-                } else if (phase.kind === 'awaiting-auth' || phase.kind === 'verifying') {
-                    fail(phase.connection, 'timeout');
+                } else {
+                    // `settle` cancels the deadline, so it fires only before `ready`.
+                    fail((phase as HandshakePhase).connection, 'timeout');
                 }
             }
 
@@ -139,10 +142,12 @@ export function createTunnelEndpoint(options: TunnelEndpointOptions): TunnelEndp
                 } else if (phase.kind === 'tcp') {
                     settle({ kind: 'ended' });
                     abandon();
-                } else if (phase.kind !== 'ended') {
-                    if (phase.kind === 'verifying') phase.controller.abort();
+                } else {
+                    // Ended connections leave the live set, so this is a handshake in progress.
+                    const handshake = phase as HandshakePhase;
+                    if (handshake.kind === 'verifying') handshake.controller.abort();
                     settle({ kind: 'ended' });
-                    phase.connection.transport.close(TUNNEL_CLOSE_CODE.SHUTTING_DOWN, '');
+                    handshake.connection.transport.close(TUNNEL_CLOSE_CODE.SHUTTING_DOWN, '');
                 }
             }
 

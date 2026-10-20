@@ -46,12 +46,13 @@ export function createSessionTable<S extends TableSession>(deps: { readonly logg
         }
     }
 
+    // Called only for registered sessions, whose hostnames are all indexed.
     function unindex(session: S, keep: ReadonlySet<Hostname> = new Set()): void {
-        for (const hostname of hostnamesBySession.get(session) ?? []) {
+        for (const hostname of hostnamesBySession.get(session) as readonly Hostname[]) {
             if (keep.has(hostname)) continue;
-            const holders = claimants.get(hostname);
-            holders?.delete(session);
-            if (holders?.size === 0) claimants.delete(hostname);
+            const holders = claimants.get(hostname) as Set<S>;
+            holders.delete(session);
+            if (holders.size === 0) claimants.delete(hostname);
         }
         hostnamesBySession.delete(session);
     }

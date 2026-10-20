@@ -1,9 +1,10 @@
 import { request } from 'node:https';
+import { Socket, connect as connectTcp } from 'node:net';
 import type { ConnectionOptions } from 'node:tls';
 import { connect } from 'node:tls';
 
 import { TUNNEL_PATH } from '@ptbk/protocol';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { createSessionTable } from '../domain/tunnel/session-table';
 import { createTunnelEndpoint } from '../domain/tunnel/tunnel-endpoint';
@@ -14,7 +15,8 @@ import { RELAY_ID } from '../testing/relay-harness';
 import { createTestCertificate } from '../testing/test-pki';
 import { createTestDeps } from '../testing/test-deps';
 import type { OwnTlsServer } from './own-tls-server';
-import { RELAY_TLS_CIPHERS, clientIp, createOwnTlsServer } from './own-tls-server';
+import { CLOSE_GRACE_MS, RELAY_TLS_CIPHERS, clientIp, createOwnTlsServer } from './own-tls-server';
+import { createFakeClock } from './fake-clock';
 import { systemClock } from './system-clock';
 
 type Handshake =
@@ -144,6 +146,95 @@ describe('createOwnTlsServer', () => {
         await expect(get(TUNNEL_PATH, { ...upgrade, 'Sec-WebSocket-Protocol': 'chat, other' })).resolves.toMatchObject({
             status: 400,
         });
+    });
+});
+
+describe('createOwnTlsServer limits and shutdown', () => {
+    const start = async (limits: { maxPending: number; maxPendingPerIp: number }) => {
+        const { clock, logger, registry, dns } = createTestDeps();
+        const graceClock = createFakeClock();
+        const endpoint = createTunnelEndpoint({
+            relayId: RELAY_ID,
+            engineDomain: ENGINE_DOMAIN,
+            offer: { versions: [1], features: [] },
+            registry,
+            dns,
+            random: createFakeRandom(),
+            clock,
+            logger,
+            limits: { handshakeTimeoutMs: 10_000, maxTunnelsPerIp: 10, ...limits },
+            table: createSessionTable<TunnelSession>({ logger }),
+        });
+        const server = createOwnTlsServer({
+            ...certificate,
+            endpoint,
+            liveness: { clock: systemClock },
+            clock: graceClock,
+        });
+        const port = await server.listen(0, '127.0.0.1');
+        return { server, port, clock, graceClock };
+    };
+    const closedSocket = (socket: Socket): Promise<unknown> => new Promise((resolve) => socket.once('close', resolve));
+
+    it('drops a socket at once when even the rate-limited pool is full', async () => {
+        const { server, port, clock } = await start({ maxPending: 1, maxPendingPerIp: 1 });
+        const held: Socket[] = [];
+        for (let index = 0; index < 2; index++) {
+            const timers = clock.pendingTimers();
+            const socket = connectTcp(port, '127.0.0.1');
+            held.push(socket);
+            await vi.waitFor(() => {
+                expect(clock.pendingTimers()).toBe(timers + 1);
+            });
+        }
+        const dropped = connectTcp(port, '127.0.0.1');
+        dropped.on('error', () => undefined);
+        await closedSocket(dropped);
+        expect(held.every((socket) => !socket.destroyed)).toBe(true);
+        for (const socket of held) socket.destroy();
+        await server.close();
+    });
+
+    it('destroys a socket whose peer is already gone', async () => {
+        const { server } = await start({ maxPending: 10, maxPendingPerIp: 10 });
+        const gone = new Socket();
+        server.acceptSocket(gone);
+        expect(gone.destroyed).toBe(true);
+        await server.close();
+    });
+
+    it('destroys tunnels that ignore SHUTTING_DOWN after the grace period', async () => {
+        const { server, port, graceClock } = await start({ maxPending: 10, maxPendingPerIp: 10 });
+        // A WebSocket client that never answers the close handshake.
+        const socket = connect({ host: '127.0.0.1', port, servername: RELAY_ID, ca: certificate.cert });
+        socket.on('error', () => undefined);
+        let response = '';
+        socket.setEncoding('utf8').on('data', (chunk: string) => (response += chunk));
+        socket.write(
+            `GET ${TUNNEL_PATH} HTTP/1.1\r\nHost: ${RELAY_ID}\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n` +
+                'Sec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n' +
+                'Sec-WebSocket-Protocol: ptbk-tunnel\r\n\r\n',
+        );
+        await vi.waitFor(() => {
+            expect(response).toContain('101 Switching Protocols');
+        });
+        const closing = server.close();
+        const gone = closedSocket(socket);
+        graceClock.advance(CLOSE_GRACE_MS);
+        await gone;
+        await closing;
+    });
+
+    it('closes without a listener', async () => {
+        const { server } = await start({ maxPending: 10, maxPendingPerIp: 10 });
+        await server.close();
+        const unlistened = createOwnTlsServer({
+            ...certificate,
+            endpoint: { accept: () => null, shutdown: () => undefined },
+            liveness: { clock: systemClock },
+            clock: systemClock,
+        });
+        await expect(unlistened.close()).resolves.toBeUndefined();
     });
 });
 

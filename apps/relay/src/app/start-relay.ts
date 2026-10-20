@@ -107,16 +107,18 @@ export async function createRelayServices(
     }
 }
 
+const PEM_BEGIN = '-----BEGIN ';
+
 async function readRelayTls(config: RelayConfig): Promise<{ readonly cert: string; readonly key: string }> {
-    try {
-        const [cert, key] = await Promise.all([
-            readFile(config.tls.certFile, 'utf8'),
-            readFile(config.tls.keyFile, 'utf8'),
-        ]);
-        return { cert, key };
-    } catch {
+    const [cert, key] = await Promise.all([
+        readFile(config.tls.certFile, 'utf8'),
+        readFile(config.tls.keyFile, 'utf8'),
+    ]).catch(() => {
         throw new RelayTlsError();
-    }
+    });
+    // Node treats an empty key as no key at all and would start a listener that fails every handshake.
+    if (!cert.includes(PEM_BEGIN) || !key.includes(PEM_BEGIN)) throw new RelayTlsError();
+    return { cert, key };
 }
 
 /**

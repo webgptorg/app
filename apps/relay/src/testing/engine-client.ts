@@ -1,4 +1,4 @@
-import type { RelayId, RelayMessage, Signer, TunnelChallenge, TunnelFeature } from '@ptbk/protocol';
+import type { RelayId, RelayMessage, Signer, TunnelAuth, TunnelChallenge, TunnelFeature } from '@ptbk/protocol';
 import {
     EngineVersion,
     TUNNEL_FEATURES,
@@ -28,11 +28,15 @@ export interface TestEngineClient {
     readonly binary: readonly Uint8Array[];
     readonly closed: Promise<ClientClose>;
     sendText(text: string): void;
-    /** Signs `auth` for `challenge` with the C-02 helper and sends it. */
-    authenticate(
-        challenge: TunnelChallenge,
-        offer?: { readonly versions?: readonly number[]; readonly features?: readonly TunnelFeature[] },
-    ): Promise<void>;
+    /** Signs `auth` for `challenge` with the C-02 helper, for a test to send as is or tampered. */
+    signAuth(challenge: TunnelChallenge, offer?: EngineOffer): Promise<TunnelAuth>;
+    /** Signs `auth` for `challenge` and sends it. */
+    authenticate(challenge: TunnelChallenge, offer?: EngineOffer): Promise<void>;
+}
+
+export interface EngineOffer {
+    readonly versions?: readonly number[];
+    readonly features?: readonly TunnelFeature[];
 }
 
 export interface ConnectOptions {
@@ -85,6 +89,20 @@ export function connectEngine(options: ConnectOptions): TestEngineClient {
         });
     });
     opened.catch(() => undefined);
+    async function signAuth(challenge: TunnelChallenge, offer: EngineOffer = {}): Promise<TunnelAuth> {
+        const signed = await signTunnelAuth(
+            signer,
+            challenge,
+            {
+                version: ENGINE_VERSION,
+                protocolVersions: offer.versions ?? TUNNEL_PROTOCOL_VERSIONS,
+                features: offer.features ?? TUNNEL_FEATURES,
+            },
+            { dialledRelayId: relayId },
+        );
+        if (signed.kind !== 'signed') throw new Error('challenge names another relay');
+        return signed.auth;
+    }
     return {
         ws,
         opened,
@@ -98,19 +116,9 @@ export function connectEngine(options: ConnectOptions): TestEngineClient {
         sendText(text) {
             ws.send(text);
         },
-        async authenticate(challenge, offer = {}) {
-            const signed = await signTunnelAuth(
-                signer,
-                challenge,
-                {
-                    version: ENGINE_VERSION,
-                    protocolVersions: offer.versions ?? TUNNEL_PROTOCOL_VERSIONS,
-                    features: offer.features ?? TUNNEL_FEATURES,
-                },
-                { dialledRelayId: relayId },
-            );
-            if (signed.kind !== 'signed') throw new Error('challenge names another relay');
-            ws.send(JSON.stringify(signed.auth));
+        signAuth,
+        async authenticate(challenge, offer) {
+            ws.send(JSON.stringify(await signAuth(challenge, offer)));
         },
     };
 }

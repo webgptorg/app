@@ -14,10 +14,8 @@ export interface WsLivenessOptions {
     readonly pongTimeoutMs?: number;
 }
 
-function toBytes(data: RawData): Uint8Array {
-    if (Array.isArray(data)) return Buffer.concat(data);
-    return data instanceof ArrayBuffer ? new Uint8Array(data) : data;
-}
+// `binaryType` stays at its default, `nodebuffer`, so every message (fragmented or not) arrives as one Buffer.
+const asBuffer = (data: RawData): Buffer => data as Buffer;
 
 /**
  * Hands an upgraded WebSocket to the endpoint as a `TunnelConnection` and reports its messages and close. Pings every
@@ -59,8 +57,8 @@ export function attachWsTunnel(ws: WebSocket, pending: PendingConnection, option
 
     const events = pending.attach(connection);
     ws.on('message', (data: RawData, isBinary: boolean) => {
-        if (isBinary) events.binary(toBytes(data));
-        else events.text(Buffer.from(toBytes(data)).toString('utf8'));
+        if (isBinary) events.binary(asBuffer(data));
+        else events.text(asBuffer(data).toString('utf8'));
     });
     ws.on('pong', () => {
         cancelPongDeadline();

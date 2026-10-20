@@ -5,13 +5,17 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createFakeClock } from '../adapters/fake-clock';
+import { systemClock } from '../adapters/system-clock';
 import type { MemoryLogger } from '../adapters/memory-logger';
 import { createMemoryLogger } from '../adapters/memory-logger';
 import { StaticRegistryError } from '../adapters/static-file-registry';
 import type { TestEngine } from '../testing/engines';
 import { createTestEngine } from '../testing/engines';
+import { createFakeRandom } from '../testing/fake-random';
+import { relayCertificate } from '../testing/relay-harness';
+import { createTestCertificate } from '../testing/test-pki';
 import { parseRelayConfig } from './config';
-import { UnsupportedRegistryError, createRelayServices, startRelay } from './start-relay';
+import { RelayTlsError, UnsupportedRegistryError, createRelayServices, startRelay } from './start-relay';
 
 const signal = new AbortController().signal;
 
@@ -25,8 +29,10 @@ describe('startRelay', () => {
         parseRelayConfig({
             RELAY_HOSTNAME: 'relay-a.ptbk.test',
             RELAY_ENGINE_DOMAIN: 'engine.test',
-            RELAY_TLS_CERT_FILE: '/run/relay/cert.pem',
-            RELAY_TLS_KEY_FILE: '/run/relay/key.pem',
+            RELAY_LISTEN_HOST: '127.0.0.1',
+            RELAY_LISTEN_PORT: '0',
+            RELAY_TLS_CERT_FILE: join(dir, 'cert.pem'),
+            RELAY_TLS_KEY_FILE: join(dir, 'key.pem'),
             RELAY_REGISTRY_KIND: 'static',
             RELAY_REGISTRY_FILE: registryFile,
             ...overrides,
@@ -36,7 +42,12 @@ describe('startRelay', () => {
             registryFile,
             JSON.stringify({ v: 1, engines: engines.map(({ engineId, entry }) => ({ engineId, ...entry })) }),
         );
-    const deps = () => ({ logger, clock: createFakeClock(1_700_000_000_000) });
+    const deps = () => ({
+        logger,
+        clock: createFakeClock(1_700_000_000_000),
+        livenessClock: systemClock,
+        random: createFakeRandom(),
+    });
     const events = () => logger.entries.map((entry) => entry.event);
 
     beforeEach(async () => {
@@ -45,6 +56,8 @@ describe('startRelay', () => {
         logger = createMemoryLogger();
         engine = await createTestEngine(40);
         await writeRegistry(engine);
+        await writeFile(join(dir, 'cert.pem'), relayCertificate().cert);
+        await writeFile(join(dir, 'key.pem'), relayCertificate().key);
     });
     afterEach(async () => {
         await rm(dir, { recursive: true });
@@ -57,8 +70,9 @@ describe('startRelay', () => {
         expect(logger.entries).toContainEqual({
             level: 'info',
             event: 'relay.started',
-            fields: { relayId: 'relay-a.ptbk.test', registry: 'static' },
+            fields: { relayId: 'relay-a.ptbk.test', registry: 'static', port: relay.port },
         });
+        expect(relay.port).toBeGreaterThan(0);
         await relay.close();
         await relay.close();
         expect(process.listenerCount('SIGHUP')).toBe(listeners);
@@ -86,6 +100,15 @@ describe('startRelay', () => {
     it('refuses to start on an invalid registry file', async () => {
         await writeFile(registryFile, JSON.stringify({ v: 1, engines: [], extra: true }));
         await expect(startRelay(env(), deps())).rejects.toBeInstanceOf(StaticRegistryError);
+    });
+
+    it.each<[string, (dir: string) => Record<string, string>]>([
+        ['a missing certificate', () => ({ RELAY_TLS_CERT_FILE: '/nonexistent/cert.pem' })],
+        ['a key that is not PEM', () => ({ RELAY_TLS_KEY_FILE: '/dev/null' })],
+        ['a key that does not match the certificate', (at) => ({ RELAY_TLS_KEY_FILE: join(at, 'other-key.pem') })],
+    ])('refuses to start with %s', async (_, overrides) => {
+        await writeFile(join(dir, 'other-key.pem'), createTestCertificate(['relay-a.ptbk.test']).key);
+        await expect(startRelay(env(overrides(dir)), deps())).rejects.toBeInstanceOf(RelayTlsError);
     });
 
     it('refuses the http registry until its adapter exists', async () => {
