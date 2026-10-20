@@ -18,8 +18,9 @@ import { createFakeClock } from '../src/adapters/fake-clock';
 import type { TestEngineClient } from '../src/testing/engine-client';
 import type { TestEngine } from '../src/testing/engines';
 import { ENGINE_DOMAIN, createTestEngine } from '../src/testing/engines';
+import { captureClientHello } from '../src/testing/client-hello';
 import type { HarnessOptions, RelayHarness } from '../src/testing/relay-harness';
-import { startHarness } from '../src/testing/relay-harness';
+import { RELAY_ID, startHarness } from '../src/testing/relay-harness';
 
 const agents = HostnameSchema.parse('agents.customer.test');
 const unclaimed = HostnameSchema.parse('unclaimed.customer.test');
@@ -31,6 +32,8 @@ function challengeOf(message: RelayMessage): TunnelChallenge {
     if (message.type !== 'challenge') throw new Error(`expected a challenge, got ${message.type}`);
     return message;
 }
+
+const relayClientHello = captureClientHello(RELAY_ID);
 
 describe('tunnel endpoint over real sockets', () => {
     let relay: RelayHarness | undefined;
@@ -60,15 +63,17 @@ describe('tunnel endpoint over real sockets', () => {
         return client;
     }
 
-    /** A TCP connection that never starts TLS; resolves once the relay has admitted it (its deadline is armed). */
+    /**
+     * A TCP connection that sends a ClientHello for the relay's own hostname and never finishes TLS; resolves once the
+     * TLS server answered, so the endpoint has admitted it and armed its deadline.
+     */
     async function rawSocket(harness: RelayHarness): Promise<Socket> {
-        const timers = harness.clock.pendingTimers();
         const socket = connect(harness.port, '127.0.0.1');
         socket.on('error', () => undefined);
         sockets.push(socket);
-        await vi.waitFor(() => {
-            expect(harness.clock.pendingTimers()).toBe(timers + 1);
-        });
+        const answered = new Promise((resolve) => socket.once('data', resolve));
+        socket.write(await relayClientHello);
+        await answered;
         return socket;
     }
 
@@ -214,7 +219,7 @@ describe('tunnel endpoint over real sockets', () => {
         await expectRefused(client, 'timeout', TUNNEL_CLOSE_CODE.AUTH_FAILED);
     });
 
-    it('drops a TCP connection that never completes TLS once the deadline from accept passes', async () => {
+    it('drops a TCP connection that never completes TLS once the deadline from routing passes', async () => {
         const harness = await start();
         const socket = await rawSocket(harness);
         const closed = new Promise((resolve) => socket.once('close', resolve));

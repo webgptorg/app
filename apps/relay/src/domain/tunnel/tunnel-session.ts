@@ -31,6 +31,11 @@ export interface TunnelTransport {
     close(code: number, reason: string): void;
     /** Bytes queued in the transport and not yet written to the socket. */
     bufferedBytes(): number;
+    /**
+     * Calls `callback` once, after a write leaves fewer than `bytes` queued; the result cancels it. Only meaningful
+     * while `bufferedBytes()` is at least `bytes`; never called once the transport is closed.
+     */
+    whenBufferedBelow(bytes: number, callback: () => void): () => void;
 }
 
 /** The browser's address as the relay saw it; the engine gets it in `OPEN` to rate-limit and audit. */
@@ -91,6 +96,8 @@ export interface TunnelSession {
     isClosed(): boolean;
     activeStreams(): number;
     bufferedBytes(): number;
+    /** The transport's `whenBufferedBelow`, so R-04's scheduler can wait for the WebSocket to drain. */
+    whenBufferedBelow(bytes: number, callback: () => void): () => void;
 }
 
 interface StreamState {
@@ -268,5 +275,6 @@ export function createTunnelSession(options: TunnelSessionOptions): TunnelSessio
         isClosed: () => closed,
         activeStreams: () => streams.size,
         bufferedBytes: () => transport.bufferedBytes(),
+        whenBufferedBelow: (bytes, callback) => transport.whenBufferedBelow(bytes, callback),
     };
 }

@@ -61,10 +61,20 @@ describe('parseRelayConfig', () => {
                 maxPendingHandshakesPerIp: 10,
                 maxTunnelsPerIp: 50,
             },
+            browser: {
+                clientHelloTimeoutMs: 5000,
+                maxConnections: 10_000,
+                maxConnectionsPerIp: 256,
+                newConnectionsPerIpPerS: 50,
+                maxStreamsPerEngine: 1024,
+                newStreamsPerEnginePerS: 200,
+                engineBandwidthBytesPerS: 12_500_000,
+            },
             logLevel: 'info',
         });
         expect(Object.isFrozen(config)).toBe(true);
         expect(Object.isFrozen(config.tunnel)).toBe(true);
+        expect(Object.isFrozen(config.browser)).toBe(true);
         expect(Object.isFrozen(config.listen)).toBe(true);
         expect(Object.isFrozen(config.tls)).toBe(true);
         expect(Object.isFrozen(config.registry)).toBe(true);
@@ -87,6 +97,13 @@ describe('parseRelayConfig', () => {
             RELAY_MAX_PENDING_HANDSHAKES: '200',
             RELAY_MAX_PENDING_HANDSHAKES_PER_IP: '4',
             RELAY_MAX_TUNNELS_PER_IP: '8',
+            RELAY_CLIENT_HELLO_TIMEOUT_MS: '2000',
+            RELAY_MAX_CONNECTIONS: '5000',
+            RELAY_MAX_CONNECTIONS_PER_IP: '64',
+            RELAY_NEW_CONNECTIONS_PER_IP_PER_S: '20',
+            RELAY_MAX_STREAMS_PER_ENGINE: '512',
+            RELAY_NEW_STREAMS_PER_ENGINE_PER_S: '100',
+            RELAY_ENGINE_BANDWIDTH_BYTES_PER_S: '1250000000',
             LOG_LEVEL: 'warn',
         });
         expect(config.relayId).toBe('relay-a.ptbk.test');
@@ -100,6 +117,15 @@ describe('parseRelayConfig', () => {
             maxPendingHandshakes: 200,
             maxPendingHandshakesPerIp: 4,
             maxTunnelsPerIp: 8,
+        });
+        expect(config.browser).toEqual({
+            clientHelloTimeoutMs: 2000,
+            maxConnections: 5000,
+            maxConnectionsPerIp: 64,
+            newConnectionsPerIpPerS: 20,
+            maxStreamsPerEngine: 512,
+            newStreamsPerEnginePerS: 100,
+            engineBandwidthBytesPerS: 1_250_000_000,
         });
         expect(config.logLevel).toBe('warn');
     });
@@ -120,6 +146,10 @@ describe('parseRelayConfig', () => {
             'engineDomain',
             'tls.certFile',
             'tls.keyFile',
+            // Per-engine limits, not engine material.
+            'browser.maxStreamsPerEngine',
+            'browser.newStreamsPerEnginePerS',
+            'browser.engineBandwidthBytesPerS',
         ]);
         for (const name of ['RELAY_ENGINE_KEY_FILE', 'RELAY_ENGINE_CERT_FILE', 'RELAY_ENGINE_PRIVATE_KEY']) {
             expect(configError({ ...staticEnv, [name]: '/etc/engine/key.pem' }).problems).toEqual([
@@ -292,6 +322,41 @@ describe('parseRelayConfig', () => {
             'a per-IP tunnel limit above the maximum',
             { ...staticEnv, RELAY_MAX_TUNNELS_PER_IP: '1000001' },
             'RELAY_MAX_TUNNELS_PER_IP: must be an integer from 1 to 1000000',
+        ],
+        [
+            'a zero ClientHello timeout',
+            { ...staticEnv, RELAY_CLIENT_HELLO_TIMEOUT_MS: '0' },
+            'RELAY_CLIENT_HELLO_TIMEOUT_MS: must be an integer from 1 to 60000',
+        ],
+        [
+            'a non-numeric global connection limit',
+            { ...staticEnv, RELAY_MAX_CONNECTIONS: 'many' },
+            'RELAY_MAX_CONNECTIONS: must be an integer from 1 to 1000000',
+        ],
+        [
+            'a zero per-IP connection limit',
+            { ...staticEnv, RELAY_MAX_CONNECTIONS_PER_IP: '0' },
+            'RELAY_MAX_CONNECTIONS_PER_IP: must be an integer from 1 to 1000000',
+        ],
+        [
+            'a fractional per-IP connection rate',
+            { ...staticEnv, RELAY_NEW_CONNECTIONS_PER_IP_PER_S: '0.5' },
+            'RELAY_NEW_CONNECTIONS_PER_IP_PER_S: must be an integer from 1 to 1000000',
+        ],
+        [
+            'a per-engine stream limit above the maximum',
+            { ...staticEnv, RELAY_MAX_STREAMS_PER_ENGINE: '1000001' },
+            'RELAY_MAX_STREAMS_PER_ENGINE: must be an integer from 1 to 1000000',
+        ],
+        [
+            'a negative per-engine stream rate',
+            { ...staticEnv, RELAY_NEW_STREAMS_PER_ENGINE_PER_S: '-1' },
+            'RELAY_NEW_STREAMS_PER_ENGINE_PER_S: must be an integer from 1 to 1000000',
+        ],
+        [
+            'an engine bandwidth above 10 Gbit/s',
+            { ...staticEnv, RELAY_ENGINE_BANDWIDTH_BYTES_PER_S: '1250000001' },
+            'RELAY_ENGINE_BANDWIDTH_BYTES_PER_S: must be an integer from 1 to 1250000000',
         ],
         ['an unknown LOG_LEVEL', { ...staticEnv, LOG_LEVEL: 'debug' }, 'LOG_LEVEL: must be one of info, warn, error'],
         [

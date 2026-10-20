@@ -92,6 +92,12 @@ describe('createTunnelSession', () => {
         expect(session).toMatchObject({ engineId: ENGINE_ID, remoteIp: '198.51.100.4', protocolVersion: 1 });
         transport.setBufferedBytes(42);
         expect(session.bufferedBytes()).toBe(42);
+        const woken: string[] = [];
+        session.whenBufferedBelow(10, () => woken.push('below 10'));
+        const cancel = session.whenBufferedBelow(10, () => woken.push('cancelled'));
+        cancel();
+        transport.setBufferedBytes(9);
+        expect(woken).toEqual(['below 10']);
     });
 
     it('opens streams with increasing IDs from 1 and sends OPEN with the client address', () => {

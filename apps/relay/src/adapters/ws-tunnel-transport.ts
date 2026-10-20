@@ -25,17 +25,35 @@ const asBuffer = (data: RawData): Buffer => data as Buffer;
 export function attachWsTunnel(ws: WebSocket, pending: PendingConnection, options: WsLivenessOptions): void {
     const { clock, pingIntervalMs = PING_INTERVAL_MS, pongTimeoutMs = PONG_TIMEOUT_MS } = options;
     const isOpen = (): boolean => ws.readyState === WebSocket.OPEN;
+    const drainWaiters = new Set<{ readonly below: number; readonly callback: () => void }>();
+    // `ws` has no drain event; a send's callback runs once its frame is handed to the socket.
+    const onWritten = (): void => {
+        if (!isOpen()) return;
+        for (const waiter of drainWaiters) {
+            if (ws.bufferedAmount < waiter.below) {
+                drainWaiters.delete(waiter);
+                waiter.callback();
+            }
+        }
+    };
     const connection: TunnelConnection = {
         transport: {
             send(frame) {
                 if (!isOpen()) return false;
-                ws.send(frame, { binary: true });
+                ws.send(frame, { binary: true }, onWritten);
                 return true;
             },
             close(code, reason) {
                 if (isOpen()) ws.close(code, reason);
             },
             bufferedBytes: () => ws.bufferedAmount,
+            whenBufferedBelow(below, callback) {
+                const waiter = { below, callback };
+                drainWaiters.add(waiter);
+                return () => {
+                    drainWaiters.delete(waiter);
+                };
+            },
         },
         sendText(text) {
             if (isOpen()) ws.send(text, { binary: false });
@@ -66,6 +84,7 @@ export function attachWsTunnel(ws: WebSocket, pending: PendingConnection, option
     // Errors (a bad frame, a reset) are always followed by `close`, which reports them.
     ws.on('error', () => undefined);
     ws.once('close', (code: number) => {
+        drainWaiters.clear();
         cancelPing();
         cancelPongDeadline();
         events.closed(code);
