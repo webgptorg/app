@@ -2,7 +2,7 @@
 
 - **Lane:** Engine integration · **Module:** `docs/engine-integration/` · **Milestone:** M2 (pulled forward)
 - **Depends on:** C-02, C-03, C-04, C-06
-- **Status:** todo
+- **Status:** in progress (docs/e-01-engine-integration-guide)
 - **Spec:** Interfaces (draft) 1–6, Relay and tunnel, Pairing and identity, Residual risks (2. Engine updates), Security hardening 1, 7, 8, Build plan; ADRs: [0002](../../adr/0002-public-private-split.md), [0003](../../adr/0003-ui-as-signed-bundle.md), [0004](../../adr/0004-mock-engine-and-conformance.md), [0014](../../adr/0014-cryptography.md)
 
 ## Goal
