@@ -8,7 +8,6 @@ export interface FakeTransport extends TunnelTransport {
     readonly frames: Frame[];
     readonly closes: { readonly code: number; readonly reason: string }[];
     setBufferedBytes(bytes: number): void;
-    isClosed(): boolean;
 }
 
 /** Records what the session sends; `send` drops frames once `close` was called. */
@@ -33,6 +32,5 @@ export function createFakeTransport(): FakeTransport {
         setBufferedBytes(bytes) {
             buffered = bytes;
         },
-        isClosed: () => closes.length > 0,
     };
 }

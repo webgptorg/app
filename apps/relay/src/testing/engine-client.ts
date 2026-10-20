@@ -24,8 +24,6 @@ export interface TestEngineClient {
     readonly opened: Promise<void>;
     /** The next text message from the relay, parsed strictly. */
     nextMessage(): Promise<RelayMessage>;
-    /** Binary messages received so far. */
-    readonly binary: readonly Uint8Array[];
     readonly closed: Promise<ClientClose>;
     sendText(text: string): void;
     /** Signs `auth` for `challenge` with the C-02 helper, for a test to send as is or tampered. */
@@ -62,12 +60,8 @@ export function connectEngine(options: ConnectOptions): TestEngineClient {
     const ws = new WebSocket(`wss://127.0.0.1:${String(port)}${path}`, [...protocols], clientOptions);
     const queue: RelayMessage[] = [];
     const waiting: ((message: RelayMessage) => void)[] = [];
-    const binary: Uint8Array[] = [];
     ws.on('message', (data: Buffer, isBinary: boolean) => {
-        if (isBinary) {
-            binary.push(new Uint8Array(data));
-            return;
-        }
+        if (isBinary) return;
         const parsed = parseRelayMessage(data.toString('utf8'));
         if (parsed.kind === 'invalid') throw new Error('relay sent an invalid handshake message');
         const wake = waiting.shift();
@@ -106,7 +100,6 @@ export function connectEngine(options: ConnectOptions): TestEngineClient {
     return {
         ws,
         opened,
-        binary,
         closed,
         nextMessage() {
             const message = queue.shift();

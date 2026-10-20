@@ -2,7 +2,7 @@
 
 - **Lane:** Relay · **Module:** `apps/relay` · **Milestone:** M1
 - **Depends on:** R-02, C-02
-- **Status:** in progress (feat/r-03-tunnel-endpoint)
+- **Status:** done (#17)
 - **Spec:** Relay and tunnel; Interfaces (draft) 2 and 3; Metadata we still see; Abuse on our domains (takedown); ADRs: [0004](../../adr/0004-mock-engine-and-conformance.md), [0005](../../adr/0005-modular-architecture.md), [0014](../../adr/0014-cryptography.md)
 
 ## Goal
