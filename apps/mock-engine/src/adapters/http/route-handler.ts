@@ -26,8 +26,13 @@ export function problemResponse(problem: Problem): Response {
 }
 
 /** Repeated parameters are refused outright: a schema should never have to choose between two values. */
+/** Null-prototype records, so names like `__proto__` and `constructor` are plain keys the strict schema refuses. */
+function emptyRecord<T>(): Record<string, T> {
+    return Object.create(null) as Record<string, T>;
+}
+
 function queryOf(url: URL): Record<string, string> | null {
-    const query: Record<string, string> = {};
+    const query = emptyRecord<string>();
     for (const [name, value] of url.searchParams) {
         if (Object.hasOwn(query, name)) return null;
         query[name] = value;
@@ -141,7 +146,7 @@ async function decodeBody(
             }
         case 'form': {
             if (mediaTypeOf(request) !== 'application/x-www-form-urlencoded') return { code: 'unsupported-media-type' };
-            const form: Record<string, string> = {};
+            const form = emptyRecord<string>();
             for (const [name, value] of new URLSearchParams(text())) {
                 if (Object.hasOwn(form, name)) {
                     return {
@@ -156,7 +161,7 @@ async function decodeBody(
         case 'multipart': {
             try {
                 const parsed = await new Response(bytes, { headers: request.headers }).formData();
-                const value: Record<string, FormDataEntryValue> = {};
+                const value = emptyRecord<FormDataEntryValue>();
                 for (const [name, entry] of parsed) value[name] = entry;
                 return { kind: 'ok', value };
             } catch {

@@ -89,6 +89,23 @@ describe('runHttpRoute', () => {
         });
     });
 
+    it.each(['__proto__', 'constructor'])(
+        'refuses a query parameter or form field named %s, alone or repeated',
+        async (name) => {
+            const alone = await run(route(null), { path: `/things/t1?${name}=x` });
+            expect(alone).toMatchObject({ status: 400, body: { code: 'validation-failed' } });
+            const repeated = await run(route(null), { path: `/things/t1?${name}=x&${name}=y` });
+            expect(repeated).toMatchObject({ status: 400, body: { detail: 'repeated query parameter' } });
+            const form = route({ kind: 'form', schema: z.strictObject({ name: z.string() }), maxBytes: 64 });
+            const headers = { 'content-type': 'application/x-www-form-urlencoded' };
+            const field = await run(form, { headers, body: `name=x&${name}=y` });
+            expect(field.status).toBe(400);
+            expect(field.body['errors']).toEqual([expect.objectContaining({ path: 'body' })]);
+            const twice = await run(form, { headers, body: `name=x&${name}=y&${name}=z` });
+            expect(twice.body['errors']).toEqual([expect.objectContaining({ path: `body.${name}` })]);
+        },
+    );
+
     it('caps the body by Content-Length and by what actually arrives', async () => {
         const target = route(json(z.unknown(), 16));
         expect(
