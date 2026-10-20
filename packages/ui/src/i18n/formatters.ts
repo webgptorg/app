@@ -1,0 +1,51 @@
+/** `Intl` formatters for one locale. Building them is expensive, so `createFormatters` caches per locale. */
+export interface Formatters {
+    readonly locale: string;
+    /** A date, e.g. "20 Oct 2026". */
+    formatDate(value: Date): string;
+    /** A date and time, e.g. "20 Oct 2026, 14:05". */
+    formatDateTime(value: Date): string;
+    formatNumber(value: number, options?: Intl.NumberFormatOptions): string;
+    /** "3 minutes ago", "in 2 days", "now", relative to `now`. */
+    formatRelativeTime(value: Date, now: Date): string;
+}
+
+const RELATIVE_UNITS: readonly (readonly [Intl.RelativeTimeFormatUnit, number])[] = [
+    ['year', 365 * 24 * 3600],
+    ['month', 30 * 24 * 3600],
+    ['week', 7 * 24 * 3600],
+    ['day', 24 * 3600],
+    ['hour', 3600],
+    ['minute', 60],
+    ['second', 1],
+];
+
+const cache = new Map<string, Formatters>();
+
+export function createFormatters(locale: string): Formatters {
+    const cached = cache.get(locale);
+    if (cached !== undefined) return cached;
+
+    const date = new Intl.DateTimeFormat(locale, { dateStyle: 'medium' });
+    const dateTime = new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' });
+    const number = new Intl.NumberFormat(locale);
+    const relative = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' });
+
+    const formatters: Formatters = {
+        locale,
+        formatDate: (value) => date.format(value),
+        formatDateTime: (value) => dateTime.format(value),
+        formatNumber: (value, options) =>
+            options === undefined ? number.format(value) : new Intl.NumberFormat(locale, options).format(value),
+        formatRelativeTime: (value, now) => {
+            const seconds = Math.round((value.getTime() - now.getTime()) / 1000);
+            const [unit, size] = RELATIVE_UNITS.find(([, unitSeconds]) => Math.abs(seconds) >= unitSeconds) ?? [
+                'second',
+                1,
+            ];
+            return relative.format(Math.round(seconds / size), unit);
+        },
+    };
+    cache.set(locale, formatters);
+    return formatters;
+}

@@ -1,0 +1,4 @@
+:root {
+    --anchor-text: var(--color-accent-text);
+    --anchor-text-hover: var(--color-text);
+}

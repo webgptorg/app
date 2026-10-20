@@ -4,7 +4,10 @@ import { createFileRoute } from '@tanstack/react-router';
 import { z } from 'zod';
 
 import { useEngineApi } from '../../app/engine-api-context';
+import { requireFeature } from '../../app/registry/require-feature';
 import { agentListQueryOptions } from '../../features/agents/agents-queries';
+import { Page } from '../../features/shell/page';
+import { m } from '../../paraglide/messages';
 
 // Not strict: a URL may carry parameters this route does not know, and a bad value falls back instead of throwing.
 const AgentsSearch = z.object({
@@ -13,6 +16,7 @@ const AgentsSearch = z.object({
 
 export const Route = createFileRoute('/agents/')({
     validateSearch: AgentsSearch,
+    beforeLoad: requireFeature('agents'),
     loaderDeps: ({ search }) => ({ sort: search.sort }),
     loader: ({ context, deps }) =>
         context.queryClient.query({ ...agentListQueryOptions(context.engineApi, deps), staleTime: 'static' }),
@@ -24,15 +28,12 @@ function AgentsPage() {
     const { sort } = Route.useSearch();
     const { data } = useSuspenseQuery(agentListQueryOptions(useEngineApi(), { sort }));
     return (
-        <section aria-labelledby="agents-title" className="space-y-4">
-            <h1 id="agents-title" className="text-2xl font-semibold">
-                Agents
-            </h1>
-            <ul className="list-disc pl-6">
+        <Page title={m.agents_title()}>
+            <ul className="list-disc ps-6">
                 {data.items.map((agent) => (
                     <li key={agent.id}>{agent.name}</li>
                 ))}
             </ul>
-        </section>
+        </Page>
     );
 }

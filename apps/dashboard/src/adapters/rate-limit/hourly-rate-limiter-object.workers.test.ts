@@ -36,7 +36,8 @@ describe('HourlyRateLimiter Durable Object', () => {
         expect(await counter.consume(1, HOUR, start + 2)).toBe('allowed');
     });
 
-    it('is exported from the Worker entry next to the default handler', async () => {
+    // The first import of the whole Worker entry takes seconds when every package's tests share the runner.
+    it('is exported from the Worker entry next to the default handler', { timeout: 30_000 }, async () => {
         const entry = await import('../../worker');
         expect(entry.HourlyRateLimiter.name).toBe('HourlyRateLimiter');
     });

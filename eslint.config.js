@@ -63,6 +63,28 @@ const engineUiDomBans = [
             "Load workers from a bundled module: new Worker(new URL('./x.ts', import.meta.url), { type: 'module' }).",
     },
 ];
+/**
+ * User-visible text lives in the message catalogues (engine-ui) or comes in through `UiMessages` and props (`@ptbk/ui`),
+ * never as JSX text. Words that are never translated, such as the product name, are on the allowlist.
+ */
+const JSX_TEXT_ALLOWED = ['Promptbook'];
+const jsxTextBan = {
+    selector: `JSXText[value=/\\p{L}/u]:not([value=/^\\s*(${JSX_TEXT_ALLOWED.join('|')})\\s*$/u])`,
+    message: 'User-visible text goes through the message catalogues (messages/*.json) or UiMessages, not JSX text.',
+};
+const uiPackageImports = [
+    { group: ['@ptbk/*', '**/apps/**'], message: 'The design system imports no app and no contract package.' },
+    {
+        group: [
+            '@tanstack/react-router',
+            '@tanstack/react-router/*',
+            '@tanstack/react-query',
+            '@tanstack/react-query/*',
+        ],
+        message:
+            'The design system is router- and data-agnostic: apps build router links from Anchor and own their queries.',
+    },
+];
 const domainPatterns = [
     { group: ['node:*', 'cloudflare:*'], message: domainPurity },
     { group: ['**/adapters/**', '**/app/**'], message: domainPurity },
@@ -79,8 +101,11 @@ export default tseslint.config(
             '**/routeTree.gen.ts',
             '**/worker-configuration.d.ts',
             'apps/dashboard/src/paraglide/',
+            'apps/engine-ui/src/paraglide/',
             'apps/engine-ui/playwright-report/**',
             'apps/engine-ui/test-results/**',
+            // Deliberately broken inputs for the token-boundary test.
+            'packages/ui/test/fixtures/**',
         ],
     },
     js.configs.recommended,
@@ -129,10 +154,23 @@ export default tseslint.config(
     },
     {
         files: ['packages/ui/src/**/*.{ts,tsx}'],
-        rules: restrictImports(platformImports, {
-            group: ['@ptbk/*'],
-            message: 'The design system imports no app and no contract package.',
-        }),
+        extends: [reactHooks.configs.flat['recommended-latest'], jsxA11y.flatConfigs.recommended],
+        languageOptions: { globals: globals.browser },
+        rules: {
+            ...restrictImports(platformImports, ...uiPackageImports),
+            // Ships inside engine-ui, so the same CSP bans apply.
+            'no-restricted-syntax': ['error', ...engineUiDomBans],
+        },
+    },
+    {
+        files: ['packages/ui/src/**/*.tsx'],
+        // Tests and the gallery are developer tools with sample content; neither reaches a production bundle.
+        ignores: ['**/*.test.tsx', '**/*.gallery.tsx', 'packages/ui/src/gallery.tsx'],
+        rules: { 'no-restricted-syntax': ['error', ...engineUiDomBans, jsxTextBan] },
+    },
+    {
+        files: ['packages/ui/test/**/*.ts'],
+        rules: restrictImports(...uiPackageImports),
     },
     {
         files: [
@@ -213,6 +251,11 @@ export default tseslint.config(
         // The one module allowed to create TrustedHTML (U-05).
         ignores: ['apps/engine-ui/src/security/trusted-html.ts'],
         rules: { 'no-restricted-syntax': ['error', ...engineUiDomBans] },
+    },
+    {
+        files: ['apps/engine-ui/src/**/*.tsx'],
+        ignores: ['**/*.test.tsx', 'apps/engine-ui/src/testing/**'],
+        rules: { 'no-restricted-syntax': ['error', ...engineUiDomBans, jsxTextBan] },
     },
     {
         // Frameworks and runtimes require a default export here.

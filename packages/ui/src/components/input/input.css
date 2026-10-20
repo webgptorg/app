@@ -1,0 +1,12 @@
+/* Shared by Input, Textarea and Select. */
+:root {
+    --input-radius: var(--radius-control);
+    --input-bg: var(--color-raised);
+    --input-bg-disabled: var(--color-sunken);
+    --input-text: var(--color-text);
+    --input-placeholder: var(--color-text-muted);
+    --input-border: var(--color-border);
+    --input-border-hover: var(--color-text-muted);
+    --input-border-focus: var(--color-focus);
+    --input-border-invalid: var(--color-danger);
+}

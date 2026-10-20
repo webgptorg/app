@@ -1,0 +1,7 @@
+:root {
+    --card-bg: var(--color-raised);
+    --card-border: var(--color-divider);
+    --card-radius: var(--radius-surface);
+    --card-shadow: var(--shadow-subtle);
+    --card-title: var(--color-text);
+}

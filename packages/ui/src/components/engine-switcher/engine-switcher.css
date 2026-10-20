@@ -1,0 +1,6 @@
+:root {
+    --engine-switcher-radius: var(--radius-control);
+    --engine-switcher-text: var(--color-text);
+    --engine-switcher-muted: var(--color-text-muted);
+    --engine-switcher-hover: var(--color-hover);
+}

@@ -1,0 +1,8 @@
+:root {
+    --switch-track: var(--color-sunken);
+    --switch-track-on: var(--color-accent);
+    --switch-border: var(--color-border);
+    --switch-thumb: var(--color-raised);
+    --switch-label: var(--color-text);
+    --switch-description: var(--color-text-muted);
+}

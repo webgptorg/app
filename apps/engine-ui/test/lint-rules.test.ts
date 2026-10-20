@@ -5,7 +5,15 @@ import { ESLint } from 'eslint';
 import { describe, expect, it } from 'vitest';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
-const eslint = new ESLint({ cwd: repoRoot });
+/**
+ * Only the rules under test, without type information: building the repo-wide TypeScript program is what makes
+ * type-aware linting slow, and none of these rules needs it.
+ */
+const eslint = new ESLint({
+    cwd: repoRoot,
+    overrideConfig: { languageOptions: { parserOptions: { projectService: false } } },
+    ruleFilter: ({ ruleId }) => !ruleId.startsWith('@typescript-eslint/'),
+});
 
 /** Lints `code` as if it were an existing engine-ui file, so the type-aware parser finds its project. */
 async function ruleIds(code: string, path = 'src/routes/agents/index.tsx'): Promise<string[]> {
@@ -38,7 +46,7 @@ describe('engine-ui lint rules', { timeout: 30_000 }, () => {
 
     it('allow React state, CSSOM styles and a bundled worker URL', async () => {
         const code =
-            "export const X = () => <p style={{ color: 'red' }}>x</p>;\n" +
+            "export const X = () => <p style={{ color: 'red' }}>{'x'}</p>;\n" +
             "export const f = () => new Worker(new URL('./w.ts', import.meta.url), { type: 'module' });\n";
         expect(await ruleIds(code)).toEqual([]);
     });

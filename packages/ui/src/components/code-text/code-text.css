@@ -1,0 +1,4 @@
+:root {
+    --code-text-bg: var(--color-sunken);
+    --code-text-text: var(--color-text);
+}

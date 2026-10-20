@@ -1,0 +1,6 @@
+:root {
+    --error-state-icon: var(--color-danger);
+    --error-state-title: var(--color-text);
+    --error-state-message: var(--color-text-muted);
+    --error-state-details-bg: var(--color-sunken);
+}

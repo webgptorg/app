@@ -1,0 +1,6 @@
+:root {
+    --field-label: var(--color-text);
+    --field-hint: var(--color-text-muted);
+    --field-error: var(--color-danger);
+    --field-required: var(--color-danger);
+}

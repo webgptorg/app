@@ -4,6 +4,8 @@ import { act } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { CspViolation } from '../security/csp-violation-listener';
+import { createFakeMatchMedia } from '../testing/fake-match-media';
+import { createMemoryStorage } from '../testing/memory-storage';
 import { createTestEngineApi } from '../testing/test-engine-api';
 import { bootstrap } from './bootstrap';
 import type { BrowserDeps, MountedApp } from './bootstrap';
@@ -18,10 +20,13 @@ const json = (body: unknown, status = 200, type = 'application/json') =>
 async function engineResponse(url: URL): Promise<Response> {
     const engineApi = createTestEngineApi();
     const signal = AbortSignal.timeout(1000);
+    const path = url.pathname.slice(ENGINE_API_PREFIX.length);
     const result =
-        url.pathname === `${ENGINE_API_PREFIX}/engine`
+        path === '/engine'
             ? await engineApi.engine.get(signal)
-            : await engineApi.agents.list({ sort: 'name' }, signal);
+            : path === '/me'
+              ? await engineApi.me.get(signal)
+              : await engineApi.agents.list({ sort: 'name' }, signal);
     if (result.kind === 'problem') throw new Error('the in-memory engine refused a seed request');
     return json(result.data);
 }
@@ -49,6 +54,8 @@ function setUp(fetch: BrowserDeps['fetch']) {
         },
         fetch,
         cspScope: window,
+        storage: createMemoryStorage(),
+        matchMedia: createFakeMatchMedia().matchMedia,
     };
     return { container, assign, browser };
 }

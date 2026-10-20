@@ -1,0 +1,53 @@
+import type { UiMessages } from '@ptbk/ui';
+
+import { m } from '../paraglide/messages';
+
+/** `@ptbk/ui`'s strings from this app's catalogue; a message missing here is a type error. */
+export function createUiMessages(): UiMessages {
+    return {
+        close: () => m.ui_close(),
+        cancel: () => m.ui_cancel(),
+        confirm: () => m.ui_confirm(),
+        loading: () => m.ui_loading(),
+        retry: () => m.ui_retry(),
+        errorTitle: () => m.ui_error_title(),
+        errorDetails: () => m.ui_error_details(),
+        dismiss: () => m.ui_dismiss(),
+        notifications: () => m.ui_notifications(),
+        copy: () => m.ui_copy(),
+        copied: () => m.ui_copied(),
+        copyFailed: () => m.ui_copy_failed(),
+        opensInNewTab: () => m.ui_opens_in_new_tab(),
+        skipToContent: () => m.ui_skip_to_content(),
+        required: () => m.ui_required(),
+        showMore: () => m.ui_show_more(),
+        typeToConfirm: (params) => m.ui_type_to_confirm(params),
+        pagination: () => m.ui_pagination(),
+        previousPage: () => m.ui_previous_page(),
+        nextPage: () => m.ui_next_page(),
+        totalItems: (params) => m.ui_total_items(params),
+        noResults: () => m.ui_no_results(),
+        noData: () => m.ui_no_data(),
+        columns: () => m.ui_columns(),
+        rowActions: (params) => m.ui_row_actions(params),
+        selectRow: (params) => m.ui_select_row(params),
+        selectAllOnPage: () => m.ui_select_all_on_page(),
+        selectedCount: (params) => m.ui_selected_count(params),
+        expandRow: (params) => m.ui_expand_row(params),
+        collapseRow: (params) => m.ui_collapse_row(params),
+        sortAscending: () => m.ui_sort_ascending(),
+        sortDescending: () => m.ui_sort_descending(),
+        sortBy: (params) => m.ui_sort_by(params),
+        formInvalid: () => m.ui_form_invalid(),
+        trustMarkVerifying: () => m.ui_trust_mark_verifying(),
+        trustMarkVerified: () => m.ui_trust_mark_verified(),
+        trustMarkFingerprint: (params) => m.ui_trust_mark_fingerprint(params),
+        engineSwitcher: () => m.ui_engine_switcher(),
+        currentEngine: () => m.ui_current_engine(),
+        allEngines: () => m.ui_all_engines(),
+        addEngine: () => m.ui_add_engine(),
+        engineOnline: () => m.ui_engine_online(),
+        engineOffline: () => m.ui_engine_offline(),
+        engineUnknown: () => m.ui_engine_unknown(),
+    };
+}

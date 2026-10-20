@@ -1,6 +1,7 @@
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { paraglideVitePlugin } from '@inlang/paraglide-js';
 import { ENGINE_API_PREFIX, ENGINE_UI_CSP } from '@ptbk/engine-api';
 import tailwindcss from '@tailwindcss/vite';
 import { tanstackRouter } from '@tanstack/router-plugin/vite';
@@ -15,12 +16,19 @@ const mockEngineUrl = process.env['MOCK_ENGINE_URL'];
 export default defineConfig({
     base: '/',
     plugins: [
+        // Options live in project.inlang/paraglide.config.js, which `generate` (the Paraglide CLI) reads too.
+        paraglideVitePlugin({ project: './project.inlang', outdir: './src/paraglide' }),
         // Options live in tsr.config.json, which `generate` (the router CLI) reads too.
         tanstackRouter(),
         react(),
         tailwindcss(),
-        bundleBudget({ appDir, enforce: process.env['CI'] !== undefined }),
+        // The gallery build is never shipped; budgets hold the production bundle, which `test` builds and checks.
+        bundleBudget({ appDir, enforce: process.env['CI'] !== undefined && process.env['VITE_UI_GALLERY'] !== '1' }),
     ],
+    define: {
+        // A literal, so the minifier drops the gallery route's lazy import entirely unless `test:csp` builds it.
+        'import.meta.env.VITE_UI_GALLERY': JSON.stringify(process.env['VITE_UI_GALLERY'] ?? '0'),
+    },
     build: {
         // An inlined font or SVG becomes a `data:` URL, which `font-src 'self'` refuses.
         assetsInlineLimit: 0,

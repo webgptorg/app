@@ -1,8 +1,9 @@
+import { installDomGaps } from '@ptbk/ui';
 import { cleanup } from '@testing-library/react';
 import { afterEach, beforeEach } from 'vitest';
 
-// jsdom has no layout, so it does not implement scrolling; the router restores scroll position after navigation.
-window.scrollTo = () => undefined;
+// jsdom lacks <dialog>'s modal methods, the Popover API, matchMedia and scrolling (the router restores scroll).
+installDomGaps();
 
 beforeEach(() => {
     window.__ptbkCspViolations = [];
@@ -10,4 +11,7 @@ beforeEach(() => {
 
 afterEach(() => {
     cleanup();
+    document.documentElement.className = '';
+    document.documentElement.removeAttribute('style');
+    document.documentElement.removeAttribute('lang');
 });

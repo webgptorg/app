@@ -1,0 +1,20 @@
+:root {
+    --menu-bg: var(--color-raised);
+    --menu-text: var(--color-text);
+    --menu-muted: var(--color-text-muted);
+    --menu-border: var(--color-divider);
+    --menu-separator: var(--color-divider);
+    --menu-radius: var(--radius-control);
+    --menu-item-radius: var(--radius-small);
+    --menu-item-active: var(--color-hover);
+    --menu-danger: var(--color-danger);
+    --menu-check: var(--color-accent-text);
+    --menu-shadow: var(--shadow-raised);
+}
+
+@keyframes ptbk-menu-enter {
+    from {
+        opacity: 0;
+        translate: 0 calc(var(--spacing) * -1);
+    }
+}
