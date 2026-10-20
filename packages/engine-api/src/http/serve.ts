@@ -40,7 +40,8 @@ export async function serveEngineApiRoute(
     request: Request,
 ): Promise<Response> {
     const url = new URL(request.url);
-    const query: Record<string, string> = {};
+    // No prototype, so `__proto__` and `constructor` are plain keys that reach the strict schema and fail there.
+    const query = Object.create(null) as Record<string, string>;
     for (const [name, value] of url.searchParams) {
         if (Object.hasOwn(query, name)) {
             return problemResponse(

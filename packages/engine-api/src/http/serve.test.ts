@@ -68,6 +68,18 @@ describe('HTTP binding', () => {
         expect((await problemOf(upload)).code).toBe('unsupported-media-type');
     });
 
+    it.each(['__proto__', 'constructor', 'toString'])(
+        'refuses a query parameter named %s, alone or repeated, as an unknown field',
+        async (name) => {
+            const serve = handler();
+            const unknown = await problemOf(await serve(new Request(`${BASE}/agents?${name}=x`)));
+            expect(unknown).toMatchObject({ status: 400, code: 'validation-failed' });
+            expect(unknown.errors?.map(({ path }) => path)).toEqual(['query']);
+            const repeated = await problemOf(await serve(new Request(`${BASE}/agents?${name}=x&${name}=y`)));
+            expect(repeated).toMatchObject({ status: 400, errors: [{ path: `query.${name}` }] });
+        },
+    );
+
     it('writes empty, binary and SSE answers with their headers', async () => {
         const { transport } = createInMemoryEngineApiTransport();
         const serve = createEngineApiHttpHandler(transport);
