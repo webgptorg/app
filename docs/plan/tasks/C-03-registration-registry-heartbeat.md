@@ -2,7 +2,7 @@
 
 - **Lane:** Contracts · **Module:** `packages/protocol` · **Milestone:** M1
 - **Depends on:** C-01
-- **Status:** todo
+- **Status:** done (#12)
 - **Spec:** Interfaces (draft) 1, 2 and 4, What our platform can and cannot do (Heartbeat), Pairing and identity (First setup); ADRs: [0002](../../adr/0002-public-private-split.md), [0014](../../adr/0014-cryptography.md)
 
 ## Goal
