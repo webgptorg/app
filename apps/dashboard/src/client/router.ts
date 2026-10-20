@@ -1,14 +1,43 @@
+import { prefersReducedMotion } from '@ptbk/ui';
+import type { MotionMatchMedia } from '@ptbk/ui';
 import { createRouter } from '@tanstack/react-router';
+import type { RouterHistory } from '@tanstack/react-router';
 
-import type { RouterContext } from './routes/__root';
+import { RouteError, RouteNotFound, RoutePending } from './core/route-states';
+import type { RouterContext } from './core/router-context';
 import { routeTree } from './routeTree.gen';
 
-export function createAppRouter(context: RouterContext) {
-    return createRouter({ routeTree, context, defaultPreload: 'intent', defaultPreloadStaleTime: 0 });
+export interface AppRouterOptions {
+    readonly history?: RouterHistory;
+    /** Decides whether route changes animate; under reduced motion they never do. */
+    readonly matchMedia?: MotionMatchMedia;
 }
+
+/** A fast load shows no skeleton at all; a slow one shows it long enough not to flash. */
+export const PENDING_DELAY_MS = 300;
+export const PENDING_MIN_MS = 300;
+
+export function createAppRouter(context: RouterContext, options: AppRouterOptions = {}) {
+    return createRouter({
+        routeTree,
+        context,
+        ...(options.history === undefined ? {} : { history: options.history }),
+        defaultPreload: 'intent',
+        // TanStack Query alone decides freshness; the router always asks it.
+        defaultPreloadStaleTime: 0,
+        defaultViewTransition: !prefersReducedMotion(options.matchMedia),
+        defaultErrorComponent: RouteError,
+        defaultPendingComponent: RoutePending,
+        defaultPendingMs: PENDING_DELAY_MS,
+        defaultPendingMinMs: PENDING_MIN_MS,
+        defaultNotFoundComponent: RouteNotFound,
+    });
+}
+
+export type AppRouter = ReturnType<typeof createAppRouter>;
 
 declare module '@tanstack/react-router' {
     interface Register {
-        router: ReturnType<typeof createAppRouter>;
+        router: AppRouter;
     }
 }

@@ -11,7 +11,7 @@ It stores no engine content, not even encrypted (AGENTS.md rule 2), and no page 
 
 ## Stack
 
-One Cloudflare Worker serves a Vite single-page app and a Hono API ([ADR 0007](../../docs/adr/0007-frontend-stack.md), [ADR 0008](../../docs/adr/0008-hono-for-http-apis.md)). React with TanStack Router (file routes, code-split) and Query, Tailwind 4, Paraglide JS 2 for English and Czech; `@ptbk/ui` components arrive with the first screens (D-09). D1 through Drizzle with generated, guarded migrations ([ADR 0009](../../docs/adr/0009-drizzle-and-migrations.md)). Durable Objects (D-05) and Cron Triggers (I-04) come later.
+One Cloudflare Worker serves a Vite single-page app and a Hono API ([ADR 0007](../../docs/adr/0007-frontend-stack.md), [ADR 0008](../../docs/adr/0008-hono-for-http-apis.md)). React with TanStack Router (file routes, code-split) and Query, Tailwind 4 with `@ptbk/ui` (tokens, components, forms, `DataTable`), Paraglide JS 2 for English and Czech. D1 through Drizzle with generated, guarded migrations ([ADR 0009](../../docs/adr/0009-drizzle-and-migrations.md)). Durable Objects (D-05) and Cron Triggers (I-04) come later.
 
 The Worker renders nothing on the server. Every request except Vite's fingerprinted `/assets/*` runs the Worker first (`run_worker_first`), so the security headers (strict CSP with Trusted Types, HSTS, `no-referrer`, `nosniff`, COOP) are set on the HTML shell too. Under `vite dev` only, and only in `dev`, the CSP allows React Refresh's inline preamble and HSTS is left out; builds, the dev container and every test use the production policy. The SPA sets zod to `jitless` before any schema exists, because zod's `new Function` probe is a reported Trusted Types violation even though it is caught.
 
@@ -25,7 +25,7 @@ src/
   app/          Composition root (create-dashboard.ts), config, i18n for what the Worker renders, Hono app in app/http/
   shared/api/   The UI API: a zod route table used by both the Hono routes and the SPA client
   testing/      Fakes, the software WebAuthn authenticator and shared contract suites; never shipped
-  client/       The SPA: main.tsx, routes/ (TanStack Router file routes), features/, api/, i18n/
+  client/       The SPA: main.tsx, routes/ (TanStack Router file routes), features/, core/ (shell plumbing), api/, i18n/
 messages/       en.json and cs.json, the only place user-facing text lives
 migrations/     drizzle-kit output, committed
 scripts/        Migration guards, bundle budget check, dev container entry point
@@ -61,6 +61,15 @@ An organization owns engines and billing; users join through a membership with a
 - Org-owned repositories take `orgId` as the first argument and put it in every `where`. Each org-scoped adapter test includes "org B cannot read or change org A's rows".
 - Timestamps are integers in milliseconds since the Unix epoch.
 
+### SPA: screens, guards, passkeys (D-09)
+
+- **Routes.** `_app` is the signed-in layout (`/`, `/account`, `/admin`): its guard reads `GET /api/session` through TanStack Query and sends anyone without a session to `/signin?returnTo=…`; `returnTo` only ever holds a same-origin path (`safeReturnTo`). `_auth` is the signed-out frame; under it `_guest` (`/signin`, `/signup`) sends a signed-in person home, while `/recover` stays open. `/admin` answers "not found" unless `platformRole` is `admin`. A 401 on any later call clears the cache and returns to sign-in.
+- **Shell** from `@ptbk/ui`: skip link, org name, navigation by the session's org permissions (`features/shell/navigation.ts`, never role names; `/admin` by the platform role), the user menu (language, theme, sign out), route-level error, pending and not-found states.
+- **Emailed tokens** (`/signup#…`, `/recover#…`): the route's `beforeLoad` moves the fragment into an in-memory holder and replaces the URL without it before anything renders; the page takes it into its state. It is never in history, storage or a later URL (`test:csp` checks).
+- **Passkeys** go through the `PasskeyAuthenticator` port (`features/passkeys/`): `@simplewebauthn/browser` in the app, a fake in tests. Its output is narrowed to the API's schemas, so an unrequested extension result never makes a strict server refuse it. `classifyPasskeyError` is the one table from browser errors to reasons (cancelled, not allowed, no authenticator, already registered, unsupported), and `ceremony-messages.ts` the one place they become words; every screen shows them with a retry.
+- **Mutations** use `useAppMutation`: a `step-up-required` answer opens the step-up dialog (passkey assertion in place) and retries, failures become toasts (`recovery-cooldown` with its end), nothing is optimistic (adding a passkey needs the authenticator; removal and "sign out everywhere" must not pretend).
+- The API stores no passkey name, so `/account` names a passkey by the end of its credential ID and shows where it lives from `backedUp` (synced or one device).
+
 ### API client
 
 The SPA calls `/api/*` only through `src/client/api/api-client.ts`, a small fetch client over the shared route table, wrapped in TanStack Query hooks; components never call `fetch`. It parses every response with the contract's schema, tolerantly: fields the contract does not know are dropped at any depth, known ones are fully validated (AGENTS.md rule 5). It returns an outcome union (`ok`, `problem` with a declared code, `invalid-response`, `network-error`). Output schemas stay strict, and the HTTP tests parse every response with them, so the server never sends an undeclared field.
@@ -69,22 +78,23 @@ We chose this over Hono's RPC client `hc`: each HTTP contract stays explicit as 
 
 ### i18n
 
-Paraglide compiles `messages/*.json` into typed functions at build time (no runtime parser, no eval); its message-format plugin is loaded from `node_modules`, never from a CDN. The SPA picks the locale from the `ptbk_locale` cookie, then the browser's languages, then English; once signed in (D-02) the user's saved locale wins and is written to the cookie. `<html lang>` follows the locale, and the language switcher sits in the shell. What the Worker renders itself (emails from D-02) uses `resolveRequestLocale`: user locale, cookie, `Accept-Language`, English. ESLint rejects literal text in `src/client/**/*.tsx`.
+Paraglide compiles `messages/*.json` into typed functions at build time (no runtime parser, no eval); its message-format plugin is loaded from `node_modules`, never from a CDN. The SPA picks the locale from the `ptbk_locale` cookie, then the browser's languages, then English; signing in or signing up applies the account's saved locale and writes it to the cookie (recovery keeps the language it was done in). `<html lang>` follows the locale; language and theme sit in the user menu, and in a preferences menu on the signed-out pages. `@ptbk/ui`'s strings come from the same catalogues (`core/ui-messages.ts`). What the Worker renders itself (emails from D-02) uses `resolveRequestLocale`: user locale, cookie, `Accept-Language`, English. ESLint rejects literal text in `src/client/**/*.tsx`, and any HTML sink or string `style` attribute in `src/client` (the CSP has `trusted-types 'none'`).
 
 ## Commands
 
-| Command                    | What it does                                                                                                                                                                                 |
-| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `bun run dev`              | Applies migrations to the local D1, then `vite dev` with the Worker in workerd                                                                                                               |
-| `bun run dev:https`        | The same over HTTPS on a real hostname, for passkeys (see below)                                                                                                                             |
-| `bun run build`            | Builds SPA and Worker; `CLOUDFLARE_ENV=staging` or `production` builds that environment                                                                                                      |
-| `bun run preview`          | Serves the build in workerd with the production CSP                                                                                                                                          |
-| `bun run generate`         | Paraglide messages, the route tree and `wrangler types`; generated files are never committed                                                                                                 |
-| `bun run typecheck`        | `tsc -b` over the client (DOM, no Workers types), worker (Workers types, no DOM) and node projects                                                                                           |
-| `bun run test`             | `db:check`, build, the `unit` and `client` Vitest projects with coverage (≥ 90% lines and branches; `src/domain/**` and `config.ts` at 100%), the `workers` project, then the bundle budgets |
-| `bun run db:generate`      | `drizzle-kit generate`; pass `--name <what>` after a schema change                                                                                                                           |
-| `bun run db:migrate:local` | `wrangler d1 migrations apply DB --local`                                                                                                                                                    |
-| `bun run db:check`         | Migration guards: drizzle-kit output only, no drift, no unmarked destructive change                                                                                                          |
+| Command                    | What it does                                                                                                                                                                                                                                                    |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bun run dev`              | Applies migrations to the local D1, then `vite dev` with the Worker in workerd                                                                                                                                                                                  |
+| `bun run dev:https`        | The same over HTTPS on a real hostname, for passkeys (see below)                                                                                                                                                                                                |
+| `bun run build`            | Builds SPA and Worker; `CLOUDFLARE_ENV=staging` or `production` builds that environment                                                                                                                                                                         |
+| `bun run preview`          | Serves the build in workerd with the production CSP                                                                                                                                                                                                             |
+| `bun run generate`         | Paraglide messages, the route tree and `wrangler types`; generated files are never committed                                                                                                                                                                    |
+| `bun run typecheck`        | `tsc -b` over the client (DOM, no Workers types), worker (Workers types, no DOM) and node projects                                                                                                                                                              |
+| `bun run test:csp`         | Builds, then Playwright in Chromium against `vite preview` (production CSP, fresh local D1, fake outbox) on `http://localhost:4174`: the D-09 flows with a virtual WebAuthn authenticator, axe and 360 px on every screen, zero CSP or Trusted Types violations |
+| `bun run test`             | `db:check`, build, the `unit` and `client` Vitest projects with coverage (≥ 90% lines and branches; `src/domain/**` and `config.ts` at 100%), the `workers` project, then the bundle budgets                                                                    |
+| `bun run db:generate`      | `drizzle-kit generate`; pass `--name <what>` after a schema change                                                                                                                                                                                              |
+| `bun run db:migrate:local` | `wrangler d1 migrations apply DB --local`                                                                                                                                                                                                                       |
+| `bun run db:check`         | Migration guards: drizzle-kit output only, no drift, no unmarked destructive change                                                                                                                                                                             |
 
 Root `bun run check` reaches all of it, so CI runs every guard. There is no deploy script; deploys come with I-03.
 

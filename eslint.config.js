@@ -63,6 +63,15 @@ const engineUiDomBans = [
             "Load workers from a bundled module: new Worker(new URL('./x.ts', import.meta.url), { type: 'module' }).",
     },
 ];
+/** The dashboard's CSP has `trusted-types 'none'`: no HTML sink can ever run there, so none may be written. */
+const dashboardDomBans = engineUiDomBans.map((ban) =>
+    ban.message === htmlSink
+        ? {
+              ...ban,
+              message: "The dashboard's CSP sets trusted-types 'none': render through React, never an HTML sink.",
+          }
+        : ban,
+);
 /**
  * User-visible text lives in the message catalogues (engine-ui) or comes in through `UiMessages` and props (`@ptbk/ui`),
  * never as JSX text. Words that are never translated, such as the product name, are on the allowlist.
@@ -102,6 +111,8 @@ export default tseslint.config(
             '**/worker-configuration.d.ts',
             'apps/dashboard/src/paraglide/',
             'apps/engine-ui/src/paraglide/',
+            'apps/dashboard/playwright-report/**',
+            'apps/dashboard/test-results/**',
             'apps/engine-ui/playwright-report/**',
             'apps/engine-ui/test-results/**',
             // Deliberately broken inputs for the token-boundary test.
@@ -229,11 +240,25 @@ export default tseslint.config(
         }),
     },
     {
+        files: ['apps/dashboard/src/client/**/*.{ts,tsx}'],
+        extends: [reactHooks.configs.flat['recommended-latest'], jsxA11y.flatConfigs.recommended],
+        languageOptions: { globals: globals.browser },
+        rules: {
+            'no-restricted-syntax': ['error', ...dashboardDomBans],
+            // TanStack Router's guards throw `redirect()` and `notFound()`, which are not Error objects by design.
+            '@typescript-eslint/only-throw-error': [
+                'error',
+                { allow: [{ from: 'package', package: '@tanstack/router-core', name: ['Redirect', 'NotFoundError'] }] },
+            ],
+        },
+    },
+    {
         files: ['apps/dashboard/src/client/**/*.tsx'],
-        ignores: ['**/*.test.tsx'],
+        ignores: ['**/*.test.tsx', 'apps/dashboard/src/client/testing/**'],
         rules: {
             'no-restricted-syntax': [
                 'error',
+                ...dashboardDomBans,
                 {
                     selector: 'JSXText[value=/\\p{L}/u]',
                     message: 'User-facing text goes through the message catalogues (messages/*.json).',

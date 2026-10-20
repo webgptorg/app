@@ -27,6 +27,7 @@ export default defineConfig(async () => {
                     'src/client/main.tsx',
                     // Test support: fakes, the software authenticator and shared suites, not product code.
                     'src/testing/**',
+                    'src/client/testing/**',
                     // A Durable Object class: runs only in workerd, covered by the workers project.
                     'src/adapters/rate-limit/hourly-rate-limiter-object.ts',
                 ],
@@ -70,6 +71,7 @@ export default defineConfig(async () => {
                         name: 'client',
                         environment: 'jsdom',
                         include: ['src/client/**/*.test.{ts,tsx}'],
+                        setupFiles: ['./src/client/testing/setup.ts'],
                     },
                 },
             ],

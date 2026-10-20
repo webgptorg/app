@@ -1,6 +1,8 @@
 {
-  "$comment": "Gzipped bytes of JavaScript a route loads, its static imports included. The entry covers the shell; a route lists its source file.",
+  "$comment": "Gzipped bytes of JavaScript a route loads, its static imports included. The entry covers the shell; a route lists its source file. D-09 gives src/client/routes/_app/account.tsx 40000: the passkey and session tables bring DataTable (TanStack Table and Virtual), measured 36581.",
   "entry": 160000,
   "routeDefault": 30000,
-  "routes": {}
+  "routes": {
+    "src/client/routes/_app/account.tsx": 40000
+  }
 }
