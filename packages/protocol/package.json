@@ -7,11 +7,18 @@
   "exports": {
     ".": "./src/index.ts"
   },
+  "sideEffects": false,
   "scripts": {
-    "typecheck": "tsc --noEmit -p .",
-    "test": "vitest run --coverage"
+    "typecheck": "tsc --noEmit -p . && tsc --noEmit -p scripts",
+    "test": "vitest run --coverage",
+    "generate-vectors": "node scripts/generate-ed25519-vectors.ts && prettier --write src/ed25519-vectors.json"
+  },
+  "dependencies": {
+    "@noble/curves": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
+    "eslint": "catalog:",
     "fast-check": "4.10.2"
   }
 }
