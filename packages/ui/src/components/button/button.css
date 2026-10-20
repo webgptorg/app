@@ -1,0 +1,15 @@
+:root {
+    --button-radius: var(--radius-control);
+    --button-primary-bg: var(--color-accent);
+    --button-primary-bg-hover: var(--color-accent-hover);
+    --button-primary-text: var(--color-on-accent);
+    --button-secondary-bg: var(--color-raised);
+    --button-secondary-bg-hover: var(--color-hover);
+    --button-secondary-text: var(--color-text);
+    --button-secondary-border: var(--color-border);
+    --button-ghost-bg-hover: var(--color-hover);
+    --button-ghost-text: var(--color-text);
+    --button-danger-bg: var(--color-danger);
+    --button-danger-bg-hover: var(--color-danger-hover);
+    --button-danger-text: var(--color-on-danger);
+}

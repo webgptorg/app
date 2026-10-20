@@ -1,0 +1,5 @@
+@import 'tailwindcss';
+@import '@ptbk/ui';
+
+/* Tailwind only generates classes it sees; the design system's components live in the package. */
+@source '../../node_modules/@ptbk/ui/src';

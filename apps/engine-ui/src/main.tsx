@@ -1,5 +1,5 @@
 import './app/zod-jitless';
-import './styles.css';
+import './styles/app.css';
 
 import { bootstrap } from './app/bootstrap';
 

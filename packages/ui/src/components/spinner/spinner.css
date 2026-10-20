@@ -1,0 +1,10 @@
+:root {
+    --spinner-color: var(--color-accent);
+    --spinner-period: var(--motion-spin);
+}
+
+@keyframes ptbk-spin {
+    to {
+        transform: rotate(1turn);
+    }
+}

@@ -1,0 +1,4 @@
+/* Every component module's tokens (layer 3 of 3, ADR 0015), each defaulting to semantic tokens. */
+@import './button/button.css';
+@import './spinner/spinner.css';
+@import './visually-hidden/visually-hidden.css';
