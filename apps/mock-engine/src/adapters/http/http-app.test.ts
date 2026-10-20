@@ -1,15 +1,30 @@
 import type { TLSSocket } from 'node:tls';
 
-import { ENGINE_UI_CSP } from '@ptbk/engine-api';
+import {
+    ENGINE_API_PREFIX,
+    ENGINE_API_ROUTE_LIST,
+    ENGINE_RESERVED_PATHS,
+    ENGINE_UI_CSP,
+    SIGN_IN_PATH,
+    SIGN_OUT_PATH,
+    STEP_UP_PATH,
+} from '@ptbk/engine-api';
+import { createInMemoryEngineCore } from '@ptbk/engine-api/in-memory';
 import { afterEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
+import { createInTunnelRoutes } from '../../app/start-mock-engine';
+import { NO_FAULTS } from '../../domain/faults/fault-plan';
+import { createSessionStore } from '../../domain/gateway/sessions';
 import type { RateLimiter } from '../../domain/rate-limit/rate-limiter';
 import { isRateLimitRule } from '../../domain/rate-limit/rate-limiter';
 import type { EngineHarness, HarnessResponse } from '../../testing/engine-harness';
 import { HARNESS_ENGINE_ID, HARNESS_HOSTNAME, createEngineHarness } from '../../testing/engine-harness';
+import { createEngineRuntime } from '../../domain/state/engine-runtime';
 import { createFakeClock } from '../../testing/fake-clock';
 import { createMemoryLogger } from '../../testing/memory-logger';
+import { createSeededRandom } from '../../testing/seeded-random';
+import { createControlRoutes, createFaultSettings } from '../control-server';
 import { BASELINE_HEADERS, createHttpApp } from './http-app';
 import type { Route } from './route';
 import { defineHttpRoute, defineWebSocketRoute } from './route';
@@ -50,51 +65,216 @@ async function raw(engine: EngineHarness, text: string): Promise<string> {
     return Buffer.concat(chunks).toString('utf8');
 }
 
-const PUBLIC_ROUTE_ALLOWLIST = [
-    'http /',
-    'http /__spike/',
-    'http /__spike/whoami',
-    'http /__spike/sse',
-    'http /__spike/download',
-    'websocket /__spike/ws',
-    'websocket /__spike/screencast',
+const SPIKE_ROUTES = [
+    'http GET /',
+    'http GET /__spike/',
+    'http GET /__spike/whoami',
+    'http GET /__spike/sse',
+    'http GET /__spike/download',
+    'websocket GET /__spike/ws',
+    'websocket GET /__spike/screencast',
 ] as const;
 
-describe('route table', () => {
-    const routes = createHttpApp({
-        routes: createSpikeRoutes({ engineId: HARNESS_ENGINE_ID, clock: createFakeClock() }),
+/** Session routes that act only on the caller's own credentials, or on nothing, and so declare no permission. */
+const SELF_SCOPED_SESSION_ROUTES = [
+    `${ENGINE_API_PREFIX}/me`,
+    `${ENGINE_API_PREFIX}/me/**`,
+    `${ENGINE_API_PREFIX}/engine`,
+    `POST ${SIGN_OUT_PATH}`,
+    `GET ${STEP_UP_PATH}`,
+    `POST ${STEP_UP_PATH}`,
+] as const;
+
+function selfScoped(route: Route): boolean {
+    return SELF_SCOPED_SESSION_ROUTES.some((entry) => {
+        if (entry.startsWith('/')) {
+            return entry.endsWith('/**') ? route.path.startsWith(entry.slice(0, -2)) : route.path === entry;
+        }
+        return entry === `${route.method} ${route.path}`;
+    });
+}
+
+const key = (route: Route): string => `${route.transport} ${route.method} ${route.path}`;
+
+function inTunnelRoutes(devLogin: boolean): readonly Route[] {
+    const core = createInMemoryEngineCore({ capabilities: [] });
+    const clock = createFakeClock();
+    return createInTunnelRoutes({
+        engineId: HARNESS_ENGINE_ID,
+        clock,
+        core: () => core,
+        sessions: createSessionStore({ engine: () => core.controller, clock, random: createSeededRandom(1) }),
+        devLogin,
+    });
+}
+
+function controlRoutes(): readonly Route[] {
+    const clock = createFakeClock();
+    const runtime = createEngineRuntime({
+        seed: 1,
+        scenario: 'empty',
+        epoch: new Date('2026-10-01T00:00:00Z'),
+        identity: { engineId: HARNESS_ENGINE_ID, hostname: HARNESS_HOSTNAME, mode: 'tunnel', version: '0.1.0' },
+        clock,
+    });
+    return createControlRoutes({
+        runtime,
+        sessions: createSessionStore({ engine: () => runtime.controller(), clock, random: createSeededRandom(1) }),
+        faults: createFaultSettings(NO_FAULTS),
         rateLimiter: { consume: () => ({ kind: 'allowed' }) },
         logger: createMemoryLogger(),
+        now: () => '2026-10-01T00:00:00Z',
+    });
+}
+
+function expectStrictInput(route: Route): void {
+    expect(isRateLimitRule(route.rateLimit), key(route)).toBe(true);
+    expect(route.query.safeParse({ unexpected: '1' }).success, key(route)).toBe(false);
+    if (route.headers !== null) expect(route.headers.safeParse({ unexpected: '1' }).success, key(route)).toBe(false);
+    if (route.params !== null) {
+        expect(route.params.safeParse({ unexpected: '1' }).success, key(route)).toBe(false);
+        for (const name of [...route.path.matchAll(/\{(\w+)\}/g)].map((match) => match[1] ?? '')) {
+            expect(Object.keys(route.params.shape), key(route)).toContain(name);
+        }
+    } else {
+        expect(route.path, key(route)).not.toMatch(/\{/);
+    }
+}
+
+describe.each([
+    ['with dev login', true],
+    ['without dev login', false],
+])('route table %s', (_name, devLogin) => {
+    const routes = createHttpApp({
+        routes: inTunnelRoutes(devLogin),
+        rateLimiter: { consume: () => ({ kind: 'allowed' }) },
+        logger: createMemoryLogger(),
+        sessions: createSessionStore({
+            engine: () => createInMemoryEngineCore().controller,
+            clock: createFakeClock(),
+            random: createSeededRandom(1),
+        }),
     }).routes;
 
+    it('declares an auth mode, a rate limit and strict input on every route', () => {
+        for (const route of routes) {
+            expect(['public', 'session'], key(route)).toContain(route.auth);
+            expectStrictInput(route);
+        }
+    });
+
     it('mounts exactly the allowlisted public routes', () => {
-        expect(routes.map((route) => `${route.transport} ${route.path}`).sort()).toEqual(
-            [...PUBLIC_ROUTE_ALLOWLIST].sort(),
+        const expected = [
+            ...SPIKE_ROUTES,
+            `http GET ${SIGN_IN_PATH}`,
+            ...(devLogin ? [`http POST ${SIGN_IN_PATH}`] : []),
+        ];
+        expect(
+            routes
+                .filter((route) => route.auth === 'public')
+                .map(key)
+                .sort(),
+        ).toEqual([...expected].sort());
+        for (const route of routes.filter((candidate) => candidate.auth === 'public')) {
+            expect(route.permission, key(route)).toBeNull();
+        }
+    });
+
+    it('gives every session route a permission, except the self-scoped allowlist', () => {
+        for (const route of routes.filter((candidate) => candidate.auth === 'session')) {
+            if (selfScoped(route)) expect(route.permission, key(route)).toBeNull();
+            else expect(route.permission, key(route)).not.toBeNull();
+        }
+        const stepUp = routes.filter((route) => route.path === STEP_UP_PATH).map((route) => route.method);
+        expect(stepUp.sort()).toEqual(devLogin ? ['GET', 'POST'] : []);
+    });
+
+    it('serves exactly the engine API route table under the API prefix', () => {
+        const api = routes.filter((route) => route.path.startsWith('/api/'));
+        expect(api.map((route) => [route.method, route.path, route.permission, route.auth])).toEqual(
+            ENGINE_API_ROUTE_LIST.map((route) => [
+                route.method,
+                `${ENGINE_API_PREFIX}${route.path}`,
+                route.permission,
+                'session',
+            ]),
         );
     });
 
-    it.each(routes.map((route) => [`${route.transport} ${route.path}`, route] as const))(
-        '%s declares GET, public auth, no permission, a rate limit and strict input',
-        (_name, route: Route) => {
-            expect(route.method).toBe('GET');
-            expect(route.auth).toBe('public');
+    it('keeps everything else off the reserved paths, except the gateway under /auth/', () => {
+        for (const route of routes) {
+            const reserved = ENGINE_RESERVED_PATHS.find((prefix) => route.path.startsWith(prefix));
+            if (reserved === undefined) continue;
+            expect(['/api/', '/auth/'], key(route)).toContain(reserved);
+        }
+    });
+
+    it('never mounts a control route in the tunnel', () => {
+        const mounted = new Set(routes.map((route) => route.path));
+        expect(controlRoutes().filter((route) => mounted.has(route.path))).toEqual([]);
+        expect(routes.some((route) => route.path.startsWith('/__mock'))).toBe(false);
+    });
+});
+
+describe('control listener route table', () => {
+    it('declares only control routes under /__mock/, each with a rate limit and strict input', () => {
+        const routes = controlRoutes();
+        expect(routes.map(key).sort()).toEqual(
+            [
+                'http DELETE /__mock/faults',
+                'http GET /__mock/members',
+                'http GET /__mock/state',
+                'http POST /__mock/reset',
+                'http POST /__mock/sessions',
+                'http PUT /__mock/faults',
+            ].sort(),
+        );
+        for (const route of routes) {
+            expect(route.auth).toBe('control');
             expect(route.permission).toBeNull();
-            expect(isRateLimitRule(route.rateLimit)).toBe(true);
-            expect(route.query.safeParse({ unexpected: '1' }).success).toBe(false);
-            if (route.headers !== null) expect(route.headers.safeParse({ unexpected: '1' }).success).toBe(false);
-        },
-    );
+            expect(route.path.startsWith('/__mock/')).toBe(true);
+            expectStrictInput(route);
+            if (route.transport === 'http' && route.body !== null) {
+                expect(route.body.schema.safeParse({ unexpected: '1' }).success, key(route)).toBe(false);
+            }
+        }
+    });
+});
+
+describe('mounting', () => {
+    const app = (routes: readonly Route[], withSessions = false) =>
+        createHttpApp({
+            routes,
+            rateLimiter: { consume: () => ({ kind: 'allowed' }) },
+            logger: createMemoryLogger(),
+            ...(withSessions
+                ? {
+                      sessions: createSessionStore({
+                          engine: () => createInMemoryEngineCore().controller,
+                          clock: createFakeClock(),
+                          random: createSeededRandom(1),
+                      }),
+                  }
+                : {}),
+        });
 
     it('refuses to mount the same route twice', () => {
         const [first] = createSpikeRoutes({ engineId: HARNESS_ENGINE_ID, clock: createFakeClock() });
         if (first === undefined) throw new Error('no routes');
-        expect(() =>
-            createHttpApp({
-                routes: [first, first],
-                rateLimiter: { consume: () => ({ kind: 'allowed' }) },
-                logger: createMemoryLogger(),
-            }),
-        ).toThrow('refusing to mount http GET / twice');
+        expect(() => app([first, first])).toThrow('refusing to mount http GET / twice');
+    });
+
+    it('refuses a control route', () => {
+        const [route] = controlRoutes();
+        if (route === undefined) throw new Error('no routes');
+        expect(() => app([route], true)).toThrow(/refusing to mount control route/);
+    });
+
+    it('refuses a session route without a gateway', () => {
+        const route = inTunnelRoutes(false).find((candidate) => candidate.auth === 'session');
+        if (route === undefined) throw new Error('no routes');
+        expect(() => app([route])).toThrow(/without a gateway/);
+        expect(() => app([route], true)).not.toThrow();
     });
 });
 

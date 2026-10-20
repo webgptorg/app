@@ -20,6 +20,10 @@ export interface Faults {
 function sleep(clock: Clock, ms: number, signal: AbortSignal): Promise<void> {
     if (ms <= 0) return Promise.resolve();
     return new Promise((resolve, reject) => {
+        if (signal.aborted) {
+            reject(signal.reason as Error);
+            return;
+        }
         const abort = (): void => {
             cancel();
             reject(signal.reason as Error);

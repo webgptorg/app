@@ -77,6 +77,9 @@ export function admitQueryAndHeaders(
     return { kind: 'ok', query, headers };
 }
 
+/** A route without a body still reads a little, so a stray body is refused as such (400), not as too large. */
+const STRAY_BODY_MAX_BYTES = 1024;
+
 type BodyRead = { readonly kind: 'ok'; readonly bytes: Uint8Array<ArrayBuffer> | null } | Problem;
 
 /** Reads at most `maxBytes`, whatever `Content-Length` claims. */
@@ -187,7 +190,7 @@ export async function runHttpRoute(route: HttpRoute, context: RequestContext): P
     const errors: ValidationError[] = [];
     const params = route.params === null ? null : check('params', route.params, context.params, errors);
     if (errors.length > 0) return problemResponse({ code: 'validation-failed', extras: { errors } });
-    const read = await readBounded(request, route.body?.maxBytes ?? 0);
+    const read = await readBounded(request, route.body?.maxBytes ?? STRAY_BODY_MAX_BYTES);
     if (!('kind' in read)) return problemResponse(read);
     const decoded = await decodeBody(route, request, read.bytes);
     if (!('kind' in decoded)) return problemResponse(decoded);
