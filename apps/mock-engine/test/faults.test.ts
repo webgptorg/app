@@ -46,18 +46,35 @@ async function timeOf<T>(clock: FakeClock, pending: Promise<T>, stepMs = 10): Pr
 describe('fault injection', () => {
     it('delays responses by a latency within the plan bounds', async () => {
         const clock = createFakeClock(Date.now());
-        const { fetch } = start({ latencyMs: { min: 200, max: 400 } }, clock);
-        const elapsed: number[] = [];
+        // Records each delay the server schedules, so the test advances fake time exactly that far, however slow the
+        // machine is.
+        const delays: number[] = [];
+        const recording = {
+            nowMs: () => clock.nowMs(),
+            setTimeout(fn: () => void, ms: number) {
+                if (ms <= 60_000) delays.push(ms);
+                return clock.setTimeout(fn, ms);
+            },
+        };
+        const { fetch } = start({ latencyMs: { min: 200, max: 400 } }, { ...clock, ...recording });
         for (let request = 0; request < 10; request++) {
-            const { value, elapsedMs } = await timeOf(clock, fetch(api('/me')));
-            expect(value.status).toBe(200);
-            elapsed.push(elapsedMs);
+            const before = delays.length;
+            let done = false;
+            const pending = fetch(api('/me')).then((response) => {
+                done = true;
+                return response;
+            });
+            for (let wait = 0; delays.length === before && wait < 10_000; wait++) await tick();
+            const delay = delays.at(-1) ?? 0;
+            expect(delay).toBeGreaterThanOrEqual(200);
+            expect(delay).toBeLessThanOrEqual(400);
+            clock.advance(delay - 1);
+            for (let wait = 0; wait < 20; wait++) await tick();
+            expect(done).toBe(false);
+            clock.advance(1);
+            expect((await pending).status).toBe(200);
         }
-        for (const ms of elapsed) {
-            expect(ms).toBeGreaterThanOrEqual(200);
-            expect(ms).toBeLessThanOrEqual(410);
-        }
-        expect(new Set(elapsed).size).toBeGreaterThan(1);
+        expect(new Set(delays).size).toBeGreaterThan(1);
     });
 
     it('fails requests at the planned rate, reproducibly for the seed', async () => {
