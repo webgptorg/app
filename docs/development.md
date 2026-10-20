@@ -15,15 +15,16 @@ This also points git at the hooks in `.husky/`: `pre-commit` runs ESLint and Pre
 
 ## Commands
 
-| Command                                 | What it does                                                           |
-| --------------------------------------- | ---------------------------------------------------------------------- |
-| `bun run check`                         | Everything CI runs: generate, lint, format, types, tests, plan         |
-| `bun run generate`                      | Generated code (Paraglide, route trees, wrangler types); not committed |
-| `bun run lint`                          | ESLint, type-aware                                                     |
-| `bun run format`                        | Prettier, writes changes                                               |
-| `bun run typecheck`                     | `tsc --noEmit` in every package                                        |
-| `bun run test`                          | Vitest in every package                                                |
-| `bun run --filter @ptbk/relay <script>` | A script in one package                                                |
+| Command                                 | What it does                                                            |
+| --------------------------------------- | ----------------------------------------------------------------------- |
+| `bun run check`                         | Everything CI runs: generate, lint, format, types, tests, plan          |
+| `bun run generate`                      | Generated code (Paraglide, route trees, wrangler types); not committed  |
+| `bun run lint`                          | ESLint, type-aware                                                      |
+| `bun run format`                        | Prettier, writes changes                                                |
+| `bun run typecheck`                     | `tsc --noEmit` in every package                                         |
+| `bun run test`                          | Vitest in every package                                                 |
+| `bun run --filter @ptbk/relay <script>` | A script in one package                                                 |
+| `bun run --filter @ptbk/e2e e2e`        | The browser e2e suite in Docker Compose (see [End to end](#end-to-end)) |
 
 ## Dependencies
 
@@ -38,6 +39,69 @@ Supply-chain rules (spec, Security hardening item 10):
 - Before adding a dependency, check whether Node, Workers or the Web platform already does the job.
 
 Shared dev tooling (TypeScript, ESLint, Vitest) lives in the root `package.json`. Runtime dependencies go in the package that uses them: `bun add <pkg> --cwd apps/relay`.
+
+## End to end
+
+`e2e/` (`@ptbk/e2e`) runs real browsers through the relays to the mock engine. It needs Docker (Engine 25 or later) or OrbStack, with Compose v2.24 or later; nothing else is installed on the host, and `bun run check` never needs Docker (the package's `test` script covers only the harness helpers).
+
+```sh
+bun run --filter @ptbk/e2e e2e                 # build, start, run every test, stop; removes containers and volumes
+bun run --filter @ptbk/e2e e2e --grep SSE      # extra arguments go to `playwright test`
+```
+
+The stack (`e2e/compose.yaml`, one network `10.89.231.0/24`):
+
+| Service             | What it is                                                                                                                                                                                                                                            |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `init`              | One-shot. Runs the mock engine's `identity` and `dev-ca` CLIs: a fresh engine key, a fresh name-constrained dev CA (key 0600), a certificate per relay, and the relays' static registry file. Every run starts from new volumes; nothing is committed |
+| `relay-a`/`relay-b` | `apps/relay` at `.11` and `.12` on port 443, each with only its own key; healthy when `/healthz` answers on its own hostname                                                                                                                          |
+| `mock-engine`       | `apps/mock-engine`, dialling both relays and issuing its leaf from the dev CA; healthy once the engine page answers through every relay                                                                                                               |
+| `dns`               | CoreDNS (`e2e/coredns/Corefile`): `relay-a/b.ptbk.test`, and both relay addresses for every `*.engine.test` name; everything else is refused                                                                                                          |
+| `playwright`        | The official Playwright image, run as `pwuser` with Chromium's sandbox on; its entrypoint adds the dev CA to pwuser's NSS database. Runs the tests in `e2e/tests/`                                                                                    |
+
+`.test` is reserved (RFC 6761): `ptbk.test` stands in for our domain and `engine.test` for the engine domain. The engine key and the dev CA key live in a volume only the mock engine mounts; the browser trusts the dev CA's certificate and sees the engine's own certificate through the relays.
+
+The `playwright` container is still privileged on the Docker host: the `compose` fixture needs the Docker socket to stop, kill and pause services (X-02's failover tests), and access to that socket is root-equivalent. `cli.ts` reads the socket's group from inside Docker (it differs from the host's on macOS) and passes it as `E2E_DOCKER_GID` for `group_add`; without it the service gets `nogroup` and no access. What limits the exposure is that only the Node test process uses the socket: Chromium runs with its sandbox, and its renderers sit in their own namespaces under a seccomp filter, so a renderer bug in a page under test cannot reach it. `tests/harness/sandbox.spec.ts` fails if the browser ever runs as root or with `--no-sandbox`. The sandbox needs user namespaces, which Docker's default seccomp profile refuses, so the service uses Playwright's published profile (`e2e/docker/seccomp_profile.json`, copied unchanged from [microsoft/playwright@606ecd8 `utils/docker/seccomp_profile.json`](https://github.com/microsoft/playwright/blob/606ecd8b34bac100db32561b6278ffd76e5eb3cd/utils/docker/seccomp_profile.json), the v1.64.0 tag), not `SYS_ADMIN`. Refresh it together with the Playwright version.
+
+Tests use the fixtures in `e2e/src/fixtures.ts`: `engineHost`, `engineUrl`, `engineCertSha256` (what a verifying TLS client sees through every relay, required to be identical), `relayHosts`, `peerCertificate(page)` and `peerCertificateSha256(page)` (CDP), `requestLog`, `cspViolations` and `compose` (stop, start, kill, restart, pause, logs and health of a service, through the Docker socket mounted into the `playwright` container). Wait with `expect.poll` and the healthchecks, never with sleeps.
+
+### Debugging and logs
+
+| Command                                         | What it does                                                                             |
+| ----------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `bun run --filter @ptbk/e2e e2e:up`             | Builds and starts the stack, waits until every service is healthy, and leaves it running |
+| `bun run --filter @ptbk/e2e e2e:run [args]`     | Rebuilds only the test image, then runs the tests against the running stack              |
+| `bun run --filter @ptbk/e2e e2e:logs [service]` | Every service's logs, with timestamps                                                    |
+| `bun run --filter @ptbk/e2e e2e:down`           | Stops the stack and removes its containers and volumes                                   |
+
+After changing an app or `init`, run `e2e:up` again; after changing tests, `e2e:run` is enough.
+
+Results land in `e2e/test-results/` (ignored by git): `report/index.html` (open it with `bunx playwright show-report e2e/test-results/report`), traces and screenshots of failed tests in `artifacts/` (`bunx playwright show-trace <trace.zip>`), and, when anything failed, every service's log in `compose.log`. CI uploads the same folder as the `e2e-results` artifact on failure. Logs carry no keys or content, by the relay's and mock engine's own rules.
+
+Each checkout gets its own compose project (`ptbk-e2e-<directory>`, or `E2E_PROJECT`), so worktrees never drive each other's containers. The subnet is fixed, so only one stack runs per Docker host at a time: a second `e2e:up` fails on the overlapping network instead of taking over the first.
+
+### Scenarios
+
+Later tasks add services through overlays, `e2e/compose.<scenario>.yaml`, layered over the base file in order:
+
+```sh
+E2E_OVERLAYS=debug bun run --filter @ptbk/e2e e2e:up
+```
+
+### Debugging from the host
+
+The `debug` overlay publishes relay-a on `127.0.0.1:8443` (`E2E_DEBUG_PORT` to change it). Copy the dev CA out of the stack and point a client at that port:
+
+```sh
+docker compose -p ptbk-e2e-<directory> -f e2e/compose.yaml cp relay-a:/pki/ca-cert.pem /tmp/ptbk-e2e-ca.pem
+docker compose -p ptbk-e2e-<directory> -f e2e/compose.yaml exec relay-a cat /pki/engine.json   # the engine hostname
+curl --cacert /tmp/ptbk-e2e-ca.pem --connect-to ::127.0.0.1:8443 https://<engineId>.engine.test/__spike/whoami
+chromium --user-data-dir="$(mktemp -d)" \
+  --host-resolver-rules="MAP *.engine.test 127.0.0.1:8443, MAP relay-a.ptbk.test 127.0.0.1:8443" \
+  https://<engineId>.engine.test/
+```
+
+Chromium on Linux trusts the CA once it is in your NSS database (`certutil -A -d sql:$HOME/.pki/nssdb -n ptbk-e2e -t C,, -i /tmp/ptbk-e2e-ca.pem`; remove it with `certutil -D -d sql:$HOME/.pki/nssdb -n ptbk-e2e`); on macOS, add it to the login keychain only for the session and delete it afterwards. The CA is name-constrained to `engine.test` and `ptbk.test`, so it cannot vouch for any other site.
 
 ## Parallel work
 
@@ -62,7 +126,7 @@ Workspace packages are referenced as `"@ptbk/protocol": "workspace:*"`, so they 
 
 GitHub Actions in `.github/workflows`:
 
-- `ci.yml`: install, then `bun run check` as one step (generate, lint, format, types, tests, plan), so whatever runs locally runs in CI; `engine-ui-csp`, which runs the built engine UI in Chromium under the engine's CSP (`bun run --filter @ptbk/engine-ui test:csp`); and a zizmor audit of the workflows themselves.
+- `ci.yml`: install, then `bun run check` as one step (generate, lint, format, types, tests, plan), so whatever runs locally runs in CI; `engine-ui-csp`, which runs the built engine UI in Chromium under the engine's CSP (`bun run --filter @ptbk/engine-ui test:csp`); `e2e`, the browser suite in Docker Compose ([End to end](#end-to-end); images are built from scratch every run, and `e2e/test-results/` is uploaded on failure); and a zizmor audit of the workflows themselves.
 - `commits.yml`: commitlint on every commit in a PR and on the PR title.
 - `ui-release.yml`: builds, signs and publishes the engine UI bundle on a `ui-v*` tag push (see [UI releases](#ui-releases)).
 

@@ -139,6 +139,12 @@
         "tsx": "catalog:",
       },
     },
+    "e2e": {
+      "name": "@ptbk/e2e",
+      "devDependencies": {
+        "@playwright/test": "catalog:",
+      },
+    },
     "packages/conformance": {
       "name": "@ptbk/conformance",
     },
@@ -685,6 +691,8 @@
     "@ptbk/conformance": ["@ptbk/conformance@workspace:packages/conformance"],
 
     "@ptbk/dashboard": ["@ptbk/dashboard@workspace:apps/dashboard"],
+
+    "@ptbk/e2e": ["@ptbk/e2e@workspace:e2e"],
 
     "@ptbk/engine-api": ["@ptbk/engine-api@workspace:packages/engine-api"],
 

@@ -1,0 +1,207 @@
+# The base e2e stack: a fresh dev CA and keys (init), two relays, the mock engine dialling both, a resolver for the
+# test domains, and Playwright inside the same network. Scenarios add services through compose.<scenario>.yaml
+# overlays. Addresses are repeated from src/stack.ts; src/stack.test.ts fails if they drift apart.
+#
+# Private keys never share a volume with anything that does not own them: `engine` (engine key and dev CA key) is
+# mounted only by the mock engine, each relay's key only by that relay, and `public` (certificates, the engine's
+# public identity, the registry) is read-only for every consumer.
+
+name: ptbk-e2e
+
+x-build: &build
+  context: ..
+  dockerfile: e2e/docker/stack.Dockerfile
+
+x-probe: &probe
+  interval: 1s
+  timeout: 5s
+  retries: 3
+  start_period: 120s
+  start_interval: 500ms
+
+services:
+  init:
+    build:
+      <<: *build
+      target: init
+    # Root only to hand the fresh volumes to the services' user; generate.ts drops to that user before anything else.
+    user: root
+    volumes:
+      - public:/pki
+      - engine:/engine
+      - relay-a-key:/relay-keys/relay-a.ptbk.test
+      - relay-b-key:/relay-keys/relay-b.ptbk.test
+    network_mode: none
+
+  dns:
+    image: coredns/coredns:1.14.7@sha256:7efd3c635b03efd68c4e8398fc45f0d993d0e9ab016f72c1cefb0fd6d01aa286
+    command: ['-conf', '/etc/coredns/Corefile']
+    volumes:
+      - ./coredns/Corefile:/etc/coredns/Corefile:ro
+    networks:
+      stack:
+        ipv4_address: 10.89.231.53
+
+  relay-a: &relay
+    build:
+      <<: *build
+      target: relay
+    depends_on:
+      init:
+        condition: service_completed_successfully
+      dns:
+        condition: service_started
+    environment: &relay-env
+      RELAY_HOSTNAME: relay-a.ptbk.test
+      RELAY_LISTEN_PORT: '443'
+      RELAY_ENGINE_DOMAIN: engine.test
+      RELAY_TLS_CERT_FILE: /pki/relay-a.ptbk.test.pem
+      RELAY_TLS_KEY_FILE: /relay-key/key.pem
+      RELAY_REGISTRY_KIND: static
+      RELAY_REGISTRY_FILE: /pki/registry.json
+      RELAY_DNS_SERVERS: 10.89.231.53
+    volumes:
+      - public:/pki:ro
+      - relay-a-key:/relay-key:ro
+    dns: [10.89.231.53]
+    # 443 as the non-root node user.
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: '0'
+    healthcheck:
+      <<: *probe
+      test:
+        [
+          'CMD',
+          'node',
+          '/e2e/probe.ts',
+          '--ca',
+          '/pki/ca-cert.pem',
+          '--servername',
+          'relay-a.ptbk.test',
+          '--path',
+          '/healthz',
+          '--address',
+          '127.0.0.1',
+        ]
+    networks:
+      stack:
+        ipv4_address: 10.89.231.11
+
+  relay-b:
+    <<: *relay
+    environment:
+      <<: *relay-env
+      RELAY_HOSTNAME: relay-b.ptbk.test
+      RELAY_TLS_CERT_FILE: /pki/relay-b.ptbk.test.pem
+    volumes:
+      - public:/pki:ro
+      - relay-b-key:/relay-key:ro
+    healthcheck:
+      <<: *probe
+      test:
+        [
+          'CMD',
+          'node',
+          '/e2e/probe.ts',
+          '--ca',
+          '/pki/ca-cert.pem',
+          '--servername',
+          'relay-b.ptbk.test',
+          '--path',
+          '/healthz',
+          '--address',
+          '127.0.0.1',
+        ]
+    networks:
+      stack:
+        ipv4_address: 10.89.231.12
+
+  mock-engine:
+    build:
+      <<: *build
+      target: mock-engine
+    depends_on:
+      init:
+        condition: service_completed_successfully
+      relay-a:
+        condition: service_started
+      relay-b:
+        condition: service_started
+    environment:
+      PTBK_DATA_DIR: /engine
+      PTBK_RELAYS: wss://relay-a.ptbk.test,wss://relay-b.ptbk.test
+      PTBK_ENGINE_DOMAIN: engine.test
+      # The relays' certificates come from the dev CA too.
+      MOCK_EXTRA_CA_FILE: /pki/ca-cert.pem
+      MOCK_DEV_CA_CERT_FILE: /engine/dev-ca/ca-cert.pem
+      MOCK_DEV_CA_KEY_FILE: /engine/dev-ca/ca-key.pem
+      MOCK_DEV_CA_DOMAINS: ptbk.test
+    volumes:
+      - public:/pki:ro
+      - engine:/engine
+    dns: [10.89.231.53]
+    # Healthy once every relay has a ready tunnel and routes the engine hostname to it.
+    healthcheck:
+      <<: *probe
+      test:
+        [
+          'CMD',
+          'node',
+          '/e2e/probe.ts',
+          '--ca',
+          '/pki/ca-cert.pem',
+          '--servername-from',
+          '/pki/engine.json',
+          '--path',
+          '/__spike/whoami',
+          '--address',
+          '10.89.231.11',
+          '--address',
+          '10.89.231.12',
+        ]
+    networks:
+      - stack
+
+  playwright:
+    build:
+      <<: *build
+      target: playwright
+    profiles: [test]
+    depends_on:
+      mock-engine:
+        condition: service_healthy
+    # Not root, and Chromium keeps its own sandbox (playwright.config.ts). The sandbox needs user namespaces, which
+    # Docker's default seccomp profile refuses; Playwright's published profile is an older Docker default plus exactly
+    # that (docker/seccomp_profile.json, vendored unchanged; source in docs/development.md).
+    user: pwuser
+    security_opt:
+      - seccomp=./docker/seccomp_profile.json
+    # The compose fixture stops, kills and reads logs of this project's services through the socket (src/compose.ts).
+    # cli.ts sets the socket's group as Docker sees it; without it, pwuser gets no access.
+    group_add:
+      - ${E2E_DOCKER_GID:-nogroup}
+    environment:
+      CI: ${CI:-}
+    volumes:
+      - public:/pki:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    dns: [10.89.231.53]
+    init: true
+    # Chromium needs more shared memory than Docker's 64 MB default.
+    shm_size: 1gb
+    networks:
+      - stack
+
+networks:
+  stack:
+    ipam:
+      config:
+        - subnet: 10.89.231.0/24
+          # Dynamic addresses stay in the upper half, clear of the fixed ones above.
+          ip_range: 10.89.231.128/25
+
+volumes:
+  public:
+  engine:
+  relay-a-key:
+  relay-b-key:

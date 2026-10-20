@@ -115,6 +115,7 @@ export default tseslint.config(
             'apps/dashboard/test-results/**',
             'apps/engine-ui/playwright-report/**',
             'apps/engine-ui/test-results/**',
+            'e2e/test-results/**',
             // Deliberately broken inputs for the token-boundary test.
             'packages/ui/test/fixtures/**',
         ],
@@ -281,6 +282,11 @@ export default tseslint.config(
         files: ['apps/engine-ui/src/**/*.tsx'],
         ignores: ['**/*.test.tsx', 'apps/engine-ui/src/testing/**'],
         rules: { 'no-restricted-syntax': ['error', ...engineUiDomBans, jsxTextBan] },
+    },
+    {
+        // Playwright requires every fixture to destructure its first argument, even when it uses none.
+        files: ['e2e/**/*.ts'],
+        rules: { 'no-empty-pattern': ['error', { allowObjectPatternsAsParameters: true }] },
     },
     {
         // Frameworks and runtimes require a default export here.

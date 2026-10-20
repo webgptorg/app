@@ -2,7 +2,7 @@
 
 - **Lane:** X · **Module:** `e2e/` (plus root `package.json` workspaces and `.github/workflows/ci.yml`) · **Milestone:** M1
 - **Depends on:** R-04, M-02
-- **Status:** todo
+- **Status:** done (#30)
 - **Spec:** Relay and tunnel, Interfaces (3 tunnel protocol), Build plan (Spike acceptance criteria); ADRs: [0004](../../adr/0004-mock-engine-and-conformance.md)
 
 ## Goal

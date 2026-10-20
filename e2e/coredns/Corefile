@@ -1,0 +1,33 @@
+# The stack's only resolver for test names (compose.yaml points the playwright, relay and mock engine containers here).
+# Addresses are repeated from src/stack.ts; src/stack.test.ts fails if they drift apart.
+
+# Our own domain: one A record per relay.
+ptbk.test:53 {
+    hosts {
+        10.89.231.11 relay-a.ptbk.test
+        10.89.231.12 relay-b.ptbk.test
+        ttl 5
+    }
+    errors
+}
+
+# The engine domain: every name, known engine or not, gets both relays, as production DNS would. The relays decide by
+# SNI, so `unknown.engine.test` resolves and is then refused there. No IPv6, so browsers never try another family.
+engine.test:53 {
+    template IN A {
+        answer "{{ .Name }} 5 IN A 10.89.231.11"
+        answer "{{ .Name }} 5 IN A 10.89.231.12"
+    }
+    template IN AAAA {
+        rcode NOERROR
+    }
+    errors
+}
+
+# Anything else is refused: the stack is hermetic, so a browser test cannot quietly reach the internet.
+.:53 {
+    template ANY ANY {
+        rcode REFUSED
+    }
+    errors
+}
