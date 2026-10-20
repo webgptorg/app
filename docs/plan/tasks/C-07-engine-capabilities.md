@@ -2,7 +2,7 @@
 
 - **Lane:** Contracts · **Module:** `packages/engine-api` · **Milestone:** M2
 - **Depends on:** C-04
-- **Status:** todo
+- **Status:** in progress (feat/c-07-engine-capabilities)
 - **Spec:** Security hardening (preamble, 5, 7), Enterprise-ready engine architecture (API, Authorisation, Audit), Interfaces (draft) 6; ADRs: [0010](../../adr/0010-protocol-design-principles.md), [0016](../../adr/0016-engine-capabilities.md), [0006](../../adr/0006-organizations-and-roles.md)
 
 ## Goal
