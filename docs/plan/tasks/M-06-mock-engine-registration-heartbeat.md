@@ -2,7 +2,7 @@
 
 - **Lane:** Mock engine · **Module:** `apps/mock-engine` · **Milestone:** M3
 - **Depends on:** C-03, M-01
-- **Status:** todo
+- **Status:** in progress (feat/m-06-registration-heartbeat)
 - **Spec:** Interfaces (draft) 1, 4 and 6; What our platform can and cannot do (Heartbeat); Pairing and identity (First setup); Metadata we still see; ADRs: [0004](../../adr/0004-mock-engine-and-conformance.md), [0014](../../adr/0014-cryptography.md)
 
 ## Goal
