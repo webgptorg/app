@@ -15,7 +15,7 @@ engine-ui's feature modules (U-08 to U-12) are built and demoed against this ser
 
 ## Scope
 
-- Controller levers in `@ptbk/engine-api/in-memory`, only those still missing: for example start a scripted run with steps, attach output files and project changes to a run, set a file's scan state, set an integration's status. Each validates with C-07 schemas, appends audit entries and emits activity and events like the existing levers.
+- Controller levers in `@ptbk/engine-api/in-memory`, only those still missing: for example start a scripted run with steps, attach output files and project changes to a run, set a file's scan state, set an integration's status. Each validates with C-07 schemas and emits activity and events like the existing levers (levers write no audit entries).
 - `src/domain/state/seed.ts` and `scenarios.ts` extend the existing scenarios' `InMemorySeed`. The same seed, scenario and epoch still give byte-identical state.
   - `empty`: capabilities advertised, no data.
   - `small-team`: about 200 runs over 14 days across all agents.
