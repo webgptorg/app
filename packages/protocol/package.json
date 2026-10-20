@@ -11,7 +11,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit -p . && tsc --noEmit -p scripts",
     "test": "vitest run --coverage",
-    "generate-vectors": "node scripts/generate-ed25519-vectors.ts && node scripts/generate-tunnel-vectors.ts && prettier --write src/ed25519-vectors.json src/tunnel/vectors.json"
+    "generate-vectors": "node scripts/generate-ed25519-vectors.ts && node scripts/generate-tunnel-vectors.ts && node scripts/generate-release-vectors.ts && prettier --write src/ed25519-vectors.json src/tunnel/vectors.json src/release/vectors.json"
   },
   "dependencies": {
     "@noble/curves": "catalog:",
