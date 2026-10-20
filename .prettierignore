@@ -11,3 +11,5 @@ apps/engine-ui/src/paraglide/
 apps/engine-ui/project.inlang/*
 !apps/engine-ui/project.inlang/settings.json
 !apps/engine-ui/project.inlang/paraglide.config.js
+# Copied byte for byte from Sigstore TUF (X-03); the refresh script compares bytes.
+apps/engine-ui/release/trusted_root.json

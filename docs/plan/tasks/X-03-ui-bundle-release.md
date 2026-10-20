@@ -2,7 +2,7 @@
 
 - **Lane:** X · **Module:** `apps/engine-ui` (release scripts) and `.github/workflows/ui-release.yml` · **Milestone:** M2
 - **Depends on:** U-01, C-06
-- **Status:** todo
+- **Status:** done (#22)
 - **Spec:** Architecture (UI delivery), Interfaces (5 release log entry), Transparency and verifiability (2), Residual risks (2 engine updates, release keys), Security hardening (10); ADRs: [0003](../../adr/0003-ui-as-signed-bundle.md), [0014](../../adr/0014-cryptography.md)
 
 ## Goal
@@ -13,6 +13,8 @@ A tagged commit produces a reproducible `engine-ui.tar.zst` with a manifest, sig
 
 The UI runs with full access to decrypted engine data, so its release path is the real protection against a malicious UI (ADR 0003). The loader checks signature threshold, Rekor inclusion, delay and revocation, then compares every file with the manifest. Reproducibility lets us, or an auditor under NDA, prove the bundle matches the source. A regular release needs both the CI keyless workflow signature (Sigstore provenance) and the human-held release key (hardware key); a `security` release needs both of those and additionally 2 of 3 maintainer keys (provenance + release key + 2 maintainers). The key ceremony and the key holders are the human decision in the plan's "Still needed" table, so production signing waits on it; staging pairs the keyless signature with a staging release key now, so C-06's `verifyRelease` exercises the same two-signature rule.
 
+Decided 2026-10-20 (Seb): C-06 pins the Sigstore build-trigger extension (OID `1.3.6.1.4.1.57264.1.20`) to exactly `push` (`RELEASE_BUILD_TRIGGER`), so a `workflow_dispatch` run can never verify. The workflow therefore has no `workflow_dispatch` trigger; a tag push is the only one. A dry run is a push of the reserved tag `ui-v0.0.0-dryrun.<n>` (`<n>` a positive integer without leading zeros): it builds, signs, adds the staging release-key signature and runs `release:verify` against the staging trust policy, then skips the upload. Its version everywhere (manifest, release entry, the bundle's embedded version) is `0.0.0-dryrun.<n>` instead of the `package.json` version. One trigger, so staging and production verify the same identity, and `0.0.0-dryrun.<n>` sorts below every real version.
+
 ## Scope
 
 - `apps/engine-ui/scripts/` (run with Node 24; new dependencies, all pinned exactly in the workspace catalog: `sigstore@5.0.0` for signing, plus `@sigstore/verify@4.1.2`, `@sigstore/bundle@5.0.0` and `@sigstore/protobuf-specs@0.5.2` for `release:verify`):
@@ -22,8 +24,8 @@ The UI runs with full access to decrypted engine data, so its release path is th
   - `verify-reproducible.ts`: builds twice in two fresh copies of the repo at different paths, with different `TZ`, locale and umask, and compares SHA-256 of both archives; on mismatch prints the first differing file.
 - Manifest: exactly C-06's `UiBundleManifest`, no extra fields: `v` (1), `version` (semver, equals `apps/engine-ui/package.json`), `commit`, `engineApi` (semver range of supported `ENGINE_API_VERSION`, the constant C-04 exports, e.g. `>=1.0.0 <2.0.0`), `entry` (`index.html`), `files` (sorted list of `{ path, sha256, size }`, every file in `dist/` and nothing else), `csp` (the `ENGINE_UI_CSP` string the bundle was tested against; informational only, the loader never uses it).
 - The built bundle embeds its version through a Vite `define` (no timestamps, no commit time in code).
-- `.github/workflows/ui-release.yml`, triggered by tags `ui-v*` and `workflow_dispatch`:
-  1. `build` job: checks the tag matches the package version, runs `check`, `test:csp`, `pack` and `verify-reproducible`, uploads the archive and manifest as a workflow artifact.
+- `.github/workflows/ui-release.yml`, triggered only by pushing a `ui-v*` tag (`ui-v<version>` releases, `ui-v0.0.0-dryrun.<n>` is a dry run):
+  1. `build` job: checks the tag matches the package version (or is a dry-run tag), runs `check`, `test:csp`, `pack` and `verify-reproducible`, uploads the archive and manifest as a workflow artifact.
   2. `sign` job (`permissions: id-token: write, contents: read`): signs the archive keylessly with `sigstore.sign()` (GitHub OIDC identity of this workflow), which records it in Rekor, and writes `engine-ui.tar.zst.sigstore.json`. It then writes C-06's `ReleaseEntry` payload (artifact `engine-ui.tar.zst`, `kind: "ui"`, sha256, version, commit, `gitTag`, `publishedAt`) as exact bytes once, and attests them with `sigstore.attest(payload, RELEASE_PAYLOAD_TYPE, { tsaServerURL })`, which produces a DSSE envelope logged as a Rekor `dsse` entry with an RFC 3161 TSA timestamp (the trusted time C-06's delay needs); that bundle becomes `SignedRelease.provenance`. The payload bytes are never re-serialised after this step.
   3. `publish` job in the `staging` GitHub environment (required reviewer): signs the DSSE PAE of the same payload with the staging release key (an environment secret only this environment can read) and writes the `SignedRelease` (envelope with that signature, `keyid` = C-06's `dsseKeyId`, plus `provenance`), runs `release:verify` against the staging `TrustPolicy` (staging release key plus this workflow's `workflowIdentity`), then uploads `ui/<version>/engine-ui.tar.zst`, `manifest.json`, `engine-ui.tar.zst.sigstore.json` and `release-log/ui-<version>.json` to the staging R2 bucket through the S3 API with `curl --aws-sigv4`, after checking that the version does not exist yet (never overwrite).
 - Workflow rules: GitHub-hosted runners, SHA-pinned actions, default `contents: read`, `persist-credentials: false`, no caches, untrusted values through `env`; zizmor passes.
@@ -47,7 +49,7 @@ The UI runs with full access to decrypted engine data, so its release path is th
 
 - [ ] Unit tests: the tar writer produces byte-identical output for the same input in a different order and readable output for `tar -tvf`; it rejects symlinks and `..`; the manifest builder lists exactly the `dist/` files with correct hashes and rejects a schema-invalid manifest.
 - [ ] `verify-reproducible` passes locally and in the `build` job; a deliberately injected `Date.now()` in the build makes it fail (verified once, noted in the PR).
-- [ ] A `workflow_dispatch` dry run (upload skipped) produces a signed archive and a `SignedRelease` with `provenance` (including a TSA timestamp) and a staging release-key signature that `release:verify` (C-06's `verifyRelease`, staging trust policy) accepts; an entry missing either signature is refused; tampering one byte of the archive, the payload or one manifest hash makes it fail; a trust policy with another `repository` or `workflowPath` makes it fail.
+- [ ] A dry run, a push of the reserved tag `ui-v0.0.0-dryrun.<n>` (upload skipped), produces a signed archive and a `SignedRelease` with `provenance` (including a TSA timestamp) and a staging release-key signature that `release:verify` (C-06's `verifyRelease`, staging trust policy) accepts; an entry missing either signature is refused; tampering one byte of the archive, the payload or one manifest hash makes it fail; a trust policy with another `repository` or `workflowPath` makes it fail.
 - [ ] Publishing an existing version fails without overwriting.
 - [ ] [development.md](../../development.md) documents how to cut a UI release and verify one.
 - [ ] `bun run check` passes.
@@ -59,5 +61,5 @@ The UI runs with full access to decrypted engine data, so its release path is th
 - Hardware release key: Ed25519 PureEdDSA over arbitrary bytes (the PAE) needs e.g. a YubiKey 5.7+ PIV slot via PKCS#11; many tokens only do Ed25519 for SSH or OpenPGP. Rehearse the ceremony (sign a staging PAE with the real token, verify with C-06) before the E-02 freeze.
 - The spec puts the UI artifact into the same release entry as the engine. Until the engine release tooling exists, UI releases get their own entry; agree with the engine team how the engine release references the UI artifact (version and sha256).
 - Version scheme: the spec wants engine and UI versions to match; confirm whether `ui-v<version>` tags follow engine versions or the UI has its own semver with the `engineApi` range doing compatibility.
-- `workflow_dispatch` is allowed as a trigger, so a release could come from a manual run on a tag. Open: also pin Fulcio OID `1.3.6.1.4.1.57264.1.20` (build trigger, e.g. `push`) in C-06's `expectedWorkflowClaims` for production, which would make dispatched runs dry runs only.
+- Decided 2026-10-20 (Seb): the build trigger is pinned to `push` in C-06's `expectedWorkflowClaims`, so the workflow has no `workflow_dispatch` trigger and dry runs are pushes of `ui-v0.0.0-dryrun.<n>` (see Context).
 - e2e (X-04) cannot use GitHub OIDC on pull requests; M-05 needs a test trust root (an ephemeral key generated per run) that exercises the same verification code.

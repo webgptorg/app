@@ -8,7 +8,7 @@ export default defineConfig({
         maxWorkers: 2,
         coverage: {
             provider: 'v8',
-            include: ['src/**/*.{ts,tsx}', 'tooling/**/*.ts'],
+            include: ['src/**/*.{ts,tsx}', 'tooling/**/*.ts', 'scripts/release/**/*.ts'],
             exclude: [
                 '**/*.test.{ts,tsx}',
                 'src/**/*.d.ts',
@@ -41,7 +41,7 @@ export default defineConfig({
                 test: {
                     name: 'node',
                     environment: 'node',
-                    include: ['tooling/**/*.test.ts', 'test/*.test.ts'],
+                    include: ['tooling/**/*.test.ts', 'test/*.test.ts', 'scripts/**/*.test.ts'],
                 },
             },
         ],

@@ -6,5 +6,5 @@
     "types": ["node"],
     "allowImportingTsExtensions": true
   },
-  "include": ["*.config.ts", "tooling", "test"]
+  "include": ["*.config.ts", "tooling", "test", "scripts"]
 }

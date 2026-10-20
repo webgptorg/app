@@ -22,6 +22,9 @@ The bundle runs under `ENGINE_UI_CSP` from `@ptbk/engine-api`, verbatim: no inli
 index.html, vite.config.ts, vitest.config.ts, playwright.config.ts, tsr.config.json
 bundle-budget.json      gzip budgets (entry, per route, CSS); the report goes to reports/, outside dist/
 tooling/                the bundle budget Vite plugin
+scripts/                release tooling run with Node (X-03): pack, verify-reproducible, attest, sign, verify, publish
+scripts/release/        their tested core: tar writer, manifest, archive, Sigstore provenance verifier, R2 upload
+release/                build output (ignored), plus the pinned Sigstore trusted_root.json and the staging trust policy
 messages/en.json, cs.json   Paraglide catalogues (English is the source); src/paraglide/ is generated and not committed
 project.inlang/             Paraglide project: locale strategy custom-storage (localStorage behind try/catch), browser, en
 src/main.tsx            entry: zod-jitless, styles, applyTheme() before the first render, bootstrap
@@ -81,7 +84,16 @@ Code checks permissions (`usePermissions().can()`, `<Can>`, `requirePermission()
 | `bun run --filter @ptbk/engine-ui build`    | `dist/`: `index.html` and hashed assets, exactly what X-03 signs                                                                                                                                |
 | `bun run --filter @ptbk/engine-ui test`     | Build, then Vitest with coverage (jsdom for `src/`, Node for `tooling/` and `test/`)                                                                                                            |
 | `bun run --filter @ptbk/engine-ui test:csp` | Build with the gallery (`VITE_UI_GALLERY=1`), then Playwright against `vite preview` sending the engine CSP (CI job `engine-ui-csp`): every route and `/__gallery` in both themes and languages |
+| `bun run --filter @ptbk/engine-ui pack`     | Release archive and manifest in `release/`; the release scripts are in [development.md](../../docs/development.md#ui-releases)                                                                  |
 
 `test:csp` needs Chromium once: `bunx playwright install chromium` in this directory.
 
-Plan: tasks U-01 to U-07.
+## Releases
+
+`ui-release.yml` builds, signs and publishes the bundle on a `ui-v*` tag ([development.md](../../docs/development.md#ui-releases)). The archive is `engine-ui.tar.zst`: a deterministic ustar of `manifest.json` (C-06's `UiBundleManifest`, listing every file of `dist/` with its SHA-256) followed by `dist/`, compressed with zstd level 19. The bundle's version is the only build-specific value in it (`__PTBK_UI_VERSION__`, on `<html data-ui-version>`).
+
+`release/trust-policy.staging.json` trusts the staging release key (its seed is the `UI_STAGING_RELEASE_KEY` secret of the `staging` environment) and this repository's `ui-release.yml` on a tag push. Its three maintainer keys are placeholders whose private halves were never kept, because C-06's `TrustPolicy` requires three: staging cannot accept a `security` release. The staging key must never appear in a production policy; production keys wait for the key ceremony (I-03).
+
+The Sigstore verifier in `scripts/release/sigstore-provenance-verifier.ts` is the real C-06 `ProvenanceVerifier` adapter on `@sigstore/verify`; M-05 needs the same adapter in the mock engine, and apps cannot import each other.
+
+Plan: tasks U-01 to U-07, X-03.

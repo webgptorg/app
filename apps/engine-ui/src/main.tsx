@@ -12,6 +12,8 @@ const matchMedia = (query: string) => window.matchMedia(query);
 // renders anything, so the first paint is already in the right theme.
 applyTheme(readThemePreference(storage), document.documentElement, matchMedia);
 
+document.documentElement.dataset['uiVersion'] = __PTBK_UI_VERSION__;
+
 const container = document.getElementById('root');
 if (container === null) {
     throw new Error('index.html has no #root element');
