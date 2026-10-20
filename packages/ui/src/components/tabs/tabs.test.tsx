@@ -125,6 +125,12 @@ describe('Tabs', () => {
         expect(document.activeElement).toBe(chat);
         await user.keyboard('{ArrowRight}');
         expect(document.activeElement).toBe(screen.getByRole('tab', { name: 'Runs' }));
+        const followed = vi.fn((event: Event) => {
+            event.preventDefault();
+        });
+        screen.getByRole('tab', { name: 'Runs' }).addEventListener('click', followed);
+        await user.keyboard(' ');
+        expect(followed).toHaveBeenCalledOnce();
         await user.click(screen.getByRole('tab', { name: 'Overview' }));
         expect(onSelect).not.toHaveBeenCalled();
     });

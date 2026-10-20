@@ -8,6 +8,7 @@ import { useEngineApi } from '../../app/engine-api-context';
 import { useStepUpAwareMutation } from '../../app/mutations';
 import { m } from '../../paraglide/messages';
 import { visibilityLabel } from './agent-badges';
+import { writeAgentStatus } from './agent-status-cache';
 import { agentKeys } from './agents-keys';
 
 type AgentPageData = z.output<typeof AgentPage>;
@@ -68,7 +69,7 @@ export function useAgentMutations(options: AgentMutationOptions = {}) {
     const engineApi = useEngineApi();
     const queryClient = useQueryClient();
     const setStatus = (agentId: AgentId, status: AgentRunStatus) => {
-        queryClient.setQueryData(agentKeys.status(agentId), status);
+        writeAgentStatus(queryClient, agentId, status);
     };
 
     const start = useStepUpAwareMutation({

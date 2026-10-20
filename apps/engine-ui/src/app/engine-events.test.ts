@@ -170,10 +170,11 @@ describe('engine events', () => {
         expect(stream).toHaveBeenCalledTimes(2);
         expect(timers.count).toBe(0);
 
+        // A later subscription asks again: the session or the member's permissions may have changed since.
         unsubscribe();
         events.subscribe({ onEvent: () => undefined });
         await flush();
-        expect(stream).toHaveBeenCalledTimes(2);
+        expect(stream).toHaveBeenCalledTimes(3);
     });
 
     it('retries when the connection cannot be opened, and cancels the retry when nobody listens', async () => {

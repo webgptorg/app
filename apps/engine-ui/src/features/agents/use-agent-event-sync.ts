@@ -2,6 +2,7 @@ import type { AgentRunStatus } from '@ptbk/engine-api';
 import { useQueryClient } from '@tanstack/react-query';
 
 import { useEngineEvents } from '../../app/engine-events-context';
+import { writeAgentStatus } from './agent-status-cache';
 import { agentKeys } from './agents-keys';
 
 /**
@@ -15,7 +16,7 @@ export function useAgentEventSync(): void {
         onEvent: (event) => {
             if (event.type === 'agent.status') {
                 const status: AgentRunStatus = { state: event.state, since: event.since };
-                queryClient.setQueryData(agentKeys.status(event.agentId), status);
+                writeAgentStatus(queryClient, event.agentId, status);
             } else if (event.type === 'agent.changed') {
                 void queryClient.invalidateQueries({ queryKey: agentKeys.detail(event.agentId) });
                 void queryClient.invalidateQueries({ queryKey: agentKeys.lists() });

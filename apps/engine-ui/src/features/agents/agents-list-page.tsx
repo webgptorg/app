@@ -242,6 +242,7 @@ export function AgentsListPage() {
                         value={text}
                         placeholder={m.agents_search_placeholder()}
                         autoComplete="off"
+                        maxLength={256}
                         onChange={(event) => {
                             setText(event.target.value);
                         }}
@@ -272,6 +273,8 @@ export function AgentsListPage() {
                     nextCursor: list.data?.nextCursor ?? null,
                 }}
                 onPageChange={(cursor, direction) => {
+                    // A second click before the next page arrives would make the page its own predecessor.
+                    if (cursor === search.cursor) return;
                     if (direction === 'next') {
                         setPreviousCursors((known) => new Map(known).set(cursor, search.cursor ?? FIRST_PAGE));
                     }

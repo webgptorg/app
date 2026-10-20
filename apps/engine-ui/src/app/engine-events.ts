@@ -121,6 +121,8 @@ export function createEngineEvents(deps: EngineEventsDeps): EngineEvents {
     };
 
     const stop = () => {
+        // A refusal holds for this subscription only; the next one asks again (the session may have changed).
+        refused = false;
         controller?.abort();
         controller = undefined;
         if (timer !== undefined) cancel(timer);

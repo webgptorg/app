@@ -50,7 +50,9 @@ export function useAgentActions(options: AgentMutationOptions = {}): AgentAction
         mutations.stop.mutate(target(agent));
     };
     const changeVisibility = (agent: Agent, visibility: AgentVisibility) => {
-        if (visibility === agent.visibility) return;
+        // A second change while one is in flight could be undone by the first one's rollback. The control stays
+        // enabled (disabling it would drop keyboard focus) and simply ignores the change.
+        if (visibility === agent.visibility || mutations.setVisibility.isPending) return;
         if (visibility === 'public') setPending({ kind: 'make-public', agent });
         else mutations.setVisibility.mutate({ ...target(agent), visibility });
     };

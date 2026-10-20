@@ -8,8 +8,14 @@ interface BoundaryState {
     readonly failed: boolean;
 }
 
+interface BoundaryProps {
+    /** Clears failed queries under the card (`QueryErrorResetBoundary`), so a retry fetches again. */
+    readonly onReset: () => void;
+    readonly children: ReactNode;
+}
+
 /** One registered overview card: its failure or its loading stays inside its own frame, never blanking the page. */
-export class OverviewCardBoundary extends Component<{ readonly children: ReactNode }, BoundaryState> {
+export class OverviewCardBoundary extends Component<BoundaryProps, BoundaryState> {
     override state: BoundaryState = { failed: false };
 
     static getDerivedStateFromError(): BoundaryState {
@@ -24,6 +30,7 @@ export class OverviewCardBoundary extends Component<{ readonly children: ReactNo
                         title={m.agent_card_failed_title()}
                         message={m.agent_card_failed_body()}
                         onRetry={() => {
+                            this.props.onReset();
                             this.setState({ failed: false });
                         }}
                     />

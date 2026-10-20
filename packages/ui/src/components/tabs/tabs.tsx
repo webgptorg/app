@@ -48,6 +48,12 @@ export function Tabs({ label, selectedId, onSelect, tabs, activation = 'automati
     const panelId = (id: string) => `${baseId}-panel-${id}`;
 
     const onKeyDown = (event: KeyboardEvent<HTMLElement>, id: string) => {
+        // A button activates on Space natively; a link only on Enter.
+        if (renderTab !== undefined && event.key === ' ') {
+            event.preventDefault();
+            event.currentTarget.click();
+            return;
+        }
         const currentIndex = enabled.findIndex((tab) => tab.id === id);
         const count = enabled.length;
         let next: number;

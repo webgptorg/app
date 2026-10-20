@@ -1,6 +1,7 @@
 import { KNOWN_CAPABILITIES, PERMISSIONS } from '@ptbk/engine-api';
 import type { AgentId, Permission } from '@ptbk/engine-api';
 import { act, screen, waitFor, within } from '@testing-library/react';
+import { useSuspenseQuery } from '@tanstack/react-query';
 import { useSyncExternalStore } from 'react';
 import { describe, expect, it } from 'vitest';
 
@@ -209,6 +210,31 @@ describe('agent overview', () => {
         fail = false;
         await user.click(screen.getByRole('button', { name: 'Try again' }));
         expect(await screen.findByText('Flaky card')).toBeDefined();
+    });
+
+    it('fetches a card’s failed query again on retry', async () => {
+        let calls = 0;
+        function Remote() {
+            const { data } = useSuspenseQuery({
+                queryKey: ['test-card'],
+                queryFn: () => {
+                    calls += 1;
+                    return calls === 1 ? Promise.reject(new Error('down')) : Promise.resolve('Remote card');
+                },
+                retry: false,
+            });
+            return <p>{data}</p>;
+        }
+        const cards = defineFeature({
+            id: 'remote',
+            requires: {},
+            agentOverviewCards: [{ id: 'remote', order: 1, component: Remote }],
+        });
+        const { user } = await renderAgent('/agents/agent-001', { features: [...FEATURES, cards] });
+        expect(await screen.findByText('This card could not be shown')).toBeDefined();
+        await user.click(screen.getByRole('button', { name: 'Try again' }));
+        expect(await screen.findByText('Remote card')).toBeDefined();
+        expect(calls).toBe(2);
     });
 
     it('has no axe violations', async () => {

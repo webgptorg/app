@@ -1,7 +1,7 @@
 import { KNOWN_CAPABILITIES, supports } from '@ptbk/engine-api';
 import type { Agent } from '@ptbk/engine-api';
 import { Card, RelativeTime } from '@ptbk/ui';
-import { useQuery, useSuspenseQuery } from '@tanstack/react-query';
+import { QueryErrorResetBoundary, useQuery, useSuspenseQuery } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
 import { useEngineApi } from '../../app/engine-api-context';
@@ -93,9 +93,13 @@ export function AgentOverview() {
                 </dl>
             </Card>
             {cards.map((card) => (
-                <OverviewCardBoundary key={card.id}>
-                    <card.component agentId={agent.id} />
-                </OverviewCardBoundary>
+                <QueryErrorResetBoundary key={`${agent.id}:${card.id}`}>
+                    {({ reset }) => (
+                        <OverviewCardBoundary onReset={reset}>
+                            <card.component agentId={agent.id} />
+                        </OverviewCardBoundary>
+                    )}
+                </QueryErrorResetBoundary>
             ))}
         </div>
     );
