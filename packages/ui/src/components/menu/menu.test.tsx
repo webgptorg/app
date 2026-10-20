@@ -174,6 +174,22 @@ describe('Menu', () => {
         expect(choose).toHaveBeenCalledOnce();
     });
 
+    it('renders independent toggles as menuitemcheckbox and stays open while they are toggled', async () => {
+        const toggle = vi.fn();
+        const { user } = renderMenu([
+            { kind: 'item', id: 'runs', label: 'Runs', checked: true, checkable: 'checkbox', onSelect: toggle },
+            { kind: 'item', id: 'id', label: 'ID', checked: false, checkable: 'checkbox', onSelect: toggle },
+        ]);
+        const trigger = screen.getByRole('button', { name: 'Actions' });
+        await user.click(trigger);
+        const runs = screen.getByRole('menuitemcheckbox', { name: 'Runs' });
+        expect(runs.getAttribute('aria-checked')).toBe('true');
+        await user.click(runs);
+        await user.click(screen.getByRole('menuitemcheckbox', { name: 'ID' }));
+        expect(toggle).toHaveBeenCalledTimes(2);
+        expect(trigger.getAttribute('aria-expanded')).toBe('true');
+    });
+
     it('follows light dismiss by the browser', async () => {
         const { user } = renderMenu(ITEMS);
         const trigger = screen.getByRole('button', { name: 'Actions' });

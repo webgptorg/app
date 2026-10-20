@@ -17,6 +17,8 @@ export default defineConfig({
                 'src/main.tsx',
                 // Dev server only, never in a test or production build.
                 'src/app/devtools-panels.tsx',
+                // Mounted only in the test:csp build, where Playwright exercises it.
+                'src/features/gallery/**',
             ],
             reporter: ['text-summary', 'text'],
             thresholds: { lines: 90, branches: 90 },

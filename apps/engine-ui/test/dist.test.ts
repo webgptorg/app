@@ -1,4 +1,5 @@
 import { readdir, readFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -36,6 +37,12 @@ const INERT_URLS = new Set([
     'http://example.com',
     'http://fallback.com',
 ]);
+
+/** Rendered only by `@ptbk/ui`'s `Gallery`. */
+const GALLERY_MARKER = 'data-ptbk-gallery';
+
+/** A string only `motion` (motion-dom) contains; a test below proves it is really in it. */
+const MOTION_MARKERS = ['data-layout-id'];
 
 const ABSOLUTE_URL = /\b[a-z][a-z0-9+.-]*:\/\/[^\s"'`()<>\\,;{}$]*/gi;
 const PROTOCOL_RELATIVE_URL = /["'`(]\/\/[a-z0-9-]+(\.[a-z0-9-]+)+/gi;
@@ -97,6 +104,22 @@ describe('dist/', () => {
         }
     });
 
+    it('does not ship the component gallery (only the test:csp build mounts it)', async () => {
+        for (const { path, text } of await emittedFiles()) {
+            expect(text.includes(GALLERY_MARKER), path).toBe(false);
+        }
+    });
+
+    it('keeps `motion` out of the entry chunk', async () => {
+        const report = JSON.parse(
+            await readFile(join(appDir, 'reports', 'bundle-budget.json'), 'utf8'),
+        ) as BudgetLine[];
+        const entry = report.find((line) => line.kind === 'entry');
+        if (entry === undefined) throw new Error('no entry chunk in the budget report');
+        const code = await readFile(join(distDir, entry.name), 'utf8');
+        for (const marker of MOTION_MARKERS) expect(code.includes(marker), marker).toBe(false);
+    });
+
     it('has a bundle budget report outside dist/ that lists every route within budget', async () => {
         const report = JSON.parse(
             await readFile(join(appDir, 'reports', 'bundle-budget.json'), 'utf8'),
@@ -109,6 +132,13 @@ describe('dist/', () => {
 });
 
 describe('the dist scan', () => {
+    it('looks for markers that motion really contains', async () => {
+        const require = createRequire(join(appDir, '..', '..', 'packages', 'ui', 'package.json'));
+        const motionDir = dirname(require.resolve('motion/package.json'));
+        const bundled = await readFile(join(motionDir, 'dist', 'motion.dev.js'), 'utf8');
+        for (const marker of MOTION_MARKERS) expect(bundled.includes(marker), marker).toBe(true);
+    });
+
     it.each([
         ['a data: URL', 'url(data:image/png;base64,AAAA)', DATA_URL],
         ['a bare data: URL', '"data:,hello"', DATA_URL],

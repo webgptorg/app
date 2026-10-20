@@ -19,6 +19,8 @@ export async function routeFakeEngineApi(page: Page): Promise<void> {
         const signal = AbortSignal.timeout(5_000);
         if (route.request().method() === 'GET' && path === '/engine') {
             await fulfil(route, await engineApi.engine.get(signal));
+        } else if (route.request().method() === 'GET' && path === '/me') {
+            await fulfil(route, await engineApi.me.get(signal));
         } else if (route.request().method() === 'GET' && path === '/agents') {
             await fulfil(route, await engineApi.agents.list(Object.fromEntries(url.searchParams), signal));
         } else {

@@ -11,7 +11,7 @@
     "preview": "vite preview --configLoader runner",
     "typecheck": "tsc -b",
     "test": "bun run build && vitest run --coverage",
-    "test:csp": "bun run build && playwright test"
+    "test:csp": "VITE_UI_GALLERY=1 bun run build && playwright test"
   },
   "dependencies": {
     "@ptbk/engine-api": "workspace:*",

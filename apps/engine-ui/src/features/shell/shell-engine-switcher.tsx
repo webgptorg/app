@@ -14,7 +14,7 @@ export function ShellEngineSwitcher({ compact }: { readonly compact: boolean }) 
     const links = dashboardLinks(engine.dashboardUrl);
     return (
         <EngineSwitcher
-            current={{ name: engine.name, engineId: null, hostname: engine.hostname }}
+            current={{ name: engine.name, engineId: engine.engineId, hostname: engine.hostname }}
             engines={[]}
             allEnginesHref={links.allEngines}
             addEngineHref={links.addEngine}

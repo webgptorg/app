@@ -22,8 +22,13 @@ export default defineConfig({
         tanstackRouter(),
         react(),
         tailwindcss(),
-        bundleBudget({ appDir, enforce: process.env['CI'] !== undefined }),
+        // The gallery build is never shipped; budgets hold the production bundle, which `test` builds and checks.
+        bundleBudget({ appDir, enforce: process.env['CI'] !== undefined && process.env['VITE_UI_GALLERY'] !== '1' }),
     ],
+    define: {
+        // A literal, so the minifier drops the gallery route's lazy import entirely unless `test:csp` builds it.
+        'import.meta.env.VITE_UI_GALLERY': JSON.stringify(process.env['VITE_UI_GALLERY'] ?? '0'),
+    },
     build: {
         // An inlined font or SVG becomes a `data:` URL, which `font-src 'self'` refuses.
         assetsInlineLimit: 0,

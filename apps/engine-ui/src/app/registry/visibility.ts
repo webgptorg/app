@@ -1,20 +1,32 @@
+import type { CapabilityRef } from '@ptbk/engine-api';
+
 import type { Can } from '../../features/session/permissions';
 import type { FeatureDefinition, FeatureRequirement } from './feature';
 
 export interface Access {
     readonly can: Can;
+    /** Whether the engine advertises a capability version; unknown capabilities never match. */
+    readonly supports: (capability: CapabilityRef) => boolean;
+}
+
+export type FeatureAccess = 'allowed' | 'unavailable' | 'no-access';
+
+/** Why something cannot be shown, capability first: "not available on this engine" says more than "no access". */
+export function requirementAccess(requires: FeatureRequirement | undefined, access: Access): FeatureAccess {
+    if (requires?.capability !== undefined && !access.supports(requires.capability)) return 'unavailable';
+    if (requires?.permission !== undefined && !access.can(requires.permission)) return 'no-access';
+    return 'allowed';
 }
 
 export function isAllowed(requires: FeatureRequirement | undefined, access: Access): boolean {
-    return requires?.permission === undefined || access.can(requires.permission);
+    return requirementAccess(requires, access) === 'allowed';
 }
 
-/** Why a feature's route cannot be shown, checked in the order the member would want to hear it. */
-export function featureAccess(feature: FeatureDefinition, access: Access): 'allowed' | 'no-access' {
-    return isAllowed(feature.requires, access) ? 'allowed' : 'no-access';
+export function featureAccess(feature: FeatureDefinition, access: Access): FeatureAccess {
+    return requirementAccess(feature.requires, access);
 }
 
-/** The features the member may use, each with only the nested entries their own requirements allow. */
+/** The features the engine and the member allow, each with only the nested entries their own requirements allow. */
 export function visibleFeatures(features: readonly FeatureDefinition[], access: Access): FeatureDefinition[] {
     const allowed = <Entry extends { readonly requires?: FeatureRequirement }>(entries: readonly Entry[]) =>
         entries.filter((entry) => isAllowed(entry.requires, access));

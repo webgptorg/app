@@ -117,6 +117,36 @@ export type { EngineFingerprint } from './components/trust-mark/fingerprint';
 export { TrustMark } from './components/trust-mark/trust-mark';
 export type { TrustMarkProps, TrustMarkSize, TrustMarkState } from './components/trust-mark/trust-mark';
 
+export { columnLabel, DataTable } from './components/data-table/data-table';
+export type {
+    DataTableEmpty,
+    DataTableError,
+    DataTableExpansion,
+    DataTablePage,
+    DataTableProps,
+    DataTableSelection,
+} from './components/data-table/data-table';
+export { createDataTableColumnHelper, dataTableFeatures } from './components/data-table/columns';
+export type {
+    ColumnFilter,
+    ColumnFiltersState,
+    ColumnSort,
+    ColumnVisibilityState,
+    DataTableCellContext,
+    DataTableColumnDef,
+    DataTableColumnFilter,
+    DataTableColumnHelper,
+    DataTableColumnMeta,
+    DataTableFeatures,
+    DataTableFilterOption,
+    DataTableHeaderContext,
+    DataTableRow,
+    RowData,
+    RowSelectionState,
+    SortingState,
+} from './components/data-table/columns';
+export type { DataTableStorage } from './components/data-table/visibility-storage';
+
 export { EngineSwitcher } from './components/engine-switcher/engine-switcher';
 export type {
     CurrentEngine,
@@ -127,3 +157,6 @@ export type {
 
 export { Gallery, GALLERY_ENTRIES } from './gallery';
 export type { GalleryEntry } from './gallery-entry';
+
+/** For apps' jsdom tests: stand-ins for `<dialog>`, the Popover API and `matchMedia`. Tree-shaken from bundles. */
+export { installDomGaps, setMedia } from './testing/dom-gaps';

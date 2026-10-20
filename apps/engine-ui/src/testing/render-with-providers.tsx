@@ -1,6 +1,6 @@
-import type { EngineApiClient, Permission } from '@ptbk/engine-api';
+import type { CapabilityRef, EngineApiClient, Permission } from '@ptbk/engine-api';
 import { THEME_STORAGE_KEY } from '@ptbk/ui';
-import type { ThemePreference } from '@ptbk/ui';
+import type { PreferenceStorage, ThemePreference } from '@ptbk/ui';
 import type { QueryClient } from '@tanstack/react-query';
 import { createMemoryHistory } from '@tanstack/react-router';
 import { render } from '@testing-library/react';
@@ -22,7 +22,6 @@ import type { FakeLocation } from './fake-location';
 import { createFakeMatchMedia } from './fake-match-media';
 import type { FakeMatchMedia } from './fake-match-media';
 import { createMemoryStorage } from './memory-storage';
-import type { MemoryStorage } from './memory-storage';
 import { createTestEngineApi } from './test-engine-api';
 
 export interface RenderWithProvidersOptions {
@@ -35,11 +34,13 @@ export interface RenderWithProvidersOptions {
     /** Stored before rendering, as if chosen on an earlier visit. */
     readonly theme?: ThemePreference;
     /** Pass the `storage` of an earlier render to simulate a reload; defaults to a fresh, empty one. */
-    readonly storage?: MemoryStorage;
+    readonly storage?: PreferenceStorage;
     /** Defaults to a system in light mode. */
     readonly media?: FakeMatchMedia;
     /** The signed-in member's permissions (default: all, as the owner); ignored when `engineApi` is given. */
     readonly permissions?: readonly Permission[];
+    /** What `GET /engine` advertises (default: every known capability); ignored when `engineApi` is given. */
+    readonly capabilities?: readonly CapabilityRef[];
     /** Replaces the registered features, e.g. with capability-gated fixtures. */
     readonly features?: readonly FeatureDefinition[];
     /** The browser's answer to the sign-out request; defaults to 200. */
@@ -53,7 +54,7 @@ export interface RenderedApp extends RenderResult {
     /** Stands in for the full-page navigation to the engine's sign-in page. */
     readonly onUnauthenticated: Mock<() => void>;
     readonly user: UserEvent;
-    readonly storage: MemoryStorage;
+    readonly storage: PreferenceStorage;
     readonly media: FakeMatchMedia;
     /** Records full-page navigations (sign-out, step-up) instead of leaving the test page. */
     readonly location: FakeLocation;
@@ -64,9 +65,12 @@ export interface RenderedApp extends RenderResult {
 export function renderWithProviders(options: RenderWithProvidersOptions = {}): RenderedApp {
     const engineApi =
         options.engineApi ??
-        createTestEngineApi(
-            options.permissions === undefined ? {} : { member: { permissions: options.permissions, role: 'member' } },
-        );
+        createTestEngineApi({
+            ...(options.permissions === undefined
+                ? {}
+                : { member: { permissions: options.permissions, role: 'member' } }),
+            ...(options.capabilities === undefined ? {} : { capabilities: options.capabilities }),
+        });
     const storage = options.storage ?? createMemoryStorage();
     if (options.locale !== undefined) storage.setItem(LOCALE_STORAGE_KEY, options.locale);
     if (options.theme !== undefined) storage.setItem(THEME_STORAGE_KEY, options.theme);

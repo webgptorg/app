@@ -10,6 +10,9 @@
       "default": "./src/index.ts"
     }
   },
+  "sideEffects": [
+    "*.css"
+  ],
   "scripts": {
     "typecheck": "tsc --noEmit -p .",
     "test": "vitest run --coverage"

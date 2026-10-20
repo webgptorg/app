@@ -1,6 +1,6 @@
 {
-  "$comment": "Gzipped bytes. entry: the entry chunk with its static imports; routes: a route file's split chunks with the static imports the entry does not already load; css: all emitted CSS. A task that needs more raises the budget in the same PR and says why.",
-  "entry": 150000,
+  "$comment": "Gzipped bytes. entry: the entry chunk with its static imports; routes: a route file's split chunks with the static imports the entry does not already load; css: all emitted CSS. A task that needs more raises the budget in the same PR and says why. U-02 raised entry from 150000 to 175000: the authenticated shell (sidebar, engine switcher, trust mark with SHA-256, user menu, drawer, step-up dialog, toaster, route states) and the Paraglide runtime with both catalogues render on every route, so they belong in the entry; measured 168130.",
+  "entry": 175000,
   "routeDefault": 50000,
   "css": 30000,
   "routes": {}

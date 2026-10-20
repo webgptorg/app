@@ -1,0 +1,19 @@
+:root {
+    --data-table-bg: var(--color-raised);
+    --data-table-text: var(--color-text);
+    --data-table-muted: var(--color-text-muted);
+    --data-table-border: var(--color-divider);
+    --data-table-divider: var(--color-divider);
+    --data-table-radius: var(--radius-surface);
+    --data-table-header-bg: var(--color-sunken);
+    --data-table-header-text: var(--color-text-muted);
+    --data-table-row-hover: var(--color-hover);
+    --data-table-row-selected: var(--color-selected);
+    --data-table-expanded-bg: var(--color-surface);
+    --data-table-card-bg: var(--color-raised);
+    --data-table-card-selected-border: var(--color-accent);
+    /* Greyed out rather than faded while the next page loads: fading would drop text below 4.5:1. */
+    --data-table-fetching-filter: saturate(0.2);
+    /* A virtualised table scrolls inside itself, so the page keeps its toolbar and pagination in view. */
+    --data-table-max-height: 70vh;
+}

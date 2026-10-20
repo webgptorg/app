@@ -9,7 +9,7 @@ export interface SkeletonProps {
 const SHAPE_CLASSES = {
     text: 'h-4 w-full rounded-small',
     block: 'h-24 w-full rounded-control',
-    circle: 'size-10 rounded-pill',
+    circle: 'size-10 shrink-0 rounded-pill',
 } as const;
 
 /**
@@ -21,7 +21,7 @@ export function Skeleton({ shape = 'text', className }: SkeletonProps) {
         <span
             aria-hidden="true"
             className={cx(
-                'block shrink-0 bg-(--skeleton-bg) motion-safe:animate-[ptbk-skeleton-pulse_var(--skeleton-period)_var(--ease-standard)_infinite]',
+                'block max-w-full bg-(--skeleton-bg) motion-safe:animate-[ptbk-skeleton-pulse_var(--skeleton-period)_var(--ease-standard)_infinite]',
                 SHAPE_CLASSES[shape],
                 className,
             )}

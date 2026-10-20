@@ -1,0 +1,617 @@
+import { act, renderHook, screen, within } from '@testing-library/react';
+import { useState } from 'react';
+import type { ReactElement } from 'react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+import { expectNoAxeViolations } from '../../testing/axe';
+import { NARROW, setMedia } from '../../testing/dom-gaps';
+import { renderUi } from '../../testing/render';
+import { createDataTableColumnHelper } from './columns';
+import { dataTableGallery } from './data-table.gallery';
+import type { DataTableColumnDef } from './columns';
+import { columnLabel, DataTable } from './data-table';
+import type { DataTableProps } from './data-table';
+import type { RowSelectionState } from './columns';
+import { NARROW_QUERY, useNarrow } from './use-narrow';
+import { readColumnVisibility } from './visibility-storage';
+import type { DataTableStorage } from './visibility-storage';
+
+interface Agent {
+    readonly id: string;
+    readonly name: string;
+    readonly status: 'active' | 'paused';
+    readonly runs: number;
+}
+
+const helper = createDataTableColumnHelper<Agent>();
+const COLUMNS: DataTableColumnDef<Agent>[] = helper.columns([
+    helper.accessor('name', {
+        header: 'Name',
+        meta: { priority: 1, filter: { kind: 'text', placeholder: 'Search' } },
+        enableHiding: false,
+    }),
+    helper.accessor('status', {
+        header: 'Status',
+        meta: {
+            priority: 2,
+            filter: {
+                kind: 'select',
+                allLabel: 'All statuses',
+                options: [
+                    { value: 'active', label: 'Active' },
+                    { value: 'paused', label: 'Paused' },
+                ],
+            },
+        },
+        enableSorting: false,
+    }),
+    helper.accessor('runs', { header: () => 'Runs', meta: { label: 'Runs' } }),
+    helper.accessor('id', { header: 'ID', meta: { hideOnCard: true } }),
+]);
+
+// Deliberately not in name order: server-side mode must keep the order the server sent.
+const AGENTS: readonly Agent[] = [
+    { id: 'grace', name: 'Grace', status: 'paused', runs: 3 },
+    { id: 'ada', name: 'Ada', status: 'active', runs: 12 },
+    { id: 'linus', name: 'Linus', status: 'active', runs: 7 },
+];
+
+type Props = Partial<DataTableProps<Agent>>;
+
+function table(props: Props = {}): ReactElement {
+    return (
+        <DataTable<Agent>
+            caption="Agents"
+            columns={COLUMNS}
+            data={AGENTS}
+            getRowId={(row) => row.id}
+            getRowLabel={(row) => row.name}
+            {...props}
+        />
+    );
+}
+
+function bodyRowNames(): string[] {
+    const [, ...rows] = screen.getAllByRole('row');
+    return rows.map((row) => within(row).queryAllByRole('cell')[0]?.textContent ?? '');
+}
+
+function memoryStorage(initial: Record<string, string> = {}): DataTableStorage & { data: Map<string, string> } {
+    const data = new Map(Object.entries(initial));
+    return {
+        data,
+        getItem: (key) => data.get(key) ?? null,
+        setItem: (key, value) => {
+            data.set(key, value);
+        },
+    };
+}
+
+afterEach(() => {
+    vi.restoreAllMocks();
+});
+
+describe('DataTable in server-side mode', () => {
+    it('is a captioned table with sortable headers as buttons inside th[aria-sort]', () => {
+        renderUi(table({ sorting: [{ id: 'runs', desc: true }] }));
+        const grid = screen.getByRole('table', { name: 'Agents' });
+        expect(grid.querySelector('caption')?.className).toBe('sr-only');
+        const name = screen.getByRole('button', { name: 'Sort by Name' });
+        expect(name.closest('th')?.getAttribute('aria-sort')).toBe('none');
+        const runs = screen.getByRole('button', { name: 'Runs, Sorted descending' });
+        expect(runs.closest('th')?.getAttribute('aria-sort')).toBe('descending');
+        expect(screen.queryByRole('button', { name: /Status/ })).toBeNull();
+        expect(screen.getByRole('columnheader', { name: 'Status' }).hasAttribute('aria-sort')).toBe(false);
+    });
+
+    it('emits sorting changes from the keyboard without reordering rows locally', async () => {
+        const onSortingChange = vi.fn();
+        function Harness() {
+            const [sorting, setSorting] = useState<{ id: string; desc: boolean }[]>([]);
+            return table({
+                sorting,
+                onSortingChange: (next) => {
+                    onSortingChange(next);
+                    setSorting(next);
+                },
+            });
+        }
+        const { user } = renderUi(<Harness />);
+        expect(bodyRowNames()).toEqual(['Grace', 'Ada', 'Linus']);
+
+        screen.getByRole('button', { name: 'Sort by Name' }).focus();
+        await user.keyboard('{Enter}');
+        expect(onSortingChange).toHaveBeenLastCalledWith([{ id: 'name', desc: false }]);
+        expect(screen.getByRole('button', { name: 'Name, Sorted ascending' })).toBe(document.activeElement);
+        await user.keyboard(' ');
+        expect(onSortingChange).toHaveBeenLastCalledWith([{ id: 'name', desc: true }]);
+        expect(bodyRowNames()).toEqual(['Grace', 'Ada', 'Linus']);
+    });
+
+    it('emits filter changes from its filter controls without filtering rows locally', async () => {
+        const onColumnFiltersChange = vi.fn();
+        function Harness() {
+            const [filters, setFilters] = useState<{ id: string; value: unknown }[]>([]);
+            return table({
+                columnFilters: filters,
+                onColumnFiltersChange: (next) => {
+                    onColumnFiltersChange(next);
+                    setFilters(next);
+                },
+            });
+        }
+        const { user } = renderUi(<Harness />);
+        await user.type(screen.getByRole('searchbox', { name: 'Name' }), 'a');
+        expect(onColumnFiltersChange).toHaveBeenLastCalledWith([{ id: 'name', value: 'a' }]);
+        await user.selectOptions(screen.getByRole('combobox', { name: 'Status' }), 'paused');
+        expect(onColumnFiltersChange).toHaveBeenLastCalledWith([
+            { id: 'name', value: 'a' },
+            { id: 'status', value: 'paused' },
+        ]);
+        expect(bodyRowNames()).toEqual(['Grace', 'Ada', 'Linus']);
+
+        await user.clear(screen.getByRole('searchbox', { name: 'Name' }));
+        expect(onColumnFiltersChange).toHaveBeenLastCalledWith([{ id: 'status', value: 'paused' }]);
+    });
+
+    it('toggles column visibility from the columns menu, emitting the change and persisting it per device', async () => {
+        const storage = memoryStorage();
+        const onColumnVisibilityChange = vi.fn();
+        const { user, unmount } = renderUi(
+            table({ visibilityStorage: { storage, key: 'agents.columns' }, onColumnVisibilityChange }),
+        );
+        await user.click(screen.getByRole('button', { name: 'Columns' }));
+        const menu = screen.getByRole('menu', { name: 'Columns' });
+        expect(within(menu).queryByRole('menuitemcheckbox', { name: 'Name' })).toBeNull();
+        const runs = within(menu).getByRole('menuitemcheckbox', { name: 'Runs' });
+        expect(runs.getAttribute('aria-checked')).toBe('true');
+        await user.click(runs);
+
+        expect(onColumnVisibilityChange).toHaveBeenLastCalledWith({ runs: false });
+        expect(screen.queryByRole('columnheader', { name: /Runs/ })).toBeNull();
+        expect(readColumnVisibility(storage, 'agents.columns')).toEqual({ runs: false });
+
+        unmount();
+        renderUi(table({ visibilityStorage: { storage, key: 'agents.columns' } }));
+        expect(screen.queryByRole('columnheader', { name: /Runs/ })).toBeNull();
+        expect(screen.getByRole('columnheader', { name: /Name/ })).toBeDefined();
+    });
+
+    it('keeps the last visible hideable column and follows controlled visibility', async () => {
+        const onColumnVisibilityChange = vi.fn();
+        const { user } = renderUi(
+            table({ columnVisibility: { status: false, runs: false }, onColumnVisibilityChange }),
+        );
+        await user.click(screen.getByRole('button', { name: 'Columns' }));
+        const id = screen.getByRole('menuitemcheckbox', { name: 'ID' });
+        expect(id.getAttribute('aria-disabled')).toBe('true');
+        await user.click(screen.getByRole('menuitemcheckbox', { name: 'Status' }));
+        expect(onColumnVisibilityChange).toHaveBeenLastCalledWith({ status: true, runs: false });
+        // Controlled: nothing changes until the owner passes the new state.
+        expect(screen.queryByRole('columnheader', { name: 'Status' })).toBeNull();
+    });
+
+    it('emits row selection changes, selects the page and reports the count', async () => {
+        const onRowSelectionChange = vi.fn();
+        function Harness() {
+            const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
+            return table({
+                selection: {
+                    rowSelection,
+                    onRowSelectionChange: (next) => {
+                        onRowSelectionChange(next);
+                        setRowSelection(next);
+                    },
+                    canSelect: (row) => row.id !== 'linus',
+                },
+            });
+        }
+        const { user } = renderUi(<Harness />);
+        await user.click(screen.getByRole('checkbox', { name: 'Select Ada' }));
+        expect(onRowSelectionChange).toHaveBeenLastCalledWith({ ada: true });
+        expect(screen.getByText('1 selected')).toBeDefined();
+        expect(screen.getByRole('checkbox', { name: 'Select Linus' }).hasAttribute('disabled')).toBe(true);
+        expect(screen.getByRole('row', { name: /Ada/ }).getAttribute('aria-selected')).toBe('true');
+
+        await user.click(screen.getByRole('checkbox', { name: 'Select all on this page' }));
+        expect(onRowSelectionChange).toHaveBeenLastCalledWith({ ada: true, grace: true });
+        expect(screen.getByText('2 selected')).toBeDefined();
+        expect(bodyRowNames()).toEqual(['', '', '']);
+    });
+
+    it('emits expansion changes and renders the expanded detail linked to its button', async () => {
+        const onExpandedChange = vi.fn();
+        function Harness() {
+            const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+            return table({
+                expansion: {
+                    expanded,
+                    onExpandedChange: (next) => {
+                        onExpandedChange(next);
+                        setExpanded(next);
+                    },
+                    renderExpanded: (row) => <p>{`Details of ${row.name}`}</p>,
+                    canExpand: (row) => row.id !== 'grace',
+                },
+            });
+        }
+        const { user } = renderUi(<Harness />);
+        expect(screen.queryByRole('button', { name: 'Expand Grace' })).toBeNull();
+        const expand = screen.getByRole('button', { name: 'Expand Ada' });
+        expect(expand.getAttribute('aria-expanded')).toBe('false');
+        await user.click(expand);
+        expect(onExpandedChange).toHaveBeenLastCalledWith({ ada: true });
+        const collapse = screen.getByRole('button', { name: 'Collapse Ada' });
+        expect(collapse.getAttribute('aria-expanded')).toBe('true');
+        const detail = document.getElementById(collapse.getAttribute('aria-controls') ?? '');
+        expect(detail?.textContent).toBe('Details of Ada');
+        await user.click(collapse);
+        expect(onExpandedChange).toHaveBeenLastCalledWith({});
+        expect(screen.queryByText('Details of Ada')).toBeNull();
+    });
+
+    it('opens row actions as a menu from the keyboard', async () => {
+        const archive = vi.fn<(id: string) => void>();
+        const { user } = renderUi(
+            table({
+                rowActions: (row) =>
+                    row.id === 'linus'
+                        ? []
+                        : [
+                              {
+                                  kind: 'item',
+                                  id: 'archive',
+                                  label: 'Archive',
+                                  onSelect: () => {
+                                      archive(row.id);
+                                  },
+                              },
+                              { kind: 'item', id: 'delete', label: 'Delete', tone: 'danger', onSelect: vi.fn() },
+                          ],
+            }),
+        );
+        expect(screen.queryByRole('button', { name: 'Actions for Linus' })).toBeNull();
+        const trigger = screen.getByRole('button', { name: 'Actions for Ada' });
+        trigger.focus();
+        await user.keyboard('{ArrowDown}');
+        expect(screen.getByRole('menu', { name: 'Actions for Ada' })).toBeDefined();
+        expect(document.activeElement).toBe(screen.getByRole('menuitem', { name: 'Archive' }));
+        await user.keyboard('{Enter}');
+        expect(archive).toHaveBeenCalledWith('ada');
+        expect(document.activeElement).toBe(trigger);
+    });
+
+    it('pages with the cursors it was given', async () => {
+        const onPageChange = vi.fn();
+        const { user, rerender } = renderUi(
+            table({ page: { previousCursor: 'cursor-1', nextCursor: 'cursor-3', total: 120 }, onPageChange }),
+        );
+        expect(screen.getByText('120 items')).toBeDefined();
+        await user.click(screen.getByRole('button', { name: 'Next page' }));
+        expect(onPageChange).toHaveBeenLastCalledWith('cursor-3', 'next');
+        await user.click(screen.getByRole('button', { name: 'Previous page' }));
+        expect(onPageChange).toHaveBeenLastCalledWith('cursor-1', 'previous');
+
+        rerender(table({ page: { previousCursor: null, nextCursor: 'cursor-2' }, onPageChange }));
+        expect(screen.getByRole('button', { name: 'Previous page' }).hasAttribute('disabled')).toBe(true);
+        rerender(table({ page: { previousCursor: null, nextCursor: 'cursor-2' }, onPageChange, fetching: true }));
+        expect(screen.getByRole('button', { name: 'Next page' }).hasAttribute('disabled')).toBe(true);
+    });
+});
+
+describe('DataTable states', () => {
+    it('shows skeleton rows of stable height while loading and marks itself busy', () => {
+        const { container } = renderUi(table({ data: [], loading: true, skeletonRows: 4, rowHeight: 40 }));
+        const busy = container.querySelector('[aria-busy="true"]');
+        expect(busy?.contains(screen.getByRole('table'))).toBe(true);
+        expect(screen.getByRole('status').textContent).toBe('Loading');
+        const [, ...rows] = screen.getAllByRole('row');
+        expect(rows).toHaveLength(4);
+        expect(rows.every((row) => row.style.height === '40px')).toBe(true);
+        expect(rows[0]?.querySelectorAll('td')).toHaveLength(4);
+    });
+
+    it('keeps the current rows visible and dimmed while the next page loads', () => {
+        const { container } = renderUi(table({ fetching: true }));
+        expect(bodyRowNames()).toEqual(['Grace', 'Ada', 'Linus']);
+        expect(container.querySelector('[aria-busy="true"]')).not.toBeNull();
+        expect(screen.getByRole('table').className).toContain('[filter:var(--data-table-fetching-filter)]');
+    });
+
+    it('says when there is nothing yet, or what the app says instead', () => {
+        const { rerender } = renderUi(table({ data: [] }));
+        expect(screen.getByText('Nothing here yet')).toBeDefined();
+        rerender(
+            table({
+                data: [],
+                empty: { title: 'No agents yet', description: 'Create one', action: <a href="/new">{'New'}</a> },
+            }),
+        );
+        expect(screen.getByText('No agents yet')).toBeDefined();
+        expect(screen.getByRole('link', { name: 'New' })).toBeDefined();
+    });
+
+    it('says no results when filters are active and nothing matches', () => {
+        renderUi(table({ data: [], columnFilters: [{ id: 'name', value: 'zz' }] }));
+        expect(screen.getByText('No results match your filters')).toBeDefined();
+        expect(screen.queryByText('Nothing here yet')).toBeNull();
+    });
+
+    it('shows the error state with a retry instead of the rows', async () => {
+        const onRetry = vi.fn();
+        const { user } = renderUi(
+            table({ error: { message: 'The engine did not answer', onRetry, details: 'timeout' } }),
+        );
+        expect(screen.getByRole('alert').textContent).toContain('The engine did not answer');
+        expect(screen.queryByRole('table')).toBeNull();
+        await user.click(screen.getByRole('button', { name: 'Try again' }));
+        expect(onRetry).toHaveBeenCalledOnce();
+    });
+
+    it.each(['light', 'dark'] as const)('has no axe violations with every feature on (%s)', async (theme) => {
+        const { container } = renderUi(
+            table({
+                selection: { rowSelection: { ada: true }, onRowSelectionChange: vi.fn() },
+                expansion: {
+                    expanded: { ada: true },
+                    onExpandedChange: vi.fn(),
+                    renderExpanded: () => <p>{'More'}</p>,
+                },
+                rowActions: () => [{ kind: 'item', id: 'a', label: 'Archive', onSelect: vi.fn() }],
+                page: { previousCursor: null, nextCursor: 'n' },
+                onPageChange: vi.fn(),
+                showCaption: true,
+            }),
+            { theme },
+        );
+        await expectNoAxeViolations(container);
+    });
+});
+
+describe('DataTable virtualisation', () => {
+    const many: Agent[] = Array.from({ length: 10_000 }, (_, index) => ({
+        id: `agent-${String(index)}`,
+        name: `Agent ${String(index)}`,
+        status: index % 2 === 0 ? 'active' : 'paused',
+        runs: index,
+    }));
+
+    function giveLayout(height: number) {
+        vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(height);
+        vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(1024);
+    }
+
+    it('mounts only the visible window of 10,000 rows, with spacers for the rest', async () => {
+        giveLayout(480);
+        const { container } = renderUi(table({ data: many, rowHeight: 48 }));
+        const region = screen.getByRole('region', { name: 'Agents' });
+        expect(region.getAttribute('tabindex')).toBe('0');
+        const rows = container.querySelectorAll('tbody[data-index] > tr');
+        expect(rows.length).toBeGreaterThan(5);
+        expect(rows.length).toBeLessThan(40);
+        expect(rows[0]?.textContent).toContain('Agent 0');
+        const spacer = container.querySelector<HTMLTableCellElement>('tbody[aria-hidden="true"] td');
+        expect(Number.parseInt(spacer?.style.height ?? '0', 10)).toBeGreaterThan(400_000);
+
+        region.scrollTop = 48 * 5000;
+        await act(async () => {
+            region.dispatchEvent(new Event('scroll'));
+            await Promise.resolve();
+        });
+        expect(container.querySelector('tbody[data-index="5000"]')).not.toBeNull();
+        expect(container.querySelectorAll('tbody[data-index] > tr').length).toBeLessThan(40);
+    });
+
+    it('renders every row below the threshold', () => {
+        const { container } = renderUi(table({ data: many.slice(0, 50) }));
+        expect(container.querySelectorAll('tbody > tr')).toHaveLength(50);
+        expect(screen.queryByRole('region')).toBeNull();
+    });
+});
+
+describe('DataTable on narrow screens', () => {
+    it('renders rows as cards from column metadata, keeping selection, expansion and actions', async () => {
+        setMedia(NARROW, true);
+        expect(NARROW_QUERY).toBe(NARROW);
+        const onRowSelectionChange = vi.fn();
+        const { user, container } = renderUi(
+            table({
+                selection: { rowSelection: {}, onRowSelectionChange },
+                expansion: {
+                    expanded: { ada: true },
+                    onExpandedChange: vi.fn(),
+                    renderExpanded: (row) => <p>{`Details of ${row.name}`}</p>,
+                },
+                rowActions: () => [{ kind: 'item', id: 'a', label: 'Archive', onSelect: vi.fn() }],
+            }),
+        );
+        expect(screen.queryByRole('table')).toBeNull();
+        expect(screen.queryByRole('button', { name: 'Columns' })).toBeNull();
+        const list = screen.getByRole('list', { name: 'Agents' });
+        const cards = within(list).getAllByRole('listitem');
+        expect(cards).toHaveLength(3);
+        const ada = cards[1];
+        if (ada === undefined) throw new Error('no card');
+        expect(ada.getAttribute('aria-labelledby')).not.toBeNull();
+        expect(document.getElementById(ada.getAttribute('aria-labelledby') ?? '')?.textContent).toBe('Ada');
+        const terms = within(ada)
+            .getAllByRole('term')
+            .map((term) => term.textContent);
+        expect(terms).toEqual(['Status', 'Runs']);
+        expect(within(ada).getByText('Details of Ada')).toBeDefined();
+        expect(within(ada).getByRole('button', { name: 'Actions for Ada' })).toBeDefined();
+        await user.click(within(ada).getByRole('checkbox', { name: 'Select Ada' }));
+        expect(onRowSelectionChange).toHaveBeenCalledWith({ ada: true });
+        await expectNoAxeViolations(container);
+    });
+
+    it('switches live between table and cards, and shows card skeletons and empty states', () => {
+        const { rerender } = renderUi(table());
+        expect(screen.getByRole('table')).toBeDefined();
+        act(() => {
+            setMedia(NARROW, true);
+        });
+        expect(screen.queryByRole('table')).toBeNull();
+        rerender(table({ data: [], loading: true }));
+        expect(within(screen.getByRole('list', { name: 'Agents' })).getAllByRole('listitem')).toHaveLength(5);
+        rerender(table({ data: [] }));
+        expect(screen.getByText('Nothing here yet')).toBeDefined();
+        rerender(table({ fetching: true, selection: { rowSelection: { ada: true }, onRowSelectionChange: vi.fn() } }));
+        const list = screen.getByRole('list', { name: 'Agents' });
+        expect(list.parentElement?.getAttribute('aria-busy')).toBe('true');
+        expect(list.parentElement?.className).toContain('[filter:var(--data-table-fetching-filter)]');
+        expect(within(list).getByRole('checkbox', { name: 'Select Ada' })).toHaveProperty('checked', true);
+    });
+
+    it('virtualises long card lists too', async () => {
+        setMedia(NARROW, true);
+        vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(600);
+        const many = Array.from({ length: 1000 }, (_, index) => ({
+            id: String(index),
+            name: `Agent ${String(index)}`,
+            status: 'active' as const,
+            runs: index,
+        }));
+        renderUi(table({ data: many, rowHeight: 120 }));
+        const list = screen.getByRole('list', { name: 'Agents' });
+        expect(within(list).getAllByRole('listitem').length).toBeLessThan(30);
+
+        const scroller = list.parentElement;
+        if (scroller === null) throw new Error('no scroll container');
+        scroller.scrollTop = 120 * 500;
+        await act(async () => {
+            scroller.dispatchEvent(new Event('scroll'));
+            await Promise.resolve();
+        });
+        expect(within(list).getByText('Agent 500')).toBeDefined();
+        expect(list.querySelector('li[aria-hidden="true"]')).not.toBeNull();
+    });
+
+    it('titles a card by its row label when no column is shown on cards, and orders unprioritised columns as defined', () => {
+        setMedia(NARROW, true);
+        const { rerender } = renderUi(
+            <DataTable<Agent>
+                caption="Agents"
+                columns={[helper.accessor('id', { header: 'ID', meta: { hideOnCard: true } })]}
+                data={AGENTS}
+                getRowId={(row) => row.id}
+                getRowLabel={(row) => `Agent ${row.name}`}
+            />,
+        );
+        const [first] = within(screen.getByRole('list', { name: 'Agents' })).getAllByRole('listitem');
+        expect(first?.textContent).toBe('Agent Grace');
+        expect(first?.querySelector('dl')).toBeNull();
+
+        rerender(
+            <DataTable<Agent>
+                caption="Agents"
+                columns={[
+                    helper.accessor('status', { header: 'Status' }),
+                    helper.accessor('runs', { header: 'Runs' }),
+                    helper.accessor('name', { header: 'Name', meta: { priority: 0 } }),
+                ]}
+                data={AGENTS}
+                getRowId={(row) => row.id}
+                getRowLabel={(row) => row.name}
+            />,
+        );
+        const [card] = within(screen.getByRole('list', { name: 'Agents' })).getAllByRole('listitem');
+        expect(
+            within(card ?? document.body)
+                .getAllByRole('term')
+                .map((term) => term.textContent),
+        ).toEqual(['Status', 'Runs']);
+    });
+});
+
+describe('DataTable in client-side mode', () => {
+    it('sorts and filters the loaded rows itself', async () => {
+        const { user } = renderUi(table({ mode: 'client' }));
+        await user.click(screen.getByRole('button', { name: 'Sort by Name' }));
+        expect(bodyRowNames()).toEqual(['Ada', 'Grace', 'Linus']);
+        await user.type(screen.getByRole('searchbox', { name: 'Name' }), 'li');
+        expect(bodyRowNames()).toEqual(['Linus']);
+        await user.type(screen.getByRole('searchbox', { name: 'Name' }), 'zz');
+        expect(screen.getByText('No results match your filters')).toBeDefined();
+    });
+});
+
+describe('column helpers', () => {
+    it('label a column by meta, then a string header, then its id', () => {
+        const columns = new Map<string, string>();
+        function Probe() {
+            return (
+                <DataTable<Agent>
+                    caption="Probe"
+                    columns={[
+                        helper.accessor('name', { header: 'Name', meta: { filter: { kind: 'text' } } }),
+                        helper.accessor('runs', { header: () => 'Runs' }),
+                        helper.accessor('status', { header: () => 'Status', meta: { label: 'State' } }),
+                    ]}
+                    data={[]}
+                    getRowId={(row) => row.id}
+                    getRowLabel={(row) => row.name}
+                    rowActions={() => []}
+                    visibilityStorage={{
+                        storage: {
+                            getItem: () => {
+                                throw new DOMException('denied', 'SecurityError');
+                            },
+                            setItem: () => {
+                                throw new DOMException('denied', 'SecurityError');
+                            },
+                        },
+                        key: 'k',
+                    }}
+                />
+            );
+        }
+        renderUi(<Probe />);
+        for (const button of screen.getAllByRole('button', { name: /^Sort by/ })) {
+            columns.set(button.getAttribute('aria-label') ?? '', '');
+        }
+        expect([...columns.keys()]).toEqual(['Sort by Name', 'Sort by runs', 'Sort by State']);
+        expect(typeof columnLabel).toBe('function');
+    });
+
+    it('treat malformed stored visibility as all visible', () => {
+        expect(readColumnVisibility(memoryStorage({ k: 'not json' }), 'k')).toEqual({});
+        expect(readColumnVisibility(memoryStorage({ k: '[1]' }), 'k')).toEqual({});
+        expect(readColumnVisibility(memoryStorage({ k: '{"a":false,"b":"x"}' }), 'k')).toEqual({ a: false });
+        expect(readColumnVisibility(undefined, 'k')).toEqual({});
+    });
+});
+
+describe('useNarrow', () => {
+    it('answers wide where matchMedia is missing', () => {
+        const descriptor = Object.getOwnPropertyDescriptor(window, 'matchMedia');
+        Reflect.deleteProperty(window, 'matchMedia');
+        try {
+            expect(renderHook(() => useNarrow()).result.current).toBe(false);
+        } finally {
+            if (descriptor !== undefined) Object.defineProperty(window, 'matchMedia', descriptor);
+        }
+    });
+});
+
+describe('dataTableGallery', () => {
+    it('renders every state, and its server-side example sorts, filters and pages through callbacks', async () => {
+        vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(480);
+        const { user } = renderUi(dataTableGallery.render() as ReactElement);
+        for (const name of [
+            'Agents (server-side)',
+            'Loading',
+            'Refreshing',
+            'Empty',
+            'No results',
+            '10,000 agents (virtualised, client-side)',
+        ]) {
+            expect(screen.getByRole('table', { name })).toBeDefined();
+        }
+        const server = screen.getByRole('table', { name: 'Agents (server-side)' });
+        await user.click(within(server).getByRole('button', { name: 'Sort by Runs' }));
+        expect(within(server).getByRole('button', { name: /^Runs, Sorted/ })).toBeDefined();
+        await user.click(screen.getAllByRole('button', { name: 'Next page' })[0] as HTMLElement);
+        expect(screen.getAllByText('23 items')).toHaveLength(1);
+    });
+});

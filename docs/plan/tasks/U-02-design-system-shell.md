@@ -2,7 +2,7 @@
 
 - **Lane:** U · **Module:** `packages/ui`, `apps/engine-ui` (two modules, see Context) · **Milestone:** M2
 - **Depends on:** U-01
-- **Status:** in progress (feat/u-02-design-system-shell)
+- **Status:** done (#13)
 - **Spec:** One address for users, Enterprise-ready engine architecture (roles in one policy module), Security hardening (5), Engine security baseline; ADRs: [0003](../../adr/0003-ui-as-signed-bundle.md), [0005](../../adr/0005-modular-architecture.md), [0007](../../adr/0007-frontend-stack.md), [0015](../../adr/0015-ui-architecture-and-design-system.md), [0016](../../adr/0016-engine-capabilities.md); product brief: [docs/design/ui.md](../../design/ui.md)
 
 ## Goal

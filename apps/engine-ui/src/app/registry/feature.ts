@@ -1,4 +1,4 @@
-import type { AgentId, Permission } from '@ptbk/engine-api';
+import type { AgentId, CapabilityRef, Permission } from '@ptbk/engine-api';
 import type { ComponentType } from 'react';
 
 import type { FileRoutesByTo } from '../../routeTree.gen';
@@ -8,6 +8,8 @@ export type RoutePath = keyof FileRoutesByTo;
 
 /** What a feature or one of its entries needs before the shell shows it. */
 export interface FeatureRequirement {
+    /** The engine must advertise exactly this capability version (`GET /engine`, ADR 0016). */
+    readonly capability?: CapabilityRef;
     readonly permission?: Permission;
 }
 

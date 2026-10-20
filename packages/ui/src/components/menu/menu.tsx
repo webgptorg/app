@@ -21,6 +21,11 @@ export interface MenuItemEntry {
      * `aria-checked` and a check mark.
      */
     readonly checked?: boolean;
+    /**
+     * `checkbox` makes a checked item an independent toggle (`menuitemcheckbox`), e.g. a column's visibility; the menu
+     * then stays open so several can be toggled in a row.
+     */
+    readonly checkable?: 'radio' | 'checkbox';
 }
 
 export interface MenuLinkEntry {
@@ -241,7 +246,7 @@ export function Menu({ label, trigger, items, align = 'start' }: MenuProps) {
     const select = (entry: ActionEntry) => {
         if (entry.kind === 'item') {
             if (entry.disabled === true) return;
-            close(true);
+            if (entry.checkable !== 'checkbox') close(true);
             entry.onSelect();
             return;
         }
@@ -340,13 +345,14 @@ export function Menu({ label, trigger, items, align = 'start' }: MenuProps) {
                 </a>
             );
         }
-        const radio = entry.checked !== undefined;
+        const checkable = entry.checked !== undefined;
+        const role = !checkable ? 'menuitem' : entry.checkable === 'checkbox' ? 'menuitemcheckbox' : 'menuitemradio';
         return (
             <button
                 key={entry.id}
                 {...common}
-                role={radio ? 'menuitemradio' : 'menuitem'}
-                aria-checked={radio ? entry.checked : undefined}
+                role={role}
+                aria-checked={checkable ? entry.checked : undefined}
                 type="button"
                 aria-disabled={entry.disabled === true ? true : undefined}
                 className={cx(

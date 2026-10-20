@@ -20,10 +20,13 @@ const json = (body: unknown, status = 200, type = 'application/json') =>
 async function engineResponse(url: URL): Promise<Response> {
     const engineApi = createTestEngineApi();
     const signal = AbortSignal.timeout(1000);
+    const path = url.pathname.slice(ENGINE_API_PREFIX.length);
     const result =
-        url.pathname === `${ENGINE_API_PREFIX}/engine`
+        path === '/engine'
             ? await engineApi.engine.get(signal)
-            : await engineApi.agents.list({ sort: 'name' }, signal);
+            : path === '/me'
+              ? await engineApi.me.get(signal)
+              : await engineApi.agents.list({ sort: 'name' }, signal);
     if (result.kind === 'problem') throw new Error('the in-memory engine refused a seed request');
     return json(result.data);
 }

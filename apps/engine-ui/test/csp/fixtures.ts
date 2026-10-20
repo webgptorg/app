@@ -28,6 +28,8 @@ export interface PageReport {
     readonly axeViolations: readonly string[];
     /** How far the page scrolls sideways at 360 × 740; 0 when it fits. */
     readonly overflowPx: number;
+    /** The same at the desktop viewport (1280 px wide). */
+    readonly wideOverflowPx: number;
     /** Cumulative layout shift after load. */
     readonly layoutShift: number;
 }
@@ -39,6 +41,7 @@ export function expectCleanPage(report: PageReport): void {
     expect.soft(report.foreignRequests, 'requests to other origins').toEqual([]);
     expect.soft(report.axeViolations, 'serious or critical axe violations').toEqual([]);
     expect.soft(report.overflowPx, 'horizontal overflow at 360 px').toBeLessThanOrEqual(0);
+    expect.soft(report.wideOverflowPx, 'horizontal overflow at 1280 px').toBeLessThanOrEqual(0);
     expect.soft(report.layoutShift, 'cumulative layout shift').toBeLessThan(MAX_LAYOUT_SHIFT);
 }
 
@@ -108,6 +111,9 @@ export const test = base.extend<Fixtures>({
                     (violation) =>
                         `${violation.id}: ${violation.nodes.map((node) => node.target.join(' ')).join(', ')}`,
                 );
+            const wideOverflowPx = await page.evaluate(
+                () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+            );
             const overflowPx = await measureOverflow(page);
             return {
                 cspViolations,
@@ -116,6 +122,7 @@ export const test = base.extend<Fixtures>({
                 foreignRequests: [...foreignRequests],
                 axeViolations,
                 overflowPx,
+                wideOverflowPx,
                 layoutShift,
             };
         });

@@ -25,6 +25,7 @@ import { menuGallery } from './components/menu/menu.gallery';
 import { tabsGallery } from './components/tabs/tabs.gallery';
 import { toasterGallery } from './components/toaster/toaster.gallery';
 import { engineSwitcherGallery } from './components/engine-switcher/engine-switcher.gallery';
+import { dataTableGallery } from './components/data-table/data-table.gallery';
 import { buttonGallery } from './components/button/button.gallery';
 import { spinnerGallery } from './components/spinner/spinner.gallery';
 import { trustMarkGallery } from './components/trust-mark/trust-mark.gallery';
@@ -42,6 +43,7 @@ export const GALLERY_ENTRIES: readonly GalleryEntry[] = [
     checkboxGallery,
     codeTextGallery,
     confirmDialogGallery,
+    dataTableGallery,
     copyButtonGallery,
     dialogGallery,
     drawerGallery,
@@ -74,7 +76,7 @@ export const GALLERY_ENTRIES: readonly GalleryEntry[] = [
  */
 export function Gallery() {
     return (
-        <div className="flex flex-col gap-10">
+        <div data-ptbk-gallery="" className="flex flex-col gap-10">
             {GALLERY_ENTRIES.map((entry) => (
                 <section key={entry.id} aria-labelledby={`gallery-${entry.id}`} className="flex flex-col gap-4">
                     <h2 id={`gallery-${entry.id}`} className="text-xl font-semibold">
