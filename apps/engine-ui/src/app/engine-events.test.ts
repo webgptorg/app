@@ -1,5 +1,6 @@
-import { createInMemoryEngine, createProblem } from '@ptbk/engine-api';
+import { createProblem } from '@ptbk/engine-api';
 import type { EngineApiClient, EngineApiResponse, ReadEngineEvent } from '@ptbk/engine-api';
+import { createInMemoryEngine } from '@ptbk/engine-api/in-memory';
 import { describe, expect, it, vi } from 'vitest';
 
 import { createEngineEvents, defaultRetryDelayMs } from './engine-events';

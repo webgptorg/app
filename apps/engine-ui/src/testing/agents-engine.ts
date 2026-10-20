@@ -1,13 +1,6 @@
-import { createInMemoryEngine } from '@ptbk/engine-api';
-import type {
-    AgentRunState,
-    AgentVisibility,
-    CapabilityRef,
-    EngineApiClient,
-    InMemoryEngineController,
-    InMemorySeedAgent,
-    Permission,
-} from '@ptbk/engine-api';
+import type { AgentRunState, AgentVisibility, CapabilityRef, EngineApiClient, Permission } from '@ptbk/engine-api';
+import { createInMemoryEngine } from '@ptbk/engine-api/in-memory';
+import type { InMemoryEngineController, InMemorySeedAgent } from '@ptbk/engine-api/in-memory';
 import { vi } from 'vitest';
 import type { MockInstance } from 'vitest';
 
