@@ -80,6 +80,16 @@ describe('HTTP binding', () => {
         },
     );
 
+    it('refuses a multipart field named __proto__ as an unknown field', async () => {
+        const form = new FormData();
+        form.set('file', new Blob(['hello']), 'hello.txt');
+        form.set('name', 'hello.txt');
+        form.set('purpose', 'upload');
+        form.set('__proto__', 'x');
+        const refused = await problemOf(await handler()(new Request(`${BASE}/files`, { method: 'POST', body: form })));
+        expect(refused).toMatchObject({ status: 400, code: 'validation-failed', errors: [{ path: 'body' }] });
+    });
+
     it('writes empty, binary and SSE answers with their headers', async () => {
         const { transport } = createInMemoryEngineApiTransport();
         const serve = createEngineApiHttpHandler(transport);

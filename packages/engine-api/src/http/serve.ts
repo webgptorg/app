@@ -135,7 +135,7 @@ async function readBody(route: RouteDefinition, request: Request): Promise<BodyR
             } catch {
                 return { kind: 'problem', problem: createProblem('unsupported-media-type') };
             }
-            const value: Record<string, FormDataEntryValue> = {};
+            const value = Object.create(null) as Record<string, FormDataEntryValue>;
             for (const [name, entry] of form) value[name] = entry;
             return { kind: 'ok', value };
         }
