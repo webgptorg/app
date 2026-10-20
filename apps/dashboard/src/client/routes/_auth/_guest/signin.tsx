@@ -12,7 +12,9 @@ export const Route = createFileRoute('/_auth/_guest/signin')({
         const returnTo = safeReturnTo(search['returnTo']);
         return returnTo === undefined ? {} : { returnTo };
     },
+    // Vetted again where it is used: TanStack merges this route's validated search over its parents' raw search, so
+    // a rejected `returnTo` would otherwise still reach the component.
     component: function SignIn() {
-        return <SignInPage returnTo={Route.useSearch().returnTo} />;
+        return <SignInPage returnTo={safeReturnTo(Route.useSearch().returnTo)} />;
     },
 });
