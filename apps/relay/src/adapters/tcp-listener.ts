@@ -47,7 +47,7 @@ export interface BrowserListenerOptions {
     /** R-03's TLS server, for connections to the relay's own hostname. */
     readonly own: Pick<OwnTlsServer, 'acceptSocket'>;
     readonly limits: BrowserListenerLimits;
-    /** ClientHello deadlines and the token buckets. */
+    /** ClientHello deadlines, the token buckets, and accept times; the tunnel endpoint's clock. */
     readonly clock: Clock;
     readonly logger: Logger;
 }
@@ -130,6 +130,7 @@ export function createBrowserListener(options: BrowserListenerOptions): BrowserL
     }
 
     function accept(socket: Socket): void {
+        const acceptedAtMs = clock.nowMs();
         socket.on('error', () => undefined);
         const ip = clientIp(socket.remoteAddress);
         // No address: the socket closed before it was handed over.
@@ -159,20 +160,27 @@ export function createBrowserListener(options: BrowserListenerOptions): BrowserL
                 cancelDeadline();
                 socket.pause();
                 socket.off('data', onData);
-                route(socket, ip, parse, hello.bytes());
+                route(socket, ip, parse, hello.bytes(), acceptedAtMs);
             });
         };
         socket.on('data', onData);
     }
 
-    function route(socket: Socket, ip: string, parse: ClientHelloVerdict, buffered: Uint8Array): void {
+    function route(
+        socket: Socket,
+        ip: string,
+        parse: ClientHelloVerdict,
+        buffered: Uint8Array,
+        acceptedAtMs: number,
+    ): void {
         const decision = routeConnection(parse, { relayHostname: relayId, engineDomain, sessions });
         switch (decision.kind) {
             case 'own':
                 held.delete(socket);
                 // R-03's TLS server reads these bytes back before anything still in the kernel.
                 socket.unshift(buffered);
-                own.acceptSocket(socket);
+                // R-03's handshake deadline counts from TCP accept, so a slow ClientHello spends it too.
+                own.acceptSocket(socket, acceptedAtMs);
                 return;
             case 'reject':
                 refuse(socket, decision.reason);

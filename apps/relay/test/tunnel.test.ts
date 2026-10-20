@@ -1,5 +1,7 @@
 import type { Socket } from 'node:net';
 import { connect } from 'node:net';
+import { Duplex } from 'node:stream';
+import { connect as tlsConnect } from 'node:tls';
 
 import type { Hostname, RelayMessage, TunnelChallenge } from '@ptbk/protocol';
 import {
@@ -219,7 +221,46 @@ describe('tunnel endpoint over real sockets', () => {
         await expectRefused(client, 'timeout', TUNNEL_CLOSE_CODE.AUTH_FAILED);
     });
 
-    it('drops a TCP connection that never completes TLS once the deadline from routing passes', async () => {
+    it('counts the handshake deadline from TCP accept, even when the ClientHello came slowly', async () => {
+        const harness = await start();
+        const engine = await register(harness, 105);
+        const spentMs = 4000;
+        const raw = connect(harness.port, '127.0.0.1');
+        raw.on('error', () => undefined);
+        sockets.push(raw);
+        // Sends the first 20 bytes of the ClientHello at once and holds the rest until released.
+        const held: Buffer[] = [];
+        let holding = true;
+        const slow = new Duplex({
+            read: () => undefined,
+            write(chunk: Buffer, _encoding, callback) {
+                if (holding && held.length === 0 && chunk.length > 20) {
+                    raw.write(chunk.subarray(0, 20));
+                    held.push(chunk.subarray(20));
+                } else if (holding) held.push(chunk);
+                else raw.write(chunk);
+                callback();
+            },
+        });
+        raw.on('data', (chunk: Buffer) => slow.push(chunk));
+        raw.on('close', () => slow.destroy());
+        const client = harness.connect(engine, {
+            createConnection: () => tlsConnect({ socket: slow, servername: RELAY_ID, ca: harness.certificate.cert }),
+        });
+        await vi.waitFor(() => {
+            expect(harness.listener.browser.bufferedBytes()).toBe(20);
+        });
+        harness.clock.advance(spentMs);
+        holding = false;
+        for (const chunk of held.splice(0)) raw.write(chunk);
+        challengeOf(await client.nextMessage());
+        harness.clock.advance(harness.config.tunnel.handshakeTimeoutMs - spentMs - 1);
+        expect(harness.logger.entries.some((entry) => entry.event === 'tunnel.rejected')).toBe(false);
+        harness.clock.advance(1);
+        await expectRefused(client, 'timeout', TUNNEL_CLOSE_CODE.AUTH_FAILED);
+    });
+
+    it('drops a TCP connection that never completes TLS once the deadline from accept passes', async () => {
         const harness = await start();
         const socket = await rawSocket(harness);
         const closed = new Promise((resolve) => socket.once('close', resolve));

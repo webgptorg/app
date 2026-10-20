@@ -58,10 +58,11 @@ export interface TunnelEndpointOptions {
 
 export interface TunnelEndpoint {
     /**
-     * At TCP accept. `null`: drop the socket now. `abandon` runs if the handshake deadline passes before the upgrade;
-     * the caller then destroys the socket.
+     * At TCP accept, or when the listener hands the socket over: `acceptedAtMs` (on this endpoint's clock) is when TCP
+     * accepted it, so time spent before the hand-off counts against the deadline. `null`: drop the socket now.
+     * `abandon` runs if the handshake deadline passes before the upgrade; the caller then destroys the socket.
      */
-    accept(ip: string, abandon: () => void): PendingConnection | null;
+    accept(ip: string, abandon: () => void, acceptedAtMs?: number): PendingConnection | null;
     /** Refuses new connections and closes every tunnel with `SHUTTING_DOWN`, so engines reconnect to a peer at once. */
     shutdown(): void;
 }
@@ -92,7 +93,7 @@ export function createTunnelEndpoint(options: TunnelEndpointOptions): TunnelEndp
     let stopping = false;
 
     return {
-        accept(ip, abandon) {
+        accept(ip, abandon, acceptedAtMs = clock.nowMs()) {
             if (stopping) return null;
             const slot = limiter.admit(ip);
             if (slot === null) return null;
@@ -100,7 +101,10 @@ export function createTunnelEndpoint(options: TunnelEndpointOptions): TunnelEndp
             const admission = slot;
             const state: Live = { phase: { kind: 'tcp' }, abandon, shutDown };
             live.add(state);
-            const cancelDeadline = clock.setTimeout(onDeadline, limits.handshakeTimeoutMs);
+            const cancelDeadline = clock.setTimeout(
+                onDeadline,
+                acceptedAtMs + limits.handshakeTimeoutMs - clock.nowMs(),
+            );
 
             function settle(phase: Phase): void {
                 state.phase = phase;

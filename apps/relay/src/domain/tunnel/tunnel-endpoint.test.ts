@@ -262,6 +262,21 @@ describe('createTunnelEndpoint', () => {
         expect(connection.texts).toEqual([]);
     });
 
+    it('counts the deadline from the accept time the listener recorded, before the hand-off', () => {
+        const acceptedAtMs = deps.clock.nowMs();
+        deps.clock.advance(TIMEOUT_MS - 10);
+        const upgraded = createFakeConnection();
+        endpoint.accept(IP, () => abandoned++, acceptedAtMs)?.attach(upgraded);
+        const late = endpoint.accept(IP, () => abandoned++, acceptedAtMs - TIMEOUT_MS);
+        expect(late).not.toBeNull();
+        deps.clock.advance(9);
+        expect(upgraded.closes).toEqual([]);
+        expect(abandoned).toBe(1);
+        deps.clock.advance(1);
+        expect(upgraded.messages()[1]).toEqual({ v: 1, type: 'reject', reason: 'timeout' });
+        expect(upgraded.closes).toEqual([TUNNEL_CLOSE_CODE.AUTH_FAILED]);
+    });
+
     it('rejects with timeout and AUTH_FAILED when no auth arrives in time', () => {
         const attached = attach();
         deps.clock.advance(TIMEOUT_MS);
