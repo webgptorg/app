@@ -55,9 +55,16 @@ describe('parseRelayConfig', () => {
                 maxStaleMs: 86_400_000,
             },
             dns: { servers: null, timeoutMs: 3000 },
+            tunnel: {
+                handshakeTimeoutMs: 10_000,
+                maxPendingHandshakes: 1000,
+                maxPendingHandshakesPerIp: 10,
+                maxTunnelsPerIp: 50,
+            },
             logLevel: 'info',
         });
         expect(Object.isFrozen(config)).toBe(true);
+        expect(Object.isFrozen(config.tunnel)).toBe(true);
         expect(Object.isFrozen(config.listen)).toBe(true);
         expect(Object.isFrozen(config.tls)).toBe(true);
         expect(Object.isFrozen(config.registry)).toBe(true);
@@ -76,6 +83,10 @@ describe('parseRelayConfig', () => {
             RELAY_REGISTRY_MAX_STALE_S: '3600',
             RELAY_DNS_SERVERS: '1.1.1.1, 2606:4700:4700::1111',
             RELAY_DNS_TIMEOUT_MS: '1000',
+            RELAY_TUNNEL_HANDSHAKE_TIMEOUT_MS: '5000',
+            RELAY_MAX_PENDING_HANDSHAKES: '200',
+            RELAY_MAX_PENDING_HANDSHAKES_PER_IP: '4',
+            RELAY_MAX_TUNNELS_PER_IP: '8',
             LOG_LEVEL: 'warn',
         });
         expect(config.relayId).toBe('relay-a.ptbk.test');
@@ -84,7 +95,37 @@ describe('parseRelayConfig', () => {
         expect(config.registry).toMatchObject({ timeoutMs: 500, ttlMs: 60_000, maxStaleMs: 3_600_000 });
         expect(config.dns).toEqual({ servers: ['1.1.1.1', '2606:4700:4700::1111'], timeoutMs: 1000 });
         expect(Object.isFrozen(config.dns.servers)).toBe(true);
+        expect(config.tunnel).toEqual({
+            handshakeTimeoutMs: 5000,
+            maxPendingHandshakes: 200,
+            maxPendingHandshakesPerIp: 4,
+            maxTunnelsPerIp: 8,
+        });
         expect(config.logLevel).toBe('warn');
+    });
+
+    it('has no setting that could hold an engine key or certificate', () => {
+        // The relay holds public keys only (AGENTS.md rule 1): its only key is its own TLS key.
+        const config = parseRelayConfig(staticEnv);
+        const paths: string[] = [];
+        const walk = (value: unknown, path: string): void => {
+            if (typeof value !== 'object' || value === null) return;
+            for (const [key, child] of Object.entries(value)) {
+                paths.push(`${path}${key}`);
+                walk(child, `${path}${key}.`);
+            }
+        };
+        walk(config, '');
+        expect(paths.filter((path) => /key|cert|secret|private|engine/i.test(path))).toEqual([
+            'engineDomain',
+            'tls.certFile',
+            'tls.keyFile',
+        ]);
+        for (const name of ['RELAY_ENGINE_KEY_FILE', 'RELAY_ENGINE_CERT_FILE', 'RELAY_ENGINE_PRIVATE_KEY']) {
+            expect(configError({ ...staticEnv, [name]: '/etc/engine/key.pem' }).problems).toEqual([
+                `${name}: is not a setting for this RELAY_REGISTRY_KIND`,
+            ]);
+        }
     });
 
     it('allows the stale window to equal the TTL and reach the 24-hour ceiling', () => {
@@ -231,6 +272,26 @@ describe('parseRelayConfig', () => {
             'a zero timeout',
             { ...staticEnv, RELAY_REGISTRY_TIMEOUT_MS: '0' },
             'RELAY_REGISTRY_TIMEOUT_MS: must be an integer from 1 to 60000',
+        ],
+        [
+            'a zero handshake timeout',
+            { ...staticEnv, RELAY_TUNNEL_HANDSHAKE_TIMEOUT_MS: '0' },
+            'RELAY_TUNNEL_HANDSHAKE_TIMEOUT_MS: must be an integer from 1 to 60000',
+        ],
+        [
+            'a zero pending-handshake limit',
+            { ...staticEnv, RELAY_MAX_PENDING_HANDSHAKES: '0' },
+            'RELAY_MAX_PENDING_HANDSHAKES: must be an integer from 1 to 1000000',
+        ],
+        [
+            'a non-numeric per-IP pending-handshake limit',
+            { ...staticEnv, RELAY_MAX_PENDING_HANDSHAKES_PER_IP: 'ten' },
+            'RELAY_MAX_PENDING_HANDSHAKES_PER_IP: must be an integer from 1 to 1000000',
+        ],
+        [
+            'a per-IP tunnel limit above the maximum',
+            { ...staticEnv, RELAY_MAX_TUNNELS_PER_IP: '1000001' },
+            'RELAY_MAX_TUNNELS_PER_IP: must be an integer from 1 to 1000000',
         ],
         ['an unknown LOG_LEVEL', { ...staticEnv, LOG_LEVEL: 'debug' }, 'LOG_LEVEL: must be one of info, warn, error'],
         [

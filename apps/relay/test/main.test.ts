@@ -4,7 +4,12 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { TUNNEL_CLOSE_CODE } from '@ptbk/protocol';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+
+import { connectEngine } from '../src/testing/engine-client';
+import { createTestEngine } from '../src/testing/engines';
+import { RELAY_ID, relayCertificate } from '../src/testing/relay-harness';
 
 // The production bundle, run from a directory with no node_modules (the `test` script builds it first).
 const DIST = join(dirname(fileURLToPath(import.meta.url)), '..', 'dist');
@@ -59,8 +64,11 @@ describe('dist/main.mjs', () => {
         dir = await mkdtemp(join(tmpdir(), 'relay-dist-'));
         await copyFile(join(DIST, 'main.mjs'), join(dir, 'main.mjs'));
         await writeFile(join(dir, 'registry.json'), JSON.stringify({ v: 1, engines: [] }));
+        await writeFile(join(dir, 'cert.pem'), relayCertificate().cert);
+        await writeFile(join(dir, 'key.pem'), relayCertificate().key);
         env = {
-            RELAY_HOSTNAME: 'relay-a.ptbk.test',
+            RELAY_HOSTNAME: RELAY_ID,
+            RELAY_LISTEN_HOST: '127.0.0.1',
             RELAY_LISTEN_PORT: '0',
             RELAY_ENGINE_DOMAIN: 'engine.test',
             RELAY_TLS_CERT_FILE: join(dir, 'cert.pem'),
@@ -84,6 +92,48 @@ describe('dist/main.mjs', () => {
             'relay.stopping',
             'relay.stopped',
         ]);
+    });
+
+    it('closes tunnels with SHUTTING_DOWN on SIGTERM, then exits', async () => {
+        const engine = await createTestEngine(110);
+        await writeFile(
+            join(dir, 'registry.json'),
+            JSON.stringify({ v: 1, engines: [{ engineId: engine.engineId, ...engine.entry }] }),
+        );
+        const relay = run(dir, env);
+        await relay.waitFor('relay.started');
+        const started = relay.lines().find((line) => line['event'] === 'relay.started');
+        const client = connectEngine({
+            port: Number(started?.['port']),
+            relayId: RELAY_ID,
+            ca: relayCertificate().cert,
+            signer: engine.signer,
+        });
+        const challenge = await client.nextMessage();
+        if (challenge.type !== 'challenge') throw new Error('expected a challenge');
+        await client.authenticate(challenge);
+        expect(await client.nextMessage()).toMatchObject({ type: 'ready' });
+        relay.kill('SIGTERM');
+        expect((await client.closed).code).toBe(TUNNEL_CLOSE_CODE.SHUTTING_DOWN);
+        await expect(relay.exited).resolves.toBe(0);
+        expect(relay.lines().map((line) => line['event'])).toEqual([
+            'registry.loaded',
+            'relay.started',
+            'tunnel.connected',
+            'relay.stopping',
+            'tunnel.disconnected',
+            'relay.stopped',
+        ]);
+    });
+
+    it('exits with 1 when the relay certificate cannot be read', async () => {
+        const relay = run(dir, { ...env, RELAY_TLS_CERT_FILE: join(dir, 'missing.pem') });
+        await expect(relay.exited).resolves.toBe(1);
+        expect(relay.lines().at(-1)).toMatchObject({
+            event: 'relay.start-failed',
+            problem:
+                'RELAY_TLS_CERT_FILE and RELAY_TLS_KEY_FILE must be a readable PEM certificate and its private key',
+        });
     });
 
     it('exits cleanly on SIGINT', async () => {

@@ -1,5 +1,5 @@
 import type { Hostname, RelayId } from '@ptbk/protocol';
-import { Hostname as HostnameSchema, RelayId as RelayIdSchema } from '@ptbk/protocol';
+import { AUTH_TIMEOUT_MS, Hostname as HostnameSchema, RelayId as RelayIdSchema } from '@ptbk/protocol';
 import { z } from 'zod';
 
 import type { LogLevel } from '../domain/logger';
@@ -10,6 +10,7 @@ export const MAX_REGISTRY_STALE_S = 86_400;
 const MAX_DNS_SERVERS = 8;
 const MAX_PATH_LENGTH = 4096;
 const MAX_TIMEOUT_MS = 60_000;
+const MAX_CONNECTION_LIMIT = 1_000_000;
 
 /** A secret that never shows up in `JSON.stringify`, `String()` or `util.inspect`. */
 export interface Secret {
@@ -87,6 +88,10 @@ const common = {
         `must be a comma-separated list of 1 to ${String(MAX_DNS_SERVERS)} IP addresses`,
     ).optional(),
     RELAY_DNS_TIMEOUT_MS: integer(1, MAX_TIMEOUT_MS).default(3000),
+    RELAY_TUNNEL_HANDSHAKE_TIMEOUT_MS: integer(1, MAX_TIMEOUT_MS).default(AUTH_TIMEOUT_MS),
+    RELAY_MAX_PENDING_HANDSHAKES: integer(1, MAX_CONNECTION_LIMIT).default(1000),
+    RELAY_MAX_PENDING_HANDSHAKES_PER_IP: integer(1, MAX_CONNECTION_LIMIT).default(10),
+    RELAY_MAX_TUNNELS_PER_IP: integer(1, MAX_CONNECTION_LIMIT).default(50),
     LOG_LEVEL: value(z.enum(LOG_LEVELS), `must be one of ${LOG_LEVELS.join(', ')}`).default('info'),
 };
 
@@ -142,6 +147,14 @@ export interface RelayConfig {
     };
     /** `servers: null` uses the system resolvers. */
     readonly dns: { readonly servers: readonly string[] | null; readonly timeoutMs: number };
+    readonly tunnel: {
+        /** From TCP accept to `ready`. */
+        readonly handshakeTimeoutMs: number;
+        /** Connections between TCP accept and `ready`, relay-wide and per client IP. */
+        readonly maxPendingHandshakes: number;
+        readonly maxPendingHandshakesPerIp: number;
+        readonly maxTunnelsPerIp: number;
+    };
     readonly logLevel: LogLevel;
 }
 
@@ -199,6 +212,12 @@ export function parseRelayConfig(env: Readonly<Record<string, string | undefined
         dns: Object.freeze({
             servers: parsed.RELAY_DNS_SERVERS === undefined ? null : Object.freeze(parsed.RELAY_DNS_SERVERS),
             timeoutMs: parsed.RELAY_DNS_TIMEOUT_MS,
+        }),
+        tunnel: Object.freeze({
+            handshakeTimeoutMs: parsed.RELAY_TUNNEL_HANDSHAKE_TIMEOUT_MS,
+            maxPendingHandshakes: parsed.RELAY_MAX_PENDING_HANDSHAKES,
+            maxPendingHandshakesPerIp: parsed.RELAY_MAX_PENDING_HANDSHAKES_PER_IP,
+            maxTunnelsPerIp: parsed.RELAY_MAX_TUNNELS_PER_IP,
         }),
         logLevel: parsed.LOG_LEVEL,
     });

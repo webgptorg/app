@@ -1,9 +1,10 @@
 import { createJsonLogger } from './adapters/json-logger';
+import { createNodeRandom } from './adapters/node-random';
 import { StaticRegistryError } from './adapters/static-file-registry';
 import { systemClock } from './adapters/system-clock';
 import { ConfigError, parseRelayConfig } from './app/config';
 import type { Relay } from './app/start-relay';
-import { UnsupportedRegistryError, startRelay } from './app/start-relay';
+import { RelayTlsError, UnsupportedRegistryError, startRelay } from './app/start-relay';
 import type { Logger } from './domain/logger';
 
 const SHUTDOWN_TIMEOUT_MS = 10_000;
@@ -13,7 +14,8 @@ function problemOf(error: unknown): string {
     if (
         error instanceof ConfigError ||
         error instanceof StaticRegistryError ||
-        error instanceof UnsupportedRegistryError
+        error instanceof UnsupportedRegistryError ||
+        error instanceof RelayTlsError
     ) {
         return error.message;
     }
@@ -30,7 +32,15 @@ async function start(): Promise<Started | null> {
     try {
         const config = parseRelayConfig(process.env);
         logger = createJsonLogger({ level: config.logLevel, clock: systemClock });
-        return { relay: await startRelay(config, { logger, clock: systemClock }), logger };
+        return {
+            relay: await startRelay(config, {
+                logger,
+                clock: systemClock,
+                livenessClock: systemClock,
+                random: createNodeRandom(),
+            }),
+            logger,
+        };
     } catch (error) {
         logger.error('relay.start-failed', { problem: problemOf(error) });
         return null;
