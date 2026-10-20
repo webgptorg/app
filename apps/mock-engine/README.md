@@ -104,6 +104,8 @@ Logs are JSON lines with relay URLs, states, close codes, attempt numbers and ce
 - `bun run --filter @ptbk/mock-engine dev`: run from source with `tsx watch`.
 - `bun run --filter @ptbk/mock-engine build` then `start`: one bundled file, `dist/main.mjs`, for Node 24.
 - `bun run --filter @ptbk/mock-engine identity`: prints `{ engineId, enginePublicKey, hostname }` as JSON, creating the identity if missing (X-01 writes the relay's static registry from it). Needs `PTBK_DATA_DIR` and `PTBK_ENGINE_DOMAIN`.
+- `bun run --filter @ptbk/mock-engine dev-ca`: creates the dev CA in `PTBK_DATA_DIR/dev-ca/` exactly as startup would (or reuses it) and prints its file paths and permitted domains as JSON, so tools can trust it before the engine runs (X-01). Reads `PTBK_DATA_DIR`, `PTBK_ENGINE_DOMAIN` and `MOCK_DEV_CA_DOMAINS`.
+- `bun run --filter @ptbk/mock-engine dev-ca issue <cert-file> <key-file> <hostname>...`: also issues a 7-day leaf from that CA for another dev service, such as X-01's relays (key 0600). Only names under `MOCK_DEV_CA_DOMAINS` are accepted; engine hostnames are refused, so their certificates come from the engine alone.
 
 ## Layout
 

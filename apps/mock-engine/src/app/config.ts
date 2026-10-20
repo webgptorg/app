@@ -62,6 +62,11 @@ export interface IdentityConfig {
     readonly engineDomain: Hostname;
 }
 
+export interface DevCaConfig extends IdentityConfig {
+    /** `MOCK_DEV_CA_DOMAINS`: what the CA permits besides the engine domain, and the only names `issue` accepts. */
+    readonly devCaDomains: readonly Hostname[];
+}
+
 export class ConfigError extends Error {
     /** `NAME: problem` per setting; never a value, since `HTTPS_PROXY` may carry a password. */
     readonly problems: readonly string[];
@@ -302,6 +307,8 @@ const identitySchema = z.object({
     PTBK_ENGINE_DOMAIN: value(HostnameSchema, 'must be a hostname'),
 });
 
+const devCaSchema = identitySchema.extend({ MOCK_DEV_CA_DOMAINS: parsed(parseDomains).optional() });
+
 type Env = Readonly<Record<string, string | undefined>>;
 
 /** Upper- and lowercase forms of the same proxy variable; tools disagree on precedence, so they must agree. */
@@ -409,4 +416,19 @@ export function parseIdentityConfig(env: Env): IdentityConfig {
     });
     if (!result.success) throw new ConfigError(result.error.issues.flatMap(toProblems));
     return Object.freeze({ dataDir: result.data.PTBK_DATA_DIR, engineDomain: result.data.PTBK_ENGINE_DOMAIN });
+}
+
+/** For the `dev-ca` CLI: like {@link parseIdentityConfig}, plus `MOCK_DEV_CA_DOMAINS`. */
+export function parseDevCaConfig(env: Env): DevCaConfig {
+    const result = devCaSchema.safeParse({
+        PTBK_DATA_DIR: present(env, 'PTBK_DATA_DIR'),
+        PTBK_ENGINE_DOMAIN: present(env, 'PTBK_ENGINE_DOMAIN'),
+        MOCK_DEV_CA_DOMAINS: present(env, 'MOCK_DEV_CA_DOMAINS'),
+    });
+    if (!result.success) throw new ConfigError(result.error.issues.flatMap(toProblems));
+    return Object.freeze({
+        dataDir: result.data.PTBK_DATA_DIR,
+        engineDomain: result.data.PTBK_ENGINE_DOMAIN,
+        devCaDomains: result.data.MOCK_DEV_CA_DOMAINS ?? Object.freeze([]),
+    });
 }

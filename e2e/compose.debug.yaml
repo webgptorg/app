@@ -1,0 +1,6 @@
+# Local debugging from the host: publishes relay-a on 127.0.0.1 so a browser or curl outside the stack can reach the
+# engine through it (docs/development.md, "Debugging from the host").
+services:
+  relay-a:
+    ports:
+      - 127.0.0.1:${E2E_DEBUG_PORT:-8443}:443

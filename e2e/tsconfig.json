@@ -1,0 +1,11 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    // page.evaluate callbacks run in the browser.
+    "lib": ["ES2024", "DOM"],
+    "types": ["node"],
+    // Node runs the CLI, init and the healthcheck probe straight from .ts, which needs explicit extensions.
+    "allowImportingTsExtensions": true
+  },
+  "include": ["src", "init", "tests", "*.ts"]
+}

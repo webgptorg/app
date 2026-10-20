@@ -10,7 +10,8 @@
   "workspaces": {
     "packages": [
       "apps/*",
-      "packages/*"
+      "packages/*",
+      "e2e"
     ],
     "catalog": {
       "@axe-core/playwright": "4.13.0",

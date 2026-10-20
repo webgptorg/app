@@ -1,0 +1,19 @@
+{
+  "name": "@ptbk/e2e",
+  "private": true,
+  "license": "UNLICENSED",
+  "type": "module",
+  "description": "End-to-end tests: browsers through the relays to the mock engine, in Docker Compose",
+  "scripts": {
+    "e2e": "node src/cli.ts e2e",
+    "e2e:up": "node src/cli.ts up",
+    "e2e:run": "node src/cli.ts run",
+    "e2e:down": "node src/cli.ts down",
+    "e2e:logs": "node src/cli.ts logs",
+    "typecheck": "tsc --noEmit -p .",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@playwright/test": "catalog:"
+  }
+}

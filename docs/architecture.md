@@ -80,9 +80,9 @@ The private design system shared by engine-ui and the dashboard: tokens, accessi
 
 The test suite any engine must pass: engine API behaviour, tunnel handshake, heartbeat, registration, UI loader checks. Runs against the mock engine in CI now and against the real engine later.
 
-### `e2e` (created in task X-01)
+### `e2e`
 
-Playwright and Docker Compose: browsers through relays to the mock engine, the network conditions from the spec's spike criteria, UI flows under CSP, the dashboard flow.
+Playwright and Docker Compose: browsers through relays to the mock engine, the network conditions from the spec's spike criteria, UI flows under CSP, the dashboard flow. The base stack (`e2e/compose.yaml`) is two relays, the mock engine, a resolver for the test domains and a one-shot `init` that provisions fresh keys, a name-constrained dev CA and the relays' static registry; Playwright runs inside the same network. Scenarios add services through `compose.<scenario>.yaml` overlays. Imports nothing from the apps: it builds them into images and talks to them over the network, plus the mock engine's `identity` and `dev-ca` CLIs. How to run and debug it: [development.md](development.md#end-to-end).
 
 ### `infra`
 
