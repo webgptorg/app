@@ -7,3 +7,7 @@ apps/dashboard/src/paraglide/
 apps/dashboard/project.inlang/*
 !apps/dashboard/project.inlang/settings.json
 !apps/dashboard/project.inlang/paraglide.config.js
+apps/engine-ui/src/paraglide/
+apps/engine-ui/project.inlang/*
+!apps/engine-ui/project.inlang/settings.json
+!apps/engine-ui/project.inlang/paraglide.config.js

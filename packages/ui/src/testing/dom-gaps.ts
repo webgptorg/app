@@ -76,6 +76,10 @@ function installPopover(): void {
     const proto = HTMLElement.prototype as HTMLElement & { __ptbkFake?: true };
     if (typeof proto.showPopover === 'function' && proto.__ptbkFake !== true) return;
     proto.__ptbkFake = true;
+    // jsdom's UA sheet hides every [popover] and never matches :popover-open; this author rule stands in for it.
+    const sheet = document.createElement('style');
+    sheet.textContent = '[popover][data-fake-popover-open] { display: block !important; }';
+    document.head.append(sheet);
     const toggle = (element: HTMLElement, open: boolean) => {
         const wasOpen = element.dataset['fakePopoverOpen'] === 'true';
         if (wasOpen === open) return;

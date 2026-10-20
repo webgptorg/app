@@ -1,0 +1,5 @@
+/* Fixture for token-boundary.test.ts: a component token with a raw colour. */
+:root {
+    --bad-bg: #1a2b3c;
+    --bad-shadow: 0 1px 2px rgb(0 0 0 / 0.2);
+}

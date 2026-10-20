@@ -1,0 +1,44 @@
+:root {
+    --trust-mark-seal: var(--color-accent);
+    --trust-mark-seal-verifying: var(--color-text-muted);
+    --trust-mark-surface: var(--color-raised);
+    --trust-mark-code: var(--color-text);
+    --trust-mark-fp-1: var(--color-identity-1);
+    --trust-mark-fp-2: var(--color-identity-2);
+    --trust-mark-fp-3: var(--color-identity-3);
+    --trust-mark-fp-4: var(--color-identity-4);
+    --trust-mark-fp-5: var(--color-identity-5);
+    --trust-mark-fp-6: var(--color-identity-6);
+}
+
+/*
+ * The seal draws its rosette outline and settles once, when the engine moves from verifying to verified. The component
+ * adds the class only on that transition and never under reduced motion; the media query is the second guard.
+ */
+@media (prefers-reduced-motion: no-preference) {
+    .trust-mark-sealing .trust-mark-outline {
+        stroke-dasharray: 100;
+        animation: ptbk-seal-draw var(--motion-seal) var(--ease-enter) both;
+    }
+    .trust-mark-sealing {
+        animation: ptbk-seal-settle var(--motion-seal) var(--ease-enter) both;
+    }
+}
+
+@keyframes ptbk-seal-draw {
+    from {
+        stroke-dashoffset: 100;
+    }
+    to {
+        stroke-dashoffset: 0;
+    }
+}
+
+@keyframes ptbk-seal-settle {
+    from {
+        transform: scale(0.94);
+    }
+    to {
+        transform: scale(1);
+    }
+}

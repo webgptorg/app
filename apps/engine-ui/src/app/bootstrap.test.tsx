@@ -4,6 +4,8 @@ import { act } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { CspViolation } from '../security/csp-violation-listener';
+import { createFakeMatchMedia } from '../testing/fake-match-media';
+import { createMemoryStorage } from '../testing/memory-storage';
 import { createTestEngineApi } from '../testing/test-engine-api';
 import { bootstrap } from './bootstrap';
 import type { BrowserDeps, MountedApp } from './bootstrap';
@@ -49,6 +51,8 @@ function setUp(fetch: BrowserDeps['fetch']) {
         },
         fetch,
         cspScope: window,
+        storage: createMemoryStorage(),
+        matchMedia: createFakeMatchMedia().matchMedia,
     };
     return { container, assign, browser };
 }

@@ -1,0 +1,6 @@
+:root {
+    --checkbox-border: var(--color-border);
+    --checkbox-checked: var(--color-accent);
+    --checkbox-label: var(--color-text);
+    --checkbox-description: var(--color-text-muted);
+}

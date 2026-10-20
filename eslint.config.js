@@ -101,8 +101,11 @@ export default tseslint.config(
             '**/routeTree.gen.ts',
             '**/worker-configuration.d.ts',
             'apps/dashboard/src/paraglide/',
+            'apps/engine-ui/src/paraglide/',
             'apps/engine-ui/playwright-report/**',
             'apps/engine-ui/test-results/**',
+            // Deliberately broken inputs for the token-boundary test.
+            'packages/ui/test/fixtures/**',
         ],
     },
     js.configs.recommended,

@@ -1,6 +1,7 @@
 import { createContext, use, useMemo } from 'react';
 import type { ReactNode } from 'react';
 
+import { ToastStoreProvider } from '../components/toaster/toast-store';
 import { createFormatters } from './formatters';
 import type { Formatters } from './formatters';
 import type { UiMessages } from './ui-messages';
@@ -19,10 +20,17 @@ export interface UiProviderProps {
     readonly children: ReactNode;
 }
 
-/** Supplies the app's translated `UiMessages` and its locale to every `@ptbk/ui` component below it. */
+/**
+ * Supplies the app's translated `UiMessages` and its locale to every `@ptbk/ui` component below it, and holds the toasts
+ * that `useToast()` shows in `<Toaster />`.
+ */
 export function UiProvider({ messages, locale, children }: UiProviderProps) {
     const value = useMemo(() => ({ messages, formatters: createFormatters(locale) }), [messages, locale]);
-    return <UiContext value={value}>{children}</UiContext>;
+    return (
+        <UiContext value={value}>
+            <ToastStoreProvider>{children}</ToastStoreProvider>
+        </UiContext>
+    );
 }
 
 function useUiContext(): UiContextValue {

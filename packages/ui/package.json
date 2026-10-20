@@ -24,7 +24,7 @@
     "@tanstack/react-form": "catalog:",
     "@tanstack/react-table": "catalog:",
     "@tanstack/react-virtual": "catalog:",
-    "lucide-react": "1.56.0",
+    "lucide-react": "catalog:",
     "motion": "14.1.0"
   },
   "devDependencies": {

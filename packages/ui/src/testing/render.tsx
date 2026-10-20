@@ -22,10 +22,13 @@ export interface RenderedUi extends RenderResult {
 export function renderUi(ui: ReactElement, options: RenderUiOptions = {}): RenderedUi {
     document.documentElement.classList.toggle('dark', options.theme === 'dark');
     const user = userEvent.setup();
-    const result = render(
-        <UiProvider messages={options.messages ?? TEST_MESSAGES} locale={options.locale ?? 'en'}>
-            {ui}
-        </UiProvider>,
-    );
+    // A wrapper, not a parent element, so `rerender` keeps the provider and only updates `ui`.
+    const result = render(ui, {
+        wrapper: ({ children }) => (
+            <UiProvider messages={options.messages ?? TEST_MESSAGES} locale={options.locale ?? 'en'}>
+                {children}
+            </UiProvider>
+        ),
+    });
     return { ...result, user };
 }

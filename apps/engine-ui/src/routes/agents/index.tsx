@@ -5,6 +5,7 @@ import { z } from 'zod';
 
 import { useEngineApi } from '../../app/engine-api-context';
 import { agentListQueryOptions } from '../../features/agents/agents-queries';
+import { m } from '../../paraglide/messages';
 
 // Not strict: a URL may carry parameters this route does not know, and a bad value falls back instead of throwing.
 const AgentsSearch = z.object({
@@ -26,7 +27,7 @@ function AgentsPage() {
     return (
         <section aria-labelledby="agents-title" className="space-y-4">
             <h1 id="agents-title" className="text-2xl font-semibold">
-                Agents
+                {m.agents_title()}
             </h1>
             <ul className="list-disc pl-6">
                 {data.items.map((agent) => (

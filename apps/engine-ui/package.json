@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Private engine UI: static bundle the engine downloads, verifies and serves",
   "scripts": {
-    "generate": "tsr generate",
+    "generate": "paraglide-js compile --project ./project.inlang && tsr generate",
     "dev": "vite dev --configLoader runner",
     "build": "vite build --configLoader runner",
     "preview": "vite preview --configLoader runner",
@@ -18,12 +18,15 @@
     "@ptbk/ui": "workspace:*",
     "@tanstack/react-query": "catalog:",
     "@tanstack/react-router": "catalog:",
+    "lucide-react": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.13.0",
+    "@inlang/paraglide-js": "catalog:",
+    "@inlang/plugin-message-format": "catalog:",
     "@playwright/test": "1.64.0",
     "@tailwindcss/vite": "catalog:",
     "@tanstack/react-query-devtools": "5.104.2",

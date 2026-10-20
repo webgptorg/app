@@ -10,4 +10,7 @@ beforeEach(() => {
 
 afterEach(() => {
     cleanup();
+    document.documentElement.className = '';
+    document.documentElement.removeAttribute('style');
+    document.documentElement.removeAttribute('lang');
 });

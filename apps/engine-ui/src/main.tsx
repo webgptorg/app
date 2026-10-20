@@ -1,7 +1,16 @@
 import './app/zod-jitless';
 import './styles/app.css';
 
+import { applyTheme, readThemePreference } from '@ptbk/ui';
+
 import { bootstrap } from './app/bootstrap';
+import { safeLocalStorage } from './app/storage';
+
+const storage = safeLocalStorage();
+const matchMedia = (query: string) => window.matchMedia(query);
+// The CSP allows no inline script in index.html, so this is the earliest point to set the theme; it runs before React
+// renders anything, so the first paint is already in the right theme.
+applyTheme(readThemePreference(storage), document.documentElement, matchMedia);
 
 const container = document.getElementById('root');
 if (container === null) {
@@ -14,4 +23,6 @@ void bootstrap(container, {
     location: window.location,
     fetch: (input, init) => fetch(input, init),
     cspScope: window,
+    storage,
+    matchMedia,
 });

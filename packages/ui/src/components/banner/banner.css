@@ -1,0 +1,12 @@
+:root {
+    --banner-radius: var(--radius-control);
+    --banner-text: var(--color-text);
+    --banner-info-bg: var(--color-info-soft);
+    --banner-info-border: var(--color-info);
+    --banner-success-bg: var(--color-success-soft);
+    --banner-success-border: var(--color-success);
+    --banner-warning-bg: var(--color-warning-soft);
+    --banner-warning-border: var(--color-warning);
+    --banner-danger-bg: var(--color-danger-soft);
+    --banner-danger-border: var(--color-danger);
+}

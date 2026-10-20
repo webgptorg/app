@@ -1,0 +1,10 @@
+:root {
+    --skeleton-bg: var(--color-sunken);
+    --skeleton-period: var(--motion-live);
+}
+
+@keyframes ptbk-skeleton-pulse {
+    50% {
+        opacity: 0.55;
+    }
+}

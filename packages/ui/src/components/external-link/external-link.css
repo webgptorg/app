@@ -1,0 +1,4 @@
+/* Text colours come from Anchor's tokens (`--anchor-*`). */
+:root {
+    --external-link-host: var(--color-text-muted);
+}

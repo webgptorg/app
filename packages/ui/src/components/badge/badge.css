@@ -1,0 +1,14 @@
+:root {
+    --badge-neutral-bg: var(--color-sunken);
+    --badge-neutral-text: var(--color-text);
+    --badge-accent-bg: var(--color-accent-soft);
+    --badge-accent-text: var(--color-accent-text);
+    --badge-success-bg: var(--color-success-soft);
+    --badge-success-text: var(--color-success);
+    --badge-warning-bg: var(--color-warning-soft);
+    --badge-warning-text: var(--color-warning);
+    --badge-danger-bg: var(--color-danger-soft);
+    --badge-danger-text: var(--color-danger);
+    --badge-info-bg: var(--color-info-soft);
+    --badge-info-text: var(--color-info);
+}

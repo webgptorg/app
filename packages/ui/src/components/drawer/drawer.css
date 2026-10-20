@@ -1,0 +1,19 @@
+:root {
+    --drawer-bg: var(--color-raised);
+    --drawer-text: var(--color-text);
+    --drawer-border: var(--color-divider);
+    --drawer-shadow: var(--shadow-overlay);
+}
+
+/* Backdrop and scroll lock come from dialog.css, which matches every `data-ptbk-modal` dialog. */
+@keyframes ptbk-drawer-enter-end {
+    from {
+        translate: 100% 0;
+    }
+}
+
+@keyframes ptbk-drawer-enter-start {
+    from {
+        translate: -100% 0;
+    }
+}
