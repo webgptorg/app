@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { safeNextPath } from './safe-url';
+import { safeImageSource, safeNextPath } from './safe-url';
 
 const origin = 'https://engine.example';
 
@@ -32,5 +32,23 @@ describe('safeNextPath', () => {
 
     it('refuses everything when the origin is opaque', () => {
         expect(safeNextPath('/agents', 'null')).toBeNull();
+    });
+});
+
+describe('safeImageSource', () => {
+    it.each(['/files/avatar.png', 'data:image/png;base64,iVBORw0KGgo='])('keeps %s, which the CSP allows', (value) => {
+        expect(safeImageSource(value)).toBe(value);
+    });
+
+    it.each([
+        'https://attacker.example/pixel.png',
+        '//attacker.example/pixel.png',
+        '/\\attacker.example/pixel.png',
+        'javascript:alert(1)',
+        'data:text/html;base64,PHNjcmlwdD4=',
+        'data:image/svg+xml;base64,PHN2Zz4=',
+        'avatar.png',
+    ])('refuses %s', (value) => {
+        expect(safeImageSource(value)).toBeNull();
     });
 });

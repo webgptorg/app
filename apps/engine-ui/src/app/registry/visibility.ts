@@ -15,6 +15,9 @@ export type FeatureAccess = 'allowed' | 'unavailable' | 'no-access';
 export function requirementAccess(requires: FeatureRequirement | undefined, access: Access): FeatureAccess {
     if (requires?.capability !== undefined && !access.supports(requires.capability)) return 'unavailable';
     if (requires?.permission !== undefined && !access.can(requires.permission)) return 'no-access';
+    if (requires?.anyPermission !== undefined && !requires.anyPermission.some((permission) => access.can(permission))) {
+        return 'no-access';
+    }
     return 'allowed';
 }
 

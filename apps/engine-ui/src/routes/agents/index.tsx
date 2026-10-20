@@ -1,39 +1,18 @@
-import { AGENT_SORTS } from '@ptbk/engine-api';
-import { useSuspenseQuery } from '@tanstack/react-query';
-import { createFileRoute } from '@tanstack/react-router';
-import { z } from 'zod';
+import { createFileRoute, stripSearchParams } from '@tanstack/react-router';
 
-import { useEngineApi } from '../../app/engine-api-context';
-import { requireFeature } from '../../app/registry/require-feature';
+import { agentListParams, AgentListSearch, DEFAULT_AGENT_SORT } from '../../features/agents/agent-list-search';
+import { AgentsListPage } from '../../features/agents/agents-list-page';
 import { agentListQueryOptions } from '../../features/agents/agents-queries';
-import { Page } from '../../features/shell/page';
-import { m } from '../../paraglide/messages';
-
-// Not strict: a URL may carry parameters this route does not know, and a bad value falls back instead of throwing.
-const AgentsSearch = z.object({
-    sort: z.enum(AGENT_SORTS).default('name').catch('name'),
-});
 
 export const Route = createFileRoute('/agents/')({
-    validateSearch: AgentsSearch,
-    beforeLoad: requireFeature('agents'),
-    loaderDeps: ({ search }) => ({ sort: search.sort }),
-    loader: ({ context, deps }) =>
-        context.queryClient.query({ ...agentListQueryOptions(context.engineApi, deps), staleTime: 'static' }),
-    component: AgentsPage,
+    validateSearch: AgentListSearch,
+    search: { middlewares: [stripSearchParams({ sort: DEFAULT_AGENT_SORT })] },
+    loaderDeps: ({ search }) => agentListParams(search),
+    // Not awaited: the table keeps the previous page on screen while the next one loads (keepPreviousData), instead
+    // of the router swapping in a pending page. Hover preloading still fills the cache before the click.
+    loader: ({ context, deps }) => {
+        // A failure shows in the table (with retry) once the component's own query sees it.
+        context.queryClient.query(agentListQueryOptions(context.engineApi, deps)).catch(() => undefined);
+    },
+    component: AgentsListPage,
 });
-
-// Placeholder until U-03 builds the agents list.
-function AgentsPage() {
-    const { sort } = Route.useSearch();
-    const { data } = useSuspenseQuery(agentListQueryOptions(useEngineApi(), { sort }));
-    return (
-        <Page title={m.agents_title()}>
-            <ul className="list-disc ps-6">
-                {data.items.map((agent) => (
-                    <li key={agent.id}>{agent.name}</li>
-                ))}
-            </ul>
-        </Page>
-    );
-}

@@ -17,3 +17,13 @@ export function safeNextPath(value: string, origin: string): string | null {
     if (ENGINE_RESERVED_PATHS.some((reserved) => url.pathname.startsWith(reserved))) return null;
     return `${url.pathname}${url.search}${url.hash}`;
 }
+
+/**
+ * An image source the engine CSP allows (`img-src 'self' data:`), or `null`: a same-origin path or a `data:` image.
+ * Anything else would be blocked anyway, and must never reach the DOM as an attempt to load from elsewhere.
+ */
+export function safeImageSource(value: string): string | null {
+    if (/^data:image\/(?:png|jpeg|gif|webp|avif);base64,[A-Za-z0-9+/=]+$/.test(value)) return value;
+    if (!value.startsWith('/') || value.startsWith('//') || value.includes('\\')) return null;
+    return value;
+}

@@ -95,4 +95,11 @@ describe('featureAccess', () => {
         expect(featureAccess(runs, access(['agents.read'], [KNOWN_CAPABILITIES.runs]))).toBe('allowed');
         expect(featureAccess(settings, access([]))).toBe('allowed');
     });
+
+    it('allows an entry that needs any of several permissions when the member holds one of them', () => {
+        const either = defineFeature({ id: 'either', requires: { anyPermission: ['agents.write', 'agents.delete'] } });
+        expect(featureAccess(either, access(['agents.delete']))).toBe('allowed');
+        expect(featureAccess(either, access(['agents.write']))).toBe('allowed');
+        expect(featureAccess(either, access(['agents.read']))).toBe('no-access');
+    });
 });

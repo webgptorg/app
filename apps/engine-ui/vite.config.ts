@@ -42,6 +42,10 @@ export default defineConfig({
         // The polyfill is an inline script; every browser the engine supports has native modulepreload.
         modulePreload: { polyfill: false },
         sourcemap: false,
+        // Everything the entry imports statically stays in the entry chunk. Rolldown otherwise splits modules the entry
+        // shares with route chunks into common chunks once their share sets differ, and index.html grows modulepreload
+        // links next to its one script (U-01 allows exactly one script and one stylesheet).
+        rolldownOptions: { output: { codeSplitting: { groups: [{ name: 'index', tags: ['$initial'] }] } } },
     },
     // The dev server injects inline scripts and styles for HMR, so it gets no CSP; the built bundle is what
     // `test:csp` holds to the engine's policy.
