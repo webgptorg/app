@@ -24,16 +24,32 @@ src/
   adapters/     Port implementations and in-memory fakes; adapters/db/ is the only place that imports drizzle-orm
   app/          Composition root (create-dashboard.ts), config, i18n for what the Worker renders, Hono app in app/http/
   shared/api/   The UI API: a zod route table used by both the Hono routes and the SPA client
+  testing/      Fakes, the software WebAuthn authenticator and shared contract suites; never shipped
   client/       The SPA: main.tsx, routes/ (TanStack Router file routes), features/, api/, i18n/
 messages/       en.json and cs.json, the only place user-facing text lives
 migrations/     drizzle-kit output, committed
 scripts/        Migration guards, bundle budget check, dev container entry point
-test/           Node-side tests: build output, catalogues, lint rules
+test/           Build output, catalogues, lint rules; test/http/ runs the HTTP app with real adapters (route table, auth flows)
 ```
 
 ESLint keeps the boundaries: the SPA imports only `src/client`, `src/shared`, the generated messages, `@ptbk/ui` and `@ptbk/protocol`; Worker code never imports the SPA; `drizzle-orm` only inside `src/adapters/db/`, where Drizzle's relational query API (`db.query`, `relations`) is banned until Drizzle 1.0.
 
-The Hono app mounts four routers: `/api` (the SPA's own API, session-authenticated from D-02), `/v1` (engines), `/internal` (relays) and `/webhooks` (Stripe). Machine routes bind contracts from `@ptbk/protocol`; the UI API's contracts live in `src/shared/api/routes.ts`. Every request is validated with the contract's strict zod schema before the handler runs, and every error is RFC 9457 `application/problem+json` with a stable `code`, never a stack trace or an echo of the input. An unknown path under one of the four prefixes is a 404 problem, never the SPA shell.
+The Hono app mounts four routers: `/api` (the SPA's own API), `/v1` (engines), `/internal` (relays) and `/webhooks` (Stripe). Machine routes bind contracts from `@ptbk/protocol`; the UI API's contracts live in `src/shared/api/routes.ts`. Every error is RFC 9457 `application/problem+json` with a stable `code`, never a stack trace or an echo of the input; a 500 carries a `correlationId` that is also logged. An unknown path under one of the four prefixes is a 404 problem, never the SPA shell.
+
+### Routes
+
+Every route is a `defineRoute` contract (`src/shared/api/contract.ts`) mounted with the route binder (`src/app/http/bind-route.ts`), which refuses anything without a safeguard ([engineering.md](../../docs/engineering.md#request-handling-every-http-endpoint)). A contract declares `auth` (`public` or `session`, no default), a `permission` from `DASHBOARD_POLICY` for session routes, a per-IP `rateLimit` for every non-session route, strict `input` schemas (params, query, the headers it reads, body) with a body size cap, and a strict `output`. Per request the binder applies, in order: the rate limit (429, also when the limiter cannot decide), the body cap (413), input validation (400), the session (401), then `Authorizer.can` on the actor's own scope (404 for what is not theirs, 403 with `step-up-required` or `recovery-cooldown`, else 403). `test/http/route-table.test.ts` enumerates the mounted Hono routes, fails on any route that bypassed the binder, and holds the allowlist of `public` routes. State-changing `/api` requests also pass the Fetch Metadata check (`Sec-Fetch-Site: same-origin`, else `Origin` equal to `DASHBOARD_ORIGIN`); machine routes never read cookies.
+
+### Accounts, sessions, passkeys (D-02)
+
+- **Signup is email first:** `signup/start` always answers 202 with the same body and mails a 15-minute link (`/signup#<token>`) or, for a known address, an "account exists" note; the lookup and the mail run after the response (`waitUntil`). `signup/options` and `signup/verify` register a passkey and create user, personal org, owner membership, passkey and session in one D1 batch.
+- **Sign-in** is usernameless with discoverable passkeys; the returned `userHandle` must be the credential owner's random `webauthn_user_id`. User verification is always required; rpID and origin come from `DASHBOARD_ORIGIN`. A signature counter that does not grow from a non-zero value sets `counter_regressed_at`, logs `auth.passkey-counter-regression` with the user ID only, and fails the sign-in.
+- **Challenges** are single use (deleted in the statement that reads them), live 5 minutes, are bound to the browser by `__Host-ptbk_chal` and, in token flows, to the email token's hash.
+- **Sessions:** `__Host-ptbk_session` (`Secure`, `HttpOnly`, `Path=/`, `SameSite=Lax` so links from emails arrive signed in), 256-bit random, stored as SHA-256, new ID on every sign-in, idle 7 days, absolute 30 days, read on every request. A sign-in counts as a 5-minute step-up; `step-up/options` and `step-up/verify` renew it for actions with `requiresStepUp`.
+- **Recovery:** `recovery/request` answers like `signup/start`; the link only allows `recovery/options` and `recovery/verify`, which add a passkey, revoke every session, set `recovered_at` (72-hour cooldown for `sensitive` actions) and mail a notice. Email tokens are 256-bit, stored as SHA-256, single use, 15 minutes, and a newer one replaces older ones.
+- **Rate limits** (`RATE_LIMITS` in `src/domain/ports/rate-limiter.ts`): per-minute rules run on the Workers Rate Limiting binding (one binding per rule in `wrangler.jsonc`, checked against the code by a test); the hourly signup and recovery rules run on the `HourlyRateLimiter` Durable Object, because the binding only has 10 s and 60 s periods. Production keys are `HMAC-SHA-256(RATE_LIMIT_HMAC_KEY, rule ‖ IP or email)`, so no raw IP or address is stored; a counter is deleted when its window ends; a limiter error fails closed.
+- **Email** goes through the `EmailSender` port: Cloudflare Email Service (`send_email` binding `EMAIL`, sender `EMAIL_FROM`), or in dev the fake outbox that `GET /api/__dev/emails?to=` returns for e2e. Templates are plain text in `messages/*.json`.
+- **Platform admins:** `platform_role = 'admin'` is set by hand ([scripts/make-admin.md](scripts/make-admin.md)); admin actions need a fresh step-up and write `admin_audit_log`.
 
 Config is parsed once in `src/app/config.ts` into a frozen `DashboardConfig`; nothing else reads `env`. It fails closed on a missing var, an unknown var or an unknown value, and refuses `fake` or `memory` adapters outside `dev`. Runtime objects in `env` (D1, ASSETS, service bindings) are wired by the composition root, not parsed as config.
 
@@ -47,7 +63,7 @@ An organization owns engines and billing; users join through a membership with a
 
 ### API client
 
-The SPA calls `/api/*` only through `src/client/api/api-client.ts`, a small fetch client over the shared route table, wrapped in TanStack Query hooks; components never call `fetch`. It parses every response with the contract's schema and returns an outcome union (`ok`, `problem` with a declared code, `invalid-response`, `network-error`).
+The SPA calls `/api/*` only through `src/client/api/api-client.ts`, a small fetch client over the shared route table, wrapped in TanStack Query hooks; components never call `fetch`. It parses every response with the contract's schema, tolerantly: fields the contract does not know are dropped at any depth, known ones are fully validated (AGENTS.md rule 5). It returns an outcome union (`ok`, `problem` with a declared code, `invalid-response`, `network-error`). Output schemas stay strict, and the HTTP tests parse every response with them, so the server never sends an undeclared field.
 
 We chose this over Hono's RPC client `hc`: each HTTP contract stays explicit as data (method, path, schemas, error codes), the same style as `engine-api`'s `EngineApiClient`; responses are validated at runtime, not just typed; and the SPA does not depend on the inferred type of the whole Hono app, which slows type-checking as the API grows and lets a server refactor change the client silently. The cost is writing the route table by hand, which is the point.
 
@@ -74,7 +90,7 @@ Root `bun run check` reaches all of it, so CI runs every guard. There is no depl
 
 ## Environments
 
-`wrangler.jsonc`: the top level is local development only; `env.staging` and `env.production` have their own D1 database, vars and routes. Their values are placeholders until I-02. Vars: `ENVIRONMENT`, `DASHBOARD_ORIGIN`, `ENGINE_DOMAIN`, `RELAYS` (non-empty list of `{ relayId, region }`, `relayId` being the relay's hostname) and `ADAPTERS` (`email`, `billing`, `rateLimit`).
+`wrangler.jsonc`: the top level is local development only; `env.staging` and `env.production` have their own D1 database, vars and routes. Their values are placeholders until I-02. Vars: `ENVIRONMENT`, `DASHBOARD_ORIGIN`, `ENGINE_DOMAIN`, `RELAYS` (non-empty list of `{ relayId, region }`, `relayId` being the relay's hostname), `ADAPTERS` (`email`, `billing`, `rateLimit`) and `EMAIL_FROM`. Secret: `RATE_LIMIT_HMAC_KEY` (base64url, at least 256 bits; `wrangler secret put` in staging and production, a committed dev-only value that config refuses elsewhere). Bindings besides `DB` and `ASSETS`: `HOURLY_RATE_LIMITER` (Durable Object, migration tag `v1`), `RATE_LIMIT_OPTIONS`, `RATE_LIMIT_VERIFY`, `RATE_LIMIT_PUBLIC_READ`, and `EMAIL` (`send_email`, staging and production).
 
 The compatibility date stays within what the workerd bundled with `@cloudflare/vitest-pool-workers` supports, so the Workers tests run the same date as production.
 

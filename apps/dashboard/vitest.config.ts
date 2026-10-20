@@ -2,7 +2,7 @@ import { cloudflareTest, readD1Migrations } from '@cloudflare/vitest-pool-worker
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vitest/config';
 
-const WORKERS_TESTS = ['src/**/*.workers.test.ts', 'src/adapters/db/**/*.test.ts'];
+const WORKERS_TESTS = ['src/**/*.workers.test.ts', 'src/adapters/db/**/*.test.ts', 'test/**/*.workers.test.ts'];
 
 export default defineConfig(async () => {
     const migrations = await readD1Migrations('./migrations');
@@ -21,8 +21,14 @@ export default defineConfig(async () => {
                     'src/client/routeTree.gen.ts',
                     // Run only in workerd: the D1 adapter and the migrations setup, covered by the workers project.
                     'src/adapters/db/**',
+                    // The Workers entry: two lines of wiring, run by the workers project against the built Worker.
+                    'src/worker.ts',
                     // DOM bootstrap (createRoot on #root); everything it renders is App, which the client tests cover.
                     'src/client/main.tsx',
+                    // Test support: fakes, the software authenticator and shared suites, not product code.
+                    'src/testing/**',
+                    // A Durable Object class: runs only in workerd, covered by the workers project.
+                    'src/adapters/rate-limit/hourly-rate-limiter-object.ts',
                 ],
                 thresholds: {
                     lines: 90,
@@ -38,7 +44,7 @@ export default defineConfig(async () => {
                         name: 'unit',
                         environment: 'node',
                         include: [
-                            'src/{domain,app,adapters}/**/*.test.ts',
+                            'src/{domain,app,adapters,shared,testing}/**/*.test.ts',
                             'scripts/**/*.test.ts',
                             'test/**/*.test.ts',
                         ],
@@ -53,6 +59,9 @@ export default defineConfig(async () => {
                         include: WORKERS_TESTS,
                         setupFiles: ['./src/adapters/db/apply-test-migrations.ts'],
                         provide: { migrations },
+                        // @simplewebauthn/server pulls CommonJS dependencies (@peculiar/x509, tsyringe) that workerd
+                        // cannot load one by one; pre-bundled, they run as they do in the built Worker.
+                        deps: { optimizer: { ssr: { enabled: true, include: ['@simplewebauthn/server'] } } },
                     },
                 },
                 {

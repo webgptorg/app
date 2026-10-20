@@ -2,7 +2,7 @@
 
 - **Lane:** D · **Module:** `apps/dashboard` · **Milestone:** M3
 - **Depends on:** D-01
-- **Status:** in progress (feat/d-02-accounts-passkeys)
+- **Status:** done (#7)
 - **Spec:** Pairing and identity (Promptbook account row); Engine security baseline (Sessions row); Security hardening item 8; Metadata we still see; Hosting and stack (Passkeys); ADRs: [0006](../../adr/0006-organizations-and-roles.md), [0007](../../adr/0007-frontend-stack.md), [0009](../../adr/0009-drizzle-and-migrations.md), [0014](../../adr/0014-cryptography.md)
 
 ## Goal
@@ -98,6 +98,7 @@ This task is the API and the server side only, so the dashboard lane does not wa
 - Authorizer actions added: `passkey.manage`, `session.manage`, and, flagged `sensitive` so the 72-hour cooldown already covers them when later tasks build the routes: `engine.remove`, `engine.hostnames.manage`, `billing.owner.change`. Actor gains `steppedUpAt`; a policy flag `requiresStepUp` (5 minutes) for platform admin actions.
 - CSRF middleware for every state-changing `/api/*` request: 403 when `Sec-Fetch-Site` is present and not `same-origin`; when absent, `Origin` must equal `dashboardOrigin`. Machine routes (`/v1`, `/internal`, `/webhooks`) never read cookies and are exempt.
 - `RateLimiter` port (Workers Rate Limiting binding adapter, in-memory fake). Defaults: `signup/start` and `recovery/request` 10 per hour per IP and 3 per hour per email hash; `signin/options` 30 per minute per IP; every `verify` 30 per minute per IP. Over limit → 429 (for the two email endpoints the per-email limit is silent: still 202, no email sent).
+  - Hourly limits use a Durable Object limiter (decided 2026-10-19, Seb); the Workers binding only supports 10 s/60 s periods. The DO is named by `HMAC-SHA-256(secret, rule ‖ IP-or-email)` with the secret from config, keeps its counter only for the 1-hour window, and fails closed.
 - `scripts/make-admin.md`: the `wrangler d1 execute` command that sets `platform_role = 'admin'`. No UI grants it.
 
 ## Out of scope

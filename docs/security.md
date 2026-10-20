@@ -18,6 +18,10 @@ Breaking any of these is a security bug. Changing one needs an ADR and sign-off 
 
 Even with the guarantees above, the relay and the dashboard see metadata: client IPs, SNI, timing and volume, heartbeat fields. The spec lists it (Metadata we still see). Do not log more than that list, and keep relay logs short-lived.
 
+## Dashboard accounts
+
+The dashboard account grants nothing inside an engine: engine passkeys live on the engine. Dashboard sign-in is passkeys only, with server-side sessions. Recovery is an emailed, single-use link that only registers a new passkey; it signs out every other session, emails a notice, and blocks sensitive actions (removing engines, changing custom hostnames or billing ownership) for 72 hours. So whoever controls the account's mailbox controls the account after 72 hours. We accept that because the account reaches no engine data; the public security page must say so too. Rate-limit counters are keyed by an HMAC of the IP or email, never the raw value.
+
 ## Code rules
 
 - Every HTTP route goes through the typed route helper: strict input schemas, explicit `auth` mode, a permission for session routes, a rate limit for anonymous and machine routes; a route-table test enforces it ([engineering.md](engineering.md#request-handling-every-http-endpoint)).

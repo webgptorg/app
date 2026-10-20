@@ -1,24 +1,102 @@
 import type { Context, Hono } from 'hono';
+import { getCookie } from 'hono/cookie';
 import type { z } from 'zod';
 
+import type { ActiveSession } from '../../domain/auth/account';
+import { SECRET_PATTERN } from '../../domain/auth/secrets';
+import type { Authorizer, Resource } from '../../domain/authz/authorizer';
+import { DASHBOARD_POLICY, type DashboardAction } from '../../domain/authz/policy';
+import type { Logger } from '../../domain/ports/logger';
+import { RATE_LIMITS, type RateLimiter, type RateLimitRuleName } from '../../domain/ports/rate-limiter';
 import type { ParsedRouteInput, RouteContract, RouteErrorCode, RouteResponse } from '../../shared/api/contract';
 import type { CommonProblemCode } from '../../shared/api/problem';
+import { clearSessionCookie, SESSION_COOKIE } from './cookies';
 import { problemResponse, type ProblemStatus } from './problem';
 
 export type RouteResult<C extends RouteContract> =
-    | { readonly kind: 'ok'; readonly body: RouteResponse<C> }
+    | {
+          readonly kind: 'ok';
+          readonly body: RouteResponse<C>;
+          readonly status?: 200 | 202;
+          /** Serialized `Set-Cookie` values. */
+          readonly setCookies?: readonly string[];
+      }
     | {
           readonly kind: 'problem';
           readonly status: ProblemStatus;
           readonly code: RouteErrorCode<C> | CommonProblemCode;
+          readonly setCookies?: readonly string[];
       };
 
-export type RouteHandler<C extends RouteContract> = (
-    input: ParsedRouteInput<C>,
-    signal: AbortSignal,
-) => Promise<RouteResult<C>>;
+/** What a handler may know about the request besides its validated input. */
+export interface RequestContext {
+    readonly signal: AbortSignal;
+    /** A cookie value, only if it has the shape of one of our 256-bit secrets. */
+    secretCookie(name: string): string | null;
+    /** For locale negotiation only; never logged. */
+    header(name: 'cookie' | 'accept-language'): string | null;
+    /** Work that continues after the response, such as sending email (Workers `ctx.waitUntil`). */
+    waitUntil(task: Promise<unknown>): void;
+}
 
-type ParseOutcome = { readonly kind: 'ok'; readonly value: unknown } | { readonly kind: 'invalid' };
+export interface RouteArgs<C extends RouteContract> {
+    readonly input: ParsedRouteInput<C>;
+    readonly request: RequestContext;
+    /** Present exactly when the route's `auth` is `session`. */
+    readonly session: C['auth'] extends 'session' ? ActiveSession : null;
+}
+
+export type RouteHandler<C extends RouteContract> = (args: RouteArgs<C>) => Promise<RouteResult<C>>;
+
+export interface RouteBinderDeps {
+    readonly authorizer: Authorizer<DashboardAction>;
+    readonly rateLimiter: RateLimiter;
+    readonly logger: Logger;
+    resolveSession(token: string): Promise<ActiveSession | null>;
+}
+
+export interface RouteBinder {
+    /** The only way to mount a route: it refuses a contract without auth, permission or rate limit. */
+    bind<C extends RouteContract>(router: Hono, mount: string, contract: C, handler: RouteHandler<C>): void;
+    /** Every route mounted so far, for the route-table test. */
+    readonly routes: readonly RouteContract[];
+}
+
+type ParseOutcome = { readonly kind: 'ok'; readonly value: unknown } | { readonly kind: 'invalid' | 'too-large' };
+
+function isPolicyAction(action: string): action is DashboardAction {
+    return Object.hasOwn(DASHBOARD_POLICY, action);
+}
+
+export function isIpRateLimit(rule: string): rule is RateLimitRuleName {
+    return Object.hasOwn(RATE_LIMITS, rule) && rule.endsWith('-ip');
+}
+
+/** Throws at mount time, so a route that skips a safeguard never serves a request. */
+export function assertMountable(contract: RouteContract, mount: string): void {
+    const problems: string[] = [];
+    if (!contract.path.startsWith(`${mount}/`)) {
+        problems.push(`path outside ${mount}`);
+    }
+    if (contract.auth === 'session' && (contract.permission === null || !isPolicyAction(contract.permission))) {
+        problems.push('session route without a policy permission');
+    }
+    if (contract.auth !== 'session' && (contract.rateLimit === null || !isIpRateLimit(contract.rateLimit))) {
+        problems.push('non-session route without a per-IP rate limit');
+    }
+    if (contract.rateLimit !== null && !isIpRateLimit(contract.rateLimit)) {
+        problems.push('unknown rate limit');
+    }
+    if ((contract.input.body === null) !== (contract.input.maxBodyBytes === 0)) {
+        problems.push('body schema and size cap disagree');
+    }
+    if (contract.path.includes('/:') && contract.input.params === null) {
+        problems.push('path parameters without a schema');
+    }
+    if (problems.length > 0) {
+        throw new Error(`refusing to mount ${contract.method} ${contract.path}: ${problems.join(', ')}`);
+    }
+}
 
 function parseWith(schema: z.ZodType | null, value: unknown): ParseOutcome {
     if (schema === null) {
@@ -28,42 +106,172 @@ function parseWith(schema: z.ZodType | null, value: unknown): ParseOutcome {
     return result.success ? { kind: 'ok', value: result.data } : { kind: 'invalid' };
 }
 
-async function readJson(context: Context): Promise<ParseOutcome> {
+async function readBody(context: Context, contract: RouteContract): Promise<ParseOutcome> {
+    const { body, maxBodyBytes } = contract.input;
+    if (body === null) {
+        return { kind: 'ok', value: undefined };
+    }
+    const declared = Number(context.req.header('Content-Length') ?? '0');
+    if (declared > maxBodyBytes) {
+        return { kind: 'too-large' };
+    }
+    const bytes = new Uint8Array(await context.req.arrayBuffer());
+    if (bytes.length > maxBodyBytes) {
+        return { kind: 'too-large' };
+    }
     try {
-        return { kind: 'ok', value: await context.req.json() };
+        return parseWith(body, JSON.parse(new TextDecoder('utf-8', { fatal: true, ignoreBOM: false }).decode(bytes)));
     } catch {
         return { kind: 'invalid' };
     }
 }
 
-/**
- * Registers a contract on a router mounted at `mountPath`. Params, query and body are validated with the contract's
- * strict schemas before the handler runs; a mismatch is a 400 problem that does not echo the input.
- */
-export function bindRoute<C extends RouteContract>(
-    router: Hono,
-    mountPath: string,
-    contract: C,
-    handler: RouteHandler<C>,
-): void {
-    const path = contract.path.slice(mountPath.length);
-    router.on(contract.method, path, async (context) => {
-        const params = parseWith(contract.params, context.req.param());
-        const query = parseWith(contract.query, context.req.query());
-        const rawBody: ParseOutcome =
-            contract.body === null ? { kind: 'ok', value: undefined } : await readJson(context);
-        const body = rawBody.kind === 'ok' ? parseWith(contract.body, rawBody.value) : rawBody;
-        if (params.kind === 'invalid' || query.kind === 'invalid' || body.kind === 'invalid') {
-            return problemResponse(400, 'invalid-request');
+function pickHeaders(context: Context, schema: z.ZodType | null): Record<string, string> {
+    if (schema === null) {
+        return {};
+    }
+    const shape = (schema as unknown as { shape?: Record<string, unknown> }).shape ?? {};
+    return Object.fromEntries(
+        Object.keys(shape).flatMap((name) => {
+            const value = context.req.header(name);
+            return value === undefined ? [] : [[name, value]];
+        }),
+    );
+}
+
+function requestContext(context: Context): RequestContext {
+    return {
+        signal: context.req.raw.signal,
+        secretCookie: (name) => {
+            const value = getCookie(context, name);
+            return value !== undefined && SECRET_PATTERN.test(value) ? value : null;
+        },
+        header: (name) => context.req.header(name) ?? null,
+        waitUntil: (task) => {
+            context.executionCtx.waitUntil(task);
+        },
+    };
+}
+
+function withCookies(response: Response, cookies: readonly string[] | undefined): Response {
+    for (const cookie of cookies ?? []) {
+        response.headers.append('Set-Cookie', cookie);
+    }
+    return response;
+}
+
+/** The client address Cloudflare saw; rate limits fall back to one shared bucket if it is somehow missing. */
+function clientIp(context: Context): string {
+    return context.req.header('CF-Connecting-IP') ?? 'unknown';
+}
+
+function resourceFor(action: DashboardAction, session: ActiveSession): Resource {
+    const rule = DASHBOARD_POLICY[action];
+    switch (rule.scope) {
+        case 'self':
+            return { kind: 'account', userId: session.user.id };
+        case 'org':
+            return { kind: 'org', orgId: session.actor.orgId };
+    }
+}
+
+export function createRouteBinder(deps: RouteBinderDeps): RouteBinder {
+    const routes: RouteContract[] = [];
+
+    async function authenticate(
+        contract: RouteContract,
+        request: RequestContext,
+    ): Promise<
+        | { readonly kind: 'ok'; readonly session: ActiveSession | null }
+        | { readonly kind: 'response'; readonly response: Response }
+    > {
+        if (contract.auth === 'public') {
+            return { kind: 'ok', session: null };
         }
-        // The schemas above are the contract's own, so the parsed values have the contract's types.
-        const input = { params: params.value, query: query.value, body: body.value } as ParsedRouteInput<C>;
-        const result = await handler(input, context.req.raw.signal);
-        switch (result.kind) {
-            case 'ok':
-                return context.json(result.body as unknown as object, 200);
-            case 'problem':
-                return problemResponse(result.status, result.code);
+        const token = request.secretCookie(SESSION_COOKIE);
+        const session = token === null ? null : await deps.resolveSession(token);
+        if (session === null) {
+            return {
+                kind: 'response',
+                response: withCookies(problemResponse(401, 'unauthorized'), [clearSessionCookie()]),
+            };
         }
-    });
+        const action = contract.permission as DashboardAction;
+        const decision = deps.authorizer.can(session.actor, action, resourceFor(action, session));
+        if (decision.kind === 'allowed') {
+            return { kind: 'ok', session };
+        }
+        switch (decision.reason) {
+            // What the actor may not see does not exist for them, so IDs cannot be probed.
+            case 'not-member':
+            case 'not-self':
+                return { kind: 'response', response: problemResponse(404, 'not-found') };
+            case 'recovery-cooldown':
+            case 'step-up-required':
+                return { kind: 'response', response: problemResponse(403, decision.reason) };
+            case 'role':
+            case 'platform-admin-only':
+                return { kind: 'response', response: problemResponse(403, 'forbidden') };
+        }
+    }
+
+    return {
+        routes,
+        bind(router, mount, contract, handler) {
+            assertMountable(contract, mount);
+            routes.push(contract);
+            router.on(contract.method, contract.path.slice(mount.length), async (context) => {
+                const { rateLimit } = contract;
+                if (rateLimit !== null && isIpRateLimit(rateLimit)) {
+                    const outcome = await deps.rateLimiter.consume(
+                        rateLimit,
+                        clientIp(context),
+                        context.req.raw.signal,
+                    );
+                    if (outcome === 'unavailable') {
+                        deps.logger.error('rate-limit.unavailable', { rule: rateLimit });
+                    }
+                    if (outcome !== 'allowed') {
+                        return problemResponse(429, 'rate-limited');
+                    }
+                }
+                const body = await readBody(context, contract);
+                if (body.kind === 'too-large') {
+                    return problemResponse(413, 'too-large');
+                }
+                const params = parseWith(contract.input.params, context.req.param());
+                const query = parseWith(contract.input.query, context.req.query());
+                const headers = parseWith(contract.input.headers, pickHeaders(context, contract.input.headers));
+                if (params.kind !== 'ok' || query.kind !== 'ok' || headers.kind !== 'ok' || body.kind !== 'ok') {
+                    return problemResponse(400, 'invalid-request');
+                }
+                const request = requestContext(context);
+                const auth = await authenticate(contract, request);
+                if (auth.kind === 'response') {
+                    return auth.response;
+                }
+                // The schemas above are the contract's own, so the parsed values have the contract's types.
+                const input = {
+                    params: params.value,
+                    query: query.value,
+                    headers: headers.value,
+                    body: body.value,
+                } as ParsedRouteInput<typeof contract>;
+                const result = await handler({
+                    input,
+                    request,
+                    session: auth.session as RouteArgs<typeof contract>['session'],
+                });
+                switch (result.kind) {
+                    case 'ok':
+                        return withCookies(
+                            context.json(result.body as unknown as object, result.status ?? 200),
+                            result.setCookies,
+                        );
+                    case 'problem':
+                        return withCookies(problemResponse(result.status, result.code), result.setCookies);
+                }
+            });
+        },
+    };
 }

@@ -10,5 +10,13 @@
   "not_found_title": "Page not found",
   "not_found_back": "Back to the start",
   "error_title": "Something went wrong",
-  "error_retry": "Try again"
+  "error_retry": "Try again",
+  "email_signup_link_subject": "Finish signing up to Promptbook",
+  "email_signup_link_body": "Hello,\n\nsomeone, hopefully you, asked to create a Promptbook account with this address. To continue, open this link and create a passkey. It works once and expires in 15 minutes:\n\n{link}\n\nIf you did not ask for this, ignore this email; no account is created.",
+  "email_account_exists_subject": "You already have a Promptbook account",
+  "email_account_exists_body": "Hello,\n\nsomeone, hopefully you, tried to sign up to Promptbook with this address, but it already has an account.\n\nSign in with your passkey: {signInLink}\n\nLost your passkeys? Recover access: {recoveryLink}\n\nIf this was not you, you can ignore this email.",
+  "email_recovery_link_subject": "Recover access to your Promptbook account",
+  "email_recovery_link_body": "Hello,\n\nsomeone, hopefully you, asked to recover access to the Promptbook account for this address. Open this link to register a new passkey. It works once and expires in 15 minutes:\n\n{link}\n\nAfter recovery, every other session is signed out, and removing engines or changing billing ownership is blocked for 72 hours.\n\nIf you did not ask for this, ignore this email; nothing changes.",
+  "email_recovery_notice_subject": "Your Promptbook account was recovered",
+  "email_recovery_notice_body": "Hello,\n\naccess to your Promptbook account was recovered on {recoveredAt} (UTC) and a new passkey was registered. Every other session was signed out.\n\nUntil {cooldownEndsAt} (UTC), nobody can remove engines or change billing ownership on this account.\n\nIf this was not you: sign in with one of your passkeys at {signInLink}, remove the passkey added by recovery under Account, and secure your email account. Your engines' data is not reachable from the dashboard."
 }

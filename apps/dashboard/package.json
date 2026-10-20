@@ -17,6 +17,8 @@
     "db:check": "node scripts/check-migrations.ts"
   },
   "dependencies": {
+    "@simplewebauthn/browser": "catalog:",
+    "@simplewebauthn/server": "catalog:",
     "@tanstack/react-query": "catalog:",
     "@tanstack/react-router": "catalog:",
     "drizzle-orm": "0.45.4",

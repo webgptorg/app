@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { ConfigError, parseConfig } from './config';
+import { ConfigError, DEV_RATE_LIMIT_HMAC_KEY, parseConfig } from './config';
 
 const devVars = {
     ENVIRONMENT: 'dev',
@@ -8,11 +8,15 @@ const devVars = {
     ENGINE_DOMAIN: 'engines.ptbk.test',
     RELAYS: [{ relayId: 'relay-1.ptbk.test', region: 'eu-central' }],
     ADAPTERS: { email: 'fake', billing: 'fake', rateLimit: 'memory' },
+    EMAIL_FROM: 'no-reply@ptbk.test',
+    RATE_LIMIT_HMAC_KEY: DEV_RATE_LIMIT_HMAC_KEY,
 };
+const STAGING_KEY = 'c3RhZ2luZy1zZWNyZXQta2V5LWZvci1yYXRlLWxpbWl0cy0zMmI';
 const stagingVars = {
     ...devVars,
     ENVIRONMENT: 'staging',
     ADAPTERS: { email: 'cloudflare', billing: 'stripe', rateLimit: 'workers' },
+    RATE_LIMIT_HMAC_KEY: STAGING_KEY,
 };
 class FakeBinding {
     readonly kind = 'binding';
@@ -40,6 +44,8 @@ describe('parseConfig', () => {
             engineDomain: 'engines.ptbk.test',
             relays: [{ relayId: 'relay-1.ptbk.test', region: 'eu-central' }],
             adapters: { email: 'fake', billing: 'fake', rateLimit: 'memory' },
+            emailFrom: 'no-reply@ptbk.test',
+            rateLimitHmacKey: new TextEncoder().encode('dev-only-rate-limit-key-not-secret'),
         });
         expect(Object.isFrozen(config)).toBe(true);
         expect(Object.isFrozen(config.relays[0])).toBe(true);
@@ -50,15 +56,18 @@ describe('parseConfig', () => {
         expect(parseConfig({ ...bindings, ...stagingVars }).environment).toBe('staging');
     });
 
-    it.each(['ENVIRONMENT', 'DASHBOARD_ORIGIN', 'ENGINE_DOMAIN', 'RELAYS', 'ADAPTERS'])(
-        'fails closed without %s',
-        (name) => {
-            const vars = Object.fromEntries(
-                Object.entries({ ...bindings, ...devVars }).filter(([key]) => key !== name),
-            );
-            expect(failedPaths(vars)).toEqual([name]);
-        },
-    );
+    it.each([
+        'ENVIRONMENT',
+        'DASHBOARD_ORIGIN',
+        'ENGINE_DOMAIN',
+        'RELAYS',
+        'ADAPTERS',
+        'EMAIL_FROM',
+        'RATE_LIMIT_HMAC_KEY',
+    ])('fails closed without %s', (name) => {
+        const vars = Object.fromEntries(Object.entries({ ...bindings, ...devVars }).filter(([key]) => key !== name));
+        expect(failedPaths(vars)).toEqual([name]);
+    });
 
     it('fails closed on an unknown var', () => {
         expect(failedPaths({ ...bindings, ...devVars, ADMIN_BYPASS: 'true' })).toEqual(['ADMIN_BYPASS']);
@@ -102,6 +111,20 @@ describe('parseConfig', () => {
         expect(failedPaths({ ...bindings, ...devVars, DASHBOARD_ORIGIN: 'https://app.ptbk.test/x' })).toEqual([
             'DASHBOARD_ORIGIN',
         ]);
+    });
+
+    it('refuses the committed dev HMAC key outside dev, and a key shorter than 256 bits anywhere', () => {
+        expect(failedPaths({ ...bindings, ...stagingVars, RATE_LIMIT_HMAC_KEY: DEV_RATE_LIMIT_HMAC_KEY })).toEqual([
+            'RATE_LIMIT_HMAC_KEY',
+        ]);
+        expect(failedPaths({ ...bindings, ...devVars, RATE_LIMIT_HMAC_KEY: 'c2hvcnQ' })).toEqual([
+            'RATE_LIMIT_HMAC_KEY',
+        ]);
+        expect(parseConfig({ ...bindings, ...stagingVars }).rateLimitHmacKey).toHaveLength(38);
+    });
+
+    it('requires a plain sender address', () => {
+        expect(failedPaths({ ...bindings, ...devVars, EMAIL_FROM: 'Promptbook' })).toEqual(['EMAIL_FROM']);
     });
 
     it('validates relays as hostnames with a region label', () => {

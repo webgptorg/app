@@ -2,70 +2,230 @@ import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
-import { defineRoute } from '../../shared/api/contract';
-import { bindRoute } from './bind-route';
+import { createMemoryLogger } from '../../adapters/memory-logger';
+import type { ActiveSession } from '../../domain/auth/account';
+import { createAuthorizer, type Actor } from '../../domain/authz/authorizer';
+import { DASHBOARD_POLICY } from '../../domain/authz/policy';
+import { orgIdSchema, userIdSchema } from '../../domain/ids';
+import type { RateLimitOutcome } from '../../domain/ports/rate-limiter';
+import { defineRoute, NO_INPUT, type RouteContract } from '../../shared/api/contract';
+import { createRouteBinder, type RouteHandler } from './bind-route';
+
+const ENGINE = 'a'.repeat(26);
+const TOKEN = 'T'.repeat(43);
+const USER = userIdSchema.parse('u'.repeat(26));
+const ORG = orgIdSchema.parse('o'.repeat(26));
 
 const renameEngine = defineRoute({
     method: 'POST',
     path: '/api/engines/:engineId/name',
-    params: z.strictObject({ engineId: z.string().regex(/^[a-z2-7]{26}$/) }),
-    query: z.strictObject({ dryRun: z.enum(['true', 'false']).optional() }),
-    body: z.strictObject({ name: z.string().min(1).max(64) }),
-    response: z.strictObject({ name: z.string() }),
+    auth: 'public',
+    permission: null,
+    rateLimit: 'public-read-ip',
+    input: {
+        params: z.strictObject({ engineId: z.string().regex(/^[a-z2-7]{26}$/) }),
+        query: z.strictObject({ dryRun: z.enum(['true', 'false']).optional() }),
+        headers: z.strictObject({ 'x-request-kind': z.enum(['rename']).optional() }),
+        body: z.strictObject({ name: z.string().min(1).max(64) }),
+        maxBodyBytes: 256,
+    },
+    output: z.strictObject({ name: z.string() }),
     errorCodes: ['engine-not-found'],
 });
 
-const ENGINE = 'a'.repeat(26);
+const sessionRoute = defineRoute({
+    method: 'GET',
+    path: '/api/me',
+    auth: 'session',
+    permission: 'account.read',
+    rateLimit: null,
+    input: NO_INPUT,
+    output: z.strictObject({ userId: z.string() }),
+    errorCodes: [],
+});
 
-function app() {
-    const router = new Hono();
+function actor(overrides: Partial<Actor> = {}): Actor {
+    return {
+        userId: USER,
+        orgId: ORG,
+        orgRole: 'owner',
+        platformRole: 'none',
+        recoveredAt: null,
+        steppedUpAt: null,
+        ...overrides,
+    };
+}
+
+function harness(options: { readonly limit?: RateLimitOutcome; readonly session?: ActiveSession | null } = {}) {
+    const logger = createMemoryLogger();
     const seen: unknown[] = [];
-    bindRoute(router, '/api', renameEngine, (input) => {
+    const binder = createRouteBinder({
+        authorizer: createAuthorizer({ clock: { nowMs: () => 0 }, policy: DASHBOARD_POLICY }),
+        rateLimiter: { consume: () => Promise.resolve(options.limit ?? 'allowed') },
+        logger,
+        resolveSession: (token) => Promise.resolve(token === TOKEN ? (options.session ?? null) : null),
+    });
+    const router = new Hono();
+    binder.bind(router, '/api', renameEngine, ({ input }) => {
         seen.push(input);
         return Promise.resolve(
             input.body.name === 'missing'
                 ? { kind: 'problem', status: 404, code: 'engine-not-found' }
-                : { kind: 'ok', body: { name: input.body.name } },
+                : { kind: 'ok', body: { name: input.body.name }, setCookies: ['a=1', 'b=2'] },
         );
     });
-    return { router: new Hono().route('/api', router), seen };
+    binder.bind(router, '/api', sessionRoute, ({ session }) =>
+        Promise.resolve({ kind: 'ok', body: { userId: session.user.id } }),
+    );
+    return { app: new Hono().route('/api', router), seen, logger, binder };
 }
 
-function post(router: Hono, path: string, body: string): Promise<Response> {
+function post(app: Hono, path: string, body: string, headers: Record<string, string> = {}): Promise<Response> {
     return Promise.resolve(
-        router.request(path, { method: 'POST', body, headers: { 'Content-Type': 'application/json' } }),
+        app.request(path, { method: 'POST', body, headers: { 'Content-Type': 'application/json', ...headers } }),
     );
 }
 
-describe('bindRoute', () => {
-    it('passes validated params, query and body to the handler', async () => {
-        const { router, seen } = app();
-        const response = await post(router, `/api/engines/${ENGINE}/name?dryRun=true`, '{"name":"Office"}');
+const session = (overrides: Partial<Actor> = {}) => ({ user: { id: USER }, actor: actor(overrides) }) as ActiveSession;
+
+describe('route binder', () => {
+    it('passes validated params, query, declared headers and body to the handler', async () => {
+        const { app, seen } = harness();
+        const response = await post(app, `/api/engines/${ENGINE}/name?dryRun=true`, '{"name":"Office"}', {
+            'X-Request-Kind': 'rename',
+            'X-Other': 'ignored',
+        });
         expect(response.status).toBe(200);
         expect(await response.json()).toEqual({ name: 'Office' });
-        expect(seen).toEqual([{ params: { engineId: ENGINE }, query: { dryRun: 'true' }, body: { name: 'Office' } }]);
+        expect(response.headers.getSetCookie()).toEqual(['a=1', 'b=2']);
+        expect(seen).toEqual([
+            {
+                params: { engineId: ENGINE },
+                query: { dryRun: 'true' },
+                headers: { 'x-request-kind': 'rename' },
+                body: { name: 'Office' },
+            },
+        ]);
     });
 
     it('answers a declared error code as problem+json', async () => {
-        const response = await post(app().router, `/api/engines/${ENGINE}/name`, '{"name":"missing"}');
+        const response = await post(harness().app, `/api/engines/${ENGINE}/name`, '{"name":"missing"}');
         expect(response.status).toBe(404);
         expect(response.headers.get('Content-Type')).toBe('application/problem+json');
         expect(await response.json()).toMatchObject({ status: 404, code: 'engine-not-found' });
     });
 
     it.each([
-        ['a bad param', `/api/engines/NOT-AN-ID/name`, '{"name":"Office"}'],
-        ['an unknown query field', `/api/engines/${ENGINE}/name?debug=1`, '{"name":"Office"}'],
-        ['an unknown body field', `/api/engines/${ENGINE}/name`, '{"name":"Office","isAdmin":true}'],
-        ['malformed JSON', `/api/engines/${ENGINE}/name`, '{"name":<script>'],
-    ])('rejects %s before the handler runs, without echoing input', async (_, path, body) => {
-        const { router, seen } = app();
-        const response = await post(router, path, body);
+        ['a bad param', `/api/engines/NOT-AN-ID/name`, '{"name":"Office"}', {}],
+        ['an unknown query field', `/api/engines/${ENGINE}/name?debug=1`, '{"name":"Office"}', {}],
+        ['a bad declared header', `/api/engines/${ENGINE}/name`, '{"name":"Office"}', { 'X-Request-Kind': '<script>' }],
+        ['an unknown body field', `/api/engines/${ENGINE}/name`, '{"name":"Office","isAdmin":true}', {}],
+        ['malformed JSON', `/api/engines/${ENGINE}/name`, '{"name":<script>', {}],
+        ['invalid UTF-8', `/api/engines/${ENGINE}/name`, '�', {}],
+    ])('rejects %s before the handler runs, without echoing input', async (_, path, body, headers) => {
+        const { app, seen } = harness();
+        const response = await post(app, path, body, headers);
         expect(response.status).toBe(400);
         const text = await response.text();
         expect(JSON.parse(text)).toMatchObject({ status: 400, code: 'invalid-request' });
         expect(text).not.toContain('script');
         expect(text).not.toContain('isAdmin');
         expect(seen).toEqual([]);
+    });
+
+    it('refuses a body over the cap, declared or actual, with 413', async () => {
+        const { app, seen } = harness();
+        const big = JSON.stringify({ name: 'x'.repeat(300) });
+        expect((await post(app, `/api/engines/${ENGINE}/name`, big)).status).toBe(413);
+        const lying = await app.request(`/api/engines/${ENGINE}/name`, {
+            method: 'POST',
+            body: big,
+            headers: { 'Content-Length': '10' },
+        });
+        expect(lying.status).toBe(413);
+        const announced = await app.request(`/api/engines/${ENGINE}/name`, {
+            method: 'POST',
+            body: '{"name":"x"}',
+            headers: { 'Content-Length': '1000000' },
+        });
+        expect(announced.status).toBe(413);
+        expect(seen).toEqual([]);
+    });
+
+    it('applies the route’s rate limit before anything else and fails closed when the limiter cannot decide', async () => {
+        const limited = harness({ limit: 'limited' });
+        expect((await post(limited.app, `/api/engines/${ENGINE}/name`, '{"name":"x"}')).status).toBe(429);
+        const broken = harness({ limit: 'unavailable' });
+        const response = await post(broken.app, `/api/engines/${ENGINE}/name`, '{"name":"x"}');
+        expect(response.status).toBe(429);
+        expect(broken.logger.entries).toEqual([
+            { level: 'error', event: 'rate-limit.unavailable', fields: { rule: 'public-read-ip' } },
+        ]);
+        expect(broken.seen).toEqual([]);
+    });
+
+    it('requires a valid session cookie on session routes', async () => {
+        const { app } = harness({ session: session() });
+        const none = await app.request('/api/me');
+        expect(none.status).toBe(401);
+        expect(none.headers.getSetCookie()[0]).toMatch(/^__Host-ptbk_session=; Max-Age=0/);
+        expect((await app.request('/api/me', { headers: { Cookie: `__Host-ptbk_session=short` } })).status).toBe(401);
+        const ok = await app.request('/api/me', { headers: { Cookie: `__Host-ptbk_session=${TOKEN}` } });
+        expect(await ok.json()).toEqual({ userId: USER });
+    });
+
+    it('authorizes the permission on the actor’s own scope and hides what is not theirs as 404', async () => {
+        const binder = createRouteBinder({
+            authorizer: {
+                can: (_, action) =>
+                    action === 'account.read'
+                        ? { kind: 'denied', reason: 'not-self' }
+                        : action === 'org.read'
+                          ? { kind: 'denied', reason: 'recovery-cooldown' }
+                          : { kind: 'denied', reason: 'role' },
+            },
+            rateLimiter: { consume: () => Promise.resolve('allowed') },
+            logger: createMemoryLogger(),
+            resolveSession: () => Promise.resolve(session()),
+        });
+        const router = new Hono();
+        const handler: RouteHandler<RouteContract> = () => Promise.resolve({ kind: 'ok', body: {} });
+        const routeFor = (path: `/api/${string}`, permission: string) =>
+            ({ ...sessionRoute, path, permission, output: z.strictObject({}) }) as RouteContract;
+        binder.bind(router, '/api', routeFor('/api/a', 'account.read'), handler);
+        binder.bind(router, '/api', routeFor('/api/b', 'org.read'), handler);
+        binder.bind(router, '/api', routeFor('/api/c', 'passkey.manage'), handler);
+        const app = new Hono().route('/api', router);
+        const cookie = { headers: { Cookie: `__Host-ptbk_session=${TOKEN}` } };
+        expect(await (await app.request('/api/a', cookie)).json()).toMatchObject({ status: 404, code: 'not-found' });
+        expect(await (await app.request('/api/b', cookie)).json()).toMatchObject({
+            status: 403,
+            code: 'recovery-cooldown',
+        });
+        expect(await (await app.request('/api/c', cookie)).json()).toMatchObject({ status: 403, code: 'forbidden' });
+        expect(binder.routes.map((route) => route.path)).toEqual(['/api/a', '/api/b', '/api/c']);
+    });
+
+    it.each<[string, Partial<RouteContract>]>([
+        ['a session route without permission', { auth: 'session', permission: null, rateLimit: null }],
+        ['a session route with an unknown permission', { auth: 'session', permission: 'root', rateLimit: null }],
+        ['a public route without rate limit', { auth: 'public', permission: null, rateLimit: null }],
+        [
+            'a public route with an email-keyed limit',
+            { auth: 'public', permission: null, rateLimit: 'signup-start-email' },
+        ],
+        [
+            'an unknown rate limit on a session route',
+            { auth: 'session', permission: 'account.read', rateLimit: 'nope' },
+        ],
+        ['a body without a size cap', { input: { ...NO_INPUT, body: z.strictObject({}) } }],
+        ['path parameters without a schema', { path: '/api/engines/:engineId' }],
+        ['a path outside the mount', { path: '/v1/me' }],
+    ])('refuses to mount %s', (_, change) => {
+        const binder = harness().binder;
+        const contract: RouteContract = { ...sessionRoute, ...change };
+        expect(() => {
+            binder.bind(new Hono(), '/api', contract, () => Promise.resolve({ kind: 'ok', body: {} }));
+        }).toThrow(/refusing to mount/);
     });
 });

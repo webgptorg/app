@@ -1,10 +1,11 @@
-import type { RouteContract, RouteErrorCode, RouteInput, RouteResponse } from '../../shared/api/contract';
+import type { RouteCallInput, RouteContract, RouteErrorCode, RouteResponse } from '../../shared/api/contract';
 import {
     COMMON_PROBLEM_CODES,
     PROBLEM_CONTENT_TYPE,
     problemSchema,
     type CommonProblemCode,
 } from '../../shared/api/problem';
+import { parseTolerantly } from './tolerant-parse';
 
 export type ApiOutcome<C extends RouteContract> =
     | { readonly kind: 'ok'; readonly data: RouteResponse<C> }
@@ -14,7 +15,7 @@ export type ApiOutcome<C extends RouteContract> =
     | { readonly kind: 'network-error' };
 
 export interface ApiClient {
-    call<C extends RouteContract>(contract: C, input: RouteInput<C>, signal?: AbortSignal): Promise<ApiOutcome<C>>;
+    call<C extends RouteContract>(contract: C, input: RouteCallInput<C>, signal?: AbortSignal): Promise<ApiOutcome<C>>;
 }
 
 const DEFAULT_TIMEOUT_MS = 15_000;
@@ -48,7 +49,7 @@ async function readJson(
 export function createApiClient(deps: { readonly fetch: typeof fetch; readonly timeoutMs?: number }): ApiClient {
     const timeoutMs = deps.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     return {
-        async call<C extends RouteContract>(contract: C, input: RouteInput<C>, signal?: AbortSignal) {
+        async call<C extends RouteContract>(contract: C, input: RouteCallInput<C>, signal?: AbortSignal) {
             const parts = input as Readonly<Record<string, unknown>>;
             const path = buildPath(contract, parts);
             const timeout = AbortSignal.timeout(timeoutMs);
@@ -58,9 +59,9 @@ export function createApiClient(deps: { readonly fetch: typeof fetch; readonly t
                     method: contract.method,
                     headers: {
                         Accept: 'application/json',
-                        ...(contract.body === null ? {} : { 'Content-Type': 'application/json' }),
+                        ...(contract.input.body === null ? {} : { 'Content-Type': 'application/json' }),
                     },
-                    ...(contract.body === null ? {} : { body: JSON.stringify(parts['body']) }),
+                    ...(contract.input.body === null ? {} : { body: JSON.stringify(parts['body']) }),
                     credentials: 'same-origin',
                     signal: signal === undefined ? timeout : AbortSignal.any([signal, timeout]),
                 });
@@ -72,12 +73,12 @@ export function createApiClient(deps: { readonly fetch: typeof fetch; readonly t
                 return { kind: 'invalid-response', status: response.status };
             }
             if (response.ok) {
-                const data = contract.response.safeParse(body.value);
+                const data = parseTolerantly(contract.output, body.value);
                 return data.success
                     ? { kind: 'ok', data: data.data as RouteResponse<C> }
                     : { kind: 'invalid-response', status: response.status };
             }
-            const problem = problemSchema.safeParse(body.value);
+            const problem = parseTolerantly(problemSchema, body.value);
             const allowed: readonly string[] = [...COMMON_PROBLEM_CODES, ...contract.errorCodes];
             if (
                 !problem.success ||
