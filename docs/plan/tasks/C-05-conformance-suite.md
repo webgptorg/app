@@ -2,7 +2,7 @@
 
 - **Lane:** Contracts · **Module:** `packages/conformance` (plus one CI job) · **Milestone:** M2
 - **Depends on:** C-03, C-04, M-04
-- **Status:** todo
+- **Status:** in progress (feat/c-05-conformance)
 - **Spec:** Build plan (Mock engine first, real engine last), Security hardening 7 and 8, What our platform can and cannot do; ADRs: [0004](../../adr/0004-mock-engine-and-conformance.md), [0002](../../adr/0002-public-private-split.md)
 
 ## Goal
