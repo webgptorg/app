@@ -103,11 +103,14 @@ export async function flush(turns = 1): Promise<void> {
     }
 }
 
-/** Waits, turn by turn, until `condition` holds; fails after `maxTurns` instead of hanging. */
-export async function until(condition: () => boolean, maxTurns = 1000): Promise<void> {
-    for (let turn = 0; turn < maxTurns; turn++) {
-        if (condition()) return;
+/**
+ * Waits, turn by turn, until `condition` holds. Bounded by wall time, not turns: WebCrypto signs off the event loop,
+ * and on a busy CI runner that can take more turns than any fixed count.
+ */
+export async function until(condition: () => boolean, timeoutMs = 5_000): Promise<void> {
+    const deadline = performance.now() + timeoutMs;
+    while (!condition()) {
+        if (performance.now() > deadline) throw new Error('condition not met');
         await flush();
     }
-    throw new Error('condition not met');
 }
