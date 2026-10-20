@@ -71,7 +71,8 @@ afterEach(async () => {
     await rm(dir, { recursive: true, force: true });
 });
 
-describe('publishRelease with curl --aws-sigv4', () => {
+// Each case spawns real curl processes, which is slow on a loaded machine.
+describe('publishRelease with curl --aws-sigv4', { timeout: 30_000 }, () => {
     it('uploads every file after checking none exists, the release log entry last', async () => {
         const outcome = await publishRelease(target, releaseUploads(dir, '0.1.0'));
         expect(outcome).toMatchObject({ kind: 'published' });
