@@ -37,9 +37,16 @@ const boolean = (value: boolean): Buffer => tlv(0x01, Buffer.of(value ? 0xff : 0
 const utf8String = (text: string): Buffer => tlv(0x0c, Buffer.from(text, 'utf8'));
 const explicit = (tagNumber: number, content: Buffer): Buffer => tlv(0xa0 | tagNumber, content);
 
-function integer(bytes: Buffer): Buffer {
+/**
+ * DER INTEGER from unsigned big-endian bytes. DER wants the shortest form (X.690 8.3.2): OpenSSL refuses a redundant
+ * leading zero, so random serials starting with one broke about 1 in 512 test certificates.
+ */
+export function integer(bytes: Buffer): Buffer {
+    let start = 0;
+    while (start < bytes.length - 1 && bytes[start] === 0) start++;
+    const magnitude = bytes.length === 0 ? Buffer.of(0) : bytes.subarray(start);
     // A set high bit would make the DER INTEGER negative.
-    return tlv(0x02, (bytes[0] ?? 0) & 0x80 ? Buffer.concat([Buffer.of(0), bytes]) : bytes);
+    return tlv(0x02, (magnitude[0] ?? 0) & 0x80 ? Buffer.concat([Buffer.of(0), magnitude]) : magnitude);
 }
 
 function oid(dotted: string): Buffer {
@@ -81,12 +88,13 @@ function signCertificate(
     publicKey: KeyObject,
     issuerKey: KeyObject,
     extensions: readonly Buffer[],
+    serial: Buffer,
 ): string {
     const algorithm = sequence(oid(OID.ecdsaWithSha256));
     const now = Date.now();
     const tbs = sequence(
         explicit(0, integer(Buffer.of(2))),
-        integer(randomBytes(16)),
+        integer(serial),
         algorithm,
         name(issuer),
         sequence(utcTime(new Date(now - HOUR_MS)), utcTime(new Date(now + 24 * HOUR_MS))),
@@ -110,24 +118,44 @@ export interface TestCa {
     issue(hostnames: readonly string[]): TestCertificate;
 }
 
+export interface TestCaOptions {
+    /** Serial number bytes for each certificate; random 16 bytes by default. Lets tests pin edge-case serials. */
+    readonly serial?: () => Buffer;
+}
+
 /** A throwaway ECDSA P-256 CA generated at test time, so no key material is checked in. */
-export function createTestCa(commonName: string): TestCa {
+export function createTestCa(commonName: string, options: TestCaOptions = {}): TestCa {
+    const serial = options.serial ?? (() => randomBytes(16));
     const ca = generateKeyPairSync('ec', { namedCurve: 'P-256' });
-    const certPem = signCertificate(commonName, commonName, ca.publicKey, ca.privateKey, [
-        extension(OID.basicConstraints, true, sequence(boolean(true))),
-        extension(OID.keyUsage, true, keyUsage(KEY_USAGE.keyCertSign, KEY_USAGE.cRLSign)),
-    ]);
+    const certPem = signCertificate(
+        commonName,
+        commonName,
+        ca.publicKey,
+        ca.privateKey,
+        [
+            extension(OID.basicConstraints, true, sequence(boolean(true))),
+            extension(OID.keyUsage, true, keyUsage(KEY_USAGE.keyCertSign, KEY_USAGE.cRLSign)),
+        ],
+        serial(),
+    );
     return {
         certPem,
         issue(hostnames) {
             const leaf = generateKeyPairSync('ec', { namedCurve: 'P-256' });
             const dnsNames = hostnames.map((hostname) => tlv(0x82, Buffer.from(hostname, 'ascii')));
-            const leafPem = signCertificate(hostnames[0] ?? 'leaf', commonName, leaf.publicKey, ca.privateKey, [
-                extension(OID.basicConstraints, true, sequence()),
-                extension(OID.keyUsage, true, keyUsage(KEY_USAGE.digitalSignature)),
-                extension(OID.extKeyUsage, false, sequence(oid(OID.serverAuth))),
-                extension(OID.subjectAltName, false, sequence(...dnsNames)),
-            ]);
+            const leafPem = signCertificate(
+                hostnames[0] ?? 'leaf',
+                commonName,
+                leaf.publicKey,
+                ca.privateKey,
+                [
+                    extension(OID.basicConstraints, true, sequence()),
+                    extension(OID.keyUsage, true, keyUsage(KEY_USAGE.digitalSignature)),
+                    extension(OID.extKeyUsage, false, sequence(oid(OID.serverAuth))),
+                    extension(OID.subjectAltName, false, sequence(...dnsNames)),
+                ],
+                serial(),
+            );
             return { certPem: leafPem, keyPem: leaf.privateKey.export({ type: 'pkcs8', format: 'pem' }).toString() };
         },
     };
