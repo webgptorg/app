@@ -2,7 +2,7 @@
 
 - **Lane:** Mock engine · **Module:** `apps/mock-engine` · **Milestone:** M1
 - **Depends on:** M-01
-- **Status:** todo
+- **Status:** in progress (feat/m-02-mock-engine-tls-server)
 - **Spec:** Relay and tunnel; Build plan (Spike acceptance criteria); Operations (Bandwidth and cost); Engine security baseline; ADRs: [0004](../../adr/0004-mock-engine-and-conformance.md), [0014](../../adr/0014-cryptography.md)
 
 ## Goal
