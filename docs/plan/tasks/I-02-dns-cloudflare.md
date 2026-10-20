@@ -2,7 +2,7 @@
 
 - **Lane:** I · **Module:** `infra/cloudflare` (and `apps/dashboard/wrangler.jsonc` IDs) · **Milestone:** M4
 - **Depends on:** D-01
-- **Status:** todo
+- **Status:** in progress (feat/i-02-dns-cloudflare)
 - **Spec:** One address for users; Residual risks (1. Certificate mis-issuance); Abuse on our domains (items 1, 2 and Before the PSL entry lands); Hosting and stack (Engine DNS); Operations
 
 ## Goal
