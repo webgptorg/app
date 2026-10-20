@@ -36,7 +36,8 @@ describe('HourlyRateLimiter Durable Object', () => {
         expect(await counter.consume(1, HOUR, start + 2)).toBe('allowed');
     });
 
-    // The first import of the whole Worker entry takes seconds when every package's tests share the runner.
+    // The first import of the whole Worker entry into workerd takes about 3 s on a 2-core CI runner even when nothing
+    // else runs, too close to the 5 s default.
     it('is exported from the Worker entry next to the default handler', { timeout: 30_000 }, async () => {
         const entry = await import('../../worker');
         expect(entry.HourlyRateLimiter.name).toBe('HourlyRateLimiter');

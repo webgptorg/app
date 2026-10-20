@@ -60,8 +60,7 @@ describe('DsseEnvelope', () => {
         expect(DsseEnvelope.safeParse(envelope).success).toBe(false);
     });
 
-    // Encodes and parses two maximum-size payloads, which takes seconds when every package's tests share the runner.
-    it('rejects a payload over DSSE_MAX_PAYLOAD_BYTES', { timeout: 30_000 }, () => {
+    it('rejects a payload over DSSE_MAX_PAYLOAD_BYTES', () => {
         const atLimit = encodeBase64Std(new Uint8Array(DSSE_MAX_PAYLOAD_BYTES));
         const over = encodeBase64Std(new Uint8Array(DSSE_MAX_PAYLOAD_BYTES + 3));
         expect(DsseEnvelope.safeParse({ ...valid, payload: atLimit }).success).toBe(true);
