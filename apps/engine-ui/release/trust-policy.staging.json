@@ -1,0 +1,17 @@
+{
+  "releaseKeys": [{ "publicKey": "EexYakDkY2hYJgltwb3h_GZEQ1SYL5Vl-R_gk2KNQ00" }],
+  "maintainerKeys": [
+    { "publicKey": "AilxSNi4YxKfx2kapjgBMVVRsoIcPx5K46EMhUqFpiM" },
+    { "publicKey": "Fk_UTKnmDGRNUzozi9dXd0kEYH8t-lTpewW3uPtvVMk" },
+    { "publicKey": "sYYJPhNz8V1NN4F4ljFrgv_bdkvZxZuKT2DcU7Jh5yw" }
+  ],
+  "securityThreshold": 2,
+  "workflowIdentity": {
+    "issuer": "https://token.actions.githubusercontent.com",
+    "repository": "webgptorg/app",
+    "repositoryId": "1411959168",
+    "workflowPath": ".github/workflows/ui-release.yml"
+  },
+  "revocationRule": { "signers": "release-or-maintainer", "threshold": 1 },
+  "delays": { "regularMs": 259200000, "securityMs": 86400000 }
+}
