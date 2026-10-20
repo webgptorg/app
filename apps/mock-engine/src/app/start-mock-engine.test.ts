@@ -13,9 +13,11 @@ import {
     encodeBase64Url,
     encodeFrame,
 } from '@ptbk/protocol';
+import { ENGINE_API_ROUTES, MemberId, OWNER_PERMISSIONS, SessionId } from '@ptbk/engine-api';
 import { describe, expect, it } from 'vitest';
 
 import { createMemoryIdentityStore } from '../adapters/memory-identity-store';
+import { NO_FAULTS } from '../domain/faults/fault-plan';
 import type { TunnelDuplex } from '../adapters/tunnel-duplex';
 import type { ManagedCertificateSource } from '../domain/tls/certificate-source';
 import type { RelayLinkState } from '../domain/tunnel/relay-link';
@@ -27,6 +29,7 @@ import { createMemoryLogger } from '../testing/memory-logger';
 import { createSeededRandom } from '../testing/seeded-random';
 import type { MockEngineConfig } from './config';
 import { DEFAULT_TUNNEL_OFFER, startMockEngine } from './start-mock-engine';
+import { DEFAULT_MOCK_SETTINGS } from '../testing/mock-settings';
 
 function relay(name: string): RelayTarget {
     return { url: `wss://${name}/v1/tunnel`, relayId: RelayId.parse(name), port: 443 };
@@ -43,6 +46,7 @@ const CONFIG: MockEngineConfig = {
     devCaFiles: null,
     devCaDomains: [],
     logLevel: 'info',
+    ...DEFAULT_MOCK_SETTINGS,
 };
 
 async function start(certificates?: ManagedCertificateSource) {
@@ -129,6 +133,8 @@ describe('startMockEngine', () => {
                 version: '0.1.0',
                 relays: 2,
                 proxy: false,
+                scenario: 'small-team',
+                seed: 1,
             },
         });
     });
@@ -245,5 +251,123 @@ describe('startMockEngine', () => {
             await started.engine.close();
             expect(recording.closed()).toBe(1);
         });
+    });
+
+    describe('engine API state', () => {
+        async function read(started: Started, id: 'getSecurityOverview' | 'getEngine') {
+            const owner = started.engine.runtime
+                .controller()
+                .inspect()
+                .members.find(({ role }) => role === 'owner');
+            if (owner === undefined) throw new Error('no owner');
+            const result = await started.engine.runtime.core().transport({
+                memberId: MemberId.parse(owner.id),
+                sessionId: SessionId.parse('session-test'),
+                client: { ip: '127.0.0.1', userAgent: 'test' },
+                permissions: new Set(OWNER_PERMISSIONS),
+                stepUpFresh: true,
+            })(ENGINE_API_ROUTES[id], {}, AbortSignal.timeout(5_000));
+            if (result.kind !== 'ok') throw new Error(result.problem.code);
+            return result.data as never;
+        }
+
+        it('reports the engine identity, the relays and the hostnames they confirmed', async () => {
+            const started = await start();
+            const engine: { engineId: string; hostname: string; mode: string; dashboardUrl: null } = await read(
+                started,
+                'getEngine',
+            );
+            expect(engine).toMatchObject({
+                engineId: started.engine.identity.engineId,
+                hostname: started.engine.hostname,
+                mode: 'tunnel',
+                dashboardUrl: null,
+                capabilities: [],
+            });
+            interface Security {
+                relays: { hostname: string; status: string }[];
+                hostnames: { hostname: string; kind: string }[];
+                engine: { version: string };
+            }
+            const statuses = async () =>
+                ((await read(started, 'getSecurityOverview')) as Security).relays.map(({ hostname, status }) => [
+                    hostname,
+                    status,
+                ]);
+            expect(await statuses()).toEqual([
+                ['relay-a.ptbk.test', 'connecting'],
+                ['relay-b.ptbk.test', 'connecting'],
+            ]);
+            started.dialer.dials[0]?.fail({ reason: 'network' });
+            await handshake(started, 1, ['agents.customer.test']);
+            expect(await statuses()).toEqual([
+                ['relay-a.ptbk.test', 'disconnected'],
+                ['relay-b.ptbk.test', 'connected'],
+            ]);
+            const security: Security = await read(started, 'getSecurityOverview');
+            expect(security.hostnames).toEqual([
+                { hostname: started.engine.hostname, kind: 'default' },
+                { hostname: 'agents.customer.test', kind: 'custom' },
+            ]);
+            expect(security.engine.version).toBe('0.1.0');
+        });
+
+        it('keeps relay status and the dashboard URL across a reset', async () => {
+            const started = await start();
+            await handshake(started, 0);
+            started.engine.runtime.setDashboardUrl('https://app.ptbk.test/engines/x');
+            started.engine.runtime.reset({ seed: 7, scenario: 'empty' });
+            expect(started.engine.runtime.current()).toEqual({ seed: 7, scenario: 'empty' });
+            const engine: { dashboardUrl: string } = await read(started, 'getEngine');
+            expect(engine.dashboardUrl).toBe('https://app.ptbk.test/engines/x');
+            const security: { relays: { hostname: string; status: string }[] } = await read(
+                started,
+                'getSecurityOverview',
+            );
+            expect(security.relays).toContainEqual(
+                expect.objectContaining({ hostname: 'relay-a.ptbk.test', status: 'connected' }),
+            );
+        });
+    });
+
+    describe('control listener', () => {
+        it('starts only when enabled, on loopback, and stops on close', async () => {
+            expect((await start()).engine.control).toBeNull();
+            const dialer = createFakeDialer();
+            const engine = await startMockEngine(
+                { ...CONFIG, control: { host: '127.0.0.1', port: 0 } },
+                {
+                    logger: createMemoryLogger(),
+                    clock: createFakeClock(),
+                    random: createSeededRandom(1),
+                    identityStore: createMemoryIdentityStore(),
+                    dialer,
+                },
+            );
+            const port = engine.control?.port ?? 0;
+            const state = await fetch(`http://127.0.0.1:${String(port)}/__mock/state`);
+            expect(await state.json()).toMatchObject({ seed: 1, scenario: 'small-team', counts: { members: 5 } });
+            for (const dial of dialer.dials) dial.fail({ reason: 'network' });
+            await engine.close();
+            await expect(fetch(`http://127.0.0.1:${String(port)}/__mock/state`)).rejects.toThrow();
+        });
+    });
+
+    it('passes each stream through the fault plan’s tunnel throttle', async () => {
+        const recording = {
+            current: () => undefined,
+            onChange: () => () => undefined,
+            addHostnames: () => undefined,
+            close: () => undefined,
+        } satisfies ManagedCertificateSource;
+        const started = await start(recording);
+        started.engine.faults.set({ ...NO_FAULTS, slowTunnelBytesPerS: 100 });
+        expect(started.engine.faults.plan().slowTunnelBytesPerS).toBe(100);
+        const connection = await handshake(started, 0);
+        connection.relayBinary(openFrame);
+        connection.relayBinary(
+            encodeFrame({ type: FrameType.DATA, streamId: StreamId.parse(1), payload: new Uint8Array(8) }),
+        );
+        await until(() => started.logger.entries.some((entry) => entry.event === 'tls.handshake-failed'));
     });
 });

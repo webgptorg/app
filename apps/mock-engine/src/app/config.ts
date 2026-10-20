@@ -10,10 +10,13 @@ import { z } from 'zod';
 
 import packageJson from '../../package.json';
 import type { DevCaFiles } from '../adapters/dev-ca';
+import type { FaultPlan } from '../domain/faults/fault-plan';
+import { NO_FAULTS, parseFaultPlanJson } from '../domain/faults/fault-plan';
 import type { NoProxyRule, ProxyConfig } from '../adapters/proxy-config';
 import type { LogLevel } from '../domain/logger';
 import { LOG_LEVELS } from '../domain/logger';
 import { secret } from '../domain/secret';
+import { Scenario } from '../domain/state/scenarios';
 import type { RelayTarget } from '../domain/tunnel/relay-target';
 
 const MAX_PATH_LENGTH = 4096;
@@ -42,6 +45,16 @@ export interface MockEngineConfig {
     /** `MOCK_DEV_CA_DOMAINS`: e2e domains a generated dev CA permits besides the engine domain. */
     readonly devCaDomains: readonly Hostname[];
     readonly logLevel: LogLevel;
+    /** `MOCK_SEED`, `MOCK_SCENARIO` and `MOCK_SEED_EPOCH`: the same three give the same engine state. */
+    readonly seed: number;
+    readonly scenario: Scenario;
+    readonly seedEpoch: Date;
+    /** `MOCK_FAULTS`, a JSON `FaultPlan`; changeable at runtime through the control listener. */
+    readonly faults: FaultPlan;
+    /** `MOCK_DEV_LOGIN=enabled`: the sign-in page lets anyone pick a member. Refused with `NODE_ENV=production`. */
+    readonly devLogin: boolean;
+    /** `MOCK_CONTROL=enabled` with `MOCK_CONTROL_HOST` and `MOCK_CONTROL_PORT`; refused with `NODE_ENV=production`. */
+    readonly control: { readonly host: string; readonly port: number } | null;
 }
 
 export interface IdentityConfig {
@@ -231,7 +244,45 @@ function parseDomains(list: string, problem: (message: string) => void): readonl
     return Object.freeze(domains);
 }
 
+const MAX_SEED = 2 ** 32 - 1;
+const DEFAULT_SEED_EPOCH = '2026-10-01T00:00:00Z';
+const toggle = value(z.enum(['enabled', 'disabled']), 'must be enabled or disabled');
+
 const envSchema = z.strictObject({
+    NODE_ENV: z.string().max(64).optional(),
+    MOCK_SEED: value(
+        z
+            .string()
+            .regex(/^(?:0|[1-9]\d{0,9})$/)
+            .transform(Number)
+            .pipe(z.int().max(MAX_SEED)),
+        `must be an integer from 0 to ${String(MAX_SEED)}`,
+    ).default(1),
+    MOCK_SCENARIO: value(Scenario, `must be one of ${Scenario.options.join(', ')}`).default('small-team'),
+    MOCK_SEED_EPOCH: value(
+        z.iso.datetime({ offset: false }).transform((text) => new Date(text)),
+        'must be an RFC 3339 UTC timestamp',
+    ).default(new Date(DEFAULT_SEED_EPOCH)),
+    MOCK_FAULTS: parsed((text, problem) => {
+        const result = parseFaultPlanJson(text);
+        if (result.kind === 'ok') return result.plan;
+        for (const message of result.problems) problem(`must be a fault plan (${message})`);
+        return undefined;
+    }).optional(),
+    MOCK_DEV_LOGIN: toggle.default('disabled'),
+    MOCK_CONTROL: toggle.default('disabled'),
+    MOCK_CONTROL_HOST: value(
+        z.union([z.ipv4(), z.ipv6(), HostnameSchema]),
+        'must be an IP address or hostname',
+    ).default('127.0.0.1'),
+    MOCK_CONTROL_PORT: value(
+        z
+            .string()
+            .regex(/^[1-9]\d{0,4}$/)
+            .transform(Number)
+            .pipe(z.int().max(65_535)),
+        'must be a port from 1 to 65535',
+    ).default(4480),
     PTBK_MODE: value(z.literal('tunnel'), 'only tunnel is supported by the mock engine').default('tunnel'),
     PTBK_DATA_DIR: filePath,
     PTBK_RELAYS: parsed(parseRelays),
@@ -260,7 +311,7 @@ const PROXY_VARIABLES = [
 ] as const;
 
 function isSetting(name: string): boolean {
-    return name.startsWith('PTBK_') || name.startsWith('MOCK_') || name === 'LOG_LEVEL';
+    return name.startsWith('PTBK_') || name.startsWith('MOCK_') || name === 'LOG_LEVEL' || name === 'NODE_ENV';
 }
 
 function present(env: Env, name: string): string | undefined {
@@ -309,6 +360,11 @@ export function parseMockEngineConfig(env: Env): MockEngineConfig {
     ) {
         problems.push('MOCK_DEV_CA_CERT_FILE: must be set together with MOCK_DEV_CA_KEY_FILE');
     }
+    if (result.success && result.data.NODE_ENV === 'production') {
+        if (result.data.MOCK_CONTROL === 'enabled') problems.push('MOCK_CONTROL: must not be enabled in production');
+        if (result.data.MOCK_DEV_LOGIN === 'enabled')
+            problems.push('MOCK_DEV_LOGIN: must not be enabled in production');
+    }
     if (!result.success || problems.length > 0) throw new ConfigError(problems);
     const parsedEnv = result.data;
     const devCaFiles =
@@ -330,6 +386,15 @@ export function parseMockEngineConfig(env: Env): MockEngineConfig {
         devCaFiles,
         devCaDomains: parsedEnv.MOCK_DEV_CA_DOMAINS ?? Object.freeze([]),
         logLevel: parsedEnv.LOG_LEVEL,
+        seed: parsedEnv.MOCK_SEED,
+        scenario: parsedEnv.MOCK_SCENARIO,
+        seedEpoch: parsedEnv.MOCK_SEED_EPOCH,
+        faults: parsedEnv.MOCK_FAULTS ?? NO_FAULTS,
+        devLogin: parsedEnv.MOCK_DEV_LOGIN === 'enabled',
+        control:
+            parsedEnv.MOCK_CONTROL === 'enabled'
+                ? Object.freeze({ host: parsedEnv.MOCK_CONTROL_HOST, port: parsedEnv.MOCK_CONTROL_PORT })
+                : null,
     });
 }
 

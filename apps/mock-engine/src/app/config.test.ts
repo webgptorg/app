@@ -4,6 +4,7 @@ import { MAX_RELAYS } from '@ptbk/protocol';
 import { describe, expect, it } from 'vitest';
 
 import packageJson from '../../package.json';
+import { DEFAULT_MOCK_SETTINGS } from '../testing/mock-settings';
 import { ConfigError, parseIdentityConfig, parseMockEngineConfig } from './config';
 
 const BASE = {
@@ -46,6 +47,7 @@ describe('parseMockEngineConfig', () => {
             devCaFiles: null,
             devCaDomains: [],
             logLevel: 'info',
+            ...DEFAULT_MOCK_SETTINGS,
         });
         expect(Object.isFrozen(config)).toBe(true);
         expect(Object.isFrozen(config.relays)).toBe(true);
@@ -125,9 +127,9 @@ describe('parseMockEngineConfig', () => {
     });
 
     it('rejects unknown PTBK_ and MOCK_ settings', () => {
-        expect(problemsOf({ ...BASE, PTBK_UPDATE_POLICY: 'auto', MOCK_SEED: '1' })).toEqual([
+        expect(problemsOf({ ...BASE, PTBK_UPDATE_POLICY: 'auto', MOCK_SEEDS: '1' })).toEqual([
             'PTBK_UPDATE_POLICY: is not a mock engine setting',
-            'MOCK_SEED: is not a mock engine setting',
+            'MOCK_SEEDS: is not a mock engine setting',
         ]);
     });
 
@@ -332,5 +334,64 @@ describe('parseIdentityConfig', () => {
         expect(() => parseIdentityConfig({ PTBK_DATA_DIR: '', PTBK_ENGINE_DOMAIN: 'x' })).toThrow(
             'Invalid mock engine configuration: PTBK_DATA_DIR: is required; PTBK_ENGINE_DOMAIN: must be a hostname',
         );
+    });
+
+    describe('M-04 settings', () => {
+        it('reads the seed, scenario, epoch, faults, dev login and control listener', () => {
+            const config = parseMockEngineConfig({
+                ...BASE,
+                MOCK_SEED: '42',
+                MOCK_SCENARIO: 'large-fleet',
+                MOCK_SEED_EPOCH: '2026-09-01T12:00:00Z',
+                MOCK_FAULTS: '{"errorRate":0.5,"errorStatus":502,"routes":["/api/v1/agents/**"]}',
+                MOCK_DEV_LOGIN: 'enabled',
+                MOCK_CONTROL: 'enabled',
+                MOCK_CONTROL_HOST: '0.0.0.0',
+                MOCK_CONTROL_PORT: '9000',
+            });
+            expect(config).toMatchObject({
+                seed: 42,
+                scenario: 'large-fleet',
+                seedEpoch: new Date('2026-09-01T12:00:00Z'),
+                faults: { errorRate: 0.5, errorStatus: 502, routes: ['/api/v1/agents/**'] },
+                devLogin: true,
+                control: { host: '0.0.0.0', port: 9000 },
+            });
+            expect(parseMockEngineConfig({ ...BASE, MOCK_CONTROL: 'enabled' }).control).toEqual({
+                host: '127.0.0.1',
+                port: 4480,
+            });
+        });
+
+        it.each([
+            ['MOCK_SEED', '-1'],
+            ['MOCK_SEED', '4294967296'],
+            ['MOCK_SCENARIO', 'huge'],
+            ['MOCK_SEED_EPOCH', 'yesterday'],
+            ['MOCK_FAULTS', '{"errorRate":2}'],
+            ['MOCK_FAULTS', '{"surprise":true}'],
+            ['MOCK_DEV_LOGIN', 'yes'],
+            ['MOCK_CONTROL', 'on'],
+            ['MOCK_CONTROL_HOST', 'not a host'],
+            ['MOCK_CONTROL_PORT', '70000'],
+        ])('refuses %s=%s without echoing the value', (name, text) => {
+            const problems = problemsOf({ ...BASE, [name]: text });
+            expect(problems.length).toBeGreaterThan(0);
+            expect(problems.every((problem) => problem.startsWith(`${name}: `))).toBe(true);
+            if (text.length > 3) expect(problems.join(' ')).not.toContain(text);
+        });
+
+        it('refuses the control listener and dev login in production', () => {
+            expect(
+                problemsOf({ ...BASE, NODE_ENV: 'production', MOCK_CONTROL: 'enabled', MOCK_DEV_LOGIN: 'enabled' }),
+            ).toEqual([
+                'MOCK_CONTROL: must not be enabled in production',
+                'MOCK_DEV_LOGIN: must not be enabled in production',
+            ]);
+            expect(parseMockEngineConfig({ ...BASE, NODE_ENV: 'production' }).control).toBeNull();
+            expect(
+                parseMockEngineConfig({ ...BASE, NODE_ENV: 'development', MOCK_CONTROL: 'enabled' }).control,
+            ).not.toBeNull();
+        });
     });
 });

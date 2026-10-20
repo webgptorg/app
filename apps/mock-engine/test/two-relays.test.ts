@@ -19,6 +19,7 @@ import { createRelayStreamPeer } from '../src/testing/relay-stream-peer';
 import { createSeededRandom } from '../src/testing/seeded-random';
 import { lookupLoopback, trackLinkStates } from '../src/testing/test-hosts';
 import { createTestCa } from '../src/testing/test-pki';
+import { DEFAULT_MOCK_SETTINGS } from '../src/testing/mock-settings';
 
 const ENGINE_DOMAIN = Hostname.parse('engines.ptbk.test');
 const RELAY_A = RelayId.parse('relay-a.ptbk.test');
@@ -62,6 +63,7 @@ async function setup() {
         devCaFiles: null,
         devCaDomains: [],
         logLevel: 'info',
+        ...DEFAULT_MOCK_SETTINGS,
     };
     const clock = createFakeClock(Date.now());
     const logger = createMemoryLogger();

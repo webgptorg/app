@@ -19,6 +19,7 @@ import { createMemoryLogger } from '../src/testing/memory-logger';
 import { createSeededRandom } from '../src/testing/seeded-random';
 import { lookupLoopback, trackLinkStates } from '../src/testing/test-hosts';
 import { createTestCa } from '../src/testing/test-pki';
+import { DEFAULT_MOCK_SETTINGS } from '../src/testing/mock-settings';
 
 const ENGINE_DOMAIN = Hostname.parse('engines.ptbk.test');
 const CUSTOMER_DOMAIN = Hostname.parse('customer.test');
@@ -58,6 +59,7 @@ async function setup() {
         devCaFiles: null,
         devCaDomains: [CUSTOMER_DOMAIN],
         logLevel: 'info',
+        ...DEFAULT_MOCK_SETTINGS,
     };
     const engine = await startMockEngine(config, {
         logger,

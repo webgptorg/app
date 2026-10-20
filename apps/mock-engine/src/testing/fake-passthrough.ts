@@ -45,10 +45,17 @@ export async function startFakePassthrough(session: FakeRelaySession): Promise<F
         });
         stream.onData((payload) => socket.write(payload));
         void stream.waitForClose().then(() => socket.end());
-        let writing = stream.write(first);
+        // The engine may close the stream while browser bytes are still on their way; drop the browser then.
+        const failed = (): void => {
+            socket.destroy();
+        };
+        let writing = stream.write(first).catch(failed);
         socket.on('data', (chunk: Buffer) => {
             socket.pause();
-            writing = writing.then(() => stream.write(chunk)).finally(() => socket.resume());
+            writing = writing
+                .then(() => stream.write(chunk))
+                .catch(failed)
+                .finally(() => socket.resume());
         });
         socket.once('close', () => {
             if (stream.closedWith() === undefined) stream.close();

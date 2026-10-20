@@ -10,6 +10,7 @@ import { WebSocket } from 'ws';
 
 import type { DevCa } from '../adapters/dev-ca';
 import { createDevCa, createDevCaCertificateSource } from '../adapters/dev-ca';
+import type { Faults } from '../adapters/http/fault-middleware';
 import type { HttpApp } from '../adapters/http/http-app';
 import { createHttpApp } from '../adapters/http/http-app';
 import type { Route } from '../adapters/http/route';
@@ -20,6 +21,7 @@ import { createTlsStreamServer } from '../adapters/tls-stream-server';
 import type { Clock } from '../domain/clock';
 import type { RateLimiter } from '../domain/rate-limit/rate-limiter';
 import { createWindowRateLimiter } from '../domain/rate-limit/rate-limiter';
+import type { SessionStore } from '../domain/gateway/sessions';
 import type { ManagedCertificateSource } from '../domain/tls/certificate-source';
 import type { MemoryLogger } from './memory-logger';
 import { createMemoryLogger } from './memory-logger';
@@ -35,6 +37,8 @@ export interface HarnessOptions {
     readonly onDownloadBytes?: SpikeRouteDeps['onDownloadBytes'];
     /** Replaces the spike routes, to test the HTTP app with routes of the test's own. */
     readonly routes?: readonly Route[];
+    readonly sessions?: SessionStore;
+    readonly faults?: Faults;
 }
 
 export interface ConnectOptions {
@@ -61,6 +65,8 @@ export interface EngineHarness {
     readonly logger: MemoryLogger;
     /** A TLS client over a fresh pair of linked duplexes standing in for one tunnel stream. */
     connect(options?: ConnectOptions): Promise<TLSSocket>;
+    /** The same, before the handshake completes (for HTTP clients that take a `createConnection`). */
+    openSocket(options?: ConnectOptions): TLSSocket;
     /** One GET over its own connection; resolves once the whole body arrived. */
     get(
         path: string,
@@ -110,6 +116,8 @@ export function createEngineHarness(options: HarnessOptions = {}): EngineHarness
             }),
         rateLimiter: options.rateLimiter ?? createWindowRateLimiter({ clock }),
         logger,
+        ...(options.sessions === undefined ? {} : { sessions: options.sessions }),
+        ...(options.faults === undefined ? {} : { faults: options.faults }),
     });
     const tls = createTlsStreamServer({
         certificates,
@@ -148,6 +156,7 @@ export function createEngineHarness(options: HarnessOptions = {}): EngineHarness
         tls,
         http,
         logger,
+        openSocket: open,
         connect(connectOptions) {
             const socket = open(connectOptions);
             return new Promise((resolve, reject) => {

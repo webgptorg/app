@@ -5,16 +5,29 @@ import type { Duplex } from 'node:stream';
 
 import type { HttpBindings } from '@hono/node-server';
 import { getRequestListener } from '@hono/node-server';
-import type { ProblemCode, ProblemExtras } from '@ptbk/engine-api';
 import { ENGINE_UI_CSP, createProblem } from '@ptbk/engine-api';
+import type { Actor } from '@ptbk/engine-api/in-memory';
 import type { Context } from 'hono';
 import { Hono } from 'hono';
 import { WebSocketServer } from 'ws';
 
+import type { SessionStore } from '../../domain/gateway/sessions';
 import type { Logger } from '../../domain/logger';
 import type { RateLimiter } from '../../domain/rate-limit/rate-limiter';
 import type { SecureConnection } from '../tls-stream-server';
-import type { HttpRoute, Route, StringFields, WebSocketRoute } from './route';
+import type { Faults } from './fault-middleware';
+import { withFaults } from './fault-middleware';
+import { authenticate, isSameOriginMutation } from './gateway-middleware';
+import type { HttpRoute, Route, WebSocketRoute } from './route';
+import type { Problem } from './route-handler';
+import {
+    admitQueryAndHeaders,
+    bySpecificity,
+    honoPath,
+    problemResponse,
+    rateLimited,
+    runHttpRoute,
+} from './route-handler';
 
 /** An idle connection (including a paused download) is closed after this long. */
 export const SOCKET_IDLE_TIMEOUT_MS = 120_000;
@@ -34,6 +47,10 @@ export interface HttpAppDeps {
     readonly routes: readonly Route[];
     readonly rateLimiter: RateLimiter;
     readonly logger: Logger;
+    /** Required as soon as one route has `session` auth. */
+    readonly sessions?: SessionStore;
+    /** Applied to every HTTP route the plan's `routes` filter matches. */
+    readonly faults?: Faults;
 }
 
 export interface HttpApp {
@@ -46,76 +63,8 @@ export interface HttpApp {
     close(): void;
 }
 
-type ProblemResult =
-    | { readonly kind: 'ok'; readonly query: unknown; readonly headers: unknown }
-    | {
-          readonly kind: 'problem';
-          readonly code: ProblemCode;
-          readonly extras?: ProblemExtras;
-          readonly retryAfterS?: number;
-      };
-
-function problemJson(code: ProblemCode, extras: ProblemExtras = {}): string {
-    return JSON.stringify(createProblem(code, extras));
-}
-
-function problemResponse(result: Extract<ProblemResult, { kind: 'problem' }>): Response {
-    const problem = createProblem(result.code, result.extras);
-    const headers = new Headers({ 'Content-Type': 'application/problem+json' });
-    if (result.retryAfterS !== undefined) headers.set('Retry-After', String(result.retryAfterS));
-    return new Response(JSON.stringify(problem), { status: problem.status, headers });
-}
-
-/** Repeated parameters are refused outright: a schema should never have to choose between two values. */
-function queryOf(url: URL): Record<string, string> | null {
-    const query: Record<string, string> = {};
-    for (const [name, value] of url.searchParams) {
-        if (Object.hasOwn(query, name)) return null;
-        query[name] = value;
-    }
-    return query;
-}
-
-function headersOf(schema: StringFields, read: (name: string) => string | undefined): Record<string, string> {
-    return Object.fromEntries(
-        Object.keys(schema.shape).flatMap((name) => {
-            const value = read(name);
-            return value === undefined ? [] : [[name, value]];
-        }),
-    );
-}
-
-/** Runs the safeguards every route declares, in order: rate limit, then strict input. */
-function admit(
-    route: Route,
-    deps: HttpAppDeps,
-    connection: SecureConnection,
-    url: URL,
-    readHeader: (name: string) => string | undefined,
-): ProblemResult {
-    const decision = deps.rateLimiter.consume(route.rateLimit, connection.clientIp);
-    if (decision.kind === 'limited') {
-        return {
-            kind: 'problem',
-            code: 'rate-limited',
-            retryAfterS: Math.max(1, Math.ceil(decision.retryAfterMs / 1000)),
-        };
-    }
-    const raw = queryOf(url);
-    const query = raw === null ? null : route.query.safeParse(raw);
-    if (query?.success !== true) {
-        return { kind: 'problem', code: 'validation-failed', extras: { detail: 'invalid query parameters' } };
-    }
-    if (route.headers === null) return { kind: 'ok', query: query.data, headers: null };
-    const headers = route.headers.safeParse(headersOf(route.headers, readHeader));
-    if (!headers.success) {
-        return { kind: 'problem', code: 'validation-failed', extras: { detail: 'invalid request headers' } };
-    }
-    return { kind: 'ok', query: query.data, headers: headers.data };
-}
-
-function rejectUpgrade(socket: Duplex, result: Extract<ProblemResult, { kind: 'problem' }>): void {
-    const body = problemJson(result.code, result.extras);
+function rejectUpgrade(socket: Duplex, result: Problem): void {
+    const body = JSON.stringify(createProblem(result.code, result.extras));
     const status = createProblem(result.code).status;
     const lines = [
         `HTTP/1.1 ${String(status)} ${STATUS_CODES[status] ?? ''}`,
@@ -128,13 +77,20 @@ function rejectUpgrade(socket: Duplex, result: Extract<ProblemResult, { kind: 'p
     socket.end(`${lines.join('\r\n')}\r\n\r\n${body}`);
 }
 
-/** The route types already force an auth mode, a rate limit and strict schemas; what is left is uniqueness. */
-function assertMountable(routes: readonly Route[]): void {
+/**
+ * The route types already force an auth mode, a rate limit and strict schemas; what is left is uniqueness, keeping
+ * control routes off the tunnel, and a gateway for session routes.
+ */
+function assertMountable(routes: readonly Route[], deps: HttpAppDeps): void {
     const seen = new Set<string>();
     for (const route of routes) {
-        const key = `${route.transport} ${route.path}`;
+        const key = `${route.transport} ${route.method} ${route.path}`;
         if (seen.has(key)) throw new Error(`refusing to mount ${key} twice`);
         seen.add(key);
+        if (route.auth === 'control') throw new Error(`refusing to mount control route ${route.path} in the tunnel`);
+        if (route.auth === 'session' && deps.sessions === undefined) {
+            throw new Error(`refusing to mount session route ${route.path} without a gateway`);
+        }
     }
 }
 
@@ -145,7 +101,7 @@ function assertMountable(routes: readonly Route[]): void {
  */
 export function createHttpApp(deps: HttpAppDeps): HttpApp {
     const { routes, logger } = deps;
-    assertMountable(routes);
+    assertMountable(routes, deps);
     const connectionOf = new WeakMap<Socket, SecureConnection>();
     const sockets = new Set<Socket>();
     const app = new Hono<{ Bindings: HttpBindings }>();
@@ -161,25 +117,55 @@ export function createHttpApp(deps: HttpAppDeps): HttpApp {
         return connection;
     }
 
-    for (const route of routes) {
-        if (route.transport !== 'http') continue;
-        const httpRoute: HttpRoute = route;
-        app.get(httpRoute.path, async (c) => {
+    // Before routing, so a forged request learns nothing, not even whether its path exists.
+    app.use(async (c, next) => {
+        const connection = connectionFor(c);
+        if (
+            !isSameOriginMutation({
+                method: c.req.method,
+                hostname: connection.hostname,
+                header: (name) => c.req.header(name),
+            })
+        ) {
+            return problemResponse({ code: 'forbidden', extras: { detail: 'Cross-site request refused.' } });
+        }
+        await next();
+        return undefined;
+    });
+
+    const httpRoutes = routes.filter((route): route is HttpRoute => route.transport === 'http').sort(bySpecificity);
+    for (const route of httpRoutes) {
+        app.on(route.method, honoPath(route.path), async (c) => {
             const connection = connectionFor(c);
-            const admitted = admit(httpRoute, deps, connection, new URL(c.req.url), (name) => c.req.header(name));
-            if (admitted.kind === 'problem') return problemResponse(admitted);
-            return httpRoute.handle({
-                query: admitted.query,
-                headers: admitted.headers,
-                connection,
-                signal: c.req.raw.signal,
-            } as Parameters<HttpRoute['handle']>[0]);
+            const limited = rateLimited(route, deps.rateLimiter, connection.clientIp);
+            if (limited !== null) return problemResponse(limited);
+            let actor: Actor | null = null;
+            if (route.auth === 'session' && deps.sessions !== undefined) {
+                const outcome = authenticate(deps.sessions, {
+                    method: c.req.method,
+                    path: c.req.path,
+                    hostname: connection.hostname,
+                    header: (name) => c.req.header(name),
+                    clientIp: connection.clientIp,
+                });
+                if (outcome.kind === 'refused') return outcome.response;
+                actor = outcome.actor;
+            }
+            const run = (): Promise<Response> =>
+                runHttpRoute(route, {
+                    request: c.req.raw,
+                    params: c.req.param(),
+                    connection,
+                    clientIp: connection.clientIp,
+                    actor,
+                });
+            return deps.faults === undefined ? run() : withFaults(deps.faults, c.req.path, c.req.raw.signal, run);
         });
     }
-    app.notFound(() => problemResponse({ kind: 'problem', code: 'not-found' }));
+    app.notFound(() => problemResponse({ code: 'not-found' }));
     app.onError((error) => {
         logger.error('http.error', { problem: error.name });
-        return problemResponse({ kind: 'problem', code: 'internal-error' });
+        return problemResponse({ code: 'internal-error' });
     });
 
     const webSockets = new Map<string, { readonly route: WebSocketRoute; readonly server: WebSocketServer }>(
@@ -214,14 +200,19 @@ export function createHttpApp(deps: HttpAppDeps): HttpApp {
         const url = URL.parse(request.url ?? '', 'https://engine.invalid');
         const target = url === null ? undefined : webSockets.get(url.pathname);
         if (connection === undefined || url === null || target === undefined || request.method !== 'GET') {
-            rejectUpgrade(socket, { kind: 'problem', code: 'not-found' });
+            rejectUpgrade(socket, { code: 'not-found' });
             return;
         }
-        const admitted = admit(target.route, deps, connection, url, (name) => {
+        const limited = rateLimited(target.route, deps.rateLimiter, connection.clientIp);
+        if (limited !== null) {
+            rejectUpgrade(socket, limited);
+            return;
+        }
+        const admitted = admitQueryAndHeaders(target.route, url, (name) => {
             const value = request.headers[name];
             return typeof value === 'string' ? value : undefined;
         });
-        if (admitted.kind === 'problem') {
+        if (!('kind' in admitted)) {
             rejectUpgrade(socket, admitted);
             return;
         }
