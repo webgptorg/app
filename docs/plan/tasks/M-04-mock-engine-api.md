@@ -2,7 +2,7 @@
 
 - **Lane:** Mock engine · **Module:** `apps/mock-engine`, `packages/engine-api` (two modules, see Context) · **Milestone:** M2
 - **Depends on:** C-04, M-02
-- **Status:** in progress (feat/m-04-mock-engine-api)
+- **Status:** done (#27)
 - **Spec:** Security hardening (1, 5, 7, 8); Engine security baseline; Enterprise-ready engine architecture; What our platform can and cannot do; ADRs: [0004](../../adr/0004-mock-engine-and-conformance.md), [0005](../../adr/0005-modular-architecture.md), [0006](../../adr/0006-organizations-and-roles.md)
 
 ## Goal
@@ -57,19 +57,19 @@ Keep the change minimal. `createInMemoryEngineApiClient`, `createInMemoryEngine`
 
 ## Acceptance criteria
 
-- [ ] Core: the shared client suite passes unchanged. New tests: two actors on one core get their own permissions, audit entries and filtered events; a custom `Authorizer` denial gives C-04's 403 and an audited `denied`; the event buffer stays bounded and an expired `Last-Event-ID` resumes from the oldest buffered event; a paced reply keeps advancing without a reader and stops only on cancel; revoking a session or removing a member through the API removes it from `state.sessions`; the main entry exports no in-memory symbol. Coverage stays at or above 90% lines and branches.
-- [ ] Seed snapshot test: `small-team`, seed 42, fixed epoch produces a stable hash; a different seed changes it; `large-fleet` seeds in under 2 s.
-- [ ] Contract test: every C-04 operation, including `GET /engine`, `GET /events` and chat cancel, answers through the mock's HTTP server, and every response in the test run validates against C-04's response schema.
-- [ ] Authorisation matrix test: for each role and each operation, the result matches the policy table; a session with an explicit permission set is allowed exactly the routes whose permission is in the set; `secrets.read` lists secret metadata but cannot write; a member gets 403 problem+json changing another member's agent; a viewer gets 403 on every mutation; a revoked session gets 401 on the next request.
-- [ ] Secrets are write-only: a test scans every response body in the run for the secret values written during it (canaries).
-- [ ] Gateway tests: cross-site POST gets 403; missing cookie gets 401; idle timeout expires a session with the fake clock; a session revoked through the API and a removed member's session each get 401 on the next request; audit entries name the session's member.
-- [ ] Streaming test: a chat reply arrives as SSE tokens, contains a code block, and is identical for the same seed; a disconnect ends only that stream and `Last-Event-ID` resumes it; the cancel route stops generation.
-- [ ] Events test: an agent rename emits `agent.changed`; a member without `agents.read` does not receive it; reconnecting with `Last-Event-ID` replays missed events.
-- [ ] `POST /__mock/sessions` test: owner, role and permission-set subjects each yield a working cookie whose `GET /me` matches; an unknown field is 400.
-- [ ] Fault tests: latency within bounds, error rate within tolerance over 1,000 seeded requests, dropped stream mid-SSE, runtime change through `/__mock/faults` takes effect on the next request.
-- [ ] Through the tunnel, `/__mock/*` (including `/__mock/sessions`) returns 404 even with `MOCK_CONTROL=enabled`.
-- [ ] `bun run check` passes.
-- [ ] **Status** line above set to `done (#<PR>)`.
+- [x] Core: the shared client suite passes unchanged. New tests: two actors on one core get their own permissions, audit entries and filtered events; a custom `Authorizer` denial gives C-04's 403 and an audited `denied`; the event buffer stays bounded and an expired `Last-Event-ID` resumes from the oldest buffered event; a paced reply keeps advancing without a reader and stops only on cancel; revoking a session or removing a member through the API removes it from `state.sessions`; the main entry exports no in-memory symbol. Coverage stays at or above 90% lines and branches.
+- [x] Seed snapshot test: `small-team`, seed 42, fixed epoch produces a stable hash; a different seed changes it; `large-fleet` seeds in under 2 s.
+- [x] Contract test: every C-04 operation, including `GET /engine`, `GET /events` and chat cancel, answers through the mock's HTTP server, and every response in the test run validates against C-04's response schema.
+- [x] Authorisation matrix test: for each role and each operation, the result matches the policy table; a session with an explicit permission set is allowed exactly the routes whose permission is in the set; `secrets.read` lists secret metadata but cannot write; a member gets 403 problem+json changing another member's agent; a viewer gets 403 on every mutation; a revoked session gets 401 on the next request.
+- [x] Secrets are write-only: a test scans every response body in the run for the secret values written during it (canaries).
+- [x] Gateway tests: cross-site POST gets 403; missing cookie gets 401; idle timeout expires a session with the fake clock; a session revoked through the API and a removed member's session each get 401 on the next request; audit entries name the session's member.
+- [x] Streaming test: a chat reply arrives as SSE tokens, contains a code block, and is identical for the same seed; a disconnect ends only that stream and `Last-Event-ID` resumes it; the cancel route stops generation.
+- [x] Events test: an agent rename emits `agent.changed`; a member without `agents.read` does not receive it; reconnecting with `Last-Event-ID` replays missed events.
+- [x] `POST /__mock/sessions` test: owner, role and permission-set subjects each yield a working cookie whose `GET /me` matches; an unknown field is 400.
+- [x] Fault tests: latency within bounds, error rate within tolerance over 1,000 seeded requests, dropped stream mid-SSE, runtime change through `/__mock/faults` takes effect on the next request.
+- [x] Through the tunnel, `/__mock/*` (including `/__mock/sessions`) returns 404 even with `MOCK_CONTROL=enabled`.
+- [x] `bun run check` passes.
+- [x] **Status** line above set to `done (#<PR>)`.
 
 ## Risks and open points
 
