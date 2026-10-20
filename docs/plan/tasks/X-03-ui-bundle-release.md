@@ -2,7 +2,7 @@
 
 - **Lane:** X · **Module:** `apps/engine-ui` (release scripts) and `.github/workflows/ui-release.yml` · **Milestone:** M2
 - **Depends on:** U-01, C-06
-- **Status:** todo
+- **Status:** in progress (feat/x-03-ui-bundle-release)
 - **Spec:** Architecture (UI delivery), Interfaces (5 release log entry), Transparency and verifiability (2), Residual risks (2 engine updates, release keys), Security hardening (10); ADRs: [0003](../../adr/0003-ui-as-signed-bundle.md), [0014](../../adr/0014-cryptography.md)
 
 ## Goal
