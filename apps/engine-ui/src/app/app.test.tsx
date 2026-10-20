@@ -2,9 +2,9 @@ import { SIGN_IN_PATH } from '@ptbk/engine-api';
 import { screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
-import { expectNoAxeViolations } from '../test/axe';
-import { renderWithProviders } from '../test/render-with-providers';
-import { createTestEngineApi, problemResponse } from '../test/test-engine-api';
+import { expectNoAxeViolations } from '../testing/axe';
+import { renderWithProviders } from '../testing/render-with-providers';
+import { createTestEngineApi, problemResponse } from '../testing/test-engine-api';
 
 describe('engine-ui app', () => {
     it('redirects / to the placeholder agents route and renders it with the in-memory client', async () => {

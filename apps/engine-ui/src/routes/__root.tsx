@@ -15,9 +15,9 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 function RootLayout() {
     return (
         <div className="flex min-h-dvh flex-col">
-            <header className="border-b border-neutral-200 px-4 py-3">
+            <header className="border-b px-4 py-3">
                 <nav aria-label="Main">
-                    <Link to="/agents" className="text-blue-700 underline">
+                    <Link to="/agents" className="underline">
                         Agents
                     </Link>
                 </nav>

@@ -27,10 +27,9 @@ src/app/                composition root: engine API client, query client, route
 src/routes/             file-based routes; src/routeTree.gen.ts is generated and not committed
 src/features/<name>/    one folder per feature: <name>-keys.ts (query keys), <name>-queries.ts (queryOptions)
 src/security/           CSP violation listener, safe-url
-src/test/               renderWithProviders(), the in-memory engine API for tests, expectNoAxeViolations()
-tests/build/            checks on dist/ and the budget report (Vitest, after a build)
-tests/lint/             the lint rules above, proven on real files
-tests/csp/              Playwright: the built bundle under the engine CSP, plus the UX checks
+src/testing/            renderWithProviders(), the in-memory engine API for tests, expectNoAxeViolations()
+test/                   app-level checks (Vitest, Node): dist/ and the budget report after a build, the lint rules
+test/csp/               Playwright: the built bundle under the engine CSP, plus the UX checks
 ```
 
 ## Conventions for later tasks
@@ -38,7 +37,7 @@ tests/csp/              Playwright: the built bundle under the engine CSP, plus 
 - Loaders prefetch with `queryClient.query({ ...xQueryOptions(context.engineApi, …), staleTime: 'static' })` (the former `ensureQueryData`) and components read the same `queryOptions` with `useSuspenseQuery`, so both hit one cache entry. Links preload on intent; `defaultPreloadStaleTime: 0` leaves freshness to TanStack Query.
 - Search params are zod schemas in `validateSearch` with `.catch()` defaults, so a bad URL falls back instead of throwing.
 - Client failures are mapped in one place, `src/app/api-errors.ts`. Queries retry at most twice and only on network errors, timeouts and 5xx.
-- Every route passes `visit(path)` from `tests/csp/fixtures.ts` and `expectCleanPage()`: no CSP or Trusted Types violation, console error, page error or foreign request; no serious or critical axe violation; no horizontal overflow at 360 × 740; cumulative layout shift below 0.1; once more with reduced motion.
+- Every route passes `visit(path)` from `test/csp/fixtures.ts` and `expectCleanPage()`: no CSP or Trusted Types violation, console error, page error or foreign request; no serious or critical axe violation; no horizontal overflow at 360 × 740; cumulative layout shift below 0.1; once more with reduced motion.
 - A route that needs more than its budget raises it in `bundle-budget.json` in the same PR, with the reason. The build fails over budget when `CI` is set.
 
 ## Commands
@@ -49,7 +48,7 @@ tests/csp/              Playwright: the built bundle under the engine CSP, plus 
 | `bun run --filter @ptbk/engine-ui dev`      | Dev server; proxies `/api/v1` to `MOCK_ENGINE_URL` when set                                   |
 | `VITE_ENGINE_API=memory … dev`              | Dev server on the in-memory engine API, no mock engine needed                                 |
 | `bun run --filter @ptbk/engine-ui build`    | `dist/`: `index.html` and hashed assets, exactly what X-03 signs                              |
-| `bun run --filter @ptbk/engine-ui test`     | Build, then Vitest with coverage (jsdom for `src/`, Node for `tooling/` and `tests/`)         |
+| `bun run --filter @ptbk/engine-ui test`     | Build, then Vitest with coverage (jsdom for `src/`, Node for `tooling/` and `test/`)          |
 | `bun run --filter @ptbk/engine-ui test:csp` | Build, then Playwright against `vite preview` sending the engine CSP (CI job `engine-ui-csp`) |
 
 `test:csp` needs Chromium once: `bunx playwright install chromium` in this directory.

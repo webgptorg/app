@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { ESLint } from 'eslint';
 import { describe, expect, it } from 'vitest';
 
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const eslint = new ESLint({ cwd: repoRoot });
 
 /** Lints `code` as if it were an existing engine-ui file, so the type-aware parser finds its project. */

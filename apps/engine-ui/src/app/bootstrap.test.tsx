@@ -4,7 +4,7 @@ import { act } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { CspViolation } from '../security/csp-violation-listener';
-import { createTestEngineApi } from '../test/test-engine-api';
+import { createTestEngineApi } from '../testing/test-engine-api';
 import { bootstrap } from './bootstrap';
 import type { BrowserDeps, MountedApp } from './bootstrap';
 

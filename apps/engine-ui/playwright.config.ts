@@ -3,7 +3,7 @@ import { defineConfig, devices } from '@playwright/test';
 const port = 4173;
 
 export default defineConfig({
-    testDir: './tests/csp',
+    testDir: './test/csp',
     forbidOnly: process.env['CI'] !== undefined,
     retries: 0,
     reporter: 'list',

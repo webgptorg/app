@@ -1,7 +1,7 @@
 import { renderHook } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
-import { createTestEngineApi } from '../test/test-engine-api';
+import { createTestEngineApi } from '../testing/test-engine-api';
 import { EngineApiProvider, useEngineApi } from './engine-api-context';
 
 describe('useEngineApi', () => {
