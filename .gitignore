@@ -38,3 +38,7 @@ apps/engine-ui/test-results/
 apps/engine-ui/release/*
 !apps/engine-ui/release/trusted_root.json
 !apps/engine-ui/release/trust-policy.staging.json
+
+# dashboard browser test output (test:csp).
+apps/dashboard/playwright-report/
+apps/dashboard/test-results/

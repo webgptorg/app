@@ -1,11 +1,20 @@
 import './zod-jitless';
 import './styles.css';
 
+import { applyTheme, readThemePreference } from '@ptbk/ui';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 
 import { createApiClient } from './api/api-client';
 import { App } from './app';
+import { safeLocalStorage } from './core/storage';
+import { createBrowserPasskeyAuthenticator } from './features/passkeys/browser-passkey-authenticator';
+
+const storage = safeLocalStorage();
+const matchMedia = (query: string) => window.matchMedia(query);
+// The CSP allows no inline script in index.html, so this is the earliest point to set the theme; it runs before React
+// renders anything, so the first paint is already in the right theme.
+applyTheme(readThemePreference(storage), document.documentElement, matchMedia);
 
 const container = document.getElementById('root');
 if (container === null) {
@@ -14,6 +23,9 @@ if (container === null) {
 
 createRoot(container).render(
     <StrictMode>
-        <App apiClient={createApiClient({ fetch: (input, init) => fetch(input, init) })} />
+        <App
+            apiClient={createApiClient({ fetch: (input, init) => fetch(input, init) })}
+            browser={{ storage, matchMedia, passkeys: createBrowserPasskeyAuthenticator(), now: () => Date.now() }}
+        />
     </StrictMode>,
 );

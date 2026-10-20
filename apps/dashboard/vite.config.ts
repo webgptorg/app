@@ -34,6 +34,20 @@ function httpsOptions() {
     return { origin: url.origin, server };
 }
 
+/** `--mode csp` (Playwright's `test:csp` server): its own local D1, so the suite never touches the developer's data. */
+export const CSP_TEST_STATE_DIR = '.wrangler/csp-test-state';
+
+function cloudflareOptions(mode: string, https: ReturnType<typeof httpsOptions> | undefined) {
+    if (https !== undefined) {
+        return {
+            config: (config: { vars?: Record<string, unknown> }) => ({
+                vars: { ...config.vars, DASHBOARD_ORIGIN: https.origin },
+            }),
+        };
+    }
+    return mode === 'csp' ? { persistState: { path: CSP_TEST_STATE_DIR } } : {};
+}
+
 export default defineConfig(({ mode }) => {
     const https = mode === 'https' ? httpsOptions() : undefined;
     return {
@@ -43,11 +57,7 @@ export default defineConfig(({ mode }) => {
             tanstackRouter(),
             react(),
             tailwindcss(),
-            cloudflare(
-                https === undefined
-                    ? {}
-                    : { config: (config) => ({ vars: { ...config.vars, DASHBOARD_ORIGIN: https.origin } }) },
-            ),
+            cloudflare(cloudflareOptions(mode, https)),
         ],
         build: { manifest: true },
         ...(https === undefined ? {} : { server: https.server, preview: https.server }),

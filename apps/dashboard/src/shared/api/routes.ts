@@ -58,6 +58,7 @@ export const passkeyViewSchema = z.strictObject({
     backedUp: z.boolean(),
     counterRegressedAt: timestampSchema.nullable(),
 });
+export type PasskeyView = z.infer<typeof passkeyViewSchema>;
 
 export const sessionSummarySchema = z.strictObject({
     current: z.boolean(),
@@ -65,6 +66,7 @@ export const sessionSummarySchema = z.strictObject({
     lastSeenAt: timestampSchema,
     expiresAt: timestampSchema,
 });
+export type SessionSummary = z.infer<typeof sessionSummarySchema>;
 
 const ceremonyErrors = ['challenge-invalid', 'webauthn-failed'] as const;
 

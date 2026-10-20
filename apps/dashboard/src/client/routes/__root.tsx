@@ -1,35 +1,15 @@
-import type { QueryClient } from '@tanstack/react-query';
-import { createRootRouteWithContext, Link, Outlet } from '@tanstack/react-router';
+import { createRootRouteWithContext, Outlet } from '@tanstack/react-router';
 
-import { m } from '../../paraglide/messages';
-import type { ApiClient } from '../api/api-client';
-import { AppShell } from '../features/shell/app-shell';
-
-export interface RouterContext {
-    readonly queryClient: QueryClient;
-    readonly apiClient: ApiClient;
-}
+import { RootError, RouteNotFound } from '../core/route-states';
+import type { RouterContext } from '../core/router-context';
 
 export const Route = createRootRouteWithContext<RouterContext>()({
-    component: () => (
-        <AppShell>
-            <Outlet />
-        </AppShell>
-    ),
+    component: Outlet,
+    errorComponent: RootError,
+    // An unknown URL matches neither layout, so it gets a bare frame: it cannot know whether someone is signed in.
     notFoundComponent: () => (
-        <section className="space-y-4">
-            <h1 className="text-2xl font-semibold">{m.not_found_title()}</h1>
-            <Link to="/" className="text-blue-700 underline">
-                {m.not_found_back()}
-            </Link>
-        </section>
-    ),
-    errorComponent: ({ reset }) => (
-        <section className="space-y-4" role="alert">
-            <h1 className="text-2xl font-semibold">{m.error_title()}</h1>
-            <button type="button" className="rounded bg-neutral-900 px-3 py-1.5 text-white" onClick={reset}>
-                {m.error_retry()}
-            </button>
-        </section>
+        <main className="mx-auto flex min-h-dvh w-full max-w-xl flex-col justify-center bg-surface px-4 text-text">
+            <RouteNotFound />
+        </main>
     ),
 });

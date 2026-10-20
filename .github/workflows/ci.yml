@@ -53,6 +53,29 @@ jobs:
         run: bunx --no-install playwright install --with-deps chromium
       - run: bun run --filter @ptbk/engine-ui test:csp
 
+  # The built dashboard (SPA and Worker in workerd) in Chromium under its production CSP, with a virtual WebAuthn
+  # authenticator for the sign-up, sign-in and recovery flows (D-09).
+  dashboard-csp:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: package.json
+          no-cache: true
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - run: bun install --frozen-lockfile
+      - run: bun run --filter @ptbk/dashboard generate
+      - name: Install Chromium
+        working-directory: apps/dashboard
+        run: bunx --no-install playwright install --with-deps chromium
+      - run: bun run --filter @ptbk/dashboard test:csp
+
   workflows:
     runs-on: ubuntu-24.04
     timeout-minutes: 5

@@ -35,7 +35,7 @@ describe('bundle budgets', () => {
         const budgets = budgetsSchema.parse(JSON.parse(await readFile(join(appDir, 'bundle-budgets.json'), 'utf8')));
         const measurements = await measureBundles(clientDir, budgets);
         expect(measurements.filter((m) => m.kind === 'entry')).toHaveLength(1);
-        expect(measurements.map((m) => m.key)).toContain('src/client/routes/index.tsx');
+        expect(measurements.map((m) => m.key)).toContain('src/client/routes/_app/index.tsx');
         expect(measurements.every((m) => m.gzipBytes > 0)).toBe(true);
     });
 

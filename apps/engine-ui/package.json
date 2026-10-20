@@ -34,10 +34,10 @@
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@axe-core/playwright": "4.13.0",
+    "@axe-core/playwright": "catalog:",
     "@inlang/paraglide-js": "catalog:",
     "@inlang/plugin-message-format": "catalog:",
-    "@playwright/test": "1.64.0",
+    "@playwright/test": "catalog:",
     "@ptbk/protocol": "workspace:*",
     "@sigstore/bundle": "catalog:",
     "@sigstore/protobuf-specs": "catalog:",

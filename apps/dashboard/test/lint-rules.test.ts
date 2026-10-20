@@ -30,6 +30,17 @@ describe('dashboard lint rules', { timeout: 30_000 }, () => {
     });
 
     it.each([
+        ['src/client/app.tsx', 'export const f = (el: HTMLElement) => { el.innerHTML = "<b>x</b>"; };\n'],
+        ['src/client/app.tsx', 'export const X = () => <div dangerouslySetInnerHTML={{ __html: "" }} />;\n'],
+        [
+            'src/client/router.ts',
+            "export const f = (el: HTMLElement) => { el.setAttribute('style', 'color: red'); };\n",
+        ],
+    ])('forbid HTML sinks and string styles in the SPA (trusted-types none) in %s', async (path, code) => {
+        expect(await boundaryViolations(path, code)).toContain('no-restricted-syntax');
+    });
+
+    it.each([
         ['src/client/app.tsx', "import { parseConfig } from '../app/config';\nexport const x = parseConfig;\n"],
         ['src/client/app.tsx', "import { Hono } from 'hono';\nexport const x = Hono;\n"],
         ['src/client/app.tsx', "import { sql } from 'drizzle-orm';\nexport const x = sql;\n"],
