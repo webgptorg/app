@@ -101,8 +101,8 @@
       "devDependencies": {
         "@types/ws": "catalog:",
         "eslint": "catalog:",
-        "tsdown": "0.23.1",
-        "tsx": "4.23.15",
+        "tsdown": "catalog:",
+        "tsx": "catalog:",
       },
     },
     "apps/relay": {
@@ -113,8 +113,8 @@
       },
       "devDependencies": {
         "eslint": "catalog:",
-        "tsdown": "0.23.1",
-        "tsx": "4.23.15",
+        "tsdown": "catalog:",
+        "tsx": "catalog:",
       },
     },
     "packages/conformance": {
@@ -180,6 +180,8 @@
     "sigstore": "5.0.0",
     "stripe": "22.6.2",
     "tailwindcss": "4.3.3",
+    "tsdown": "0.23.1",
+    "tsx": "4.23.15",
     "vite": "8.3.4",
     "ws": "8.22.0",
     "zod": "4.6.6",
