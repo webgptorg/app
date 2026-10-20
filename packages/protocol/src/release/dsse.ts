@@ -18,10 +18,13 @@ const MAX_PAYLOAD_TYPE_LENGTH = 256;
 const KEY_ID_BYTES = 32;
 
 function base64StdOf(maxBytes: number, exactBytes?: number) {
+    const maxLength = Math.ceil(maxBytes / 3) * 4;
     return z
         .string()
-        .max(Math.ceil(maxBytes / 3) * 4)
+        .max(maxLength)
         .refine((text) => {
+            // zod runs refinements even after `.max` failed; never decode an oversize string.
+            if (text.length > maxLength) return false;
             const decoded = decodeBase64Std(text);
             return decoded.kind === 'ok' && (exactBytes === undefined || decoded.bytes.length === exactBytes);
         }, 'expected canonical standard base64 with padding');

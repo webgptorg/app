@@ -19,8 +19,8 @@ import type { ProvenanceVerifier } from './provenance';
 import { expectedWorkflowClaims } from './provenance';
 import type { RevocationList } from './revocation';
 import { findRevocation, parseRevocationList } from './revocation';
-import type { KeyRef, TrustPolicy } from './trust';
-import { revocationSigners } from './trust';
+import type { KeyRef } from './trust';
+import { TrustPolicy, revocationSigners } from './trust';
 import { compareEngineVersions } from './version';
 
 export interface VerifyReleaseInput {
@@ -138,7 +138,8 @@ export async function verifyRelease(input: VerifyReleaseInput, deps: VerifyRelea
         input.lastAcceptedRevocationIssuedAt === null
             ? null
             : timeOf(input.lastAcceptedRevocationIssuedAt, 'lastAcceptedRevocationIssuedAt');
-    const { policy } = input;
+    // Re-checked so a policy built by hand cannot let one key count as both release and maintainer key.
+    const policy = TrustPolicy.parse(input.policy);
 
     const release = SignedRelease.safeParse(input.release);
     if (!release.success || release.data.envelope.payloadType !== RELEASE_PAYLOAD_TYPE) {
@@ -189,6 +190,7 @@ export async function verifyRelease(input: VerifyReleaseInput, deps: VerifyRelea
     const delay = entry.kind === 'security' ? policy.delays.securityMs : policy.delays.regularMs;
     // publishedAt is self-asserted, so it can only lengthen the delay; trusted and first-seen time bound it from below.
     const eligibleAt = new Date(Math.max(Date.parse(entry.publishedAt), trustedTime, firstSeenAt) + delay);
+    timeOf(eligibleAt, 'eligibleAt');
     if (input.mode === 'auto' && now < eligibleAt.getTime()) {
         return { kind: 'delay-not-elapsed', entry, eligibleAt, revocationsIssuedAt };
     }

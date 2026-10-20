@@ -579,6 +579,15 @@ describe('inputs that are bugs, not data', () => {
         await expect(run({ release: await regular(), provenance })).rejects.toThrow(RangeError);
     });
 
+    it('throws on a hand-built policy whose release key is also a maintainer key', async () => {
+        const overlapping = { ...policy, maintainerKeys: [policy.releaseKeys[0], ...policy.maintainerKeys.slice(1)] };
+        await expect(run({ release: await regular(), policy: overlapping as TrustPolicy })).rejects.toThrow();
+    });
+
+    it('throws instead of skipping the delay when eligibleAt overflows the Date range', async () => {
+        await expect(run({ release: await regular(), firstSeenAt: new Date(8.64e15) })).rejects.toThrow(RangeError);
+    });
+
     it('passes the abort signal to the provenance verifier', async () => {
         const controller = new AbortController();
         controller.abort();

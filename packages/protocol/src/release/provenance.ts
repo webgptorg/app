@@ -86,7 +86,9 @@ export type ProvenanceVerification =
  * equal `envelope` byte for byte; match the certificate against `expected` exactly (`checkCertificateClaims`, never a
  * caller-supplied pattern); require at least one transparency log entry; verify against a pinned `trusted_root.json`
  * without a live TUF fetch; and return as `trustedTime` the latest verified timestamp (RFC 3161 TSA or Rekor v1
- * integrated time), `null` when there is none. `reason` is diagnostic only and never contains bundle content.
+ * integrated time), `null` when there is none. A malformed or unverifiable bundle is `invalid`, never a rejection:
+ * the promise rejects only on abort or broken infrastructure. `reason` is diagnostic only and never contains bundle
+ * content.
  */
 export interface ProvenanceVerifier {
     verifyProvenance(
