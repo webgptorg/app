@@ -51,6 +51,16 @@ function integer(min: number, max: number) {
 }
 
 const ipAddress = z.union([z.ipv4(), z.ipv6()]);
+
+// The relay token travels as a bearer header, so cleartext is allowed only to this machine (local dev without TLS).
+const LOOPBACK_HOSTS: ReadonlySet<string> = new Set(['127.0.0.1', '[::1]', 'localhost']);
+
+const registryUrl = z.string().refine((input) => {
+    if (/[?#]/.test(input) || !URL.canParse(input)) return false;
+    const url = new URL(input);
+    const transport = url.protocol === 'https:' || (url.protocol === 'http:' && LOOPBACK_HOSTS.has(url.hostname));
+    return transport && url.username === '' && url.password === '';
+});
 const filePath = value(
     z
         .string()
@@ -92,7 +102,10 @@ const envSchema = z
             z.strictObject({
                 ...common,
                 RELAY_REGISTRY_KIND: z.literal('http'),
-                RELAY_REGISTRY_URL: value(z.url({ protocol: /^https?$/ }), 'must be an http or https URL'),
+                RELAY_REGISTRY_URL: value(
+                    registryUrl,
+                    'must be an https URL (http only on 127.0.0.1, ::1 or localhost) without credentials, query or fragment',
+                ),
                 RELAY_REGISTRY_TOKEN: value(
                     z.string().regex(/^ptbk_rt_[A-Za-z0-9_-]{43}$/),
                     'must be a relay token (ptbk_rt_ and 43 base64url characters)',

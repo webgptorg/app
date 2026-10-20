@@ -20,24 +20,24 @@ node apps/relay/dist/main.mjs        # needs no node_modules
 
 Only `RELAY_*` and `LOG_LEVEL` are read; an unknown `RELAY_*` name is an error, and an empty value counts as unset. Errors name the setting, never its value.
 
-| Variable                     | Default             | Meaning                                                                                    |
-| ---------------------------- | ------------------- | ------------------------------------------------------------------------------------------ |
-| `RELAY_HOSTNAME`             | required            | The relay's own hostname: the only name it terminates TLS for, and its `relayId` (C-02)    |
-| `RELAY_LISTEN_HOST`          | `0.0.0.0`           | IP address to listen on                                                                    |
-| `RELAY_LISTEN_PORT`          | `443`               | `0` picks a free port (tests)                                                              |
-| `RELAY_ENGINE_DOMAIN`        | required            | Engine default hostnames are `<engineId>.<engine domain>`                                  |
-| `RELAY_TLS_CERT_FILE`        | required            | Path to the relay's own certificate (PEM)                                                  |
-| `RELAY_TLS_KEY_FILE`         | required            | Path to the relay's own private key (PEM)                                                  |
-| `RELAY_REGISTRY_KIND`        | required            | `static` (a JSON file) or `http` (the dashboard, D-04; refused until that adapter exists)  |
-| `RELAY_REGISTRY_FILE`        | required for static | Path to the static registry file; not allowed with `http`                                  |
-| `RELAY_REGISTRY_URL`         | required for http   | Dashboard base URL; not allowed with `static`                                              |
-| `RELAY_REGISTRY_TOKEN`       | required for http   | Relay token, `ptbk_rt_` and 43 base64url characters; secret, never logged                  |
-| `RELAY_REGISTRY_TIMEOUT_MS`  | `3000`              | A slower registry answer counts as a failure                                               |
-| `RELAY_REGISTRY_TTL_S`       | `300`               | How long registry entries and CNAME answers are served from cache                          |
-| `RELAY_REGISTRY_MAX_STALE_S` | `86400`             | How long the last good entry or CNAME answers while the source fails; at most 86400, ≥ TTL |
-| `RELAY_DNS_SERVERS`          | system resolvers    | Comma-separated IP addresses for the CNAME check                                           |
-| `RELAY_DNS_TIMEOUT_MS`       | `3000`              | A slower DNS answer counts as an error                                                     |
-| `LOG_LEVEL`                  | `info`              | `info`, `warn` or `error`                                                                  |
+| Variable                     | Default             | Meaning                                                                                                                          |
+| ---------------------------- | ------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `RELAY_HOSTNAME`             | required            | The relay's own hostname: the only name it terminates TLS for, and its `relayId` (C-02)                                          |
+| `RELAY_LISTEN_HOST`          | `0.0.0.0`           | IP address to listen on                                                                                                          |
+| `RELAY_LISTEN_PORT`          | `443`               | `0` picks a free port (tests)                                                                                                    |
+| `RELAY_ENGINE_DOMAIN`        | required            | Engine default hostnames are `<engineId>.<engine domain>`                                                                        |
+| `RELAY_TLS_CERT_FILE`        | required            | Path to the relay's own certificate (PEM)                                                                                        |
+| `RELAY_TLS_KEY_FILE`         | required            | Path to the relay's own private key (PEM)                                                                                        |
+| `RELAY_REGISTRY_KIND`        | required            | `static` (a JSON file) or `http` (the dashboard, D-04; refused until that adapter exists)                                        |
+| `RELAY_REGISTRY_FILE`        | required for static | Path to the static registry file; not allowed with `http`                                                                        |
+| `RELAY_REGISTRY_URL`         | required for http   | Dashboard base URL: https (http only on 127.0.0.1, ::1, localhost), no credentials, query or fragment; not allowed with `static` |
+| `RELAY_REGISTRY_TOKEN`       | required for http   | Relay token, `ptbk_rt_` and 43 base64url characters; secret, never logged                                                        |
+| `RELAY_REGISTRY_TIMEOUT_MS`  | `3000`              | A slower registry answer counts as a failure                                                                                     |
+| `RELAY_REGISTRY_TTL_S`       | `300`               | How long registry entries and CNAME answers are served from cache                                                                |
+| `RELAY_REGISTRY_MAX_STALE_S` | `86400`             | How long the last good entry or CNAME answers while the source fails; at most 86400, ≥ TTL                                       |
+| `RELAY_DNS_SERVERS`          | system resolvers    | Comma-separated IP addresses for the CNAME check                                                                                 |
+| `RELAY_DNS_TIMEOUT_MS`       | `3000`              | A slower DNS answer counts as an error                                                                                           |
+| `LOG_LEVEL`                  | `info`              | `info`, `warn` or `error`                                                                                                        |
 
 ## Static registry file
 

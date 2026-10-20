@@ -15,6 +15,9 @@ const staticEnv: Readonly<Record<string, string>> = {
     RELAY_REGISTRY_FILE: '/etc/relay/registry.json',
 };
 
+const URL_PROBLEM =
+    'RELAY_REGISTRY_URL: must be an https URL (http only on 127.0.0.1, ::1 or localhost) without credentials, query or fragment';
+
 const httpEnv: Readonly<Record<string, string>> = {
     ...without(staticEnv, 'RELAY_REGISTRY_FILE'),
     RELAY_REGISTRY_KIND: 'http',
@@ -132,11 +135,38 @@ describe('parseRelayConfig', () => {
             without(httpEnv, 'RELAY_REGISTRY_TOKEN'),
             'RELAY_REGISTRY_TOKEN: is required',
         ],
+        ['http with a non-http URL', { ...httpEnv, RELAY_REGISTRY_URL: 'ftp://app.ptbk.test' }, URL_PROBLEM],
         [
-            'http with a non-http URL',
-            { ...httpEnv, RELAY_REGISTRY_URL: 'ftp://app.ptbk.test' },
-            'RELAY_REGISTRY_URL: must be an http or https URL',
+            'http with a cleartext URL to a remote host',
+            { ...httpEnv, RELAY_REGISTRY_URL: 'http://dashboard.example' },
+            URL_PROBLEM,
         ],
+        [
+            'http with a cleartext URL to a name that only starts like loopback',
+            { ...httpEnv, RELAY_REGISTRY_URL: 'http://127.0.0.1.dashboard.example' },
+            URL_PROBLEM,
+        ],
+        [
+            'http with a cleartext URL to a localhost subdomain',
+            { ...httpEnv, RELAY_REGISTRY_URL: 'http://localhost.dashboard.example' },
+            URL_PROBLEM,
+        ],
+        [
+            'http with credentials in the URL',
+            { ...httpEnv, RELAY_REGISTRY_URL: 'https://relay:secret@app.ptbk.test' },
+            URL_PROBLEM,
+        ],
+        [
+            'http with a query in the URL',
+            { ...httpEnv, RELAY_REGISTRY_URL: 'https://app.ptbk.test/?token=x' },
+            URL_PROBLEM,
+        ],
+        [
+            'http with a fragment in the URL',
+            { ...httpEnv, RELAY_REGISTRY_URL: 'https://app.ptbk.test/#x' },
+            URL_PROBLEM,
+        ],
+        ['http with something that is not a URL', { ...httpEnv, RELAY_REGISTRY_URL: 'app.ptbk.test' }, URL_PROBLEM],
         [
             'static with RELAY_REGISTRY_URL',
             { ...staticEnv, RELAY_REGISTRY_URL: 'https://app.ptbk.test' },
@@ -232,7 +262,25 @@ describe('parseRelayConfig', () => {
         ]);
     });
 
+    it.each(['http://127.0.0.1:8787', 'http://[::1]:8787', 'http://localhost:8787', 'https://app.ptbk.test/api'])(
+        'accepts the registry URL %s',
+        (url) => {
+            const config = parseRelayConfig({ ...httpEnv, RELAY_REGISTRY_URL: url });
+            expect(config.registry.kind === 'http' && config.registry.url).toBe(url);
+        },
+    );
+
     it.each<[string, Record<string, string>, string]>([
+        [
+            'a valid token beside a cleartext remote URL',
+            { ...httpEnv, RELAY_REGISTRY_URL: 'http://dashboard.example' },
+            TOKEN,
+        ],
+        [
+            'a token inside the URL credentials',
+            { ...httpEnv, RELAY_REGISTRY_URL: `https://relay:${TOKEN}@app.ptbk.test` },
+            TOKEN,
+        ],
         ['a malformed token', { ...httpEnv, RELAY_REGISTRY_TOKEN: 'ptbk_rt_short' }, 'ptbk_rt_short'],
         ['a token without the prefix', { ...httpEnv, RELAY_REGISTRY_TOKEN: 'A'.repeat(51) }, 'A'.repeat(51)],
         ['a valid token beside a missing URL', without(httpEnv, 'RELAY_REGISTRY_URL'), TOKEN],
