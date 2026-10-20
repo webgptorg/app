@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { describe, expect, it } from 'vitest';
 
+import { KNOWN_CAPABILITIES } from './capabilities/capability';
 import { isReadPermission } from './permissions';
 import type { RouteDefinition } from './route';
 import { ENGINE_API_ROUTES, ENGINE_API_ROUTE_LIST } from './routes';
@@ -51,6 +52,32 @@ function credentialKeys(route: RouteDefinition): string[] {
     }
     return [...names].filter((name) => FORBIDDEN_RESPONSE_KEYS.has(name.toLowerCase()));
 }
+
+function requestSchemas(route: RouteDefinition): z.ZodType[] {
+    return [route.params, route.query, route.body?.schema].filter((schema) => schema !== undefined);
+}
+
+/** Request fields too: a capability never takes a credential, it references wallet secrets by name. */
+function requestCredentialKeys(route: RouteDefinition): string[] {
+    const names = new Set<string>();
+    for (const schema of requestSchemas(route)) {
+        propertyNames(z.toJSONSchema(schema, { io: 'input', unrepresentable: 'any' }), names);
+    }
+    return [...names].filter((name) => FORBIDDEN_RESPONSE_KEYS.has(name.toLowerCase()));
+}
+
+const CAPABILITY_BY_PATH = [
+    ['/runs', KNOWN_CAPABILITIES.runs],
+    ['/files', KNOWN_CAPABILITIES.files],
+    ['/triggers', KNOWN_CAPABILITIES.triggers],
+    ['/integrations', KNOWN_CAPABILITIES.integrations],
+] as const;
+
+function expectedCapability(route: RouteDefinition) {
+    return CAPABILITY_BY_PATH.find(([prefix]) => route.path === prefix || route.path.startsWith(`${prefix}/`))?.[1];
+}
+
+const capabilityRoutes = ENGINE_API_ROUTE_LIST.filter((route) => expectedCapability(route) !== undefined);
 
 describe('ENGINE_API_ROUTES', () => {
     it('keys every route by its unique operation ID', () => {
@@ -119,5 +146,51 @@ describe('ENGINE_API_ROUTES', () => {
             expect(credentialKeys(route), route.id).toEqual([]);
         }
         expect(credentialKeys(ENGINE_API_ROUTES.createApiToken)).toEqual(['token']);
+    });
+});
+
+describe('capability routes', () => {
+    it('covers every capability', () => {
+        const covered = new Set(capabilityRoutes.map((route) => route.capability?.id));
+        expect([...covered].sort()).toEqual(Object.keys(KNOWN_CAPABILITIES).sort());
+    });
+
+    it('declares its capability and a permission on every route of a capability', () => {
+        for (const route of capabilityRoutes) {
+            expect(route.capability, route.id).toEqual(expectedCapability(route));
+            expect(route.permission, route.id).not.toBeNull();
+        }
+    });
+
+    it('declares no capability on core routes', () => {
+        for (const route of ENGINE_API_ROUTE_LIST.filter((candidate) => !expectedCapability(candidate))) {
+            expect(route.capability, route.id).toBeUndefined();
+        }
+        const core: readonly RouteDefinition[] = [ENGINE_API_ROUTES.listActivity, ENGINE_API_ROUTES.streamEvents];
+        for (const route of core) expect(route.capability, route.id).toBeUndefined();
+    });
+
+    it('requires a non-read permission on every mutating capability route', () => {
+        for (const route of capabilityRoutes.filter((candidate) => candidate.method !== 'GET')) {
+            expect(route.permission, route.id).not.toBeNull();
+            if (route.permission !== null) expect(isReadPermission(route.permission), route.id).toBe(false);
+        }
+        expect(ENGINE_API_ROUTES.cancelRun.permission).toBe('runs.control');
+        expect(ENGINE_API_ROUTES.retryRun.permission).toBe('runs.control');
+        expect(ENGINE_API_ROUTES.pauseTrigger.permission).toBe('triggers.manage');
+        expect(ENGINE_API_ROUTES.checkIntegration.permission).toBe('integrations.manage');
+    });
+
+    it('takes and returns no value, secret or token field anywhere', () => {
+        for (const route of capabilityRoutes) {
+            expect(credentialKeys(route), route.id).toEqual([]);
+            expect(requestCredentialKeys(route), route.id).toEqual([]);
+        }
+        expect(requestCredentialKeys(ENGINE_API_ROUTES.createSecret)).toEqual(['value']);
+    });
+
+    it('lists chats across agents with chats.read and filters activity per item', () => {
+        expect(ENGINE_API_ROUTES.listChats).toMatchObject({ path: '/chats', permission: 'chats.read' });
+        expect(ENGINE_API_ROUTES.listActivity).toMatchObject({ path: '/activity', permission: 'agents.read' });
     });
 });

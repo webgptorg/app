@@ -18,9 +18,15 @@ export * from './settings';
 export * from './passkeys';
 export * from './sessions';
 export * from './secrets';
-export * from './files';
 export * from './security';
 export * from './audit';
+export * from './capabilities/capability';
+export * from './capabilities/activity';
+export * from './capabilities/runs';
+export * from './capabilities/files';
+export * from './capabilities/triggers';
+export * from './capabilities/integrations';
+export { stripUnknownFields, toTolerant } from './tolerant';
 
 export { createEngineApiClient, EngineApiContractError } from './client';
 export type {
@@ -32,9 +38,12 @@ export type {
 } from './client';
 export { createFetchEngineApiClient } from './fetch-client';
 export type { FetchEngineApiClientOptions } from './fetch-client';
-export { createInMemoryEngineApiClient, IN_MEMORY_CLIENT_MARKER } from './in-memory-client';
+export { createInMemoryEngine, createInMemoryEngineApiClient, IN_MEMORY_CLIENT_MARKER } from './in-memory-client';
 export type {
     Clock,
+    InMemoryEngine,
+    InMemoryEngineController,
+    InMemorySeedFile,
     InMemoryEngineApiOptions,
     InMemoryMember,
     InMemorySeed,
@@ -42,6 +51,9 @@ export type {
     InMemorySeedAuditEntry,
 } from './in-memory-client';
 export type { ReplyScript, ScriptedReply } from './in-memory/handlers';
+export type { ActivityInput } from './in-memory/kit';
+export type { RunOutcome } from './in-memory/runs';
+export { createDemoSeed } from './in-memory/demo-seed';
 export { createSseParser, encodeSseMessage, parseSseStream, SSE_MAX_LINE_LENGTH } from './sse';
 export type { SseMessage, SseMessageToEncode, SseParser, SseParserOptions } from './sse';
 export { buildOpenApiDocument } from './openapi';

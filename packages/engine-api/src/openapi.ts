@@ -14,8 +14,42 @@ import {
 } from './agents';
 import { ApiToken, ApiTokenPage, CreateApiTokenResult } from './api-tokens';
 import { AuditAction, AuditActor, AuditEntry, AuditPage, AuditVerification } from './audit';
+import { Activity, ActivityActor, ActivityPage } from './capabilities/activity';
+import { CapabilityRef, capabilityLabel } from './capabilities/capability';
+import {
+    FileMetadata,
+    FilePage,
+    FilePurpose,
+    FileScanStatus,
+    FileVersion,
+    FileVersionPage,
+} from './capabilities/files';
+import { Integration, IntegrationPage, IntegrationStatus, SecretRef } from './capabilities/integrations';
+import {
+    Money,
+    ProjectChange,
+    Run,
+    RunDetail,
+    RunError,
+    RunPage,
+    RunProgress,
+    RunSource,
+    RunStats,
+    RunStatus,
+    RunUsage,
+    ToolCall,
+} from './capabilities/runs';
+import {
+    Recurrence,
+    ScheduleConfig,
+    Trigger,
+    TriggerFire,
+    TriggerFirePage,
+    TriggerPage,
+} from './capabilities/triggers';
 import { Chat, ChatPage, Message, MessagePage, ReplyStreamEvent, SendMessageResult } from './chats';
 import {
+    ActivityId,
     AgentId,
     AgentPermanentId,
     ApiTokenId,
@@ -23,9 +57,12 @@ import {
     ChatId,
     ClientInfo,
     Diagnostic,
+    EngineId,
     FileId,
+    FileVersionId,
     FolderId,
     Hostname,
+    IntegrationId,
     InviteId,
     MemberId,
     MessageId,
@@ -33,16 +70,19 @@ import {
     PasskeyId,
     ProblemDetails,
     RevisionId,
+    RunId,
     SecretId,
     SemVer,
     SessionId,
     Sha256Hex,
     Timestamp,
+    ToolCallId,
+    TriggerFireId,
+    TriggerId,
 } from './common';
 import { ENGINE_API_PREFIX, ENGINE_API_VERSION } from './constants';
 import { EngineInfo } from './engine';
 import { EngineEvent } from './events';
-import { FileMetadata, FilePage } from './files';
 import { Folder, FolderPage } from './folders';
 import { Me } from './me';
 import { CreateInviteResult, Invite, InvitePage, Member, MemberPage } from './members';
@@ -88,6 +128,14 @@ const COMPONENT_SCHEMAS: Readonly<Record<string, z.ZodType>> = {
     AuditEntryId,
     PasskeyId,
     SessionId,
+    RunId,
+    ToolCallId,
+    TriggerId,
+    TriggerFireId,
+    IntegrationId,
+    ActivityId,
+    FileVersionId,
+    EngineId,
     Timestamp,
     Hostname,
     SemVer,
@@ -98,6 +146,7 @@ const COMPONENT_SCHEMAS: Readonly<Record<string, z.ZodType>> = {
     ProblemDetails,
     ClientInfo,
     Me,
+    CapabilityRef,
     EngineInfo,
     AgentVisibility,
     AgentRunState,
@@ -135,14 +184,43 @@ const COMPONENT_SCHEMAS: Readonly<Record<string, z.ZodType>> = {
     SecretScope,
     SecretMetadata,
     SecretPage,
-    FileMetadata,
-    FilePage,
     SecurityOverview,
     AuditAction,
     AuditActor,
     AuditEntry,
     AuditPage,
     AuditVerification,
+    ActivityActor,
+    Activity,
+    ActivityPage,
+    RunSource,
+    RunStatus,
+    Money,
+    RunUsage,
+    RunError,
+    RunProgress,
+    Run,
+    RunPage,
+    ToolCall,
+    ProjectChange,
+    RunDetail,
+    RunStats,
+    FilePurpose,
+    FileScanStatus,
+    FileMetadata,
+    FilePage,
+    FileVersion,
+    FileVersionPage,
+    Recurrence,
+    ScheduleConfig,
+    Trigger,
+    TriggerPage,
+    TriggerFire,
+    TriggerFirePage,
+    IntegrationStatus,
+    SecretRef,
+    Integration,
+    IntegrationPage,
 };
 
 const JSON_SCHEMA_DIALECT = 'https://json-schema.org/draft/2020-12/schema';
@@ -339,6 +417,15 @@ function operationOf(route: RouteDefinition, components: ComponentCollector): Js
         ...(route.description === undefined ? {} : { description: route.description }),
         tags: [tagOf(route)],
         'x-required-permission': route.permission,
+        ...(route.capability
+            ? {
+                  'x-capability': {
+                      id: route.capability.id,
+                      version: route.capability.version,
+                      label: capabilityLabel(route.capability),
+                  },
+              }
+            : {}),
         ...(route.stepUp ? { 'x-step-up': true } : {}),
         ...(route.draft ? { 'x-draft': true } : {}),
         ...(parameters.length > 0 ? { parameters } : {}),

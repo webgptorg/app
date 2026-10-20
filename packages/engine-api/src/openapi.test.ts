@@ -2,6 +2,7 @@ import { Validator } from '@seriousme/openapi-schema-validator';
 import { describe, expect, it } from 'vitest';
 
 import committed from '../openapi.json' with { type: 'json' };
+import { capabilityLabel } from './capabilities/capability';
 import { buildOpenApiDocument } from './openapi';
 import { ENGINE_API_ROUTE_LIST } from './routes';
 
@@ -114,5 +115,43 @@ describe('buildOpenApiDocument', () => {
         expect(op['responses']).toMatchObject({
             200: { content: { 'text/event-stream': { schema: { $ref: '#/components/schemas/ReplyStreamEvent' } } } },
         });
+    });
+
+    it('marks every capability operation with x-capability and its permission', () => {
+        let capabilityOperations = 0;
+        for (const route of ENGINE_API_ROUTE_LIST) {
+            const op = operation(route.path, route.method);
+            const responses = op['responses'] as Readonly<Record<string, Readonly<Record<string, unknown>>>>;
+            if (route.capability === undefined) {
+                expect(op['x-capability'], route.id).toBeUndefined();
+                expect(responses['404']?.['x-problem-codes'] ?? [], route.id).not.toContain('capability-not-supported');
+                continue;
+            }
+            capabilityOperations += 1;
+            expect(op['x-capability'], route.id).toEqual({
+                id: route.capability.id,
+                version: route.capability.version,
+                label: capabilityLabel(route.capability),
+            });
+            expect(op['x-required-permission'], route.id).toBe(route.permission);
+            expect(responses['404']?.['x-problem-codes'], route.id).toContain('capability-not-supported');
+        }
+        expect(capabilityOperations).toBeGreaterThan(20);
+        expect(operation('/runs/{runId}/cancel', 'POST')['x-capability']).toMatchObject({ label: 'runs@1' });
+    });
+
+    it('documents route-specific capability problems', () => {
+        const cancel = operation('/runs/{runId}/cancel', 'POST')['responses'] as Readonly<
+            Record<string, Readonly<Record<string, unknown>>>
+        >;
+        expect(cancel['409']?.['x-problem-codes']).toEqual(['run-finished']);
+        const create = operation('/triggers', 'POST')['responses'] as Readonly<
+            Record<string, Readonly<Record<string, unknown>>>
+        >;
+        expect(create['422']?.['x-problem-codes']).toEqual(['invalid-schedule']);
+        const download = operation('/files/{fileId}/content', 'GET')['responses'] as Readonly<
+            Record<string, Readonly<Record<string, unknown>>>
+        >;
+        expect(download['409']?.['x-problem-codes']).toEqual(['file-infected']);
     });
 });

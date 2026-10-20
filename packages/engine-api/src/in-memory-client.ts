@@ -5,6 +5,13 @@ import type { AgentVisibility } from './agents';
 import { ApiToken } from './api-tokens';
 import { AuditEntry } from './audit';
 import type { AuditAction } from './audit';
+import { Activity } from './capabilities/activity';
+import { CapabilityRef, KNOWN_CAPABILITIES, supports } from './capabilities/capability';
+import { FileMetadata, FileVersion } from './capabilities/files';
+import { Integration } from './capabilities/integrations';
+import { RunDetail } from './capabilities/runs';
+import type { Run } from './capabilities/runs';
+import { Trigger, TriggerFire } from './capabilities/triggers';
 import { Chat, Message } from './chats';
 import { createEngineApiClient, EngineApiContractError } from './client';
 import type { EngineApiClient, EngineApiResponse, EngineApiTransport } from './client';
@@ -22,14 +29,19 @@ import {
 } from './common';
 import type { ProblemDetails } from './common';
 import { EngineInfo } from './engine';
-import type { EngineEvent } from './events';
-import { FileMetadata } from './files';
+import { EngineEvent } from './events';
 import { Folder } from './folders';
 import { hashAuditEntry } from './in-memory/audit-chain';
 import { checkBook } from './in-memory/book';
 import { HANDLERS } from './in-memory/handlers';
 import type { HandlerContext, ReplyScript } from './in-memory/handlers';
-import type { InMemoryState } from './in-memory/state';
+import { recordActivity } from './in-memory/kit';
+import type { ActivityInput, EngineContext } from './in-memory/kit';
+import { advanceRun } from './in-memory/runs';
+import type { RunOutcome } from './in-memory/runs';
+import type { FileRecord, InMemoryState } from './in-memory/state';
+import { fireTrigger } from './in-memory/triggers';
+import { withClientReading } from './reader';
 import { Invite, Member } from './members';
 import { Passkey } from './passkeys';
 import { OWNER_PERMISSIONS } from './permissions';
@@ -89,7 +101,10 @@ export type InMemorySeedAuditEntry = Omit<Unbranded<z.input<typeof AuditEntry>>,
 /** Seed data in contract shapes; every record is validated against its schema when the client is created. */
 export interface InMemorySeed {
     readonly orgId?: string;
-    readonly engine?: Unbranded<z.input<typeof EngineInfo>>;
+    /** `engineId` defaults to a fixed ID; `capabilities` come from the `capabilities` option. */
+    readonly engine?: Omit<Unbranded<z.input<typeof EngineInfo>>, 'engineId' | 'capabilities'> & {
+        readonly engineId?: string;
+    };
     readonly settings?: Unbranded<z.input<typeof Settings>>;
     readonly security?: Unbranded<z.input<typeof SecurityOverview>>;
     readonly members?: readonly Unbranded<z.input<typeof Member>>[];
@@ -102,8 +117,24 @@ export interface InMemorySeed {
     readonly apiTokens?: readonly Unbranded<z.input<typeof ApiToken>>[];
     readonly passkeys?: readonly Unbranded<z.input<typeof Passkey>>[];
     readonly sessions?: readonly Unbranded<z.input<typeof Session>>[];
-    readonly files?: readonly { readonly metadata: Unbranded<z.input<typeof FileMetadata>>; readonly content: Blob }[];
+    readonly files?: readonly InMemorySeedFile[];
+    readonly runs?: readonly Unbranded<z.input<typeof RunDetail>>[];
+    readonly triggers?: readonly {
+        readonly trigger: Unbranded<z.input<typeof Trigger>>;
+        /** Oldest first. */
+        readonly fires?: readonly Unbranded<z.input<typeof TriggerFire>>[];
+    }[];
+    readonly integrations?: readonly Unbranded<z.input<typeof Integration>>[];
+    /** Oldest first. */
+    readonly activity?: readonly Unbranded<z.input<typeof Activity>>[];
     readonly auditEntries?: readonly InMemorySeedAuditEntry[];
+}
+
+/** `versions` (oldest first) default to one version with `content`; `versionCount` is derived from them. */
+export interface InMemorySeedFile {
+    readonly metadata: Omit<Unbranded<z.input<typeof FileMetadata>>, 'versionCount'>;
+    readonly content: Blob;
+    readonly versions?: readonly { readonly version: Unbranded<z.input<typeof FileVersion>>; readonly content: Blob }[];
 }
 
 export interface InMemoryEngineApiOptions {
@@ -115,6 +146,28 @@ export interface InMemoryEngineApiOptions {
     readonly replyScript?: ReplyScript;
     /** Recorded in audit entries as the request's origin. */
     readonly client?: Unbranded<z.input<typeof ClientInfo>>;
+    /** What `GET /engine` advertises; routes of any other capability answer 404 `capability-not-supported`. */
+    readonly capabilities?: readonly Unbranded<CapabilityRef>[];
+}
+
+/**
+ * Test-only levers on the in-memory engine, for what the engine does on its own: runs progressing, schedules coming
+ * due, things happening elsewhere. Timestamps come from the injected clock, so UI tests stay deterministic.
+ */
+export interface InMemoryEngineController {
+    /** Appends to the activity feed (stamped with an ID and the clock) and announces it on the event stream. */
+    appendActivity(activity: Unbranded<ActivityInput>): Activity;
+    /** Starts a queued run, or ends a running one with `outcome` (default `completed`; `cancelled` if requested). */
+    advanceRun(runId: string, outcome?: Unbranded<RunOutcome>): Run;
+    /** A schedule comes due, or an email arrives for an email trigger. */
+    fireTrigger(triggerId: string): TriggerFire;
+    /** Sends an event as is, e.g. a change made by another member. */
+    emit(event: Unbranded<z.input<typeof EngineEvent>>): void;
+}
+
+export interface InMemoryEngine {
+    readonly client: EngineApiClient;
+    readonly controller: InMemoryEngineController;
 }
 
 /**
@@ -123,16 +176,43 @@ export interface InMemoryEngineApiOptions {
  * values, an audit hash chain and scripted streamed replies.
  */
 export function createInMemoryEngineApiClient(options: InMemoryEngineApiOptions = {}): EngineApiClient {
-    const client = createEngineApiClient(createInMemoryEngineApiTransport(options));
-    return Object.defineProperty(client, Symbol.toStringTag, { value: IN_MEMORY_CLIENT_MARKER });
+    return createInMemoryEngine(options).client;
+}
+
+/** The in-memory client together with its test-only controller. */
+export function createInMemoryEngine(options: InMemoryEngineApiOptions = {}): InMemoryEngine {
+    const engine = createEngine(options);
+    const client = createEngineApiClient(withClientReading(engine.transport));
+    return {
+        client: Object.defineProperty(client, Symbol.toStringTag, { value: IN_MEMORY_CLIENT_MARKER }),
+        controller: engine.controller,
+    };
 }
 
 const DEFAULT_REPLY_SCRIPT: ReplyScript = ({ agent, content }) => ({
     chunks: `${agent.name} received: ${content}`.split(/(?<= )/),
 });
 
-/** The transport behind the in-memory client; the tests also serve it over HTTP to drive the fetch client. */
+/**
+ * The engine side of the in-memory client: it resolves with exactly what an engine would send (strictly checked), so
+ * the tests can serve it over HTTP to drive the fetch client.
+ */
 export function createInMemoryEngineApiTransport(options: InMemoryEngineApiOptions = {}): EngineApiTransport {
+    return createEngine(options).transport;
+}
+
+/** Engine transport and controller over one state, for tests that drive the fetch client and the engine together. */
+export function createInMemoryEngineParts(options: InMemoryEngineApiOptions = {}): {
+    readonly transport: EngineApiTransport;
+    readonly controller: InMemoryEngineController;
+} {
+    return createEngine(options);
+}
+
+function createEngine(options: InMemoryEngineApiOptions): {
+    readonly transport: EngineApiTransport;
+    readonly controller: InMemoryEngineController;
+} {
     const clock = options.clock ?? { now: () => new Date() };
     const now = (): Timestamp => Timestamp.parse(clock.now().toISOString());
     const permissions = new Set(options.member?.permissions ?? OWNER_PERMISSIONS);
@@ -145,7 +225,10 @@ export function createInMemoryEngineApiTransport(options: InMemoryEngineApiOptio
         lastSeenAt: now(),
     });
     const client = ClientInfo.parse(options.client ?? { ip: '127.0.0.1', userAgent: 'in-memory engine API client' });
-    const state = createState(options.seed ?? {}, member, now);
+    const capabilities = (options.capabilities ?? Object.values(KNOWN_CAPABILITIES)).map((ref) =>
+        CapabilityRef.parse(ref),
+    );
+    const state = createState(options.seed ?? {}, member, now, capabilities);
     const counters = new Map<string, number>();
     const waiters = new Set<() => void>();
     // Appends are serialised so each entry hashes over the previous one.
@@ -208,9 +291,23 @@ export function createInMemoryEngineApiTransport(options: InMemoryEngineApiOptio
         });
     };
 
-    return async (route, request, signal) => {
+    const system: EngineContext = { state, now, newId, publish };
+    const controller: InMemoryEngineController = {
+        appendActivity: (activity) => recordActivity(system, activity as ActivityInput),
+        advanceRun: (runId, outcome) => advanceRun(system, runId, outcome),
+        fireTrigger: (triggerId) => fireTrigger(system, triggerId),
+        emit: (event) => {
+            publish(EngineEvent.parse(event));
+        },
+    };
+
+    const transport: EngineApiTransport = async (route, request, signal) => {
         signal.throwIfAborted();
         await auditTail;
+        // An engine without the capability has no such route, whoever asks.
+        if (route.capability && !supports(state.engine, route.capability)) {
+            return { kind: 'problem', problem: createProblem('capability-not-supported') };
+        }
         const routeId = route.id as EngineApiRouteId;
         const audited = AUDITED[routeId];
         const deny = (problem: ProblemDetails): EngineApiResponse<never> => {
@@ -252,6 +349,7 @@ export function createInMemoryEngineApiTransport(options: InMemoryEngineApiOptio
         if (result.kind === 'problem') return result;
         return { kind: 'ok', data: checkSuccess(route, result.data) };
     };
+    return { transport, controller };
 }
 
 type ParseOutcome =
@@ -365,6 +463,18 @@ const AUDITED: Partial<Record<EngineApiRouteId, AuditRule>> = {
     deleteSecret: { action: 'secret.delete', kind: 'secret', param: 'secretId' },
     uploadFile: { action: 'file.upload', kind: 'file' },
     deleteFile: { action: 'file.delete', kind: 'file', param: 'fileId' },
+    cancelRun: { action: 'run.cancel', kind: 'run', param: 'runId' },
+    retryRun: { action: 'run.retry', kind: 'run', param: 'runId' },
+    createTrigger: { action: 'trigger.create', kind: 'trigger' },
+    updateTrigger: { action: 'trigger.update', kind: 'trigger', param: 'triggerId' },
+    pauseTrigger: { action: 'trigger.pause', kind: 'trigger', param: 'triggerId' },
+    resumeTrigger: { action: 'trigger.resume', kind: 'trigger', param: 'triggerId' },
+    deleteTrigger: { action: 'trigger.delete', kind: 'trigger', param: 'triggerId' },
+    createIntegration: { action: 'integration.create', kind: 'integration' },
+    updateIntegration: { action: 'integration.update', kind: 'integration', param: 'integrationId' },
+    enableIntegration: { action: 'integration.enable', kind: 'integration', param: 'integrationId' },
+    disableIntegration: { action: 'integration.disable', kind: 'integration', param: 'integrationId' },
+    deleteIntegration: { action: 'integration.delete', kind: 'integration', param: 'integrationId' },
 };
 
 function auditTarget(rule: AuditRule, params: unknown, created: unknown): AuditEntry['target'] {
@@ -398,12 +508,45 @@ function idTaken(state: InMemoryState, id: string): boolean {
             state.passkeys,
             state.sessions,
             state.files,
+            state.runs,
+            state.triggers,
+            state.integrations,
         ].some((map) => map.has(id)) ||
-        [...state.agents.values()].some(({ revisions }) => revisions.some((revision) => revision.id === id))
+        [...state.agents.values()].some(({ revisions }) => revisions.some((revision) => revision.id === id)) ||
+        [...state.files.values()].some(({ versions }) => versions.some(({ version }) => version.id === id)) ||
+        [...state.triggers.values()].some(({ fires }) => fires.some((fire) => fire.id === id)) ||
+        state.activity.some((activity) => activity.id === id)
     );
 }
 
-function createState(seed: InMemorySeed, member: Member, now: () => Timestamp): InMemoryState {
+const DEFAULT_ENGINE_ID = 'memoryengine234567abcdefgh';
+
+function seedFile({ metadata, content, versions }: InMemorySeedFile): [string, FileRecord] {
+    const versionRecords = (
+        versions ?? [
+            {
+                version: {
+                    id: `${metadata.id}-v1`,
+                    createdAt: metadata.createdAt,
+                    sizeBytes: metadata.sizeBytes,
+                    sha256: metadata.sha256,
+                    commitHash: null,
+                    runId: metadata.runId,
+                },
+                content,
+            },
+        ]
+    ).map((record) => ({ version: FileVersion.parse(record.version), content: record.content }));
+    const parsed = FileMetadata.parse({ ...metadata, versionCount: versionRecords.length });
+    return [parsed.id, { metadata: parsed, versions: versionRecords }];
+}
+
+function createState(
+    seed: InMemorySeed,
+    member: Member,
+    now: () => Timestamp,
+    capabilities: readonly CapabilityRef[],
+): InMemoryState {
     const at = now();
     const byId = <T extends { readonly id: string }>(items: readonly T[]): Map<string, T> =>
         new Map(items.map((item) => [item.id, item]));
@@ -418,9 +561,16 @@ function createState(seed: InMemorySeed, member: Member, now: () => Timestamp): 
     );
     const state: InMemoryState = {
         orgId: OrgId.parse(seed.orgId ?? 'org-1'),
-        engine: EngineInfo.parse(
-            seed.engine ?? { name: settings.name, hostname: 'engine.localhost', dashboardUrl: null, mode: 'local' },
-        ),
+        engine: EngineInfo.parse({
+            engineId: DEFAULT_ENGINE_ID,
+            ...(seed.engine ?? {
+                name: settings.name,
+                hostname: 'engine.localhost',
+                dashboardUrl: null,
+                mode: 'local',
+            }),
+            capabilities,
+        }),
         settings,
         security: SecurityOverview.parse(seed.security ?? defaultSecurity(at)),
         members,
@@ -454,12 +604,16 @@ function createState(seed: InMemorySeed, member: Member, now: () => Timestamp): 
                 ]
             ).map((record) => Session.parse(record)),
         ),
-        files: new Map(
-            (seed.files ?? []).map(({ metadata, content }) => {
-                const parsed = FileMetadata.parse(metadata);
-                return [parsed.id, { metadata: parsed, content }];
+        files: new Map((seed.files ?? []).map(seedFile)),
+        runs: byId((seed.runs ?? []).map((record) => RunDetail.parse(record))),
+        triggers: new Map(
+            (seed.triggers ?? []).map(({ trigger, fires }) => {
+                const parsed = Trigger.parse(trigger);
+                return [parsed.id, { trigger: parsed, fires: (fires ?? []).map((fire) => TriggerFire.parse(fire)) }];
             }),
         ),
+        integrations: byId((seed.integrations ?? []).map((record) => Integration.parse(record))),
+        activity: (seed.activity ?? []).map((record) => Activity.parse(record)),
         audit: [],
         events: [],
     };

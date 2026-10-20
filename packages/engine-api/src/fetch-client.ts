@@ -1,10 +1,9 @@
-import type { z } from 'zod';
-
 import { createEngineApiClient, EngineApiContractError } from './client';
 import type { EngineApiClient, EngineApiResponse, EngineApiTransport, EngineApiTransportRequest } from './client';
 import { ProblemDetails } from './common';
 import { ENGINE_API_PREFIX } from './constants';
-import type { EngineApiStreamItem, RouteDefinition, RouteResponse, SseEventSchema, SuccessStatus } from './route';
+import type { EngineApiStreamItem, RouteDefinition, RouteResponse, SuccessStatus } from './route';
+import { readJsonResponse, readStreamEvent, readTolerantly } from './reader';
 import { parseSseStream } from './sse';
 
 export interface FetchEngineApiClientOptions {
@@ -44,7 +43,7 @@ function createFetchTransport(options: FetchEngineApiClientOptions): EngineApiTr
                 if (success.kind === 'sse') {
                     streaming = true;
                     deadline.stopTimer();
-                    return { kind: 'ok', data: decodeSse(route, success.event, response, deadline) };
+                    return { kind: 'ok', data: decodeSse(route, success, response, deadline) };
                 }
                 return { kind: 'ok', data: await decodeSuccess(route, success, response) };
             }
@@ -131,13 +130,13 @@ async function decodeSuccess(
             return await response.blob();
         case 'json':
             requireMediaType(route, response, 'application/json');
-            return validate(route, success.schema, await readJson(route, response), 'response body');
+            return readJsonResponse(route, success, await readJson(route, response));
     }
 }
 
 async function decodeProblem(route: RouteDefinition, response: Response): Promise<EngineApiResponse<never>> {
     requireMediaType(route, response, 'application/problem+json');
-    const problem = validate(
+    const problem = readTolerantly(
         route,
         ProblemDetails,
         await readJson(route, response),
@@ -154,7 +153,7 @@ async function decodeProblem(route: RouteDefinition, response: Response): Promis
 
 async function* decodeSse(
     route: RouteDefinition,
-    schema: SseEventSchema,
+    success: Extract<RouteResponse, { kind: 'sse' }>,
     response: Response,
     deadline: Deadline,
 ): AsyncIterable<EngineApiStreamItem<unknown>> {
@@ -162,11 +161,14 @@ async function* decodeSse(
         requireMediaType(route, response, 'text/event-stream');
         if (!response.body) throw new EngineApiContractError(route.id, 'event stream without a body');
         for await (const message of parseSseStream(response.body, deadline.signal)) {
-            const event = validate(route, schema, parseJson(route, message.data), 'stream event');
-            if (event.type !== message.event) {
+            const data = parseJson(route, message.data);
+            const type =
+                typeof data === 'object' && data !== null ? (data as Record<string, unknown>)['type'] : undefined;
+            if (type !== message.event) {
                 throw new EngineApiContractError(route.id, 'SSE event name differs from the event type');
             }
-            yield { id: message.id, event };
+            const event = readStreamEvent(route, success, data);
+            if (event !== undefined) yield { id: message.id, event };
         }
     } finally {
         deadline.dispose();
@@ -193,19 +195,6 @@ function parseJson(route: RouteDefinition, text: string): unknown {
     } catch (error) {
         throw new EngineApiContractError(route.id, 'body is not JSON', { cause: error });
     }
-}
-
-function validate<Schema extends z.ZodType>(
-    route: RouteDefinition,
-    schema: Schema,
-    value: unknown,
-    what: string,
-): z.output<Schema> {
-    const result = schema.safeParse(value);
-    if (result.success) return result.data;
-    // Paths and issue codes only: the values may be content.
-    const issues = result.error.issues.map((issue) => `${issue.path.join('.') || '(root)'} ${issue.code}`);
-    throw new EngineApiContractError(route.id, `${what} does not match the schema (${issues.join(', ')})`);
 }
 
 interface Deadline {

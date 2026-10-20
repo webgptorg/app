@@ -1,105 +1,38 @@
-import type { z } from 'zod';
-
 import { AgentPermanentId, AgentId, RevisionId } from '../common';
 import type { Agent, AgentRunState, AgentRunStatus } from '../agents';
-import { ApiTokenId, ChatId, FileId, FolderId, InviteId, MessageId, SecretId } from '../common';
-import type { ProblemDetails, Timestamp } from '../common';
+import { KNOWN_CAPABILITIES } from '../capabilities/capability';
+import { ApiTokenId, ChatId, FolderId, InviteId, MessageId, SecretId } from '../common';
 import type { Message, ReplyStreamEvent } from '../chats';
-import { MAX_FILE_BYTES } from '../constants';
 import type { EngineEvent } from '../events';
-import type { Member } from '../members';
 import type { Passkey } from '../passkeys';
-import type { Permission } from '../permissions';
 import { createProblem } from '../problem';
-import type { ProblemExtras } from '../problem';
-import type { ProblemCode } from '../problem-codes';
-import type { EngineApiStreamItem, ParsedRouteRequest, RouteData } from '../route';
-import type { ENGINE_API_ROUTES, EngineApiRouteId } from '../routes';
-import { sha256OfBlob, verifyAuditChain } from './audit-chain';
+import type { EngineApiStreamItem } from '../route';
+import { ACTIVITY_HANDLERS, canSeeEvent } from './activity';
+import { verifyAuditChain } from './audit-chain';
 import { checkBook } from './book';
-import { paginate } from './paging';
-import type { SortSpec, SortValue } from './paging';
-import type { EventRecord, InMemoryState } from './state';
+import { FILE_HANDLERS } from './files';
+import { INTEGRATION_HANDLERS } from './integrations';
+import {
+    advertises,
+    agentRecord,
+    fail,
+    invalid,
+    liveAgent,
+    memberActor,
+    notFound,
+    ok,
+    page,
+    sortBy,
+    sortParam,
+    time,
+    within,
+} from './kit';
+import type { HandlerContext, HandlerResult, Handlers } from './kit';
+import { advanceRun, queueRun, runForMessage, RUN_HANDLERS } from './runs';
+import { TRIGGER_HANDLERS } from './triggers';
+import type { EventRecord } from './state';
 
-export type HandlerResult<T> =
-    { readonly kind: 'ok'; readonly data: T } | { readonly kind: 'problem'; readonly problem: ProblemDetails };
-
-export interface ScriptedReply {
-    readonly chunks: readonly string[];
-    /** `failed` ends the stream with `reply-failed` after the chunks. */
-    readonly outcome?: 'completed' | 'failed';
-}
-
-export type ReplyScript = (input: { readonly agent: Agent; readonly content: string }) => ScriptedReply;
-
-export interface HandlerContext {
-    readonly state: InMemoryState;
-    readonly member: Member;
-    readonly permissions: ReadonlySet<Permission>;
-    readonly now: () => Timestamp;
-    readonly newId: <Schema extends z.ZodType<string, string>>(schema: Schema, prefix: string) => z.output<Schema>;
-    readonly publish: (event: EngineEvent) => void;
-    /** Resolves when an event after `count` events exists, rejects when `signal` aborts. */
-    readonly nextEvent: (count: number, signal: AbortSignal) => Promise<void>;
-    readonly replyScript: ReplyScript;
-    readonly signal: AbortSignal;
-}
-
-type Routes = typeof ENGINE_API_ROUTES;
-type Handler<Route> = (
-    request: ParsedRouteRequest<Route>,
-    ctx: HandlerContext,
-) => HandlerResult<RouteData<Route>> | Promise<HandlerResult<RouteData<Route>>>;
-export type Handlers = { readonly [Id in EngineApiRouteId]: Handler<Routes[Id]> };
-
-const ok = <T>(data: T): HandlerResult<T> => ({ kind: 'ok', data });
-const fail = (code: ProblemCode, extras?: ProblemExtras): HandlerResult<never> => ({
-    kind: 'problem',
-    problem: createProblem(code, extras),
-});
-const notFound = (what: string): HandlerResult<never> => fail('not-found', { detail: `No such ${what}.` });
-const invalid = (path: string, message: string): HandlerResult<never> =>
-    fail('validation-failed', { errors: [{ path, message }] });
-
-function page<T>(
-    items: Iterable<T>,
-    spec: SortSpec<T>,
-    query: { readonly cursor?: string | undefined; readonly limit: number },
-): HandlerResult<{ items: T[]; nextCursor: string | null }> {
-    const outcome = paginate([...items], spec, query);
-    if (outcome.kind === 'invalid-cursor') return fail('invalid-cursor');
-    return ok({ items: [...outcome.page.items], nextCursor: outcome.page.nextCursor });
-}
-
-function sortBy<T extends { readonly id: string }>(
-    name: string,
-    key: (item: T) => SortValue,
-    descending = false,
-): SortSpec<T> {
-    return { name, key, descending, id: (item) => item.id };
-}
-
-/** `-name` style sort parameters: a leading `-` means descending. */
-function sortParam<T extends { readonly id: string }>(sort: string, keys: Record<string, (item: T) => SortValue>) {
-    const descending = sort.startsWith('-');
-    const field = descending ? sort.slice(1) : sort;
-    const key = keys[field];
-    if (!key) throw new Error(`Unsupported sort ${sort}`);
-    return sortBy(sort, key, descending);
-}
-
-const time = (timestamp: string): number => Date.parse(timestamp);
-
-function agentRecord(ctx: HandlerContext, agentId: string) {
-    return ctx.state.agents.get(agentId);
-}
-
-function liveAgent(ctx: HandlerContext, agentId: string): HandlerResult<Agent> {
-    const record = agentRecord(ctx, agentId);
-    if (!record) return notFound('agent');
-    if (record.agent.deletedAt !== null) return fail('agent-deleted');
-    return ok(record.agent);
-}
+export type { HandlerContext, HandlerResult, ReplyScript, ScriptedReply } from './kit';
 
 function setRunState(ctx: HandlerContext, agentId: AgentId, state: AgentRunState): HandlerResult<AgentRunStatus> {
     const record = agentRecord(ctx, agentId);
@@ -373,6 +306,19 @@ export const HANDLERS: Handlers = {
         return ok(null);
     },
 
+    listChats: ({ query }, ctx) => {
+        const needle = query.q?.toLowerCase();
+        const chats = [...ctx.state.chats.values()].filter(
+            (chat) =>
+                (query.agentId === undefined || chat.agentId === query.agentId) &&
+                (needle === undefined || chat.title.toLowerCase().includes(needle)),
+        );
+        return page(
+            chats,
+            sortBy('-updatedAt', (chat) => time(chat.updatedAt), true),
+            query,
+        );
+    },
     listAgentChats: ({ params, query }, ctx) => {
         if (!agentRecord(ctx, params.agentId)) return notFound('agent');
         const chats = [...ctx.state.chats.values()].filter((chat) => chat.agentId === params.agentId);
@@ -439,6 +385,17 @@ export const HANDLERS: Handlers = {
         ctx.state.messages.set(userMessage.id, userMessage);
         ctx.state.messages.set(reply.id, reply);
         ctx.state.replies.set(reply.id, { chunks: [...script.chunks], outcome: script.outcome ?? 'completed' });
+        if (advertises(ctx, KNOWN_CAPABILITIES.runs)) {
+            const run = queueRun(ctx, {
+                agentId: chat.agentId,
+                source: 'web',
+                chatId: chat.id,
+                messageId: reply.id,
+                createdBy: ctx.member.id,
+                actor: memberActor(ctx),
+            });
+            advanceRun(ctx, run.id);
+        }
         touchChat(ctx, chat.id);
         return ok({ userMessage, replyMessageId: reply.id });
     },
@@ -455,6 +412,8 @@ export const HANDLERS: Handlers = {
         if (message.status !== 'streaming') return fail('reply-finished');
         const cancelled: Message = { ...message, status: 'cancelled' };
         ctx.state.messages.set(message.id, cancelled);
+        const run = runForMessage(ctx, message.id);
+        if (run) advanceRun(ctx, run.id, { status: 'cancelled' });
         touchChat(ctx, message.chatId);
         return ok(cancelled);
     },
@@ -644,37 +603,9 @@ export const HANDLERS: Handlers = {
     },
     deleteSecret: ({ params }, ctx) => (ctx.state.secrets.delete(params.secretId) ? ok(null) : notFound('secret')),
 
-    listFiles: ({ query }, ctx) =>
-        page(
-            [...ctx.state.files.values()].map(({ metadata }) => metadata),
-            sortBy('-createdAt', (file) => time(file.createdAt), true),
-            query,
-        ),
-    uploadFile: async ({ body }, ctx) => {
-        if (body.file.size > MAX_FILE_BYTES) return fail('payload-too-large');
-        const metadata = {
-            id: ctx.newId(FileId, 'file'),
-            name: body.name,
-            contentType: body.file.type === '' ? 'application/octet-stream' : body.file.type,
-            sizeBytes: body.file.size,
-            sha256: await sha256OfBlob(body.file),
-            createdBy: ctx.member.id,
-            createdAt: ctx.now(),
-        };
-        ctx.state.files.set(metadata.id, { metadata, content: body.file });
-        return ok(metadata);
-    },
-    downloadFile: ({ params }, ctx) => {
-        const file = ctx.state.files.get(params.fileId);
-        return file ? ok(file.content) : notFound('file');
-    },
-    deleteFile: ({ params }, ctx) => (ctx.state.files.delete(params.fileId) ? ok(null) : notFound('file')),
-
     getSecurityOverview: (_, ctx) => ok(ctx.state.security),
 
     listAuditEntries: ({ query }, ctx) => {
-        const from = query.from === undefined ? undefined : time(query.from);
-        const to = query.to === undefined ? undefined : time(query.to);
         const entries = ctx.state.audit.filter((entry) => {
             const memberId = entry.actor.kind === 'system' ? undefined : entry.actor.memberId;
             if (query.memberId !== undefined && memberId !== query.memberId) return false;
@@ -682,8 +613,7 @@ export const HANDLERS: Handlers = {
             if (query.targetKind !== undefined && entry.target?.kind !== query.targetKind) return false;
             if (query.targetId !== undefined && entry.target?.id !== query.targetId) return false;
             if (query.outcome !== undefined && entry.outcome !== query.outcome) return false;
-            if (from !== undefined && time(entry.at) < from) return false;
-            return to === undefined || time(entry.at) < to;
+            return within(entry.at, query.from, query.to);
         });
         return page(
             entries,
@@ -692,6 +622,12 @@ export const HANDLERS: Handlers = {
         );
     },
     verifyAuditLog: async (_, ctx) => ok(await verifyAuditChain(ctx.state.audit, ctx.now())),
+
+    ...ACTIVITY_HANDLERS,
+    ...RUN_HANDLERS,
+    ...FILE_HANDLERS,
+    ...TRIGGER_HANDLERS,
+    ...INTEGRATION_HANDLERS,
 };
 
 function saveAgent(ctx: HandlerContext, agent: Agent): HandlerResult<Agent> {
@@ -716,19 +652,13 @@ function folderNameTaken(ctx: HandlerContext, name: string, except?: string): bo
     );
 }
 
-const EVENT_PERMISSION: Record<EngineEvent['type'], Permission> = {
-    'agent.status': 'agents.read',
-    'agent.changed': 'agents.read',
-    'chat.changed': 'chats.read',
-};
-
 async function* streamEvents(ctx: HandlerContext, start: number): AsyncIterable<EngineApiStreamItem<EngineEvent>> {
     const events: readonly EventRecord[] = ctx.state.events;
     let next = start;
     for (;;) {
         while (next < events.length) {
             const record = events[next++];
-            if (record && ctx.permissions.has(EVENT_PERMISSION[record.event.type])) {
+            if (record && canSeeEvent(ctx.permissions, record.event)) {
                 yield { id: record.id, event: record.event };
             }
         }
@@ -767,6 +697,16 @@ async function* streamReply(
         const content = reply.chunks.join('');
         const finished: Message = { ...message, content, status: reply.outcome === 'failed' ? 'failed' : 'completed' };
         ctx.state.messages.set(messageId, finished);
+        const run = runForMessage(ctx, messageId);
+        if (run) {
+            advanceRun(
+                ctx,
+                run.id,
+                finished.status === 'failed'
+                    ? { status: 'failed', error: { code: 'reply-failed', summary: 'The reply failed.' } }
+                    : { status: 'completed' },
+            );
+        }
         touchChat(ctx, finished.chatId);
     }
     const final = ctx.state.messages.get(messageId) ?? message;

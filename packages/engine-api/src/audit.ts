@@ -49,6 +49,18 @@ export const AUDIT_ACTIONS = [
     'secret.delete',
     'file.upload',
     'file.delete',
+    'run.cancel',
+    'run.retry',
+    'trigger.create',
+    'trigger.update',
+    'trigger.pause',
+    'trigger.resume',
+    'trigger.delete',
+    'integration.create',
+    'integration.update',
+    'integration.enable',
+    'integration.disable',
+    'integration.delete',
     'engine.update.install',
     'ui.update.install',
 ] as const;
@@ -69,6 +81,9 @@ export const AUDIT_TARGET_KINDS = [
     'session',
     'settings',
     'engine',
+    'run',
+    'trigger',
+    'integration',
 ] as const;
 export const AuditTargetKind = z.enum(AUDIT_TARGET_KINDS);
 

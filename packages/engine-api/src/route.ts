@@ -1,5 +1,6 @@
 import type { z } from 'zod';
 
+import type { CapabilityRef } from './capabilities/capability';
 import type { Permission } from './permissions';
 import type { ProblemCode } from './problem-codes';
 
@@ -13,10 +14,16 @@ export type RouteBody =
 /** An SSE event schema; every event's `type` is also sent as the SSE `event` field. */
 export type SseEventSchema = z.ZodType<{ readonly type: string }>;
 
+/**
+ * `schema` is what the engine must send, checked strictly on the engine side (unknown fields fail). Clients read
+ * tolerantly (ADR 0010 §3): by default `toTolerant(schema)`, or `read` where the client needs more than stripping
+ * unknown fields, e.g. open sets that keep unknown members (activity kinds, integration kinds).
+ */
 export type RouteResponse =
-    | { readonly kind: 'json'; readonly schema: z.ZodType }
+    | { readonly kind: 'json'; readonly schema: z.ZodType; readonly read?: z.ZodType }
     | { readonly kind: 'empty' }
-    | { readonly kind: 'sse'; readonly event: SseEventSchema }
+    /** An SSE `read` resolves to `null` for events the client skips. */
+    | { readonly kind: 'sse'; readonly event: SseEventSchema; readonly read?: z.ZodType }
     | { readonly kind: 'binary' };
 
 /**
@@ -37,6 +44,8 @@ export interface RouteDefinition {
      * authorization": routes under `/me` act only on the caller's own resources and answer 404 for anyone else's.
      */
     readonly permission: Permission | null;
+    /** Set on every route of an optional capability; an engine that does not advertise it answers 404 `capability-not-supported`. */
+    readonly capability?: CapabilityRef;
     readonly params?: z.ZodObject;
     readonly query?: z.ZodObject;
     readonly body?: RouteBody;
@@ -82,7 +91,22 @@ export interface EngineApiStreamItem<Event> {
     readonly event: Event;
 }
 
-type ResponseData<Response> = Response extends {
+type ResponseData<Response> = Response extends { readonly kind: 'json'; readonly read: infer Read extends z.ZodType }
+    ? z.output<Read>
+    : Response extends { readonly kind: 'json'; readonly schema: infer Schema extends z.ZodType }
+      ? z.output<Schema>
+      : Response extends { readonly kind: 'sse'; readonly read: infer Read extends z.ZodType }
+        ? AsyncIterable<EngineApiStreamItem<Exclude<z.output<Read>, null>>>
+        : Response extends { readonly kind: 'sse'; readonly event: infer Event extends z.ZodType }
+          ? AsyncIterable<EngineApiStreamItem<z.output<Event>>>
+          : Response extends { readonly kind: 'binary' }
+            ? Blob
+            : null;
+
+/** What a client resolves with: the tolerant reading of the response. */
+export type RouteData<Route> = ResponseData<SuccessOf<Route>>;
+
+type EngineResponseData<Response> = Response extends {
     readonly kind: 'json';
     readonly schema: infer Schema extends z.ZodType;
 }
@@ -93,4 +117,5 @@ type ResponseData<Response> = Response extends {
         ? Blob
         : null;
 
-export type RouteData<Route> = ResponseData<SuccessOf<Route>>;
+/** What an engine answers with, before it goes on the wire: exactly the route's strict schema. */
+export type RouteEngineData<Route> = EngineResponseData<SuccessOf<Route>>;

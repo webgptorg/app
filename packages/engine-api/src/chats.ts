@@ -52,7 +52,22 @@ export const ReplyStreamEvent = z.discriminatedUnion('type', [
 ]);
 export type ReplyStreamEvent = z.infer<typeof ReplyStreamEvent>;
 
+export const ChatListQuery = PageQuery.extend({
+    agentId: AgentId.optional(),
+    /** Matches the title, case-insensitively. */
+    q: z.string().min(1).max(256).optional(),
+});
+
 export const CHAT_ROUTES = {
+    listChats: defineRoute({
+        id: 'listChats',
+        method: 'GET',
+        path: '/chats',
+        summary: 'List every chat the member can see, across agents, most recently updated first',
+        permission: 'chats.read',
+        query: ChatListQuery,
+        responses: { 200: { kind: 'json', schema: ChatPage } },
+    }),
     listAgentChats: defineRoute({
         id: 'listAgentChats',
         method: 'GET',

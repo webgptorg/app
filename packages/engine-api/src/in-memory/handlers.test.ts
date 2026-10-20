@@ -340,11 +340,13 @@ describe('in-memory secrets and files', () => {
     it('refuses oversized files and missing ones', async () => {
         const client = engine();
         const big = new Blob([new Uint8Array(MAX_FILE_BYTES + 1)]);
-        expect(code(await client.files.upload({ file: big, name: 'big.bin' }, signal()))).toBe('payload-too-large');
-        const plain = ok(await client.files.upload({ file: new Blob(['x']), name: 'x' }, signal()));
+        expect(code(await client.files.upload({ file: big, name: 'big.bin', purpose: 'upload' }, signal()))).toBe(
+            'payload-too-large',
+        );
+        const plain = ok(await client.files.upload({ file: new Blob(['x']), name: 'x', purpose: 'upload' }, signal()));
         expect(plain.contentType).toBe('application/octet-stream');
         const missing = FileId.parse('nope');
-        expect(code(await client.files.download(missing, signal()))).toBe('not-found');
+        expect(code(await client.files.download(missing, {}, signal()))).toBe('not-found');
         expect(code(await client.files.delete(missing, signal()))).toBe('not-found');
     });
 });

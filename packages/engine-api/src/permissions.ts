@@ -29,6 +29,13 @@ export const PERMISSIONS = [
     'settings.manage',
     'security.read',
     'audit.read',
+    'runs.read',
+    /** Cancel and retry. */
+    'runs.control',
+    'triggers.read',
+    'triggers.manage',
+    'integrations.read',
+    'integrations.manage',
 ] as const;
 export const Permission = z.enum(PERMISSIONS);
 export type Permission = z.infer<typeof Permission>;
