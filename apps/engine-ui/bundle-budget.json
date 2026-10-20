@@ -1,0 +1,7 @@
+{
+  "$comment": "Gzipped bytes. entry: the entry chunk with its static imports; routes: a route file's split chunks with the static imports the entry does not already load; css: all emitted CSS. A task that needs more raises the budget in the same PR and says why.",
+  "entry": 150000,
+  "routeDefault": 50000,
+  "css": 30000,
+  "routes": {}
+}

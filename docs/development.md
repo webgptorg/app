@@ -62,7 +62,7 @@ Workspace packages are referenced as `"@ptbk/protocol": "workspace:*"`, so they 
 
 GitHub Actions in `.github/workflows`:
 
-- `ci.yml`: install, then `bun run check` as one step (generate, lint, format, types, tests, plan), so whatever runs locally runs in CI; and a zizmor audit of the workflows themselves.
+- `ci.yml`: install, then `bun run check` as one step (generate, lint, format, types, tests, plan), so whatever runs locally runs in CI; `engine-ui-csp`, which runs the built engine UI in Chromium under the engine's CSP (`bun run --filter @ptbk/engine-ui test:csp`); and a zizmor audit of the workflows themselves.
 - `commits.yml`: commitlint on every commit in a PR and on the PR title.
 
 Workflow rules: actions pinned to full commit SHAs, `permissions: contents: read` by default, `persist-credentials: false`, no caches, no `pull_request_target`, untrusted values (PR title, branch names) passed through `env`, never interpolated into scripts.
