@@ -84,7 +84,14 @@ export default tseslint.config(
     },
     {
         files: ['packages/protocol/src/**/*.ts', 'packages/engine-api/src/**/*.ts'],
-        rules: restrictImports(platformImports, { group: ['@ptbk/*'], message: portable }),
+        rules: {
+            ...restrictImports(platformImports, { group: ['@ptbk/*'], message: portable }),
+            // The contracts compile against DOM typings for crypto.subtle; this keeps browser-only globals out.
+            'no-restricted-globals': [
+                'error',
+                ...['window', 'document', 'localStorage'].map((name) => ({ name, message: portable })),
+            ],
+        },
     },
     {
         files: ['packages/conformance/src/**/*.ts'],
