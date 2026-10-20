@@ -3,6 +3,9 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
     test: {
+        // `bun run check` runs every package's tests at once; two workers keep these jsdom suites from starving the
+        // others' time-bound tests on a 4-core CI runner.
+        maxWorkers: 2,
         coverage: {
             provider: 'v8',
             include: ['src/**/*.{ts,tsx}', 'tooling/**/*.ts'],
