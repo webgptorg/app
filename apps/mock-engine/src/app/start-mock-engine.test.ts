@@ -17,6 +17,7 @@ import { describe, expect, it } from 'vitest';
 
 import { createMemoryIdentityStore } from '../adapters/memory-identity-store';
 import type { TunnelDuplex } from '../adapters/tunnel-duplex';
+import type { ManagedCertificateSource } from '../domain/tls/certificate-source';
 import type { RelayLinkState } from '../domain/tunnel/relay-link';
 import type { RelayTarget } from '../domain/tunnel/relay-target';
 import { createFakeClock } from '../testing/fake-clock';
@@ -39,10 +40,12 @@ const CONFIG: MockEngineConfig = {
     engineVersion: EngineVersion.parse('0.1.0'),
     proxy: null,
     extraCaFile: null,
+    devCaFiles: null,
+    devCaDomains: [],
     logLevel: 'info',
 };
 
-async function start() {
+async function start(certificates?: ManagedCertificateSource) {
     const dialer = createFakeDialer();
     const logger = createMemoryLogger();
     const clock = createFakeClock();
@@ -54,12 +57,17 @@ async function start() {
         identityStore: createMemoryIdentityStore(),
         dialer,
         onLinkState: (target, state) => states.push([target.relayId, state.kind]),
+        ...(certificates === undefined ? {} : { certificates }),
     });
     return { dialer, logger, clock, states, engine };
 }
 type Started = Awaited<ReturnType<typeof start>>;
 
-async function handshake(started: Started, index: number): Promise<FakeConnection> {
+async function handshake(
+    started: Started,
+    index: number,
+    extraHostnames: readonly string[] = [],
+): Promise<FakeConnection> {
     const dial = started.dialer.dials[index];
     if (dial === undefined) throw new Error('no dial');
     const connection = dial.open();
@@ -79,7 +87,7 @@ async function handshake(started: Started, index: number): Promise<FakeConnectio
         type: 'ready',
         protocolVersion: 1,
         features: [],
-        hostnames: [started.engine.hostname],
+        hostnames: [started.engine.hostname, ...extraHostnames],
     });
     expect(auth.engineId).toBe(started.engine.identity.engineId);
     return connection;
@@ -176,5 +184,66 @@ describe('startMockEngine', () => {
         await closing;
         expect(started.engine.links.map((link) => link.state().kind)).toEqual(['stopped', 'stopped']);
         expect(started.logger.entries.at(-1)?.event).toBe('engine.stopped');
+    });
+
+    describe('with certificates', () => {
+        function recordingSource() {
+            const added: string[][] = [];
+            let closed = 0;
+            const source: ManagedCertificateSource = {
+                current: () => undefined,
+                onChange: () => () => undefined,
+                addHostnames(hostnames) {
+                    added.push([...hostnames]);
+                },
+                close() {
+                    closed++;
+                },
+            };
+            return { source, added, closed: () => closed };
+        }
+
+        it('asks for the default hostname at start and for every hostname a relay confirms', async () => {
+            const recording = recordingSource();
+            const started = await start(recording.source);
+            expect(recording.added).toEqual([[started.engine.hostname]]);
+            await handshake(started, 0, ['agents.customer.test']);
+            expect(recording.added.at(-1)).toEqual([started.engine.hostname, 'agents.customer.test']);
+            expect(started.states).toContainEqual(['relay-a.ptbk.test', 'ready']);
+        });
+
+        it('serves streams with the TLS server, restored after an override is removed', async () => {
+            const recording = recordingSource();
+            const started = await start(recording.source);
+            const connection = await handshake(started, 0);
+            const remove = started.engine.onStream(() => undefined);
+            remove();
+            connection.relayBinary(openFrame);
+            // Not a ClientHello: the TLS server fails the handshake and closes the stream.
+            connection.relayBinary(
+                encodeFrame({
+                    type: FrameType.DATA,
+                    streamId: StreamId.parse(1),
+                    payload: new TextEncoder().encode('GET / HTTP/1.1\r\n\r\n'),
+                }),
+            );
+            await until(() => started.logger.entries.some((entry) => entry.event === 'tls.handshake-failed'));
+            await until(() =>
+                connection.binaries.some((bytes) => {
+                    const decoded = decodeFrame(bytes);
+                    return decoded.kind === 'frame' && decoded.frame.type === FrameType.CLOSE;
+                }),
+            );
+            expect(started.logger.entries.some((entry) => entry.event === 'stream.refused')).toBe(false);
+        });
+
+        it('stops the certificate source on close', async () => {
+            const recording = recordingSource();
+            const started = await start(recording.source);
+            started.dialer.dials[0]?.fail({ reason: 'network' });
+            started.dialer.dials[1]?.fail({ reason: 'network' });
+            await started.engine.close();
+            expect(recording.closed()).toBe(1);
+        });
     });
 });

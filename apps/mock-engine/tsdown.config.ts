@@ -14,7 +14,7 @@ export default defineConfig({
     clean: true,
     deps: {
         alwaysBundle: [/.*/],
-        onlyBundle: ['zod', 'ws'],
+        onlyBundle: ['zod', 'ws', 'hono', '@hono/node-server'],
         onlyImport: [],
     },
 });

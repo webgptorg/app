@@ -9,6 +9,7 @@ import {
 import { z } from 'zod';
 
 import packageJson from '../../package.json';
+import type { DevCaFiles } from '../adapters/dev-ca';
 import type { NoProxyRule, ProxyConfig } from '../adapters/proxy-config';
 import type { LogLevel } from '../domain/logger';
 import { LOG_LEVELS } from '../domain/logger';
@@ -36,6 +37,10 @@ export interface MockEngineConfig {
     readonly proxy: ProxyConfig | null;
     /** `MOCK_EXTRA_CA_FILE`: a PEM added to Node's default roots for relay connections. */
     readonly extraCaFile: string | null;
+    /** `MOCK_DEV_CA_CERT_FILE` and `MOCK_DEV_CA_KEY_FILE` (both or neither); null generates a CA in the data dir. */
+    readonly devCaFiles: DevCaFiles | null;
+    /** `MOCK_DEV_CA_DOMAINS`: e2e domains a generated dev CA permits besides the engine domain. */
+    readonly devCaDomains: readonly Hostname[];
     readonly logLevel: LogLevel;
 }
 
@@ -206,6 +211,26 @@ function parseNoProxy(list: string, problem: (message: string) => void): readonl
     return Object.freeze(rules);
 }
 
+const MAX_DEV_CA_DOMAINS = 16;
+
+function parseDomains(list: string, problem: (message: string) => void): readonly Hostname[] | undefined {
+    const entries = list
+        .split(',')
+        .map((entry) => entry.trim())
+        .filter((entry) => entry !== '');
+    if (entries.length > MAX_DEV_CA_DOMAINS) {
+        problem(`must list at most ${String(MAX_DEV_CA_DOMAINS)} domains`);
+        return undefined;
+    }
+    const domains: Hostname[] = [];
+    entries.forEach((entry, index) => {
+        const domain = HostnameSchema.safeParse(entry);
+        if (domain.success) domains.push(domain.data);
+        else problem(`entry ${String(index + 1)} must be a hostname`);
+    });
+    return Object.freeze(domains);
+}
+
 const envSchema = z.strictObject({
     PTBK_MODE: value(z.literal('tunnel'), 'only tunnel is supported by the mock engine').default('tunnel'),
     PTBK_DATA_DIR: filePath,
@@ -213,6 +238,9 @@ const envSchema = z.strictObject({
     PTBK_ENGINE_DOMAIN: value(HostnameSchema, 'must be a hostname'),
     PTBK_ENGINE_VERSION: value(EngineVersionSchema, 'must be a SemVer version').default(DEFAULT_ENGINE_VERSION),
     MOCK_EXTRA_CA_FILE: filePath.optional(),
+    MOCK_DEV_CA_CERT_FILE: filePath.optional(),
+    MOCK_DEV_CA_KEY_FILE: filePath.optional(),
+    MOCK_DEV_CA_DOMAINS: parsed(parseDomains).optional(),
     LOG_LEVEL: value(z.enum(LOG_LEVELS), `must be one of ${LOG_LEVELS.join(', ')}`).default('info'),
     HTTPS_PROXY: parsed(parseProxy).optional(),
     NO_PROXY: parsed(parseNoProxy).optional(),
@@ -275,8 +303,18 @@ export function parseMockEngineConfig(env: Env): MockEngineConfig {
     const settings = settingsOf(env, problems);
     const result = envSchema.safeParse(settings);
     if (!result.success) problems.push(...result.error.issues.flatMap(toProblems));
+    if (
+        result.success &&
+        (result.data.MOCK_DEV_CA_CERT_FILE === undefined) !== (result.data.MOCK_DEV_CA_KEY_FILE === undefined)
+    ) {
+        problems.push('MOCK_DEV_CA_CERT_FILE: must be set together with MOCK_DEV_CA_KEY_FILE');
+    }
     if (!result.success || problems.length > 0) throw new ConfigError(problems);
     const parsedEnv = result.data;
+    const devCaFiles =
+        parsedEnv.MOCK_DEV_CA_CERT_FILE === undefined || parsedEnv.MOCK_DEV_CA_KEY_FILE === undefined
+            ? null
+            : Object.freeze({ certFile: parsedEnv.MOCK_DEV_CA_CERT_FILE, keyFile: parsedEnv.MOCK_DEV_CA_KEY_FILE });
     const proxy =
         parsedEnv.HTTPS_PROXY === undefined
             ? null
@@ -289,6 +327,8 @@ export function parseMockEngineConfig(env: Env): MockEngineConfig {
         engineVersion: parsedEnv.PTBK_ENGINE_VERSION,
         proxy,
         extraCaFile: parsedEnv.MOCK_EXTRA_CA_FILE ?? null,
+        devCaFiles,
+        devCaDomains: parsedEnv.MOCK_DEV_CA_DOMAINS ?? Object.freeze([]),
         logLevel: parsedEnv.LOG_LEVEL,
     });
 }

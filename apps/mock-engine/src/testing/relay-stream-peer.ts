@@ -32,6 +32,8 @@ export interface PeerStream {
     received(): Bytes;
     receivedLength(): number;
     waitForBytes(length: number): Promise<void>;
+    /** Calls `listener` with each DATA payload received from now on. */
+    onData(listener: (payload: Bytes) => void): void;
     /** Credit the relay may still send on this stream. */
     sendCredit(): number;
     /** Sends a `WINDOW` frame by hand. */
@@ -60,6 +62,7 @@ interface PeerState {
     receivedBytes: number;
     closeCode: CloseCode | undefined;
     readonly wakers: Set<() => void>;
+    readonly dataListeners: Set<(payload: Bytes) => void>;
 }
 
 const DEFAULT_REMOTE: PeerRemote = { family: 4, address: Uint8Array.of(203, 0, 113, 7), port: 51_234 };
@@ -98,6 +101,7 @@ export function createRelayStreamPeer(options: RelayStreamPeerOptions): RelayStr
             receivedBytes: 0,
             closeCode: undefined,
             wakers: new Set(),
+            dataListeners: new Set(),
             stream: {
                 id,
                 async write(bytes) {
@@ -115,6 +119,9 @@ export function createRelayStreamPeer(options: RelayStreamPeerOptions): RelayStr
                 received: () => concatBytes(...chunks),
                 receivedLength: () => state.receivedBytes,
                 waitForBytes: (length) => waitFor(state, () => state.receivedBytes >= length),
+                onData(listener) {
+                    state.dataListeners.add(listener);
+                },
                 sendCredit: () => sendWindow.available(),
                 grant(increment) {
                     receiveWindow.grant(increment);
@@ -158,6 +165,7 @@ export function createRelayStreamPeer(options: RelayStreamPeerOptions): RelayStr
                     }
                     state.chunks.push(frame.payload);
                     state.receivedBytes += frame.payload.length;
+                    for (const listener of state.dataListeners) listener(frame.payload);
                     if (autoGrant) state.stream.grant(frame.payload.length);
                     break;
                 case FrameType.WINDOW:

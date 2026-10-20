@@ -66,6 +66,8 @@ async function run(scenario: Scenario = {}) {
         engineVersion: EngineVersion.parse('0.1.0'),
         proxy: proxyConfig,
         extraCaFile: null,
+        devCaFiles: null,
+        devCaDomains: [],
         logLevel: 'info',
     };
     const clock = createFakeClock(Date.now());

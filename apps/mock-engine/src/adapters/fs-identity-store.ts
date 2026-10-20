@@ -1,17 +1,17 @@
 import type { JsonWebKey } from 'node:crypto';
 import { createPrivateKey, createPublicKey } from 'node:crypto';
-import type { Stats } from 'node:fs';
-import { lstat, mkdir, open, readFile } from 'node:fs/promises';
+import { lstat, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { createWebCryptoSigner, generateEd25519KeyPair } from '@ptbk/protocol';
 
 import type { EngineIdentity, IdentityStore } from '../domain/identity/engine-identity';
 import { engineIdentityFromSigner } from '../domain/identity/engine-identity';
+import type { PrivatePath } from './private-files';
+import { currentUid, ensurePrivateDirectory, lstatOrNull, privacyProblem, writeNewPrivateFile } from './private-files';
 
 export const ENGINE_KEY_FILE = 'engine-key.pem';
 
-const PRIVATE_TO_OWNER = 0o077;
 const PEM_LINE_LENGTH = 64;
 
 /** Startup refusals. Messages name paths and modes, never key material. */
@@ -27,43 +27,8 @@ export interface FsIdentityStoreOptions {
     readonly uid?: number | null;
 }
 
-interface Checked {
-    readonly label: string;
-    readonly path: string;
-    readonly kind: 'directory' | 'file';
-    readonly fixMode: string;
-}
-
-function currentUid(): number | null {
-    return typeof process.getuid === 'function' ? process.getuid() : null;
-}
-
-function octal(mode: number): string {
-    return (mode & 0o777).toString(8).padStart(4, '0');
-}
-
-async function lstatOrNull(path: string): Promise<Stats | null> {
-    try {
-        return await lstat(path);
-    } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
-        throw error;
-    }
-}
-
-/** Like OpenSSH with its keys: refuse to run with a key anyone but its owner could read or swap. */
-function assertPrivate(stats: Stats, checked: Checked, uid: number | null): void {
-    const { label, path, kind, fixMode } = checked;
-    const isKind = kind === 'directory' ? stats.isDirectory() : stats.isFile();
-    if (!isKind) throw new IdentityStoreError(`${label} ${path} is not a ${kind} (symbolic links are refused)`);
-    if (uid !== null && stats.uid !== uid) {
-        throw new IdentityStoreError(`${label} ${path} is not owned by the current user (uid ${String(uid)})`);
-    }
-    if ((stats.mode & PRIVATE_TO_OWNER) !== 0) {
-        throw new IdentityStoreError(
-            `${label} ${path} is accessible by group or others (mode ${octal(stats.mode)}); run chmod ${fixMode} ${path}`,
-        );
-    }
+function assertPrivate(problem: string | null): void {
+    if (problem !== null) throw new IdentityStoreError(problem);
 }
 
 function toPem(pkcs8: ArrayBuffer): string {
@@ -79,19 +44,7 @@ function toPem(pkcs8: ArrayBuffer): string {
 async function createKey(path: string): Promise<void> {
     // Extractable only for this one export; the key is imported non-extractable when loaded.
     const keyPair = await generateEd25519KeyPair({ extractable: true });
-    const pem = toPem(await crypto.subtle.exportKey('pkcs8', keyPair.privateKey));
-    let file;
-    try {
-        file = await open(path, 'wx', 0o600);
-    } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === 'EEXIST') return;
-        throw error;
-    }
-    try {
-        await file.writeFile(pem);
-    } finally {
-        await file.close();
-    }
+    await writeNewPrivateFile(path, toPem(await crypto.subtle.exportKey('pkcs8', keyPair.privateKey)));
 }
 
 function parseKey(pem: string): { readonly der: Buffer; readonly jwk: JsonWebKey } | null {
@@ -126,19 +79,15 @@ async function loadKey(path: string): Promise<EngineIdentity> {
  */
 export function createFsIdentityStore(dataDir: string, options: FsIdentityStoreOptions = {}): IdentityStore {
     const uid = options.uid === undefined ? currentUid() : options.uid;
-    const dir: Checked = { label: 'PTBK_DATA_DIR', path: dataDir, kind: 'directory', fixMode: '700' };
     const keyPath = join(dataDir, ENGINE_KEY_FILE);
-    const key: Checked = { label: ENGINE_KEY_FILE, path: keyPath, kind: 'file', fixMode: '600' };
+    const key: PrivatePath = { label: ENGINE_KEY_FILE, path: keyPath, kind: 'file' };
     return {
         async loadOrCreate() {
-            let dirStats = await lstatOrNull(dataDir);
-            if (dirStats === null) {
-                await mkdir(dataDir, { recursive: true, mode: 0o700 });
-                dirStats = await lstat(dataDir);
-            }
-            assertPrivate(dirStats, dir, uid);
+            assertPrivate(
+                await ensurePrivateDirectory({ label: 'PTBK_DATA_DIR', path: dataDir, kind: 'directory' }, uid),
+            );
             if ((await lstatOrNull(keyPath)) === null) await createKey(keyPath);
-            assertPrivate(await lstat(keyPath), key, uid);
+            assertPrivate(privacyProblem(await lstat(keyPath), key, uid));
             return loadKey(keyPath);
         },
     };

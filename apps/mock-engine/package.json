@@ -14,7 +14,10 @@
     "test": "vitest run --coverage"
   },
   "dependencies": {
+    "@hono/node-server": "1.19.17",
+    "@ptbk/engine-api": "workspace:*",
     "@ptbk/protocol": "workspace:*",
+    "hono": "catalog:",
     "ws": "catalog:",
     "zod": "catalog:"
   },
