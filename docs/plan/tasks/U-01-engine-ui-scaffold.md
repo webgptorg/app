@@ -2,7 +2,7 @@
 
 - **Lane:** U · **Module:** `apps/engine-ui` · **Milestone:** M2
 - **Depends on:** C-04
-- **Status:** in progress (feat/u-01-engine-ui-scaffold)
+- **Status:** done (#6)
 - **Spec:** Architecture (UI delivery), Engine security baseline (Browser headers), Security hardening (5, 6), Hosting and stack (TypeScript stack); ADRs: [0003](../../adr/0003-ui-as-signed-bundle.md), [0004](../../adr/0004-mock-engine-and-conformance.md), [0005](../../adr/0005-modular-architecture.md)
 
 ## Goal
@@ -63,18 +63,18 @@ The same holds for quality: the router and query conventions, the bundle budgets
 
 ## Acceptance criteria
 
-- [ ] `bun run --filter @ptbk/engine-ui build` produces `dist/index.html` plus hashed assets only; no `data:` URLs or external URLs in any emitted file (unit test scans `dist/`).
-- [ ] `test:csp` passes; a deliberately added inline `<style>` in a test fixture page makes it fail (negative test kept in the suite).
-- [ ] Unit test renders the root route with the in-memory client and shows the placeholder agents route; a 401 from the client triggers navigation to `SIGN_IN_PATH` with `next`.
-- [ ] The production bundle contains no in-memory client code (test greps `dist/` for a marker string exported by it).
-- [ ] ESLint fails on `dangerouslySetInnerHTML` in a component (rule covered by a lint fixture or `RuleTester`).
-- [ ] Bundle budgets: the CI build fails when a route chunk exceeds its budget (verified once with a temporarily lowered budget, noted in the PR); the report lists every route.
-- [ ] Hovering or focusing a link to `/agents` preloads its route chunk and loader data (unit test on the router or Playwright request log); an invalid search param on the placeholder route falls back to its default.
-- [ ] `test:csp` runs the UX checks (axe, 360 px overflow, layout shift, reduced motion) on `/agents` and passes; a fixture page with a fixed 400 px element makes the overflow check fail.
-- [ ] CI job for `test:csp` exists, uses SHA-pinned actions, no caches.
-- [ ] A fresh clone without `src/routeTree.gen.ts` passes `bun run check` (`generate` runs first); the file is gitignored.
-- [ ] `bun run check` passes.
-- [ ] **Status** line above set to `done (#<PR>)`.
+- [x] `bun run --filter @ptbk/engine-ui build` produces `dist/index.html` plus hashed assets only; no `data:` URLs or external URLs in any emitted file (unit test scans `dist/`).
+- [x] `test:csp` passes; a deliberately added inline `<style>` in a test fixture page makes it fail (negative test kept in the suite).
+- [x] Unit test renders the root route with the in-memory client and shows the placeholder agents route; a 401 from the client triggers navigation to `SIGN_IN_PATH` with `next`.
+- [x] The production bundle contains no in-memory client code (test greps `dist/` for a marker string exported by it).
+- [x] ESLint fails on `dangerouslySetInnerHTML` in a component (rule covered by a lint fixture or `RuleTester`).
+- [x] Bundle budgets: the CI build fails when a route chunk exceeds its budget (verified once with a temporarily lowered budget, noted in the PR); the report lists every route.
+- [x] Hovering or focusing a link to `/agents` preloads its route chunk and loader data (unit test on the router or Playwright request log); an invalid search param on the placeholder route falls back to its default.
+- [x] `test:csp` runs the UX checks (axe, 360 px overflow, layout shift, reduced motion) on `/agents` and passes; a fixture page with a fixed 400 px element makes the overflow check fail.
+- [x] CI job for `test:csp` exists, uses SHA-pinned actions, no caches.
+- [x] A fresh clone without `src/routeTree.gen.ts` passes `bun run check` (`generate` runs first); the file is gitignored.
+- [x] `bun run check` passes.
+- [x] **Status** line above set to `done (#<PR>)`.
 
 ## Risks and open points
 
