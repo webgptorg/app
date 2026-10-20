@@ -1,11 +1,27 @@
 {
   "name": "@ptbk/mock-engine",
+  "version": "0.1.0",
   "private": true,
   "license": "UNLICENSED",
   "type": "module",
   "description": "Mock engine that speaks the real protocol and engine API, for development and tests",
   "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "build": "tsdown",
+    "start": "node dist/main.mjs",
+    "identity": "tsx src/identity.ts",
     "typecheck": "tsc --noEmit -p .",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@ptbk/protocol": "workspace:*",
+    "ws": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@types/ws": "8.18.2",
+    "eslint": "catalog:",
+    "tsdown": "0.23.1",
+    "tsx": "4.23.15"
   }
 }
