@@ -3,6 +3,14 @@ import { describe, expect, it } from 'vitest';
 
 import { Agent, AgentListQuery } from './agents';
 import { AuditEntry } from './audit';
+import { Activity } from './capabilities/activity';
+import { FileMetadata, FileVersion } from './capabilities/files';
+import { activitySample } from './capabilities/fixtures/samples';
+import { CreateIntegrationBody, Integration } from './capabilities/integrations';
+import { Money, Run, RunDetail, RunListQuery, RunText } from './capabilities/runs';
+import { CreateTriggerBody, Recurrence, Trigger, TriggerFire } from './capabilities/triggers';
+import { MAX_RUN_TEXT_BYTES } from './constants';
+import { EngineInfo } from './engine';
 import { ReplyStreamEvent } from './chats';
 import { Hostname, PageQuery, ProblemDetails, SemVer, Timestamp } from './common';
 import type { RouteDefinition } from './route';
@@ -135,6 +143,118 @@ const completedEvent = {
     },
 };
 
+const run = {
+    id: 'run_1',
+    agentId: 'agt_1',
+    source: 'schedule',
+    status: 'completed',
+    chatId: null,
+    messageId: null,
+    triggerId: 'trg_1',
+    retryOf: null,
+    createdBy: null,
+    queuedAt: NOW,
+    startedAt: NOW,
+    completedAt: NOW,
+    cancelRequestedAt: null,
+    attemptCount: 1,
+    runner: 'claude-code',
+    model: null,
+    progress: { title: 'Digest', now: null, next: null, items: [{ id: '1', text: 'Read mail', status: 'completed' }] },
+    usage: { inputTokens: 10, outputTokens: 5, durationMs: 1000, cost: { amount: '0.01', currency: 'EUR' } },
+    error: null,
+};
+const runDetail = {
+    ...run,
+    toolCalls: [
+        {
+            id: 'tc_1',
+            name: 'read_mail',
+            state: 'complete',
+            startedAt: NOW,
+            durationMs: 20,
+            logs: 'ok',
+            logsTruncated: false,
+        },
+    ],
+    outputs: {
+        messages: [{ chatId: 'cht_1', messageId: 'msg_1' }],
+        files: ['fil_1'],
+        projectChanges: [
+            {
+                projectName: 'site',
+                commitHash: 'b'.repeat(40),
+                changedFiles: [{ path: 'index.html', insertions: 3, deletions: 1 }],
+                diff: '+hello',
+                diffTruncated: false,
+            },
+        ],
+    },
+    report: { touchedProjects: ['site'], externalSources: ['example.com'] },
+};
+const fileMetadata = {
+    id: 'fil_1',
+    name: 'notes.txt',
+    contentType: 'text/plain',
+    sizeBytes: 5,
+    sha256: SHA,
+    purpose: 'knowledge',
+    agentId: 'agt_1',
+    chatId: null,
+    runId: null,
+    scan: { status: 'clean', checkedAt: NOW },
+    versionCount: 1,
+    createdBy: 'mem_1',
+    createdAt: NOW,
+};
+const fileVersion = { id: 'fv_1', createdAt: NOW, sizeBytes: 5, sha256: SHA, commitHash: null, runId: 'run_1' };
+const trigger = {
+    id: 'trg_1',
+    agentId: 'agt_1',
+    name: 'Daily digest',
+    kind: 'schedule',
+    lifecycle: 'active',
+    endedReason: null,
+    lastFiredAt: null,
+    nextFireAt: NOW,
+    createdBy: 'mem_1',
+    createdAt: NOW,
+    updatedAt: NOW,
+    config: {
+        recurrence: { kind: 'cron', expression: '0 8 * * 1-5', timeZone: 'Europe/Prague' },
+        startsAt: NOW,
+        endsAt: null,
+        maxRunCount: null,
+        runCount: 0,
+        message: 'Summarise my inbox',
+    },
+};
+const triggerFire = { id: 'tf_1', at: NOW, outcome: 'started', runId: 'run_1', error: null };
+const integration = {
+    id: 'int_1',
+    agentId: null,
+    name: 'Docs MCP',
+    kind: 'mcp-server',
+    status: 'connected',
+    statusDetail: null,
+    scopes: ['read'],
+    secretRefs: [{ name: 'DOCS_TOKEN', secretId: 'sec_1', state: 'resolved' }],
+    tools: [{ name: 'search', description: null }],
+    lastActivityAt: null,
+    createdBy: 'mem_1',
+    createdAt: NOW,
+    updatedAt: NOW,
+    config: { url: 'https://mcp.example.com/sse' },
+};
+const engineInfo = {
+    name: 'Home',
+    engineId: 'abcdefghijklmnopqrstuvwxyz',
+    hostname: 'abcdefghijklmnopqrstuvwxyz.ptbk.example',
+    dashboardUrl: null,
+    mode: 'local',
+    capabilities: [{ id: 'runs', version: 1 }],
+};
+
 const SAMPLES: readonly { name: string; schema: z.ZodType; sample: Record<string, unknown>; nested: string }[] = [
     { name: 'Agent', schema: Agent, sample: agent, nested: 'profile' },
     { name: 'SecretMetadata', schema: SecretMetadata, sample: secret, nested: 'scope' },
@@ -148,6 +268,42 @@ const SAMPLES: readonly { name: string; schema: z.ZodType; sample: Record<string
         nested: 'scope',
     },
     { name: 'AgentListQuery', schema: AgentListQuery, sample: { q: 'ada', limit: '20' }, nested: '' },
+    { name: 'EngineInfo', schema: EngineInfo, sample: engineInfo, nested: 'capabilities.0' },
+    { name: 'Run', schema: Run, sample: run, nested: 'progress.items.0' },
+    { name: 'RunDetail', schema: RunDetail, sample: runDetail, nested: 'outputs.projectChanges.0.changedFiles.0' },
+    { name: 'RunDetail tool call', schema: RunDetail, sample: runDetail, nested: 'toolCalls.0' },
+    { name: 'FileMetadata', schema: FileMetadata, sample: fileMetadata, nested: 'scan' },
+    { name: 'FileVersion', schema: FileVersion, sample: fileVersion, nested: '' },
+    { name: 'Trigger', schema: Trigger, sample: trigger, nested: 'config.recurrence' },
+    { name: 'TriggerFire', schema: TriggerFire, sample: triggerFire, nested: '' },
+    { name: 'Integration', schema: Integration, sample: integration, nested: 'secretRefs.0' },
+    { name: 'Integration config', schema: Integration, sample: integration, nested: 'config' },
+    {
+        name: 'CreateTriggerBody',
+        schema: CreateTriggerBody,
+        sample: {
+            kind: 'schedule',
+            agentId: 'agt_1',
+            name: 'Hourly',
+            recurrence: { kind: 'interval', everySeconds: 3600 },
+            message: 'Check',
+        },
+        nested: 'recurrence',
+    },
+    {
+        name: 'CreateIntegrationBody',
+        schema: CreateIntegrationBody,
+        sample: {
+            kind: 'repository',
+            name: 'Site',
+            provider: 'github',
+            repository: 'webgptorg/app',
+            secretNames: ['GITHUB_TOKEN'],
+        },
+        nested: '',
+    },
+    { name: 'Activity', schema: Activity, sample: activitySample('run.completed'), nested: 'actor' },
+    { name: 'Activity usage', schema: Activity, sample: activitySample('run.completed'), nested: 'usage.cost' },
 ];
 
 function withExtraField(sample: Record<string, unknown>, path: string): Record<string, unknown> {
@@ -252,5 +408,49 @@ describe('PageQuery', () => {
 
     it.each(['0', '101', '1.5', 'ten'])('refuses limit %s', (limit) => {
         expect(PageQuery.safeParse({ limit }).success).toBe(false);
+    });
+});
+
+describe('capability schema details', () => {
+    it('reads a run status filter as a set of statuses', () => {
+        expect(RunListQuery.parse({ status: 'queued,running,queued' }).status).toEqual(['queued', 'running']);
+        expect(RunListQuery.parse({}).sort).toBe('-queuedAt');
+        expect(RunListQuery.safeParse({ status: 'queued,bogus' }).success).toBe(false);
+        expect(RunListQuery.safeParse({ status: 'queued,' }).success).toBe(false);
+    });
+
+    it('bounds run text by UTF-8 bytes, not characters', () => {
+        expect(RunText.safeParse('a'.repeat(MAX_RUN_TEXT_BYTES)).success).toBe(true);
+        expect(RunText.safeParse('a'.repeat(MAX_RUN_TEXT_BYTES + 1)).success).toBe(false);
+        const multiByte = 'č'.repeat(MAX_RUN_TEXT_BYTES / 2 + 1);
+        expect(multiByte.length).toBeLessThan(MAX_RUN_TEXT_BYTES);
+        expect(RunText.safeParse(multiByte).success).toBe(false);
+    });
+
+    it('takes money only as a decimal string with an ISO 4217 currency', () => {
+        expect(Money.safeParse({ amount: '12.50', currency: 'USD' }).success).toBe(true);
+        expect(Money.safeParse({ amount: 12.5, currency: 'USD' }).success).toBe(false);
+        expect(Money.safeParse({ amount: '-1', currency: 'USD' }).success).toBe(false);
+        expect(Money.safeParse({ amount: '1e3', currency: 'USD' }).success).toBe(false);
+        expect(Money.safeParse({ amount: '1', currency: 'usd' }).success).toBe(false);
+        expect(Money.safeParse({ amount: '1', currency: 'EURO' }).success).toBe(false);
+    });
+
+    it('refuses intervals under a minute', () => {
+        expect(Recurrence.safeParse({ kind: 'interval', everySeconds: 60 }).success).toBe(true);
+        expect(Recurrence.safeParse({ kind: 'interval', everySeconds: 59 }).success).toBe(false);
+        expect(Recurrence.safeParse({ kind: 'interval', everySeconds: 90.5 }).success).toBe(false);
+    });
+
+    it('refuses webhook triggers on create and integrations without a known kind', () => {
+        expect(CreateTriggerBody.safeParse({ kind: 'webhook', agentId: 'agt_1', name: 'Hook' }).success).toBe(false);
+        expect(
+            CreateIntegrationBody.safeParse({ kind: 'calendar', name: 'Cal', provider: 'google', account: 'a' })
+                .success,
+        ).toBe(false);
+        expect(
+            CreateIntegrationBody.safeParse({ kind: 'mcp-server', name: 'Plain', url: 'http://mcp.example.com' })
+                .success,
+        ).toBe(false);
     });
 });

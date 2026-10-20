@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { EngineApiContractError } from './client';
-import { AgentId, ChatId, FileId, FolderId, MessageId } from './common';
+import { activitySample } from './capabilities/fixtures/samples';
+import { AgentId, ChatId, FileId, FileVersionId, FolderId, IntegrationId, MessageId, RunId } from './common';
 import { ENGINE_API_PREFIX } from './constants';
 import { createFetchEngineApiClient } from './fetch-client';
 import { createProblem } from './problem';
@@ -41,8 +42,40 @@ const fileMetadata = {
     contentType: 'text/plain',
     sizeBytes: 5,
     sha256: 'a'.repeat(64),
+    purpose: 'upload',
+    agentId: null,
+    chatId: null,
+    runId: null,
+    scan: { status: 'pending', checkedAt: null },
+    versionCount: 1,
     createdBy: 'm1',
     createdAt: AT,
+};
+
+const engineInfo = {
+    name: 'Home',
+    engineId: 'abcdefghijklmnopqrstuvwxyz',
+    hostname: 'abcdefghijklmnopqrstuvwxyz.ptbk.example',
+    dashboardUrl: null,
+    mode: 'tunnel',
+    capabilities: [{ id: 'runs', version: 1 }],
+};
+
+const integration = {
+    id: 'i1',
+    agentId: null,
+    name: 'Docs',
+    kind: 'mcp-server',
+    status: 'connected',
+    statusDetail: null,
+    scopes: [],
+    secretRefs: [{ name: 'DOCS_TOKEN', secretId: null, state: 'missing' }],
+    tools: [],
+    lastActivityAt: null,
+    createdBy: 'm1',
+    createdAt: AT,
+    updatedAt: AT,
+    config: { url: 'https://mcp.example.com' },
 };
 
 interface Call {
@@ -149,9 +182,15 @@ describe('createFetchEngineApiClient', () => {
         if (response.kind === 'problem') expect(response.problem.requiredPermission).toBe('agents.delete');
     });
 
+    it('drops fields it does not know, at every depth', async () => {
+        const { client } = setup(() => json({ ...agent, added: SENTINEL, profile: { ...agent.profile, mood: 'x' } }));
+        expect(await client.agents.get(AgentId.parse('a1'), signal())).toEqual({ kind: 'ok', data: agent });
+    });
+
     it.each([
-        ['an unknown field', { ...agent, leaked: SENTINEL }],
         ['a wrong type', { ...agent, name: 42, profile: { ...agent.profile, description: [SENTINEL] } }],
+        ['a missing field', { ...agent, name: undefined, leaked: SENTINEL }],
+        ['a failed check', { ...agent, id: `bad id ${SENTINEL}` }],
     ])('rejects a response with %s without echoing its content', async (_, body) => {
         const { client } = setup(() => json(body));
         const error = await client.agents.get(AgentId.parse('a1'), signal()).catch((e: unknown) => e);
@@ -298,23 +337,127 @@ describe('createFetchEngineApiClient', () => {
     it('uploads multipart form data with a file and a name', async () => {
         const { client, calls } = setup(() => json(fileMetadata, 201));
         const file = new Blob(['hello'], { type: 'text/plain' });
-        const response = await client.files.upload({ file, name: 'notes.txt' }, signal());
+        const response = await client.files.upload({ file, name: 'notes.txt', purpose: 'upload' }, signal());
         expect(response).toEqual({ kind: 'ok', data: fileMetadata });
         const body = calls[0]?.init.body;
         expect(body).toBeInstanceOf(FormData);
         const form = body as FormData;
         expect(await (form.get('file') as Blob).text()).toBe('hello');
         expect(form.get('name')).toBe('notes.txt');
+        expect(form.get('purpose')).toBe('upload');
+        expect(form.has('agentId')).toBe(false);
         expect(new Headers(calls[0]?.init.headers).has('content-type')).toBe(false);
     });
 
-    it('downloads binary content as a Blob', async () => {
-        const { client } = setup(
+    it('downloads binary content as a Blob, optionally one version', async () => {
+        const { client, calls } = setup(
             () => new Response('hello', { status: 200, headers: { 'content-type': 'application/octet-stream' } }),
         );
-        const response = await client.files.download(FileId.parse('f1'), signal());
+        const response = await client.files.download(FileId.parse('f1'), {}, signal());
         if (response.kind !== 'ok') throw new Error('expected a file');
         expect(response.data).toBeInstanceOf(Blob);
         expect(await response.data.text()).toBe('hello');
+        await client.files.download(FileId.parse('f1'), { version: FileVersionId.parse('v2') }, signal());
+        expect(calls[1]?.url).toBe(`${BASE_URL}${ENGINE_API_PREFIX}/files/f1/content?version=v2`);
+    });
+});
+
+describe('tolerant reading', () => {
+    it('reads a GET /engine response with fields this client does not know', async () => {
+        const { client } = setup(() =>
+            json({ ...engineInfo, region: 'eu', capabilities: [{ id: 'runs', version: 1, beta: true }] }),
+        );
+        expect(await client.engine.get(signal())).toEqual({ kind: 'ok', data: engineInfo });
+    });
+
+    it('reads a GET /engine response from an engine on API 1.0 as having no capabilities', async () => {
+        const legacy: Partial<typeof engineInfo> = { ...engineInfo };
+        delete legacy.capabilities;
+        const { client } = setup(() => json(legacy));
+        expect(await client.engine.get(signal())).toEqual({ kind: 'ok', data: { ...legacy, capabilities: [] } });
+    });
+
+    it('reads a problem with fields this client does not know', async () => {
+        const conflict = createProblem('run-finished');
+        const { client } = setup(() => problem({ ...conflict, retryAfter: 3 }, 409));
+        expect(await client.runs.cancel(RunId.parse('r1'), signal())).toEqual({ kind: 'problem', problem: conflict });
+    });
+
+    it('reads an integration of an unknown kind without its config', async () => {
+        const slack = { ...integration, id: 'i2', kind: 'slack', config: { workspace: SENTINEL } };
+        const { client } = setup(() => json({ items: [integration, slack], nextCursor: null }));
+        const response = await client.integrations.list({}, signal());
+        if (response.kind !== 'ok') throw new Error('expected a page');
+        const [known, unknown] = response.data.items;
+        expect(known).toEqual(integration);
+        expect(unknown).toMatchObject({ id: 'i2', kind: 'unknown', rawKind: 'slack', name: 'Docs' });
+        expect(unknown).not.toHaveProperty('config');
+        expect(JSON.stringify(response.data)).not.toContain(SENTINEL);
+    });
+
+    it('reads a single integration and strips unknown config fields of a known kind', async () => {
+        const { client } = setup(() => json({ ...integration, config: { ...integration.config, transport: 'sse' } }));
+        expect(await client.integrations.get(IntegrationId.parse('i1'), signal())).toEqual({
+            kind: 'ok',
+            data: integration,
+        });
+    });
+
+    it.each([
+        ['a known kind with a broken field', { ...integration, status: 'sleeping' }],
+        ['an unknown kind with a broken common field', { ...integration, kind: 'slack', name: '' }],
+        ['a kind that is not a string', { ...integration, kind: 7 }],
+    ])('rejects %s', async (_, body) => {
+        const { client } = setup(() => json(body));
+        await expect(client.integrations.get(IntegrationId.parse('i1'), signal())).rejects.toBeInstanceOf(
+            EngineApiContractError,
+        );
+    });
+
+    it('reads an activity page with an unknown kind and drops items without a base', async () => {
+        const known = activitySample('run.started', 'act1');
+        const deploy = { ...activitySample('run.started', 'act2'), kind: 'deploy.started' };
+        const { client } = setup(() => json({ items: [known, deploy, { kind: 'run.started' }], nextCursor: null }));
+        const response = await client.activity.list({}, signal());
+        if (response.kind !== 'ok') throw new Error('expected a page');
+        expect(response.data.dropped).toBe(1);
+        expect(response.data.items.map(({ kind }) => kind)).toEqual(['known', 'unknown']);
+    });
+
+    it('skips unknown event types and reads activity of an unknown kind as data', async () => {
+        const activity = { ...activitySample('run.started'), kind: 'deploy.started' };
+        const stream = [
+            encodeSseMessage({
+                event: 'agent.teleported',
+                id: '1',
+                data: JSON.stringify({ type: 'agent.teleported' }),
+            }),
+            encodeSseMessage({ event: 'activity', id: '2', data: JSON.stringify({ type: 'activity', activity }) }),
+            encodeSseMessage({
+                event: 'activity',
+                id: '3',
+                data: JSON.stringify({ type: 'activity', activity: { kind: 'x' } }),
+            }),
+            encodeSseMessage({
+                event: 'run.changed',
+                id: '4',
+                data: JSON.stringify({ type: 'run.changed', runId: 'r1', agentId: 'a1', status: 'running', pct: 5 }),
+            }),
+        ];
+        const { client } = setup(() => sseResponse([stream.join('')]));
+        const response = await client.events.stream({}, signal());
+        if (response.kind !== 'ok') throw new Error('expected a stream');
+        const items = await collect(response.data);
+        expect(items.map(({ id }) => id)).toEqual(['2', '4']);
+        expect(items[0]?.event).toMatchObject({ type: 'activity', activity: { kind: 'unknown' } });
+        expect(items[1]?.event).toEqual({ type: 'run.changed', runId: 'r1', agentId: 'a1', status: 'running' });
+    });
+
+    it('fails the stream on an event without a type', async () => {
+        const body = encodeSseMessage({ event: 'message', data: JSON.stringify({ agentId: 'a1' }) });
+        const { client } = setup(() => sseResponse([body]));
+        const response = await client.events.stream({}, signal());
+        if (response.kind !== 'ok') throw new Error('expected a stream');
+        await expect(collect(response.data)).rejects.toBeInstanceOf(EngineApiContractError);
     });
 });

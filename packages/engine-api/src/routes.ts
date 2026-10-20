@@ -1,10 +1,14 @@
 import { AGENT_ROUTES } from './agents';
 import { API_TOKEN_ROUTES } from './api-tokens';
 import { AUDIT_ROUTES } from './audit';
+import { ACTIVITY_ROUTES } from './capabilities/activity';
+import { FILE_ROUTES } from './capabilities/files';
+import { INTEGRATION_ROUTES } from './capabilities/integrations';
+import { RUN_ROUTES } from './capabilities/runs';
+import { TRIGGER_ROUTES } from './capabilities/triggers';
 import { CHAT_ROUTES } from './chats';
 import { ENGINE_ROUTES } from './engine';
 import { EVENT_ROUTES } from './events';
-import { FILE_ROUTES } from './files';
 import { FOLDER_ROUTES } from './folders';
 import { ME_ROUTES } from './me';
 import { MEMBER_ROUTES } from './members';
@@ -30,9 +34,13 @@ export const ENGINE_API_ROUTES = {
     ...PASSKEY_ROUTES,
     ...SESSION_ROUTES,
     ...SECRET_ROUTES,
-    ...FILE_ROUTES,
     ...SECURITY_ROUTES,
     ...AUDIT_ROUTES,
+    ...ACTIVITY_ROUTES,
+    ...RUN_ROUTES,
+    ...FILE_ROUTES,
+    ...TRIGGER_ROUTES,
+    ...INTEGRATION_ROUTES,
 } as const satisfies Readonly<Record<string, RouteDefinition>>;
 
 export type EngineApiRouteId = keyof typeof ENGINE_API_ROUTES;
@@ -48,5 +56,6 @@ export function commonProblems(route: RouteDefinition): readonly ProblemCode[] {
     if (route.params || route.query || route.body) problems.push('validation-failed');
     if (route.query?.shape['cursor']) problems.push('invalid-cursor');
     if (route.params || route.draft) problems.push('not-found');
+    if (route.capability) problems.push('capability-not-supported');
     return problems;
 }

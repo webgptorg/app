@@ -3,7 +3,14 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createAppEngineApiClient } from './engine-api-client';
 
-const engineInfo = { name: 'Engine', hostname: 'engine.example', dashboardUrl: null, mode: 'tunnel' };
+const engineInfo = {
+    name: 'Engine',
+    engineId: 'aaaaaaaaaaaaaaaaaaaaaaaaaa',
+    hostname: 'engine.example',
+    dashboardUrl: null,
+    mode: 'tunnel',
+    capabilities: [{ id: 'runs', version: 1 }],
+};
 
 afterEach(() => {
     vi.unstubAllEnvs();

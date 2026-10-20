@@ -147,6 +147,7 @@ function writeResult(route: RouteDefinition, result: EngineApiResponse<unknown>)
                 headers: {
                     'content-type': 'application/octet-stream',
                     'content-disposition': 'attachment',
+                    'x-content-type-options': 'nosniff',
                     'cache-control': 'no-store',
                 },
             });

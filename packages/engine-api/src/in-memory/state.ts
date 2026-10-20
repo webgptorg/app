@@ -1,11 +1,15 @@
 import type { Agent, AgentRunStatus, Revision } from '../agents';
 import type { ApiToken } from '../api-tokens';
 import type { AuditEntry } from '../audit';
+import type { Activity } from '../capabilities/activity';
+import type { FileMetadata, FileVersion } from '../capabilities/files';
+import type { Integration } from '../capabilities/integrations';
+import type { RunDetail } from '../capabilities/runs';
+import type { Trigger, TriggerFire } from '../capabilities/triggers';
 import type { Chat, Message } from '../chats';
 import type { OrgId } from '../common';
 import type { EngineInfo } from '../engine';
 import type { EngineEvent } from '../events';
-import type { FileMetadata } from '../files';
 import type { Folder } from '../folders';
 import type { Invite, Member } from '../members';
 import type { Passkey } from '../passkeys';
@@ -26,9 +30,21 @@ export interface ReplyRecord {
     readonly outcome: 'completed' | 'failed';
 }
 
-export interface FileRecord {
-    readonly metadata: FileMetadata;
+export interface FileVersionRecord {
+    readonly version: FileVersion;
     readonly content: Blob;
+}
+
+export interface FileRecord {
+    metadata: FileMetadata;
+    /** Oldest first; the last one is the current content. */
+    readonly versions: FileVersionRecord[];
+}
+
+export interface TriggerRecord {
+    trigger: Trigger;
+    /** Oldest first. */
+    readonly fires: TriggerFire[];
 }
 
 export interface EventRecord {
@@ -55,6 +71,11 @@ export interface InMemoryState {
     readonly passkeys: Map<string, Passkey>;
     readonly sessions: Map<string, Session>;
     readonly files: Map<string, FileRecord>;
+    readonly runs: Map<string, RunDetail>;
+    readonly triggers: Map<string, TriggerRecord>;
+    readonly integrations: Map<string, Integration>;
+    /** Oldest first. */
+    readonly activity: Activity[];
     readonly audit: AuditEntry[];
     readonly events: EventRecord[];
 }

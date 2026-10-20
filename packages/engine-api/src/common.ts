@@ -39,6 +39,20 @@ export const PasskeyId = z.string().regex(OPAQUE_ID_PATTERN).brand<'PasskeyId', 
 export type PasskeyId = z.infer<typeof PasskeyId>;
 export const SessionId = z.string().regex(OPAQUE_ID_PATTERN).brand<'SessionId', 'inout'>();
 export type SessionId = z.infer<typeof SessionId>;
+export const RunId = z.string().regex(OPAQUE_ID_PATTERN).brand<'RunId', 'inout'>();
+export type RunId = z.infer<typeof RunId>;
+export const ToolCallId = z.string().regex(OPAQUE_ID_PATTERN).brand<'ToolCallId', 'inout'>();
+export type ToolCallId = z.infer<typeof ToolCallId>;
+export const TriggerId = z.string().regex(OPAQUE_ID_PATTERN).brand<'TriggerId', 'inout'>();
+export type TriggerId = z.infer<typeof TriggerId>;
+export const TriggerFireId = z.string().regex(OPAQUE_ID_PATTERN).brand<'TriggerFireId', 'inout'>();
+export type TriggerFireId = z.infer<typeof TriggerFireId>;
+export const IntegrationId = z.string().regex(OPAQUE_ID_PATTERN).brand<'IntegrationId', 'inout'>();
+export type IntegrationId = z.infer<typeof IntegrationId>;
+export const ActivityId = z.string().regex(OPAQUE_ID_PATTERN).brand<'ActivityId', 'inout'>();
+export type ActivityId = z.infer<typeof ActivityId>;
+export const FileVersionId = z.string().regex(OPAQUE_ID_PATTERN).brand<'FileVersionId', 'inout'>();
+export type FileVersionId = z.infer<typeof FileVersionId>;
 
 /** An ID of any kind, for fields whose kind is given by another field (audit targets). */
 export const OpaqueId = z.string().regex(OPAQUE_ID_PATTERN);
@@ -61,6 +75,16 @@ export const Hostname = z
     .brand<'Hostname'>();
 export type Hostname = z.infer<typeof Hostname>;
 
+/**
+ * The engine's ID: SHA-256 of its public key, base32 lowercase, 26 characters. Same rule as `@ptbk/protocol`, defined
+ * independently; it is the first label of the default hostname, and the UI derives the engine fingerprint from it.
+ */
+export const EngineId = z
+    .string()
+    .regex(/^[a-z2-7]{26}$/)
+    .brand<'EngineId'>();
+export type EngineId = z.infer<typeof EngineId>;
+
 /** Strict SemVer 2.0 (the regex from semver.org). */
 export const SemVer = z
     .string()
@@ -78,6 +102,12 @@ export const Sha256Hex = z
 export type Sha256Hex = z.infer<typeof Sha256Hex>;
 
 export const Cursor = z.string().min(1).max(MAX_CURSOR_LENGTH);
+
+/** A short, stable machine name (error codes, provider names). */
+export const Slug = z
+    .string()
+    .max(64)
+    .regex(/^[a-z][a-z0-9-]*$/);
 
 /** Query strings carry numbers as text, so `limit` is coerced; typed callers still pass a number. */
 export const PageQuery = z.strictObject({

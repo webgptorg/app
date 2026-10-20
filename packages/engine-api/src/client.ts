@@ -31,8 +31,8 @@ export interface EngineApiTransportRequest {
 }
 
 /**
- * Executes one operation. A transport validates the success data against the route's schema (throwing
- * `EngineApiContractError`), so what it resolves with matches `RouteData<route>`.
+ * Executes one operation. A client transport reads the success data with the route's tolerant reader (throwing
+ * `EngineApiContractError` when it does not match), so what it resolves with matches `RouteData<route>`.
  */
 export type EngineApiTransport = (
     route: RouteDefinition,
@@ -125,6 +125,8 @@ export interface EngineApiClient {
         delete(folderId: Param<'deleteFolder', 'folderId'>, signal: AbortSignal): Result<'deleteFolder'>;
     };
     readonly chats: {
+        /** Every chat the member can see, across agents. */
+        listAll(query: Query<'listChats'>, signal: AbortSignal): Result<'listChats'>;
         list(
             agentId: Param<'listAgentChats', 'agentId'>,
             query: Query<'listAgentChats'>,
@@ -200,11 +202,81 @@ export interface EngineApiClient {
         revoke(secretId: Param<'revokeSecret', 'secretId'>, signal: AbortSignal): Result<'revokeSecret'>;
         delete(secretId: Param<'deleteSecret', 'secretId'>, signal: AbortSignal): Result<'deleteSecret'>;
     };
+    /** `files@1`; every capability group answers 404 `capability-not-supported` unless `GET /engine` advertises it. */
     readonly files: {
         list(query: Query<'listFiles'>, signal: AbortSignal): Result<'listFiles'>;
         upload(body: Body<'uploadFile'>, signal: AbortSignal): Result<'uploadFile'>;
-        download(fileId: Param<'downloadFile', 'fileId'>, signal: AbortSignal): Result<'downloadFile'>;
+        get(fileId: Param<'getFile', 'fileId'>, signal: AbortSignal): Result<'getFile'>;
+        listVersions(
+            fileId: Param<'listFileVersions', 'fileId'>,
+            query: Query<'listFileVersions'>,
+            signal: AbortSignal,
+        ): Result<'listFileVersions'>;
+        download(
+            fileId: Param<'downloadFile', 'fileId'>,
+            query: Query<'downloadFile'>,
+            signal: AbortSignal,
+        ): Result<'downloadFile'>;
         delete(fileId: Param<'deleteFile', 'fileId'>, signal: AbortSignal): Result<'deleteFile'>;
+    };
+    /** `runs@1`. Runs start from a chat message or a trigger, never from here. */
+    readonly runs: {
+        list(query: Query<'listRuns'>, signal: AbortSignal): Result<'listRuns'>;
+        stats(query: Query<'getRunStats'>, signal: AbortSignal): Result<'getRunStats'>;
+        get(runId: Param<'getRun', 'runId'>, signal: AbortSignal): Result<'getRun'>;
+        cancel(runId: Param<'cancelRun', 'runId'>, signal: AbortSignal): Result<'cancelRun'>;
+        retry(runId: Param<'retryRun', 'runId'>, signal: AbortSignal): Result<'retryRun'>;
+    };
+    /** `triggers@1`. */
+    readonly triggers: {
+        list(query: Query<'listTriggers'>, signal: AbortSignal): Result<'listTriggers'>;
+        create(body: Body<'createTrigger'>, signal: AbortSignal): Result<'createTrigger'>;
+        get(triggerId: Param<'getTrigger', 'triggerId'>, signal: AbortSignal): Result<'getTrigger'>;
+        update(
+            triggerId: Param<'updateTrigger', 'triggerId'>,
+            body: Body<'updateTrigger'>,
+            signal: AbortSignal,
+        ): Result<'updateTrigger'>;
+        delete(triggerId: Param<'deleteTrigger', 'triggerId'>, signal: AbortSignal): Result<'deleteTrigger'>;
+        pause(triggerId: Param<'pauseTrigger', 'triggerId'>, signal: AbortSignal): Result<'pauseTrigger'>;
+        resume(triggerId: Param<'resumeTrigger', 'triggerId'>, signal: AbortSignal): Result<'resumeTrigger'>;
+        listFires(
+            triggerId: Param<'listTriggerFires', 'triggerId'>,
+            query: Query<'listTriggerFires'>,
+            signal: AbortSignal,
+        ): Result<'listTriggerFires'>;
+    };
+    /** `integrations@1`. Integrations of a kind this client does not know read as `{ kind: 'unknown', rawKind }`. */
+    readonly integrations: {
+        list(query: Query<'listIntegrations'>, signal: AbortSignal): Result<'listIntegrations'>;
+        create(body: Body<'createIntegration'>, signal: AbortSignal): Result<'createIntegration'>;
+        connectCalendar(body: Body<'connectCalendar'>, signal: AbortSignal): Result<'connectCalendar'>;
+        get(integrationId: Param<'getIntegration', 'integrationId'>, signal: AbortSignal): Result<'getIntegration'>;
+        update(
+            integrationId: Param<'updateIntegration', 'integrationId'>,
+            body: Body<'updateIntegration'>,
+            signal: AbortSignal,
+        ): Result<'updateIntegration'>;
+        delete(
+            integrationId: Param<'deleteIntegration', 'integrationId'>,
+            signal: AbortSignal,
+        ): Result<'deleteIntegration'>;
+        enable(
+            integrationId: Param<'enableIntegration', 'integrationId'>,
+            signal: AbortSignal,
+        ): Result<'enableIntegration'>;
+        disable(
+            integrationId: Param<'disableIntegration', 'integrationId'>,
+            signal: AbortSignal,
+        ): Result<'disableIntegration'>;
+        check(
+            integrationId: Param<'checkIntegration', 'integrationId'>,
+            signal: AbortSignal,
+        ): Result<'checkIntegration'>;
+    };
+    /** Items of unknown kinds read as `{ kind: 'unknown' }`; items without a valid base are dropped and counted. */
+    readonly activity: {
+        list(query: Query<'listActivity'>, signal: AbortSignal): Result<'listActivity'>;
     };
     readonly security: {
         get(signal: AbortSignal): Result<'getSecurityOverview'>;
@@ -263,6 +335,7 @@ export function createEngineApiClient(transport: EngineApiTransport): EngineApiC
             delete: (folderId, signal) => call(R.deleteFolder, { params: { folderId } }, signal),
         },
         chats: {
+            listAll: (query, signal) => call(R.listChats, { query }, signal),
             list: (agentId, query, signal) => call(R.listAgentChats, { params: { agentId }, query }, signal),
             create: (agentId, body, signal) => call(R.createChat, { params: { agentId }, body }, signal),
             get: (chatId, signal) => call(R.getChat, { params: { chatId } }, signal),
@@ -311,8 +384,42 @@ export function createEngineApiClient(transport: EngineApiTransport): EngineApiC
         files: {
             list: (query, signal) => call(R.listFiles, { query }, signal),
             upload: (body, signal) => call(R.uploadFile, { body }, signal),
-            download: (fileId, signal) => call(R.downloadFile, { params: { fileId } }, signal),
+            get: (fileId, signal) => call(R.getFile, { params: { fileId } }, signal),
+            listVersions: (fileId, query, signal) => call(R.listFileVersions, { params: { fileId }, query }, signal),
+            download: (fileId, query, signal) => call(R.downloadFile, { params: { fileId }, query }, signal),
             delete: (fileId, signal) => call(R.deleteFile, { params: { fileId } }, signal),
+        },
+        runs: {
+            list: (query, signal) => call(R.listRuns, { query }, signal),
+            stats: (query, signal) => call(R.getRunStats, { query }, signal),
+            get: (runId, signal) => call(R.getRun, { params: { runId } }, signal),
+            cancel: (runId, signal) => call(R.cancelRun, { params: { runId } }, signal),
+            retry: (runId, signal) => call(R.retryRun, { params: { runId } }, signal),
+        },
+        triggers: {
+            list: (query, signal) => call(R.listTriggers, { query }, signal),
+            create: (body, signal) => call(R.createTrigger, { body }, signal),
+            get: (triggerId, signal) => call(R.getTrigger, { params: { triggerId } }, signal),
+            update: (triggerId, body, signal) => call(R.updateTrigger, { params: { triggerId }, body }, signal),
+            delete: (triggerId, signal) => call(R.deleteTrigger, { params: { triggerId } }, signal),
+            pause: (triggerId, signal) => call(R.pauseTrigger, { params: { triggerId } }, signal),
+            resume: (triggerId, signal) => call(R.resumeTrigger, { params: { triggerId } }, signal),
+            listFires: (triggerId, query, signal) => call(R.listTriggerFires, { params: { triggerId }, query }, signal),
+        },
+        integrations: {
+            list: (query, signal) => call(R.listIntegrations, { query }, signal),
+            create: (body, signal) => call(R.createIntegration, { body }, signal),
+            connectCalendar: (body, signal) => call(R.connectCalendar, { body }, signal),
+            get: (integrationId, signal) => call(R.getIntegration, { params: { integrationId } }, signal),
+            update: (integrationId, body, signal) =>
+                call(R.updateIntegration, { params: { integrationId }, body }, signal),
+            delete: (integrationId, signal) => call(R.deleteIntegration, { params: { integrationId } }, signal),
+            enable: (integrationId, signal) => call(R.enableIntegration, { params: { integrationId } }, signal),
+            disable: (integrationId, signal) => call(R.disableIntegration, { params: { integrationId } }, signal),
+            check: (integrationId, signal) => call(R.checkIntegration, { params: { integrationId } }, signal),
+        },
+        activity: {
+            list: (query, signal) => call(R.listActivity, { query }, signal),
         },
         security: { get: (signal) => call(R.getSecurityOverview, {}, signal) },
         audit: {
