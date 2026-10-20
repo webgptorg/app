@@ -20,7 +20,12 @@ function problemOf(error: unknown): string {
     return error instanceof Error ? error.name : 'unknown';
 }
 
-async function start(): Promise<{ readonly relay: Relay; readonly logger: Logger } | null> {
+interface Started {
+    readonly relay: Relay;
+    readonly logger: Logger;
+}
+
+async function start(): Promise<Started | null> {
     let logger = createJsonLogger({ level: 'info', clock: systemClock });
     try {
         const config = parseRelayConfig(process.env);
@@ -32,24 +37,38 @@ async function start(): Promise<{ readonly relay: Relay; readonly logger: Logger
     }
 }
 
-const started = await start();
-if (started === null) {
-    process.exitCode = 1;
-} else {
+// Written by the signal handler while `start` runs, so it lives in an object TypeScript does not narrow.
+const lifecycle: { started: Started | null; stopSignal: NodeJS.Signals | null } = { started: null, stopSignal: null };
+
+function stop(started: Started, signal: NodeJS.Signals): void {
     const { relay, logger } = started;
-    const shutdown = (signal: NodeJS.Signals): void => {
-        process.off('SIGTERM', shutdown);
-        process.off('SIGINT', shutdown);
-        logger.info('relay.stopping', { signal });
-        setTimeout(() => {
-            logger.error('relay.shutdown-timeout', { timeoutMs: SHUTDOWN_TIMEOUT_MS });
-            process.exit(1);
-        }, SHUTDOWN_TIMEOUT_MS).unref();
-        relay.close().catch((error: unknown) => {
-            logger.error('relay.close-failed', { problem: problemOf(error) });
-            process.exitCode = 1;
-        });
-    };
-    process.on('SIGTERM', shutdown);
-    process.on('SIGINT', shutdown);
+    logger.info('relay.stopping', { signal });
+    setTimeout(() => {
+        logger.error('relay.shutdown-timeout', { timeoutMs: SHUTDOWN_TIMEOUT_MS });
+        process.exit(1);
+    }, SHUTDOWN_TIMEOUT_MS).unref();
+    relay.close().catch((error: unknown) => {
+        logger.error('relay.close-failed', { problem: problemOf(error) });
+        process.exitCode = 1;
+    });
+}
+
+// Installed before starting, so a signal that arrives while the relay starts is never handled by Node's default
+// (an exit without a graceful close).
+const onSignal = (signal: NodeJS.Signals): void => {
+    process.off('SIGTERM', onSignal);
+    process.off('SIGINT', onSignal);
+    if (lifecycle.started === null) lifecycle.stopSignal = signal;
+    else stop(lifecycle.started, signal);
+};
+process.on('SIGTERM', onSignal);
+process.on('SIGINT', onSignal);
+
+lifecycle.started = await start();
+if (lifecycle.started === null) {
+    process.off('SIGTERM', onSignal);
+    process.off('SIGINT', onSignal);
+    process.exitCode = 1;
+} else if (lifecycle.stopSignal !== null) {
+    stop(lifecycle.started, lifecycle.stopSignal);
 }
