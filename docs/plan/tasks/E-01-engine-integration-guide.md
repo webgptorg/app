@@ -2,7 +2,7 @@
 
 - **Lane:** Engine integration · **Module:** `docs/engine-integration/` · **Milestone:** M2 (pulled forward)
 - **Depends on:** C-02, C-03, C-04, C-06
-- **Status:** done (#29)
+- **Status:** in progress (#29 merged; awaiting maintainer review)
 - **Spec:** Interfaces (draft) 1–6, Relay and tunnel, Pairing and identity, Residual risks (2. Engine updates), Security hardening 1, 7, 8, Build plan; ADRs: [0002](../../adr/0002-public-private-split.md), [0003](../../adr/0003-ui-as-signed-bundle.md), [0004](../../adr/0004-mock-engine-and-conformance.md), [0014](../../adr/0014-cryptography.md)
 
 ## Goal
@@ -48,7 +48,7 @@ One file per topic, each with: what the engine must do (normative, "must"/"shoul
 - [x] A grep for private hostnames, internal paths beyond `/internal/v1` and secret-like strings finds nothing.
 - [ ] Reviewed by the engine team contact (or, until named, by a maintainer), with their questions answered in the guide or listed as open points.
 - [x] `bun run check` passes (Prettier on Markdown).
-- [x] **Status** line above set to `done (#<PR>)`.
+- [ ] **Status** line above set to `done (#<PR>)`.
 
 ## Risks and open points
 

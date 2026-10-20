@@ -86,15 +86,15 @@ Golden vectors, which an implementation in any language must reproduce:
 
 The mock engine implements the engine side of every contract, one task at a time. On `main` today: identity, tunnel client and TLS inside the tunnel. Sections whose mock engine task is not merged say `Reference implementation: pending M-0x`; whoever merges that task updates the section and its checklist rows.
 
-| Task | What the mock engine adds                          | Status      |
-| ---- | -------------------------------------------------- | ----------- |
-| M-01 | Identity, tunnel client, proxy, reconnect          | merged      |
-| M-02 | TLS and HTTP inside the tunnel, dev CA             | merged      |
-| M-03 | ACME TLS-ALPN-01 through the relay                 | not started |
-| M-04 | Engine API, gateway stand-in, faults               | in progress |
-| M-05 | UI loader and security headers                     | not started |
-| M-06 | Registration and heartbeat client                  | not started |
-| M-07 | Capabilities (runs, files, triggers, integrations) | not started |
+| Task | What the mock engine adds                          | Status                                      |
+| ---- | -------------------------------------------------- | ------------------------------------------- |
+| M-01 | Identity, tunnel client, proxy, reconnect          | merged                                      |
+| M-02 | TLS and HTTP inside the tunnel, dev CA             | merged                                      |
+| M-03 | ACME TLS-ALPN-01 through the relay                 | not started                                 |
+| M-04 | Engine API, gateway stand-in, faults               | in progress (engine-api core merged in #28) |
+| M-05 | UI loader and security headers                     | not started                                 |
+| M-06 | Registration and heartbeat client                  | not started                                 |
+| M-07 | Capabilities (runs, files, triggers, integrations) | not started                                 |
 
 ## Open points
 
