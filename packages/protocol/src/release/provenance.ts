@@ -8,10 +8,13 @@ export const FULCIO_OID = Object.freeze({
     sourceRepositoryDigest: '1.3.6.1.4.1.57264.1.13',
     sourceRepositoryRef: '1.3.6.1.4.1.57264.1.14',
     sourceRepositoryIdentifier: '1.3.6.1.4.1.57264.1.15',
+    buildTrigger: '1.3.6.1.4.1.57264.1.20',
 } as const);
 export type FulcioOid = (typeof FULCIO_OID)[keyof typeof FULCIO_OID];
 
 export const GITHUB_HOSTED_RUNNER = 'github-hosted';
+/** Only a tag push may release; a `workflow_dispatch` run of the same workflow is a dry run (decided 2026-10-20). */
+export const RELEASE_BUILD_TRIGGER = 'push';
 
 export interface ExpectedWorkflowClaims {
     readonly issuer: string;
@@ -46,6 +49,7 @@ export function expectedWorkflowClaims(
             [FULCIO_OID.sourceRepositoryRef]: ref,
             [FULCIO_OID.sourceRepositoryIdentifier]: identity.repositoryId,
             [FULCIO_OID.runnerEnvironment]: GITHUB_HOSTED_RUNNER,
+            [FULCIO_OID.buildTrigger]: RELEASE_BUILD_TRIGGER,
         }),
     });
 }

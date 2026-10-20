@@ -6,6 +6,7 @@ import { EngineVersion, ed25519PublicKeyFromBytes } from '../ids';
 import type { ReleaseTestKeys, TestRelease, TestReleaseOptions } from '../testing/release';
 import { entryJson, releaseTestKeys, testPolicy, testRelease, testRevocations } from '../testing/release';
 import { RELEASE_PAYLOAD_TYPE, REVOCATION_PAYLOAD_TYPE, signDsse } from './dsse';
+import { REVOCATION_MAX_FUTURE_SKEW_MS } from './revocation';
 import type { DsseEnvelope } from './dsse';
 import type { FakeAttestation } from './fake-provenance-verifier';
 import { createFakeProvenanceVerifier } from './fake-provenance-verifier';
@@ -345,8 +346,10 @@ describe('transparency log and trusted time', () => {
 
 describe('mode', () => {
     it('manual approval skips the delay', async () => {
-        const result = await run({ release: await regular(), mode: 'manual', now: FIRST_SEEN });
-        expect(result).toMatchObject({ kind: 'ok', eligibleAt: new Date(FIRST_SEEN.getTime() + 72 * HOUR) });
+        const now = new Date('2026-10-02T01:00:00Z');
+        const eligibleAt = new Date(FIRST_SEEN.getTime() + 72 * HOUR);
+        expect(await run({ release: await regular(), now })).toMatchObject({ kind: 'delay-not-elapsed', eligibleAt });
+        expect(await run({ release: await regular(), mode: 'manual', now })).toMatchObject({ kind: 'ok', eligibleAt });
     });
 
     it('manual approval skips no signature, log or revocation check', async () => {
@@ -603,4 +606,97 @@ describe('inputs that are bugs, not data', () => {
             missing: 'trusted-key',
         });
     });
+});
+
+describe('revocation list time bounds (decided 2026-10-20)', () => {
+    it('allows 5 minutes of clock skew', () => {
+        expect(REVOCATION_MAX_FUTURE_SKEW_MS).toBe(5 * 60 * 1000);
+    });
+
+    it('refuses a far-future list signed by one maintainer, and still accepts a later genuine list', async () => {
+        const release = await regular();
+        const lastAcceptedRevocationIssuedAt = new Date('2026-10-02T00:00:00Z');
+        const future = await testRevocations({
+            signers: [keys.maintainers[0]],
+            issuedAt: '9999-01-01T00:00:00Z',
+            expiresAt: '9999-01-02T00:00:00Z',
+        });
+        const refused = await run({ release, revocations: future, lastAcceptedRevocationIssuedAt });
+        expect(refused).toEqual({ kind: 'revocations-unverifiable', reason: 'invalid' });
+        expect(refused).not.toHaveProperty('revocationsIssuedAt');
+
+        const genuine = await testRevocations({ signers: [keys.release], issuedAt: '2026-10-09T00:00:00Z' });
+        expect(await run({ release, revocations: genuine, lastAcceptedRevocationIssuedAt })).toMatchObject({
+            kind: 'ok',
+            revocationsIssuedAt: new Date('2026-10-09T00:00:00Z'),
+        });
+    });
+
+    it('accepts issuedAt exactly 5 minutes ahead and refuses 1 ms more', async () => {
+        const at = (ms: number) => new Date(NOW.getTime() + ms).toISOString();
+        const edge = await testRevocations({
+            signers: [keys.release],
+            issuedAt: at(REVOCATION_MAX_FUTURE_SKEW_MS),
+            expiresAt: at(24 * HOUR),
+        });
+        const beyond = await testRevocations({
+            signers: [keys.release],
+            issuedAt: at(REVOCATION_MAX_FUTURE_SKEW_MS + 1),
+            expiresAt: at(24 * HOUR),
+        });
+        expect(await run({ release: await regular(), revocations: edge })).toMatchObject({ kind: 'ok' });
+        expect(await run({ release: await regular(), revocations: beyond })).toEqual({
+            kind: 'revocations-unverifiable',
+            reason: 'invalid',
+        });
+    });
+
+    it('refuses a list valid for more than 30 days', async () => {
+        const list = await testRevocations({ signers: [keys.release], expiresAt: '2026-11-01T00:00:00.001Z' });
+        expect(await run({ release: await regular(), revocations: list })).toEqual({
+            kind: 'revocations-unverifiable',
+            reason: 'invalid',
+        });
+    });
+});
+
+describe('duplicate JSON keys (decided 2026-10-20)', () => {
+    const entry = JSON.stringify(entryJson());
+
+    it.each([
+        ['a top-level key', entry.replace('"v":1,', '"v":1,"version":"9.9.9",')],
+        ['a key inside an artifact', entry.replace('"kind":"ui"}', '"kind":"ui","kind":"engine"}')],
+        ['a key spelled with an escape', entry.replace('"v":1,', '"v":1,"\\u0076ersion":"9.9.9",')],
+    ])('a signed release payload with %s is invalid-entry', async (_, payloadText) => {
+        expect(payloadText).not.toBe(entry);
+        expect(await run({ release: await regular({ payloadText }) })).toEqual({ kind: 'invalid-entry' });
+    });
+
+    it('a signed revocation payload with a duplicate key is invalid', async () => {
+        const list = await signDsse(
+            keys.release,
+            REVOCATION_PAYLOAD_TYPE,
+            utf8Encode(
+                '{"v":1,"issuedAt":"2026-10-02T00:00:00Z","expiresAt":"2026-10-09T00:00:00Z",' +
+                    '"revoked":[{"version":"2.0.0","reason":"x"}],"revoked":[]}',
+            ),
+        );
+        expect(await run({ release: await regular(), revocations: list })).toEqual({
+            kind: 'revocations-unverifiable',
+            reason: 'invalid',
+        });
+    });
+
+    it.each(vectors.duplicateKeys.vectors.map((vector) => [vector.id, vector] as const))(
+        'the checked-in duplicate-key vector %s is invalid-entry',
+        async (_, vector) => {
+            const release = await regular({ payloadText: vector.payloadText });
+            const envelope = JSON.parse(vector.envelope) as unknown;
+            const result = await run({
+                release: { release: { v: 1, envelope, provenance: release.attestation.bundle } },
+                attestations: [release.attestation],
+            });
+            expect(result).toEqual({ kind: 'invalid-entry' });
+        },
+    );
 });

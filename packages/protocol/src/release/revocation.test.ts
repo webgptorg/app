@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { concatBytes, utf8Encode } from '../bytes';
 import { EngineVersion } from '../ids';
-import { RevocationList, findRevocation, parseRevocationList } from './revocation';
+import { REVOCATION_MAX_VALIDITY_MS, RevocationList, findRevocation, parseRevocationList } from './revocation';
 import vectors from './vectors.json';
 
 const list = (fields: Record<string, unknown> = {}) => ({
@@ -24,6 +24,7 @@ describe('RevocationList', () => {
         ],
         ['a 500-character reason', list({ revoked: [{ version: '1.0.0', reason: 'r'.repeat(500) }] })],
         ['one millisecond of validity', list({ expiresAt: '2026-10-02T00:00:00.001Z' })],
+        ['exactly 30 days of validity', list({ expiresAt: '2026-11-01T00:00:00Z' })],
     ])('accepts %s', (_, value) => {
         expect(RevocationList.safeParse(value).success).toBe(true);
     });
@@ -94,5 +95,18 @@ describe('findRevocation', () => {
     it('does not match other versions', () => {
         expect(findRevocation(parsed, EngineVersion.parse('1.8.10'))).toBeUndefined();
         expect(findRevocation(parsed, EngineVersion.parse('1.8.1-rc.1'))).toBeUndefined();
+    });
+});
+
+describe('revocation validity bound', () => {
+    it('is 30 days', () => {
+        expect(REVOCATION_MAX_VALIDITY_MS).toBe(30 * 24 * 60 * 60 * 1000);
+    });
+
+    it.each([
+        ['30 days and 1 ms', '2026-11-01T00:00:00.001Z'],
+        ['a year', '2027-10-02T00:00:00Z'],
+    ])('rejects a list valid for %s', (_, expiresAt) => {
+        expect(RevocationList.safeParse(list({ expiresAt })).success).toBe(false);
     });
 });

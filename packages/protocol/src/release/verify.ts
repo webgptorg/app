@@ -18,7 +18,7 @@ import type { UiBundleManifest } from './manifest';
 import type { ProvenanceVerifier } from './provenance';
 import { expectedWorkflowClaims } from './provenance';
 import type { RevocationList } from './revocation';
-import { findRevocation, parseRevocationList } from './revocation';
+import { REVOCATION_MAX_FUTURE_SKEW_MS, findRevocation, parseRevocationList } from './revocation';
 import type { KeyRef } from './trust';
 import { TrustPolicy, revocationSigners } from './trust';
 import { compareEngineVersions } from './version';
@@ -115,8 +115,9 @@ async function checkRevocations(
     if (valid.size < policy.revocationRule.threshold) return { kind: 'unverifiable', reason: 'invalid' };
     const list = parseRevocationList(dssePayload(envelope.data));
     if (list === undefined) return { kind: 'unverifiable', reason: 'invalid' };
-    if (!(now < Date.parse(list.expiresAt))) return { kind: 'unverifiable', reason: 'expired' };
     const issuedAt = Date.parse(list.issuedAt);
+    if (issuedAt > now + REVOCATION_MAX_FUTURE_SKEW_MS) return { kind: 'unverifiable', reason: 'invalid' };
+    if (!(now < Date.parse(list.expiresAt))) return { kind: 'unverifiable', reason: 'expired' };
     if (lastAccepted !== null && issuedAt < lastAccepted) return { kind: 'unverifiable', reason: 'rolled-back' };
     return { kind: 'ok', list, issuedAt: new Date(issuedAt) };
 }

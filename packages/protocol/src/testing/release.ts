@@ -94,6 +94,7 @@ export function workflowCertificate(
             [FULCIO_OID.sourceRepositoryDigest, commit],
             [FULCIO_OID.sourceRepositoryRef, `refs/tags/${gitTag}`],
             [FULCIO_OID.sourceRepositoryIdentifier, identity.repositoryId],
+            [FULCIO_OID.buildTrigger, 'push'],
         ]),
     };
 }

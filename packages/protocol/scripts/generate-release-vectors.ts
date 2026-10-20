@@ -138,6 +138,25 @@ const regular = envelope(RELEASE, regularPayload, [release]);
 const security = envelope(RELEASE, securityPayload, [release, maintainers[0], maintainers[1]]);
 const revocations = envelope(REVOCATION, revocationPayload, [release]);
 
+// Validly signed, but each repeats a key, which JSON.parse resolves last-wins and other parsers first-wins.
+const duplicateTopLevelPayload = regularPayload.replace('"version":"1.8.2",', '"version":"1.8.2","version":"9.9.9",');
+const duplicateEscapedPayload = regularPayload.replace('"kind":"ui"}', '"kind":"ui","\\u006bind":"engine"}');
+for (const text of [duplicateTopLevelPayload, duplicateEscapedPayload]) {
+    if (text === regularPayload) throw new Error('duplicate-key payload was not built');
+}
+const duplicateKeys = [
+    {
+        id: 'top-level-version',
+        description: '"version" appears twice at the top level',
+        ...envelope(RELEASE, duplicateTopLevelPayload, [release]),
+    },
+    {
+        id: 'escaped-artifact-kind',
+        description: 'an artifact repeats "kind", once spelled "\\u006bind"; keys are compared after unescaping',
+        ...envelope(RELEASE, duplicateEscapedPayload, [release]),
+    },
+];
+
 const rawPayloadSignature = sign(null, Buffer.from(regularPayload), release.privateKey);
 if (verify(null, pae(RELEASE, Buffer.from(regularPayload)), createPublicKey(release.privateKey), rawPayloadSignature)) {
     throw new Error('a signature over the raw payload must not verify over the PAE');
@@ -157,10 +176,22 @@ const document = {
     })),
     workflowIdentity,
     expectedSubjectAlternativeName: `https://github.com/${workflowIdentity.repository}/${workflowIdentity.workflowPath}@refs/tags/ui-v1.8.2`,
+    expectedExtensions: {
+        '1.3.6.1.4.1.57264.1.11': 'github-hosted',
+        '1.3.6.1.4.1.57264.1.13': commit,
+        '1.3.6.1.4.1.57264.1.14': 'refs/tags/ui-v1.8.2',
+        '1.3.6.1.4.1.57264.1.15': workflowIdentity.repositoryId,
+        '1.3.6.1.4.1.57264.1.20': 'push',
+    },
     artifact: { text: artifactText, sha256: artifactSha256 },
     regular,
     security,
     revocations,
+    duplicateKeys: {
+        description:
+            'Release payloads signed by the release key that must still be refused (invalid-entry): an object at any depth repeats a key.',
+        vectors: duplicateKeys,
+    },
     signatureOverRawPayload: {
         description: 'The release key over the regular payload bytes instead of their PAE; must not verify.',
         envelope: JSON.stringify({

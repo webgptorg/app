@@ -107,20 +107,35 @@ describe('UiBundleManifest', () => {
         ['a\0b'],
         ['a\x7fb'],
         ['x'.repeat(1025)],
+        ['.well-known/x'],
+        ['.hidden'],
+        ['assets/.env'],
+        ['a?b'],
+        ['a#b'],
+        ['a%2e%2e/b'],
+        ['café.js'],
+        ['a b'],
+        ['a:b'],
+        ['a/\u0430.js'],
     ])('rejects the path %j', async (path) => {
         expect(BundlePath.safeParse(path).success).toBe(false);
         const files = [file('index.html'), file(path)];
         expect(UiBundleManifest.safeParse(await manifestJson({ files })).success).toBe(false);
     });
 
-    it.each([['assets/index-abc.js'], ['index.html'], ['.well-known/x'], ['a..b/c'], ['x'.repeat(1024)]])(
-        'accepts the path %j',
-        async (path) => {
-            expect(BundlePath.safeParse(path).success).toBe(true);
-            const files = [file('index.html'), file(path === 'index.html' ? 'other' : path)];
-            expect(UiBundleManifest.safeParse(await manifestJson({ files })).success).toBe(true);
-        },
-    );
+    it.each([
+        ['assets/index-abc.js'],
+        ['assets/index-BxD3f9_a.js'],
+        ['assets/vendor-Ck2-vL9P.css'],
+        ['assets/logo-DM0aLk7k.svg'],
+        ['index.html'],
+        ['a..b/c'],
+        ['x'.repeat(1024)],
+    ])('accepts the path %j', async (path) => {
+        expect(BundlePath.safeParse(path).success).toBe(true);
+        const files = [file('index.html'), file(path === 'index.html' ? 'other' : path)];
+        expect(UiBundleManifest.safeParse(await manifestJson({ files })).success).toBe(true);
+    });
 });
 
 describe('satisfiesEngineApiRange', () => {

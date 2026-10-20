@@ -9,29 +9,16 @@ export const MAX_UI_BUNDLE_PATH_LENGTH = 1024;
 const MAX_CSP_LENGTH = 4096;
 const MAX_ENGINE_API_RANGE_LENGTH = 128;
 
-// Control characters and backslashes are refused so a path means the same thing on every filesystem and in a URL.
-function hasUnsafeCharacter(path: string): boolean {
-    for (let index = 0; index < path.length; index++) {
-        const code = path.charCodeAt(index);
-        if (code < 0x20 || code === 0x7f || code === 0x5c) return true;
-    }
-    return false;
-}
+// Strict ASCII (decided 2026-10-20): a path means the same thing on every filesystem, in a URL and in every
+// Unicode normalisation, and `?`, `#` and `%` can never change meaning once it is served.
+const SEGMENT = '[A-Za-z0-9_-][A-Za-z0-9._-]*';
+const BUNDLE_PATH_PATTERN = new RegExp(`^${SEGMENT}(?:/${SEGMENT})*$`);
 
 /**
- * A relative path inside the bundle: 1–1,024 characters, no leading `/`, no empty, `.` or `..` segment, no backslash
- * or control character. `.` is refused too so no two spellings name the same file.
+ * A relative path inside the bundle, 1–1,024 characters: segments of `[A-Za-z0-9._-]` separated by single `/`, none
+ * starting with a dot (so no `.`, `..` or hidden files), no leading `/`.
  */
-export const BundlePath = z
-    .string()
-    .min(1)
-    .max(MAX_UI_BUNDLE_PATH_LENGTH)
-    .refine(
-        (path) =>
-            !hasUnsafeCharacter(path) &&
-            path.split('/').every((segment) => segment !== '' && segment !== '.' && segment !== '..'),
-        'not a safe relative path',
-    );
+export const BundlePath = z.string().min(1).max(MAX_UI_BUNDLE_PATH_LENGTH).regex(BUNDLE_PATH_PATTERN);
 
 const CORE_VERSION = '(0|[1-9][0-9]{0,14})\\.(0|[1-9][0-9]{0,14})\\.(0|[1-9][0-9]{0,14})';
 const COMPARATOR = `(>=|<|\\^)${CORE_VERSION}`;

@@ -5,7 +5,10 @@ import type { Signer } from '../ed25519';
 import { fromHex, toHex } from '../testing/hex';
 import { releaseTestKeys } from '../testing/release';
 import type { ReleaseTestKeys } from '../testing/release';
-import { DsseEnvelope, dsseKeyId, pae, signDsse, verifyDsseSignatures } from './dsse';
+import { DsseEnvelope, dssePayload, dsseKeyId, pae, signDsse, verifyDsseSignatures } from './dsse';
+import { parseReleaseEntry } from './entry';
+import { expectedWorkflowClaims } from './provenance';
+import { WORKFLOW_IDENTITY } from '../testing/release';
 import vectors from './vectors.json';
 
 const signed = [
@@ -72,4 +75,30 @@ describe('release golden vectors', () => {
         const envelope = DsseEnvelope.parse(JSON.parse(vectors.signatureOverRawPayload.envelope));
         expect((await verifyDsseSignatures(envelope, allKeys)).size).toBe(0);
     });
+
+    it('pins the checked-in certificate extensions, build trigger included', () => {
+        const entry = parseReleaseEntry(utf8Encode(vectors.regular.payloadText));
+        if (entry === undefined) throw new Error('regular vector does not parse');
+        const expected = expectedWorkflowClaims(WORKFLOW_IDENTITY, entry);
+        expect(expected.subjectAlternativeName).toBe(vectors.expectedSubjectAlternativeName);
+        expect(expected.extensions).toEqual(vectors.expectedExtensions);
+    });
+
+    describe.each(vectors.duplicateKeys.vectors.map((vector) => [vector.id, vector] as const))(
+        'duplicate-key vector %s',
+        (_, vector) => {
+            it('is validly signed by the release key over the PAE', async () => {
+                const envelope = DsseEnvelope.parse(JSON.parse(vector.envelope));
+                expect(toHex(pae(vector.payloadType, dssePayload(envelope)))).toBe(vector.paeHex);
+                const valid = await verifyDsseSignatures(envelope, allKeys);
+                expect([...valid]).toEqual(vector.signatures.map(({ keyid }) => keyid));
+            });
+
+            it('is refused as a release entry although JSON.parse accepts it', () => {
+                const payload = utf8Encode(vector.payloadText);
+                expect(() => JSON.parse(vector.payloadText) as unknown).not.toThrow();
+                expect(parseReleaseEntry(payload)).toBeUndefined();
+            });
+        },
+    );
 });

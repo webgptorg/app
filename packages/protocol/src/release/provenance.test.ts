@@ -21,6 +21,7 @@ describe('expectedWorkflowClaims', () => {
             '1.3.6.1.4.1.57264.1.14': 'refs/tags/ui-v1.8.2',
             '1.3.6.1.4.1.57264.1.15': WORKFLOW_IDENTITY.repositoryId,
             '1.3.6.1.4.1.57264.1.11': 'github-hosted',
+            '1.3.6.1.4.1.57264.1.20': 'push',
         });
     });
 
@@ -88,6 +89,13 @@ describe('identity pinning', () => {
     });
 
     it.each([
+        [
+            'a workflow_dispatch run',
+            { set: { '1.3.6.1.4.1.57264.1.20': 'workflow_dispatch' } },
+            '1.3.6.1.4.1.57264.1.20',
+        ],
+        ['a schedule run', { set: { '1.3.6.1.4.1.57264.1.20': 'schedule' } }, '1.3.6.1.4.1.57264.1.20'],
+        ['a missing build trigger', { remove: '1.3.6.1.4.1.57264.1.20' }, '1.3.6.1.4.1.57264.1.20'],
         ['another issuer', { issuer: 'https://token.actions.githubusercontent.com.evil' }, 'issuer'],
         ['another repository', { san: base.replace('webgptorg/app', 'webgptorg/app2') }, 'subjectAlternativeName'],
         ['another workflow path', { san: base.replace('ui-release.yml', 'other.yml') }, 'subjectAlternativeName'],

@@ -160,6 +160,8 @@ export {
 export {
     MAX_REVOCATION_REASON_LENGTH,
     MAX_REVOKED_VERSIONS,
+    REVOCATION_MAX_FUTURE_SKEW_MS,
+    REVOCATION_MAX_VALIDITY_MS,
     RevocationList,
     RevokedVersion,
     parseRevocationList,
@@ -186,7 +188,13 @@ export {
     TrustPolicy,
     WorkflowIdentity,
 } from './release/trust';
-export { FULCIO_OID, GITHUB_HOSTED_RUNNER, checkCertificateClaims, expectedWorkflowClaims } from './release/provenance';
+export {
+    FULCIO_OID,
+    GITHUB_HOSTED_RUNNER,
+    RELEASE_BUILD_TRIGGER,
+    checkCertificateClaims,
+    expectedWorkflowClaims,
+} from './release/provenance';
 export type {
     CertificateClaims,
     CertificateClaimsCheck,
