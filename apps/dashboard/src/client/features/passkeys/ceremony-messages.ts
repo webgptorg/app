@@ -45,7 +45,12 @@ function apiMessage(code: string | null, kind: CeremonyKind): string {
     }
 }
 
+/** What the words depend on; a {@link CeremonyFailure} is one. */
+export type CeremonyFailureCause =
+    | Pick<Extract<CeremonyFailure, { kind: 'passkey' }>, 'kind' | 'reason'>
+    | Pick<Extract<CeremonyFailure, { kind: 'api' }>, 'kind' | 'code'>;
+
 /** The one place a failed ceremony becomes words; every screen shows these with a retry. */
-export function ceremonyFailureMessage(failure: CeremonyFailure, kind: CeremonyKind): string {
+export function ceremonyFailureMessage(failure: CeremonyFailureCause, kind: CeremonyKind): string {
     return failure.kind === 'passkey' ? passkeyMessage(failure.reason, kind) : apiMessage(failure.code, kind);
 }

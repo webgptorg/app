@@ -34,6 +34,7 @@ D-02 delivers the API and server side without waiting for the design system. Thi
 - Tokens from URL fragments are read once, removed from the address bar with `history.replaceState`, and never stored.
 - All data through TanStack Query with the dashboard's typed client (D-01); mutations follow the shared optimistic/rollback and toast conventions where safe (not for passkey removal or sign-out everywhere).
 - Screens never reveal whether an email has an account.
+- Decided 2026-10-20 (Seb): until the API exposes passkey names, the table shows an interim label from the credential ID and the storage kind from `backedUp`. A follow-up adds a user-editable `name` column (defaulting to the authenticator model from the AAGUID when known) and a rename endpoint on the D-02 side.
 
 ## Acceptance criteria
 

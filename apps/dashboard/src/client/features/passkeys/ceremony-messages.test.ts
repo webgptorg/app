@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import type { CeremonyFailure } from './ceremonies';
 import { ceremonyFailureMessage } from './ceremony-messages';
+import type { CeremonyFailureCause } from './ceremony-messages';
 
-const cases: readonly [CeremonyFailure, 'register' | 'authenticate', RegExp][] = [
+const cases: readonly [CeremonyFailureCause, 'register' | 'authenticate', RegExp][] = [
     [{ kind: 'passkey', reason: 'cancelled' }, 'register', /^The passkey prompt was closed or timed out/],
     [{ kind: 'passkey', reason: 'cancelled' }, 'authenticate', /found no Promptbook passkey on this device/],
     [{ kind: 'passkey', reason: 'not-allowed' }, 'register', /not allowed to use passkeys/],

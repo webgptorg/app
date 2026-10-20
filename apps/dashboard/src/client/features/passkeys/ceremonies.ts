@@ -2,18 +2,23 @@ import type { RouteContract } from '../../../shared/api/contract';
 import { apiRoutes } from '../../../shared/api/routes';
 import type { PasskeyView, SessionView } from '../../../shared/api/routes';
 import type { ApiClient, ApiOutcome } from '../../api/api-client';
+import { ApiError } from '../../api/queries';
+import type { ApiFailure } from '../../api/queries';
 import type { PasskeyAuthenticator, PasskeyFailure } from './passkey-authenticator';
 
 /** Why a ceremony failed: the browser's half, or the API's answer (`null` when there was no usable answer). */
 export type CeremonyFailure =
     | { readonly kind: 'passkey'; readonly reason: PasskeyFailure }
-    | { readonly kind: 'api'; readonly code: string | null };
+    | { readonly kind: 'api'; readonly code: string | null; readonly outcome: ApiFailure };
 
 export type CeremonyResult<T> =
     { readonly kind: 'ok'; readonly value: T } | { readonly kind: 'failed'; readonly failure: CeremonyFailure };
 
 function apiFailure(outcome: Exclude<ApiOutcome<RouteContract>, { kind: 'ok' }>): CeremonyResult<never> {
-    return { kind: 'failed', failure: { kind: 'api', code: outcome.kind === 'problem' ? outcome.code : null } };
+    return {
+        kind: 'failed',
+        failure: { kind: 'api', code: outcome.kind === 'problem' ? outcome.code : null, outcome },
+    };
 }
 
 function passkeyFailure(reason: PasskeyFailure): CeremonyResult<never> {
@@ -92,20 +97,25 @@ export async function stepUpWithPasskey(deps: CeremonyDeps): Promise<CeremonyRes
     return verified.kind === 'ok' ? { kind: 'ok', value: verified.data.steppedUpUntil } : apiFailure(verified);
 }
 
-/** A failed ceremony as an exception, for mutation functions; the failure says why. */
+/** The browser's half of a ceremony failed, as an exception for mutation functions. */
 export class CeremonyError extends Error {
-    readonly failure: CeremonyFailure;
+    readonly reason: PasskeyFailure;
 
-    constructor(failure: CeremonyFailure) {
-        super(`Passkey ceremony failed: ${failure.kind}`);
+    constructor(reason: PasskeyFailure) {
+        super(`Passkey ceremony failed: ${reason}`);
         this.name = 'CeremonyError';
-        this.failure = failure;
+        this.reason = reason;
     }
 }
 
+/**
+ * For mutation functions: an API answer is rethrown as the {@link ApiError} it was, so `step-up-required`, the recovery
+ * cooldown and a lost session are handled like on any other call; a browser failure becomes a {@link CeremonyError}.
+ */
 export function valueOrThrow<T>(result: CeremonyResult<T>): T {
     if (result.kind === 'ok') {
         return result.value;
     }
-    throw new CeremonyError(result.failure);
+    const { failure } = result;
+    throw failure.kind === 'api' ? new ApiError(failure.outcome) : new CeremonyError(failure.reason);
 }

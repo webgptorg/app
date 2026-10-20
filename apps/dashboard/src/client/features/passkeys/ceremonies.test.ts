@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { apiRoutes } from '../../../shared/api/routes';
+import { ApiError } from '../../api/queries';
 import { createFakePasskeys } from '../../testing/fake-passkeys';
 import {
     AUTHENTICATION_OPTIONS,
@@ -47,7 +48,7 @@ describe.each(['signup', 'recovery'] as const)('registering with a %s token', (p
         const passkeys = createFakePasskeys();
         expect(await registerWithEmailToken({ api, passkeys }, purpose, TOKEN)).toEqual({
             kind: 'failed',
-            failure: { kind: 'api', code: 'token-invalid' },
+            failure: apiFailure('token-invalid'),
         });
         expect(passkeys.register).not.toHaveBeenCalled();
     });
@@ -70,14 +71,19 @@ describe.each(['signup', 'recovery'] as const)('registering with a %s token', (p
         const passkeys = createFakePasskeys();
         expect(await registerWithEmailToken({ api, passkeys }, purpose, TOKEN)).toEqual({
             kind: 'failed',
-            failure: { kind: 'api', code: 'webauthn-failed' },
+            failure: apiFailure('webauthn-failed'),
         });
         expect(await registerWithEmailToken({ api, passkeys }, purpose, TOKEN)).toEqual({
             kind: 'failed',
-            failure: { kind: 'api', code: null },
+            failure: apiFailure(null),
         });
     });
 });
+
+/** The failure as tests compare it: the code decides, the raw outcome rides along for rethrowing. */
+function apiFailure(code: string | null): unknown {
+    return expect.objectContaining({ kind: 'api', code });
+}
 
 describe('signing in', () => {
     it('authenticates usernameless and returns the session', async () => {
@@ -94,7 +100,7 @@ describe('signing in', () => {
         const noOptions = createScriptedApi().on(apiRoutes.signinOptions, problem(429, 'rate-limited'));
         expect(await signInWithPasskey({ api: noOptions, passkeys })).toEqual({
             kind: 'failed',
-            failure: { kind: 'api', code: 'rate-limited' },
+            failure: apiFailure('rate-limited'),
         });
         const api = createScriptedApi()
             .on(apiRoutes.signinOptions, authentication)
@@ -106,7 +112,7 @@ describe('signing in', () => {
         });
         expect(await signInWithPasskey({ api, passkeys })).toEqual({
             kind: 'failed',
-            failure: { kind: 'api', code: 'challenge-invalid' },
+            failure: apiFailure('challenge-invalid'),
         });
     });
 });
@@ -124,7 +130,7 @@ describe('adding a passkey', () => {
         const passkeys = createFakePasskeys();
         expect(await addPasskey({ api: createScriptedApi(), passkeys })).toEqual({
             kind: 'failed',
-            failure: { kind: 'api', code: null },
+            failure: apiFailure(null),
         });
         const api = createScriptedApi()
             .on(apiRoutes.passkeyOptions, registration)
@@ -136,7 +142,7 @@ describe('adding a passkey', () => {
         });
         expect(await addPasskey({ api, passkeys })).toEqual({
             kind: 'failed',
-            failure: { kind: 'api', code: 'conflict' },
+            failure: apiFailure('conflict'),
         });
     });
 });
@@ -153,7 +159,7 @@ describe('stepping up', () => {
         const passkeys = createFakePasskeys();
         expect(await stepUpWithPasskey({ api: createScriptedApi(), passkeys })).toEqual({
             kind: 'failed',
-            failure: { kind: 'api', code: null },
+            failure: apiFailure(null),
         });
         const api = createScriptedApi()
             .on(apiRoutes.stepUpOptions, authentication)
@@ -165,21 +171,26 @@ describe('stepping up', () => {
         });
         expect(await stepUpWithPasskey({ api, passkeys })).toEqual({
             kind: 'failed',
-            failure: { kind: 'api', code: 'webauthn-failed' },
+            failure: apiFailure('webauthn-failed'),
         });
     });
 });
 
 describe('valueOrThrow', () => {
-    it('returns the value or throws a CeremonyError carrying the failure', () => {
+    it('returns the value, throws a CeremonyError for the browser and the ApiError for the API', () => {
         expect(valueOrThrow({ kind: 'ok', value: 1 })).toBe(1);
-        const failure = { kind: 'passkey', reason: 'cancelled' } as const;
-        expect(() => valueOrThrow({ kind: 'failed', failure })).toThrow(CeremonyError);
+        expect(() => valueOrThrow({ kind: 'failed', failure: { kind: 'passkey', reason: 'cancelled' } })).toThrow(
+            expect.objectContaining({ name: 'CeremonyError', reason: 'cancelled' }),
+        );
+        const outcome = { kind: 'problem', status: 403, code: 'step-up-required' } as const;
+        let thrown: unknown;
         try {
-            valueOrThrow({ kind: 'failed', failure });
+            valueOrThrow({ kind: 'failed', failure: { kind: 'api', code: 'step-up-required', outcome } });
         } catch (error) {
-            expect((error as CeremonyError).failure).toEqual(failure);
-            expect((error as CeremonyError).name).toBe('CeremonyError');
+            thrown = error;
         }
+        expect(thrown).toBeInstanceOf(ApiError);
+        expect((thrown as ApiError).outcome).toEqual(outcome);
+        expect(thrown).not.toBeInstanceOf(CeremonyError);
     });
 });

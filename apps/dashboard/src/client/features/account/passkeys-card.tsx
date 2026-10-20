@@ -17,6 +17,8 @@ import { ceremonyFailureMessage } from '../passkeys/ceremony-messages';
 import { passkeyName, passkeyOrigin, passkeyAddedVia } from './passkey-labels';
 
 const columns = createDataTableColumnHelper<PasskeyView>();
+/** Answers that are about the ceremony itself; the rest (step-up, cooldown, rate limit…) get the common handling. */
+const CEREMONY_CODES: ReadonlySet<string> = new Set(['challenge-invalid', 'webauthn-failed', 'conflict']);
 
 /** Passkeys of the account: add one, remove any but the last. Neither is optimistic (D-09 brief). */
 export function PasskeysCard() {
@@ -31,8 +33,15 @@ export function PasskeysCard() {
         mutationFn: async () => valueOrThrow(await addPasskey({ api, passkeys: browser.passkeys })),
         invalidates: [queryKeys.passkeys],
         successMessage: () => m.passkey_added(),
-        errorMessage: (error) =>
-            error instanceof CeremonyError ? ceremonyFailureMessage(error.failure, 'register') : undefined,
+        errorMessage: (error) => {
+            if (error instanceof CeremonyError) {
+                return ceremonyFailureMessage({ kind: 'passkey', reason: error.reason }, 'register');
+            }
+            const code = problemCode(error);
+            return code !== null && CEREMONY_CODES.has(code)
+                ? ceremonyFailureMessage({ kind: 'api', code }, 'register')
+                : undefined;
+        },
     });
     const remove = useAppMutation({
         mutationFn: async (passkey: PasskeyView) =>

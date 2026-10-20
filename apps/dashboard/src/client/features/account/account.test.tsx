@@ -210,6 +210,41 @@ describe('step-up and refusals', () => {
         expect(app.api.callsTo(apiRoutes.passkeyDelete)).toHaveLength(2);
     });
 
+    it('steps up and retries when adding a passkey needs it', async () => {
+        const app = renderApp({
+            path: '/account',
+            session: session(),
+            script: (api) => {
+                accountScript()(api);
+                api.once(apiRoutes.passkeyOptions, problem(403, 'step-up-required'));
+            },
+        });
+        await screen.findByRole('table', { name: 'Passkeys' });
+        await app.user.click(screen.getByRole('button', { name: 'Add a passkey' }));
+        const stepUp = await screen.findByRole('dialog', { name: 'Confirm it is you' });
+        await app.user.click(within(stepUp).getByRole('button', { name: 'Use passkey' }));
+        expect(await notifications().findByText('Passkey added')).toBeTruthy();
+        expect(app.api.callsTo(apiRoutes.passkeyOptions)).toHaveLength(2);
+    });
+
+    it.each([
+        ['challenge-invalid', /request expired/],
+        ['conflict', /already registered/],
+        ['rate-limited', /Too many attempts/],
+    ] as const)('explains a %s answer to adding a passkey', async (code, message) => {
+        const app = renderApp({
+            path: '/account',
+            session: session(),
+            script: (api) => {
+                accountScript()(api);
+                api.on(apiRoutes.passkeyVerify, problem(code === 'rate-limited' ? 429 : 400, code));
+            },
+        });
+        await screen.findByRole('table', { name: 'Passkeys' });
+        await app.user.click(screen.getByRole('button', { name: 'Add a passkey' }));
+        expect(await notifications().findByText(message)).toBeTruthy();
+    });
+
     it('reports a cancelled step-up without retrying', async () => {
         const app = renderApp({
             path: '/account',
