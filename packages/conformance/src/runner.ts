@@ -117,10 +117,13 @@ async function runBounded<T>(
     let run: BoundedRun<T>;
     try {
         const settled = await Promise.race([
-            body(ctx).then(
-                (value) => ({ value }),
-                (error: unknown) => ({ error }),
-            ),
+            // A check that throws before its first await is still a promise rejection, not a crash of the run.
+            Promise.resolve()
+                .then(() => body(ctx))
+                .then(
+                    (value) => ({ value }),
+                    (error: unknown) => ({ error }),
+                ),
             expired,
         ]);
         run =

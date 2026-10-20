@@ -156,9 +156,7 @@ export class EngineApi {
                 fail(`${describe(route)}: expected a stream, got ${String(raw.status)}${problemSuffix(result)}`);
             }
             if (mediaType(response.headers) !== 'text/event-stream') {
-                fail(
-                    `${describe(route)}: content type is ${mediaType(response.headers) ?? 'missing'}, not text/event-stream`,
-                );
+                fail(`${describe(route)}: content type is ${typeOf(response.headers)}, not text/event-stream`);
             }
             if (response.body === null) fail(`${describe(route)}: stream has no body`);
             const reader = response.body.getReader();
@@ -171,14 +169,19 @@ export class EngineApi {
                 }
                 return false;
             };
+            // Stop reading at once when time is up, even if the body ignores the request's signal.
+            const onAbort = (): void => {
+                reader.cancel().catch(() => undefined);
+            };
+            signal.addEventListener('abort', onAbort, { once: true });
             try {
                 for (;;) {
                     const next = await reader.read().catch((error: unknown) => {
-                        if (signal.aborted) return { done: true as const, value: undefined, aborted: true };
+                        if (signal.aborted) return { done: true as const, value: undefined };
                         throw error;
                     });
                     if (next.done) {
-                        ended = !('aborted' in next);
+                        ended = !signal.aborted;
                         if (ended) handle(parser.end());
                         break;
                     }
@@ -186,6 +189,7 @@ export class EngineApi {
                     if (handle(parser.push(next.value))) break;
                 }
             } finally {
+                signal.removeEventListener('abort', onAbort);
                 await reader.cancel().catch(() => undefined);
             }
         } catch (error) {
@@ -237,6 +241,11 @@ export function successOf(route: RouteDefinition): { readonly status: number; re
     return { status: Number(entry[0]), response: entry[1] };
 }
 
+/** The media type for a message: never the header's parameters, which an engine controls. */
+function typeOf(headers: Headers): string {
+    return mediaType(headers) ?? 'missing';
+}
+
 export function mediaType(headers: Headers): string | null {
     return headers.get('content-type')?.split(';')[0]?.trim().toLowerCase() ?? null;
 }
@@ -256,7 +265,7 @@ function judgeSuccess(where: string, response: RouteResponse, raw: RawResponse):
     switch (response.kind) {
         case 'json': {
             if (mediaType(raw.headers) !== 'application/json') {
-                fail(`${where}: content type is ${mediaType(raw.headers) ?? 'missing'}, not application/json`);
+                fail(`${where}: content type is ${typeOf(raw.headers)}, not application/json`);
             }
             const parsed = response.schema.safeParse(parseJson(where, raw.bytes));
             if (!parsed.success) fail(`${where}: response does not match its schema: ${issuesOf(parsed.error.issues)}`);
@@ -275,7 +284,7 @@ function judgeSuccess(where: string, response: RouteResponse, raw: RawResponse):
             return raw.bytes;
         case 'sse':
             if (mediaType(raw.headers) !== 'text/event-stream') {
-                fail(`${where}: content type is ${mediaType(raw.headers) ?? 'missing'}, not text/event-stream`);
+                fail(`${where}: content type is ${typeOf(raw.headers)}, not text/event-stream`);
             }
             return raw.bytes;
     }
@@ -284,7 +293,7 @@ function judgeSuccess(where: string, response: RouteResponse, raw: RawResponse):
 /** A failure answer must be RFC 9457 problem+json with a known code, sent with the status that code always has. */
 export function judgeProblem(where: string, raw: RawResponse): ProblemDetails {
     if (mediaType(raw.headers) !== 'application/problem+json') {
-        fail(`${where}: content type is ${mediaType(raw.headers) ?? 'missing'}, not application/problem+json`);
+        fail(`${where}: content type is ${typeOf(raw.headers)}, not application/problem+json`);
     }
     const parsed = ProblemDetails.safeParse(parseJson(where, raw.bytes));
     if (!parsed.success) fail(`${where}: problem does not match ProblemDetails: ${issuesOf(parsed.error.issues)}`);
