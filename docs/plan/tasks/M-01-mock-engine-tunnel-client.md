@@ -2,7 +2,7 @@
 
 - **Lane:** Mock engine · **Module:** `apps/mock-engine` · **Milestone:** M1
 - **Depends on:** C-02
-- **Status:** todo
+- **Status:** done (#15)
 - **Spec:** Relay and tunnel; Interfaces (draft) 3 and 6; Pairing and identity (Identities); Operations; ADRs: [0004](../../adr/0004-mock-engine-and-conformance.md), [0005](../../adr/0005-modular-architecture.md), [0014](../../adr/0014-cryptography.md)
 
 ## Goal

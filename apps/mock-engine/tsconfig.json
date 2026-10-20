@@ -1,7 +1,9 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
+    // @ptbk/protocol ships raw .ts typed against the DOM's WebCrypto declarations (CryptoKeyPair).
+    "lib": ["ES2024", "DOM"],
     "types": ["node"]
   },
-  "include": ["src", "*.ts"]
+  "include": ["src", "test", "*.ts"]
 }

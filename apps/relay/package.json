@@ -17,7 +17,7 @@
   },
   "devDependencies": {
     "eslint": "catalog:",
-    "tsdown": "0.23.1",
-    "tsx": "4.23.15"
+    "tsdown": "catalog:",
+    "tsx": "catalog:"
   }
 }
