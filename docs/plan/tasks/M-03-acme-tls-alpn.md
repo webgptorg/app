@@ -2,7 +2,7 @@
 
 - **Lane:** Mock engine · **Module:** `apps/mock-engine`, plus `e2e/` compose services (touches two modules) · **Milestone:** M1
 - **Depends on:** R-01, M-02, X-01
-- **Status:** todo
+- **Status:** in progress (feat/m-03-acme)
 - **Spec:** Residual risks: certificates and engine updates (1); Hosting and stack (Known hard problems, TypeScript stack "Certificates"); Build plan (Spike acceptance criteria); Relay and tunnel; ADRs: [0004](../../adr/0004-mock-engine-and-conformance.md), [0014](../../adr/0014-cryptography.md)
 
 ## Goal
