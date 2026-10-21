@@ -16,6 +16,14 @@ export type EmailMessage =
           readonly recoveredAt: number;
           readonly cooldownEndsAt: number;
           readonly signInLink: string;
+      })
+    | (Envelope & {
+          readonly template: 'engine-offline';
+          readonly engineId: string;
+          readonly hostname: string;
+          readonly lastSeenAt: number;
+          /** The engine's page in the dashboard. Nothing else is known about the engine, so nothing else is sent. */
+          readonly link: string;
       });
 
 export type EmailTemplate = EmailMessage['template'];

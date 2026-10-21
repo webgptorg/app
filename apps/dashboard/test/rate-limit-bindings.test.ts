@@ -15,6 +15,7 @@ const BINDINGS = {
     RATE_LIMIT_PUBLIC_READ: 'public-read-ip',
     RATE_LIMIT_WEBHOOK: 'webhook-ip',
     RATE_LIMIT_REGISTRY: 'registry-relay',
+    RATE_LIMIT_HEARTBEAT: 'heartbeat-ip',
 } as const;
 
 // Runs after `build`: the binding's limit lives in wrangler.jsonc, the rule in code; they must not drift apart.

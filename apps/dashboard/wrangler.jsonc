@@ -31,6 +31,10 @@
         "INSTALL_COMMAND": "bun run dev:link {linkCode}",
         "ADAPTERS": { "email": "fake", "billing": "fake", "rateLimit": "memory" },
         "EMAIL_FROM": "no-reply@ptbk.test",
+        // Optional everywhere; these are the defaults. An engine is offline after missedLimit × intervalS + graceS
+        // seconds without an accepted heartbeat; perEngineLimit is heartbeats per engine and minute. The e2e stack
+        // sends every 15 s and sets intervalS to match.
+        "HEARTBEAT": { "intervalS": 60, "missedLimit": 3, "graceS": 15, "perEngineLimit": 5 },
         // Dev only; config refuses it elsewhere. Staging and production: `wrangler secret put RATE_LIMIT_HMAC_KEY`.
         "RATE_LIMIT_HMAC_KEY": "ZGV2LW9ubHktcmF0ZS1saW1pdC1rZXktbm90LXNlY3JldA",
         // Placeholder plans until pricing is decided (ADR 0017). `none` follows the spec's "card on file before an
@@ -49,9 +53,18 @@
             ],
         },
     },
-    // Hourly rate limits (D-02): the Workers Rate Limiting binding only has 10 s and 60 s periods.
-    "durable_objects": { "bindings": [{ "name": "HOURLY_RATE_LIMITER", "class_name": "HourlyRateLimiter" }] },
-    "migrations": [{ "tag": "v1", "new_sqlite_classes": ["HourlyRateLimiter"] }],
+    // Hourly rate limits (D-02): the Workers Rate Limiting binding only has 10 s and 60 s periods. One EngineStatus
+    // per engine (D-05): heartbeats, offline detection and alerts. Its storage is the object's own, not D1's.
+    "durable_objects": {
+        "bindings": [
+            { "name": "HOURLY_RATE_LIMITER", "class_name": "HourlyRateLimiter" },
+            { "name": "ENGINE_STATUS", "class_name": "EngineStatus" },
+        ],
+    },
+    "migrations": [
+        { "tag": "v1", "new_sqlite_classes": ["HourlyRateLimiter"] },
+        { "tag": "v2", "new_sqlite_classes": ["EngineStatus"] },
+    ],
     // Per-minute rate limits; limit and period must match RATE_LIMITS in src/domain/ports/rate-limiter.ts.
     "ratelimits": [
         { "name": "RATE_LIMIT_OPTIONS", "namespace_id": "1001", "simple": { "limit": 30, "period": 60 } },
@@ -59,6 +72,7 @@
         { "name": "RATE_LIMIT_PUBLIC_READ", "namespace_id": "1003", "simple": { "limit": 120, "period": 60 } },
         { "name": "RATE_LIMIT_WEBHOOK", "namespace_id": "1004", "simple": { "limit": 600, "period": 60 } },
         { "name": "RATE_LIMIT_REGISTRY", "namespace_id": "1005", "simple": { "limit": 600, "period": 60 } },
+        { "name": "RATE_LIMIT_HEARTBEAT", "namespace_id": "1006", "simple": { "limit": 600, "period": 60 } },
     ],
     "env": {
         "staging": {
@@ -97,9 +111,15 @@
             },
             "send_email": [{ "name": "EMAIL" }],
             "durable_objects": {
-                "bindings": [{ "name": "HOURLY_RATE_LIMITER", "class_name": "HourlyRateLimiter" }],
+                "bindings": [
+                    { "name": "HOURLY_RATE_LIMITER", "class_name": "HourlyRateLimiter" },
+                    { "name": "ENGINE_STATUS", "class_name": "EngineStatus" },
+                ],
             },
-            "migrations": [{ "tag": "v1", "new_sqlite_classes": ["HourlyRateLimiter"] }],
+            "migrations": [
+                { "tag": "v1", "new_sqlite_classes": ["HourlyRateLimiter"] },
+                { "tag": "v2", "new_sqlite_classes": ["EngineStatus"] },
+            ],
             "ratelimits": [
                 { "name": "RATE_LIMIT_OPTIONS", "namespace_id": "2001", "simple": { "limit": 30, "period": 60 } },
                 { "name": "RATE_LIMIT_VERIFY", "namespace_id": "2002", "simple": { "limit": 30, "period": 60 } },
@@ -110,6 +130,11 @@
                 },
                 { "name": "RATE_LIMIT_WEBHOOK", "namespace_id": "2004", "simple": { "limit": 600, "period": 60 } },
                 { "name": "RATE_LIMIT_REGISTRY", "namespace_id": "2005", "simple": { "limit": 600, "period": 60 } },
+                {
+                    "name": "RATE_LIMIT_HEARTBEAT",
+                    "namespace_id": "2006",
+                    "simple": { "limit": 600, "period": 60 },
+                },
             ],
         },
         "production": {
@@ -148,9 +173,15 @@
             },
             "send_email": [{ "name": "EMAIL" }],
             "durable_objects": {
-                "bindings": [{ "name": "HOURLY_RATE_LIMITER", "class_name": "HourlyRateLimiter" }],
+                "bindings": [
+                    { "name": "HOURLY_RATE_LIMITER", "class_name": "HourlyRateLimiter" },
+                    { "name": "ENGINE_STATUS", "class_name": "EngineStatus" },
+                ],
             },
-            "migrations": [{ "tag": "v1", "new_sqlite_classes": ["HourlyRateLimiter"] }],
+            "migrations": [
+                { "tag": "v1", "new_sqlite_classes": ["HourlyRateLimiter"] },
+                { "tag": "v2", "new_sqlite_classes": ["EngineStatus"] },
+            ],
             "ratelimits": [
                 { "name": "RATE_LIMIT_OPTIONS", "namespace_id": "3001", "simple": { "limit": 30, "period": 60 } },
                 { "name": "RATE_LIMIT_VERIFY", "namespace_id": "3002", "simple": { "limit": 30, "period": 60 } },
@@ -161,6 +192,11 @@
                 },
                 { "name": "RATE_LIMIT_WEBHOOK", "namespace_id": "3004", "simple": { "limit": 600, "period": 60 } },
                 { "name": "RATE_LIMIT_REGISTRY", "namespace_id": "3005", "simple": { "limit": 600, "period": 60 } },
+                {
+                    "name": "RATE_LIMIT_HEARTBEAT",
+                    "namespace_id": "3006",
+                    "simple": { "limit": 600, "period": 60 },
+                },
             ],
         },
     },

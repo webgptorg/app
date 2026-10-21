@@ -64,6 +64,12 @@ function app(options: {
         relayTokens: createMemoryRelayTokenStore(),
         registry: { findEngine: () => Promise.resolve(null) },
         engineHostnames: createMemoryEngineHostnameStore(),
+        heartbeatEngines: { findEngine: () => Promise.resolve(null) },
+        engineStatus: {
+            recordHeartbeat: () => Promise.reject(new Error('not reached')),
+            getStatus: () => Promise.resolve({ state: 'never-seen' }),
+            reset: () => Promise.resolve(),
+        },
         assets: { fetch: assets } as unknown as Fetcher,
         viteDevServer: options.viteDevServer,
     });

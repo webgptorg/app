@@ -1,5 +1,5 @@
 import type { Clock } from '../../domain/ports/clock';
-import { RATE_LIMITS, type RateLimiter } from '../../domain/ports/rate-limiter';
+import { RATE_LIMITS, type RateLimiter, type RateLimitRules } from '../../domain/ports/rate-limiter';
 
 /** The RPC surface of {@link HourlyRateLimiter}, so this adapter does not depend on `cloudflare:workers`. */
 export interface WindowCounterStub {
@@ -18,10 +18,12 @@ export interface WindowCounterNamespace {
 export function createDurableObjectRateLimiter(deps: {
     readonly namespace: WindowCounterNamespace;
     readonly clock: Clock;
+    readonly rules?: RateLimitRules;
 }): RateLimiter {
+    const rules = deps.rules ?? RATE_LIMITS;
     return {
         async consume(rule, key, signal) {
-            const { limit, windowMs } = RATE_LIMITS[rule];
+            const { limit, windowMs } = rules[rule];
             try {
                 signal.throwIfAborted();
                 const stub = deps.namespace.get(deps.namespace.idFromName(key));

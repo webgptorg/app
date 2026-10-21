@@ -5,11 +5,28 @@ import {
 } from '../adapters/rate-limit/durable-object-rate-limiter';
 import { createHmacKeyedRateLimiter } from '../adapters/rate-limit/hmac-keyed-rate-limiter';
 import type { Clock } from '../domain/ports/clock';
-import type { RateLimiter, RateLimitRuleName } from '../domain/ports/rate-limiter';
+import {
+    RATE_LIMITS,
+    type RateLimiter,
+    type RateLimitRuleName,
+    type RateLimitRules,
+} from '../domain/ports/rate-limiter';
+import type { DashboardConfig } from './config';
+
+const MINUTE_MS = 60 * 1000;
+
+/** {@link RATE_LIMITS} with the configured limits in place; what every adapter counts with. */
+export function rateLimitRules(config: Pick<DashboardConfig, 'heartbeat'>): RateLimitRules {
+    return Object.freeze({
+        ...RATE_LIMITS,
+        'heartbeat-engine': { limit: config.heartbeat.perEngineLimit, windowMs: MINUTE_MS },
+    });
+}
 
 /**
  * Which production adapter counts each rule. The Workers binding only has 10 s and 60 s periods, so hourly rules go to
  * a Durable Object (decided 2026-10-19 as an interim choice; swapping it touches only this table and its adapter).
+ * A binding's limit is fixed in wrangler.jsonc, so rules whose limit is configuration go to the Durable Object too.
  */
 export const RULE_ADAPTERS = {
     'signup-start-ip': 'durable-object',
@@ -22,6 +39,8 @@ export const RULE_ADAPTERS = {
     'public-read-ip': 'binding',
     'webhook-ip': 'binding',
     'registry-relay': 'binding',
+    'heartbeat-ip': 'binding',
+    'heartbeat-engine': 'durable-object',
 } as const satisfies Readonly<Record<RateLimitRuleName, 'binding' | 'durable-object'>>;
 
 export function routeByRule(adapters: Readonly<Record<'binding' | 'durable-object', RateLimiter>>): RateLimiter {
@@ -38,7 +57,9 @@ export function createWorkersRateLimiter(deps: {
     readonly publicRead: RateLimitBinding;
     readonly webhook: RateLimitBinding;
     readonly registry: RateLimitBinding;
+    readonly heartbeat: RateLimitBinding;
     readonly hourly: WindowCounterNamespace;
+    readonly rules: RateLimitRules;
 }): RateLimiter {
     return createHmacKeyedRateLimiter({
         secret: deps.hmacKey,
@@ -49,8 +70,13 @@ export function createWorkersRateLimiter(deps: {
                 'public-read-ip': deps.publicRead,
                 'webhook-ip': deps.webhook,
                 'registry-relay': deps.registry,
+                'heartbeat-ip': deps.heartbeat,
             }),
-            'durable-object': createDurableObjectRateLimiter({ namespace: deps.hourly, clock: deps.clock }),
+            'durable-object': createDurableObjectRateLimiter({
+                namespace: deps.hourly,
+                clock: deps.clock,
+                rules: deps.rules,
+            }),
         }),
     });
 }

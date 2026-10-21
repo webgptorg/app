@@ -11,6 +11,9 @@ import { createD1AuthStore } from '../adapters/db/d1-auth-store';
 import { createD1BillingStore } from '../adapters/db/d1-billing-store';
 import { createD1EngineStore, createD1LinkCodeStore } from '../adapters/db/d1-registration-store';
 import { createD1RegistryReader, createD1RelayTokenStore } from '../adapters/db/d1-registry-store';
+import { createD1HeartbeatEngineReader } from '../adapters/db/d1-status-store';
+import { createMemoryRateLimiter } from '../adapters/rate-limit/memory-rate-limiter';
+import { createDurableObjectEngineStatus } from '../adapters/status/durable-object-engine-status';
 import { noCustomHostnames } from '../adapters/no-custom-hostnames';
 import { systemClock } from '../adapters/system-clock';
 import { createSimpleWebAuthnRelyingParty } from '../adapters/webauthn/simple-webauthn-relying-party';
@@ -27,7 +30,7 @@ import { createHttpApp } from './http/create-http-app';
 import { problemResponse } from './http/problem';
 import { securityHeaders, withHeaders } from './http/security-headers';
 import { renderEmail } from './i18n/render-email';
-import { createWorkersRateLimiter } from './rate-limiter';
+import { createWorkersRateLimiter, rateLimitRules } from './rate-limiter';
 
 const RP_NAME = 'Promptbook';
 
@@ -37,7 +40,8 @@ function misconfigured(logger: Logger, paths: readonly string[]): Pick<Hono, 'fe
     return { fetch: () => withHeaders(problemResponse(503, 'misconfigured'), securityHeaders('production')) };
 }
 
-function emailSender(env: Env, config: DashboardConfig, dev: DevAdapters) {
+/** The configured email adapter, or null when its binding is missing; the engines' status objects send through it too. */
+export function emailSender(env: Env, config: DashboardConfig, dev: DevAdapters) {
     switch (config.adapters.email) {
         case 'fake':
             return { email: dev.outbox, devOutbox: dev.outbox };
@@ -88,7 +92,7 @@ function billingProvider(
 function rateLimiter(env: Env, config: DashboardConfig, dev: DevAdapters) {
     switch (config.adapters.rateLimit) {
         case 'memory':
-            return dev.rateLimiter;
+            return createMemoryRateLimiter(systemClock, rateLimitRules(config), dev.rateLimitWindows);
         case 'workers':
             return createWorkersRateLimiter({
                 clock: systemClock,
@@ -98,7 +102,9 @@ function rateLimiter(env: Env, config: DashboardConfig, dev: DevAdapters) {
                 publicRead: env.RATE_LIMIT_PUBLIC_READ,
                 webhook: env.RATE_LIMIT_WEBHOOK,
                 registry: env.RATE_LIMIT_REGISTRY,
+                heartbeat: env.RATE_LIMIT_HEARTBEAT,
                 hourly: env.HOURLY_RATE_LIMITER,
+                rules: rateLimitRules(config),
             });
     }
 }
@@ -151,6 +157,8 @@ export function createDashboard(
         relayTokens: createD1RelayTokenStore(db),
         registry: createD1RegistryReader(db),
         engineHostnames: noCustomHostnames,
+        heartbeatEngines: createD1HeartbeatEngineReader(db),
+        engineStatus: createDurableObjectEngineStatus(env.ENGINE_STATUS),
         relyingParty: createSimpleWebAuthnRelyingParty({ origin: config.dashboardOrigin, rpName: RP_NAME }),
         rateLimiter: rateLimiter(env, config, dev),
         links: authLinks(config.dashboardOrigin),

@@ -3,6 +3,7 @@ import { z } from 'zod';
 
 import { fromBase64Url } from '../domain/auth/secrets';
 import { createPlanCatalogue, planCatalogueSchema, type PlanCatalogue } from '../domain/billing/plan-catalogue';
+import type { HeartbeatTiming } from '../domain/status/engine-status';
 import { environmentSchema, type Environment } from '../shared/environment';
 
 export type { Environment };
@@ -40,6 +41,22 @@ const originSchema = z.url({ protocol: /^https?$/ }).transform((value, ctx) => {
     }
     return url.origin;
 });
+
+/**
+ * When an engine counts as offline (D-05): `missedLimit` heartbeats of `intervalS` plus `graceS`. Engines send every
+ * 60 s by default (E-01); the e2e stack sends every 15 s. `perEngineLimit` caps heartbeats per engine and minute.
+ */
+const heartbeatSchema = z
+    .strictObject({
+        intervalS: z.int().min(5).max(3600).default(60),
+        missedLimit: z.int().min(1).max(10).default(3),
+        graceS: z.int().min(0).max(600).default(15),
+        perEngineLimit: z.int().min(1).max(60).default(5),
+    })
+    .refine(
+        (heartbeat) => heartbeat.perEngineLimit * heartbeat.intervalS >= 60,
+        'perEngineLimit must let an engine send every intervalS',
+    );
 
 /**
  * The dev-only HMAC key for rate-limit keys, committed in wrangler.jsonc's top-level vars. Every other environment gets
@@ -84,6 +101,7 @@ const varsSchema = z
         EMAIL_FROM: z.email().max(254),
         RATE_LIMIT_HMAC_KEY: hmacKeySchema,
         BILLING_PLANS: planCatalogueSchema,
+        HEARTBEAT: heartbeatSchema.optional(),
         STRIPE_SECRET_KEY: stripeKeySchema.optional(),
         STRIPE_WEBHOOK_SECRET: stripeWebhookSecretSchema.optional(),
     })
@@ -134,6 +152,7 @@ export interface DashboardConfig {
     /** Secret: keys rate-limit counters, so raw IPs and emails are never stored. */
     readonly rateLimitHmacKey: Uint8Array;
     readonly plans: PlanCatalogue;
+    readonly heartbeat: HeartbeatTiming;
     /** Secret; present whenever `adapters.billing` is `stripe`. */
     readonly stripeSecretKey: string | null;
     /** Secret; present whenever `adapters.billing` is `stripe`, optional with the fake. */
@@ -176,6 +195,7 @@ export function parseConfig(env: object): DashboardConfig {
         emailFrom: parsed.EMAIL_FROM,
         rateLimitHmacKey: fromBase64Url(parsed.RATE_LIMIT_HMAC_KEY),
         plans: createPlanCatalogue(parsed.BILLING_PLANS),
+        heartbeat: Object.freeze({ ...(parsed.HEARTBEAT ?? heartbeatSchema.parse({})) }),
         stripeSecretKey: parsed.STRIPE_SECRET_KEY ?? null,
         stripeWebhookSecret: parsed.STRIPE_WEBHOOK_SECRET ?? null,
     });

@@ -52,6 +52,7 @@ describe('parseConfig', () => {
             adapters: { email: 'fake', billing: 'fake', rateLimit: 'memory' },
             emailFrom: 'no-reply@ptbk.test',
             rateLimitHmacKey: new TextEncoder().encode('dev-only-rate-limit-key-not-secret'),
+            heartbeat: { intervalS: 60, missedLimit: 3, graceS: 15, perEngineLimit: 5 },
             stripeSecretKey: null,
             stripeWebhookSecret: null,
         });
@@ -59,6 +60,25 @@ describe('parseConfig', () => {
         expect(Object.isFrozen(parseConfig({ ...bindings, ...devVars }))).toBe(true);
         expect(Object.isFrozen(config.relays[0])).toBe(true);
         expect(Object.isFrozen(config.adapters)).toBe(true);
+        expect(Object.isFrozen(config.heartbeat)).toBe(true);
+    });
+
+    it('takes the heartbeat timing from HEARTBEAT, filling in the defaults', () => {
+        expect(parseConfig({ ...bindings, ...devVars, HEARTBEAT: { intervalS: 15 } }).heartbeat).toEqual({
+            intervalS: 15,
+            missedLimit: 3,
+            graceS: 15,
+            perEngineLimit: 5,
+        });
+    });
+
+    it.each([
+        ['an unknown member', { intervalS: 60, debug: true }],
+        ['an interval below 5 s', { intervalS: 4 }],
+        ['a fractional limit', { missedLimit: 2.5 }],
+        ['a per-engine limit the interval would exceed', { intervalS: 5, perEngineLimit: 11 }],
+    ])('refuses a HEARTBEAT with %s', (_, heartbeat) => {
+        expect(failedPaths({ ...bindings, ...devVars, HEARTBEAT: heartbeat })[0]).toMatch(/^HEARTBEAT/);
     });
 
     it('accepts real adapters outside dev', () => {

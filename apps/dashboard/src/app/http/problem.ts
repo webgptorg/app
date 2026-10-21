@@ -14,13 +14,22 @@ const TITLES: Readonly<Record<ProblemStatus, string>> = {
     503: 'Service Unavailable',
 };
 
-export function problemResponse(status: ProblemStatus, code: string, correlationId?: string): Response {
+/** RFC 9457 extension members a route may add; each is declared in the problem schema. */
+export type ProblemExtensions = Pick<Problem, 'serverTime'>;
+
+export function problemResponse(
+    status: ProblemStatus,
+    code: string,
+    correlationId?: string,
+    extensions: ProblemExtensions = {},
+): Response {
     const problem: Problem = {
         type: 'about:blank',
         title: TITLES[status],
         status,
         code,
         ...(correlationId === undefined ? {} : { correlationId }),
+        ...extensions,
     };
     return new Response(JSON.stringify(problem), {
         status,

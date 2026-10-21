@@ -1,3 +1,4 @@
+import { defaultHostname } from '@ptbk/protocol';
 import type { Hono } from 'hono';
 
 import type { FakeBillingState } from '../adapters/billing/fake-billing-provider';
@@ -10,6 +11,7 @@ import { createSimpleWebAuthnRelyingParty } from '../adapters/webauthn/simple-we
 import { parseConfig, DEV_RATE_LIMIT_HMAC_KEY } from '../app/config';
 import { authLinks, type DashboardDeps } from '../app/deps';
 import { createHttpApp } from '../app/http/create-http-app';
+import { rateLimitRules } from '../app/rate-limiter';
 import type { AuthStore } from '../domain/auth/auth-store';
 import { createAuthorizer } from '../domain/authz/authorizer';
 import type { BillingStore } from '../domain/billing/billing-store';
@@ -19,10 +21,18 @@ import type { RegistryReader } from '../domain/registry/registry-reader';
 import type { RelayTokenStore } from '../domain/registry/relay-token-store';
 import { DASHBOARD_POLICY } from '../domain/authz/policy';
 import type { RateLimiter } from '../domain/ports/rate-limiter';
+import type { AlertRecipients } from '../domain/status/alert-recipients';
+import type { HeartbeatTiming } from '../domain/status/engine-status';
+import type { HeartbeatEngineReader } from '../domain/status/heartbeat-engine-reader';
 import type { RouteContract } from '../shared/api/contract';
 import { syntheticWebhookSecret, TEST_PLANS } from './billing-fixtures';
 import { createSoftwareAuthenticator, type SoftwareAuthenticator } from './software-authenticator';
 import { stripeSignatureHeader } from './stripe-signature';
+import {
+    createMemoryEngineStatuses,
+    createMemoryHeartbeatEngineReader,
+    type MemoryEngineStatuses,
+} from './memory-engine-status';
 import { createMemoryRegistrationStores } from './memory-registration-store';
 import {
     createMemoryEngineHostnameStore,
@@ -69,6 +79,15 @@ export interface AuthHarness {
     readonly webhookSecret: string;
     /** D-08's custom hostnames, until that task adds their table. */
     readonly engineHostnames: MemoryEngineHostnameStore;
+    /** The engines' status objects, in process, with their alarms fired by hand. */
+    readonly engineStatuses: MemoryEngineStatuses;
+    /** Sends `body` exactly as given, for routes whose signature covers the raw bytes. */
+    post(
+        path: string,
+        body: Uint8Array,
+        headers?: Readonly<Record<string, string>>,
+        options?: { readonly ip?: string },
+    ): Promise<TestResponse>;
     /** Posts a Stripe webhook, signed with {@link webhookSecret} at the harness clock unless told otherwise. */
     webhook(
         payload: string,
@@ -91,7 +110,7 @@ function expectDeclaredOutput(routes: readonly RouteContract[], method: string, 
     if (route === undefined) {
         throw new Error(`no route contract for ${method} ${path}`);
     }
-    route.output.parse(JSON.parse(text));
+    route.output.parse(text === '' ? undefined : JSON.parse(text));
 }
 
 export function createAuthHarness(options: {
@@ -105,6 +124,12 @@ export function createAuthHarness(options: {
     /** Default to in-memory ones; the registry reader then reads the registration stores' engines. */
     readonly relayTokens?: RelayTokenStore;
     readonly registry?: RegistryReader;
+    /** Defaults to a reader over the registration stores' engines. */
+    readonly heartbeatEngines?: HeartbeatEngineReader;
+    /** Defaults to nobody, for suites that never take an engine offline. */
+    readonly alertRecipients?: AlertRecipients;
+    /** The `HEARTBEAT` var; the config's defaults otherwise. */
+    readonly heartbeat?: Partial<HeartbeatTiming>;
 }): AuthHarness {
     const clock = createFakeClock(START_MS);
     const webhookSecret = syntheticWebhookSecret();
@@ -121,6 +146,7 @@ export function createAuthHarness(options: {
         RATE_LIMIT_HMAC_KEY: DEV_RATE_LIMIT_HMAC_KEY,
         BILLING_PLANS: TEST_PLANS,
         STRIPE_WEBHOOK_SECRET: webhookSecret,
+        ...(options.heartbeat === undefined ? {} : { HEARTBEAT: options.heartbeat }),
     });
     const testBilling = createTestBilling({
         clock,
@@ -132,6 +158,15 @@ export function createAuthHarness(options: {
     });
     const registration = options.registration ?? createMemoryRegistrationStores({ orgExists: () => true });
     const engineHostnames = createMemoryEngineHostnameStore();
+    const engineStatuses = createMemoryEngineStatuses({
+        clock,
+        logger,
+        timing: config.heartbeat,
+        recipients: options.alertRecipients ?? { forEngineOffline: () => Promise.resolve([]) },
+        email: outbox,
+        engineHostname: (engineId) => defaultHostname(engineId, config.engineDomain),
+        engineLink: (engineId) => `${ORIGIN}/engines/${engineId}`,
+    });
     const deps: DashboardDeps = {
         config,
         clock,
@@ -141,7 +176,7 @@ export function createAuthHarness(options: {
         store: options.store,
         relyingParty: createSimpleWebAuthnRelyingParty({ origin: ORIGIN, rpName: 'Promptbook' }),
         email: outbox,
-        rateLimiter: options.rateLimiter?.(clock) ?? createMemoryRateLimiter(clock),
+        rateLimiter: options.rateLimiter?.(clock) ?? createMemoryRateLimiter(clock, rateLimitRules(config)),
         links: authLinks(ORIGIN),
         devOutbox: options.email === 'cloudflare' ? null : outbox,
         billing: testBilling.billing,
@@ -151,6 +186,8 @@ export function createAuthHarness(options: {
         relayTokens: options.relayTokens ?? createMemoryRelayTokenStore(),
         registry: options.registry ?? createMemoryRegistryReader(registration.engines),
         engineHostnames,
+        heartbeatEngines: options.heartbeatEngines ?? createMemoryHeartbeatEngineReader(registration.engines),
+        engineStatus: engineStatuses,
     };
     const { app: http, routes } = createHttpApp({
         ...deps,
@@ -184,7 +221,31 @@ export function createAuthHarness(options: {
         billingProvider: testBilling.provider,
         webhookSecret,
         engineHostnames,
+        engineStatuses,
         settle,
+        async post(path, body, headers = {}, postOptions = {}) {
+            const response = await http.request(
+                `${ORIGIN}${path}`,
+                {
+                    method: 'POST',
+                    headers: { 'CF-Connecting-IP': postOptions.ip ?? '198.51.100.20', ...headers },
+                    body,
+                },
+                undefined,
+                executionCtx,
+            );
+            const text = await response.text();
+            await settle();
+            if (response.ok) {
+                expectDeclaredOutput(routes, 'POST', path, text);
+            }
+            return {
+                status: response.status,
+                body: text === '' ? null : (JSON.parse(text) as unknown),
+                setCookies: [],
+                headers: response.headers,
+            };
+        },
         async webhook(payload, webhookOptions = {}) {
             const signature =
                 webhookOptions.signature ??
