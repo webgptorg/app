@@ -51,3 +51,4 @@ The heartbeat is the platform's only input from a running engine: numbers only, 
 
 - Whether to send "back online" emails, and alert preferences per user, are product decisions.
 - Responding 403 to suspended engines means their status goes stale in the dashboard; confirm with I-05.
+- Built in #53 with migration tag `v2` for `EngineStatus`: `v1` already creates D-02's `HourlyRateLimiter`, and a deployed tag cannot gain a class.
