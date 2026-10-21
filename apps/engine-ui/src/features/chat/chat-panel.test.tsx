@@ -26,6 +26,14 @@ const chatPath = (chatId = CHAT_ID) => `/agents/${CHAT_AGENT_ID}/chat/${chatId}`
 const announcer = () => document.querySelector<HTMLElement>('[aria-live="polite"][aria-atomic="true"]');
 const composer = () => screen.getByRole('textbox', { name: 'Message' });
 const history = () => screen.getByRole('region', { name: 'Messages' });
+/** The composer's Stop, not the agent header's: with runs@1 the agent shows as working while it replies. */
+const replyStop = () =>
+    screen.queryAllByRole('button', { name: 'Stop' }).find((button) => button.closest('form') !== null) ?? null;
+const getReplyStop = () => {
+    const button = replyStop();
+    if (button === null) throw new Error('no Stop button in the composer');
+    return button;
+};
 
 function ownChatEngine(count = 2) {
     const own = seededConversation(CHAT_ID, count, OWNER_ID);
@@ -132,7 +140,7 @@ describe('chat panel stop', { timeout: TIMEOUT_MS }, () => {
         });
         await within(history()).findByText('Once upon a time');
 
-        const stop = screen.getByRole('button', { name: 'Stop' });
+        const stop = getReplyStop();
         await app.user.click(stop);
         await app.user.keyboard('{Escape}');
         expect(stream.aborted()).toBe(true);
@@ -140,7 +148,7 @@ describe('chat panel stop', { timeout: TIMEOUT_MS }, () => {
         expect(within(history()).getByText('Once upon a time')).toBeDefined();
         expect(engine.spies.cancelReply).toHaveBeenCalledTimes(1);
         expect(engine.spies.cancelReply).toHaveBeenCalledWith(CHAT_ID, sent.replyMessageId, expect.anything());
-        expect(screen.queryByRole('button', { name: 'Stop' })).toBeNull();
+        expect(replyStop()).toBeNull();
         expect(document.activeElement).toBe(composer());
     });
 
@@ -167,9 +175,9 @@ describe('chat panel stop', { timeout: TIMEOUT_MS }, () => {
             control.latest().push({ type: 'delta', seq: 1, text: 'Almost done' });
         });
         await within(history()).findByText('Almost done');
-        await app.user.click(screen.getByRole('button', { name: 'Stop' }));
+        await app.user.click(getReplyStop());
         await waitFor(() => {
-            expect(screen.queryByRole('button', { name: 'Stop' })).toBeNull();
+            expect(replyStop()).toBeNull();
         });
         expect(engine.spies.listMessages.mock.calls.length).toBeGreaterThan(1);
     });
@@ -183,7 +191,7 @@ describe('chat panel stop', { timeout: TIMEOUT_MS }, () => {
             control.latest().push({ type: 'delta', seq: 1, text: 'Going' });
         });
         await within(history()).findByText('Going');
-        await app.user.click(screen.getByRole('button', { name: 'Stop' }));
+        await app.user.click(getReplyStop());
         expect(await screen.findByText('That did not work. Please try again.')).toBeDefined();
         expect(within(history()).getByText('Connection lost')).toBeDefined();
     });
@@ -352,7 +360,7 @@ describe('chat panel access', { timeout: TIMEOUT_MS }, () => {
             control.latest().push({ type: 'delta', seq: 1, text: 'From the start' });
         });
         expect(await screen.findByText('From the start')).toBeDefined();
-        expect(screen.queryByRole('button', { name: 'Stop' })).toBeNull();
+        expect(replyStop()).toBeNull();
     });
 
     it('writes nothing without chats.write, even in the member’s own chat', async () => {

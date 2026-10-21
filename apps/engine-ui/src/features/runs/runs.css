@@ -1,0 +1,58 @@
+/*
+ * Run screens' component tokens, defaulting to semantic ones so a theme change reaches them. Diff and log text is
+ * agent output: it is only ever coloured here, never interpreted.
+ */
+:root {
+    --run-diff-added-bg: var(--color-success-soft);
+    --run-diff-removed-bg: var(--color-danger-soft);
+    --run-diff-hunk-bg: var(--color-info-soft);
+    --run-diff-hunk-text: var(--color-info);
+    --run-diff-text: var(--color-text);
+    --run-diff-meta-text: var(--color-text-muted);
+    --run-text-bg: var(--color-sunken);
+}
+
+.run-text {
+    background-color: var(--run-text-bg);
+    color: var(--run-diff-text);
+}
+
+.run-diff-added {
+    background-color: var(--run-diff-added-bg);
+}
+
+.run-diff-removed {
+    background-color: var(--run-diff-removed-bg);
+}
+
+.run-diff-hunk {
+    background-color: var(--run-diff-hunk-bg);
+    color: var(--run-diff-hunk-text);
+}
+
+.run-diff-meta {
+    color: var(--run-diff-meta-text);
+}
+
+/* A run that just finished settles once; reduced motion sets `--motion-seal` to zero, so it does not move. */
+@keyframes ptbk-run-settle {
+    0% {
+        opacity: 0.4;
+        transform: scale(1.08);
+    }
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+/* A running run's badge breathes, more quietly than the shell's live dot; reduced motion sets `--motion-live` to zero. */
+@keyframes ptbk-run-breathe {
+    0%,
+    100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.8;
+    }
+}

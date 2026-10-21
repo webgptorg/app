@@ -180,7 +180,8 @@ describe('agents list', { timeout: TIMEOUT_MS }, () => {
     });
 
     it('updates a badge from an agent.status event without asking the engine again', async () => {
-        const { engine } = await renderList();
+        // agent.status drives the badge only without runs@1; with it, U-09's run-based provider does.
+        const { engine } = await renderList('/agents', createAgentsEngine({ capabilities: [] }));
         const row = () => screen.getByRole('link', { name: 'Agent 004' }).closest('tr') as HTMLElement;
         expect(await within(row()).findByText('Idle')).toBeDefined();
         const statusCalls = engine.spies.getStatus.mock.calls.length;

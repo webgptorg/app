@@ -1,4 +1,4 @@
-import type { AgentId, CapabilityRef, Permission } from '@ptbk/engine-api';
+import type { Activity, AgentId, CapabilityRef, Permission } from '@ptbk/engine-api';
 import type { ComponentType } from 'react';
 
 import type { FileRoutesByTo } from '../../routeTree.gen';
@@ -70,6 +70,20 @@ export type CommandEntry = {
 export interface Attention {
     readonly count: number;
     readonly to: RoutePath;
+    /** Search params for `to`, e.g. a status filter that shows exactly what needs attention. */
+    readonly search?: Readonly<Record<string, string>>;
+}
+
+/**
+ * Renders activity items of one area for the home feed (U-08). `kind` is exact (`run.failed`) or an area prefix
+ * (`run.*`); an item whose kind or version no renderer claims gets the feed's generic card.
+ */
+export interface ActivityRendererEntry {
+    readonly kind: string;
+    readonly versions: readonly number[];
+    readonly component: ComponentType<{ readonly activity: Activity }>;
+    /** One line of plain text, for notifications and the command palette. */
+    readonly summary: (activity: Activity) => string;
 }
 
 export type AgentLiveState = 'idle' | 'working' | 'waiting' | 'failed';
@@ -88,6 +102,12 @@ export interface FeatureDefinition {
     readonly attention?: { readonly id: string; readonly useAttention: () => Attention };
     readonly liveIndicator?: { readonly useActiveCount: () => number };
     readonly agentStatusProvider?: { readonly useAgentLiveState: (agentId: AgentId) => AgentLiveState | null };
+    readonly activityRenderers?: readonly ActivityRendererEntry[];
+    /**
+     * Keeps the feature's cached data current from the engine's event stream for as long as the shell is mounted, so
+     * the shell's live indicator, agent statuses and other screens' cards stay true without polling. Called once.
+     */
+    readonly eventSync?: { readonly useEventSync: () => void };
 }
 
 /** Identity at runtime; gives each feature file a typed, checked description. */

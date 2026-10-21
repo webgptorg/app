@@ -22,7 +22,9 @@ import type { FakeLocation } from './fake-location';
 import { createFakeMatchMedia } from './fake-match-media';
 import type { FakeMatchMedia } from './fake-match-media';
 import { createMemoryStorage } from './memory-storage';
-import { createTestEngineApi } from './test-engine-api';
+import { createManualTicker } from './manual-ticker';
+import type { ManualTicker } from './manual-ticker';
+import { createTestEngineApi, TEST_NOW } from './test-engine-api';
 
 export interface RenderWithProvidersOptions {
     /** The URL to start at; defaults to `/`. */
@@ -45,6 +47,8 @@ export interface RenderWithProvidersOptions {
     readonly features?: readonly FeatureDefinition[];
     /** The browser's answer to the sign-out request; defaults to 200. */
     readonly fetch?: typeof fetch;
+    /** The shared clock for live durations; defaults to a manual one stopped at `TEST_NOW`. */
+    readonly ticker?: ManualTicker;
 }
 
 export interface RenderedApp extends RenderResult {
@@ -59,6 +63,7 @@ export interface RenderedApp extends RenderResult {
     /** Records full-page navigations (sign-out, step-up) instead of leaving the test page. */
     readonly location: FakeLocation;
     readonly fetch: Mock<typeof fetch>;
+    readonly ticker: ManualTicker;
 }
 
 /** The whole app (router, query client, engine API context) on a memory history, as main.tsx composes it. */
@@ -86,13 +91,27 @@ export function renderWithProviders(options: RenderWithProvidersOptions = {}): R
         options.fetch ?? (() => Promise.resolve(new Response(null, { status: 200 }))),
     );
     const user = userEvent.setup();
+    const ticker = options.ticker ?? createManualTicker(TEST_NOW.getTime());
     const result = render(
         <AppProviders
             engineApi={engineApi}
             queryClient={queryClient}
             router={router}
             browser={{ storage, matchMedia: media.matchMedia, location, fetch }}
+            ticker={ticker}
         />,
     );
-    return { ...result, router, engineApi, queryClient, onUnauthenticated, user, storage, media, location, fetch };
+    return {
+        ...result,
+        router,
+        engineApi,
+        queryClient,
+        onUnauthenticated,
+        user,
+        storage,
+        media,
+        location,
+        fetch,
+        ticker,
+    };
 }

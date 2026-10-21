@@ -27,6 +27,17 @@ describe('Intl formatters', () => {
         expect(en.formatRelativeTime(now, now)).toBe('now');
         expect(cs.formatRelativeTime(new Date(now.getTime() - 86_400_000), now)).toBe('včera');
     });
+
+    it('format money from a decimal string exactly, keeping its own decimals', () => {
+        const en = createFormatters('en');
+        const cs = createFormatters('cs');
+        expect(en.formatCurrency('0.42', 'USD')).toBe('$0.42');
+        expect(en.formatCurrency('3', 'USD')).toBe('$3.00');
+        expect(en.formatCurrency('0.0042', 'USD')).toBe('$0.0042');
+        expect(en.formatCurrency('12345678901234.5', 'EUR')).toBe('€12,345,678,901,234.50');
+        expect(cs.formatCurrency('1234.5', 'CZK')).toBe('1\u00a0234,50\u00a0Kč');
+        expect(en.formatCurrency('100', 'JPY')).toBe('¥100');
+    });
 });
 
 describe('UiProvider', () => {
