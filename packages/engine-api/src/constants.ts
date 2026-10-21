@@ -5,7 +5,7 @@ export const ENGINE_API_PREFIX = '/api/v1';
  * SemVer of this contract. Additive changes bump the minor; the UI bundle manifest's `engineApi` range refers to it
  * (C-06, X-03), so the engine's loader refuses a bundle built against an API it does not speak.
  */
-export const ENGINE_API_VERSION = '1.1.0';
+export const ENGINE_API_VERSION = '1.2.0';
 
 /** Gateway pages owned by the open engine, not by this API. */
 export const SIGN_IN_PATH = '/auth/sign-in';
@@ -29,6 +29,8 @@ export const MAX_CURSOR_LENGTH = 1024;
 /** In UTF-16 code units, as JavaScript measures strings. */
 export const MAX_BOOK_SOURCE_LENGTH = 512 * 1024;
 export const MAX_MESSAGE_LENGTH = 64 * 1024;
+/** A chat's `preview`: its first user message, cut to this length. */
+export const MAX_CHAT_PREVIEW_LENGTH = 200;
 export const MAX_SECRET_VALUE_LENGTH = 64 * 1024;
 
 export const MAX_FILE_BYTES = 25 * 1024 * 1024;

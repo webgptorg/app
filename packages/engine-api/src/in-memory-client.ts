@@ -13,15 +13,18 @@ import { RunDetail } from './capabilities/runs';
 import type { Run } from './capabilities/runs';
 import { Trigger, TriggerFire } from './capabilities/triggers';
 import { Chat, Message } from './chats';
+import type { ChatSource, MessageRole } from './chats';
 import { createEngineApiClient, EngineApiContractError } from './client';
 import type { EngineApiClient, EngineApiResponse, EngineApiTransport, EngineApiTransportRequest } from './client';
 import {
     AgentId,
     AgentPermanentId,
     AuditEntryId,
+    ChatId,
     ClientInfo,
     FolderId,
     MemberId,
+    MessageId,
     OpaqueId,
     OrgId,
     RevisionId,
@@ -36,8 +39,16 @@ import { hashAuditEntry } from './in-memory/audit-chain';
 import { checkBook } from './in-memory/book';
 import { HANDLERS } from './in-memory/handlers';
 import type { HandlerContext } from './in-memory/handlers';
-import { recordActivity } from './in-memory/kit';
-import type { ActivityInput, Actor, EngineContext, ReplyProgress, ReplyScript, Sleep } from './in-memory/kit';
+import { addChatMessages, EMPTY_CHAT_SUMMARY, liveAgent, recordActivity, summariseMessage } from './in-memory/kit';
+import type {
+    ActivityInput,
+    Actor,
+    ChatSummary,
+    EngineContext,
+    ReplyProgress,
+    ReplyScript,
+    Sleep,
+} from './in-memory/kit';
 import { advanceRun } from './in-memory/runs';
 import type { RunOutcome } from './in-memory/runs';
 import type { FileRecord, InMemoryState } from './in-memory/state';
@@ -112,7 +123,7 @@ export interface InMemorySeed {
     readonly invites?: readonly Unbranded<z.input<typeof Invite>>[];
     readonly folders?: readonly Unbranded<z.input<typeof Folder>>[];
     readonly agents?: readonly InMemorySeedAgent[];
-    readonly chats?: readonly Unbranded<z.input<typeof Chat>>[];
+    readonly chats?: readonly InMemorySeedChat[];
     readonly messages?: readonly Unbranded<z.input<typeof Message>>[];
     readonly secrets?: readonly Unbranded<z.input<typeof SecretMetadata>>[];
     readonly apiTokens?: readonly Unbranded<z.input<typeof ApiToken>>[];
@@ -129,6 +140,23 @@ export interface InMemorySeed {
     /** Oldest first. */
     readonly activity?: readonly Unbranded<z.input<typeof Activity>>[];
     readonly auditEntries?: readonly InMemorySeedAuditEntry[];
+}
+
+/** The summary (`messageCount`, `lastMessageAt`, `preview`) is derived from the seed's messages; `source` defaults to `web`. */
+export type InMemorySeedChat = Omit<
+    Unbranded<z.input<typeof Chat>>,
+    'source' | 'messageCount' | 'lastMessageAt' | 'preview'
+> & { readonly source?: ChatSource };
+
+/**
+ * A chat no member started: by default a public visitor of a public agent (`web`); `api` for an API client. Its
+ * messages (oldest first) are all `completed`, and its user messages have no member either.
+ */
+export interface InMemoryVisitorChat {
+    readonly agentId: string;
+    readonly source?: ChatSource;
+    readonly title?: string;
+    readonly messages?: readonly { readonly role: MessageRole; readonly content: string }[];
 }
 
 /** `versions` (oldest first) default to one version with `content`; `versionCount` is derived from them. */
@@ -254,6 +282,8 @@ export interface InMemoryEngineController {
     updateEngine(patch: Partial<Omit<Unbranded<z.input<typeof EngineInfo>>, 'capabilities'>>): EngineInfo;
     /** E.g. each relay's link state. */
     updateSecurity(patch: Partial<Unbranded<z.input<typeof SecurityOverview>>>): SecurityOverview;
+    /** Throws for an unknown or deleted agent. Announced with `chat.changed`, like a chat a member starts. */
+    addVisitorChat(chat: InMemoryVisitorChat): Chat;
     /** Throws if the ID is taken. */
     addMember(member: Unbranded<z.input<typeof Member>>): Member;
     /** A sign-in; throws for an unknown member or a taken ID. `current` is decided per request. */
@@ -463,6 +493,34 @@ export function createInMemoryEngineCore(options: InMemoryEngineCoreOptions = {}
         updateSecurity: (patch) => {
             state.security = SecurityOverview.parse({ ...state.security, ...patch });
             return state.security;
+        },
+        addVisitorChat: (input) => {
+            const agent = liveAgent(system, input.agentId);
+            if (agent.kind === 'problem') throw new Error(`cannot add a chat: ${agent.problem.code}`);
+            const at = now();
+            const chat = Chat.parse({
+                id: newId(ChatId, 'chat'),
+                agentId: agent.data.id,
+                title: input.title ?? '',
+                source: input.source ?? 'web',
+                createdBy: null,
+                createdAt: at,
+                updatedAt: at,
+                ...EMPTY_CHAT_SUMMARY,
+            });
+            state.chats.set(chat.id, chat);
+            const messages = (input.messages ?? []).map((message) =>
+                Message.parse({
+                    id: newId(MessageId, 'message'),
+                    chatId: chat.id,
+                    role: message.role,
+                    content: message.content,
+                    status: 'completed',
+                    createdBy: null,
+                    createdAt: now(),
+                }),
+            );
+            return addChatMessages(system, chat, messages);
         },
         addMember: (input) => {
             const member = Member.parse(input);
@@ -858,7 +916,7 @@ function createState(
         invites: byId((seed.invites ?? []).map((record) => Invite.parse(record))),
         folders: byId((seed.folders ?? []).map((record) => Folder.parse(record))),
         agents: new Map(),
-        chats: byId((seed.chats ?? []).map((record) => Chat.parse(record))),
+        chats: new Map(),
         messages: byId((seed.messages ?? []).map((record) => Message.parse(record))),
         replies: new Map(),
         secrets: byId((seed.secrets ?? []).map((record) => SecretMetadata.parse(record))),
@@ -899,6 +957,11 @@ function createState(
         events: [],
         eventSeq: 0,
     };
+    const summaries = summariseSeedMessages(state.messages.values());
+    for (const record of seed.chats ?? []) {
+        const chat = Chat.parse({ source: 'web', ...record, ...(summaries.get(record.id) ?? EMPTY_CHAT_SUMMARY) });
+        state.chats.set(chat.id, chat);
+    }
     for (const [index, seedAgent] of (seed.agents ?? []).entries()) {
         const book = checkBook(seedAgent.source);
         if (book.diagnostics.some((diagnostic) => diagnostic.severity === 'error')) {
@@ -928,6 +991,17 @@ function createState(
         });
     }
     return state;
+}
+
+function summariseSeedMessages(messages: Iterable<Message>): Map<string, ChatSummary> {
+    const oldestFirst = [...messages].sort(
+        (a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt) || a.id.localeCompare(b.id),
+    );
+    const summaries = new Map<string, ChatSummary>();
+    for (const message of oldestFirst) {
+        summaries.set(message.chatId, summariseMessage(summaries.get(message.chatId) ?? EMPTY_CHAT_SUMMARY, message));
+    }
+    return summaries;
 }
 
 async function seedAudit(state: InMemoryState, entries: readonly InMemorySeedAuditEntry[]): Promise<void> {

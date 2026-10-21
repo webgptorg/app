@@ -22,7 +22,9 @@ export type {
     InMemorySeed,
     InMemorySeedAgent,
     InMemorySeedAuditEntry,
+    InMemorySeedChat,
     InMemorySeedFile,
+    InMemoryVisitorChat,
     ResourceKind,
 } from './in-memory-client';
 export type { Actor, ReplyChunk, ReplyScript, ReplyScriptInput, ScriptedReply, Sleep } from './in-memory/kit';

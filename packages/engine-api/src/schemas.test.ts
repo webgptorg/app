@@ -9,9 +9,9 @@ import { activitySample } from './capabilities/fixtures/samples';
 import { CreateIntegrationBody, Integration } from './capabilities/integrations';
 import { Money, Run, RunDetail, RunListQuery, RunText } from './capabilities/runs';
 import { CreateTriggerBody, Recurrence, Trigger, TriggerFire } from './capabilities/triggers';
-import { MAX_RUN_TEXT_BYTES } from './constants';
+import { MAX_CHAT_PREVIEW_LENGTH, MAX_RUN_TEXT_BYTES } from './constants';
 import { EngineInfo } from './engine';
-import { ReplyStreamEvent } from './chats';
+import { Chat, ReplyStreamEvent } from './chats';
 import { Hostname, PageQuery, ProblemDetails, SemVer, Timestamp } from './common';
 import type { RouteDefinition } from './route';
 import { ENGINE_API_ROUTE_LIST } from './routes';
@@ -408,6 +408,34 @@ describe('PageQuery', () => {
 
     it.each(['0', '101', '1.5', 'ten'])('refuses limit %s', (limit) => {
         expect(PageQuery.safeParse({ limit }).success).toBe(false);
+    });
+});
+
+describe('Chat', () => {
+    const chat = {
+        id: 'c1',
+        agentId: 'a1',
+        title: 'Billing',
+        source: 'web',
+        createdBy: 'm1',
+        createdAt: '2026-10-19T12:00:00Z',
+        updatedAt: '2026-10-19T12:00:00Z',
+        messageCount: 0,
+        lastMessageAt: null,
+        preview: null,
+    };
+
+    it('accepts a member chat and one no member started, and rejects unknown fields', () => {
+        expect(Chat.safeParse(chat).error).toBeUndefined();
+        expect(Chat.safeParse({ ...chat, createdBy: null, source: 'api' }).error).toBeUndefined();
+        expect(Chat.safeParse({ ...chat, unexpected: true }).success).toBe(false);
+    });
+
+    it('takes only run sources, a whole message count and a bounded preview', () => {
+        expect(Chat.safeParse({ ...chat, source: 'kiosk' }).success).toBe(false);
+        expect(Chat.safeParse({ ...chat, messageCount: 1.5 }).success).toBe(false);
+        expect(Chat.safeParse({ ...chat, preview: 'x'.repeat(MAX_CHAT_PREVIEW_LENGTH) }).success).toBe(true);
+        expect(Chat.safeParse({ ...chat, preview: 'x'.repeat(MAX_CHAT_PREVIEW_LENGTH + 1) }).success).toBe(false);
     });
 });
 

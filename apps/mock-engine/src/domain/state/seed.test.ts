@@ -41,7 +41,7 @@ function timestamps(value: unknown, found: string[] = []): string[] {
 describe('seedEngine', () => {
     it('gives a stable small-team seed for seed 42 and a fixed epoch', async () => {
         const json = JSON.stringify(seedEngine({ seed: 42, scenario: 'small-team', epoch: EPOCH }));
-        expect(await sha256(json)).toBe('baa4534bdc66abcdb72f8310a9133ff6d9725eb4913b0a871e774dea3c7a47a6');
+        expect(await sha256(json)).toBe('73300cec044fcb9f7882f06bec61de3691d1b6e71e488eb9e945aa31f7ac500b');
     });
 
     it('is byte-identical for the same inputs and changes with the seed, scenario or epoch', () => {
@@ -75,7 +75,7 @@ describe('seedEngine', () => {
         expect(data.passkeys).toHaveLength(1);
     });
 
-    it('gives small-team every role, a hostile agent and enough passkeys to test last-passkey', async () => {
+    it('gives small-team every role, a hostile agent, visitor chats and enough passkeys to test last-passkey', async () => {
         const { data, client } = core('small-team');
         const roles = data.members?.map(({ role }) => role).sort();
         expect(roles).toEqual(['admin', 'member', 'member', 'owner', 'viewer']);
@@ -96,6 +96,18 @@ describe('seedEngine', () => {
         expect(chats.length).toBeGreaterThanOrEqual(7);
         const [chat] = chats;
         if (chat) expect(ok(await client.chats.listMessages(chat.id, {}, signal())).items.length).toBeGreaterThan(2);
+        const visitorChats = chats.filter(({ createdBy }) => createdBy === null);
+        expect(visitorChats.length).toBeGreaterThan(0);
+        const openAgents = new Set(agents.filter(({ visibility }) => visibility !== 'private').map(({ id }) => id));
+        for (const visitorChat of visitorChats) {
+            expect(visitorChat).toMatchObject({ source: 'web', title: '' });
+            expect(visitorChat.preview).not.toBeNull();
+            expect(openAgents.has(visitorChat.agentId)).toBe(true);
+            const visitorMessages = ok(await client.chats.listMessages(visitorChat.id, {}, signal())).items;
+            expect(visitorMessages).toHaveLength(visitorChat.messageCount);
+            expect(visitorMessages.every(({ createdBy }) => createdBy === null)).toBe(true);
+        }
+        expect(chats.filter(({ createdBy }) => createdBy !== null).every(({ source }) => source === 'web')).toBe(true);
         const secrets = ok(await client.secrets.list({ limit: 100 }, signal())).items;
         expect(secrets.map(({ status }) => status)).toContain('revoked');
         expect(new Set(secrets.map(({ scope }) => scope.kind))).toEqual(new Set(['engine', 'agent']));
