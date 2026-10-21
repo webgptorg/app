@@ -64,6 +64,17 @@ describe('new engine page', () => {
         await expectNoAxeViolations(app.container);
     });
 
+    it('reports the link-code rate limit without an upgrade path', async () => {
+        const app = renderApp({
+            path: '/engines/new',
+            session: OWNER,
+            script: (api) => api.on(apiRoutes.createLinkCode, problem(429, 'rate-limited')),
+        });
+        await app.user.click(await screen.findByRole('button', { name: 'Create link code' }));
+        expect(await screen.findByText('Too many attempts. Wait a minute and try again.')).toBeTruthy();
+        expect(screen.queryByRole('link', { name: 'Go to billing' })).toBeNull();
+    });
+
     it('offers a new code once the shown one has expired', async () => {
         const app = renderApp({
             path: '/engines/new',

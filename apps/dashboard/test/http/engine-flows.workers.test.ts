@@ -21,4 +21,11 @@ describeEngineFlows(
         const rows = await env.DB.prepare('SELECT * FROM link_codes').all();
         return rows.results.flatMap((row) => Object.values(row));
     },
+    async (_, engineId) => {
+        await env.DB.prepare(
+            "UPDATE engines SET status = 'suspended', status_reason = 'owner-revoked' WHERE engine_id = ?",
+        )
+            .bind(engineId)
+            .run();
+    },
 );

@@ -5,6 +5,7 @@ import {
     ProblemDetails,
     REGISTER_PATH,
     TolerantRegisterEngineResponse,
+    type EngineId,
     type RegisterEngineRequest,
 } from '@ptbk/protocol';
 import { beforeEach, describe, expect, it } from 'vitest';
@@ -37,6 +38,8 @@ export function describeEngineFlows(
     name: string,
     makeHarness: () => AuthHarness,
     storedLinkCodeValues: (harness: AuthHarness) => Promise<readonly unknown[]>,
+    /** What D-06's revocation will do to the engine's row. */
+    revoke: (harness: AuthHarness, engineId: EngineId) => Promise<void>,
 ): void {
     describe(name, () => {
         let harness: AuthHarness;
@@ -178,6 +181,20 @@ export function describeEngineFlows(
             }
             const atLimit = await browser.request('POST', LINK_CODES);
             expect([atLimit.status, problemCode(atLimit)]).toEqual([403, 'engine-limit']);
+        });
+
+        it('refuses a new engine over the quota and a revoked engine at registration, keeping the codes', async () => {
+            const { browser } = await owner();
+            // Issued before the quota fills: issuance checks it too.
+            const [a, b, spare] = [await linkCode(browser), await linkCode(browser), await linkCode(browser)];
+            const first = await createTestEngine();
+            const second = await createTestEngine();
+            await expectRegistered(await register(await first.register(a)), first);
+            await expectRegistered(await register(await second.register(b)), second);
+            expectProblem(await register(await (await createTestEngine()).register(spare)), 403, 'engine-limit');
+            await revoke(harness, first.engineId);
+            expectProblem(await register(await first.register(spare)), 403, 'engine-suspended');
+            await expectRegistered(await register(await second.register(spare)), second);
         });
 
         it('limits active link codes per organization', async () => {

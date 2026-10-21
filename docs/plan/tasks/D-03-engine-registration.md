@@ -2,7 +2,7 @@
 
 - **Lane:** D · **Module:** `apps/dashboard` · **Milestone:** M3
 - **Depends on:** D-02, C-03, D-09, D-07
-- **Status:** in progress (feat/d-03-registration)
+- **Status:** done (#48)
 - **Spec:** Pairing and identity (First setup); Interfaces (draft) 1; Abuse on our domains (items 3 and 4); Metadata we still see; ADRs: [0006](../../adr/0006-organizations-and-roles.md), [0008](../../adr/0008-hono-for-http-apis.md), [0009](../../adr/0009-drizzle-and-migrations.md), [0014](../../adr/0014-cryptography.md), [0017](../../adr/0017-billing-entitlements.md)
 
 ## Goal
@@ -81,13 +81,13 @@ The link code only ties an engine to an organization (the tenant that owns engin
 
 ## Acceptance criteria
 
-- [ ] Unit tests for `registerEngine` with fakes: success links the engine to the code's org; expired code (injected `Clock`, 30 min + 1 s); used code; unknown code; same key twice from the same org (idempotent 200, no duplicate row, `engineVersion` and `mode` updated to the second request's values) and from another org (409 `engine-exists`, code unused); owner-revoked engine re-registering (403); suspended engine; with fake `Entitlements`, `engines.create` denied → `not-entitled` and `engines.max` reached → `engine-limit`, each leaving the code unused; link-code rate limits → `rate-limited`.
-- [ ] Org isolation: a user of org B cannot create link codes for org A (403) and `EngineStore` reads for org B never return org A's engines.
-- [ ] Workers tests through `SELF.fetch`: success response validates against the C-03 response schema and `engineId` equals the protocol derivation of the posted key; unknown field in the body → 400; malformed public key → 400; 5 KiB body → 413; rate limit → 429; two concurrent registrations with one code → exactly one 200; link code row holds only a hash (assert no column contains the plaintext code).
-- [ ] Link codes: `POST /api/engines/link-codes` without a session → 401 and the SPA route redirects to `/signin`; no endpoint returns the plaintext code after issuance.
-- [ ] Migration is drizzle-kit output and passes D-01's guards; schema allowlist updated.
-- [ ] `bun run check` passes.
-- [ ] **Status** line above set to `done (#<PR>)`.
+- [x] Unit tests for `registerEngine` with fakes: success links the engine to the code's org; expired code (injected `Clock`, 30 min + 1 s); used code; unknown code; same key twice from the same org (idempotent 200, no duplicate row, `engineVersion` and `mode` updated to the second request's values) and from another org (409 `engine-exists`, code unused); owner-revoked engine re-registering (403); suspended engine; with fake `Entitlements`, `engines.create` denied → `not-entitled` and `engines.max` reached → `engine-limit`, each leaving the code unused; link-code rate limits → `rate-limited`.
+- [x] Org isolation: a user of org B cannot create link codes for org A (403) and `EngineStore` reads for org B never return org A's engines.
+- [x] Workers tests through `SELF.fetch`: success response validates against the C-03 response schema and `engineId` equals the protocol derivation of the posted key; unknown field in the body → 400; malformed public key → 400; 5 KiB body → 413; rate limit → 429; two concurrent registrations with one code → exactly one 200; link code row holds only a hash (assert no column contains the plaintext code).
+- [x] Link codes: `POST /api/engines/link-codes` without a session → 401 and the SPA route redirects to `/signin`; no endpoint returns the plaintext code after issuance.
+- [x] Migration is drizzle-kit output and passes D-01's guards; schema allowlist updated.
+- [x] `bun run check` passes.
+- [x] **Status** line above set to `done (#<PR>)`.
 
 ## Risks and open points
 

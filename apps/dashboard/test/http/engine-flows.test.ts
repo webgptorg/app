@@ -23,4 +23,13 @@ describeEngineFlows(
         Promise.resolve(
             [...(stores.get(harness)?.state.linkCodes.values() ?? [])].flatMap((row): unknown[] => Object.values(row)),
         ),
+    (harness, engineId) => {
+        const state = stores.get(harness)?.state;
+        const engine = state?.engines.get(engineId);
+        if (state === undefined || engine === undefined) {
+            return Promise.reject(new Error('no such engine'));
+        }
+        state.engines.set(engineId, { ...engine, status: 'suspended', statusReason: 'owner-revoked' });
+        return Promise.resolve();
+    },
 );
