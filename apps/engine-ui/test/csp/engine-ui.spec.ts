@@ -3,8 +3,10 @@ import { ENGINE_API_PREFIX } from '@ptbk/engine-api';
 import {
     FAKE_AGENT_ID,
     FAKE_CHAT_ID,
+    FAKE_FILE_ID,
     FAKE_RUN_ID,
     FAKE_TRIGGER_ID,
+    HOSTILE_FILE_NAME,
     HOSTILE_RUN_TEXT,
     HOSTILE_TARGET_NAME,
     RAW_HEARTBEAT,
@@ -147,6 +149,65 @@ test.describe('the built bundle under the engine CSP', () => {
         await expect(table.getByRole('link', { name: 'Summarise open pull requests' })).toBeVisible();
         await expect(table.getByRole('link', { name: 'Write the weekly report' })).toHaveCount(0);
         expectCleanPage(report);
+    });
+
+    test('/files lists files with hostile names as text, restores its filters and meets the UX checks', async ({
+        page,
+        visit,
+    }) => {
+        const report = await visit('/files');
+        const table = page.getByRole('table');
+        await expect(table.getByRole('link', { name: 'photo.png' })).toBeVisible();
+        await expect(table.getByRole('link', { name: HOSTILE_FILE_NAME })).toBeVisible();
+        await expect(table.getByText('Infected', { exact: true })).toBeVisible();
+        await expect(page.locator('img[src="x"]')).toHaveCount(0);
+        expectCleanPage(report);
+
+        const filtered = await visit('/files?scan=infected,failed');
+        await expect(page.getByRole('combobox', { name: 'Scan' })).toHaveValue('infected,failed');
+        await expect(page.getByRole('table').getByRole('link', { name: 'invoice.png' })).toBeVisible();
+        await expect(page.getByRole('table').getByRole('link', { name: 'photo.png' })).toHaveCount(0);
+        expectCleanPage(filtered);
+    });
+
+    test('the file drawer previews a clean PNG from the engine, offers a plain download and meets the UX checks', async ({
+        page,
+        visit,
+    }) => {
+        const report = await visit(`/files?file=${FAKE_FILE_ID}`);
+        const drawer = page.getByRole('dialog', { name: 'File details' });
+        const preview = drawer.getByRole('img', { name: 'photo.png' });
+        await expect(preview).toBeVisible();
+        await expect.poll(() => preview.evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
+        await expect(drawer.getByRole('link', { name: 'Download photo.png' })).toHaveAttribute(
+            'href',
+            `${ENGINE_API_PREFIX}/files/${FAKE_FILE_ID}/content`,
+        );
+        expectCleanPage(report);
+
+        const infected = await visit('/files?file=file-infected');
+        const infectedDrawer = page.getByRole('dialog', { name: 'File details' });
+        await expect(infectedDrawer.getByRole('button', { name: 'Download invoice.png' })).toHaveAttribute(
+            'aria-disabled',
+            'true',
+        );
+        await expect(infectedDrawer.locator('img, iframe, object, embed')).toHaveCount(0);
+        expectCleanPage(infected);
+    });
+
+    test(`/agents/${FAKE_AGENT_ID}/files shows knowledge with the upload control, then outputs, and meets the UX checks`, async ({
+        page,
+        visit,
+    }) => {
+        const report = await visit(`/agents/${FAKE_AGENT_ID}/files`);
+        await expect(page.getByRole('tab', { name: 'Files' })).toHaveAttribute('aria-selected', 'true');
+        await expect(page.getByRole('table').getByRole('link', { name: 'notes.md' })).toBeVisible();
+        await expect(page.getByRole('button', { name: 'Choose files' })).toBeVisible();
+        expectCleanPage(report);
+
+        const outputs = await visit(`/agents/${FAKE_AGENT_ID}/files?section=other`);
+        await expect(page.getByRole('table').getByRole('link', { name: 'photo.png' })).toBeVisible();
+        expectCleanPage(outputs);
     });
 
     test(`/runs/${FAKE_RUN_ID} keeps agent output inert, keeps Cancel in reach at 360 px and meets the UX checks`, async ({
