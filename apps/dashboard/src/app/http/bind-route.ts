@@ -7,6 +7,7 @@ import { SECRET_PATTERN } from '../../domain/auth/secrets';
 import type { Authorizer, Resource } from '../../domain/authz/authorizer';
 import { DASHBOARD_POLICY, type DashboardAction } from '../../domain/authz/policy';
 import type { Logger } from '../../domain/ports/logger';
+import type { RelayActor } from '../../domain/registry/authenticate-relay';
 import { RATE_LIMITS, type RateLimiter, type RateLimitRuleName } from '../../domain/ports/rate-limiter';
 import type {
     AuthMode,
@@ -50,12 +51,14 @@ export interface RouteArgs<C extends RouteContract> {
     readonly request: RequestContext;
     /** Present exactly when the route's `auth` is `session`. */
     readonly session: C['auth'] extends 'session' ? ActiveSession : null;
+    /** Present exactly when the route's `auth` is `relay-token`. */
+    readonly relay: C['auth'] extends 'relay-token' ? RelayActor : null;
 }
 
 export type RouteHandler<C extends RouteContract> = (args: RouteArgs<C>) => Promise<RouteResult<C>>;
 
 /** Modes whose signature arrives in a header and covers the raw body. */
-export type SignatureMode = Exclude<AuthMode, 'public' | 'session' | 'engine-signature'>;
+export type SignatureMode = Exclude<AuthMode, 'public' | 'session' | 'engine-signature' | 'relay-token'>;
 
 /** Checks a signature over the exact request bytes and only then reads them; `payload` is parsed by the contract. */
 export type SignatureVerifier = (
@@ -71,6 +74,11 @@ export interface RouteBinderDeps {
     readonly rateLimiter: RateLimiter;
     readonly logger: Logger;
     resolveSession(token: string): Promise<ActiveSession | null>;
+    /** The `Authorization` header as sent, or null; `defer` is the request's `waitUntil`. */
+    authenticateRelay(
+        authorization: string | null,
+        defer: (task: Promise<unknown>) => void,
+    ): Promise<RelayActor | null>;
     readonly signatures: Readonly<Record<SignatureMode, SignatureVerifier>>;
 }
 
@@ -99,6 +107,10 @@ export function isIpRateLimit(rule: string): rule is RateLimitRuleName {
     return Object.hasOwn(RATE_LIMITS, rule) && rule.endsWith('-ip');
 }
 
+export function isRelayRateLimit(rule: string): rule is RateLimitRuleName {
+    return Object.hasOwn(RATE_LIMITS, rule) && rule.endsWith('-relay');
+}
+
 /** Throws at mount time, so a route that skips a safeguard never serves a request. */
 export function assertMountable(contract: RouteContract, mount: string): void {
     const problems: string[] = [];
@@ -108,10 +120,14 @@ export function assertMountable(contract: RouteContract, mount: string): void {
     if (contract.auth === 'session' && (contract.permission === null || !isPolicyAction(contract.permission))) {
         problems.push('session route without a policy permission');
     }
-    if (contract.auth !== 'session' && (contract.rateLimit === null || !isIpRateLimit(contract.rateLimit))) {
+    if (contract.auth === 'relay-token') {
+        if (contract.rateLimit === null || !isRelayRateLimit(contract.rateLimit)) {
+            problems.push('relay route without a per-relay rate limit');
+        }
+    } else if (contract.auth !== 'session' && (contract.rateLimit === null || !isIpRateLimit(contract.rateLimit))) {
         problems.push('non-session route without a per-IP rate limit');
     }
-    if (contract.rateLimit !== null && !isIpRateLimit(contract.rateLimit)) {
+    if (contract.rateLimit !== null && !isIpRateLimit(contract.rateLimit) && !isRelayRateLimit(contract.rateLimit)) {
         problems.push('unknown rate limit');
     }
     if ((contract.input.body === null) !== (contract.input.maxBodyBytes === 0)) {
@@ -283,8 +299,13 @@ export function createRouteBinder(deps: RouteBinderDeps): RouteBinder {
         | { readonly kind: 'response'; readonly response: Response }
     > {
         // Header-signed routes were verified with their body, before any of it was parsed; engine-signed ones carry
-        // their proof in the parsed body, which the handler verifies first.
-        if (contract.auth === 'public' || contract.auth === 'engine-signature' || isSignatureMode(contract.auth)) {
+        // their proof in the parsed body, which the handler verifies first; relays authenticated before everything.
+        if (
+            contract.auth === 'public' ||
+            contract.auth === 'engine-signature' ||
+            contract.auth === 'relay-token' ||
+            isSignatureMode(contract.auth)
+        ) {
             return { kind: 'ok', session: null };
         }
         const token = request.secretCookie(SESSION_COOKIE);
@@ -321,16 +342,30 @@ export function createRouteBinder(deps: RouteBinderDeps): RouteBinder {
             routes.push(contract);
             router.on(contract.method, contract.path.slice(mount.length), async (context) => {
                 const { rateLimit } = contract;
-                if (rateLimit !== null && isIpRateLimit(rateLimit)) {
-                    const outcome = await deps.rateLimiter.consume(
-                        rateLimit,
-                        clientIp(context),
-                        context.req.raw.signal,
-                    );
+                const limited = async (rule: RateLimitRuleName, key: string): Promise<boolean> => {
+                    const outcome = await deps.rateLimiter.consume(rule, key, context.req.raw.signal);
                     if (outcome === 'unavailable') {
-                        deps.logger.error('rate-limit.unavailable', { rule: rateLimit });
+                        deps.logger.error('rate-limit.unavailable', { rule });
                     }
-                    if (outcome !== 'allowed') {
+                    return outcome !== 'allowed';
+                };
+                if (rateLimit !== null && isIpRateLimit(rateLimit) && (await limited(rateLimit, clientIp(context)))) {
+                    return problemResponse(429, 'rate-limited');
+                }
+                // A relay is known only by its key, so it authenticates before its own budget is counted.
+                let relay: RelayActor | null = null;
+                if (contract.auth === 'relay-token') {
+                    relay = await deps.authenticateRelay(context.req.header('Authorization') ?? null, (task) => {
+                        context.executionCtx.waitUntil(task);
+                    });
+                    if (relay === null) {
+                        return problemResponse(401, 'unauthorized');
+                    }
+                    if (
+                        rateLimit !== null &&
+                        isRelayRateLimit(rateLimit) &&
+                        (await limited(rateLimit, relay.relayId))
+                    ) {
                         return problemResponse(429, 'rate-limited');
                     }
                 }
@@ -365,6 +400,7 @@ export function createRouteBinder(deps: RouteBinderDeps): RouteBinder {
                     input,
                     request,
                     session: auth.session as RouteArgs<typeof contract>['session'],
+                    relay: relay as RouteArgs<typeof contract>['relay'],
                 });
                 switch (result.kind) {
                     case 'ok':

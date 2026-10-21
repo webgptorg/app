@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 
 import { createAccountFlows } from '../../domain/auth/account';
+import { authenticateRelay } from '../../domain/registry/authenticate-relay';
 import { createEngineCreationPolicy } from '../../domain/registration/engine-creation-policy';
 import { toBase64Url } from '../../domain/auth/secrets';
 import type { RouteContract } from '../../shared/api/contract';
@@ -50,6 +51,7 @@ export function createHttpApp(deps: HttpAppDeps): HttpApp {
         rateLimiter: deps.rateLimiter,
         logger: deps.logger,
         resolveSession: (token) => accounts.resolveSession(token),
+        authenticateRelay: (authorization, defer) => authenticateRelay(deps, authorization, defer),
         signatures: {
             'stripe-signature': async (payload, signature) => {
                 const verified = await deps.billing.verifyWebhook(payload, signature);
@@ -61,7 +63,7 @@ export function createHttpApp(deps: HttpAppDeps): HttpApp {
     const routers = [
         [API_MOUNT, createApiRouter({ ...deps, policy, routes })],
         [V1_MOUNT, createV1Router({ ...deps, policy, routes })],
-        [INTERNAL_MOUNT, createInternalRouter()],
+        [INTERNAL_MOUNT, createInternalRouter({ ...deps, routes })],
         [WEBHOOKS_MOUNT, createWebhooksRouter({ billing: deps.billing, routes })],
     ] as const;
     for (const [mount, router] of routers) {

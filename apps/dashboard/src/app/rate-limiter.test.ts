@@ -34,15 +34,23 @@ describe('production rate limiter selection', () => {
             verify: binding('verify'),
             publicRead: binding('public-read'),
             webhook: binding('webhook'),
+            registry: binding('registry'),
             hourly: {
                 idFromName: () => ({}) as DurableObjectId,
                 get: () => ({ consume: () => (calls.push('hourly'), Promise.resolve('allowed')) }),
             },
         });
-        const rules = ['options-ip', 'verify-ip', 'public-read-ip', 'webhook-ip', 'recovery-request-email'] as const;
+        const rules = [
+            'options-ip',
+            'verify-ip',
+            'public-read-ip',
+            'webhook-ip',
+            'registry-relay',
+            'recovery-request-email',
+        ] as const;
         for (const rule of rules) {
             expect(await limiter.consume(rule, '192.0.2.1', signal)).toBe('allowed');
         }
-        expect(calls).toEqual(['options', 'verify', 'public-read', 'webhook', 'hourly']);
+        expect(calls).toEqual(['options', 'verify', 'public-read', 'webhook', 'registry', 'hourly']);
     });
 });

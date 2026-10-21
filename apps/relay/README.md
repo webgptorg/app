@@ -28,7 +28,7 @@ Only `RELAY_*` and `LOG_LEVEL` are read; an unknown `RELAY_*` name is an error, 
 | `RELAY_ENGINE_DOMAIN`                 | required            | Engine default hostnames are `<engineId>.<engine domain>`                                                                        |
 | `RELAY_TLS_CERT_FILE`                 | required            | Path to the relay's own certificate (PEM)                                                                                        |
 | `RELAY_TLS_KEY_FILE`                  | required            | Path to the relay's own private key (PEM)                                                                                        |
-| `RELAY_REGISTRY_KIND`                 | required            | `static` (a JSON file) or `http` (the dashboard, D-04; refused until that adapter exists)                                        |
+| `RELAY_REGISTRY_KIND`                 | required            | `static` (a JSON file, local dev and e2e) or `http` (the dashboard's registry API, D-04)                                         |
 | `RELAY_REGISTRY_FILE`                 | required for static | Path to the static registry file; not allowed with `http`                                                                        |
 | `RELAY_REGISTRY_URL`                  | required for http   | Dashboard base URL: https (http only on 127.0.0.1, ::1, localhost), no credentials, query or fragment; not allowed with `static` |
 | `RELAY_REGISTRY_TOKEN`                | required for http   | Relay token, `ptbk_rt_` and 43 base64url characters; secret, never logged                                                        |
@@ -70,6 +70,10 @@ For local development and e2e (X-01 generates it). Strict: unknown fields, dupli
 ```
 
 A custom hostname routes only if its claim verifies and its CNAME points at exactly `<engineId>.<engine domain>` (ADR 0014).
+
+## Dashboard registry
+
+With `RELAY_REGISTRY_KIND=http` the relay reads `GET <RELAY_REGISTRY_URL>/internal/v1/engines/<engineId>` (C-03 Interface 2) with `Authorization: Bearer <RELAY_REGISTRY_TOKEN>`, one request per lookup, no redirects followed, within `RELAY_REGISTRY_TIMEOUT_MS`. The body (at most 64 KiB) is read tolerantly with C-03's `TolerantRegistryEntry`: known fields are validated, unknown ones from a newer dashboard are dropped. 200 is the entry, 404 an unknown engine; a timeout, a network error, any other status (5xx, 401/403 for a revoked or expired key, 429) and an invalid body are `unavailable`, logged as `registry.error` with the engine ID and the failure kind only. The adapter caches nothing and trusts nothing it reads: the cache below adds freshness and the stale window, the handshake checks that the engine ID derives from the entry's key and that this key signed the tunnel auth, and every custom hostname needs a verifying claim and a matching CNAME, so a compromised dashboard can deny service but cannot route one engine's hostname to another. Relay keys are minted per relay with the dashboard's `scripts/mint-relay-key.ts`.
 
 ## Registry and DNS caching
 

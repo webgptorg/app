@@ -212,3 +212,19 @@ export const engines = sqliteTable(
         index('engines_org_id_idx').on(t.orgId),
     ],
 );
+
+// Relay keys (D-04): one row per token, so two live tokens of one relay overlap during rotation (ADR 0014).
+export const relayTokens = sqliteTable(
+    'relay_tokens',
+    {
+        id: text('id').primaryKey(),
+        relayId: text('relay_id').notNull(),
+        // SHA-256 of the token; the token itself is printed once by scripts/mint-relay-key.ts and never stored.
+        tokenHash: text('token_hash').notNull().unique(),
+        createdAt: integer('created_at').notNull(),
+        expiresAt: integer('expires_at').notNull(),
+        lastUsedAt: integer('last_used_at'),
+        revokedAt: integer('revoked_at'),
+    },
+    (t) => [index('relay_tokens_relay_id_idx').on(t.relayId)],
+);

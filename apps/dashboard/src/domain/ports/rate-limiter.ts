@@ -7,7 +7,8 @@ export interface RateLimitRule {
 }
 
 /**
- * Rules ending in `-ip` are keyed by the client IP and may be a route's `rateLimit`; the email rules are applied by the
+ * Rules ending in `-ip` are keyed by the client IP and may be a route's `rateLimit`, as may rules ending in `-relay`,
+ * keyed by the authenticated relay's ID on `relay-token` routes; the email rules are applied by the
  * flows that send mail. Production adapters only ever see an HMAC of the key.
  */
 export const RATE_LIMITS = {
@@ -25,6 +26,8 @@ export const RATE_LIMITS = {
     'registration-ip': { limit: 20, windowMs: HOUR_MS },
     // Stripe webhooks: generous, since Stripe sends bursts from few addresses and retries anything refused.
     'webhook-ip': { limit: 600, windowMs: MINUTE_MS },
+    // Registry reads (D-04): each relay re-reads every connected engine once per 5-minute TTL, plus new tunnels.
+    'registry-relay': { limit: 600, windowMs: MINUTE_MS },
 } as const satisfies Readonly<Record<string, RateLimitRule>>;
 
 export type RateLimitRuleName = keyof typeof RATE_LIMITS;

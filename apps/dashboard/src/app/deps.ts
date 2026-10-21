@@ -7,6 +7,9 @@ import type { Authorizer } from '../domain/authz/authorizer';
 import type { DashboardAction } from '../domain/authz/policy';
 import type { EngineStore } from '../domain/registration/engine-store';
 import type { LinkCodeStore } from '../domain/registration/link-code-store';
+import type { EngineHostnameStore } from '../domain/registry/engine-hostname-store';
+import type { RegistryReader } from '../domain/registry/registry-reader';
+import type { RelayTokenStore } from '../domain/registry/relay-token-store';
 import type { Clock } from '../domain/ports/clock';
 import type { EmailSender } from '../domain/ports/email-sender';
 import type { Logger } from '../domain/ports/logger';
@@ -32,6 +35,10 @@ export interface DashboardDeps {
     readonly entitlements: Entitlements;
     readonly linkCodes: LinkCodeStore;
     readonly engines: EngineStore;
+    readonly relayTokens: RelayTokenStore;
+    /** Relays' unscoped read of engines (D-04). */
+    readonly registry: RegistryReader;
+    readonly engineHostnames: EngineHostnameStore;
     /** The fake outbox behind `email` when `config.adapters.email` is `fake` (dev only), else null. */
     readonly devOutbox: FakeEmailSender | null;
 }

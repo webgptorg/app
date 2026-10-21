@@ -31,6 +31,8 @@ const ALLOWLIST: Readonly<Record<string, readonly string[]>> = {
     // the engine that redeemed it.
     link_codes: ['code_hash', 'org_id', 'created_by_user_id', 'created_at', 'expires_at', 'used_at', 'engine_id'],
     memberships: ['org_id', 'user_id', 'role', 'created_at'],
+    // Relay keys: the token only as SHA-256, which relay it belongs to, its lifetime and last use (D-04).
+    relay_tokens: ['id', 'relay_id', 'token_hash', 'created_at', 'expires_at', 'last_used_at', 'revoked_at'],
     organizations: ['id', 'kind', 'name', 'created_at'],
     // Dashboard passkeys: public keys and counters only; private keys never leave the authenticator.
     passkeys: [

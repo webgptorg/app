@@ -7,8 +7,10 @@ import { fileURLToPath } from 'node:url';
 import { TUNNEL_CLOSE_CODE } from '@ptbk/protocol';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+import { createInMemoryRegistry } from '../src/adapters/in-memory-registry';
 import { connectEngine } from '../src/testing/engine-client';
 import { createTestEngine } from '../src/testing/engines';
+import { startFakeDashboard } from '../src/testing/fake-dashboard';
 import { RELAY_ID, relayCertificate } from '../src/testing/relay-harness';
 
 // The production bundle, run from a directory with no node_modules (the `test` script builds it first).
@@ -169,18 +171,38 @@ describe('dist/main.mjs', () => {
         expect(relay.lines()[0]).toMatchObject({ event: 'relay.start-failed' });
     });
 
-    it('refuses the http registry until D-04 adds its adapter', async () => {
-        const relay = run(dir, {
-            ...env,
-            RELAY_REGISTRY_KIND: 'http',
-            RELAY_REGISTRY_FILE: '',
-            RELAY_REGISTRY_URL: 'https://app.ptbk.test',
-            RELAY_REGISTRY_TOKEN: TOKEN,
+    it('authenticates a tunnel against the dashboard registry over HTTP, never logging the relay key', async () => {
+        const engine = await createTestEngine(111);
+        const dashboard = await startFakeDashboard(createInMemoryRegistry([[engine.engineId, engine.entry]]), {
+            token: TOKEN,
         });
-        await expect(relay.exited).resolves.toBe(1);
-        const [failure] = relay.lines();
-        expect(failure?.['event']).toBe('relay.start-failed');
-        expect(failure?.['problem']).toMatch(/D-04/);
-        expect(relay.output()).not.toContain(TOKEN);
+        try {
+            const relay = run(dir, {
+                ...env,
+                RELAY_REGISTRY_KIND: 'http',
+                RELAY_REGISTRY_FILE: '',
+                RELAY_REGISTRY_URL: dashboard.url,
+                RELAY_REGISTRY_TOKEN: TOKEN,
+            });
+            await relay.waitFor('relay.started');
+            const started = relay.lines().find((line) => line['event'] === 'relay.started');
+            expect(started?.['registry']).toBe('http');
+            const client = connectEngine({
+                port: Number(started?.['port']),
+                relayId: RELAY_ID,
+                ca: relayCertificate().cert,
+                signer: engine.signer,
+            });
+            const challenge = await client.nextMessage();
+            if (challenge.type !== 'challenge') throw new Error('expected a challenge');
+            await client.authenticate(challenge);
+            expect(await client.nextMessage()).toMatchObject({ type: 'ready', hostnames: [engine.defaultHostname] });
+            expect(dashboard.authorizations).toEqual([`Bearer ${TOKEN}`]);
+            relay.kill('SIGTERM');
+            await expect(relay.exited).resolves.toBe(0);
+            expect(relay.output()).not.toContain(TOKEN);
+        } finally {
+            await dashboard.close();
+        }
     });
 });

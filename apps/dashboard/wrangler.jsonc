@@ -58,6 +58,7 @@
         { "name": "RATE_LIMIT_VERIFY", "namespace_id": "1002", "simple": { "limit": 30, "period": 60 } },
         { "name": "RATE_LIMIT_PUBLIC_READ", "namespace_id": "1003", "simple": { "limit": 120, "period": 60 } },
         { "name": "RATE_LIMIT_WEBHOOK", "namespace_id": "1004", "simple": { "limit": 600, "period": 60 } },
+        { "name": "RATE_LIMIT_REGISTRY", "namespace_id": "1005", "simple": { "limit": 600, "period": 60 } },
     ],
     "env": {
         "staging": {
@@ -108,6 +109,7 @@
                     "simple": { "limit": 120, "period": 60 },
                 },
                 { "name": "RATE_LIMIT_WEBHOOK", "namespace_id": "2004", "simple": { "limit": 600, "period": 60 } },
+                { "name": "RATE_LIMIT_REGISTRY", "namespace_id": "2005", "simple": { "limit": 600, "period": 60 } },
             ],
         },
         "production": {
@@ -158,6 +160,7 @@
                     "simple": { "limit": 120, "period": 60 },
                 },
                 { "name": "RATE_LIMIT_WEBHOOK", "namespace_id": "3004", "simple": { "limit": 600, "period": 60 } },
+                { "name": "RATE_LIMIT_REGISTRY", "namespace_id": "3005", "simple": { "limit": 600, "period": 60 } },
             ],
         },
     },

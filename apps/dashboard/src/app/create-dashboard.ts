@@ -10,6 +10,8 @@ import { createDatabase } from '../adapters/db/client';
 import { createD1AuthStore } from '../adapters/db/d1-auth-store';
 import { createD1BillingStore } from '../adapters/db/d1-billing-store';
 import { createD1EngineStore, createD1LinkCodeStore } from '../adapters/db/d1-registration-store';
+import { createD1RegistryReader, createD1RelayTokenStore } from '../adapters/db/d1-registry-store';
+import { noCustomHostnames } from '../adapters/no-custom-hostnames';
 import { systemClock } from '../adapters/system-clock';
 import { createSimpleWebAuthnRelyingParty } from '../adapters/webauthn/simple-webauthn-relying-party';
 import { createAuthorizer } from '../domain/authz/authorizer';
@@ -95,6 +97,7 @@ function rateLimiter(env: Env, config: DashboardConfig, dev: DevAdapters) {
                 verify: env.RATE_LIMIT_VERIFY,
                 publicRead: env.RATE_LIMIT_PUBLIC_READ,
                 webhook: env.RATE_LIMIT_WEBHOOK,
+                registry: env.RATE_LIMIT_REGISTRY,
                 hourly: env.HOURLY_RATE_LIMITER,
             });
     }
@@ -145,6 +148,9 @@ export function createDashboard(
         entitlements: createSubscriptionEntitlements({ store: billingStore, catalogue: config.plans }),
         linkCodes: createD1LinkCodeStore(db),
         engines: createD1EngineStore(db),
+        relayTokens: createD1RelayTokenStore(db),
+        registry: createD1RegistryReader(db),
+        engineHostnames: noCustomHostnames,
         relyingParty: createSimpleWebAuthnRelyingParty({ origin: config.dashboardOrigin, rpName: RP_NAME }),
         rateLimiter: rateLimiter(env, config, dev),
         links: authLinks(config.dashboardOrigin),

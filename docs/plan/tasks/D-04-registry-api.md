@@ -2,7 +2,7 @@
 
 - **Lane:** D · **Module:** `apps/dashboard` and `apps/relay` (two modules, see Context) · **Milestone:** M3
 - **Depends on:** D-03, R-03
-- **Status:** todo
+- **Status:** done (#52)
 - **Spec:** Interfaces (draft) 2; Relay and tunnel (Enterprise custom domains); Operations (Dashboard or Cloudflare down); Abuse on our domains (item 8); ADRs: [0005](../../adr/0005-modular-architecture.md), [0014](../../adr/0014-cryptography.md)
 
 ## Goal
@@ -65,13 +65,13 @@ Relay (`apps/relay`):
 
 ## Acceptance criteria
 
-- [ ] Dashboard migration is drizzle-kit output and passes D-01's guards; schema allowlist updated.
-- [ ] Dashboard Workers tests: no header, malformed token, wrong token, revoked token and expired token → 401; two live tokens for one relay both authenticate, and revoking one leaves the other working; `scripts/mint-relay-key.ts` output matches the token format and the row holds only the hash; malformed engine ID → 400; unknown → 404; active engine → 200 matching the C-03 schema with no org, user or billing fields; suspended engine → `status: "suspended"`; a session cookie alone does not authenticate.
-- [ ] Relay adapter tests (injected `fetch`): 200 → `found` with a parsed entry; 404 → `not-found`; dashboard 500, 401, timeout and invalid JSON → `unavailable`; the token is sent and never logged. Through `createCachedRegistry` with a fake `Clock`: fresh hit makes no request; dashboard down serves stale until 24 h, then `unavailable`; ten concurrent lookups make one request. An entry whose key differs from the tunnel's key → `auth-failed`; through `resolveRoutableHostnames`, a custom hostname with a bad claim is dropped and a good one kept.
-- [ ] The shared registry port test suite from R-02 runs against the in-memory, static and HTTP adapters.
-- [ ] A relay test shows a connected tunnel closed within one TTL after its entry turns `suspended`, and closed or refused once the stale entry passes 24 h during a dashboard outage.
-- [ ] `bun run check` passes.
-- [ ] **Status** line above set to `done (#<PR>)`.
+- [x] Dashboard migration is drizzle-kit output and passes D-01's guards; schema allowlist updated.
+- [x] Dashboard Workers tests: no header, malformed token, wrong token, revoked token and expired token → 401; two live tokens for one relay both authenticate, and revoking one leaves the other working; `scripts/mint-relay-key.ts` output matches the token format and the row holds only the hash; malformed engine ID → 400; unknown → 404; active engine → 200 matching the C-03 schema with no org, user or billing fields; suspended engine → `status: "suspended"`; a session cookie alone does not authenticate.
+- [x] Relay adapter tests (injected `fetch`): 200 → `found` with a parsed entry; 404 → `not-found`; dashboard 500, 401, timeout and invalid JSON → `unavailable`; the token is sent and never logged. Through `createCachedRegistry` with a fake `Clock`: fresh hit makes no request; dashboard down serves stale until 24 h, then `unavailable`; ten concurrent lookups make one request. An entry whose key differs from the tunnel's key → `auth-failed`; through `resolveRoutableHostnames`, a custom hostname with a bad claim is dropped and a good one kept.
+- [x] The shared registry port test suite from R-02 runs against the in-memory, static and HTTP adapters.
+- [x] A relay test shows a connected tunnel closed within one TTL after its entry turns `suspended`, and closed or refused once the stale entry passes 24 h during a dashboard outage.
+- [x] `bun run check` passes.
+- [x] **Status** line above set to `done (#<PR>)`.
 
 ## Risks and open points
 
