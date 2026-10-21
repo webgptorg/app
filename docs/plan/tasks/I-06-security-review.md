@@ -45,6 +45,12 @@ The spec makes this review the gate between v0 and release; an external audit co
 - [ ] `bun run check` passes.
 - [ ] **Status** line above set to `done (#<PR>)`.
 
+## Apply (needs credentials)
+
+Tracked in [apply.md](../apply.md). Threat model, scope and checklists are written before any credential exists.
+
+- Run the review on a staging environment that matches production, after the key ceremony, with the named reviewers.
+
 ## Risks and open points
 
 - Reviewer availability sets the schedule; book it when M4 tasks are near done.

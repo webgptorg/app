@@ -20,12 +20,12 @@ The host-side parts (persistent CA, trust script, resolver, mailbox page, and a 
 - `bun run dev:stack` with `up`, `down`, `reset` (drops the volumes) and `logs`, implemented in `e2e/src/cli.ts` next to the existing commands, as compose project `ptbk-dev` so it never collides with the test project. It combines `compose.yaml`, `compose.dashboard.yaml` (X-05) and a new `compose.dev.yaml` that:
   - uses named volumes, so the dashboard's D1, the engine's key and data, and the relays' state survive `down` and `up`;
   - leaves out Playwright and the test probes;
-  - publishes on loopback only: relay-a on `127.0.0.1:443`, the dashboard on `127.0.0.1:8444`, CoreDNS on `127.0.0.1:5353` (answering `127.0.0.1` for `app.ptbk.test` and `*.engine.test`), the mock engine's control listener on `127.0.0.1:4480`;
+  - publishes on loopback only: relay-a on `127.0.0.1:443`, the dashboard on `127.0.0.1:8444`, CoreDNS on `127.0.0.1:1053` (answering `127.0.0.1` for `app.ptbk.test` and `*.engine.test`; 5353 is mDNS on macOS). The mock engine's control listener is not published;
   - runs the mock engine with `MOCK_DEV_LOGIN` enabled and the `small-team` scenario, so the engine UI can be signed into without the engine's own passkey setup.
 - A persistent, name-constrained dev CA in `.dev/pki/` (git-ignored), created on first use and reused by the stack's `init` instead of a fresh CA per run. The e2e suite keeps generating its own.
-- `bun run dev:trust` and `bun run dev:untrust`: add or remove the dev CA (macOS login keychain; NSS database on Linux) and the resolver entries for `test` and `ptbk.test` (`/etc/resolver/` on macOS, `systemd-resolved` on Linux), with one `sudo` prompt. `dev:stack up --no-system` changes nothing on the host and prints a Chromium launch line with `--host-resolver-rules` and a separate profile instead.
+- `bun run dev:trust` and `bun run dev:untrust`: add or remove the dev CA (macOS login keychain; NSS database on Linux) and the resolver entries for `ptbk.test` and `engine.test` only, never all of `.test` (`/etc/resolver/` on macOS, `systemd-resolved` on Linux), with one `sudo` prompt. `dev:stack up --no-system` changes nothing on the host and prints a Chromium launch line with `--host-resolver-rules` and a separate profile instead.
 - `bun run dev:link <code>`: starts or restarts the stack's mock engine with `PTBK_LINK_CODE`, so the install command the dashboard shows in dev (D-03) is what a person pastes.
-- Dashboard: `GET /__dev/mailbox`, a plain HTML list of the fake email outbox with clickable links, mounted only when `adapters.email = 'fake'` (D-01's config already allows that only in dev). Declared through the route helper and covered by the route-table test.
+- Dashboard mailbox, reusing D-02's existing `GET /api/__dev/emails` (mounted only with the fake email adapter): `to` becomes optional and, when absent, lists every recorded message. An SPA page `/__dev/mailbox` shows the outbox with clickable links, rendered under the normal dashboard CSP and routed only when the email adapter is `fake` (D-01's config already allows that only in dev). No new server-rendered HTML route.
 - Mock engine: a `register` script in `apps/mock-engine/package.json` (the README already documents the command).
 - `docs/development.md`: a "Local stack" section: prerequisites, first run, trusting and untrusting, linking, resetting, troubleshooting.
 
@@ -44,11 +44,12 @@ The host-side parts (persistent CA, trust script, resolver, mailbox page, and a 
 
 ## Acceptance criteria
 
-- [ ] On a fresh macOS machine with Docker Desktop or OrbStack: `bun run dev:trust`, then `bun run dev:stack up`. In real Chrome, a person signs up at `https://app.ptbk.test:8444` with a Touch ID passkey (link from `/__dev/mailbox`), completes the fake checkout, runs `bun run dev:link <code>` with the code shown, sees the engine online, clicks "Open", signs in with the dev login and chats with an agent. Recorded in the PR (screen recording or screenshots).
-- [ ] `bun run dev:stack down` and `up` keep the account, the passkey and the linked engine.
+- [ ] Automated smoke test over the `--no-system` path: Playwright with a WebAuthn virtual authenticator signs up via a link from `/__dev/mailbox`, completes the fake checkout, links the engine with `bun run dev:link <code>`, sees it online, opens it, signs in with the dev login and chats with an agent.
+- [ ] Manual evidence on a fresh macOS machine with Docker Desktop or OrbStack: `bun run dev:trust`, then `bun run dev:stack up`. In real Chrome, a person signs up at `https://app.ptbk.test:8444` with a Touch ID passkey (link from `/__dev/mailbox`), completes the fake checkout, runs `bun run dev:link <code>` with the code shown, sees the engine online, clicks "Open", signs in with the dev login and chats with an agent. Recorded in the PR (screen recording or screenshots).
+- [ ] `bun run dev:stack down` and `up` keep the account, the passkey and the linked engine. The fake billing state is in memory and is lost on `down`; that is accepted, and the checkout is repeated.
 - [ ] `bun run dev:untrust` leaves no CA in the keychain or NSS database and no resolver entry (checked by a script).
 - [ ] No published port binds to anything but `127.0.0.1` (test over the merged compose config).
-- [ ] `/__dev/mailbox` returns 404 when the email adapter is not `fake` (test).
+- [ ] With an email adapter other than `fake`, `/api/__dev/emails` returns 404 and the SPA has no `/__dev/mailbox` route (tests).
 - [ ] The e2e suite still runs unchanged and green.
 - [ ] `docs/development.md` has the "Local stack" section.
 - [ ] `bun run check` passes.
@@ -56,6 +57,6 @@ The host-side parts (persistent CA, trust script, resolver, mailbox page, and a 
 
 ## Risks and open points
 
-- Binding port 443 on the host: Docker Desktop and OrbStack allow it without root on macOS, but other setups may not. The engine "Open" link has no port, so 443 is required; if it cannot be bound, fall back to `--no-system` with Chromium's `--host-resolver-rules` mapping to another port, and document it.
+- Binding port 443 on the host: on macOS, unprivileged binds below 1024 work only on the wildcard address, not on `127.0.0.1`. Docker Desktop needs its privileged-port helper (admin password once); OrbStack handles it. The engine "Open" link has no port, so 443 is required. If 443 on loopback is unavailable, `dev:stack up` fails with a clear message and points to `--no-system`, whose Chromium `--host-resolver-rules` map the hostnames to another loopback port; it never falls back to binding the wildcard address.
 - WebAuthn requires a secure context with a trusted certificate; without `dev:trust` (or the `--no-system` Chromium profile with the CA imported) passkeys will not work.
 - Docker Desktop's DNS and the host resolver differ between versions; test both Docker Desktop and OrbStack.

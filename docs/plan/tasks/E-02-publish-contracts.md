@@ -15,7 +15,7 @@ ADR 0002: contracts start here so they can iterate with the relay and mock engin
 
 ## Scope
 
-- Repository boundary: agents work only in `webgptorg/app`. They never push to, open pull requests in or file issues on `webgptorg/promptbook` or any other repository; every step in the destination repository is done by a human (or by an agent the human starts there with explicit permission). Agents prepare the material here: the extraction script, the destination's workflow files and the consumer PR.
+- Repository boundary: agents work only in `webgptorg/app`. They never push to, open pull requests in or file issues on `webgptorg/promptbook` or any other repository; every step in the destination repository is done by a human. Agents prepare the material here: the extraction script, the destination's workflow files and the consumer PR.
 - Agree with the engine team (human decision, record it in a new ADR that supersedes ADR 0002; ADR 0002 itself is not edited): destination (`webgptorg/promptbook` monorepo `packages/` or a separate public repo), npm scope and package names, and the moment of the move.
 - In the destination: copy `packages/protocol`, `packages/engine-api`, `packages/conformance` and `docs/engine-integration/` with git history if practical (`git filter-repo`), keep MIT licences, keep tests and golden vectors, and keep their CI green there.
 - Release workflow in the destination: npm trusted publishing (OIDC, no long-lived npm token), `--provenance`, a protected environment with a second maintainer's approval, SHA-pinned actions, read-only default permissions, no caches, no `pull_request_target` (spec, Security hardening 10). Packages use SemVer; message versions (`v1`, `v2`) stay independent of package versions.

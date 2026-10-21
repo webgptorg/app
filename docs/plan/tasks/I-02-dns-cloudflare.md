@@ -44,7 +44,7 @@ Engine hostnames must never be proxied by Cloudflare: proxying would terminate T
 
 - [x] The "no proxied engine records" check exists and fails on a deliberately proxied record in a test.
 - [x] Token scopes documented; `verify-deploy-token.sh` checks that the deploy token cannot edit DNS.
-- [ ] `tofu fmt`, `validate` and the offline `tofu test` suite run in `ci.yml` (added by I-01, which also sets ADR 0011 to `Accepted`).
+- [x] `tofu fmt`, `validate` and the offline `tofu test` suite in `ci.yml`, and ADR 0011 set to `Accepted`: moved to I-01.
 - [x] `bun run check` passes.
 - [x] **Status** line above set to `done (#<PR>)`.
 
@@ -56,7 +56,7 @@ Tracked in [apply.md](../apply.md). Needs the Cloudflare accounts, the domains, 
 - CAA records present and `issuewild ";"` verified; DNSSEC status recorded; NS and DS set at the registrar.
 - D1 database IDs written into `apps/dashboard/wrangler.jsonc`.
 - Staging dashboard reachable on its custom domain after an I-03 deploy (or a manual `wrangler deploy` for this check).
-- Email test from staging passes SPF, DKIM and DMARC (headers recorded), then `dmarc_policy = "reject"`.
+- Email (the single owner of this check, for D-02 and D-05 too): Email Service enabled, `EMAIL_FROM` set, a test email from the deployed staging Worker passes SPF, DKIM and DMARC (headers recorded), then `dmarc_policy = "reject"`.
 - Deploy token verified against the real account with `verify-deploy-token.sh`.
 
 ## Risks and open points

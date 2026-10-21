@@ -42,14 +42,14 @@ The relay pipes ciphertext and must log only what "Metadata we still see" lists,
 - [ ] ADR 0012 merged and listed in `docs/adr/README.md`.
 - [ ] Relay unit tests for the metrics port; `/metrics` returns 401 without the token and the documented series with it; no series carries an engine ID, hostname or IP label (test).
 - [ ] Label-cardinality test, and `promtool check metrics` over the relay's `/metrics` output; alert rules are evaluated in the dashboard Worker, so they are unit-tested as domain code, and the scheduled dispatcher runs under the Workers test pool.
-- [ ] Compose e2e: with short intervals and the fake `AlertSink`, stopping relay-a raises an alert and restarting it clears it.
+- [ ] Compose e2e: with short intervals and the fake `AlertSink`, stopping relay-a raises an alert and restarting it clears it. The cron is fired locally through workerd's `--test-scheduled` (`/__scheduled`) in a test-only overlay, never in `compose.dashboard.yaml` or the dev overlay.
 - [ ] Log field allowlist test passes; journald retention is checked by I-01's `verify.sh` in its CI VM.
 - [ ] Runbook written; `bun run check` passes.
 - [ ] **Status** line above set to `done (#<PR>)`.
 
 ## Apply (needs credentials)
 
-Tracked in [apply.md](../apply.md). Needs I-01's and I-02's applied staging, an ops alert mailbox and the monitoring backend's account (ADR 0012).
+Tracked in [apply.md](../apply.md). Needs I-01's and I-02's applied staging and an ops alert mailbox.
 
 - Staging: dashboards or queries show tunnels, connections, bytes, errors and latency for the staging relay while the mock engine runs through it.
 - Stopping the staging relay raises an alert within 3 minutes; restarting it clears it.

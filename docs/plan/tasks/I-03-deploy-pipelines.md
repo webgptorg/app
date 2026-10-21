@@ -44,8 +44,9 @@ The code lands before any credential exists; everything below is verifiable in C
 
 - [ ] zizmor passes with no findings at medium or above on all new workflows.
 - [ ] `apps/relay/Dockerfile` builds in CI (non-root, base pinned by digest, no cache); `deploy-dashboard.yml` runs `wrangler deploy --dry-run --env staging` on PRs.
-- [ ] `release-relay.yml` builds, pushes to GHCR with `GITHUB_TOKEN` and signs keylessly through GitHub OIDC with a TSA timestamp; `cosign verify` with the exact identity flags succeeds, and the host script refuses an unsigned image and one signed by another workflow or ref (a same-repo `refs/pull/...` signature gives a real wrong-identity case); no workflow or script uses `--certificate-identity-regexp`.
+- [ ] `release-relay.yml` builds, pushes to GHCR with `GITHUB_TOKEN` and signs keylessly through GitHub OIDC with a TSA timestamp; `cosign verify` with the exact identity flags succeeds, and the host script refuses an unsigned image and one signed by another workflow, branch or repository (recorded Sigstore bundle fixtures for the other repository and workflow; a `workflow_dispatch` run from a branch for the other ref; no signing on pull request runs, which would need `id-token` and `packages` write there); no workflow or script uses `--certificate-identity-regexp`.
 - [ ] The host-side verify, swap and rollback script works against I-01's CI VM (or an sshd container): a deliberately broken image is rolled back.
+- [ ] Rolling deploy in CI across two sshd containers (or two VMs) standing in for two relays: a deliberately broken image stops the rollout after the first host and rolls that host back; the second host is untouched.
 - [ ] Runbook written; `bun run check` passes.
 - [ ] **Status** line above set to `done (#<PR>)`.
 
@@ -61,5 +62,5 @@ Tracked in [apply.md](../apply.md). Needs the GitHub environments (blocked on th
 
 - Cloudflare has no OIDC federation for wrangler, so the deploy token is a long-lived secret; keep it environment-scoped and rotated.
 - SSH from GitHub-hosted runners means the allowlist cannot be tight; the forced command and host-side signature check are the mitigation. A pull-based deploy is the alternative if the team prefers.
-- **GitHub plan:** environments and environment secrets in a private repository need GitHub Team or Pro, and required reviewers with "prevent self-review" need Enterprise; the org is on Free. Until the plan's "Still needed" decision (upgrade or another approval gate) is taken, build the workflows against the environments as specified and leave the approval criteria to Apply.
+- **GitHub plan:** environments and environment secrets in a private organization repository need GitHub Team (Pro is for personal accounts), and required reviewers with "prevent self-review" need Enterprise; the org is on Free. Until the plan's "Still needed" decision (upgrade or another approval gate) is taken, build the workflows against the environments as specified and leave the approval criteria to Apply.
 - Release key holders and the key ceremony are a pending human decision (plan's "Still needed" table); production UI signing waits on it.
