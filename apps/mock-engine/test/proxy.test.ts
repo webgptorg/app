@@ -69,6 +69,7 @@ async function run(scenario: Scenario = {}) {
         extraCaFile: null,
         devCaFiles: null,
         devCaDomains: [],
+        certificateSource: { kind: 'dev-ca' },
         logLevel: 'info',
         ...DEFAULT_MOCK_SETTINGS,
     };

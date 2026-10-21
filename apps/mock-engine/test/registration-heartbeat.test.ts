@@ -52,6 +52,7 @@ const BASE: MockEngineConfig = {
     extraCaFile: null,
     devCaFiles: null,
     devCaDomains: [],
+    certificateSource: { kind: 'dev-ca' },
     logLevel: 'info',
     ...DEFAULT_MOCK_SETTINGS,
 };

@@ -1,5 +1,9 @@
 import { createCryptoRandom } from '@ptbk/protocol';
 
+import { AcmeSetupError, loadOrCreateAcmeAccountKey } from './adapters/acme-account-key';
+import type { AcmeCertificateSource } from './adapters/acme-certificate-source';
+import { createAcmeCertificateSource } from './adapters/acme-certificate-source';
+import { createAcmeClientIssuer } from './adapters/acme-client-issuer';
 import { DevCaError, createDevCaCertificateSource, loadOrCreateDevCa } from './adapters/dev-ca';
 import { TrustedRootsError, loadTrustedRoots } from './adapters/extra-ca';
 import { createFetchDashboardApi } from './adapters/fetch-dashboard-api';
@@ -21,6 +25,9 @@ import type { DashboardDeps, MockEngine } from './app/start-mock-engine';
 import { startMockEngine } from './app/start-mock-engine';
 import { UiLoaderSetupError, createUiLoaderDeps } from './app/ui-loader-deps';
 import type { Logger } from './domain/logger';
+import type { AcmeChallenges } from './domain/tls/acme-challenges';
+import { createAcmeChallenges } from './domain/tls/acme-challenges';
+import type { ManagedCertificateSource } from './domain/tls/certificate-source';
 import { StoredRegistrationError } from './domain/registration/register';
 
 const SHUTDOWN_TIMEOUT_MS = 10_000;
@@ -32,6 +39,7 @@ function problemOf(error: unknown): string {
         error instanceof IdentityStoreError ||
         error instanceof TrustedRootsError ||
         error instanceof DevCaError ||
+        error instanceof AcmeSetupError ||
         error instanceof RegistrationFailedError ||
         error instanceof RegistrationStoreError ||
         error instanceof StoredRegistrationError ||
@@ -59,6 +67,42 @@ function dashboardDeps(config: MockEngineConfig, ca: readonly string[] | undefin
         seqs: createFsSeqStore(config.dataDir, { clock: systemClock }),
         systemStats: createOsSystemStats(config.dataDir),
     };
+}
+
+interface Certificates {
+    readonly source: ManagedCertificateSource;
+    readonly acme: AcmeCertificateSource | null;
+}
+
+async function certificates(
+    config: MockEngineConfig,
+    challenges: AcmeChallenges,
+    logger: Logger,
+): Promise<Certificates> {
+    const source = config.certificateSource;
+    if (source.kind === 'acme') {
+        const acme = await createAcmeCertificateSource({
+            issuer: createAcmeClientIssuer({
+                directoryUrl: source.directoryUrl,
+                accountKey: await loadOrCreateAcmeAccountKey(config.dataDir),
+                email: source.email,
+                challenges,
+                logger,
+            }),
+            dataDir: config.dataDir,
+            clock: systemClock,
+            logger,
+        });
+        return { source: acme, acme };
+    }
+    const devCa = await loadOrCreateDevCa({
+        files: config.devCaFiles,
+        dataDir: config.dataDir,
+        permittedDomains: [config.engineDomain, ...config.devCaDomains],
+        clock: systemClock,
+        logger,
+    });
+    return { source: createDevCaCertificateSource({ ca: devCa, clock: systemClock, logger }), acme: null };
 }
 
 function parseConfig(): MockEngineConfig {
@@ -96,20 +140,20 @@ async function start(): Promise<{ readonly engine: MockEngine; readonly logger: 
         const config = parseConfig();
         logger = createJsonLogger({ level: config.logLevel, clock: systemClock });
         const ca = await loadTrustedRoots(config.extraCaFile);
-        const devCa = await loadOrCreateDevCa({
-            files: config.devCaFiles,
-            dataDir: config.dataDir,
-            permittedDomains: [config.engineDomain, ...config.devCaDomains],
-            clock: systemClock,
-            logger,
-        });
+        const challenges = createAcmeChallenges();
+        const tls = await certificates(config, challenges, logger);
         const engine = await startMockEngine(config, {
             logger,
             clock: systemClock,
             random: createCryptoRandom(),
             identityStore: createFsIdentityStore(config.dataDir),
             dialer: createWsRelayDialer({ clock: systemClock, proxy: config.proxy, ca }),
-            certificates: createDevCaCertificateSource({ ca: devCa, clock: systemClock, logger }),
+            certificates: tls.source,
+            challenges,
+            // The CA validates through a relay, so issuance starts once one routes the engine.
+            onLinkState: (_relay, state) => {
+                if (state.kind === 'ready') tls.acme?.routable();
+            },
             dashboard: dashboardDeps(config, ca),
             ui:
                 config.ui === null

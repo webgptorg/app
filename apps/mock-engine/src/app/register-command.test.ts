@@ -29,6 +29,7 @@ const CONFIG: MockEngineConfig = {
     extraCaFile: null,
     devCaFiles: null,
     devCaDomains: [],
+    certificateSource: { kind: 'dev-ca' },
     logLevel: 'info',
     ...DEFAULT_MOCK_SETTINGS,
     dashboard: { url: 'https://app.ptbk.test', linkCode: null, heartbeatIntervalS: 60, relaysOverride: false },

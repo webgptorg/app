@@ -21,6 +21,7 @@
     "@ptbk/engine-api": "workspace:*",
     "@ptbk/protocol": "workspace:*",
     "@ptbk/release-tools": "workspace:*",
+    "acme-client": "5.4.0",
     "hono": "catalog:",
     "ws": "catalog:",
     "zod": "catalog:"

@@ -49,6 +49,7 @@ const CONFIG: MockEngineConfig = {
     extraCaFile: null,
     devCaFiles: null,
     devCaDomains: [],
+    certificateSource: { kind: 'dev-ca' },
     logLevel: 'info',
     ...DEFAULT_MOCK_SETTINGS,
 };
@@ -230,7 +231,7 @@ describe('startMockEngine', () => {
             const remove = started.engine.onStream(() => undefined);
             remove();
             connection.relayBinary(openFrame);
-            // Not a ClientHello: the TLS server fails the handshake and closes the stream.
+            // Not a ClientHello: the router in front of the TLS server refuses it and closes the stream.
             connection.relayBinary(
                 encodeFrame({
                     type: FrameType.DATA,
@@ -238,7 +239,7 @@ describe('startMockEngine', () => {
                     payload: new TextEncoder().encode('GET / HTTP/1.1\r\n\r\n'),
                 }),
             );
-            await until(() => started.logger.entries.some((entry) => entry.event === 'tls.handshake-failed'));
+            await until(() => started.logger.entries.some((entry) => entry.event === 'tls.hello-rejected'));
             await until(() =>
                 connection.binaries.some((bytes) => {
                     const decoded = decodeFrame(bytes);
@@ -373,7 +374,7 @@ describe('startMockEngine', () => {
         connection.relayBinary(
             encodeFrame({ type: FrameType.DATA, streamId: StreamId.parse(1), payload: new Uint8Array(8) }),
         );
-        await until(() => started.logger.entries.some((entry) => entry.event === 'tls.handshake-failed'));
+        await until(() => started.logger.entries.some((entry) => entry.event === 'tls.hello-rejected'));
     });
 
     describe('UI loader', () => {
