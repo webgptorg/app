@@ -75,6 +75,22 @@ describe('engine runtime', () => {
         });
     });
 
+    it('limits knowledge uploads to documents up to 10 MiB and takes any other upload', async () => {
+        const { client } = await start();
+        expect(ok(await client().files.uploadPolicy({ purpose: 'knowledge' }, signal()))).toMatchObject({
+            maxBytes: 10 * 1024 * 1024,
+            accept: expect.arrayContaining(['.pdf', '.md', 'text/*']) as unknown,
+        });
+        const upload = (name: string, type: string, purpose: 'knowledge' | 'upload') =>
+            client().files.upload({ file: new Blob(['x'], { type }), name, purpose }, signal());
+        expect(await upload('notes.md', '', 'knowledge')).toMatchObject({ kind: 'ok' });
+        expect(await upload('run.exe', 'application/x-msdownload', 'knowledge')).toMatchObject({
+            kind: 'problem',
+            problem: { code: 'unsupported-media-type' },
+        });
+        expect(await upload('run.exe', 'application/x-msdownload', 'upload')).toMatchObject({ kind: 'ok' });
+    });
+
     it('applies relay states, hostnames and the dashboard URL, and keeps them across a reset', async () => {
         const { clock, runtime, client } = await start();
         runtime.setRelayStatus('relay-a.ptbk.test', 'connecting');

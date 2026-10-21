@@ -2,7 +2,7 @@ import { ENGINE_API_PREFIX, OWNER_PERMISSIONS, createProblem } from '@ptbk/engin
 import type { CapabilityRef, Permission } from '@ptbk/engine-api';
 import { createEngineApiHttpHandler } from '@ptbk/engine-api/http';
 import { createDemoSeed, createInMemoryEngineCore } from '@ptbk/engine-api/in-memory';
-import type { Actor, Authorizer, InMemoryEngineCore } from '@ptbk/engine-api/in-memory';
+import type { Actor, Authorizer, FileUploadPolicies, InMemoryEngineCore } from '@ptbk/engine-api/in-memory';
 import { buildHeartbeat, deriveEngineId, encodeBase64Url } from '@ptbk/protocol';
 
 import type { ConformanceTarget, SessionSubject } from '../target';
@@ -37,7 +37,11 @@ export interface FakeEngineOptions {
     readonly memberPrivate?: boolean;
     /** Rewrites any API answer, for tests that break one assertion at a time. */
     readonly tamper?: Tamper;
+    /** By default knowledge takes Markdown and plain text up to 1 KiB, so both upload policy refusals are exercised. */
+    readonly uploadPolicies?: FileUploadPolicies;
 }
+
+const FAKE_UPLOAD_POLICIES: FileUploadPolicies = { knowledge: { maxBytes: 1024, accept: ['.md', 'text/plain'] } };
 
 export type Tamper = (request: Request, response: Response) => Response | Promise<Response>;
 
@@ -137,6 +141,7 @@ export async function createFakeEngine(options: FakeEngineOptions = {}): Promise
             triggers: [...(demo.triggers ?? []), ended],
         },
         ...(options.capabilities === undefined ? {} : { capabilities: options.capabilities }),
+        uploadPolicies: options.uploadPolicies ?? FAKE_UPLOAD_POLICIES,
         authorizer: OWNERSHIP,
     });
     core.controller.updateEngine({ engineId, hostname, mode: 'tunnel' });

@@ -28,6 +28,22 @@ export interface EngineApiTransportRequest {
     readonly query?: Readonly<Record<string, unknown>>;
     readonly body?: unknown;
     readonly lastEventId?: string;
+    /** For a multipart body: how much of it has been sent. */
+    readonly onUploadProgress?: (progress: UploadProgress) => void;
+}
+
+/** Bytes of a request body sent so far; `totalBytes` is the encoded body's size, so it can exceed the file's. */
+export interface UploadProgress {
+    readonly loadedBytes: number;
+    readonly totalBytes: number;
+}
+
+export interface UploadOptions {
+    /**
+     * Called as the body is sent, ending with `loadedBytes === totalBytes`. How often depends on the transport: a
+     * transport that cannot observe the upload reports only the end.
+     */
+    readonly onProgress?: (progress: UploadProgress) => void;
 }
 
 /**
@@ -205,7 +221,9 @@ export interface EngineApiClient {
     /** `files@1`; every capability group answers 404 `capability-not-supported` unless `GET /engine` advertises it. */
     readonly files: {
         list(query: Query<'listFiles'>, signal: AbortSignal): Result<'listFiles'>;
-        upload(body: Body<'uploadFile'>, signal: AbortSignal): Result<'uploadFile'>;
+        stats(query: Query<'getFileStats'>, signal: AbortSignal): Result<'getFileStats'>;
+        uploadPolicy(query: Query<'getFileUploadPolicy'>, signal: AbortSignal): Result<'getFileUploadPolicy'>;
+        upload(body: Body<'uploadFile'>, signal: AbortSignal, options?: UploadOptions): Result<'uploadFile'>;
         get(fileId: Param<'getFile', 'fileId'>, signal: AbortSignal): Result<'getFile'>;
         listVersions(
             fileId: Param<'listFileVersions', 'fileId'>,
@@ -294,8 +312,15 @@ export function createEngineApiClient(transport: EngineApiTransport): EngineApiC
         route: Route,
         request: RouteRequest<Route>,
         signal: AbortSignal,
+        onUploadProgress?: (progress: UploadProgress) => void,
     ): Promise<EngineApiResponse<RouteData<Route>>> =>
-        transport(route, request as EngineApiTransportRequest, signal) as Promise<EngineApiResponse<RouteData<Route>>>;
+        transport(
+            route,
+            onUploadProgress === undefined
+                ? (request as EngineApiTransportRequest)
+                : { ...(request as EngineApiTransportRequest), onUploadProgress },
+            signal,
+        ) as Promise<EngineApiResponse<RouteData<Route>>>;
 
     return {
         me: {
@@ -383,7 +408,9 @@ export function createEngineApiClient(transport: EngineApiTransport): EngineApiC
         },
         files: {
             list: (query, signal) => call(R.listFiles, { query }, signal),
-            upload: (body, signal) => call(R.uploadFile, { body }, signal),
+            stats: (query, signal) => call(R.getFileStats, { query }, signal),
+            uploadPolicy: (query, signal) => call(R.getFileUploadPolicy, { query }, signal),
+            upload: (body, signal, options = {}) => call(R.uploadFile, { body }, signal, options.onProgress),
             get: (fileId, signal) => call(R.getFile, { params: { fileId } }, signal),
             listVersions: (fileId, query, signal) => call(R.listFileVersions, { params: { fileId }, query }, signal),
             download: (fileId, query, signal) => call(R.downloadFile, { params: { fileId }, query }, signal),

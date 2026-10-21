@@ -53,6 +53,8 @@ describe('capabilities through the mock HTTP server (contract)', () => {
             ),
         );
         await okFrom('listFiles', owner.files.list({ purpose: 'knowledge', limit: 5 }, signal()));
+        await okFrom('getFileStats', owner.files.stats({}, signal()));
+        await okFrom('getFileUploadPolicy', owner.files.uploadPolicy({ purpose: 'knowledge' }, signal()));
         await okFrom('getFile', owner.files.get(upload.id, signal()));
         const [version] = (await okFrom('listFileVersions', owner.files.listVersions(upload.id, {}, signal()))).items;
         const content = await okFrom(

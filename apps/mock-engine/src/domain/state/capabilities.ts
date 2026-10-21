@@ -1,5 +1,6 @@
 import { KNOWN_CAPABILITIES } from '@ptbk/engine-api';
 import type { CapabilityRef } from '@ptbk/engine-api';
+import type { FileUploadPolicies } from '@ptbk/engine-api/in-memory';
 import { z } from 'zod';
 
 /** The C-07 capabilities by name, each at the version this mock serves. */
@@ -28,3 +29,31 @@ export function parseCapabilityList(
     for (const index of invalid) problem(`entry ${String(index)} must be one of ${ALL_CAPABILITY_NAMES.join(', ')}`);
     return invalid.length === 0 ? Object.freeze([...new Set(names)]) : undefined;
 }
+
+/**
+ * What `files@1` accepts: knowledge is limited to documents an agent can read, like a real engine's ingestion would
+ * be, and to 10 MiB; every other purpose takes any type up to the contract's `MAX_FILE_BYTES`.
+ */
+export const MOCK_UPLOAD_POLICIES: FileUploadPolicies = {
+    knowledge: {
+        maxBytes: 10 * 1024 * 1024,
+        accept: [
+            '.pdf',
+            '.txt',
+            '.md',
+            '.markdown',
+            '.csv',
+            '.json',
+            '.html',
+            '.htm',
+            '.docx',
+            '.odt',
+            '.rtf',
+            'application/pdf',
+            'text/*',
+            'application/json',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'application/vnd.oasis.opendocument.text',
+        ],
+    },
+};

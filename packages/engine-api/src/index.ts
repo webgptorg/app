@@ -35,6 +35,8 @@ export type {
     EngineApiTransport,
     EngineApiTransportRequest,
     StreamOptions,
+    UploadOptions,
+    UploadProgress,
 } from './client';
 export { createFetchEngineApiClient } from './fetch-client';
 export type { FetchEngineApiClientOptions } from './fetch-client';

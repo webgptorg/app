@@ -11,6 +11,7 @@ import type { Simulation } from '../simulation/simulation';
 import { createSimulation } from '../simulation/simulation';
 import type { SimulationClock, SimulationMode } from '../simulation/simulation-clock';
 import { createSimulationClock } from '../simulation/simulation-clock';
+import { MOCK_UPLOAD_POLICIES } from './capabilities';
 import type { Scenario } from './scenarios';
 import { HOSTILE_AGENT_NAME, ownerOf, seedEngine } from './seed';
 import { createSeededSequence, hashSeed } from './seed-random';
@@ -170,6 +171,7 @@ export async function createEngineRuntime(options: EngineRuntimeOptions): Promis
             replyScript,
             capabilities,
             authorizer: { can: decideOwnership },
+            uploadPolicies: MOCK_UPLOAD_POLICIES,
             sleep: clockSleep(clock),
             checks: createEngineChecks({
                 faults: options.faults,

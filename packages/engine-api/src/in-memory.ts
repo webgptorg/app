@@ -30,7 +30,7 @@ export type {
 } from './in-memory-client';
 export type { Actor, ReplyChunk, ReplyScript, ReplyScriptInput, ScriptedReply, Sleep } from './in-memory/kit';
 export type { ActivityInput, EngineChecks, IntegrationProbe, ScannedFile } from './in-memory/kit';
-export type { NewFile } from './in-memory/files';
+export type { FileUploadPolicies, NewFile } from './in-memory/files';
 export type { RunOutcome, RunReport, StartRun } from './in-memory/runs';
 export { runPreview, truncateRunText } from './in-memory/runs';
 export type { FireInput } from './in-memory/triggers';
