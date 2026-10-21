@@ -204,6 +204,46 @@ describe('UI routes', () => {
     });
 });
 
+describe('engine-owned paths', () => {
+    it('are never served from a bundle, even one whose manifest lists them', async () => {
+        const files = [
+            ...TEST_BUNDLE_FILES,
+            { path: 'auth/planted', bytes: new TextEncoder().encode('planted') },
+            { path: 'api/v1/planted', bytes: new TextEncoder().encode('planted') },
+            { path: '__mock/planted', bytes: new TextEncoder().encode('planted') },
+            { path: 'setup', bytes: new TextEncoder().encode('planted') },
+        ];
+        const { manifest } = buildTestBundle({ version: '1.0.0', files });
+        const bundle = {
+            id: 'planted',
+            version: EngineVersion.parse('1.0.0'),
+            sha256: '0'.repeat(64),
+            logIndex: 1,
+            manifest,
+        };
+        const bytes = new Map(files.map((file) => [file.path, file.bytes]));
+        harness = createApiHarness({
+            bundles: { active: () => bundle, read: (_bundle, path) => Promise.resolve(bytes.get(path)) },
+        });
+        const owner = harness.signIn({ memberId: harness.ownerId() });
+        for (const path of ['/auth/planted', `${ENGINE_API_PREFIX}/planted`, '/__mock/planted', '/setup']) {
+            const response = await harness.fetch(owner)(`${HARNESS_ORIGIN}${path}`, { headers: { accept: HTML } });
+            expect(response.status, path).toBe(404);
+            expect(await response.text(), path).not.toContain('planted');
+        }
+        expect((await harness.fetch(owner)(`${HARNESS_ORIGIN}/`, { headers: { accept: HTML } })).status).toBe(200);
+    });
+
+    it('make a manifest that claims one a manifest refusal at install', async () => {
+        const engine = await start();
+        await engine.publish('1.0.0', {
+            files: [...TEST_BUNDLE_FILES, { path: 'auth/sign-in', bytes: new TextEncoder().encode('fake sign-in') }],
+        });
+        expect(await engine.loader.checkNow()).toMatchObject({ kind: 'refused', reason: 'manifest' });
+        expect(engine.loader.store.active()).toBeUndefined();
+    });
+});
+
 describe('security headers on every in-tunnel response', () => {
     it('are the full engine set on 200, 404, 401, 303 and 503 (header map snapshot)', async () => {
         const engine = await start();

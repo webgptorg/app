@@ -14,6 +14,7 @@ import { createMemoryUpdateStateStore } from '../../testing/memory-update-state-
 import type { TestBundle, TestBundleInput, TestReleaseInput, TestReleaseKeys } from '../../testing/ui-releases';
 import {
     TEST_ARCHIVE_NAME,
+    TEST_BUNDLE_FILES,
     TEST_WORKFLOW_IDENTITY,
     buildTestBundle,
     createTestProvenanceVerifier,
@@ -313,6 +314,18 @@ describe('checkForUiUpdate: refusals keep the previous bundle', () => {
         ['a file the manifest does not list', { unlisted: [{ path: 'extra.js', bytes: new Uint8Array(1) }] }],
         ['a manifest version other than the entry’s', { version: '1.0.5' }],
         ['a manifest commit other than the entry’s', { commit: 'd'.repeat(40) }],
+        [
+            'a file on an engine-owned path',
+            { files: [...TEST_BUNDLE_FILES, { path: 'auth/sign-in', bytes: new Uint8Array(1) }] },
+        ],
+        [
+            'a file under the API prefix',
+            { files: [...TEST_BUNDLE_FILES, { path: 'api/v1/me', bytes: new Uint8Array(1) }] },
+        ],
+        [
+            'a file under /__mock/',
+            { files: [...TEST_BUNDLE_FILES, { path: '__mock/state', bytes: new Uint8Array(1) }] },
+        ],
         ['a manifest that is not a UiBundleManifest', { editManifest: (manifest) => ({ ...manifest, extra: true }) }],
     ])('refuses a bundle with %s as a manifest mismatch', async (_, bundle) => {
         await expectRefused({ bundle }, 'manifest');

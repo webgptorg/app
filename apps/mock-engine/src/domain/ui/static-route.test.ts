@@ -3,7 +3,7 @@ import type { UiBundleManifest } from '@ptbk/protocol';
 import { UiBundleManifest as UiBundleManifestSchema } from '@ptbk/protocol';
 import { describe, expect, it } from 'vitest';
 
-import { entryOf, resolveStatic } from './static-route';
+import { engineOwnedFiles, entryOf, resolveStatic } from './static-route';
 
 const HTML = 'text/html,application/xhtml+xml,*/*;q=0.8';
 const file = (path: string) => ({ path, sha256: 'a'.repeat(64), size: 1 });
@@ -104,6 +104,53 @@ describe('resolveStatic', () => {
         expect(resolveStatic('//index.html', 'GET', '*/*', manifest)).toEqual({ kind: 'not-found' });
         expect(resolveStatic('/manifest.json', 'GET', '*/*', manifest)).toEqual({ kind: 'not-found' });
         expect(resolveStatic('index.html', 'GET', '*/*', manifest)).toEqual({ kind: 'not-found' });
+    });
+});
+
+describe('engine-owned paths', () => {
+    // C-06's path grammar allows these names (only `.well-known` is excluded, by its leading dot).
+    const claiming: UiBundleManifest = {
+        ...manifest,
+        files: [
+            ...manifest.files,
+            file('api/v1/me'),
+            file('api'),
+            file('auth/sign-in'),
+            file('setup'),
+            file('setup/step-2'),
+            file('__mock/state'),
+            file('__spike/whoami'),
+        ],
+    };
+
+    it('are never served from the bundle, even when its manifest lists them', () => {
+        for (const path of [
+            '/api/v1/me',
+            '/api',
+            '/auth/sign-in',
+            '/setup',
+            '/setup/step-2',
+            '/__mock/state',
+            '/__spike/whoami',
+        ]) {
+            expect(resolveStatic(path, 'GET', HTML, claiming), path).toEqual({ kind: 'not-found' });
+            expect(resolveStatic(path, 'GET', '*/*', claiming), path).toEqual({ kind: 'not-found' });
+        }
+        expect(resolveStatic('/assets/index-BxD3f9_a.js', 'GET', '*/*', claiming)).toMatchObject({ kind: 'asset' });
+        expect(resolveStatic('/setup-guide', 'GET', HTML, claiming)).toEqual({ kind: 'spa-fallback' });
+    });
+
+    it('are named by engineOwnedFiles, so the loader can refuse such a manifest', () => {
+        expect(engineOwnedFiles(claiming)).toEqual([
+            'api/v1/me',
+            'api',
+            'auth/sign-in',
+            'setup',
+            'setup/step-2',
+            '__mock/state',
+            '__spike/whoami',
+        ]);
+        expect(engineOwnedFiles(manifest)).toEqual([]);
     });
 });
 

@@ -20,6 +20,7 @@ import {
 import type { Clock } from '../clock';
 import type { Logger } from '../logger';
 import type { BundleStore, InstalledBundle } from './bundle-store';
+import { engineOwnedFiles } from './static-route';
 import type { ReleaseSource } from './release-source';
 import type { UpdatePolicy } from './update-policy';
 import type { UpdateStateStore } from './update-state-store';
@@ -266,6 +267,8 @@ async function checkBundle(
     const manifest = parseManifest(manifestBytes);
     if (manifest === undefined) return 'manifest';
     if (manifest.version !== verdict.entry.version || manifest.commit !== verdict.entry.commit) return 'manifest';
+    // C-06's path grammar allows `api/…`, `auth/…`, `setup` and `__mock/…`; a bundle may never claim engine paths.
+    if (engineOwnedFiles(manifest).length > 0) return 'manifest';
     // The manifest's `csp` is informational and never read: the headers are engine code.
     if (!satisfiesEngineApiRange(manifest.engineApi, deps.engineApiVersion)) return 'engine-api';
     return (await verifyManifestFiles(manifest, files)).kind === 'ok' ? null : 'manifest';
