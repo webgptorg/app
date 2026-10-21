@@ -28,6 +28,7 @@ describe('parseProbeArgs', () => {
             servername: 'relay-a.ptbk.test',
             path: '/healthz',
             caFile: '/pki/ca.pem',
+            caUrl: null,
             timeoutMs: 2000,
         });
     });
@@ -39,6 +40,20 @@ describe('parseProbeArgs', () => {
         );
         expect(options.servername).toBe('x.engine.test');
         expect(options.addresses).toEqual(['10.0.0.1', '10.0.0.2']);
+    });
+
+    it('takes the roots from a URL with --ca-from, verifying that fetch with --ca', () => {
+        const options = parseProbeArgs(
+            ['--ca', 'minica.pem', '--ca-from', 'https://pebble:15000/roots/0', '--servername', 'a', '--address', '1'],
+            noFiles,
+        );
+        expect(options).toMatchObject({ caFile: 'minica.pem', caUrl: 'https://pebble:15000/roots/0' });
+        expect(() =>
+            parseProbeArgs(
+                ['--ca', 'c', '--ca-from', 'http://pebble/roots/0', '--servername', 'a', '--address', '1'],
+                noFiles,
+            ),
+        ).toThrow('--ca-from');
     });
 
     it('refuses incomplete or contradictory arguments', () => {

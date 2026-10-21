@@ -1,0 +1,107 @@
+# ACME TLS-ALPN-01 through the relay (M-03). Pebble is the CA; pebble-challtestsrv is its only resolver and answers
+# every name with relay-a's address, as public DNS would send a CA to a relay. Pebble validates TLS-ALPN-01 on port
+# 443 (pebble/pebble-config.json), so its validation connection reaches relay-a with the engine's SNI and ALPN
+# acme-tls/1, and relay-a routes it into the tunnel like any browser. The mock engine answers it and gets its
+# certificate; nothing in the stack touches DNS for it. Addresses are repeated from src/stack.ts (PEBBLE,
+# CHALLTESTSRV); src/stack.test.ts checks them.
+#
+# Pebble's own HTTPS listeners use its fixed test certificate for `pebble`, issued by its "minica" (init publishes
+# that root as /pki/pebble-minica.pem): the engine trusts it for the ACME API through NODE_EXTRA_CA_CERTS. The root
+# of the certificates Pebble issues is new on every start and only on its management API.
+
+x-pebble-host: &pebble-host
+  - 'pebble:10.89.231.40'
+
+services:
+  challtestsrv:
+    # The Pebble project's images, multi-arch index digests from
+    # `docker buildx imagetools inspect ghcr.io/letsencrypt/pebble-challtestsrv:2.10.1` (and pebble:2.10.1).
+    image: ghcr.io/letsencrypt/pebble-challtestsrv:2.10.1@sha256:12ce21884def456bcf9786542113949e1f19dc7738d2c70e156c2d0c38a1405b
+    # Only DNS; no AAAA answers, so Pebble never tries another family. The challenge servers it could also run are off.
+    command:
+      [
+        '-defaultIPv4',
+        '10.89.231.11',
+        '-defaultIPv6',
+        '',
+        '-dnsserver',
+        ':8053',
+        '-http01',
+        '',
+        '-https01',
+        '',
+        '-tlsalpn01',
+        '',
+        '-doh',
+        '',
+        '-management',
+        '127.0.0.1:8055',
+      ]
+    user: '65534:65534'
+    cap_drop: [ALL]
+    read_only: true
+    networks:
+      stack:
+        ipv4_address: 10.89.231.41
+
+  pebble:
+    image: ghcr.io/letsencrypt/pebble:2.10.1@sha256:ddf230642b1a584f519f32e347de1b05a6e4c1f6c35c1863b33effeab5f78199
+    command: ['-config', '/e2e-pebble/pebble-config.json', '-dnsserver', '10.89.231.41:8053']
+    environment:
+      # Validate at once instead of after a random pause, and every time: no authorization reuse, so each renewal
+      # goes through the relay again, and no injected nonce errors.
+      PEBBLE_VA_NOSLEEP: '1'
+      PEBBLE_AUTHZREUSE: '0'
+      PEBBLE_WFE_NONCEREJECT: '0'
+    depends_on:
+      challtestsrv:
+        condition: service_started
+    volumes:
+      - ./pebble:/e2e-pebble:ro
+    user: '65534:65534'
+    cap_drop: [ALL]
+    read_only: true
+    networks:
+      stack:
+        ipv4_address: 10.89.231.40
+
+  mock-engine:
+    depends_on:
+      pebble:
+        condition: service_started
+    environment:
+      MOCK_CERT_SOURCE: acme
+      PTBK_ACME_DIRECTORY_URL: https://pebble:14000/dir
+      NODE_EXTRA_CA_CERTS: /pki/pebble-minica.pem
+      # The dev CA still issues the relays' and the release store's certificates (init), not the engine's.
+      MOCK_DEV_CA_CERT_FILE: ''
+      MOCK_DEV_CA_KEY_FILE: ''
+      MOCK_DEV_CA_DOMAINS: ''
+    extra_hosts: *pebble-host
+
+  # Healthy once the engine serves a certificate from Pebble through every relay: the issuance is done.
+  engine-probe:
+    extra_hosts: *pebble-host
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '/e2e/probe.ts',
+          '--ca',
+          '/pki/pebble-minica.pem',
+          '--ca-from',
+          'https://pebble:15000/roots/0',
+          '--servername-from',
+          '/pki/engine.json',
+          '--path',
+          '/__spike/whoami',
+          '--address',
+          '10.89.231.11',
+          '--address',
+          '10.89.231.12',
+        ]
+
+  # Fetches Pebble's root from its management API at test start (src/pebble.ts).
+  playwright:
+    extra_hosts: *pebble-host

@@ -1,7 +1,8 @@
 // Docker healthcheck: an HTTPS GET with the given SNI to each address, verified against the dev CA. For a relay it
 // asks its own hostname for /healthz; for the mock engine it asks the engine hostname through every relay, so the
-// engine is healthy only once each relay has a ready tunnel and routes it. Only node: imports: it runs from the
-// relay and mock engine images, which carry no node_modules.
+// engine is healthy only once each relay has a ready tunnel and routes it. With `--ca-from <url>` the roots come from
+// that URL instead (fetched with `--ca` as its trust): the acme scenario's Pebble root, which is new every run. Only
+// node: imports: it runs from the relay and mock engine images, which carry no node_modules.
 import { readFileSync } from 'node:fs';
 import { request } from 'node:https';
 import { parseArgs } from 'node:util';
@@ -21,6 +22,8 @@ export interface ProbeOptions {
     readonly servername: string;
     readonly path: string;
     readonly caFile: string;
+    /** Where to fetch the roots the targets must chain to; `caFile` then only verifies that fetch. */
+    readonly caUrl: string | null;
     readonly timeoutMs: number;
 }
 
@@ -36,6 +39,7 @@ export function parseProbeArgs(args: readonly string[], readText: (path: string)
             'servername-from': { type: 'string' },
             path: { type: 'string', default: '/' },
             ca: { type: 'string' },
+            'ca-from': { type: 'string' },
             'timeout-ms': { type: 'string', default: '2000' },
         },
     });
@@ -50,7 +54,9 @@ export function parseProbeArgs(args: readonly string[], readText: (path: string)
     const timeoutMs = Number(values['timeout-ms']);
     if (!Number.isInteger(port) || port < 1 || port > 65_535) throw new Error('--port must be a TCP port');
     if (!Number.isInteger(timeoutMs) || timeoutMs < 1) throw new Error('--timeout-ms must be a positive integer');
-    return { addresses, port, servername, path: values.path, caFile: values.ca, timeoutMs };
+    const caUrl = values['ca-from'] ?? null;
+    if (caUrl !== null && URL.parse(caUrl)?.protocol !== 'https:') throw new Error('--ca-from must be an https URL');
+    return { addresses, port, servername, path: values.path, caFile: values.ca, caUrl, timeoutMs };
 }
 
 function hostnameFrom(json: string): string {
@@ -86,9 +92,27 @@ export function probe(target: ProbeTarget): Promise<number> {
     });
 }
 
+/** The body of a GET to an https URL whose server chains to `ca`. */
+export function fetchText(url: string, ca: string, timeoutMs: number): Promise<string> {
+    return new Promise((resolve, reject) => {
+        const req = request(url, { ca, agent: false, timeout: timeoutMs }, (response) => {
+            const chunks: Buffer[] = [];
+            response.on('data', (chunk: Buffer) => chunks.push(chunk));
+            response.on('end', () => {
+                if (response.statusCode === 200) resolve(Buffer.concat(chunks).toString('utf8'));
+                else reject(new Error(`${url} answered ${String(response.statusCode)}`));
+            });
+        });
+        req.on('timeout', () => req.destroy(new Error('timed out')));
+        req.on('error', reject);
+        req.end();
+    });
+}
+
 async function main(): Promise<void> {
     const options = parseProbeArgs(process.argv.slice(2), (path) => readFileSync(path, 'utf8'));
-    const ca = readFileSync(options.caFile, 'utf8');
+    const trust = readFileSync(options.caFile, 'utf8');
+    const ca = options.caUrl === null ? trust : await fetchText(options.caUrl, trust, options.timeoutMs);
     const statuses = await Promise.all(options.addresses.map((address) => probe({ ...options, address, ca })));
     const failed = statuses.flatMap((status, index) =>
         status === 200 ? [] : [`${options.addresses[index] ?? ''}: ${String(status)}`],

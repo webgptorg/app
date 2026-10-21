@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import {
+    CHALLTESTSRV,
     CONNECT_PROXY,
     CONNECT_PROXY_PORT,
     DNS_IP,
@@ -18,6 +19,8 @@ import {
     MOCK_ENGINE_CONTROL,
     MOUNTS,
     OUR_DOMAIN,
+    PEBBLE,
+    PEBBLE_VALIDITY_S,
     PUBLIC_FILES,
     RELAYS,
     RELEASE_STORE,
@@ -30,7 +33,7 @@ const E2E_DIR = join(import.meta.dirname, '..');
 const compose = readFileSync(join(E2E_DIR, 'compose.yaml'), 'utf8');
 const corefile = readFileSync(join(E2E_DIR, 'coredns', 'Corefile'), 'utf8');
 const overlay = (name: string): string => readFileSync(join(E2E_DIR, `compose.${name}.yaml`), 'utf8');
-const OVERLAYS = ['nat', 'capture', 'egress-443', 'connect-proxy', 'tls-inspecting-proxy', 'debug'] as const;
+const OVERLAYS = ['nat', 'capture', 'egress-443', 'connect-proxy', 'tls-inspecting-proxy', 'acme', 'debug'] as const;
 
 describe('the topology in compose.yaml and the Corefile', () => {
     it('gives every relay the address and hostname stack.ts names', () => {
@@ -107,6 +110,30 @@ describe('the topology in compose.yaml and the Corefile', () => {
         expect(dockerfile).toContain(`COPY --from=ui-bundle ${MOUNTS.uiBundles} ${MOUNTS.uiBundles}`);
     });
 
+    it('puts Pebble and its resolver where stack.ts says, validating TLS-ALPN-01 through relay-a', () => {
+        const acme = overlay('acme');
+        const relayA = RELAYS[0];
+        if (relayA === undefined) throw new Error('no relay');
+        expect(acme).toContain(`  ${PEBBLE.service}:\n`);
+        expect(acme).toContain(`ipv4_address: ${PEBBLE.ip}`);
+        expect(acme).toContain(`'${PEBBLE.hostname}:${PEBBLE.ip}'`);
+        expect(acme).toContain(`PTBK_ACME_DIRECTORY_URL: https://${PEBBLE.hostname}:${String(PEBBLE.acmePort)}/dir`);
+        expect(acme).toContain(`https://${PEBBLE.hostname}:${String(PEBBLE.managementPort)}/roots/0`);
+        expect(acme).toContain(`NODE_EXTRA_CA_CERTS: ${MOUNTS.public}/${PUBLIC_FILES.pebbleMinica}`);
+        expect(acme).toContain(`  ${CHALLTESTSRV.service}:\n`);
+        expect(acme).toContain(`ipv4_address: ${CHALLTESTSRV.ip}`);
+        expect(acme).toContain(`'-dnsserver', '${CHALLTESTSRV.ip}:${String(CHALLTESTSRV.dnsPort)}'`);
+        expect(acme).toContain(`'-defaultIPv4',\n        '${relayA.ip}',`);
+        const config = JSON.parse(readFileSync(join(E2E_DIR, 'pebble', 'pebble-config.json'), 'utf8')) as {
+            pebble: { tlsPort: number; profiles: { default: { validityPeriod: number } } };
+        };
+        expect(config.pebble.tlsPort).toBe(443);
+        expect(config.pebble.profiles.default.validityPeriod).toBe(PEBBLE_VALIDITY_S);
+        const pebbleImage = /^\s+image: (ghcr\.io\/letsencrypt\/pebble:\S+)$/m.exec(acme)?.[1];
+        const dockerfile = readFileSync(join(E2E_DIR, 'docker', 'stack.Dockerfile'), 'utf8');
+        expect(dockerfile).toContain(`ARG PEBBLE_IMAGE=${pebbleImage ?? 'missing'}`);
+    });
+
     it('pins every image it pulls by digest', () => {
         const images = [compose, ...OVERLAYS.map(overlay)].flatMap((text) =>
             [...text.matchAll(/^\s+image: (\S+)$/gm)].map((match) => match[1]),
@@ -115,7 +142,7 @@ describe('the topology in compose.yaml and the Corefile', () => {
         for (const image of images) expect(image).toMatch(/^[^@\s]+:[^@\s]+@sha256:[0-9a-f]{64}$/);
         const dockerfile = readFileSync(join(E2E_DIR, 'docker', 'stack.Dockerfile'), 'utf8');
         const bases = [...dockerfile.matchAll(/^ARG \w+_IMAGE=(\S+)$/gm)].map((match) => match[1]);
-        expect(bases).toHaveLength(3);
+        expect(bases).toHaveLength(4);
         for (const image of bases) expect(image).toMatch(/^[^@\s]+:[^@\s]+@sha256:[0-9a-f]{64}$/);
     });
 

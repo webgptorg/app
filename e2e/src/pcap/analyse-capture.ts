@@ -36,6 +36,8 @@ interface ConnectionBase {
 
 export interface EngineConnection extends ConnectionBase {
     readonly kind: 'engine';
+    /** The protocols the client offered: an ACME validation offers exactly `acme-tls/1`, a browser never does. */
+    readonly alpn: readonly string[];
     readonly clientToServerTls: TlsStreamCheck;
     readonly serverToClientTls: TlsStreamCheck;
 }
@@ -132,6 +134,7 @@ function summarise(connection: TcpConnection, label: string, engineHostname: str
     return {
         ...base,
         kind: 'engine',
+        alpn: hello.alpn,
         clientToServerTls: checkTlsStream(connection.clientToServer.bytes, tlsOptions),
         serverToClientTls: checkTlsStream(connection.serverToClient.bytes, tlsOptions),
     };

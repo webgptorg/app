@@ -72,6 +72,7 @@ describe('analyseCapture', () => {
             {
                 kind: 'engine',
                 label: '10.0.0.5:51234 -> 10.0.0.11:443',
+                alpn: [],
                 sawHandshake: true,
                 closed: true,
                 clientToServerTls: { kind: 'tls', counts: { handshake: 1, changeCipherSpec: 1, applicationData: 2 } },
