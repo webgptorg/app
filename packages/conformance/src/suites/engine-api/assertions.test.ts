@@ -1198,6 +1198,15 @@ const CAPABILITY_FAILS: readonly Case[] = [
         },
     ],
     [
+        'a bad schedule refused without naming the field',
+        'engine-api.triggers.invalid-schedule',
+        {
+            tamper: replace(on('POST', TRIGGERS), (_, response) =>
+                response.status === 422 ? problem('invalid-schedule', 422) : response,
+            ),
+        },
+    ],
+    [
         'a bad schedule accepted',
         'engine-api.triggers.invalid-schedule',
         {
@@ -1207,6 +1216,7 @@ const CAPABILITY_FAILS: readonly Case[] = [
                           {
                               id: 'trigger-accepted',
                               agentId: 'agent-x',
+                              agentName: 'Agent X',
                               name: 'Accepted',
                               kind: 'email',
                               lifecycle: 'active',
@@ -1222,6 +1232,31 @@ const CAPABILITY_FAILS: readonly Case[] = [
                       )
                     : response,
             ),
+        },
+    ],
+    [
+        'a trigger that names another agent',
+        'engine-api.triggers.paging',
+        {
+            tamper: editJson(
+                on('GET', TRIGGERS),
+                firstItem((trigger) => ({ ...trigger, agentName: 'Someone else' })),
+            ),
+        },
+    ],
+    [
+        'trigger stats that do not count a new schedule',
+        'engine-api.triggers.stats',
+        { tamper: firstAnswerAgain(on('GET', /^\/triggers\/stats$/)) },
+    ],
+    [
+        'trigger stats whose next fire is after an active trigger’s',
+        'engine-api.triggers.stats',
+        {
+            tamper: editJson(on('GET', /^\/triggers\/stats$/), (stats) => ({
+                ...stats,
+                nextFireAt: '2099-01-01T00:00:00Z',
+            })),
         },
     ],
     [

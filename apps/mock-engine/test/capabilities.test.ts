@@ -78,6 +78,7 @@ describe('capabilities through the mock HTTP server (contract)', () => {
             ),
         );
         await okFrom('listTriggers', owner.triggers.list({ kind: 'schedule', limit: 5 }, signal()));
+        await okFrom('getTriggerStats', owner.triggers.stats({}, signal()));
         await okFrom('getTrigger', owner.triggers.get(trigger.id, signal()));
         await okFrom('updateTrigger', owner.triggers.update(trigger.id, { name: 'Renamed schedule' }, signal()));
         await okFrom('pauseTrigger', owner.triggers.pause(trigger.id, signal()));

@@ -141,7 +141,7 @@ export type Diagnostic = z.infer<typeof Diagnostic>;
 
 /**
  * RFC 9457 problem details. Extensions are declared like any other field, because the schema is strict:
- * `errors` with `validation-failed`, `requiredPermission` with `forbidden`, `diagnostics` with `invalid-book`.
+ * `errors` with `validation-failed` and `invalid-schedule`, `requiredPermission` with `forbidden`, `diagnostics` with `invalid-book`.
  */
 export const ProblemDetails = z.strictObject({
     type: z.string().min(1).max(2048),

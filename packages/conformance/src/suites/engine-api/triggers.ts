@@ -39,20 +39,22 @@ export const TRIGGER_CHECKS: readonly ConformanceCheck[] = [
     {
         id: 'engine-api.triggers.paging',
         suite: SUITE,
-        title: 'GET /triggers pages without gaps or duplicates, and its filters list only matching triggers',
+        title: 'GET /triggers pages without gaps or duplicates, its filters list only matching triggers, and each names its agent',
         async run(ctx) {
             const world = await createWorld(ctx);
             await requireCapability(world, KNOWN_CAPABILITIES.triggers);
             const findings = new Findings();
             const created: string[] = [];
             for (let index = 0; index < CREATED; index++) created.push((await createSchedule(world, 'page')).id);
-            const { id: agentId } = await world.agent();
+            const { id: agentId, name: agentName } = await world.agent();
             await attempt(findings, () => checkStableWalk(world, findings, R.listTriggers, { agentId }));
             await attempt(findings, async () => {
                 const listed = await world.owner.ok(R.listTriggers, { query: { agentId, limit: 100 } });
                 const missing = created.filter((id) => !listed.items.some((trigger) => trigger.id === id));
                 if (missing.length > 0)
                     findings.add(`GET /triggers: ${String(missing.length)} created triggers are missing`);
+                if (listed.items.some((trigger) => trigger.agentName !== agentName))
+                    findings.add("GET /triggers: a trigger's agentName is not its agent's name");
                 checkFilter(
                     findings,
                     R.listTriggers,
@@ -125,7 +127,7 @@ export const TRIGGER_CHECKS: readonly ConformanceCheck[] = [
     {
         id: 'engine-api.triggers.invalid-schedule',
         suite: SUITE,
-        title: 'A schedule the engine cannot run (bad cron, unknown time zone, end before start) is 422 invalid-schedule',
+        title: 'A schedule the engine cannot run (bad cron, unknown time zone, end before start) is 422 invalid-schedule naming the field',
         async run(ctx) {
             const world = await createWorld(ctx);
             await requireCapability(world, KNOWN_CAPABILITIES.triggers);
@@ -133,15 +135,24 @@ export const TRIGGER_CHECKS: readonly ConformanceCheck[] = [
             const { id: agentId } = await world.agent();
             const now = Date.now();
             const bodies = [
-                { recurrence: { kind: 'cron', expression: '61 25 * * *', timeZone: 'UTC' } },
-                { recurrence: { kind: 'cron', expression: '0 9 * * *', timeZone: 'Mars/Olympus_Mons' } },
                 {
-                    recurrence: { kind: 'interval', everySeconds: 3600 },
-                    startsAt: new Date(now + YEAR_MS).toISOString(),
-                    endsAt: new Date(now + YEAR_MS / 2).toISOString(),
+                    path: 'body.recurrence.expression',
+                    fields: { recurrence: { kind: 'cron', expression: '61 25 * * *', timeZone: 'UTC' } },
+                },
+                {
+                    path: 'body.recurrence.timeZone',
+                    fields: { recurrence: { kind: 'cron', expression: '0 9 * * *', timeZone: 'Mars/Olympus_Mons' } },
+                },
+                {
+                    path: 'body.endsAt',
+                    fields: {
+                        recurrence: { kind: 'interval', everySeconds: 3600 },
+                        startsAt: new Date(now + YEAR_MS).toISOString(),
+                        endsAt: new Date(now + YEAR_MS / 2).toISOString(),
+                    },
                 },
             ];
-            for (const fields of bodies) {
+            for (const { path, fields } of bodies) {
                 await attempt(findings, async () => {
                     const body = {
                         kind: 'schedule',
@@ -162,8 +173,40 @@ export const TRIGGER_CHECKS: readonly ConformanceCheck[] = [
                     if (result.problem.code !== 'invalid-schedule') {
                         fail(`POST /triggers: got ${result.problem.code}, not invalid-schedule`);
                     }
+                    if (!(result.problem.errors ?? []).some((error) => error.path === path)) {
+                        fail(`POST /triggers: invalid-schedule for ${path} does not name it in errors`);
+                    }
                 });
             }
+            return findings.outcome();
+        },
+    },
+    {
+        id: 'engine-api.triggers.stats',
+        suite: SUITE,
+        title: "GET /triggers/stats counts an agent's triggers by lifecycle and names the soonest next fire",
+        async run(ctx) {
+            const world = await createWorld(ctx);
+            await requireCapability(world, KNOWN_CAPABILITIES.triggers);
+            const findings = new Findings();
+            const { id: agentId } = await world.agent();
+            const before = await world.owner.ok(R.getTriggerStats, { query: { agentId } });
+            const trigger = await createSchedule(world, 'stats');
+            const created = await world.owner.ok(R.getTriggerStats, { query: { agentId } });
+            if (created.active !== before.active + 1)
+                findings.add('GET /triggers/stats: a new schedule is not counted as active');
+            if (
+                trigger.nextFireAt !== null &&
+                (created.nextFireAt === null || Date.parse(created.nextFireAt) > Date.parse(trigger.nextFireAt))
+            )
+                findings.add("GET /triggers/stats: nextFireAt is later than an active trigger's next fire");
+            await world.owner.ok(R.pauseTrigger, { params: { triggerId: trigger.id } });
+            const paused = await world.owner.ok(R.getTriggerStats, { query: { agentId } });
+            if (paused.active !== before.active || paused.paused !== before.paused + 1)
+                findings.add('GET /triggers/stats: a paused schedule is not counted as paused');
+            const all = await world.owner.ok(R.getTriggerStats, {});
+            if (all.paused < paused.paused)
+                findings.add('GET /triggers/stats: the engine-wide count is lower than one agent’s');
             return findings.outcome();
         },
     },

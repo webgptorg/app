@@ -145,6 +145,15 @@ export type InMemorySeedRun = Omit<RunDetailInput, 'agentName' | 'preview' | 'ou
     readonly outputs: Omit<RunDetailInput['outputs'], 'fileNames'> & { readonly fileNames?: readonly string[] };
 };
 
+type TriggerInput = Unbranded<z.input<typeof Trigger>>;
+
+/** A trigger in contract shape; `agentName` defaults to `null`, and the core reads the agent's current name on every answer. */
+export type InMemorySeedTrigger = TriggerInput extends infer Each
+    ? Each extends TriggerInput
+        ? Omit<Each, 'agentName'> & { readonly agentName?: string | null }
+        : never
+    : never;
+
 /** Seed data in contract shapes; every record is validated against its schema when the client is created. */
 export interface InMemorySeed {
     readonly orgId?: string;
@@ -167,7 +176,7 @@ export interface InMemorySeed {
     readonly files?: readonly InMemorySeedFile[];
     readonly runs?: readonly InMemorySeedRun[];
     readonly triggers?: readonly {
-        readonly trigger: Unbranded<z.input<typeof Trigger>>;
+        readonly trigger: InMemorySeedTrigger;
         /** Oldest first. */
         readonly fires?: readonly Unbranded<z.input<typeof TriggerFire>>[];
     }[];
@@ -1152,7 +1161,7 @@ function createState(
         runs: byId((seed.runs ?? []).map((record) => seedRun(record, files))),
         triggers: new Map(
             (seed.triggers ?? []).map(({ trigger, fires }) => {
-                const parsed = Trigger.parse(trigger);
+                const parsed = Trigger.parse({ ...trigger, agentName: trigger.agentName ?? null });
                 return [parsed.id, { trigger: parsed, fires: (fires ?? []).map((fire) => TriggerFire.parse(fire)) }];
             }),
         ),

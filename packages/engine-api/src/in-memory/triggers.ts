@@ -1,12 +1,13 @@
 import { RunError } from '../capabilities/runs';
 import type { RunSource } from '../capabilities/runs';
-import type { ScheduleConfig, Trigger, TriggerFire } from '../capabilities/triggers';
+import type { ScheduleConfig, Trigger, TriggerFire, TriggerStats } from '../capabilities/triggers';
 import { Timestamp, TriggerFireId, TriggerId } from '../common';
 import type { RunId } from '../common';
 import { fail, invalid, liveAgent, memberActor, notFound, ok, page, recordActivity, sortBy, time } from './kit';
 import type { EngineContext, HandlerContext, Handlers, HandlerResult } from './kit';
 import { queueRun } from './runs';
 import { nextFireAt, scheduleProblem } from './schedule';
+import type { ScheduleProblem } from './schedule';
 import type { TriggerRecord } from './state';
 
 const EPOCH = '1970-01-01T00:00:00Z';
@@ -16,11 +17,20 @@ function next(config: ScheduleConfig, now: string, lastFiredAt: string | null): 
     return at === null ? null : Timestamp.parse(at);
 }
 
+/** The trigger as the engine answers it: with the agent's name now, which the stored record does not keep current. */
+export function triggerView(ctx: EngineContext, trigger: Trigger): Trigger {
+    const agent = ctx.state.agents.get(trigger.agentId)?.agent;
+    return agent === undefined ? trigger : { ...trigger, agentName: agent.name };
+}
+
 function save(ctx: EngineContext, record: TriggerRecord, trigger: Trigger): Trigger {
     record.trigger = trigger;
     ctx.publish({ type: 'trigger.changed', triggerId: trigger.id, agentId: trigger.agentId });
-    return trigger;
+    return triggerView(ctx, trigger);
 }
+
+const refuse = (problem: ScheduleProblem): HandlerResult<never> =>
+    fail('invalid-schedule', { detail: problem.message, errors: [problem] });
 
 function found(ctx: EngineContext, triggerId: string): HandlerResult<TriggerRecord> {
     const record = ctx.state.triggers.get(triggerId);
@@ -146,7 +156,7 @@ function setLifecycle(ctx: HandlerContext, triggerId: string, lifecycle: 'paused
     const record = result.data;
     const trigger = record.trigger;
     if (trigger.lifecycle === 'ended') return fail('trigger-ended');
-    if (trigger.lifecycle === lifecycle) return ok(trigger);
+    if (trigger.lifecycle === lifecycle) return ok(triggerView(ctx, trigger));
     const now = ctx.now();
     const nextFire =
         lifecycle === 'paused' || trigger.kind !== 'schedule' ? null : next(trigger.config, now, trigger.lastFiredAt);
@@ -164,6 +174,7 @@ function setLifecycle(ctx: HandlerContext, triggerId: string, lifecycle: 'paused
 export const TRIGGER_HANDLERS: Pick<
     Handlers,
     | 'listTriggers'
+    | 'getTriggerStats'
     | 'createTrigger'
     | 'getTrigger'
     | 'updateTrigger'
@@ -174,7 +185,7 @@ export const TRIGGER_HANDLERS: Pick<
 > = {
     listTriggers: ({ query }, ctx) => {
         const triggers = [...ctx.state.triggers.values()]
-            .map(({ trigger }) => trigger)
+            .map(({ trigger }) => triggerView(ctx, trigger))
             .filter(
                 (trigger) =>
                     (query.agentId === undefined || trigger.agentId === query.agentId) &&
@@ -187,6 +198,18 @@ export const TRIGGER_HANDLERS: Pick<
             query,
         );
     },
+    getTriggerStats: ({ query }, ctx) => {
+        const stats: TriggerStats = { active: 0, paused: 0, failed: 0, ended: 0, nextFireAt: null };
+        for (const { trigger } of ctx.state.triggers.values()) {
+            if (query.agentId !== undefined && trigger.agentId !== query.agentId) continue;
+            stats[trigger.lifecycle] += 1;
+            const next = trigger.nextFireAt;
+            if (trigger.lifecycle === 'active' && next !== null) {
+                if (stats.nextFireAt === null || time(next) < time(stats.nextFireAt)) stats.nextFireAt = next;
+            }
+        }
+        return ok(stats);
+    },
     createTrigger: ({ body }, ctx) => {
         const agent = liveAgent(ctx, body.agentId);
         if (agent.kind === 'problem') return agent;
@@ -195,6 +218,7 @@ export const TRIGGER_HANDLERS: Pick<
         const base = {
             id,
             agentId: body.agentId,
+            agentName: agent.data.name,
             name: body.name,
             lifecycle: 'active' as const,
             endedReason: null,
@@ -222,16 +246,16 @@ export const TRIGGER_HANDLERS: Pick<
                 message: body.message,
             };
             const problem = scheduleProblem(config.recurrence, config.startsAt, config.endsAt, now);
-            if (problem !== undefined) return fail('invalid-schedule', { detail: problem });
+            if (problem !== undefined) return refuse(problem);
             trigger = { ...base, kind: 'schedule', nextFireAt: next(config, now, null), config };
         }
         ctx.state.triggers.set(id, { trigger, fires: [] });
         ctx.publish({ type: 'trigger.changed', triggerId: id, agentId: trigger.agentId });
-        return ok(trigger);
+        return ok(triggerView(ctx, trigger));
     },
     getTrigger: ({ params }, ctx) => {
         const result = found(ctx, params.triggerId);
-        return result.kind === 'problem' ? result : ok(result.data.trigger);
+        return result.kind === 'problem' ? result : ok(triggerView(ctx, result.data.trigger));
     },
     updateTrigger: ({ params, body }, ctx) => {
         const result = found(ctx, params.triggerId);
@@ -261,7 +285,7 @@ export const TRIGGER_HANDLERS: Pick<
             config.endsAt,
             body.recurrence ? now : EPOCH,
         );
-        if (problem !== undefined) return fail('invalid-schedule', { detail: problem });
+        if (problem !== undefined) return refuse(problem);
         const nextFire = named.lifecycle === 'active' ? next(config, now, named.lastFiredAt) : named.nextFireAt;
         return ok(save(ctx, record, { ...named, config, nextFireAt: nextFire }));
     },

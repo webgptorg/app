@@ -1073,18 +1073,23 @@ export function engineApiClientSuite(makeEngine: MakeEngine): void {
 
             const refused = async (
                 recurrence: Parameters<EngineApiClient['triggers']['create']>[0],
-                what: string,
+                path: string,
             ): Promise<void> => {
-                expect(problem(await client.triggers.create(recurrence, signal())), what).toMatchObject({
-                    status: 422,
-                    code: 'invalid-schedule',
-                });
+                const refusal = problem(await client.triggers.create(recurrence, signal()));
+                expect(refusal, path).toMatchObject({ status: 422, code: 'invalid-schedule' });
+                expect(
+                    refusal.errors?.map((error) => error.path),
+                    path,
+                ).toEqual([path]);
             };
             const base = { kind: 'schedule', agentId, name: 'Bad', message: 'x' } as const;
-            await refused({ ...base, recurrence: { kind: 'cron', expression: '61 * * * *', timeZone: 'UTC' } }, 'cron');
+            await refused(
+                { ...base, recurrence: { kind: 'cron', expression: '61 * * * *', timeZone: 'UTC' } },
+                'body.recurrence.expression',
+            );
             await refused(
                 { ...base, recurrence: { kind: 'cron', expression: '0 9 * * *', timeZone: 'Mars/Olympus' } },
-                'time zone',
+                'body.recurrence.timeZone',
             );
             await refused(
                 {
@@ -1093,7 +1098,7 @@ export function engineApiClientSuite(makeEngine: MakeEngine): void {
                     startsAt: minutes(60),
                     endsAt: minutes(30),
                 },
-                'range',
+                'body.endsAt',
             );
             expect(
                 problem(
@@ -1158,6 +1163,42 @@ export function engineApiClientSuite(makeEngine: MakeEngine): void {
             });
             expect(ok(await client.triggers.delete(trigger.id, signal()))).toBeNull();
             expect(problem(await client.triggers.get(trigger.id, signal())).code).toBe('not-found');
+        });
+
+        it('names the agent on each trigger and counts triggers by lifecycle (API 1.7)', async () => {
+            const { client } = engine();
+            const schedule = (agent: string, name: string, everySeconds: number) =>
+                client.triggers.create(
+                    {
+                        kind: 'schedule',
+                        agentId: AgentId.parse(agent),
+                        name,
+                        recurrence: { kind: 'interval', everySeconds },
+                        message: 'Go.',
+                    },
+                    signal(),
+                );
+            const soon = ok(await schedule('agent-a', 'Soon', 60));
+            const later = ok(await schedule('agent-a', 'Later', 3600));
+            const other = ok(await schedule('agent-b', 'Other', 120));
+            expect([soon.agentName, other.agentName]).toEqual(['Ada', 'Bob']);
+            expect(ok(await client.triggers.list({ agentId: AgentId.parse('agent-b') }, signal())).items).toEqual([
+                other,
+            ]);
+            ok(await client.triggers.pause(later.id, signal()));
+            expect(ok(await client.triggers.stats({ agentId: AgentId.parse('agent-a') }, signal()))).toEqual({
+                active: 1,
+                paused: 1,
+                failed: 0,
+                ended: 0,
+                nextFireAt: soon.nextFireAt,
+            });
+            ok(await client.triggers.pause(soon.id, signal()));
+            expect(ok(await client.triggers.stats({}, signal()))).toMatchObject({
+                active: 1,
+                paused: 2,
+                nextFireAt: other.nextFireAt,
+            });
         });
 
         it('connects integrations by secret name, pages and filters them, and enables and disables them', async () => {

@@ -25,6 +25,7 @@ export type {
     InMemorySeedChat,
     InMemorySeedFile,
     InMemorySeedRun,
+    InMemorySeedTrigger,
     InMemoryVisitorChat,
     ResourceKind,
 } from './in-memory-client';

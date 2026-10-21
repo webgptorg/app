@@ -118,29 +118,41 @@ function nextCronFire(cron: Cron, format: Intl.DateTimeFormat, from: number): nu
     return null;
 }
 
+/** Why the engine refuses a schedule, naming the request field at fault as `errors[].path` does (`body.endsAt`). */
+export interface ScheduleProblem {
+    readonly path: string;
+    readonly message: string;
+}
+
+const at = (message: string): ScheduleProblem => ({ path: 'body.recurrence.at', message });
+const expression = (message: string): ScheduleProblem => ({ path: 'body.recurrence.expression', message });
+
 /** Why the engine refuses a schedule (422 `invalid-schedule`), or `undefined` when it can run it. */
 export function scheduleProblem(
     recurrence: Recurrence,
     startsAt: string,
     endsAt: string | null,
     now: string,
-): string | undefined {
-    if (endsAt !== null && Date.parse(endsAt) <= Date.parse(startsAt)) return 'endsAt must be after startsAt.';
+): ScheduleProblem | undefined {
+    if (endsAt !== null && Date.parse(endsAt) <= Date.parse(startsAt)) {
+        return { path: 'body.endsAt', message: 'endsAt must be after startsAt.' };
+    }
     switch (recurrence.kind) {
         case 'once':
-            if (Date.parse(recurrence.at) < Date.parse(now)) return 'The time is in the past.';
-            if (Date.parse(recurrence.at) < Date.parse(startsAt)) return 'The time is before startsAt.';
-            if (endsAt !== null && Date.parse(recurrence.at) >= Date.parse(endsAt)) return 'The time is after endsAt.';
+            if (Date.parse(recurrence.at) < Date.parse(now)) return at('The time is in the past.');
+            if (Date.parse(recurrence.at) < Date.parse(startsAt)) return at('The time is before startsAt.');
+            if (endsAt !== null && Date.parse(recurrence.at) >= Date.parse(endsAt))
+                return at('The time is after endsAt.');
             return undefined;
         case 'interval':
             return undefined;
         case 'cron': {
             const cron = parseCron(recurrence.expression);
-            if (!cron) return 'Not a five-field cron expression.';
+            if (!cron) return expression('Not a five-field cron expression.');
             const format = formatter(recurrence.timeZone);
-            if (!format) return 'Unknown time zone.';
+            if (!format) return { path: 'body.recurrence.timeZone', message: 'Unknown time zone.' };
             if (nextCronFire(cron, format, Math.max(Date.parse(now), Date.parse(startsAt))) === null) {
-                return 'The expression never fires.';
+                return expression('The expression never fires.');
             }
             return undefined;
         }
