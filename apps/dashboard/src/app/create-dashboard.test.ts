@@ -65,6 +65,7 @@ function productionBindings() {
             RATE_LIMIT_VERIFY: binding,
             RATE_LIMIT_PUBLIC_READ: binding,
             RATE_LIMIT_WEBHOOK: binding,
+            RATE_LIMIT_REGISTRY: binding,
             HOURLY_RATE_LIMITER: runtime({
                 idFromName: (name: string) => (names.push(name), { name }),
                 get: () => ({ consume: () => Promise.resolve('allowed') }),

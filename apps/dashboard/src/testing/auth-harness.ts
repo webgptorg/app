@@ -15,6 +15,8 @@ import { createAuthorizer } from '../domain/authz/authorizer';
 import type { BillingStore } from '../domain/billing/billing-store';
 import type { EngineStore } from '../domain/registration/engine-store';
 import type { LinkCodeStore } from '../domain/registration/link-code-store';
+import type { RegistryReader } from '../domain/registry/registry-reader';
+import type { RelayTokenStore } from '../domain/registry/relay-token-store';
 import { DASHBOARD_POLICY } from '../domain/authz/policy';
 import type { RateLimiter } from '../domain/ports/rate-limiter';
 import type { RouteContract } from '../shared/api/contract';
@@ -22,6 +24,12 @@ import { syntheticWebhookSecret, TEST_PLANS } from './billing-fixtures';
 import { createSoftwareAuthenticator, type SoftwareAuthenticator } from './software-authenticator';
 import { stripeSignatureHeader } from './stripe-signature';
 import { createMemoryRegistrationStores } from './memory-registration-store';
+import {
+    createMemoryEngineHostnameStore,
+    createMemoryRegistryReader,
+    createMemoryRelayTokenStore,
+    type MemoryEngineHostnameStore,
+} from './memory-registry-stores';
 import { createTestBilling } from './test-billing';
 
 export const ORIGIN = 'https://app.ptbk.test';
@@ -59,6 +67,8 @@ export interface AuthHarness {
     readonly billingProvider: FakeBillingState;
     /** Generated per harness; the webhook route verifies with it. */
     readonly webhookSecret: string;
+    /** D-08's custom hostnames, until that task adds their table. */
+    readonly engineHostnames: MemoryEngineHostnameStore;
     /** Posts a Stripe webhook, signed with {@link webhookSecret} at the harness clock unless told otherwise. */
     webhook(
         payload: string,
@@ -92,6 +102,9 @@ export function createAuthHarness(options: {
     readonly billingStore?: BillingStore;
     /** Default to in-memory stores whose organizations always exist. */
     readonly registration?: { readonly linkCodes: LinkCodeStore; readonly engines: EngineStore };
+    /** Default to in-memory ones; the registry reader then reads the registration stores' engines. */
+    readonly relayTokens?: RelayTokenStore;
+    readonly registry?: RegistryReader;
 }): AuthHarness {
     const clock = createFakeClock(START_MS);
     const webhookSecret = syntheticWebhookSecret();
@@ -118,6 +131,7 @@ export function createAuthHarness(options: {
         ...(options.billingStore === undefined ? {} : { store: options.billingStore }),
     });
     const registration = options.registration ?? createMemoryRegistrationStores({ orgExists: () => true });
+    const engineHostnames = createMemoryEngineHostnameStore();
     const deps: DashboardDeps = {
         config,
         clock,
@@ -134,6 +148,9 @@ export function createAuthHarness(options: {
         entitlements: testBilling.entitlements,
         linkCodes: registration.linkCodes,
         engines: registration.engines,
+        relayTokens: options.relayTokens ?? createMemoryRelayTokenStore(),
+        registry: options.registry ?? createMemoryRegistryReader(registration.engines),
+        engineHostnames,
     };
     const { app: http, routes } = createHttpApp({
         ...deps,
@@ -166,6 +183,7 @@ export function createAuthHarness(options: {
         billingStore: testBilling.store,
         billingProvider: testBilling.provider,
         webhookSecret,
+        engineHostnames,
         settle,
         async webhook(payload, webhookOptions = {}) {
             const signature =

@@ -21,6 +21,7 @@ export const RULE_ADAPTERS = {
     'verify-ip': 'binding',
     'public-read-ip': 'binding',
     'webhook-ip': 'binding',
+    'registry-relay': 'binding',
 } as const satisfies Readonly<Record<RateLimitRuleName, 'binding' | 'durable-object'>>;
 
 export function routeByRule(adapters: Readonly<Record<'binding' | 'durable-object', RateLimiter>>): RateLimiter {
@@ -36,6 +37,7 @@ export function createWorkersRateLimiter(deps: {
     readonly verify: RateLimitBinding;
     readonly publicRead: RateLimitBinding;
     readonly webhook: RateLimitBinding;
+    readonly registry: RateLimitBinding;
     readonly hourly: WindowCounterNamespace;
 }): RateLimiter {
     return createHmacKeyedRateLimiter({
@@ -46,6 +48,7 @@ export function createWorkersRateLimiter(deps: {
                 'verify-ip': deps.verify,
                 'public-read-ip': deps.publicRead,
                 'webhook-ip': deps.webhook,
+                'registry-relay': deps.registry,
             }),
             'durable-object': createDurableObjectRateLimiter({ namespace: deps.hourly, clock: deps.clock }),
         }),

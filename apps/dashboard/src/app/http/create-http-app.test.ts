@@ -9,6 +9,7 @@ import { DASHBOARD_POLICY } from '../../domain/authz/policy';
 import { syntheticStripeKey, syntheticWebhookSecret, TEST_PLANS } from '../../testing/billing-fixtures';
 import { createMemoryAuthStore } from '../../testing/memory-auth-store';
 import { createMemoryRegistrationStores } from '../../testing/memory-registration-store';
+import { createMemoryEngineHostnameStore, createMemoryRelayTokenStore } from '../../testing/memory-registry-stores';
 import { createTestBilling } from '../../testing/test-billing';
 import { DEV_RATE_LIMIT_HMAC_KEY, parseConfig } from '../config';
 import { authLinks } from '../deps';
@@ -60,6 +61,9 @@ function app(options: {
         billing,
         entitlements,
         ...createMemoryRegistrationStores({ orgExists: () => true }),
+        relayTokens: createMemoryRelayTokenStore(),
+        registry: { findEngine: () => Promise.resolve(null) },
+        engineHostnames: createMemoryEngineHostnameStore(),
         assets: { fetch: assets } as unknown as Fetcher,
         viteDevServer: options.viteDevServer,
     });
@@ -75,7 +79,7 @@ describe('createHttpApp', () => {
         const environment = await http.request('/api/environment');
         expect(await environment.json()).toEqual({ environment: 'staging' });
         expect(environment.headers.get('Cache-Control')).toBe('no-store');
-        const unknown = await http.request('/internal/v1/engines/x');
+        const unknown = await http.request('/internal/v1/unknown');
         expect(unknown.status).toBe(404);
         expect(unknown.headers.get('Content-Type')).toBe('application/problem+json');
         const page = await http.request('/engines/x');

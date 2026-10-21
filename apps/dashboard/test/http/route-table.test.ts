@@ -45,7 +45,7 @@ describe('route table', () => {
             expect(() => {
                 assertMountable(route, mount);
             }, `${route.method} ${route.path}`).not.toThrow();
-            expect(['public', 'session', 'stripe-signature', 'engine-signature']).toContain(route.auth);
+            expect(['public', 'session', 'stripe-signature', 'engine-signature', 'relay-token']).toContain(route.auth);
             expect(route.input.body === null || route.method !== 'GET').toBe(true);
         }
     });
@@ -61,6 +61,13 @@ describe('route table', () => {
         const signed = harness.routes.filter((route) => route.auth === 'engine-signature');
         expect(signed.map((route) => `${route.method} ${route.path} ${String(route.rateLimit)}`)).toEqual([
             'POST /v1/engines/register registration-ip',
+        ]);
+    });
+
+    it('takes a relay key on exactly the registry read, limited per relay', () => {
+        const relayRoutes = harness.routes.filter((route) => route.auth === 'relay-token');
+        expect(relayRoutes.map((route) => `${route.method} ${route.path} ${String(route.rateLimit)}`)).toEqual([
+            'GET /internal/v1/engines/:engineId registry-relay',
         ]);
     });
 

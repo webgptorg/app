@@ -52,7 +52,7 @@ describe('dashboard Worker', () => {
         expectSecurityHeaders(response);
     });
 
-    it.each(['/api/nope', '/api', '/v1/nope', '/v1', '/internal/v1/engines/x', '/webhooks/stripe'])(
+    it.each(['/api/nope', '/api', '/v1/nope', '/v1', '/internal/v1/nope', '/webhooks/stripe'])(
         'answers an unknown %s with a 404 problem, never the shell',
         async (path) => {
             const response = await get(path);
@@ -61,6 +61,13 @@ describe('dashboard Worker', () => {
             expectSecurityHeaders(response);
         },
     );
+
+    it('serves the registry to relay keys only', async () => {
+        const response = await get('/internal/v1/engines/x', { headers: { Authorization: 'Bearer ptbk_rt_short' } });
+        await expectProblem(response, 401, 'unauthorized');
+        expect(response.headers.get('Cache-Control')).toBe('no-store');
+        expectSecurityHeaders(response);
+    });
 
     it('answers a POST to a page path with a 404 problem', async () => {
         await expectProblem(await get('/engines/x', { method: 'POST' }), 404, 'not-found');

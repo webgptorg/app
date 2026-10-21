@@ -6,9 +6,10 @@ export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
  * How a route authenticates; there is no default. `public` routes are an allowlist checked by the route-table test.
  * `stripe-signature` routes are verified over the raw body before anything parses it. `engine-signature` routes carry
  * the engine key's signature inside a strictly parsed body (C-03's registration), and the handler's first step
- * verifies it before reading any state. The relay token joins this union with the task that verifies it.
+ * verifies it before reading any state. `relay-token` routes take a relay key as a bearer token (D-04) and are rate
+ * limited per relay.
  */
-export type AuthMode = 'public' | 'session' | 'stripe-signature' | 'engine-signature';
+export type AuthMode = 'public' | 'session' | 'stripe-signature' | 'engine-signature' | 'relay-token';
 
 export interface RouteInput {
     readonly params: z.ZodType<Readonly<Record<string, string>>> | null;
@@ -32,7 +33,7 @@ export interface RouteContract {
     readonly auth: AuthMode;
     /** An action of the app's policy table; required for `session` routes. */
     readonly permission: string | null;
-    /** A per-IP rate limit rule; required for every non-session route. */
+    /** A per-IP rate limit rule, or a per-relay one for `relay-token` routes; required for every non-session route. */
     readonly rateLimit: string | null;
     readonly input: RouteInput;
     /** Strict, so tests prove the server sends no undeclared field; the client reads it tolerantly. */

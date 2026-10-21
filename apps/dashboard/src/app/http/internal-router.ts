@@ -1,8 +1,41 @@
+import { EngineId, RegistryEntry } from '@ptbk/protocol';
 import { Hono } from 'hono';
+import { z } from 'zod';
+
+import { readRegistryEntry } from '../../domain/registry/read-registry-entry';
+import { defineRoute, NO_INPUT } from '../../shared/api/contract';
+import type { DashboardDeps } from '../deps';
+import type { RouteBinder } from './bind-route';
 
 export const INTERNAL_MOUNT = '/internal';
 
-/** Machine API for relays, authenticated with the relay key (D-04). */
-export function createInternalRouter(): Hono {
-    return new Hono();
+/** C-03's Interface 2: `registryPath(engineId)`, read by every relay at tunnel auth and once per registry TTL. */
+export const registryRoute = defineRoute({
+    method: 'GET',
+    path: '/internal/v1/engines/:engineId',
+    auth: 'relay-token',
+    permission: null,
+    rateLimit: 'registry-relay',
+    input: { ...NO_INPUT, params: z.strictObject({ engineId: EngineId }) },
+    output: RegistryEntry,
+    errorCodes: [],
+});
+
+/** Machine API for relays, authenticated with a relay key. Cookies are never read here. */
+export function createInternalRouter(
+    deps: Pick<DashboardDeps, 'config' | 'logger' | 'registry' | 'engineHostnames'> & { readonly routes: RouteBinder },
+): Hono {
+    const router = new Hono();
+    const reader = { ...deps, engineDomain: deps.config.engineDomain };
+    deps.routes.bind(router, INTERNAL_MOUNT, registryRoute, async ({ input }) => {
+        const outcome = await readRegistryEntry(reader, input.params.engineId);
+        switch (outcome.kind) {
+            case 'found':
+                // Strict on the way out (rule 5): an undeclared field fails here rather than reaching a relay.
+                return { kind: 'ok', body: RegistryEntry.parse(outcome.entry) };
+            case 'not-found':
+                return { kind: 'problem', status: 404, code: 'not-found' };
+        }
+    });
+    return router;
 }

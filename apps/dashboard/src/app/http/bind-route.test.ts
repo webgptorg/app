@@ -6,7 +6,7 @@ import { createMemoryLogger } from '../../adapters/memory-logger';
 import type { ActiveSession } from '../../domain/auth/account';
 import { createAuthorizer, type Actor } from '../../domain/authz/authorizer';
 import { DASHBOARD_POLICY } from '../../domain/authz/policy';
-import { orgIdSchema, userIdSchema } from '../../domain/ids';
+import { orgIdSchema, relayTokenIdSchema, userIdSchema } from '../../domain/ids';
 import type { RateLimitOutcome } from '../../domain/ports/rate-limiter';
 import { defineRoute, NO_INPUT, type RouteContract } from '../../shared/api/contract';
 import { createRouteBinder, type RouteHandler } from './bind-route';
@@ -64,6 +64,7 @@ function harness(options: { readonly limit?: RateLimitOutcome; readonly session?
         rateLimiter: { consume: () => Promise.resolve(options.limit ?? 'allowed') },
         logger,
         resolveSession: (token) => Promise.resolve(token === TOKEN ? (options.session ?? null) : null),
+        authenticateRelay: () => Promise.resolve(null),
         signatures: { 'stripe-signature': () => Promise.resolve({ kind: 'invalid' }) },
     });
     const router = new Hono();
@@ -113,6 +114,7 @@ function signedHarness(payload: unknown = { id: 'evt' }) {
         rateLimiter: { consume: () => Promise.resolve('allowed') },
         logger: createMemoryLogger(),
         resolveSession: () => Promise.reject(new Error('signed routes never read a session')),
+        authenticateRelay: () => Promise.reject(new Error('signed routes never read a relay key')),
         signatures: {
             'stripe-signature': (bytes, signature) => {
                 verified.push({ bytes: new TextDecoder().decode(bytes), signature });
@@ -272,6 +274,7 @@ describe('route binder', () => {
             rateLimiter: { consume: () => Promise.resolve('allowed') },
             logger: createMemoryLogger(),
             resolveSession: () => Promise.resolve(session()),
+            authenticateRelay: () => Promise.resolve(null),
             signatures: { 'stripe-signature': () => Promise.resolve({ kind: 'invalid' }) },
         });
         const router = new Hono();
@@ -315,6 +318,9 @@ describe('route binder', () => {
             'an engine-signed route without a body schema',
             { auth: 'engine-signature', permission: null, rateLimit: 'registration-ip' },
         ],
+        ['a relay route without rate limit', { auth: 'relay-token', permission: null, rateLimit: null }],
+        ['a relay route with a per-IP limit', { auth: 'relay-token', permission: null, rateLimit: 'public-read-ip' }],
+        ['a public route with a per-relay limit', { auth: 'public', permission: null, rateLimit: 'registry-relay' }],
         [
             'a signed route without rate limit',
             {
@@ -377,6 +383,83 @@ describe('route binder', () => {
             const response = await send(odd.app, '{}', { 'Stripe-Signature': 'good' });
             expect(await response.json()).toMatchObject({ status: 400, code: 'invalid-request' });
             expect(odd.seen).toEqual([]);
+        });
+    });
+
+    describe('relay routes', () => {
+        const relayRoute = defineRoute({
+            method: 'GET',
+            path: '/internal/things/:id',
+            auth: 'relay-token',
+            permission: null,
+            rateLimit: 'registry-relay',
+            input: { ...NO_INPUT, params: z.strictObject({ id: z.string().regex(/^[a-z]{1,8}$/) }) },
+            output: z.strictObject({ relayId: z.string() }),
+            errorCodes: [],
+        });
+
+        function relayHarness(limit: RateLimitOutcome = 'allowed') {
+            const consumed: [string, string][] = [];
+            const deferred: Promise<unknown>[] = [];
+            const binder = createRouteBinder({
+                authorizer: createAuthorizer({ clock: { nowMs: () => 0 }, policy: DASHBOARD_POLICY }),
+                rateLimiter: {
+                    consume: (rule, key) => {
+                        consumed.push([rule, key]);
+                        return Promise.resolve(limit);
+                    },
+                },
+                logger: createMemoryLogger(),
+                resolveSession: () => Promise.reject(new Error('relay routes never read a session')),
+                authenticateRelay: (authorization, defer) => {
+                    defer(Promise.resolve('touched'));
+                    return Promise.resolve(
+                        authorization === 'Bearer good'
+                            ? { tokenId: relayTokenIdSchema.parse('r'.repeat(26)), relayId: 'relay-1.ptbk.test' }
+                            : null,
+                    );
+                },
+                signatures: { 'stripe-signature': () => Promise.resolve({ kind: 'invalid' }) },
+            });
+            const router = new Hono();
+            binder.bind(router, '/internal', relayRoute, ({ relay }) =>
+                Promise.resolve({ kind: 'ok', body: { relayId: relay.relayId } }),
+            );
+            const app = new Hono().route('/internal', router);
+            const executionCtx = {
+                waitUntil: (task: Promise<unknown>) => deferred.push(task),
+                passThroughOnException: () => undefined,
+                props: {},
+            } as unknown as ExecutionContext;
+            const get = (path: string, headers: Record<string, string> = {}) =>
+                app.request(path, { headers }, undefined, executionCtx);
+            return { get, consumed, deferred };
+        }
+
+        it('authenticates before anything else and counts the budget per relay', async () => {
+            const { get, consumed, deferred } = relayHarness();
+            const refused = await get('/internal/things/NOPE');
+            expect(refused.status).toBe(401);
+            expect(await refused.json()).toMatchObject({ code: 'unauthorized' });
+            expect(consumed).toEqual([]);
+            const malformed = await get('/internal/things/NOPE', { Authorization: 'Bearer good' });
+            expect(malformed.status).toBe(400);
+            const ok = await get('/internal/things/abc', { Authorization: 'Bearer good' });
+            expect(await ok.json()).toEqual({ relayId: 'relay-1.ptbk.test' });
+            expect(consumed).toEqual([
+                ['registry-relay', 'relay-1.ptbk.test'],
+                ['registry-relay', 'relay-1.ptbk.test'],
+            ]);
+            expect(deferred).toHaveLength(3);
+        });
+
+        it('answers 429 once the relay is over its budget, and when the limiter cannot decide', async () => {
+            for (const outcome of ['limited', 'unavailable'] as const) {
+                const response = await relayHarness(outcome).get('/internal/things/abc', {
+                    Authorization: 'Bearer good',
+                });
+                expect(response.status).toBe(429);
+            }
         });
     });
 });

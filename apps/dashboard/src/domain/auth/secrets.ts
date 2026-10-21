@@ -15,6 +15,14 @@ export function newSecret(random: Random): string {
 
 export const SECRET_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 
+/** Relay keys (D-04) carry a prefix so secret scanners can spot a leaked one. */
+export const RELAY_TOKEN_PREFIX = 'ptbk_rt_';
+export const RELAY_TOKEN_PATTERN = /^ptbk_rt_[A-Za-z0-9_-]{43}$/;
+
+export function newRelayToken(random: Random): string {
+    return RELAY_TOKEN_PREFIX + newSecret(random);
+}
+
 /** Secrets are stored and looked up only by this digest, so a database leak yields no usable token. */
 export async function sha256Hex(value: string): Promise<string> {
     const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value)));
