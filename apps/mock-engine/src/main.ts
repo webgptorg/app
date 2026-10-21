@@ -10,6 +10,8 @@ import { createHttpsFetch } from './adapters/https-fetch';
 import { createJsonLogger } from './adapters/json-logger';
 import { createOsSystemStats } from './adapters/os-system-stats';
 import { systemClock } from './adapters/system-clock';
+import { BundleStoreError } from './adapters/ui/fs-bundle-store';
+import { UpdateStateStoreError } from './adapters/ui/fs-update-state-store';
 import { createWsRelayDialer } from './adapters/ws-relay-dialer';
 import type { MockEngineConfig } from './app/config';
 import { ConfigError, parseMockEngineConfig } from './app/config';
@@ -17,6 +19,7 @@ import { RegistrationFailedError } from './app/establish-registration';
 import { RegisterUsageError, isRegistered, parseRegisterCommand, runRegisterCommand } from './app/register-command';
 import type { DashboardDeps, MockEngine } from './app/start-mock-engine';
 import { startMockEngine } from './app/start-mock-engine';
+import { UiLoaderSetupError, createUiLoaderDeps } from './app/ui-loader-deps';
 import type { Logger } from './domain/logger';
 import { StoredRegistrationError } from './domain/registration/register';
 
@@ -33,7 +36,10 @@ function problemOf(error: unknown): string {
         error instanceof RegistrationStoreError ||
         error instanceof StoredRegistrationError ||
         error instanceof SeqStoreError ||
-        error instanceof RegisterUsageError
+        error instanceof RegisterUsageError ||
+        error instanceof UiLoaderSetupError ||
+        error instanceof BundleStoreError ||
+        error instanceof UpdateStateStoreError
     ) {
         return error.message;
     }
@@ -105,6 +111,15 @@ async function start(): Promise<{ readonly engine: MockEngine; readonly logger: 
             dialer: createWsRelayDialer({ clock: systemClock, proxy: config.proxy, ca }),
             certificates: createDevCaCertificateSource({ ca: devCa, clock: systemClock, logger }),
             dashboard: dashboardDeps(config, ca),
+            ui:
+                config.ui === null
+                    ? undefined
+                    : await createUiLoaderDeps({
+                          config: config.ui,
+                          dataDir: config.dataDir,
+                          fetch: createHttpsFetch({ proxy: config.proxy, ca }),
+                          logger,
+                      }),
         });
         return { engine, logger };
     } catch (error) {
