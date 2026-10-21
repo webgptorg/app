@@ -115,3 +115,42 @@ for (const relay of RELAYS) {
         });
     }
 }
+
+/*
+ * Known limit, pinned so that fixing it shows up as a change here (follow-up I-07, health-checked relay DNS). A relay
+ * that hangs while its kernel still accepts TCP (`docker pause` alone) is not failed over: Chromium tries the
+ * engine's A records one after another and moves on only when a connect fails, and this connect succeeds, so the
+ * attempt then waits for a TLS answer that never comes (measured 2026-10-21: ERR_TIMED_OUT after 30,055 ms, the other
+ * relay never tried). The test waits only for the 15 s failover limit, not for Chromium's own timeout.
+ */
+test('a hung relay that still accepts TCP is not failed over by the browser (known limit, I-07)', async ({
+    playwright,
+    compose,
+    engineHost,
+    engineUrl,
+    caCertificatePem,
+}) => {
+    test.setTimeout(120_000);
+    test.info().annotations.push({
+        type: 'known limit',
+        description: 'docs/plan/tasks/I-07-health-checked-relay-dns.md',
+    });
+    const relayA = RELAYS[0];
+    if (relayA === undefined) throw new Error('the stack has no relay');
+    await waitUntilEveryRelayServesTheEngine(engineHost, caCertificatePem);
+    const browser = await launchPreferringRelay(playwright.chromium, engineHost, relayA);
+    try {
+        await compose.pause(relayA.service);
+        expect((await tcpAttempt(relayA.ip, HTTPS_PORT, 2_000)).outcome, 'the paused relay still accepts TCP').toBe(
+            'connected',
+        );
+        const page = await (await browser.newContext()).newPage();
+        await expect(page.goto(engineUrl, { timeout: FAILOVER_LIMIT_MS }), 'no failover within 15 s').rejects.toThrow(
+            /Timeout/,
+        );
+    } finally {
+        await browser.close();
+        await compose.unpause(relayA.service);
+        await waitUntilEveryRelayServesTheEngine(engineHost, caCertificatePem);
+    }
+});
