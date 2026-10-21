@@ -4,19 +4,14 @@ import { StaticRegistryError } from './adapters/static-file-registry';
 import { systemClock } from './adapters/system-clock';
 import { ConfigError, parseRelayConfig } from './app/config';
 import type { Relay } from './app/start-relay';
-import { RelayTlsError, UnsupportedRegistryError, startRelay } from './app/start-relay';
+import { RelayTlsError, startRelay } from './app/start-relay';
 import type { Logger } from './domain/logger';
 
 const SHUTDOWN_TIMEOUT_MS = 10_000;
 
 // Our own startup errors name settings and paths, never values; anything else may carry values, so only its name.
 function problemOf(error: unknown): string {
-    if (
-        error instanceof ConfigError ||
-        error instanceof StaticRegistryError ||
-        error instanceof UnsupportedRegistryError ||
-        error instanceof RelayTlsError
-    ) {
+    if (error instanceof ConfigError || error instanceof StaticRegistryError || error instanceof RelayTlsError) {
         return error.message;
     }
     return error instanceof Error ? error.name : 'unknown';

@@ -8,14 +8,16 @@ import { createFakeClock } from '../adapters/fake-clock';
 import { systemClock } from '../adapters/system-clock';
 import type { MemoryLogger } from '../adapters/memory-logger';
 import { createMemoryLogger } from '../adapters/memory-logger';
+import { createInMemoryRegistry } from '../adapters/in-memory-registry';
 import { StaticRegistryError } from '../adapters/static-file-registry';
 import type { TestEngine } from '../testing/engines';
 import { createTestEngine } from '../testing/engines';
+import { TEST_RELAY_TOKEN, startFakeDashboard } from '../testing/fake-dashboard';
 import { createFakeRandom } from '../testing/fake-random';
 import { relayCertificate } from '../testing/relay-harness';
 import { createTestCertificate } from '../testing/test-pki';
 import { parseRelayConfig } from './config';
-import { RelayTlsError, UnsupportedRegistryError, createRelayServices, startRelay } from './start-relay';
+import { RelayTlsError, createRelayServices, startRelay } from './start-relay';
 
 const signal = new AbortController().signal;
 
@@ -111,14 +113,43 @@ describe('startRelay', () => {
         await expect(startRelay(env(overrides(dir)), deps())).rejects.toBeInstanceOf(RelayTlsError);
     });
 
-    it('refuses the http registry until its adapter exists', async () => {
-        const config = env({
-            RELAY_REGISTRY_KIND: 'http',
-            RELAY_REGISTRY_URL: 'https://app.ptbk.test',
-            RELAY_REGISTRY_TOKEN: `ptbk_rt_${'A'.repeat(43)}`,
-            RELAY_REGISTRY_FILE: '',
-        });
-        await expect(startRelay(config, deps())).rejects.toBeInstanceOf(UnsupportedRegistryError);
+    it('starts on the dashboard registry, read through the cache', async () => {
+        const dashboard = await startFakeDashboard(createInMemoryRegistry([[engine.engineId, engine.entry]]));
+        try {
+            const relay = await startRelay(
+                env({
+                    RELAY_REGISTRY_KIND: 'http',
+                    RELAY_REGISTRY_URL: dashboard.url,
+                    RELAY_REGISTRY_TOKEN: TEST_RELAY_TOKEN,
+                    RELAY_REGISTRY_FILE: '',
+                }),
+                deps(),
+            );
+            const services = await createRelayServices(
+                env({
+                    RELAY_REGISTRY_KIND: 'http',
+                    RELAY_REGISTRY_URL: `${dashboard.url}/`,
+                    RELAY_REGISTRY_TOKEN: TEST_RELAY_TOKEN,
+                    RELAY_REGISTRY_FILE: '',
+                }),
+                deps(),
+            );
+            await expect(services.registry.lookup(engine.engineId, signal)).resolves.toEqual({
+                kind: 'found',
+                entry: engine.entry,
+            });
+            await expect(services.registry.lookup(engine.engineId, signal)).resolves.toEqual({
+                kind: 'found',
+                entry: engine.entry,
+            });
+            await services.reload();
+            // The second lookup was a fresh cache hit.
+            expect(dashboard.requests()).toBe(1);
+            expect(logger.entries.find((entry) => entry.event === 'relay.started')?.fields['registry']).toBe('http');
+            await relay.close();
+        } finally {
+            await dashboard.close();
+        }
     });
 });
 

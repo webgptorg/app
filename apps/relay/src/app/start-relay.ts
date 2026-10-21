@@ -14,6 +14,7 @@ import type { SessionTable } from '../domain/tunnel/session-table';
 import { createSessionTable } from '../domain/tunnel/session-table';
 import { createTunnelEndpoint } from '../domain/tunnel/tunnel-endpoint';
 import type { TunnelSession } from '../domain/tunnel/tunnel-session';
+import { createHttpEngineRegistry } from '../adapters/http-engine-registry';
 import { createNodeDnsResolver } from '../adapters/node-dns-resolver';
 import { createOwnTlsServer } from '../adapters/own-tls-server';
 import { createStaticFileRegistry } from '../adapters/static-file-registry';
@@ -69,49 +70,60 @@ export class RelayTlsError extends Error {
     }
 }
 
-export class UnsupportedRegistryError extends Error {
-    constructor() {
-        super('RELAY_REGISTRY_KIND=http needs the HTTP registry adapter, which is not built yet (D-04); use static');
-        this.name = 'UnsupportedRegistryError';
-    }
-}
-
-export async function createRelayServices(
+async function registrySource(
     config: RelayConfig,
     deps: Pick<RelayDeps, 'logger' | 'clock'>,
-): Promise<RelayServices> {
+): Promise<{ readonly source: EngineRegistry; reload(): Promise<void> }> {
     const { logger, clock } = deps;
     switch (config.registry.kind) {
-        case 'http':
-            throw new UnsupportedRegistryError();
+        case 'http': {
+            const { url, token, timeoutMs } = config.registry;
+            const source = createHttpEngineRegistry({
+                fetch: (input, init) => fetch(input, init),
+                clock,
+                logger,
+                config: { url, token, timeoutMs },
+            });
+            // Nothing to re-read: every refresh asks the dashboard.
+            return { source, reload: () => Promise.resolve() };
+        }
         case 'static': {
             const source = await createStaticFileRegistry({ path: config.registry.file, logger });
-            const registry = createCachedRegistry({
-                inner: source,
-                clock,
-                logger,
-                ttlMs: config.registry.ttlMs,
-                maxStaleMs: config.registry.maxStaleMs,
-                negativeTtlMs: REGISTRY_NEGATIVE_TTL_MS,
-                lookupTimeoutMs: config.registry.timeoutMs,
-            });
-            const dns = createCachedDnsResolver({
-                inner: createNodeDnsResolver(config.dns),
-                clock,
-                logger,
-                ttlMs: config.registry.ttlMs,
-                maxStaleMs: config.registry.maxStaleMs,
-                timeoutMs: config.dns.timeoutMs,
-            });
             return {
-                registry,
-                dns,
+                source,
                 reload: async () => {
                     await source.reload();
                 },
             };
         }
     }
+}
+
+/** The registry source `RELAY_REGISTRY_KIND` picks, behind the one cache, and the cached DNS resolver. */
+export async function createRelayServices(
+    config: RelayConfig,
+    deps: Pick<RelayDeps, 'logger' | 'clock'>,
+): Promise<RelayServices> {
+    const { logger, clock } = deps;
+    const origin = await registrySource(config, deps);
+    const registry = createCachedRegistry({
+        inner: origin.source,
+        clock,
+        logger,
+        ttlMs: config.registry.ttlMs,
+        maxStaleMs: config.registry.maxStaleMs,
+        negativeTtlMs: REGISTRY_NEGATIVE_TTL_MS,
+        lookupTimeoutMs: config.registry.timeoutMs,
+    });
+    const dns = createCachedDnsResolver({
+        inner: createNodeDnsResolver(config.dns),
+        clock,
+        logger,
+        ttlMs: config.registry.ttlMs,
+        maxStaleMs: config.registry.maxStaleMs,
+        timeoutMs: config.dns.timeoutMs,
+    });
+    return { registry, dns, reload: () => origin.reload() };
 }
 
 const PEM_BEGIN = '-----BEGIN ';

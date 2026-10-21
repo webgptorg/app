@@ -2,6 +2,7 @@ import type { RelayId } from '@ptbk/protocol';
 import { RelayId as RelayIdSchema } from '@ptbk/protocol';
 
 import type { FakeClock } from '../adapters/fake-clock';
+import { createHttpEngineRegistry } from '../adapters/http-engine-registry';
 import type { InMemoryDnsResolver } from '../adapters/in-memory-dns-resolver';
 import type { InMemoryRegistry } from '../adapters/in-memory-registry';
 import type { MemoryLogger } from '../adapters/memory-logger';
@@ -17,6 +18,7 @@ import type { ConnectOptions, TestEngineClient } from './engine-client';
 import { connectEngine } from './engine-client';
 import type { TestEngine } from './engines';
 import { ENGINE_DOMAIN } from './engines';
+import { TEST_RELAY_TOKEN, startFakeDashboard } from './fake-dashboard';
 import type { FakeRandom } from './fake-random';
 import { createFakeRandom } from './fake-random';
 import type { TestCertificate } from './test-pki';
@@ -53,6 +55,11 @@ export interface HarnessOptions {
     readonly env?: Readonly<Record<string, string>>;
     /** Real time by default; a test of pings passes a fake one. */
     readonly livenessClock?: Clock;
+    /**
+     * Reads the registry as deployed (D-04): the HTTP adapter against a fake dashboard that answers from `registry`,
+     * instead of reading `registry` directly.
+     */
+    readonly viaDashboard?: boolean;
 }
 
 /**
@@ -74,8 +81,21 @@ export async function startHarness(options: HarnessOptions = {}): Promise<RelayH
         RELAY_REGISTRY_FILE: '/unused/registry.json',
         ...options.env,
     });
+    const dashboard = options.viaDashboard === true ? await startFakeDashboard(registry) : null;
     const cachedRegistry = createCachedRegistry({
-        inner: registry,
+        inner:
+            dashboard === null
+                ? registry
+                : createHttpEngineRegistry({
+                      fetch: (input, init) => fetch(input, init),
+                      clock,
+                      logger,
+                      config: {
+                          url: dashboard.url,
+                          token: { reveal: () => TEST_RELAY_TOKEN },
+                          timeoutMs: config.registry.timeoutMs,
+                      },
+                  }),
         clock,
         logger,
         ttlMs: config.registry.ttlMs,
@@ -122,6 +142,7 @@ export async function startHarness(options: HarnessOptions = {}): Promise<RelayH
         async close() {
             for (const client of clients) client.ws.terminate();
             await listener.close();
+            await dashboard?.close();
         },
     };
 }
