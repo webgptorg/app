@@ -4,7 +4,7 @@ import { Agent, AgentRunState } from './agents';
 import type { AgentVisibility } from './agents';
 import { ApiToken } from './api-tokens';
 import { AuditEntry } from './audit';
-import type { AuditAction } from './audit';
+import type { AuditAction, AuditDetails, AuditTarget } from './audit';
 import { Activity } from './capabilities/activity';
 import { CapabilityRef, KNOWN_CAPABILITIES, supports } from './capabilities/capability';
 import { FileMetadata, FileVersion } from './capabilities/files';
@@ -32,6 +32,7 @@ import {
     Timestamp,
 } from './common';
 import type { ProblemDetails } from './common';
+import { MAX_AUDIT_TARGET_NAME_LENGTH } from './constants';
 import { EngineInfo } from './engine';
 import { EngineEvent } from './events';
 import { Folder } from './folders';
@@ -460,6 +461,7 @@ export function createInMemoryEngineCore(options: InMemoryEngineCoreOptions = {}
         action: AuditAction,
         target: AuditEntry['target'],
         outcome: AuditEntry['outcome'],
+        details: AuditDetails | null,
     ): void => {
         const at = now();
         auditTail = auditTail.then(async () => {
@@ -474,6 +476,7 @@ export function createInMemoryEngineCore(options: InMemoryEngineCoreOptions = {}
                 target,
                 outcome,
                 client: actor.client,
+                details,
                 prevHash: previous?.hash ?? null,
             };
             state.audit.push({ ...entry, hash: await hashAuditEntry(entry) });
@@ -579,8 +582,10 @@ export function createInMemoryEngineCore(options: InMemoryEngineCoreOptions = {}
             if (!member) return { kind: 'problem', problem: createProblem('unauthenticated') };
             const routeId = route.id as EngineApiRouteId;
             const audited = AUDITED[routeId];
+            // Taken before the handler runs, so a deleted or renamed target is logged under the name it had.
+            const targetBefore = audited ? auditTarget(state, audited, request.params, undefined) : null;
             const deny = (problem: ProblemDetails): EngineApiResponse<never> => {
-                if (audited) audit(actor, audited.action, auditTarget(audited, request.params, undefined), 'denied');
+                if (audited) audit(actor, audited.action, targetBefore, 'denied', problemDetails(problem));
                 return { kind: 'problem', problem };
             };
             if (route.permission !== null) {
@@ -592,7 +597,7 @@ export function createInMemoryEngineCore(options: InMemoryEngineCoreOptions = {}
             if (route.stepUp && !actor.stepUpFresh) return deny(createProblem('step-up-required'));
             const parsed = parseRequest(route, request);
             if (parsed.kind === 'problem') {
-                if (audited) audit(actor, audited.action, auditTarget(audited, request.params, undefined), 'failed');
+                if (audited) audit(actor, audited.action, targetBefore, 'failed', problemDetails(parsed.problem));
                 return parsed;
             }
             const handler = HANDLERS[routeId] as (
@@ -609,13 +614,13 @@ export function createInMemoryEngineCore(options: InMemoryEngineCoreOptions = {}
                 signal,
             });
             if (audited) {
-                const outcome = result.kind === 'ok' ? 'success' : 'failed';
-                audit(
-                    actor,
-                    audited.action,
-                    auditTarget(audited, parsed.request.params, result.kind === 'ok' ? result.data : undefined),
-                    outcome,
-                );
+                if (result.kind === 'ok') {
+                    const target = auditTarget(state, audited, parsed.request.params, result.data);
+                    const named = target && { ...target, name: target.name ?? targetBefore?.name ?? null };
+                    audit(actor, audited.action, named, 'success', bodyFieldDetails(parsed.request.body));
+                } else {
+                    audit(actor, audited.action, targetBefore, 'failed', problemDetails(result.problem));
+                }
             }
             if (result.kind === 'problem') return result;
             return { kind: 'ok', data: checkSuccess(route, result.data) };
@@ -822,12 +827,62 @@ const AUDITED: Partial<Record<EngineApiRouteId, AuditRule>> = {
     deleteIntegration: { action: 'integration.delete', kind: 'integration', param: 'integrationId' },
 };
 
-function auditTarget(rule: AuditRule, params: unknown, created: unknown): AuditEntry['target'] {
+function auditTarget(state: InMemoryState, rule: AuditRule, params: unknown, created: unknown): AuditTarget | null {
     if (rule.kind === null) return null;
     const id =
         rule.param === undefined ? createdId(created) : (params as Record<string, unknown> | undefined)?.[rule.param];
     const parsed = OpaqueId.safeParse(id);
-    return parsed.success ? { kind: rule.kind, id: parsed.data } : null;
+    if (!parsed.success) return null;
+    const name = targetName(state, rule.kind, parsed.data);
+    return { kind: rule.kind, id: parsed.data, name: name?.slice(0, MAX_AUDIT_TARGET_NAME_LENGTH) || null };
+}
+
+/** The name a member would recognise the target by, as the engine holds it now; `undefined` once it is gone. */
+function targetName(state: InMemoryState, kind: AuditTarget['kind'], id: string): string | null | undefined {
+    switch (kind) {
+        case 'agent':
+            return state.agents.get(id)?.agent.name;
+        case 'folder':
+            return state.folders.get(id)?.name;
+        case 'chat':
+            return state.chats.get(id)?.title;
+        case 'member':
+            return state.members.get(id)?.displayName;
+        case 'api-token':
+            return state.apiTokens.get(id)?.name;
+        case 'secret':
+            return state.secrets.get(id)?.name;
+        case 'file':
+            return state.files.get(id)?.metadata.name;
+        case 'passkey':
+            return state.passkeys.get(id)?.name;
+        case 'trigger':
+            return state.triggers.get(id)?.trigger.name;
+        case 'integration':
+            return state.integrations.get(id)?.name;
+        case 'message':
+        case 'invite':
+        case 'session':
+        case 'settings':
+        case 'engine':
+        case 'run':
+            return null;
+    }
+}
+
+/** Why a request was refused: the problem's code and, for a missing permission, which one. Never its detail text. */
+function problemDetails(problem: ProblemDetails): AuditDetails {
+    const required = (problem as Readonly<Record<string, unknown>>)['requiredPermission'];
+    return typeof required === 'string'
+        ? { problem: problem.code, requiredPermission: required }
+        : { problem: problem.code };
+}
+
+/** Which fields a successful request set, by name only: values can be secrets or content. */
+function bodyFieldDetails(body: unknown): AuditDetails | null {
+    if (typeof body !== 'object' || body === null || Array.isArray(body) || body instanceof FormData) return null;
+    const fields = Object.keys(body).sort();
+    return fields.length === 0 ? null : { fields };
 }
 
 /** Created resources come back either directly or wrapped (`{ invite }`, `{ apiToken }`). */

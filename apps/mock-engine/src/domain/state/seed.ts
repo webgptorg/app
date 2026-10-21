@@ -8,6 +8,11 @@ import { createSeededSequence, hashSeed } from './seed-random';
 
 /** The `small-team` agent whose replies carry hostile markup, so engine-ui's sanitising can be tested. */
 export const HOSTILE_AGENT_NAME = 'Injection demo';
+/**
+ * The name the `small-team` hostile agent had before it was renamed, as its audit entry recorded it, so engine-ui can
+ * show that untrusted target names stay text.
+ */
+export const HOSTILE_AUDIT_TARGET_NAME = '<img src=x onerror=alert(1)>';
 
 export interface SeedInput {
     readonly seed: number;
@@ -263,8 +268,31 @@ function memberAudit(
     action: SeedAuditEntry['action'],
     target: SeedAuditEntry['target'],
     client: ReturnType<typeof clientOf>,
+    details: SeedAuditEntry['details'],
 ): SeedAuditEntry {
-    return { at, actor: { kind: 'member', memberId }, action, target, outcome: 'success', client };
+    return { at, actor: { kind: 'member', memberId }, action, target, outcome: 'success', client, details };
+}
+
+/** The hostile agent's audit trail starts under a markup name, renamed a minute after it was created. */
+function hostileRename(agents: readonly SeedAgent[], ownerId: string, faker: Faker): SeedAuditEntry[] {
+    const agent = agents.find((candidate) => agentName(candidate) === HOSTILE_AGENT_NAME);
+    if (agent?.id === undefined || agent.createdAt === undefined) return [];
+    const at = iso(Date.parse(agent.createdAt) + MINUTE);
+    return [
+        memberAudit(
+            at,
+            agent.createdBy ?? ownerId,
+            'agent.source.update',
+            { kind: 'agent', id: agent.id, name: HOSTILE_AUDIT_TARGET_NAME },
+            clientOf(faker),
+            { fields: ['source'], renamedTo: HOSTILE_AGENT_NAME },
+        ),
+    ];
+}
+
+/** An agent's name is its book's first line. */
+function agentName(agent: SeedAgent): string {
+    return agent.source.split('\n', 1)[0] ?? '';
 }
 
 /**
@@ -358,8 +386,12 @@ export function seedEngine({ seed, scenario, epoch }: SeedInput): InMemorySeed {
                 agent.createdAt ?? '',
                 agent.createdBy ?? owner.id,
                 'agent.create',
-                { kind: 'agent', id: agent.id ?? '' },
+                { kind: 'agent', id: agent.id ?? '', name: agentName(agent) },
                 clientOf(faker),
+                {
+                    fields:
+                        agent.folderId === undefined ? ['source', 'visibility'] : ['folderId', 'source', 'visibility'],
+                },
             ),
         ),
         ...secrets.map((secret) =>
@@ -367,10 +399,12 @@ export function seedEngine({ seed, scenario, epoch }: SeedInput): InMemorySeed {
                 secret.createdAt,
                 secret.createdBy,
                 'secret.create',
-                { kind: 'secret', id: secret.id },
+                { kind: 'secret', id: secret.id, name: secret.name },
                 clientOf(faker),
+                { fields: ['name', 'scope', 'value'], scope: secret.scope.kind },
             ),
         ),
+        ...hostileRename(agents, owner.id, faker),
     ].sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
 
     return {

@@ -517,6 +517,28 @@ describe('tolerant reading', () => {
         expect(response.data.tls).not.toHaveProperty('pinned');
     });
 
+    it('reads an audit action a newer engine added as its raw name, so the page still loads', async () => {
+        const entry = {
+            id: 'aud_1',
+            seq: 1,
+            at: AT,
+            actor: { kind: 'system' },
+            action: 'agent.clone',
+            target: { kind: 'agent', id: 'a1', name: 'Ada', label: 'x' },
+            outcome: 'success',
+            client: null,
+            details: { from: 'a0' },
+            hash: 'a'.repeat(64),
+            prevHash: null,
+        };
+        const { client } = setup(() => json({ items: [entry], nextCursor: null }));
+        const response = await client.audit.list({}, signal());
+        if (response.kind !== 'ok') throw new Error('expected a page');
+        expect(response.data.items[0]?.action).toBe('agent.clone');
+        expect(response.data.items[0]?.target).toEqual({ kind: 'agent', id: 'a1', name: 'Ada' });
+        expect(response.data.items[0]?.details).toEqual({ from: 'a0' });
+    });
+
     it('drops a value a misbehaving engine sends with secret metadata, so it never reaches the caller', async () => {
         const metadata = {
             id: 's1',

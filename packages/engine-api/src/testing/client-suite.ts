@@ -216,6 +216,7 @@ export function engineApiClientSuite(makeEngine: MakeEngine): void {
             action: 'agent.create',
             outcome: 'denied',
             actor: { kind: 'member', memberId: 'member-limited' },
+            details: { problem: 'forbidden', requiredPermission: 'agents.write' },
         });
         expect(ok(await client.agents.list({}, signal())).items).toEqual([]);
     });
@@ -463,13 +464,53 @@ export function engineApiClientSuite(makeEngine: MakeEngine): void {
         expect(ok(await client.apiTokens.revoke(created.apiToken.id, signal())).status).toBe('revoked');
         const entries = ok(await client.audit.list({}, signal())).items;
         expect(entries.map(({ action }) => action)).toEqual(['api-token.revoke', 'api-token.create']);
-        expect(entries[1]?.target).toEqual({ kind: 'api-token', id: created.apiToken.id });
+        expect(entries[1]?.target).toEqual({ kind: 'api-token', id: created.apiToken.id, name: 'CI' });
+        expect(entries[1]?.details).toEqual({ fields: ['expiresAt', 'name', 'permissions'] });
+        expect(entries[0]?.target).toEqual({ kind: 'api-token', id: created.apiToken.id, name: 'CI' });
+        expect(entries[0]?.details).toBeNull();
         expect(entries[0]?.prevHash).toBe(entries[1]?.hash);
         expect(ok(await client.audit.verify(signal()))).toMatchObject({
             status: 'intact',
             checkedEntries: 2,
             lastSeq: 2,
         });
+    });
+
+    it("records the target's name as it was at each action, also after a rename and a delete", async () => {
+        const client = owner();
+        const folder = ok(await client.folders.create({ name: 'Drafts' }, signal()));
+        ok(await client.folders.rename(folder.id, { name: '<img src=x onerror=alert(1)>' }, signal()));
+        ok(await client.folders.delete(folder.id, signal()));
+        const entries = ok(await client.audit.list({}, signal())).items;
+        expect(entries.map(({ action, target }) => [action, target?.name])).toEqual([
+            ['folder.delete', '<img src=x onerror=alert(1)>'],
+            ['folder.rename', '<img src=x onerror=alert(1)>'],
+            ['folder.create', 'Drafts'],
+        ]);
+        expect(entries[1]?.details).toEqual({ fields: ['name'] });
+        expect(ok(await client.audit.verify(signal())).status).toBe('intact');
+    });
+
+    it('takes seeded audit entries with details and target names into the chain', async () => {
+        const client = make({
+            clock: steppingClock(),
+            seed: {
+                auditEntries: [
+                    {
+                        at: '2026-10-19T08:00:00Z',
+                        actor: { kind: 'system' },
+                        action: 'ui.update.install',
+                        target: { kind: 'engine', id: 'engine', name: null },
+                        outcome: 'success',
+                        client: null,
+                        details: { version: '1.4.0' },
+                    },
+                ],
+            },
+        });
+        const [entry] = ok(await client.audit.list({}, signal())).items;
+        expect(entry).toMatchObject({ seq: 1, details: { version: '1.4.0' }, target: { name: null } });
+        expect(ok(await client.audit.verify(signal())).status).toBe('intact');
     });
 
     describe('own credentials under /me', () => {

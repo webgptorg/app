@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { AuditEntry } from './audit';
 import type { EngineApiResponse } from './client';
 import { Timestamp } from './common';
 import { verifyAuditChain } from './in-memory/audit-chain';
@@ -102,11 +103,17 @@ describe('verifyAuditChain', () => {
     it('finds the first entry that was edited or removed', async () => {
         const client = createInMemoryEngineApiClient();
         for (const name of ['A', 'B', 'C']) ok(await client.folders.create({ name }, signal()));
-        const entries = [...ok(await client.audit.list({}, signal())).items].reverse();
+        const entries = AuditEntry.array().parse([...ok(await client.audit.list({}, signal())).items].reverse());
         const at = Timestamp.parse('2026-10-19T00:00:00Z');
         expect((await verifyAuditChain(entries, at)).status).toBe('intact');
         const edited = entries.map((entry) => (entry.seq === 2 ? { ...entry, outcome: 'failed' as const } : entry));
         expect(await verifyAuditChain(edited, at)).toMatchObject({ status: 'broken', firstBrokenSeq: 2 });
+        const renamed = entries.map((entry) =>
+            entry.seq === 2 && entry.target ? { ...entry, target: { ...entry.target, name: 'Z' } } : entry,
+        );
+        expect(await verifyAuditChain(renamed, at)).toMatchObject({ status: 'broken', firstBrokenSeq: 2 });
+        const detailed = entries.map((entry) => (entry.seq === 3 ? { ...entry, details: { fields: [] } } : entry));
+        expect(await verifyAuditChain(detailed, at)).toMatchObject({ status: 'broken', firstBrokenSeq: 3 });
         expect(
             await verifyAuditChain(
                 [entries[0], entries[2]].filter((e) => e !== undefined),
