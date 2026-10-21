@@ -2,7 +2,7 @@
 
 - **Lane:** Mock engine · **Module:** `apps/mock-engine`, plus `e2e/` compose services (touches two modules) · **Milestone:** M1
 - **Depends on:** R-01, M-02, X-01
-- **Status:** in progress (#40; Let's Encrypt staging run open: manual, after I-01 and I-02)
+- **Status:** done (#40)
 - **Spec:** Residual risks: certificates and engine updates (1); Hosting and stack (Known hard problems, TypeScript stack "Certificates"); Build plan (Spike acceptance criteria); Relay and tunnel; ADRs: [0004](../../adr/0004-mock-engine-and-conformance.md), [0014](../../adr/0014-cryptography.md)
 
 ## Goal
@@ -44,7 +44,7 @@ The CA's validation server connects to `<engineId>.<domain>:443` with SNI set to
 - [x] A packet capture or relay log check shows the relay only routed streams (no TLS termination for the engine hostname).
 - [x] `docs/spike/acme-tls-alpn-01.md` records the outcome.
 - [x] `bun run check` and the e2e suite pass.
-- [ ] **Status** line above set to `done (#<PR>)`.
+- [x] **Status** line above set to `done (#<PR>)`.
 
 ## Apply (needs credentials)
 
