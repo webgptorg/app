@@ -171,6 +171,33 @@ describe('DASHBOARD_POLICY', () => {
         expect(orgPermissions(DASHBOARD_POLICY, 'owner')).toContain('engine.link');
     });
 
+    it('lets an owner read the organization’s engines, also right after a recovery, and no other organization’s', () => {
+        const engine = { kind: 'engine', orgId: ORG_A, engineId: 'e' } as const;
+        expect(authorizer.can(recovered, 'engine.read', engine)).toEqual({ kind: 'allowed' });
+        expect(authorizer.can(owner, 'engine.read', { ...engine, orgId: ORG_B })).toEqual({
+            kind: 'denied',
+            reason: 'not-member',
+        });
+        expect(orgPermissions(DASHBOARD_POLICY, 'owner')).toEqual(
+            expect.arrayContaining(['engine.read', 'engine.revoke']),
+        );
+    });
+
+    it('lets an owner revoke an engine only outside the recovery cooldown and with a fresh step-up', () => {
+        const engine = { kind: 'engine', orgId: ORG_A, engineId: 'e' } as const;
+        const steppedUp = { ...owner, steppedUpAt: RECOVERED_AT };
+        expect(authorizer.can(owner, 'engine.revoke', engine)).toEqual({ kind: 'denied', reason: 'step-up-required' });
+        expect(authorizer.can({ ...steppedUp, recoveredAt: RECOVERED_AT }, 'engine.revoke', engine)).toEqual({
+            kind: 'denied',
+            reason: 'recovery-cooldown',
+        });
+        expect(authorizer.can(steppedUp, 'engine.revoke', { ...engine, orgId: ORG_B })).toEqual({
+            kind: 'denied',
+            reason: 'not-member',
+        });
+        expect(authorizer.can(steppedUp, 'engine.revoke', engine)).toEqual({ kind: 'allowed' });
+    });
+
     it('keeps the billing problem list to platform admins', () => {
         expect(authorizer.can(owner, 'admin.billing.read', { kind: 'platform' })).toEqual({
             kind: 'denied',

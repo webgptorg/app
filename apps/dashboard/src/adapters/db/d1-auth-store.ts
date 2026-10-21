@@ -1,4 +1,4 @@
-import { and, asc, eq, gt, isNull, lte, or, sql } from 'drizzle-orm';
+import { and, asc, eq, exists, gt, isNull, lte, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 
 import type { AuthStore } from '../../domain/auth/auth-store';
@@ -273,6 +273,25 @@ export function createD1AuthStore(db: Database): AuthStore {
             },
             async markSteppedUp(idHash, at) {
                 await db.update(sessions).set({ steppedUpAt: at }).where(eq(sessions.idHash, idHash));
+            },
+            async setActiveOrg(idHash, orgId) {
+                const switched = await db
+                    .update(sessions)
+                    .set({ activeOrgId: orgId })
+                    .where(
+                        and(
+                            eq(sessions.idHash, idHash),
+                            isNull(sessions.revokedAt),
+                            exists(
+                                db
+                                    .select({ one: sql`1` })
+                                    .from(memberships)
+                                    .where(and(eq(memberships.orgId, orgId), eq(memberships.userId, sessions.userId))),
+                            ),
+                        ),
+                    )
+                    .returning({ idHash: sessions.idHash });
+                return switched.length === 1 ? 'switched' : 'not-member';
             },
             async revoke(idHash, at) {
                 await db

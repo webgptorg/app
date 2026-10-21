@@ -15,6 +15,10 @@ export type UserId = z.infer<typeof userIdSchema>;
 export const relayTokenIdSchema = z.string().regex(ID_PATTERN).brand<'RelayTokenId'>();
 export type RelayTokenId = z.infer<typeof relayTokenIdSchema>;
 
+/** An `org_audit_log` row. */
+export const orgAuditEntryIdSchema = z.string().regex(ID_PATTERN).brand<'OrgAuditEntryId'>();
+export type OrgAuditEntryId = z.infer<typeof orgAuditEntryIdSchema>;
+
 /** 128 random bits as 26 characters of lowercase RFC 4648 base32 without padding. */
 function randomId(random: Random): string {
     let bits = 0;
@@ -46,4 +50,8 @@ export function newRelayTokenId(random: Random): RelayTokenId {
 /** An `admin_audit_log` row. */
 export function newAdminAuditEntryId(random: Random): string {
     return randomId(random);
+}
+
+export function newOrgAuditEntryId(random: Random): OrgAuditEntryId {
+    return orgAuditEntryIdSchema.parse(randomId(random));
 }

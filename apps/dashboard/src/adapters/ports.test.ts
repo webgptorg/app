@@ -2,12 +2,15 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { Clock } from '../domain/ports/clock';
 import type { Random } from '../domain/ports/random';
+import type { Timer } from '../domain/ports/timer';
 import { createConsoleLogger } from './console-logger';
 import { cryptoRandom } from './crypto-random';
 import { createFakeClock } from './fake-clock';
 import { createFakeRandom } from './fake-random';
+import { createManualTimer } from '../testing/manual-timer';
 import { createMemoryLogger } from './memory-logger';
 import { systemClock } from './system-clock';
+import { systemTimer } from './system-timer';
 
 describe.each<[string, Clock]>([
     ['systemClock', systemClock],
@@ -27,6 +30,52 @@ describe.each<[string, Random]>([
         const first = random.bytes(16);
         expect(first).toHaveLength(16);
         expect(random.bytes(16)).not.toEqual(first);
+    });
+});
+
+describe.each<[string, () => Timer]>([
+    ['systemTimer', () => systemTimer],
+    ['manualTimer', createManualTimer],
+])('Timer %s', (_, makeTimer) => {
+    it('ends a wait as soon as its signal aborts, and at once when it already has', async () => {
+        const timer = makeTimer();
+        const controller = new AbortController();
+        const waiting = timer.wait(60_000, controller.signal);
+        controller.abort();
+        await expect(waiting).resolves.toBeUndefined();
+        await expect(timer.wait(60_000, controller.signal)).resolves.toBeUndefined();
+    });
+});
+
+describe('timers', () => {
+    it('ends a system wait after its time', async () => {
+        vi.useFakeTimers();
+        try {
+            let done = false;
+            const waiting = systemTimer.wait(2000, new AbortController().signal).then(() => {
+                done = true;
+            });
+            await vi.advanceTimersByTimeAsync(1999);
+            expect(done).toBe(false);
+            await vi.advanceTimersByTimeAsync(1);
+            await waiting;
+            expect(done).toBe(true);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('ends manual waits only when told', async () => {
+        const timer = createManualTimer();
+        let done = false;
+        const waiting = timer.wait(2000, new AbortController().signal).then(() => {
+            done = true;
+        });
+        await Promise.resolve();
+        expect([done, timer.pending()]).toEqual([false, 1]);
+        timer.elapse();
+        await waiting;
+        expect([done, timer.pending()]).toEqual([true, 0]);
     });
 });
 

@@ -251,3 +251,21 @@ export const engineHostnames = sqliteTable(
         index('engine_hostnames_engine_id_idx').on(t.engineId),
     ],
 );
+
+// Organization audit (D-06): who did what to which of the organization's resources. Insert only: the repository
+// exposes no update or delete, like `admin_audit_log`.
+export const orgAuditLog = sqliteTable(
+    'org_audit_log',
+    {
+        id: text('id').primaryKey(),
+        orgId: text('org_id')
+            .notNull()
+            .references(() => organizations.id),
+        actorUserId: text('actor_user_id').notNull(),
+        action: text('action').notNull(),
+        targetType: text('target_type').notNull(),
+        targetId: text('target_id').notNull(),
+        createdAt: integer('created_at').notNull(),
+    },
+    (t) => [index('org_audit_log_org_id_created_at_idx').on(t.orgId, t.createdAt)],
+);

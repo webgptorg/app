@@ -169,6 +169,17 @@ export function createMemoryAuthStore(): AuthStore & { readonly state: MemoryAut
                 updateSession(idHash, { steppedUpAt: at });
                 return Promise.resolve();
             },
+            setActiveOrg(idHash, orgId) {
+                const session = state.sessions.get(idHash);
+                if (
+                    session?.revokedAt !== null ||
+                    !state.memberships.some((m) => m.orgId === orgId && m.userId === session.userId)
+                ) {
+                    return Promise.resolve('not-member');
+                }
+                updateSession(idHash, { activeOrgId: orgId });
+                return Promise.resolve('switched');
+            },
             revoke(idHash, at) {
                 if (state.sessions.get(idHash)?.revokedAt === null) {
                     updateSession(idHash, { revokedAt: at });

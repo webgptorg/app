@@ -5,7 +5,7 @@ import type {
     RegistrationResponse,
 } from '../../shared/api/webauthn';
 import type { Actor } from '../authz/authorizer';
-import type { UserId } from '../ids';
+import type { OrgId, UserId } from '../ids';
 import type { AuthDeps } from './auth-deps';
 import { assertPasskey, consumeChallenge, issueChallenge } from './ceremony';
 import type { MembershipView, PasskeyRecord, SessionRecord, UserRecord } from './records';
@@ -25,35 +25,48 @@ function isLive(session: SessionRecord, now: number): boolean {
 
 /** Everything a signed-in person does to their own account: sessions, passkeys, step-up. */
 export function createAccountFlows(deps: AuthDeps) {
+    async function resolve(idHash: string): Promise<ActiveSession | null> {
+        const now = deps.clock.nowMs();
+        const record = await deps.store.sessions.find(idHash);
+        if (record === null || !isLive(record, now)) {
+            return null;
+        }
+        const user = await deps.store.accounts.findUser(record.userId);
+        const membership = await deps.store.accounts.findMembership(record.activeOrgId, record.userId);
+        if (user === null || membership === null) {
+            return null;
+        }
+        if (now - record.lastSeenAt >= SESSION_TOUCH_INTERVAL_MS) {
+            await deps.store.sessions.touch(record.idHash, now);
+        }
+        return {
+            record,
+            user,
+            membership,
+            actor: {
+                userId: user.id,
+                orgId: membership.orgId,
+                orgRole: membership.role,
+                platformRole: user.platformRole,
+                recoveredAt: user.recoveredAt,
+                steppedUpAt: record.steppedUpAt,
+            },
+        };
+    }
+
     return {
         /** Reads the session row on every request, so a revocation takes effect on the very next one. */
         async resolveSession(token: string): Promise<ActiveSession | null> {
-            const now = deps.clock.nowMs();
-            const record = await deps.store.sessions.find(await sha256Hex(token));
-            if (record === null || !isLive(record, now)) {
-                return null;
-            }
-            const user = await deps.store.accounts.findUser(record.userId);
-            const membership = await deps.store.accounts.findMembership(record.activeOrgId, record.userId);
-            if (user === null || membership === null) {
-                return null;
-            }
-            if (now - record.lastSeenAt >= SESSION_TOUCH_INTERVAL_MS) {
-                await deps.store.sessions.touch(record.idHash, now);
-            }
-            return {
-                record,
-                user,
-                membership,
-                actor: {
-                    userId: user.id,
-                    orgId: membership.orgId,
-                    orgRole: membership.role,
-                    platformRole: user.platformRole,
-                    recoveredAt: user.recoveredAt,
-                    steppedUpAt: record.steppedUpAt,
-                },
-            };
+            return resolve(await sha256Hex(token));
+        },
+
+        /**
+         * Makes `orgId` the session's active organization; null when the user is no member there, so an organization
+         * the person does not belong to looks exactly like one that does not exist.
+         */
+        async switchActiveOrg(active: ActiveSession, orgId: OrgId): Promise<ActiveSession | null> {
+            const outcome = await deps.store.sessions.setActiveOrg(active.record.idHash, orgId);
+            return outcome === 'switched' ? resolve(active.record.idHash) : null;
         },
 
         listMemberships(userId: UserId): Promise<readonly MembershipView[]> {

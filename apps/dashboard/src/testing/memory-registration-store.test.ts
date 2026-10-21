@@ -20,5 +20,6 @@ describeRegistrationStoreContract('memory', () => {
             state.engines.set(engine.engineId, { ...engine, status: 'suspended', statusReason: reason });
             return Promise.resolve();
         },
+        orgAudit: (orgId) => Promise.resolve(state.orgAudit.filter((entry) => entry.orgId === orgId)),
     };
 });

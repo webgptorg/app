@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { createFakeEmailSender } from '../../adapters/email/fake-email-sender';
+import { createManualTimer } from '../../testing/manual-timer';
 import { createMemoryLogger } from '../../adapters/memory-logger';
 import { createMemoryRateLimiter } from '../../adapters/rate-limit/memory-rate-limiter';
 import { createSimpleWebAuthnRelyingParty } from '../../adapters/webauthn/simple-webauthn-relying-party';
@@ -52,6 +53,7 @@ function app(options: {
         config,
         clock,
         random: { bytes: (n) => new Uint8Array(n) },
+        timer: createManualTimer(),
         logger,
         authorizer: createAuthorizer({ clock, policy: DASHBOARD_POLICY }),
         store: createMemoryAuthStore(),

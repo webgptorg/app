@@ -3,9 +3,10 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { cryptoRandom } from '../adapters/crypto-random';
 import { toBase64Url } from '../domain/auth/secrets';
-import { newUserId, type OrgId } from '../domain/ids';
-import type { EngineRecord, EngineStore } from '../domain/registration/engine-store';
+import { newOrgAuditEntryId, newUserId, type OrgId } from '../domain/ids';
+import type { EngineRecord, EngineStore, RevocationAudit } from '../domain/registration/engine-store';
 import type { LinkCodeRecord, LinkCodeStore } from '../domain/registration/link-code-store';
+import type { StoredOrgAuditEntry } from './memory-registration-store';
 import { createTestEngine, engineRecord, type TestEngine } from './test-engine';
 
 const NOW = 1_800_000_000_000;
@@ -15,8 +16,14 @@ export interface RegistrationStoreFixture {
     readonly linkCodes: LinkCodeStore;
     readonly engines: EngineStore;
     addOrg(): Promise<OrgId>;
-    /** What D-06's revocation and I-05's suspension will do; the ports have no write for it yet. */
+    /** What I-05's suspension will do; the port has no write for it yet. */
     suspend(engine: EngineRecord, reason: string): Promise<void>;
+    /** The organization's `org_audit_log` rows, oldest first; the repository itself has no read. */
+    orgAudit(orgId: OrgId): Promise<readonly StoredOrgAuditEntry[]>;
+}
+
+function audit(at: number): RevocationAudit {
+    return { id: newOrgAuditEntryId(cryptoRandom), actorUserId: newUserId(cryptoRandom), at };
 }
 
 function codeRecord(orgId: OrgId, overrides: Partial<LinkCodeRecord> = {}): LinkCodeRecord {
@@ -45,10 +52,13 @@ export function describeRegistrationStoreContract(name: string, makeFixture: () 
             engine = await createTestEngine();
         });
 
-        async function created(orgId = orgA): Promise<{ readonly code: LinkCodeRecord; readonly row: EngineRecord }> {
+        async function created(
+            orgId = orgA,
+            at = NOW + 1,
+        ): Promise<{ readonly code: LinkCodeRecord; readonly row: EngineRecord }> {
             const code = codeRecord(orgId);
             await fixture.linkCodes.insert(code);
-            const row = engineRecord(engine, orgId, { createdAt: NOW + 1, updatedAt: NOW + 1 });
+            const row = engineRecord(engine, orgId, { createdAt: at, updatedAt: at });
             expect(await fixture.linkCodes.redeemForNewEngine(code.codeHash, row)).toBe('redeemed');
             return { code, row };
         }
@@ -183,6 +193,78 @@ export function describeRegistrationStoreContract(name: string, makeFixture: () 
             expect(await fixture.engines.countActive(orgB)).toBe(0);
             await fixture.suspend(row, 'owner-revoked');
             expect(await fixture.engines.countActive(orgA)).toBe(0);
+        });
+
+        it('lists and finds only the organization’s own engines, oldest first', async () => {
+            const { row: first } = await created(orgA, NOW + 1);
+            engine = await createTestEngine();
+            const { row: second } = await created(orgA, NOW + 2);
+            engine = await createTestEngine();
+            const { row: foreign } = await created(orgB);
+            expect(await fixture.engines.listForOrg(orgA)).toEqual([first, second]);
+            expect(await fixture.engines.listForOrg(orgB)).toEqual([foreign]);
+            expect(await fixture.engines.findInOrg(orgA, first.engineId)).toEqual(first);
+            expect(await fixture.engines.findInOrg(orgA, foreign.engineId)).toBeNull();
+            expect(await fixture.engines.findInOrg(orgB, first.engineId)).toBeNull();
+            expect(await fixture.engines.findInOrg(orgA, (await createTestEngine()).engineId)).toBeNull();
+        });
+
+        it('revokes an engine of the organization once, with one audit entry', async () => {
+            const { row } = await created(orgA);
+            const entry = audit(NOW + 20);
+            expect(await fixture.engines.revoke(orgA, engine.engineId, entry)).toBe('revoked');
+            expect(await fixture.engines.findInOrg(orgA, engine.engineId)).toEqual({
+                ...row,
+                status: 'suspended',
+                statusReason: 'owner-revoked',
+                updatedAt: NOW + 20,
+            });
+            expect(await fixture.orgAudit(orgA)).toEqual([
+                {
+                    id: entry.id,
+                    orgId: orgA,
+                    actorUserId: entry.actorUserId,
+                    action: 'engine.revoke',
+                    targetType: 'engine',
+                    targetId: engine.engineId,
+                    createdAt: NOW + 20,
+                },
+            ]);
+            expect(await fixture.engines.revoke(orgA, engine.engineId, audit(NOW + 30))).toBe('already-revoked');
+            expect(await fixture.engines.findInOrg(orgA, engine.engineId)).toMatchObject({ updatedAt: NOW + 20 });
+            expect(await fixture.orgAudit(orgA)).toHaveLength(1);
+        });
+
+        it('turns a platform suspension into an owner revocation', async () => {
+            const { row } = await created(orgA);
+            await fixture.suspend(row, 'abuse');
+            expect(await fixture.engines.revoke(orgA, engine.engineId, audit(NOW + 20))).toBe('revoked');
+            expect(await fixture.engines.findInOrg(orgA, engine.engineId)).toMatchObject({
+                status: 'suspended',
+                statusReason: 'owner-revoked',
+            });
+            expect(await fixture.orgAudit(orgA)).toHaveLength(1);
+        });
+
+        it('cannot revoke another organization’s engine or one that does not exist', async () => {
+            const { row } = await created(orgA);
+            expect(await fixture.engines.revoke(orgB, engine.engineId, audit(NOW + 20))).toBe('not-found');
+            expect(await fixture.engines.revoke(orgA, (await createTestEngine()).engineId, audit(NOW + 20))).toBe(
+                'not-found',
+            );
+            expect(await fixture.engines.findInOrg(orgA, engine.engineId)).toEqual(row);
+            expect(await fixture.orgAudit(orgA)).toEqual([]);
+            expect(await fixture.orgAudit(orgB)).toEqual([]);
+        });
+
+        it('logs a concurrent double revocation once', async () => {
+            await created(orgA);
+            const outcomes = await Promise.all([
+                fixture.engines.revoke(orgA, engine.engineId, audit(NOW + 20)),
+                fixture.engines.revoke(orgA, engine.engineId, audit(NOW + 20)),
+            ]);
+            expect([...outcomes].sort()).toEqual(['already-revoked', 'revoked']);
+            expect(await fixture.orgAudit(orgA)).toHaveLength(1);
         });
     });
 }
