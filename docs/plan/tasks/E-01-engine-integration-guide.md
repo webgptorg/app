@@ -11,7 +11,7 @@
 
 ## Context
 
-The engine team builds in the public `webgptorg/promptbook` repo against our contracts and integrates last (M5). They need lead time, so this guide lands in M2 as soon as the contracts exist, even while parts of the mock engine are still in progress. The guide moves public with the contracts in E-02, so it contains nothing private. Until then it stays in this repository only (Seb, 2026-10-21): it is not copied, published or shared anywhere else. It contains nothing private: no relay internals beyond the tunnel protocol, no dashboard internals beyond the engine-facing endpoints, no infra details, no secrets. The spec stays the source of truth for why; this guide is the how, linked to code.
+The engine team builds in the public `webgptorg/promptbook` repo against our contracts and integrates last (M5). They need lead time, so this guide lands in M2 as soon as the contracts exist, even while parts of the mock engine are still in progress. The guide moves public with the contracts in E-02 and until then stays in this repository only (Seb, 2026-10-21): it is not copied, published or shared anywhere else. Because it will be public, it contains nothing private: no relay internals beyond the tunnel protocol, no dashboard internals beyond the engine-facing endpoints, no infra details, no secrets. The spec stays the source of truth for why; this guide is the how, linked to code.
 
 ## Scope
 
