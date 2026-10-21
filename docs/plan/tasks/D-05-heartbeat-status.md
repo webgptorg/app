@@ -2,7 +2,7 @@
 
 - **Lane:** D · **Module:** `apps/dashboard` · **Milestone:** M3
 - **Depends on:** D-03
-- **Status:** in progress (feat/d-05-heartbeat)
+- **Status:** done (#53)
 - **Spec:** What our platform can and cannot do (Heartbeat); Interfaces (draft) 4; Operations (Engine offline; Notifications without us); Metadata we still see; ADRs: [0006](../../adr/0006-organizations-and-roles.md), [0014](../../adr/0014-cryptography.md)
 
 ## Goal
@@ -41,11 +41,11 @@ The heartbeat is the platform's only input from a running engine: numbers only, 
 
 ## Acceptance criteria
 
-- [ ] Domain unit tests: accepted; equal and lower `seq` → `replayed-seq` (through `verifyHeartbeat` with the stored `lastSeq`); offline after 3 missed intervals (injected `Clock`); exactly one email per outage; heartbeat after offline → online and a new outage emails again; payload purged after 30 days.
-- [ ] Workers tests (`SELF.fetch`, `runInDurableObject`, `runDurableObjectAlarm`), each a case: valid heartbeat → success and `getStatus()` shows it; missing header; wrong scheme (`rsa=`); signature by another key; body altered after signing; replayed body → 409; `ts` 3 minutes old and 3 minutes ahead → 401 `stale-timestamp` whose `serverTime` equals the fake clock; path/body engine ID mismatch → 400; unknown field → 400; unknown engine → 404; suspended engine → 403; 4 KiB + 1 byte body → 413; rate limit → 429 at the configured limit.
-- [ ] Alarm test with the in-memory `EmailSender`: after 3 missed heartbeats one `engine-offline` message goes to the org owner in the owner's locale; none to members of other orgs.
-- [ ] `bun run check` passes.
-- [ ] **Status** line above set to `done (#<PR>)`.
+- [x] Domain unit tests: accepted; equal and lower `seq` → `replayed-seq` (through `verifyHeartbeat` with the stored `lastSeq`); offline after 3 missed intervals (injected `Clock`); exactly one email per outage; heartbeat after offline → online and a new outage emails again; payload purged after 30 days.
+- [x] Workers tests (`SELF.fetch`, `runInDurableObject`, `runDurableObjectAlarm`), each a case: valid heartbeat → success and `getStatus()` shows it; missing header; wrong scheme (`rsa=`); signature by another key; body altered after signing; replayed body → 409; `ts` 3 minutes old and 3 minutes ahead → 401 `stale-timestamp` whose `serverTime` equals the fake clock; path/body engine ID mismatch → 400; unknown field → 400; unknown engine → 404; suspended engine → 403; 4 KiB + 1 byte body → 413; rate limit → 429 at the configured limit.
+- [x] Alarm test with the in-memory `EmailSender`: after 3 missed heartbeats one `engine-offline` message goes to the org owner in the owner's locale; none to members of other orgs.
+- [x] `bun run check` passes.
+- [x] **Status** line above set to `done (#<PR>)`.
 
 ## Risks and open points
 

@@ -28,8 +28,9 @@ export default defineConfig(async () => {
                     // Test support: fakes, the software authenticator and shared suites, not product code.
                     'src/testing/**',
                     'src/client/testing/**',
-                    // A Durable Object class: runs only in workerd, covered by the workers project.
+                    // Durable Object classes: run only in workerd, covered by the workers project.
                     'src/adapters/rate-limit/hourly-rate-limiter-object.ts',
+                    'src/adapters/status/engine-status-object.ts',
                 ],
                 thresholds: {
                     lines: 90,

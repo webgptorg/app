@@ -1,4 +1,7 @@
 import {
+    EngineId,
+    HEARTBEAT_MAX_BODY_BYTES,
+    HEARTBEAT_SIGNATURE_HEADER,
     REGISTER_PATH,
     REGISTER_REQUEST_MAX_BYTES,
     REGISTRATION_ERROR_CODE,
@@ -10,7 +13,8 @@ import { z } from 'zod';
 
 import type { EngineCreationPolicy } from '../../domain/registration/engine-creation-policy';
 import { registerEngine } from '../../domain/registration/register-engine';
-import { defineRoute, NO_INPUT } from '../../shared/api/contract';
+import { ingestHeartbeat } from '../../domain/status/ingest-heartbeat';
+import { defineRoute, NO_CONTENT, NO_INPUT, RAW_BODY } from '../../shared/api/contract';
 import { environmentSchema } from '../../shared/environment';
 import type { DashboardDeps } from '../deps';
 import type { RouteBinder } from './bind-route';
@@ -43,9 +47,47 @@ export const registerRoute = defineRoute({
     errorCodes: [...Object.values(REGISTRATION_ERROR_CODE), 'not-entitled'],
 });
 
-/** Machine API for engines. Cookies are ignored here; heartbeat (D-05) binds its protocol contract next. */
+/** The problem codes of C-03's `verifyHeartbeat` outcomes; `stale-timestamp` carries `serverTime`. */
+export const HEARTBEAT_ERROR_CODE = Object.freeze({
+    badSignatureHeader: 'bad-signature-header',
+    badSignature: 'bad-signature',
+    invalidBody: 'invalid-body',
+    engineMismatch: 'engine-mismatch',
+    replayedSeq: 'replayed-seq',
+    staleTimestamp: 'stale-timestamp',
+} as const);
+
+const SIGNATURE_HEADER = HEARTBEAT_SIGNATURE_HEADER.toLowerCase();
+
+/**
+ * C-03's heartbeat (Interface 4). Limited per IP, then per engine, then capped at 4 KiB; the body reaches the engine's
+ * Durable Object as received, where `verifyHeartbeat` checks the signature before anything parses it. A malformed or
+ * oversized signature header counts as a missing one, so every header problem is C-03's `bad-signature-header`.
+ */
+export const heartbeatRoute = defineRoute({
+    method: 'POST',
+    path: '/v1/engines/:engineId/heartbeat',
+    auth: 'engine-signature',
+    permission: null,
+    rateLimit: 'heartbeat-ip',
+    engineRateLimit: 'heartbeat-engine',
+    input: {
+        params: z.strictObject({ engineId: EngineId }),
+        query: null,
+        headers: z.strictObject({ [SIGNATURE_HEADER]: z.string().max(256).optional().catch(undefined) }),
+        body: RAW_BODY,
+        maxBodyBytes: HEARTBEAT_MAX_BODY_BYTES,
+    },
+    output: NO_CONTENT,
+    errorCodes: [...Object.values(HEARTBEAT_ERROR_CODE), REGISTRATION_ERROR_CODE.engineSuspended],
+});
+
+/** Machine API for engines. Cookies are ignored here. */
 export function createV1Router(
-    deps: Pick<DashboardDeps, 'config' | 'clock' | 'logger' | 'linkCodes' | 'engines'> & {
+    deps: Pick<
+        DashboardDeps,
+        'config' | 'clock' | 'logger' | 'linkCodes' | 'engines' | 'heartbeatEngines' | 'engineStatus'
+    > & {
         readonly policy: EngineCreationPolicy;
         readonly routes: RouteBinder;
     },
@@ -73,6 +115,38 @@ export function createV1Router(
                 return { kind: 'problem', status: 403, code: outcome.kind };
             case 'engine-exists':
                 return { kind: 'problem', status: 409, code: outcome.kind };
+        }
+    });
+    deps.routes.bind(router, V1_MOUNT, heartbeatRoute, async ({ input }) => {
+        const outcome = await ingestHeartbeat(deps, {
+            engineId: input.params.engineId,
+            rawBody: input.body,
+            signatureHeader: input.headers[SIGNATURE_HEADER] ?? null,
+        });
+        switch (outcome.kind) {
+            case 'accepted':
+                return { kind: 'ok', body: undefined, status: 204 };
+            case 'unknown-engine':
+                return { kind: 'problem', status: 404, code: 'not-found' };
+            case 'engine-suspended':
+                return { kind: 'problem', status: 403, code: REGISTRATION_ERROR_CODE.engineSuspended };
+            case 'bad-signature-header':
+                return { kind: 'problem', status: 401, code: HEARTBEAT_ERROR_CODE.badSignatureHeader };
+            case 'bad-signature':
+                return { kind: 'problem', status: 401, code: HEARTBEAT_ERROR_CODE.badSignature };
+            case 'invalid-body':
+                return { kind: 'problem', status: 400, code: HEARTBEAT_ERROR_CODE.invalidBody };
+            case 'engine-mismatch':
+                return { kind: 'problem', status: 400, code: HEARTBEAT_ERROR_CODE.engineMismatch };
+            case 'replayed-seq':
+                return { kind: 'problem', status: 409, code: HEARTBEAT_ERROR_CODE.replayedSeq };
+            case 'stale-ts':
+                return {
+                    kind: 'problem',
+                    status: 401,
+                    code: HEARTBEAT_ERROR_CODE.staleTimestamp,
+                    extensions: { serverTime: outcome.serverTime },
+                };
         }
     });
     return router;

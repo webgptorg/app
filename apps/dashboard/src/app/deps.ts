@@ -10,6 +10,8 @@ import type { LinkCodeStore } from '../domain/registration/link-code-store';
 import type { EngineHostnameStore } from '../domain/registry/engine-hostname-store';
 import type { RegistryReader } from '../domain/registry/registry-reader';
 import type { RelayTokenStore } from '../domain/registry/relay-token-store';
+import type { EngineStatusDirectory } from '../domain/status/engine-status-directory';
+import type { HeartbeatEngineReader } from '../domain/status/heartbeat-engine-reader';
 import type { Clock } from '../domain/ports/clock';
 import type { EmailSender } from '../domain/ports/email-sender';
 import type { Logger } from '../domain/ports/logger';
@@ -39,6 +41,10 @@ export interface DashboardDeps {
     /** Relays' unscoped read of engines (D-04). */
     readonly registry: RegistryReader;
     readonly engineHostnames: EngineHostnameStore;
+    /** Heartbeats' unscoped read of `engines` (D-05). */
+    readonly heartbeatEngines: HeartbeatEngineReader;
+    /** One status object per engine: heartbeats, offline detection, alerts. */
+    readonly engineStatus: EngineStatusDirectory;
     /** The fake outbox behind `email` when `config.adapters.email` is `fake` (dev only), else null. */
     readonly devOutbox: FakeEmailSender | null;
 }

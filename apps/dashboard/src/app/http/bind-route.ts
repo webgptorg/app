@@ -16,15 +16,17 @@ import type {
     RouteErrorCode,
     RouteResponse,
 } from '../../shared/api/contract';
+import { RAW_BODY } from '../../shared/api/contract';
 import type { CommonProblemCode } from '../../shared/api/problem';
 import { clearSessionCookie, SESSION_COOKIE } from './cookies';
-import { problemResponse, type ProblemStatus } from './problem';
+import { problemResponse, type ProblemExtensions, type ProblemStatus } from './problem';
 
 export type RouteResult<C extends RouteContract> =
     | {
           readonly kind: 'ok';
           readonly body: RouteResponse<C>;
-          readonly status?: 200 | 202;
+          /** 204 sends no body; only for routes whose output is `NO_CONTENT`. */
+          readonly status?: 200 | 202 | 204;
           /** Serialized `Set-Cookie` values. */
           readonly setCookies?: readonly string[];
       }
@@ -32,6 +34,7 @@ export type RouteResult<C extends RouteContract> =
           readonly kind: 'problem';
           readonly status: ProblemStatus;
           readonly code: RouteErrorCode<C> | CommonProblemCode;
+          readonly extensions?: ProblemExtensions;
           readonly setCookies?: readonly string[];
       };
 
@@ -111,6 +114,10 @@ export function isRelayRateLimit(rule: string): rule is RateLimitRuleName {
     return Object.hasOwn(RATE_LIMITS, rule) && rule.endsWith('-relay');
 }
 
+export function isEngineRateLimit(rule: string): rule is RateLimitRuleName {
+    return Object.hasOwn(RATE_LIMITS, rule) && rule.endsWith('-engine');
+}
+
 /** Throws at mount time, so a route that skips a safeguard never serves a request. */
 export function assertMountable(contract: RouteContract, mount: string): void {
     const problems: string[] = [];
@@ -129,6 +136,15 @@ export function assertMountable(contract: RouteContract, mount: string): void {
     }
     if (contract.rateLimit !== null && !isIpRateLimit(contract.rateLimit) && !isRelayRateLimit(contract.rateLimit)) {
         problems.push('unknown rate limit');
+    }
+    if (
+        contract.engineRateLimit !== undefined &&
+        (!isEngineRateLimit(contract.engineRateLimit) || !contract.path.includes('/:engineId'))
+    ) {
+        problems.push('engine rate limit without an -engine rule and an :engineId parameter');
+    }
+    if (contract.input.body === RAW_BODY && contract.auth !== 'engine-signature') {
+        problems.push('raw body outside an engine-signed route');
     }
     if ((contract.input.body === null) !== (contract.input.maxBodyBytes === 0)) {
         problems.push('body schema and size cap disagree');
@@ -229,6 +245,9 @@ async function readBody(context: Context, contract: RouteContract): Promise<Pars
     const bytes = await readBytes(context, maxBodyBytes);
     if (!(bytes instanceof Uint8Array)) {
         return bytes;
+    }
+    if (body === RAW_BODY) {
+        return { kind: 'ok', value: bytes };
     }
     try {
         return parseWith(body, JSON.parse(new TextDecoder('utf-8', { fatal: true, ignoreBOM: false }).decode(bytes)));
@@ -352,6 +371,14 @@ export function createRouteBinder(deps: RouteBinderDeps): RouteBinder {
                 if (rateLimit !== null && isIpRateLimit(rateLimit) && (await limited(rateLimit, clientIp(context)))) {
                     return problemResponse(429, 'rate-limited');
                 }
+                const { engineRateLimit } = contract;
+                if (
+                    engineRateLimit !== undefined &&
+                    isEngineRateLimit(engineRateLimit) &&
+                    (await limited(engineRateLimit, context.req.param('engineId') ?? ''))
+                ) {
+                    return problemResponse(429, 'rate-limited');
+                }
                 // A relay is known only by its key, so it authenticates before its own budget is counted.
                 let relay: RelayActor | null = null;
                 if (contract.auth === 'relay-token') {
@@ -405,11 +432,16 @@ export function createRouteBinder(deps: RouteBinderDeps): RouteBinder {
                 switch (result.kind) {
                     case 'ok':
                         return withCookies(
-                            context.json(result.body as unknown as object, result.status ?? 200),
+                            result.status === 204
+                                ? context.body(null, 204)
+                                : context.json(result.body as unknown as object, result.status ?? 200),
                             result.setCookies,
                         );
                     case 'problem':
-                        return withCookies(problemResponse(result.status, result.code), result.setCookies);
+                        return withCookies(
+                            problemResponse(result.status, result.code, undefined, result.extensions),
+                            result.setCookies,
+                        );
                 }
             });
         },

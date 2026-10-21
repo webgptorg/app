@@ -1,4 +1,4 @@
-import type { z } from 'zod';
+import { z } from 'zod';
 
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
@@ -35,6 +35,11 @@ export interface RouteContract {
     readonly permission: string | null;
     /** A per-IP rate limit rule, or a per-relay one for `relay-token` routes; required for every non-session route. */
     readonly rateLimit: string | null;
+    /**
+     * A second limit, keyed by the `:engineId` path segment as sent and counted right after `rateLimit`, before the
+     * body is read or anything is parsed: an engine's own budget, whatever address it sends from.
+     */
+    readonly engineRateLimit?: string;
     readonly input: RouteInput;
     /** Strict, so tests prove the server sends no undeclared field; the client reads it tolerantly. */
     readonly output: z.ZodType;
@@ -62,6 +67,15 @@ export type RouteErrorCode<C extends RouteContract> = C['errorCodes'][number];
 export function defineRoute<const C extends RouteContract>(contract: C): C {
     return contract;
 }
+
+/**
+ * The body schema of a route whose handler takes the exact bytes received: its signature covers them, so nothing may
+ * parse them before it verifies. Only `engine-signature` routes may use it.
+ */
+export const RAW_BODY = z.custom<Uint8Array<ArrayBuffer>>((value) => value instanceof Uint8Array);
+
+/** Output of a route that answers 204 without a body. */
+export const NO_CONTENT = z.undefined();
 
 /** Input of a route that takes nothing. */
 export const NO_INPUT = { params: null, query: null, headers: null, body: null, maxBodyBytes: 0 } as const;

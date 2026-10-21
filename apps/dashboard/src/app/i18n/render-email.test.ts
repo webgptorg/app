@@ -20,6 +20,14 @@ const MESSAGES: readonly Omit<EmailMessage, 'locale'>[] = [
         cooldownEndsAt: RECOVERED_AT + 72 * 3600_000,
         signInLink: 'https://app.ptbk.test/signin',
     },
+    {
+        template: 'engine-offline',
+        to: 'a@example.test',
+        engineId: 'abcdefghijklmnopqrstuvwxyz',
+        hostname: 'abcdefghijklmnopqrstuvwxyz.engines.ptbk.test',
+        lastSeenAt: RECOVERED_AT,
+        link: 'https://app.ptbk.test/engines/abcdefghijklmnopqrstuvwxyz',
+    },
 ] as EmailMessage[];
 
 describe('renderEmail', () => {
@@ -48,5 +56,13 @@ describe('renderEmail', () => {
         const { text } = renderEmail({ ...MESSAGES[3], locale: 'en' } as EmailMessage);
         expect(text).toContain('October 19, 2026 at 2:30');
         expect(text).toContain('October 22, 2026 at 2:30');
+    });
+
+    it.each(['en', 'cs'] as const)('names the engine, its hostname and when it was last seen in %s', (locale) => {
+        const { subject, text } = renderEmail({ ...MESSAGES[4], locale } as EmailMessage);
+        expect(subject).toContain('abcdefghijklmnopqrstuvwxyz.engines.ptbk.test');
+        expect(text).toContain('abcdefghijklmnopqrstuvwxyz.engines.ptbk.test');
+        expect(text).toContain('abcdefghijklmnopqrstuvwxyz\n');
+        expect(text).toContain(locale === 'en' ? 'October 19, 2026 at 2:30' : '19. října 2026 v 14:30');
     });
 });

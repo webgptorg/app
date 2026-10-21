@@ -8,8 +8,9 @@ export interface RateLimitRule {
 
 /**
  * Rules ending in `-ip` are keyed by the client IP and may be a route's `rateLimit`, as may rules ending in `-relay`,
- * keyed by the authenticated relay's ID on `relay-token` routes; the email rules are applied by the
- * flows that send mail. Production adapters only ever see an HMAC of the key.
+ * keyed by the authenticated relay's ID on `relay-token` routes. Rules ending in `-engine` are a route's
+ * `engineRateLimit`, keyed by its `:engineId` path segment. The email rules are applied by the flows that send mail.
+ * Production adapters only ever see an HMAC of the key.
  */
 export const RATE_LIMITS = {
     'signup-start-ip': { limit: 10, windowMs: HOUR_MS },
@@ -28,9 +29,16 @@ export const RATE_LIMITS = {
     'webhook-ip': { limit: 600, windowMs: MINUTE_MS },
     // Registry reads (D-04): each relay re-reads every connected engine once per 5-minute TTL, plus new tunnels.
     'registry-relay': { limit: 600, windowMs: MINUTE_MS },
+    // Heartbeats (D-05): many engines can share one address behind NAT or at a host.
+    'heartbeat-ip': { limit: 600, windowMs: MINUTE_MS },
+    // Keyed by the engine ID in the path; the limit is `config.heartbeat.perEngineLimit` (see `rateLimitRules`).
+    'heartbeat-engine': { limit: 5, windowMs: MINUTE_MS },
 } as const satisfies Readonly<Record<string, RateLimitRule>>;
 
 export type RateLimitRuleName = keyof typeof RATE_LIMITS;
+
+/** The limits an adapter counts with: {@link RATE_LIMITS}, with configured rules replaced. */
+export type RateLimitRules = Readonly<Record<RateLimitRuleName, RateLimitRule>>;
 
 /** `unavailable`: the limiter could not decide; callers fail closed and treat it as `limited`. */
 export type RateLimitOutcome = 'allowed' | 'limited' | 'unavailable';

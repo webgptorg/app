@@ -1,10 +1,16 @@
 import type { Clock } from '../../domain/ports/clock';
-import { RATE_LIMITS, type RateLimiter } from '../../domain/ports/rate-limiter';
+import { RATE_LIMITS, type RateLimiter, type RateLimitRules } from '../../domain/ports/rate-limiter';
 import { countAttempt, type WindowState } from './fixed-window';
 
+/** The counters, kept apart from the limiter so dev can build a limiter per request over state that outlives it. */
+export type MemoryRateLimitWindows = Map<string, WindowState & { readonly windowMs: number }>;
+
 /** In-process fixed windows for dev and tests; expired windows are dropped on every call. */
-export function createMemoryRateLimiter(clock: Clock): RateLimiter {
-    const windows = new Map<string, WindowState & { readonly windowMs: number }>();
+export function createMemoryRateLimiter(
+    clock: Clock,
+    rules: RateLimitRules = RATE_LIMITS,
+    windows: MemoryRateLimitWindows = new Map(),
+): RateLimiter {
     return {
         consume(rule, key) {
             const now = clock.nowMs();
@@ -14,11 +20,11 @@ export function createMemoryRateLimiter(clock: Clock): RateLimiter {
                 }
             }
             const id = `${rule}\0${key}`;
-            const decision = countAttempt(windows.get(id) ?? null, RATE_LIMITS[rule], now);
+            const decision = countAttempt(windows.get(id) ?? null, rules[rule], now);
             if (decision.kind === 'limited') {
                 return Promise.resolve('limited');
             }
-            windows.set(id, { ...decision.state, windowMs: RATE_LIMITS[rule].windowMs });
+            windows.set(id, { ...decision.state, windowMs: rules[rule].windowMs });
             return Promise.resolve('allowed');
         },
     };

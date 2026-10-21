@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { assertMountable } from '../../src/app/http/bind-route';
 import { createAuthHarness } from '../../src/testing/auth-harness';
+import { RAW_BODY } from '../../src/shared/api/contract';
 import { createMemoryAuthStore } from '../../src/testing/memory-auth-store';
 
 /** Routes anyone may call without a session. Adding one is a security review point. */
@@ -57,10 +58,21 @@ describe('route table', () => {
         ]);
     });
 
-    it('takes exactly registration as engine-signed, verified by its handler first', () => {
+    it('takes exactly registration and heartbeats as engine-signed, verified before anything reads them', () => {
         const signed = harness.routes.filter((route) => route.auth === 'engine-signature');
-        expect(signed.map((route) => `${route.method} ${route.path} ${String(route.rateLimit)}`)).toEqual([
-            'POST /v1/engines/register registration-ip',
+        expect(
+            signed.map(
+                (route) => `${route.method} ${route.path} ${String(route.rateLimit)} ${String(route.engineRateLimit)}`,
+            ),
+        ).toEqual([
+            'POST /v1/engines/register registration-ip undefined',
+            'POST /v1/engines/:engineId/heartbeat heartbeat-ip heartbeat-engine',
+        ]);
+    });
+
+    it('passes a raw body to the heartbeat only', () => {
+        expect(harness.routes.filter((route) => route.input.body === RAW_BODY).map((route) => route.path)).toEqual([
+            '/v1/engines/:engineId/heartbeat',
         ]);
     });
 

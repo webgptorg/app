@@ -8,7 +8,7 @@ import { createAuthorizer, type Actor } from '../../domain/authz/authorizer';
 import { DASHBOARD_POLICY } from '../../domain/authz/policy';
 import { orgIdSchema, relayTokenIdSchema, userIdSchema } from '../../domain/ids';
 import type { RateLimitOutcome } from '../../domain/ports/rate-limiter';
-import { defineRoute, NO_INPUT, type RouteContract } from '../../shared/api/contract';
+import { defineRoute, NO_CONTENT, NO_INPUT, RAW_BODY, type RouteContract } from '../../shared/api/contract';
 import { createRouteBinder, type RouteHandler } from './bind-route';
 
 const ENGINE = 'a'.repeat(26);
@@ -322,6 +322,30 @@ describe('route binder', () => {
         ['a relay route with a per-IP limit', { auth: 'relay-token', permission: null, rateLimit: 'public-read-ip' }],
         ['a public route with a per-relay limit', { auth: 'public', permission: null, rateLimit: 'registry-relay' }],
         [
+            'an engine limit on a route without an :engineId',
+            { auth: 'public', permission: null, rateLimit: 'public-read-ip', engineRateLimit: 'heartbeat-engine' },
+        ],
+        [
+            'an engine limit that is not an -engine rule',
+            {
+                path: '/api/engines/:engineId',
+                auth: 'public',
+                permission: null,
+                rateLimit: 'public-read-ip',
+                engineRateLimit: 'heartbeat-ip',
+                input: { ...NO_INPUT, params: z.strictObject({ engineId: z.string() }) },
+            },
+        ],
+        [
+            'a raw body outside an engine-signed route',
+            {
+                auth: 'public',
+                permission: null,
+                rateLimit: 'public-read-ip',
+                input: { ...NO_INPUT, body: RAW_BODY, maxBodyBytes: 64 },
+            },
+        ],
+        [
             'a signed route without rate limit',
             {
                 auth: 'stripe-signature',
@@ -460,6 +484,111 @@ describe('route binder', () => {
                 });
                 expect(response.status).toBe(429);
             }
+        });
+    });
+
+    describe('engine-signed raw-body routes', () => {
+        const beatRoute = defineRoute({
+            method: 'POST',
+            path: '/v1/things/:engineId/beat',
+            auth: 'engine-signature',
+            permission: null,
+            rateLimit: 'heartbeat-ip',
+            engineRateLimit: 'heartbeat-engine',
+            input: {
+                params: z.strictObject({ engineId: z.string().regex(/^[a-z2-7]{26}$/) }),
+                query: null,
+                headers: z.strictObject({ 'ptbk-signature': z.string().max(8).optional().catch(undefined) }),
+                body: RAW_BODY,
+                maxBodyBytes: 16,
+            },
+            output: NO_CONTENT,
+            errorCodes: ['stale-timestamp'],
+        });
+
+        function beatHarness(limits: Partial<Record<string, RateLimitOutcome>> = {}) {
+            const consumed: [string, string][] = [];
+            const seen: unknown[] = [];
+            const binder = createRouteBinder({
+                authorizer: createAuthorizer({ clock: { nowMs: () => 0 }, policy: DASHBOARD_POLICY }),
+                rateLimiter: {
+                    consume: (rule, key) => {
+                        consumed.push([rule, key]);
+                        return Promise.resolve(limits[rule] ?? 'allowed');
+                    },
+                },
+                logger: createMemoryLogger(),
+                resolveSession: () => Promise.reject(new Error('engine routes never read a session')),
+                authenticateRelay: () => Promise.reject(new Error('engine routes never read a relay key')),
+                signatures: { 'stripe-signature': () => Promise.resolve({ kind: 'invalid' }) },
+            });
+            const router = new Hono();
+            binder.bind(router, '/v1', beatRoute, ({ input }) => {
+                seen.push(input);
+                return Promise.resolve(
+                    input.body.length === 0
+                        ? {
+                              kind: 'problem',
+                              status: 401,
+                              code: 'stale-timestamp',
+                              extensions: { serverTime: '2027-01-15T08:00:00.000Z' },
+                          }
+                        : { kind: 'ok', body: undefined, status: 204 },
+                );
+            });
+            const app = new Hono().route('/v1', router);
+            const send = (path: string, body: string, headers: Record<string, string> = {}) =>
+                app.request(path, { method: 'POST', body, headers: { 'CF-Connecting-IP': '192.0.2.9', ...headers } });
+            return { send, consumed, seen };
+        }
+
+        it('hands the handler the exact bytes, unparsed, and answers 204 without a body', async () => {
+            const { send, seen } = beatHarness();
+            const response = await send(`/v1/things/${ENGINE}/beat`, ' {not json', { 'Ptbk-Signature': 'sig' });
+            expect(response.status).toBe(204);
+            expect(await response.text()).toBe('');
+            expect(seen).toEqual([
+                {
+                    params: { engineId: ENGINE },
+                    query: undefined,
+                    headers: { 'ptbk-signature': 'sig' },
+                    body: new TextEncoder().encode(' {not json'),
+                },
+            ]);
+        });
+
+        it('treats a header its schema refuses as missing, leaving the verdict to the handler', async () => {
+            const { send, seen } = beatHarness();
+            await send(`/v1/things/${ENGINE}/beat`, 'x', { 'Ptbk-Signature': 'far-too-long' });
+            expect(seen).toMatchObject([{ headers: {} }]);
+        });
+
+        it('adds a problem’s declared extension members', async () => {
+            const response = await beatHarness().send(`/v1/things/${ENGINE}/beat`, '');
+            expect(await response.json()).toEqual({
+                type: 'about:blank',
+                title: 'Unauthorized',
+                status: 401,
+                code: 'stale-timestamp',
+                serverTime: '2027-01-15T08:00:00.000Z',
+            });
+        });
+
+        it('limits per IP, then per engine ID as sent, before the cap and before any parsing', async () => {
+            const perEngine = beatHarness({ 'heartbeat-engine': 'limited' });
+            const limited = await perEngine.send('/v1/things/NOT-AN-ID/beat', 'x'.repeat(100));
+            expect(limited.status).toBe(429);
+            expect(perEngine.consumed).toEqual([
+                ['heartbeat-ip', '192.0.2.9'],
+                ['heartbeat-engine', 'NOT-AN-ID'],
+            ]);
+            const perIp = beatHarness({ 'heartbeat-ip': 'limited' });
+            expect((await perIp.send(`/v1/things/${ENGINE}/beat`, 'x')).status).toBe(429);
+            expect(perIp.consumed).toEqual([['heartbeat-ip', '192.0.2.9']]);
+            const open = beatHarness();
+            expect((await open.send(`/v1/things/${ENGINE}/beat`, 'x'.repeat(17))).status).toBe(413);
+            expect((await open.send('/v1/things/NOT-AN-ID/beat', 'x')).status).toBe(400);
+            expect(open.seen).toEqual([]);
         });
     });
 });

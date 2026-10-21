@@ -40,5 +40,18 @@ export function renderEmail(message: EmailMessage): RenderedEmail {
                     options,
                 ),
             };
+        case 'engine-offline':
+            return {
+                subject: m.email_engine_offline_subject({ hostname: message.hostname }, options),
+                text: m.email_engine_offline_body(
+                    {
+                        engineId: message.engineId,
+                        hostname: message.hostname,
+                        lastSeenAt: formatUtc(message.lastSeenAt, message.locale),
+                        link: message.link,
+                    },
+                    options,
+                ),
+            };
     }
 }

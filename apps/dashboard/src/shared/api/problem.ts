@@ -24,6 +24,8 @@ export const problemSchema = z.strictObject({
     detail: z.string().optional(),
     /** On 500 only: quote it to support, who find the logged error by it. */
     correlationId: z.string().max(64).optional(),
+    /** On a stale heartbeat timestamp only (C-03): the dashboard's clock, so the engine can show its skew. */
+    serverTime: z.string().max(64).optional(),
 });
 export type Problem = z.infer<typeof problemSchema>;
 
