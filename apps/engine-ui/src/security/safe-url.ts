@@ -27,3 +27,24 @@ export function safeImageSource(value: string): string | null {
     if (!value.startsWith('/') || value.startsWith('//') || value.includes('\\')) return null;
     return value;
 }
+
+/**
+ * The one decision for links and images in untrusted content (agent replies): the URL to link to, or `null` to show
+ * it as text. Only absolute `http:` and `https:` URLs to another origin qualify. Everything else is refused: script and
+ * data-carrying schemes (`javascript:`, `data:`, `vbscript:`, `blob:`, `file:`), relative and same-origin URLs (a link
+ * into this UI or its API, which the session cookie would authorise), and URLs with credentials, which mostly serve to
+ * disguise the real host (`https://trusted.example@evil.example`).
+ */
+export function safeLinkUrl(href: string, origin: string): string | null {
+    // The URL parser drops tabs and newlines inside a scheme (`java\tscript:`), so the scheme check runs on its result.
+    if (!/^\s*https?:\/\//i.test(href.replace(/[\t\n\r]/g, ''))) return null;
+    let url: URL;
+    try {
+        url = new URL(href);
+    } catch {
+        return null;
+    }
+    if (url.username !== '' || url.password !== '') return null;
+    if (url.origin === origin) return null;
+    return url.href;
+}

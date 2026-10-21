@@ -1,0 +1,48 @@
+/*
+ * Colours for the class names Lezer's `classHighlighter` (and the stream modes mapped onto it) give code tokens in
+ * agent replies. Semantic text colours only, which keep text contrast on the sunken code background in both themes.
+ */
+.chat-code {
+    background-color: var(--color-sunken);
+    color: var(--color-text);
+}
+
+.chat-code :is(.tok-keyword, .tok-operator, .tok-modifier) {
+    color: var(--color-accent-text);
+}
+
+.chat-code :is(.tok-string, .tok-string2, .tok-inserted) {
+    color: var(--color-success);
+}
+
+.chat-code :is(.tok-number, .tok-bool, .tok-atom, .tok-literal) {
+    color: var(--color-warning);
+}
+
+.chat-code :is(.tok-typeName, .tok-className, .tok-namespace, .tok-tagName, .tok-heading) {
+    color: var(--color-info);
+}
+
+.chat-code :is(.tok-variableName2, .tok-macroName, .tok-invalid, .tok-deleted) {
+    color: var(--color-danger);
+}
+
+.chat-code :is(.tok-comment, .tok-meta, .tok-punctuation) {
+    color: var(--color-text-muted);
+}
+
+.chat-code .tok-comment {
+    font-style: italic;
+}
+
+.chat-code :is(.tok-definition, .tok-heading, .tok-strong) {
+    font-weight: 600;
+}
+
+.chat-code .tok-emphasis {
+    font-style: italic;
+}
+
+.chat-code :is(.tok-link, .tok-url) {
+    text-decoration: underline;
+}

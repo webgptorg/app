@@ -17,7 +17,8 @@ const distDir = join(appDir, 'dist');
  * URL-shaped strings in dependencies that are never fetched: XML namespaces (react-dom), React's error decoder link
  * (text of production error messages), JSON Schema dialects and the IPv6 check's `new URL('http://[…]')` (zod), the
  * router's fallback origin for an opaque `window.origin` (TanStack Router), Tailwind's licence banner, and Paraglide's
- * error documentation link, its base for parsing relative URLs and its origin outside a browser. The CSP test
+ * error documentation link, its base for parsing relative URLs and its origin outside a browser, and the bare scheme
+ * GFM prefixes to `www.` autolinks in agent markdown (mdast-util-gfm-autolink-literal). The CSP test
  * proves at runtime that nothing leaves the origin; this list keeps every other URL out of the bundle.
  */
 const INERT_URLS = new Set([
@@ -36,6 +37,7 @@ const INERT_URLS = new Set([
     'https://paraglidejs.com/errors#no-locale-found',
     'http://example.com',
     'http://fallback.com',
+    'http://',
 ]);
 
 /** Rendered only by `@ptbk/ui`'s `Gallery`. */
