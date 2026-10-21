@@ -1,5 +1,6 @@
 import type { Stats } from 'node:fs';
 import { lstat, mkdir, open, rename, rm } from 'node:fs/promises';
+import { dirname } from 'node:path';
 
 const PRIVATE_TO_OWNER = 0o077;
 
@@ -55,7 +56,7 @@ export async function ensurePrivateDirectory(checked: PrivatePath, uid: number |
     return privacyProblem(stats, checked, uid);
 }
 
-/** Writes a new 0600 file; false if it already exists (a concurrent writer won). */
+/** Writes a new 0600 file and `fsync`s it; false if it already exists (a concurrent writer won). */
 export async function writeNewPrivateFile(path: string, content: string): Promise<boolean> {
     let file;
     try {
@@ -66,17 +67,32 @@ export async function writeNewPrivateFile(path: string, content: string): Promis
     }
     try {
         await file.writeFile(content);
+        await file.sync();
     } finally {
         await file.close();
     }
     return true;
 }
 
-/** Replaces `path` atomically with a new 0600 file. */
+/** Makes a create, rename or delete in `directory` survive a crash. */
+export async function syncDirectory(directory: string): Promise<void> {
+    const handle = await open(directory, 'r');
+    try {
+        await handle.sync();
+    } finally {
+        await handle.close();
+    }
+}
+
+/**
+ * Replaces `path` atomically and durably with a new 0600 file: a temporary file, `fsync`, rename, then `fsync` of the
+ * directory, so after a crash the path holds either the old content or the new, never a mix or nothing.
+ */
 export async function replacePrivateFile(path: string, content: string): Promise<void> {
     const temporary = `${path}.${String(process.pid)}.tmp`;
     // A leftover from a crashed write may have any mode; start from nothing.
     await rm(temporary, { force: true });
     if (!(await writeNewPrivateFile(temporary, content))) throw new Error(`${temporary} appeared while writing`);
     await rename(temporary, path);
+    await syncDirectory(dirname(path));
 }

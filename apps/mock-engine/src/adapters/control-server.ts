@@ -11,6 +11,7 @@ import { z } from 'zod';
 import type { FaultPlan } from '../domain/faults/fault-plan';
 import { FaultPlan as FaultPlanSchema, NO_FAULTS } from '../domain/faults/fault-plan';
 import type { SessionStore } from '../domain/gateway/sessions';
+import type { HeartbeatStatus } from '../domain/heartbeat/heartbeat-loop';
 import { SESSION_COOKIE_NAME } from '../domain/gateway/sessions';
 import type { Logger } from '../domain/logger';
 import type { RateLimiter } from '../domain/rate-limit/rate-limiter';
@@ -52,6 +53,8 @@ export interface ControlDeps {
     readonly sessions: SessionStore;
     readonly faults: FaultSettings;
     readonly rateLimiter: RateLimiter;
+    /** The last heartbeat sent and the clock skew the dashboard reported; absent in the M1 dev mode. */
+    readonly heartbeat?: () => HeartbeatStatus;
     readonly logger: Logger;
     /** RFC 3339, for synthetic members' `createdAt`. */
     readonly now: () => string;
@@ -142,6 +145,12 @@ export function createControlRoutes(deps: ControlDeps): readonly HttpRoute[] {
                 deps.faults.set(NO_FAULTS);
                 return new Response(null, { status: 204 });
             },
+        }),
+        control({
+            method: 'GET',
+            path: '/__mock/heartbeat',
+            body: null,
+            handle: () => Response.json(deps.heartbeat?.() ?? { lastHeartbeat: null, clockSkew: null }),
         }),
         control({
             method: 'GET',

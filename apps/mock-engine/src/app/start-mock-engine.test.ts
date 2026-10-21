@@ -132,6 +132,7 @@ describe('startMockEngine', () => {
                 hostname: started.engine.hostname,
                 version: '0.1.0',
                 relays: 2,
+                dashboard: false,
                 proxy: false,
                 scenario: 'small-team',
                 seed: 1,

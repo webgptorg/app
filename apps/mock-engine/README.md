@@ -1,6 +1,6 @@
 # @ptbk/mock-engine
 
-A stand-in for the real engine that speaks every real contract: it dials the relays, serves TLS inside the tunnel, serves the engine API with seeded fake data and, in later tasks, registers with the dashboard, sends signed heartbeats and runs the UI loader ([ADR 0004](../../docs/adr/0004-mock-engine-and-conformance.md)). No shortcuts the real engine would not have: everything goes through `@ptbk/protocol`, which makes this the reference implementation for the engine team.
+A stand-in for the real engine that speaks every real contract: it registers with the dashboard, dials the relays, serves TLS inside the tunnel, serves the engine API with seeded fake data, sends signed heartbeats and, in a later task, runs the UI loader ([ADR 0004](../../docs/adr/0004-mock-engine-and-conformance.md)). No shortcuts the real engine would not have: everything goes through `@ptbk/protocol`, which makes this the reference implementation for the engine team.
 
 ## What runs today (M-01)
 
@@ -56,10 +56,23 @@ The engine API is not reimplemented here. `@ptbk/engine-api/in-memory`'s core ho
 | `POST /__mock/reset`    | `{ scenario, seed }`: a new core; the dashboard URL, relay status and last heartbeat are applied again, and every session ends                                                             |
 | `PUT /__mock/faults`    | A `FaultPlan`                                                                                                                                                                              |
 | `DELETE /__mock/faults` | No faults                                                                                                                                                                                  |
+| `GET /__mock/heartbeat` | `{ lastHeartbeat: { sentAt, body } \| null, clockSkew: { seconds, measuredAt } \| null }`                                                                                                  |
 | `GET /__mock/members`   | IDs, names, roles and statuses                                                                                                                                                             |
 | `POST /__mock/sessions` | `{ subject: { kind: 'owner' } \| { kind: 'member', role } \| { kind: 'member', permissions } }` → `{ memberId, cookie: { name, value } }`; each permission set gets a new synthetic member |
 
 Startup fails with `NODE_ENV=production` when `MOCK_CONTROL` or `MOCK_DEV_LOGIN` is enabled.
+
+## Registration and heartbeat (M-06)
+
+The engine's only conversation with the dashboard, straight over HTTPS (never through a relay), through `HTTPS_PROXY` and `NO_PROXY` like the tunnels and trusting `MOCK_EXTRA_CA_FILE` as well as the default roots.
+
+**Startup.** With `PTBK_DASHBOARD_URL` set: a stored `registration.json` is loaded and checked again against the key, the engine domain and the dashboard (a mismatch stops startup); otherwise `PTBK_LINK_CODE` registers; with neither, startup fails. Without `PTBK_DASHBOARD_URL` the engine runs in the M1 dev mode on `PTBK_RELAYS`, without registration or heartbeats. The registration's relays replace `PTBK_RELAYS` unless `MOCK_RELAYS_OVERRIDE=enabled`, and `GET /engine` reports the dashboard URL.
+
+**Registration** (`src/domain/registration/register.ts`): the request is built and signed with `signRegistration` (`mode: tunnel`), the answer is read tolerantly (`TolerantRegisterEngineResponse`, unknown fields stripped, known ones checked, within `REGISTER_RESPONSE_MAX_BYTES`) and then checked with `checkRegistrationResponse`: an engine ID the key does not derive, or a hostname outside the engine domain, is refused and nothing is stored. Problem codes map to `rejected` with the C-03 reason (`invalid-link-code` covers unknown, expired and used codes alike); no answer, a timeout or an error without a readable problem is `unavailable`. An engine that already holds a registration makes no network call. Re-registering a kept key after `registration.json` is lost is idempotent on the dashboard and yields the same engine ID. The link code is taken once from the configuration (and removed from `process.env`), never stored or logged.
+
+**Heartbeat** (`src/domain/heartbeat/`): the first beat as the tunnels start, then one every `MOCK_HEARTBEAT_INTERVAL_S` (default 60). Each beat takes the next `seq` (`max(last + 1, now in ms)`, persisted in `PTBK_DATA_DIR/heartbeat-seq` with a temporary file, `fsync`, rename and a directory `fsync` before the body is built), builds the body with `buildHeartbeat`, signs those exact bytes with `signHeartbeat` and posts them. A failed send is logged with its status code only, not retried, and not backfilled; a beat still in flight when the next is due makes that one skip. The body is kept verbatim as the security panel's `lastHeartbeat` (also across `/__mock/reset`), from the moment it is sent. A `stale-timestamp` answer with `serverTime` records the clock skew (local clock minus `serverTime`, with when it was measured) and logs `heartbeat.clock-skew` with the seconds only; without `serverTime` the skew is unknown, and an accepted beat clears it. The engine API's `SecurityOverview` has no field for the skew, so the mock shows it with the last body at `GET /__mock/heartbeat`.
+
+Figures: disk use of the data directory's file system and memory use (rounded to tens by `buildHeartbeat`), the 1-minute load per core as `low` (< 0.5), `medium` (< 1) or `high`, agents and active members from the engine API's state, and `update: none` until the UI loader (M-05) reports one. With `MOCK_STATS=scenario` disk, memory and CPU are fixed per scenario (`empty` 10/20/low, `small-team` 40/50/medium, `large-fleet` 70/80/high), so e2e can assert exact dashboard values.
 
 ## Dev CA
 
@@ -74,46 +87,52 @@ To trust it locally, add `PTBK_DATA_DIR/dev-ca/ca-cert.pem` to the browser's or 
 
 ## Configuration
 
-| Variable                      | Meaning                                                                                                   |
-| ----------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `PTBK_MODE`                   | `tunnel` (default; the only mode the mock supports)                                                       |
-| `PTBK_DATA_DIR`               | Required. Holds `engine-key.pem`                                                                          |
-| `PTBK_RELAYS`                 | Required. Comma-separated `wss://<relay hostname>[:port][/v1/tunnel]` URLs (M-06 makes it a dev override) |
-| `PTBK_ENGINE_DOMAIN`          | Required. The engine's default hostname is `<engineId>.<PTBK_ENGINE_DOMAIN>`                              |
-| `PTBK_ENGINE_VERSION`         | Signed into the tunnel `auth`; defaults to this package's version                                         |
-| `HTTPS_PROXY` / `https_proxy` | `http://[user:password@]host:port`; both set and different is an error                                    |
-| `NO_PROXY` / `no_proxy`       | Comma-separated hosts (and their subdomains), optional `:port`, or `*`                                    |
-| `MOCK_EXTRA_CA_FILE`          | PEM added to Node's default roots, for the dev relay CA or a TLS-inspecting proxy                         |
-| `MOCK_DEV_CA_CERT_FILE`       | PEM dev CA certificate to issue engine certificates from; set together with `MOCK_DEV_CA_KEY_FILE`        |
-| `MOCK_DEV_CA_KEY_FILE`        | Its PKCS#8 PEM ECDSA P-256 key, mode 0600 or stricter                                                     |
-| `MOCK_DEV_CA_DOMAINS`         | Comma-separated e2e domains a generated dev CA permits besides `PTBK_ENGINE_DOMAIN`                       |
-| `LOG_LEVEL`                   | `info` (default), `warn`, `error`                                                                         |
-| `MOCK_SEED`                   | Integer 0 to 2³²−1, default 1                                                                             |
-| `MOCK_SCENARIO`               | `empty`, `small-team` (default) or `large-fleet`                                                          |
-| `MOCK_SEED_EPOCH`             | RFC 3339 UTC; seeded timestamps lie before it. Default `2026-10-01T00:00:00Z`                             |
-| `MOCK_FAULTS`                 | A JSON `FaultPlan`; default none                                                                          |
-| `MOCK_DEV_LOGIN`              | `enabled` or `disabled` (default)                                                                         |
-| `MOCK_CONTROL`                | `enabled` or `disabled` (default)                                                                         |
-| `MOCK_CONTROL_HOST`           | IP or hostname for the control listener, default `127.0.0.1`                                              |
-| `MOCK_CONTROL_PORT`           | Default `4480`                                                                                            |
+| Variable                      | Meaning                                                                                                 |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `PTBK_MODE`                   | `tunnel` (default; the only mode the mock supports)                                                     |
+| `PTBK_DATA_DIR`               | Required. Holds `engine-key.pem`, `registration.json` and `heartbeat-seq`                               |
+| `PTBK_RELAYS`                 | Comma-separated `wss://<relay hostname>[:port][/v1/tunnel]` URLs. Required without `PTBK_DASHBOARD_URL` |
+| `PTBK_DASHBOARD_URL`          | The dashboard's `https://` origin; enables registration and heartbeats                                  |
+| `PTBK_LINK_CODE`              | One-time link code for the first registration; needs `PTBK_DASHBOARD_URL`                               |
+| `MOCK_HEARTBEAT_INTERVAL_S`   | Seconds between heartbeats, 1 to 3600, default 60 (e2e uses 15)                                         |
+| `MOCK_RELAYS_OVERRIDE`        | `enabled` keeps `PTBK_RELAYS` instead of the registration's relays; default `disabled`                  |
+| `MOCK_STATS`                  | `os` (default) or `scenario`: where disk, memory and CPU figures come from                              |
+| `PTBK_ENGINE_DOMAIN`          | Required. The engine's default hostname is `<engineId>.<PTBK_ENGINE_DOMAIN>`                            |
+| `PTBK_ENGINE_VERSION`         | Signed into the tunnel `auth`; defaults to this package's version                                       |
+| `HTTPS_PROXY` / `https_proxy` | `http://[user:password@]host:port`; both set and different is an error                                  |
+| `NO_PROXY` / `no_proxy`       | Comma-separated hosts (and their subdomains), optional `:port`, or `*`                                  |
+| `MOCK_EXTRA_CA_FILE`          | PEM added to Node's default roots, for the dev relay CA or a TLS-inspecting proxy                       |
+| `MOCK_DEV_CA_CERT_FILE`       | PEM dev CA certificate to issue engine certificates from; set together with `MOCK_DEV_CA_KEY_FILE`      |
+| `MOCK_DEV_CA_KEY_FILE`        | Its PKCS#8 PEM ECDSA P-256 key, mode 0600 or stricter                                                   |
+| `MOCK_DEV_CA_DOMAINS`         | Comma-separated e2e domains a generated dev CA permits besides `PTBK_ENGINE_DOMAIN`                     |
+| `LOG_LEVEL`                   | `info` (default), `warn`, `error`                                                                       |
+| `MOCK_SEED`                   | Integer 0 to 2³²−1, default 1                                                                           |
+| `MOCK_SCENARIO`               | `empty`, `small-team` (default) or `large-fleet`                                                        |
+| `MOCK_SEED_EPOCH`             | RFC 3339 UTC; seeded timestamps lie before it. Default `2026-10-01T00:00:00Z`                           |
+| `MOCK_FAULTS`                 | A JSON `FaultPlan`; default none                                                                        |
+| `MOCK_DEV_LOGIN`              | `enabled` or `disabled` (default)                                                                       |
+| `MOCK_CONTROL`                | `enabled` or `disabled` (default)                                                                       |
+| `MOCK_CONTROL_HOST`           | IP or hostname for the control listener, default `127.0.0.1`                                            |
+| `MOCK_CONTROL_PORT`           | Default `4480`                                                                                          |
 
-Logs are JSON lines with relay URLs, states, close codes, attempt numbers and certificate expiry; never a key, signatures, proxy credentials or stream bytes.
+Logs are JSON lines with relay URLs, states, close codes, attempt numbers, certificate expiry and dashboard status codes; never a key, signatures, the link code, heartbeat bodies, proxy credentials or stream bytes.
 
 ## Commands
 
 - `bun run --filter @ptbk/mock-engine dev`: run from source with `tsx watch`.
 - `bun run --filter @ptbk/mock-engine build` then `start`: one bundled file, `dist/main.mjs`, for Node 24.
+- `bun run --filter @ptbk/mock-engine register --link <code>` (or `node dist/main.mjs register --link <code>`): registers with `PTBK_DASHBOARD_URL` (or finds the stored registration) and exits, printing `{ outcome, engineId, hostname, relays }` or `{ outcome, reason }` as JSON; exit code 0 only when registered (X-05).
 - `bun run --filter @ptbk/mock-engine identity`: prints `{ engineId, enginePublicKey, hostname }` as JSON, creating the identity if missing (X-01 writes the relay's static registry from it). Needs `PTBK_DATA_DIR` and `PTBK_ENGINE_DOMAIN`.
 - `bun run --filter @ptbk/mock-engine dev-ca`: creates the dev CA in `PTBK_DATA_DIR/dev-ca/` exactly as startup would (or reuses it) and prints its file paths and permitted domains as JSON, so tools can trust it before the engine runs (X-01). Reads `PTBK_DATA_DIR`, `PTBK_ENGINE_DOMAIN` and `MOCK_DEV_CA_DOMAINS`.
 - `bun run --filter @ptbk/mock-engine dev-ca issue <cert-file> <key-file> <hostname>...`: also issues a 7-day leaf from that CA for another dev service, such as X-01's relays (key 0600). Only names under `MOCK_DEV_CA_DOMAINS` are accepted; engine hostnames are refused, so their certificates come from the engine alone.
 
 ## Layout
 
-- `src/domain/`: the tunnel state machine (`tunnel/relay-link.ts`), the per-tunnel stream state (`tunnel/stream-mux.ts`), backoff, the rate limiter, the seed, scenarios and engine runtime (`state/`), the role policy (`authorization/`), gateway sessions (`gateway/`), the reply generator (`chat/`), fault plans (`faults/`), and the ports (`RelayDialer`, `IdentityStore`, `CertificateSource`, `Clock`, `Logger`, `Random`). No Node APIs; tested with fakes only.
-- `src/adapters/`: `ws` dialer with TLS verification and pings, the `CONNECT` proxy client, the `Duplex` per stream, the file identity store, the dev CA (`dev-ca.ts` on a small DER writer in `x509/`), the TLS server (`tls-stream-server.ts`), the tunnel throttle, the HTTP app with the spike, gateway and engine API routes and the fault middleware (`http/`), and the control listener (`control-server.ts`).
+- `src/domain/`: the tunnel state machine (`tunnel/relay-link.ts`), the per-tunnel stream state (`tunnel/stream-mux.ts`), backoff, the rate limiter, the seed, scenarios and engine runtime (`state/`), the role policy (`authorization/`), gateway sessions (`gateway/`), the reply generator (`chat/`), fault plans (`faults/`), registration (`registration/`), the heartbeat (`heartbeat/`), and the ports (`RelayDialer`, `IdentityStore`, `CertificateSource`, `DashboardApi`, `RegistrationStore`, `SeqStore`, `SystemStats`, `EngineStatsSource`, `Clock`, `Logger`, `Random`). No Node APIs; tested with fakes only.
+- `src/adapters/`: `ws` dialer with TLS verification and pings, the `CONNECT` proxy client, the `Duplex` per stream, the file identity store, the dev CA (`dev-ca.ts` on a small DER writer in `x509/`), the TLS server (`tls-stream-server.ts`), the tunnel throttle, the HTTP app with the spike, gateway and engine API routes and the fault middleware (`http/`), the control listener (`control-server.ts`), and the dashboard side: the HTTPS `fetch` (`https-fetch.ts`), the dashboard client (`fetch-dashboard-api.ts`), the registration and `seq` files and the host's figures.
 - `src/app/`: config parsing and the composition root, `startMockEngine(config, deps)`: tunnel streams → TLS server → HTTP app when given `certificates`; `onStream(handler)` replaces that handler in tests.
 - `src/testing/`: fakes, a test PKI, an in-test relay with an SNI passthrough, a `CONNECT` proxy, an in-process engine harness (TLS server and HTTP app over linked duplexes), the engine API harness with a `fetch` over those connections, and a recorder that checks every engine API response against its strict schema. `test/`: integration tests across real sockets, including engine-api's shared client suite run through the in-test relay.
 
 The DER writer is hand-rolled: the catalog's `@peculiar/asn1-*` packages resolve to two copies whose schema registries do not see each other, and `@peculiar/x509` needs a global `reflect-metadata` polyfill. Signing is `node:crypto` (OpenSSL), and the tests verify every certificate through `node:tls`.
 
-Still to come: ACME (M-03), the UI loader and full security headers (M-05), registration and heartbeat (M-06, which also re-applies the last heartbeat on reset), capabilities and the live simulation (M-07).
+Still to come: ACME (M-03), the UI loader and full security headers (M-05), capabilities and the live simulation (M-07).

@@ -112,12 +112,79 @@ describe('parseMockEngineConfig', () => {
         expect(problemsOf({ ...BASE, PTBK_DATA_DIR: '' })).toEqual(['PTBK_DATA_DIR: is required']);
     });
 
-    it('requires the data directory, engine domain and relays', () => {
+    it('requires the data directory, engine domain and, without a dashboard, relays', () => {
         expect(problemsOf({})).toEqual([
             'PTBK_DATA_DIR: is required',
-            'PTBK_RELAYS: is required',
             'PTBK_ENGINE_DOMAIN: is required',
+            'PTBK_RELAYS: is required without PTBK_DASHBOARD_URL',
         ]);
+    });
+
+    describe('M-06 settings', () => {
+        const CODE = 'abcdefghijklmnopqrstuvwxya';
+        const LINKED = { ...BASE, PTBK_RELAYS: undefined, PTBK_DASHBOARD_URL: 'https://App.ptbk.test/' };
+
+        it('reads the dashboard origin, with relays optional and heartbeats every 60 s by default', () => {
+            const config = parseMockEngineConfig(LINKED);
+            expect(config.relays).toEqual([]);
+            expect(config.stats).toBe('os');
+            expect(config.dashboard).toEqual({
+                url: 'https://app.ptbk.test',
+                linkCode: null,
+                heartbeatIntervalS: 60,
+                relaysOverride: false,
+            });
+            expect(parseMockEngineConfig(BASE).dashboard).toBeNull();
+        });
+
+        it('takes the link code once and never shows it', () => {
+            const config = parseMockEngineConfig({ ...LINKED, PTBK_LINK_CODE: CODE });
+            expect(JSON.stringify(config)).not.toContain(CODE);
+            expect(inspect(config, { depth: 5 })).not.toContain(CODE);
+            expect(config.dashboard?.linkCode?.take()).toBe(CODE);
+            expect(config.dashboard?.linkCode?.take()).toBeNull();
+        });
+
+        it('reads the interval, the relay override and the stats source', () => {
+            const config = parseMockEngineConfig({
+                ...LINKED,
+                PTBK_RELAYS: 'wss://relay-a.example.test',
+                MOCK_HEARTBEAT_INTERVAL_S: '15',
+                MOCK_RELAYS_OVERRIDE: 'enabled',
+                MOCK_STATS: 'scenario',
+            });
+            expect(config.dashboard).toMatchObject({ heartbeatIntervalS: 15, relaysOverride: true });
+            expect(config.relays).toHaveLength(1);
+            expect(config.stats).toBe('scenario');
+        });
+
+        it('refuses bad values without quoting them', () => {
+            const problems = problemsOf({
+                ...LINKED,
+                PTBK_DASHBOARD_URL: 'http://user:pw@app.ptbk.test/path',
+                PTBK_LINK_CODE: 'NOT-A-CODE-secretish',
+                MOCK_HEARTBEAT_INTERVAL_S: '0',
+                MOCK_STATS: 'host',
+            });
+            expect(problems).toEqual(
+                expect.arrayContaining([
+                    'PTBK_DASHBOARD_URL: must be an https:// origin without credentials or path',
+                    'PTBK_LINK_CODE: must be a link code',
+                    'MOCK_HEARTBEAT_INTERVAL_S: must be a whole number of seconds from 1 to 3600',
+                    'MOCK_STATS: must be os or scenario',
+                ]),
+            );
+            expect(problems.join(' ')).not.toContain('secretish');
+            expect(problemsOf({ ...LINKED, MOCK_HEARTBEAT_INTERVAL_S: '3601' })).toHaveLength(1);
+            expect(problemsOf({ ...LINKED, PTBK_DASHBOARD_URL: 'https://app.ptbk.test/?x' })).toHaveLength(1);
+        });
+
+        it('needs a dashboard for a link code and relays for the override', () => {
+            expect(problemsOf({ ...BASE, PTBK_LINK_CODE: CODE })).toEqual(['PTBK_LINK_CODE: needs PTBK_DASHBOARD_URL']);
+            expect(problemsOf({ ...LINKED, MOCK_RELAYS_OVERRIDE: 'enabled' })).toEqual([
+                'MOCK_RELAYS_OVERRIDE: needs PTBK_RELAYS',
+            ]);
+        });
     });
 
     it('accepts only tunnel mode', () => {
