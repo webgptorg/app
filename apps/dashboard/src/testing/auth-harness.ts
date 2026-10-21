@@ -1,5 +1,6 @@
 import type { Hono } from 'hono';
 
+import type { FakeBillingState } from '../adapters/billing/fake-billing-provider';
 import { createFakeClock, type FakeClock } from '../adapters/fake-clock';
 import { createFakeEmailSender, type FakeEmailSender } from '../adapters/email/fake-email-sender';
 import { createMemoryLogger, type MemoryLogger } from '../adapters/memory-logger';
@@ -11,10 +12,14 @@ import { authLinks, type DashboardDeps } from '../app/deps';
 import { createHttpApp } from '../app/http/create-http-app';
 import type { AuthStore } from '../domain/auth/auth-store';
 import { createAuthorizer } from '../domain/authz/authorizer';
+import type { BillingStore } from '../domain/billing/billing-store';
 import { DASHBOARD_POLICY } from '../domain/authz/policy';
 import type { RateLimiter } from '../domain/ports/rate-limiter';
 import type { RouteContract } from '../shared/api/contract';
+import { syntheticWebhookSecret, TEST_PLANS } from './billing-fixtures';
 import { createSoftwareAuthenticator, type SoftwareAuthenticator } from './software-authenticator';
+import { stripeSignatureHeader } from './stripe-signature';
+import { createTestBilling } from './test-billing';
 
 export const ORIGIN = 'https://app.ptbk.test';
 export const START_MS = 1_800_000_000_000;
@@ -46,6 +51,16 @@ export interface AuthHarness {
     readonly logger: MemoryLogger;
     readonly store: AuthStore;
     readonly deps: DashboardDeps;
+    readonly billingStore: BillingStore;
+    /** What the fake provider holds: customers, subscriptions, Checkout and portal sessions it was asked for. */
+    readonly billingProvider: FakeBillingState;
+    /** Generated per harness; the webhook route verifies with it. */
+    readonly webhookSecret: string;
+    /** Posts a Stripe webhook, signed with {@link webhookSecret} at the harness clock unless told otherwise. */
+    webhook(
+        payload: string,
+        options?: { readonly signature?: string; readonly signedAtMs?: number; readonly secret?: string },
+    ): Promise<TestResponse>;
     browser(options?: { readonly ip?: string; readonly authenticator?: SoftwareAuthenticator }): TestBrowser;
     /** Waits for everything handlers passed to `waitUntil`. */
     settle(): Promise<void>;
@@ -70,8 +85,11 @@ export function createAuthHarness(options: {
     readonly store: AuthStore;
     readonly rateLimiter?: (clock: FakeClock) => RateLimiter;
     readonly email?: 'fake' | 'cloudflare';
+    /** Defaults to an in-memory store; the auth tests that use the default never touch billing. */
+    readonly billingStore?: BillingStore;
 }): AuthHarness {
     const clock = createFakeClock(START_MS);
+    const webhookSecret = syntheticWebhookSecret();
     const outbox = createFakeEmailSender();
     const logger = createMemoryLogger();
     const config = parseConfig({
@@ -82,6 +100,16 @@ export function createAuthHarness(options: {
         ADAPTERS: { email: options.email ?? 'fake', billing: 'fake', rateLimit: 'memory' },
         EMAIL_FROM: 'no-reply@ptbk.test',
         RATE_LIMIT_HMAC_KEY: DEV_RATE_LIMIT_HMAC_KEY,
+        BILLING_PLANS: TEST_PLANS,
+        STRIPE_WEBHOOK_SECRET: webhookSecret,
+    });
+    const testBilling = createTestBilling({
+        clock,
+        catalogue: config.plans,
+        dashboardOrigin: ORIGIN,
+        logger,
+        webhookSecret,
+        ...(options.billingStore === undefined ? {} : { store: options.billingStore }),
     });
     const deps: DashboardDeps = {
         config,
@@ -95,6 +123,8 @@ export function createAuthHarness(options: {
         rateLimiter: options.rateLimiter?.(clock) ?? createMemoryRateLimiter(clock),
         links: authLinks(ORIGIN),
         devOutbox: options.email === 'cloudflare' ? null : outbox,
+        billing: testBilling.billing,
+        entitlements: testBilling.entitlements,
     };
     const { app: http, routes } = createHttpApp({
         ...deps,
@@ -124,7 +154,39 @@ export function createAuthHarness(options: {
         logger,
         store: options.store,
         deps,
+        billingStore: testBilling.store,
+        billingProvider: testBilling.provider,
+        webhookSecret,
         settle,
+        async webhook(payload, webhookOptions = {}) {
+            const signature =
+                webhookOptions.signature ??
+                (await stripeSignatureHeader(
+                    payload,
+                    webhookOptions.secret ?? webhookSecret,
+                    webhookOptions.signedAtMs ?? clock.nowMs(),
+                ));
+            const response = await http.request(
+                `${ORIGIN}/webhooks/stripe`,
+                {
+                    method: 'POST',
+                    headers: { 'Stripe-Signature': signature, 'Content-Type': 'application/json' },
+                    body: payload,
+                },
+                undefined,
+                executionCtx,
+            );
+            const text = await response.text();
+            if (response.ok) {
+                expectDeclaredOutput(routes, 'POST', '/webhooks/stripe', text);
+            }
+            return {
+                status: response.status,
+                body: text === '' ? null : (JSON.parse(text) as unknown),
+                setCookies: [],
+                headers: response.headers,
+            };
+        },
         browser(browserOptions = {}) {
             const cookies = new Map<string, string>();
             return {

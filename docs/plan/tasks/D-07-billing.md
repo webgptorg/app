@@ -2,7 +2,7 @@
 
 - **Lane:** D · **Module:** `apps/dashboard` · **Milestone:** M3
 - **Depends on:** D-02, D-09
-- **Status:** todo
+- **Status:** in progress (#36 merged; awaiting manual Stripe test-mode check)
 - **Spec:** Goal and scope; Decisions (Billing); Metadata we still see (Account email, billing details); Legal and GDPR (sub-processors); Abuse on our domains (item 4); ADRs: [0006](../../adr/0006-organizations-and-roles.md), [0007](../../adr/0007-frontend-stack.md), [0009](../../adr/0009-drizzle-and-migrations.md), [0014](../../adr/0014-cryptography.md), [0017](../../adr/0017-billing-entitlements.md)
 
 ## Goal
@@ -71,16 +71,16 @@ Per ADR 0006 the organization, not the user, owns the Stripe customer and the su
 
 ## Acceptance criteria
 
-- [ ] Unit tests: Stripe status → `BillingState` mapping, including unknown statuses mapped to a safe default.
-- [ ] Entitlements tests with a test catalogue: each `BillingState` resolves to the expected plan (`past_due` keeps it, `canceled`, `unpaid` and none fall to `none`); `allows` and `limit` return the plan's values, `null` for unlimited; reads are scoped by `orgId`.
-- [ ] Catalogue validation tests: duplicate plan or price IDs, an unknown feature or quota, and a missing `none` plan are rejected at config parse; Checkout with an unknown `planId` → 400.
-- [ ] `GET /api/billing` returns the org's entitlements; a test asserts no module outside billing imports `BillingProvider` or compares plan IDs.
-- [ ] With `adapters.billing = 'fake'`, a new org reaches `active` through the fake Checkout without network access (test), and X-05 can link an engine without touching Stripe.
-- [ ] Workers tests with the fake provider and a known webhook secret: valid signature → state updated; bad signature → 400; timestamp older than 5 minutes → 400; same event twice → processed once; unknown event type → 200 with no change; `subscription.deleted` → `canceled`.
-- [ ] Org scoping: a user of org B cannot open org A's billing page or create a portal session for org A's customer (403); the Stripe customer is keyed by `org_id`, not user.
-- [ ] `/admin/billing` is denied to non-admins and lists only problem states.
+- [x] Unit tests: Stripe status → `BillingState` mapping, including unknown statuses mapped to a safe default.
+- [x] Entitlements tests with a test catalogue: each `BillingState` resolves to the expected plan (`past_due` keeps it, `canceled`, `unpaid` and none fall to `none`); `allows` and `limit` return the plan's values, `null` for unlimited; reads are scoped by `orgId`.
+- [x] Catalogue validation tests: duplicate plan or price IDs, an unknown feature or quota, and a missing `none` plan are rejected at config parse; Checkout with an unknown `planId` → 400.
+- [x] `GET /api/billing` returns the org's entitlements; a test asserts no module outside billing imports `BillingProvider` or compares plan IDs.
+- [x] With `adapters.billing = 'fake'`, a new org reaches `active` through the fake Checkout without network access (test), and X-05 can link an engine without touching Stripe.
+- [x] Workers tests with the fake provider and a known webhook secret: valid signature → state updated; bad signature → 400; timestamp older than 5 minutes → 400; same event twice → processed once; unknown event type → 200 with no change; `subscription.deleted` → `canceled`.
+- [x] Org scoping: a user of org B cannot open org A's billing page or create a portal session for org A's customer (403); the Stripe customer is keyed by `org_id`, not user.
+- [x] `/admin/billing` is denied to non-admins and lists only problem states.
 - [ ] Manual check against Stripe test mode recorded in the PR: Checkout completes, webhook arrives, portal opens.
-- [ ] Migration is drizzle-kit output and passes D-01's guards; schema allowlist updated; `bun run check` passes.
+- [x] Migration is drizzle-kit output and passes D-01's guards; schema allowlist updated; `bun run check` passes.
 - [ ] **Status** line above set to `done (#<PR>)`.
 
 ## Risks and open points

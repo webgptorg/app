@@ -25,7 +25,16 @@ createRoot(container).render(
     <StrictMode>
         <App
             apiClient={createApiClient({ fetch: (input, init) => fetch(input, init) })}
-            browser={{ storage, matchMedia, passkeys: createBrowserPasskeyAuthenticator(), now: () => Date.now() }}
+            browser={{
+                storage,
+                matchMedia,
+                passkeys: createBrowserPasskeyAuthenticator(),
+                now: () => Date.now(),
+                origin: window.location.origin,
+                navigate: (url) => {
+                    window.location.assign(url);
+                },
+            }}
         />
     </StrictMode>,
 );

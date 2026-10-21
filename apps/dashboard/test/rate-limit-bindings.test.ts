@@ -13,6 +13,7 @@ const BINDINGS = {
     RATE_LIMIT_OPTIONS: 'options-ip',
     RATE_LIMIT_VERIFY: 'verify-ip',
     RATE_LIMIT_PUBLIC_READ: 'public-read-ip',
+    RATE_LIMIT_WEBHOOK: 'webhook-ip',
 } as const;
 
 // Runs after `build`: the binding's limit lives in wrangler.jsonc, the rule in code; they must not drift apart.

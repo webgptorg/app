@@ -8,7 +8,13 @@ import type { Authorizer, Resource } from '../../domain/authz/authorizer';
 import { DASHBOARD_POLICY, type DashboardAction } from '../../domain/authz/policy';
 import type { Logger } from '../../domain/ports/logger';
 import { RATE_LIMITS, type RateLimiter, type RateLimitRuleName } from '../../domain/ports/rate-limiter';
-import type { ParsedRouteInput, RouteContract, RouteErrorCode, RouteResponse } from '../../shared/api/contract';
+import type {
+    AuthMode,
+    ParsedRouteInput,
+    RouteContract,
+    RouteErrorCode,
+    RouteResponse,
+} from '../../shared/api/contract';
 import type { CommonProblemCode } from '../../shared/api/problem';
 import { clearSessionCookie, SESSION_COOKIE } from './cookies';
 import { problemResponse, type ProblemStatus } from './problem';
@@ -48,11 +54,23 @@ export interface RouteArgs<C extends RouteContract> {
 
 export type RouteHandler<C extends RouteContract> = (args: RouteArgs<C>) => Promise<RouteResult<C>>;
 
+export type SignatureMode = Exclude<AuthMode, 'public' | 'session'>;
+
+/** Checks a signature over the exact request bytes and only then reads them; `payload` is parsed by the contract. */
+export type SignatureVerifier = (
+    payload: Uint8Array,
+    signature: string,
+) => Promise<{ readonly kind: 'verified'; readonly payload: unknown } | { readonly kind: 'invalid' }>;
+
+/** The header each signature mode reads. */
+const SIGNATURE_HEADERS = { 'stripe-signature': 'stripe-signature' } as const satisfies Record<SignatureMode, string>;
+
 export interface RouteBinderDeps {
     readonly authorizer: Authorizer<DashboardAction>;
     readonly rateLimiter: RateLimiter;
     readonly logger: Logger;
     resolveSession(token: string): Promise<ActiveSession | null>;
+    readonly signatures: Readonly<Record<SignatureMode, SignatureVerifier>>;
 }
 
 export interface RouteBinder {
@@ -62,7 +80,15 @@ export interface RouteBinder {
     readonly routes: readonly RouteContract[];
 }
 
-type ParseOutcome = { readonly kind: 'ok'; readonly value: unknown } | { readonly kind: 'invalid' | 'too-large' };
+type ParseOutcome =
+    | { readonly kind: 'ok'; readonly value: unknown }
+    | { readonly kind: 'invalid' | 'too-large' }
+    /** A signed route whose signature is missing or does not verify. */
+    | { readonly kind: 'unsigned' };
+
+function isSignatureMode(auth: AuthMode): auth is SignatureMode {
+    return Object.hasOwn(SIGNATURE_HEADERS, auth);
+}
 
 function isPolicyAction(action: string): action is DashboardAction {
     return Object.hasOwn(DASHBOARD_POLICY, action);
@@ -92,6 +118,9 @@ export function assertMountable(contract: RouteContract, mount: string): void {
     }
     if (contract.path.includes('/:') && contract.input.params === null) {
         problems.push('path parameters without a schema');
+    }
+    if (isSignatureMode(contract.auth) && (contract.input.body === null || contract.input.headers === null)) {
+        problems.push('signed route without a body and a header schema');
     }
     if (problems.length > 0) {
         throw new Error(`refusing to mount ${contract.method} ${contract.path}: ${problems.join(', ')}`);
@@ -138,11 +167,10 @@ async function readCapped(
     return bytes;
 }
 
-async function readBody(context: Context, contract: RouteContract): Promise<ParseOutcome> {
-    const { body, maxBodyBytes } = contract.input;
-    if (body === null) {
-        return { kind: 'ok', value: undefined };
-    }
+async function readBytes(
+    context: Context,
+    maxBodyBytes: number,
+): Promise<Uint8Array<ArrayBuffer> | { readonly kind: 'invalid' | 'too-large' }> {
     const declared = context.req.header('Content-Length');
     if (declared !== undefined && !/^\d{1,15}$/.test(declared)) {
         return { kind: 'invalid' };
@@ -151,8 +179,36 @@ async function readBody(context: Context, contract: RouteContract): Promise<Pars
         return { kind: 'too-large' };
     }
     const bytes = await readCapped(context.req.raw.body, maxBodyBytes);
-    if (bytes === 'too-large') {
-        return { kind: 'too-large' };
+    return bytes === 'too-large' ? { kind: 'too-large' } : bytes;
+}
+
+/** The signature covers the bytes as sent, so they are verified before anything decodes or parses them. */
+async function readSignedBody(
+    context: Context,
+    contract: RouteContract,
+    mode: SignatureMode,
+    verify: SignatureVerifier,
+): Promise<ParseOutcome> {
+    const bytes = await readBytes(context, contract.input.maxBodyBytes);
+    if (!(bytes instanceof Uint8Array)) {
+        return bytes;
+    }
+    const signature = context.req.header(SIGNATURE_HEADERS[mode]);
+    if (signature === undefined) {
+        return { kind: 'unsigned' };
+    }
+    const verified = await verify(bytes, signature);
+    return verified.kind === 'verified' ? parseWith(contract.input.body, verified.payload) : { kind: 'unsigned' };
+}
+
+async function readBody(context: Context, contract: RouteContract): Promise<ParseOutcome> {
+    const { body, maxBodyBytes } = contract.input;
+    if (body === null) {
+        return { kind: 'ok', value: undefined };
+    }
+    const bytes = await readBytes(context, maxBodyBytes);
+    if (!(bytes instanceof Uint8Array)) {
+        return bytes;
     }
     try {
         return parseWith(body, JSON.parse(new TextDecoder('utf-8', { fatal: true, ignoreBOM: false }).decode(bytes)));
@@ -207,6 +263,8 @@ function resourceFor(action: DashboardAction, session: ActiveSession): Resource 
             return { kind: 'account', userId: session.user.id };
         case 'org':
             return { kind: 'org', orgId: session.actor.orgId };
+        case 'platform':
+            return { kind: 'platform' };
     }
 }
 
@@ -220,7 +278,8 @@ export function createRouteBinder(deps: RouteBinderDeps): RouteBinder {
         | { readonly kind: 'ok'; readonly session: ActiveSession | null }
         | { readonly kind: 'response'; readonly response: Response }
     > {
-        if (contract.auth === 'public') {
+        // Signed routes were verified with their body, before any of it was parsed.
+        if (contract.auth === 'public' || isSignatureMode(contract.auth)) {
             return { kind: 'ok', session: null };
         }
         const token = request.secretCookie(SESSION_COOKIE);
@@ -270,9 +329,14 @@ export function createRouteBinder(deps: RouteBinderDeps): RouteBinder {
                         return problemResponse(429, 'rate-limited');
                     }
                 }
-                const body = await readBody(context, contract);
+                const body = isSignatureMode(contract.auth)
+                    ? await readSignedBody(context, contract, contract.auth, deps.signatures[contract.auth])
+                    : await readBody(context, contract);
                 if (body.kind === 'too-large') {
                     return problemResponse(413, 'too-large');
+                }
+                if (body.kind === 'unsigned') {
+                    return problemResponse(400, 'invalid-signature');
                 }
                 const params = parseWith(contract.input.params, context.req.param());
                 const query = parseWith(contract.input.query, context.req.query());

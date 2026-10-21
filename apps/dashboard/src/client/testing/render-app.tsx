@@ -31,7 +31,12 @@ export interface RenderedApp extends RenderResult {
     readonly history: RouterHistory;
     readonly user: UserEvent;
     readonly storage: PreferenceStorage;
+    /** URLs the app sent the browser to at the top level, in order. */
+    readonly navigations: readonly string[];
 }
+
+/** The origin every app test runs on. */
+export const APP_ORIGIN = 'https://app.ptbk.test';
 
 /** The whole app as `main.tsx` composes it, on a memory history with a scripted API and authenticator. */
 export function renderApp(options: RenderAppOptions = {}): RenderedApp {
@@ -44,12 +49,22 @@ export function renderApp(options: RenderAppOptions = {}): RenderedApp {
     const storage = options.storage ?? createMemoryStorage();
     const history = createMemoryHistory({ initialEntries: [options.path ?? '/'] });
     const user = userEvent.setup();
+    const navigations: string[] = [];
     const result = render(
         <App
             apiClient={api}
-            browser={{ storage, matchMedia: (query) => window.matchMedia(query), passkeys, now: () => NOW }}
+            browser={{
+                storage,
+                matchMedia: (query) => window.matchMedia(query),
+                passkeys,
+                now: () => NOW,
+                origin: APP_ORIGIN,
+                navigate: (url) => {
+                    navigations.push(url);
+                },
+            }}
             history={history}
         />,
     );
-    return { ...result, api, passkeys, history, user, storage };
+    return { ...result, api, passkeys, history, user, storage, navigations };
 }

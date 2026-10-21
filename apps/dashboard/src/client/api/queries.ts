@@ -58,6 +58,8 @@ export const queryKeys = {
     session: ['session'] as const,
     passkeys: ['passkeys'] as const,
     sessions: ['sessions'] as const,
+    billing: ['billing'] as const,
+    adminBilling: ['admin', 'billing'] as const,
 };
 
 /** A 401 on any signed-in call means the session ended elsewhere (expired, revoked, signed out everywhere). */
@@ -114,5 +116,20 @@ export function sessionsQuery(client: ApiClient) {
     return queryOptions({
         queryKey: queryKeys.sessions,
         queryFn: async ({ signal }) => dataOrThrow(await client.call(apiRoutes.listSessions, {}, signal)).sessions,
+    });
+}
+
+/** The active org's billing state, entitlements and the plans Checkout offers. */
+export function billingQuery(client: ApiClient) {
+    return queryOptions({
+        queryKey: queryKeys.billing,
+        queryFn: async ({ signal }) => dataOrThrow(await client.call(apiRoutes.getBilling, {}, signal)),
+    });
+}
+
+export function adminBillingQuery(client: ApiClient) {
+    return queryOptions({
+        queryKey: queryKeys.adminBilling,
+        queryFn: async ({ signal }) => dataOrThrow(await client.call(apiRoutes.adminBilling, {}, signal)).organizations,
     });
 }

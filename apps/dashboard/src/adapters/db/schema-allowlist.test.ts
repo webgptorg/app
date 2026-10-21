@@ -7,6 +7,8 @@ import { describe, expect, it } from 'vitest';
  * no prompts, messages, files or agent output, not even encrypted.
  */
 const ALLOWLIST: Readonly<Record<string, readonly string[]>> = {
+    // The organization's Stripe customer ID; the email and payment details live at Stripe only.
+    billing_customers: ['org_id', 'stripe_customer_id', 'created_at'],
     // Insert-only record of platform admin actions: who, what, on which target, why. No engine content.
     admin_audit_log: ['id', 'admin_user_id', 'action', 'target_type', 'target_id', 'reason', 'created_at'],
     // Signup and recovery links: the token only as SHA-256, the address it was sent to, 15-minute lifetime.
@@ -25,6 +27,19 @@ const ALLOWLIST: Readonly<Record<string, readonly string[]>> = {
         'created_at',
         'last_used_at',
         'counter_regressed_at',
+    ],
+    // Webhook idempotency: Stripe event IDs and types, never payloads; pruned after 30 days.
+    stripe_events: ['event_id', 'type', 'received_at'],
+    // The organization's subscription state as fetched from Stripe; no card, address or invoice data.
+    subscriptions: [
+        'org_id',
+        'stripe_subscription_id',
+        'status',
+        'price_id',
+        'quantity',
+        'current_period_end',
+        'cancel_at_period_end',
+        'updated_at',
     ],
     // Session IDs only as SHA-256.
     sessions: [

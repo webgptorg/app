@@ -31,6 +31,21 @@
         "EMAIL_FROM": "no-reply@ptbk.test",
         // Dev only; config refuses it elsewhere. Staging and production: `wrangler secret put RATE_LIMIT_HMAC_KEY`.
         "RATE_LIMIT_HMAC_KEY": "ZGV2LW9ubHktcmF0ZS1saW1pdC1rZXktbm90LXNlY3JldA",
+        // Placeholder plans until pricing is decided (ADR 0017). `none` follows the spec's "card on file before an
+        // engine": no subscription, no engine. Stripe secrets (`wrangler secret put STRIPE_SECRET_KEY`,
+        // `STRIPE_WEBHOOK_SECRET`) are needed only with the stripe billing adapter.
+        "BILLING_PLANS": {
+            "none": { "features": [], "quotas": { "engines.max": 0, "custom-domains.max": 0 } },
+            "plans": [
+                {
+                    "id": "standard",
+                    "stripeProductId": "prod_devstandard",
+                    "stripePriceId": "price_devstandard",
+                    "features": ["engines.create"],
+                    "quotas": { "engines.max": null, "custom-domains.max": 0 },
+                },
+            ],
+        },
     },
     // Hourly rate limits (D-02): the Workers Rate Limiting binding only has 10 s and 60 s periods.
     "durable_objects": { "bindings": [{ "name": "HOURLY_RATE_LIMITER", "class_name": "HourlyRateLimiter" }] },
@@ -40,6 +55,7 @@
         { "name": "RATE_LIMIT_OPTIONS", "namespace_id": "1001", "simple": { "limit": 30, "period": 60 } },
         { "name": "RATE_LIMIT_VERIFY", "namespace_id": "1002", "simple": { "limit": 30, "period": 60 } },
         { "name": "RATE_LIMIT_PUBLIC_READ", "namespace_id": "1003", "simple": { "limit": 120, "period": 60 } },
+        { "name": "RATE_LIMIT_WEBHOOK", "namespace_id": "1004", "simple": { "limit": 600, "period": 60 } },
     ],
     "env": {
         "staging": {
@@ -59,6 +75,20 @@
                 "RELAYS": [{ "relayId": "relay-1.staging.<placeholder>", "region": "eu-central" }],
                 "ADAPTERS": { "email": "cloudflare", "billing": "stripe", "rateLimit": "workers" },
                 "EMAIL_FROM": "no-reply@<staging-sending-domain>",
+                // Test-mode Stripe IDs; secrets via `wrangler secret put STRIPE_SECRET_KEY --env staging` (and
+                // STRIPE_WEBHOOK_SECRET). Quotas are placeholders until pricing is decided.
+                "BILLING_PLANS": {
+                    "none": { "features": [], "quotas": { "engines.max": 0, "custom-domains.max": 0 } },
+                    "plans": [
+                        {
+                            "id": "standard",
+                            "stripeProductId": "<staging-standard-product-id>",
+                            "stripePriceId": "<staging-standard-price-id>",
+                            "features": ["engines.create"],
+                            "quotas": { "engines.max": null, "custom-domains.max": 0 },
+                        },
+                    ],
+                },
             },
             "send_email": [{ "name": "EMAIL" }],
             "durable_objects": {
@@ -73,6 +103,7 @@
                     "namespace_id": "2003",
                     "simple": { "limit": 120, "period": 60 },
                 },
+                { "name": "RATE_LIMIT_WEBHOOK", "namespace_id": "2004", "simple": { "limit": 600, "period": 60 } },
             ],
         },
         "production": {
@@ -92,6 +123,20 @@
                 "RELAYS": [{ "relayId": "relay-1.<engine-domain>", "region": "eu-central" }],
                 "ADAPTERS": { "email": "cloudflare", "billing": "stripe", "rateLimit": "workers" },
                 "EMAIL_FROM": "no-reply@<production-sending-domain>",
+                // Live-mode Stripe IDs; secrets via `wrangler secret put STRIPE_SECRET_KEY --env production` (and
+                // STRIPE_WEBHOOK_SECRET). Quotas are placeholders until pricing is decided.
+                "BILLING_PLANS": {
+                    "none": { "features": [], "quotas": { "engines.max": 0, "custom-domains.max": 0 } },
+                    "plans": [
+                        {
+                            "id": "standard",
+                            "stripeProductId": "<production-standard-product-id>",
+                            "stripePriceId": "<production-standard-price-id>",
+                            "features": ["engines.create"],
+                            "quotas": { "engines.max": null, "custom-domains.max": 0 },
+                        },
+                    ],
+                },
             },
             "send_email": [{ "name": "EMAIL" }],
             "durable_objects": {
@@ -106,6 +151,7 @@
                     "namespace_id": "3003",
                     "simple": { "limit": 120, "period": 60 },
                 },
+                { "name": "RATE_LIMIT_WEBHOOK", "namespace_id": "3004", "simple": { "limit": 600, "period": 60 } },
             ],
         },
     },

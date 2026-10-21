@@ -39,6 +39,16 @@ function bytes(buffer: unknown): Uint8Array {
     return Uint8Array.from(buffer);
 }
 
+/**
+ * Drizzle types blob parameters as the global `Buffer`, which is Node's class once `@types/node` is in the program (the
+ * stripe package references it). D1 binds any `Uint8Array` as a blob, so the bytes go in unchanged.
+ */
+function blob(value: Uint8Array): Buffer;
+function blob(value: Uint8Array | null): Buffer | null;
+function blob(value: Uint8Array | null): Buffer | null {
+    return value as Buffer | null;
+}
+
 function isUniqueViolation(error: unknown): boolean {
     for (let current: unknown = error; current instanceof Error; current = current.cause) {
         if (current.message.includes('UNIQUE constraint failed')) {
@@ -83,7 +93,7 @@ function toPasskey(row: typeof passkeys.$inferSelect): PasskeyRecord {
 function passkeyRow(passkey: PasskeyRecord): typeof passkeys.$inferInsert {
     return {
         ...passkey,
-        publicKey: passkey.publicKey,
+        publicKey: blob(passkey.publicKey),
         transports: JSON.stringify(passkey.transports),
     };
 }
@@ -153,7 +163,7 @@ export function createD1AuthStore(db: Database): AuthStore {
             async createAccount(input) {
                 try {
                     await db.batch([
-                        db.insert(users).values({ ...input.user, webauthnUserId: input.user.webauthnUserId }),
+                        db.insert(users).values({ ...input.user, webauthnUserId: blob(input.user.webauthnUserId) }),
                         db.insert(organizations).values(input.org),
                         db.insert(memberships).values(input.membership),
                         db.insert(passkeys).values(passkeyRow(input.passkey)),
@@ -293,7 +303,7 @@ export function createD1AuthStore(db: Database): AuthStore {
                     db.delete(webauthnChallenges).where(lte(webauthnChallenges.expiresAt, now)),
                     db.insert(webauthnChallenges).values({
                         ...challenge,
-                        webauthnUserId: challenge.webauthnUserId,
+                        webauthnUserId: blob(challenge.webauthnUserId),
                     }),
                 ]);
             },

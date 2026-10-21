@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { billingStatusSchema, featureSchema, planIdSchema, problemStatusSchema, quotaSchema } from '../billing';
 import { environmentSchema } from '../environment';
 import { defineRoute, NO_INPUT } from './contract';
 import {
@@ -67,6 +68,51 @@ export const sessionSummarySchema = z.strictObject({
     expiresAt: timestampSchema,
 });
 export type SessionSummary = z.infer<typeof sessionSummarySchema>;
+
+const quotaLimitSchema = z.number().int().nonnegative().nullable();
+
+const planViewSchema = z.strictObject({
+    id: planIdSchema,
+    features: z.array(featureSchema),
+    /** `limit: null` is unlimited. */
+    quotas: z.array(z.strictObject({ quota: quotaSchema, limit: quotaLimitSchema })),
+});
+export type PlanView = z.infer<typeof planViewSchema>;
+
+export const billingViewSchema = z.strictObject({
+    status: billingStatusSchema,
+    /** End of the paid or trial period; null without a subscription. */
+    currentPeriodEnd: timestampSchema.nullable(),
+    cancelAtPeriodEnd: z.boolean(),
+    /** The plan the entitlements come from: the subscribed one, or `none`. For display only; gate on `entitlements`. */
+    planId: planIdSchema,
+    /** A provider customer exists, so the portal has payment methods and invoices to show. */
+    hasBillingAccount: z.boolean(),
+    /** No live subscription: Checkout may start one. */
+    canSubscribe: z.boolean(),
+    entitlements: z.strictObject({
+        features: z.array(featureSchema),
+        /** `used` is null where the dashboard does not count usage yet. */
+        quotas: z.array(z.strictObject({ quota: quotaSchema, limit: quotaLimitSchema, used: quotaLimitSchema })),
+    }),
+    /** Plans Checkout offers, in catalogue order. */
+    plans: z.array(planViewSchema),
+});
+export type BillingView = z.infer<typeof billingViewSchema>;
+
+export const problemOrganizationSchema = z.strictObject({
+    orgId: idSchema,
+    kind: orgKindSchema,
+    name: z.string().nullable(),
+    status: problemStatusSchema,
+    currentPeriodEnd: timestampSchema.nullable(),
+    /** When the dashboard last stored the subscription's state. */
+    updatedAt: timestampSchema,
+});
+export type ProblemOrganization = z.infer<typeof problemOrganizationSchema>;
+
+/** Where the SPA sends the browser, top level: Stripe Checkout or the portal, or back to `/billing` with the fake. */
+const redirectSchema = z.strictObject({ url: z.url({ protocol: /^https?$/ }).max(2048) });
 
 const ceremonyErrors = ['challenge-invalid', 'webauthn-failed'] as const;
 
@@ -301,6 +347,47 @@ export const apiRoutes = {
         },
         output: emptySchema,
         errorCodes: ['last-passkey'],
+    }),
+
+    getBilling: defineRoute({
+        method: 'GET',
+        path: '/api/billing',
+        auth: 'session',
+        permission: 'billing.read',
+        rateLimit: null,
+        input: NO_INPUT,
+        output: billingViewSchema,
+        errorCodes: [],
+    }),
+    billingCheckout: defineRoute({
+        method: 'POST',
+        path: '/api/billing/checkout',
+        auth: 'session',
+        permission: 'billing.manage',
+        rateLimit: null,
+        input: { ...NO_INPUT, body: z.strictObject({ planId: planIdSchema }), maxBodyBytes: SMALL_BODY_BYTES },
+        output: redirectSchema,
+        errorCodes: ['unknown-plan', 'already-subscribed'],
+    }),
+    billingPortal: defineRoute({
+        method: 'POST',
+        path: '/api/billing/portal',
+        auth: 'session',
+        permission: 'billing.manage',
+        rateLimit: null,
+        input: NO_INPUT,
+        output: redirectSchema,
+        errorCodes: [],
+    }),
+    adminBilling: defineRoute({
+        method: 'GET',
+        path: '/api/admin/billing',
+        auth: 'session',
+        permission: 'admin.billing.read',
+        rateLimit: null,
+        input: NO_INPUT,
+        output: z.strictObject({ organizations: z.array(problemOrganizationSchema) }),
+        errorCodes: [],
     }),
 
     /** Dev only, for e2e (X-05): mounted only with the fake email adapter, which the config allows in dev alone. */

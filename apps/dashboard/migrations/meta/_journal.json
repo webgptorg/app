@@ -15,6 +15,13 @@
       "when": 1792419567825,
       "tag": "0001_accounts_passkeys_sessions",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1792571842264,
+      "tag": "0002_billing",
+      "breakpoints": true
     }
   ]
 }

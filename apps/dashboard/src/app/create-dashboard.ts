@@ -1,13 +1,20 @@
 import type { Hono } from 'hono';
 
+import { createFakeBillingProvider } from '../adapters/billing/fake-billing-provider';
+import { createStripeApi, createStripeBillingProvider } from '../adapters/billing/stripe-billing-provider';
+import { createStripeWebhookVerifier, rejectAllWebhooks } from '../adapters/billing/stripe-webhook-verifier';
 import { createConsoleLogger } from '../adapters/console-logger';
 import { cryptoRandom } from '../adapters/crypto-random';
 import { createCloudflareEmailSender } from '../adapters/email/cloudflare-email-sender';
 import { createDatabase } from '../adapters/db/client';
 import { createD1AuthStore } from '../adapters/db/d1-auth-store';
+import { createD1BillingStore } from '../adapters/db/d1-billing-store';
 import { systemClock } from '../adapters/system-clock';
 import { createSimpleWebAuthnRelyingParty } from '../adapters/webauthn/simple-webauthn-relying-party';
 import { createAuthorizer } from '../domain/authz/authorizer';
+import type { BillingEvent, BillingProvider } from '../domain/billing/billing-provider';
+import { createBillingService } from '../domain/billing/billing-service';
+import { createSubscriptionEntitlements } from '../domain/billing/entitlements';
 import { DASHBOARD_POLICY } from '../domain/authz/policy';
 import type { Logger } from '../domain/ports/logger';
 import { ConfigError, parseConfig, type DashboardConfig } from './config';
@@ -45,6 +52,36 @@ function emailSender(env: Env, config: DashboardConfig, dev: DevAdapters) {
     }
 }
 
+function billingProvider(
+    config: DashboardConfig,
+    dev: DevAdapters,
+    deliver: (event: BillingEvent, signal: AbortSignal) => Promise<unknown>,
+): BillingProvider | null {
+    const verifyWebhook =
+        config.stripeWebhookSecret === null
+            ? rejectAllWebhooks
+            : createStripeWebhookVerifier({ secret: config.stripeWebhookSecret, clock: systemClock });
+    switch (config.adapters.billing) {
+        case 'fake':
+            return createFakeBillingProvider({
+                state: dev.billing,
+                random: cryptoRandom,
+                clock: systemClock,
+                dashboardOrigin: config.dashboardOrigin,
+                verifyWebhook,
+                deliver,
+            });
+        case 'stripe':
+            return config.stripeSecretKey === null
+                ? null
+                : createStripeBillingProvider({
+                      api: createStripeApi(config.stripeSecretKey),
+                      dashboardOrigin: config.dashboardOrigin,
+                      verifyWebhook,
+                  });
+    }
+}
+
 function rateLimiter(env: Env, config: DashboardConfig, dev: DevAdapters) {
     switch (config.adapters.rateLimit) {
         case 'memory':
@@ -56,6 +93,7 @@ function rateLimiter(env: Env, config: DashboardConfig, dev: DevAdapters) {
                 options: env.RATE_LIMIT_OPTIONS,
                 verify: env.RATE_LIMIT_VERIFY,
                 publicRead: env.RATE_LIMIT_PUBLIC_READ,
+                webhook: env.RATE_LIMIT_WEBHOOK,
                 hourly: env.HOURLY_RATE_LIMITER,
             });
     }
@@ -81,13 +119,29 @@ export function createDashboard(
     if (email === null) {
         return misconfigured(logger, ['EMAIL']);
     }
+    const db = createDatabase(env.DB);
+    const billingStore = createD1BillingStore(db);
+    // The fake's Checkout completes through the webhook's own handler, which needs the service it belongs to.
+    const provider = billingProvider(config, dev, (event, signal) => billing.handleEvent(event, signal));
+    if (provider === null) {
+        return misconfigured(logger, ['STRIPE_SECRET_KEY']);
+    }
+    const billing = createBillingService({
+        store: billingStore,
+        provider,
+        catalogue: config.plans,
+        clock: systemClock,
+        logger,
+    });
     const deps: DashboardDeps = {
         config,
         clock: systemClock,
         random: cryptoRandom,
         logger,
         authorizer: createAuthorizer({ clock: systemClock, policy: DASHBOARD_POLICY }),
-        store: createD1AuthStore(createDatabase(env.DB)),
+        store: createD1AuthStore(db),
+        billing,
+        entitlements: createSubscriptionEntitlements({ store: billingStore, catalogue: config.plans }),
         relyingParty: createSimpleWebAuthnRelyingParty({ origin: config.dashboardOrigin, rpName: RP_NAME }),
         rateLimiter: rateLimiter(env, config, dev),
         links: authLinks(config.dashboardOrigin),

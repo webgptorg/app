@@ -1,4 +1,10 @@
-import type { PasskeyView, SessionSummary, SessionView } from '../../shared/api/routes';
+import type {
+    BillingView,
+    PasskeyView,
+    ProblemOrganization,
+    SessionSummary,
+    SessionView,
+} from '../../shared/api/routes';
 import type {
     AuthenticationOptions,
     AuthenticationResponse,
@@ -61,6 +67,48 @@ export function sessionSummary(overrides: Partial<SessionSummary> = {}): Session
         createdAt: NOW - 2 * HOUR,
         lastSeenAt: NOW - 60_000,
         expiresAt: NOW + 7 * 24 * HOUR,
+        ...overrides,
+    };
+}
+
+/** An org on the `none` plan that may subscribe to one plan; the owner can manage billing. */
+export function billingView(overrides: Partial<BillingView> = {}): BillingView {
+    return {
+        status: 'none',
+        currentPeriodEnd: null,
+        cancelAtPeriodEnd: false,
+        planId: 'none',
+        hasBillingAccount: false,
+        canSubscribe: true,
+        entitlements: {
+            features: [],
+            quotas: [
+                { quota: 'engines.max', limit: 0, used: null },
+                { quota: 'custom-domains.max', limit: 0, used: null },
+            ],
+        },
+        plans: [
+            {
+                id: 'standard',
+                features: ['engines.create'],
+                quotas: [
+                    { quota: 'engines.max', limit: null },
+                    { quota: 'custom-domains.max', limit: 0 },
+                ],
+            },
+        ],
+        ...overrides,
+    };
+}
+
+export function problemOrganization(overrides: Partial<ProblemOrganization> = {}): ProblemOrganization {
+    return {
+        orgId: 'cccccccccccccccccccccccccc',
+        kind: 'personal',
+        name: null,
+        status: 'past_due',
+        currentPeriodEnd: NOW - 24 * HOUR,
+        updatedAt: NOW - HOUR,
         ...overrides,
     };
 }
