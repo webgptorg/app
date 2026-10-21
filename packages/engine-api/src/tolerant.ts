@@ -61,3 +61,15 @@ export function stripUnknownFields(schema: z.core.$ZodType, value: unknown): unk
 export function toTolerant<Schema extends z.ZodType>(schema: Schema): z.ZodType<z.output<Schema>> {
     return z.preprocess((value) => stripUnknownFields(schema, value), schema);
 }
+
+/**
+ * An enum as a client reads it from a newer engine: a value this contract does not know yet reads as `unknown`
+ * instead of failing the whole response, so adding a value is additive.
+ */
+export function openEnum<const Values extends readonly [string, ...string[]]>(values: Values) {
+    const known: ReadonlySet<string> = new Set(values);
+    return z
+        .string()
+        .max(64)
+        .transform((value): Values[number] | 'unknown' => (known.has(value) ? (value as Values[number]) : 'unknown'));
+}

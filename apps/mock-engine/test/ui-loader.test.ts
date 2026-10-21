@@ -4,6 +4,8 @@ import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import type { UiLoader } from '../src/domain/ui/ui-loader';
 import { createUiLoader } from '../src/domain/ui/ui-loader';
+import type { UiUpdateOutcome } from '../src/domain/ui/ui-update';
+import { uiUpdateCheckOf } from '../src/domain/ui/ui-update';
 import type { ApiHarness } from '../src/testing/api-harness';
 import { HARNESS_ORIGIN, createApiHarness } from '../src/testing/api-harness';
 import { createFakeClock } from '../src/testing/fake-clock';
@@ -59,6 +61,7 @@ async function start(options: { readonly pinned?: string } = {}): Promise<Engine
     );
     const store = createMemoryBundleStore();
     let onActive: (info: { version: string; sha256: string; logIndex: number }) => void = () => undefined;
+    let onChecked: (outcome: UiUpdateOutcome, atMs: number) => void = () => undefined;
     const loader = createUiLoader({
         updatePolicy:
             options.pinned === undefined
@@ -77,11 +80,15 @@ async function start(options: { readonly pinned?: string } = {}): Promise<Engine
         onActive: (bundle) => {
             onActive(bundle);
         },
+        onChecked: (outcome, atMs) => {
+            onChecked(outcome, atMs);
+        },
     });
     harness = createApiHarness({ bundles: store, ui: loader });
     const runtime = harness.runtime;
     onActive = (bundle) =>
         runtime?.setUi({ version: bundle.version, bundleSha256: bundle.sha256, releaseLogIndex: bundle.logIndex });
+    onChecked = (outcome, atMs) => runtime?.setUiUpdateCheck(uiUpdateCheckOf(outcome, atMs));
     return {
         harness,
         loader,
@@ -343,7 +350,19 @@ describe('security panel and control listener', () => {
         await engine.loader.checkNow();
         const overview = await engine.harness.client(engine.owner).security.get(new AbortController().signal);
         if (overview.kind !== 'ok') throw new Error('no security overview');
-        expect(overview.data.ui).toEqual({ version: '1.0.0', bundleSha256: sha256, releaseLogIndex: 4242 });
+        expect(overview.data.ui).toEqual({
+            version: '1.0.0',
+            bundleSha256: sha256,
+            releaseLogIndex: 4242,
+            releaseLogEntryUuid: null,
+            lastUpdateCheck: {
+                at: new Date(NOW).toISOString().replace(/\.\d{3}Z$/, 'Z'),
+                outcome: 'installed',
+                version: '1.0.0',
+                reason: null,
+                revocationReason: null,
+            },
+        });
     });
 
     it('run a check on POST /__mock/ui/check, re-pin under pinned, and keep the old bundle on a refusal', async () => {
@@ -382,6 +401,13 @@ describe('security panel and control listener', () => {
         expect(await status.json()).toMatchObject({
             active: { version: '1.0.0' },
             lastOutcome: { reason: 'hash-mismatch' },
+        });
+        const overview = await engine.harness.client(engine.owner).security.get(new AbortController().signal);
+        if (overview.kind !== 'ok') throw new Error('no security overview');
+        expect(overview.data.ui).toMatchObject({
+            version: '1.0.0',
+            bundleSha256: good,
+            lastUpdateCheck: { outcome: 'refused', version: '1.1.0', reason: 'hash-mismatch', revocationReason: null },
         });
         expect((await post({ pinnedVersion: 'not a version' })).status).toBe(400);
     });

@@ -260,6 +260,7 @@ export interface InMemoryEngineSnapshot {
         >
     >;
     readonly members: readonly Member[];
+    readonly passkeys: readonly Passkey[];
     /** As stored: `current` is always `false` here, since no request is making them current. */
     readonly sessions: readonly Session[];
 }
@@ -326,6 +327,7 @@ export function createInMemoryEngine(options: InMemoryEngineApiOptions = {}): In
 
 const DEFAULT_MEMBER_ID = 'member-owner';
 const DEFAULT_SESSION_ID = 'session-current';
+const DEFAULT_PASSKEY_ID = 'passkey-owner';
 
 /** The member the options describe, signed in on the seed's current session for them. */
 export function actorFromOptions(options: InMemoryEngineApiOptions): Actor {
@@ -532,6 +534,9 @@ export function createInMemoryEngineCore(options: InMemoryEngineCoreOptions = {}
             const session = Session.parse({ ...input, current: false });
             if (!state.members.has(session.memberId)) throw new Error('session for an unknown member');
             if (state.sessions.has(session.id)) throw new Error('session ID already taken');
+            if (session.passkeyId !== null && state.passkeys.get(session.passkeyId)?.memberId !== session.memberId) {
+                throw new Error("session signed in with a passkey that is not the member's");
+            }
             state.sessions.set(session.id, session);
             return session;
         },
@@ -555,6 +560,7 @@ export function createInMemoryEngineCore(options: InMemoryEngineCoreOptions = {}
                 auditEntries: state.audit.length,
             },
             members: [...state.members.values()],
+            passkeys: [...state.passkeys.values()],
             sessions: [...state.sessions.values()].map((session) => ({ ...session, current: false })),
         }),
     };
@@ -919,12 +925,21 @@ function createState(
         chats: new Map(),
         messages: byId((seed.messages ?? []).map((record) => Message.parse(record))),
         replies: new Map(),
-        secrets: byId((seed.secrets ?? []).map((record) => SecretMetadata.parse(record))),
+        secrets: byId(
+            (seed.secrets ?? []).map((record) => SecretMetadata.parse({ valueUpdatedAt: record.createdAt, ...record })),
+        ),
         apiTokens: byId((seed.apiTokens ?? []).map((record) => ApiToken.parse(record))),
         passkeys: byId(
             (
                 seed.passkeys ?? [
-                    { id: 'passkey-owner', memberId: member.id, name: 'This device', createdAt: at, lastUsedAt: at },
+                    {
+                        id: DEFAULT_PASSKEY_ID,
+                        memberId: member.id,
+                        name: 'This device',
+                        createdAt: at,
+                        lastUsedAt: at,
+                        authenticator: { attachment: 'platform', backedUp: true },
+                    },
                 ]
             ).map((record) => Passkey.parse(record)),
         ),
@@ -936,6 +951,7 @@ function createState(
                         memberId: member.id,
                         current: true,
                         client: null,
+                        passkeyId: seed.passkeys === undefined ? DEFAULT_PASSKEY_ID : null,
                         createdAt: at,
                         lastSeenAt: at,
                         expiresAt: Timestamp.parse(new Date(Date.parse(at) + 12 * 3_600_000).toISOString()),
@@ -1018,16 +1034,26 @@ async function seedAudit(state: InMemoryState, entries: readonly InMemorySeedAud
     }
 }
 
+/** Fixed, recognisable placeholders rather than real hashes or log entries, so nobody mistakes them for evidence. */
 function defaultSecurity(at: Timestamp): Unbranded<z.input<typeof SecurityOverview>> {
     const zeros = '0'.repeat(64);
     return {
-        engine: { version: '1.0.0', releaseLogIndex: null },
+        engine: { version: '1.0.0', releaseLogIndex: 1, releaseLogEntryUuid: '1'.repeat(64) },
         update: { status: 'none', policy: 'auto', pinnedVersion: null, availableVersion: null, eligibleAt: null },
-        ui: { version: '1.0.0', bundleSha256: zeros, releaseLogIndex: null },
-        tls: { certificateSha256: zeros, notAfter: at, lastCtCheck: null },
+        ui: {
+            version: '1.0.0',
+            bundleSha256: zeros,
+            releaseLogIndex: 2,
+            releaseLogEntryUuid: '2'.repeat(64),
+            lastUpdateCheck: { at, outcome: 'up-to-date', version: '1.0.0', reason: null, revocationReason: null },
+        },
+        tls: { certificateSha256: zeros, notAfter: at, lastCtCheck: { at, result: 'ok', unexpectedCertificates: [] } },
         relays: [],
-        hostnames: [{ hostname: 'engine.localhost', kind: 'default' }],
+        hostnames: [
+            { hostname: 'engine.localhost', kind: 'default', certificateStatus: 'valid', claimRegistered: null },
+        ],
         lastHeartbeat: null,
+        clockSkew: null,
         outboundDestinations: [],
     };
 }

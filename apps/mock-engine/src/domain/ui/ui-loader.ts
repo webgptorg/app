@@ -27,6 +27,8 @@ export interface UiLoaderOptions {
     readonly logger: Logger;
     /** Called with the active bundle at start and after every install, for the security panel. */
     readonly onActive: (bundle: InstalledBundle) => void;
+    /** Called after every check with its outcome and when it ended, for the security panel. */
+    readonly onChecked?: (outcome: UiUpdateOutcome, atMs: number) => void;
 }
 
 export interface UiLoader {
@@ -64,6 +66,7 @@ export function createUiLoader(options: UiLoaderOptions): UiLoader {
             });
             const active = deps.store.active();
             if (outcome.kind === 'installed' && active !== undefined) options.onActive(active);
+            options.onChecked?.(outcome, clock.nowMs());
             return outcome;
         },
     });

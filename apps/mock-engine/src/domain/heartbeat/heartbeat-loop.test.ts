@@ -20,7 +20,7 @@ import { createMemoryLogger } from '../../testing/memory-logger';
 import type { DashboardApi } from '../dashboard/dashboard-api';
 import { registerEngine } from '../registration/register';
 import { isoSeconds } from './build-heartbeat';
-import type { LastHeartbeat } from './heartbeat-loop';
+import type { HeartbeatStatus } from './heartbeat-loop';
 import { DEFAULT_HEARTBEAT_INTERVAL_S, createHeartbeatLoop } from './heartbeat-loop';
 import { createScenarioSystemStats } from './scenario-system-stats';
 import type { SeqStore } from './seq-store';
@@ -59,7 +59,7 @@ async function setup(options: SetupOptions = {}) {
     });
     expect(registered.kind).toBe('registered');
     const memorySeqs = createMemorySeqStore(clock);
-    const sent: LastHeartbeat[] = [];
+    const statuses: HeartbeatStatus[] = [];
     const loop = createHeartbeatLoop({
         clock,
         logger,
@@ -71,9 +71,9 @@ async function setup(options: SetupOptions = {}) {
         version: VERSION,
         intervalS: options.intervalS ?? DEFAULT_HEARTBEAT_INTERVAL_S,
         startedAtMs: START_MS,
-        onSent: (heartbeat) => sent.push(heartbeat),
+        onStatus: (status) => statuses.push(status),
     });
-    return { clock, logger, identity, fake, loop, sent, memorySeqs };
+    return { clock, logger, identity, fake, loop, statuses, memorySeqs };
 }
 type Setup = Awaited<ReturnType<typeof setup>>;
 
@@ -167,7 +167,7 @@ describe('createHeartbeatLoop', () => {
         await started.loop.stop();
     });
 
-    it('keeps the exact last body for the security panel and reports it as sent', async () => {
+    it('keeps the exact last body and signature for the security panel and reports each as sent', async () => {
         const started = await setup();
         started.loop.start();
         await received(started, 1);
@@ -178,10 +178,11 @@ describe('createHeartbeatLoop', () => {
         const text = new TextDecoder().decode(last.rawBody);
         const status = started.loop.status();
         expect(status.lastHeartbeat?.body).toBe(text);
+        expect(status.lastHeartbeat?.signature).toBe(last.signature);
         expect(status.lastHeartbeat?.sentAt).toBe(isoSeconds(started.clock.nowMs()));
         expect(Heartbeat.parse(JSON.parse(text)).ts).toBe(status.lastHeartbeat?.sentAt);
-        expect(started.sent).toHaveLength(2);
-        expect(started.sent.at(-1)).toEqual(status.lastHeartbeat);
+        expect(new Set(started.statuses.map(({ lastHeartbeat }) => lastHeartbeat?.body)).size).toBe(2);
+        expect(started.statuses.at(-1)).toEqual(status);
         expect(status.clockSkew).toBeNull();
         await started.loop.stop();
     });
@@ -196,6 +197,7 @@ describe('createHeartbeatLoop', () => {
             measuredAt: isoSeconds(started.clock.nowMs()),
         });
         expect(started.loop.status().lastHeartbeat).not.toBeNull();
+        expect(started.statuses.at(-1)).toEqual(started.loop.status());
         const skewLogs = started.logger.entries.filter((entry) => entry.event === 'heartbeat.clock-skew');
         expect(skewLogs).toEqual([{ level: 'warn', event: 'heartbeat.clock-skew', fields: { seconds: -300 } }]);
         expect(started.logger.entries).toContainEqual({

@@ -47,6 +47,7 @@ async function setup(updatePolicy: UpdatePolicy) {
     }
     const store = createMemoryBundleStore();
     const seen: InstalledBundle[] = [];
+    const checks: { readonly kind: string; readonly atMs: number }[] = [];
     const deps = {
         source,
         store,
@@ -62,8 +63,9 @@ async function setup(updatePolicy: UpdatePolicy) {
             clock,
             logger: createMemoryLogger(),
             onActive: (bundle) => seen.push(bundle),
+            onChecked: (outcome, atMs) => checks.push({ kind: outcome.kind, atMs }),
         });
-    return { clock, store, seen, loader };
+    return { clock, store, seen, checks, loader };
 }
 
 describe('createUiLoader', () => {
@@ -76,6 +78,10 @@ describe('createUiLoader', () => {
         expect(world.seen).toHaveLength(1);
         world.loader();
         expect(world.seen.map((bundle) => bundle.version)).toEqual(['1.0.0', '1.0.0']);
+        expect(world.checks).toEqual([
+            { kind: 'installed', atMs: NOW },
+            { kind: 'up-to-date', atMs: NOW },
+        ]);
     });
 
     it('re-pins only under pinned', async () => {

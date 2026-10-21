@@ -41,7 +41,7 @@ function timestamps(value: unknown, found: string[] = []): string[] {
 describe('seedEngine', () => {
     it('gives a stable small-team seed for seed 42 and a fixed epoch', async () => {
         const json = JSON.stringify(seedEngine({ seed: 42, scenario: 'small-team', epoch: EPOCH }));
-        expect(await sha256(json)).toBe('73300cec044fcb9f7882f06bec61de3691d1b6e71e488eb9e945aa31f7ac500b');
+        expect(await sha256(json)).toBe('21ed48df71a12accb8f0eadf88c5ee70d55babc83faf9c047854428b2e0277d6');
     });
 
     it('is byte-identical for the same inputs and changes with the seed, scenario or epoch', () => {
@@ -111,6 +111,24 @@ describe('seedEngine', () => {
         const secrets = ok(await client.secrets.list({ limit: 100 }, signal())).items;
         expect(secrets.map(({ status }) => status)).toContain('revoked');
         expect(new Set(secrets.map(({ scope }) => scope.kind))).toEqual(new Set(['engine', 'agent']));
+    });
+
+    it('describes every passkey, counts them per member and names the passkey each session signed in with', async () => {
+        const { data, client } = core('small-team');
+        const passkeys = ok(await client.passkeys.list({ limit: 100 }, signal())).items;
+        expect(passkeys.every(({ authenticator }) => authenticator !== null)).toBe(true);
+        expect(new Set(passkeys.map(({ authenticator }) => authenticator?.attachment))).toEqual(
+            new Set(['platform', 'cross-platform']),
+        );
+        for (const member of ok(await client.members.list({ limit: 100 }, signal())).items) {
+            expect(member.passkeyCount, member.id).toBe(
+                passkeys.filter(({ memberId }) => memberId === member.id).length,
+            );
+        }
+        const owners = new Map<string, string>(passkeys.map(({ id, memberId }) => [id, memberId]));
+        const sessions = data.sessions ?? [];
+        expect(sessions.length).toBeGreaterThan(0);
+        for (const session of sessions) expect(owners.get(session.passkeyId ?? ''), session.id).toBe(session.memberId);
     });
 
     it('keeps secrets metadata-only', () => {

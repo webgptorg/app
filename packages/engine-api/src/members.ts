@@ -13,6 +13,8 @@ export const Member = z.strictObject({
     status: z.enum(MEMBER_STATUSES),
     createdAt: Timestamp,
     lastSeenAt: Timestamp.nullable(),
+    /** How many passkeys the member has; `null` from engines on API 1.2. */
+    passkeyCount: z.int().min(0).nullable().default(null),
 });
 export type Member = z.infer<typeof Member>;
 export const MemberPage = pageOf(Member);

@@ -1,4 +1,4 @@
-import type { ClientInfo, Member, Permission, Session } from '@ptbk/engine-api';
+import type { ClientInfo, Member, Passkey, Permission, Session } from '@ptbk/engine-api';
 import { MemberId, SessionId, Timestamp } from '@ptbk/engine-api';
 import type { Actor } from '@ptbk/engine-api/in-memory';
 import { encodeBase64Url } from '@ptbk/protocol';
@@ -25,9 +25,14 @@ export interface SessionEngine {
         readonly createdAt: string;
         readonly lastSeenAt: string;
         readonly expiresAt: string;
+        readonly passkeyId: string | null;
     }): Session;
     removeSession(sessionId: string): boolean;
-    inspect(): { readonly members: readonly Member[]; readonly sessions: readonly Session[] };
+    inspect(): {
+        readonly members: readonly Member[];
+        readonly passkeys: readonly Passkey[];
+        readonly sessions: readonly Session[];
+    };
 }
 
 export interface SignInRequest {
@@ -107,9 +112,18 @@ export function createSessionStore(deps: {
                     : snapshot.sessions.find(({ id, memberId }) => id === request.sessionId && memberId === member.id);
             const sessionId = SessionId.parse(existing?.id ?? newId());
             if (existing === undefined) {
+                // The stand-in has no WebAuthn ceremony; it signs in as if with the member's newest passkey.
+                const passkey = snapshot.passkeys
+                    .filter(({ memberId }) => memberId === member.id)
+                    .reduce<Passkey | null>(
+                        (newest, candidate) =>
+                            newest === null || candidate.createdAt > newest.createdAt ? candidate : newest,
+                        null,
+                    );
                 engine.addSession({
                     id: sessionId,
                     memberId: member.id,
+                    passkeyId: passkey?.id ?? null,
                     client: request.client,
                     createdAt: timestamp(nowMs),
                     lastSeenAt: timestamp(nowMs),

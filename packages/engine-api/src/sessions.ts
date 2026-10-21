@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { ClientInfo, MemberId, PageQuery, SessionId, Timestamp, pageOf } from './common';
+import { ClientInfo, MemberId, PageQuery, PasskeyId, SessionId, Timestamp, pageOf } from './common';
 import { defineRoute } from './route';
 
 export const Session = z.strictObject({
@@ -9,6 +9,11 @@ export const Session = z.strictObject({
     /** Whether this is the session making the request. */
     current: z.boolean(),
     client: ClientInfo.nullable(),
+    /**
+     * The passkey that signed this session in; revoking that passkey ends the session. `null` when unknown (engines on
+     * API 1.2).
+     */
+    passkeyId: PasskeyId.nullable().default(null),
     createdAt: Timestamp,
     lastSeenAt: Timestamp,
     expiresAt: Timestamp,

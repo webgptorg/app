@@ -24,7 +24,7 @@ import {
 } from '../../testing/ui-releases';
 import type { BundleStore } from './bundle-store';
 import type { UiUpdateOutcome } from './ui-update';
-import { checkForUiUpdate } from './ui-update';
+import { checkForUiUpdate, uiUpdateCheckOf } from './ui-update';
 import type { UpdatePolicy } from './update-policy';
 
 const HOUR = 3_600_000;
@@ -509,3 +509,34 @@ async function sha256Hex(bytes: Uint8Array<ArrayBuffer>): Promise<string> {
     const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes));
     return Array.from(digest, (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
+
+describe('uiUpdateCheckOf', () => {
+    const at = Date.parse('2026-10-20T10:00:00.250Z');
+    const version = EngineVersionSchema.parse('1.2.0');
+
+    it('reports each outcome for the security panel, with the reason only for a refusal', () => {
+        expect(uiUpdateCheckOf({ kind: 'installed', version, sha256: 'a'.repeat(64) }, at)).toEqual({
+            at: '2026-10-20T10:00:00Z',
+            outcome: 'installed',
+            version: '1.2.0',
+            reason: null,
+            revocationReason: null,
+        });
+        expect(uiUpdateCheckOf({ kind: 'up-to-date', version }, at)).toMatchObject({
+            outcome: 'up-to-date',
+            reason: null,
+        });
+        expect(uiUpdateCheckOf({ kind: 'unavailable' }, at)).toMatchObject({ outcome: 'unavailable', version: null });
+        expect(uiUpdateCheckOf({ kind: 'refused', version, reason: 'hash-mismatch' }, at)).toMatchObject({
+            outcome: 'refused',
+            reason: 'hash-mismatch',
+            revocationReason: null,
+        });
+        expect(
+            uiUpdateCheckOf(
+                { kind: 'refused', version, reason: 'revocations-unverifiable', revocationReason: 'rolled-back' },
+                at,
+            ),
+        ).toMatchObject({ reason: 'revocations-unverifiable', revocationReason: 'rolled-back' });
+    });
+});

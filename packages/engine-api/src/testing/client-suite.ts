@@ -175,6 +175,7 @@ export function engineApiClientSuite(makeEngine: MakeEngine): void {
         );
         expect(JSON.stringify(secret)).not.toContain('sk-super-secret');
         expect(secret).not.toHaveProperty('value');
+        expect(secret.valueUpdatedAt).toBe(secret.createdAt);
         expect(
             problem(
                 await client.secrets.create(
@@ -185,8 +186,12 @@ export function engineApiClientSuite(makeEngine: MakeEngine): void {
         ).toBe('name-taken');
         const listed = ok(await client.secrets.list({ scope: 'engine' }, signal()));
         expect(JSON.stringify(listed)).not.toContain('sk-super-secret');
-        ok(await client.secrets.replaceValue(secret.id, { value: 'sk-new' }, signal()));
-        expect(ok(await client.secrets.revoke(secret.id, signal())).status).toBe('revoked');
+        const replaced = ok(await client.secrets.replaceValue(secret.id, { value: 'sk-new' }, signal()));
+        expect(replaced.valueUpdatedAt).toBe(replaced.updatedAt);
+        expect(replaced.updatedAt > secret.createdAt).toBe(true);
+        const revoked = ok(await client.secrets.revoke(secret.id, signal()));
+        expect(revoked).toMatchObject({ status: 'revoked', valueUpdatedAt: replaced.valueUpdatedAt });
+        expect(revoked.updatedAt > replaced.updatedAt).toBe(true);
         expect(problem(await client.secrets.replaceValue(secret.id, { value: 'x' }, signal())).code).toBe(
             'secret-revoked',
         );
@@ -470,11 +475,12 @@ export function engineApiClientSuite(makeEngine: MakeEngine): void {
     describe('own credentials under /me', () => {
         const at = '2026-10-19T08:00:00Z';
         const later = '2026-10-19T20:00:00Z';
-        const session = (id: string, memberId: string, current = false) => ({
+        const session = (id: string, memberId: string, current = false, passkeyId: string | null = null) => ({
             id,
             memberId,
             current,
             client: null,
+            passkeyId,
             createdAt: at,
             lastSeenAt: at,
             expiresAt: later,
@@ -497,8 +503,8 @@ export function engineApiClientSuite(makeEngine: MakeEngine): void {
                         },
                     ],
                     sessions: [
-                        session('session-here', 'member-viewer', true),
-                        session('session-laptop', 'member-viewer'),
+                        session('session-here', 'member-viewer', true, 'passkey-b'),
+                        session('session-laptop', 'member-viewer', false, 'passkey-a'),
                         session('session-phone', 'member-viewer'),
                         session('session-other', 'member-other', true),
                     ],
@@ -553,6 +559,27 @@ export function engineApiClientSuite(makeEngine: MakeEngine): void {
             expect(ids(ok(await client.me.listPasskeys({}, signal())).items)).toEqual(['passkey-b']);
         });
 
+        it('names the passkey each session signed in with and ends those sessions when it is revoked', async () => {
+            const client = viewer();
+            const before = ok(await client.me.listSessions({}, signal())).items;
+            expect(before.find(({ current }) => current)?.passkeyId).toBe('passkey-b');
+            expect(before.find(({ id }) => id === 'session-laptop')?.passkeyId).toBe('passkey-a');
+            expect(before.find(({ id }) => id === 'session-phone')?.passkeyId).toBeNull();
+            ok(await client.me.revokePasskey(PasskeyId.parse('passkey-a'), signal()));
+            expect(ids(ok(await client.me.listSessions({}, signal())).items)).toEqual([
+                'session-here',
+                'session-phone',
+            ]);
+        });
+
+        it("counts every member's passkeys", async () => {
+            const members = ok(await viewer().members.list({}, signal())).items;
+            expect(Object.fromEntries(members.map(({ id, passkeyCount }) => [id, passkeyCount]))).toEqual({
+                'member-other': 1,
+                'member-viewer': 2,
+            });
+        });
+
         it('asks for step-up before revoking an own passkey', async () => {
             const client = credentialsOf(['agents.read'], 'required');
             expect(problem(await client.me.revokePasskey(PasskeyId.parse('passkey-a'), signal()))).toMatchObject({
@@ -574,11 +601,59 @@ export function engineApiClientSuite(makeEngine: MakeEngine): void {
     it('lists members, passkeys and sessions, and keeps the last passkey', async () => {
         const client = owner();
         const members = ok(await client.members.list({}, signal())).items;
-        expect(members.map(({ role }) => role)).toEqual(['owner']);
+        expect(members.map(({ role, passkeyCount }) => [role, passkeyCount])).toEqual([['owner', 1]]);
         const [passkey] = ok(await client.passkeys.list({}, signal())).items;
-        expect(passkey).toBeDefined();
+        expect(passkey?.authenticator).toEqual({ attachment: 'platform', backedUp: true });
         if (passkey) expect(problem(await client.passkeys.revoke(passkey.id, signal())).code).toBe('last-passkey');
-        expect(ok(await client.sessions.list({}, signal())).items[0]?.current).toBe(true);
+        expect(ok(await client.sessions.list({}, signal())).items[0]).toMatchObject({
+            current: true,
+            passkeyId: passkey?.id,
+        });
+    });
+
+    it('reports every security panel field the engine sets, exactly as set', async () => {
+        const at = '2026-10-19T08:00:00Z';
+        const sha = 'e'.repeat(64);
+        const engine = makeEngine({ clock: steppingClock() });
+        const body = '{ "v":1,  "seq" :7}';
+        const set = engine.controller.updateSecurity({
+            engine: { version: '1.4.0', releaseLogIndex: 7, releaseLogEntryUuid: `${'1'.repeat(16)}${'2'.repeat(64)}` },
+            ui: {
+                version: '1.4.0',
+                bundleSha256: sha,
+                releaseLogIndex: 8,
+                releaseLogEntryUuid: '3'.repeat(64),
+                lastUpdateCheck: {
+                    at,
+                    outcome: 'refused',
+                    version: '1.5.0',
+                    reason: 'revocations-unverifiable',
+                    revocationReason: 'expired',
+                },
+            },
+            tls: {
+                certificateSha256: sha,
+                notAfter: at,
+                lastCtCheck: {
+                    at,
+                    result: 'unexpected-certificate',
+                    unexpectedCertificates: [
+                        { sha256: 'f'.repeat(64), issuer: 'CN=Other CA', notBefore: at, notAfter: at },
+                    ],
+                },
+            },
+            relays: [{ hostname: 'relay-a.ptbk.test', status: 'disconnected', since: at, lastPingRttMs: 38 }],
+            hostnames: [
+                { hostname: 'engine.localhost', kind: 'default', certificateStatus: 'valid', claimRegistered: null },
+                { hostname: 'ai.example.test', kind: 'custom', certificateStatus: 'expiring', claimRegistered: false },
+            ],
+            lastHeartbeat: { sentAt: at, body, signature: `ed25519=${'A'.repeat(86)}` },
+            clockSkew: { seconds: -300, measuredAt: at },
+            outboundDestinations: ['https://app.ptbk.io', 'https://api.openai.com'],
+        });
+        const read = ok(await engine.client.security.get(signal()));
+        expect(read).toEqual(set);
+        expect(read.lastHeartbeat?.body).toBe(body);
     });
     describe('capabilities', () => {
         const AT = '2026-10-19T08:00:00Z';

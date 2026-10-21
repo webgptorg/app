@@ -164,8 +164,11 @@ describe('registration and heartbeat at startup', () => {
         expect(first?.verification.kind).toBe('accepted');
         const body = decoder.decode(first?.rawBody);
         expect(Heartbeat.parse(JSON.parse(body))).toMatchObject({ diskPct: 40, ramPct: 50, cpuLoad: 'low' });
-        const security: { lastHeartbeat: { sentAt: string; body: string } } = await read(engine, 'getSecurityOverview');
-        expect(security.lastHeartbeat).toEqual({ sentAt: '2026-10-20T10:00:00Z', body });
+        const security: { lastHeartbeat: { sentAt: string; body: string; signature: string } } = await read(
+            engine,
+            'getSecurityOverview',
+        );
+        expect(security.lastHeartbeat).toEqual({ sentAt: '2026-10-20T10:00:00Z', body, signature: first?.signature });
         engine.runtime.reset({ seed: 3, scenario: 'empty' });
         const afterReset: { lastHeartbeat: { body: string } } = await read(engine, 'getSecurityOverview');
         expect(afterReset.lastHeartbeat.body).toBe(body);
@@ -249,7 +252,7 @@ describe('registration and heartbeat at startup', () => {
         await closing;
     });
 
-    it('shows the clock skew from a stale-timestamp answer on the control listener', async () => {
+    it('shows the clock skew from a stale-timestamp answer on the control listener and in the security panel', async () => {
         const w = world(300_000);
         const { engine } = await start(w, {
             ...linked(w.dashboard.issueLinkCode('org-a')),
@@ -260,6 +263,8 @@ describe('registration and heartbeat at startup', () => {
         const status = (await response.json()) as { clockSkew: { seconds: number }; lastHeartbeat: { body: string } };
         expect(status.clockSkew.seconds).toBe(-300);
         expect(status.lastHeartbeat.body).toBe(decoder.decode(w.dashboard.heartbeats[0]?.rawBody));
+        const security: { clockSkew: { seconds: number } } = await read(engine, 'getSecurityOverview');
+        expect(security.clockSkew.seconds).toBe(-300);
         expect(w.logger.entries).toContainEqual({
             level: 'warn',
             event: 'heartbeat.clock-skew',

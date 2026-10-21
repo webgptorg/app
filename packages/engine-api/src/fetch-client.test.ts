@@ -488,6 +488,53 @@ describe('tolerant reading', () => {
         await expect(client.chats.get(ChatId.parse('c1'), signal())).rejects.toBeInstanceOf(EngineApiContractError);
     });
 
+    it('reads a security overview from a newer engine with unknown values as unknown and extra fields dropped', async () => {
+        const sha = 'a'.repeat(64);
+        const overview = {
+            engine: { version: '1.4.0', releaseLogIndex: 7, releaseLogEntryUuid: null },
+            update: { status: 'none', policy: 'auto', pinnedVersion: null, availableVersion: null, eligibleAt: null },
+            ui: {
+                version: '1.4.0',
+                bundleSha256: sha,
+                releaseLogIndex: null,
+                releaseLogEntryUuid: null,
+                lastUpdateCheck: { at: AT, outcome: 'deferred', version: null, reason: null, revocationReason: null },
+            },
+            tls: { certificateSha256: sha, notAfter: AT, lastCtCheck: null, pinned: true },
+            relays: [],
+            hostnames: [
+                { hostname: 'e.ptbk.io', kind: 'default', certificateStatus: 'revoked', claimRegistered: null },
+            ],
+            lastHeartbeat: null,
+            clockSkew: null,
+            outboundDestinations: [],
+        };
+        const { client } = setup(() => json(overview));
+        const response = await client.security.get(signal());
+        if (response.kind !== 'ok') throw new Error('expected the overview');
+        expect(response.data.ui.lastUpdateCheck?.outcome).toBe('unknown');
+        expect(response.data.hostnames[0]?.certificateStatus).toBe('unknown');
+        expect(response.data.tls).not.toHaveProperty('pinned');
+    });
+
+    it('drops a value a misbehaving engine sends with secret metadata, so it never reaches the caller', async () => {
+        const metadata = {
+            id: 's1',
+            name: 'GITHUB_TOKEN',
+            scope: { kind: 'engine' },
+            status: 'active',
+            createdBy: 'm1',
+            createdAt: AT,
+            updatedAt: AT,
+            valueUpdatedAt: AT,
+            lastUsedAt: null,
+        };
+        const { client } = setup(() => json({ items: [{ ...metadata, value: SENTINEL }], nextCursor: null }));
+        const response = await client.secrets.list({}, signal());
+        expect(response).toEqual({ kind: 'ok', data: { items: [metadata], nextCursor: null } });
+        expect(JSON.stringify(response)).not.toContain(SENTINEL);
+    });
+
     it('fails the stream on an event without a type', async () => {
         const body = encodeSseMessage({ event: 'message', data: JSON.stringify({ agentId: 'a1' }) });
         const { client } = setup(() => sseResponse([body]));

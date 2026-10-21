@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 import { MemberId, OrgId, PageQuery } from './common';
-import { PasskeyPage, PasskeyParams } from './passkeys';
+import { PASSKEY_PAGE_RESPONSE, PasskeyParams } from './passkeys';
 import { Permission, Role } from './permissions';
 import { defineRoute } from './route';
 import { SessionPage, SessionParams } from './sessions';
@@ -42,7 +42,7 @@ export const ME_ROUTES = {
         summary: "List the caller's own passkeys, newest first",
         permission: null,
         query: PageQuery,
-        responses: { 200: { kind: 'json', schema: PasskeyPage } },
+        responses: PASSKEY_PAGE_RESPONSE,
     }),
     revokeMyPasskey: defineRoute({
         id: 'revokeMyPasskey',
