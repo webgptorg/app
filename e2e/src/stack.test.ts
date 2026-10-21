@@ -15,11 +15,14 @@ import {
     RELAY_OTHER_PORT,
     TLS_INSPECTING_PROXY,
     TLS_INSPECTING_PROXY_PORT,
+    MOCK_ENGINE_CONTROL,
     MOUNTS,
     OUR_DOMAIN,
     PUBLIC_FILES,
     RELAYS,
+    RELEASE_STORE,
     SUBNET,
+    UI_RELEASES,
     relayCertificateFile,
 } from './stack.ts';
 
@@ -84,6 +87,24 @@ describe('the topology in compose.yaml and the Corefile', () => {
                     ?.every((line) => line === `dns: [${DNS_IP}]`) ?? true,
             ).toBe(true);
         }
+    });
+
+    it('gives the release store and the mock engine control listener the addresses stack.ts names', () => {
+        expect(RELEASE_STORE.hostname.endsWith(`.${OUR_DOMAIN}`)).toBe(true);
+        expect(corefile).toContain(`${RELEASE_STORE.ip} ${RELEASE_STORE.hostname}`);
+        expect(compose).toContain(`  ${RELEASE_STORE.service}:\n`);
+        expect(compose).toContain(`ipv4_address: ${RELEASE_STORE.ip}`);
+        expect(compose).toContain(`'${MOUNTS.public}/${PUBLIC_FILES.releaseStoreCertificate}'`);
+        expect(compose).toContain(`releases:${MOUNTS.releases}:ro`);
+        expect(compose).toContain(`release-store-key:${MOUNTS.releaseStoreKey}:ro`);
+        expect(compose).toContain(`PTBK_UI_RELEASE_URL: https://${RELEASE_STORE.hostname}/`);
+        expect(compose).toContain(`MOCK_UI_TRUST_POLICY_FILE: ${MOUNTS.public}/${PUBLIC_FILES.uiTrustPolicy}`);
+        expect(compose).toContain(`PTBK_PINNED_VERSION: ${UI_RELEASES.installed}`);
+        expect(compose).toContain(`ipv4_address: ${MOCK_ENGINE_CONTROL.ip}`);
+        expect(compose).toContain(`MOCK_CONTROL_PORT: '${String(MOCK_ENGINE_CONTROL.port)}'`);
+        const dockerfile = readFileSync(join(E2E_DIR, 'docker', 'stack.Dockerfile'), 'utf8');
+        expect(dockerfile).toContain(`for version in ${UI_RELEASES.installed} ${UI_RELEASES.tampered}; do`);
+        expect(dockerfile).toContain(`COPY --from=ui-bundle ${MOUNTS.uiBundles} ${MOUNTS.uiBundles}`);
     });
 
     it('pins every image it pulls by digest', () => {

@@ -11,6 +11,7 @@
     "start": "node dist/main.mjs",
     "identity": "tsx src/identity.ts",
     "dev-ca": "tsx src/dev-ca.ts",
+    "ui-test-release": "tsx src/ui-test-release.ts",
     "typecheck": "tsc --noEmit -p .",
     "test": "vitest run --coverage"
   },

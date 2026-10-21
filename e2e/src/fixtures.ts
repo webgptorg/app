@@ -35,8 +35,10 @@ export interface WorkerFixtures {
     readonly engineId: string;
     /** `<engineId>.engine.test`. */
     readonly engineHost: string;
-    /** `https://<engineHost>/`. */
+    /** `https://<engineHost>/`: the app, behind the gateway (anonymous visitors are sent to sign in). */
     readonly engineUrl: string;
+    /** `https://<engineHost>/__spike/`: the mock engine's public spike page. */
+    readonly spikeUrl: string;
     /** The dev CA certificate (PEM) Chromium trusts through its NSS database. */
     readonly caCertificatePem: string;
     readonly relayHosts: readonly RelayHost[];
@@ -91,6 +93,12 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
     engineUrl: [
         async ({ engineHost }, use) => {
             await use(`https://${engineHost}/`);
+        },
+        { scope: 'worker' },
+    ],
+    spikeUrl: [
+        async ({ engineUrl }, use) => {
+            await use(`${engineUrl}__spike/`);
         },
         { scope: 'worker' },
     ],

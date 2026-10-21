@@ -28,9 +28,9 @@ async function chromiumProcesses(): Promise<readonly ChromiumProcess[]> {
 
 // The playwright container holds the Docker socket, so the browser must never run unsandboxed or as root there.
 // Headless Chromium has no chrome://sandbox page, so the evidence comes from /proc.
-test('Chromium runs with its sandbox on, as a user other than root', async ({ page, engineUrl }) => {
+test('Chromium runs with its sandbox on, as a user other than root', async ({ page, spikeUrl }) => {
     expect(process.getuid?.()).not.toBe(0);
-    await page.goto(engineUrl);
+    await page.goto(spikeUrl);
 
     const processes = await chromiumProcesses();
     expect(processes.length).toBeGreaterThan(0);

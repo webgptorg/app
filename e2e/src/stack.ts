@@ -22,6 +22,22 @@ export const RELAYS: readonly RelayNode[] = [
     { service: 'relay-b', hostname: `relay-b.${OUR_DOMAIN}`, ip: '10.89.231.12' },
 ];
 
+/**
+ * The UI release store (M-05): the files init signed and published, served over HTTPS like R2 or a mirror. The mock
+ * engine's loader fetches its UI from here.
+ */
+export const RELEASE_STORE = {
+    service: 'release-store',
+    hostname: `releases.${OUR_DOMAIN}`,
+    ip: '10.89.231.30',
+} as const;
+
+/** The mock engine's dev-only control listener, plain HTTP on the stack network, for sessions and loader checks. */
+export const MOCK_ENGINE_CONTROL = { ip: '10.89.231.31', port: 4480 } as const;
+
+/** The UI versions init publishes: the first is pinned and installs, the second is tampered with after signing. */
+export const UI_RELEASES = { installed: '0.0.0-dryrun.1', tampered: '0.0.0-dryrun.2' } as const;
+
 /** Every relay and the browser listen on 443, as in production. */
 export const HTTPS_PORT = 443;
 
@@ -34,6 +50,10 @@ export const MOUNTS = {
     public: '/pki',
     engine: '/engine',
     relayKeys: '/relay-keys',
+    releases: '/releases',
+    releaseStoreKey: '/release-store-key',
+    /** Where init's image holds the bundles X-03's `pack` built (stack.Dockerfile, `ui-bundle`). */
+    uiBundles: '/ui-bundles',
 } as const;
 
 export const PUBLIC_FILES = {
@@ -41,6 +61,10 @@ export const PUBLIC_FILES = {
     /** The mock engine's `identity` report: `{ engineId, enginePublicKey, hostname }`. */
     engineIdentity: 'engine.json',
     registry: 'registry.json',
+    /** The release store's certificate, issued by the dev CA. */
+    releaseStoreCertificate: `${RELEASE_STORE.hostname}.pem`,
+    /** The UI loader's `TrustPolicy`: the public halves of release keys that existed only while init ran. */
+    uiTrustPolicy: 'ui-trust-policy.json',
 } as const;
 
 export function relayCertificateFile(relay: RelayNode): string {

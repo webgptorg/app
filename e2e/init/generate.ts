@@ -12,13 +12,15 @@ import {
     OUR_DOMAIN,
     PUBLIC_FILES,
     RELAYS,
+    RELEASE_STORE,
     SERVICE_UID,
+    UI_RELEASES,
     relayCertificateFile,
 } from '../src/stack.ts';
 import { parseIdentityReport, staticRegistry } from './registry.ts';
 
 const MOCK_ENGINE_DIR = '/repo/apps/mock-engine';
-const RELAY_KEY_FILE = 'key.pem';
+const KEY_FILE = 'key.pem';
 
 const run = promisify(execFile);
 
@@ -46,6 +48,8 @@ async function prepareVolumes(): Promise<void> {
     const volumes: readonly [string, number][] = [
         [MOUNTS.public, 0o755],
         [MOUNTS.engine, 0o700],
+        [MOUNTS.releases, 0o755],
+        [MOUNTS.releaseStoreKey, 0o700],
         ...RELAYS.map((relay): [string, number] => [relayKeyDirectory(relay.hostname), 0o700]),
     ];
     for (const [path, mode] of volumes) {
@@ -82,15 +86,31 @@ async function main(): Promise<void> {
             'dev-ca',
             'issue',
             join(MOUNTS.public, relayCertificateFile(relay)),
-            join(relayKeyDirectory(relay.hostname), RELAY_KEY_FILE),
+            join(relayKeyDirectory(relay.hostname), KEY_FILE),
             relay.hostname,
         ]);
     }
+    await mockEngineCli([
+        'dev-ca',
+        'issue',
+        join(MOUNTS.public, PUBLIC_FILES.releaseStoreCertificate),
+        join(MOUNTS.releaseStoreKey, KEY_FILE),
+        RELEASE_STORE.hostname,
+    ]);
+    // Signs and publishes the UI bundles with release keys that exist only inside this one command.
+    const releases = await mockEngineCli([
+        'ui-test-release',
+        MOUNTS.releases,
+        MOUNTS.public,
+        join(MOUNTS.uiBundles, UI_RELEASES.installed),
+        join(MOUNTS.uiBundles, UI_RELEASES.tampered),
+    ]);
     await writePublic(PUBLIC_FILES.engineIdentity, `${JSON.stringify(identity, null, 2)}\n`);
     await writePublic(PUBLIC_FILES.registry, `${JSON.stringify(staticRegistry(identity), null, 2)}\n`);
 
     const fingerprint = new X509Certificate(await readFile(caFile)).fingerprint256;
     process.stdout.write(`init: engine ${identity.engineId}, dev CA SHA-256 ${fingerprint}\n`);
+    process.stdout.write(`init: UI releases ${JSON.stringify(releases)}\n`);
 }
 
 try {

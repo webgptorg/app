@@ -22,12 +22,38 @@ RUN bun install --frozen-lockfile --filter @ptbk/relay --filter @ptbk/mock-engin
 COPY tsconfig.base.json ./
 COPY packages/protocol packages/protocol
 COPY packages/engine-api packages/engine-api
+COPY packages/release-tools packages/release-tools
 COPY apps/relay apps/relay
 COPY apps/mock-engine apps/mock-engine
 RUN bun run --filter @ptbk/relay build && bun run --filter @ptbk/mock-engine build
 
-# One-shot: runs the mock engine's own identity and dev-ca CLIs from source, so it needs the full builder.
+# engine-ui packed with X-03's own `pack`, twice: the bundle the loader installs and the one init tampers with (M-05).
+# The build context is not a git checkout, so the commit is a placeholder and SOURCE_DATE_EPOCH is 0.
+FROM ${NODE_IMAGE} AS ui-bundle
+COPY --from=bun /usr/local/bin/bun /usr/local/bin/bun
+WORKDIR /repo
+COPY --from=manifests /src/ ./
+RUN bun install --frozen-lockfile --filter @ptbk/engine-ui
+COPY tsconfig.base.json ./
+COPY packages/protocol packages/protocol
+COPY packages/engine-api packages/engine-api
+COPY packages/ui packages/ui
+COPY packages/release-tools packages/release-tools
+COPY apps/engine-ui apps/engine-ui
+WORKDIR /repo/apps/engine-ui
+RUN bun run generate \
+    && for version in 0.0.0-dryrun.1 0.0.0-dryrun.2; do \
+        node_modules/.bin/tsx scripts/pack.ts --tag "ui-v${version}" \
+            --commit 0000000000000000000000000000000000e2e000 --source-date-epoch 0 \
+        && mkdir -p "/ui-bundles/${version}" \
+        && cp release/engine-ui.tar.zst release/manifest.json "/ui-bundles/${version}/" \
+        || exit 1; \
+    done
+
+# One-shot: runs the mock engine's own identity, dev-ca and ui-test-release CLIs from source, so it needs the full
+# builder, plus the packed UI bundles to sign and publish.
 FROM builder AS init
+COPY --from=ui-bundle /ui-bundles /ui-bundles
 COPY e2e/src/stack.ts e2e/src/stack.ts
 COPY e2e/init e2e/init
 CMD ["node", "e2e/init/generate.ts"]
@@ -66,6 +92,10 @@ RUN apt-get update \
 COPY e2e/proxy/tinyproxy.conf /etc/tinyproxy.conf
 USER nobody
 CMD ["tinyproxy", "-d", "-c", "/etc/tinyproxy.conf"]
+
+FROM ${NODE_IMAGE} AS release-store
+COPY e2e/src/release-store.ts /e2e/release-store.ts
+USER node
 
 # The official image already holds the browsers for this exact @playwright/test version; nothing is downloaded at
 # install time (no install scripts) or at run time.

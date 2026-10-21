@@ -6,11 +6,11 @@ import { expect, test } from '../../src/fixtures.ts';
 test('a browser loads the mock engine spike page through a relay', async ({
     page,
     engineId,
-    engineUrl,
+    spikeUrl,
     requestLog,
     cspViolations,
 }) => {
-    const response = await page.goto(engineUrl);
+    const response = await page.goto(spikeUrl);
 
     expect(response?.status()).toBe(200);
     await expect(page.locator('h1')).toHaveText('Promptbook mock engine');
@@ -18,7 +18,7 @@ test('a browser loads the mock engine spike page through a relay', async ({
     expect(response?.headers()['content-security-policy'], 'served under the engine CSP').toContain(
         "default-src 'self'",
     );
-    const origin = new URL(engineUrl).origin;
+    const origin = new URL(spikeUrl).origin;
     expect(requestLog.length).toBeGreaterThan(0);
     expect(requestLog.filter((url) => new URL(url).origin !== origin)).toEqual([]);
     expect(cspViolations).toEqual([]);
@@ -26,7 +26,7 @@ test('a browser loads the mock engine spike page through a relay', async ({
 
 test('the browser sees the engine certificate, never a relay certificate', async ({
     page,
-    engineUrl,
+    spikeUrl,
     engineHost,
     engineCertSha256,
     caCertificatePem,
@@ -34,7 +34,7 @@ test('the browser sees the engine certificate, never a relay certificate', async
     peerCertificate,
     peerCertificateSha256,
 }) => {
-    const response = await page.goto(engineUrl);
+    const response = await page.goto(spikeUrl);
     const details = await response?.securityDetails();
     const ca = new X509Certificate(caCertificatePem);
 

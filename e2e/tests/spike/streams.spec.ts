@@ -4,8 +4,8 @@ const EVENT_COUNT = 20;
 const ROUND_TRIPS = 20;
 const BINARY_BYTES = 256 * 1024;
 
-test.beforeEach(async ({ page, engineUrl }) => {
-    await page.goto(engineUrl);
+test.beforeEach(async ({ page, spikeUrl }) => {
+    await page.goto(spikeUrl);
 });
 
 test('SSE through the passthrough delivers every event, in order', async ({ page }) => {
