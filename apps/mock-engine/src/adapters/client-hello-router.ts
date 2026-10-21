@@ -1,5 +1,6 @@
 import type { Duplex } from 'node:stream';
 
+import type { Hostname } from '@ptbk/protocol';
 import { createClientHelloBuffer } from '@ptbk/protocol';
 
 import type { Clock } from '../domain/clock';
@@ -83,8 +84,7 @@ export function createClientHelloRouter(deps: ClientHelloRouterDeps): ClientHell
     const { challenges, responder, logger } = deps;
     const peeking = new Set<Duplex>();
     let closed = false;
-    const hasPendingChallenge = (hostname: Parameters<AcmeChallenges['lookup']>[0]): boolean =>
-        challenges.lookup(hostname) !== undefined;
+    const hasPendingChallenge = (hostname: Hostname): boolean => challenges.lookup(hostname) !== undefined;
 
     return {
         handle(stream, remote) {

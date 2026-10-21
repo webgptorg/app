@@ -12,7 +12,7 @@ export interface TlsCredentials {
 
 /**
  * Certificates for the engine's hostnames, read per handshake so a renewal applies to the next connection without a
- * restart. The dev CA implements it now (M-02), ACME later (M-03).
+ * restart. Implemented by the dev CA (M-02) and by ACME TLS-ALPN-01 (M-03).
  */
 export interface CertificateSource {
     /** Undefined for a hostname this engine holds no certificate for: the handshake must fail. */
