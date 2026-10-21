@@ -2,7 +2,7 @@
 
 - **Lane:** D · **Module:** `apps/dashboard` · **Milestone:** M3
 - **Depends on:** D-05, D-09, D-04
-- **Status:** todo
+- **Status:** in progress (feat/d-06-engine-list)
 - **Spec:** One address for users; What our platform can and cannot do; Residual risks (3. Our dashboard); Abuse on our domains (Before the Public Suffix List entry lands); ADRs: [0006](../../adr/0006-organizations-and-roles.md), [0007](../../adr/0007-frontend-stack.md), [0014](../../adr/0014-cryptography.md), [0015](../../adr/0015-ui-architecture-and-design-system.md); design: [ui.md](../../design/ui.md) (Trust mark, Dashboard)
 
 ## Goal
