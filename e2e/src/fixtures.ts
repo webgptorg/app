@@ -8,7 +8,13 @@ import type { CDPSession, Page } from '@playwright/test';
 
 import { certificateSha256, leafFromCdpChain, tlsPeerCertificate } from './certificates.ts';
 import type { ComposeControl } from './compose.ts';
-import { DOCKER_SOCKET, createComposeControl, ownComposeProject, unixSocketTransport } from './compose.ts';
+import {
+    DOCKER_SOCKET,
+    createComposeControl,
+    ownComposeProject,
+    unixSocketStreamTransport,
+    unixSocketTransport,
+} from './compose.ts';
 import type { RelayNode } from './stack.ts';
 import { HTTPS_PORT, MOUNTS, PUBLIC_FILES, RELAYS, relayCertificateFile } from './stack.ts';
 
@@ -130,7 +136,13 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
     compose: [
         async ({}, use) => {
             const transport = unixSocketTransport(DOCKER_SOCKET);
-            await use(createComposeControl(transport, await ownComposeProject(transport, hostname())));
+            await use(
+                createComposeControl(
+                    transport,
+                    await ownComposeProject(transport, hostname()),
+                    unixSocketStreamTransport(DOCKER_SOCKET),
+                ),
+            );
         },
         { scope: 'worker' },
     ],

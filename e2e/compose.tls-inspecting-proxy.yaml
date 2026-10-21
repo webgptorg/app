@@ -1,0 +1,55 @@
+# A TLS-inspecting proxy as the engine's only way out (X-02), on top of the nat overlay: the gateway forwards nothing,
+# and mitmproxy, on both engine-lan and the stack network, terminates the engine's TLS to the relays with certificates
+# from its own CA, which the engine trusts through NODE_EXTRA_CA_CERTS as a managed corporate machine would. The
+# browser's TLS to the engine runs inside that tunnel, so the proxy still sees only TLS records.
+
+services:
+  gateway:
+    environment:
+      GATEWAY_POLICY: closed
+
+  mitmproxy:
+    # The mitmproxy project's image, multi-arch index digest from
+    # `docker buildx imagetools inspect mitmproxy/mitmproxy:12.2.3`.
+    image: mitmproxy/mitmproxy:12.2.3@sha256:00b77b5d8804c8ad18cb6caefbf9d5849e895e8986c5ce011f4ae30f4385962f
+    entrypoint: ['/e2e-mitm/start.sh']
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    cap_drop: [ALL]
+    cap_add: [CHOWN, SETUID, SETGID]
+    volumes:
+      - ./mitmproxy:/e2e-mitm:ro
+      - public:/pki:ro
+      - mitm:/mitm
+    healthcheck:
+      test: ['CMD', 'test', '-s', '/mitm/ca-cert.pem']
+      interval: 1s
+      retries: 30
+      start_period: 60s
+      start_interval: 500ms
+    dns: [10.89.231.53]
+    networks:
+      stack:
+        ipv4_address: 10.89.231.22
+      engine-lan:
+        ipv4_address: 10.89.232.4
+
+  mock-engine:
+    depends_on:
+      mitmproxy:
+        condition: service_healthy
+    environment:
+      HTTPS_PROXY: http://10.89.232.4:8080
+      # Not the dev CA: the engine must accept the relays only through the proxy's CA, from the system-wide setting.
+      MOCK_EXTRA_CA_FILE: ''
+      NODE_EXTRA_CA_CERTS: /mitm/ca-cert.pem
+    volumes:
+      - mitm:/mitm:ro
+
+  playwright:
+    volumes:
+      - mitm:/mitm:ro
+
+volumes:
+  mitm:

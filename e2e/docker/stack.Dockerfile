@@ -44,6 +44,29 @@ COPY e2e/src/probe.ts /e2e/probe.ts
 USER node
 CMD ["node", "--enable-source-maps", "/app/main.mjs"]
 
+# X-02's network helpers: the gateway (iptables), the network namespaces of the engine host and the relays, the packet
+# capture (tcpdump) and the engine probe, all from one image. Debian keeps only the current version of a package in
+# bookworm, so these pins fail the build loudly once it moves on: bump them together with NODE_IMAGE.
+FROM ${NODE_IMAGE} AS nettools
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends iptables=1.8.9-2 iproute2=6.1.0-3 tcpdump=4.99.3-1 \
+    && rm -rf /var/lib/apt/lists/*
+# The relay-a capture runs as nobody with only this file capability (and NET_RAW in its bounding set), not as root;
+# /captures seeds the capture volume with an owner that may write to it.
+RUN setcap cap_net_raw=ep /usr/bin/tcpdump && install -d -o 65534 -g 65534 /captures
+COPY e2e/src/probe.ts e2e/src/tcp-check.ts /e2e/
+COPY e2e/gateway/gateway.sh e2e/docker/engine-host.sh /e2e/
+
+# The connect-proxy scenario's corporate forward proxy (X-02): tinyproxy, which logs each CONNECT when it starts (Squid
+# logs a tunnel only once it closes, too late for a test that checks the open tunnels). Same pinning as nettools.
+FROM ${NODE_IMAGE} AS connect-proxy
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends tinyproxy-bin=1.11.1-2.1+deb12u1 \
+    && rm -rf /var/lib/apt/lists/*
+COPY e2e/proxy/tinyproxy.conf /etc/tinyproxy.conf
+USER nobody
+CMD ["tinyproxy", "-d", "-c", "/etc/tinyproxy.conf"]
+
 # The official image already holds the browsers for this exact @playwright/test version; nothing is downloaded at
 # install time (no install scripts) or at run time.
 FROM ${PLAYWRIGHT_IMAGE} AS playwright
@@ -58,6 +81,7 @@ WORKDIR /repo
 COPY --from=manifests /src/ ./
 RUN bun install --frozen-lockfile --filter @ptbk/e2e
 COPY tsconfig.base.json ./
+COPY packages/protocol packages/protocol
 COPY e2e e2e
 # Tests run as pwuser, which owns nothing else in the tree.
 RUN install -d -o pwuser -g pwuser /repo/e2e/test-results

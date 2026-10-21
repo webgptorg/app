@@ -1,6 +1,7 @@
 # Local debugging from the host: publishes relay-a on 127.0.0.1 so a browser or curl outside the stack can reach the
-# engine through it (docs/development.md, "Debugging from the host").
+# engine through it (docs/development.md, "Debugging from the host"). Ports belong to the holder of relay-a's network
+# namespace, relay-a-net.
 services:
-  relay-a:
+  relay-a-net:
     ports:
       - 127.0.0.1:${E2E_DEBUG_PORT:-8443}:443

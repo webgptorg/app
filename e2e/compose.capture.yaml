@@ -1,0 +1,44 @@
+# A packet capture of relay-a (X-02): tcpdump in relay-a's network namespace, writing TCP port 443 to a volume the
+# playwright service reads. packet-capture.spec.ts restarts it around the traffic it wants captured. Only test traffic
+# crosses that interface, and no TLS key log exists anywhere in the stack, so the capture holds ciphertext only.
+
+services:
+  relay-a-sniffer:
+    build:
+      context: ..
+      dockerfile: e2e/docker/stack.Dockerfile
+      target: nettools
+    network_mode: service:relay-a-net
+    depends_on:
+      relay-a-net:
+        condition: service_started
+    # tcpdump needs a raw socket and nothing else: no promiscuous mode (-p), and as nobody it never switches users.
+    user: '65534:65534'
+    cap_drop: [ALL]
+    cap_add: [NET_RAW]
+    read_only: true
+    init: true
+    command:
+      [
+        'tcpdump',
+        '-i',
+        'eth0',
+        '-p',
+        '-n',
+        '-U',
+        '--immediate-mode',
+        '-s',
+        '0',
+        '-w',
+        '/captures/relay-a.pcap',
+        'tcp port 443',
+      ]
+    volumes:
+      - captures:/captures
+
+  playwright:
+    volumes:
+      - captures:/captures:ro
+
+volumes:
+  captures:

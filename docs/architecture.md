@@ -82,7 +82,7 @@ The test suite any engine must pass: engine API behaviour, tunnel handshake, hea
 
 ### `e2e`
 
-Playwright and Docker Compose: browsers through relays to the mock engine, the network conditions from the spec's spike criteria, UI flows under CSP, the dashboard flow. The base stack (`e2e/compose.yaml`) is two relays, the mock engine, a resolver for the test domains and a one-shot `init` that provisions fresh keys, a name-constrained dev CA and the relays' static registry; Playwright runs inside the same network. Scenarios add services through `compose.<scenario>.yaml` overlays. Imports nothing from the apps: it builds them into images and talks to them over the network, plus the mock engine's `identity` and `dev-ca` CLIs. How to run and debug it: [development.md](development.md#end-to-end).
+Playwright and Docker Compose: browsers through relays to the mock engine, the network conditions from the spec's spike criteria, UI flows under CSP, the dashboard flow. The base stack (`e2e/compose.yaml`) is two relays, the mock engine, a resolver for the test domains and a one-shot `init` that provisions fresh keys, a name-constrained dev CA and the relays' static registry; Playwright runs inside the same network. Scenarios add services through `compose.<name>.yaml` overlays: the network scenarios put the mock engine behind a NAT gateway on a network nothing can route into, then limit it to port 443 or to a CONNECT or TLS-inspecting proxy. Imports nothing from the apps: it builds them into images and talks to them over the network, plus the mock engine's `identity` and `dev-ca` CLIs. How to run and debug it: [development.md](development.md#end-to-end).
 
 ### `infra`
 

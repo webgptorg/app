@@ -1,0 +1,36 @@
+# An HTTP CONNECT proxy as the engine's only way out (X-02), on top of the nat overlay: the gateway forwards nothing,
+# and tinyproxy, on both engine-lan and the stack network, serves only the LAN and tunnels only to port 443
+# (proxy/tinyproxy.conf). The engine reaches it through HTTPS_PROXY, as any corporate client would.
+
+services:
+  gateway:
+    environment:
+      GATEWAY_POLICY: closed
+
+  proxy:
+    build:
+      context: ..
+      dockerfile: e2e/docker/stack.Dockerfile
+      target: connect-proxy
+    cap_drop: [ALL]
+    read_only: true
+    init: true
+    healthcheck:
+      test: ['CMD', 'bash', '-c', 'exec 3<>/dev/tcp/127.0.0.1/3128']
+      interval: 1s
+      retries: 30
+      start_period: 60s
+      start_interval: 500ms
+    dns: [10.89.231.53]
+    networks:
+      stack:
+        ipv4_address: 10.89.231.21
+      engine-lan:
+        ipv4_address: 10.89.232.3
+
+  mock-engine:
+    depends_on:
+      proxy:
+        condition: service_healthy
+    environment:
+      HTTPS_PROXY: http://10.89.232.3:3128

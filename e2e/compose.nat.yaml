@@ -1,0 +1,87 @@
+# The engine behind NAT (X-02), the topology of every network scenario. The mock engine lives on engine-lan, an
+# internal network with no route out except the gateway (gateway/gateway.sh), which masquerades what the engine opens
+# and forwards nothing that starts outside. The browser, relays and DNS stay on the stack network. Other overlays
+# change the gateway's policy or add a proxy. Addresses are repeated from src/stack.ts; src/stack.test.ts checks them.
+
+x-nettools: &nettools
+  context: ..
+  dockerfile: e2e/docker/stack.Dockerfile
+  target: nettools
+
+services:
+  gateway:
+    build: *nettools
+    command: ['/e2e/gateway.sh']
+    environment:
+      GATEWAY_POLICY: nat
+      ENGINE_LAN_SUBNET: 10.89.232.0/24
+      GATEWAY_PUBLIC_IP: 10.89.231.20
+      GATEWAY_LAN_IP: 10.89.232.2
+      DNS_IP: 10.89.231.53
+    # The only capability anything in the stack gets beyond the defaults it drops: firewall and NAT rules, here and on
+    # the engine host's route. setpriv needs SETUID and SETGID to drop to nobody once the rules are in.
+    cap_drop: [ALL]
+    cap_add: [NET_ADMIN, SETUID, SETGID]
+    sysctls:
+      net.ipv4.ip_forward: '1'
+    read_only: true
+    tmpfs: [/tmp, /run]
+    init: true
+    healthcheck:
+      test: ['CMD', 'test', '-f', '/tmp/gateway-ready']
+      interval: 1s
+      retries: 30
+      start_period: 60s
+      start_interval: 500ms
+    networks:
+      stack:
+        ipv4_address: 10.89.231.20
+      engine-lan:
+        ipv4_address: 10.89.232.2
+
+  engine-net:
+    build: *nettools
+    command: ['/e2e/engine-host.sh']
+    environment:
+      GATEWAY_LAN_IP: 10.89.232.2
+      ENGINE_HOST_PORTS: 443 8080
+    cap_drop: [ALL]
+    cap_add: [NET_ADMIN, SETUID, SETGID]
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: '0'
+    read_only: true
+    tmpfs: [/tmp]
+    init: true
+    depends_on:
+      gateway:
+        condition: service_healthy
+    dns: [10.89.231.53]
+    healthcheck:
+      test: ['CMD', 'test', '-f', '/tmp/engine-host-ready']
+      interval: 1s
+      retries: 30
+      start_period: 60s
+      start_interval: 500ms
+    networks:
+      engine-lan:
+        ipv4_address: 10.89.232.10
+
+  mock-engine:
+    depends_on:
+      engine-net:
+        condition: service_healthy
+    network_mode: service:engine-net
+    networks: !reset []
+    dns: !reset []
+
+networks:
+  engine-lan:
+    internal: true
+    driver_opts:
+      # No address on the host's bridge either: some Docker hosts (OrbStack) route between their bridges, internal or
+      # not, and the engine must be unreachable from the stack network however the host is set up.
+      com.docker.network.bridge.inhibit_ipv4: 'true'
+    ipam:
+      config:
+        - subnet: 10.89.232.0/24
+          ip_range: 10.89.232.128/25

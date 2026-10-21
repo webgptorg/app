@@ -12,6 +12,11 @@ x-build: &build
   context: ..
   dockerfile: e2e/docker/stack.Dockerfile
 
+x-nettools: &nettools
+  context: ..
+  dockerfile: e2e/docker/stack.Dockerfile
+  target: nettools
+
 x-probe: &probe
   interval: 1s
   timeout: 5s
@@ -42,6 +47,30 @@ services:
       stack:
         ipv4_address: 10.89.231.53
 
+  # Each relay's address and network namespace belong to a holder that does nothing else, so the relay process can
+  # die while its address stays: a killed relay refuses connections (a reset) instead of vanishing, which is what a
+  # crashed relay on a live host does. It also keeps the namespace, and a sidecar in it, across relay restarts.
+  relay-a-net: &relay-net
+    build: *nettools
+    command: ['sleep', 'infinity']
+    init: true
+    user: '65534:65534'
+    cap_drop: [ALL]
+    read_only: true
+    dns: [10.89.231.53]
+    # 443 as the relays' non-root node user.
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: '0'
+    networks:
+      stack:
+        ipv4_address: 10.89.231.11
+
+  relay-b-net:
+    <<: *relay-net
+    networks:
+      stack:
+        ipv4_address: 10.89.231.12
+
   relay-a: &relay
     build:
       <<: *build
@@ -51,6 +80,9 @@ services:
         condition: service_completed_successfully
       dns:
         condition: service_started
+      relay-a-net:
+        condition: service_started
+    network_mode: service:relay-a-net
     environment: &relay-env
       RELAY_HOSTNAME: relay-a.ptbk.test
       RELAY_LISTEN_PORT: '443'
@@ -63,10 +95,6 @@ services:
     volumes:
       - public:/pki:ro
       - relay-a-key:/relay-key:ro
-    dns: [10.89.231.53]
-    # 443 as the non-root node user.
-    sysctls:
-      net.ipv4.ip_unprivileged_port_start: '0'
     healthcheck:
       <<: *probe
       test:
@@ -83,12 +111,17 @@ services:
           '--address',
           '127.0.0.1',
         ]
-    networks:
-      stack:
-        ipv4_address: 10.89.231.11
 
   relay-b:
     <<: *relay
+    depends_on:
+      init:
+        condition: service_completed_successfully
+      dns:
+        condition: service_started
+      relay-b-net:
+        condition: service_started
+    network_mode: service:relay-b-net
     environment:
       <<: *relay-env
       RELAY_HOSTNAME: relay-b.ptbk.test
@@ -112,9 +145,6 @@ services:
           '--address',
           '127.0.0.1',
         ]
-    networks:
-      stack:
-        ipv4_address: 10.89.231.12
 
   mock-engine:
     build:
@@ -140,7 +170,24 @@ services:
       - public:/pki:ro
       - engine:/engine
     dns: [10.89.231.53]
-    # Healthy once every relay has a ready tunnel and routes the engine hostname to it.
+    networks:
+      - stack
+
+  # Healthy once every relay has a ready tunnel and routes the engine hostname to it, checked from the browser's side
+  # of the network rather than from the engine, whose way out differs per scenario (gateway, proxy).
+  engine-probe:
+    build: *nettools
+    command: ['sleep', 'infinity']
+    init: true
+    user: node
+    cap_drop: [ALL]
+    read_only: true
+    depends_on:
+      mock-engine:
+        condition: service_started
+    volumes:
+      - public:/pki:ro
+    dns: [10.89.231.53]
     healthcheck:
       <<: *probe
       test:
@@ -168,7 +215,7 @@ services:
       target: playwright
     profiles: [test]
     depends_on:
-      mock-engine:
+      engine-probe:
         condition: service_healthy
     # Not root, and Chromium keeps its own sandbox (playwright.config.ts). The sandbox needs user namespaces, which
     # Docker's default seccomp profile refuses; Playwright's published profile is an older Docker default plus exactly

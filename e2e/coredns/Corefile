@@ -11,6 +11,26 @@ ptbk.test:53 {
     errors
 }
 
+# Both relays in a fixed order, under one name per relay that comes first. The failover tests map the engine hostname
+# onto one of these in a browser of their own, so the relay they take down is the one the browser tries first.
+order.ptbk.test:53 {
+    template IN A order.ptbk.test {
+        match ^relay-a-first\.order\.ptbk\.test\.$
+        answer "{{ .Name }} 5 IN A 10.89.231.11"
+        answer "{{ .Name }} 5 IN A 10.89.231.12"
+        fallthrough
+    }
+    template IN A order.ptbk.test {
+        match ^relay-b-first\.order\.ptbk\.test\.$
+        answer "{{ .Name }} 5 IN A 10.89.231.12"
+        answer "{{ .Name }} 5 IN A 10.89.231.11"
+    }
+    template IN AAAA order.ptbk.test {
+        rcode NOERROR
+    }
+    errors
+}
+
 # The engine domain: every name, known engine or not, gets both relays, as production DNS would. The relays decide by
 # SNI, so `unknown.engine.test` resolves and is then refused there. No IPv6, so browsers never try another family.
 engine.test:53 {

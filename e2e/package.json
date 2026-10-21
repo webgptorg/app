@@ -13,6 +13,9 @@
     "typecheck": "tsc --noEmit -p .",
     "test": "vitest run"
   },
+  "dependencies": {
+    "@ptbk/protocol": "workspace:*"
+  },
   "devDependencies": {
     "@playwright/test": "catalog:"
   }

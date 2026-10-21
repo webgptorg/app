@@ -1,8 +1,17 @@
 import { describe, expect, it } from 'vitest';
 
-import { composeArgs, parseGid, parseOverlays, projectName, runArgs } from './cli.ts';
+import {
+    composeArgs,
+    everyServiceTarget,
+    parseGid,
+    parseOverlays,
+    projectName,
+    runArgs,
+    scenarioTarget,
+} from './cli.ts';
+import { scenarioNamed } from './scenarios.ts';
 
-const TARGET = { project: 'ptbk-e2e-app', e2eDir: '/repo/e2e', overlays: ['proxy'] } as const;
+const TARGET = { project: 'ptbk-e2e-app', e2eDir: '/repo/e2e', overlays: ['proxy'], scenario: 'spike' } as const;
 
 describe('projectName', () => {
     it('is one project per checkout, unless E2E_PROJECT names one', () => {
@@ -37,10 +46,12 @@ describe('composeArgs and runArgs', () => {
     });
 
     it("keeps the image's command unless Playwright arguments are given", () => {
-        expect(runArgs(TARGET, []).slice(-5)).toEqual([
+        expect(runArgs(TARGET, []).slice(-7)).toEqual([
             'run',
             '--name',
             'ptbk-e2e-app-playwright-run',
+            '--env',
+            'E2E_SCENARIO=spike',
             '--no-deps',
             'playwright',
         ]);
@@ -50,6 +61,30 @@ describe('composeArgs and runArgs', () => {
             'test',
             '--grep',
             'sse',
+        ]);
+    });
+});
+
+describe('scenarioTarget and everyServiceTarget', () => {
+    const base = { project: 'p', e2eDir: '/repo/e2e' };
+
+    it("layers the scenario's overlays, then extra ones, each once", () => {
+        expect(scenarioTarget(base, scenarioNamed('egress-443'), ['debug', 'nat'])).toEqual({
+            ...base,
+            scenario: 'egress-443',
+            overlays: ['nat', 'egress-443', 'debug'],
+        });
+    });
+
+    it('cleans up with every overlay any scenario uses', () => {
+        const target = scenarioTarget(base, scenarioNamed(undefined), ['debug']);
+        expect(everyServiceTarget(target).overlays).toEqual([
+            'nat',
+            'capture',
+            'egress-443',
+            'connect-proxy',
+            'tls-inspecting-proxy',
+            'debug',
         ]);
     });
 });
