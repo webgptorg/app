@@ -52,6 +52,8 @@ export interface MockEngineConfig {
     readonly devCaFiles: DevCaFiles | null;
     /** `MOCK_DEV_CA_DOMAINS`: e2e domains a generated dev CA permits besides the engine domain. */
     readonly devCaDomains: readonly Hostname[];
+    /** `MOCK_CERT_SOURCE`: where the engine's own TLS certificates come from. */
+    readonly certificateSource: CertificateSourceConfig;
     readonly logLevel: LogLevel;
     /** `MOCK_SEED`, `MOCK_SCENARIO` and `MOCK_SEED_EPOCH`: the same three give the same engine state. */
     readonly seed: number;
@@ -70,6 +72,16 @@ export interface MockEngineConfig {
     /** The UI loader (M-05); null without `PTBK_UI_RELEASE_URL`, and the engine answers 503 for the app. */
     readonly ui: UiLoaderConfig | null;
 }
+
+export type CertificateSourceConfig =
+    | { readonly kind: 'dev-ca' }
+    | {
+          readonly kind: 'acme';
+          /** `PTBK_ACME_DIRECTORY_URL`. */
+          readonly directoryUrl: string;
+          /** `PTBK_ACME_EMAIL`: the account's contact, if any. */
+          readonly email: string | null;
+      };
 
 export interface UiLoaderConfig {
     /** `PTBK_UI_RELEASE_URL`: the release store or mirror, `https://` with a path ending in `/`. */
@@ -172,6 +184,16 @@ function parseDashboardUrl(text: string, problem: (message: string) => void): st
         return undefined;
     }
     return url.origin;
+}
+
+/** An `https://` URL without credentials or fragment: ACME directories may have a path and query of their own. */
+function parseAcmeDirectoryUrl(text: string, problem: (message: string) => void): string | undefined {
+    const url = text.length > MAX_URL_LENGTH ? undefined : URL.parse(text);
+    if (url?.protocol !== 'https:' || url.username !== '' || url.password !== '' || text.includes('#')) {
+        problem('must be an https:// URL without credentials or fragment');
+        return undefined;
+    }
+    return url.href;
 }
 
 function parsePort(port: string, fallback: number): number {
@@ -383,6 +405,9 @@ const envSchema = z.strictObject({
     MOCK_DEV_CA_CERT_FILE: filePath.optional(),
     MOCK_DEV_CA_KEY_FILE: filePath.optional(),
     MOCK_DEV_CA_DOMAINS: parsed(parseDomains).optional(),
+    MOCK_CERT_SOURCE: value(z.enum(['dev-ca', 'acme']), 'must be dev-ca or acme').default('dev-ca'),
+    PTBK_ACME_DIRECTORY_URL: parsed(parseAcmeDirectoryUrl).optional(),
+    PTBK_ACME_EMAIL: value(z.email().max(254), 'must be an email address').optional(),
     LOG_LEVEL: value(z.enum(LOG_LEVELS), `must be one of ${LOG_LEVELS.join(', ')}`).default('info'),
     HTTPS_PROXY: parsed(parseProxy).optional(),
     NO_PROXY: parsed(parseNoProxy).optional(),
@@ -453,7 +478,7 @@ export function parseMockEngineConfig(env: Env): MockEngineConfig {
     ) {
         problems.push('MOCK_DEV_CA_CERT_FILE: must be set together with MOCK_DEV_CA_KEY_FILE');
     }
-    problems.push(...dashboardProblems(settings), ...uiProblems(settings));
+    problems.push(...dashboardProblems(settings), ...uiProblems(settings), ...certificateSourceProblems(settings));
     if (result.success && result.data.NODE_ENV === 'production') {
         if (result.data.MOCK_CONTROL === 'enabled') problems.push('MOCK_CONTROL: must not be enabled in production');
         if (result.data.MOCK_DEV_LOGIN === 'enabled')
@@ -482,6 +507,14 @@ export function parseMockEngineConfig(env: Env): MockEngineConfig {
         extraCaFile: parsedEnv.MOCK_EXTRA_CA_FILE ?? null,
         devCaFiles,
         devCaDomains: parsedEnv.MOCK_DEV_CA_DOMAINS ?? Object.freeze([]),
+        certificateSource:
+            parsedEnv.MOCK_CERT_SOURCE === 'acme' && parsedEnv.PTBK_ACME_DIRECTORY_URL !== undefined
+                ? Object.freeze({
+                      kind: 'acme',
+                      directoryUrl: parsedEnv.PTBK_ACME_DIRECTORY_URL,
+                      email: parsedEnv.PTBK_ACME_EMAIL ?? null,
+                  })
+                : Object.freeze({ kind: 'dev-ca' }),
         logLevel: parsedEnv.LOG_LEVEL,
         seed: parsedEnv.MOCK_SEED,
         scenario: parsedEnv.MOCK_SCENARIO,
@@ -552,6 +585,24 @@ function uiProblems(settings: Readonly<Record<string, string>>): string[] {
     }
     if (!pinned && settings['PTBK_PINNED_VERSION'] !== undefined) {
         problems.push('PTBK_PINNED_VERSION: needs PTBK_UPDATE_POLICY=pinned');
+    }
+    return problems;
+}
+
+const DEV_CA_SETTINGS = ['MOCK_DEV_CA_CERT_FILE', 'MOCK_DEV_CA_KEY_FILE', 'MOCK_DEV_CA_DOMAINS'] as const;
+const ACME_SETTINGS = ['PTBK_ACME_DIRECTORY_URL', 'PTBK_ACME_EMAIL'] as const;
+
+/** Each certificate source takes only its own settings, so a leftover never looks like it took effect. */
+function certificateSourceProblems(settings: Readonly<Record<string, string>>): string[] {
+    const acme = settings['MOCK_CERT_SOURCE'] === 'acme';
+    const problems: string[] = [];
+    for (const name of acme ? DEV_CA_SETTINGS : ACME_SETTINGS) {
+        if (settings[name] !== undefined) {
+            problems.push(`${name}: needs MOCK_CERT_SOURCE=${acme ? 'dev-ca' : 'acme'}`);
+        }
+    }
+    if (acme && settings['PTBK_ACME_DIRECTORY_URL'] === undefined) {
+        problems.push('PTBK_ACME_DIRECTORY_URL: is required with MOCK_CERT_SOURCE=acme');
     }
     return problems;
 }

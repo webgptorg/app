@@ -46,6 +46,7 @@ describe('parseMockEngineConfig', () => {
             extraCaFile: null,
             devCaFiles: null,
             devCaDomains: [],
+            certificateSource: { kind: 'dev-ca' },
             logLevel: 'info',
             ...DEFAULT_MOCK_SETTINGS,
         });
@@ -103,6 +104,70 @@ describe('parseMockEngineConfig', () => {
             const many = Array.from({ length: 17 }, (_, index) => `d${String(index)}.test`).join(',');
             expect(problemsOf({ ...BASE, MOCK_DEV_CA_DOMAINS: many })).toEqual([
                 'MOCK_DEV_CA_DOMAINS: must list at most 16 domains',
+            ]);
+        });
+    });
+
+    describe('certificate source', () => {
+        const ACME = { ...BASE, MOCK_CERT_SOURCE: 'acme', PTBK_ACME_DIRECTORY_URL: 'https://pebble:14000/dir' };
+
+        it('takes certificates from the dev CA by default', () => {
+            expect(parseMockEngineConfig(BASE).certificateSource).toEqual({ kind: 'dev-ca' });
+        });
+
+        it('takes them from an ACME directory with MOCK_CERT_SOURCE=acme, with an optional contact', () => {
+            expect(parseMockEngineConfig(ACME).certificateSource).toEqual({
+                kind: 'acme',
+                directoryUrl: 'https://pebble:14000/dir',
+                email: null,
+            });
+            const withEmail = parseMockEngineConfig({
+                ...ACME,
+                PTBK_ACME_DIRECTORY_URL: 'https://acme-staging-v02.api.letsencrypt.org/directory',
+                PTBK_ACME_EMAIL: 'ops@example.test',
+            }).certificateSource;
+            expect(withEmail).toEqual({
+                kind: 'acme',
+                directoryUrl: 'https://acme-staging-v02.api.letsencrypt.org/directory',
+                email: 'ops@example.test',
+            });
+            expect(Object.isFrozen(withEmail)).toBe(true);
+        });
+
+        it("requires the directory with acme, and refuses each source the other one's settings", () => {
+            expect(problemsOf({ ...BASE, MOCK_CERT_SOURCE: 'acme' })).toEqual([
+                'PTBK_ACME_DIRECTORY_URL: is required with MOCK_CERT_SOURCE=acme',
+            ]);
+            expect(problemsOf({ ...ACME, MOCK_DEV_CA_DOMAINS: 'ptbk.test' })).toEqual([
+                'MOCK_DEV_CA_DOMAINS: needs MOCK_CERT_SOURCE=dev-ca',
+            ]);
+            expect(problemsOf({ ...BASE, PTBK_ACME_DIRECTORY_URL: 'https://pebble:14000/dir' })).toEqual([
+                'PTBK_ACME_DIRECTORY_URL: needs MOCK_CERT_SOURCE=acme',
+            ]);
+            expect(problemsOf({ ...BASE, PTBK_ACME_EMAIL: 'ops@example.test' })).toEqual([
+                'PTBK_ACME_EMAIL: needs MOCK_CERT_SOURCE=acme',
+            ]);
+        });
+
+        it('refuses another source, a directory that is not plain https, and an address that is not one', () => {
+            expect(problemsOf({ ...BASE, MOCK_CERT_SOURCE: 'files' })).toEqual([
+                'MOCK_CERT_SOURCE: must be dev-ca or acme',
+            ]);
+            for (const url of [
+                'http://pebble:14000/dir',
+                'https://user:pw@pebble/dir',
+                'https://pebble/dir#x',
+                'pebble',
+            ]) {
+                expect(problemsOf({ ...ACME, PTBK_ACME_DIRECTORY_URL: url })).toEqual([
+                    'PTBK_ACME_DIRECTORY_URL: must be an https:// URL without credentials or fragment',
+                ]);
+            }
+            expect(problemsOf({ ...ACME, PTBK_ACME_DIRECTORY_URL: `https://pebble/${'a'.repeat(2048)}` })).toHaveLength(
+                1,
+            );
+            expect(problemsOf({ ...ACME, PTBK_ACME_EMAIL: 'not an address' })).toEqual([
+                'PTBK_ACME_EMAIL: must be an email address',
             ]);
         });
     });

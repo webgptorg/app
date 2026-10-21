@@ -32,6 +32,8 @@ export const SCENARIOS: readonly Scenario[] = [
         overlays: ['nat', 'tls-inspecting-proxy'],
         specs: ['network/tls-inspecting-proxy.spec.ts'],
     },
+    // M-03: the engine obtains its certificate from Pebble with TLS-ALPN-01 through relay-a, which relay-a captures.
+    { name: 'acme', overlays: ['acme', 'capture'], specs: ['acme/*.spec.ts'] },
 ];
 
 export const DEFAULT_SCENARIO = 'spike';

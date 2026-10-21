@@ -140,7 +140,7 @@ What the relay does, so the engine can explain failures to the owner:
 The engine obtains its own certificates. TLS-ALPN-01 (RFC 8737) works through the passthrough relay, so normal operation needs no DNS action from us.
 
 - The CA's validation server connects to the engine's hostname on 443 with that SNI and ALPN `acme-tls/1` only. The relay routes it like any browser connection; it never looks at ALPN.
-- The engine must recognise that connection from the ClientHello (`parseClientHello` in `@ptbk/protocol` reads SNI and ALPN) and answer it with the challenge certificate, then serve normal connections as usual.
+- The engine must recognise that connection from the ClientHello (`parseClientHello` in `@ptbk/protocol` reads SNI and ALPN) and answer it with the challenge certificate, then serve normal connections as usual. Answer `acme-tls/1` only while a challenge for that hostname is pending, and only when it is the sole protocol offered (RFC 8737); close any other `acme-tls/1` connection without a byte.
 - The ACME account key must be separate from the engine key, stored in `PTBK_DATA_DIR` with mode 0600.
 - Renew before expiry. The spec also asks for an hourly Certificate Transparency check that alerts the owner about certificates with a key that is not the engine's, and a CAA record with `accounturi`.
 - The production ACME client is the engine team's choice (see the [open points](README.md#open-points)).
@@ -185,4 +185,4 @@ Merged (M-01, M-02), in [`apps/mock-engine`](../../apps/mock-engine/README.md):
 Where the mock engine is simpler than this page: it treats every `reject` reason alike (it backs off), and it does not sign hostname claims.
 
 - **Custom hostname claims: no reference implementation yet.**
-- **ACME TLS-ALPN-01: Reference implementation: pending M-03.**
+- ACME TLS-ALPN-01 (M-03): the ClientHello router in front of the TLS servers, [client-hello-router.ts](../../apps/mock-engine/src/adapters/client-hello-router.ts) with the decision in [alpn-dispatch.ts](../../apps/mock-engine/src/domain/tls/alpn-dispatch.ts); the challenge responder, [tls-alpn-responder.ts](../../apps/mock-engine/src/adapters/tls-alpn-responder.ts); issuance, storage and renewal, [acme-certificate-source.ts](../../apps/mock-engine/src/adapters/acme-certificate-source.ts) and [renewal-policy.ts](../../apps/mock-engine/src/domain/tls/renewal-policy.ts); the account key, [acme-account-key.ts](../../apps/mock-engine/src/adapters/acme-account-key.ts). The ACME client itself ([acme-client-issuer.ts](../../apps/mock-engine/src/adapters/acme-client-issuer.ts), `acme-client`) is for the Pebble spike only. Result and the Let's Encrypt staging runbook: [docs/spike/acme-tls-alpn-01.md](../spike/acme-tls-alpn-01.md).

@@ -21,6 +21,7 @@ import { parseIdentityReport, staticRegistry } from './registry.ts';
 
 const MOCK_ENGINE_DIR = '/repo/apps/mock-engine';
 const KEY_FILE = 'key.pem';
+const PEBBLE_MINICA_SOURCE = '/pebble/minica.pem';
 
 const run = promisify(execFile);
 
@@ -105,6 +106,8 @@ async function main(): Promise<void> {
         join(MOUNTS.uiBundles, UI_RELEASES.installed),
         join(MOUNTS.uiBundles, UI_RELEASES.tampered),
     ]);
+    // Public by nature: the root of Pebble's own HTTPS listeners, from its image (stack.Dockerfile).
+    await writePublic(PUBLIC_FILES.pebbleMinica, await readFile(PEBBLE_MINICA_SOURCE, 'utf8'));
     await writePublic(PUBLIC_FILES.engineIdentity, `${JSON.stringify(identity, null, 2)}\n`);
     await writePublic(PUBLIC_FILES.registry, `${JSON.stringify(staticRegistry(identity), null, 2)}\n`);
 

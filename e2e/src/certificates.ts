@@ -69,7 +69,9 @@ export interface RawTlsOutcome {
  * Sends a ClientHello for `servername` and counts the raw bytes that come back. A relay that refuses an SNI must
  * close without writing a byte, so it never acts as a TLS endpoint for a name it does not own.
  */
-export function rawTlsAttempt(options: Omit<TlsPeerOptions, 'ca'>): Promise<RawTlsOutcome> {
+export function rawTlsAttempt(
+    options: Omit<TlsPeerOptions, 'ca'> & { readonly alpn?: readonly string[] },
+): Promise<RawTlsOutcome> {
     return new Promise((resolve) => {
         const raw = netConnect({ host: options.address, port: options.port });
         let bytesReceived = 0;
@@ -90,7 +92,12 @@ export function rawTlsAttempt(options: Omit<TlsPeerOptions, 'ca'>): Promise<RawT
             counted.push(chunk);
         });
         raw.once('end', () => counted.push(null));
-        const socket = tlsConnect({ socket: counted, servername: options.servername, rejectUnauthorized: false });
+        const socket = tlsConnect({
+            socket: counted,
+            servername: options.servername,
+            rejectUnauthorized: false,
+            ...(options.alpn === undefined ? {} : { ALPNProtocols: [...options.alpn] }),
+        });
         let settled = false;
         const settle = (kind: RawTlsOutcome['kind']): void => {
             if (settled) return;

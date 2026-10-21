@@ -3,9 +3,13 @@
 
 ARG NODE_IMAGE=node:24.22.0-bookworm-slim@sha256:a5f4366e834695d5f363b920c104953a535d3a9864d1bdf74566a0ebe01daee5
 ARG BUN_IMAGE=oven/bun:1.4.3-slim@sha256:14a223fa35747ec728bce300ef85888bc5f7958164d15bbba6a54b22b52a3288
+ARG PEBBLE_IMAGE=ghcr.io/letsencrypt/pebble:2.10.1@sha256:ddf230642b1a584f519f32e347de1b05a6e4c1f6c35c1863b33effeab5f78199
 ARG PLAYWRIGHT_IMAGE=mcr.microsoft.com/playwright:v1.64.0-noble@sha256:06a9939e57531807f8d5fd76ce44b53165ffb7d7501d87ab10e285c20b1e971f
 
 FROM ${BUN_IMAGE} AS bun
+
+# Only for its minica certificate, the root of Pebble's own HTTPS listeners (init publishes it; acme scenario).
+FROM ${PEBBLE_IMAGE} AS pebble
 
 # Only the files `bun install` reads. Source edits leave this stage's output unchanged, so the install layers below
 # stay cached while you iterate.
@@ -54,6 +58,7 @@ RUN bun run generate \
 # builder, plus the packed UI bundles to sign and publish.
 FROM builder AS init
 COPY --from=ui-bundle /ui-bundles /ui-bundles
+COPY --from=pebble /test/certs/pebble.minica.pem /pebble/minica.pem
 COPY e2e/src/stack.ts e2e/src/stack.ts
 COPY e2e/init e2e/init
 CMD ["node", "e2e/init/generate.ts"]

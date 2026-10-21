@@ -84,6 +84,7 @@ describe('scenarioTarget and everyServiceTarget', () => {
             'egress-443',
             'connect-proxy',
             'tls-inspecting-proxy',
+            'acme',
             'debug',
         ]);
     });

@@ -207,6 +207,7 @@ describe('control routes through the tunnel', () => {
             extraCaFile: null,
             devCaFiles: null,
             devCaDomains: [],
+            certificateSource: { kind: 'dev-ca' },
             logLevel: 'info',
             ...DEFAULT_MOCK_SETTINGS,
             control: { host: '127.0.0.1', port: 0 },

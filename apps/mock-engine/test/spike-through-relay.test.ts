@@ -58,6 +58,7 @@ async function setup() {
         extraCaFile: null,
         devCaFiles: null,
         devCaDomains: [CUSTOMER_DOMAIN],
+        certificateSource: { kind: 'dev-ca' },
         logLevel: 'info',
         ...DEFAULT_MOCK_SETTINGS,
     };

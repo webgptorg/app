@@ -4,6 +4,7 @@ import type { FaultPlan } from '../src/domain/faults/fault-plan';
 import { FaultPlan as FaultPlanSchema } from '../src/domain/faults/fault-plan';
 import type { ApiHarness } from '../src/testing/api-harness';
 import { HARNESS_ORIGIN, createApiHarness } from '../src/testing/api-harness';
+import { HANDSHAKE_TIMEOUT_MS } from '../src/adapters/tls-stream-server';
 import type { FakeClock } from '../src/testing/fake-clock';
 import { createFakeClock } from '../src/testing/fake-clock';
 
@@ -52,7 +53,8 @@ describe('fault injection', () => {
         const recording = {
             nowMs: () => clock.nowMs(),
             setTimeout(fn: () => void, ms: number) {
-                if (ms <= 60_000) delays.push(ms);
+                // The ClientHello router's handshake timeout is not a response delay.
+                if (ms <= 60_000 && ms !== HANDSHAKE_TIMEOUT_MS) delays.push(ms);
                 return clock.setTimeout(fn, ms);
             },
         };

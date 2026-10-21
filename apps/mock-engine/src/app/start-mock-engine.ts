@@ -14,6 +14,8 @@ import { createHttpApp } from '../adapters/http/http-app';
 import type { Route } from '../adapters/http/route';
 import { createSpikeRoutes } from '../adapters/http/spike-routes';
 import { createUiRoutes } from '../adapters/http/ui-routes';
+import { createClientHelloRouter } from '../adapters/client-hello-router';
+import { createTlsAlpnResponder } from '../adapters/tls-alpn-responder';
 import type { TlsStreamServer } from '../adapters/tls-stream-server';
 import { createTlsStreamServer } from '../adapters/tls-stream-server';
 import type { TunnelDuplex } from '../adapters/tunnel-duplex';
@@ -36,6 +38,8 @@ import type { Random } from '../domain/random';
 import { createWindowRateLimiter } from '../domain/rate-limit/rate-limiter';
 import type { RateLimiter } from '../domain/rate-limit/rate-limiter';
 import type { Registration, RegistrationStore } from '../domain/registration/registration';
+import type { AcmeChallenges } from '../domain/tls/acme-challenges';
+import { createAcmeChallenges } from '../domain/tls/acme-challenges';
 import type { CertificateSource, ManagedCertificateSource } from '../domain/tls/certificate-source';
 import type { RemoteAddress } from '../domain/tunnel/tunnel-stream';
 import type { RelayDialer } from '../domain/tunnel/relay-dialer';
@@ -74,6 +78,8 @@ export interface MockEngineDeps {
      * refused.
      */
     readonly certificates?: ManagedCertificateSource;
+    /** TLS-ALPN-01 challenges the ACME source has pending; without it no `acme-tls/1` connection is ever answered. */
+    readonly challenges?: AcmeChallenges;
     /** Required with `PTBK_DASHBOARD_URL`: registration and heartbeat. */
     readonly dashboard?: DashboardDeps | undefined;
     /** Required with `PTBK_UI_RELEASE_URL`: the UI loader's release store, bundle store, state and verifiers. */
@@ -220,6 +226,7 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
             : createEngineServer({
                   engineId: identity.engineId,
                   certificates: deps.certificates,
+                  ...(deps.challenges === undefined ? {} : { challenges: deps.challenges }),
                   core: () => runtime.core(),
                   sessions,
                   faults,
@@ -387,6 +394,8 @@ export function createFaults(settings: FaultSettings, seed: number, clock: Clock
 export interface EngineServerDeps {
     readonly engineId: EngineIdentity['engineId'];
     readonly certificates: CertificateSource;
+    /** Pending TLS-ALPN-01 challenges; none by default, so every `acme-tls/1` hello is refused. */
+    readonly challenges?: AcmeChallenges;
     readonly core: () => InMemoryEngineCore;
     readonly sessions: SessionStore;
     readonly faults: FaultSettings;
@@ -410,7 +419,10 @@ export interface EngineServer {
     close(): void;
 }
 
-/** Tunnel streams (throttled by the fault plan) → TLS (engine key, chosen by SNI) → HTTP app. */
+/**
+ * Tunnel streams (throttled by the fault plan) → ClientHello router → TLS (engine key, chosen by SNI) → HTTP app, or,
+ * for a TLS-ALPN-01 validation with a challenge pending, the challenge responder.
+ */
 export function createEngineServer(deps: EngineServerDeps): EngineServer {
     const http = createHttpApp({
         routes: createInTunnelRoutes(deps),
@@ -426,6 +438,17 @@ export function createEngineServer(deps: EngineServerDeps): EngineServer {
             http.serve(socket, connection);
         },
     });
+    const challenges = deps.challenges ?? createAcmeChallenges();
+    const responder = createTlsAlpnResponder({ challenges, logger: deps.logger });
+    const router = createClientHelloRouter({
+        challenges,
+        responder,
+        normal: (stream, remote) => {
+            tls.handle(stream, remote);
+        },
+        clock: deps.clock,
+        logger: deps.logger,
+    });
     return {
         http,
         tls,
@@ -434,9 +457,11 @@ export function createEngineServer(deps: EngineServerDeps): EngineServer {
                 clock: deps.clock,
                 bytesPerS: () => deps.faults.plan().slowTunnelBytesPerS,
             });
-            tls.handle(throttled, remote);
+            router.handle(throttled, remote);
         },
         close() {
+            router.close();
+            responder.close();
             tls.close();
             http.close();
         },

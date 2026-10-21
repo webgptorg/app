@@ -65,6 +65,11 @@ export const PUBLIC_FILES = {
     releaseStoreCertificate: `${RELEASE_STORE.hostname}.pem`,
     /** The UI loader's `TrustPolicy`: the public halves of release keys that existed only while init ran. */
     uiTrustPolicy: 'ui-trust-policy.json',
+    /**
+     * The root of Pebble's own HTTPS listeners (its fixed test "minica", copied from the Pebble image), not of the
+     * certificates it issues: the mock engine trusts it for the ACME API, the probe and tests for the management API.
+     */
+    pebbleMinica: 'pebble-minica.pem',
 } as const;
 
 export function relayCertificateFile(relay: RelayNode): string {
@@ -111,6 +116,25 @@ export const RELAY_A_CAPTURE_FILE = 'relay-a.pcap';
 export const MITM_MOUNT = '/mitm';
 /** Written by mitmproxy/record_websockets.py, next to the proxy's CA certificate (`ca-cert.pem`). */
 export const MITM_FILES = { websocketMessages: 'websocket-messages.jsonl' } as const;
+
+/**
+ * The acme scenario's CA (M-03): Pebble, an ACME test server. Its own HTTPS certificate is issued to `pebble`, so
+ * clients reach it under that name (compose `extra_hosts`). Its management API serves the root of the certificates it
+ * issues, which is new on every start.
+ */
+export const PEBBLE = {
+    service: 'pebble',
+    hostname: 'pebble',
+    ip: '10.89.231.40',
+    acmePort: 14_000,
+    managementPort: 15_000,
+} as const;
+
+/** Pebble's resolver: answers every A query with relay-a's address, as public DNS would send a CA to a relay. */
+export const CHALLTESTSRV = { service: 'challtestsrv', ip: '10.89.231.41', dnsPort: 8053 } as const;
+
+/** The validity Pebble gives certificates in the acme scenario, so the engine renews every minute (at 2/3). */
+export const PEBBLE_VALIDITY_S = 90;
 
 /** Resolves to both relays with `relay` first (coredns/Corefile), for tests that need a browser to try it first. */
 export function relayFirstAlias(relay: RelayNode): string {
