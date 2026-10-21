@@ -2,7 +2,7 @@
 
 - **Lane:** U · **Module:** `apps/engine-ui` · **Milestone:** M2
 - **Depends on:** U-02
-- **Status:** todo
+- **Status:** in progress (feat/u-06-security-settings)
 - **Spec:** Transparency and verifiability (3 self-checks), What our platform can and cannot do (heartbeat, write-only credentials), Residual risks (update policy, CT), Security hardening (4 outbound list, 7 secrets), Pairing and identity (revoke), Enterprise-ready engine architecture; ADRs: [0003](../../adr/0003-ui-as-signed-bundle.md), [0015](../../adr/0015-ui-architecture-and-design-system.md); design: [ui.md](../../design/ui.md) (Trust mark, Security)
 
 ## Goal
