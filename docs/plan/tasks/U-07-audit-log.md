@@ -2,7 +2,7 @@
 
 - **Lane:** U · **Module:** `apps/engine-ui` · **Milestone:** M2
 - **Depends on:** U-02
-- **Status:** todo
+- **Status:** in progress (feat/u-07-audit-log)
 - **Spec:** Engine security baseline (Audit: append-only, hash-chained, visible in the security panel), Enterprise-ready engine architecture (Audit), Residual risks (update policy changes are logged); ADRs: [0003](../../adr/0003-ui-as-signed-bundle.md)
 
 ## Goal
