@@ -29,6 +29,7 @@ import { NO_FAULTS } from '../src/domain/faults/fault-plan';
 import { SESSION_COOKIE_NAME, createSessionStore } from '../src/domain/gateway/sessions';
 import type { ManagedCertificateSource } from '../src/domain/tls/certificate-source';
 import { createContractRecorder } from '../src/testing/contract-recorder';
+import { HARNESS_CANARY } from '../src/testing/engine-harness';
 import type { FakePassthrough } from '../src/testing/fake-passthrough';
 import { startFakePassthrough } from '../src/testing/fake-passthrough';
 import type { FakeRelay } from '../src/testing/fake-relay';
@@ -165,6 +166,7 @@ function serveCore(options: InMemoryEngineApiOptions): InMemoryEngine {
             faults: createFaultSettings(NO_FAULTS),
             seed: 1,
             devLogin: false,
+            canary: HARNESS_CANARY,
             clock,
             logger,
             rateLimiter: { consume: () => ({ kind: 'allowed' }) },

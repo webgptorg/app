@@ -46,6 +46,11 @@ function integer(min: number, max: number) {
 export interface SpikeRouteDeps {
     readonly engineId: EngineId;
     readonly clock: Clock;
+    /**
+     * Random per engine start and shown on the spike page, so a packet capture (X-02) can prove the page never crosses
+     * the relay in plaintext. Public, not a secret: anyone who loads the page sees it.
+     */
+    readonly canary: string;
     /** Bytes the download route produced, as it produces them (throughput and backpressure measurements). */
     readonly onDownloadBytes?: (bytes: number) => void;
 }
@@ -54,7 +59,7 @@ function escapeHtml(text: string): string {
     return text.replace(/[&<>"']/g, (char) => `&#${String(char.charCodeAt(0))};`);
 }
 
-function spikePage(engineId: EngineId): string {
+function spikePage(engineId: EngineId, canary: string): string {
     return `<!doctype html>
 <html lang="en">
 <head>
@@ -65,6 +70,7 @@ function spikePage(engineId: EngineId): string {
 <body>
 <h1>Promptbook mock engine</h1>
 <p>Engine ID: <code id="engine-id">${escapeHtml(engineId)}</code></p>
+<p>Canary: <code id="canary">${escapeHtml(canary)}</code></p>
 <p>TLS for this page ended on the engine, not on the relay.</p>
 <ul>
 <li><a href="/__spike/whoami">/__spike/whoami</a></li>
@@ -157,7 +163,7 @@ const NO_QUERY = z.strictObject({});
 
 export function createSpikeRoutes(deps: SpikeRouteDeps): readonly Route[] {
     const { clock, engineId } = deps;
-    const page = spikePage(engineId);
+    const page = spikePage(engineId, deps.canary);
     const pageRoute = (path: '/' | '/__spike/') =>
         defineHttpRoute({
             transport: 'http',
