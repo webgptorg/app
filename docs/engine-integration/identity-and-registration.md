@@ -93,7 +93,7 @@ Spec Interface 6 defines the engine's environment:
 | `HTTPS_PROXY`, `NO_PROXY`                   | Use them for the tunnel, registration, heartbeat and updates                                                                                         |
 | `PTBK_DATA_DIR`                             | Keep keys, certificates, database and audit log there, mode 0700                                                                                     |
 
-The spec names no variables for the link code or the dashboard URL; that is the engine's choice. The mock engine will use `PTBK_LINK_CODE` and `PTBK_DASHBOARD_URL` (M-06).
+The spec names no variables for the link code or the dashboard URL; that is the engine's choice. The mock engine uses `PTBK_LINK_CODE` and `PTBK_DASHBOARD_URL`, and `mock-engine register --link <code>` registers and exits.
 
 ## Contract exports
 
@@ -113,5 +113,5 @@ No registration suite exists yet. C-05 registers its suites as acting relay or d
 
 ## Reference implementation
 
-- **Key handling: merged (M-01).** [fs-identity-store.ts](../../apps/mock-engine/src/adapters/fs-identity-store.ts) and [private-files.ts](../../apps/mock-engine/src/adapters/private-files.ts): `PTBK_DATA_DIR` at 0700, `engine-key.pem` as PKCS#8 PEM created with `O_EXCL` and 0600, owner, mode and symlink checks, extractable only for the first write and non-extractable at runtime ([engine-identity.ts](../../apps/mock-engine/src/domain/identity/engine-identity.ts)). The mock engine does **not** `fsync` the key file or the directory yet; the real engine must (step 3 above).
-- **Registration: pending M-06.**
+- **Key handling: merged (M-01).** [fs-identity-store.ts](../../apps/mock-engine/src/adapters/fs-identity-store.ts) and [private-files.ts](../../apps/mock-engine/src/adapters/private-files.ts): `PTBK_DATA_DIR` at 0700, `engine-key.pem` as PKCS#8 PEM created with `O_EXCL` and 0600, owner, mode and symlink checks, extractable only for the first write and non-extractable at runtime ([engine-identity.ts](../../apps/mock-engine/src/domain/identity/engine-identity.ts)). Since M-06 the key file and then the directory are `fsync`ed before the key is first used (step 3 above).
+- **Registration: merged (M-06).** [register.ts](../../apps/mock-engine/src/domain/registration/register.ts) signs with `signRegistration`, checks the answer with `checkRegistrationResponse` and maps the problem codes; [fetch-dashboard-api.ts](../../apps/mock-engine/src/adapters/fetch-dashboard-api.ts) reads answers with `TolerantRegisterEngineResponse` and `TolerantProblemDetails` within the size caps; [https-fetch.ts](../../apps/mock-engine/src/adapters/https-fetch.ts) honours `HTTPS_PROXY` and `NO_PROXY`; [fs-registration-store.ts](../../apps/mock-engine/src/adapters/fs-registration-store.ts) keeps `registration.json` (0600, written durably, strict on load). An engine that already holds a registration makes no network call, and on every start the stored registration is checked again against the key and the engine domain. The link code is taken once from the configuration and never stored or logged ([establish-registration.ts](../../apps/mock-engine/src/app/establish-registration.ts)).

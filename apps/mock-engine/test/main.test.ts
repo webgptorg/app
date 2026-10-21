@@ -1,6 +1,8 @@
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { createServer } from 'node:https';
+import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -11,6 +13,9 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { createFsIdentityStore } from '../src/adapters/fs-identity-store';
 import { startConnectProxy } from '../src/testing/connect-proxy';
+import type { FakeDashboard } from '../src/testing/fake-dashboard';
+import { createFakeDashboard } from '../src/testing/fake-dashboard';
+import { systemClock } from '../src/adapters/system-clock';
 import { startFakeRelay } from '../src/testing/fake-relay';
 import { createTestCa } from '../src/testing/test-pki';
 
@@ -33,8 +38,8 @@ async function tempDir(): Promise<string> {
 }
 
 /** Runs an entry point from source, with only the given environment (nothing leaks in from the test runner). */
-function run(entry: string, env: Record<string, string>) {
-    const child = spawn(process.execPath, ['--import', 'tsx', entry], {
+function run(entry: string, env: Record<string, string>, args: readonly string[] = []) {
+    const child = spawn(process.execPath, ['--import', 'tsx', entry, ...args], {
         cwd: APP_DIR,
         env: { PATH: process.env['PATH'] ?? '', ...env },
         stdio: ['ignore', 'pipe', 'pipe'],
@@ -155,6 +160,115 @@ describe('mock engine process', () => {
             expect(await failed.exited).toBe(1);
             expect(JSON.parse(failed.stdout())).toMatchObject({ level: 'error', event: 'engine.start-failed' });
             expect(failed.stdout()).toContain('PTBK_RELAYS');
+        },
+        PROCESS_TIMEOUT_MS,
+    );
+});
+
+/** The fake dashboard behind real HTTPS on localhost, trusted through `MOCK_EXTRA_CA_FILE`. */
+async function startHttpsDashboard(dir: string): Promise<{ dashboard: FakeDashboard; url: string; caFile: string }> {
+    const ca = createTestCa('M-06 dashboard CA');
+    const caFile = join(dir, 'dashboard-ca.pem');
+    await writeFile(caFile, ca.certPem);
+    const dashboard = createFakeDashboard({
+        clock: systemClock,
+        engineDomain: ENGINE_DOMAIN,
+        relays: [Hostname.parse('relay-x.ptbk.test')],
+    });
+    const leaf = ca.issue(['localhost']);
+    const server = createServer({ cert: leaf.certPem, key: leaf.keyPem }, (request, response) => {
+        const chunks: Buffer[] = [];
+        request.on('data', (chunk: Buffer) => chunks.push(chunk));
+        request.on('end', () => {
+            const headers = new Headers();
+            for (const [name, value] of Object.entries(request.headers)) {
+                if (typeof value === 'string') headers.set(name, value);
+            }
+            void dashboard
+                .fetch(`https://localhost${request.url ?? '/'}`, {
+                    method: request.method ?? 'GET',
+                    headers,
+                    body: Buffer.concat(chunks),
+                })
+                .then(async (answer) => {
+                    response.writeHead(answer.status, Object.fromEntries(answer.headers));
+                    response.end(Buffer.from(await answer.arrayBuffer()));
+                });
+        });
+    });
+    server.listen(0, '127.0.0.1');
+    await once(server, 'listening');
+    cleanups.push(async () => {
+        server.closeAllConnections();
+        server.close();
+        await once(server, 'close');
+    });
+    return { dashboard, url: `https://localhost:${String((server.address() as AddressInfo).port)}`, caFile };
+}
+
+describe('register command and dashboard mode', () => {
+    it(
+        'registers once over HTTPS, never writes the link code down, then beats from the stored registration',
+        async () => {
+            const dir = await tempDir();
+            const dataDir = join(dir, 'data');
+            const { dashboard, url, caFile } = await startHttpsDashboard(dir);
+            const code = dashboard.issueLinkCode('org-a');
+            const env = {
+                PTBK_DATA_DIR: dataDir,
+                PTBK_ENGINE_DOMAIN: ENGINE_DOMAIN,
+                PTBK_DASHBOARD_URL: url,
+                MOCK_EXTRA_CA_FILE: caFile,
+            };
+            const first = run('src/main.ts', env, ['register', '--link', code]);
+            expect(await first.exited).toBe(0);
+            const identity = await createFsIdentityStore(dataDir).loadOrCreate();
+            expect(JSON.parse(first.stdout())).toEqual({
+                outcome: 'registered',
+                engineId: identity.engineId,
+                hostname: defaultHostname(identity.engineId, ENGINE_DOMAIN),
+                relays: ['relay-x.ptbk.test'],
+            });
+            const again = run('src/main.ts', env, ['register', '--link', code]);
+            expect(await again.exited).toBe(0);
+            expect(JSON.parse(again.stdout())).toMatchObject({ outcome: 'already-registered' });
+            expect(dashboard.registerRequests).toHaveLength(1);
+            for (const name of await readdir(dataDir)) {
+                if (name === 'dev-ca') continue;
+                expect(await readFile(join(dataDir, name), 'utf8')).not.toContain(code);
+            }
+            expect(first.stdout() + first.stderr() + again.stdout() + again.stderr()).not.toContain(code);
+
+            const engine = run('src/main.ts', { ...env, MOCK_HEARTBEAT_INTERVAL_S: '1' });
+            await engine.printed('"event":"registration.already-registered"');
+            const deadline = Date.now() + 20_000;
+            while (dashboard.heartbeats.filter((beat) => beat.verification.kind === 'accepted').length < 2) {
+                if (Date.now() > deadline) throw new Error('no heartbeats');
+                await new Promise((resolve) => setTimeout(resolve, 100));
+            }
+            expect(Number((await readFile(join(dataDir, 'heartbeat-seq'), 'utf8')).trim())).toBeGreaterThan(0);
+            engine.child.kill('SIGTERM');
+            expect(await engine.exited).toBe(0);
+        },
+        PROCESS_TIMEOUT_MS,
+    );
+
+    it(
+        'exits with code 1 on a bad link code without echoing it',
+        async () => {
+            const dir = await tempDir();
+            const failed = run(
+                'src/main.ts',
+                {
+                    PTBK_DATA_DIR: join(dir, 'data'),
+                    PTBK_ENGINE_DOMAIN: ENGINE_DOMAIN,
+                    PTBK_DASHBOARD_URL: 'https://localhost:1',
+                },
+                ['register', '--link', 'not-a-real-code'],
+            );
+            expect(await failed.exited).toBe(1);
+            expect(failed.stderr()).toContain('--link must be a link code');
+            expect(failed.stderr() + failed.stdout()).not.toContain('not-a-real-code');
         },
         PROCESS_TIMEOUT_MS,
     );

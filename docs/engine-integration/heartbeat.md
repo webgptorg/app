@@ -41,11 +41,11 @@ sequenceDiagram
 
 The dashboard checks, in this order, with `verifyHeartbeat`: body size, signature header, the signature over the raw bytes, the strict schema, that the path's engine ID equals the body's, that `seq` is greater than the last one, and the clock. Each failure maps to a problem+json answer:
 
-| Outcome (`HeartbeatVerification`)                                          | What the engine should do                                                                                                                         |
-| -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `bad-signature-header`, `bad-signature`, `invalid-body`, `engine-mismatch` | A bug in the engine: log it, keep going, fix the code                                                                                             |
-| `replayed-seq`                                                             | Its `seq` store went backwards: move `seq` forward with `max(lastSeq + 1, Date.now())`                                                            |
-| `stale-ts`                                                                 | Read `serverTime` from the problem body, show the skew (`serverTime` minus local time) in the security panel, and tell the owner to fix the clock |
+| Outcome (`HeartbeatVerification`)                                          | What the engine should do                                                                                                                                                             |
+| -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bad-signature-header`, `bad-signature`, `invalid-body`, `engine-mismatch` | A bug in the engine: log it, keep going, fix the code                                                                                                                                 |
+| `replayed-seq`                                                             | Its `seq` store went backwards: move `seq` forward with `max(lastSeq + 1, Date.now())`                                                                                                |
+| `stale-ts`                                                                 | Read `serverTime` from the problem body, show the skew (local time minus `serverTime`, negative when the engine is behind) in the security panel, and tell the owner to fix the clock |
 
 `ProblemDetails` in `@ptbk/protocol` carries the optional `serverTime` field for exactly this case. The dashboard endpoint is not built yet, so the HTTP status and the problem `code` for each outcome are not contract constants yet (see the [open points](README.md#open-points)). Read the problem with `TolerantProblemDetails` and act on `serverTime` when it is present.
 
@@ -66,4 +66,9 @@ No heartbeat suite exists yet. C-05 v1 checks only that the security panel's `la
 
 ## Reference implementation
 
-Reference implementation: pending M-06.
+Reference implementation: merged (M-06).
+
+- [build-heartbeat.ts](../../apps/mock-engine/src/domain/heartbeat/build-heartbeat.ts): `buildHeartbeat` and `signHeartbeat` over the same bytes, `ts` from the clock in UTC seconds.
+- [heartbeat-loop.ts](../../apps/mock-engine/src/domain/heartbeat/heartbeat-loop.ts): first beat when the tunnels start, then one per interval; failures logged with the status code only, no retry, no backfill; the body kept verbatim for `GET /security`; the clock skew from a `stale-timestamp` answer.
+- [fs-seq-store.ts](../../apps/mock-engine/src/adapters/fs-seq-store.ts): `max(lastSeq + 1, now)`, persisted with a temporary file, `fsync`, rename and a directory `fsync` before the beat is built.
+- [os-system-stats.ts](../../apps/mock-engine/src/adapters/os-system-stats.ts): disk of the data directory, memory, and the 1-minute load per core as `low` (below 0.5), `medium` (below 1) or `high`.

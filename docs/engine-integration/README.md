@@ -84,7 +84,7 @@ Golden vectors, which an implementation in any language must reproduce:
 
 ## Status of the reference implementation
 
-The mock engine implements the engine side of every contract, one task at a time. On `main` today: identity, tunnel client, TLS inside the tunnel, and the engine API with a gateway stand-in. Sections whose mock engine task is not merged say `Reference implementation: pending M-0x`; whoever merges that task updates the section and its checklist rows.
+The mock engine implements the engine side of every contract, one task at a time. On `main` today: identity, tunnel client, TLS inside the tunnel, the engine API with a gateway stand-in, and registration and heartbeat. Sections whose mock engine task is not merged say `Reference implementation: pending M-0x`; whoever merges that task updates the section and its checklist rows.
 
 | Task | What the mock engine adds                          | Status      |
 | ---- | -------------------------------------------------- | ----------- |
@@ -93,7 +93,7 @@ The mock engine implements the engine side of every contract, one task at a time
 | M-03 | ACME TLS-ALPN-01 through the relay                 | not started |
 | M-04 | Engine API, gateway stand-in, faults               | merged      |
 | M-05 | UI loader and security headers                     | not started |
-| M-06 | Registration and heartbeat client                  | not started |
+| M-06 | Registration and heartbeat client                  | merged      |
 | M-07 | Capabilities (runs, files, triggers, integrations) | not started |
 
 ## Open points
