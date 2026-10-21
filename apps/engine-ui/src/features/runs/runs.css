@@ -34,25 +34,15 @@
     color: var(--run-diff-meta-text);
 }
 
-/* A run that just finished settles once; reduced motion sets `--motion-seal` to zero, so it does not move. */
+/*
+ * A run that just finished settles once; reduced motion sets `--motion-seal` to zero, so it does not move. Scale only:
+ * fading the badge would drop its text below contrast for the length of the animation.
+ */
 @keyframes ptbk-run-settle {
     0% {
-        opacity: 0.4;
         transform: scale(1.08);
     }
     100% {
-        opacity: 1;
         transform: scale(1);
-    }
-}
-
-/* A running run's badge breathes, more quietly than the shell's live dot; reduced motion sets `--motion-live` to zero. */
-@keyframes ptbk-run-breathe {
-    0%,
-    100% {
-        opacity: 1;
-    }
-    50% {
-        opacity: 0.8;
     }
 }

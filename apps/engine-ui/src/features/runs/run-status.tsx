@@ -59,19 +59,23 @@ export function RunStatusBadge({
         previous.current = status;
     }, [status]);
     const label = cancelling && !TERMINAL.has(status) ? m.run_cancelling() : look.label;
+    // The badge text never fades (it must keep its contrast); a decorative dot beside it carries the breathing.
     return (
         <span
             className={cx(
-                'inline-flex',
-                status === 'running' &&
-                    !cancelling &&
-                    'motion-safe:animate-[ptbk-run-breathe_var(--motion-live)_var(--ease-standard)_infinite]',
+                'inline-flex items-center gap-1.5',
                 settling && 'motion-safe:animate-[ptbk-run-settle_var(--motion-seal)_var(--ease-enter)]',
             )}
             onAnimationEnd={() => {
                 setSettling(false);
             }}
         >
+            {status === 'running' && !cancelling ? (
+                <span
+                    aria-hidden="true"
+                    className="size-2 shrink-0 rounded-pill bg-live motion-safe:animate-[ptbk-breathe_var(--motion-live)_var(--ease-standard)_infinite]"
+                />
+            ) : null}
             <Badge tone={cancelling && !TERMINAL.has(status) ? 'warning' : look.tone} icon={look.icon}>
                 {label}
             </Badge>
