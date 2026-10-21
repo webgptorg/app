@@ -2,7 +2,7 @@
 
 - **Lane:** Mock engine · **Module:** `apps/mock-engine` · **Milestone:** M2
 - **Depends on:** C-06, X-01, X-03, M-02, M-04
-- **Status:** in progress (feat/m-05-ui-loader)
+- **Status:** done (#39)
 - **Spec:** Architecture (UI delivery); Interfaces (draft) 5 and 6; Engine security baseline (Browser headers); Security hardening (1, 5); ADRs: [0003](../../adr/0003-ui-as-signed-bundle.md), [0004](../../adr/0004-mock-engine-and-conformance.md), [0014](../../adr/0014-cryptography.md)
 
 ## Goal

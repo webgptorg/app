@@ -27,12 +27,10 @@ async function control(path: string, body?: unknown): Promise<unknown> {
 
 /** The loader checks once at startup; wait for that check to have installed the pinned release. */
 async function installedUi(): Promise<UiStatus> {
-    const deadline = Date.now() + INSTALL_DEADLINE_MS;
-    for (;;) {
-        const status = (await control('/__mock/ui')) as UiStatus;
-        if (status.active?.version === UI_RELEASES.installed || Date.now() > deadline) return status;
-        await new Promise((resolve) => setTimeout(resolve, 250));
-    }
+    await expect
+        .poll(async () => ((await control('/__mock/ui')) as UiStatus).active?.version, { timeout: INSTALL_DEADLINE_MS })
+        .toBe(UI_RELEASES.installed);
+    return (await control('/__mock/ui')) as UiStatus;
 }
 
 /** Console messages and page errors a CSP or Trusted Types refusal produces, beside the violation events. */
