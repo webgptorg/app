@@ -7,8 +7,17 @@
   "exports": {
     ".": "./src/index.ts"
   },
+  "bin": {
+    "ptbk-conformance": "./dist/ptbk-conformance.js"
+  },
+  "sideEffects": false,
   "scripts": {
-    "typecheck": "tsc --noEmit -p .",
-    "test": "vitest run --passWithNoTests"
+    "build": "bun build bin/ptbk-conformance.ts --target=node --outfile dist/ptbk-conformance.js",
+    "typecheck": "tsc --noEmit -p . && tsc --noEmit -p bin",
+    "test": "bun run build && vitest run --coverage"
+  },
+  "dependencies": {
+    "@ptbk/engine-api": "workspace:*",
+    "@ptbk/protocol": "workspace:*"
   }
 }
