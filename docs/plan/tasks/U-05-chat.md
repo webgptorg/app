@@ -2,7 +2,7 @@
 
 - **Lane:** U · **Module:** `apps/engine-ui` · **Milestone:** M2
 - **Depends on:** U-02
-- **Status:** todo
+- **Status:** in progress (feat/u-05-chat)
 - **Spec:** Security hardening (5 agent output is untrusted, 6 tool calls never become code), Build plan (spike: SSE through the passthrough); ADRs: [0003](../../adr/0003-ui-as-signed-bundle.md)
 
 ## Goal
