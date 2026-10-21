@@ -85,10 +85,8 @@ export const TLS_INSPECTING_PROXY_PORT = 8080;
 export const CAPTURE_MOUNT = '/captures';
 export const RELAY_A_CAPTURE_FILE = 'relay-a.pcap';
 export const MITM_MOUNT = '/mitm';
-export const MITM_FILES = {
-    caCertificate: 'ca-cert.pem',
-    websocketMessages: 'websocket-messages.jsonl',
-} as const;
+/** Written by mitmproxy/record_websockets.py, next to the proxy's CA certificate (`ca-cert.pem`). */
+export const MITM_FILES = { websocketMessages: 'websocket-messages.jsonl' } as const;
 
 /** Resolves to both relays with `relay` first (coredns/Corefile), for tests that need a browser to try it first. */
 export function relayFirstAlias(relay: RelayNode): string {

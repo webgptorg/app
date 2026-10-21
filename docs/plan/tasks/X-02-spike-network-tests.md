@@ -2,7 +2,7 @@
 
 - **Lane:** X · **Module:** `e2e/` · **Milestone:** M1
 - **Depends on:** X-01
-- **Status:** in progress (feat/x-02-network-tests)
+- **Status:** done (#34)
 - **Spec:** Build plan (Spike acceptance criteria), Relay and tunnel (proxy, failover), Interfaces (3 tunnel protocol), Security goals (Confidentiality); ADRs: [0004](../../adr/0004-mock-engine-and-conformance.md)
 
 ## Goal
