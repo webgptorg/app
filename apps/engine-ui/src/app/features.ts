@@ -2,6 +2,7 @@ import { agentsFeature } from '../features/agents/agents-feature';
 import { auditFeature } from '../features/audit/audit-feature';
 import { chatFeature } from '../features/chat/chat-feature';
 import { membersFeature } from '../features/members/members-feature';
+import { runsFeature } from '../features/runs/runs-feature';
 import { secretsFeature } from '../features/secrets/secrets-feature';
 import { securityFeature } from '../features/security/security-feature';
 import { settingsFeature } from '../features/settings/settings-feature';
@@ -14,6 +15,7 @@ import type { FeatureDefinition } from './registry/feature';
 export const FEATURES: readonly FeatureDefinition[] = [
     agentsFeature,
     chatFeature,
+    runsFeature,
     membersFeature,
     securityFeature,
     secretsFeature,

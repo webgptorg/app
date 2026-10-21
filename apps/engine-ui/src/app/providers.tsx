@@ -15,6 +15,8 @@ import { EngineEventsProvider } from './engine-events-context';
 import { LocaleProvider } from './locale';
 import type { AppRouter } from './router';
 import { ThemeProvider } from './theme';
+import { createBrowserTicker, TickerProvider } from './ticker';
+import type { Ticker } from './ticker';
 
 export interface AppProvidersProps {
     readonly engineApi: EngineApiClient;
@@ -23,10 +25,13 @@ export interface AppProvidersProps {
     readonly browser: AppBrowser;
     /** Defaults to the engine's own `GET /events` stream through `engineApi`. */
     readonly engineEvents?: EngineEvents;
+    /** Defaults to the browser's clock, ticking once a second while the page is visible. */
+    readonly ticker?: Ticker;
 }
 
-export function AppProviders({ engineApi, queryClient, router, browser, engineEvents }: AppProvidersProps) {
+export function AppProviders({ engineApi, queryClient, router, browser, engineEvents, ticker }: AppProvidersProps) {
     const defaultEvents = useMemo(() => createEngineEvents({ engineApi }), [engineApi]);
+    const defaultTicker = useMemo(() => createBrowserTicker(), []);
     return (
         <BrowserProvider browser={browser}>
             <ThemeProvider storage={browser.storage} matchMedia={browser.matchMedia}>
@@ -34,11 +39,13 @@ export function AppProviders({ engineApi, queryClient, router, browser, engineEv
                 <LocaleProvider storage={browser.storage}>
                     <EngineApiProvider client={engineApi}>
                         <EngineEventsProvider events={engineEvents ?? defaultEvents}>
-                            <QueryClientProvider client={queryClient}>
-                                <StepUpProvider location={browser.location}>
-                                    <RouterProvider router={router} />
-                                </StepUpProvider>
-                            </QueryClientProvider>
+                            <TickerProvider ticker={ticker ?? defaultTicker}>
+                                <QueryClientProvider client={queryClient}>
+                                    <StepUpProvider location={browser.location}>
+                                        <RouterProvider router={router} />
+                                    </StepUpProvider>
+                                </QueryClientProvider>
+                            </TickerProvider>
                         </EngineEventsProvider>
                     </EngineApiProvider>
                     <Toaster />

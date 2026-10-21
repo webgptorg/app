@@ -50,6 +50,7 @@ describe('app shell', () => {
         ).toEqual(['Work', 'Resources', 'Administration']);
         expect(await sidebarLinks()).toEqual([
             'Agents',
+            'Runs',
             'Files',
             'Members',
             'Security',

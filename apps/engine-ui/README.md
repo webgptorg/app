@@ -1,6 +1,6 @@
 # @ptbk/engine-ui
 
-The full app for engine owners and members: agents, agent creation and editing, chat, security panel, members, passkeys, secrets metadata, audit log.
+The full app for engine owners and members: agents, agent creation and editing, chat, runs, security panel, members, passkeys, secrets metadata, audit log.
 
 It is built into a hashed static bundle, signed and logged as part of a release. The engine downloads it on update, verifies it and serves it from its own origin; we never serve it to browsers ([ADR 0003](../../docs/adr/0003-ui-as-signed-bundle.md)). It talks only to the engine API through `EngineApiClient` from `@ptbk/engine-api`.
 
@@ -52,10 +52,12 @@ A feature (agents, runs, files, members, security …) is a folder under `src/fe
 ```ts
 export const runsFeature = defineFeature({
   id: 'runs',
-  requires: { capability: KNOWN_CAPABILITIES.runs, permission: 'agents.read' },
+  requires: { capability: KNOWN_CAPABILITIES.runs, permission: 'runs.read' },
   nav: { group: 'work', order: 40, label: m.nav_runs, icon: Activity, to: '/runs' },
   agentTabs: [{ ...AGENT_TABS.runs, label: m.agent_tab_runs, to: '/agents/$agentId/runs' }],
-  liveIndicator: { useActiveCount: useActiveRunCount },
+  liveIndicator: { useActiveCount: useRunningCount },
+  agentStatusProvider: { useAgentLiveState: useRunAgentLiveState },
+  eventSync: { useEventSync: useRunEventSync },
 });
 ```
 
@@ -63,7 +65,9 @@ The shell, guards and (later) the command palette and activity feed read these d
 
 Agent detail tabs take their ID and order from `AGENT_TABS` (the order of docs/design/ui.md); the agent page (U-03) renders whatever tabs are visible, offers "Chat" and "Edit" in its header when the `chat` and `book` tabs exist, and never imports a tab's code. A tab route guards itself with `requireFeature(featureId, { agentTab })`, which also checks the tab's own `requires` (`anyPermission` for "any of these"). Until a feature ships its tab route, `/agents/$agentId/$tab` explains a registered but hidden tab ("not available", "no access") and answers "not found" otherwise. `agentOverviewCards` render in order, each inside its own error boundary and suspense fallback. The first visible `agentStatusProvider` supplies agent state; without one, the agents feature reads C-04's draft `GET /agents/{id}/status`.
 
-Change events come from one shared subscription to `GET /events` (`src/app/engine-events.ts`, used through `useEngineEvents()`): it connects while any component listens, resumes with `Last-Event-ID`, backs off when the stream drops, and calls each subscriber's `onReconnect` after a gap so it can refetch what it derived from events.
+Change events come from one shared subscription to `GET /events` (`src/app/engine-events.ts`, used through `useEngineEvents()`): it connects while any component listens, resumes with `Last-Event-ID`, backs off when the stream drops, and calls each subscriber's `onReconnect` after a gap so it can refetch what it derived from events. A feature whose data other screens show (the runs behind agent states and the live indicator) registers `eventSync`, which the shell mounts once for as long as it is on screen; screen-only syncs stay in their route layouts (agents, chat). `activityRenderers` (`kind` exact or `area.*`, with the `v` values they understand) are what the home feed (U-08) renders per item.
+
+Live durations read one shared clock, `useNow()` (`src/app/ticker.tsx`): one interval for the whole app, none while nothing shows a live time or the tab is hidden. Nothing refetches to make time pass, and tests drive it with `createManualTicker()`.
 
 Code checks permissions (`usePermissions().can()`, `<Can>`, `requirePermission()`), never role names; the role is a label. A test fails on any role-name comparison in `src/`.
 

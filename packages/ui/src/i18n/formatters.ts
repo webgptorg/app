@@ -6,6 +6,11 @@ export interface Formatters {
     /** A date and time, e.g. "20 Oct 2026, 14:05". */
     formatDateTime(value: Date): string;
     formatNumber(value: number, options?: Intl.NumberFormatOptions): string;
+    /**
+     * Money from a decimal string (`"0.0042"`) and an ISO 4217 code, formatted exactly: the string never becomes a
+     * float, and its own decimals are kept beyond the currency's usual ones (up to 12).
+     */
+    formatCurrency(amount: string, currency: string): string;
     /** "3 minutes ago", "in 2 days", "now", relative to `now`. */
     formatRelativeTime(value: Date, now: Date): string;
 }
@@ -37,6 +42,18 @@ export function createFormatters(locale: string): Formatters {
         formatDateTime: (value) => dateTime.format(value),
         formatNumber: (value, options) =>
             options === undefined ? number.format(value) : new Intl.NumberFormat(locale, options).format(value),
+        formatCurrency: (amount, currency) => {
+            const decimals = /\.(\d+)$/.exec(amount)?.[1]?.length ?? 0;
+            const usual = new Intl.NumberFormat(locale, { style: 'currency', currency }).resolvedOptions()
+                .maximumFractionDigits;
+            const format = new Intl.NumberFormat(locale, {
+                style: 'currency',
+                currency,
+                maximumFractionDigits: Math.min(12, Math.max(usual ?? 2, decimals)),
+            });
+            // Intl formats a numeric string as the exact decimal it spells (ES2023), with no detour through a double.
+            return format.format(amount as Intl.StringNumericLiteral);
+        },
         formatRelativeTime: (value, now) => {
             const seconds = Math.round((value.getTime() - now.getTime()) / 1000);
             const [unit, size] = RELATIVE_UNITS.find(([, unitSeconds]) => Math.abs(seconds) >= unitSeconds) ?? [

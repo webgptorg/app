@@ -19,7 +19,7 @@ const TIMEOUT_MS = 20_000;
 
 const label = (text: string) => () => text;
 
-/** What U-04 and U-09 to U-12 will register; their routes do not exist yet, so the paths are untyped here. */
+/** What U-04 and U-10 to U-12 will register; their routes do not exist yet, so the paths are untyped here. */
 function tabFeature(
     tab: keyof typeof AGENT_TABS,
     text: string,
@@ -46,7 +46,6 @@ const OTHER_TABS: readonly FeatureDefinition[] = [
         capability: KNOWN_CAPABILITIES.integrations,
         permission: 'integrations.read',
     }),
-    tabFeature('runs', 'Runs', { capability: KNOWN_CAPABILITIES.runs, permission: 'runs.read' }),
     tabFeature('triggers', 'Triggers', { capability: KNOWN_CAPABILITIES.triggers, permission: 'triggers.read' }),
     tabFeature('files', 'Files', { capability: KNOWN_CAPABILITIES.files, permission: 'files.read' }),
 ];
@@ -140,7 +139,7 @@ describe('agent tabs', { timeout: TIMEOUT_MS }, () => {
             ],
         });
         await renderAgent('/agents/agent-001', { features: [...FEATURES, notes] });
-        expect(tabNames()).toEqual(['Overview', 'Chat', 'Notes', 'Settings']);
+        expect(tabNames()).toEqual(['Overview', 'Chat', 'Runs', 'Notes', 'Settings']);
         expect(await screen.findByText('Notes for agent-001')).toBeDefined();
     });
 
@@ -148,7 +147,7 @@ describe('agent tabs', { timeout: TIMEOUT_MS }, () => {
         const { user, router } = await renderAgent();
         const overview = screen.getByRole('tab', { name: 'Overview' });
         overview.focus();
-        await user.keyboard('{ArrowRight}{ArrowRight}');
+        await user.keyboard('{ArrowRight}{ArrowRight}{ArrowRight}');
         const settings = screen.getByRole('tab', { name: 'Settings' });
         expect(document.activeElement).toBe(settings);
         await user.keyboard('{Enter}');
@@ -166,7 +165,8 @@ describe('agent overview', { timeout: TIMEOUT_MS }, () => {
         expect(screen.getByRole('heading', { level: 1, name: 'Agent 003' })).toBeDefined();
         const details = screen.getByRole('region', { name: 'Details' });
         expect(await within(details).findByText('Jana Nováková')).toBeDefined();
-        expect(within(details).getAllByText('Error').length).toBeGreaterThan(0);
+        // With runs@1 the state comes from the agent's runs, and agent-003 has none.
+        expect(within(details).getAllByText('Idle').length).toBeGreaterThan(0);
         expect(within(details).getByText('Private')).toBeDefined();
         expect(within(details).getByText('Handles research notes')).toBeDefined();
         expect(await within(details).findByText('No activity yet')).toBeDefined();
@@ -247,6 +247,9 @@ describe('agent overview', { timeout: TIMEOUT_MS }, () => {
 });
 
 describe('agent live state', { timeout: TIMEOUT_MS }, () => {
+    // The real runs provider would win over the fake one, being registered first.
+    const WITHOUT_RUNS = FEATURES.filter((feature) => feature.id !== 'runs');
+
     function createFakeRunsState(initial: AgentLiveState) {
         let state = initial;
         const listeners = new Set<() => void>();
@@ -274,7 +277,7 @@ describe('agent live state', { timeout: TIMEOUT_MS }, () => {
 
     it('follows the registered provider when the engine advertises runs@1', async () => {
         const runs = createFakeRunsState('working');
-        const { engine } = await renderAgent('/agents/agent-001', { features: [...FEATURES, runs.feature] });
+        const { engine } = await renderAgent('/agents/agent-001', { features: [...WITHOUT_RUNS, runs.feature] });
         const header = agentHeader();
         expect(within(header).getByText('Working')).toBeDefined();
         act(() => {
@@ -287,7 +290,7 @@ describe('agent live state', { timeout: TIMEOUT_MS }, () => {
     it('follows the draft status endpoint and agent.status events without runs@1', async () => {
         const runs = createFakeRunsState('working');
         const { engine } = await renderAgent('/agents/agent-001', {
-            features: [...FEATURES, runs.feature],
+            features: [...WITHOUT_RUNS, runs.feature],
             capabilities: [],
         });
         const header = agentHeader();
@@ -305,7 +308,7 @@ describe('agent live state', { timeout: TIMEOUT_MS }, () => {
 
     it('shows a state from a newer engine as unknown, with its raw value', async () => {
         const runs = createFakeRunsState('sleeping' as AgentLiveState);
-        await renderAgent('/agents/agent-001', { features: [...FEATURES, runs.feature] });
+        await renderAgent('/agents/agent-001', { features: [...WITHOUT_RUNS, runs.feature] });
         expect(within(agentHeader()).getByText('Unknown (sleeping)')).toBeDefined();
     });
 
@@ -405,7 +408,7 @@ describe('agent settings', { timeout: TIMEOUT_MS }, () => {
 
     it('is absent without agents.write and agents.delete, and a deep link says "no access"', async () => {
         await renderAgent('/agents/agent-001/settings', { permissions: allBut('agents.write', 'agents.delete') });
-        expect(tabNames()).toEqual(['Overview', 'Chat']);
+        expect(tabNames()).toEqual(['Overview', 'Chat', 'Runs']);
         expect(await screen.findByRole('heading', { level: 1, name: 'No access' })).toBeDefined();
     });
 

@@ -1,6 +1,7 @@
 import {
     AgentId,
     ChatId,
+    RunId,
     createProblem,
     encodeSseMessage,
     ENGINE_API_PREFIX,
@@ -46,6 +47,7 @@ type Call = (
 const agentId = (match: RegExpExecArray) => AgentId.parse(match[1] ?? '');
 const chatId = (match: RegExpExecArray) => ChatId.parse(match[1] ?? '');
 const messageId = (match: RegExpExecArray) => MessageId.parse(match[2] ?? '');
+const runId = (match: RegExpExecArray) => RunId.parse(match[1] ?? '');
 
 /** The routes the visited pages call, with the success status the contract gives each; anything else answers 404. */
 const ROUTES: readonly (readonly ['GET' | 'POST', RegExp, number, Call])[] = [
@@ -115,9 +117,120 @@ const ROUTES: readonly (readonly ['GET' | 'POST', RegExp, number, Call])[] = [
     ],
     ['GET', /^\/passkeys$/, 200, (api, _, query, __, signal) => api.passkeys.list(Object.fromEntries(query), signal)],
     ['GET', /^\/runs$/, 200, (api, _, query, __, signal) => api.runs.list(Object.fromEntries(query), signal)],
+    ['GET', /^\/runs\/stats$/, 200, (api, _, query, __, signal) => api.runs.stats(Object.fromEntries(query), signal)],
+    ['GET', /^\/runs\/([\w-]+)$/, 200, (api, match, _, __, signal) => api.runs.get(runId(match), signal)],
+    ['POST', /^\/runs\/([\w-]+)\/cancel$/, 202, (api, match, _, __, signal) => api.runs.cancel(runId(match), signal)],
+    ['POST', /^\/runs\/([\w-]+)\/retry$/, 201, (api, match, _, __, signal) => api.runs.retry(runId(match), signal)],
     ['GET', /^\/audit$/, 200, (api, _, query, __, signal) => api.audit.list(Object.fromEntries(query), signal)],
     ['GET', /^\/audit\/verify$/, 200, (api, _, __, ___, signal) => api.audit.verify(signal)],
 ];
+
+/** A running run of Ada whose logs, error-like text and diff carry the hostile samples. */
+export const FAKE_RUN_ID = 'run-hostile';
+/** Agent output in a run: it must stay text in logs and diffs. */
+export const HOSTILE_RUN_TEXT = '<img src=x onerror=alert(1)> <script>alert(1)</script> javascript:alert(1)';
+
+function fakeRuns() {
+    const base = {
+        agentId: FAKE_AGENT_ID,
+        chatId: null,
+        messageId: null,
+        triggerId: null,
+        retryOf: null,
+        createdBy: 'member-owner',
+        cancelRequestedAt: null,
+        runner: 'claude-code',
+        model: 'claude-sonnet-4-5',
+        progress: null,
+        usage: null,
+        error: null,
+        preview: null,
+        toolCalls: [],
+        outputs: { messages: [], files: [], projectChanges: [] },
+        report: { touchedProjects: [], externalSources: [] },
+    };
+    const diff = ['--- a/README.md', '+++ b/README.md', '@@ -1 +1 @@', '-Welcome', `+${HOSTILE_RUN_TEXT}`, ''].join(
+        '\n',
+    );
+    return [
+        {
+            ...base,
+            id: FAKE_RUN_ID,
+            source: 'api' as const,
+            status: 'running' as const,
+            queuedAt: '2026-10-01T11:58:00.000Z',
+            startedAt: '2026-10-01T11:58:30.000Z',
+            completedAt: null,
+            attemptCount: 1,
+            preview: 'Summarise the open pull requests and post a very long status update to the team channel',
+            progress: {
+                title: 'Summarise open pull requests',
+                now: 'Reading pull request 7',
+                next: 'Write the summary',
+                items: [
+                    { id: 'p1', text: 'List open pull requests', status: 'completed' as const },
+                    { id: 'p2', text: 'Read each one', status: 'pending' as const },
+                ],
+            },
+            toolCalls: [
+                {
+                    id: 'tool-1',
+                    name: 'github.list_pull_requests',
+                    state: 'complete' as const,
+                    startedAt: '2026-10-01T11:58:40.000Z',
+                    durationMs: 1_200,
+                    logs: `GET /repos/acme/site/pulls\n${HOSTILE_RUN_TEXT}\n${'x'.repeat(400)}`,
+                    logsTruncated: true,
+                },
+            ],
+            outputs: {
+                messages: [],
+                files: [],
+                projectChanges: [
+                    {
+                        projectName: 'site',
+                        commitHash: 'a'.repeat(40),
+                        changedFiles: [{ path: 'README.md', insertions: 1, deletions: 1 }],
+                        diff,
+                        diffTruncated: false,
+                    },
+                ],
+            },
+        },
+        {
+            ...base,
+            id: 'run-failed',
+            agentId: 'grace',
+            source: 'schedule' as const,
+            status: 'failed' as const,
+            createdBy: null,
+            queuedAt: '2026-10-01T10:00:00.000Z',
+            startedAt: '2026-10-01T10:00:05.000Z',
+            completedAt: '2026-10-01T10:04:00.000Z',
+            attemptCount: 1,
+            preview: 'Write the weekly report',
+            usage: { inputTokens: null, outputTokens: null, durationMs: null, cost: null },
+            error: { code: 'tool-timeout', summary: `The calendar did not answer: ${HOSTILE_RUN_TEXT}` },
+        },
+        {
+            ...base,
+            id: 'run-done',
+            source: 'web' as const,
+            status: 'completed' as const,
+            queuedAt: '2026-09-30T10:00:00.000Z',
+            startedAt: '2026-09-30T10:00:01.000Z',
+            completedAt: '2026-09-30T10:01:00.000Z',
+            attemptCount: 1,
+            preview: 'Show me everything you can render.',
+            usage: {
+                inputTokens: 1200,
+                outputTokens: 800,
+                durationMs: 59_000,
+                cost: { amount: '0.0042', currency: 'USD' },
+            },
+        },
+    ];
+}
 
 /** A target name that must stay text in the audit log. */
 export const HOSTILE_TARGET_NAME = '<img src=x onerror=alert(1)>';
@@ -255,6 +368,7 @@ export async function routeFakeEngineApi(page: Page): Promise<void> {
                 },
             ],
             auditEntries: auditEntries(),
+            runs: fakeRuns(),
             members: [
                 {
                     id: 'member-jana',

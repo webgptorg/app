@@ -153,7 +153,8 @@ describe('changing visibility', { timeout: TIMEOUT_MS }, () => {
 
 describe('starting and stopping', { timeout: TIMEOUT_MS }, () => {
     it('updates the badge once the engine confirms, and reports each outcome', async () => {
-        const { user, engine } = await renderList();
+        // Without runs@1 the badge follows the draft status endpoint that start and stop answer with.
+        const { user, engine } = await renderList(createAgentsEngine({ agentCount: 6, capabilities: [] }));
         // Agent 004 starts idle (index % 4 === 0).
         expect(await within(rowOf('Agent 004')).findByText('Idle')).toBeDefined();
         let confirm: () => void = () => undefined;

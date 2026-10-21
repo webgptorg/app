@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { useBrowser } from '../../app/browser-context';
 import { cx } from '../../app/cx';
 import { m } from '../../paraglide/messages';
+import { FeatureEventSync } from './feature-event-sync';
 import { ShellEngineSwitcher } from './shell-engine-switcher';
 import { ShellTrustMark } from './shell-trust-mark';
 import { LiveIndicator } from './live-indicator';
@@ -25,6 +26,7 @@ export function AppShell() {
     return (
         <div className={cx('flex min-h-dvh', narrow && 'flex-col pt-14')}>
             <SkipLink targetId={MAIN_ID} />
+            <FeatureEventSync />
             {narrow ? <NarrowShell /> : <WideSidebar />}
             <main id={MAIN_ID} tabIndex={-1} className="min-w-0 flex-1 px-4 py-6 outline-none md:px-8 md:py-8">
                 <div className="mx-auto w-full max-w-6xl">

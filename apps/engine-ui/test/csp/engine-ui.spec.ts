@@ -1,6 +1,13 @@
 import { ENGINE_API_PREFIX } from '@ptbk/engine-api';
 
-import { FAKE_AGENT_ID, FAKE_CHAT_ID, HOSTILE_TARGET_NAME, RAW_HEARTBEAT } from './fake-engine-api.ts';
+import {
+    FAKE_AGENT_ID,
+    FAKE_CHAT_ID,
+    FAKE_RUN_ID,
+    HOSTILE_RUN_TEXT,
+    HOSTILE_TARGET_NAME,
+    RAW_HEARTBEAT,
+} from './fake-engine-api.ts';
 import { expect, expectCleanPage, readBuiltIndexHtml, test } from './fixtures.ts';
 
 test.describe('the built bundle under the engine CSP', () => {
@@ -110,6 +117,62 @@ test.describe('the built bundle under the engine CSP', () => {
         page.on('request', (request) => requested.push(request.url()));
         await page.getByRole('button', { name: 'Next page' }).hover();
         await expect.poll(() => requested.some((url) => url.includes('/audit?') && url.includes('cursor='))).toBe(true);
+        expect(await page.evaluate(() => window.__ptbkCspViolations ?? [])).toEqual([]);
+    });
+
+    test('/runs lists runs across agents, restores its filters from the URL and meets the UX checks', async ({
+        page,
+        visit,
+    }) => {
+        const report = await visit('/runs');
+        const table = page.getByRole('table');
+        await expect(table.getByRole('link', { name: 'Summarise open pull requests' })).toBeVisible();
+        await expect(table.getByText('Running', { exact: true })).toBeVisible();
+        expectCleanPage(report);
+
+        const filtered = await visit('/runs?status=failed&source=schedule');
+        await expect(page.getByRole('checkbox', { name: 'Failed' })).toBeChecked();
+        await expect(page.getByRole('combobox', { name: 'Started by' })).toHaveValue('schedule');
+        await expect(page.getByRole('table').getByRole('link', { name: 'Write the weekly report' })).toBeVisible();
+        expectCleanPage(filtered);
+    });
+
+    test(`/agents/${FAKE_AGENT_ID}/runs shows only the agent's runs and meets the UX checks`, async ({
+        page,
+        visit,
+    }) => {
+        const report = await visit(`/agents/${FAKE_AGENT_ID}/runs`);
+        const table = page.getByRole('table');
+        await expect(table.getByRole('link', { name: 'Summarise open pull requests' })).toBeVisible();
+        await expect(table.getByRole('link', { name: 'Write the weekly report' })).toHaveCount(0);
+        expectCleanPage(report);
+    });
+
+    test(`/runs/${FAKE_RUN_ID} keeps agent output inert, keeps Cancel in reach at 360 px and meets the UX checks`, async ({
+        page,
+        visit,
+    }) => {
+        const report = await visit(`/runs/${FAKE_RUN_ID}`);
+        await expect(page.getByRole('heading', { level: 1, name: 'Summarise open pull requests' })).toBeVisible();
+        await page.getByText('github.list_pull_requests').click();
+        const tools = page.getByRole('region', { name: 'Tool calls' });
+        await expect(tools.locator('pre')).toContainText(HOSTILE_RUN_TEXT);
+        const diff = page.getByRole('region', { name: 'Diff of site' });
+        await expect(diff.getByText(`+${HOSTILE_RUN_TEXT}`, { exact: true })).toBeVisible();
+        expect(await page.locator('main img, main script, main iframe, main object, main embed').count()).toBe(0);
+        expect(await page.locator('main a[href^="javascript:"]').count()).toBe(0);
+        expectCleanPage(report);
+
+        await page.setViewportSize({ width: 360, height: 740 });
+        await page.mouse.wheel(0, 400);
+        const cancel = page.getByRole('button', { name: 'Cancel run' });
+        await expect(cancel).toBeInViewport();
+        expect(
+            await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth),
+        ).toBeLessThanOrEqual(0);
+        await cancel.focus();
+        await page.keyboard.press('Enter');
+        await expect(page.getByText('Cancelling…').first()).toBeVisible();
         expect(await page.evaluate(() => window.__ptbkCspViolations ?? [])).toEqual([]);
     });
 

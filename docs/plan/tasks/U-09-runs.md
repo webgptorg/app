@@ -2,7 +2,7 @@
 
 - **Lane:** U · **Module:** `apps/engine-ui` · **Milestone:** M2
 - **Depends on:** U-02, C-07
-- **Status:** todo
+- **Status:** done (#50)
 - **Spec:** Security hardening (preamble "None of this limits the owner", 5 agent output is untrusted, 6 tool calls never become code), Enterprise-ready engine architecture (Authorisation); ADRs: [0015](../../adr/0015-ui-architecture-and-design-system.md), [0016](../../adr/0016-engine-capabilities.md)
 
 ## Goal
