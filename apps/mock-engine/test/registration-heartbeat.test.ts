@@ -170,7 +170,7 @@ describe('registration and heartbeat at startup', () => {
             'getSecurityOverview',
         );
         expect(security.lastHeartbeat).toEqual({ sentAt: '2026-10-20T10:00:00Z', body, signature: first?.signature });
-        engine.runtime.reset({ seed: 3, scenario: 'empty' });
+        await engine.runtime.reset({ seed: 3, scenario: 'empty' });
         const afterReset: { lastHeartbeat: { body: string } } = await read(engine, 'getSecurityOverview');
         expect(afterReset.lastHeartbeat.body).toBe(body);
         expect(w.logger.text()).not.toContain(code);

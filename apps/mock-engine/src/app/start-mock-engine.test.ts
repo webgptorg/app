@@ -13,7 +13,7 @@ import {
     encodeBase64Url,
     encodeFrame,
 } from '@ptbk/protocol';
-import { ENGINE_API_ROUTES, MemberId, OWNER_PERMISSIONS, SessionId } from '@ptbk/engine-api';
+import { ENGINE_API_ROUTES, KNOWN_CAPABILITIES, MemberId, OWNER_PERMISSIONS, SessionId } from '@ptbk/engine-api';
 import { describe, expect, it } from 'vitest';
 
 import { createMemoryIdentityStore } from '../adapters/memory-identity-store';
@@ -288,7 +288,7 @@ describe('startMockEngine', () => {
                 hostname: started.engine.hostname,
                 mode: 'tunnel',
                 dashboardUrl: null,
-                capabilities: [],
+                capabilities: Object.values(KNOWN_CAPABILITIES),
             });
             interface Security {
                 relays: { hostname: string; status: string }[];
@@ -322,8 +322,8 @@ describe('startMockEngine', () => {
             const started = await start();
             await handshake(started, 0);
             started.engine.runtime.setDashboardUrl('https://app.ptbk.test/engines/x');
-            started.engine.runtime.reset({ seed: 7, scenario: 'empty' });
-            expect(started.engine.runtime.current()).toEqual({ seed: 7, scenario: 'empty' });
+            await started.engine.runtime.reset({ seed: 7, scenario: 'empty' });
+            expect(started.engine.runtime.current()).toMatchObject({ seed: 7, scenario: 'empty' });
             const engine: { dashboardUrl: string } = await read(started, 'getEngine');
             expect(engine.dashboardUrl).toBe('https://app.ptbk.test/engines/x');
             const security: { relays: { hostname: string; status: string }[] } = await read(

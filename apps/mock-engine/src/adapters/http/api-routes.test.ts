@@ -13,8 +13,8 @@ afterEach(async () => {
 });
 
 /** An owner on a core with every capability, so capability routes answer too. */
-function owner() {
-    harness = createApiHarness({ core: createInMemoryEngineCore() });
+async function owner() {
+    harness = await createApiHarness({ core: createInMemoryEngineCore() });
     const cookie = harness.signIn({ memberId: 'member-owner' });
     return { fetch: harness.fetch(cookie), harness };
 }
@@ -38,7 +38,7 @@ describe('engine API routes', () => {
     });
 
     it('route literal segments before parameters', async () => {
-        const { fetch } = owner();
+        const { fetch } = await owner();
         const validate = await fetch(url('/agents/validate'), {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
@@ -53,7 +53,7 @@ describe('engine API routes', () => {
     });
 
     it('refuses a JSON body over its cap with 413 before reading it all', async () => {
-        const { fetch } = owner();
+        const { fetch } = await owner();
         const response = await fetch(url('/agents/validate'), {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
@@ -63,7 +63,7 @@ describe('engine API routes', () => {
     });
 
     it('refuses an invalid or over-long path parameter with 400 on the parameter', async () => {
-        const { fetch } = owner();
+        const { fetch } = await owner();
         for (const id of ['x'.repeat(65), 'bad%20id']) {
             const refused = await problem(await fetch(url(`/agents/${id}`)));
             expect(refused).toMatchObject({ status: 400, code: 'validation-failed' });
@@ -72,7 +72,7 @@ describe('engine API routes', () => {
     });
 
     it('refuses unknown query parameters and passes Last-Event-ID on to the stream', async () => {
-        const { fetch, harness: running } = owner();
+        const { fetch, harness: running } = await owner();
         const refused = await problem(await fetch(url('/agents?surprise=1')));
         expect(refused).toMatchObject({ status: 400, code: 'validation-failed' });
         expect(refused.errors?.[0]?.path).toBe('query');

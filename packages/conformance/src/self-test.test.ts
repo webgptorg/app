@@ -41,6 +41,13 @@ const CAUGHT_BY: Readonly<Record<Defect, string>> = {
     'missing-audit-entry': 'engine-api.audit.mutations-recorded',
     'wrong-audit-member': 'engine-api.audit.mutations-recorded',
     'wrong-problem-content-type': 'engine-api.schemas.problems',
+    'cancel-after-finish-accepted': 'engine-api.runs.cancel-idempotent',
+    'retry-from-completed-accepted': 'engine-api.runs.retry-only-failed',
+    'non-idempotent-pause': 'engine-api.triggers.pause-resume-idempotent',
+    'infected-file-downloadable': 'engine-api.files.infected-refused',
+    'secret-canary-in-integration': 'engine-api.integrations.secrets-never-returned',
+    'invalid-activity-item': 'engine-api.activity.known-items',
+    'missing-permission-check-new-route': 'engine-api.permissions.mutations-denied',
 };
 
 describe('the suite against an in-process engine', () => {
@@ -72,6 +79,21 @@ describe('the suite against an in-process engine', () => {
         expect(results['engine-api.cross-member.private-resources']).toBe(
             'skip: the target reports no resources private to one member',
         );
+        expect(Object.values(results).some((outcome) => outcome.startsWith('fail'))).toBe(false);
+        const capabilityChecks = Object.entries(results).filter(([id]) =>
+            /^engine-api\.(runs|files|triggers|integrations)\./.test(id),
+        );
+        expect(capabilityChecks.length).toBeGreaterThan(10);
+        for (const [id, outcome] of capabilityChecks) expect(outcome, id).toBe('skip: capability-not-advertised');
+    });
+
+    it('skips only the capabilities the target does not advertise', async () => {
+        const results = outcomes(await run({ capabilities: [{ id: 'runs', version: 1 }] }));
+        expect(results['engine-api.runs.cancel-idempotent']).toBe('pass');
+        expect(results['engine-api.files.download-attachment']).toBe('skip: capability-not-advertised');
+        expect(results['engine-api.triggers.paging']).toBe('skip: capability-not-advertised');
+        expect(results['engine-api.integrations.paging']).toBe('skip: capability-not-advertised');
+        expect(results['engine-api.capabilities.unadvertised-404']).toBe('pass');
         expect(Object.values(results).some((outcome) => outcome.startsWith('fail'))).toBe(false);
     });
 

@@ -49,6 +49,8 @@ describe('parseMockEngineConfig', () => {
             certificateSource: { kind: 'dev-ca' },
             logLevel: 'info',
             ...DEFAULT_MOCK_SETTINGS,
+            // Tests keep the simulation paused; a real engine runs it unless told otherwise.
+            simulation: { mode: 'running', speed: 1 },
         });
         expect(Object.isFrozen(config)).toBe(true);
         expect(Object.isFrozen(config.relays)).toBe(true);
@@ -511,6 +513,35 @@ describe('parseIdentityConfig', () => {
             expect(problems.length).toBeGreaterThan(0);
             expect(problems.every((problem) => problem.startsWith(`${name}: `))).toBe(true);
             if (text.length > 3) expect(problems.join(' ')).not.toContain(text);
+        });
+
+        it('reads the capabilities and the simulation settings (M-07)', () => {
+            expect(parseMockEngineConfig(BASE)).toMatchObject({
+                capabilities: ['runs', 'files', 'triggers', 'integrations'],
+                simulation: { mode: 'running', speed: 1 },
+            });
+            expect(
+                parseMockEngineConfig({
+                    ...BASE,
+                    MOCK_CAPABILITIES: ' runs , files,runs',
+                    MOCK_SIMULATION: 'paused',
+                    MOCK_SIMULATION_SPEED: '60.5',
+                }),
+            ).toMatchObject({ capabilities: ['runs', 'files'], simulation: { mode: 'paused', speed: 60.5 } });
+            expect(parseMockEngineConfig({ ...BASE, MOCK_CAPABILITIES: 'none' }).capabilities).toEqual([]);
+        });
+
+        it.each([
+            ['MOCK_CAPABILITIES', 'runs,chats'],
+            ['MOCK_CAPABILITIES', 'runs@1'],
+            ['MOCK_SIMULATION', 'fast'],
+            ['MOCK_SIMULATION_SPEED', '0'],
+            ['MOCK_SIMULATION_SPEED', '10000'],
+            ['MOCK_SIMULATION_SPEED', '1e3'],
+        ])('refuses %s=%s', (name, text) => {
+            const problems = problemsOf({ ...BASE, [name]: text });
+            expect(problems.length).toBeGreaterThan(0);
+            expect(problems.every((problem) => problem.startsWith(`${name}: `))).toBe(true);
         });
 
         it('refuses the control listener and dev login in production', () => {

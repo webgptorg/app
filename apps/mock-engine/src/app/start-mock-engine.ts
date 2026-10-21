@@ -47,6 +47,7 @@ import type { RelayLink, RelayLinkState, TunnelOfferConfig } from '../domain/tun
 import { createRelayLink } from '../domain/tunnel/relay-link';
 import type { EngineRuntime } from '../domain/state/engine-runtime';
 import { createEngineRuntime } from '../domain/state/engine-runtime';
+import { capabilitiesFor } from '../domain/state/capabilities';
 import { createSeededSequence, hashSeed } from '../domain/state/seed-random';
 import type { RelayTarget } from '../domain/tunnel/relay-target';
 import { relayTargetOf } from '../domain/tunnel/relay-target';
@@ -185,12 +186,19 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
                   signal: new AbortController().signal,
               });
     const relays = relaysToDial(config, registration);
-    const runtime = createEngineRuntime({
+    const faults = createFaultSettings(config.faults);
+    const runtime = await createEngineRuntime({
         seed: config.seed,
         scenario: config.scenario,
         epoch: config.seedEpoch,
         identity: { engineId: identity.engineId, hostname, mode: config.mode, version: config.engineVersion },
         clock: deps.clock,
+        capabilities: capabilitiesFor(config.capabilities),
+        simulation: config.simulation,
+        faults: () => faults.plan(),
+        onSimulationError: (error) => {
+            logger.error('simulation.error', { problem: error instanceof Error ? error.name : 'unknown' });
+        },
     });
     if (registration !== null) runtime.setDashboardUrl(registration.dashboardUrl);
     const heartbeat =
@@ -218,7 +226,6 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
     runtime.onReset(() => {
         sessions.clear();
     });
-    const faults = createFaultSettings(config.faults);
     const ui = configuredUiLoader(config, deps, runtime);
     const server =
         deps.certificates === undefined
@@ -321,6 +328,7 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
             };
         },
         async close() {
+            runtime.simulation().stop();
             await Promise.all([heartbeat?.stop(), ui?.stop(), ...links.map((link) => link.stop())]);
             await control?.close();
             server?.close();

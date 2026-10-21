@@ -14,9 +14,9 @@ afterEach(async () => {
     harness = undefined;
 });
 
-function start(options: ApiHarnessOptions = {}): { harness: ApiHarness; clock: FakeClock } {
+async function start(options: ApiHarnessOptions = {}): Promise<{ harness: ApiHarness; clock: FakeClock }> {
     const clock = createFakeClock(Date.now());
-    harness = createApiHarness({ clock, devLogin: true, ...options });
+    harness = await createApiHarness({ clock, devLogin: true, ...options });
     return { harness, clock };
 }
 
@@ -50,7 +50,7 @@ describe('cross-site requests', () => {
         ['no Origin', { 'sec-fetch-site': 'same-origin' }],
         ['no Fetch Metadata', { origin: HARNESS_ORIGIN }],
     ])('refuses a POST with %s with 403 before anything else runs', async (_name, headers) => {
-        const { harness: engine } = start();
+        const { harness: engine } = await start();
         const cookie = engine.signIn({ memberId: engine.ownerId() });
         const fetch = engine.rawFetch();
         for (const path of ['/api/v1/folders', '/nowhere', SIGN_IN_PATH]) {
@@ -67,7 +67,7 @@ describe('cross-site requests', () => {
     });
 
     it('accepts a same-origin POST and a Sec-Fetch-Site of none, and never checks GET', async () => {
-        const { harness: engine } = start();
+        const { harness: engine } = await start();
         const cookie = engine.signIn({ memberId: engine.ownerId() });
         const fetch = engine.rawFetch();
         for (const site of ['same-origin', 'none']) {
@@ -84,7 +84,7 @@ describe('cross-site requests', () => {
 
 describe('anonymous requests', () => {
     it('get 401 problem+json on the API and nothing else', async () => {
-        const { harness: engine } = start();
+        const { harness: engine } = await start();
         const response = await engine.fetch(null)(api('/agents'));
         expect(response.status).toBe(401);
         expect(await problemOf(response)).toMatchObject({ code: 'unauthenticated' });
@@ -93,7 +93,7 @@ describe('anonymous requests', () => {
     });
 
     it('are sent to the sign-in page for documents', async () => {
-        const { harness: engine } = start();
+        const { harness: engine } = await start();
         const response = await engine.fetch(null)(`${HARNESS_ORIGIN}${STEP_UP_PATH}`, { redirect: 'manual' });
         expect(response.status).toBe(303);
         expect(response.headers.get('location')).toBe(SIGN_IN_PATH);
@@ -101,7 +101,7 @@ describe('anonymous requests', () => {
     });
 
     it('have an unknown or malformed cookie cleared', async () => {
-        const { harness: engine } = start();
+        const { harness: engine } = await start();
         for (const cookie of [`${SESSION_COOKIE_NAME}=${'a'.repeat(22)}`, `${SESSION_COOKIE_NAME}=short`]) {
             const response = await engine.fetch(cookie)(api('/me'));
             expect(response.status).toBe(401);
@@ -114,7 +114,7 @@ describe('anonymous requests', () => {
 
 describe('sessions', () => {
     it('expire after the idle timeout', async () => {
-        const { harness: engine, clock } = start();
+        const { harness: engine, clock } = await start();
         const cookie = engine.signIn({ memberId: engine.ownerId() });
         const fetch = engine.fetch(cookie);
         expect((await fetch(api('/me'))).status).toBe(200);
@@ -128,7 +128,7 @@ describe('sessions', () => {
     });
 
     it('end when the session is revoked through the API', async () => {
-        const { harness: engine } = start();
+        const { harness: engine } = await start();
         const owner = engine.fetch(engine.signIn({ memberId: engine.ownerId() }));
         const member = memberWith(engine, 'member');
         const memberCookie = engine.signIn({ memberId: member.id });
@@ -143,7 +143,7 @@ describe('sessions', () => {
     });
 
     it('end when the member is removed, and a role change applies on the next request', async () => {
-        const { harness: engine } = start();
+        const { harness: engine } = await start();
         const owner = engine.fetch(engine.signIn({ memberId: engine.ownerId() }));
         const [first, second] = engine
             .core()
@@ -165,7 +165,7 @@ describe('sessions', () => {
     });
 
     it('name the session member and the tunnel client IP in audit entries', async () => {
-        const { harness: engine } = start();
+        const { harness: engine } = await start();
         const admin = memberWith(engine, 'admin');
         const fetch = engine.fetch(engine.signIn({ memberId: admin.id }), '203.0.113.9');
         const me = (await (await fetch(api('/me'))).json()) as { memberId: string };
@@ -186,7 +186,7 @@ describe('sessions', () => {
     });
 
     it('sign out: the cookie is cleared and the engine no longer lists the session', async () => {
-        const { harness: engine } = start();
+        const { harness: engine } = await start();
         const cookie = engine.signIn({ memberId: engine.ownerId() });
         const before = engine.core().controller.inspect().counts.sessions;
         const response = await engine.fetch(cookie)(`${HARNESS_ORIGIN}/auth/sign-out`, {
@@ -201,7 +201,7 @@ describe('sessions', () => {
     });
 
     it('need a fresh step-up for step-up routes, which the dev form gives', async () => {
-        const { harness: engine, clock } = start();
+        const { harness: engine, clock } = await start();
         const fetch = engine.fetch(engine.signIn({ memberId: engine.ownerId() }));
         const setPolicy = () =>
             fetch(api('/settings/update-policy'), {
@@ -228,7 +228,7 @@ describe('sessions', () => {
 
 describe('dev login', () => {
     it('lists the members and signs one in with a __Host- cookie', async () => {
-        const { harness: engine } = start();
+        const { harness: engine } = await start();
         engine.core().controller.addMember({
             id: 'member-quote',
             displayName: `O'Brien <b>`,
@@ -272,7 +272,7 @@ describe('dev login', () => {
     });
 
     it('refuses an unknown member', async () => {
-        const { harness: engine } = start();
+        const { harness: engine } = await start();
         const response = await engine.fetch(null)(`${HARNESS_ORIGIN}${SIGN_IN_PATH}`, {
             method: 'POST',
             headers: { 'content-type': 'application/x-www-form-urlencoded' },
@@ -283,7 +283,7 @@ describe('dev login', () => {
     });
 
     it('does not exist when disabled', async () => {
-        const { harness: engine } = start({ devLogin: false });
+        const { harness: engine } = await start({ devLogin: false });
         const page = await engine.fetch(null)(`${HARNESS_ORIGIN}${SIGN_IN_PATH}`);
         expect(await page.text()).toContain('disabled');
         const response = await engine.fetch(null)(`${HARNESS_ORIGIN}${SIGN_IN_PATH}`, {

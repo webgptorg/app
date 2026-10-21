@@ -115,10 +115,6 @@ function expectDecision(
     result: { readonly status: number; readonly body: Record<string, unknown> | null },
 ): void {
     const label = `${route.id} -> ${String(result.status)}`;
-    if (route.capability !== undefined) {
-        expect(result.body?.['code'], label).toBe('capability-not-supported');
-        return;
-    }
     if (route.permission === null || permissions.has(route.permission)) {
         expect(result.status, label).not.toBe(403);
         expect(result.status, label).not.toBe(401);
@@ -138,8 +134,8 @@ const memberOf = (role: (typeof ROLES)[number]): string => {
     return found.id;
 };
 
-beforeAll(() => {
-    harness = createApiHarness({ rateLimiter: { consume: () => ({ kind: 'allowed' }) } });
+beforeAll(async () => {
+    harness = await createApiHarness({ rateLimiter: { consume: () => ({ kind: 'allowed' }) } });
 });
 
 afterAll(async () => {
@@ -149,19 +145,29 @@ afterAll(async () => {
 });
 
 describe('authorisation matrix', () => {
-    it.each(ROLES)('gives %s exactly the routes its role holds, and none of the capability routes', async (role) => {
+    it.each(ROLES)('gives %s exactly the routes its role holds, capability routes included', async (role) => {
         const cookie = harness.signIn({ memberId: memberOf(role) });
         const permissions = new Set(ROLE_PERMISSIONS[role]);
+        expect(ENGINE_API_ROUTE_LIST.filter((route) => route.capability !== undefined).length).toBeGreaterThan(25);
         for (const route of ENGINE_API_ROUTE_LIST)
             expectDecision(route, permissions, await call(harness, cookie, route));
     });
 
-    it('allows a session with an explicit permission set exactly the routes whose permission is in it', async () => {
-        const set: Permission[] = ['agents.read', 'secrets.read'];
-        const cookie = harness.signIn({ memberId: memberOf('admin'), permissions: set });
-        for (const route of ENGINE_API_ROUTE_LIST)
-            expectDecision(route, new Set(set), await call(harness, cookie, route));
-    });
+    it.each<[string, Permission[]]>([
+        ['core reads', ['agents.read', 'secrets.read']],
+        ['run control without reading triggers', ['agents.read', 'runs.read', 'runs.control', 'files.read']],
+        [
+            'trigger and integration managers',
+            ['triggers.read', 'triggers.manage', 'integrations.manage', 'files.write'],
+        ],
+    ])(
+        'allows a session with an explicit permission set (%s) exactly the routes whose permission is in it',
+        async (_, set) => {
+            const cookie = harness.signIn({ memberId: memberOf('admin'), permissions: set });
+            for (const route of ENGINE_API_ROUTE_LIST)
+                expectDecision(route, new Set(set), await call(harness, cookie, route));
+        },
+    );
 
     it('lets secrets.read list secret metadata but write nothing', async () => {
         const cookie = harness.signIn({ memberId: memberOf('member'), permissions: ['secrets.read'] });
@@ -213,10 +219,19 @@ describe('order of checks', () => {
     });
 
     it('answers an unadvertised capability route with 404 even when the input is invalid', async () => {
-        const cookie = harness.signIn({ memberId: memberOf('owner') });
-        const result = await call(harness, cookie, ENGINE_API_ROUTES.createTrigger, {}, { surprise: true });
-        expect(result.status).toBe(404);
-        expect(result.body?.['code']).toBe('capability-not-supported');
+        const runsOnly = await createApiHarness({ capabilities: ['runs'] });
+        try {
+            const owner = runsOnly.signIn({ memberId: runsOnly.ownerId() });
+            const result = await call(runsOnly, owner, ENGINE_API_ROUTES.createTrigger, {}, { surprise: true });
+            expect(result.status).toBe(404);
+            expect(result.body?.['code']).toBe('capability-not-supported');
+            const viewer = runsOnly.signIn({ memberId: runsOnly.ownerId(), permissions: ['agents.read'] });
+            expect((await call(runsOnly, viewer, ENGINE_API_ROUTES.deleteFile)).body?.['code']).toBe(
+                'capability-not-supported',
+            );
+        } finally {
+            await runsOnly.close();
+        }
     });
 });
 

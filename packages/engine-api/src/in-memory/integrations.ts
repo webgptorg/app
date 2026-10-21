@@ -1,4 +1,6 @@
-import type { Integration, SecretRef } from '../capabilities/integrations';
+import type { ActivityActor } from '../capabilities/activity';
+import { Integration, IntegrationStatus } from '../capabilities/integrations';
+import type { SecretRef } from '../capabilities/integrations';
 import type { AgentId } from '../common';
 import { IntegrationId } from '../common';
 import { fail, invalid, liveAgent, memberActor, notFound, ok, page, recordActivity, sortBy, time } from './kit';
@@ -19,24 +21,38 @@ function resolveSecrets(ctx: EngineContext, names: readonly string[], agentId: A
     });
 }
 
-/** The in-memory engine cannot reach anything, so a connection is healthy exactly when its secrets resolve. */
-function connect(integration: Integration, secretRefs: readonly SecretRef[]): Integration {
+/** Missing secrets need attention first; with every secret resolved, the engine's probe tests the connection. */
+function connect(ctx: EngineContext, integration: Integration, secretRefs: readonly SecretRef[]): Integration {
     const unresolved = secretRefs.filter(({ state }) => state !== 'resolved').map(({ name }) => name);
+    if (unresolved.length > 0) {
+        return {
+            ...integration,
+            secretRefs: [...secretRefs],
+            status: 'needs-attention',
+            statusDetail: `Secrets not available: ${unresolved.join(', ')}.`,
+        };
+    }
+    const probe = ctx.checks.probeIntegration({ ...integration, secretRefs: [...secretRefs] });
     return {
         ...integration,
         secretRefs: [...secretRefs],
-        status: unresolved.length === 0 ? 'connected' : 'needs-attention',
-        statusDetail: unresolved.length === 0 ? null : `Secrets not available: ${unresolved.join(', ')}.`,
+        status: probe.status,
+        statusDetail: probe.status === 'connected' ? null : probe.statusDetail.slice(0, 1024),
     };
 }
 
-function save(ctx: HandlerContext, integration: Integration, previous: Integration | undefined): Integration {
+function save(
+    ctx: EngineContext,
+    integration: Integration,
+    previous: Integration | undefined,
+    actor: ActivityActor,
+): Integration {
     ctx.state.integrations.set(integration.id, integration);
     ctx.publish({ type: 'integration.changed', integrationId: integration.id, agentId: integration.agentId });
     if (integration.status !== previous?.status) {
         const ref = {
             agentId: integration.agentId,
-            actor: memberActor(ctx),
+            actor,
             integrationId: integration.id,
             name: integration.name,
         };
@@ -65,8 +81,30 @@ function reconnect(ctx: HandlerContext, integrationId: string, force: boolean): 
     const integration = result.data;
     if (integration.status === 'disconnected' && !force) return ok(integration);
     const names = integration.secretRefs.map(({ name }) => name);
-    const checked = connect({ ...integration, updatedAt: ctx.now() }, resolveSecrets(ctx, names, integration.agentId));
-    return ok(save(ctx, checked, integration));
+    const checked = connect(
+        ctx,
+        { ...integration, updatedAt: ctx.now() },
+        resolveSecrets(ctx, names, integration.agentId),
+    );
+    return ok(save(ctx, checked, integration, memberActor(ctx)));
+}
+
+/** What the engine noticed on its own, e.g. a token that expired or a server that went away. */
+export function setIntegrationStatus(
+    ctx: EngineContext,
+    integrationId: string,
+    input: { readonly status: IntegrationStatus; readonly statusDetail?: string | null },
+): Integration {
+    const previous = ctx.state.integrations.get(integrationId);
+    if (!previous) throw new Error(`No integration ${integrationId}`);
+    const status = IntegrationStatus.parse(input.status);
+    const updated = Integration.parse({
+        ...previous,
+        status,
+        statusDetail: status === 'connected' ? null : (input.statusDetail ?? null),
+        updatedAt: ctx.now(),
+    });
+    return save(ctx, updated, previous, { kind: 'system' });
 }
 
 export const INTEGRATION_HANDLERS: Pick<
@@ -125,7 +163,8 @@ export const INTEGRATION_HANDLERS: Pick<
                       scopes: ['contents:read'],
                       config: { provider: body.provider, repository: body.repository },
                   };
-        return ok(save(ctx, connect(integration, resolveSecrets(ctx, body.secretNames ?? [], agentId)), undefined));
+        const connected = connect(ctx, integration, resolveSecrets(ctx, body.secretNames ?? [], agentId));
+        return ok(save(ctx, connected, undefined, memberActor(ctx)));
     },
     connectCalendar: ({ body }) => ok({ redirectPath: `/oauth/calendar/${body.provider}/start` }),
     getIntegration: ({ params }, ctx) => found(ctx, params.integrationId),
@@ -149,9 +188,10 @@ export const INTEGRATION_HANDLERS: Pick<
         }
         if (body.secretNames !== undefined) {
             const secretRefs = resolveSecrets(ctx, body.secretNames, updated.agentId);
-            updated = updated.status === 'disconnected' ? { ...updated, secretRefs } : connect(updated, secretRefs);
+            updated =
+                updated.status === 'disconnected' ? { ...updated, secretRefs } : connect(ctx, updated, secretRefs);
         }
-        return ok(save(ctx, updated, previous));
+        return ok(save(ctx, updated, previous, memberActor(ctx)));
     },
     deleteIntegration: ({ params }, ctx) => {
         const result = found(ctx, params.integrationId);
@@ -179,6 +219,7 @@ export const INTEGRATION_HANDLERS: Pick<
                 ctx,
                 { ...integration, status: 'disconnected', statusDetail: null, updatedAt: ctx.now() },
                 integration,
+                memberActor(ctx),
             ),
         );
     },

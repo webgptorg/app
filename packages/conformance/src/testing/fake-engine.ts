@@ -18,6 +18,13 @@ export const DEFECTS = [
     'missing-audit-entry',
     'wrong-audit-member',
     'wrong-problem-content-type',
+    'cancel-after-finish-accepted',
+    'retry-from-completed-accepted',
+    'non-idempotent-pause',
+    'infected-file-downloadable',
+    'secret-canary-in-integration',
+    'invalid-activity-item',
+    'missing-permission-check-new-route',
 ] as const;
 export type Defect = (typeof DEFECTS)[number];
 
@@ -75,6 +82,30 @@ export async function createFakeEngine(options: FakeEngineOptions = {}): Promise
     const baseUrl = new URL(`https://${hostname}`);
 
     const demo = createDemoSeed(now);
+    // A schedule that already ended, so resuming one can be tried.
+    const ended = {
+        trigger: {
+            id: 'trigger-fake-ended',
+            agentId: 'agent-ada',
+            name: 'Launch announcement',
+            kind: 'schedule' as const,
+            lifecycle: 'ended' as const,
+            endedReason: 'completed' as const,
+            lastFiredAt: at(120),
+            nextFireAt: null,
+            createdBy: OWNER,
+            createdAt: at(600),
+            updatedAt: at(120),
+            config: {
+                recurrence: { kind: 'once' as const, at: at(120) },
+                startsAt: at(600),
+                endsAt: null,
+                maxRunCount: null,
+                runCount: 1,
+                message: 'Announce the launch.',
+            },
+        },
+    };
     const spares = Array.from(
         { length: SPARE_MEMBERS },
         (_, index) => `member-fake-${String(index + 1).padStart(3, '0')}`,
@@ -103,6 +134,7 @@ export async function createFakeEngine(options: FakeEngineOptions = {}): Promise
                 })),
             ),
             sessions: [],
+            triggers: [...(demo.triggers ?? []), ended],
         },
         ...(options.capabilities === undefined ? {} : { capabilities: options.capabilities }),
         authorizer: OWNERSHIP,
@@ -150,7 +182,7 @@ export async function createFakeEngine(options: FakeEngineOptions = {}): Promise
         return token;
     }
 
-    const defect = createDefect(options.defect, actors);
+    const defect = createDefect(options.defect, actors, core);
     const answer = async (request: Request): Promise<Response> => {
         const url = new URL(request.url);
         if (!url.pathname.startsWith(`${ENGINE_API_PREFIX}/`)) return problem('not-found');
@@ -210,7 +242,11 @@ interface DefectHooks {
 }
 
 /** The hooks that make the fake break the contract in exactly one way. */
-function createDefect(defect: Defect | undefined, actors: ReadonlyMap<string, Actor>): DefectHooks {
+function createDefect(
+    defect: Defect | undefined,
+    actors: ReadonlyMap<string, Actor>,
+    core: InMemoryEngineCore,
+): DefectHooks {
     const path = (request: Request): string => new URL(request.url).pathname.slice(ENGINE_API_PREFIX.length);
     const is = (request: Request, method: string, pattern: RegExp): boolean =>
         request.method === method && pattern.test(path(request));
@@ -335,6 +371,105 @@ function createDefect(defect: Defect | undefined, actors: ReadonlyMap<string, Ac
                                 : entry,
                         ),
                     ),
+            };
+        case 'cancel-after-finish-accepted':
+            return {
+                ...hooks,
+                response: (request, response) => {
+                    const runId = /^\/runs\/([^/]+)\/cancel$/.exec(path(request))?.[1];
+                    const run = core.controller.findRuns().find(({ id }) => id === runId);
+                    if (request.method !== 'POST' || response.status !== 409 || run === undefined) {
+                        return Promise.resolve(response);
+                    }
+                    return Promise.resolve(
+                        Response.json({ ...run, cancelRequestedAt: run.completedAt }, { status: 202 }),
+                    );
+                },
+            };
+        case 'retry-from-completed-accepted':
+            return {
+                ...hooks,
+                response: (request, response) => {
+                    const runId = /^\/runs\/([^/]+)\/retry$/.exec(path(request))?.[1];
+                    const run = runId === undefined ? undefined : core.controller.getRun(runId);
+                    if (request.method !== 'POST' || response.status !== 409 || run === undefined) {
+                        return Promise.resolve(response);
+                    }
+                    const retry = core.controller.startRun({ agentId: run.agentId, source: 'api', retryOf: run.id });
+                    return Promise.resolve(Response.json(retry, { status: 201 }));
+                },
+            };
+        case 'non-idempotent-pause':
+            return {
+                ...hooks,
+                request(request) {
+                    const triggerId = /^\/triggers\/([^/]+)\/pause$/.exec(path(request))?.[1];
+                    const trigger = triggerId === undefined ? undefined : core.controller.getTrigger(triggerId);
+                    if (request.method !== 'POST' || trigger?.lifecycle !== 'paused') return Promise.resolve(request);
+                    // Pausing a paused trigger toggles it back on.
+                    return Promise.resolve(new Request(request.url.replace(/\/pause$/, '/resume'), request));
+                },
+            };
+        case 'infected-file-downloadable':
+            return {
+                ...hooks,
+                response: (request, response) =>
+                    Promise.resolve(
+                        is(request, 'GET', /^\/files\/[^/]+\/content$/) && response.status === 409
+                            ? new Response('MZ..', {
+                                  headers: {
+                                      'content-type': 'application/octet-stream',
+                                      'content-disposition': 'attachment',
+                                      'x-content-type-options': 'nosniff',
+                                  },
+                              })
+                            : response,
+                    ),
+            };
+        case 'secret-canary-in-integration': {
+            const values: string[] = [];
+            return {
+                ...hooks,
+                async request(request) {
+                    if (is(request, 'POST', /^\/secrets$/)) {
+                        const body = (await request.clone().json()) as { readonly value?: unknown };
+                        if (typeof body.value === 'string') values.push(body.value);
+                    }
+                    return request;
+                },
+                response: (request, response) =>
+                    /^\/integrations\/[^/]+$/.test(path(request)) && values.length > 0
+                        ? editJson(response, (integration) => ({
+                              ...integration,
+                              statusDetail: `Token ${values.at(-1) ?? ''} was rejected.`,
+                          }))
+                        : Promise.resolve(response),
+            };
+        }
+        case 'invalid-activity-item':
+            return {
+                ...hooks,
+                response: (request, response) =>
+                    is(request, 'GET', /^\/activity$/)
+                        ? editJson(response, (page) => {
+                              const items = page['items'] as Record<string, unknown>[];
+                              const index = items.findIndex((item) => String(item['kind']).startsWith('run.'));
+                              return {
+                                  ...page,
+                                  items: items.map((item, at) =>
+                                      at === index ? { ...item, source: 'telepathy' } : item,
+                                  ),
+                              };
+                          })
+                        : Promise.resolve(response),
+            };
+        case 'missing-permission-check-new-route':
+            return {
+                ...hooks,
+                actor: (request, actor) =>
+                    is(request, 'POST', /^\/triggers\/[^/]+\/pause$/)
+                        ? { ...actor, permissions: new Set([...actor.permissions, 'triggers.manage' as const]) }
+                        : actor,
             };
         case 'wrong-problem-content-type':
             return {

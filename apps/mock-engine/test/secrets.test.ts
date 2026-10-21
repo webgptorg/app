@@ -40,7 +40,7 @@ function spellings(value: string): string[] {
 describe('secret values', () => {
     it('never appear in any response, whatever route or stream', async () => {
         const clock = createFakeClock(Date.now());
-        harness = createApiHarness({ clock, rateLimiter: { consume: () => ({ kind: 'allowed' }) } });
+        harness = await createApiHarness({ clock, rateLimiter: { consume: () => ({ kind: 'allowed' }) } });
         const engine = harness;
         const idleTimers = clock.pendingTimers();
         const cookie = engine.signIn({ memberId: engine.ownerId() });

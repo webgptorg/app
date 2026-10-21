@@ -18,8 +18,8 @@ const ALLOW_ALL = { consume: () => ({ kind: 'allowed' as const }) };
 const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
 const api = (path: string) => `${HARNESS_ORIGIN}/api/v1${path}`;
 
-function start(faults: Partial<FaultPlan>, clock?: FakeClock) {
-    harness = createApiHarness({
+async function start(faults: Partial<FaultPlan>, clock?: FakeClock) {
+    harness = await createApiHarness({
         faults: FaultPlanSchema.parse(faults),
         rateLimiter: ALLOW_ALL,
         ...(clock === undefined ? {} : { clock }),
@@ -58,7 +58,7 @@ describe('fault injection', () => {
                 return clock.setTimeout(fn, ms);
             },
         };
-        const { fetch } = start({ latencyMs: { min: 200, max: 400 } }, { ...clock, ...recording });
+        const { fetch } = await start({ latencyMs: { min: 200, max: 400 } }, { ...clock, ...recording });
         for (let request = 0; request < 10; request++) {
             const before = delays.length;
             let done = false;
@@ -80,7 +80,7 @@ describe('fault injection', () => {
     });
 
     it('fails requests at the planned rate, reproducibly for the seed', async () => {
-        const { fetch, engine } = start({ errorRate: 0.3, errorStatus: 503 });
+        const { fetch, engine } = await start({ errorRate: 0.3, errorStatus: 503 });
         let failed = 0;
         const statuses: number[] = [];
         for (let request = 0; request < 1_000; request++) {
@@ -98,7 +98,7 @@ describe('fault injection', () => {
         expect(failed / 1_000).toBeLessThan(0.35);
         expect(engine.recorder.violations).toEqual([]);
         await engine.close();
-        const again = start({ errorRate: 0.3, errorStatus: 503 });
+        const again = await start({ errorRate: 0.3, errorStatus: 503 });
         const replay: number[] = [];
         for (let request = 0; request < 50; request++) replay.push((await again.fetch(api('/me'))).status);
         expect(replay).toEqual(statuses.slice(0, 50));
@@ -109,7 +109,7 @@ describe('fault injection', () => {
         [502, 'reply-failed'],
         [503, 'unavailable'],
     ] as const)('answers an injected %i as problem+json %s', async (status, code) => {
-        const { fetch, engine } = start({ errorRate: 1, errorStatus: status });
+        const { fetch, engine } = await start({ errorRate: 1, errorStatus: status });
         const response = await fetch(api('/agents'));
         expect(response.status).toBe(status);
         expect(response.headers.get('content-type')).toBe('application/problem+json');
@@ -118,7 +118,7 @@ describe('fault injection', () => {
     });
 
     it('never injects into what the routes filter leaves out', async () => {
-        const { fetch } = start({ errorRate: 1, routes: ['/api/v1/agents', '/api/v1/chats/**'] });
+        const { fetch } = await start({ errorRate: 1, routes: ['/api/v1/agents', '/api/v1/chats/**'] });
         expect((await fetch(api('/agents'))).status).toBe(503);
         expect((await fetch(api('/chats/chat-1/messages'))).status).toBe(503);
         expect((await fetch(api('/me'))).status).toBe(200);
@@ -126,7 +126,7 @@ describe('fault injection', () => {
     });
 
     it('cuts an event stream after a few events, as a dying connection would', async () => {
-        const { fetch, engine } = start({ dropStreamRate: 1 });
+        const { fetch, engine } = await start({ dropStreamRate: 1 });
         const response = await fetch(api('/events'));
         expect(response.status).toBe(200);
         const reader = response.body?.getReader();
@@ -148,7 +148,7 @@ describe('fault injection', () => {
     });
 
     it('changes on the next request through the control listener', async () => {
-        const { fetch, engine } = start({});
+        const { fetch, engine } = await start({});
         const control = await engine.startControl();
         const url = `http://127.0.0.1:${String(control.port)}/__mock/faults`;
         expect((await fetch(api('/me'))).status).toBe(200);
@@ -171,7 +171,7 @@ describe('fault injection', () => {
 
     it('slows the tunnel to the planned bytes per second', async () => {
         const clock = createFakeClock(Date.now());
-        const { fetch } = start({ slowTunnelBytesPerS: 20_000 }, clock);
+        const { fetch } = await start({ slowTunnelBytesPerS: 20_000 }, clock);
         const bytes = 60_000;
         const { value, elapsedMs } = await timeOf(
             clock,

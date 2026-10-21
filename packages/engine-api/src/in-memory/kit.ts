@@ -6,6 +6,8 @@ import { Activity } from '../capabilities/activity';
 import type { ActivityActor } from '../capabilities/activity';
 import { supports } from '../capabilities/capability';
 import type { CapabilityRef } from '../capabilities/capability';
+import type { FilePurpose, FileScanStatus } from '../capabilities/files';
+import type { Integration } from '../capabilities/integrations';
 import { ActivityId } from '../common';
 import type { ChatId, ClientInfo, MemberId, ProblemDetails, SessionId, Timestamp } from '../common';
 import { MAX_CHAT_PREVIEW_LENGTH } from '../constants';
@@ -74,9 +76,37 @@ export interface ReplyProgress {
     next(messageId: string, signal: AbortSignal): Promise<void>;
 }
 
+/** What a new file looks like to the engine's scanner; never its content. */
+export interface ScannedFile {
+    readonly name: string;
+    readonly contentType: string;
+    readonly sizeBytes: number;
+    readonly purpose: FilePurpose;
+}
+
+export type IntegrationProbe =
+    { readonly status: 'connected' } | { readonly status: 'error' | 'needs-attention'; readonly statusDetail: string };
+
+/**
+ * What a real engine finds out from the outside world and the in-memory engine cannot: a virus scan and a connection
+ * test. An engine built on the core (the mock engine) supplies its own; by default every file is clean and every
+ * integration whose secrets resolve is connected.
+ */
+export interface EngineChecks {
+    scanFile(file: ScannedFile): FileScanStatus;
+    /** Asked only once every secret the integration references resolves. */
+    probeIntegration(integration: Integration): IntegrationProbe;
+}
+
+export const DEFAULT_ENGINE_CHECKS: EngineChecks = {
+    scanFile: () => 'clean',
+    probeIntegration: () => ({ status: 'connected' }),
+};
+
 /** What the engine itself needs to act, with or without a member request (the controller acts as the system). */
 export interface EngineContext {
     readonly state: InMemoryState;
+    readonly checks: EngineChecks;
     readonly now: () => Timestamp;
     readonly newId: <Schema extends z.ZodType<string, string>>(schema: Schema, prefix: string) => z.output<Schema>;
     readonly publish: (event: EngineEvent) => void;

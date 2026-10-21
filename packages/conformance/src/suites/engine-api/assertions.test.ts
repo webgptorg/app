@@ -850,3 +850,402 @@ describe('each assertion bites', () => {
         expect(result).toEqual({ kind: 'pass' });
     });
 });
+
+const RUNS = /^\/runs$/;
+const CANCEL = /^\/runs\/[^/]+\/cancel$/;
+const RETRY = /^\/runs\/[^/]+\/retry$/;
+const TRIGGERS = /^\/triggers$/;
+const FILES = /^\/files$/;
+const CONTENT = /^\/files\/[^/]+\/content$/;
+const INTEGRATIONS = /^\/integrations$/;
+const ACTIVITY = /^\/activity$/;
+const reversed = (page: any) => ({ ...page, items: [...page.items].reverse() });
+const emptied = (page: any) => ({ ...page, items: [] });
+const firstItem = (edit: (item: any) => unknown) => (page: any) => ({
+    ...page,
+    items: page.items.map((item: any, index: number) => (index === 0 ? edit(item) : item)),
+});
+const withHeaders = (headers: Record<string, string>) => async (_: Request, response: Response) => {
+    const copy = new Headers(response.headers);
+    for (const [name, value] of Object.entries(headers)) copy.set(name, value);
+    return new Response(await response.arrayBuffer(), { status: response.status, headers: copy });
+};
+
+const CAPABILITY_FAILS: readonly Case[] = [
+    [
+        'runs paged out of order',
+        'engine-api.runs.paging',
+        { tamper: editJson(on('GET', RUNS, query('limit', '3')), reversed) },
+    ],
+    [
+        'a failed-runs filter listing another status',
+        'engine-api.runs.paging',
+        {
+            tamper: editJson(
+                on('GET', RUNS, query('status', 'failed')),
+                firstItem((run) => ({ ...run, status: 'completed' })),
+            ),
+        },
+    ],
+    [
+        'an agent filter listing another agent',
+        'engine-api.runs.paging',
+        {
+            tamper: editJson(
+                on('GET', RUNS, query('agentId')),
+                firstItem((run) => ({ ...run, agentId: 'agent-elsewhere' })),
+            ),
+        },
+    ],
+    [
+        'a source filter leaving everything out',
+        'engine-api.runs.paging',
+        { tamper: editJson(on('GET', RUNS, query('source')), emptied) },
+    ],
+    [
+        'a cancel without cancelRequestedAt',
+        'engine-api.runs.cancel-idempotent',
+        { tamper: editJson(on('POST', CANCEL), (run) => ({ ...run, cancelRequestedAt: null })) },
+    ],
+    [
+        'a second cancel moving cancelRequestedAt',
+        'engine-api.runs.cancel-idempotent',
+        {
+            tamper: fromCall(
+                2,
+                editJson(on('POST', CANCEL), (run) => ({ ...run, cancelRequestedAt: '2020-01-01T00:00:00Z' })),
+                on('POST', CANCEL),
+            ),
+        },
+    ],
+    [
+        'a second cancel refused as not found',
+        'engine-api.runs.cancel-idempotent',
+        {
+            tamper: fromCall(
+                2,
+                replace(on('POST', CANCEL), () => problem('not-found', 404)),
+                on('POST', CANCEL),
+            ),
+        },
+    ],
+    [
+        'a cancel refused for a run in progress',
+        'engine-api.runs.cancel-idempotent',
+        {
+            tamper: replace(on('POST', CANCEL), (_, response) =>
+                response.status === 202 ? problem('not-found', 404) : response,
+            ),
+        },
+    ],
+    [
+        'a retry naming another run',
+        'engine-api.runs.retry-only-failed',
+        {
+            tamper: editJson(on('POST', RETRY), (run) => ({
+                ...run,
+                retryOf: 'run-elsewhere',
+                agentId: 'agent-elsewhere',
+                status: 'completed',
+            })),
+        },
+    ],
+    [
+        'triggers paged out of order and the created ones missing',
+        'engine-api.triggers.paging',
+        { tamper: editJson(on('GET', TRIGGERS, query('agentId')), reversed) },
+    ],
+    [
+        'a trigger filter listing other kinds and lifecycles',
+        'engine-api.triggers.paging',
+        {
+            tamper: chain(
+                editJson(
+                    on('GET', TRIGGERS, query('kind')),
+                    firstItem((trigger) => ({ ...trigger, kind: 'email', config: { address: 'x@example.com' } })),
+                ),
+                editJson(
+                    on('GET', TRIGGERS, query('lifecycle', 'active')),
+                    firstItem((trigger) => ({ ...trigger, lifecycle: 'paused' })),
+                ),
+                editJson(on('GET', TRIGGERS, query('agentId')), emptied),
+            ),
+        },
+    ],
+    [
+        'a pause and a resume that do not change the lifecycle',
+        'engine-api.triggers.pause-resume-idempotent',
+        {
+            tamper: chain(
+                editJson(on('POST', /^\/triggers\/[^/]+\/pause$/), (trigger) => ({
+                    ...trigger,
+                    lifecycle: 'active',
+                    nextFireAt: '2030-01-01T00:00:00Z',
+                })),
+                editJson(on('POST', /^\/triggers\/[^/]+\/resume$/), (trigger) => ({ ...trigger, lifecycle: 'paused' })),
+            ),
+        },
+    ],
+    [
+        'a second resume that changes the trigger again',
+        'engine-api.triggers.pause-resume-idempotent',
+        {
+            tamper: fromCall(
+                2,
+                editJson(on('POST', /^\/triggers\/[^/]+\/resume$/), (trigger) => ({
+                    ...trigger,
+                    updatedAt: '2030-01-01T00:00:00Z',
+                })),
+                on('POST', /^\/triggers\/[^/]+\/resume$/),
+            ),
+        },
+    ],
+    [
+        'a bad schedule refused with another problem',
+        'engine-api.triggers.invalid-schedule',
+        {
+            tamper: replace(on('POST', TRIGGERS), (_, response) =>
+                response.status === 422 ? problem('validation-failed', 400) : response,
+            ),
+        },
+    ],
+    [
+        'files missing from their own listing, and filters listing others',
+        'engine-api.files.paging',
+        {
+            tamper: chain(
+                editJson(on('GET', FILES, query('q')), (page) => ({
+                    ...page,
+                    items: [...page.items].reverse().slice(1),
+                })),
+                editJson(
+                    on('GET', FILES, query('purpose')),
+                    firstItem((file) => ({ ...file, purpose: 'knowledge' })),
+                ),
+                editJson(
+                    on('GET', FILES, query('scan')),
+                    firstItem((file) => ({ ...file, scan: { status: 'failed', checkedAt: null } })),
+                ),
+            ),
+        },
+    ],
+    [
+        'content without attachment, nosniff or the same bytes',
+        'engine-api.files.download-attachment',
+        {
+            tamper: chain(
+                replace(
+                    on('GET', CONTENT),
+                    withHeaders({ 'content-disposition': 'inline', 'x-content-type-options': 'none' }),
+                ),
+                replace(on('GET', CONTENT, query('version')), () => new Response('other', { status: 200 })),
+            ),
+        },
+    ],
+    [
+        'content refused and no versions',
+        'engine-api.files.download-attachment',
+        {
+            tamper: chain(
+                replace(on('GET', CONTENT), () => problem('not-found', 404)),
+                editJson(on('GET', /^\/files\/[^/]+\/versions$/), emptied),
+            ),
+        },
+    ],
+    [
+        'an infected version downloadable',
+        'engine-api.files.infected-refused',
+        {
+            tamper: replace(
+                on('GET', CONTENT, query('version')),
+                () =>
+                    new Response('MZ', {
+                        headers: {
+                            'content-type': 'application/octet-stream',
+                            'content-disposition': 'attachment',
+                            'x-content-type-options': 'nosniff',
+                        },
+                    }),
+            ),
+        },
+    ],
+    [
+        'an infected version refused with another problem',
+        'engine-api.files.infected-refused',
+        { tamper: replace(on('GET', CONTENT, query('version')), () => problem('not-found', 404)) },
+    ],
+    [
+        'integrations missing from their listing, and filters listing others',
+        'engine-api.integrations.paging',
+        {
+            tamper: chain(
+                editJson(on('GET', INTEGRATIONS, query('agentId')), reversed),
+                editJson(on('GET', INTEGRATIONS, query('agentId', undefined)), (page) => ({
+                    ...page,
+                    items: page.items.slice(1),
+                })),
+                editJson(
+                    on('GET', INTEGRATIONS, query('kind')),
+                    firstItem((item) => ({
+                        ...item,
+                        kind: 'repository',
+                        config: { provider: 'github', repository: 'a/b' },
+                    })),
+                ),
+                editJson(
+                    on('GET', INTEGRATIONS, query('status')),
+                    firstItem((item) => ({ ...item, status: 'error' })),
+                ),
+            ),
+        },
+    ],
+    [
+        'a secret reference that is not resolved',
+        'engine-api.integrations.secrets-never-returned',
+        { tamper: editJson(on('POST', INTEGRATIONS), (integration) => ({ ...integration, secretRefs: [] })) },
+    ],
+    [
+        'activity of an unknown kind and one without a valid base',
+        'engine-api.activity.known-items',
+        {
+            tamper: editJson(on('GET', ACTIVITY), (page) => ({
+                ...page,
+                items: [{ ...page.items[0], kind: 'run.teleported' }, { kind: 'run.started' }, ...page.items.slice(1)],
+            })),
+        },
+    ],
+    [
+        'activity out of order, and a kind prefix listing another area',
+        'engine-api.activity.paging',
+        {
+            tamper: chain(
+                editJson(on('GET', ACTIVITY, query('limit', '3')), reversed),
+                editJson(on('GET', ACTIVITY, query('kind', 'run.')), (page) => ({
+                    ...page,
+                    items: [
+                        ...page.items.map((item: any) => ({ ...item, kind: 'file.deleted' })),
+                        ...page.items,
+                    ].reverse(),
+                })),
+            ),
+        },
+    ],
+    [
+        'a second cancel saying finished for a run still going',
+        'engine-api.runs.cancel-idempotent',
+        {
+            tamper: fromCall(
+                2,
+                replace(on('POST', CANCEL), () => problem('run-finished', 409)),
+                on('POST', CANCEL),
+            ),
+        },
+    ],
+    [
+        'a bad schedule accepted',
+        'engine-api.triggers.invalid-schedule',
+        {
+            tamper: replace(on('POST', TRIGGERS), (_, response) =>
+                response.status === 422
+                    ? Response.json(
+                          {
+                              id: 'trigger-accepted',
+                              agentId: 'agent-x',
+                              name: 'Accepted',
+                              kind: 'email',
+                              lifecycle: 'active',
+                              endedReason: null,
+                              lastFiredAt: null,
+                              nextFireAt: null,
+                              createdBy: 'member-owner',
+                              createdAt: '2026-10-01T00:00:00Z',
+                              updatedAt: '2026-10-01T00:00:00Z',
+                              config: { address: 'x@example.com' },
+                          },
+                          { status: 201 },
+                      )
+                    : response,
+            ),
+        },
+    ],
+    [
+        'an ended trigger that a refused resume brings back',
+        'engine-api.triggers.pause-resume-idempotent',
+        {
+            tamper: editJson(on('GET', /^\/triggers\/trigger-fake-ended$/), (trigger) => ({
+                ...trigger,
+                lifecycle: 'active',
+                endedReason: null,
+            })),
+        },
+    ],
+    [
+        'an activity feed that fails',
+        'engine-api.activity.known-items',
+        { tamper: replace(on('GET', ACTIVITY), () => problem('unavailable', 503)) },
+    ],
+    [
+        'an activity page without items',
+        'engine-api.activity.known-items',
+        { tamper: replace(on('GET', ACTIVITY), () => Response.json({ nextCursor: null })) },
+    ],
+    [
+        'a run activity page with an item that has no base',
+        'engine-api.activity.paging',
+        {
+            tamper: chain(
+                editJson(on('GET', ACTIVITY, query('kind', 'run.')), (page) => ({
+                    ...page,
+                    items: [
+                        { kind: 'run.started' },
+                        { ...page.items[0], kind: 'file.deleted', name: 7 },
+                        ...page.items,
+                    ],
+                })),
+            ),
+        },
+    ],
+];
+
+const CAPABILITY_SKIPS: readonly Case[] = [
+    [
+        'no run for a chat turn',
+        'engine-api.runs.cancel-idempotent',
+        { tamper: editJson(on('GET', RUNS, query('source', 'web')), emptied) },
+    ],
+    [
+        'no finished run to retry',
+        'engine-api.runs.retry-only-failed',
+        { tamper: editJson(on('GET', RUNS, query('status')), emptied) },
+    ],
+    [
+        'no ended trigger',
+        'engine-api.triggers.pause-resume-idempotent',
+        { tamper: editJson(on('GET', TRIGGERS, query('lifecycle', 'ended')), emptied) },
+    ],
+    [
+        'an upload the scanner flags',
+        'engine-api.files.download-attachment',
+        {
+            tamper: editJson(on('POST', FILES), (file) => ({
+                ...file,
+                scan: { status: 'infected', checkedAt: file.createdAt },
+            })),
+        },
+    ],
+    [
+        'no infected file',
+        'engine-api.files.infected-refused',
+        { tamper: editJson(on('GET', FILES, query('scan', 'infected')), emptied) },
+    ],
+];
+
+describe('each capability assertion bites', () => {
+    it.each(named(CAPABILITY_FAILS))('fails on $name', async ({ id, options, adjust }) => {
+        expect((await outcome(id, options, adjust)).kind).toBe('fail');
+    });
+
+    it.each(named(CAPABILITY_SKIPS))('skips on $name', async ({ id, options, adjust }) => {
+        expect((await outcome(id, options, adjust)).kind).toBe('skip');
+    });
+});

@@ -1,6 +1,8 @@
+import { RunError } from '../capabilities/runs';
 import type { RunSource } from '../capabilities/runs';
 import type { ScheduleConfig, Trigger, TriggerFire } from '../capabilities/triggers';
 import { Timestamp, TriggerFireId, TriggerId } from '../common';
+import type { RunId } from '../common';
 import { fail, invalid, liveAgent, memberActor, notFound, ok, page, recordActivity, sortBy, time } from './kit';
 import type { EngineContext, HandlerContext, Handlers, HandlerResult } from './kit';
 import { queueRun } from './runs';
@@ -31,27 +33,61 @@ const SOURCE: Readonly<Record<Trigger['kind'], RunSource>> = {
     webhook: 'webhook',
 };
 
+/** Why a schedule can no longer fire at `now`, or `null` while it still can. */
+function scheduleEnd(config: ScheduleConfig, now: string): 'max-runs' | 'completed' | null {
+    if (config.maxRunCount !== null && config.runCount >= config.maxRunCount) return 'max-runs';
+    if (config.endsAt !== null && time(now) >= time(config.endsAt)) return 'completed';
+    if (config.recurrence.kind === 'once' && config.runCount > 0) return 'completed';
+    return null;
+}
+
 /**
- * What the engine does when a trigger fires: a schedule comes due or an email arrives. An inactive trigger records a
- * skipped fire; an active one queues a run and, for schedules, counts it and works out the next fire.
+ * What the engine does when a trigger fires: a schedule comes due or an email arrives. An inactive trigger, or a
+ * schedule before its `startsAt`, records a skipped fire; a schedule past its end ends instead (`max-runs` or
+ * `completed`) and records a skipped fire. A trigger whose agent was deleted records a failed fire. Otherwise it
+ * queues a run and, for schedules, counts it and works out the next fire.
  */
 export function fireTrigger(ctx: EngineContext, triggerId: string): TriggerFire {
     const record = ctx.state.triggers.get(triggerId);
     if (!record) throw new Error(`No trigger ${triggerId}`);
     const trigger = record.trigger;
     const now = ctx.now();
-    if (trigger.lifecycle !== 'active') {
-        const skipped: TriggerFire = {
-            id: ctx.newId(TriggerFireId, 'fire'),
-            at: now,
-            outcome: 'skipped',
-            runId: null,
-            error: null,
-        };
-        record.fires.push(skipped);
-        return skipped;
-    }
     const actor = { kind: 'trigger', triggerId: trigger.id } as const;
+    const recordFire = (outcome: TriggerFire['outcome'], runId: RunId | null, error: RunError | null) => {
+        const fire: TriggerFire = { id: ctx.newId(TriggerFireId, 'fire'), at: now, outcome, runId, error };
+        record.fires.push(fire);
+        return fire;
+    };
+    if (trigger.lifecycle !== 'active') return recordFire('skipped', null, null);
+    if (trigger.kind === 'schedule') {
+        if (time(now) < time(trigger.config.startsAt)) return recordFire('skipped', null, null);
+        const ended = scheduleEnd(trigger.config, now);
+        if (ended !== null) {
+            save(ctx, record, {
+                ...trigger,
+                lifecycle: 'ended',
+                endedReason: ended,
+                nextFireAt: null,
+                updatedAt: now,
+            });
+            return recordFire('skipped', null, null);
+        }
+    }
+    const agent = liveAgent(ctx, trigger.agentId);
+    if (agent.kind === 'problem') {
+        const error = RunError.parse({ code: 'agent-unavailable', summary: 'The agent was deleted, so nothing ran.' });
+        const fire = recordFire('failed', null, error);
+        save(ctx, record, { ...trigger, lastFiredAt: now, updatedAt: now });
+        recordActivity(ctx, {
+            kind: 'trigger.failed',
+            agentId: trigger.agentId,
+            actor,
+            triggerId: trigger.id,
+            name: trigger.name,
+            error,
+        });
+        return fire;
+    }
     const run = queueRun(ctx, {
         agentId: trigger.agentId,
         source: SOURCE[trigger.kind],
@@ -59,28 +95,17 @@ export function fireTrigger(ctx: EngineContext, triggerId: string): TriggerFire 
         createdBy: null,
         actor,
     });
-    const fire: TriggerFire = {
-        id: ctx.newId(TriggerFireId, 'fire'),
-        at: now,
-        outcome: 'started',
-        runId: run.id,
-        error: null,
-    };
-    record.fires.push(fire);
+    const fire = recordFire('started', run.id, null);
     let updated: Trigger = { ...trigger, lastFiredAt: now, updatedAt: now };
     if (updated.kind === 'schedule') {
         const config = { ...updated.config, runCount: updated.config.runCount + 1 };
         const nextFire = next(config, now, now);
-        const reachedMax = config.maxRunCount !== null && config.runCount >= config.maxRunCount;
         updated = {
             ...updated,
             config,
             nextFireAt: nextFire,
             ...(nextFire === null
-                ? {
-                      lifecycle: 'ended' as const,
-                      endedReason: reachedMax ? ('max-runs' as const) : ('completed' as const),
-                  }
+                ? { lifecycle: 'ended' as const, endedReason: scheduleEnd(config, now) ?? 'completed' }
                 : {}),
         };
     }
@@ -94,6 +119,19 @@ export function fireTrigger(ctx: EngineContext, triggerId: string): TriggerFire 
         runId: run.id,
     });
     return fire;
+}
+
+export function findTriggers(
+    ctx: EngineContext,
+    filter: { readonly kind?: Trigger['kind']; readonly lifecycle?: Trigger['lifecycle'] },
+): Trigger[] {
+    return [...ctx.state.triggers.values()]
+        .map(({ trigger }) => trigger)
+        .filter(
+            (trigger) =>
+                (filter.kind === undefined || trigger.kind === filter.kind) &&
+                (filter.lifecycle === undefined || trigger.lifecycle === filter.lifecycle),
+        );
 }
 
 function setLifecycle(ctx: HandlerContext, triggerId: string, lifecycle: 'paused' | 'active'): HandlerResult<Trigger> {
