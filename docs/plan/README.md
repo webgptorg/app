@@ -63,6 +63,7 @@ bun run plan --check  # validates statuses and dependencies (part of bun run che
 | [M-03](tasks/M-03-acme-tls-alpn.md)                      | ACME TLS-ALPN-01 through the relay against Pebble                                | M    | M1        |
 | [X-02](tasks/X-02-spike-network-tests.md)                | Spike network tests: NAT, 443-only, proxies, failover, packet capture            | X    | M1        |
 | [R-05](tasks/R-05-relay-load-test.md)                    | Relay load and throughput test                                                   | R    | M1        |
+| [R-06](tasks/R-06-relay-hardening.md)                    | Relay hardening: admission, memory, hostile engines, crash containment           | R    | M4        |
 | [C-04](tasks/C-04-engine-api-contract.md)                | Engine API contract v1 and typed client                                          | C    | M2        |
 | [C-06](tasks/C-06-release-log.md)                        | Release log entry and verification (engine and UI artifacts)                     | C    | M2        |
 | [M-04](tasks/M-04-mock-engine-api.md)                    | Mock engine API: seeded data, scenarios, fault injection, streaming              | M    | M2        |
@@ -116,7 +117,7 @@ Tasks in the same wave have no dependencies on each other and can run at the sam
 | 3    | E-01, M-01, R-02, U-02, X-03                                                 |
 | 4    | D-09, M-02, M-06, R-03, U-03, U-05, U-06, U-07, U-08, U-09, U-10, U-11, U-12 |
 | 5    | D-07, M-04, R-04, U-04                                                       |
-| 6    | C-05, D-03, R-05, X-01                                                       |
+| 6    | C-05, D-03, R-05, R-06, X-01                                                 |
 | 7    | D-04, D-05, E-02, I-01, M-03, M-05, M-07, X-02                               |
 | 8    | D-06, D-08, I-03, I-04, X-04                                                 |
 | 9    | I-05, X-05                                                                   |
@@ -154,6 +155,7 @@ C-01 and R-01 both live in `packages/protocol` and touch its `package.json` and 
 | Engine domain name (separate from ptbk.io)                                                                                                                             | I-02 (local and staging use placeholders) | Team        |
 | Cloudflare accounts and relay VPS provider accounts                                                                                                                    | I-01, I-02                                | Team        |
 | Release key holder and the three maintainer key holders (2 of 3 for security releases), hardware keys (e.g. YubiKey 5.7+ PIV for Ed25519) and a rehearsed key ceremony | X-03 for production signing, I-03         | Team        |
+| External audit of the relay and the protocols before general availability: vendor, budget (estimate €15–40k), timing                                                   | General availability (after I-06)         | Seb         |
 | Who builds the engine side, and when                                                                                                                                   | E-03                                      | Engine team |
 
 ## How to work a task

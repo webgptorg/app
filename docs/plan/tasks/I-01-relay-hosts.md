@@ -1,7 +1,7 @@
 # I-01. Relay hosts: provisioning and hardening
 
 - **Lane:** I · **Module:** `infra/relay` · **Milestone:** M4
-- **Depends on:** R-04, R-05 (host sizing comes from its results)
+- **Depends on:** R-04, R-05 (host sizing comes from its results), R-06
 - **Status:** todo
 - **Spec:** Relay and tunnel (Hosting; No single point of failure; Fairness and DoS); Hosting and stack; Operations; Metadata we still see; Legal and GDPR (sub-processors)
 
@@ -23,11 +23,16 @@ The relay needs raw TCP on 443 and long-lived connections, so it runs on plain V
   - SSH: keys only, no root login, no password authentication, named admin users from config; a separate deploy key with a forced command (used by I-03);
   - relay runs as a dedicated non-root user in a container (Docker or Podman, chosen in the ADR) under systemd: read-only root filesystem, all capabilities dropped (443 via port mapping or `ip_unprivileged_port_start`), `no-new-privileges`, memory and file-descriptor limits sized for 1,000+ tunnels;
   - chrony for time sync; journald persistent with `MaxRetentionSec=7day` (the spec's maximum for engine IPs and tunnel times);
-  - no engine keys, certificates or DNS credentials for the engine domain on the host.
+  - no engine keys, certificates or DNS credentials for the engine domain on the host;
+  - Node 24 at the latest patch (at least 24.17, which fixed TLS and SNI issues); `--max-old-space-size` set explicitly, below the container's memory limit with headroom for socket buffers, which live outside the JS heap; `LimitNOFILE` at least four times the relay's global connection cap; `Restart=always`;
+  - kernel: `net.ipv4.tcp_syncookies=1`, raised `net.core.somaxconn` and `net.ipv4.tcp_max_syn_backlog` with a matching listen backlog; no connection tracking for 443/tcp (`notrack`), or `nf_conntrack_max` sized for 10,000+ long-lived connections;
+  - nftables per-IP connection-count and new-connection-rate limits on 443 ahead of Node (IPv6 per /64), set above the relay's own limits so they only stop floods;
+  - a local DNSSEC-validating resolver (e.g. unbound) used by the relay, so a spoofed answer cannot fake a custom domain's CNAME check (R-02) or an ACME validation routed through it.
 - Secrets on the host: registry token and relay TLS key in root-owned 0600 files passed to the service with systemd `LoadCredential`, never in the image, the repo or provisioning state.
 - Relay TLS certificate for its own hostname: choose and implement one route in the ADR (the relay answering TLS-ALPN-01 for its own name, or DNS-01 with a credential scoped so it cannot touch the engine domain zone). Renewal is automatic and monitored by I-04.
-- `infra/relay/verify.sh`: run against a host over SSH; fails if the service runs as root, if any port other than 443 and 22 listens publicly, if password SSH or root login is enabled, if unattended upgrades are off, or if any file matching engine key or certificate patterns exists outside the relay's own.
+- `infra/relay/verify.sh`: run against a host over SSH; fails if the service runs as root, if `Restart=always`, the sysctls above or DNSSEC validation are missing, if any port other than 443 and 22 listens publicly, if password SSH or root login is enabled, if unattended upgrades are off, or if any file matching engine key or certificate patterns exists outside the relay's own.
 - `infra/relay/README.md`: create, rebuild, rotate secrets, add a relay to DNS (with I-02), remove a dead relay.
+- DDoS: the provider's free filtering covers network floods only, not TLS-handshake or slow-connection attacks, which R-06's limits handle. Several relays at different providers, all returned by DNS, keep engines reachable when one is attacked; document this and the escalation path in the README.
 
 ## Out of scope
 
