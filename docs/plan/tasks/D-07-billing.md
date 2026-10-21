@@ -2,7 +2,7 @@
 
 - **Lane:** D · **Module:** `apps/dashboard` · **Milestone:** M3
 - **Depends on:** D-02, D-09
-- **Status:** done (#36)
+- **Status:** in progress (#36 merged; awaiting manual Stripe test-mode check)
 - **Spec:** Goal and scope; Decisions (Billing); Metadata we still see (Account email, billing details); Legal and GDPR (sub-processors); Abuse on our domains (item 4); ADRs: [0006](../../adr/0006-organizations-and-roles.md), [0007](../../adr/0007-frontend-stack.md), [0009](../../adr/0009-drizzle-and-migrations.md), [0014](../../adr/0014-cryptography.md), [0017](../../adr/0017-billing-entitlements.md)
 
 ## Goal
@@ -81,7 +81,7 @@ Per ADR 0006 the organization, not the user, owns the Stripe customer and the su
 - [x] `/admin/billing` is denied to non-admins and lists only problem states.
 - [ ] Manual check against Stripe test mode recorded in the PR: Checkout completes, webhook arrives, portal opens.
 - [x] Migration is drizzle-kit output and passes D-01's guards; schema allowlist updated; `bun run check` passes.
-- [x] **Status** line above set to `done (#<PR>)`.
+- [ ] **Status** line above set to `done (#<PR>)`.
 
 ## Risks and open points
 
