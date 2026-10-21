@@ -461,4 +461,103 @@ describe('parseIdentityConfig', () => {
             ).not.toBeNull();
         });
     });
+    describe('UI loader', () => {
+        const UI = {
+            ...BASE,
+            PTBK_UI_RELEASE_URL: 'https://releases.example.test/ptbk/',
+            MOCK_UI_TRUST_POLICY_FILE: '/etc/ptbk/trust-policy.json',
+        } as const;
+
+        it('is off without PTBK_UI_RELEASE_URL', () => {
+            expect(parseMockEngineConfig(BASE).ui).toBeNull();
+        });
+
+        it('defaults to auto, the pinned trusted root, Sigstore and an hourly check', () => {
+            const config = parseMockEngineConfig(UI);
+            expect(config.ui).toEqual({
+                releaseUrl: 'https://releases.example.test/ptbk/',
+                updatePolicy: { kind: 'auto' },
+                trustPolicyFile: '/etc/ptbk/trust-policy.json',
+                trustedRootFile: null,
+                checkIntervalS: 3600,
+                fakeProvenance: false,
+            });
+            expect(Object.isFrozen(config.ui)).toBe(true);
+        });
+
+        it('parses every setting', () => {
+            expect(
+                parseMockEngineConfig({
+                    ...UI,
+                    PTBK_UPDATE_POLICY: 'pinned',
+                    PTBK_PINNED_VERSION: '0.0.0-dryrun.1',
+                    MOCK_UI_CHECK_INTERVAL_S: '60',
+                    MOCK_UI_FAKE_PROVENANCE: 'enabled',
+                }).ui,
+            ).toMatchObject({
+                updatePolicy: { kind: 'pinned', version: '0.0.0-dryrun.1' },
+                checkIntervalS: 60,
+                fakeProvenance: true,
+            });
+            expect(parseMockEngineConfig({ ...UI, PTBK_UPDATE_POLICY: 'manual' }).ui?.updatePolicy).toEqual({
+                kind: 'manual',
+            });
+            expect(parseMockEngineConfig({ ...UI, MOCK_UI_TRUSTED_ROOT_FILE: '/etc/root.json' }).ui).toMatchObject({
+                trustedRootFile: '/etc/root.json',
+            });
+        });
+
+        it.each([
+            ['http://releases.example.test/', 'PTBK_UI_RELEASE_URL'],
+            ['https://releases.example.test/ptbk', 'PTBK_UI_RELEASE_URL'],
+            ['https://user:pw@releases.example.test/', 'PTBK_UI_RELEASE_URL'],
+            ['https://releases.example.test/?x', 'PTBK_UI_RELEASE_URL'],
+        ])('refuses the release URL %s', (url, name) => {
+            const problems = problemsOf({ ...UI, PTBK_UI_RELEASE_URL: url });
+            expect(problems).toEqual([`${name}: must be an https:// URL without credentials whose path ends in /`]);
+            expect(problems.join()).not.toContain('pw');
+        });
+
+        it.each([
+            [{ PTBK_UPDATE_POLICY: 'sometimes' }, 'PTBK_UPDATE_POLICY: must be auto, manual or pinned'],
+            [{ PTBK_UPDATE_POLICY: 'pinned' }, 'PTBK_PINNED_VERSION: is required with PTBK_UPDATE_POLICY=pinned'],
+            [{ PTBK_PINNED_VERSION: '1.0.0' }, 'PTBK_PINNED_VERSION: needs PTBK_UPDATE_POLICY=pinned'],
+            [
+                { PTBK_UPDATE_POLICY: 'pinned', PTBK_PINNED_VERSION: '1.0' },
+                'PTBK_PINNED_VERSION: must be a SemVer version',
+            ],
+            [
+                { MOCK_UI_CHECK_INTERVAL_S: '0' },
+                'MOCK_UI_CHECK_INTERVAL_S: must be a whole number of seconds from 1 to 86400',
+            ],
+            [
+                { MOCK_UI_CHECK_INTERVAL_S: '86401' },
+                'MOCK_UI_CHECK_INTERVAL_S: must be a whole number of seconds from 1 to 86400',
+            ],
+            [{ MOCK_UI_FAKE_PROVENANCE: 'yes' }, 'MOCK_UI_FAKE_PROVENANCE: must be enabled or disabled'],
+            [
+                { MOCK_UI_FAKE_PROVENANCE: 'enabled', MOCK_UI_TRUSTED_ROOT_FILE: '/r.json' },
+                'MOCK_UI_TRUSTED_ROOT_FILE: has no effect with MOCK_UI_FAKE_PROVENANCE enabled',
+            ],
+        ])('refuses %j', (settings, problem) => {
+            expect(problemsOf({ ...UI, ...settings })).toEqual([problem]);
+        });
+
+        it('needs a trust policy with a release URL, and a release URL for every other loader setting', () => {
+            expect(problemsOf({ ...BASE, PTBK_UI_RELEASE_URL: 'https://releases.example.test/' })).toEqual([
+                'MOCK_UI_TRUST_POLICY_FILE: is required with PTBK_UI_RELEASE_URL',
+            ]);
+            expect(problemsOf({ ...BASE, PTBK_UPDATE_POLICY: 'auto', MOCK_UI_FAKE_PROVENANCE: 'disabled' })).toEqual([
+                'PTBK_UPDATE_POLICY: needs PTBK_UI_RELEASE_URL',
+                'MOCK_UI_FAKE_PROVENANCE: needs PTBK_UI_RELEASE_URL',
+            ]);
+        });
+
+        it('refuses fake provenance in production', () => {
+            expect(problemsOf({ ...UI, NODE_ENV: 'production', MOCK_UI_FAKE_PROVENANCE: 'enabled' })).toEqual([
+                'MOCK_UI_FAKE_PROVENANCE: must not be enabled in production',
+            ]);
+            expect(parseMockEngineConfig({ ...UI, NODE_ENV: 'production' }).ui?.fakeProvenance).toBe(false);
+        });
+    });
 });
