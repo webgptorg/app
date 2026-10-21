@@ -40,16 +40,27 @@ The engine UI bundle runs on customers' engines and sees decrypted data, so its 
 
 ## Acceptance criteria
 
+The code lands before any credential exists; everything below is verifiable in CI without one.
+
 - [ ] zizmor passes with no findings at medium or above on all new workflows.
-- [ ] A push to `main` deploys the dashboard to staging; production waits for an approver who is not the pusher (screenshot or run link in the PR).
-- [ ] A relay release produces a signed image with a TSA timestamp; `cosign verify` with the exact identity flags succeeds, and an unsigned image, or one signed by another workflow, branch or repository, is refused by the host script (tested on staging); no workflow or script uses `--certificate-identity-regexp`.
-- [ ] Rolling deploy across two relays (staging can temporarily run two) keeps a browser connection test passing throughout; a deliberately broken image stops the rollout after the first host and rolls it back.
-- [ ] The UI release cannot publish without `release` approval by a second maintainer.
+- [ ] `apps/relay/Dockerfile` builds in CI (non-root, base pinned by digest, no cache); `deploy-dashboard.yml` runs `wrangler deploy --dry-run --env staging` on PRs.
+- [ ] `release-relay.yml` builds, pushes to GHCR with `GITHUB_TOKEN` and signs keylessly through GitHub OIDC with a TSA timestamp; `cosign verify` with the exact identity flags succeeds, and the host script refuses an unsigned image and one signed by another workflow, branch or repository (recorded Sigstore bundle fixtures for the other repository and workflow; a `workflow_dispatch` run from a branch for the other ref; no signing on pull request runs, which would need `id-token` and `packages` write there); no workflow or script uses `--certificate-identity-regexp`.
+- [ ] The host-side verify, swap and rollback script works against I-01's CI VM (or an sshd container): a deliberately broken image is rolled back.
+- [ ] Rolling deploy in CI across two sshd containers (or two VMs) standing in for two relays: a deliberately broken image stops the rollout after the first host and rolls that host back; the second host is untouched.
 - [ ] Runbook written; `bun run check` passes.
 - [ ] **Status** line above set to `done (#<PR>)`.
+
+## Apply (needs credentials)
+
+Tracked in [apply.md](../apply.md). Needs the GitHub environments (blocked on the GitHub plan decision), a second maintainer account, I-02's `ptbk-<env>-deploy` token, the deploy SSH key, GHCR pull access on hosts, and I-01's and I-02's applied staging.
+
+- A push to `main` deploys the dashboard to staging; production waits for an approver who is not the pusher.
+- Rolling deploy across two relays (staging can temporarily run two) keeps a browser connection test passing throughout; a deliberately broken image stops the rollout after the first host and rolls it back.
+- The UI release cannot publish without `release` approval by a second maintainer.
 
 ## Risks and open points
 
 - Cloudflare has no OIDC federation for wrangler, so the deploy token is a long-lived secret; keep it environment-scoped and rotated.
 - SSH from GitHub-hosted runners means the allowlist cannot be tight; the forced command and host-side signature check are the mitigation. A pull-based deploy is the alternative if the team prefers.
+- **GitHub plan:** environments and environment secrets in a private organization repository need GitHub Team (Pro is for personal accounts), and required reviewers with "prevent self-review" need Enterprise; the org is on Free. Until the plan's "Still needed" decision (upgrade or another approval gate) is taken, build the workflows against the environments as specified and leave the approval criteria to Apply.
 - Release key holders and the key ceremony are a pending human decision (plan's "Still needed" table); production UI signing waits on it.

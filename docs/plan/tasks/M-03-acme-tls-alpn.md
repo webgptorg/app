@@ -46,6 +46,12 @@ The CA's validation server connects to `<engineId>.<domain>:443` with SNI set to
 - [x] `bun run check` and the e2e suite pass.
 - [ ] **Status** line above set to `done (#<PR>)`.
 
+## Apply (needs credentials)
+
+Tracked in [apply.md](../apply.md). Needs I-01's and I-02's applied staging; no ACME account setup, since ACME keys are self-generated.
+
+- One run against Let's Encrypt staging through a staging relay; record the result.
+
 ## Risks and open points
 
 - The ClientHello parser comes from `@ptbk/protocol` (R-01). Do not copy or fork it; if it lacks something, extend it there.

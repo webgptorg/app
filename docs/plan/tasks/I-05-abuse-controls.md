@@ -42,9 +42,17 @@ Anyone can modify the open-source engine and serve anything on `<engineId>.<engi
 - [ ] Relay test: a suspended entry closes an open tunnel within one TTL (fake clock); flood test for fairness passes.
 - [ ] CT watch tests with recorded fixtures from both sources: wildcard, foreign issuer, unknown hostname each alert once; a source timing out does not fail the run.
 - [ ] Public-face tests: match, mismatch, unreachable, redirect to another host treated as mismatch.
-- [ ] `/abuse` page live on staging in both languages; runbook merged; PSL pull request URL recorded (or blocked on the engine domain name, stated in the PR).
+- [ ] `/abuse` page and `security.txt` served by the local dashboard in both languages (test); runbook merged.
 - [ ] `bun run check` passes.
 - [ ] **Status** line above set to `done (#<PR>)`.
+
+## Apply (needs credentials)
+
+Tracked in [apply.md](../apply.md). Needs the engine domain, the `abuse@` mailbox and the abuse-feed vendor (plan's "Still needed" table).
+
+- `/abuse` page live on staging in both languages.
+- PSL pull request (`_psl` TXT record and the PR) opened and its URL recorded; Let's Encrypt rate-limit request filed.
+- Abuse-feed key (and the optional Cert Spotter key) set as Worker secrets; Search Console and Safe Browsing alerts set up per the runbook.
 
 ## Risks and open points
 

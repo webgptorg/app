@@ -2,7 +2,7 @@
 
 - **Lane:** I · **Module:** `infra/cloudflare` (and `apps/dashboard/wrangler.jsonc` IDs) · **Milestone:** M4
 - **Depends on:** D-01
-- **Status:** in progress (feat/i-02-dns-cloudflare)
+- **Status:** done (#8)
 - **Spec:** One address for users; Residual risks (1. Certificate mis-issuance); Abuse on our domains (items 1, 2 and Before the PSL entry lands); Hosting and stack (Engine DNS); Operations
 
 ## Goal
@@ -42,14 +42,22 @@ Engine hostnames must never be proxied by Cloudflare: proxying would terminate T
 
 ## Acceptance criteria
 
-- [ ] Staging stack applied: `dig +short anything.<staging engine domain>` returns every staging relay address (A and AAAA); the records are DNS-only (checked through the Cloudflare API in the PR).
-- [ ] CAA records present and `issuewild ";"` verified; DNSSEC status recorded.
-- [ ] Staging dashboard reachable on its custom domain after an I-03 deploy (or a manual `wrangler deploy` for this check).
-- [ ] The "no proxied engine records" check exists and fails on a deliberately proxied record in a test.
-- [ ] Email test from staging passes SPF, DKIM and DMARC (headers in the PR).
-- [ ] Token scopes documented and verified (deploy token cannot edit DNS).
-- [ ] `bun run check` passes.
-- [ ] **Status** line above set to `done (#<PR>)`.
+- [x] The "no proxied engine records" check exists and fails on a deliberately proxied record in a test.
+- [x] Token scopes documented; `verify-deploy-token.sh` checks that the deploy token cannot edit DNS.
+- [x] `tofu fmt`, `validate` and the offline `tofu test` suite in `ci.yml`, and ADR 0011 set to `Accepted`: moved to I-01.
+- [x] `bun run check` passes.
+- [x] **Status** line above set to `done (#<PR>)`.
+
+## Apply (needs credentials)
+
+Tracked in [apply.md](../apply.md). Needs the Cloudflare accounts, the domains, the R2 state bucket and passphrase.
+
+- Staging stack applied: `dig +short anything.<staging engine domain>` returns every staging relay address (A and AAAA); the records are DNS-only (checked through the Cloudflare API).
+- CAA records present and `issuewild ";"` verified; DNSSEC status recorded; NS and DS set at the registrar.
+- D1 database IDs written into `apps/dashboard/wrangler.jsonc`.
+- Staging dashboard reachable on its custom domain after an I-03 deploy (or a manual `wrangler deploy` for this check).
+- Email (the single owner of this check, for D-02 and D-05 too): Email Service enabled, `EMAIL_FROM` set, a test email from the deployed staging Worker passes SPF, DKIM and DMARC (headers recorded), then `dmarc_policy = "reject"`.
+- Deploy token verified against the real account with `verify-deploy-token.sh`.
 
 ## Risks and open points
 
