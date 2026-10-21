@@ -84,7 +84,7 @@ Golden vectors, which an implementation in any language must reproduce:
 
 ## Status of the reference implementation
 
-The mock engine implements the engine side of every contract, one task at a time. On `main` today: identity, tunnel client, TLS inside the tunnel, the engine API with a gateway stand-in, and registration and heartbeat. Sections whose mock engine task is not merged say `Reference implementation: pending M-0x`; whoever merges that task updates the section and its checklist rows.
+The mock engine implements the engine side of every contract, one task at a time. On `main` today: identity, tunnel client, TLS inside the tunnel, the engine API with a gateway stand-in, registration and heartbeat, and the UI loader with the security headers. Sections whose mock engine task is not merged say `Reference implementation: pending M-0x`; whoever merges that task updates the section and its checklist rows.
 
 | Task | What the mock engine adds                          | Status      |
 | ---- | -------------------------------------------------- | ----------- |
@@ -92,7 +92,7 @@ The mock engine implements the engine side of every contract, one task at a time
 | M-02 | TLS and HTTP inside the tunnel, dev CA             | merged      |
 | M-03 | ACME TLS-ALPN-01 through the relay                 | not started |
 | M-04 | Engine API, gateway stand-in, faults               | merged      |
-| M-05 | UI loader and security headers                     | not started |
+| M-05 | UI loader and security headers                     | merged      |
 | M-06 | Registration and heartbeat client                  | merged      |
 | M-07 | Capabilities (runs, files, triggers, integrations) | not started |
 
@@ -127,7 +127,8 @@ These are not decided yet. Do not build against a guess: ask, or wait for the de
    - A second revocation channel (Rekor search by payload hash).
    - An optional torsion-free check of the engine key at registration, beyond the small-order check.
    - No revocation list is published yet. Because `verifyRelease` refuses every release without a fresh list, an engine cannot install its first UI bundle until one is.
-   - Where the engine fetches releases: the release store's layout and URL, and the mirror format, are not part of the contract yet. Find the UI artifact by `kind: 'ui'` in the release entry, not by name. The manifest's file name inside the tarball is not a contract constant either.
+   - Where the engine fetches releases: the release store's layout and URL, and the mirror format, are not part of the contract yet (the mock engine's layout is in [ui-loader.md](ui-loader.md#reference-implementation)). Find the UI artifact by `kind: 'ui'` in the release entry, not by name. The manifest's file name inside the tarball is not a contract constant either.
+   - The security panel has no field for loader alerts yet: `SecurityOverview` shows the active UI bundle but not an unverifiable revocation list, which the mock engine only logs at error level.
    - Which release carries the UI. The spec makes the UI bundle an artifact of the engine's own release, so one `WorkflowIdentity` covers both. Until the engine's release tooling carries it, UI releases are published as their own entries, tagged `ui-v<version>` and signed by our UI release workflow, which is a different identity. Which identity, or identities, the engine pins for the UI is open.
 4. **Registration and heartbeat (C-03).**
    - The dashboard endpoints are not built yet (D-03, D-05). The contract fixes the problem codes for registration (`REGISTRATION_ERROR_CODE`) and the statuses of `engine-exists` (409) and `engine-suspended` (403) only. The other statuses, and the heartbeat's problem codes and statuses (the plan says 401 `stale-timestamp` with `serverTime`), are not contract constants yet. The dashboard plan also mentions `not-entitled` and `rate-limited` outcomes for registration, which `REGISTRATION_ERROR_CODE` does not list.

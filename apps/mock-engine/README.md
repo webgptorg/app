@@ -48,19 +48,21 @@ The engine API is not reimplemented here. `@ptbk/engine-api/in-memory`'s core ho
 
 **Faults** (`MOCK_FAULTS` or `PUT /__mock/faults`, a strict `FaultPlan`): `latencyMs { min, max }`, `errorRate` with `errorStatus` (500, 502 or 503, sent as `internal-error`, `reply-failed` or `unavailable`, the contract's problem for each status), `dropStreamRate` (an SSE response is cut after a random 1 to 20 events), `slowTunnelBytesPerS` (every tunnel stream is throttled towards the browser) and `routes` (path globs, `*` within a segment, `**` across). Decisions draw from a sequence seeded by `MOCK_SEED`, and a new plan applies from the next request.
 
-**Control listener** (`MOCK_CONTROL=enabled`): plain HTTP on `MOCK_CONTROL_HOST:MOCK_CONTROL_PORT` (default `127.0.0.1:4480`), never mounted in the tunnel; through the tunnel `/__mock/*` is 404. Bodies are strict.
+**Control listener** (`MOCK_CONTROL=enabled`): plain HTTP on `MOCK_CONTROL_HOST:MOCK_CONTROL_PORT` (default `127.0.0.1:4480`), never mounted in the tunnel; through the tunnel `/__mock/*` is 404 (a `GET` from an anonymous visitor is sent to sign-in first, like any page). Bodies are strict.
 
-| Route                   | What it does                                                                                                                                                                               |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `GET /__mock/state`     | Seed, scenario and counts                                                                                                                                                                  |
-| `POST /__mock/reset`    | `{ scenario, seed }`: a new core; the dashboard URL, relay status and last heartbeat are applied again, and every session ends                                                             |
-| `PUT /__mock/faults`    | A `FaultPlan`                                                                                                                                                                              |
-| `DELETE /__mock/faults` | No faults                                                                                                                                                                                  |
-| `GET /__mock/heartbeat` | `{ lastHeartbeat: { sentAt, body } \| null, clockSkew: { seconds, measuredAt } \| null }`                                                                                                  |
-| `GET /__mock/members`   | IDs, names, roles and statuses                                                                                                                                                             |
-| `POST /__mock/sessions` | `{ subject: { kind: 'owner' } \| { kind: 'member', role } \| { kind: 'member', permissions } }` → `{ memberId, cookie: { name, value } }`; each permission set gets a new synthetic member |
+| Route                   | What it does                                                                                                                                                                                            |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /__mock/state`     | Seed, scenario and counts                                                                                                                                                                               |
+| `POST /__mock/reset`    | `{ scenario, seed }`: a new core; the dashboard URL, relay status and last heartbeat are applied again, and every session ends                                                                          |
+| `PUT /__mock/faults`    | A `FaultPlan`                                                                                                                                                                                           |
+| `DELETE /__mock/faults` | No faults                                                                                                                                                                                               |
+| `GET /__mock/heartbeat` | `{ lastHeartbeat: { sentAt, body } \| null, clockSkew: { seconds, measuredAt } \| null }`                                                                                                               |
+| `GET /__mock/members`   | IDs, names, roles and statuses                                                                                                                                                                          |
+| `POST /__mock/sessions` | `{ subject: { kind: 'owner' } \| { kind: 'member', role } \| { kind: 'member', permissions } }` → `{ memberId, cookie: { name, value } }`; each permission set gets a new synthetic member              |
+| `GET /__mock/ui`        | The UI loader's policy, active and previous bundle (`version`, `sha256`, `logIndex`) and last outcome; 404 without the loader                                                                           |
+| `POST /__mock/ui/check` | `{ pinnedVersion? }`: one update check now, after re-pinning under `pinned` (the owner's settings change; 400 otherwise); under `manual` this is the owner's approval. Answers `{ outcome, ...status }` |
 
-Startup fails with `NODE_ENV=production` when `MOCK_CONTROL` or `MOCK_DEV_LOGIN` is enabled.
+Startup fails with `NODE_ENV=production` when `MOCK_CONTROL`, `MOCK_DEV_LOGIN` or `MOCK_UI_FAKE_PROVENANCE` is enabled.
 
 ## Registration and heartbeat (M-06)
 
@@ -73,6 +75,14 @@ The engine's only conversation with the dashboard, straight over HTTPS (never th
 **Heartbeat** (`src/domain/heartbeat/`): the first beat as the tunnels start, then one every `MOCK_HEARTBEAT_INTERVAL_S` (default 60). Each beat takes the next `seq` (`max(last + 1, now in ms)`, persisted in `PTBK_DATA_DIR/heartbeat-seq` with a temporary file, `fsync`, rename and a directory `fsync` before the body is built), builds the body with `buildHeartbeat`, signs those exact bytes with `signHeartbeat` and posts them. A failed send is logged with its status code only, not retried, and not backfilled; a beat still in flight when the next is due makes that one skip. The body is kept verbatim as the security panel's `lastHeartbeat` (also across `/__mock/reset`), from the moment it is sent. A `stale-timestamp` answer with `serverTime` records the clock skew (local clock minus `serverTime`, with when it was measured) and logs `heartbeat.clock-skew` with the seconds only; without `serverTime` the skew is unknown, and an accepted beat clears it. The engine API's `SecurityOverview` has no field for the skew, so the mock shows it with the last body at `GET /__mock/heartbeat`.
 
 Figures: disk use of the data directory's file system and memory use (rounded to tens by `buildHeartbeat`), the 1-minute load per core as `low` (< 0.5), `medium` (< 1) or `high`, agents and active members from the engine API's state, and `update: none` until the UI loader (M-05) reports one. With `MOCK_STATS=scenario` disk, memory and CPU are fixed per scenario (`empty` 10/20/low, `small-team` 40/50/medium, `large-fleet` 70/80/high), so e2e can assert exact dashboard values.
+
+## UI loader (M-05)
+
+The mock engine is the reference UI loader for the engine team ([ui-loader.md](../../docs/engine-integration/ui-loader.md)). With `PTBK_UI_RELEASE_URL` set it checks the release store at startup, every `MOCK_UI_CHECK_INTERVAL_S` and on `POST /__mock/ui/check`, one check at a time ([ui-update.ts](src/domain/ui/ui-update.ts)): C-06's `verifyRelease` decides on the signed release with the trust policy from `MOCK_UI_TRUST_POLICY_FILE`, the persisted `firstSeenAt` and `lastAcceptedRevocationIssuedAt` (`PTBK_DATA_DIR/ui/update-state.json`) and the Sigstore verifier from `@ptbk/release-tools` against the pinned trusted root; then the `ui` artifact's SHA-256, the unpacked files against the manifest and the manifest's `engineApi` range against `ENGINE_API_VERSION`. A bundle that passes is unpacked into `PTBK_DATA_DIR/ui/<version>-<sha256 prefix>/` (read-only) and becomes active atomically; anything else is logged as `ui.refused` (reason and version only) and the previous bundle keeps being served.
+
+`/` and every other path no route takes serve the active bundle behind the gateway session: only files its verified manifest lists, content-hashed assets cached as immutable, `index.html` as the fallback for documents outside `/api/`, `/auth/`, `/setup`, `/.well-known/`, `/assets/`, `/__spike/` and `/__mock/`. Before the first install the answer is a plain 503 page. Every in-tunnel response carries the engine's headers ([security-headers.ts](src/domain/http/security-headers.ts)): `ENGINE_UI_CSP`, HSTS, COOP and CORP `same-origin`, `Referrer-Policy: no-referrer`, `nosniff`, `X-Frame-Options: DENY` and a `Permissions-Policy` that disables camera, microphone, geolocation, payment and USB. They are engine code; the bundle's manifest `csp` is never read. The security panel's `ui` shows the active bundle's version, archive SHA-256 and Rekor log index.
+
+No revocation list is published yet, and `verifyRelease` refuses every release without a fresh one, so against the real release store the loader installs nothing until one exists ([open points](../../docs/engine-integration/README.md#open-points)). Tests and the e2e stack sign their own lists at run time.
 
 ## Dev CA
 
@@ -90,7 +100,7 @@ To trust it locally, add `PTBK_DATA_DIR/dev-ca/ca-cert.pem` to the browser's or 
 | Variable                      | Meaning                                                                                                 |
 | ----------------------------- | ------------------------------------------------------------------------------------------------------- |
 | `PTBK_MODE`                   | `tunnel` (default; the only mode the mock supports)                                                     |
-| `PTBK_DATA_DIR`               | Required. Holds `engine-key.pem`, `registration.json` and `heartbeat-seq`                               |
+| `PTBK_DATA_DIR`               | Required. Holds `engine-key.pem`, `registration.json`, `heartbeat-seq` and `ui/`                        |
 | `PTBK_RELAYS`                 | Comma-separated `wss://<relay hostname>[:port][/v1/tunnel]` URLs. Required without `PTBK_DASHBOARD_URL` |
 | `PTBK_DASHBOARD_URL`          | The dashboard's `https://` origin; enables registration and heartbeats                                  |
 | `PTBK_LINK_CODE`              | One-time link code for the first registration; needs `PTBK_DASHBOARD_URL`                               |
@@ -114,6 +124,13 @@ To trust it locally, add `PTBK_DATA_DIR/dev-ca/ca-cert.pem` to the browser's or 
 | `MOCK_CONTROL`                | `enabled` or `disabled` (default)                                                                       |
 | `MOCK_CONTROL_HOST`           | IP or hostname for the control listener, default `127.0.0.1`                                            |
 | `MOCK_CONTROL_PORT`           | Default `4480`                                                                                          |
+| `PTBK_UI_RELEASE_URL`         | `https://` URL of the release store or mirror, path ending in `/`; enables the UI loader                |
+| `PTBK_UPDATE_POLICY`          | `auto` (default), `manual` or `pinned`                                                                  |
+| `PTBK_PINNED_VERSION`         | The version to install; required with `pinned`, refused otherwise                                       |
+| `MOCK_UI_TRUST_POLICY_FILE`   | Required with `PTBK_UI_RELEASE_URL`: C-06's `TrustPolicy` as JSON                                       |
+| `MOCK_UI_TRUSTED_ROOT_FILE`   | A Sigstore `trusted_root.json` instead of the pinned one in `@ptbk/release-tools`                       |
+| `MOCK_UI_CHECK_INTERVAL_S`    | Seconds between update checks, 1 to 86400, default 3600                                                 |
+| `MOCK_UI_FAKE_PROVENANCE`     | `enabled` accepts test attestations instead of Sigstore (tests and e2e only; refused in production)     |
 
 Logs are JSON lines with relay URLs, states, close codes, attempt numbers, certificate expiry and dashboard status codes; never a key, signatures, the link code, heartbeat bodies, proxy credentials or stream bytes.
 
