@@ -2,7 +2,7 @@
 
 - **Lane:** Engine integration · **Module:** `docs/engine-integration/` · **Milestone:** M2 (pulled forward)
 - **Depends on:** C-02, C-03, C-04, C-06
-- **Status:** in progress (#29 merged; awaiting maintainer review)
+- **Status:** done (#29)
 - **Spec:** Interfaces (draft) 1–6, Relay and tunnel, Pairing and identity, Residual risks (2. Engine updates), Security hardening 1, 7, 8, Build plan; ADRs: [0002](../../adr/0002-public-private-split.md), [0003](../../adr/0003-ui-as-signed-bundle.md), [0004](../../adr/0004-mock-engine-and-conformance.md), [0014](../../adr/0014-cryptography.md)
 
 ## Goal
@@ -11,7 +11,7 @@
 
 ## Context
 
-The engine team builds in the public `webgptorg/promptbook` repo against our contracts and integrates last (M5). They need lead time, so this guide lands in M2 as soon as the contracts exist, even while parts of the mock engine are still in progress. The guide moves public with the contracts in E-02, so it contains nothing private: no relay internals beyond the tunnel protocol, no dashboard internals beyond the engine-facing endpoints, no infra details, no secrets. The spec stays the source of truth for why; this guide is the how, linked to code.
+The engine team builds in the public `webgptorg/promptbook` repo against our contracts and integrates last (M5). They need lead time, so this guide lands in M2 as soon as the contracts exist, even while parts of the mock engine are still in progress. The guide moves public with the contracts in E-02 and until then stays in this repository only (Seb, 2026-10-21): it is not copied, published or shared anywhere else. Because it will be public, it contains nothing private: no relay internals beyond the tunnel protocol, no dashboard internals beyond the engine-facing endpoints, no infra details, no secrets. The spec stays the source of truth for why; this guide is the how, linked to code.
 
 ## Scope
 
@@ -46,9 +46,9 @@ One file per topic, each with: what the engine must do (normative, "must"/"shoul
 - [x] `checklist.md` has rows for strict verification against C-01's vectors, signed tunnel negotiation (including `version`), engine key handling, idempotent re-registration, custom hostname CNAME, `firstSeenAt` persistence, and revocation list freshness and rollback.
 - [x] A link check over `docs/engine-integration/` passes (relative links only, all targets exist).
 - [x] A grep for private hostnames, internal paths beyond `/internal/v1` and secret-like strings finds nothing.
-- [ ] Reviewed by the engine team contact (or, until named, by a maintainer), with their questions answered in the guide or listed as open points.
+- [x] Reviewed by the engine team contact (or, until named, by a maintainer), with their questions answered in the guide or listed as open points. Accepted by Seb on 2026-10-21, no changes.
 - [x] `bun run check` passes (Prettier on Markdown).
-- [ ] **Status** line above set to `done (#<PR>)`.
+- [x] **Status** line above set to `done (#<PR>)`.
 
 ## Risks and open points
 
