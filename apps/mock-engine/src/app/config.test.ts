@@ -194,8 +194,8 @@ describe('parseMockEngineConfig', () => {
     });
 
     it('rejects unknown PTBK_ and MOCK_ settings', () => {
-        expect(problemsOf({ ...BASE, PTBK_UPDATE_POLICY: 'auto', MOCK_SEEDS: '1' })).toEqual([
-            'PTBK_UPDATE_POLICY: is not a mock engine setting',
+        expect(problemsOf({ ...BASE, PTBK_AUTO_UPDATE: 'auto', MOCK_SEEDS: '1' })).toEqual([
+            'PTBK_AUTO_UPDATE: is not a mock engine setting',
             'MOCK_SEEDS: is not a mock engine setting',
         ]);
     });

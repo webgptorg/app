@@ -29,7 +29,10 @@ type Params = z.ZodObject | null;
 
 interface RouteContract<P extends Params, Q extends z.ZodObject, H extends StringFields | null, A extends AuthMode> {
     readonly method: HttpMethod;
-    /** Exact, or with `{name}` segments that `params` declares. */
+    /**
+     * Exact, or with `{name}` segments that `params` declares; a last `{name+}` segment takes the rest of the path and
+     * is matched only after every other route.
+     */
     readonly path: `/${string}`;
     readonly auth: A;
     /**

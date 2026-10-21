@@ -257,14 +257,22 @@ async function runEngineApiRoute(route: HttpRoute, context: RequestContext): Pro
     } as unknown as Parameters<HttpRoute['handle']>[0]);
 }
 
-/** Hono's `:name` form of a `{name}` path. */
+/** Hono's `:name` form of a `{name}` path; `{name+}` is the rest of the path, one or more segments. */
 export function honoPath(path: string): string {
-    return path.replace(/\{(\w+)\}/g, ':$1');
+    return path.replace(/\{(\w+)\+\}/g, ':$1{.+}').replace(/\{(\w+)\}/g, ':$1');
 }
 
-/** More literal segments first, so `/agents/validate` wins over `/agents/{agentId}` (Hono runs routes in order). */
+/** Whether a path ends in a `{name+}` segment, which matches whatever no other route took. */
+export function isCatchAll(path: string): boolean {
+    return /\{\w+\+\}$/.test(path);
+}
+
+/**
+ * More literal segments first, so `/agents/validate` wins over `/agents/{agentId}` (Hono runs routes in order), and
+ * catch-all routes last of all.
+ */
 export function bySpecificity(a: Route, b: Route): number {
     const literals = (route: Route): number =>
         route.path.split('/').filter((segment) => segment !== '' && !segment.startsWith('{')).length;
-    return literals(b) - literals(a);
+    return Number(isCatchAll(a.path)) - Number(isCatchAll(b.path)) || literals(b) - literals(a);
 }

@@ -21,6 +21,8 @@ import type { OneTimeSecret } from '../domain/secret';
 import { oneTimeSecret, secret } from '../domain/secret';
 import { Scenario } from '../domain/state/scenarios';
 import type { RelayTarget } from '../domain/tunnel/relay-target';
+import { DEFAULT_UI_CHECK_INTERVAL_S } from '../domain/ui/ui-updater';
+import type { UpdatePolicy } from '../domain/ui/update-policy';
 
 const MAX_PATH_LENGTH = 4096;
 const MAX_URL_LENGTH = 2048;
@@ -65,6 +67,23 @@ export interface MockEngineConfig {
     readonly dashboard: DashboardConfig | null;
     /** `MOCK_STATS`: the heartbeat's disk, memory and CPU figures from the host (`os`) or fixed per scenario. */
     readonly stats: 'os' | 'scenario';
+    /** The UI loader (M-05); null without `PTBK_UI_RELEASE_URL`, and the engine answers 503 for the app. */
+    readonly ui: UiLoaderConfig | null;
+}
+
+export interface UiLoaderConfig {
+    /** `PTBK_UI_RELEASE_URL`: the release store or mirror, `https://` with a path ending in `/`. */
+    readonly releaseUrl: string;
+    /** `PTBK_UPDATE_POLICY` with `PTBK_PINNED_VERSION`. */
+    readonly updatePolicy: UpdatePolicy;
+    /** `MOCK_UI_TRUST_POLICY_FILE`: C-06's `TrustPolicy` as JSON. */
+    readonly trustPolicyFile: string;
+    /** `MOCK_UI_TRUSTED_ROOT_FILE`; null uses the pinned Sigstore trusted root. */
+    readonly trustedRootFile: string | null;
+    /** `MOCK_UI_CHECK_INTERVAL_S`, default 3600. */
+    readonly checkIntervalS: number;
+    /** `MOCK_UI_FAKE_PROVENANCE=enabled`: test attestations instead of Sigstore. Refused with `NODE_ENV=production`. */
+    readonly fakeProvenance: boolean;
 }
 
 export interface DashboardConfig {
@@ -133,6 +152,16 @@ function parseUrl(text: string): URL | undefined {
     // `?` and `#` with nothing after them leave `search` and `hash` empty, so the raw text is checked too.
     if (text.length > MAX_URL_LENGTH || /[?#]/.test(text)) return undefined;
     return URL.parse(text) ?? undefined;
+}
+
+/** An `https://` URL without credentials, query or fragment, whose path ends in `/` so store paths join under it. */
+function parseReleaseUrl(text: string, problem: (message: string) => void): string | undefined {
+    const url = parseUrl(text);
+    if (url?.protocol !== 'https:' || url.username !== '' || url.password !== '' || !url.pathname.endsWith('/')) {
+        problem('must be an https:// URL without credentials whose path ends in /');
+        return undefined;
+    }
+    return url.href;
 }
 
 /** An `https://` origin: no credentials, path, query or fragment, so it joins with the contract's paths unambiguously. */
@@ -334,6 +363,20 @@ const envSchema = z.strictObject({
     ).default(DEFAULT_HEARTBEAT_INTERVAL_S),
     MOCK_RELAYS_OVERRIDE: toggle.default('disabled'),
     MOCK_STATS: value(z.enum(['os', 'scenario']), 'must be os or scenario').default('os'),
+    PTBK_UI_RELEASE_URL: parsed(parseReleaseUrl).optional(),
+    PTBK_UPDATE_POLICY: value(z.enum(['auto', 'manual', 'pinned']), 'must be auto, manual or pinned').default('auto'),
+    PTBK_PINNED_VERSION: value(EngineVersionSchema, 'must be a SemVer version').optional(),
+    MOCK_UI_TRUST_POLICY_FILE: filePath.optional(),
+    MOCK_UI_TRUSTED_ROOT_FILE: filePath.optional(),
+    MOCK_UI_CHECK_INTERVAL_S: value(
+        z
+            .string()
+            .regex(/^[1-9]\d{0,5}$/)
+            .transform(Number)
+            .pipe(z.int().max(86_400)),
+        'must be a whole number of seconds from 1 to 86400',
+    ).default(DEFAULT_UI_CHECK_INTERVAL_S),
+    MOCK_UI_FAKE_PROVENANCE: toggle.default('disabled'),
     PTBK_ENGINE_DOMAIN: value(HostnameSchema, 'must be a hostname'),
     PTBK_ENGINE_VERSION: value(EngineVersionSchema, 'must be a SemVer version').default(DEFAULT_ENGINE_VERSION),
     MOCK_EXTRA_CA_FILE: filePath.optional(),
@@ -410,11 +453,14 @@ export function parseMockEngineConfig(env: Env): MockEngineConfig {
     ) {
         problems.push('MOCK_DEV_CA_CERT_FILE: must be set together with MOCK_DEV_CA_KEY_FILE');
     }
-    problems.push(...dashboardProblems(settings));
+    problems.push(...dashboardProblems(settings), ...uiProblems(settings));
     if (result.success && result.data.NODE_ENV === 'production') {
         if (result.data.MOCK_CONTROL === 'enabled') problems.push('MOCK_CONTROL: must not be enabled in production');
         if (result.data.MOCK_DEV_LOGIN === 'enabled')
             problems.push('MOCK_DEV_LOGIN: must not be enabled in production');
+        if (result.data.MOCK_UI_FAKE_PROVENANCE === 'enabled') {
+            problems.push('MOCK_UI_FAKE_PROVENANCE: must not be enabled in production');
+        }
     }
     if (!result.success || problems.length > 0) throw new ConfigError(problems);
     const parsedEnv = result.data;
@@ -456,7 +502,58 @@ export function parseMockEngineConfig(env: Env): MockEngineConfig {
                       relaysOverride: parsedEnv.MOCK_RELAYS_OVERRIDE === 'enabled',
                   }),
         stats: parsedEnv.MOCK_STATS,
+        ui: uiConfig(parsedEnv),
     });
+}
+
+function uiConfig(env: z.output<typeof envSchema>): UiLoaderConfig | null {
+    if (env.PTBK_UI_RELEASE_URL === undefined || env.MOCK_UI_TRUST_POLICY_FILE === undefined) return null;
+    const updatePolicy: UpdatePolicy =
+        env.PTBK_UPDATE_POLICY === 'pinned' && env.PTBK_PINNED_VERSION !== undefined
+            ? Object.freeze({ kind: 'pinned', version: env.PTBK_PINNED_VERSION })
+            : Object.freeze({ kind: env.PTBK_UPDATE_POLICY === 'manual' ? 'manual' : 'auto' });
+    return Object.freeze({
+        releaseUrl: env.PTBK_UI_RELEASE_URL,
+        updatePolicy,
+        trustPolicyFile: env.MOCK_UI_TRUST_POLICY_FILE,
+        trustedRootFile: env.MOCK_UI_TRUSTED_ROOT_FILE ?? null,
+        checkIntervalS: env.MOCK_UI_CHECK_INTERVAL_S,
+        fakeProvenance: env.MOCK_UI_FAKE_PROVENANCE === 'enabled',
+    });
+}
+
+const UI_LOADER_SETTINGS = [
+    'PTBK_UPDATE_POLICY',
+    'PTBK_PINNED_VERSION',
+    'MOCK_UI_TRUST_POLICY_FILE',
+    'MOCK_UI_TRUSTED_ROOT_FILE',
+    'MOCK_UI_CHECK_INTERVAL_S',
+    'MOCK_UI_FAKE_PROVENANCE',
+] as const;
+
+/** The loader's settings only mean something together; judged by presence, like the dashboard's. */
+function uiProblems(settings: Readonly<Record<string, string>>): string[] {
+    const problems: string[] = [];
+    if (settings['PTBK_UI_RELEASE_URL'] === undefined) {
+        for (const name of UI_LOADER_SETTINGS) {
+            if (settings[name] !== undefined) problems.push(`${name}: needs PTBK_UI_RELEASE_URL`);
+        }
+        return problems;
+    }
+    if (settings['MOCK_UI_TRUST_POLICY_FILE'] === undefined) {
+        problems.push('MOCK_UI_TRUST_POLICY_FILE: is required with PTBK_UI_RELEASE_URL');
+    }
+    if (settings['MOCK_UI_FAKE_PROVENANCE'] === 'enabled' && settings['MOCK_UI_TRUSTED_ROOT_FILE'] !== undefined) {
+        problems.push('MOCK_UI_TRUSTED_ROOT_FILE: has no effect with MOCK_UI_FAKE_PROVENANCE enabled');
+    }
+    const pinned = settings['PTBK_UPDATE_POLICY'] === 'pinned';
+    if (pinned && settings['PTBK_PINNED_VERSION'] === undefined) {
+        problems.push('PTBK_PINNED_VERSION: is required with PTBK_UPDATE_POLICY=pinned');
+    }
+    if (!pinned && settings['PTBK_PINNED_VERSION'] !== undefined) {
+        problems.push('PTBK_PINNED_VERSION: needs PTBK_UPDATE_POLICY=pinned');
+    }
+    return problems;
 }
 
 /** Which relays the engine dials depends on whether a dashboard hands it a list (M-06); judged by presence only. */
