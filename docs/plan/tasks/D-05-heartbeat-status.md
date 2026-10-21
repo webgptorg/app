@@ -2,7 +2,7 @@
 
 - **Lane:** D · **Module:** `apps/dashboard` · **Milestone:** M3
 - **Depends on:** D-03
-- **Status:** todo
+- **Status:** in progress (feat/d-05-heartbeat)
 - **Spec:** What our platform can and cannot do (Heartbeat); Interfaces (draft) 4; Operations (Engine offline; Notifications without us); Metadata we still see; ADRs: [0006](../../adr/0006-organizations-and-roles.md), [0014](../../adr/0014-cryptography.md)
 
 ## Goal
