@@ -191,6 +191,7 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
                   faults,
                   seed: config.seed,
                   devLogin: config.devLogin,
+                  canary: spikeCanary(deps.random),
                   clock: deps.clock,
                   logger,
               });
@@ -310,6 +311,12 @@ function stateListener(
     };
 }
 
+const SPIKE_CANARY_BYTES = 16;
+
+function spikeCanary(random: Random): string {
+    return Buffer.from(random.bytes(SPIKE_CANARY_BYTES)).toString('hex');
+}
+
 /** Everything served inside the tunnel: spike pages, the gateway's pages and the engine API. */
 export function createInTunnelRoutes(deps: {
     readonly engineId: EngineIdentity['engineId'];
@@ -317,9 +324,10 @@ export function createInTunnelRoutes(deps: {
     readonly core: () => InMemoryEngineCore;
     readonly sessions: SessionStore;
     readonly devLogin: boolean;
+    readonly canary: string;
 }): readonly Route[] {
     return [
-        ...createSpikeRoutes({ engineId: deps.engineId, clock: deps.clock }),
+        ...createSpikeRoutes({ engineId: deps.engineId, clock: deps.clock, canary: deps.canary }),
         ...createGatewayRoutes({
             sessions: deps.sessions,
             members: () => deps.core().controller.inspect().members,
@@ -344,6 +352,8 @@ export interface EngineServerDeps {
     /** Seeds fault decisions. */
     readonly seed: number;
     readonly devLogin: boolean;
+    /** Shown on the spike page; see `SpikeRouteDeps.canary`. */
+    readonly canary: string;
     readonly clock: Clock;
     readonly logger: Logger;
     readonly rateLimiter?: RateLimiter;

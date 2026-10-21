@@ -10,7 +10,9 @@ import {
     DockerApiError,
     createComposeControl,
     demuxDockerLogs,
+    demuxDockerStreams,
     ownComposeProject,
+    unixSocketStreamTransport,
     unixSocketTransport,
 } from './compose.ts';
 
@@ -88,6 +90,108 @@ describe('createComposeControl', () => {
     });
 });
 
+describe('exec, inspect, streams and networks', () => {
+    /** One container `abc` for service `relay-a`, recording calls with their bodies. */
+    function daemon() {
+        const calls: { method: string; path: string; body: unknown }[] = [];
+        const transport: DockerTransport = (method, path, body) => {
+            calls.push({ method, path, body });
+            const url = new URL(path, 'http://docker');
+            if (url.pathname === '/containers/json') return Promise.resolve(json(200, [{ Id: 'abc' }]));
+            if (url.pathname === '/containers/abc/exec') return Promise.resolve(json(201, { Id: 'e1' }));
+            if (url.pathname === '/exec/e1/start') {
+                return Promise.resolve({ status: 200, body: Buffer.concat([frame(1, 'out'), frame(2, 'err')]) });
+            }
+            if (url.pathname === '/exec/e1/json') return Promise.resolve(json(200, { ExitCode: 3 }));
+            if (url.pathname === '/containers/abc/json') {
+                return Promise.resolve(
+                    json(200, {
+                        Id: 'abc',
+                        Config: { Env: ['A=1'], Cmd: ['node'], Entrypoint: null, Labels: { l: 'v', n: 1 } },
+                        Mounts: [{ Destination: '/pki', Type: 'volume' }, { Type: 'bind' }],
+                        NetworkSettings: { Networks: { p_stack: { IPAMConfig: { IPv4Address: '10.0.0.11' } } } },
+                    }),
+                );
+            }
+            return Promise.resolve({ status: 200, body: Buffer.alloc(0) });
+        };
+        return { calls, transport };
+    }
+
+    it('runs a command and returns its exit code and both streams', async () => {
+        const { calls, transport } = daemon();
+        const result = await createComposeControl(transport, 'p').exec('relay-a', ['cat', '/x'], { user: 'nobody' });
+        expect(result).toEqual({ exitCode: 3, stdout: 'out', stderr: 'err' });
+        expect(calls.find((call) => call.path === '/containers/abc/exec')?.body).toEqual({
+            AttachStdout: true,
+            AttachStderr: true,
+            Cmd: ['cat', '/x'],
+            User: 'nobody',
+        });
+    });
+
+    it('reads env, mounts, command and labels, skipping malformed entries', async () => {
+        expect(await createComposeControl(daemon().transport, 'p').inspect('relay-a')).toEqual({
+            env: ['A=1'],
+            cmd: ['node'],
+            entrypoint: [],
+            mounts: [{ destination: '/pki', type: 'volume' }],
+            labels: { l: 'v' },
+        });
+    });
+
+    it("takes a service off this project's network and puts it back at the same address", async () => {
+        const { calls, transport } = daemon();
+        const compose = createComposeControl(transport, 'p');
+        const address = await compose.disconnectNetwork('relay-a', 'stack');
+        await compose.connectNetwork('relay-a', 'stack', address);
+        expect(calls.filter((call) => call.method === 'POST').map((call) => [call.path, call.body])).toEqual([
+            ['/networks/p_stack/disconnect', { Container: 'abc', Force: true }],
+            [
+                '/networks/p_stack/connect',
+                { Container: 'abc', EndpointConfig: { IPAMConfig: { IPv4Address: '10.0.0.11' } } },
+            ],
+        ]);
+        await expect(compose.disconnectNetwork('relay-a', 'other')).rejects.toThrow('no fixed address on p_other');
+    });
+
+    it('streams an export and an archive, and refuses without a stream transport or on an error status', async () => {
+        const paths: string[] = [];
+        const compose = createComposeControl(daemon().transport, 'p', (path) => {
+            paths.push(path);
+            const body = (async function* () {
+                yield await Promise.resolve(
+                    new TextEncoder().encode(path.includes('missing') ? 'no such path' : 'tar'),
+                );
+            })();
+            return Promise.resolve({ status: path.includes('missing') ? 404 : 200, body });
+        });
+        const chunks: Uint8Array[] = [];
+        for await (const chunk of await compose.exportFilesystem('relay-a')) chunks.push(chunk);
+        expect(Buffer.concat(chunks).toString()).toBe('tar');
+        await compose.archive('relay-a', '/relay-key');
+        await expect(compose.archive('relay-a', '/missing')).rejects.toThrow('Docker API status 404');
+        expect(paths).toEqual([
+            '/containers/abc/export',
+            '/containers/abc/archive?path=%2Frelay-key',
+            '/containers/abc/archive?path=%2Fmissing',
+        ]);
+        await expect(createComposeControl(daemon().transport, 'p').exportFilesystem('relay-a')).rejects.toThrow(
+            'no streaming transport',
+        );
+    });
+});
+
+describe('demuxDockerStreams', () => {
+    it('keeps stdout and stderr apart and refuses a truncated stream', () => {
+        expect(demuxDockerStreams(Buffer.concat([frame(1, 'a'), frame(2, 'b'), frame(1, 'c')]))).toEqual({
+            stdout: 'ac',
+            stderr: 'b',
+        });
+        expect(() => demuxDockerStreams(frame(1, 'abc').subarray(0, 10))).toThrow('truncated');
+    });
+});
+
 describe('ownComposeProject', () => {
     it('reads the project label of the container we run in', async () => {
         const transport: DockerTransport = (_method, path) =>
@@ -118,6 +222,34 @@ describe('demuxDockerLogs', () => {
 });
 
 describe('unixSocketTransport', () => {
+    it('sends a JSON body and streams a response', async () => {
+        const directory = await mkdtemp(join(tmpdir(), 'docker-'));
+        const socketPath = join(directory, 's');
+        const server = createServer((req, res) => {
+            const chunks: Buffer[] = [];
+            req.on('data', (chunk: Buffer) => chunks.push(chunk));
+            req.on('end', () => {
+                res.end(JSON.stringify({ type: req.headers['content-type'], body: Buffer.concat(chunks).toString() }));
+            });
+        });
+        await new Promise<void>((resolve) => server.listen(socketPath, resolve));
+        try {
+            const response = await unixSocketTransport(socketPath)('POST', '/exec/e1/start', { Detach: false });
+            expect(JSON.parse(response.body.toString())).toEqual({
+                type: 'application/json',
+                body: '{"Detach":false}',
+            });
+            const streamed = await unixSocketStreamTransport(socketPath)('/containers/abc/export');
+            const chunks: Uint8Array[] = [];
+            for await (const chunk of streamed.body) chunks.push(chunk);
+            expect(streamed.status).toBe(200);
+            expect(JSON.parse(Buffer.concat(chunks).toString())).toEqual({ body: '' });
+        } finally {
+            await new Promise((resolve) => server.close(resolve));
+            await rm(directory, { recursive: true, force: true });
+        }
+    });
+
     it('speaks HTTP over the socket under a pinned API version', async () => {
         const directory = await mkdtemp(join(tmpdir(), 'docker-'));
         const socketPath = join(directory, 's');

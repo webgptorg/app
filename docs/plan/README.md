@@ -103,6 +103,7 @@ bun run plan --check  # validates statuses and dependencies (part of bun run che
 | [I-04](tasks/I-04-observability.md)                      | Monitoring without content                                                       | I    | M4        |
 | [I-05](tasks/I-05-abuse-controls.md)                     | Abuse controls and monitoring jobs                                               | I    | M4        |
 | [I-06](tasks/I-06-security-review.md)                    | Internal security review gate                                                    | I    | M4        |
+| [I-07](tasks/I-07-health-checked-relay-dns.md)           | Health-checked relay DNS                                                         | I    | M4        |
 | [E-02](tasks/E-02-publish-contracts.md)                  | Move the contracts public and consume published versions                         | E    | M5        |
 | [E-03](tasks/E-03-real-engine-swap.md)                   | Run conformance and e2e against the real engine                                  | E    | M5        |
 
@@ -120,7 +121,7 @@ Tasks in the same wave have no dependencies on each other and can run at the sam
 | 6    | C-05, D-03, R-05, R-06, X-01                                                 |
 | 7    | D-04, D-05, E-02, I-01, M-03, M-05, M-07, X-02                               |
 | 8    | D-06, D-08, I-03, I-04, X-04                                                 |
-| 9    | I-05, X-05                                                                   |
+| 9    | I-05, I-07, X-05                                                             |
 | 10   | E-03, I-06                                                                   |
 
 C-01 and R-01 both live in `packages/protocol` and touch its `package.json` and `src/index.ts`; whoever merges second rebases (AGENTS.md, step 7). Wave 1 starts four agents at once; wave 4 is the widest with thirteen.

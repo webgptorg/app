@@ -19,7 +19,7 @@ import { createSessionStore } from '../../domain/gateway/sessions';
 import type { RateLimiter } from '../../domain/rate-limit/rate-limiter';
 import { isRateLimitRule } from '../../domain/rate-limit/rate-limiter';
 import type { EngineHarness, HarnessResponse } from '../../testing/engine-harness';
-import { HARNESS_ENGINE_ID, HARNESS_HOSTNAME, createEngineHarness } from '../../testing/engine-harness';
+import { HARNESS_CANARY, HARNESS_ENGINE_ID, HARNESS_HOSTNAME, createEngineHarness } from '../../testing/engine-harness';
 import { createEngineRuntime } from '../../domain/state/engine-runtime';
 import { createFakeClock } from '../../testing/fake-clock';
 import { createMemoryLogger } from '../../testing/memory-logger';
@@ -105,6 +105,7 @@ function inTunnelRoutes(devLogin: boolean): readonly Route[] {
         core: () => core,
         sessions: createSessionStore({ engine: () => core.controller, clock, random: createSeededRandom(1) }),
         devLogin,
+        canary: HARNESS_CANARY,
     });
 }
 
@@ -267,7 +268,11 @@ describe('mounting', () => {
         });
 
     it('refuses to mount the same route twice', () => {
-        const [first] = createSpikeRoutes({ engineId: HARNESS_ENGINE_ID, clock: createFakeClock() });
+        const [first] = createSpikeRoutes({
+            engineId: HARNESS_ENGINE_ID,
+            clock: createFakeClock(),
+            canary: HARNESS_CANARY,
+        });
         if (first === undefined) throw new Error('no routes');
         expect(() => app([first, first])).toThrow('refusing to mount http GET / twice');
     });

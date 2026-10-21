@@ -6,19 +6,22 @@ import { mkdir, rm } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import { Writable } from 'node:stream';
 
+import type { Scenario } from './scenarios.ts';
+import { ALL_SCENARIO_OVERLAYS, SCENARIOS, scenarioNamed } from './scenarios.ts';
+
 const E2E_DIR = dirname(import.meta.dirname);
 const RESULTS_DIR = join(E2E_DIR, 'test-results');
 const CONTAINER_RESULTS_DIR = '/repo/e2e/test-results';
 const DOCKER_SOCKET = '/var/run/docker.sock';
 const WAIT_TIMEOUT_S = 300;
-/** Every service except `playwright`, which `run` starts on its own; naming the last one brings up the rest. */
-const STACK_ENTRY_SERVICE = 'mock-engine';
 
 export interface ComposeTarget {
     readonly project: string;
     readonly e2eDir: string;
     /** `compose.<name>.yaml` files layered over compose.yaml, in order. */
     readonly overlays: readonly string[];
+    /** Selects the specs inside the playwright container (playwright.config.ts). */
+    readonly scenario: string;
 }
 
 /**
@@ -67,7 +70,35 @@ export function playwrightContainerName(target: ComposeTarget): string {
 /** `docker compose run` arguments; extra arguments go to `playwright test` (e.g. `--grep sse`). */
 export function runArgs(target: ComposeTarget, playwrightArgs: readonly string[]): readonly string[] {
     const command = playwrightArgs.length === 0 ? [] : ['node_modules/.bin/playwright', 'test', ...playwrightArgs];
-    return composeArgs(target, 'run', '--name', playwrightContainerName(target), '--no-deps', 'playwright', ...command);
+    return composeArgs(
+        target,
+        'run',
+        '--name',
+        playwrightContainerName(target),
+        '--env',
+        `E2E_SCENARIO=${target.scenario}`,
+        '--no-deps',
+        'playwright',
+        ...command,
+    );
+}
+
+/** The scenario's overlays, then any extra ones from `E2E_OVERLAYS` (such as `debug`). */
+export function scenarioTarget(
+    base: Omit<ComposeTarget, 'overlays' | 'scenario'>,
+    scenario: Scenario,
+    extraOverlays: readonly string[],
+): ComposeTarget {
+    return {
+        ...base,
+        scenario: scenario.name,
+        overlays: [...new Set([...scenario.overlays, ...extraOverlays])],
+    };
+}
+
+/** `down` and `logs` see the services of every scenario, so they clean up whatever an earlier run started. */
+export function everyServiceTarget(target: ComposeTarget): ComposeTarget {
+    return { ...target, overlays: [...new Set([...ALL_SCENARIO_OVERLAYS, ...target.overlays])] };
 }
 
 type Output = 'inherit' | 'ignore' | NodeJS.WritableStream;
@@ -152,23 +183,39 @@ async function up(target: ComposeTarget): Promise<void> {
             '--no-build',
             '--wait',
             '--wait-timeout',
+            // Every service but playwright, whose `test` profile is not active here; `run` starts it on its own.
             String(WAIT_TIMEOUT_S),
-            STACK_ENTRY_SERVICE,
         ),
     );
 }
 
 async function down(target: ComposeTarget): Promise<void> {
     await removeRunContainer(target);
-    await must(composeArgs(target, '--profile', 'test', 'down', '--volumes', '--remove-orphans', '--timeout', '10'));
+    await must(
+        composeArgs(
+            everyServiceTarget(target),
+            '--profile',
+            'test',
+            'down',
+            '--volumes',
+            '--remove-orphans',
+            '--timeout',
+            '10',
+        ),
+    );
+}
+
+function resultsDir(target: ComposeTarget): string {
+    return join(RESULTS_DIR, target.scenario);
 }
 
 async function saveLogs(target: ComposeTarget): Promise<void> {
-    await mkdir(RESULTS_DIR, { recursive: true });
-    const file = createWriteStream(join(RESULTS_DIR, 'compose.log'));
+    const dir = resultsDir(target);
+    await mkdir(dir, { recursive: true });
+    const file = createWriteStream(join(dir, 'compose.log'));
     await docker(composeArgs(target, '--profile', 'test', 'logs', '--no-color', '--timestamps'), file);
     await new Promise((resolve) => file.end(resolve));
-    process.stderr.write(`e2e: service logs in ${join(RESULTS_DIR, 'compose.log')}\n`);
+    process.stderr.write(`e2e: service logs in ${join(dir, 'compose.log')}\n`);
 }
 
 /** Runs the suite in the playwright container and copies its results out (no bind mount: no root-owned files). */
@@ -178,14 +225,16 @@ async function runTests(target: ComposeTarget, playwrightArgs: readonly string[]
     process.env['E2E_DOCKER_GID'] = await dockerSocketGid(target);
     await removeRunContainer(target);
     const code = await docker(runArgs(target, playwrightArgs));
-    await mkdir(RESULTS_DIR, { recursive: true });
-    await docker(['cp', `${playwrightContainerName(target)}:${CONTAINER_RESULTS_DIR}/.`, RESULTS_DIR], 'ignore');
+    const dir = resultsDir(target);
+    await rm(dir, { recursive: true, force: true });
+    await mkdir(dir, { recursive: true });
+    await docker(['cp', `${playwrightContainerName(target)}:${CONTAINER_RESULTS_DIR}/.`, dir], 'ignore');
     await removeRunContainer(target);
     return code;
 }
 
-async function e2e(target: ComposeTarget, playwrightArgs: readonly string[]): Promise<number> {
-    await rm(RESULTS_DIR, { recursive: true, force: true });
+async function runScenario(target: ComposeTarget, playwrightArgs: readonly string[]): Promise<number> {
+    const started = Date.now();
     let code = 1;
     try {
         await up(target);
@@ -196,19 +245,44 @@ async function e2e(target: ComposeTarget, playwrightArgs: readonly string[]): Pr
         if (code !== 0) await saveLogs(target);
         await down(target);
     }
+    const seconds = Math.round((Date.now() - started) / 1000);
+    process.stderr.write(
+        `e2e: scenario ${target.scenario} ${code === 0 ? 'passed' : 'failed'} in ${String(seconds)} s\n`,
+    );
     return code;
+}
+
+/** Every scenario in turn (or only `E2E_SCENARIO`); one failing does not stop the others, so CI reports them all. */
+async function e2e(
+    base: Omit<ComposeTarget, 'overlays' | 'scenario'>,
+    scenarios: readonly Scenario[],
+    extraOverlays: readonly string[],
+    playwrightArgs: readonly string[],
+): Promise<number> {
+    await rm(RESULTS_DIR, { recursive: true, force: true });
+    const failed: string[] = [];
+    for (const scenario of scenarios) {
+        const code = await runScenario(scenarioTarget(base, scenario, extraOverlays), playwrightArgs);
+        if (code !== 0) failed.push(scenario.name);
+    }
+    if (failed.length > 0) process.stderr.write(`e2e: failed scenarios: ${failed.join(', ')}\n`);
+    return failed.length === 0 ? 0 : 1;
 }
 
 async function main(argv: readonly string[]): Promise<number> {
     const [command, ...rest] = argv;
-    const target: ComposeTarget = {
-        project: projectName(dirname(E2E_DIR), process.env),
-        e2eDir: E2E_DIR,
-        overlays: parseOverlays(process.env['E2E_OVERLAYS']),
-    };
+    const base = { project: projectName(dirname(E2E_DIR), process.env), e2eDir: E2E_DIR };
+    const extraOverlays = parseOverlays(process.env['E2E_OVERLAYS']);
+    const chosen = process.env['E2E_SCENARIO'];
+    const target = scenarioTarget(base, scenarioNamed(chosen), extraOverlays);
     switch (command ?? '') {
         case 'e2e':
-            return e2e(target, rest);
+            return e2e(
+                base,
+                chosen === undefined || chosen === '' ? SCENARIOS : [scenarioNamed(chosen)],
+                extraOverlays,
+                rest,
+            );
         case 'up':
             await up(target);
             return 0;
@@ -218,7 +292,17 @@ async function main(argv: readonly string[]): Promise<number> {
             await down(target);
             return 0;
         case 'logs':
-            return docker(composeArgs(target, '--profile', 'test', 'logs', '--no-color', '--timestamps', ...rest));
+            return docker(
+                composeArgs(
+                    everyServiceTarget(target),
+                    '--profile',
+                    'test',
+                    'logs',
+                    '--no-color',
+                    '--timestamps',
+                    ...rest,
+                ),
+            );
         default:
             process.stderr.write('usage: cli.ts e2e|up|run|down|logs [args]\n');
             return 2;

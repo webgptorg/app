@@ -1,0 +1,11 @@
+# Egress limited to TCP 443 (X-02), on top of the nat overlay: the gateway forwards only HTTPS and DNS to the stack's
+# resolver. relay-a's address also listens on 8443 (its namespace holder answers there), so the negative control
+# aims at a port that is open to everyone except the engine.
+
+services:
+  gateway:
+    environment:
+      GATEWAY_POLICY: egress-443
+
+  relay-a-net:
+    command: ['node', '/e2e/tcp-check.ts', 'listen', '--name', 'relay-a', '8443']

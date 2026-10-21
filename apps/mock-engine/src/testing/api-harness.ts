@@ -24,7 +24,13 @@ import { createEngineRuntime } from '../domain/state/engine-runtime';
 import type { Scenario } from '../domain/state/scenarios';
 import type { ContractRecorder } from './contract-recorder';
 import { createContractRecorder } from './contract-recorder';
-import { HARNESS_CLIENT_IP, HARNESS_DOMAIN, HARNESS_ENGINE_ID, HARNESS_HOSTNAME } from './engine-harness';
+import {
+    HARNESS_CANARY,
+    HARNESS_CLIENT_IP,
+    HARNESS_DOMAIN,
+    HARNESS_ENGINE_ID,
+    HARNESS_HOSTNAME,
+} from './engine-harness';
 import type { MemoryLogger } from './memory-logger';
 import { createMemoryLogger } from './memory-logger';
 import { asBrowser, createNodeFetch } from './node-fetch';
@@ -122,6 +128,7 @@ export function createApiHarness(options: ApiHarnessOptions = {}): ApiHarness {
         faults,
         seed: options.seed ?? 42,
         devLogin: options.devLogin ?? false,
+        canary: HARNESS_CANARY,
         clock,
         logger,
         ...(options.rateLimiter === undefined ? {} : { rateLimiter: options.rateLimiter }),

@@ -142,6 +142,9 @@
     },
     "e2e": {
       "name": "@ptbk/e2e",
+      "dependencies": {
+        "@ptbk/protocol": "workspace:*",
+      },
       "devDependencies": {
         "@playwright/test": "catalog:",
       },

@@ -27,6 +27,7 @@ import type { MemoryLogger } from './memory-logger';
 import { createMemoryLogger } from './memory-logger';
 
 export const HARNESS_ENGINE_ID = 'abcdefghijklmnopqrstuvwxyz' as EngineId;
+export const HARNESS_CANARY = '0123456789abcdef0123456789abcdef';
 export const HARNESS_DOMAIN = HostnameSchema.parse('engine.test');
 export const HARNESS_HOSTNAME = HostnameSchema.parse(`${HARNESS_ENGINE_ID}.engine.test`);
 export const HARNESS_CLIENT_IP = '198.51.100.23';
@@ -112,6 +113,7 @@ export function createEngineHarness(options: HarnessOptions = {}): EngineHarness
             createSpikeRoutes({
                 engineId: HARNESS_ENGINE_ID,
                 clock,
+                canary: HARNESS_CANARY,
                 ...(options.onDownloadBytes === undefined ? {} : { onDownloadBytes: options.onDownloadBytes }),
             }),
         rateLimiter: options.rateLimiter ?? createWindowRateLimiter({ clock }),

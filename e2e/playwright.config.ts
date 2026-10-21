@@ -1,10 +1,16 @@
 import { defineConfig, devices } from '@playwright/test';
 
+import { scenarioNamed } from './src/scenarios.ts';
+
+// cli.ts passes the scenario whose overlays it started; only that scenario's specs can pass against this stack.
+const scenario = scenarioNamed(process.env['E2E_SCENARIO']);
+
 // Runs inside the compose network (the `playwright` service), never on the host: names resolve through the stack's
 // DNS and Chromium trusts the dev CA through the NSS database the entrypoint prepared.
 export default defineConfig({
     testDir: './tests',
-    testMatch: '**/*.spec.ts',
+    // Globs match absolute paths.
+    testMatch: scenario.specs.map((spec) => `**/tests/${spec}`),
     outputDir: './test-results/artifacts',
     forbidOnly: process.env['CI'] !== undefined && process.env['CI'] !== '',
     retries: 0,

@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { RawData, WebSocket } from 'ws';
 
 import type { EngineHarness } from '../../testing/engine-harness';
-import { HARNESS_ENGINE_ID, createEngineHarness } from '../../testing/engine-harness';
+import { HARNESS_CANARY, HARNESS_ENGINE_ID, createEngineHarness } from '../../testing/engine-harness';
 import type { FakeClock } from '../../testing/fake-clock';
 import { createFakeClock } from '../../testing/fake-clock';
 import { DOWNLOAD_CHUNK_BYTES, SCREENCAST_HEADER_BYTES, SPIKE_LIMITS } from './spike-routes';
@@ -377,6 +377,7 @@ describe('the spike page', () => {
         expect(spike.body.toString('utf8')).toBe(root.body.toString('utf8'));
         const html = root.body.toString('utf8');
         expect(html).toContain(`<code id="engine-id">${HARNESS_ENGINE_ID}</code>`);
+        expect(html).toContain(`<code id="canary">${HARNESS_CANARY}</code>`);
         expect(html).not.toMatch(/<script|<style|\sstyle=|\son[a-z]+=/i);
     });
 });
