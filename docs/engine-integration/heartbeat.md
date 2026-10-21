@@ -41,13 +41,16 @@ sequenceDiagram
 
 The dashboard checks, in this order, with `verifyHeartbeat`: body size, signature header, the signature over the raw bytes, the strict schema, that the path's engine ID equals the body's, that `seq` is greater than the last one, and the clock. Each failure maps to a problem+json answer:
 
-| Outcome (`HeartbeatVerification`)                                          | What the engine should do                                                                                                                                                             |
-| -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `bad-signature-header`, `bad-signature`, `invalid-body`, `engine-mismatch` | A bug in the engine: log it, keep going, fix the code                                                                                                                                 |
-| `replayed-seq`                                                             | Its `seq` store went backwards: move `seq` forward with `max(lastSeq + 1, Date.now())`                                                                                                |
-| `stale-ts`                                                                 | Read `serverTime` from the problem body, show the skew (local time minus `serverTime`, negative when the engine is behind) in the security panel, and tell the owner to fix the clock |
+| Answer                                                                                     | Outcome (`HeartbeatVerification`) | What the engine should do                                                                                                                                                             |
+| ------------------------------------------------------------------------------------------ | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 204, no body                                                                               | `accepted`                        | Nothing                                                                                                                                                                               |
+| 401 `bad-signature-header`, 401 `bad-signature`, 400 `invalid-body`, 400 `engine-mismatch` | the same names                    | A bug in the engine: log it, keep going, fix the code                                                                                                                                 |
+| 409 `replayed-seq`                                                                         | `replayed-seq`                    | Its `seq` store went backwards: move `seq` forward with `max(lastSeq + 1, Date.now())`                                                                                                |
+| 401 `stale-timestamp` with `serverTime`                                                    | `stale-ts`                        | Read `serverTime` from the problem body, show the skew (local time minus `serverTime`, negative when the engine is behind) in the security panel, and tell the owner to fix the clock |
 
-`ProblemDetails` in `@ptbk/protocol` carries the optional `serverTime` field for exactly this case. The dashboard endpoint is not built yet, so the HTTP status and the problem `code` for each outcome are not contract constants yet (see the [open points](README.md#open-points)). Read the problem with `TolerantProblemDetails` and act on `serverTime` when it is present.
+Before `verifyHeartbeat` runs, the dashboard can also answer 429 `rate-limited` (per IP, then per engine), 413 for a body over `HEARTBEAT_MAX_BODY_BYTES`, 400 for a malformed engine ID, 404 `not-found` for an unknown engine and 403 `engine-suspended`. Log these and keep sending on the normal interval.
+
+`ProblemDetails` in `@ptbk/protocol` carries the optional `serverTime` field for exactly this case. The codes above are what the dashboard answers (D-05); they are not exported contract constants yet (see the [open points](README.md#open-points)). Read the problem with `TolerantProblemDetails` and act on `serverTime` when it is present.
 
 ## Contract exports
 
