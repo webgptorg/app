@@ -1,6 +1,8 @@
 import type { FakeEmailSender } from '../adapters/email/fake-email-sender';
 import type { AuthLinks } from '../domain/auth/auth-deps';
 import type { AuthStore } from '../domain/auth/auth-store';
+import type { BillingService } from '../domain/billing/billing-service';
+import type { Entitlements } from '../domain/billing/entitlements';
 import type { Authorizer } from '../domain/authz/authorizer';
 import type { DashboardAction } from '../domain/authz/policy';
 import type { Clock } from '../domain/ports/clock';
@@ -23,6 +25,9 @@ export interface DashboardDeps {
     readonly email: EmailSender;
     readonly rateLimiter: RateLimiter;
     readonly links: AuthLinks;
+    readonly billing: BillingService;
+    /** What every gated action asks (ADR 0017); nothing outside billing sees plans or the provider. */
+    readonly entitlements: Entitlements;
     /** The fake outbox behind `email` when `config.adapters.email` is `fake` (dev only), else null. */
     readonly devOutbox: FakeEmailSender | null;
 }

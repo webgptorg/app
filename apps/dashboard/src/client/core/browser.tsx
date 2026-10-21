@@ -18,6 +18,10 @@ export interface AppBrowser {
     readonly passkeys: PasskeyAuthenticator;
     /** Milliseconds since the epoch, injected so cooldowns and "last used" render deterministically in tests. */
     readonly now: () => number;
+    /** The page's own origin, to tell same-origin destinations from external ones. */
+    readonly origin: string;
+    /** Leaves the SPA for `url` at the top level (Stripe Checkout, the billing portal); `location.assign` in the app. */
+    readonly navigate: (url: string) => void;
 }
 
 const BrowserContext = createContext<AppBrowser | null>(null);

@@ -49,12 +49,18 @@ export function createHttpApp(deps: HttpAppDeps): HttpApp {
         rateLimiter: deps.rateLimiter,
         logger: deps.logger,
         resolveSession: (token) => accounts.resolveSession(token),
+        signatures: {
+            'stripe-signature': async (payload, signature) => {
+                const verified = await deps.billing.verifyWebhook(payload, signature);
+                return verified.kind === 'verified' ? { kind: 'verified', payload: verified.event } : verified;
+            },
+        },
     });
     const routers = [
         [API_MOUNT, createApiRouter({ ...deps, routes })],
         [V1_MOUNT, createV1Router({ config: deps.config, routes })],
         [INTERNAL_MOUNT, createInternalRouter()],
-        [WEBHOOKS_MOUNT, createWebhooksRouter()],
+        [WEBHOOKS_MOUNT, createWebhooksRouter({ billing: deps.billing, routes })],
     ] as const;
     for (const [mount, router] of routers) {
         // An unknown path under an API prefix is a problem, never the SPA shell.

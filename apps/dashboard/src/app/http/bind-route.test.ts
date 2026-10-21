@@ -64,6 +64,7 @@ function harness(options: { readonly limit?: RateLimitOutcome; readonly session?
         rateLimiter: { consume: () => Promise.resolve(options.limit ?? 'allowed') },
         logger,
         resolveSession: (token) => Promise.resolve(token === TOKEN ? (options.session ?? null) : null),
+        signatures: { 'stripe-signature': () => Promise.resolve({ kind: 'invalid' }) },
     });
     const router = new Hono();
     binder.bind(router, '/api', renameEngine, ({ input }) => {
@@ -84,6 +85,47 @@ function post(app: Hono, path: string, body: string, headers: Record<string, str
     return Promise.resolve(
         app.request(path, { method: 'POST', body, headers: { 'Content-Type': 'application/json', ...headers } }),
     );
+}
+
+const signedRoute = defineRoute({
+    method: 'POST',
+    path: '/webhooks/test',
+    auth: 'stripe-signature',
+    permission: null,
+    rateLimit: 'webhook-ip',
+    input: {
+        params: null,
+        query: null,
+        headers: z.strictObject({ 'stripe-signature': z.string().max(64) }),
+        body: z.strictObject({ id: z.string() }),
+        maxBodyBytes: 64,
+    },
+    output: z.strictObject({ id: z.string() }),
+    errorCodes: ['invalid-signature'],
+});
+
+/** A route signed like Stripe's: the verifier accepts the bytes `{"id":"evt"}` signed `good` and returns `payload`. */
+function signedHarness(payload: unknown = { id: 'evt' }) {
+    const verified: { bytes: string; signature: string }[] = [];
+    const seen: unknown[] = [];
+    const binder = createRouteBinder({
+        authorizer: createAuthorizer({ clock: { nowMs: () => 0 }, policy: DASHBOARD_POLICY }),
+        rateLimiter: { consume: () => Promise.resolve('allowed') },
+        logger: createMemoryLogger(),
+        resolveSession: () => Promise.reject(new Error('signed routes never read a session')),
+        signatures: {
+            'stripe-signature': (bytes, signature) => {
+                verified.push({ bytes: new TextDecoder().decode(bytes), signature });
+                return Promise.resolve(signature === 'good' ? { kind: 'verified', payload } : { kind: 'invalid' });
+            },
+        },
+    });
+    const router = new Hono();
+    binder.bind(router, '/webhooks', signedRoute, ({ input, session }) => {
+        seen.push({ input, session });
+        return Promise.resolve({ kind: 'ok', body: { id: input.body.id } });
+    });
+    return { app: new Hono().route('/webhooks', router), verified, seen };
 }
 
 const session = (overrides: Partial<Actor> = {}) => ({ user: { id: USER }, actor: actor(overrides) }) as ActiveSession;
@@ -230,6 +272,7 @@ describe('route binder', () => {
             rateLimiter: { consume: () => Promise.resolve('allowed') },
             logger: createMemoryLogger(),
             resolveSession: () => Promise.resolve(session()),
+            signatures: { 'stripe-signature': () => Promise.resolve({ kind: 'invalid' }) },
         });
         const router = new Hono();
         const handler: RouteHandler<RouteContract> = () => Promise.resolve({ kind: 'ok', body: {} });
@@ -264,11 +307,72 @@ describe('route binder', () => {
         ['a body without a size cap', { input: { ...NO_INPUT, body: z.strictObject({}) } }],
         ['path parameters without a schema', { path: '/api/engines/:engineId' }],
         ['a path outside the mount', { path: '/v1/me' }],
+        [
+            'a signed route without a body schema',
+            { auth: 'stripe-signature', permission: null, rateLimit: 'webhook-ip' },
+        ],
+        [
+            'a signed route without rate limit',
+            {
+                auth: 'stripe-signature',
+                permission: null,
+                rateLimit: null,
+                input: { ...signedRoute.input },
+            },
+        ],
     ])('refuses to mount %s', (_, change) => {
         const binder = harness().binder;
         const contract: RouteContract = { ...sessionRoute, ...change };
         expect(() => {
             binder.bind(new Hono(), '/api', contract, () => Promise.resolve({ kind: 'ok', body: {} }));
         }).toThrow(/refusing to mount/);
+    });
+
+    describe('signed routes', () => {
+        const send = (app: Hono, body: string, headers: Record<string, string> = {}) =>
+            app.request('/webhooks/test', { method: 'POST', body, headers });
+
+        it('verifies the exact bytes before parsing, then hands the verified payload to the handler', async () => {
+            const { app, verified, seen } = signedHarness();
+            const raw = '{"id":"evt"}\n';
+            const response = await send(app, raw, {
+                'Stripe-Signature': 'good',
+                Cookie: `__Host-ptbk_session=${TOKEN}`,
+            });
+            expect(response.status).toBe(200);
+            expect(await response.json()).toEqual({ id: 'evt' });
+            expect(verified).toEqual([{ bytes: raw, signature: 'good' }]);
+            expect(seen).toEqual([
+                {
+                    input: {
+                        params: undefined,
+                        query: undefined,
+                        headers: { 'stripe-signature': 'good' },
+                        body: { id: 'evt' },
+                    },
+                    session: null,
+                },
+            ]);
+        });
+
+        it('answers 400 invalid-signature without or with a bad signature, before the handler runs', async () => {
+            const { app, seen } = signedHarness();
+            for (const headers of [{}, { 'Stripe-Signature': 'forged' }]) {
+                const response = await send(app, '{"id":"evt"}', headers);
+                expect(response.status).toBe(400);
+                expect(await response.json()).toMatchObject({ code: 'invalid-signature' });
+            }
+            expect(seen).toEqual([]);
+        });
+
+        it('never verifies a body over the cap, and rejects a verified payload its schema refuses', async () => {
+            const big = signedHarness();
+            expect((await send(big.app, 'x'.repeat(65), { 'Stripe-Signature': 'good' })).status).toBe(413);
+            expect(big.verified).toEqual([]);
+            const odd = signedHarness({ id: 'evt', extra: true });
+            const response = await send(odd.app, '{}', { 'Stripe-Signature': 'good' });
+            expect(await response.json()).toMatchObject({ status: 400, code: 'invalid-request' });
+            expect(odd.seen).toEqual([]);
+        });
     });
 });

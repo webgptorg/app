@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { fromBase64Url } from '../domain/auth/secrets';
+import { createPlanCatalogue, planCatalogueSchema, type PlanCatalogue } from '../domain/billing/plan-catalogue';
 import { environmentSchema, type Environment } from '../shared/environment';
 
 export type { Environment };
@@ -53,6 +54,10 @@ export const DEV_RATE_LIMIT_HMAC_KEY = 'ZGV2LW9ubHktcmF0ZS1saW1pdC1rZXktbm90LXNl
 /** At least 256 bits, base64url without padding. */
 const hmacKeySchema = z.string().regex(/^[A-Za-z0-9_-]{43,86}$/);
 
+/** Secret and restricted API keys; `wrangler secret put STRIPE_SECRET_KEY`, never a var. */
+const stripeKeySchema = z.string().regex(/^(sk|rk)_(test|live)_[A-Za-z0-9]{10,255}$/);
+const stripeWebhookSecretSchema = z.string().regex(/^whsec_[A-Za-z0-9+/=]{16,255}$/);
+
 /**
  * Vars and secrets are JSON values. Anything else (D1, ASSETS, service bindings the runtime or the test pool adds) is a
  * runtime object that the composition root wires up; config never reads it. Every JSON value must be a known var.
@@ -74,8 +79,21 @@ const varsSchema = z
         ADAPTERS: adaptersSchema,
         EMAIL_FROM: z.email().max(254),
         RATE_LIMIT_HMAC_KEY: hmacKeySchema,
+        BILLING_PLANS: planCatalogueSchema,
+        STRIPE_SECRET_KEY: stripeKeySchema.optional(),
+        STRIPE_WEBHOOK_SECRET: stripeWebhookSecretSchema.optional(),
     })
     .superRefine((vars, ctx) => {
+        if (vars.ADAPTERS.billing === 'stripe') {
+            for (const name of ['STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET'] as const) {
+                if (vars[name] === undefined) {
+                    ctx.addIssue({ code: 'custom', path: [name], message: 'required by the stripe billing adapter' });
+                }
+            }
+        }
+        if (vars.ENVIRONMENT !== 'production' && vars.STRIPE_SECRET_KEY?.includes('_live_') === true) {
+            ctx.addIssue({ code: 'custom', path: ['STRIPE_SECRET_KEY'], message: 'live keys run only in production' });
+        }
         if (vars.ENVIRONMENT === 'dev') {
             return;
         }
@@ -109,6 +127,11 @@ export interface DashboardConfig {
     readonly emailFrom: string;
     /** Secret: keys rate-limit counters, so raw IPs and emails are never stored. */
     readonly rateLimitHmacKey: Uint8Array;
+    readonly plans: PlanCatalogue;
+    /** Secret; present whenever `adapters.billing` is `stripe`. */
+    readonly stripeSecretKey: string | null;
+    /** Secret; present whenever `adapters.billing` is `stripe`, optional with the fake. */
+    readonly stripeWebhookSecret: string | null;
 }
 
 export class ConfigError extends Error {
@@ -145,5 +168,8 @@ export function parseConfig(env: object): DashboardConfig {
         adapters: Object.freeze({ ...parsed.ADAPTERS }),
         emailFrom: parsed.EMAIL_FROM,
         rateLimitHmacKey: fromBase64Url(parsed.RATE_LIMIT_HMAC_KEY),
+        plans: createPlanCatalogue(parsed.BILLING_PLANS),
+        stripeSecretKey: parsed.STRIPE_SECRET_KEY ?? null,
+        stripeWebhookSecret: parsed.STRIPE_WEBHOOK_SECRET ?? null,
     });
 }

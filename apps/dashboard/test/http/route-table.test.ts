@@ -45,9 +45,16 @@ describe('route table', () => {
             expect(() => {
                 assertMountable(route, mount);
             }, `${route.method} ${route.path}`).not.toThrow();
-            expect(['public', 'session']).toContain(route.auth);
+            expect(['public', 'session', 'stripe-signature']).toContain(route.auth);
             expect(route.input.body === null || route.method !== 'GET').toBe(true);
         }
+    });
+
+    it('verifies exactly the Stripe webhook by signature', () => {
+        const signed = harness.routes.filter((route) => route.auth === 'stripe-signature');
+        expect(signed.map((route) => `${route.method} ${route.path} ${String(route.rateLimit)}`)).toEqual([
+            'POST /webhooks/stripe webhook-ip',
+        ]);
     });
 
     it('allows exactly the allowlisted public routes', () => {

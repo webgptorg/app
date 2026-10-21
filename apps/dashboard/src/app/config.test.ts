@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { syntheticStripeKey, syntheticWebhookSecret, TEST_PLANS } from '../testing/billing-fixtures';
 import { ConfigError, DEV_RATE_LIMIT_HMAC_KEY, parseConfig } from './config';
 
 const devVars = {
@@ -10,6 +11,7 @@ const devVars = {
     ADAPTERS: { email: 'fake', billing: 'fake', rateLimit: 'memory' },
     EMAIL_FROM: 'no-reply@ptbk.test',
     RATE_LIMIT_HMAC_KEY: DEV_RATE_LIMIT_HMAC_KEY,
+    BILLING_PLANS: TEST_PLANS,
 };
 const STAGING_KEY = 'c3RhZ2luZy1zZWNyZXQta2V5LWZvci1yYXRlLWxpbWl0cy0zMmI';
 const stagingVars = {
@@ -17,6 +19,8 @@ const stagingVars = {
     ENVIRONMENT: 'staging',
     ADAPTERS: { email: 'cloudflare', billing: 'stripe', rateLimit: 'workers' },
     RATE_LIMIT_HMAC_KEY: STAGING_KEY,
+    STRIPE_SECRET_KEY: syntheticStripeKey(),
+    STRIPE_WEBHOOK_SECRET: syntheticWebhookSecret(),
 };
 class FakeBinding {
     readonly kind = 'binding';
@@ -37,7 +41,7 @@ function failedPaths(env: object): readonly string[] {
 
 describe('parseConfig', () => {
     it('parses a complete dev configuration into a frozen object', () => {
-        const config = parseConfig({ ...bindings, ...devVars });
+        const { plans, ...config } = parseConfig({ ...bindings, ...devVars });
         expect(config).toEqual({
             environment: 'dev',
             dashboardOrigin: 'https://app.ptbk.test',
@@ -46,8 +50,11 @@ describe('parseConfig', () => {
             adapters: { email: 'fake', billing: 'fake', rateLimit: 'memory' },
             emailFrom: 'no-reply@ptbk.test',
             rateLimitHmacKey: new TextEncoder().encode('dev-only-rate-limit-key-not-secret'),
+            stripeSecretKey: null,
+            stripeWebhookSecret: null,
         });
-        expect(Object.isFrozen(config)).toBe(true);
+        expect(plans.plans.map((plan) => plan.id)).toEqual(['starter', 'scale']);
+        expect(Object.isFrozen(parseConfig({ ...bindings, ...devVars }))).toBe(true);
         expect(Object.isFrozen(config.relays[0])).toBe(true);
         expect(Object.isFrozen(config.adapters)).toBe(true);
     });
@@ -64,6 +71,7 @@ describe('parseConfig', () => {
         'ADAPTERS',
         'EMAIL_FROM',
         'RATE_LIMIT_HMAC_KEY',
+        'BILLING_PLANS',
     ])('fails closed without %s', (name) => {
         const vars = Object.fromEntries(Object.entries({ ...bindings, ...devVars }).filter(([key]) => key !== name));
         expect(failedPaths(vars)).toEqual([name]);
@@ -102,6 +110,44 @@ describe('parseConfig', () => {
             ADAPTERS: { ...stagingVars.ADAPTERS, [port]: adapter },
         };
         expect(failedPaths(env)).toEqual([`ADAPTERS.${port}`]);
+    });
+
+    it('requires both Stripe secrets with the stripe billing adapter, and neither with the fake', () => {
+        const withoutSecrets = Object.fromEntries(
+            Object.entries(stagingVars).filter(([name]) => !name.startsWith('STRIPE_')),
+        );
+        expect(failedPaths({ ...bindings, ...withoutSecrets })).toEqual(['STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET']);
+        const secret = syntheticWebhookSecret();
+        const config = parseConfig({ ...bindings, ...stagingVars, STRIPE_WEBHOOK_SECRET: secret });
+        expect(config.stripeWebhookSecret).toBe(secret);
+        expect(parseConfig({ ...bindings, ...devVars, STRIPE_WEBHOOK_SECRET: secret }).stripeWebhookSecret).toBe(
+            secret,
+        );
+    });
+
+    it('allows live Stripe keys only in production', () => {
+        const live = syntheticStripeKey('live');
+        expect(failedPaths({ ...bindings, ...stagingVars, STRIPE_SECRET_KEY: live })).toEqual(['STRIPE_SECRET_KEY']);
+        expect(failedPaths({ ...bindings, ...devVars, STRIPE_SECRET_KEY: live })).toEqual(['STRIPE_SECRET_KEY']);
+        const production = { ...bindings, ...stagingVars, ENVIRONMENT: 'production', STRIPE_SECRET_KEY: live };
+        expect(parseConfig(production).stripeSecretKey).toBe(live);
+        expect(failedPaths({ ...bindings, ...stagingVars, STRIPE_SECRET_KEY: 'pk_test_publishable' })).toEqual([
+            'STRIPE_SECRET_KEY',
+        ]);
+    });
+
+    it('rejects an invalid plan catalogue at parse', () => {
+        const [starter] = TEST_PLANS.plans;
+        expect(
+            failedPaths({
+                ...bindings,
+                ...devVars,
+                BILLING_PLANS: { ...TEST_PLANS, plans: [starter, { ...starter, stripePriceId: 'price_other' }] },
+            }),
+        ).toEqual(['BILLING_PLANS.plans.1.id']);
+        expect(failedPaths({ ...bindings, ...devVars, BILLING_PLANS: { plans: TEST_PLANS.plans } })).toEqual([
+            'BILLING_PLANS.none',
+        ]);
     });
 
     it('requires an https origin outside dev and a bare origin everywhere', () => {

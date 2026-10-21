@@ -128,3 +128,43 @@ export const adminAuditLog = sqliteTable('admin_audit_log', {
     reason: text('reason'),
     createdAt: integer('created_at').notNull(),
 });
+
+// Billing (D-07): account and organization metadata only. Stripe holds cards, addresses and invoices.
+
+// The organization owns the Stripe customer (ADR 0006), so team billing later needs no migration.
+export const billingCustomers = sqliteTable('billing_customers', {
+    orgId: text('org_id')
+        .primaryKey()
+        .references(() => organizations.id),
+    stripeCustomerId: text('stripe_customer_id').notNull().unique(),
+    createdAt: integer('created_at').notNull(),
+});
+
+export const subscriptions = sqliteTable(
+    'subscriptions',
+    {
+        orgId: text('org_id')
+            .primaryKey()
+            .references(() => organizations.id),
+        stripeSubscriptionId: text('stripe_subscription_id').notNull().unique(),
+        // Our BillingStatus, mapped from Stripe's; no CHECK, so a new status needs no table rebuild.
+        status: text('status').notNull(),
+        priceId: text('price_id').notNull(),
+        quantity: integer('quantity'),
+        currentPeriodEnd: integer('current_period_end'),
+        cancelAtPeriodEnd: integer('cancel_at_period_end', { mode: 'boolean' }).notNull(),
+        updatedAt: integer('updated_at').notNull(),
+    },
+    (t) => [index('subscriptions_status_idx').on(t.status)],
+);
+
+// Webhook idempotency: event IDs and types only, never payloads; pruned after 30 days.
+export const stripeEvents = sqliteTable(
+    'stripe_events',
+    {
+        eventId: text('event_id').primaryKey(),
+        type: text('type').notNull(),
+        receivedAt: integer('received_at').notNull(),
+    },
+    (t) => [index('stripe_events_received_at_idx').on(t.receivedAt)],
+);

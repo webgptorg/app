@@ -149,4 +149,29 @@ describe('DASHBOARD_POLICY', () => {
             expect(authorizer.can(owner, action, { kind: 'org', orgId: ORG_A })).toEqual({ kind: 'allowed' });
         },
     );
+
+    it.each(['billing.read', 'billing.manage'] as const)(
+        'lets an owner use %s on their own organization only, also right after a recovery',
+        (action) => {
+            expect(authorizer.can(recovered, action, { kind: 'org', orgId: ORG_A })).toEqual({ kind: 'allowed' });
+            expect(authorizer.can(owner, action, { kind: 'org', orgId: ORG_B })).toEqual({
+                kind: 'denied',
+                reason: 'not-member',
+            });
+            expect(orgPermissions(DASHBOARD_POLICY, 'owner')).toContain(action);
+        },
+    );
+
+    it('keeps the billing problem list to platform admins', () => {
+        expect(authorizer.can(owner, 'admin.billing.read', { kind: 'platform' })).toEqual({
+            kind: 'denied',
+            reason: 'platform-admin-only',
+        });
+        expect(authorizer.can({ ...owner, platformRole: 'admin' }, 'admin.billing.read', { kind: 'platform' })).toEqual(
+            {
+                kind: 'allowed',
+            },
+        );
+        expect(orgPermissions(DASHBOARD_POLICY, 'owner')).not.toContain('admin.billing.read');
+    });
 });

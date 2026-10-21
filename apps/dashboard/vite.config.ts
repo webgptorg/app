@@ -48,6 +48,14 @@ function cloudflareOptions(mode: string, https: ReturnType<typeof httpsOptions> 
     return mode === 'csp' ? { persistState: { path: CSP_TEST_STATE_DIR } } : {};
 }
 
+/**
+ * zod probes `new Function` when it builds an object schema unless `jitless` is set first, and under the strict CSP that
+ * probe is a reported Trusted Types violation. `zod-jitless.ts` sets it, but a chunk is evaluated before the module
+ * that imports it: if zod shared a chunk with modules that define schemas, they would be built before the setting ran.
+ * One chunk holding only zod and that module keeps the order whatever else the bundler groups.
+ */
+const ZOD_CHUNK = { name: 'zod', test: /\/node_modules\/zod\/|\/src\/client\/zod-jitless\.ts$/ };
+
 export default defineConfig(({ mode }) => {
     const https = mode === 'https' ? httpsOptions() : undefined;
     return {
@@ -60,6 +68,9 @@ export default defineConfig(({ mode }) => {
             cloudflare(cloudflareOptions(mode, https)),
         ],
         build: { manifest: true },
+        environments: {
+            client: { build: { rolldownOptions: { output: { codeSplitting: { groups: [ZOD_CHUNK] } } } } },
+        },
         ...(https === undefined ? {} : { server: https.server, preview: https.server }),
     };
 });

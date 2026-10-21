@@ -4,6 +4,7 @@ import { apiRoutes } from '../../shared/api/routes';
 import type { DashboardDeps } from '../deps';
 import { renderEmail } from '../i18n/render-email';
 import { bindAuthRoutes } from './auth-routes';
+import { bindBillingRoutes } from './billing-routes';
 import type { RouteBinder } from './bind-route';
 import { crossSiteRequestGuard } from './csrf';
 
@@ -17,6 +18,7 @@ export function createApiRouter(deps: DashboardDeps & { readonly routes: RouteBi
         Promise.resolve({ kind: 'ok', body: { environment: deps.config.environment } }),
     );
     bindAuthRoutes(router, API_MOUNT, deps);
+    bindBillingRoutes(router, API_MOUNT, deps);
     const { devOutbox } = deps;
     // Not mounted at all otherwise: the fake adapter, and with it this route, exists only in dev (config.ts).
     if (devOutbox !== null && deps.config.adapters.email === 'fake') {

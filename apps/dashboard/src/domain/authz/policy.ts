@@ -9,7 +9,11 @@ export const DASHBOARD_POLICY = {
     'account.read': { scope: 'self', ...PLAIN },
     'passkey.manage': { scope: 'self', ...PLAIN },
     'session.manage': { scope: 'self', ...PLAIN },
-    // No routes yet (D-03, D-07, D-08 build them); listed now so the recovery cooldown covers them from day one.
+    'billing.read': { scope: 'org', orgRoles: ['owner'], ...PLAIN },
+    'billing.manage': { scope: 'org', orgRoles: ['owner'], ...PLAIN },
+    // Read-only list of organizations in a problem state; acting on one (suspension, I-05) needs its own step-up action.
+    'admin.billing.read': { scope: 'platform', ...PLAIN },
+    // No routes yet (D-03, D-08 build them; v0 orgs have one owner); listed now so the recovery cooldown covers them from day one.
     'engine.remove': { scope: 'org', orgRoles: ['owner'], ...SENSITIVE },
     'engine.hostnames.manage': { scope: 'org', orgRoles: ['owner'], ...SENSITIVE },
     'billing.owner.change': { scope: 'org', orgRoles: ['owner'], ...SENSITIVE },

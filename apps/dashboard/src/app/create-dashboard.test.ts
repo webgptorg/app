@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { syntheticStripeKey, syntheticWebhookSecret, TEST_PLANS } from '../testing/billing-fixtures';
+import { stripeEvent, stripeSignatureHeader } from '../testing/stripe-signature';
 import { DEV_RATE_LIMIT_HMAC_KEY } from './config';
 import { createDashboard } from './create-dashboard';
 import { createDevAdapters } from './dev-adapters';
@@ -12,13 +14,17 @@ const vars = {
     ADAPTERS: { email: 'fake', billing: 'fake', rateLimit: 'memory' },
     EMAIL_FROM: 'no-reply@ptbk.test',
     RATE_LIMIT_HMAC_KEY: DEV_RATE_LIMIT_HMAC_KEY,
+    BILLING_PLANS: TEST_PLANS,
 };
+const WEBHOOK_SECRET = syntheticWebhookSecret();
 const stagingVars = {
     ...vars,
     ENVIRONMENT: 'staging',
     DASHBOARD_ORIGIN: 'https://app.staging.ptbk.test',
     ADAPTERS: { email: 'cloudflare', billing: 'stripe', rateLimit: 'workers' },
     RATE_LIMIT_HMAC_KEY: 'c3RhZ2luZy1zZWNyZXQta2V5LWZvci1yYXRlLWxpbWl0cy0zMmI',
+    STRIPE_SECRET_KEY: syntheticStripeKey(),
+    STRIPE_WEBHOOK_SECRET: WEBHOOK_SECRET,
 };
 
 class FakeBinding {
@@ -57,6 +63,7 @@ function productionBindings() {
             RATE_LIMIT_OPTIONS: binding,
             RATE_LIMIT_VERIFY: binding,
             RATE_LIMIT_PUBLIC_READ: binding,
+            RATE_LIMIT_WEBHOOK: binding,
             HOURLY_RATE_LIMITER: runtime({
                 idFromName: (name: string) => (names.push(name), { name }),
                 get: () => ({ consume: () => Promise.resolve('allowed') }),
@@ -173,5 +180,37 @@ describe('createDashboard adapter selection', () => {
         const next = createDashboard(env(), { viteDevServer: false, devAdapters });
         const response = await next.fetch(new Request('http://localhost:5173/api/__dev/emails?to=a@example.test'));
         expect((await response.json<{ emails: { template: string }[] }>()).emails.at(-1)?.template).toBe('signup-link');
+    });
+
+    describe('Stripe webhooks', () => {
+        const payload = stripeEvent({ id: 'evt_unknown1', type: 'balance.available', object: { object: 'balance' } });
+
+        function webhook(signature: string) {
+            return new Request('https://app.ptbk.test/webhooks/stripe', {
+                method: 'POST',
+                headers: { 'Stripe-Signature': signature, 'Content-Type': 'application/json' },
+                body: payload,
+            });
+        }
+
+        it('verifies with the configured secret on the Stripe adapter, without calling Stripe', async () => {
+            const fetchSpy = vi.spyOn(globalThis, 'fetch');
+            const { bindings } = productionBindings();
+            const dashboard = createDashboard(env({ ...stagingVars, ...bindings }), { viteDevServer: false });
+            const signed = await stripeSignatureHeader(payload, WEBHOOK_SECRET, Date.now());
+            expect((await dashboard.fetch(webhook(signed))).status).toBe(200);
+            const forged = await stripeSignatureHeader(payload, syntheticWebhookSecret(), Date.now());
+            expect((await dashboard.fetch(webhook(forged))).status).toBe(400);
+            expect(fetchSpy).not.toHaveBeenCalled();
+        });
+
+        it('refuses every webhook on the dev fake unless a webhook secret is set', async () => {
+            const signed = await stripeSignatureHeader(payload, WEBHOOK_SECRET, Date.now());
+            expect((await createDashboard(env(), { viteDevServer: false }).fetch(webhook(signed))).status).toBe(400);
+            const withSecret = createDashboard(env({ STRIPE_WEBHOOK_SECRET: WEBHOOK_SECRET }), {
+                viteDevServer: false,
+            });
+            expect((await withSecret.fetch(webhook(signed))).status).toBe(200);
+        });
     });
 });

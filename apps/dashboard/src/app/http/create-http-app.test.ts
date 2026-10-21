@@ -6,7 +6,9 @@ import { createMemoryRateLimiter } from '../../adapters/rate-limit/memory-rate-l
 import { createSimpleWebAuthnRelyingParty } from '../../adapters/webauthn/simple-webauthn-relying-party';
 import { createAuthorizer } from '../../domain/authz/authorizer';
 import { DASHBOARD_POLICY } from '../../domain/authz/policy';
+import { syntheticStripeKey, syntheticWebhookSecret, TEST_PLANS } from '../../testing/billing-fixtures';
 import { createMemoryAuthStore } from '../../testing/memory-auth-store';
+import { createTestBilling } from '../../testing/test-billing';
 import { DEV_RATE_LIMIT_HMAC_KEY, parseConfig } from '../config';
 import { authLinks } from '../deps';
 import { createHttpApp } from './create-http-app';
@@ -29,6 +31,15 @@ function app(options: {
                 : { email: 'cloudflare', billing: 'stripe', rateLimit: 'workers' },
         EMAIL_FROM: 'no-reply@ptbk.test',
         RATE_LIMIT_HMAC_KEY: options.environment === 'dev' ? DEV_RATE_LIMIT_HMAC_KEY : 'k'.repeat(43),
+        BILLING_PLANS: TEST_PLANS,
+        ...(options.environment === 'dev'
+            ? {}
+            : { STRIPE_SECRET_KEY: syntheticStripeKey(), STRIPE_WEBHOOK_SECRET: syntheticWebhookSecret() }),
+    });
+    const { billing, entitlements } = createTestBilling({
+        clock,
+        catalogue: config.plans,
+        dashboardOrigin: 'https://app.ptbk.test',
     });
     const logger = createMemoryLogger();
     const assets = options.assets ?? (() => Promise.resolve(new Response('<!doctype html>')));
@@ -44,6 +55,8 @@ function app(options: {
         rateLimiter: createMemoryRateLimiter(clock),
         links: authLinks('https://app.ptbk.test'),
         devOutbox: null,
+        billing,
+        entitlements,
         assets: { fetch: assets } as unknown as Fetcher,
         viteDevServer: options.viteDevServer,
     });
