@@ -163,7 +163,7 @@ jobs:
           hostname=$(node -p "require('$STACK/identity.json').hostname")
           key=$(node -p "require('$STACK/identity.json').enginePublicKey")
           NODE_EXTRA_CA_CERTS="$STACK/engine/dev-ca/ca-cert.pem" node packages/conformance/dist/ptbk-conformance.js \
-            --base-url "https://$hostname:8443" --mock-control-url http://127.0.0.1:4480 --engine-public-key "$key" \
+            --base-url "https://$hostname:8443" --mock-control-url http://127.0.0.1:4480 --engine-public-key="$key" \
             --seed 1 --report junit --out conformance-report.xml
       - name: Show the stack's logs
         if: failure()
