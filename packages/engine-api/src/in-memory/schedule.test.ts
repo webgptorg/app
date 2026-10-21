@@ -103,6 +103,15 @@ describe('nextFireAt', () => {
         expect(nextFireAt(config(cron('0 0 1,15 * *')), MONDAY, null)).toBe('2026-11-01T00:00:00.000Z');
     });
 
+    it('finds the next listed minute however the list is ordered, also in a half-hour zone', () => {
+        expect(nextFireAt(config(cron('45,5 * * * *')), MONDAY, null)).toBe('2026-10-19T10:05:00.000Z');
+        expect(nextFireAt(config(cron('45,5 * * * *')), '2026-10-19T10:05:00Z', '2026-10-19T10:05:00Z')).toBe(
+            '2026-10-19T10:45:00.000Z',
+        );
+        // 15 past the hour in Kolkata (UTC+5:30) is 45 past in UTC.
+        expect(nextFireAt(config(cron('15 * * * *', 'Asia/Kolkata')), MONDAY, null)).toBe('2026-10-19T10:45:00.000Z');
+    });
+
     it('evaluates cron in the schedule time zone', () => {
         expect(nextFireAt(config(cron('0 9 * * *', 'Europe/Prague')), MONDAY, null)).toBe('2026-10-20T07:00:00.000Z');
         // After the switch to CET (UTC+1) on 25 October the same local time is an hour later in UTC.

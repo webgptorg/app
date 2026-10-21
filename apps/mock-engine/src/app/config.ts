@@ -19,6 +19,10 @@ import type { LogLevel } from '../domain/logger';
 import { LOG_LEVELS } from '../domain/logger';
 import type { OneTimeSecret } from '../domain/secret';
 import { oneTimeSecret, secret } from '../domain/secret';
+import { MAX_SIMULATION_SPEED, MIN_SIMULATION_SPEED } from '../domain/simulation/simulation-clock';
+import type { SimulationMode } from '../domain/simulation/simulation-clock';
+import { ALL_CAPABILITY_NAMES, parseCapabilityList } from '../domain/state/capabilities';
+import type { MockCapabilityName } from '../domain/state/capabilities';
 import { Scenario } from '../domain/state/scenarios';
 import type { RelayTarget } from '../domain/tunnel/relay-target';
 import { DEFAULT_UI_CHECK_INTERVAL_S } from '../domain/ui/ui-updater';
@@ -61,6 +65,10 @@ export interface MockEngineConfig {
     readonly seedEpoch: Date;
     /** `MOCK_FAULTS`, a JSON `FaultPlan`; changeable at runtime through the control listener. */
     readonly faults: FaultPlan;
+    /** `MOCK_CAPABILITIES`: what `GET /engine` advertises; every C-07 capability by default. */
+    readonly capabilities: readonly MockCapabilityName[];
+    /** `MOCK_SIMULATION` and `MOCK_SIMULATION_SPEED`: whether engine time runs on its own, and how fast. */
+    readonly simulation: { readonly mode: SimulationMode; readonly speed: number };
     /** `MOCK_DEV_LOGIN=enabled`: the sign-in page lets anyone pick a member. Refused with `NODE_ENV=production`. */
     readonly devLogin: boolean;
     /** `MOCK_CONTROL=enabled` with `MOCK_CONTROL_HOST` and `MOCK_CONTROL_PORT`; refused with `NODE_ENV=production`. */
@@ -356,6 +364,16 @@ const envSchema = z.strictObject({
         for (const message of result.problems) problem(`must be a fault plan (${message})`);
         return undefined;
     }).optional(),
+    MOCK_CAPABILITIES: parsed(parseCapabilityList).optional(),
+    MOCK_SIMULATION: value(z.enum(['running', 'paused']), 'must be running or paused').default('running'),
+    MOCK_SIMULATION_SPEED: value(
+        z
+            .string()
+            .regex(/^\d{1,4}(?:\.\d{1,3})?$/)
+            .transform(Number)
+            .pipe(z.number().min(MIN_SIMULATION_SPEED).max(MAX_SIMULATION_SPEED)),
+        `must be a number from ${String(MIN_SIMULATION_SPEED)} to ${String(MAX_SIMULATION_SPEED)}`,
+    ).default(1),
     MOCK_DEV_LOGIN: toggle.default('disabled'),
     MOCK_CONTROL: toggle.default('disabled'),
     MOCK_CONTROL_HOST: value(
@@ -520,6 +538,8 @@ export function parseMockEngineConfig(env: Env): MockEngineConfig {
         scenario: parsedEnv.MOCK_SCENARIO,
         seedEpoch: parsedEnv.MOCK_SEED_EPOCH,
         faults: parsedEnv.MOCK_FAULTS ?? NO_FAULTS,
+        capabilities: parsedEnv.MOCK_CAPABILITIES ?? ALL_CAPABILITY_NAMES,
+        simulation: Object.freeze({ mode: parsedEnv.MOCK_SIMULATION, speed: parsedEnv.MOCK_SIMULATION_SPEED }),
         devLogin: parsedEnv.MOCK_DEV_LOGIN === 'enabled',
         control:
             parsedEnv.MOCK_CONTROL === 'enabled'

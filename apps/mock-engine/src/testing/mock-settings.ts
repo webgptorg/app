@@ -1,15 +1,31 @@
 import type { MockEngineConfig } from '../app/config';
 import { NO_FAULTS } from '../domain/faults/fault-plan';
+import { ALL_CAPABILITY_NAMES } from '../domain/state/capabilities';
 
-/** The M-04, M-05 and M-06 settings at their defaults, for tests that build a `MockEngineConfig` by hand. */
+/**
+ * The M-04 to M-07 settings at their defaults, for tests that build a `MockEngineConfig` by hand; the simulation is
+ * paused there, so nothing happens on its own during a test.
+ */
 export const DEFAULT_MOCK_SETTINGS: Pick<
     MockEngineConfig,
-    'seed' | 'scenario' | 'seedEpoch' | 'faults' | 'devLogin' | 'control' | 'dashboard' | 'stats' | 'ui'
+    | 'seed'
+    | 'scenario'
+    | 'seedEpoch'
+    | 'faults'
+    | 'capabilities'
+    | 'simulation'
+    | 'devLogin'
+    | 'control'
+    | 'dashboard'
+    | 'stats'
+    | 'ui'
 > = Object.freeze({
     seed: 1,
     scenario: 'small-team',
     seedEpoch: new Date('2026-10-01T00:00:00Z'),
     faults: NO_FAULTS,
+    capabilities: ALL_CAPABILITY_NAMES,
+    simulation: { mode: 'paused' as const, speed: 1 },
     devLogin: false,
     control: null,
     dashboard: null,

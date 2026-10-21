@@ -1,12 +1,19 @@
-import type { SecurityOverview, UiUpdateCheck } from '@ptbk/engine-api';
+import type { CapabilityRef, SecurityOverview, UiUpdateCheck } from '@ptbk/engine-api';
 import { createInMemoryEngineCore } from '@ptbk/engine-api/in-memory';
 import type { InMemoryEngineController, InMemoryEngineCore, ReplyScript, Sleep } from '@ptbk/engine-api/in-memory';
 
 import { decideOwnership } from '../authorization/policy';
 import { generateReply } from '../chat/reply-generator';
 import type { Clock } from '../clock';
+import { createEngineChecks } from '../faults/engine-checks';
+import type { FaultPlan } from '../faults/fault-plan';
+import type { Simulation } from '../simulation/simulation';
+import { createSimulation } from '../simulation/simulation';
+import type { SimulationClock, SimulationMode } from '../simulation/simulation-clock';
+import { createSimulationClock } from '../simulation/simulation-clock';
 import type { Scenario } from './scenarios';
 import { HOSTILE_AGENT_NAME, ownerOf, seedEngine } from './seed';
+import { createSeededSequence, hashSeed } from './seed-random';
 
 type RelayStatus = SecurityOverview['relays'][number]['status'];
 
@@ -36,16 +43,43 @@ export interface EngineRuntimeOptions {
     readonly scenario: Scenario;
     readonly epoch: Date;
     readonly identity: EngineIdentityInfo;
+    /** The real clock: replies are paced on it, and the simulation's time is derived from it. */
     readonly clock: Clock;
+    /** What `GET /engine` advertises (`MOCK_CAPABILITIES`). */
+    readonly capabilities: readonly CapabilityRef[];
+    /** `MOCK_SIMULATION` and `MOCK_SIMULATION_SPEED`. */
+    readonly simulation: { readonly mode: SimulationMode; readonly speed: number };
+    readonly faults: () => FaultPlan;
+    /** Unexpected errors inside the simulation; it carries on. */
+    readonly onSimulationError: (error: unknown) => void;
+}
+
+export interface ResetInput {
+    readonly seed: number;
+    readonly scenario: Scenario;
+    /** Keeps the current capabilities when absent. */
+    readonly capabilities?: readonly CapabilityRef[];
 }
 
 export interface EngineRuntime {
     /** The current core; `reset` replaces it, so callers ask on every request. */
     core(): InMemoryEngineCore;
     controller(): InMemoryEngineController;
-    current(): { readonly seed: number; readonly scenario: Scenario };
-    /** A new core from a new seed, with what the process reported so far applied again. */
-    reset(input: { readonly seed: number; readonly scenario: Scenario }): void;
+    current(): {
+        readonly seed: number;
+        readonly scenario: Scenario;
+        readonly capabilities: readonly CapabilityRef[];
+    };
+    /** The live simulation on the current core; `reset` replaces it too. */
+    simulation(): Simulation;
+    /** The engine's time, shared by every core this runtime builds. */
+    readonly clock: SimulationClock;
+    /**
+     * A new core from a new seed, with what the process reported so far applied again. The engine's time starts again
+     * at the seed epoch while the simulation is paused (so a paused run is reproducible), and at the real time while it
+     * runs.
+     */
+    reset(input: ResetInput): Promise<void>;
     /** Runs after every reset, e.g. to drop the gateway's sessions, which the new core does not list. */
     onReset(listener: () => void): void;
     setDashboardUrl(url: string | null): void;
@@ -79,10 +113,19 @@ function clockSleep(clock: Clock): Sleep {
 
 /**
  * The engine's state as one in-memory core from `@ptbk/engine-api`, seeded from (seed, scenario, epoch), with the
- * mock's policy (ownership on top of permissions) and reply generator. Capabilities are off until M-07.
+ * mock's policy (ownership on top of permissions), reply generator, fault-driven scans and connection tests, and the
+ * live simulation. The core's timestamps come from the simulation clock; replies are paced in real time, so chat keeps
+ * working while the simulation is paused.
  */
-export function createEngineRuntime(options: EngineRuntimeOptions): EngineRuntime {
+export async function createEngineRuntime(options: EngineRuntimeOptions): Promise<EngineRuntime> {
     const { identity, clock } = options;
+    const startMs = (mode: SimulationMode): number => (mode === 'paused' ? options.epoch.getTime() : clock.nowMs());
+    const simulationClock = createSimulationClock({
+        real: clock,
+        mode: options.simulation.mode,
+        speed: options.simulation.speed,
+        startMs: startMs(options.simulation.mode),
+    });
     const sticky = {
         dashboardUrl: null as string | null,
         relays: new Map<string, { readonly status: RelayStatus; readonly since: string }>(),
@@ -92,11 +135,15 @@ export function createEngineRuntime(options: EngineRuntimeOptions): EngineRuntim
         uiUpdateCheck: null as UiUpdateCheck | null,
     };
     const listeners: (() => void)[] = [];
-    let current = { seed: options.seed, scenario: options.scenario };
+    let current = { seed: options.seed, scenario: options.scenario, capabilities: options.capabilities };
     const now = (): string => new Date(clock.nowMs()).toISOString().replace(/\.\d{3}Z$/, 'Z');
 
-    function build(seedValue: number, scenario: Scenario): InMemoryEngineCore {
-        const seed = seedEngine({ seed: seedValue, scenario, epoch: options.epoch });
+    async function build(
+        seedValue: number,
+        scenario: Scenario,
+        capabilities: readonly CapabilityRef[],
+    ): Promise<{ readonly core: InMemoryEngineCore; readonly simulation: Simulation }> {
+        const seed = await seedEngine({ seed: seedValue, scenario, epoch: options.epoch, hostname: identity.hostname });
         const replyScript: ReplyScript = ({ agent, content, chatId, messageIndex }) => ({
             chunks: generateReply({
                 seed: seedValue,
@@ -118,12 +165,17 @@ export function createEngineRuntime(options: EngineRuntimeOptions): EngineRuntim
                     mode: identity.mode,
                 },
             },
-            clock: { now: () => new Date(clock.nowMs()) },
+            clock: { now: () => new Date(simulationClock.nowMs()) },
             member: { id: ownerOf(seed), role: 'owner' },
             replyScript,
-            capabilities: [],
+            capabilities,
             authorizer: { can: decideOwnership },
             sleep: clockSleep(clock),
+            checks: createEngineChecks({
+                faults: options.faults,
+                scans: createSeededSequence(hashSeed(seedValue, scenario, 'scans')),
+                probes: createSeededSequence(hashSeed(seedValue, scenario, 'probes')),
+            }),
         });
         core.controller.updateSecurity({
             engine: { version: identity.version, releaseLogIndex: null },
@@ -136,7 +188,15 @@ export function createEngineRuntime(options: EngineRuntimeOptions): EngineRuntim
             },
         });
         applySecurity(core);
-        return core;
+        const simulation = createSimulation({
+            controller: core.controller,
+            clock: simulationClock,
+            seed: seedValue,
+            scenario,
+            faults: options.faults,
+            onError: options.onSimulationError,
+        });
+        return { core, simulation };
     }
 
     function applySecurity(core: InMemoryEngineCore): void {
@@ -154,15 +214,20 @@ export function createEngineRuntime(options: EngineRuntimeOptions): EngineRuntim
         });
     }
 
-    let core = build(current.seed, current.scenario);
+    let engine = await build(current.seed, current.scenario, current.capabilities);
 
     return {
-        core: () => core,
-        controller: () => core.controller,
+        core: () => engine.core,
+        controller: () => engine.core.controller,
         current: () => current,
-        reset(input) {
-            core = build(input.seed, input.scenario);
-            current = { seed: input.seed, scenario: input.scenario };
+        simulation: () => engine.simulation,
+        clock: simulationClock,
+        async reset(input) {
+            const capabilities = input.capabilities ?? current.capabilities;
+            engine.simulation.stop();
+            simulationClock.reset(startMs(simulationClock.mode()));
+            engine = await build(input.seed, input.scenario, capabilities);
+            current = { seed: input.seed, scenario: input.scenario, capabilities };
             for (const listener of listeners) listener();
         },
         onReset(listener) {
@@ -170,28 +235,28 @@ export function createEngineRuntime(options: EngineRuntimeOptions): EngineRuntim
         },
         setDashboardUrl(url) {
             sticky.dashboardUrl = url;
-            core.controller.updateEngine({ dashboardUrl: url });
+            engine.core.controller.updateEngine({ dashboardUrl: url });
         },
         setRelayStatus(relayHostname, status) {
             if (sticky.relays.get(relayHostname)?.status === status) return;
             sticky.relays.set(relayHostname, { status, since: now() });
-            applySecurity(core);
+            applySecurity(engine.core);
         },
         setHeartbeat(heartbeat) {
             sticky.heartbeat = heartbeat;
-            applySecurity(core);
+            applySecurity(engine.core);
         },
         setUi(ui) {
             sticky.ui = ui;
-            applySecurity(core);
+            applySecurity(engine.core);
         },
         setUiUpdateCheck(check) {
             sticky.uiUpdateCheck = check;
-            applySecurity(core);
+            applySecurity(engine.core);
         },
         setHostnames(hostnames) {
             sticky.hostnames = [identity.hostname, ...hostnames.filter((name) => name !== identity.hostname)];
-            applySecurity(core);
+            applySecurity(engine.core);
         },
     };
 }

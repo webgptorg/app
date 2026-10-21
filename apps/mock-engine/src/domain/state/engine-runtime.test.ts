@@ -5,6 +5,7 @@ import {
     OWNER_PERMISSIONS,
     SessionId,
     UiUpdateCheck,
+    KNOWN_CAPABILITIES,
     createEngineApiClient,
 } from '@ptbk/engine-api';
 import type { Actor } from '@ptbk/engine-api/in-memory';
@@ -12,7 +13,7 @@ import { describe, expect, it } from 'vitest';
 
 import { createFakeClock } from '../../testing/fake-clock';
 import { HOSTILE_IMAGE, HOSTILE_SCRIPT } from '../chat/reply-generator';
-import { createEngineRuntime } from './engine-runtime';
+import { createTestRuntime } from '../../testing/test-runtime';
 import { HOSTILE_AGENT_NAME } from './seed';
 
 const IDENTITY = {
@@ -29,9 +30,9 @@ function ok<T>(response: EngineApiResponse<T>): T {
     return response.data;
 }
 
-function start() {
+async function start() {
     const clock = createFakeClock(Date.parse('2026-10-20T08:00:00Z'));
-    const runtime = createEngineRuntime({
+    const runtime = await createTestRuntime({
         seed: 42,
         scenario: 'small-team',
         epoch: new Date('2026-10-01T00:00:00Z'),
@@ -58,14 +59,14 @@ function start() {
 }
 
 describe('engine runtime', () => {
-    it('reports the identity, version and mode, with no capabilities', async () => {
-        const { client } = start();
+    it('reports the identity, version, mode and every capability', async () => {
+        const { client } = await start();
         expect(ok(await client().engine.get(signal()))).toMatchObject({
             engineId: IDENTITY.engineId,
             hostname: IDENTITY.hostname,
             mode: 'tunnel',
             dashboardUrl: null,
-            capabilities: [],
+            capabilities: Object.values(KNOWN_CAPABILITIES),
         });
         expect(ok(await client().security.get(signal()))).toMatchObject({
             engine: { version: '0.4.2' },
@@ -75,7 +76,7 @@ describe('engine runtime', () => {
     });
 
     it('applies relay states, hostnames and the dashboard URL, and keeps them across a reset', async () => {
-        const { clock, runtime, client } = start();
+        const { clock, runtime, client } = await start();
         runtime.setRelayStatus('relay-a.ptbk.test', 'connecting');
         clock.advance(1_000);
         runtime.setRelayStatus('relay-a.ptbk.test', 'connected');
@@ -90,8 +91,8 @@ describe('engine runtime', () => {
         const listened: string[] = [];
         runtime.onReset(() => listened.push('reset'));
         const before = ok(await client().security.get(signal()));
-        runtime.reset({ seed: 7, scenario: 'empty' });
-        expect(runtime.current()).toEqual({ seed: 7, scenario: 'empty' });
+        await runtime.reset({ seed: 7, scenario: 'empty' });
+        expect(runtime.current()).toMatchObject({ seed: 7, scenario: 'empty' });
         expect(listened).toEqual(['reset']);
         expect(runtime.controller().inspect().counts).toMatchObject({ members: 1, agents: 0 });
         const after = ok(await client().security.get(signal()));
@@ -115,7 +116,7 @@ describe('engine runtime', () => {
     });
 
     it("reports the UI loader's last check, before and after a bundle is active, and keeps it across a reset", async () => {
-        const { runtime, client } = start();
+        const { runtime, client } = await start();
         const refused = {
             at: '2026-10-20T08:00:00Z',
             outcome: 'refused',
@@ -126,7 +127,7 @@ describe('engine runtime', () => {
         runtime.setUiUpdateCheck(UiUpdateCheck.parse(refused));
         expect(ok(await client().security.get(signal())).ui.lastUpdateCheck).toEqual(refused);
         runtime.setUi({ version: '1.0.0', bundleSha256: 'c'.repeat(64), releaseLogIndex: 9 });
-        runtime.reset({ seed: 3, scenario: 'empty' });
+        await runtime.reset({ seed: 3, scenario: 'empty' });
         expect(ok(await client().security.get(signal())).ui).toEqual({
             version: '1.0.0',
             bundleSha256: 'c'.repeat(64),
@@ -137,7 +138,7 @@ describe('engine runtime', () => {
     });
 
     it("answers the injection demo agent with hostile markdown, paced on the runtime's clock", async () => {
-        const { clock, client } = start();
+        const { clock, client } = await start();
         const agents = ok(await client().agents.list({ limit: 100 }, signal())).items;
         const hostile = agents.find(({ name }) => name === HOSTILE_AGENT_NAME);
         if (hostile === undefined) throw new Error('no hostile agent');
@@ -158,7 +159,7 @@ describe('engine runtime', () => {
     });
 
     it('stops waiting when a paced sleep is cancelled', async () => {
-        const { clock, client } = start();
+        const { clock, client } = await start();
         const [agent] = ok(await client().agents.list({}, signal())).items;
         if (agent === undefined) throw new Error('no agent');
         const chat = ok(await client().chats.create(agent.id, {}, signal()));

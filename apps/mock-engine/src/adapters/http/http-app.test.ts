@@ -21,7 +21,7 @@ import type { RateLimiter } from '../../domain/rate-limit/rate-limiter';
 import { isRateLimitRule } from '../../domain/rate-limit/rate-limiter';
 import type { EngineHarness, HarnessResponse } from '../../testing/engine-harness';
 import { HARNESS_CANARY, HARNESS_ENGINE_ID, HARNESS_HOSTNAME, createEngineHarness } from '../../testing/engine-harness';
-import { createEngineRuntime } from '../../domain/state/engine-runtime';
+import { createTestRuntime } from '../../testing/test-runtime';
 import { createFakeClock } from '../../testing/fake-clock';
 import { createMemoryLogger } from '../../testing/memory-logger';
 import { createSeededRandom } from '../../testing/seeded-random';
@@ -117,9 +117,9 @@ function inTunnelRoutes(devLogin: boolean): readonly Route[] {
     });
 }
 
-function controlRoutes(): readonly Route[] {
+async function controlRoutes(): Promise<readonly Route[]> {
     const clock = createFakeClock();
-    const runtime = createEngineRuntime({
+    const runtime = await createTestRuntime({
         seed: 1,
         scenario: 'empty',
         epoch: new Date('2026-10-01T00:00:00Z'),
@@ -231,16 +231,16 @@ describe.each([
         }
     });
 
-    it('never mounts a control route in the tunnel', () => {
+    it('never mounts a control route in the tunnel', async () => {
         const mounted = new Set(routes.map((route) => route.path));
-        expect(controlRoutes().filter((route) => mounted.has(route.path))).toEqual([]);
+        expect((await controlRoutes()).filter((route) => mounted.has(route.path))).toEqual([]);
         expect(routes.some((route) => route.path.startsWith('/__mock'))).toBe(false);
     });
 });
 
 describe('control listener route table', () => {
-    it('declares only control routes under /__mock/, each with a rate limit and strict input', () => {
-        const routes = controlRoutes();
+    it('declares only control routes under /__mock/, each with a rate limit and strict input', async () => {
+        const routes = await controlRoutes();
         expect(routes.map(key).sort()).toEqual(
             [
                 'http DELETE /__mock/faults',
@@ -251,6 +251,10 @@ describe('control listener route table', () => {
                 'http POST /__mock/ui/check',
                 'http POST /__mock/reset',
                 'http POST /__mock/sessions',
+                'http POST /__mock/simulation',
+                'http POST /__mock/simulation/advance',
+                'http POST /__mock/runs',
+                'http POST /__mock/inbound-email',
                 'http PUT /__mock/faults',
             ].sort(),
         );
@@ -293,8 +297,8 @@ describe('mounting', () => {
         expect(() => app([first, first])).toThrow('refusing to mount http GET /__spike/ twice');
     });
 
-    it('refuses a control route', () => {
-        const [route] = controlRoutes();
+    it('refuses a control route', async () => {
+        const [route] = await controlRoutes();
         if (route === undefined) throw new Error('no routes');
         expect(() => app([route], true)).toThrow(/refusing to mount control route/);
     });

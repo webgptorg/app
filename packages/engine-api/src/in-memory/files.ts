@@ -40,13 +40,16 @@ export async function addFile(ctx: EngineContext, input: NewFile): Promise<FileM
     if (!ctx.state.members.has(createdBy)) throw new Error('file for an unknown member');
     const name = FileName.parse(input.name);
     const purpose = FilePurpose.parse(input.purpose);
+    // Stamped before hashing, so the file's time and ID do not depend on how long the hash takes.
     const now = ctx.now();
+    const id = ctx.newId(FileId, 'file');
+    const versionId = ctx.newId(FileVersionId, 'version');
     const sha256 = await sha256OfBlob(input.content);
     const scan =
         input.scan ??
         ctx.checks.scanFile({ name, contentType: input.contentType, sizeBytes: input.content.size, purpose });
     const metadata = FileMetadata.parse({
-        id: ctx.newId(FileId, 'file'),
+        id,
         name,
         contentType: input.contentType,
         sizeBytes: input.content.size,
@@ -61,7 +64,7 @@ export async function addFile(ctx: EngineContext, input: NewFile): Promise<FileM
         createdAt: now,
     });
     const version = {
-        id: ctx.newId(FileVersionId, 'version'),
+        id: versionId,
         createdAt: now,
         sizeBytes: metadata.sizeBytes,
         sha256,

@@ -4,7 +4,7 @@ import type { AddressInfo } from 'node:net';
 
 import type { HttpBindings } from '@hono/node-server';
 import { getRequestListener } from '@hono/node-server';
-import { Permission, Role } from '@ptbk/engine-api';
+import { AgentId, Permission, Role, TriggerId } from '@ptbk/engine-api';
 import { EngineVersion } from '@ptbk/protocol';
 import { Hono } from 'hono';
 import { z } from 'zod';
@@ -17,6 +17,8 @@ import { SESSION_COOKIE_NAME } from '../domain/gateway/sessions';
 import type { Logger } from '../domain/logger';
 import type { RateLimiter } from '../domain/rate-limit/rate-limiter';
 import type { EngineRuntime } from '../domain/state/engine-runtime';
+import { MAX_SIMULATION_SPEED, MIN_SIMULATION_SPEED } from '../domain/simulation/simulation-clock';
+import { MockCapabilityName, capabilitiesFor } from '../domain/state/capabilities';
 import { Scenario } from '../domain/state/scenarios';
 import type { InstalledBundle } from '../domain/ui/bundle-store';
 import type { UiLoader } from '../domain/ui/ui-loader';
@@ -28,6 +30,36 @@ import { bySpecificity, honoPath, problemResponse, rateLimited, runHttpRoute } f
 const NO_QUERY = z.strictObject({});
 const BODY_MAX_BYTES = 16 * 1024;
 const MAX_SEED = 2 ** 32 - 1;
+/** One call advances at most a day, so a single request never blocks the engine for long. */
+const MAX_ADVANCE_MS = 24 * 3600 * 1000;
+
+const ScriptedRun = z.strictObject({
+    agentId: AgentId,
+    source: z.enum(['api', 'member', 'goal', 'webhook']).default('api'),
+    outcome: z.enum(['completed', 'failed']),
+    steps: z
+        .array(
+            z.strictObject({
+                text: z.string().min(1).max(200),
+                toolName: z
+                    .string()
+                    .regex(/^[a-z][a-z0-9_.-]{0,127}$/)
+                    .optional(),
+            }),
+        )
+        .min(1)
+        .max(20),
+});
+
+const InboundEmail = z.strictObject({
+    triggerId: TriggerId,
+    from: z.email().max(254),
+    subject: z.string().max(998),
+});
+
+function invalidBody(path: string, message: string): Response {
+    return problemResponse({ code: 'validation-failed', extras: { errors: [{ path, message }] } });
+}
 
 /** Who a test session is for. Permission sets get a new synthetic member each, so two of them are two members. */
 export const SessionSubject = z.union([
@@ -113,24 +145,103 @@ export function createControlRoutes(deps: ControlDeps): readonly HttpRoute[] {
         return { memberId: addMember('member', 'Synthetic member'), permissions: subject.permissions };
     }
 
+    const state = () => {
+        const { seed, scenario, capabilities } = runtime.current();
+        return {
+            seed,
+            scenario,
+            capabilities: capabilities.map(({ id, version }) => `${id}@${String(version)}`),
+            simulation: runtime.simulation().status(),
+            counts: runtime.controller().inspect().counts,
+        };
+    };
+
     return [
         control({
             method: 'GET',
             path: '/__mock/state',
             body: null,
-            handle: () => Response.json({ ...runtime.current(), counts: runtime.controller().inspect().counts }),
+            handle: () => Response.json(state()),
         }),
         control({
             method: 'POST',
             path: '/__mock/reset',
             body: {
                 kind: 'json',
-                schema: z.strictObject({ scenario: Scenario, seed: z.int().min(0).max(MAX_SEED) }),
+                schema: z.strictObject({
+                    scenario: Scenario,
+                    seed: z.int().min(0).max(MAX_SEED),
+                    capabilities: z.array(MockCapabilityName).max(MockCapabilityName.options.length).optional(),
+                }),
+                maxBytes: BODY_MAX_BYTES,
+            },
+            handle: async ({ body }) => {
+                await runtime.reset({
+                    seed: body.seed,
+                    scenario: body.scenario,
+                    ...(body.capabilities === undefined ? {} : { capabilities: capabilitiesFor(body.capabilities) }),
+                });
+                return Response.json(state());
+            },
+        }),
+        control({
+            method: 'POST',
+            path: '/__mock/simulation',
+            body: {
+                kind: 'json',
+                schema: z.strictObject({
+                    mode: z.enum(['running', 'paused']),
+                    speed: z.number().min(MIN_SIMULATION_SPEED).max(MAX_SIMULATION_SPEED).optional(),
+                }),
                 maxBytes: BODY_MAX_BYTES,
             },
             handle: ({ body }) => {
-                runtime.reset(body);
-                return Response.json({ ...runtime.current(), counts: runtime.controller().inspect().counts });
+                runtime.clock.set(body.mode, body.speed);
+                return Response.json(runtime.simulation().status());
+            },
+        }),
+        control({
+            method: 'POST',
+            path: '/__mock/simulation/advance',
+            body: {
+                kind: 'json',
+                schema: z.strictObject({ ms: z.int().min(1).max(MAX_ADVANCE_MS) }),
+                maxBytes: BODY_MAX_BYTES,
+            },
+            handle: ({ body }) => {
+                if (runtime.clock.mode() !== 'paused') return invalidBody('body', 'Pause the simulation first.');
+                runtime.clock.advance(body.ms);
+                return Response.json(runtime.simulation().status());
+            },
+        }),
+        control({
+            method: 'POST',
+            path: '/__mock/runs',
+            body: { kind: 'json', schema: ScriptedRun, maxBytes: BODY_MAX_BYTES },
+            handle: ({ body }) => {
+                const agent = runtime
+                    .controller()
+                    .findAgents()
+                    .find(({ id }) => id === body.agentId);
+                if (agent === undefined) return invalidBody('body.agentId', 'No such agent.');
+                return Response.json(runtime.simulation().scriptRun(body), { status: 201 });
+            },
+        }),
+        control({
+            method: 'POST',
+            path: '/__mock/inbound-email',
+            body: { kind: 'json', schema: InboundEmail, maxBytes: BODY_MAX_BYTES },
+            handle: ({ body }) => {
+                // The sender and subject are accepted like a mail server would, and never stored or logged.
+                const outcome = runtime.simulation().inboundEmail(body.triggerId);
+                switch (outcome.kind) {
+                    case 'not-found':
+                        return problemResponse({ code: 'not-found' });
+                    case 'not-email':
+                        return invalidBody('body.triggerId', 'Not an email trigger.');
+                    case 'fired':
+                        return Response.json({ fire: outcome.fire }, { status: 201 });
+                }
             },
         }),
         control({
@@ -139,6 +250,7 @@ export function createControlRoutes(deps: ControlDeps): readonly HttpRoute[] {
             body: { kind: 'json', schema: FaultPlanSchema, maxBytes: BODY_MAX_BYTES },
             handle: ({ body }) => {
                 deps.faults.set(body);
+                runtime.simulation().faultsChanged();
                 return Response.json(body);
             },
         }),
@@ -148,6 +260,7 @@ export function createControlRoutes(deps: ControlDeps): readonly HttpRoute[] {
             body: null,
             handle: () => {
                 deps.faults.set(NO_FAULTS);
+                runtime.simulation().faultsChanged();
                 return new Response(null, { status: 204 });
             },
         }),

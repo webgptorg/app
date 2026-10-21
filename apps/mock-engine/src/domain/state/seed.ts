@@ -1,6 +1,7 @@
 import { Faker, base, en } from '@faker-js/faker';
 import type { InMemorySeed } from '@ptbk/engine-api/in-memory';
 
+import { seedCapabilities } from './capability-seed';
 import type { Scenario, ScenarioSize } from './scenarios';
 import { SCENARIO_SIZES } from './scenarios';
 import type { SeededSequence } from './seed-random';
@@ -17,8 +18,10 @@ export const HOSTILE_AUDIT_TARGET_NAME = '<img src=x onerror=alert(1)>';
 export interface SeedInput {
     readonly seed: number;
     readonly scenario: Scenario;
-    /** Every seeded timestamp lies at or before it; faker's reference date. */
+    /** Every seeded timestamp lies at or before it (but schedules' next fires); faker's reference date. */
     readonly epoch: Date;
+    /** The engine's hostname, which email triggers' addresses are under. */
+    readonly hostname: string;
 }
 
 type Mutable<T> = { -readonly [Key in keyof T]: T[Key] };
@@ -296,10 +299,11 @@ function agentName(agent: SeedAgent): string {
 }
 
 /**
- * The scenario's data in contract shapes, believable and identical for the same seed, scenario and epoch. Faker runs
- * here only; requests later use the core's counters and the seeded sequence.
+ * The scenario's data in contract shapes, believable and identical for the same seed, scenario, epoch and hostname.
+ * Faker runs here only; requests later use the core's counters and the seeded sequence. Asynchronous because file
+ * contents are hashed and PNGs compressed with Web Crypto and Compression Streams.
  */
-export function seedEngine({ seed, scenario, epoch }: SeedInput): InMemorySeed {
+export async function seedEngine({ seed, scenario, epoch, hostname }: SeedInput): Promise<InMemorySeed> {
     const size = SCENARIO_SIZES[scenario];
     const epochMs = epoch.getTime();
     const faker = new Faker({ locale: [en, base] });
@@ -407,6 +411,25 @@ export function seedEngine({ seed, scenario, epoch }: SeedInput): InMemorySeed {
         ...hostileRename(agents, owner.id, faker),
     ].sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
 
+    const capabilities = await seedCapabilities({
+        seed,
+        scenario,
+        size,
+        epochMs,
+        hostname,
+        members: members.map(({ id, role, displayName, createdAt }) => ({ id, role, displayName, createdAt })),
+        agents: agents
+            .filter((agent) => agent.deletedAt === undefined)
+            .map((agent) => ({
+                id: agent.id ?? '',
+                createdBy: agent.createdBy ?? owner.id,
+                createdAt: agent.createdAt ?? '',
+            })),
+        chats: chats.map(({ id, agentId, createdBy }) => ({ id, agentId, createdBy })),
+        messages: messages.map(({ id, chatId, role, createdAt }) => ({ id, chatId, role, createdAt })),
+        secrets,
+    });
+
     return {
         orgId: sequence.id('org'),
         settings: {
@@ -423,6 +446,7 @@ export function seedEngine({ seed, scenario, epoch }: SeedInput): InMemorySeed {
         passkeys,
         sessions,
         auditEntries: audit,
+        ...capabilities,
     };
 }
 

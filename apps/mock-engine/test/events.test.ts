@@ -18,8 +18,8 @@ function ok<T>(response: EngineApiResponse<T>): T {
 
 const signal = () => AbortSignal.timeout(10_000);
 
-function start() {
-    harness = createApiHarness();
+async function start() {
+    harness = await createApiHarness();
     const engine = harness;
     const memberId = (role: string): string => {
         const member = engine
@@ -68,7 +68,7 @@ async function renameFirstAgent(owner: EngineApiClient, name: string) {
 
 describe('GET /events', () => {
     it('announces an agent rename as agent.changed', async () => {
-        const { engine, owner } = start();
+        const { engine, owner } = await start();
         const events = await subscribe(owner);
         const agentId = await renameFirstAgent(owner, 'Renamed Agent');
         expect((await events.next()).event).toEqual({ type: 'agent.changed', agentId });
@@ -79,7 +79,7 @@ describe('GET /events', () => {
     });
 
     it('is closed to a member without agents.read', async () => {
-        const { clientWith } = start();
+        const { clientWith } = await start();
         const blind = clientWith(PERMISSIONS.filter((permission) => permission !== 'agents.read'));
         const refused = await blind.events.stream({}, signal());
         expect(refused).toMatchObject({
@@ -89,7 +89,7 @@ describe('GET /events', () => {
     });
 
     it('sends chat.changed only to members with chats.read', async () => {
-        const { owner, clientWith } = start();
+        const { owner, clientWith } = await start();
         const reader = await subscribe(clientWith(['agents.read', 'chats.read']));
         const agentsOnly = await subscribe(clientWith(['agents.read']));
         const [agent] = ok(await owner.agents.list({ limit: 1 }, signal())).items;
@@ -105,7 +105,7 @@ describe('GET /events', () => {
     });
 
     it('replays the events missed while disconnected after Last-Event-ID, in order', async () => {
-        const { engine, owner } = start();
+        const { engine, owner } = await start();
         const first = await subscribe(owner);
         const firstAgent = await renameFirstAgent(owner, 'First Name');
         const seen = await first.next();

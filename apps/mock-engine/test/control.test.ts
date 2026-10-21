@@ -30,7 +30,7 @@ afterEach(async () => {
 });
 
 async function setup(): Promise<{ readonly harness: ApiHarness; readonly control: ControlServer }> {
-    const harness = createApiHarness();
+    const harness = await createApiHarness();
     cleanups.push(() => harness.close());
     const control = await harness.startControl();
     return { harness, control };

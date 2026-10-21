@@ -6,6 +6,8 @@ const HORIZON_MS = 5 * 366 * 24 * 3600 * 1000;
 
 interface Cron {
     readonly minutes: ReadonlySet<number>;
+    /** `minutes` in ascending order, to jump straight to the next one. */
+    readonly sortedMinutes: readonly number[];
     readonly hours: ReadonlySet<number>;
     readonly days: ReadonlySet<number>;
     readonly months: ReadonlySet<number>;
@@ -45,12 +47,23 @@ function parseCron(expression: string): Cron | undefined {
     if (!minutes || !hours || !days || !months || !weekdays) return undefined;
     // 7 is Sunday too.
     if (weekdays.delete(7)) weekdays.add(0);
-    return { minutes, hours, days, months, weekdays, anyDay: day === '*', anyWeekday: weekday === '*' };
+    const sortedMinutes = [...minutes].sort((a, b) => a - b);
+    return { minutes, sortedMinutes, hours, days, months, weekdays, anyDay: day === '*', anyWeekday: weekday === '*' };
 }
 
 const WEEKDAYS: Readonly<Record<string, number>> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
 
+/** Building a formatter is far slower than using one, and schedules ask for the same few zones again and again. */
+const formatters = new Map<string, Intl.DateTimeFormat | undefined>();
+
 function formatter(timeZone: string): Intl.DateTimeFormat | undefined {
+    if (formatters.has(timeZone)) return formatters.get(timeZone);
+    const created = createFormatter(timeZone);
+    if (formatters.size < 256) formatters.set(timeZone, created);
+    return created;
+}
+
+function createFormatter(timeZone: string): Intl.DateTimeFormat | undefined {
     try {
         return new Intl.DateTimeFormat('en-US', {
             timeZone,
@@ -95,7 +108,9 @@ function nextCronFire(cron: Cron, format: Intl.DateTimeFormat, from: number): nu
         } else if (!cron.hours.has(local.hour)) {
             at += (60 - local.minute) * MINUTE_MS;
         } else if (!cron.minutes.has(local.minute)) {
-            at += MINUTE_MS;
+            // Straight to the next listed minute of this hour (or the next hour); nothing in between can match.
+            const nextMinute = cron.sortedMinutes.find((minute) => minute > local.minute) ?? 60;
+            at += (nextMinute - local.minute) * MINUTE_MS;
         } else {
             return at;
         }

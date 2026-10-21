@@ -10,6 +10,10 @@ describe('FaultPlan', () => {
             errorStatus: 503,
             dropStreamRate: 0,
             slowTunnelBytesPerS: null,
+            runFailureRate: null,
+            stuckQueue: false,
+            scanInfectedRate: 0,
+            integrationErrorRate: 0,
         });
     });
 

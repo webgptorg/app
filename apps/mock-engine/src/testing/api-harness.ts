@@ -21,6 +21,9 @@ import type { Random } from '../domain/random';
 import type { RateLimiter } from '../domain/rate-limit/rate-limiter';
 import type { EngineRuntime } from '../domain/state/engine-runtime';
 import { createEngineRuntime } from '../domain/state/engine-runtime';
+import type { SimulationMode } from '../domain/simulation/simulation-clock';
+import { ALL_CAPABILITY_NAMES, capabilitiesFor } from '../domain/state/capabilities';
+import type { MockCapabilityName } from '../domain/state/capabilities';
 import type { Scenario } from '../domain/state/scenarios';
 import type { BundleStore } from '../domain/ui/bundle-store';
 import type { UiLoader } from '../domain/ui/ui-loader';
@@ -38,6 +41,7 @@ import { createMemoryLogger } from './memory-logger';
 import { asBrowser, createNodeFetch } from './node-fetch';
 
 export const HARNESS_ORIGIN = `https://${HARNESS_HOSTNAME}`;
+export const HARNESS_EPOCH = new Date('2026-10-01T00:00:00Z');
 
 export interface ApiHarnessOptions {
     /** Serve this core instead of a seeded runtime (the shared client suite brings its own). */
@@ -53,6 +57,12 @@ export interface ApiHarnessOptions {
     readonly bundles?: Pick<BundleStore, 'active' | 'read'>;
     /** The UI loader the control listener drives. */
     readonly ui?: UiLoader;
+    /** What `GET /engine` advertises; every C-07 capability by default. */
+    readonly capabilities?: readonly MockCapabilityName[];
+    /** Paused by default, so nothing changes unless a test advances the simulation clock. */
+    readonly simulation?: { readonly mode: SimulationMode; readonly speed: number };
+    /** The epoch seeded data lies before, and where a paused simulation's time starts. */
+    readonly epoch?: Date;
 }
 
 export interface ApiHarness {
@@ -95,15 +105,16 @@ const systemClock: Clock = {
  * The mock engine's whole in-tunnel server (gateway, engine API, faults, throttle) without a relay: every request is
  * real HTTP/1.1 over TLS with the dev CA, over a duplex pair standing in for a tunnel stream.
  */
-export function createApiHarness(options: ApiHarnessOptions = {}): ApiHarness {
+export async function createApiHarness(options: ApiHarnessOptions = {}): Promise<ApiHarness> {
     const clock = options.clock ?? systemClock;
     const logger = createMemoryLogger();
+    const faults = createFaultSettings(options.faults ?? NO_FAULTS);
     const runtime =
         options.core === undefined
-            ? createEngineRuntime({
+            ? await createEngineRuntime({
                   seed: options.seed ?? 42,
                   scenario: options.scenario ?? 'small-team',
-                  epoch: new Date('2026-10-01T00:00:00Z'),
+                  epoch: options.epoch ?? HARNESS_EPOCH,
                   identity: {
                       engineId: HARNESS_ENGINE_ID,
                       hostname: HARNESS_HOSTNAME,
@@ -111,6 +122,12 @@ export function createApiHarness(options: ApiHarnessOptions = {}): ApiHarness {
                       version: '0.1.0',
                   },
                   clock,
+                  capabilities: capabilitiesFor(options.capabilities ?? ALL_CAPABILITY_NAMES),
+                  simulation: options.simulation ?? { mode: 'paused', speed: 1 },
+                  faults: () => faults.plan(),
+                  onSimulationError: (error) => {
+                      logger.error('simulation.error', { problem: error instanceof Error ? error.message : 'unknown' });
+                  },
               })
             : null;
     const core = (): InMemoryEngineCore => runtime?.core() ?? (options.core as InMemoryEngineCore);
@@ -122,7 +139,6 @@ export function createApiHarness(options: ApiHarnessOptions = {}): ApiHarness {
     runtime?.onReset(() => {
         sessions.clear();
     });
-    const faults = createFaultSettings(options.faults ?? NO_FAULTS);
     const ca = createDevCa([HARNESS_DOMAIN], clock);
     const certificates = createDevCaCertificateSource({ ca, clock, logger });
     certificates.addHostnames([HARNESS_HOSTNAME]);
@@ -211,6 +227,7 @@ export function createApiHarness(options: ApiHarnessOptions = {}): ApiHarness {
             return control;
         },
         async close() {
+            runtime?.simulation().stop();
             for (const socket of [...sockets]) socket.destroy();
             server.close();
             certificates.close();

@@ -6,7 +6,7 @@ import { createSessionStore } from '../domain/gateway/sessions';
 import type { HeartbeatStatus } from '../domain/heartbeat/heartbeat-loop';
 import type { RateLimiter } from '../domain/rate-limit/rate-limiter';
 import type { EngineRuntime } from '../domain/state/engine-runtime';
-import { createEngineRuntime } from '../domain/state/engine-runtime';
+import { createTestRuntime } from '../testing/test-runtime';
 import type { Scenario } from '../domain/state/scenarios';
 import { createFakeClock } from '../testing/fake-clock';
 import { createMemoryLogger } from '../testing/memory-logger';
@@ -29,7 +29,7 @@ async function start(
     } = {},
 ) {
     const clock = createFakeClock(Date.parse('2026-10-01T00:00:00Z'));
-    const base = createEngineRuntime({
+    const base = await createTestRuntime({
         seed: 3,
         scenario: options.scenario ?? 'empty',
         epoch: new Date('2026-10-01T00:00:00Z'),
@@ -153,8 +153,12 @@ describe('control server', () => {
             'GET /__mock/members',
             'GET /__mock/state',
             'GET /__mock/ui',
+            'POST /__mock/inbound-email',
             'POST /__mock/reset',
+            'POST /__mock/runs',
             'POST /__mock/sessions',
+            'POST /__mock/simulation',
+            'POST /__mock/simulation/advance',
             'POST /__mock/ui/check',
             'PUT /__mock/faults',
         ]);

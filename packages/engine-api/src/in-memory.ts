@@ -31,4 +31,6 @@ export type { Actor, ReplyChunk, ReplyScript, ReplyScriptInput, ScriptedReply, S
 export type { ActivityInput, EngineChecks, IntegrationProbe, ScannedFile } from './in-memory/kit';
 export type { NewFile } from './in-memory/files';
 export type { RunOutcome, RunReport, StartRun } from './in-memory/runs';
+export { truncateRunText } from './in-memory/runs';
+export { nextFireAt as nextScheduleFireAt } from './in-memory/schedule';
 export { createDemoSeed } from './in-memory/demo-seed';

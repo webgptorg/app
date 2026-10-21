@@ -27,6 +27,19 @@ export interface ScenarioSize {
     readonly ownerPasskeys: number;
     /** Earlier sign-ins of other members; the gateway's own sessions come on top. */
     readonly otherSessions: number;
+    /** Runs no chat turn or trigger started (API clients, members, goals, webhooks), spread over `runDays`. */
+    readonly otherRuns: number;
+    /** The window seeded runs fall in; chat turns inside it got a `web` run. */
+    readonly runDays: number;
+    /** Email and schedule triggers, in every lifecycle. */
+    readonly triggers: number;
+    /** How often each trigger fired before the epoch. */
+    readonly firesPerTrigger: Range;
+    readonly integrations: number;
+    readonly knowledgeFilesPerAgent: Range;
+    /** Share of chats with an attachment, and of completed runs with an output file. */
+    readonly attachmentRate: number;
+    readonly outputFileRate: number;
 }
 
 export const SCENARIO_SIZES: Readonly<Record<Scenario, ScenarioSize>> = {
@@ -45,6 +58,14 @@ export const SCENARIO_SIZES: Readonly<Record<Scenario, ScenarioSize>> = {
         secrets: 0,
         ownerPasskeys: 1,
         otherSessions: 0,
+        otherRuns: 0,
+        runDays: 14,
+        triggers: 0,
+        firesPerTrigger: [0, 0],
+        integrations: 0,
+        knowledgeFilesPerAgent: [0, 0],
+        attachmentRate: 0,
+        outputFileRate: 0,
     },
     'small-team': {
         admins: 1,
@@ -61,6 +82,14 @@ export const SCENARIO_SIZES: Readonly<Record<Scenario, ScenarioSize>> = {
         secrets: 5,
         ownerPasskeys: 2,
         otherSessions: 3,
+        otherRuns: 110,
+        runDays: 14,
+        triggers: 14,
+        firesPerTrigger: [2, 8],
+        integrations: 8,
+        knowledgeFilesPerAgent: [1, 3],
+        attachmentRate: 0.4,
+        outputFileRate: 0.2,
     },
     'large-fleet': {
         admins: 4,
@@ -77,5 +106,13 @@ export const SCENARIO_SIZES: Readonly<Record<Scenario, ScenarioSize>> = {
         secrets: 40,
         ownerPasskeys: 2,
         otherSessions: 20,
+        otherRuns: 12_500,
+        runDays: 14,
+        triggers: 500,
+        firesPerTrigger: [4, 24],
+        integrations: 300,
+        knowledgeFilesPerAgent: [2, 4],
+        attachmentRate: 0.3,
+        outputFileRate: 0.07,
     },
 };

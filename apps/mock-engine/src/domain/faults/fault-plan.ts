@@ -27,6 +27,14 @@ export const FaultPlan = z.strictObject({
     dropStreamRate: rate.default(0),
     /** Pace of bytes from the engine into the tunnel; `null` is unthrottled. */
     slowTunnelBytesPerS: z.int().min(MIN_TUNNEL_BYTES_PER_S).max(MAX_TUNNEL_BYTES_PER_S).nullable().default(null),
+    /** Share of simulated runs that fail; `null` keeps the simulation's own believable rate. */
+    runFailureRate: rate.nullable().default(null),
+    /** Simulated runs stay `queued`, so the queue's `oldestQueuedAt` keeps getting older. */
+    stuckQueue: z.boolean().default(false),
+    /** Share of new files (uploads and run outputs) the scanner finds infected. */
+    scanInfectedRate: rate.default(0),
+    /** Share of connection tests (create, check, enable) that end in `error`. */
+    integrationErrorRate: rate.default(0),
     /** Request-path globs the faults apply to: `*` within one segment, `**` across segments. Absent means every path. */
     routes: z
         .array(z.string().min(1).max(MAX_ROUTE_GLOB_LENGTH).startsWith('/'))

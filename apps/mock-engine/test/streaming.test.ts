@@ -40,9 +40,9 @@ async function drain(clock: FakeClock): Promise<void> {
     expect(clock.pendingTimers()).toBe(idleTimers);
 }
 
-function start(seed = 42) {
+async function start(seed = 42) {
     const clock = createFakeClock(Date.now());
-    const harness = createApiHarness({ clock, seed });
+    const harness = await createApiHarness({ clock, seed });
     harnesses.push(harness);
     idleTimers = clock.pendingTimers();
     const client = harness.client(harness.signIn({ memberId: harness.ownerId() }));
@@ -76,7 +76,7 @@ function textOf(events: readonly { readonly event: ReplyStreamEvent }[]): string
 }
 
 async function generatedReply(seed: number): Promise<string> {
-    const { clock, client, harness } = start(seed);
+    const { clock, client, harness } = await start(seed);
     const { chatId, messageId } = await ask(client, await agentNamed(client, (name) => name !== HOSTILE_AGENT_NAME));
     await drain(clock);
     const events = await readAll(client, chatId, messageId);
@@ -86,7 +86,7 @@ async function generatedReply(seed: number): Promise<string> {
 
 describe('chat replies', () => {
     it('arrive as SSE delta tokens with a fenced code block, ending with the stored message', async () => {
-        const { clock, client, harness } = start();
+        const { clock, client, harness } = await start();
         const { chatId, messageId } = await ask(
             client,
             await agentNamed(client, (name) => name !== HOSTILE_AGENT_NAME),
@@ -115,7 +115,7 @@ describe('chat replies', () => {
     });
 
     it('from the injection demo agent carry content the UI must neutralise', async () => {
-        const { clock, client } = start();
+        const { clock, client } = await start();
         const { chatId, messageId } = await ask(
             client,
             await agentNamed(client, (name) => name === HOSTILE_AGENT_NAME),
@@ -127,7 +127,7 @@ describe('chat replies', () => {
     });
 
     it('keep generating after a disconnect, which ends only that stream, and resume after Last-Event-ID', async () => {
-        const { clock, client, harness } = start();
+        const { clock, client, harness } = await start();
         const { chatId, messageId } = await ask(
             client,
             await agentNamed(client, (name) => name !== HOSTILE_AGENT_NAME),
@@ -164,7 +164,7 @@ describe('chat replies', () => {
     });
 
     it('stop generating only on the cancel route', async () => {
-        const { clock, client, harness } = start();
+        const { clock, client, harness } = await start();
         const { chatId, messageId } = await ask(
             client,
             await agentNamed(client, (name) => name !== HOSTILE_AGENT_NAME),

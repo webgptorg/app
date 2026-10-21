@@ -84,7 +84,7 @@ async function start(options: { readonly pinned?: string } = {}): Promise<Engine
             onChecked(outcome, atMs);
         },
     });
-    harness = createApiHarness({ bundles: store, ui: loader });
+    harness = await createApiHarness({ bundles: store, ui: loader });
     const runtime = harness.runtime;
     onActive = (bundle) =>
         runtime?.setUi({ version: bundle.version, bundleSha256: bundle.sha256, releaseLogIndex: bundle.logIndex });
@@ -229,7 +229,7 @@ describe('engine-owned paths', () => {
             manifest,
         };
         const bytes = new Map(files.map((file) => [file.path, file.bytes]));
-        harness = createApiHarness({
+        harness = await createApiHarness({
             bundles: { active: () => bundle, read: (_bundle, path) => Promise.resolve(bytes.get(path)) },
         });
         const owner = harness.signIn({ memberId: harness.ownerId() });
