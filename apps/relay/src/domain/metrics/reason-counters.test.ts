@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { REFUSAL_REASONS, createRefusalCounters } from './refusal-counters';
+import { REFUSAL_REASONS, createReasonCounters } from './reason-counters';
 
-describe('createRefusalCounters', () => {
+describe('createReasonCounters', () => {
     it('counts each reason from zero and hands out copies', () => {
-        const counters = createRefusalCounters();
+        const counters = createReasonCounters(REFUSAL_REASONS);
         const empty = counters.snapshot();
         expect(Object.keys(empty)).toEqual([...REFUSAL_REASONS]);
         expect(Object.values(empty).every((count) => count === 0)).toBe(true);

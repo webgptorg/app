@@ -2,20 +2,23 @@ import type { AddressInfo, Server, Socket } from 'node:net';
 import { createServer } from 'node:net';
 
 import type { Hostname, RelayId } from '@ptbk/protocol';
-import { createClientHelloBuffer } from '@ptbk/protocol';
+import { TUNNEL_CLOSE_CODE, createClientHelloBuffer } from '@ptbk/protocol';
 
 import type { Clock } from '../domain/clock';
 import { parseIpAddress } from '../domain/ip-address';
+import type { ConnectionPoolLimits } from '../domain/limits/connection-pool';
+import { createConnectionPool } from '../domain/limits/connection-pool';
 import type { EngineLimits } from '../domain/limits/engine-limiter';
 import { createEngineLimiter } from '../domain/limits/engine-limiter';
 import type { IpLimits } from '../domain/limits/ip-limiter';
 import { createIpLimiter } from '../domain/limits/ip-limiter';
+import type { MemoryBudget } from '../domain/limits/memory-budget';
+import { createMemoryCharge } from '../domain/limits/memory-budget';
 import type { Logger } from '../domain/logger';
-import type { RefusalReason } from '../domain/metrics/refusal-counters';
-import { createRefusalCounters } from '../domain/metrics/refusal-counters';
+import type { RefusalReason, StreamResetReason } from '../domain/metrics/reason-counters';
+import { REFUSAL_REASONS, STREAM_RESET_REASONS, createReasonCounters } from '../domain/metrics/reason-counters';
 import type { DailyTraffic } from '../domain/metrics/traffic-counters';
 import { createTrafficCounters } from '../domain/metrics/traffic-counters';
-import type { ClientHelloVerdict } from '../domain/routing/route-connection';
 import { routeConnection } from '../domain/routing/route-connection';
 import type { StreamScheduler } from '../domain/routing/stream-scheduler';
 import { createStreamScheduler } from '../domain/routing/stream-scheduler';
@@ -23,18 +26,23 @@ import type { SessionTable } from '../domain/tunnel/session-table';
 import type { TunnelSession } from '../domain/tunnel/tunnel-session';
 import type { OwnTlsServer } from './own-tls-server';
 import { clientIp } from './own-tls-server';
-import type { SocketStreamPipe } from './socket-stream-pipe';
-import { pipeSocketToStream } from './socket-stream-pipe';
+import type { SocketStreamPipe, StreamLimits } from './socket-stream-pipe';
+import { STREAM_RESERVE_BYTES, pipeSocketToStream } from './socket-stream-pipe';
 
 /** R-01's bound: a ClientHello that does not fit is refused as `too-large`. */
 export const CLIENT_HELLO_MAX_BYTES = 16_384;
 /** Streams have no idle timeout (SSE and WebSockets live long); keepalive finds browsers that vanished. */
 export const BROWSER_KEEPALIVE_MS = 60_000;
+/**
+ * Node's own cap, as a multiple of `maxConnections`: a backstop against a counting bug only. Refused and evicted
+ * sockets stay in Node's count until their close event, so a cap at `maxConnections` would drop new connections
+ * before the pool could evict for them.
+ */
+export const SERVER_CONNECTIONS_FACTOR = 2;
 /** Today and yesterday, so a day's totals survive until I-04 reads them after midnight. */
 const TRAFFIC_RETAIN_DAYS = 2;
 
-export interface BrowserListenerLimits extends IpLimits {
-    readonly clientHelloTimeoutMs: number;
+export interface BrowserListenerLimits extends IpLimits, ConnectionPoolLimits, StreamLimits {
     readonly maxStreamsPerEngine: number;
     readonly newStreamsPerEnginePerS: number;
     readonly engineBandwidthBytesPerS: number;
@@ -50,13 +58,19 @@ export interface BrowserListenerOptions {
     /** ClientHello deadlines, the token buckets, and accept times; the tunnel endpoint's clock. */
     readonly clock: Clock;
     readonly logger: Logger;
+    /** The relay-wide budget; ClientHellos being read and data in transit count against it. */
+    readonly memory: MemoryBudget;
 }
 
 /** In-memory counters for I-04; nothing here names a browser, an IP or a hostname. */
 export interface BrowserListenerMetrics {
     /** Open connections on the listener, the relay's own included. */
     connections(): number;
+    /** Of those, connections whose ClientHello is not judged yet. */
+    pendingConnections(): number;
     refusals(): Readonly<Record<RefusalReason, number>>;
+    /** Streams the relay reset on its own: deadlines and failures. */
+    resets(): Readonly<Record<StreamResetReason, number>>;
     traffic(): readonly DailyTraffic[];
     /** Bytes held for browser connections: ClientHellos being read and data in transit either way. */
     bufferedBytes(): number;
@@ -69,15 +83,19 @@ export interface BrowserListener extends BrowserListenerMetrics {
     close(): Promise<void>;
 }
 
+const errorName = (error: unknown): string => (error instanceof Error ? error.name : 'unknown');
+
 /**
  * The one TCP listener: reads each connection's ClientHello, hands the relay's own hostname to R-03's TLS server, and
  * pipes everything routed to an engine into its tunnel without terminating TLS. A refused connection is destroyed
  * without a single byte written (no TLS alert, no HTTP error), so the relay never acts as a TLS endpoint for an
- * engine's name.
+ * engine's name. A connection holds its admission until nothing is held for it any more: until its socket closed and,
+ * once piped, its stream ended too.
  */
 export function createBrowserListener(options: BrowserListenerOptions): BrowserListener {
-    const { relayId, engineDomain, sessions, own, limits, clock, logger } = options;
+    const { relayId, engineDomain, sessions, own, limits, clock, logger, memory } = options;
     const ipLimiter = createIpLimiter(limits, clock);
+    const pool = createConnectionPool(limits, clock);
     const engineLimiter = createEngineLimiter(
         {
             maxStreams: limits.maxStreamsPerEngine,
@@ -86,7 +104,8 @@ export function createBrowserListener(options: BrowserListenerOptions): BrowserL
         } satisfies EngineLimits,
         clock,
     );
-    const refusals = createRefusalCounters();
+    const refusals = createReasonCounters(REFUSAL_REASONS);
+    const resets = createReasonCounters(STREAM_RESET_REASONS);
     const traffic = createTrafficCounters({ clock, retainDays: TRAFFIC_RETAIN_DAYS });
     const schedulers = new WeakMap<TunnelSession, StreamScheduler>();
     /** Connections this listener still owns, with what each holds in memory. */
@@ -99,15 +118,22 @@ export function createBrowserListener(options: BrowserListenerOptions): BrowserL
             });
         },
     );
+    server.maxConnections = limits.maxConnections * SERVER_CONNECTIONS_FACTOR;
 
     // Exceptions here are bugs; they must not take the relay down with them, and their messages may quote input.
     function guarded(socket: Socket, run: () => void): void {
         try {
             run();
         } catch (error) {
-            logger.error('browser.failed', { problem: error instanceof Error ? error.name : 'unknown' });
+            logger.error('browser.failed', { problem: errorName(error) });
             socket.destroy();
         }
+    }
+
+    // A bug in a stream's handlers leaves its tunnel's flow control in an unknown state: the tunnel goes too.
+    function tunnelFailed(session: TunnelSession, error: unknown): void {
+        logger.error('browser.failed', { problem: errorName(error) });
+        session.close(TUNNEL_CLOSE_CODE.PROTOCOL_ERROR);
     }
 
     function refuse(socket: Socket, reason: RefusalReason): void {
@@ -122,7 +148,17 @@ export function createBrowserListener(options: BrowserListenerOptions): BrowserL
             scheduler = createStreamScheduler({
                 tunnel: session,
                 throttle: (bytes) => engineLimiter.throttle(engineId, bytes),
-                clock,
+                clock: {
+                    nowMs: () => clock.nowMs(),
+                    setTimeout: (run, ms) =>
+                        clock.setTimeout(() => {
+                            try {
+                                run();
+                            } catch (error) {
+                                tunnelFailed(session, error);
+                            }
+                        }, ms),
+                },
             });
             schedulers.set(session, scheduler);
         }
@@ -138,69 +174,88 @@ export function createBrowserListener(options: BrowserListenerOptions): BrowserL
             socket.destroy();
             return;
         }
-        const admission = ipLimiter.admit(ip);
-        if (admission.kind === 'refused') {
-            refuse(socket, admission.reason);
+        const ipAdmission = ipLimiter.admit(ip);
+        if (ipAdmission.kind === 'refused') {
+            refuse(socket, ipAdmission.reason);
             return;
         }
-        const hello = createClientHelloBuffer({ maxBytes: CLIENT_HELLO_MAX_BYTES });
-        held.set(socket, () => hello.bytes().length);
-        const cancelDeadline = clock.setTimeout(() => {
-            refuse(socket, 'timeout');
-        }, limits.clientHelloTimeoutMs);
-        socket.once('close', () => {
-            cancelDeadline();
+        const pooled = pool.admit((reason) => {
+            refuse(socket, reason);
+        });
+        if (pooled.kind === 'refused') {
+            ipAdmission.release();
+            refuse(socket, pooled.reason);
+            return;
+        }
+        const { connection } = pooled;
+        const release = (): void => {
             held.delete(socket);
-            admission.release();
+            connection.release();
+            ipAdmission.release();
+        };
+        const hello = createClientHelloBuffer({ maxBytes: CLIENT_HELLO_MAX_BYTES });
+        const helloCharge = createMemoryCharge(memory);
+        held.set(socket, () => hello.bytes().length);
+        let piped = false;
+        socket.once('close', () => {
+            helloCharge.set(0);
+            if (!piped) release();
         });
         const onData = (chunk: Buffer): void => {
             guarded(socket, () => {
                 const parse = hello.push(chunk);
+                helloCharge.set(hello.bytes().length);
                 if (parse.kind === 'need-more') return;
-                cancelDeadline();
                 socket.pause();
                 socket.off('data', onData);
-                route(socket, ip, parse, hello.bytes(), acceptedAtMs);
+                helloCharge.set(0);
+                const decision = routeConnection(parse, { relayHostname: relayId, engineDomain, sessions });
+                switch (decision.kind) {
+                    case 'own':
+                        connection.route('own');
+                        held.delete(socket);
+                        // R-03's TLS server reads these bytes back before anything still in the kernel.
+                        socket.unshift(hello.bytes());
+                        // R-03's handshake deadline counts from TCP accept, so a slow ClientHello spends it too.
+                        own.acceptSocket(socket, acceptedAtMs);
+                        return;
+                    case 'reject':
+                        refuse(socket, decision.reason);
+                        return;
+                    case 'engine':
+                        if (!memory.hasRoomFor(STREAM_RESERVE_BYTES)) {
+                            refuse(socket, 'memory-limit');
+                            return;
+                        }
+                        if (!connection.route('engine')) {
+                            refuse(socket, 'global-limit');
+                            return;
+                        }
+                        piped = pipeToEngine(socket, ip, decision.session, hello.bytes(), release);
+                        return;
+                }
             });
         };
         socket.on('data', onData);
     }
 
-    function route(
+    /** `false`: refused, and the socket's close releases it as usual. */
+    function pipeToEngine(
         socket: Socket,
         ip: string,
-        parse: ClientHelloVerdict,
+        session: TunnelSession,
         buffered: Uint8Array,
-        acceptedAtMs: number,
-    ): void {
-        const decision = routeConnection(parse, { relayHostname: relayId, engineDomain, sessions });
-        switch (decision.kind) {
-            case 'own':
-                held.delete(socket);
-                // R-03's TLS server reads these bytes back before anything still in the kernel.
-                socket.unshift(buffered);
-                // R-03's handshake deadline counts from TCP accept, so a slow ClientHello spends it too.
-                own.acceptSocket(socket, acceptedAtMs);
-                return;
-            case 'reject':
-                refuse(socket, decision.reason);
-                return;
-            case 'engine':
-                pipeToEngine(socket, ip, decision.session, buffered);
-                return;
-        }
-    }
-
-    function pipeToEngine(socket: Socket, ip: string, session: TunnelSession, buffered: Uint8Array): void {
+        release: () => void,
+    ): boolean {
         const address = parseIpAddress(ip);
         if (address === null) throw new Error('socket address is not an IP address');
         const { engineId } = session;
         const admission = engineLimiter.admitStream(engineId);
         if (admission.kind === 'refused') {
             refuse(socket, admission.reason);
-            return;
+            return false;
         }
-        let pipe: SocketStreamPipe | null = null;
+        let pipe: SocketStreamPipe | null;
         try {
             pipe = pipeSocketToStream({
                 socket,
@@ -216,19 +271,33 @@ export function createBrowserListener(options: BrowserListenerOptions): BrowserL
                     traffic.record(engineId, direction, bytes);
                 },
                 clock,
+                limits,
+                memory,
+                countReset: (reason) => {
+                    resets.count(reason);
+                },
                 onStreamEnd: () => {
                     admission.release();
                 },
+                onDone: release,
+                onFailure: (error) => {
+                    tunnelFailed(session, error);
+                },
             });
-        } finally {
-            // No pipe, whether the tunnel is gone or something threw: the stream slot was never used.
-            if (pipe === null) admission.release();
+        } catch (error) {
+            // The stream may already be open, so its tunnel is in an unknown state too.
+            admission.release();
+            socket.destroy();
+            tunnelFailed(session, error);
+            return false;
         }
         if (pipe === null) {
+            admission.release();
             refuse(socket, 'engine-offline');
-            return;
+            return false;
         }
         held.set(socket, pipe.bufferedBytes);
+        return true;
     }
 
     return {
@@ -237,6 +306,10 @@ export function createBrowserListener(options: BrowserListenerOptions): BrowserL
                 server.once('error', reject);
                 server.listen(port, host, () => {
                     server.off('error', reject);
+                    // Accept errors (EMFILE) are emitted here; without a listener they would end the process.
+                    server.on('error', (error: Error) => {
+                        logger.error('relay.accept-failed', { problem: error.name });
+                    });
                     resolve((server.address() as AddressInfo).port);
                 });
             });
@@ -250,8 +323,10 @@ export function createBrowserListener(options: BrowserListenerOptions): BrowserL
             for (const socket of held.keys()) socket.destroy();
             return closed;
         },
-        connections: () => ipLimiter.connections(),
+        connections: () => pool.connections(),
+        pendingConnections: () => pool.pending(),
         refusals: () => refusals.snapshot(),
+        resets: () => resets.snapshot(),
         traffic: () => traffic.snapshot(),
         bufferedBytes: () => [...held.values()].reduce((total, bytes) => total + bytes(), 0),
     };

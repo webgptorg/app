@@ -60,16 +60,30 @@ describe('parseRelayConfig', () => {
                 maxPendingHandshakes: 1000,
                 maxPendingHandshakesPerIp: 10,
                 maxTunnelsPerIp: 50,
+                registryMissesPerS: 20,
+                framesPerS: 20_000,
+                minWindowIncrementBytes: 1024,
+                pingBufferBytes: 1_048_576,
+                maxBufferedBytes: 8_388_608,
             },
             browser: {
                 clientHelloTimeoutMs: 5000,
+                pressureClientHelloTimeoutMs: 1000,
                 maxConnections: 10_000,
+                maxPending: 2500,
+                reserved: 1000,
                 maxConnectionsPerIp: 256,
+                maxConnectionsPerIpv6Slash56: 512,
+                maxConnectionsPerIpv6Slash48: 1024,
                 newConnectionsPerIpPerS: 50,
                 maxStreamsPerEngine: 1024,
                 newStreamsPerEnginePerS: 200,
                 engineBandwidthBytesPerS: 12_500_000,
+                firstByteTimeoutMs: 10_000,
+                drainTimeoutMs: 30_000,
+                endTimeoutMs: 30_000,
             },
+            memoryBudgetBytes: 1_073_741_824,
             logLevel: 'info',
         });
         expect(Object.isFrozen(config)).toBe(true);
@@ -104,6 +118,20 @@ describe('parseRelayConfig', () => {
             RELAY_MAX_STREAMS_PER_ENGINE: '512',
             RELAY_NEW_STREAMS_PER_ENGINE_PER_S: '100',
             RELAY_ENGINE_BANDWIDTH_BYTES_PER_S: '1250000000',
+            RELAY_REGISTRY_MISSES_PER_S: '5',
+            RELAY_TUNNEL_FRAMES_PER_S: '1000',
+            RELAY_TUNNEL_MIN_WINDOW_INCREMENT_BYTES: '512',
+            RELAY_TUNNEL_PING_BUFFER_BYTES: '65536',
+            RELAY_TUNNEL_MAX_BUFFERED_BYTES: '2097152',
+            RELAY_CLIENT_HELLO_PRESSURE_TIMEOUT_MS: '500',
+            RELAY_PENDING_CONNECTIONS_PERCENT: '10',
+            RELAY_RESERVED_CONNECTIONS_PERCENT: '0',
+            RELAY_MAX_CONNECTIONS_PER_IPV6_56: '128',
+            RELAY_MAX_CONNECTIONS_PER_IPV6_48: '256',
+            RELAY_STREAM_FIRST_BYTE_TIMEOUT_MS: '5000',
+            RELAY_STREAM_DRAIN_TIMEOUT_MS: '6000',
+            RELAY_STREAM_END_TIMEOUT_MS: '7000',
+            RELAY_MEMORY_BUDGET_BYTES: '268435456',
             LOG_LEVEL: 'warn',
         });
         expect(config.relayId).toBe('relay-a.ptbk.test');
@@ -117,16 +145,30 @@ describe('parseRelayConfig', () => {
             maxPendingHandshakes: 200,
             maxPendingHandshakesPerIp: 4,
             maxTunnelsPerIp: 8,
+            registryMissesPerS: 5,
+            framesPerS: 1000,
+            minWindowIncrementBytes: 512,
+            pingBufferBytes: 65_536,
+            maxBufferedBytes: 2_097_152,
         });
         expect(config.browser).toEqual({
             clientHelloTimeoutMs: 2000,
+            pressureClientHelloTimeoutMs: 500,
             maxConnections: 5000,
+            maxPending: 500,
+            reserved: 0,
             maxConnectionsPerIp: 64,
+            maxConnectionsPerIpv6Slash56: 128,
+            maxConnectionsPerIpv6Slash48: 256,
             newConnectionsPerIpPerS: 20,
             maxStreamsPerEngine: 512,
             newStreamsPerEnginePerS: 100,
             engineBandwidthBytesPerS: 1_250_000_000,
+            firstByteTimeoutMs: 5000,
+            drainTimeoutMs: 6000,
+            endTimeoutMs: 7000,
         });
+        expect(config.memoryBudgetBytes).toBe(268_435_456);
         expect(config.logLevel).toBe('warn');
     });
 
@@ -156,6 +198,31 @@ describe('parseRelayConfig', () => {
                 `${name}: is not a setting for this RELAY_REGISTRY_KIND`,
             ]);
         }
+    });
+
+    it('keeps at least one pending slot however small the cap', () => {
+        const config = parseRelayConfig({
+            ...staticEnv,
+            RELAY_MAX_CONNECTIONS: '3',
+            RELAY_PENDING_CONNECTIONS_PERCENT: '1',
+            RELAY_RESERVED_CONNECTIONS_PERCENT: '50',
+        });
+        expect([config.browser.maxPending, config.browser.reserved]).toEqual([1, 1]);
+    });
+
+    it.each(['engine.test', 'relay.engine.test', 'Relay.Engine.TEST'])(
+        'refuses a relay hostname %s inside the engine domain (it would terminate TLS for engines)',
+        (hostname) => {
+            expect(configError({ ...staticEnv, RELAY_HOSTNAME: hostname }).problems).toEqual([
+                'RELAY_HOSTNAME: must not be RELAY_ENGINE_DOMAIN or a name under it',
+            ]);
+        },
+    );
+
+    it('accepts a relay hostname that only shares a suffix with the engine domain', () => {
+        expect(parseRelayConfig({ ...staticEnv, RELAY_HOSTNAME: 'relay.xengine.test' }).relayId).toBe(
+            'relay.xengine.test',
+        );
     });
 
     it('allows the stale window to equal the TTL and reach the 24-hour ceiling', () => {
@@ -357,6 +424,31 @@ describe('parseRelayConfig', () => {
             'an engine bandwidth above 10 Gbit/s',
             { ...staticEnv, RELAY_ENGINE_BANDWIDTH_BYTES_PER_S: '1250000001' },
             'RELAY_ENGINE_BANDWIDTH_BYTES_PER_S: must be an integer from 1 to 1250000000',
+        ],
+        [
+            'a pending share of 0%',
+            { ...staticEnv, RELAY_PENDING_CONNECTIONS_PERCENT: '0' },
+            'RELAY_PENDING_CONNECTIONS_PERCENT: must be an integer from 1 to 100',
+        ],
+        [
+            'a reserve above half the cap',
+            { ...staticEnv, RELAY_RESERVED_CONNECTIONS_PERCENT: '51' },
+            'RELAY_RESERVED_CONNECTIONS_PERCENT: must be an integer from 0 to 50',
+        ],
+        [
+            'a tunnel send cap below 1 MiB',
+            { ...staticEnv, RELAY_TUNNEL_MAX_BUFFERED_BYTES: '1048575' },
+            'RELAY_TUNNEL_MAX_BUFFERED_BYTES: must be an integer from 1048576 to 1073741824',
+        ],
+        [
+            'a minimum window increment above one frame',
+            { ...staticEnv, RELAY_TUNNEL_MIN_WINDOW_INCREMENT_BYTES: '65537' },
+            'RELAY_TUNNEL_MIN_WINDOW_INCREMENT_BYTES: must be an integer from 1 to 65536',
+        ],
+        [
+            'a memory budget above 8 GiB',
+            { ...staticEnv, RELAY_MEMORY_BUDGET_BYTES: '8589934593' },
+            'RELAY_MEMORY_BUDGET_BYTES: must be an integer from 1048576 to 8589934592',
         ],
         ['an unknown LOG_LEVEL', { ...staticEnv, LOG_LEVEL: 'debug' }, 'LOG_LEVEL: must be one of info, warn, error'],
         [

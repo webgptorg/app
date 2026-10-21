@@ -51,7 +51,8 @@ export type HandshakeRejectReason =
     | 'id-key-mismatch'
     | 'registry-unavailable'
     | 'unsupported-version'
-    | 'malformed';
+    | 'malformed'
+    | 'rate-limited';
 
 export type HandshakeOutcome =
     | {
@@ -74,6 +75,8 @@ export interface VerifyAuthInput {
     /** The challenge this relay sent on this connection; the relay's lists come from here, never from `auth`. */
     readonly challenge: TunnelChallenge;
     readonly registry: EngineRegistry;
+    /** Whether the registry may be asked about `engineId` now; `false` refuses as `rate-limited`. */
+    readonly admitLookup: (engineId: EngineId) => boolean;
     readonly dns: DnsResolver;
     readonly engineDomain: Hostname;
     readonly logger: Logger;
@@ -87,13 +90,14 @@ export interface VerifyAuthInput {
  * that no version is shared.
  */
 export async function verifyAuth(input: VerifyAuthInput): Promise<HandshakeOutcome> {
-    const { challenge, registry, dns, engineDomain, logger, signal } = input;
+    const { challenge, registry, admitLookup, dns, engineDomain, logger, signal } = input;
     const parsed = parseEngineMessage(input.auth);
     if (parsed.kind === 'invalid') return { kind: 'rejected', reason: 'malformed' };
     const auth = parsed.message;
     const { engineId } = auth;
     const rejected = (reason: HandshakeRejectReason): HandshakeOutcome => ({ kind: 'rejected', reason, engineId });
 
+    if (!admitLookup(engineId)) return rejected('rate-limited');
     const lookup = await registry.lookup(engineId, signal);
     switch (lookup.kind) {
         case 'not-found':

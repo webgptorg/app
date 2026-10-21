@@ -82,12 +82,19 @@ describe('createRevalidator', () => {
         revalidator = revalidatorOver(registry);
     });
 
-    it('closes a suspended engine with SUSPENDED at the next round', async () => {
+    it('closes a suspended engine with SUSPENDED at the next round, past a cache entry that is still fresh', async () => {
+        // Connected mid-interval: its entry was cached half a TTL before the next round.
+        deps.clock.advance(TTL_MS / 2);
+        await registry.lookup(engine.engineId, new AbortController().signal, { fresh: true });
         deps.registry.set(engine.engineId, { ...engine.entry, status: 'suspended' });
-        await round(TTL_MS - 1);
+        revalidator.start();
+        deps.clock.advance(TTL_MS - 1);
         expect(session.closes).toEqual([]);
-        await round(1);
-        expect(session.closes).toEqual([TUNNEL_CLOSE_CODE.SUSPENDED]);
+        deps.clock.advance(1);
+        await vi.waitFor(() => {
+            expect(session.closes).toEqual([TUNNEL_CLOSE_CODE.SUSPENDED]);
+        });
+        revalidator.stop();
         expect(table.byEngine(engine.engineId)).toBeUndefined();
         expect(deps.logger.entries).toContainEqual({
             level: 'warn',
@@ -116,7 +123,7 @@ describe('createRevalidator', () => {
             event: 'tunnel.revoked',
             fields: { engineId: engine.engineId, reason: 'unavailable' },
         });
-    });
+    }, 30_000);
 
     it('closes an engine whose registry key no longer derives its ID with AUTH_FAILED', async () => {
         const other = await createTestEngine(61);

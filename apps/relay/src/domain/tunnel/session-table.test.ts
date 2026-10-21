@@ -121,4 +121,14 @@ describe('createSessionTable', () => {
         expect(table.countByIp('198.51.100.1')).toBe(2);
         expect(table.countByIp('198.51.100.9')).toBe(0);
     });
+
+    it('counts tunnels per IPv6 /64', () => {
+        const a = session(engineA, '2001:db8:1:2::1');
+        table.register(a, [defaultA]);
+        table.register(session(engineB, '2001:db8:1:2::2'), [defaultB]);
+        expect(table.countByIp('2001:db8:1:2::ffff')).toBe(2);
+        expect(table.countByIp('2001:db8:1:3::1')).toBe(0);
+        table.remove(a);
+        expect(table.countByIp('2001:db8:1:2::1')).toBe(1);
+    });
 });

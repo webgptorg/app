@@ -1,4 +1,4 @@
-import type { Hostname, RegistryEntry, TunnelAuth, TunnelChallenge, TunnelFeature } from '@ptbk/protocol';
+import type { EngineId, Hostname, RegistryEntry, TunnelAuth, TunnelChallenge, TunnelFeature } from '@ptbk/protocol';
 import {
     EngineVersion,
     Hostname as HostnameSchema,
@@ -79,11 +79,17 @@ describe('verifyAuth', () => {
         return signed.auth;
     };
 
+    let admitLookup: (engineId: EngineId) => boolean;
+    beforeEach(() => {
+        admitLookup = () => true;
+    });
+
     const verify = (auth: unknown, against: TunnelChallenge = challenge, signal = new AbortController().signal) =>
         verifyAuth({
             auth: typeof auth === 'string' ? auth : JSON.stringify(auth),
             challenge: against,
             registry: deps.registry,
+            admitLookup: (engineId) => admitLookup(engineId),
             dns: deps.dns,
             engineDomain: ENGINE_DOMAIN,
             logger: deps.logger,
@@ -251,5 +257,17 @@ describe('verifyAuth', () => {
         for (const secret of [challenge.nonce, auth.sig, engine.entry.enginePublicKey, agents, portal]) {
             expect(logged).not.toContain(secret);
         }
+    });
+
+    it('refuses as rate-limited without asking the registry when the lookup is not admitted', async () => {
+        const asked: EngineId[] = [];
+        admitLookup = (engineId) => {
+            asked.push(engineId);
+            return false;
+        };
+        deps.registry.set(engine.engineId, { ...engine.entry, status: 'suspended' });
+        await expect(verify(await sign())).resolves.toEqual(rejected('rate-limited'));
+        expect(asked).toEqual([engine.engineId]);
+        expect(deps.registry.calls()).toBe(0);
     });
 });

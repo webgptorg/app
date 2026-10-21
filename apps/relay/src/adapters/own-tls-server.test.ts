@@ -1,5 +1,6 @@
+import { X509Certificate } from 'node:crypto';
 import { request } from 'node:https';
-import { Socket, connect as connectTcp } from 'node:net';
+import { Server, Socket, connect as connectTcp } from 'node:net';
 import type { ConnectionOptions } from 'node:tls';
 import { connect } from 'node:tls';
 
@@ -14,6 +15,8 @@ import { createFakeRandom } from '../testing/fake-random';
 import { RELAY_ID } from '../testing/relay-harness';
 import { createTestCertificate } from '../testing/test-pki';
 import { createTestDeps } from '../testing/test-deps';
+import { TEST_SESSION_LIMITS, testWsTunnelOptions, uncached } from '../testing/tunnel-options';
+import { createMemoryLogger } from './memory-logger';
 import type { OwnTlsServer } from './own-tls-server';
 import { CLOSE_GRACE_MS, RELAY_TLS_CIPHERS, clientIp, createOwnTlsServer } from './own-tls-server';
 import { createFakeClock } from './fake-clock';
@@ -35,19 +38,29 @@ describe('createOwnTlsServer', () => {
             relayId: RELAY_ID,
             engineDomain: ENGINE_DOMAIN,
             offer: { versions: [1], features: [] },
-            registry,
+            registry: uncached(registry),
             dns,
             random: createFakeRandom(),
             clock,
             logger,
-            limits: { handshakeTimeoutMs: 10_000, maxPending: 100, maxPendingPerIp: 100, maxTunnelsPerIp: 10 },
+            limits: {
+                handshakeTimeoutMs: 10_000,
+                maxPending: 100,
+                maxPendingPerIp: 100,
+                maxTunnelsPerIp: 10,
+                registryMissesPerS: 20,
+                session: TEST_SESSION_LIMITS,
+            },
             table: createSessionTable<TunnelSession>({ logger }),
+            terminations: { count: () => undefined },
         });
         server = createOwnTlsServer({
             ...certificate,
             endpoint,
-            liveness: { clock: systemClock },
+            tunnel: testWsTunnelOptions(systemClock),
             clock: systemClock,
+            logger,
+            maxConnections: 100,
         });
         port = await server.listen(0, '127.0.0.1');
     });
@@ -84,6 +97,47 @@ describe('createOwnTlsServer', () => {
             outgoing.end();
         });
     }
+
+    it.each(['TLSv1.2', 'TLSv1.3'] as const)('resumes no %s session: tickets are off', async (version) => {
+        const first = await new Promise<{ session: Buffer | null }>((resolve) => {
+            let session: Buffer | null = null;
+            const socket = connect({
+                host: '127.0.0.1',
+                port,
+                servername: RELAY_ID,
+                ca: certificate.cert,
+                minVersion: version,
+                maxVersion: version,
+            });
+            socket.on('session', (ticket: Buffer) => {
+                session = ticket;
+            });
+            socket.once('secureConnect', () => {
+                // TLS 1.3 sends its session messages after the handshake; a GET makes the server write.
+                socket.write('GET /healthz HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n');
+            });
+            socket.on('data', () => undefined);
+            socket.once('close', () => {
+                resolve({ session });
+            });
+        });
+        const resumed = await new Promise<boolean>((resolve) => {
+            const socket = connect({
+                host: '127.0.0.1',
+                port,
+                servername: RELAY_ID,
+                ca: certificate.cert,
+                minVersion: version,
+                maxVersion: version,
+                ...(first.session === null ? {} : { session: first.session }),
+            });
+            socket.once('secureConnect', () => {
+                resolve(socket.isSessionReused());
+                socket.destroy();
+            });
+        });
+        expect(resumed).toBe(false);
+    });
 
     it('accepts TLS 1.3', async () => {
         await expect(handshake({ minVersion: 'TLSv1.3' })).resolves.toMatchObject({ ok: true, protocol: 'TLSv1.3' });
@@ -157,22 +211,31 @@ describe('createOwnTlsServer limits and shutdown', () => {
             relayId: RELAY_ID,
             engineDomain: ENGINE_DOMAIN,
             offer: { versions: [1], features: [] },
-            registry,
+            registry: uncached(registry),
             dns,
             random: createFakeRandom(),
             clock,
             logger,
-            limits: { handshakeTimeoutMs: 10_000, maxTunnelsPerIp: 10, ...limits },
+            limits: {
+                handshakeTimeoutMs: 10_000,
+                maxTunnelsPerIp: 10,
+                registryMissesPerS: 20,
+                session: TEST_SESSION_LIMITS,
+                ...limits,
+            },
             table: createSessionTable<TunnelSession>({ logger }),
+            terminations: { count: () => undefined },
         });
         const server = createOwnTlsServer({
             ...certificate,
             endpoint,
-            liveness: { clock: systemClock },
+            tunnel: testWsTunnelOptions(systemClock),
             clock: graceClock,
+            logger,
+            maxConnections: 100,
         });
         const port = await server.listen(0, '127.0.0.1');
-        return { server, port, clock, graceClock };
+        return { server, port, clock, graceClock, logger };
     };
     const closedSocket = (socket: Socket): Promise<unknown> => new Promise((resolve) => socket.once('close', resolve));
 
@@ -231,8 +294,10 @@ describe('createOwnTlsServer limits and shutdown', () => {
         const unlistened = createOwnTlsServer({
             ...certificate,
             endpoint: { accept: () => null, shutdown: () => undefined },
-            liveness: { clock: systemClock },
+            tunnel: testWsTunnelOptions(systemClock),
             clock: systemClock,
+            logger: createMemoryLogger(),
+            maxConnections: 100,
         });
         await expect(unlistened.close()).resolves.toBeUndefined();
     });
@@ -245,5 +310,78 @@ describe('clientIp', () => {
         expect(clientIp('2001:db8::1')).toBe('2001:db8::1');
         expect(clientIp('192.0.2.1')).toBe('192.0.2.1');
         expect(clientIp(undefined)).toBeUndefined();
+    });
+});
+
+describe('createOwnTlsServer certificate and listener', () => {
+    it('serves a new certificate to new connections after setCertificate, and refuses one Node cannot load', async () => {
+        const { clock, logger } = createTestDeps();
+        const server = createOwnTlsServer({
+            ...certificate,
+            endpoint: createTunnelEndpoint({
+                relayId: RELAY_ID,
+                engineDomain: ENGINE_DOMAIN,
+                offer: { versions: [1], features: [] },
+                registry: uncached(createTestDeps().registry),
+                dns: createTestDeps().dns,
+                random: createFakeRandom(),
+                clock,
+                logger,
+                limits: {
+                    handshakeTimeoutMs: 10_000,
+                    maxPending: 10,
+                    maxPendingPerIp: 10,
+                    maxTunnelsPerIp: 10,
+                    registryMissesPerS: 20,
+                    session: TEST_SESSION_LIMITS,
+                },
+                table: createSessionTable<TunnelSession>({ logger }),
+                terminations: { count: () => undefined },
+            }),
+            tunnel: testWsTunnelOptions(systemClock),
+            clock: systemClock,
+            logger,
+            maxConnections: 10,
+        });
+        const port = await server.listen(0, '127.0.0.1');
+        const fingerprint = (): Promise<string | undefined> =>
+            new Promise((resolve) => {
+                const socket = connect({ host: '127.0.0.1', port, servername: RELAY_ID, rejectUnauthorized: false });
+                socket.once('secureConnect', () => {
+                    resolve(socket.getPeerX509Certificate()?.fingerprint256);
+                    socket.destroy();
+                });
+            });
+        const next = createTestCertificate([RELAY_ID]);
+        expect(await fingerprint()).toBe(new X509Certificate(certificate.cert).fingerprint256);
+        server.setCertificate(next.cert, next.key);
+        expect(await fingerprint()).toBe(new X509Certificate(next.cert).fingerprint256);
+        expect(() => {
+            server.setCertificate(next.cert, createTestCertificate([RELAY_ID]).key);
+        }).toThrow();
+        expect(await fingerprint()).toBe(new X509Certificate(next.cert).fingerprint256);
+        await server.close();
+    });
+
+    it('caps its connections and survives accept errors, logging only their name', async () => {
+        const listen = vi.spyOn(Server.prototype, 'listen');
+        const logger = createMemoryLogger();
+        const server = createOwnTlsServer({
+            ...certificate,
+            endpoint: { accept: () => null, shutdown: () => undefined },
+            tunnel: testWsTunnelOptions(systemClock),
+            clock: systemClock,
+            logger,
+            maxConnections: 7,
+        });
+        await server.listen(0, '127.0.0.1');
+        const listening = listen.mock.contexts[0] as Server;
+        listen.mockRestore();
+        expect(listening.maxConnections).toBe(7);
+        listening.emit('error', Object.assign(new Error('accept failed: too many open files'), { code: 'EMFILE' }));
+        expect(logger.entries).toEqual([
+            { level: 'error', event: 'relay.accept-failed', fields: { problem: 'Error' } },
+        ]);
+        await server.close();
     });
 });

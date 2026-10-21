@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { ipLimitKey, parseIpAddress } from './ip-address';
+import { ipLimitKey, ipv6WiderPrefixes, parseIpAddress } from './ip-address';
 
 const bytesOf = (text: string): number[] | null => {
     const address = parseIpAddress(text);
@@ -61,5 +61,19 @@ describe('ipLimitKey', () => {
 
     it('keys anything else as itself', () => {
         expect(ipLimitKey('unix-socket')).toBe('unix-socket');
+    });
+});
+
+describe('ipv6WiderPrefixes', () => {
+    it('gives the /56 and /48 around an IPv6 address', () => {
+        expect(ipv6WiderPrefixes('2001:db8:1:2ab:cd::1')).toEqual({
+            slash56: '2001:db8:1:200::/56',
+            slash48: '2001:db8:1:0::/48',
+        });
+    });
+
+    it('has none for IPv4 or anything else', () => {
+        expect(ipv6WiderPrefixes('192.0.2.1')).toBeNull();
+        expect(ipv6WiderPrefixes('unix-socket')).toBeNull();
     });
 });

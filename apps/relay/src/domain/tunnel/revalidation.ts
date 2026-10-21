@@ -10,10 +10,13 @@ import type { SessionTable, TableSession } from './session-table';
 
 export interface RevalidatorOptions<S extends TableSession> {
     readonly clock: Clock;
-    /** `RELAY_REGISTRY_TTL_S`, so every round asks the registry's source rather than the cache. */
+    /** `RELAY_REGISTRY_TTL_S`: with lookups past the cache, a suspension takes effect within one TTL. */
     readonly intervalMs: number;
     readonly table: SessionTable<S>;
-    /** The cached registry: during an outage it answers from stale entries up to `RELAY_REGISTRY_MAX_STALE_S`. */
+    /**
+     * The cached registry, asked with `fresh`: each round reaches the source, and only during an outage do stale
+     * entries answer, up to `RELAY_REGISTRY_MAX_STALE_S`.
+     */
     readonly registry: EngineRegistry;
     readonly dns: DnsResolver;
     readonly engineDomain: Hostname;
@@ -42,7 +45,7 @@ export function createRevalidator<S extends TableSession>(options: RevalidatorOp
 
     async function revalidate(session: S, signal: AbortSignal): Promise<void> {
         const { engineId } = session;
-        const lookup = await registry.lookup(engineId, signal);
+        const lookup = await registry.lookup(engineId, signal, { fresh: true });
         const current = (): boolean => table.byEngine(engineId) === session;
         if (!current()) return;
         if (lookup.kind !== 'found') {

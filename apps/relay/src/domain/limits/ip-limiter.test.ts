@@ -4,7 +4,12 @@ import { createTestDeps } from '../../testing/test-deps';
 import type { IpAdmission, IpLimits } from './ip-limiter';
 import { createIpLimiter } from './ip-limiter';
 
-const limits: IpLimits = { maxConnections: 100, maxConnectionsPerIp: 2, newConnectionsPerIpPerS: 4 };
+const limits: IpLimits = {
+    maxConnectionsPerIp: 2,
+    maxConnectionsPerIpv6Slash56: 3,
+    maxConnectionsPerIpv6Slash48: 4,
+    newConnectionsPerIpPerS: 4,
+};
 
 function setup(overrides: Partial<IpLimits> = {}) {
     const { clock } = createTestDeps();
@@ -27,7 +32,6 @@ describe('createIpLimiter', () => {
         expect(limiter.admit('192.0.2.2').kind).toBe('admitted');
         release(admissions[0]);
         release(admissions[0]);
-        expect(limiter.connections()).toBe(2);
         expect(limiter.admit('192.0.2.1').kind).toBe('admitted');
         expect(limiter.admit('192.0.2.1')).toEqual({ kind: 'refused', reason: 'ip-limit' });
     });
@@ -55,7 +59,7 @@ describe('createIpLimiter', () => {
     });
 
     it('counts an IPv6 /64 as one client', () => {
-        const { limiter } = setup();
+        const { limiter } = setup({ maxConnectionsPerIpv6Slash56: 100, maxConnectionsPerIpv6Slash48: 100 });
         expect(
             kinds([
                 limiter.admit('2001:db8:1:2::1'),
@@ -66,30 +70,42 @@ describe('createIpLimiter', () => {
         ).toEqual(['admitted', 'admitted', 'ip-limit', 'admitted']);
     });
 
-    it('applies the global limit across IPs before anything else', () => {
-        const { limiter } = setup({ maxConnections: 2 });
-        const admissions = ['192.0.2.1', '192.0.2.2', '192.0.2.3'].map((ip) => limiter.admit(ip));
-        expect(kinds(admissions)).toEqual(['admitted', 'admitted', 'global-limit']);
-        release(admissions[1]);
-        expect(limiter.admit('192.0.2.3').kind).toBe('admitted');
+    it('caps the /64s of one /56 and of one /48 together, and frees every level on release', () => {
+        const { limiter } = setup({ maxConnectionsPerIp: 100, newConnectionsPerIpPerS: 100 });
+        // Four /64s in one /56: the /56 cap (3) refuses the fourth.
+        const inSlash56 = ['2001:db8:1:200::1', '2001:db8:1:201::1', '2001:db8:1:2ff::1', '2001:db8:1:2aa::1'].map(
+            (ip) => limiter.admit(ip),
+        );
+        expect(kinds(inSlash56)).toEqual(['admitted', 'admitted', 'admitted', 'ipv6-56-limit']);
+        // Another /56 of the same /48 has room for one more before the /48 cap (4).
+        expect(kinds([limiter.admit('2001:db8:1:300::1'), limiter.admit('2001:db8:1:301::1')])).toEqual([
+            'admitted',
+            'ipv6-48-limit',
+        ]);
+        expect(limiter.admit('2001:db8:2::1').kind).toBe('admitted');
+        release(inSlash56[0]);
+        expect(limiter.admit('2001:db8:1:2aa::1').kind).toBe('admitted');
     });
 
-    it('forgets idle IPs once their bucket is full again, so memory follows live clients', () => {
-        const { clock, limiter } = setup({ maxConnections: 10_000, newConnectionsPerIpPerS: 1 });
+    it('forgets idle IPs and prefixes once their buckets are full again, so memory follows live clients', () => {
+        const { clock, limiter } = setup({ newConnectionsPerIpPerS: 1 });
         const held = limiter.admit('198.51.100.1');
-        for (let index = 0; index < 1023; index++) {
+        release(limiter.admit('2001:db8:9::1'));
+        for (let index = 0; index < 1020; index++) {
             release(limiter.admit(`10.0.${String(Math.floor(index / 256))}.${String(index % 256)}`));
         }
+        // The address, its /64 and the IPv6 address's /56 and /48.
         expect(limiter.trackedIps()).toBe(1024);
-        // Still refilling: the next admission sweeps, but nothing may go yet.
+        // Still refilling: the next admission sweeps only the idle prefixes, which have no rate.
         limiter.admit('203.0.113.1');
-        expect(limiter.trackedIps()).toBe(1025);
+        expect(limiter.trackedIps()).toBe(1023);
         clock.advance(1000);
-        for (let index = 0; index < 1023; index++)
+        for (let index = 0; index < 1025; index++) {
             limiter.admit(`10.1.${String(Math.floor(index / 256))}.${String(index % 256)}`);
+        }
         limiter.admit('203.0.113.2');
-        // Swept at 2048: the refilled idle IPs went; the held one and the newer ones stay.
-        expect(limiter.trackedIps()).toBe(1 + 1 + 1023 + 1);
+        // Swept again once the count doubled: the refilled idle IPs went; the held ones and the newer ones stay.
+        expect(limiter.trackedIps()).toBe(1 + 1 + 1025 + 1);
         expect(held.kind).toBe('admitted');
         expect(limiter.admit('198.51.100.1').kind).toBe('admitted');
     });

@@ -54,15 +54,27 @@ export function parseIpAddress(text: string): IpAddress | null {
     return ipv6 === null ? null : { family: 6, bytes: Uint8Array.from(ipv6) };
 }
 
+function ipv6Prefix(bytes: Bytes, bits: 64 | 56 | 48): string {
+    const masked = new Uint8Array(8);
+    masked.set(bytes.subarray(0, bits / 8));
+    const groups = Array.from({ length: 4 }, (_, index) =>
+        (((masked[index * 2] as number) << 8) | (masked[index * 2 + 1] as number)).toString(16),
+    );
+    return `${groups.join(':')}::/${String(bits)}`;
+}
+
 /**
  * The key per-IP limits count by: the address for IPv4, the /64 prefix for IPv6, because one subscriber usually gets
  * a whole /64 and could otherwise rotate through 2^64 addresses. Text that is no address keys as itself.
  */
 export function ipLimitKey(text: string): string {
     const address = parseIpAddress(text);
-    if (address?.family !== 6) return text;
-    const prefix = Array.from({ length: 4 }, (_, index) =>
-        (((address.bytes[index * 2] as number) << 8) | (address.bytes[index * 2 + 1] as number)).toString(16),
-    );
-    return `${prefix.join(':')}::/64`;
+    return address?.family === 6 ? ipv6Prefix(address.bytes, 64) : text;
+}
+
+/** The /56 and /48 around an IPv6 address, where a subscriber or a site holds many /64s; `null` for anything else. */
+export function ipv6WiderPrefixes(text: string): { readonly slash56: string; readonly slash48: string } | null {
+    const address = parseIpAddress(text);
+    if (address?.family !== 6) return null;
+    return { slash56: ipv6Prefix(address.bytes, 56), slash48: ipv6Prefix(address.bytes, 48) };
 }

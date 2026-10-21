@@ -1,7 +1,9 @@
+import { ipLimitKey } from '../ip-address';
+
 export interface HandshakeLimits {
     /** `RELAY_MAX_PENDING_HANDSHAKES`: connections between TCP accept and `ready`, relay-wide. */
     readonly maxPending: number;
-    /** `RELAY_MAX_PENDING_HANDSHAKES_PER_IP`. */
+    /** `RELAY_MAX_PENDING_HANDSHAKES_PER_IP`, per IPv4 address and per IPv6 /64 like every per-IP limit. */
     readonly maxPendingPerIp: number;
 }
 
@@ -56,8 +58,9 @@ export function createHandshakeLimiter(limits: HandshakeLimits): HandshakeLimite
 
     return {
         admit(ip) {
-            if (hasRoom(admitted, ip)) return take(admitted, ip, 'admitted');
-            if (hasRoom(refused, ip)) return take(refused, ip, 'rate-limited');
+            const key = ipLimitKey(ip);
+            if (hasRoom(admitted, key)) return take(admitted, key, 'admitted');
+            if (hasRoom(refused, key)) return take(refused, key, 'rate-limited');
             return null;
         },
     };

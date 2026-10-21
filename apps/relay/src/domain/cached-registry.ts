@@ -27,24 +27,38 @@ export interface CachedRegistryOptions {
     readonly lookupTimeoutMs: number;
 }
 
+/** The one registry the rest of the relay sees. */
+export interface CachedRegistry extends EngineRegistry {
+    /** A lookup now would be answered from the cache, without asking the source. */
+    has(engineId: EngineId): boolean;
+    /**
+     * Treats every cached answer as expired (SIGHUP): the next lookup of each engine asks the source, and the last good
+     * entry still answers within the stale window while the source fails.
+     */
+    expireAll(): void;
+}
+
 interface Positive {
     readonly entry: RegistryEntry;
     readonly fetchedAtMs: number;
+    /** Fresh only within the generation it was fetched in. */
+    readonly generation: number;
 }
 
 /**
  * Freshness, stale-on-error and request sharing for every registry adapter. A stale entry answers only while it is
  * younger than `maxStaleMs`, so a suspension takes effect within that window even while the dashboard is down.
  */
-export function createCachedRegistry(options: CachedRegistryOptions): EngineRegistry {
+export function createCachedRegistry(options: CachedRegistryOptions): CachedRegistry {
     const { inner, clock, logger, ttlMs, maxStaleMs, negativeTtlMs, lookupTimeoutMs } = options;
     const positives = new Map<EngineId, Positive>();
     const negatives = new Map<EngineId, number>();
     const flights = createSingleFlight<EngineId, RegistryLookup>();
+    let generation = 0;
 
     function cached(engineId: EngineId, nowMs: number): RegistryLookup | undefined {
         const positive = positives.get(engineId);
-        if (positive !== undefined && nowMs - positive.fetchedAtMs < ttlMs) {
+        if (positive?.generation === generation && nowMs - positive.fetchedAtMs < ttlMs) {
             return { kind: 'found', entry: positive.entry };
         }
         const negativeAtMs = negatives.get(engineId);
@@ -61,6 +75,8 @@ export function createCachedRegistry(options: CachedRegistryOptions): EngineRegi
     }
 
     async function refresh(engineId: EngineId): Promise<RegistryLookup> {
+        // An answer requested before `expireAll` may predate what it was meant to pick up, so it is not fresh after it.
+        const askedIn = generation;
         const outcome = await callWithTimeout(clock, lookupTimeoutMs, (signal) => inner.lookup(engineId, signal));
         const nowMs = clock.nowMs();
         if (outcome.kind === 'done') {
@@ -68,7 +84,7 @@ export function createCachedRegistry(options: CachedRegistryOptions): EngineRegi
             switch (lookup.kind) {
                 case 'found':
                     negatives.delete(engineId);
-                    positives.set(engineId, { entry: lookup.entry, fetchedAtMs: nowMs });
+                    positives.set(engineId, { entry: lookup.entry, fetchedAtMs: nowMs, generation: askedIn });
                     return lookup;
                 case 'not-found':
                     rememberNotFound(engineId, nowMs);
@@ -88,14 +104,19 @@ export function createCachedRegistry(options: CachedRegistryOptions): EngineRegi
     }
 
     return {
-        lookup(engineId, signal) {
+        lookup(engineId, signal, lookupOptions = {}) {
             if (signal.aborted) return Promise.reject(signal.reason as Error);
-            const hit = cached(engineId, clock.nowMs());
+            const hit = lookupOptions.fresh === true ? undefined : cached(engineId, clock.nowMs());
             if (hit !== undefined) return Promise.resolve(hit);
             return abortable(
                 flights.run(engineId, () => refresh(engineId)),
                 signal,
             );
+        },
+        has: (engineId) => cached(engineId, clock.nowMs()) !== undefined,
+        expireAll() {
+            generation++;
+            negatives.clear();
         },
     };
 }

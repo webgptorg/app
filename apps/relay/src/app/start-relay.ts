@@ -1,13 +1,21 @@
+import { X509Certificate } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 
+import type { Hostname } from '@ptbk/protocol';
 import { TUNNEL_FEATURES, TUNNEL_PROTOCOL_VERSIONS } from '@ptbk/protocol';
 
 import { createCachedDnsResolver } from '../domain/cached-dns';
+import type { CachedRegistry } from '../domain/cached-registry';
 import { createCachedRegistry } from '../domain/cached-registry';
 import type { Clock } from '../domain/clock';
 import type { DnsResolver } from '../domain/dns-resolver';
+import { certificateNameCovers } from '../domain/engine-domain';
 import type { EngineRegistry } from '../domain/engine-registry';
+import type { MemoryBudget } from '../domain/limits/memory-budget';
+import { createMemoryBudget } from '../domain/limits/memory-budget';
 import type { Logger } from '../domain/logger';
+import type { TunnelTerminationReason } from '../domain/metrics/reason-counters';
+import { TUNNEL_TERMINATION_REASONS, createReasonCounters } from '../domain/metrics/reason-counters';
 import type { Random } from '../domain/random';
 import { createRevalidator } from '../domain/tunnel/revalidation';
 import type { SessionTable } from '../domain/tunnel/session-table';
@@ -37,7 +45,7 @@ export interface RelayDeps {
 
 export interface RelayServices {
     /** Cached, stale-on-error; the only registry the rest of the relay sees. */
-    readonly registry: EngineRegistry;
+    readonly registry: CachedRegistry;
     /** Cached at the registry's pace, for `routableHostnames`. */
     readonly dns: DnsResolver;
     /** Re-reads the registry source where it can (the static file on SIGHUP). */
@@ -55,6 +63,14 @@ export interface RelayListener {
     readonly sessions: SessionTable<TunnelSession>;
     /** Counters of the browser side, for I-04. */
     readonly browser: BrowserListenerMetrics;
+    /** Every byte held for others, against `RELAY_MEMORY_BUDGET_BYTES`. */
+    readonly memory: Pick<MemoryBudget, 'used' | 'isOver'>;
+    /** Tunnels the relay cut on its own, per reason, for I-04. */
+    terminations(): Readonly<Record<TunnelTerminationReason, number>>;
+    /** One revalidation round now, past the registry cache; never rejects. */
+    revalidate(): Promise<void>;
+    /** New connections to the relay's own hostname use this certificate; open tunnels stay connected. */
+    setCertificate(tls: RelayTls): void;
     /**
      * Stops revalidation and accepting, destroys browser connections, closes every tunnel with `SHUTTING_DOWN`, and
      * waits for the sockets.
@@ -62,13 +78,23 @@ export interface RelayListener {
     close(): Promise<void>;
 }
 
-/** The relay's own certificate and key could not be read or loaded; names the setting, never file contents. */
+export interface RelayTls {
+    readonly cert: string;
+    readonly key: string;
+}
+
+/** The relay's own certificate and key could not be read or loaded, or are not the relay's to hold. */
 export class RelayTlsError extends Error {
-    constructor() {
-        super('RELAY_TLS_CERT_FILE and RELAY_TLS_KEY_FILE must be a readable PEM certificate and its private key');
+    /** Names settings, never file contents. */
+    constructor(
+        message = 'RELAY_TLS_CERT_FILE and RELAY_TLS_KEY_FILE must be a readable PEM certificate and its private key',
+    ) {
+        super(message);
         this.name = 'RelayTlsError';
     }
 }
+
+const ENGINE_DOMAIN_CERTIFICATE = 'RELAY_TLS_CERT_FILE must not be valid for RELAY_ENGINE_DOMAIN or any name under it';
 
 async function registrySource(
     config: RelayConfig,
@@ -128,7 +154,36 @@ export async function createRelayServices(
 
 const PEM_BEGIN = '-----BEGIN ';
 
-async function readRelayTls(config: RelayConfig): Promise<{ readonly cert: string; readonly key: string }> {
+/** A DNS SAN or subject CN value as Node prints it: bare, or JSON-quoted when it holds special characters. */
+function unquote(value: string): string {
+    return value.startsWith('"') ? String(JSON.parse(value)) : value;
+}
+
+/** Every name a TLS client could match the leaf certificate against: its DNS SANs and its subject CN. */
+function certificateNames(certificate: X509Certificate): readonly string[] {
+    const sans = [...(certificate.subjectAltName ?? '').matchAll(/(?:^|, )DNS:("(?:[^"\\]|\\.)*"|[^,]*)/g)];
+    const cns = [...certificate.subject.matchAll(/^CN=(.*)$/gm)];
+    return [...sans, ...cns].map((match) => unquote(match[1] as string));
+}
+
+/**
+ * Rule 1 in configuration: the relay refuses to hold a certificate that could make it a TLS endpoint for an engine,
+ * whatever the file contains.
+ */
+export function assertRelayCertificate(cert: string, engineDomain: Hostname): void {
+    let certificate: X509Certificate;
+    try {
+        certificate = new X509Certificate(cert);
+    } catch {
+        throw new RelayTlsError();
+    }
+    if (certificateNames(certificate).some((name) => certificateNameCovers(name, engineDomain))) {
+        throw new RelayTlsError(ENGINE_DOMAIN_CERTIFICATE);
+    }
+}
+
+/** Reads and checks the relay's own certificate and key; throws {@link RelayTlsError}. */
+export async function readRelayTls(config: RelayConfig): Promise<RelayTls> {
     const [cert, key] = await Promise.all([
         readFile(config.tls.certFile, 'utf8'),
         readFile(config.tls.keyFile, 'utf8'),
@@ -137,6 +192,7 @@ async function readRelayTls(config: RelayConfig): Promise<{ readonly cert: strin
     });
     // Node treats an empty key as no key at all and would start a listener that fails every handshake.
     if (!cert.includes(PEM_BEGIN) || !key.includes(PEM_BEGIN)) throw new RelayTlsError();
+    assertRelayCertificate(cert, config.engineDomain);
     return { cert, key };
 }
 
@@ -147,12 +203,14 @@ async function readRelayTls(config: RelayConfig): Promise<{ readonly cert: strin
 export async function startRelayListener(
     config: RelayConfig,
     services: Pick<RelayServices, 'registry' | 'dns'>,
-    tls: { readonly cert: string; readonly key: string },
+    tls: RelayTls,
     deps: RelayDeps,
 ): Promise<RelayListener> {
     const { logger, clock, livenessClock, random } = deps;
     const { registry, dns } = services;
     const table = createSessionTable<TunnelSession>({ logger });
+    const memory = createMemoryBudget(config.memoryBudgetBytes);
+    const terminations = createReasonCounters(TUNNEL_TERMINATION_REASONS);
     const endpoint = createTunnelEndpoint({
         relayId: config.relayId,
         engineDomain: config.engineDomain,
@@ -167,12 +225,35 @@ export async function startRelayListener(
             maxPending: config.tunnel.maxPendingHandshakes,
             maxPendingPerIp: config.tunnel.maxPendingHandshakesPerIp,
             maxTunnelsPerIp: config.tunnel.maxTunnelsPerIp,
+            registryMissesPerS: config.tunnel.registryMissesPerS,
+            session: {
+                framesPerS: config.tunnel.framesPerS,
+                minWindowIncrementBytes: config.tunnel.minWindowIncrementBytes,
+            },
         },
         table,
+        terminations,
     });
     const server = (() => {
         try {
-            return createOwnTlsServer({ ...tls, endpoint, liveness: { clock: livenessClock }, clock: livenessClock });
+            return createOwnTlsServer({
+                ...tls,
+                endpoint,
+                tunnel: {
+                    clock: livenessClock,
+                    random,
+                    logger,
+                    limits: {
+                        pingBufferBytes: config.tunnel.pingBufferBytes,
+                        maxBufferedBytes: config.tunnel.maxBufferedBytes,
+                    },
+                    memory,
+                    terminations,
+                },
+                clock: livenessClock,
+                logger,
+                maxConnections: config.browser.maxConnections,
+            });
         } catch {
             throw new RelayTlsError();
         }
@@ -185,6 +266,7 @@ export async function startRelayListener(
         limits: config.browser,
         clock,
         logger,
+        memory,
     });
     const port = await browser.listen(config.listen.port, config.listen.host);
     const revalidator = createRevalidator({
@@ -201,6 +283,12 @@ export async function startRelayListener(
         port,
         sessions: table,
         browser,
+        memory,
+        terminations: () => terminations.snapshot(),
+        revalidate: () => revalidator.runOnce(),
+        setCertificate(next) {
+            server.setCertificate(next.cert, next.key);
+        },
         async close() {
             revalidator.stop();
             // The TCP server waits for every connection, the tunnels too, so both close together.
@@ -210,12 +298,39 @@ export async function startRelayListener(
 }
 
 /** The composition root. Resolves once the relay listens; `close` stops it and releases everything it holds. */
+const errorName = (error: unknown): string => (error instanceof Error ? error.name : 'unknown');
+
+/**
+ * SIGHUP: re-reads the registry source, expires the registry cache, loads the relay certificate again (keeping the
+ * old one if the new files are unusable) and runs a revalidation round, so registry changes take effect at once.
+ */
+async function hangUp(
+    config: RelayConfig,
+    services: RelayServices,
+    listener: RelayListener,
+    logger: Logger,
+): Promise<void> {
+    await services.reload();
+    services.registry.expireAll();
+    try {
+        listener.setCertificate(await readRelayTls(config));
+        logger.info('relay.certificate-loaded', {});
+    } catch (error) {
+        logger.error('relay.certificate-rejected', {
+            problem: error instanceof RelayTlsError ? error.message : errorName(error),
+        });
+    }
+    await listener.revalidate();
+}
+
 export async function startRelay(config: RelayConfig, deps: RelayDeps): Promise<Relay> {
     const { logger } = deps;
     const services = await createRelayServices(config, deps);
     const listener = await startRelayListener(config, services, await readRelayTls(config), deps);
     const onHangup = (): void => {
-        void services.reload();
+        hangUp(config, services, listener, logger).catch((error: unknown) => {
+            logger.error('relay.reload-failed', { problem: errorName(error) });
+        });
     };
     process.on('SIGHUP', onHangup);
     logger.info('relay.started', { relayId: config.relayId, registry: config.registry.kind, port: listener.port });

@@ -2,6 +2,7 @@ import { X509Certificate, createHash, randomBytes } from 'node:crypto';
 import { once } from 'node:events';
 import { request } from 'node:https';
 import type { Readable } from 'node:stream';
+import { connect as connectTcp } from 'node:net';
 import { TLSSocket, connect as connectTls } from 'node:tls';
 
 import type { Hostname, RelayMessage, TunnelChallenge } from '@ptbk/protocol';
@@ -15,6 +16,7 @@ import {
 } from '@ptbk/protocol';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { STREAM_RESERVE_BYTES } from '../src/adapters/socket-stream-pipe';
 import { CLIENT_HELLO_MAX_BYTES } from '../src/adapters/tcp-listener';
 import {
     SCHEDULER_SLICE_BYTES,
@@ -362,13 +364,36 @@ describe('browser listener over real sockets', () => {
         await connectionsReach(harness, 2);
     });
 
-    it('refuses connections over the global limit', async () => {
-        const harness = await start({ RELAY_MAX_CONNECTIONS: '2' });
-        browser(harness);
+    it('evicts the oldest connection without a ClientHello once the pending budget is full', async () => {
+        // 25% of 8: two connections may wait for their ClientHello.
+        const harness = await start({ RELAY_MAX_CONNECTIONS: '8' });
+        const oldest = browser(harness);
+        await connectionsReach(harness, 1);
         browser(harness);
         await connectionsReach(harness, 2);
-        expect(await browser(harness).closed).toHaveLength(0);
+        browser(harness);
+        expect(await oldest.closed).toHaveLength(0);
+        expect(harness.listener.browser.refusals().evicted).toBe(1);
+        expect(harness.listener.browser.pendingConnections()).toBe(2);
+    });
+
+    it('keeps the reserve for engines: browsers stop at their share, an engine still reconnects', async () => {
+        // A cap of 6: one may wait for its ClientHello, two are kept for the relay hostname, browsers get four.
+        const harness = await start({
+            RELAY_MAX_CONNECTIONS: '6',
+            RELAY_PENDING_CONNECTIONS_PERCENT: '17',
+            RELAY_RESERVED_CONNECTIONS_PERCENT: '34',
+        });
+        const target = await online(harness, 139);
+        for (let index = 0; index < 4; index++) await pipe(harness, target);
+        const late = browser(harness);
+        late.socket.write(await clientHello(target.engine.defaultHostname));
+        expect(await late.closed).toHaveLength(0);
         expect(harness.listener.browser.refusals()['global-limit']).toBe(1);
+        await online(harness, 140);
+        // Every slot is taken and none is waiting for a ClientHello: nothing to evict.
+        expect(await browser(harness).closed).toHaveLength(0);
+        expect(harness.listener.browser.refusals()['global-limit']).toBe(2);
     });
 
     it('refuses new connections from one IP above the rate, until the bucket refills', async () => {
@@ -413,6 +438,9 @@ describe('browser listener over real sockets', () => {
         const harness = await start({ RELAY_ENGINE_BANDWIDTH_BYTES_PER_S: String(rate) });
         const target = await online(harness, 130);
         const { browser: client, stream } = await pipe(harness, target);
+        // The engine answers at once, as a TLS server does, so the first-byte deadline is met.
+        stream.write('x');
+        expect((await readBytes(client.socket, 1)).toString()).toBe('x');
         const timers = harness.clock.pendingTimers();
 
         const upload = randomBytes(256 * 1024);
@@ -443,7 +471,7 @@ describe('browser listener over real sockets', () => {
         expect(stream.sent()).toBeLessThanOrEqual(INITIAL_WINDOW_BYTES + rate + MAX_FRAME_PAYLOAD_BYTES);
         await vi.waitFor(() => {
             harness.clock.advance(1000);
-            expect(stream.sent()).toBe(download.length);
+            expect(stream.sent()).toBe(1 + download.length);
         }, PATIENTLY);
         expect(await downloaded).toBe(sha256(download));
     });
@@ -617,6 +645,200 @@ describe('browser listener over real sockets', () => {
         rude.stream.closeWith(CLOSE_CODE.RESET);
         expect(await rude.browser.closed).toHaveLength(0);
     });
+
+    it(
+        'holds the IP slot of a browser that sent its FIN mid-batch until the stream ends, then resets it at the drain deadline',
+        async () => {
+            const harness = await start(UNTHROTTLED);
+            // An engine that buffers next to nothing and never reads: no credit ever comes back.
+            const target = await online(harness, 141, [], { readableHighWaterMark: 1 });
+            const { browser: client, stream } = await pipe(harness, target);
+            const ended = once(client.socket, 'end');
+            stream.write('x');
+            await readBytes(client.socket, 1);
+            client.socket.resume();
+            const closeCode = stream.remoteClose.then((code) => code);
+            client.socket.end(randomBytes(INITIAL_WINDOW_BYTES + 100));
+            // The relay read the FIN: its side is ended too, and the socket may close, but the batch is still in flight.
+            await ended;
+            await vi.waitFor(() => {
+                expect(harness.listener.browser.bufferedBytes()).toBeGreaterThan(0);
+            });
+            expect(harness.listener.browser.connections()).toBe(2);
+            harness.clock.advance(harness.config.browser.drainTimeoutMs - 1);
+            expect(harness.listener.browser.connections()).toBe(2);
+            harness.clock.advance(1);
+            expect(await closeCode).toBe(CLOSE_CODE.RESET);
+            await connectionsReach(harness, 1);
+            expect(harness.listener.browser.resets()['drain-timeout']).toBe(1);
+            expect(harness.listener.browser.bufferedBytes()).toBe(0);
+            expect(harness.listener.memory.used()).toBe(0);
+        },
+        SLOW_TEST_MS,
+    );
+
+    it("releases a socket that keeps sending data after the engine's CLOSE, at the end timeout", async () => {
+        const harness = await start();
+        const target = await online(harness, 142);
+        // A browser that keeps its sending side open after the relay's FIN.
+        const socket = connectTcp({ port: harness.port, host: '127.0.0.1', allowHalfOpen: true });
+        socket.on('error', () => undefined);
+        const ended = once(socket, 'end');
+        const hello = await clientHello(target.engine.defaultHostname);
+        socket.write(hello);
+        const stream = await target.streams.next();
+        await readBytes(stream, hello.length);
+        stream.write('bye');
+        stream.closeWith(CLOSE_CODE.NORMAL);
+        expect((await readBytes(socket, 3)).toString()).toBe('bye');
+        socket.resume();
+        await ended;
+        // Read and dropped: nothing reaches the closed stream.
+        socket.write(randomBytes(200_000));
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        expect(stream.received()).toBe(hello.length);
+        expect(harness.listener.browser.connections()).toBe(2);
+        harness.clock.advance(harness.config.browser.endTimeoutMs);
+        await connectionsReach(harness, 1);
+        expect(harness.listener.browser.resets()['end-timeout']).toBe(1);
+    });
+
+    it(
+        "releases a socket that sends data and its FIN after the engine's CLOSE, even with a batch in flight",
+        async () => {
+            const harness = await start(UNTHROTTLED);
+            const target = await online(harness, 143, [], { readableHighWaterMark: 1 });
+            const { browser: client, stream } = await pipe(harness, target);
+            // In flight: the relay stopped reading this browser while it waits for credit that never comes.
+            client.socket.write(randomBytes(INITIAL_WINDOW_BYTES + 100_000));
+            await vi.waitFor(() => {
+                expect(harness.listener.browser.bufferedBytes()).toBeGreaterThan(0);
+            }, PATIENTLY);
+            stream.closeWith(CLOSE_CODE.NORMAL);
+            client.socket.end(randomBytes(100_000));
+            expect(await client.closed).toHaveLength(0);
+            await connectionsReach(harness, 1);
+            expect(harness.listener.browser.resets()['end-timeout']).toBe(0);
+            expect(harness.listener.memory.used()).toBe(0);
+        },
+        SLOW_TEST_MS,
+    );
+
+    it('resets a stream whose engine sends nothing for the first-byte timeout after OPEN', async () => {
+        const harness = await start();
+        const target = await online(harness, 144);
+        const silent = await pipe(harness, target);
+        const answered = await pipe(harness, target);
+        answered.stream.write('hello');
+        expect((await readBytes(answered.browser.socket, 5)).toString()).toBe('hello');
+        harness.clock.advance(harness.config.browser.firstByteTimeoutMs - 1);
+        expect(silent.browser.socket.readyState).toBe('open');
+        harness.clock.advance(1);
+        expect(await silent.stream.remoteClose).toBe(CLOSE_CODE.RESET);
+        expect(await silent.browser.closed).toHaveLength(0);
+        expect(harness.listener.browser.resets()['first-byte-timeout']).toBe(1);
+        expect(answered.browser.socket.readyState).toBe('open');
+        await connectionsReach(harness, 2);
+    });
+
+    it(
+        'keeps what slow-reading browsers hold within the memory budget and refuses new browsers while it is full',
+        async () => {
+            const budget = 1_048_576;
+            const harness = await start({ ...UNTHROTTLED, RELAY_MEMORY_BUDGET_BYTES: String(budget) });
+            const target = await online(harness, 145);
+            const maxUsed = sampleMax(() => harness.listener.memory.used());
+            const stalled: Piped[] = [];
+            const hello = await clientHello(target.engine.defaultHostname);
+            // One wait for the next stream at a time: a refused browser leaves it for the next one.
+            let nextStream = target.streams.next();
+            for (;;) {
+                const client = browser(harness);
+                client.socket.write(hello);
+                const opened = await Promise.race([nextStream, client.closed.then(() => null)]);
+                if (opened === null) break;
+                nextStream = target.streams.next();
+                await readBytes(opened, hello.length);
+                // A browser that never reads, and an engine that sends it all it may.
+                client.socket.pause();
+                opened.write(randomBytes(STALL_BYTES));
+                stalled.push({ browser: client, stream: opened });
+                expect(stalled.length).toBeLessThan(10);
+            }
+            await vi.waitFor(() => {
+                expect(harness.listener.browser.bufferedBytes()).toBe(stalled.length * INITIAL_WINDOW_BYTES);
+            }, PATIENTLY);
+            expect(stalled.length).toBe(Math.floor(budget / STREAM_RESERVE_BYTES));
+            expect(harness.listener.browser.refusals()['memory-limit']).toBe(1);
+            // Each stream reserves its window when it opens, so streams opened together cannot overshoot either.
+            expect(maxUsed()).toBeLessThanOrEqual(budget);
+            // A stream that ends gives its window back.
+            const first = stalled[0] as Piped;
+            first.stream.closeWith(CLOSE_CODE.RESET);
+            await vi.waitFor(() => {
+                expect(harness.listener.memory.used()).toBeLessThanOrEqual(budget - STREAM_RESERVE_BYTES);
+            });
+            browser(harness).socket.write(hello);
+            expect(await readBytes(await nextStream, hello.length)).toEqual(hello);
+        },
+        SLOW_TEST_MS,
+    );
+
+    it(
+        'reconnects a storm of engines through the reserve and the handshake limits while browsers fill their share',
+        async () => {
+            // A cap of 40: ten may wait for their ClientHello, twelve are kept for the relay hostname.
+            const harness = await start({
+                RELAY_MAX_CONNECTIONS: '40',
+                RELAY_RESERVED_CONNECTIONS_PERCENT: '30',
+                RELAY_NEW_CONNECTIONS_PER_IP_PER_S: '1000',
+                RELAY_MAX_PENDING_HANDSHAKES: '4',
+                RELAY_MAX_PENDING_HANDSHAKES_PER_IP: '4',
+                RELAY_REGISTRY_MISSES_PER_S: '3',
+            });
+            const target = await online(harness, 146);
+            for (let index = 0; index < 28; index++) await pipe(harness, target);
+            const late = browser(harness);
+            late.socket.write(await clientHello(target.engine.defaultHostname));
+            expect(await late.closed).toHaveLength(0);
+
+            const engines = await Promise.all(
+                Array.from({ length: 10 }, async (_, index) => {
+                    const engine = await createTestEngine(150 + index);
+                    harness.registry.set(engine.engineId, engine.entry);
+                    return engine;
+                }),
+            );
+            /** One reconnect attempt, as an engine makes it: `true` once `ready`, `false` on any refusal. */
+            const attempt = async (engine: TestEngine): Promise<boolean> => {
+                const client = harness.connect(engine);
+                const gone = client.closed.then(() => null);
+                const challenge = await Promise.race([client.nextMessage(), gone]);
+                if (challenge?.type === 'challenge') {
+                    await client.authenticate(challenge);
+                    const answer = await Promise.race([client.nextMessage(), gone]);
+                    if (answer?.type === 'ready') return true;
+                }
+                client.ws.terminate();
+                await gone;
+                return false;
+            };
+            let waiting = engines;
+            let rounds = 0;
+            while (waiting.length > 0) {
+                rounds++;
+                expect(rounds).toBeLessThanOrEqual(8);
+                const results = await Promise.all(waiting.map(attempt));
+                waiting = waiting.filter((_, index) => results[index] !== true);
+                // The engines back off a second, during which the registry-miss budget refills.
+                harness.clock.advance(1000);
+            }
+            expect(rounds).toBeGreaterThanOrEqual(4);
+            expect(harness.listener.sessions.sessions()).toHaveLength(11);
+            expect(harness.listener.browser.refusals()['global-limit']).toBe(1);
+        },
+        SLOW_TEST_MS,
+    );
 
     it('destroys connections still sending their ClientHello on close', async () => {
         const harness = await start();

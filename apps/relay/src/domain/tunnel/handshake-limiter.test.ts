@@ -42,4 +42,13 @@ describe('createHandshakeLimiter', () => {
         admitted?.release();
         expect(limiter.admit('192.0.2.1')?.verdict).toBe('admitted');
     });
+
+    it('counts an IPv6 /64 as one client', () => {
+        const limiter = createHandshakeLimiter({ maxPending: 100, maxPendingPerIp: 1 });
+        expect(verdicts([limiter.admit('2001:db8:1:2::1'), limiter.admit('2001:db8:1:2::ffff')])).toEqual([
+            'admitted',
+            'rate-limited',
+        ]);
+        expect(limiter.admit('2001:db8:1:3::1')?.verdict).toBe('admitted');
+    });
 });

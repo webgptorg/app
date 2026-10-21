@@ -1,3 +1,4 @@
+import { constants as cryptoConstants } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { createServer as createHttpServer } from 'node:http';
 import type { AddressInfo, Server as NetServer, Socket } from 'node:net';
@@ -7,11 +8,13 @@ import type { SecureContext } from 'node:tls';
 import { TLSSocket, createSecureContext } from 'node:tls';
 
 import { FRAME_HEADER_BYTES, MAX_FRAME_PAYLOAD_BYTES, TUNNEL_PATH, TUNNEL_SUBPROTOCOL } from '@ptbk/protocol';
+import type { ServerOptions } from 'ws';
 import { WebSocketServer } from 'ws';
 
 import type { Clock } from '../domain/clock';
+import type { Logger } from '../domain/logger';
 import type { PendingConnection, TunnelEndpoint } from '../domain/tunnel/tunnel-endpoint';
-import type { WsLivenessOptions } from './ws-tunnel-transport';
+import type { WsTunnelOptions } from './ws-tunnel-transport';
 import { attachWsTunnel } from './ws-tunnel-transport';
 
 /**
@@ -33,6 +36,15 @@ export const RELAY_TLS_MIN_VERSION = 'TLSv1.2';
 
 /** How long `close` waits for engines to acknowledge `SHUTTING_DOWN` before it destroys their sockets. */
 export const CLOSE_GRACE_MS = 2_000;
+/** How long `ws` waits for the engine's close frame before it destroys the socket (its default is 30 s). */
+export const WS_CLOSE_TIMEOUT_MS = 2_000;
+/**
+ * Message fragments and buffered socket chunks `ws` holds for one message. A tunnel message is one frame of at most
+ * `MAX_WS_MESSAGE_BYTES`; this allows it in pieces of 512 bytes or more, where `ws`'s defaults would let a peer pin
+ * 16,384 fragment or 262,144 chunk objects per connection.
+ */
+export const MAX_WS_MESSAGE_PARTS = 128;
+const MAX_WS_MESSAGE_BYTES = FRAME_HEADER_BYTES + MAX_FRAME_PAYLOAD_BYTES;
 /** Request heads are tiny here (an upgrade or a health check). */
 const MAX_HEADER_BYTES = 8_192;
 
@@ -41,10 +53,13 @@ export interface OwnTlsServerOptions {
     readonly cert: string;
     readonly key: string;
     readonly endpoint: TunnelEndpoint;
-    /** Real time in production; pings must not fire when a test moves the endpoint's fake clock. */
-    readonly liveness: WsLivenessOptions;
+    /** How each upgraded WebSocket is run; its clock is real time in production. */
+    readonly tunnel: WsTunnelOptions;
     /** Times the shutdown grace period. */
     readonly clock: Clock;
+    readonly logger: Logger;
+    /** Backstop for `listen`'s own server; in production the browser listener admits every socket. */
+    readonly maxConnections: number;
 }
 
 export interface OwnTlsServer {
@@ -55,10 +70,17 @@ export interface OwnTlsServer {
     acceptSocket(socket: Socket, acceptedAtMs?: number): void;
     /** Resolves with the bound port. */
     listen(port: number, host: string): Promise<number>;
+    /** New connections use this certificate and key; open tunnels keep theirs. Throws if Node cannot load them. */
+    setCertificate(cert: string, key: string): void;
     /** Stops accepting, closes every tunnel with `SHUTTING_DOWN`, and resolves once every socket is gone. */
     close(): Promise<void>;
 }
 
+/**
+ * No session tickets: tunnels live for hours, so resumption saves nothing, and ticket keys made per context would
+ * otherwise never rotate. With the option set, OpenSSL issues no tickets in TLS 1.2 and only stateful ones that Node
+ * keeps no cache for in TLS 1.3, so no session can be resumed.
+ */
 export function createRelaySecureContext(cert: string, key: string): SecureContext {
     return createSecureContext({
         cert,
@@ -66,6 +88,7 @@ export function createRelaySecureContext(cert: string, key: string): SecureConte
         minVersion: RELAY_TLS_MIN_VERSION,
         ciphers: RELAY_TLS_CIPHERS,
         honorCipherOrder: true,
+        secureOptions: cryptoConstants.SSL_OP_NO_TICKET,
     });
 }
 
@@ -94,19 +117,26 @@ function offersSubprotocol(request: IncomingMessage): boolean {
  * the handshake deadline and the pending-handshake limits cover the TLS handshake too.
  */
 export function createOwnTlsServer(options: OwnTlsServerOptions): OwnTlsServer {
-    const { endpoint, liveness, clock } = options;
-    const secureContext = createRelaySecureContext(options.cert, options.key);
+    const { endpoint, tunnel, clock, logger } = options;
+    let secureContext = createRelaySecureContext(options.cert, options.key);
     const pendingBySocket = new WeakMap<Duplex, PendingConnection>();
     const sockets = new Set<Socket>();
     let netServer: NetServer | null = null;
 
-    const wss = new WebSocketServer({
+    // `closeTimeout` is read by ws 8 but missing from its type definitions.
+    const wsOptions: ServerOptions & { readonly closeTimeout: number } = {
         noServer: true,
         clientTracking: false,
         perMessageDeflate: false,
-        maxPayload: FRAME_HEADER_BYTES + MAX_FRAME_PAYLOAD_BYTES,
+        maxPayload: MAX_WS_MESSAGE_BYTES,
+        maxFragments: MAX_WS_MESSAGE_PARTS,
+        maxBufferedChunks: MAX_WS_MESSAGE_PARTS,
+        // The relay answers pings itself (`attachWsTunnel`), so a peer that does not read cannot queue pongs forever.
+        autoPong: false,
+        closeTimeout: WS_CLOSE_TIMEOUT_MS,
         handleProtocols: (protocols) => (protocols.has(TUNNEL_SUBPROTOCOL) ? TUNNEL_SUBPROTOCOL : false),
-    });
+    };
+    const wss = new WebSocketServer(wsOptions);
 
     const http = createHttpServer(
         { maxHeaderSize: MAX_HEADER_BYTES },
@@ -126,7 +156,7 @@ export function createOwnTlsServer(options: OwnTlsServerOptions): OwnTlsServer {
             refuseUpgrade(socket, '400 Bad Request');
         } else {
             wss.handleUpgrade(request, socket, head, (ws) => {
-                attachWsTunnel(ws, pending, liveness);
+                attachWsTunnel(ws, pending, tunnel);
             });
         }
     });
@@ -171,14 +201,22 @@ export function createOwnTlsServer(options: OwnTlsServerOptions): OwnTlsServer {
             const server = createNetServer({ noDelay: true }, (socket) => {
                 acceptSocket(socket);
             });
+            server.maxConnections = options.maxConnections;
             netServer = server;
             return new Promise((resolve, reject) => {
                 server.once('error', reject);
                 server.listen(port, host, () => {
                     server.off('error', reject);
+                    // Accept errors (EMFILE) are emitted here; without a listener they would end the process.
+                    server.on('error', (error: Error) => {
+                        logger.error('relay.accept-failed', { problem: error.name });
+                    });
                     resolve((server.address() as AddressInfo).port);
                 });
             });
+        },
+        setCertificate(cert, key) {
+            secureContext = createRelaySecureContext(cert, key);
         },
         async close() {
             const listening = netServer;
