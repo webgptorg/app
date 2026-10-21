@@ -27,7 +27,7 @@ test('relay-a carries only TLS records for the engine, never its plaintext', asy
     playwright,
     compose,
     engineHost,
-    engineUrl,
+    spikeUrl,
 }, testInfo) => {
     test.setTimeout(120_000);
     const relayA = RELAYS[0];
@@ -44,7 +44,7 @@ test('relay-a carries only TLS records for the engine, never its plaintext', asy
     try {
         const context = await browser.newContext();
         const page = await context.newPage();
-        const response = await page.goto(engineUrl);
+        const response = await page.goto(spikeUrl);
         expect(response?.status()).toBe(200);
         expect((await response?.serverAddr())?.ipAddress, 'the page came through relay-a').toBe(relayA.ip);
         canary = (await page.locator('#canary').textContent()) ?? '';

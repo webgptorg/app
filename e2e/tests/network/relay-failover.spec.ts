@@ -66,7 +66,7 @@ for (const relay of RELAYS) {
             playwright,
             compose,
             engineHost,
-            engineUrl,
+            spikeUrl,
             engineId,
             caCertificatePem,
         }) => {
@@ -80,7 +80,7 @@ for (const relay of RELAYS) {
 
                 // Positive control: with both relays up, this browser goes to the relay about to fail.
                 const before = await browser.newContext();
-                const first = await (await before.newPage()).goto(engineUrl);
+                const first = await (await before.newPage()).goto(spikeUrl);
                 expect(first?.status()).toBe(200);
                 expect((await first?.serverAddr())?.ipAddress, 'the browser tries this relay first').toBe(relay.ip);
                 await before.close();
@@ -94,7 +94,7 @@ for (const relay of RELAYS) {
                 const context = await browser.newContext();
                 const page = await context.newPage();
                 const started = Date.now();
-                const response = await page.goto(engineUrl, { timeout: 60_000 });
+                const response = await page.goto(spikeUrl, { timeout: 60_000 });
                 const elapsedMs = Date.now() - started;
                 test.info().annotations.push({
                     type: 'failover',
@@ -127,7 +127,7 @@ test('a hung relay that still accepts TCP is not failed over by the browser (kno
     playwright,
     compose,
     engineHost,
-    engineUrl,
+    spikeUrl,
     caCertificatePem,
 }) => {
     test.setTimeout(120_000);
@@ -145,7 +145,7 @@ test('a hung relay that still accepts TCP is not failed over by the browser (kno
             'connected',
         );
         const page = await (await browser.newContext()).newPage();
-        await expect(page.goto(engineUrl, { timeout: FAILOVER_LIMIT_MS }), 'no failover within 15 s').rejects.toThrow(
+        await expect(page.goto(spikeUrl, { timeout: FAILOVER_LIMIT_MS }), 'no failover within 15 s').rejects.toThrow(
             /Timeout/,
         );
     } finally {

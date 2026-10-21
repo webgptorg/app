@@ -66,11 +66,11 @@ test('through a TLS-inspecting proxy the browser still talks TLS to the engine, 
     page,
     engineId,
     engineHost,
-    engineUrl,
+    spikeUrl,
     engineCertSha256,
     peerCertificateSha256,
 }) => {
-    const response = await page.goto(engineUrl);
+    const response = await page.goto(spikeUrl);
     expect(response?.status()).toBe(200);
     await expect(page.locator('#engine-id')).toHaveText(engineId);
     expect(await peerCertificateSha256(page), "the engine's own certificate").toBe(engineCertSha256);

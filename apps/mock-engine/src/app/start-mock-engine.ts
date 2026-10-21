@@ -389,13 +389,10 @@ export interface EngineServerDeps {
     /** Seeds fault decisions. */
     readonly seed: number;
     readonly devLogin: boolean;
-<<<<<<< HEAD
     /** Shown on the spike page; see `SpikeRouteDeps.canary`. */
     readonly canary: string;
-=======
     /** The UI bundles the app's routes serve; without it they answer 503. */
     readonly bundles?: Pick<BundleStore, 'active' | 'read'>;
->>>>>>> c94225d (feat(mock-engine): add the UI loader core, stores and routes)
     readonly clock: Clock;
     readonly logger: Logger;
     readonly rateLimiter?: RateLimiter;

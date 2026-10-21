@@ -8,9 +8,9 @@ const ATTEMPT_TIMEOUT_MS = 3_000;
 test('the engine page loads when the engine may only leave its network on TCP 443', async ({
     page,
     engineId,
-    engineUrl,
+    spikeUrl,
 }) => {
-    const response = await page.goto(engineUrl);
+    const response = await page.goto(spikeUrl);
     expect(response?.status()).toBe(200);
     await expect(page.locator('#engine-id')).toHaveText(engineId);
 });
