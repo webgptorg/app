@@ -5,7 +5,7 @@ export const ENGINE_API_PREFIX = '/api/v1';
  * SemVer of this contract. Additive changes bump the minor; the UI bundle manifest's `engineApi` range refers to it
  * (C-06, X-03), so the engine's loader refuses a bundle built against an API it does not speak.
  */
-export const ENGINE_API_VERSION = '1.3.0';
+export const ENGINE_API_VERSION = '1.4.0';
 
 /** Gateway pages owned by the open engine, not by this API. */
 export const SIGN_IN_PATH = '/auth/sign-in';
@@ -40,3 +40,10 @@ export const MAX_RUN_TEXT_BYTES = 256 * 1024;
 
 /** The engine truncates the `User-Agent` it records in the audit log and session list to this many characters. */
 export const MAX_USER_AGENT_LENGTH = 512;
+
+/** An audit entry's `details` serialised as JSON, in UTF-8 bytes. */
+export const MAX_AUDIT_DETAILS_BYTES = 16 * 1024;
+/** How deeply an audit entry's `details` may nest; the `details` object itself is depth 1. */
+export const MAX_AUDIT_DETAILS_DEPTH = 8;
+/** An audit target's `name`, in UTF-16 code units. */
+export const MAX_AUDIT_TARGET_NAME_LENGTH = 256;

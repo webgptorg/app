@@ -2,7 +2,10 @@ import type { AuditEntry, AuditVerification } from '../audit';
 import { Sha256Hex } from '../common';
 import type { Timestamp } from '../common';
 
-/** The in-memory engine's chain link: SHA-256 over every field of the entry except `hash`, in a fixed order. */
+/**
+ * The in-memory engine's chain link: SHA-256 over every field of the entry except `hash`, in a fixed order. `target`
+ * includes its `name` and `details` comes last (both since API 1.4; an absent `details` hashes as `null`).
+ */
 export async function hashAuditEntry(entry: Omit<AuditEntry, 'hash'>): Promise<Sha256Hex> {
     const input = JSON.stringify([
         entry.id,
@@ -14,6 +17,7 @@ export async function hashAuditEntry(entry: Omit<AuditEntry, 'hash'>): Promise<S
         entry.outcome,
         entry.client,
         entry.prevHash,
+        entry.details ?? null,
     ]);
     const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input));
     return Sha256Hex.parse(toHex(new Uint8Array(digest)));

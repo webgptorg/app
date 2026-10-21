@@ -2,14 +2,20 @@ import type { z } from 'zod';
 import { describe, expect, it } from 'vitest';
 
 import { Agent, AgentListQuery } from './agents';
-import { AuditEntry } from './audit';
+import { AuditEntry, AuditPageReader, isAuditAction } from './audit';
 import { Activity } from './capabilities/activity';
 import { FileMetadata, FileVersion } from './capabilities/files';
 import { activitySample } from './capabilities/fixtures/samples';
 import { CreateIntegrationBody, Integration } from './capabilities/integrations';
 import { Money, Run, RunDetail, RunListQuery, RunText } from './capabilities/runs';
 import { CreateTriggerBody, Recurrence, Trigger, TriggerFire } from './capabilities/triggers';
-import { MAX_CHAT_PREVIEW_LENGTH, MAX_RUN_TEXT_BYTES } from './constants';
+import {
+    MAX_AUDIT_DETAILS_BYTES,
+    MAX_AUDIT_DETAILS_DEPTH,
+    MAX_AUDIT_TARGET_NAME_LENGTH,
+    MAX_CHAT_PREVIEW_LENGTH,
+    MAX_RUN_TEXT_BYTES,
+} from './constants';
 import { EngineInfo } from './engine';
 import { Chat, ReplyStreamEvent } from './chats';
 import { Hostname, PageQuery, ProblemDetails, SemVer, Timestamp } from './common';
@@ -544,6 +550,61 @@ describe('passkeys, sessions, members and secrets (API 1.3 fields)', () => {
             roaming,
             { ...hybrid, authenticator: { attachment: 'unknown', backedUp: null } },
         ]);
+    });
+});
+
+describe('AuditEntry (API 1.4 fields)', () => {
+    const nested = (depth: number): Record<string, unknown> => {
+        let value: Record<string, unknown> = { leaf: true };
+        for (let level = 1; level < depth; level++) value = { level: value };
+        return value;
+    };
+
+    it('reads a 1.3 entry without details or target name', () => {
+        expect(AuditEntry.parse(auditEntry)).not.toHaveProperty('details');
+    });
+
+    it('takes a target name snapshot and details within the limits', () => {
+        const entry = {
+            ...auditEntry,
+            target: { kind: 'secret', id: 'sec_1', name: '<img src=x onerror=alert(1)>' },
+            details: { fields: ['value'], nested: nested(MAX_AUDIT_DETAILS_DEPTH - 1) },
+        };
+        expect(AuditEntry.parse(entry)).toEqual(entry);
+        expect(
+            AuditEntry.parse({ ...auditEntry, target: { ...auditEntry.target, name: null }, details: null }),
+        ).toBeTruthy();
+    });
+
+    it('refuses a long target name, deep or large details and details that are not an object', () => {
+        const name = 'x'.repeat(MAX_AUDIT_TARGET_NAME_LENGTH + 1);
+        expect(AuditEntry.safeParse({ ...auditEntry, target: { ...auditEntry.target, name } }).success).toBe(false);
+        expect(AuditEntry.safeParse({ ...auditEntry, details: nested(MAX_AUDIT_DETAILS_DEPTH) }).success).toBe(true);
+        expect(AuditEntry.safeParse({ ...auditEntry, details: nested(MAX_AUDIT_DETAILS_DEPTH + 1) }).success).toBe(
+            false,
+        );
+        expect(AuditEntry.safeParse({ ...auditEntry, details: nested(100_000) }).success).toBe(false);
+        const large = { text: 'é'.repeat(MAX_AUDIT_DETAILS_BYTES / 2) };
+        expect(AuditEntry.safeParse({ ...auditEntry, details: large }).success).toBe(false);
+        expect(AuditEntry.safeParse({ ...auditEntry, details: ['a'] }).success).toBe(false);
+        expect(AuditEntry.safeParse({ ...auditEntry, details: 'a' }).success).toBe(false);
+        expect(AuditEntry.safeParse({ ...auditEntry, details: { n: 1n } }).success).toBe(false);
+        expect(AuditEntry.safeParse({ ...auditEntry, details: () => ({}) }).success).toBe(false);
+    });
+
+    it('keeps the engine side closed to unknown actions while the client keeps their raw name', () => {
+        const newer = { ...auditEntry, action: 'agent.clone', extra: 1 };
+        expect(AuditEntry.safeParse(newer).success).toBe(false);
+        const read = AuditPageReader.parse({ items: [newer], nextCursor: null });
+        expect(read.items[0]?.action).toBe('agent.clone');
+        expect(read.items[0]).not.toHaveProperty('extra');
+        expect(isAuditAction('agent.clone')).toBe(false);
+        expect(isAuditAction('secret.replace')).toBe(true);
+        for (const action of ['Agent.Clone', 'agent', 'agent.', '<img>.x', 'a.' + 'b'.repeat(64)]) {
+            expect(AuditPageReader.safeParse({ items: [{ ...auditEntry, action }], nextCursor: null }).success).toBe(
+                false,
+            );
+        }
     });
 });
 

@@ -13,7 +13,16 @@ import {
     RevisionSummary,
 } from './agents';
 import { ApiToken, ApiTokenPage, CreateApiTokenResult } from './api-tokens';
-import { AuditAction, AuditActor, AuditEntry, AuditPage, AuditVerification } from './audit';
+import {
+    AuditAction,
+    AuditActor,
+    AuditDetails,
+    AuditDetailsValue,
+    AuditEntry,
+    AuditPage,
+    AuditTarget,
+    AuditVerification,
+} from './audit';
 import { Activity, ActivityActor, ActivityPage } from './capabilities/activity';
 import { CapabilityRef, capabilityLabel } from './capabilities/capability';
 import {
@@ -189,6 +198,9 @@ const COMPONENT_SCHEMAS: Readonly<Record<string, z.ZodType>> = {
     SecurityOverview,
     AuditAction,
     AuditActor,
+    AuditTarget,
+    AuditDetails,
+    AuditDetailsValue,
     AuditEntry,
     AuditPage,
     AuditVerification,

@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 import { SCENARIOS } from './scenarios';
 import type { Scenario } from './scenarios';
-import { HOSTILE_AGENT_NAME, ownerOf, seedEngine } from './seed';
+import { HOSTILE_AGENT_NAME, HOSTILE_AUDIT_TARGET_NAME, ownerOf, seedEngine } from './seed';
 
 const EPOCH = new Date('2026-10-01T00:00:00Z');
 const signal = () => AbortSignal.timeout(5_000);
@@ -41,7 +41,7 @@ function timestamps(value: unknown, found: string[] = []): string[] {
 describe('seedEngine', () => {
     it('gives a stable small-team seed for seed 42 and a fixed epoch', async () => {
         const json = JSON.stringify(seedEngine({ seed: 42, scenario: 'small-team', epoch: EPOCH }));
-        expect(await sha256(json)).toBe('21ed48df71a12accb8f0eadf88c5ee70d55babc83faf9c047854428b2e0277d6');
+        expect(await sha256(json)).toBe('c4ebcce178d074ac5d069a301f5e3bde3bdef5af2d719f3f93b4f19d326004e0');
     });
 
     it('is byte-identical for the same inputs and changes with the seed, scenario or epoch', () => {
@@ -83,6 +83,11 @@ describe('seedEngine', () => {
         expect(agents.length).toBeGreaterThanOrEqual(7);
         expect(agents.filter(({ deletedAt }) => deletedAt !== null)).toHaveLength(1);
         expect(agents.map(({ name }) => name)).toContain(HOSTILE_AGENT_NAME);
+        const audit = ok(await client.audit.list({ action: 'agent.source.update', limit: 100 }, signal())).items;
+        expect(audit.map(({ target }) => target?.name)).toContain(HOSTILE_AUDIT_TARGET_NAME);
+        const created = ok(await client.audit.list({ action: 'agent.create', limit: 100 }, signal())).items;
+        expect(created.map(({ target }) => target?.name)).toContain(HOSTILE_AGENT_NAME);
+        expect(created[0]?.details).toMatchObject({ fields: expect.arrayContaining(['source']) as unknown });
         expect(new Set(agents.map(({ visibility }) => visibility)).size).toBeGreaterThan(1);
         const owner = ownerOf(data);
         expect(data.passkeys?.filter(({ memberId }) => memberId === owner).length).toBeGreaterThanOrEqual(2);
