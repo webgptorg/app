@@ -2,7 +2,7 @@
 
 - **Lane:** U · **Module:** `apps/engine-ui` · **Milestone:** M2
 - **Depends on:** U-02
-- **Status:** todo
+- **Status:** done (#31)
 - **Spec:** Security hardening ("None of this limits the owner", 1 on public agents), What our platform can and cannot do; ADRs: [0003](../../adr/0003-ui-as-signed-bundle.md), [0015](../../adr/0015-ui-architecture-and-design-system.md), [0016](../../adr/0016-engine-capabilities.md)
 
 ## Goal

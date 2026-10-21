@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 
 import { useUiMessages } from '../../i18n/ui-provider';
+import { Banner } from '../banner/banner';
 import { Button } from '../button/button';
 import { Dialog } from '../dialog/dialog';
 import { Field } from '../field/field';
@@ -18,6 +19,8 @@ export interface ConfirmDialogProps {
     readonly confirmPhrase?: string;
     /** The confirmed action is running; the owner closes the dialog when it is done. */
     readonly loading?: boolean;
+    /** Why the last attempt failed; shown inside the dialog, which stays open so the action can be retried. */
+    readonly error?: string;
 }
 
 /** Asks before an action; focus starts on Cancel (or the phrase field), so Enter never confirms by accident. */
@@ -31,6 +34,7 @@ export function ConfirmDialog({
     tone = 'primary',
     confirmPhrase,
     loading = false,
+    error,
 }: ConfirmDialogProps) {
     const messages = useUiMessages();
     const cancelRef = useRef<HTMLButtonElement>(null);
@@ -69,6 +73,7 @@ export function ConfirmDialog({
                 </>
             }
         >
+            {error === undefined ? null : <Banner tone="danger">{error}</Banner>}
             {confirmPhrase === undefined ? null : (
                 <Field label={messages.typeToConfirm({ phrase: confirmPhrase })}>
                     {(control) => (

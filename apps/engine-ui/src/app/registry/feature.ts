@@ -11,6 +11,8 @@ export interface FeatureRequirement {
     /** The engine must advertise exactly this capability version (`GET /engine`, ADR 0016). */
     readonly capability?: CapabilityRef;
     readonly permission?: Permission;
+    /** At least one of these, for entries that serve several actions (e.g. an agent's Settings tab). */
+    readonly anyPermission?: readonly Permission[];
 }
 
 export const NAV_GROUPS = ['work', 'resources', 'admin'] as const;
@@ -27,6 +29,21 @@ export interface NavEntry {
     readonly icon: NavIcon;
     readonly to: RoutePath;
 }
+
+/**
+ * Agent detail tabs in the order of docs/design/ui.md. Features register their tab with this ID and order, so the
+ * detail page needs no knowledge of them and its header can offer "Chat" and "Edit" when those tabs exist.
+ */
+export const AGENT_TABS = {
+    overview: { id: 'overview', order: 10 },
+    chat: { id: 'chat', order: 20 },
+    runs: { id: 'runs', order: 30 },
+    files: { id: 'files', order: 40 },
+    triggers: { id: 'triggers', order: 50 },
+    integrations: { id: 'integrations', order: 60 },
+    book: { id: 'book', order: 70 },
+    settings: { id: 'settings', order: 80 },
+} as const;
 
 export interface AgentTabEntry {
     readonly id: string;

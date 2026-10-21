@@ -95,4 +95,23 @@ describe('ConfirmDialog', () => {
         );
         expect(screen.getByRole('button', { name: 'Stop' }).getAttribute('aria-busy')).toBe('true');
     });
+
+    it('shows why the last attempt failed and stays open for a retry', async () => {
+        const onConfirm = vi.fn();
+        const { container, user } = renderUi(
+            <ConfirmDialog
+                open
+                onClose={() => undefined}
+                onConfirm={onConfirm}
+                title="Delete Lead bot?"
+                confirmLabel="Delete"
+                tone="danger"
+                error="The engine refused."
+            />,
+        );
+        expect(screen.getByRole('alert').textContent).toContain('The engine refused.');
+        await expectNoAxeViolations(container);
+        await user.click(screen.getByRole('button', { name: 'Delete' }));
+        expect(onConfirm).toHaveBeenCalledOnce();
+    });
 });

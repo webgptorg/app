@@ -7,7 +7,7 @@ import { renderWithProviders } from '../testing/render-with-providers';
 import { createTestEngineApi, problemResponse } from '../testing/test-engine-api';
 
 describe('engine-ui app', () => {
-    it('redirects / to the placeholder agents route and renders it with the in-memory client', async () => {
+    it('redirects / to the agents route and renders it with the in-memory client', async () => {
         const { router, container } = renderWithProviders({ path: '/' });
 
         expect(await screen.findByRole('heading', { name: 'Agents' })).toBeDefined();
@@ -33,9 +33,9 @@ describe('engine-ui app', () => {
     it('shows the route error when a loader throws, without a sign-in, and recovers on retry', async () => {
         const engineApi = createTestEngineApi();
         const agents = { ...engineApi.agents };
-        vi.spyOn(agents, 'list').mockImplementationOnce(() => problemResponse('validation-failed'));
+        vi.spyOn(agents, 'get').mockImplementationOnce(() => problemResponse('validation-failed'));
         const { onUnauthenticated, user } = renderWithProviders({
-            path: '/agents',
+            path: '/agents/seed-agent-000001',
             engineApi: { ...engineApi, agents },
         });
 
@@ -44,7 +44,7 @@ describe('engine-ui app', () => {
         expect(onUnauthenticated).not.toHaveBeenCalled();
 
         await user.click(screen.getByRole('button', { name: 'Try again' }));
-        expect(await screen.findByText('Ada')).toBeDefined();
+        expect(await screen.findByRole('heading', { level: 1, name: 'Ada' })).toBeDefined();
     });
 
     it('says "not allowed" for a 403 instead of failing', async () => {
@@ -110,7 +110,7 @@ describe('router conventions', () => {
         await waitFor(() => {
             expect(list).toHaveBeenCalledOnce();
         });
-        expect(list.mock.calls[0]?.[0]).toEqual({ sort: 'name' });
+        expect(list.mock.calls[0]?.[0]).toEqual({ sort: '-updatedAt' });
         expect(router.state.location.pathname).toBe('/nowhere');
     });
 
@@ -121,14 +121,14 @@ describe('router conventions', () => {
         const { router } = renderWithProviders({ path: '/agents?sort=bogus', engineApi: { ...engineApi, agents } });
 
         expect(await screen.findByRole('heading', { name: 'Agents' })).toBeDefined();
-        expect(router.state.location.search).toEqual({ sort: 'name' });
-        expect(list.mock.calls[0]?.[0]).toEqual({ sort: 'name' });
+        expect(router.state.location.search).toEqual({});
+        expect(list.mock.calls[0]?.[0]).toEqual({ sort: '-updatedAt' });
     });
 
     it('keeps a valid search param', async () => {
-        const { router } = renderWithProviders({ path: '/agents?sort=-updatedAt' });
+        const { router } = renderWithProviders({ path: '/agents?sort=name' });
 
         expect(await screen.findByRole('heading', { name: 'Agents' })).toBeDefined();
-        expect(router.state.location.search).toEqual({ sort: '-updatedAt' });
+        expect(router.state.location.search).toEqual({ sort: 'name' });
     });
 });
