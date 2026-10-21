@@ -141,7 +141,7 @@ C-05's v1 suite covers this API: authentication (every route without credentials
 
 ## Reference implementation
 
-Merged (M-04). The mock engine serves this API over the tunnel with seeded data, roles and faults, with no route written by hand: [api-routes.ts](../../apps/mock-engine/src/adapters/http/api-routes.ts) declares one route per `ENGINE_API_ROUTE_LIST` entry and hands each to `serveEngineApiRoute` with the request's `Actor`. Its role policy and ownership rule are in [policy.ts](../../apps/mock-engine/src/domain/authorization/policy.ts) (a guess to align with you, see the [open points](README.md#open-points)), and seeded scenarios in [seed.ts](../../apps/mock-engine/src/domain/state/seed.ts). It advertises no capabilities yet (M-07).
+Merged (M-04). The mock engine serves this API over the tunnel with seeded data, roles and faults, with no route written by hand: [api-routes.ts](../../apps/mock-engine/src/adapters/http/api-routes.ts) declares one route per `ENGINE_API_ROUTE_LIST` entry and hands each to `serveEngineApiRoute` with the request's `Actor`. Its role policy and ownership rule are in [policy.ts](../../apps/mock-engine/src/domain/authorization/policy.ts) (a guess to align with you, see the [open points](README.md#open-points)), and seeded scenarios in [seed.ts](../../apps/mock-engine/src/domain/state/seed.ts). Since M-07 it advertises every capability (`MOCK_CAPABILITIES` narrows them), with seeded data and a live simulation of runs and schedules driven only through the in-memory core's controller levers.
 
 The mock builds on two parts of `@ptbk/engine-api`, which are the behavioural reference. They are meant for tests and UI development, not as an engine to ship:
 

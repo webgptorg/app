@@ -94,7 +94,7 @@ The mock engine implements the engine side of every contract, one task at a time
 | M-04 | Engine API, gateway stand-in, faults               | merged      |
 | M-05 | UI loader and security headers                     | merged      |
 | M-06 | Registration and heartbeat client                  | merged      |
-| M-07 | Capabilities (runs, files, triggers, integrations) | not started |
+| M-07 | Capabilities (runs, files, triggers, integrations) | merged      |
 
 ## Open points
 
