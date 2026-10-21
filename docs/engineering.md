@@ -22,6 +22,9 @@ flowchart TD
     dashboard --> ui
     conformance --> protocol
     conformance --> engine-api
+    engine-ui --> release-tools
+    mock-engine --> release-tools
+    release-tools --> protocol
 ```
 
 ## Contracts

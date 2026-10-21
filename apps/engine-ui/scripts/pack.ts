@@ -2,20 +2,31 @@
 // release/manifest.json (X-03).
 //
 //   bun run --filter @ptbk/engine-ui pack [--tag ui-v<version>] [--allow-dirty]
+//
+// `--commit <sha> --source-date-epoch <seconds>` take both values as given instead of from git, for a build context
+// that is not a checkout (the e2e stack's Docker build, M-05). The release workflow never passes them.
 import { execFileSync } from 'node:child_process';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 
 import { ENGINE_API_VERSION, ENGINE_UI_CSP } from '@ptbk/engine-api';
+import { readTree } from '@ptbk/release-tools';
+
 import { packBundle } from './release/archive.ts';
 import { assertCleanTree, headCommit, headCommitTime } from './release/git.ts';
 import { sha256Hex } from './release/manifest.ts';
 import { APP_DIR, DIST_DIR, RELEASE_DIR, RELEASE_FILES, readPackageVersion } from './release/paths.ts';
 import { parseReleaseTag } from './release/release-tag.ts';
-import { readTree } from './release/tar.ts';
 
-const { values } = parseArgs({ options: { tag: { type: 'string' }, 'allow-dirty': { type: 'boolean' } } });
+const { values } = parseArgs({
+    options: {
+        tag: { type: 'string' },
+        'allow-dirty': { type: 'boolean' },
+        commit: { type: 'string' },
+        'source-date-epoch': { type: 'string' },
+    },
+});
 const packageVersion = await readPackageVersion();
 
 let version = packageVersion;
@@ -24,9 +35,16 @@ if (values.tag !== undefined) {
     if (tag.kind === 'invalid') throw new Error(tag.reason);
     version = tag.version;
 }
-if (values['allow-dirty'] !== true) assertCleanTree(APP_DIR);
-const commit = headCommit(APP_DIR);
-const sourceDateEpoch = headCommitTime(APP_DIR);
+const given = { commit: values.commit, sourceDateEpoch: values['source-date-epoch'] };
+if ((given.commit === undefined) !== (given.sourceDateEpoch === undefined)) {
+    throw new Error('--commit and --source-date-epoch go together');
+}
+if (given.sourceDateEpoch !== undefined && !/^[0-9]{1,12}$/.test(given.sourceDateEpoch)) {
+    throw new Error('--source-date-epoch must be whole seconds');
+}
+if (given.commit === undefined && values['allow-dirty'] !== true) assertCleanTree(APP_DIR);
+const commit = given.commit ?? headCommit(APP_DIR);
+const sourceDateEpoch = given.sourceDateEpoch === undefined ? headCommitTime(APP_DIR) : Number(given.sourceDateEpoch);
 
 // Vite bakes `VITE_*` variables into the bundle (e.g. `VITE_UI_GALLERY`, which `test:csp` sets), so a release
 // build never inherits them from the shell.

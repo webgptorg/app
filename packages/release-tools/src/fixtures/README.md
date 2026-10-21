@@ -1,6 +1,6 @@
 # Recorded Sigstore bundles
 
-Real, public SLSA provenance bundles signed by GitHub Actions on Sigstore's public-good instance. They exercise the real `@sigstore/verify` path (Fulcio chain, SCT, Rekor entry, RFC 3161 timestamp) against `release/trusted_root.json` without network access. Their payloads are in-toto statements, not release entries: the adapter compares payloads byte for byte and does not care about the type.
+Real, public SLSA provenance bundles signed by GitHub Actions on Sigstore's public-good instance. They exercise the real `@sigstore/verify` path (Fulcio chain, SCT, Rekor entry, RFC 3161 timestamp) against the pinned `../trusted_root.json` without network access. Their payloads are in-toto statements, not release entries: the adapter compares payloads byte for byte and does not care about the type.
 
 | File                         | Source                                                                                                       | Why                                                                                                       |
 | ---------------------------- | ------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------- |

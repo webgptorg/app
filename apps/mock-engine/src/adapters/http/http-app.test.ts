@@ -16,6 +16,7 @@ import { z } from 'zod';
 import { createInTunnelRoutes } from '../../app/start-mock-engine';
 import { NO_FAULTS } from '../../domain/faults/fault-plan';
 import { createSessionStore } from '../../domain/gateway/sessions';
+import { engineSecurityHeaders } from '../../domain/http/security-headers';
 import type { RateLimiter } from '../../domain/rate-limit/rate-limiter';
 import { isRateLimitRule } from '../../domain/rate-limit/rate-limiter';
 import type { EngineHarness, HarnessResponse } from '../../testing/engine-harness';
@@ -25,7 +26,7 @@ import { createFakeClock } from '../../testing/fake-clock';
 import { createMemoryLogger } from '../../testing/memory-logger';
 import { createSeededRandom } from '../../testing/seeded-random';
 import { createControlRoutes, createFaultSettings } from '../control-server';
-import { BASELINE_HEADERS, createHttpApp } from './http-app';
+import { createHttpApp } from './http-app';
 import type { Route } from './route';
 import { defineHttpRoute, defineWebSocketRoute } from './route';
 import { createSpikeRoutes } from './spike-routes';
@@ -41,10 +42,12 @@ function start(options: Parameters<typeof createEngineHarness>[0] = {}): EngineH
     return harness;
 }
 
-function expectBaselineHeaders(response: HarnessResponse): void {
+function expectSecurityHeaders(response: HarnessResponse): void {
     expect(response.headers['cache-control']).toBe('no-store');
-    expect(response.headers['x-content-type-options']).toBe('nosniff');
     expect(response.headers['content-security-policy']).toBe(ENGINE_UI_CSP);
+    for (const [name, value] of Object.entries(engineSecurityHeaders())) {
+        expect(response.headers[name.toLowerCase()], name).toBe(value);
+    }
 }
 
 function problemOf(response: HarnessResponse): unknown {
@@ -66,7 +69,6 @@ async function raw(engine: EngineHarness, text: string): Promise<string> {
 }
 
 const SPIKE_ROUTES = [
-    'http GET /',
     'http GET /__spike/',
     'http GET /__spike/whoami',
     'http GET /__spike/sse',
@@ -83,7 +85,13 @@ const SELF_SCOPED_SESSION_ROUTES = [
     `POST ${SIGN_OUT_PATH}`,
     `GET ${STEP_UP_PATH}`,
     `POST ${STEP_UP_PATH}`,
+    // The app: the same signed bundle for every member; what they may do is the engine API's to decide.
+    'GET /',
+    'GET /{path+}',
 ] as const;
+
+/** The app's routes accept any query, because the SPA keeps its own state there; the engine never reads it. */
+const OPEN_QUERY_ROUTES: ReadonlySet<string> = new Set(['http GET /', 'http GET /{path+}']);
 
 function selfScoped(route: Route): boolean {
     return SELF_SCOPED_SESSION_ROUTES.some((entry) => {
@@ -130,11 +138,17 @@ function controlRoutes(): readonly Route[] {
 
 function expectStrictInput(route: Route): void {
     expect(isRateLimitRule(route.rateLimit), key(route)).toBe(true);
-    expect(route.query.safeParse({ unexpected: '1' }).success, key(route)).toBe(false);
+    if (OPEN_QUERY_ROUTES.has(key(route))) {
+        const many = Object.fromEntries(Array.from({ length: 33 }, (_, index) => [`p${String(index)}`, '1']));
+        expect(route.query.safeParse(many).success, key(route)).toBe(false);
+        expect(route.query.safeParse({ q: 'x'.repeat(8193) }).success, key(route)).toBe(false);
+    } else {
+        expect(route.query.safeParse({ unexpected: '1' }).success, key(route)).toBe(false);
+    }
     if (route.headers !== null) expect(route.headers.safeParse({ unexpected: '1' }).success, key(route)).toBe(false);
     if (route.params !== null) {
         expect(route.params.safeParse({ unexpected: '1' }).success, key(route)).toBe(false);
-        for (const name of [...route.path.matchAll(/\{(\w+)\}/g)].map((match) => match[1] ?? '')) {
+        for (const name of [...route.path.matchAll(/\{(\w+)\+?\}/g)].map((match) => match[1] ?? '')) {
             expect(Object.keys(route.params.shape), key(route)).toContain(name);
         }
     } else {
@@ -233,6 +247,8 @@ describe('control listener route table', () => {
                 'http GET /__mock/heartbeat',
                 'http GET /__mock/members',
                 'http GET /__mock/state',
+                'http GET /__mock/ui',
+                'http POST /__mock/ui/check',
                 'http POST /__mock/reset',
                 'http POST /__mock/sessions',
                 'http PUT /__mock/faults',
@@ -274,7 +290,7 @@ describe('mounting', () => {
             canary: HARNESS_CANARY,
         });
         if (first === undefined) throw new Error('no routes');
-        expect(() => app([first, first])).toThrow('refusing to mount http GET / twice');
+        expect(() => app([first, first])).toThrow('refusing to mount http GET /__spike/ twice');
     });
 
     it('refuses a control route', () => {
@@ -292,18 +308,17 @@ describe('mounting', () => {
 });
 
 describe('responses', () => {
-    it('carry the baseline headers on pages, JSON, 400 and 404', async () => {
+    it('carry the engine security headers on pages, JSON, 400 and 404', async () => {
         const engine = start();
         for (const path of [
-            '/',
+            '/__spike/',
             '/__spike/whoami',
             '/__spike/sse?count=nope',
             '/nowhere',
             '/__spike/download?bytes=1',
         ]) {
-            expectBaselineHeaders(await engine.get(path));
+            expectSecurityHeaders(await engine.get(path));
         }
-        expect(Object.keys(BASELINE_HEADERS)).toHaveLength(3);
     });
 
     it('answers whoami with the engine, SNI hostname, client IP from OPEN, ALPN and TLS version', async () => {
@@ -346,7 +361,7 @@ describe('responses', () => {
         });
         const response = await engine.get('/boom');
         expect(response.status).toBe(500);
-        expectBaselineHeaders(response);
+        expectSecurityHeaders(response);
         expect(problemOf(response)).toMatchObject({ status: 500, code: 'internal-error' });
         expect(response.body.toString('utf8')).not.toContain('secret detail');
         expect(engine.logger.entries).toContainEqual({
@@ -365,7 +380,7 @@ describe('rate limits', () => {
         const response = await start({ rateLimiter: limited }).get('/__spike/whoami');
         expect(response.status).toBe(429);
         expect(response.headers['retry-after']).toBe('2');
-        expectBaselineHeaders(response);
+        expectSecurityHeaders(response);
         expect(problemOf(response)).toMatchObject({ code: 'rate-limited' });
     });
 
@@ -379,7 +394,9 @@ describe('rate limits', () => {
         );
         expect(response).toMatch(/^HTTP\/1\.1 429 Too Many Requests\r\n/);
         expect(response).toContain('\r\nRetry-After: 2\r\n');
-        expect(response).toContain(`\r\nContent-Security-Policy: ${ENGINE_UI_CSP}\r\n`);
+        for (const [name, value] of Object.entries(engineSecurityHeaders())) {
+            expect(response).toContain(`\r\n${name}: ${value}\r\n`);
+        }
     });
 
     it('counts per client IP from the tunnel, with the route’s policy', async () => {

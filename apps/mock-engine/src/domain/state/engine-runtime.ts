@@ -10,6 +10,13 @@ import { HOSTILE_AGENT_NAME, ownerOf, seedEngine } from './seed';
 
 type RelayStatus = SecurityOverview['relays'][number]['status'];
 
+/** The security panel's `ui`: the active bundle's version, archive SHA-256 and release log index. */
+export interface UiBundleInfo {
+    readonly version: string;
+    readonly bundleSha256: string;
+    readonly releaseLogIndex: number | null;
+}
+
 export interface EngineIdentityInfo {
     readonly engineId: string;
     /** `<engineId>.<engine domain>`. */
@@ -40,6 +47,8 @@ export interface EngineRuntime {
     setHostnames(hostnames: readonly string[]): void;
     /** The heartbeat the engine last sent, exactly as sent (M-06 reports it). */
     setLastHeartbeat(heartbeat: { readonly sentAt: string; readonly body: string } | null): void;
+    /** The UI bundle the loader serves (M-05). */
+    setUi(ui: UiBundleInfo): void;
 }
 
 function clockSleep(clock: Clock): Sleep {
@@ -72,6 +81,7 @@ export function createEngineRuntime(options: EngineRuntimeOptions): EngineRuntim
         relays: new Map<string, { readonly status: RelayStatus; readonly since: string }>(),
         hostnames: [identity.hostname] as readonly string[],
         lastHeartbeat: null as { readonly sentAt: string; readonly body: string } | null,
+        ui: null as UiBundleInfo | null,
     };
     const listeners: (() => void)[] = [];
     let current = { seed: options.seed, scenario: options.scenario };
@@ -123,6 +133,7 @@ export function createEngineRuntime(options: EngineRuntimeOptions): EngineRuntim
 
     function applySecurity(core: InMemoryEngineCore): void {
         core.controller.updateSecurity({
+            ...(sticky.ui === null ? {} : { ui: { ...sticky.ui } }),
             lastHeartbeat: sticky.lastHeartbeat,
             relays: [...sticky.relays].map(([hostname, relay]) => ({ hostname, ...relay })),
             hostnames: sticky.hostnames.map((hostname, index) => ({
@@ -157,6 +168,10 @@ export function createEngineRuntime(options: EngineRuntimeOptions): EngineRuntim
         },
         setLastHeartbeat(heartbeat) {
             sticky.lastHeartbeat = heartbeat;
+            applySecurity(core);
+        },
+        setUi(ui) {
+            sticky.ui = ui;
             applySecurity(core);
         },
         setHostnames(hostnames) {

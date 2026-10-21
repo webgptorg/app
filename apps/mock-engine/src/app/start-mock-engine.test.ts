@@ -30,6 +30,10 @@ import { createSeededRandom } from '../testing/seeded-random';
 import type { MockEngineConfig } from './config';
 import { DEFAULT_TUNNEL_OFFER, startMockEngine } from './start-mock-engine';
 import { DEFAULT_MOCK_SETTINGS } from '../testing/mock-settings';
+import { createMemoryBundleStore } from '../testing/memory-bundle-store';
+import { createMemoryReleaseSource } from '../testing/memory-release-source';
+import { createMemoryUpdateStateStore } from '../testing/memory-update-state-store';
+import { createTestProvenanceVerifier, createTestReleaseKeys } from '../testing/ui-releases';
 
 function relay(name: string): RelayTarget {
     return { url: `wss://${name}/v1/tunnel`, relayId: RelayId.parse(name), port: 443 };
@@ -370,5 +374,56 @@ describe('startMockEngine', () => {
             encodeFrame({ type: FrameType.DATA, streamId: StreamId.parse(1), payload: new Uint8Array(8) }),
         );
         await until(() => started.logger.entries.some((entry) => entry.event === 'tls.handshake-failed'));
+    });
+
+    describe('UI loader', () => {
+        const UI_CONFIG: MockEngineConfig = {
+            ...CONFIG,
+            ui: {
+                releaseUrl: 'https://releases.ptbk.test/',
+                updatePolicy: { kind: 'manual' },
+                trustPolicyFile: '/unused',
+                trustedRootFile: null,
+                checkIntervalS: 3600,
+                fakeProvenance: true,
+            },
+        };
+        const base = () => ({
+            logger: createMemoryLogger(),
+            clock: createFakeClock(),
+            random: createSeededRandom(1),
+            identityStore: createMemoryIdentityStore(),
+            dialer: createFakeDialer(),
+        });
+
+        it('is absent without PTBK_UI_RELEASE_URL', async () => {
+            const { engine } = await start();
+            expect(engine.ui).toBeNull();
+            await engine.close();
+        });
+
+        it('refuses to start with PTBK_UI_RELEASE_URL but no loader adapters', async () => {
+            await expect(startMockEngine(UI_CONFIG, base())).rejects.toThrow(/no UI loader adapters/);
+        });
+
+        it('runs the loader with the configured policy and stops it on close', async () => {
+            const keys = await createTestReleaseKeys();
+            const source = createMemoryReleaseSource();
+            const engine = await startMockEngine(UI_CONFIG, {
+                ...base(),
+                ui: {
+                    source,
+                    store: createMemoryBundleStore(),
+                    state: createMemoryUpdateStateStore(),
+                    provenance: createTestProvenanceVerifier(),
+                    trust: keys.policy,
+                },
+            });
+            expect(engine.ui?.policy()).toEqual({ kind: 'manual' });
+            source.fail('latest');
+            expect(await engine.ui?.checkNow()).toEqual({ kind: 'unavailable' });
+            await engine.close();
+            expect(await engine.ui?.checkNow()).toEqual({ kind: 'unavailable' });
+        });
     });
 });

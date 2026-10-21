@@ -2,11 +2,10 @@ import { createHash } from 'node:crypto';
 
 import { UiBundleManifest } from '@ptbk/protocol';
 
-import type { TarFile } from './tar.ts';
-import { compareBytes } from './tar.ts';
+import type { TarFile } from '@ptbk/release-tools';
+import { UI_ARCHIVE_MANIFEST_PATH, compareBytes } from '@ptbk/release-tools';
 
-/** The manifest's path inside the archive, and its name next to it. */
-export const MANIFEST_PATH = 'manifest.json';
+export const MANIFEST_PATH = UI_ARCHIVE_MANIFEST_PATH;
 
 export interface ManifestInput {
     readonly version: string;

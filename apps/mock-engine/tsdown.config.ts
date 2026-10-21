@@ -14,7 +14,20 @@ export default defineConfig({
     clean: true,
     deps: {
         alwaysBundle: [/.*/],
-        onlyBundle: ['zod', 'ws', 'hono', '@hono/node-server', '@faker-js/faker'],
+        onlyBundle: [
+            'zod',
+            'ws',
+            'hono',
+            '@hono/node-server',
+            '@faker-js/faker',
+            // The UI loader (M-05): C-06's signature checks and the Sigstore verifier from @ptbk/release-tools.
+            '@noble/curves',
+            '@noble/hashes',
+            '@sigstore/bundle',
+            '@sigstore/core',
+            '@sigstore/protobuf-specs',
+            '@sigstore/verify',
+        ],
         onlyImport: [],
     },
 });

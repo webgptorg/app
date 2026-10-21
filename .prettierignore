@@ -12,7 +12,7 @@ apps/engine-ui/project.inlang/*
 !apps/engine-ui/project.inlang/settings.json
 !apps/engine-ui/project.inlang/paraglide.config.js
 # Copied byte for byte from Sigstore TUF (X-03); the refresh script compares bytes.
-apps/engine-ui/release/trusted_root.json
+packages/release-tools/src/trusted_root.json
 e2e/test-results/
 # Vendored unchanged from Playwright (X-01).
 e2e/docker/seccomp_profile.json

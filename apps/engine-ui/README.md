@@ -23,8 +23,9 @@ index.html, vite.config.ts, vitest.config.ts, playwright.config.ts, tsr.config.j
 bundle-budget.json      gzip budgets (entry, per route, CSS); the report goes to reports/, outside dist/
 tooling/                the bundle budget Vite plugin
 scripts/                release tooling run with Node (X-03): pack, verify-reproducible, attest, sign, verify, publish
-scripts/release/        their tested core: tar writer, manifest, archive, Sigstore provenance verifier, R2 upload
-release/                build output (ignored), plus the pinned Sigstore trusted_root.json and the staging trust policy
+scripts/release/        their tested core: manifest, archive, release entry, signing, R2 upload (tar codec, Sigstore verifier
+                        and the pinned trusted root are in @ptbk/release-tools)
+release/                build output (ignored), plus the staging trust policy
 messages/en.json, cs.json   Paraglide catalogues (English is the source); src/paraglide/ is generated and not committed
 project.inlang/             Paraglide project: locale strategy custom-storage (localStorage behind try/catch), browser, en
 src/main.tsx            entry: zod-jitless, styles, applyTheme() before the first render, bootstrap
@@ -98,6 +99,6 @@ Code checks permissions (`usePermissions().can()`, `<Can>`, `requirePermission()
 
 `release/trust-policy.staging.json` trusts the staging release key (its seed is the `UI_STAGING_RELEASE_KEY` secret of the `staging` environment) and this repository's `ui-release.yml` on a tag push. Its three maintainer keys are placeholders whose private halves were never kept, because C-06's `TrustPolicy` requires three: staging cannot accept a `security` release. The staging key must never appear in a production policy; production keys wait for the key ceremony (I-03).
 
-The Sigstore verifier in `scripts/release/sigstore-provenance-verifier.ts` is the real C-06 `ProvenanceVerifier` adapter on `@sigstore/verify`; M-05 needs the same adapter in the mock engine, and apps cannot import each other.
+The Sigstore verifier, the ustar codec and the pinned `trusted_root.json` live in [`@ptbk/release-tools`](../../packages/release-tools/README.md), because the mock engine's UI loader (M-05) runs the same code and apps cannot import each other.
 
 Plan: tasks U-01 to U-07, X-03.

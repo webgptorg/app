@@ -148,8 +148,10 @@ describe('control server', () => {
             'GET /__mock/heartbeat',
             'GET /__mock/members',
             'GET /__mock/state',
+            'GET /__mock/ui',
             'POST /__mock/reset',
             'POST /__mock/sessions',
+            'POST /__mock/ui/check',
             'PUT /__mock/faults',
         ]);
         expect(logger.entries).toContainEqual(

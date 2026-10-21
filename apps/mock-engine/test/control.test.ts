@@ -1,7 +1,7 @@
 import type { TLSSocket } from 'node:tls';
 import { connect } from 'node:tls';
 
-import { ENGINE_API_PREFIX } from '@ptbk/engine-api';
+import { ENGINE_API_PREFIX, SIGN_IN_PATH } from '@ptbk/engine-api';
 import { createCryptoRandom, EngineVersion, Hostname, RelayId, defaultHostname } from '@ptbk/protocol';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -269,6 +269,12 @@ describe('control routes through the tunnel', () => {
                     ? {}
                     : { headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }),
             });
+            // A GET falls through to the app's routes, where the gateway sends an anonymous visitor to sign in.
+            if (method === 'GET') {
+                expect(response.status, `${method} ${path}`).toBe(303);
+                expect(response.headers.get('location'), path).toBe(SIGN_IN_PATH);
+                continue;
+            }
             expect(response.status, `${method} ${path}`).toBe(404);
             expect(response.headers.get('content-type'), path).toBe('application/problem+json');
             expect(((await response.json()) as { code: string }).code, path).toBe('not-found');

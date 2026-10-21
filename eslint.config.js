@@ -98,6 +98,12 @@ const domainPatterns = [
     { group: ['node:*', 'cloudflare:*'], message: domainPurity },
     { group: ['**/adapters/**', '**/app/**'], message: domainPurity },
 ];
+/** ADR 0014: release provenance is verified on `@sigstore/verify` directly, with exact identity matching. */
+const sigstoreVerifyBan = {
+    group: ['sigstore', 'sigstore/*'],
+    message:
+        "sigstore.verify() matches identities by unanchored pattern and compares raw DER; use @ptbk/release-tools' verifier.",
+};
 
 export default tseslint.config(
     {
@@ -163,6 +169,23 @@ export default tseslint.config(
             group: ['@ptbk/*', '!@ptbk/protocol', '!@ptbk/engine-api'],
             message: 'The conformance suite imports only the contracts.',
         }),
+    },
+    {
+        // Node-only, but like the contracts it may move public (ADR 0002), so it depends on nothing private.
+        files: ['packages/release-tools/src/**/*.ts'],
+        rules: restrictImports(sigstoreVerifyBan, {
+            group: ['@ptbk/*', '!@ptbk/protocol'],
+            message: 'release-tools imports only the protocol contracts.',
+        }),
+    },
+    {
+        files: ['apps/mock-engine/src/**/*.ts'],
+        ignores: ['apps/mock-engine/src/domain/**'],
+        rules: restrictImports(sigstoreVerifyBan),
+    },
+    {
+        files: ['apps/mock-engine/src/domain/**/*.ts'],
+        rules: restrictImports(...domainPatterns, sigstoreVerifyBan),
     },
     {
         files: ['packages/ui/src/**/*.{ts,tsx}'],

@@ -5,13 +5,14 @@ import type { Duplex } from 'node:stream';
 
 import type { HttpBindings } from '@hono/node-server';
 import { getRequestListener } from '@hono/node-server';
-import { ENGINE_UI_CSP, createProblem } from '@ptbk/engine-api';
+import { createProblem } from '@ptbk/engine-api';
 import type { Actor } from '@ptbk/engine-api/in-memory';
 import type { Context } from 'hono';
 import { Hono } from 'hono';
 import { WebSocketServer } from 'ws';
 
 import type { SessionStore } from '../../domain/gateway/sessions';
+import { engineSecurityHeaders } from '../../domain/http/security-headers';
 import type { Logger } from '../../domain/logger';
 import type { RateLimiter } from '../../domain/rate-limit/rate-limiter';
 import type { SecureConnection } from '../tls-stream-server';
@@ -33,15 +34,17 @@ import {
 export const SOCKET_IDLE_TIMEOUT_MS = 120_000;
 const MAX_HEADER_BYTES = 16 * 1024;
 
+/** Unless a route chose its own caching (the UI's files do), nothing the engine sends is stored. */
+const DEFAULT_CACHE_CONTROL = 'no-store';
+
 /**
- * Sent on every response. The full security header set is M-05's; the CSP is the engine's exact UI policy, so
- * anything a browser loads from here already runs under it.
+ * The engine's security headers on every response, whatever the route set: a handler, a UI bundle or an error can
+ * never send a different CSP or drop one.
  */
-export const BASELINE_HEADERS: Readonly<Record<string, string>> = Object.freeze({
-    'Cache-Control': 'no-store',
-    'X-Content-Type-Options': 'nosniff',
-    'Content-Security-Policy': ENGINE_UI_CSP,
-});
+export function applySecurityHeaders(headers: Headers): void {
+    for (const [name, value] of Object.entries(engineSecurityHeaders())) headers.set(name, value);
+    if (!headers.has('Cache-Control')) headers.set('Cache-Control', DEFAULT_CACHE_CONTROL);
+}
 
 export interface HttpAppDeps {
     readonly routes: readonly Route[];
@@ -71,7 +74,8 @@ function rejectUpgrade(socket: Duplex, result: Problem): void {
         'Connection: close',
         'Content-Type: application/problem+json',
         `Content-Length: ${String(Buffer.byteLength(body))}`,
-        ...Object.entries(BASELINE_HEADERS).map(([name, value]) => `${name}: ${value}`),
+        `Cache-Control: ${DEFAULT_CACHE_CONTROL}`,
+        ...Object.entries(engineSecurityHeaders()).map(([name, value]) => `${name}: ${value}`),
         ...(result.retryAfterS === undefined ? [] : [`Retry-After: ${String(result.retryAfterS)}`]),
     ];
     socket.end(`${lines.join('\r\n')}\r\n\r\n${body}`);
@@ -108,7 +112,7 @@ export function createHttpApp(deps: HttpAppDeps): HttpApp {
 
     app.use(async (c, next) => {
         await next();
-        for (const [name, value] of Object.entries(BASELINE_HEADERS)) c.res.headers.set(name, value);
+        applySecurityHeaders(c.res.headers);
     });
 
     function connectionFor(c: Context<{ Bindings: HttpBindings }>): SecureConnection {

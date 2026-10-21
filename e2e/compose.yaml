@@ -1,5 +1,6 @@
 # The base e2e stack: a fresh dev CA and keys (init), two relays, the mock engine dialling both, a resolver for the
-# test domains, and Playwright inside the same network. Scenarios add services through compose.<scenario>.yaml
+# test domains, the UI release store the mock engine's loader installs its UI from (M-05), and Playwright inside the
+# same network. Scenarios add services through compose.<scenario>.yaml
 # overlays. Addresses are repeated from src/stack.ts; src/stack.test.ts fails if they drift apart.
 #
 # Private keys never share a volume with anything that does not own them: `engine` (engine key and dev CA key) is
@@ -36,6 +37,8 @@ services:
       - engine:/engine
       - relay-a-key:/relay-keys/relay-a.ptbk.test
       - relay-b-key:/relay-keys/relay-b.ptbk.test
+      - releases:/releases
+      - release-store-key:/release-store-key
     network_mode: none
 
   dns:
@@ -146,6 +149,39 @@ services:
           '127.0.0.1',
         ]
 
+  # The UI release store: init's signed releases, read-only, over HTTPS with a dev CA certificate.
+  release-store:
+    build:
+      <<: *build
+      target: release-store
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    command:
+      [
+        'node',
+        '/e2e/release-store.ts',
+        '--root',
+        '/releases',
+        '--cert',
+        '/pki/releases.ptbk.test.pem',
+        '--key',
+        '/release-store-key/key.pem',
+      ]
+    volumes:
+      - public:/pki:ro
+      - releases:/releases:ro
+      - release-store-key:/release-store-key:ro
+    read_only: true
+    cap_drop: [ALL]
+    dns: [10.89.231.53]
+    # 443 as the non-root node user.
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: '0'
+    networks:
+      stack:
+        ipv4_address: 10.89.231.30
+
   mock-engine:
     build:
       <<: *build
@@ -157,21 +193,37 @@ services:
         condition: service_started
       relay-b:
         condition: service_started
+      release-store:
+        condition: service_started
     environment:
       PTBK_DATA_DIR: /engine
       PTBK_RELAYS: wss://relay-a.ptbk.test,wss://relay-b.ptbk.test
       PTBK_ENGINE_DOMAIN: engine.test
-      # The relays' certificates come from the dev CA too.
+      # The relays' and the release store's certificates come from the dev CA too.
       MOCK_EXTRA_CA_FILE: /pki/ca-cert.pem
       MOCK_DEV_CA_CERT_FILE: /engine/dev-ca/ca-cert.pem
       MOCK_DEV_CA_KEY_FILE: /engine/dev-ca/ca-key.pem
       MOCK_DEV_CA_DOMAINS: ptbk.test
+      # The UI loader (M-05): pinned, so the 72 h delay does not apply; test attestations instead of Sigstore, which
+      # needs GitHub's OIDC identity. Every other check (release key, log entry, revocations, hashes) runs as in
+      # production. Playwright re-pins through the control listener to publish the tampered release next.
+      PTBK_UI_RELEASE_URL: https://releases.ptbk.test/
+      PTBK_UPDATE_POLICY: pinned
+      PTBK_PINNED_VERSION: 0.0.0-dryrun.1
+      MOCK_UI_TRUST_POLICY_FILE: /pki/ui-trust-policy.json
+      MOCK_UI_FAKE_PROVENANCE: enabled
+      MOCK_CONTROL: enabled
+      MOCK_CONTROL_HOST: 0.0.0.0
+      MOCK_CONTROL_PORT: '4480'
     volumes:
       - public:/pki:ro
       - engine:/engine
     dns: [10.89.231.53]
     networks:
-      - stack
+      stack:
+        # Fixed, so Playwright reaches the control listener (src/stack.ts, MOCK_ENGINE_CONTROL). The nat overlay
+        # moves the engine behind its gateway, where only the spike scenario's tests are not looking for it.
+        ipv4_address: 10.89.231.31
 
   # Healthy once every relay has a ready tunnel and routes the engine hostname to it, checked from the browser's side
   # of the network rather than from the engine, whose way out differs per scenario (gateway, proxy).
@@ -252,3 +304,5 @@ volumes:
   engine:
   relay-a-key:
   relay-b-key:
+  releases:
+  release-store-key:

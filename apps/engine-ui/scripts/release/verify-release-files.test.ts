@@ -17,13 +17,13 @@ import {
     importEd25519PrivateKey,
     signDsse,
 } from '@ptbk/protocol';
+import { writeTar } from '@ptbk/release-tools';
 import { beforeAll, describe, expect, it } from 'vitest';
 
 import { compressArchive, packBundle } from './archive.ts';
 import { MANIFEST_PATH, buildManifest, sha256Hex } from './manifest.ts';
 import { buildReleasePayload } from './release-entry.ts';
 import { signRelease } from './signed-release.ts';
-import { writeTar } from './tar.ts';
 import type { ReleaseFiles } from './verify-release-files.ts';
 import { verifyReleaseFiles } from './verify-release-files.ts';
 

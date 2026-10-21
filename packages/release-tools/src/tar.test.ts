@@ -5,8 +5,8 @@ import { join } from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import type { TarFile } from './tar.ts';
-import { TAR_LIMITS, TarFormatError, TarPathError, assertSafePath, readTar, readTree, writeTar } from './tar.ts';
+import type { TarFile } from './tar';
+import { TAR_LIMITS, TarFormatError, TarPathError, assertSafePath, readTar, readTree, writeTar } from './tar';
 
 const text = (value: string): Uint8Array<ArrayBuffer> => new TextEncoder().encode(value);
 const MTIME = 1_760_000_000;

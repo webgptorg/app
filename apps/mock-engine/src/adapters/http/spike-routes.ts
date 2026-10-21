@@ -164,7 +164,7 @@ const NO_QUERY = z.strictObject({});
 export function createSpikeRoutes(deps: SpikeRouteDeps): readonly Route[] {
     const { clock, engineId } = deps;
     const page = spikePage(engineId, deps.canary);
-    const pageRoute = (path: '/' | '/__spike/') =>
+    const pageRoute = (path: '/__spike/') =>
         defineHttpRoute({
             transport: 'http',
             params: null,
@@ -180,8 +180,6 @@ export function createSpikeRoutes(deps: SpikeRouteDeps): readonly Route[] {
         });
 
     return [
-        // `/` serves the spike page until M-05 mounts the UI there.
-        pageRoute('/'),
         pageRoute('/__spike/'),
         defineHttpRoute({
             transport: 'http',

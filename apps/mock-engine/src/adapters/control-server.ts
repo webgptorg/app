@@ -5,6 +5,7 @@ import type { AddressInfo } from 'node:net';
 import type { HttpBindings } from '@hono/node-server';
 import { getRequestListener } from '@hono/node-server';
 import { Permission, Role } from '@ptbk/engine-api';
+import { EngineVersion } from '@ptbk/protocol';
 import { Hono } from 'hono';
 import { z } from 'zod';
 
@@ -17,7 +18,9 @@ import type { Logger } from '../domain/logger';
 import type { RateLimiter } from '../domain/rate-limit/rate-limiter';
 import type { EngineRuntime } from '../domain/state/engine-runtime';
 import { Scenario } from '../domain/state/scenarios';
-import { BASELINE_HEADERS } from './http/http-app';
+import type { InstalledBundle } from '../domain/ui/bundle-store';
+import type { UiLoader } from '../domain/ui/ui-loader';
+import { applySecurityHeaders } from './http/http-app';
 import type { HttpRoute } from './http/route';
 import { defineHttpRoute } from './http/route';
 import { bySpecificity, honoPath, problemResponse, rateLimited, runHttpRoute } from './http/route-handler';
@@ -55,6 +58,8 @@ export interface ControlDeps {
     readonly rateLimiter: RateLimiter;
     /** The last heartbeat sent and the clock skew the dashboard reported; absent in the M1 dev mode. */
     readonly heartbeat?: () => HeartbeatStatus;
+    /** The UI loader; absent without `PTBK_UI_RELEASE_URL`. */
+    readonly ui?: UiLoader;
     readonly logger: Logger;
     /** RFC 3339, for synthetic members' `createdAt`. */
     readonly now: () => string;
@@ -154,6 +159,38 @@ export function createControlRoutes(deps: ControlDeps): readonly HttpRoute[] {
         }),
         control({
             method: 'GET',
+            path: '/__mock/ui',
+            body: null,
+            handle: () => {
+                if (deps.ui === undefined) return problemResponse({ code: 'not-found' });
+                return Response.json(uiStatus(deps.ui));
+            },
+        }),
+        control({
+            method: 'POST',
+            path: '/__mock/ui/check',
+            body: {
+                kind: 'json',
+                schema: z.strictObject({ pinnedVersion: EngineVersion.optional() }),
+                maxBytes: BODY_MAX_BYTES,
+            },
+            handle: async ({ body }) => {
+                const { ui } = deps;
+                if (ui === undefined) return problemResponse({ code: 'not-found' });
+                if (body.pinnedVersion !== undefined && !ui.pin(body.pinnedVersion)) {
+                    return problemResponse({
+                        code: 'validation-failed',
+                        extras: {
+                            errors: [{ path: 'body.pinnedVersion', message: 'Only under PTBK_UPDATE_POLICY=pinned.' }],
+                        },
+                    });
+                }
+                const outcome = await ui.checkNow();
+                return Response.json({ outcome, ...uiStatus(ui) });
+            },
+        }),
+        control({
+            method: 'GET',
             path: '/__mock/members',
             body: null,
             handle: () =>
@@ -184,6 +221,20 @@ export function createControlRoutes(deps: ControlDeps): readonly HttpRoute[] {
     ];
 }
 
+function bundleStatus(bundle: InstalledBundle | undefined) {
+    return bundle === undefined ? null : { version: bundle.version, sha256: bundle.sha256, logIndex: bundle.logIndex };
+}
+
+/** What the loader serves and what its last check decided; never file contents. */
+function uiStatus(ui: UiLoader) {
+    return {
+        policy: ui.policy(),
+        active: bundleStatus(ui.store.active()),
+        previous: bundleStatus(ui.store.previous()),
+        lastOutcome: ui.lastOutcome(),
+    };
+}
+
 export interface ControlServer {
     readonly port: number;
     readonly routes: readonly HttpRoute[];
@@ -198,7 +249,7 @@ export async function startControlServer(
     const app = new Hono<{ Bindings: HttpBindings }>();
     app.use(async (c, next) => {
         await next();
-        for (const [name, value] of Object.entries(BASELINE_HEADERS)) c.res.headers.set(name, value);
+        applySecurityHeaders(c.res.headers);
     });
     for (const route of [...routes].sort(bySpecificity)) {
         app.on(route.method, honoPath(route.path), async (c) => {

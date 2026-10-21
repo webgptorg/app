@@ -368,14 +368,12 @@ describe('GET /__spike/download', () => {
 });
 
 describe('the spike page', () => {
-    it('serves the same static page at / and /__spike/ naming the engine', async () => {
+    it('serves a static page at /__spike/ naming the engine (the app has /)', async () => {
         const engine = start();
-        const root = await engine.get('/');
         const spike = await engine.get('/__spike/');
-        expect(root.status).toBe(200);
-        expect(root.headers['content-type']).toBe('text/html; charset=utf-8');
-        expect(spike.body.toString('utf8')).toBe(root.body.toString('utf8'));
-        const html = root.body.toString('utf8');
+        expect(spike.status).toBe(200);
+        expect(spike.headers['content-type']).toBe('text/html; charset=utf-8');
+        const html = spike.body.toString('utf8');
         expect(html).toContain(`<code id="engine-id">${HARNESS_ENGINE_ID}</code>`);
         expect(html).toContain(`<code id="canary">${HARNESS_CANARY}</code>`);
         expect(html).not.toMatch(/<script|<style|\sstyle=|\son[a-z]+=/i);
@@ -384,7 +382,6 @@ describe('the spike page', () => {
 
 describe('query limits', () => {
     const invalid: readonly string[] = [
-        '/?x=1',
         '/__spike/?x=1',
         '/__spike/whoami?x=1',
         '/__spike/sse?x=1',

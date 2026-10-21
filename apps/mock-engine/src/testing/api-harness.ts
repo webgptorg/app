@@ -22,6 +22,8 @@ import type { RateLimiter } from '../domain/rate-limit/rate-limiter';
 import type { EngineRuntime } from '../domain/state/engine-runtime';
 import { createEngineRuntime } from '../domain/state/engine-runtime';
 import type { Scenario } from '../domain/state/scenarios';
+import type { BundleStore } from '../domain/ui/bundle-store';
+import type { UiLoader } from '../domain/ui/ui-loader';
 import type { ContractRecorder } from './contract-recorder';
 import { createContractRecorder } from './contract-recorder';
 import {
@@ -47,6 +49,10 @@ export interface ApiHarnessOptions {
     readonly devLogin?: boolean;
     readonly faults?: FaultPlan;
     readonly rateLimiter?: RateLimiter;
+    /** The UI bundles the app's routes serve; without it they answer 503. */
+    readonly bundles?: Pick<BundleStore, 'active' | 'read'>;
+    /** The UI loader the control listener drives. */
+    readonly ui?: UiLoader;
 }
 
 export interface ApiHarness {
@@ -132,6 +138,7 @@ export function createApiHarness(options: ApiHarnessOptions = {}): ApiHarness {
         clock,
         logger,
         ...(options.rateLimiter === undefined ? {} : { rateLimiter: options.rateLimiter }),
+        ...(options.bundles === undefined ? {} : { bundles: options.bundles }),
     });
     const recorder = createContractRecorder();
     const sockets = new Set<TLSSocket>();
@@ -196,6 +203,7 @@ export function createApiHarness(options: ApiHarnessOptions = {}): ApiHarness {
                 sessions,
                 faults,
                 rateLimiter: { consume: () => ({ kind: 'allowed' }) },
+                ...(options.ui === undefined ? {} : { ui: options.ui }),
                 logger,
                 now: () => new Date(clock.nowMs()).toISOString().replace(/\.\d{3}Z$/, 'Z'),
             });

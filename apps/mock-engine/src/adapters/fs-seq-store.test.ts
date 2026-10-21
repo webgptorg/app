@@ -106,7 +106,9 @@ describe('createFsSeqStore', () => {
         const error = await store.next().catch((caught: unknown) => caught);
         expect(error).toBeInstanceOf(SeqStoreError);
         expect((error as Error).message).toContain('does not hold a sequence number');
-        if (content.trim() !== '') expect((error as Error).message).not.toContain(content.trim());
+        // The message names the file's path, whose random temp directory may contain the content by chance.
+        const message = (error as Error).message.replaceAll(dir, '<dir>');
+        if (content.trim() !== '') expect(message).not.toContain(content.trim());
     });
 
     it('keeps working for the next call after a failed one', async () => {

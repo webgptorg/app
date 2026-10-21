@@ -1,10 +1,10 @@
 import type { MockEngineConfig } from '../app/config';
 import { NO_FAULTS } from '../domain/faults/fault-plan';
 
-/** The M-04 and M-06 settings at their defaults, for tests that build a `MockEngineConfig` by hand. */
+/** The M-04, M-05 and M-06 settings at their defaults, for tests that build a `MockEngineConfig` by hand. */
 export const DEFAULT_MOCK_SETTINGS: Pick<
     MockEngineConfig,
-    'seed' | 'scenario' | 'seedEpoch' | 'faults' | 'devLogin' | 'control' | 'dashboard' | 'stats'
+    'seed' | 'scenario' | 'seedEpoch' | 'faults' | 'devLogin' | 'control' | 'dashboard' | 'stats' | 'ui'
 > = Object.freeze({
     seed: 1,
     scenario: 'small-team',
@@ -14,4 +14,5 @@ export const DEFAULT_MOCK_SETTINGS: Pick<
     control: null,
     dashboard: null,
     stats: 'os',
+    ui: null,
 });

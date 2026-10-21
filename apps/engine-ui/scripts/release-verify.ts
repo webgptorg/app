@@ -8,8 +8,9 @@ import { readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 
-import { RELEASE_FILES, STAGING_POLICY_FILE, TRUSTED_ROOT_FILE } from './release/paths.ts';
-import { createSigstoreProvenanceVerifier } from './release/sigstore-provenance-verifier.ts';
+import { PINNED_TRUSTED_ROOT, createSigstoreProvenanceVerifier } from '@ptbk/release-tools';
+
+import { RELEASE_FILES, STAGING_POLICY_FILE } from './release/paths.ts';
 import { readTrustPolicy } from './release/trust-policy.ts';
 import { verifyReleaseFiles } from './release/verify-release-files.ts';
 
@@ -32,7 +33,10 @@ const json = async (name: string): Promise<unknown> => {
 };
 
 const policyFile = values.policy === undefined ? STAGING_POLICY_FILE : resolve(values.policy);
-const trustedRoot: unknown = JSON.parse(await readFile(resolve(values['trusted-root'] ?? TRUSTED_ROOT_FILE), 'utf8'));
+const trustedRoot: unknown =
+    values['trusted-root'] === undefined
+        ? PINNED_TRUSTED_ROOT
+        : JSON.parse(await readFile(resolve(values['trusted-root']), 'utf8'));
 const result = await verifyReleaseFiles(
     {
         release: await json(RELEASE_FILES.signedRelease),

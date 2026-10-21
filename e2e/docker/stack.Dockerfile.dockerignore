@@ -9,8 +9,11 @@
 !packages/*/package.json
 !packages/protocol/
 !packages/engine-api/
+!packages/ui/
+!packages/release-tools/
 !apps/relay/
 !apps/mock-engine/
+!apps/engine-ui/
 !e2e/
 **/node_modules
 **/dist
@@ -19,3 +22,10 @@
 **/.dev.vars*
 e2e/test-results
 e2e/playwright-report
+# engine-ui build output and generated code: the ui-bundle stage builds its own.
+apps/engine-ui/release
+apps/engine-ui/reports
+apps/engine-ui/test-results
+apps/engine-ui/playwright-report
+apps/engine-ui/src/paraglide
+**/routeTree.gen.ts

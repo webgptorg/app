@@ -10,10 +10,11 @@ export default defineConfig({
                 'src/**/*.test.ts',
                 // Test support: fakes, the in-test relay, proxy and PKI, not product code.
                 'src/testing/**',
-                // Process entries: a few lines of wiring around start-mock-engine, the identity store and the dev CA command.
+                // Process entries: wiring around start-mock-engine, the identity store, the dev CA and test releases.
                 'src/main.ts',
                 'src/identity.ts',
                 'src/dev-ca.ts',
+                'src/ui-test-release.ts',
             ],
             // Tunnel auth and identity are signature code (AGENTS.md step 6).
             thresholds: { lines: 90, branches: 90 },

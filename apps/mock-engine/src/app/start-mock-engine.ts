@@ -13,6 +13,7 @@ import type { HttpApp } from '../adapters/http/http-app';
 import { createHttpApp } from '../adapters/http/http-app';
 import type { Route } from '../adapters/http/route';
 import { createSpikeRoutes } from '../adapters/http/spike-routes';
+import { createUiRoutes } from '../adapters/http/ui-routes';
 import type { TlsStreamServer } from '../adapters/tls-stream-server';
 import { createTlsStreamServer } from '../adapters/tls-stream-server';
 import type { TunnelDuplex } from '../adapters/tunnel-duplex';
@@ -46,6 +47,9 @@ import { createSeededSequence, hashSeed } from '../domain/state/seed-random';
 import type { RelayTarget } from '../domain/tunnel/relay-target';
 import { relayTargetOf } from '../domain/tunnel/relay-target';
 import type { StreamEvents } from '../domain/tunnel/tunnel-stream';
+import type { BundleStore } from '../domain/ui/bundle-store';
+import type { UiLoader, UiLoaderDeps } from '../domain/ui/ui-loader';
+import { createUiLoader } from '../domain/ui/ui-loader';
 import type { MockEngineConfig } from './config';
 import { establishRegistration } from './establish-registration';
 
@@ -71,6 +75,8 @@ export interface MockEngineDeps {
     readonly certificates?: ManagedCertificateSource;
     /** Required with `PTBK_DASHBOARD_URL`: registration and heartbeat. */
     readonly dashboard?: DashboardDeps | undefined;
+    /** Required with `PTBK_UI_RELEASE_URL`: the UI loader's release store, bundle store, state and verifiers. */
+    readonly ui?: UiLoaderDeps | undefined;
 }
 
 export interface DashboardDeps {
@@ -106,6 +112,8 @@ export interface MockEngine {
     readonly registration: Registration | null;
     /** Null in the M1 dev mode. */
     readonly heartbeat: HeartbeatLoop | null;
+    /** Null without `PTBK_UI_RELEASE_URL`: then the app's routes answer 503. */
+    readonly ui: UiLoader | null;
     /** Closes every tunnel cleanly and stops reconnecting. */
     close(): Promise<void>;
 }
@@ -118,6 +126,27 @@ const REFUSED_EVENTS: StreamEvents = Object.freeze({ data: ignore, sendCredit: i
 function dashboardDeps(deps: MockEngineDeps): DashboardDeps {
     if (deps.dashboard === undefined) throw new Error('PTBK_DASHBOARD_URL is set but no dashboard adapters were given');
     return deps.dashboard;
+}
+
+/** What the app's routes serve while no loader is configured: nothing, so they answer 503. */
+const NO_BUNDLES: Pick<BundleStore, 'active' | 'read'> = Object.freeze({
+    active: () => undefined,
+    read: () => Promise.resolve(undefined),
+});
+
+function configuredUiLoader(config: MockEngineConfig, deps: MockEngineDeps, runtime: EngineRuntime): UiLoader | null {
+    if (config.ui === null) return null;
+    if (deps.ui === undefined) throw new Error('PTBK_UI_RELEASE_URL is set but no UI loader adapters were given');
+    return createUiLoader({
+        updatePolicy: config.ui.updatePolicy,
+        checkIntervalS: config.ui.checkIntervalS,
+        deps: deps.ui,
+        clock: deps.clock,
+        logger: deps.logger,
+        onActive: (bundle) => {
+            runtime.setUi({ version: bundle.version, bundleSha256: bundle.sha256, releaseLogIndex: bundle.logIndex });
+        },
+    });
 }
 
 /** The registration's relays, unless `MOCK_RELAYS_OVERRIDE` keeps `PTBK_RELAYS` (and always in the M1 dev mode). */
@@ -180,6 +209,7 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
         sessions.clear();
     });
     const faults = createFaultSettings(config.faults);
+    const ui = configuredUiLoader(config, deps, runtime);
     const server =
         deps.certificates === undefined
             ? null
@@ -192,6 +222,7 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
                   seed: config.seed,
                   devLogin: config.devLogin,
                   canary: spikeCanary(deps.random),
+                  bundles: ui?.store ?? NO_BUNDLES,
                   clock: deps.clock,
                   logger,
               });
@@ -217,6 +248,7 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
                   faults,
                   rateLimiter: createWindowRateLimiter({ clock: deps.clock }),
                   ...(heartbeat === null ? {} : { heartbeat: () => heartbeat.status() }),
+                  ...(ui === null ? {} : { ui }),
                   logger,
                   now: () => new Date(deps.clock.nowMs()).toISOString().replace(/\.\d{3}Z$/, 'Z'),
               });
@@ -258,6 +290,7 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
     });
     for (const link of links) link.start();
     heartbeat?.start();
+    ui?.start();
 
     return {
         identity,
@@ -269,6 +302,7 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
         control,
         registration,
         heartbeat,
+        ui,
         onStream(next) {
             handler = next;
             return () => {
@@ -276,7 +310,7 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
             };
         },
         async close() {
-            await Promise.all([heartbeat?.stop(), ...links.map((link) => link.stop())]);
+            await Promise.all([heartbeat?.stop(), ui?.stop(), ...links.map((link) => link.stop())]);
             await control?.close();
             server?.close();
             deps.certificates?.close();
@@ -317,7 +351,7 @@ function spikeCanary(random: Random): string {
     return Buffer.from(random.bytes(SPIKE_CANARY_BYTES)).toString('hex');
 }
 
-/** Everything served inside the tunnel: spike pages, the gateway's pages and the engine API. */
+/** Everything served inside the tunnel: spike pages, the gateway's pages, the engine API and the app (UI bundle). */
 export function createInTunnelRoutes(deps: {
     readonly engineId: EngineIdentity['engineId'];
     readonly clock: Clock;
@@ -325,6 +359,8 @@ export function createInTunnelRoutes(deps: {
     readonly sessions: SessionStore;
     readonly devLogin: boolean;
     readonly canary: string;
+    /** Without it, the app's routes answer 503 (no UI loader). */
+    readonly bundles?: Pick<BundleStore, 'active' | 'read'>;
 }): readonly Route[] {
     return [
         ...createSpikeRoutes({ engineId: deps.engineId, clock: deps.clock, canary: deps.canary }),
@@ -334,6 +370,7 @@ export function createInTunnelRoutes(deps: {
             devLogin: deps.devLogin,
         }),
         ...createEngineApiRoutes({ core: deps.core }),
+        ...createUiRoutes({ store: deps.bundles ?? NO_BUNDLES }),
     ];
 }
 
@@ -354,6 +391,8 @@ export interface EngineServerDeps {
     readonly devLogin: boolean;
     /** Shown on the spike page; see `SpikeRouteDeps.canary`. */
     readonly canary: string;
+    /** The UI bundles the app's routes serve; without it they answer 503. */
+    readonly bundles?: Pick<BundleStore, 'active' | 'read'>;
     readonly clock: Clock;
     readonly logger: Logger;
     readonly rateLimiter?: RateLimiter;

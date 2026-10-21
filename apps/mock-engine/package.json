@@ -11,6 +11,7 @@
     "start": "node dist/main.mjs",
     "identity": "tsx src/identity.ts",
     "dev-ca": "tsx src/dev-ca.ts",
+    "ui-test-release": "tsx src/ui-test-release.ts",
     "typecheck": "tsc --noEmit -p .",
     "test": "vitest run --coverage"
   },
@@ -19,6 +20,7 @@
     "@hono/node-server": "1.19.17",
     "@ptbk/engine-api": "workspace:*",
     "@ptbk/protocol": "workspace:*",
+    "@ptbk/release-tools": "workspace:*",
     "hono": "catalog:",
     "ws": "catalog:",
     "zod": "catalog:"

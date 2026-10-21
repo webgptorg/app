@@ -13,7 +13,7 @@ export interface Scenario {
 }
 
 export const SCENARIOS: readonly Scenario[] = [
-    { name: 'spike', overlays: [], specs: ['harness/sandbox.spec.ts', 'spike/*.spec.ts'] },
+    { name: 'spike', overlays: [], specs: ['harness/sandbox.spec.ts', 'spike/*.spec.ts', 'ui-loader/*.spec.ts'] },
     {
         name: 'nat',
         overlays: ['nat', 'capture'],

@@ -7,10 +7,10 @@ import { CONNECT_PROXY, ENGINE_HOST, HTTPS_PORT, RELAYS } from '../../src/stack.
 test('the engine reaches both relays only through the CONNECT proxy, and the page loads', async ({
     page,
     engineId,
-    engineUrl,
+    spikeUrl,
     compose,
 }) => {
-    const response = await page.goto(engineUrl);
+    const response = await page.goto(spikeUrl);
     expect(response?.status()).toBe(200);
     await expect(page.locator('#engine-id')).toHaveText(engineId);
 

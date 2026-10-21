@@ -1,10 +1,10 @@
-import { constants, zstdCompressSync, zstdDecompressSync } from 'node:zlib';
+import { constants, zstdCompressSync } from 'node:zlib';
 
 import { UiBundleManifest } from '@ptbk/protocol';
+import { TarFormatError, readUiArchive, writeTar } from '@ptbk/release-tools';
 
 import { MANIFEST_PATH, buildManifest, encodeManifest } from './manifest.ts';
 import type { ManifestInput } from './manifest.ts';
-import { TAR_LIMITS, TarFormatError, readTar, writeTar } from './tar.ts';
 
 export const ARCHIVE_NAME = 'engine-ui.tar.zst';
 /** Fixed, so the same tar always compresses to the same bytes with the same zstd (pinned through `.nvmrc`). */
@@ -17,11 +17,6 @@ export function compressArchive(tar: Uint8Array): Uint8Array<ArrayBuffer> {
             [constants.ZSTD_c_checksumFlag]: 1,
         },
     });
-}
-
-export function decompressArchive(archive: Uint8Array): Uint8Array {
-    // A tar of the largest accepted content plus its headers; a zstd bomb stops here.
-    return zstdDecompressSync(archive, { maxOutputLength: TAR_LIMITS.maxUnpackedBytes + 16 * 1024 * 1024 });
 }
 
 export interface PackedBundle {
@@ -50,15 +45,10 @@ export interface UnpackedBundle {
 
 /** Unpacks an archive `packBundle` wrote; throws `TarFormatError` on anything else. */
 export function unpackBundle(archive: Uint8Array): UnpackedBundle {
-    const [first, ...rest] = readTar(decompressArchive(archive));
-    if (first?.path !== MANIFEST_PATH) throw new TarFormatError(`the first entry is not ${MANIFEST_PATH}`);
-    const manifest = parseManifest(first.bytes);
+    const { manifestBytes, files } = readUiArchive(archive);
+    const manifest = parseManifest(manifestBytes);
     if (manifest === undefined) throw new TarFormatError('the manifest does not match UiBundleManifest');
-    return {
-        manifest,
-        manifestBytes: first.bytes,
-        files: new Map(rest.map((file) => [file.path, file.bytes])),
-    };
+    return { manifest, manifestBytes, files };
 }
 
 export function parseManifest(bytes: Uint8Array): UiBundleManifest | undefined {

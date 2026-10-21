@@ -55,7 +55,7 @@ sequenceDiagram
 ### Security headers
 
 - Send `ENGINE_UI_CSP` from `@ptbk/engine-api`, byte for byte, as the `Content-Security-Policy` of the UI and the gateway's own pages: `default-src 'self'`, `script-src 'self'`, no `unsafe-inline` or `unsafe-eval`, no external origins, `frame-ancestors 'none'`, `require-trusted-types-for 'script'` and the single Trusted Types policy `ptbk-html`. The UI bundle is built and tested against exactly this string; never use a local copy or the manifest's `csp`.
-- Also send `Strict-Transport-Security`, `Cross-Origin-Opener-Policy: same-origin`, `Referrer-Policy: no-referrer` and `X-Content-Type-Options: nosniff` on every response. Serve file downloads as attachments with `nosniff`.
+- Also send, on every response (UI files, API, gateway pages, errors): `Strict-Transport-Security: max-age=31536000`, `Cross-Origin-Opener-Policy: same-origin`, `Cross-Origin-Resource-Policy: same-origin`, `Referrer-Policy: no-referrer`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY` and `Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()`. Serve file downloads as attachments with `nosniff`. Whether to add `Cross-Origin-Embedder-Policy: require-corp` is open until the UI is tested with it.
 - The gateway pages themselves have no inline script or style.
 - Agent output never becomes executable: the UI sanitises markdown and shows external images as links, and the CSP backs that up.
 
@@ -79,5 +79,5 @@ C-05 v1 checks that every route answers 401 problem+json without credentials and
 
 ## Reference implementation
 
-- **Headers on every in-tunnel response: merged (M-02), partly.** [http-app.ts](../../apps/mock-engine/src/adapters/http/http-app.ts) sends `ENGINE_UI_CSP`, `Cache-Control: no-store` and `X-Content-Type-Options: nosniff` on every response. The full header set is pending M-05.
+- **Headers on every in-tunnel response: merged (M-05).** [security-headers.ts](../../apps/mock-engine/src/domain/http/security-headers.ts) is the set above; [http-app.ts](../../apps/mock-engine/src/adapters/http/http-app.ts) applies it after every handler, error and refused WebSocket upgrade, so no route or bundle can change it, and adds `Cache-Control: no-store` unless a route chose its own caching (the UI's files).
 - **Sessions, CSRF, anonymous answers and step-up: merged (M-04), as a stand-in.** [gateway-middleware.ts](../../apps/mock-engine/src/adapters/http/gateway-middleware.ts) and [sessions.ts](../../apps/mock-engine/src/domain/gateway/sessions.ts): the `__Host-ptbk_session` cookie, separate 128-bit token and session ID, idle and absolute timeouts, Fetch Metadata and `Origin` checks, 401 for anonymous API calls and the sign-in page for documents. Sign-in is a dev-only member picker ([dev-login.ts](../../apps/mock-engine/src/adapters/http/dev-login.ts)). It is a stand-in for tests, not a port of the real gateway: the real gateway uses passkeys, and the dev login must never ship.

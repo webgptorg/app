@@ -1,9 +1,8 @@
+import { TarFormatError, decompressArchive, readTar, writeTar } from '@ptbk/release-tools';
 import { describe, expect, it } from 'vitest';
 
 import { compressArchive, packBundle, parseManifest, unpackBundle } from './archive.ts';
 import { MANIFEST_PATH, encodeManifest } from './manifest.ts';
-import { TarFormatError, readTar, writeTar } from './tar.ts';
-import { decompressArchive } from './archive.ts';
 
 const text = (value: string): Uint8Array<ArrayBuffer> => new TextEncoder().encode(value);
 

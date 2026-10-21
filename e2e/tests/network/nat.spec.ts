@@ -10,10 +10,10 @@ const PROBED_PORTS = [...new Set([...ENGINE_HOST_PORTS, 22, 80, 3128, 4480, 8443
 test('the engine page loads through the relays while the engine sits behind NAT', async ({
     page,
     engineId,
-    engineUrl,
+    spikeUrl,
     compose,
 }) => {
-    const response = await page.goto(engineUrl);
+    const response = await page.goto(spikeUrl);
     expect(response?.status()).toBe(200);
     await expect(page.locator('#engine-id')).toHaveText(engineId);
 
