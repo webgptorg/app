@@ -95,6 +95,8 @@ export interface DataTableProps<TData extends RowData> {
     readonly page?: DataTablePage;
     /** Called with the cursor to load: `page.previousCursor` or `page.nextCursor`. */
     readonly onPageChange?: (cursor: string, direction: 'previous' | 'next') => void;
+    /** The reader is about to change page (hover or focus on previous or next), so the app can prefetch it. */
+    readonly onPageIntent?: (cursor: string, direction: 'previous' | 'next') => void;
     /** First load: skeleton rows of stable height. */
     readonly loading?: boolean;
     /** A later load (next page, new sort): the current rows stay visible, dimmed. */
@@ -161,6 +163,7 @@ export function DataTable<TData extends RowData>(props: DataTableProps<TData>) {
         mode = 'server',
         page,
         onPageChange,
+        onPageIntent,
         loading = false,
         fetching = false,
         error,
@@ -468,6 +471,16 @@ export function DataTable<TData extends RowData>(props: DataTableProps<TData>) {
                     onNext={() => {
                         if (page.nextCursor !== null) onPageChange(page.nextCursor, 'next');
                     }}
+                    {...(onPageIntent === undefined
+                        ? {}
+                        : {
+                              onPreviousIntent: () => {
+                                  if (page.previousCursor !== null) onPageIntent(page.previousCursor, 'previous');
+                              },
+                              onNextIntent: () => {
+                                  if (page.nextCursor !== null) onPageIntent(page.nextCursor, 'next');
+                              },
+                          })}
                     {...(page.total === undefined ? {} : { total: page.total })}
                     disabled={busy}
                 />

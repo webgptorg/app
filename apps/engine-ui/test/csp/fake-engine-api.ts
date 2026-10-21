@@ -115,7 +115,38 @@ const ROUTES: readonly (readonly ['GET' | 'POST', RegExp, number, Call])[] = [
     ],
     ['GET', /^\/passkeys$/, 200, (api, _, query, __, signal) => api.passkeys.list(Object.fromEntries(query), signal)],
     ['GET', /^\/runs$/, 200, (api, _, query, __, signal) => api.runs.list(Object.fromEntries(query), signal)],
+    ['GET', /^\/audit$/, 200, (api, _, query, __, signal) => api.audit.list(Object.fromEntries(query), signal)],
+    ['GET', /^\/audit\/verify$/, 200, (api, _, __, ___, signal) => api.audit.verify(signal)],
 ];
+
+/** A target name that must stay text in the audit log. */
+export const HOSTILE_TARGET_NAME = '<img src=x onerror=alert(1)>';
+
+/** Enough entries for a second page, newest the hostile one, with long user agents to test wrapping at 360 px. */
+function auditEntries() {
+    return Array.from({ length: 60 }, (_, index) => {
+        const n = index + 1;
+        return {
+            at: new Date(Date.parse('2026-09-01T00:00:00Z') + n * 3_600_000).toISOString(),
+            actor: n % 10 === 0 ? { kind: 'system' as const } : { kind: 'member' as const, memberId: 'member-jana' },
+            action: n % 2 === 0 ? ('agent.update' as const) : ('secret.replace' as const),
+            target:
+                n % 2 === 0
+                    ? { kind: 'agent' as const, id: FAKE_AGENT_ID, name: n === 60 ? HOSTILE_TARGET_NAME : 'Ada' }
+                    : { kind: 'secret' as const, id: 'secret-github', name: 'GITHUB_TOKEN' },
+            outcome: n % 7 === 0 ? ('denied' as const) : ('success' as const),
+            client:
+                n % 10 === 0
+                    ? null
+                    : {
+                          ip: '2001:db8:85a3::8a2e:370:7334',
+                          userAgent:
+                              'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+                      },
+            details: { fields: ['name', 'visibility'], previous: { visibility: 'private' } },
+        };
+    });
+}
 
 /** Every security panel section filled, with a foreign certificate and a heartbeat in its raw, oddly spaced form. */
 export const RAW_HEARTBEAT = '{ "v":1,  "seq" : 7,\n"engineId":"memoryengine234567abcdefgh" }';
@@ -223,6 +254,7 @@ export async function routeFakeEngineApi(page: Page): Promise<void> {
                     lastUsedAt: null,
                 },
             ],
+            auditEntries: auditEntries(),
             members: [
                 {
                     id: 'member-jana',

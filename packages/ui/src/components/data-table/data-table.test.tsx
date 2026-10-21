@@ -297,6 +297,21 @@ describe('DataTable in server-side mode', () => {
         rerender(table({ page: { previousCursor: null, nextCursor: 'cursor-2' }, onPageChange, fetching: true }));
         expect(screen.getByRole('button', { name: 'Next page' }).hasAttribute('disabled')).toBe(true);
     });
+
+    it('reports the intent to change page on hover and focus, for prefetching', async () => {
+        const onPageIntent = vi.fn();
+        const { user } = renderUi(
+            table({
+                page: { previousCursor: 'cursor-1', nextCursor: 'cursor-3' },
+                onPageChange: vi.fn(),
+                onPageIntent,
+            }),
+        );
+        await user.hover(screen.getByRole('button', { name: 'Next page' }));
+        expect(onPageIntent).toHaveBeenLastCalledWith('cursor-3', 'next');
+        screen.getByRole('button', { name: 'Previous page' }).focus();
+        expect(onPageIntent).toHaveBeenLastCalledWith('cursor-1', 'previous');
+    });
 });
 
 describe('DataTable states', () => {

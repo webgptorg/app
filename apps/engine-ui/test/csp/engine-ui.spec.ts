@@ -1,6 +1,6 @@
 import { ENGINE_API_PREFIX } from '@ptbk/engine-api';
 
-import { FAKE_AGENT_ID, FAKE_CHAT_ID, RAW_HEARTBEAT } from './fake-engine-api.ts';
+import { FAKE_AGENT_ID, FAKE_CHAT_ID, HOSTILE_TARGET_NAME, RAW_HEARTBEAT } from './fake-engine-api.ts';
 import { expect, expectCleanPage, readBuiltIndexHtml, test } from './fixtures.ts';
 
 test.describe('the built bundle under the engine CSP', () => {
@@ -77,6 +77,46 @@ test.describe('the built bundle under the engine CSP', () => {
         await expect(page.getByText('A certificate this engine did not request exists for its hostname')).toBeVisible();
         await expect(page.getByTestId('heartbeat-body')).toHaveText(RAW_HEARTBEAT, { useInnerText: false });
         await expect(page.getByText('The UI version does not match')).toHaveCount(0);
+        expectCleanPage(report);
+    });
+
+    test('/audit shows hostile target names as text, expands by keyboard and meets the UX checks', async ({
+        page,
+        visit,
+    }) => {
+        const report = await visit('/audit');
+        await expect(page.getByText('Hash chain intact')).toBeVisible();
+        const table = page.getByRole('table');
+        await expect(table.getByText(HOSTILE_TARGET_NAME, { exact: true })).toBeVisible();
+        expect(await table.locator('img, script, iframe, object, embed').count()).toBe(0);
+        expectCleanPage(report);
+
+        const expand = page.getByRole('button', { name: /^Expand / }).first();
+        const label = (await expand.getAttribute('aria-label')) ?? '';
+        await expand.focus();
+        await page.keyboard.press('Enter');
+        const collapse = page.getByRole('button', { name: label.replace(/^Expand/, 'Collapse'), exact: true });
+        await expect(collapse).toHaveAttribute('aria-expanded', 'true');
+        await expect(collapse).toBeFocused();
+        await expect(page.getByText('Entry hash', { exact: true })).toBeVisible();
+        await page.setViewportSize({ width: 360, height: 740 });
+        await expect(page.getByText('Entry hash', { exact: true })).toBeVisible();
+        expect(
+            await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth),
+        ).toBeLessThanOrEqual(0);
+        await page.setViewportSize({ width: 1280, height: 720 });
+
+        const requested: string[] = [];
+        page.on('request', (request) => requested.push(request.url()));
+        await page.getByRole('button', { name: 'Next page' }).hover();
+        await expect.poll(() => requested.some((url) => url.includes('/audit?') && url.includes('cursor='))).toBe(true);
+        expect(await page.evaluate(() => window.__ptbkCspViolations ?? [])).toEqual([]);
+    });
+
+    test('/audit restores its filters from the URL and meets the UX checks', async ({ page, visit }) => {
+        const report = await visit('/audit?outcome=denied&from=2026-09-01&to=2026-09-03');
+        await expect(page.getByRole('combobox', { name: 'Outcome' })).toHaveValue('denied');
+        await expect(page.getByRole('table')).toBeVisible();
         expectCleanPage(report);
     });
 

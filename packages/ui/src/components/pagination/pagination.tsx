@@ -9,6 +9,9 @@ export interface PaginationProps {
     readonly hasNext: boolean;
     readonly onPrevious: () => void;
     readonly onNext: () => void;
+    /** Hovering or focusing a button, so the app can prefetch that page before the click. */
+    readonly onPreviousIntent?: () => void;
+    readonly onNextIntent?: () => void;
     /** Shown when the API reports it; cursor paging often cannot. */
     readonly total?: number;
     /** E.g. while the next page loads. */
@@ -22,6 +25,8 @@ export function Pagination({
     hasNext,
     onPrevious,
     onNext,
+    onPreviousIntent,
+    onNextIntent,
     total,
     disabled = false,
     className,
@@ -36,11 +41,23 @@ export function Pagination({
                 {total === undefined ? null : messages.totalItems({ count: total })}
             </p>
             <div className="flex gap-2">
-                <Button size="sm" disabled={disabled || !hasPrevious} onClick={onPrevious}>
+                <Button
+                    size="sm"
+                    disabled={disabled || !hasPrevious}
+                    onClick={onPrevious}
+                    onPointerEnter={onPreviousIntent}
+                    onFocus={onPreviousIntent}
+                >
                     <ChevronLeft aria-hidden="true" className="size-4 rtl:rotate-180" />
                     {messages.previousPage()}
                 </Button>
-                <Button size="sm" disabled={disabled || !hasNext} onClick={onNext}>
+                <Button
+                    size="sm"
+                    disabled={disabled || !hasNext}
+                    onClick={onNext}
+                    onPointerEnter={onNextIntent}
+                    onFocus={onNextIntent}
+                >
                     {messages.nextPage()}
                     <ChevronRight aria-hidden="true" className="size-4 rtl:rotate-180" />
                 </Button>

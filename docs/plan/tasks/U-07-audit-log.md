@@ -2,7 +2,7 @@
 
 - **Lane:** U · **Module:** `apps/engine-ui` · **Milestone:** M2
 - **Depends on:** U-02
-- **Status:** todo
+- **Status:** done (#45)
 - **Spec:** Engine security baseline (Audit: append-only, hash-chained, visible in the security panel), Enterprise-ready engine architecture (Audit), Residual risks (update policy changes are logged); ADRs: [0003](../../adr/0003-ui-as-signed-bundle.md)
 
 ## Goal
@@ -38,17 +38,17 @@ The engine writes an append-only, hash-chained entry for every authenticated act
 
 ## Acceptance criteria
 
-- [ ] With 230 seeded entries in the in-memory client: paging reaches all of them in order; filters by member, action, target kind and ID, outcome and date range narrow results and are written to the URL; reloading restores the view.
-- [ ] Combined filters are sent to the client in one request; changing a filter resets the cursor.
-- [ ] Invalid search params (bad date, unknown outcome) fall back to defaults with no crash.
-- [ ] Expanding a row shows details and both hashes, by keyboard as well as by mouse; copy puts the exact hash on the clipboard.
-- [ ] Focusing "Next" prefetches the next page (in-memory client call count), so the following click renders without a skeleton.
-- [ ] Chain status `broken` shows the danger banner with the sequence number.
-- [ ] An entry whose target name contains `<img src=x onerror=alert(1)>` renders it as literal text.
-- [ ] Without `audit.read` the route shows "no access" and the sidebar hides the item.
-- [ ] Empty, no-results and error states each have a test; `axe-core` passes; `test:csp` visits `/audit` with zero violations and passes the UX checks (360 px without overflow, layout shift, reduced motion); the route stays within its bundle budget.
-- [ ] `bun run check` passes.
-- [ ] **Status** line above set to `done (#<PR>)`.
+- [x] With 230 seeded entries in the in-memory client: paging reaches all of them in order; filters by member, action, target kind and ID, outcome and date range narrow results and are written to the URL; reloading restores the view.
+- [x] Combined filters are sent to the client in one request; changing a filter resets the cursor.
+- [x] Invalid search params (bad date, unknown outcome) fall back to defaults with no crash.
+- [x] Expanding a row shows details and both hashes, by keyboard as well as by mouse; copy puts the exact hash on the clipboard.
+- [x] Focusing "Next" prefetches the next page (in-memory client call count), so the following click renders without a skeleton.
+- [x] Chain status `broken` shows the danger banner with the sequence number.
+- [x] An entry whose target name contains `<img src=x onerror=alert(1)>` renders it as literal text.
+- [x] Without `audit.read` the route shows "no access" and the sidebar hides the item.
+- [x] Empty, no-results and error states each have a test; `axe-core` passes; `test:csp` visits `/audit` with zero violations and passes the UX checks (360 px without overflow, layout shift, reduced motion); the route stays within its bundle budget.
+- [x] `bun run check` passes.
+- [x] **Status** line above set to `done (#<PR>)`.
 
 ## Risks and open points
 
