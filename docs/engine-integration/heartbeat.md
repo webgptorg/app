@@ -48,7 +48,7 @@ The dashboard checks, in this order, with `verifyHeartbeat`: body size, signatur
 | 409 `replayed-seq`                                                                         | `replayed-seq`                    | Its `seq` store went backwards: move `seq` forward with `max(lastSeq + 1, Date.now())`                                                                                                |
 | 401 `stale-timestamp` with `serverTime`                                                    | `stale-ts`                        | Read `serverTime` from the problem body, show the skew (local time minus `serverTime`, negative when the engine is behind) in the security panel, and tell the owner to fix the clock |
 
-Before `verifyHeartbeat` runs, the dashboard can also answer 429 `rate-limited` (per IP, then per engine), 413 for a body over `HEARTBEAT_MAX_BODY_BYTES`, 400 for a malformed engine ID, 404 `not-found` for an unknown engine and 403 `engine-suspended`. Log these and keep sending on the normal interval.
+Before `verifyHeartbeat` runs, the dashboard can also answer 429 `rate-limited` (per IP, then per engine), 413 `too-large` for a body over `HEARTBEAT_MAX_BODY_BYTES`, 400 `invalid-request` for a malformed engine ID, 404 `not-found` for an unknown engine and 403 `engine-suspended`. Log these and keep sending on the normal interval.
 
 `ProblemDetails` in `@ptbk/protocol` carries the optional `serverTime` field for exactly this case. The codes above are what the dashboard answers (D-05); they are not exported contract constants yet (see the [open points](README.md#open-points)). Read the problem with `TolerantProblemDetails` and act on `serverTime` when it is present.
 
