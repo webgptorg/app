@@ -1,6 +1,6 @@
 import type { EngineVersion } from '@ptbk/protocol';
 
-import type { ReleaseSource } from '../../domain/ui/release-source';
+import type { ReleaseSource } from '../domain/ui/release-source';
 
 export interface MemoryRelease {
     readonly record: unknown;

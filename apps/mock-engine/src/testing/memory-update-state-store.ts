@@ -1,5 +1,5 @@
-import type { UpdateStateStore } from '../../domain/ui/update-state-store';
-import { MAX_FIRST_SEEN_ENTRIES } from '../../domain/ui/update-state-store';
+import type { UpdateStateStore } from '../domain/ui/update-state-store';
+import { MAX_FIRST_SEEN_ENTRIES } from '../domain/ui/update-state-store';
 
 export interface UpdateStateSnapshot {
     readonly firstSeen: ReadonlyMap<string, Date>;

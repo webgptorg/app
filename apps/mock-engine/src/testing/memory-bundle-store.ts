@@ -1,7 +1,7 @@
 import { readUiArchive } from '@ptbk/release-tools';
 
-import type { BundleStore, InstalledBundle, StagedBundle } from '../../domain/ui/bundle-store';
-import { bundleId } from '../../domain/ui/bundle-store';
+import type { BundleStore, InstalledBundle, StagedBundle } from '../domain/ui/bundle-store';
+import { bundleId } from '../domain/ui/bundle-store';
 
 /** In memory, with the same archive reader and limits as the file store; for tests and development. */
 export function createMemoryBundleStore(): BundleStore & { stagedCount(): number } {

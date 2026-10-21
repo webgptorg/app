@@ -34,12 +34,15 @@ export function createUiUpdater(deps: UiUpdaterDeps): UiUpdater {
     let last: UiUpdateOutcome | null = null;
     let cancelTimer: (() => void) | null = null;
     let stopped = false;
+    // A function, not a property read: TypeScript would keep a narrowed `aborted` across the awaits below.
+    const aborted = (): boolean => controller.signal.aborted;
 
     async function run(): Promise<UiUpdateOutcome> {
+        if (aborted()) return { kind: 'unavailable' };
         try {
             last = await deps.check(controller.signal);
         } catch (error) {
-            if (!controller.signal.aborted) {
+            if (!aborted()) {
                 deps.logger.error('ui.check-failed', { problem: error instanceof Error ? error.name : 'unknown' });
             }
             last = { kind: 'unavailable' };
