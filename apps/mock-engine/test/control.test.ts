@@ -169,6 +169,131 @@ describe('control listener: state', () => {
     });
 });
 
+describe('control listener: simulation (M-07)', () => {
+    function agentAndTrigger(harness: ApiHarness) {
+        const [agent] = harness.core().controller.findAgents();
+        const [email] = harness.core().controller.findTriggers({ kind: 'email', lifecycle: 'active' });
+        if (agent === undefined || email === undefined) throw new Error('seed lacks an agent or an email trigger');
+        return { agent, email };
+    }
+
+    it('reports the capabilities and the simulation, and resets to a chosen set of capabilities', async () => {
+        const { harness, control } = await setup();
+        const call = controlFetch(control);
+        expect((await call('/__mock/state')).body).toMatchObject({
+            capabilities: ['runs@1', 'files@1', 'triggers@1', 'integrations@1'],
+            simulation: { mode: 'paused', speed: 1, now: '2026-10-01T00:00:00.000Z' },
+        });
+        const reset = await call('/__mock/reset', {
+            method: 'POST',
+            body: { scenario: 'small-team', seed: 3, capabilities: ['runs', 'files'] },
+        });
+        expect(reset.body).toMatchObject({
+            capabilities: ['runs@1', 'files@1'],
+            counts: { runs: expect.any(Number) as number },
+        });
+        const owner = harness.signIn({ memberId: harness.ownerId() });
+        const engine = await harness.fetch(owner)(`${HARNESS_ORIGIN}${ENGINE_API_PREFIX}/engine`);
+        expect(((await engine.json()) as { capabilities: unknown }).capabilities).toEqual([
+            { id: 'runs', version: 1 },
+            { id: 'files', version: 1 },
+        ]);
+        const kept = await call('/__mock/reset', { method: 'POST', body: { scenario: 'empty', seed: 3 } });
+        expect(kept.body).toMatchObject({ capabilities: ['runs@1', 'files@1'] });
+        expect(
+            (
+                await call('/__mock/reset', {
+                    method: 'POST',
+                    body: { scenario: 'empty', seed: 3, capabilities: ['chats'] },
+                })
+            ).status,
+        ).toBe(400);
+    });
+
+    it('switches mode and speed, and advances time only while paused', async () => {
+        const { control } = await setup();
+        const call = controlFetch(control);
+        const advanced = await call('/__mock/simulation/advance', { method: 'POST', body: { ms: 90_000 } });
+        expect(advanced).toMatchObject({ status: 200, body: { mode: 'paused', now: '2026-10-01T00:01:30.000Z' } });
+        expect(
+            await call('/__mock/simulation', { method: 'POST', body: { mode: 'running', speed: 120 } }),
+        ).toMatchObject({
+            status: 200,
+            body: { mode: 'running', speed: 120 },
+        });
+        expect(await call('/__mock/simulation/advance', { method: 'POST', body: { ms: 1 } })).toMatchObject({
+            status: 400,
+            body: { code: 'validation-failed' },
+        });
+        expect((await call('/__mock/simulation', { method: 'POST', body: { mode: 'paused', speed: 0 } })).status).toBe(
+            400,
+        );
+        expect((await call('/__mock/simulation', { method: 'POST', body: { mode: 'paused', extra: 1 } })).status).toBe(
+            400,
+        );
+        expect((await call('/__mock/simulation', { method: 'POST', body: { mode: 'paused' } })).body).toMatchObject({
+            mode: 'paused',
+            speed: 120,
+        });
+        expect((await call('/__mock/simulation/advance', { method: 'POST', body: { ms: 86_400_001 } })).status).toBe(
+            400,
+        );
+    });
+
+    it('scripts a run that plays out as time advances', async () => {
+        const { harness, control } = await setup();
+        const call = controlFetch(control);
+        const { agent } = agentAndTrigger(harness);
+        const created = await call('/__mock/runs', {
+            method: 'POST',
+            body: {
+                agentId: agent.id,
+                outcome: 'completed',
+                steps: [{ text: 'Fetch', toolName: 'web.fetch' }, { text: 'Write' }],
+            },
+        });
+        expect(created).toMatchObject({ status: 201, body: { status: 'queued', source: 'api', agentId: agent.id } });
+        const runId = created.body?.['id'] as string;
+        await call('/__mock/simulation/advance', { method: 'POST', body: { ms: 30_000 } });
+        expect(harness.core().controller.getRun(runId)).toMatchObject({
+            status: 'completed',
+            toolCalls: [{ name: 'web.fetch', state: 'complete' }],
+        });
+        const refused = [
+            { agentId: 'agent-unknown', outcome: 'completed', steps: [{ text: 'x' }] },
+            { agentId: agent.id, outcome: 'completed', steps: [] },
+            { agentId: agent.id, outcome: 'maybe', steps: [{ text: 'x' }] },
+            { agentId: agent.id, outcome: 'failed', steps: [{ text: 'x', toolName: 'Bad Tool' }] },
+            { agentId: agent.id, outcome: 'failed', steps: [{ text: 'x' }], extra: true },
+        ];
+        for (const body of refused) {
+            expect((await call('/__mock/runs', { method: 'POST', body })).status, JSON.stringify(body)).toBe(400);
+        }
+    });
+
+    it('starts an email run for an inbound email, and refuses other triggers', async () => {
+        const { harness, control } = await setup();
+        const call = controlFetch(control);
+        const { email } = agentAndTrigger(harness);
+        const inbound = { triggerId: email.id, from: 'customer@example.com', subject: 'Invoice question' };
+        const fired = await call('/__mock/inbound-email', { method: 'POST', body: inbound });
+        expect(fired).toMatchObject({ status: 201, body: { fire: { outcome: 'started' } } });
+        const runId = (fired.body?.['fire'] as { runId: string }).runId;
+        expect(harness.core().controller.getRun(runId)).toMatchObject({ source: 'email', triggerId: email.id });
+        const [schedule] = harness.core().controller.findTriggers({ kind: 'schedule' });
+        expect(
+            await call('/__mock/inbound-email', { method: 'POST', body: { ...inbound, triggerId: schedule?.id } }),
+        ).toMatchObject({ status: 400 });
+        expect(
+            await call('/__mock/inbound-email', { method: 'POST', body: { ...inbound, triggerId: 'trigger-unknown' } }),
+        ).toMatchObject({ status: 404, body: { code: 'not-found' } });
+        expect(
+            (await call('/__mock/inbound-email', { method: 'POST', body: { ...inbound, from: 'nope' } })).status,
+        ).toBe(400);
+        expect(harness.logger.text()).not.toContain('Invoice question');
+    });
+});
+
 describe('control routes through the tunnel', () => {
     const ENGINE_DOMAIN = Hostname.parse('engines.ptbk.test');
     const RELAY = RelayId.parse('relay-a.ptbk.test');
@@ -262,6 +387,10 @@ describe('control routes through the tunnel', () => {
             ['POST', '/__mock/reset', { scenario: 'empty', seed: 1 }],
             ['PUT', '/__mock/faults', { errorRate: 1 }],
             ['DELETE', '/__mock/faults', undefined],
+            ['POST', '/__mock/simulation', { mode: 'running', speed: 100 }],
+            ['POST', '/__mock/simulation/advance', { ms: 60_000 }],
+            ['POST', '/__mock/runs', { agentId: 'agent-x', outcome: 'completed', steps: [{ text: 'x' }] }],
+            ['POST', '/__mock/inbound-email', { triggerId: 'trigger-x', from: 'a@example.com', subject: 'Hi' }],
         ] as const;
         for (const [method, path, body] of probes) {
             const response = await tunnelFetch(`https://${hostname}${path}`, {
@@ -282,6 +411,7 @@ describe('control routes through the tunnel', () => {
         }
         expect(engine.faults.plan().errorRate).toBe(0);
         expect(engine.runtime.current().scenario).toBe('small-team');
+        expect(engine.runtime.simulation().status()).toMatchObject({ mode: 'paused', speed: 1 });
 
         const port = engine.control.port;
         await engine.close();

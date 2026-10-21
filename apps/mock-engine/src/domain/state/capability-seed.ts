@@ -40,11 +40,12 @@ const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
 /** Seeded runs end before this much time ahead of the epoch, so every one of their timestamps lies before it. */
 const QUIET_BEFORE_EPOCH = 30 * MINUTE;
+const PNG_POOL = 48;
 /** Lines in the fixture diff that exceeds `MAX_RUN_TEXT_BYTES`. */
 const LARGE_DIFF_LINES = 4_000;
 
 function iso(ms: number): string {
-    return new Date(Math.floor(ms / 1000) * 1000).toISOString().replace(/\.\d{3}Z$/, 'Z');
+    return `${new Date(ms).toISOString().slice(0, 19)}Z`;
 }
 
 export interface SeedMemberRef {
@@ -893,10 +894,19 @@ async function seedFiles(ctx: Context): Promise<SeedFile[]> {
     const { input, sequence } = ctx;
     const planned: PlannedFile[] = [];
     const text = (content: string) => () => Promise.resolve(new TextEncoder().encode(content));
-    const png = (fileSeed: number) => () => generatePng(createSeededSequence(fileSeed));
+    // A pool of pictures per seed: enough variety to look real, and a large fleet does not draw thousands.
+    const pictures = new Map<number, Promise<Uint8Array<ArrayBuffer>>>();
+    const png = (fileSeed: number) => () => {
+        let picture = pictures.get(fileSeed);
+        if (picture === undefined) {
+            picture = generatePng(createSeededSequence(fileSeed));
+            pictures.set(fileSeed, picture);
+        }
+        return picture;
+    };
     const bytesFor = (name: string) =>
         name.endsWith('.png')
-            ? png(hashSeed(input.seed, input.scenario, 'png', planned.length))
+            ? png(hashSeed(input.seed, input.scenario, 'png', planned.length % PNG_POOL))
             : text(textContent(sequence, name));
     const clean = (createdAtMs: number) => ({
         status: 'clean' as const,
@@ -1096,11 +1106,11 @@ async function seedFiles(ctx: Context): Promise<SeedFile[]> {
         const current = versions.at(-1);
         if (current === undefined) continue;
         const { metadata } = plan;
-        const blob = (bytes: Uint8Array<ArrayBuffer>) => new Blob([bytes], { type: metadata.contentType });
+        const blobs = versions.map(({ bytes }) => new Blob([bytes], { type: metadata.contentType }));
         files.push({
             metadata: { ...metadata, sha256: current.sha256, sizeBytes: current.bytes.byteLength },
-            content: blob(current.bytes),
-            versions: versions.map((version) => ({
+            content: blobs.at(-1) ?? new Blob(),
+            versions: versions.map((version, at) => ({
                 version: {
                     id: sequence.id('version'),
                     createdAt: version.createdAt,
@@ -1109,7 +1119,7 @@ async function seedFiles(ctx: Context): Promise<SeedFile[]> {
                     commitHash: version.commitHash,
                     runId: version.runId,
                 },
-                content: blob(version.bytes),
+                content: blobs[at] ?? new Blob(),
             })),
         });
         const producer = metadata.runId ? runsById.get(metadata.runId) : undefined;
