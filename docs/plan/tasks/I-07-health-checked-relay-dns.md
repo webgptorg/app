@@ -16,7 +16,7 @@ X-02 measured (2026-10-21) that a relay which hangs while its kernel still accep
 ## Scope
 
 - An external health check, outside the relays (a dashboard Cron Trigger job registered with I-04's `scheduled` dispatcher, or Cloudflare's own health checks if they fit), that completes a TLS handshake with each relay on its own hostname and on a test engine hostname every few seconds to a minute, with a short handshake timeout. A relay is unhealthy after a few consecutive failures and healthy again after a few successes.
-- When a relay turns unhealthy, its A records are removed from the engine domain's wildcard (I-02's records, through the Cloudflare API with a token scoped to that zone); when it recovers, they come back. Never remove the last healthy relay: if every relay fails, keep the records and alert instead (a checker outage must not take every engine offline).
+- When a relay turns unhealthy, its A records are removed from the engine domain's wildcard (I-02's records, through the Cloudflare API with a token scoped to that zone); when it recovers, they come back. That token lives with the checker, never on a relay host: I-01 keeps DNS credentials for the engine domain off relays. Never remove the last healthy relay: if every relay fails, keep the records and alert instead (a checker outage must not take every engine offline).
 - A short TTL on the engine domain's relay records (for example 30 to 60 s) so the change reaches browsers quickly; document what it costs in DNS queries.
 - Alerts through I-04 when a relay leaves or rejoins DNS. No engine IDs, hostnames or IPs beyond the relay's own in alerts or logs.
 - E2E: in X-02's stack, a stand-in for the checker and for the engine domain's DNS (CoreDNS) that drops a relay that stops completing handshakes, so the hung-relay case can be tested end to end.
@@ -36,4 +36,5 @@ X-02 measured (2026-10-21) that a relay which hangs while its kernel still accep
 ## Risks and open points
 
 - DNS caching beyond the TTL (resolvers, operating systems, browsers) delays failover; the e2e test measures it with Chromium only. Record what production resolvers do once relays run in staging.
-- A check from one location can remove a relay that is only unreachable from there; use more than one vantage point or a quorum before removing a relay in production.
+- A check from one location can remove a relay that is only unreachable from there; use more than one vantage point or a quorum before removing a relay in production. I-01 spreads relays over several providers, so a single provider's outage must not read as every relay failing.
+- A relay under a TLS-handshake flood (R-06) can look hung to the checker; thresholds must not pull a relay that is only shedding load, or an attack on one relay could take it out of DNS.
