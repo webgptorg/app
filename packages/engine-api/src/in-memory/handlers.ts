@@ -2,7 +2,7 @@ import { AgentPermanentId, AgentId, RevisionId } from '../common';
 import type { Agent, AgentRunState, AgentRunStatus } from '../agents';
 import { KNOWN_CAPABILITIES } from '../capabilities/capability';
 import { ApiTokenId, ChatId, FolderId, InviteId, MessageId, SecretId } from '../common';
-import type { Message } from '../chats';
+import type { Chat, Message } from '../chats';
 import type { EngineEvent } from '../events';
 import type { Passkey } from '../passkeys';
 import type { EngineApiStreamItem } from '../route';
@@ -13,8 +13,10 @@ import { checkBook } from './book';
 import { FILE_HANDLERS } from './files';
 import { INTEGRATION_HANDLERS } from './integrations';
 import {
+    addChatMessages,
     advertises,
     agentRecord,
+    EMPTY_CHAT_SUMMARY,
     fail,
     invalid,
     liveAgent,
@@ -25,7 +27,6 @@ import {
     sortBy,
     sortParam,
     time,
-    touchChat,
     within,
 } from './kit';
 import type { HandlerContext, HandlerResult, Handlers } from './kit';
@@ -306,6 +307,7 @@ export const HANDLERS: Handlers = {
         const chats = [...ctx.state.chats.values()].filter(
             (chat) =>
                 (query.agentId === undefined || chat.agentId === query.agentId) &&
+                (query.source === undefined || chat.source === query.source) &&
                 (needle === undefined || chat.title.toLowerCase().includes(needle)),
         );
         return page(
@@ -316,7 +318,9 @@ export const HANDLERS: Handlers = {
     },
     listAgentChats: ({ params, query }, ctx) => {
         if (!agentRecord(ctx, params.agentId)) return notFound('agent');
-        const chats = [...ctx.state.chats.values()].filter((chat) => chat.agentId === params.agentId);
+        const chats = [...ctx.state.chats.values()].filter(
+            (chat) => chat.agentId === params.agentId && (query.source === undefined || chat.source === query.source),
+        );
         return page(
             chats,
             sortBy('-updatedAt', (chat) => time(chat.updatedAt), true),
@@ -327,13 +331,15 @@ export const HANDLERS: Handlers = {
         const found = liveAgent(ctx, params.agentId);
         if (found.kind === 'problem') return found;
         const now = ctx.now();
-        const chat = {
+        const chat: Chat = {
             id: ctx.newId(ChatId, 'chat'),
             agentId: params.agentId,
             title: body.title ?? '',
+            source: 'web',
             createdBy: ctx.member.id,
             createdAt: now,
             updatedAt: now,
+            ...EMPTY_CHAT_SUMMARY,
         };
         ctx.state.chats.set(chat.id, chat);
         ctx.publish({ type: 'chat.changed', chatId: chat.id });
@@ -376,11 +382,12 @@ export const HANDLERS: Handlers = {
             createdBy: null,
             createdAt: now,
         };
-        let messageIndex = 0;
-        for (const message of ctx.state.messages.values()) if (message.chatId === chat.id) messageIndex++;
-        const script = ctx.replyScript({ agent: found.data, content: body.content, chatId: chat.id, messageIndex });
-        ctx.state.messages.set(userMessage.id, userMessage);
-        ctx.state.messages.set(reply.id, reply);
+        const script = ctx.replyScript({
+            agent: found.data,
+            content: body.content,
+            chatId: chat.id,
+            messageIndex: chat.messageCount,
+        });
         if (advertises(ctx, KNOWN_CAPABILITIES.runs)) {
             const run = queueRun(ctx, {
                 agentId: chat.agentId,
@@ -392,7 +399,7 @@ export const HANDLERS: Handlers = {
             });
             advanceRun(ctx, run.id);
         }
-        touchChat(ctx, chat.id);
+        addChatMessages(ctx, chat, [userMessage, reply]);
         startReply(ctx, reply.id, script);
         return ok({ userMessage, replyMessageId: reply.id });
     },

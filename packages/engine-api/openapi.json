@@ -3,7 +3,7 @@
   "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
   "info": {
     "title": "Promptbook engine API",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "license": {
       "name": "MIT",
       "identifier": "MIT"
@@ -2878,6 +2878,14 @@
             }
           },
           {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/RunSource"
+            }
+          },
+          {
             "name": "agentId",
             "in": "query",
             "required": false,
@@ -3010,6 +3018,14 @@
               "type": "integer",
               "minimum": 1,
               "maximum": 100
+            }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/RunSource"
             }
           }
         ],
@@ -12200,17 +12216,64 @@
             "type": "string",
             "maxLength": 256
           },
+          "source": {
+            "$ref": "#/components/schemas/RunSource"
+          },
           "createdBy": {
-            "$ref": "#/components/schemas/MemberId"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MemberId"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "createdAt": {
             "$ref": "#/components/schemas/Timestamp"
           },
           "updatedAt": {
             "$ref": "#/components/schemas/Timestamp"
+          },
+          "messageCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "lastMessageAt": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Timestamp"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "preview": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
-        "required": ["id", "agentId", "title", "createdBy", "createdAt", "updatedAt"],
+        "required": [
+          "id",
+          "agentId",
+          "title",
+          "source",
+          "createdBy",
+          "createdAt",
+          "updatedAt",
+          "messageCount",
+          "lastMessageAt",
+          "preview"
+        ],
         "additionalProperties": false
       },
       "ChatId": {

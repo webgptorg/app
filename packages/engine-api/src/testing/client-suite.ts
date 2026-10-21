@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { EngineApiClient, EngineApiResponse } from '../client';
+import { MAX_CHAT_PREVIEW_LENGTH } from '../constants';
 import {
     AgentId,
     ChatId,
@@ -241,6 +242,8 @@ export function engineApiClientSuite(makeEngine: MakeEngine): void {
     });
 
     describe('chat', () => {
+        const ids = (items: readonly { readonly id: string }[]) => items.map(({ id }) => id);
+
         async function startChat(client: EngineApiClient) {
             const agent = ok(await client.agents.create({ source: 'Ada' }, signal()));
             const chat = ok(await client.chats.create(agent.id, { title: 'Hello' }, signal()));
@@ -281,6 +284,95 @@ export function engineApiClientSuite(makeEngine: MakeEngine): void {
                 { type: 'delta', seq: 3, text: 'c' },
                 expect.objectContaining({ type: 'completed' }),
             ]);
+        });
+
+        it('summarises a chat: source, starter, message count, last message time and first user message', async () => {
+            const client = make({ clock: steppingClock(), replyScript: () => ({ chunks: ['ok'] }) });
+            const agent = ok(await client.agents.create({ source: 'Ada' }, signal()));
+            const created = ok(await client.chats.create(agent.id, {}, signal()));
+            expect(created).toMatchObject({
+                title: '',
+                source: 'web',
+                createdBy: 'member-owner',
+                messageCount: 0,
+                lastMessageAt: null,
+                preview: null,
+            });
+            const first = ok(
+                await client.chats.sendMessage(created.id, { content: '  Review\n\n the   billing PR  ' }, signal()),
+            );
+            ok(await client.chats.sendMessage(created.id, { content: 'And the tests' }, signal()));
+            const chat = ok(await client.chats.get(created.id, signal()));
+            expect(chat).toMatchObject({ messageCount: 4, preview: 'Review the billing PR' });
+            const newest = ok(await client.chats.listMessages(created.id, { limit: 1 }, signal())).items[0];
+            expect(chat.lastMessageAt).toBe(newest?.createdAt);
+            expect(Date.parse(chat.lastMessageAt ?? '')).toBeGreaterThan(Date.parse(first.userMessage.createdAt));
+            expect(ok(await client.chats.list(agent.id, {}, signal())).items).toEqual([chat]);
+        });
+
+        it('cuts the preview to MAX_CHAT_PREVIEW_LENGTH, never inside a surrogate pair, and skips blank messages', async () => {
+            const client = make({ clock: steppingClock(), replyScript: () => ({ chunks: ['ok'] }) });
+            const agent = ok(await client.agents.create({ source: 'Ada' }, signal()));
+            const blankFirst = ok(await client.chats.create(agent.id, {}, signal()));
+            ok(await client.chats.sendMessage(blankFirst.id, { content: ' \n\t ' }, signal()));
+            expect(ok(await client.chats.get(blankFirst.id, signal())).preview).toBeNull();
+            ok(await client.chats.sendMessage(blankFirst.id, { content: 'Second try' }, signal()));
+            expect(ok(await client.chats.get(blankFirst.id, signal())).preview).toBe('Second try');
+            const long = ok(await client.chats.create(agent.id, {}, signal()));
+            const text = `${'a'.repeat(MAX_CHAT_PREVIEW_LENGTH - 1)}\u{1F600}tail`;
+            ok(await client.chats.sendMessage(long.id, { content: text }, signal()));
+            expect(ok(await client.chats.get(long.id, signal())).preview).toBe('a'.repeat(MAX_CHAT_PREVIEW_LENGTH - 1));
+            const exact = ok(await client.chats.create(agent.id, {}, signal()));
+            ok(
+                await client.chats.sendMessage(
+                    exact.id,
+                    { content: 'b'.repeat(MAX_CHAT_PREVIEW_LENGTH + 5) },
+                    signal(),
+                ),
+            );
+            expect(ok(await client.chats.get(exact.id, signal())).preview).toBe('b'.repeat(MAX_CHAT_PREVIEW_LENGTH));
+        });
+
+        it("lists visitors' chats with no member and filters chats by source", async () => {
+            const { client, controller } = makeEngine({ clock: steppingClock() });
+            const agent = ok(await client.agents.create({ source: 'Ada' }, signal()));
+            const mine = ok(await client.chats.create(agent.id, { title: 'Mine' }, signal()));
+            const visitor = controller.addVisitorChat({
+                agentId: agent.id,
+                messages: [
+                    { role: 'user', content: 'Do you ship to Brno?' },
+                    { role: 'agent', content: 'Yes, within two days.' },
+                ],
+            });
+            const api = controller.addVisitorChat({ agentId: agent.id, source: 'api', title: 'Nightly sync' });
+            expect(visitor).toMatchObject({
+                source: 'web',
+                createdBy: null,
+                title: '',
+                messageCount: 2,
+                preview: 'Do you ship to Brno?',
+            });
+            expect(api).toMatchObject({ source: 'api', createdBy: null, messageCount: 0, preview: null });
+            const visitorMessages = ok(await client.chats.listMessages(visitor.id, {}, signal())).items;
+            expect(visitorMessages.map(({ role, createdBy, status }) => [role, createdBy, status])).toEqual([
+                ['agent', null, 'completed'],
+                ['user', null, 'completed'],
+            ]);
+            expect(visitor.lastMessageAt).toBe(visitorMessages[0]?.createdAt);
+            expect(ids(ok(await client.chats.list(agent.id, {}, signal())).items)).toEqual([
+                api.id,
+                visitor.id,
+                mine.id,
+            ]);
+            expect(ids(ok(await client.chats.list(agent.id, { source: 'api' }, signal())).items)).toEqual([api.id]);
+            expect(ids(ok(await client.chats.listAll({ source: 'web' }, signal())).items)).toEqual([
+                visitor.id,
+                mine.id,
+            ]);
+            expect(ok(await client.chats.listAll({ source: 'email' }, signal())).items).toEqual([]);
+            expect(problem(await client.chats.list(agent.id, { source: 'fax' as 'web' }, signal())).code).toBe(
+                'validation-failed',
+            );
         });
 
         it('ends a cancelled reply with failed/cancelled, idempotently', async () => {

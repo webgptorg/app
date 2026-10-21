@@ -26,6 +26,19 @@ const agent = {
     deletedAt: null,
 };
 
+const chat = {
+    id: 'c1',
+    agentId: 'a1',
+    title: '',
+    source: 'web',
+    createdBy: null,
+    createdAt: AT,
+    updatedAt: AT,
+    messageCount: 2,
+    lastMessageAt: AT,
+    preview: 'Do you ship to Brno?',
+};
+
 const reply = {
     id: 'msg2',
     chatId: 'c1',
@@ -451,6 +464,28 @@ describe('tolerant reading', () => {
         expect(items.map(({ id }) => id)).toEqual(['2', '4']);
         expect(items[0]?.event).toMatchObject({ type: 'activity', activity: { kind: 'unknown' } });
         expect(items[1]?.event).toEqual({ type: 'run.changed', runId: 'r1', agentId: 'a1', status: 'running' });
+    });
+
+    it('reads a chat source this client does not know as unknown, in pages and single chats', async () => {
+        const kiosk = { ...chat, id: 'c2', source: 'kiosk', screen: 'lobby' };
+        const { client } = setup((call) =>
+            call.url.endsWith('/chats/c2') ? json(kiosk) : json({ items: [chat, kiosk], nextCursor: null }),
+        );
+        const page = await client.chats.list(AgentId.parse('a1'), {}, signal());
+        if (page.kind !== 'ok') throw new Error('expected a page');
+        expect(page.data.items).toEqual([chat, { ...chat, id: 'c2', source: 'unknown' }]);
+        expect(await client.chats.get(ChatId.parse('c2'), signal())).toEqual({
+            kind: 'ok',
+            data: { ...chat, id: 'c2', source: 'unknown' },
+        });
+    });
+
+    it.each([
+        ['a source that is not a string', { ...chat, source: 7 }],
+        ['a broken known field next to an unknown source', { ...chat, source: 'kiosk', messageCount: -1 }],
+    ])('rejects a chat with %s', async (_, body) => {
+        const { client } = setup(() => json(body));
+        await expect(client.chats.get(ChatId.parse('c1'), signal())).rejects.toBeInstanceOf(EngineApiContractError);
     });
 
     it('fails the stream on an event without a type', async () => {

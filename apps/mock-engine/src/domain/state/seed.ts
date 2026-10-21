@@ -163,16 +163,16 @@ function seedChats(
     const chats: SeedChat[] = [];
     const messages: SeedMessage[] = [];
     const live = agents.filter((agent) => agent.deletedAt === undefined);
-    const addChat = (agent: SeedAgent, count: number): void => {
-        const member = sequence.pick(chatters);
+    /** `member` is `null` for a public visitor's chat: no member started it, and visitors leave it untitled. */
+    const addChat = (agent: SeedAgent, count: number, member: SeedMember | null): void => {
         const gaps = Array.from({ length: count }, () => sequence.int(20_000, 30 * MINUTE));
         const span = gaps.reduce((total, gap) => total + gap, 0);
         let at = epochMs - span - sequence.int(HOUR, 50 * DAY);
         const chat: SeedChat = {
             id: sequence.id('chat'),
             agentId: agent.id ?? '',
-            title: capitalise(faker.company.buzzPhrase()).slice(0, 256),
-            createdBy: member.id,
+            title: member ? capitalise(faker.company.buzzPhrase()).slice(0, 256) : '',
+            createdBy: member?.id ?? null,
             createdAt: iso(at),
             updatedAt: iso(at),
         };
@@ -190,7 +190,7 @@ function seedChats(
                 role: fromUser ? 'user' : 'agent',
                 content,
                 status: 'completed',
-                createdBy: fromUser ? member.id : null,
+                createdBy: fromUser ? (member?.id ?? null) : null,
                 createdAt: iso(at),
             });
         }
@@ -199,10 +199,18 @@ function seedChats(
     };
     for (const agent of live) {
         const count = sequence.int(...size.chatsPerAgent);
-        for (let index = 0; index < count; index++) addChat(agent, sequence.int(...size.messagesPerChat) & ~1);
+        for (let index = 0; index < count; index++) {
+            addChat(agent, sequence.int(...size.messagesPerChat) & ~1, sequence.pick(chatters));
+        }
+        if (agent.visibility === 'public' || agent.visibility === 'unlisted') {
+            const visitorChats = sequence.int(...size.visitorChatsPerAgent);
+            for (let index = 0; index < visitorChats; index++) {
+                addChat(agent, sequence.int(...size.messagesPerChat) & ~1, null);
+            }
+        }
     }
     for (let index = 0; index < size.longChats && live.length > 0; index++) {
-        addChat(sequence.pick(live), sequence.int(...size.longChatMessages) & ~1);
+        addChat(sequence.pick(live), sequence.int(...size.longChatMessages) & ~1, sequence.pick(chatters));
     }
     return { chats, messages };
 }

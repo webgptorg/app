@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { EngineApiClient, EngineApiResponse } from '../client';
-import { AgentId, FileId, FileVersionId, IntegrationId, RunId, TriggerId } from '../common';
+import { AgentId, ChatId, FileId, FileVersionId, IntegrationId, RunId, TriggerId } from '../common';
 import type { ReadEngineEvent } from '../events';
 import { createInMemoryEngine } from '../in-memory-client';
 import type { InMemoryEngineApiOptions } from '../in-memory-client';
@@ -347,6 +347,79 @@ describe('in-memory controller: activity and events', () => {
         const visible = ok(await client.activity.list({}, signal())).items;
         expect(visible.some((item) => item.kind === 'known' && item.activity.kind.startsWith('run.'))).toBe(false);
         expect(visible).toHaveLength(1);
+    });
+});
+
+describe('in-memory chats', () => {
+    it('refuses a visitor chat for an unknown or deleted agent', async () => {
+        const { client, controller } = engine();
+        expect(() => controller.addVisitorChat({ agentId: 'agent-nope' })).toThrow('not-found');
+        const agent = await agentIn(client);
+        ok(await client.agents.delete(agent.id, signal()));
+        expect(() => controller.addVisitorChat({ agentId: agent.id })).toThrow('agent-deleted');
+        expect(controller.inspect().counts.chats).toBe(0);
+    });
+
+    it('announces a visitor chat on the event stream', async () => {
+        const { client, controller } = engine();
+        const agent = await agentIn(client);
+        const events = ok(await client.events.stream({}, signal()));
+        const chat = controller.addVisitorChat({ agentId: agent.id });
+        expect(await take(events, 1)).toEqual([{ type: 'chat.changed', chatId: chat.id }]);
+    });
+
+    it('derives seeded summaries from the seeded messages, oldest first, and defaults the source to web', async () => {
+        const message = (id: string, role: 'user' | 'agent', content: string, createdAt: string) => ({
+            id,
+            chatId: 'chat-1',
+            role,
+            content,
+            status: 'completed' as const,
+            createdBy: null,
+            createdAt,
+        });
+        const at = (minute: number) => `2026-10-19T07:${String(minute).padStart(2, '0')}:00Z`;
+        const { client } = engine({
+            seed: {
+                agents: [{ id: 'agent-1', source: 'Ada' }],
+                chats: [
+                    {
+                        id: 'chat-1',
+                        agentId: 'agent-1',
+                        title: '',
+                        createdBy: null,
+                        createdAt: at(0),
+                        updatedAt: at(9),
+                    },
+                    {
+                        id: 'chat-2',
+                        agentId: 'agent-1',
+                        title: 'Empty',
+                        source: 'email',
+                        createdBy: null,
+                        createdAt: at(0),
+                        updatedAt: at(0),
+                    },
+                ],
+                messages: [
+                    message('m-3', 'agent', 'Later reply', at(9)),
+                    message('m-2', 'user', 'Second question', at(5)),
+                    message('m-1', 'user', 'First question', at(1)),
+                ],
+            },
+        });
+        expect(ok(await client.chats.get(ChatId.parse('chat-1'), signal()))).toMatchObject({
+            source: 'web',
+            messageCount: 3,
+            lastMessageAt: at(9),
+            preview: 'First question',
+        });
+        expect(ok(await client.chats.get(ChatId.parse('chat-2'), signal()))).toMatchObject({
+            source: 'email',
+            messageCount: 0,
+            lastMessageAt: null,
+            preview: null,
+        });
     });
 });
 

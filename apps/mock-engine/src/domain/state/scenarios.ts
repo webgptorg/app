@@ -17,6 +17,8 @@ export interface ScenarioSize {
     readonly hostileAgent: boolean;
     readonly chatsPerAgent: Range;
     readonly messagesPerChat: Range;
+    /** Chats public visitors started, per agent that is public or unlisted, on top of `chatsPerAgent`. */
+    readonly visitorChatsPerAgent: Range;
     /** Chats long enough to page through, on top of `chatsPerAgent`. */
     readonly longChats: number;
     readonly longChatMessages: Range;
@@ -37,6 +39,7 @@ export const SCENARIO_SIZES: Readonly<Record<Scenario, ScenarioSize>> = {
         hostileAgent: false,
         chatsPerAgent: [0, 0],
         messagesPerChat: [0, 0],
+        visitorChatsPerAgent: [0, 0],
         longChats: 0,
         longChatMessages: [0, 0],
         secrets: 0,
@@ -52,6 +55,7 @@ export const SCENARIO_SIZES: Readonly<Record<Scenario, ScenarioSize>> = {
         hostileAgent: true,
         chatsPerAgent: [1, 3],
         messagesPerChat: [4, 20],
+        visitorChatsPerAgent: [1, 2],
         longChats: 0,
         longChatMessages: [0, 0],
         secrets: 5,
@@ -67,6 +71,7 @@ export const SCENARIO_SIZES: Readonly<Record<Scenario, ScenarioSize>> = {
         hostileAgent: true,
         chatsPerAgent: [0, 2],
         messagesPerChat: [2, 8],
+        visitorChatsPerAgent: [0, 1],
         longChats: 5,
         longChatMessages: [160, 220],
         secrets: 40,
