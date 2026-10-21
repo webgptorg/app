@@ -1,5 +1,15 @@
-import type { FileScan } from '../capabilities/files';
-import { CommitHash, FileMetadata, FileName, FilePurpose, FileScanStatus } from '../capabilities/files';
+import type { FileScan, FileStats, FileUploadPolicy } from '../capabilities/files';
+import {
+    acceptsFile,
+    CommitHash,
+    FILE_PURPOSES,
+    FILE_SCAN_STATUSES,
+    FileMetadata,
+    FileName,
+    FilePurpose,
+    FileScanStatus,
+    FileUploadPolicy as FileUploadPolicySchema,
+} from '../capabilities/files';
 import type { z } from 'zod';
 import { AgentId, ChatId, FileId, FileVersionId, MemberId, RunId } from '../common';
 import type { Timestamp } from '../common';
@@ -8,6 +18,35 @@ import { sha256OfBlob } from './audit-chain';
 import { agentRecord, fail, invalid, memberActor, notFound, ok, page, recordActivity, sortParam, time } from './kit';
 import type { EngineContext, Handlers } from './kit';
 import { addRunOutputFile } from './runs';
+
+/** Overrides per purpose; what is left out takes any type up to `MAX_FILE_BYTES`. */
+export type FileUploadPolicies = Partial<
+    Readonly<Record<FilePurpose, { readonly maxBytes?: number; readonly accept?: readonly string[] }>>
+>;
+
+/** Every purpose's policy, checked against the contract once when the core is created. */
+export function resolveUploadPolicies(
+    overrides: FileUploadPolicies = {},
+): Readonly<Record<FilePurpose, FileUploadPolicy>> {
+    const entries = FILE_PURPOSES.map((purpose) => {
+        const override = overrides[purpose];
+        return [
+            purpose,
+            FileUploadPolicySchema.parse({
+                purpose,
+                maxBytes: override?.maxBytes ?? MAX_FILE_BYTES,
+                accept: override?.accept ?? [],
+            }),
+        ] as const;
+    });
+    return Object.fromEntries(entries) as Record<FilePurpose, FileUploadPolicy>;
+}
+
+function countBy<Key extends string>(keys: readonly Key[], of: readonly Key[]): Record<Key, number> {
+    const counts = Object.fromEntries(keys.map((key) => [key, 0])) as Record<Key, number>;
+    for (const key of of) counts[key] += 1;
+    return counts;
+}
 
 /** A scan that is still running has not been checked yet. */
 function scanOf(status: FileScanStatus, now: Timestamp): z.infer<typeof FileScan> {
@@ -107,17 +146,26 @@ export function setFileScan(ctx: EngineContext, fileId: string, status: FileScan
 
 export const FILE_HANDLERS: Pick<
     Handlers,
-    'listFiles' | 'uploadFile' | 'getFile' | 'listFileVersions' | 'downloadFile' | 'deleteFile'
+    | 'listFiles'
+    | 'getFileStats'
+    | 'getFileUploadPolicy'
+    | 'uploadFile'
+    | 'getFile'
+    | 'listFileVersions'
+    | 'downloadFile'
+    | 'deleteFile'
 > = {
     listFiles: ({ query }, ctx) => {
         const needle = query.q?.toLowerCase();
+        const purposes = query.purpose === undefined ? undefined : new Set(query.purpose);
+        const scans = query.scan === undefined ? undefined : new Set(query.scan);
         const files = [...ctx.state.files.values()]
             .map(({ metadata }) => metadata)
             .filter(
                 (file) =>
                     (query.agentId === undefined || file.agentId === query.agentId) &&
-                    (query.purpose === undefined || file.purpose === query.purpose) &&
-                    (query.scan === undefined || file.scan.status === query.scan) &&
+                    (purposes === undefined || purposes.has(file.purpose)) &&
+                    (scans === undefined || scans.has(file.scan.status)) &&
                     (needle === undefined || file.name.toLowerCase().includes(needle)),
             );
         return page(
@@ -130,8 +178,29 @@ export const FILE_HANDLERS: Pick<
             query,
         );
     },
+    getFileStats: ({ query }, ctx) => {
+        const files = [...ctx.state.files.values()]
+            .map(({ metadata }) => metadata)
+            .filter((file) => query.agentId === undefined || file.agentId === query.agentId);
+        const stats: FileStats = {
+            byPurpose: countBy(
+                FILE_PURPOSES,
+                files.map((file) => file.purpose),
+            ),
+            byScan: countBy(
+                FILE_SCAN_STATUSES,
+                files.map((file) => file.scan.status),
+            ),
+        };
+        return ok(stats);
+    },
+    getFileUploadPolicy: ({ query }, ctx) => ok(ctx.state.uploadPolicies[query.purpose]),
     uploadFile: async ({ body }, ctx) => {
-        if (body.file.size > MAX_FILE_BYTES) return fail('payload-too-large');
+        const policy = ctx.state.uploadPolicies[body.purpose];
+        if (body.file.size > policy.maxBytes) return fail('payload-too-large');
+        if (!acceptsFile(policy.accept, { name: body.name, type: body.file.type })) {
+            return fail('unsupported-media-type');
+        }
         if (body.agentId !== undefined && !agentRecord(ctx, body.agentId)) {
             return invalid('body.agentId', 'No such agent.');
         }

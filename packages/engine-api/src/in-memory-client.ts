@@ -42,8 +42,8 @@ import { hashAuditEntry } from './in-memory/audit-chain';
 import { checkBook } from './in-memory/book';
 import { HANDLERS } from './in-memory/handlers';
 import type { HandlerContext } from './in-memory/handlers';
-import { addFile, setFileScan } from './in-memory/files';
-import type { NewFile } from './in-memory/files';
+import { addFile, resolveUploadPolicies, setFileScan } from './in-memory/files';
+import type { FileUploadPolicies, NewFile } from './in-memory/files';
 import { setIntegrationStatus } from './in-memory/integrations';
 import {
     addChatMessages,
@@ -218,6 +218,8 @@ export interface InMemoryEngineCoreOptions {
     readonly sleep?: Sleep;
     /** The virus scan and connection test a real engine runs; by default files are clean and connections work. */
     readonly checks?: Partial<EngineChecks>;
+    /** Upload limits per purpose (`GET /files/upload-policy`); by default any type up to `MAX_FILE_BYTES`. */
+    readonly uploadPolicies?: FileUploadPolicies;
 }
 
 export interface InMemoryEngineApiOptions extends InMemoryEngineCoreOptions {
@@ -381,11 +383,37 @@ export function createInMemoryEngineApiClient(options: InMemoryEngineApiOptions 
 /** The in-memory client, acting as one member, together with the core's controller. */
 export function createInMemoryEngine(options: InMemoryEngineApiOptions = {}): InMemoryEngine {
     const core = createInMemoryEngineCore(options);
-    const client = createEngineApiClient(withClientReading(core.transport(actorFromOptions(options))));
+    const client = createEngineApiClient(
+        withUploadProgress(withClientReading(core.transport(actorFromOptions(options)))),
+    );
     return {
         client: Object.defineProperty(client, Symbol.toStringTag, { value: IN_MEMORY_CLIENT_MARKER }),
         controller: core.controller,
     };
+}
+
+/** Nothing is on a wire here: an upload that asks for progress hears of none until the engine accepts it. */
+function withUploadProgress(transport: EngineApiTransport): EngineApiTransport {
+    return async (route, request, signal) => {
+        const { onUploadProgress, ...rest } = request;
+        const result = await transport(route, rest, signal);
+        if (onUploadProgress !== undefined && result.kind === 'ok') {
+            const size = multipartSize(request.body);
+            onUploadProgress({ loadedBytes: size, totalBytes: size });
+        }
+        return result;
+    };
+}
+
+/** The parts' sizes; the in-memory engine encodes no multipart body, so there is no boundary overhead to count. */
+function multipartSize(body: unknown): number {
+    if (typeof body !== 'object' || body === null) return 0;
+    let size = 0;
+    for (const value of Object.values(body)) {
+        if (value instanceof Blob) size += value.size;
+        else if (typeof value === 'string') size += new TextEncoder().encode(value).byteLength;
+    }
+    return size;
 }
 
 const DEFAULT_MEMBER_ID = 'member-owner';
@@ -476,7 +504,7 @@ export function createInMemoryEngineCore(options: InMemoryEngineCoreOptions = {}
     const capabilities = (options.capabilities ?? Object.values(KNOWN_CAPABILITIES)).map((ref) =>
         CapabilityRef.parse(ref),
     );
-    const state = createState(options.seed ?? {}, seedMember, now, capabilities);
+    const state = createState(options.seed ?? {}, seedMember, now, capabilities, options.uploadPolicies);
     const counters = new Map<string, number>();
     const eventWaiters = new Set<() => void>();
     const eventListeners = new Set<(event: EngineEvent) => void>();
@@ -1049,6 +1077,7 @@ function createState(
     member: Member,
     now: () => Timestamp,
     capabilities: readonly CapabilityRef[],
+    uploadPolicies: FileUploadPolicies | undefined,
 ): InMemoryState {
     const at = now();
     const byId = <T extends { readonly id: string }>(items: readonly T[]): Map<string, T> =>
@@ -1119,6 +1148,7 @@ function createState(
             ).map((record) => Session.parse(record)),
         ),
         files,
+        uploadPolicies: resolveUploadPolicies(uploadPolicies),
         runs: byId((seed.runs ?? []).map((record) => seedRun(record, files))),
         triggers: new Map(
             (seed.triggers ?? []).map(({ trigger, fires }) => {

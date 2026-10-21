@@ -2,7 +2,7 @@ import type { Agent, AgentRunStatus, Revision } from '../agents';
 import type { ApiToken } from '../api-tokens';
 import type { AuditEntry } from '../audit';
 import type { Activity } from '../capabilities/activity';
-import type { FileMetadata, FileVersion } from '../capabilities/files';
+import type { FileMetadata, FilePurpose, FileUploadPolicy, FileVersion } from '../capabilities/files';
 import type { Integration } from '../capabilities/integrations';
 import type { RunDetail } from '../capabilities/runs';
 import type { Trigger, TriggerFire } from '../capabilities/triggers';
@@ -79,6 +79,7 @@ export interface InMemoryState {
     readonly passkeys: Map<string, Passkey>;
     readonly sessions: Map<string, Session>;
     readonly files: Map<string, FileRecord>;
+    readonly uploadPolicies: Readonly<Record<FilePurpose, FileUploadPolicy>>;
     readonly runs: Map<string, RunDetail>;
     readonly triggers: Map<string, TriggerRecord>;
     readonly integrations: Map<string, Integration>;

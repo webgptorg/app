@@ -1030,6 +1030,62 @@ const CAPABILITY_FAILS: readonly Case[] = [
         },
     ],
     [
+        'a scan set listing another status',
+        'engine-api.files.paging',
+        {
+            tamper: editJson(
+                on('GET', FILES, query('scan', 'infected,failed')),
+                firstItem((file) => ({ ...file, scan: { status: 'clean', checkedAt: null } })),
+            ),
+        },
+    ],
+    [
+        'stats whose purpose and scan counts disagree',
+        'engine-api.files.stats',
+        {
+            tamper: editJson(on('GET', /^\/files\/stats$/), (stats) => ({
+                ...stats,
+                byScan: { ...stats.byScan, clean: Number(stats.byScan.clean) + 1 },
+            })),
+        },
+    ],
+    [
+        'stats that do not count a new upload',
+        'engine-api.files.stats',
+        { tamper: firstAnswerAgain(on('GET', /^\/files\/stats$/)) },
+    ],
+    [
+        'a policy answered for another purpose',
+        'engine-api.files.upload-policy',
+        {
+            tamper: editJson(on('GET', /^\/files\/upload-policy$/, query('purpose', 'output')), (policy) => ({
+                ...policy,
+                purpose: 'upload',
+            })),
+        },
+    ],
+    [
+        'an unaccepted type refused with another problem',
+        'engine-api.files.upload-policy',
+        {
+            tamper: replace(on('POST', FILES), (_, response) =>
+                response.status === 415 ? problem('validation-failed', 400) : response,
+            ),
+        },
+    ],
+    [
+        'an unaccepted type and an oversized file stored',
+        'engine-api.files.upload-policy',
+        {
+            uploadPolicies: {},
+            tamper: editJson(on('GET', /^\/files\/upload-policy$/, query('purpose', 'knowledge')), (policy) => ({
+                ...policy,
+                maxBytes: 4,
+                accept: ['.md'],
+            })),
+        },
+    ],
+    [
         'content without attachment, nosniff or the same bytes',
         'engine-api.files.download-attachment',
         {

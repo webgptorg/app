@@ -108,11 +108,22 @@ export async function placeholderRequest(route: RouteDefinition, world: World | 
 /** Names nothing on any engine: the run ID is not part of it, so the suite never needs to create it. */
 export const PLACEHOLDER_ID = 'conformance-nonexistent';
 
+/** Query parameters a route cannot be called without; every other query parameter is optional. */
+const REQUIRED_QUERIES: Partial<Record<EngineApiRouteId, Readonly<Record<string, string>>>> = {
+    getFileUploadPolicy: { purpose: 'knowledge' },
+};
+
+/** The route's required query, if it has one, ready to spread into a request. */
+export function requiredQuery(route: RouteDefinition): { readonly query?: Readonly<Record<string, string>> } {
+    const query = REQUIRED_QUERIES[route.id as EngineApiRouteId];
+    return query === undefined ? {} : { query };
+}
+
 /** A request the owner could send successfully, or `null` when the world has nothing for its parameters. */
 export async function validRequest(route: RouteDefinition, world: World): Promise<ApiRequest | null> {
     const params = await world.paramsFor(route);
     if (params === null) return null;
-    if (route.body === undefined) return { params };
+    if (route.body === undefined) return { params, ...requiredQuery(route) };
     const build = BODIES[route.id as EngineApiRouteId];
     if (build === undefined) return null;
     const body = await build(world);

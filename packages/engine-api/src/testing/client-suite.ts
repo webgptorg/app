@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { EngineApiClient, EngineApiResponse } from '../client';
-import { MAX_CHAT_PREVIEW_LENGTH } from '../constants';
+import { MAX_CHAT_PREVIEW_LENGTH, MAX_FILE_BYTES } from '../constants';
 import {
     AgentId,
     ChatId,
@@ -959,7 +959,20 @@ export function engineApiClientSuite(makeEngine: MakeEngine): void {
                 'file-bad',
             ]);
             expect(await list({ scan: 'infected' })).toEqual(['file-bad']);
+            expect(await list({ scan: 'infected,failed,infected' })).toEqual(['file-bad']);
+            expect(await list({ purpose: 'attachment,upload' })).toEqual([plan.id, 'file-bad']);
+            expect(problem(await client.files.list({ scan: 'infected,bogus' }, signal())).code).toBe(
+                'validation-failed',
+            );
             expect(await list({ q: 'PLAN' })).toEqual([plan.id]);
+            expect(ok(await client.files.stats({}, signal()))).toEqual({
+                byPurpose: { knowledge: 2, attachment: 1, output: 0, upload: 1 },
+                byScan: { pending: 0, clean: 3, infected: 1, failed: 0 },
+            });
+            expect(ok(await client.files.stats({ agentId: AgentId.parse('agent-a') }, signal()))).toEqual({
+                byPurpose: { knowledge: 1, attachment: 1, output: 0, upload: 0 },
+                byScan: { pending: 0, clean: 1, infected: 1, failed: 0 },
+            });
             expect(ok(await client.files.get(plan.id, signal()))).toEqual(plan);
             const [version] = ok(await client.files.listVersions(plan.id, {}, signal())).items;
             expect(version).toMatchObject({ sizeBytes: plan.sizeBytes, sha256: plan.sha256, commitHash: null });
@@ -976,6 +989,44 @@ export function engineApiClientSuite(makeEngine: MakeEngine): void {
                 code: 'file-infected',
             });
             expect(problem(await client.files.get(FileId.parse('nope'), signal())).code).toBe('not-found');
+        });
+
+        it('answers each purpose’s upload policy and enforces it on upload, reporting progress', async () => {
+            const { client } = engine({
+                uploadPolicies: { knowledge: { maxBytes: 8, accept: ['.md', 'text/plain', 'image/*'] } },
+            });
+            expect(ok(await client.files.uploadPolicy({ purpose: 'knowledge' }, signal()))).toEqual({
+                purpose: 'knowledge',
+                maxBytes: 8,
+                accept: ['.md', 'text/plain', 'image/*'],
+            });
+            expect(ok(await client.files.uploadPolicy({ purpose: 'upload' }, signal()))).toEqual({
+                purpose: 'upload',
+                maxBytes: MAX_FILE_BYTES,
+                accept: [],
+            });
+            const knowledge = (file: Blob, name: string, options = {}) =>
+                client.files.upload({ file, name, purpose: 'knowledge' }, signal(), options);
+            expect(problem(await knowledge(new Blob(['123456789']), 'big.md'))).toMatchObject({
+                status: 413,
+                code: 'payload-too-large',
+            });
+            expect(problem(await knowledge(new Blob(['x'], { type: 'application/pdf' }), 'x.pdf'))).toMatchObject({
+                status: 415,
+                code: 'unsupported-media-type',
+            });
+            const progress: unknown[] = [];
+            const accepted = ok(
+                await knowledge(new Blob(['notes'], { type: 'image/png' }), 'notes.png', {
+                    onProgress: (event: unknown) => progress.push(event),
+                }),
+            );
+            expect(accepted).toMatchObject({ name: 'notes.png', contentType: 'image/png', purpose: 'knowledge' });
+            const last = progress.at(-1) as { loadedBytes: number; totalBytes: number } | undefined;
+            expect(last?.loadedBytes).toBe(last?.totalBytes);
+            expect(last?.totalBytes).toBeGreaterThanOrEqual(5);
+            ok(await knowledge(new Blob(['# a']), 'a.MD'));
+            ok(await client.files.upload({ file: new Blob(['x']), name: 'x.bin', purpose: 'upload' }, signal()));
         });
 
         it('creates triggers, pages and filters them, and refuses invalid schedules with 422', async () => {

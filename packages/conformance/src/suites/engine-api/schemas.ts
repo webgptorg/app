@@ -6,7 +6,7 @@ import { Findings } from '../../check';
 import { BROKEN_BOOK } from '../../fixtures/books';
 import type { EngineApi } from './api';
 import { describe, successOf } from './api';
-import { placeholderRequest } from './requests';
+import { placeholderRequest, requiredQuery } from './requests';
 import { SUITE, attempt } from './support';
 import type { World } from './world';
 import { createWorld } from './world';
@@ -30,7 +30,7 @@ export async function readRoute(
         await api.stream(route, { params }, { maxMs: endless ? EVENT_WINDOW_MS : 30_000 });
         return;
     }
-    const result = await api.call(route, { params });
+    const result = await api.call(route, { params, ...requiredQuery(route) });
     if (result.kind === 'problem' && !(route.draft === true && result.problem.code === 'not-found')) {
         findings.add(`${describe(route)}: expected success, got ${String(result.status)} ${result.problem.code}`);
     }
