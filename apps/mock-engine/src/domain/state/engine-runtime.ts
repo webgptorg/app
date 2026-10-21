@@ -215,6 +215,7 @@ export async function createEngineRuntime(options: EngineRuntimeOptions): Promis
     }
 
     let engine = await build(current.seed, current.scenario, current.capabilities);
+    let resetting: Promise<unknown> = Promise.resolve();
 
     return {
         core: () => engine.core,
@@ -222,13 +223,18 @@ export async function createEngineRuntime(options: EngineRuntimeOptions): Promis
         current: () => current,
         simulation: () => engine.simulation,
         clock: simulationClock,
-        async reset(input) {
-            const capabilities = input.capabilities ?? current.capabilities;
-            engine.simulation.stop();
-            simulationClock.reset(startMs(simulationClock.mode()));
-            engine = await build(input.seed, input.scenario, capabilities);
-            current = { seed: input.seed, scenario: input.scenario, capabilities };
-            for (const listener of listeners) listener();
+        reset(input) {
+            // One at a time: two overlapping resets would each build a core, and the loser's simulation would run on.
+            const next = resetting.then(async () => {
+                const capabilities = input.capabilities ?? current.capabilities;
+                engine.simulation.stop();
+                simulationClock.reset(startMs(simulationClock.mode()));
+                engine = await build(input.seed, input.scenario, capabilities);
+                current = { seed: input.seed, scenario: input.scenario, capabilities };
+                for (const listener of listeners) listener();
+            });
+            resetting = next.catch(() => undefined);
+            return next;
         },
         onReset(listener) {
             listeners.push(listener);

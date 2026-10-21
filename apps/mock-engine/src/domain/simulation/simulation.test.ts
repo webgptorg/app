@@ -376,6 +376,18 @@ describe('simulation faults', () => {
 });
 
 describe('runtime reset', () => {
+    it('runs overlapping resets one after the other, leaving one live simulation', async () => {
+        const { runtime, advance } = await start();
+        await Promise.all([
+            runtime.reset({ seed: 1, scenario: 'small-team' }),
+            runtime.reset({ seed: 2, scenario: 'empty' }),
+        ]);
+        expect(runtime.current()).toMatchObject({ seed: 2, scenario: 'empty' });
+        // Only the last core's simulation runs: `empty` has no agents, so nothing starts.
+        advance(HOUR);
+        expect(runtime.controller().findRuns()).toEqual([]);
+    });
+
     it('stops the old simulation and starts again at the epoch with the new capabilities', async () => {
         const { runtime, advance } = await start();
         advance(HOUR);

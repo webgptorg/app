@@ -2,7 +2,7 @@
 
 - **Lane:** Mock engine · **Module:** `apps/mock-engine`, `packages/conformance`, and `packages/engine-api` for missing controller levers (see Context) · **Milestone:** M2
 - **Depends on:** C-07, M-04, C-05
-- **Status:** in progress (feat/m-07-capabilities)
+- **Status:** done (#44)
 - **Spec:** Build plan (Mock engine first, real engine last); Security hardening (5, 7); Enterprise-ready engine architecture; ADRs: [0004](../../adr/0004-mock-engine-and-conformance.md), [0016](../../adr/0016-engine-capabilities.md), [0006](../../adr/0006-organizations-and-roles.md)
 
 ## Goal
