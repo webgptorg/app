@@ -2,7 +2,7 @@
 
 - **Lane:** D · **Module:** `apps/dashboard` and `apps/relay` (two modules, see Context) · **Milestone:** M3
 - **Depends on:** D-03, R-03
-- **Status:** todo
+- **Status:** in progress (feat/d-04-registry)
 - **Spec:** Interfaces (draft) 2; Relay and tunnel (Enterprise custom domains); Operations (Dashboard or Cloudflare down); Abuse on our domains (item 8); ADRs: [0005](../../adr/0005-modular-architecture.md), [0014](../../adr/0014-cryptography.md)
 
 ## Goal
