@@ -2,7 +2,7 @@
 
 - **Lane:** Contracts · **Module:** `packages/conformance` (plus one CI job) · **Milestone:** M2
 - **Depends on:** C-03, C-04, M-04
-- **Status:** in progress (feat/c-05-conformance)
+- **Status:** done (#32)
 - **Spec:** Build plan (Mock engine first, real engine last), Security hardening 7 and 8, What our platform can and cannot do; ADRs: [0004](../../adr/0004-mock-engine-and-conformance.md), [0002](../../adr/0002-public-private-split.md)
 
 ## Goal
@@ -49,13 +49,13 @@ ADR 0004: the real engine replaces the mock only by passing this suite. v1 cover
 
 ## Acceptance criteria
 
-- [ ] Self-test: an in-process fake target (`fetch` handler) that is deliberately broken fails the matching check for each defect: leaked secret value, extra response field, missing auth, missing permission check on one mutating route, 403 with a plain-text body, duplicate page item, missing audit entry, audit entry with the wrong `memberId`, wrong problem content type. A correct fake passes everything.
-- [ ] A viewer can list and revoke their own sessions and passkeys under `/me`, and gets 404 (not 403) for another member's session or passkey ID.
-- [ ] `GET /engine` from a 1.1 engine includes `engineId` (matching the engine's key) and `capabilities`; responses contain no undeclared fields.
-- [ ] The suite passes against the mock engine in CI on every PR; a failing check fails the job.
-- [ ] The bundled CLI (declared under `bin` in `package.json`, run with Node 24) works against any URL with only `protocol` and `engine-api` as workspace dependencies, as the README describes; a failing run exits non-zero.
-- [ ] `bun run check` passes.
-- [ ] **Status** line above set to `done (#<PR>)`.
+- [x] Self-test: an in-process fake target (`fetch` handler) that is deliberately broken fails the matching check for each defect: leaked secret value, extra response field, missing auth, missing permission check on one mutating route, 403 with a plain-text body, duplicate page item, missing audit entry, audit entry with the wrong `memberId`, wrong problem content type. A correct fake passes everything.
+- [x] A viewer can list and revoke their own sessions and passkeys under `/me`, and gets 404 (not 403) for another member's session or passkey ID.
+- [x] `GET /engine` from a 1.1 engine includes `engineId` (matching the engine's key) and `capabilities`; responses contain no undeclared fields.
+- [x] The suite passes against the mock engine in CI on every PR; a failing check fails the job.
+- [x] The bundled CLI (declared under `bin` in `package.json`, run with Node 24) works against any URL with only `protocol` and `engine-api` as workspace dependencies, as the README describes; a failing run exits non-zero.
+- [x] `bun run check` passes.
+- [x] **Status** line above set to `done (#<PR>)`.
 
 ## Risks and open points
 
