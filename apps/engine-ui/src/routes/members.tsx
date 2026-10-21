@@ -1,11 +1,17 @@
 import { createFileRoute } from '@tanstack/react-router';
 
 import { requireFeature } from '../app/registry/require-feature';
-import { PageStub } from '../features/shell/page-stub';
-import { m } from '../paraglide/messages';
+import { memberListParams, MemberListSearch } from '../features/members/member-list-search';
+import { memberListQueryOptions } from '../features/members/members-queries';
+import { MembersPage } from '../features/members/members-page';
 
-// U-06 fills this screen.
 export const Route = createFileRoute('/members')({
     beforeLoad: requireFeature('members'),
-    component: () => <PageStub title={m.members_title()} />,
+    validateSearch: MemberListSearch,
+    loaderDeps: ({ search }) => memberListParams(search),
+    // Not awaited: the table keeps the previous page on screen while the next one loads.
+    loader: ({ context, deps }) => {
+        context.queryClient.query(memberListQueryOptions(context.engineApi, deps)).catch(() => undefined);
+    },
+    component: MembersPage,
 });

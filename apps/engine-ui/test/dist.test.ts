@@ -18,7 +18,8 @@ const distDir = join(appDir, 'dist');
  * (text of production error messages), JSON Schema dialects and the IPv6 check's `new URL('http://[…]')` (zod), the
  * router's fallback origin for an opaque `window.origin` (TanStack Router), Tailwind's licence banner, and Paraglide's
  * error documentation link, its base for parsing relative URLs and its origin outside a browser, and the bare scheme
- * GFM prefixes to `www.` autolinks in agent markdown (mdast-util-gfm-autolink-literal). The CSP test
+ * GFM prefixes to `www.` autolinks in agent markdown (mdast-util-gfm-autolink-literal). Ours: the security panel's link
+ * to Sigstore's public Rekor search, a navigation in a new tab that the bundle never fetches. The CSP test
  * proves at runtime that nothing leaves the origin; this list keeps every other URL out of the bundle.
  */
 const INERT_URLS = new Set([
@@ -38,6 +39,7 @@ const INERT_URLS = new Set([
     'http://example.com',
     'http://fallback.com',
     'http://',
+    'https://search.sigstore.dev/?logIndex=',
 ]);
 
 /** Rendered only by `@ptbk/ui`'s `Gallery`. */

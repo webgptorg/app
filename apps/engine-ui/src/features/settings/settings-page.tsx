@@ -1,7 +1,9 @@
 import { THEME_PREFERENCES } from '@ptbk/ui';
 import type { ThemePreference } from '@ptbk/ui';
 import { Card, Field, Select } from '@ptbk/ui';
+import { KeyRound } from 'lucide-react';
 
+import { ButtonLink } from '../../app/link';
 import { useAppLocale } from '../../app/locale';
 import { useThemePreference } from '../../app/theme';
 import { m } from '../../paraglide/messages';
@@ -52,6 +54,15 @@ export function SettingsPage() {
                             </Select>
                         )}
                     </Field>
+                </div>
+            </Card>
+            <Card title={m.settings_security()}>
+                <div className="flex flex-col items-start gap-3">
+                    <p className="text-sm text-text-muted">{m.settings_passkeys_hint()}</p>
+                    <ButtonLink to="/settings/passkeys">
+                        <KeyRound aria-hidden className="size-4" />
+                        {m.settings_passkeys_link()}
+                    </ButtonLink>
                 </div>
             </Card>
         </Page>

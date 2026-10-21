@@ -8,7 +8,8 @@
     ".": {
       "style": "./src/theme.css",
       "default": "./src/index.ts"
-    }
+    },
+    "./fingerprint-vectors.json": "./src/components/trust-mark/fingerprint-vectors.json"
   },
   "sideEffects": [
     "*.css"

@@ -9,6 +9,8 @@ import {
 } from '@ptbk/engine-api';
 import type { EngineApiClient, EngineApiResponse, EngineApiStreamItem, ReplyStreamEvent } from '@ptbk/engine-api';
 import { createInMemoryEngineApiClient } from '@ptbk/engine-api/in-memory';
+import { readFileSync } from 'node:fs';
+
 import type { Page, Route } from '@playwright/test';
 
 /** The agent page the CSP checks visit. */
@@ -95,8 +97,81 @@ const ROUTES: readonly (readonly ['GET' | 'POST', RegExp, number, Call])[] = [
         (api, [, id = ''], _, __, signal) => api.members.get(MemberId.parse(id), signal),
     ],
     ['GET', /^\/activity$/, 200, (api, _, query, __, signal) => api.activity.list(Object.fromEntries(query), signal)],
+    ['GET', /^\/security$/, 200, (api, _, __, ___, signal) => api.security.get(signal)],
+    ['GET', /^\/members$/, 200, (api, _, query, __, signal) => api.members.list(Object.fromEntries(query), signal)],
+    ['GET', /^\/secrets$/, 200, (api, _, query, __, signal) => api.secrets.list(Object.fromEntries(query), signal)],
+    ['POST', /^\/secrets$/, 201, (api, _, __, body, signal) => api.secrets.create(body as never, signal)],
+    [
+        'GET',
+        /^\/me\/passkeys$/,
+        200,
+        (api, _, query, __, signal) => api.me.listPasskeys(Object.fromEntries(query), signal),
+    ],
+    [
+        'GET',
+        /^\/me\/sessions$/,
+        200,
+        (api, _, query, __, signal) => api.me.listSessions(Object.fromEntries(query), signal),
+    ],
+    ['GET', /^\/passkeys$/, 200, (api, _, query, __, signal) => api.passkeys.list(Object.fromEntries(query), signal)],
     ['GET', /^\/runs$/, 200, (api, _, query, __, signal) => api.runs.list(Object.fromEntries(query), signal)],
 ];
+
+/** Every security panel section filled, with a foreign certificate and a heartbeat in its raw, oddly spaced form. */
+export const RAW_HEARTBEAT = '{ "v":1,  "seq" : 7,\n"engineId":"memoryengine234567abcdefgh" }';
+/** The version the bundle under test was built as, so the panel sees its loader serving the same one. */
+const BUILT_VERSION = (
+    JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as { version: string }
+).version;
+const SECURITY_OVERVIEW = {
+    engine: { version: '1.4.0', releaseLogIndex: 123456, releaseLogEntryUuid: 'c'.repeat(80) },
+    update: { status: 'none', policy: 'auto', pinnedVersion: null, availableVersion: null, eligibleAt: null },
+    ui: {
+        version: BUILT_VERSION,
+        bundleSha256: 'ab'.repeat(32),
+        releaseLogIndex: 654321,
+        releaseLogEntryUuid: 'd'.repeat(64),
+        lastUpdateCheck: {
+            at: '2026-10-01T11:00:00.000Z',
+            outcome: 'up-to-date',
+            version: BUILT_VERSION,
+            reason: null,
+            revocationReason: null,
+        },
+    },
+    tls: {
+        certificateSha256: 'ef'.repeat(32),
+        notAfter: '2026-12-01T00:00:00.000Z',
+        lastCtCheck: {
+            at: '2026-10-01T11:00:00.000Z',
+            result: 'unexpected-certificate',
+            unexpectedCertificates: [
+                {
+                    sha256: '99'.repeat(32),
+                    issuer: 'CN=Some Other CA, O=Elsewhere',
+                    notBefore: '2026-09-01T00:00:00.000Z',
+                    notAfter: '2026-12-01T00:00:00.000Z',
+                },
+            ],
+        },
+    },
+    relays: [
+        { hostname: 'relay-a.ptbk.io', status: 'connected', since: '2026-10-01T09:00:00.000Z', lastPingRttMs: 38 },
+        { hostname: 'relay-b.ptbk.io', status: 'disconnected', since: '2026-10-01T10:00:00.000Z', lastPingRttMs: null },
+    ],
+    hostnames: [
+        {
+            hostname: 'memoryengine234567abcdefgh.ptbk.io',
+            kind: 'default',
+            certificateStatus: 'valid',
+            claimRegistered: null,
+        },
+        { hostname: 'agents.example.com', kind: 'custom', certificateStatus: 'expiring', claimRegistered: true },
+    ],
+    lastHeartbeat: { sentAt: '2026-10-01T11:59:00.000Z', body: RAW_HEARTBEAT, signature: `ed25519=${'A'.repeat(86)}` },
+    clockSkew: null,
+    outboundDestinations: ['https://app.ptbk.io', 'wss://relay-a.ptbk.io', 'https://api.openai.com'],
+} as const;
 
 const STREAM = /^\/chats\/([\w-]+)\/messages\/([\w-]+)\/stream$/;
 
@@ -125,6 +200,29 @@ export async function routeFakeEngineApi(page: Page): Promise<void> {
     const engineApi = createInMemoryEngineApiClient({
         seed: {
             engine: { name: 'CSP test engine', hostname: 'engine.localhost', dashboardUrl: null, mode: 'local' },
+            security: SECURITY_OVERVIEW,
+            secrets: [
+                {
+                    id: 'secret-github',
+                    name: 'GITHUB_TOKEN',
+                    scope: { kind: 'engine' },
+                    status: 'active',
+                    createdBy: 'member-owner',
+                    createdAt: '2026-09-01T00:00:00.000Z',
+                    updatedAt: '2026-09-01T00:00:00.000Z',
+                    lastUsedAt: '2026-09-30T10:00:00.000Z',
+                },
+                {
+                    id: 'secret-ada',
+                    name: 'ADA_SEARCH_KEY',
+                    scope: { kind: 'agent', agentId: FAKE_AGENT_ID },
+                    status: 'revoked',
+                    createdBy: 'member-owner',
+                    createdAt: '2026-09-02T00:00:00.000Z',
+                    updatedAt: '2026-09-03T00:00:00.000Z',
+                    lastUsedAt: null,
+                },
+            ],
             members: [
                 {
                     id: 'member-jana',

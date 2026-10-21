@@ -1,0 +1,213 @@
+import type { MemberId, PasskeyId, ReadPasskey } from '@ptbk/engine-api';
+import { Badge, Button, CodeText, ConfirmDialog, EmptyState, RelativeTime } from '@ptbk/ui';
+import { useQuery } from '@tanstack/react-query';
+import type { UseQueryResult } from '@tanstack/react-query';
+import { KeyRound } from 'lucide-react';
+import { useState } from 'react';
+
+import { unwrap } from '../../app/api-errors';
+import { useEngineApi } from '../../app/engine-api-context';
+import { isPageLevelFailure } from '../../app/list-errors';
+import { useStepUpAwareMutation } from '../../app/mutations';
+import { m } from '../../paraglide/messages';
+import { memberKeys } from '../members/members-keys';
+import { memberDetailQueryOptions } from '../members/members-queries';
+import { useCurrentMember } from '../session/use-current-member';
+import { usePermissions } from '../session/use-permissions';
+import { Page } from '../shell/page';
+import { FactsSkeleton } from './facts';
+import { SectionCard } from './section-card';
+import { securityKeys } from './security-keys';
+import {
+    allPasskeysQueryOptions,
+    CREDENTIALS_PAGE_SIZE,
+    myPasskeysQueryOptions,
+    mySessionsQueryOptions,
+} from './security-queries';
+
+const MUTATION_TIMEOUT_MS = 30_000;
+const FIRST_PAGE = { limit: CREDENTIALS_PAGE_SIZE } as const;
+
+interface PasskeyPageData {
+    readonly items: readonly ReadPasskey[];
+    readonly nextCursor: string | null;
+}
+
+interface RevokeTarget {
+    readonly passkey: ReadPasskey;
+    /** Mine go through `/me/passkeys`, which needs no permission; others' through the admin route. */
+    readonly own: boolean;
+    readonly current: boolean;
+}
+
+function authenticatorLabel(passkey: ReadPasskey): string {
+    const authenticator = passkey.authenticator;
+    if (authenticator === null) return m.passkeys_kind_unknown();
+    const kind =
+        authenticator.attachment === 'platform'
+            ? m.passkeys_kind_platform()
+            : authenticator.attachment === 'cross-platform'
+              ? m.passkeys_kind_roaming()
+              : m.passkeys_kind_unknown();
+    if (authenticator.backedUp === null) return kind;
+    return `${kind}, ${authenticator.backedUp ? m.passkeys_synced() : m.passkeys_device_bound()}`;
+}
+
+function MemberName({ memberId }: { readonly memberId: MemberId }) {
+    const member = useQuery(memberDetailQueryOptions(useEngineApi(), memberId));
+    return member.data === undefined ? <CodeText value={memberId} /> : <span>{member.data.displayName}</span>;
+}
+
+interface PasskeyListProps {
+    readonly query: UseQueryResult<PasskeyPageData>;
+    readonly title: string;
+    readonly currentPasskeyId: PasskeyId | null;
+    readonly showOwner: boolean;
+    readonly ownerOf: (passkey: ReadPasskey) => boolean;
+    readonly onRevoke: (target: RevokeTarget) => void;
+}
+
+function PasskeyList({ query, title, currentPasskeyId, showOwner, ownerOf, onRevoke }: PasskeyListProps) {
+    return (
+        <SectionCard title={title} query={query} skeleton={<FactsSkeleton rows={3} />}>
+            {({ items, nextCursor }) =>
+                items.length === 0 ? (
+                    <EmptyState headingLevel={3} icon={<KeyRound />} title={m.passkeys_empty()} />
+                ) : (
+                    <div className="flex flex-col gap-3">
+                        <ul className="flex flex-col divide-y divide-divider">
+                            {items.map((passkey) => {
+                                const current = passkey.id === currentPasskeyId;
+                                const name = passkey.name === '' ? m.passkeys_unnamed() : passkey.name;
+                                return (
+                                    <li
+                                        key={passkey.id}
+                                        className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between"
+                                    >
+                                        <div className="flex min-w-0 flex-col gap-1">
+                                            <span className="flex flex-wrap items-center gap-2 font-medium">
+                                                {name}
+                                                {current ? <Badge tone="accent">{m.passkeys_current()}</Badge> : null}
+                                            </span>
+                                            <span className="text-sm text-text-muted">
+                                                {showOwner ? (
+                                                    <>
+                                                        <MemberName memberId={passkey.memberId} />
+                                                        {' · '}
+                                                    </>
+                                                ) : null}
+                                                {authenticatorLabel(passkey)}
+                                                {' · '}
+                                                {m.passkeys_created()}{' '}
+                                                <RelativeTime value={new Date(passkey.createdAt)} />
+                                                {' · '}
+                                                {passkey.lastUsedAt === null ? (
+                                                    m.passkeys_never_used()
+                                                ) : (
+                                                    <>
+                                                        {m.passkeys_last_used()}{' '}
+                                                        <RelativeTime value={new Date(passkey.lastUsedAt)} />
+                                                    </>
+                                                )}
+                                            </span>
+                                        </div>
+                                        <Button
+                                            size="sm"
+                                            variant="danger"
+                                            className="self-start sm:self-center"
+                                            aria-label={m.passkeys_revoke_named({ name })}
+                                            onClick={() => {
+                                                onRevoke({ passkey, own: ownerOf(passkey), current });
+                                            }}
+                                        >
+                                            {m.passkeys_revoke()}
+                                        </Button>
+                                    </li>
+                                );
+                            })}
+                        </ul>
+                        {nextCursor === null ? null : (
+                            <p className="text-sm text-text-muted">
+                                {m.passkeys_more({ count: String(CREDENTIALS_PAGE_SIZE) })}
+                            </p>
+                        )}
+                    </div>
+                )
+            }
+        </SectionCard>
+    );
+}
+
+/**
+ * The signed-in member's passkeys, and everyone's for members who may revoke them. Registering a passkey is the
+ * engine gateway's job; this page lists and revokes, and every revoke asks first and needs a fresh assertion.
+ */
+export function PasskeysPage() {
+    const engineApi = useEngineApi();
+    const me = useCurrentMember();
+    const { can } = usePermissions();
+    const canManageAll = can('members.manage') && can('security.read');
+    const [target, setTarget] = useState<RevokeTarget | null>(null);
+    const mine = useQuery({ ...myPasskeysQueryOptions(engineApi, FIRST_PAGE), throwOnError: isPageLevelFailure });
+    const all = useQuery({ ...allPasskeysQueryOptions(engineApi, FIRST_PAGE), enabled: canManageAll });
+    const sessions = useQuery(mySessionsQueryOptions(engineApi));
+    const currentPasskeyId = sessions.data?.items.find(({ current }) => current)?.passkeyId ?? null;
+
+    const revoke = useStepUpAwareMutation({
+        mutationFn: async ({ passkey, own }: RevokeTarget) => {
+            const signal = AbortSignal.timeout(MUTATION_TIMEOUT_MS);
+            return unwrap(
+                own
+                    ? await engineApi.me.revokePasskey(passkey.id, signal)
+                    : await engineApi.passkeys.revoke(passkey.id, signal),
+            );
+        },
+        invalidates: [securityKeys.passkeys(), securityKeys.mySessions(), memberKeys.all],
+        successMessage: (_, { passkey }) => m.passkeys_revoked({ name: passkey.name }),
+        errorMessage: (failure, { passkey }) =>
+            failure.kind === 'problem' && failure.problem.code === 'last-passkey'
+                ? m.passkeys_last_one({ name: passkey.name })
+                : m.passkeys_revoke_failed({ name: passkey.name }),
+    });
+    const close = () => {
+        setTarget(null);
+    };
+
+    return (
+        <Page title={m.passkeys_title()}>
+            <p className="text-sm text-text-muted">{m.passkeys_intro()}</p>
+            <PasskeyList
+                query={mine}
+                title={m.passkeys_mine()}
+                currentPasskeyId={currentPasskeyId}
+                showOwner={false}
+                ownerOf={() => true}
+                onRevoke={setTarget}
+            />
+            {canManageAll ? (
+                <PasskeyList
+                    query={all}
+                    title={m.passkeys_everyone()}
+                    currentPasskeyId={currentPasskeyId}
+                    showOwner
+                    ownerOf={(passkey) => passkey.memberId === me.memberId}
+                    onRevoke={setTarget}
+                />
+            ) : null}
+            {target === null ? null : (
+                <ConfirmDialog
+                    open
+                    onClose={close}
+                    tone="danger"
+                    title={m.passkeys_revoke_title({ name: target.passkey.name })}
+                    description={target.current ? m.passkeys_revoke_current_body() : m.passkeys_revoke_body()}
+                    confirmLabel={target.current ? m.passkeys_revoke_and_sign_out() : m.passkeys_revoke()}
+                    loading={revoke.isPending}
+                    onConfirm={() => {
+                        revoke.mutate(target, { onSuccess: close });
+                    }}
+                />
+            )}
+        </Page>
+    );
+}

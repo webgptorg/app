@@ -1,11 +1,14 @@
 import { createFileRoute } from '@tanstack/react-router';
 
 import { requireFeature } from '../app/registry/require-feature';
-import { PageStub } from '../features/shell/page-stub';
-import { m } from '../paraglide/messages';
+import { securityOverviewQueryOptions } from '../features/security/security-queries';
+import { SecurityPage } from '../features/security/security-page';
 
-// U-06 fills this screen.
 export const Route = createFileRoute('/security')({
     beforeLoad: requireFeature('security'),
-    component: () => <PageStub title={m.security_title()} />,
+    // Not awaited: each section shows its own skeleton, and a failure shows in the sections with a retry.
+    loader: ({ context }) => {
+        context.queryClient.query(securityOverviewQueryOptions(context.engineApi)).catch(() => undefined);
+    },
+    component: SecurityPage,
 });
