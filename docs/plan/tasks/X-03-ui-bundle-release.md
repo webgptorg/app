@@ -55,6 +55,13 @@ Decided 2026-10-20 (Seb): C-06 pins the Sigstore build-trigger extension (OID `1
 - [ ] `bun run check` passes.
 - [ ] **Status** line above set to `done (#<PR>)`.
 
+## Apply (needs credentials)
+
+Tracked in [apply.md](../apply.md). The code is merged; these runs have not happened yet.
+
+- The first real dry run (push of `ui-v0.0.0-dryrun.<n>`) of `ui-release.yml`: it needs the `staging` GitHub environment (blocked on the GitHub plan decision in the plan's "Still needed" table), the `UI_STAGING_RELEASE_KEY` seed (regenerate it and update `apps/engine-ui/release/trust-policy.staging.json` if it was not kept) and, for real uploads, the `UI_STAGING_R2_*` bucket and token. Record the run link and the `release:verify` result.
+- Production signing: the release key holder, three maintainer hardware keys and the rehearsed key ceremony (plan's "Still needed" table).
+
 ## Risks and open points
 
 - A keyless signature proves "built by this workflow", not "approved by a human"; that is why a regular production release also needs the human-held release key (and a `security` release 2 of 3 maintainer keys). Key ceremony and holders are open in the plan's "Still needed" table. The staging release key must never appear in a production trust policy.

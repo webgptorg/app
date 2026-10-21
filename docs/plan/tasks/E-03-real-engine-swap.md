@@ -18,7 +18,8 @@ ADR 0004 promises that swapping in the real engine means pointing the e2e and co
 - Engine selection in the e2e harness (X-01): `ENGINE_IMPL=mock|real`. `real` runs the engine's signed Docker image pinned by digest, configured through its documented variables (Interface 6: `PTBK_MODE=tunnel`, relay list, dev CA or Pebble for ACME, `PTBK_UPDATE_POLICY=pinned`), registered against the local dashboard with a link code, and loading the UI bundle through its own loader from the test release.
 - Conformance against the real engine: a `ConformanceTarget` for it (session acquisition as agreed in C-05), run with every suite that exists.
 - CI: a workflow job running conformance and e2e with `ENGINE_IMPL=real` on PRs that touch contracts, e2e or engine-ui, and nightly; the mock job stays required on every PR. Bumping the pinned image digest is a PR that must pass both.
-- A gap log (`docs/engine-integration/gaps.md` in the public repo, or issues there): each failing check with its cause class (engine bug, contract ambiguity, mock shortcut, our bug) and owner.
+- A gap log in this repository (`docs/engine-integration/gaps.md`, moving to the public repository only when a human decides so): each failing check with its cause class (engine bug, contract ambiguity, mock shortcut, our bug) and owner.
+- Repository boundary: agents work only in `webgptorg/app`. They never push to, open pull requests in or file issues on `webgptorg/promptbook` or any other repository; engine bugs from the gap log are handed to the engine team by a human.
 - Fixes on our side: mock engine behaviour that the real engine shows to be wrong or too lenient; contract clarifications via a contract release and version bump (E-02 process).
 - Re-run the spike acceptance criteria (X-02 network tests: NAT, 443-only, CONNECT proxy, TLS-inspecting proxy, relay failover, packet capture) with the real engine.
 

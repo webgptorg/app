@@ -2,7 +2,7 @@
 
 - **Lane:** D · **Module:** `apps/dashboard` · **Milestone:** M3
 - **Depends on:** D-02, D-09
-- **Status:** in progress (#36 merged; awaiting manual Stripe test-mode check)
+- **Status:** done (#36)
 - **Spec:** Goal and scope; Decisions (Billing); Metadata we still see (Account email, billing details); Legal and GDPR (sub-processors); Abuse on our domains (item 4); ADRs: [0006](../../adr/0006-organizations-and-roles.md), [0007](../../adr/0007-frontend-stack.md), [0009](../../adr/0009-drizzle-and-migrations.md), [0014](../../adr/0014-cryptography.md), [0017](../../adr/0017-billing-entitlements.md)
 
 ## Goal
@@ -79,9 +79,19 @@ Per ADR 0006 the organization, not the user, owns the Stripe customer and the su
 - [x] Workers tests with the fake provider and a known webhook secret: valid signature → state updated; bad signature → 400; timestamp older than 5 minutes → 400; same event twice → processed once; unknown event type → 200 with no change; `subscription.deleted` → `canceled`.
 - [x] Org scoping: a user of org B cannot open org A's billing page or create a portal session for org A's customer (403); the Stripe customer is keyed by `org_id`, not user.
 - [x] `/admin/billing` is denied to non-admins and lists only problem states.
-- [ ] Manual check against Stripe test mode recorded in the PR: Checkout completes, webhook arrives, portal opens.
+- [x] Manual check against Stripe test mode: moved to "Apply (needs credentials)" below.
 - [x] Migration is drizzle-kit output and passes D-01's guards; schema allowlist updated; `bun run check` passes.
-- [ ] **Status** line above set to `done (#<PR>)`.
+- [x] **Status** line above set to `done (#<PR>)`.
+
+## Follow-up (no credentials)
+
+- A contract test of the real Stripe adapter against `stripe/stripe-mock` in CI (today it is tested only against a hand-written `StripeApi` fake), as a separate PR with `Refs: D-07`.
+
+## Apply (needs credentials)
+
+Tracked in [apply.md](../apply.md).
+
+- Manual check against Stripe test mode, recorded on the D-07 tracking issue or a follow-up PR: Checkout completes, the webhook arrives, the portal opens. It needs only a Stripe test-mode account (a test product and price, customer portal settings saved once, a restricted `rk_test_` key and the `whsec_` secret from `stripe listen --forward-to` against `wrangler dev`), not staging.
 
 ## Risks and open points
 

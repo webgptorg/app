@@ -33,7 +33,15 @@ X-02 measured (2026-10-21) that a relay which hangs while its kernel still accep
 - [ ] `bun run check` passes.
 - [ ] **Status** line above set to `done (#<PR>)`.
 
+## Apply (needs credentials)
+
+Tracked in [apply.md](../apply.md). Needs I-01's and I-02's applied staging and the decision below.
+
+- The checker runs against the staging relays and changes the staging records; record what production resolvers do with the short TTL.
+
 ## Risks and open points
+
+- **Conflict with I-02, needs a human decision.** I-02 keeps every DNS token out of the dashboard Worker, and the engine domain's relay records are managed by OpenTofu: a checker that edits them needs a privileged token where I-02 forbids one, and its edits drift from the OpenTofu state, so the next `apply` would put a hung relay back. Options: Cloudflare's own health checks (Load Balancing; not yet confirmed to work for DNS-only wildcard records), or a dedicated token scoped to the engine zone held only by the checker, with the relay records excluded from OpenTofu. Build the checker logic, thresholds and the CoreDNS e2e behind a `RelayDnsWriter` port now; the adapter waits for the decision (plan's "Still needed" table).
 
 - DNS caching beyond the TTL (resolvers, operating systems, browsers) delays failover; the e2e test measures it with Chromium only. Record what production resolvers do once relays run in staging.
 - A check from one location can remove a relay that is only unreachable from there; use more than one vantage point or a quorum before removing a relay in production. I-01 spreads relays over several providers, so a single provider's outage must not read as every relay failing.

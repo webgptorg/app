@@ -38,6 +38,17 @@ M2 and M3 can run in parallel once M1's contracts exist. E-01 (the engine integr
 | Infra              | `infra/`, deploy workflows                                         | I      |
 | Engine integration | docs, contract publishing                                          | E      |
 
+## Current priority: local-first
+
+Decided 2026-10-21 (Seb): until the cloud accounts and tokens exist, build everything that needs none, so the whole product can be clicked through locally (dashboard, relay, mock engine, engine UI) with no external service. In this order, with the lanes in parallel:
+
+1. **Dashboard chain to the local click-through:** D-03 → D-04 and D-05 → D-06 → X-05 → [X-06](tasks/X-06-local-dev-stack.md). X-06's host-side parts can start next to D-03.
+2. **Engine UI breadth:** U-04, U-06 to U-12 and M-07, then X-04.
+3. **Infra code that needs no credential:** R-06, R-05, M-03, and the code parts of I-01, I-03, I-04, I-05 and I-07, verified in CI (offline `tofu test`, a local VM, compose e2e).
+4. **Apply steps** that need accounts, tokens, domains or hardware keys wait for a human. Each brief lists them under "Apply (needs credentials)", and [apply.md](apply.md) collects them, with every credential, in the order to run them.
+
+A task whose code is merged and whose only remaining work is an Apply step is `done`, so it does not block its dependants; the Apply step is tracked in [apply.md](apply.md).
+
 ## Tasks
 
 Each brief in [tasks/](tasks/) carries its own **Depends on** and **Status** (`todo`, `in progress (<branch>)`, `done (#<PR>)`), so parallel PRs never edit the same line. What a task unblocks is derived from the others' dependencies. For the live table:
@@ -97,6 +108,7 @@ bun run plan --check  # validates statuses and dependencies (part of bun run che
 | [D-09](tasks/D-09-auth-account-screens.md)               | Sign-up, sign-in, recovery and account screens                                   | D    | M3        |
 | [M-06](tasks/M-06-mock-engine-registration-heartbeat.md) | Mock engine registration and heartbeat client                                    | M    | M3        |
 | [X-05](tasks/X-05-e2e-dashboard-flow.md)                 | E2E: sign up, link engine, see it online, open it                                | X    | M3        |
+| [X-06](tasks/X-06-local-dev-stack.md)                    | Local dev stack for humans: the whole product on one machine                     | X    | M3        |
 | [I-01](tasks/I-01-relay-hosts.md)                        | Relay hosts: provisioning and hardening                                          | I    | M4        |
 | [I-02](tasks/I-02-dns-cloudflare.md)                     | DNS and Cloudflare environments                                                  | I    | M4        |
 | [I-03](tasks/I-03-deploy-pipelines.md)                   | Deploy and release pipelines                                                     | I    | M4        |
@@ -122,7 +134,7 @@ Tasks in the same wave have no dependencies on each other and can run at the sam
 | 7    | D-04, D-05, E-02, I-01, M-03, M-05, M-07, X-02                               |
 | 8    | D-06, D-08, I-03, I-04, X-04                                                 |
 | 9    | I-05, I-07, X-05                                                             |
-| 10   | E-03, I-06                                                                   |
+| 10   | E-03, I-06, X-06                                                             |
 
 C-01 and R-01 both live in `packages/protocol` and touch its `package.json` and `src/index.ts`; whoever merges second rebases (AGENTS.md, step 7). Wave 1 starts four agents at once; wave 4 is the widest with thirteen.
 
@@ -151,13 +163,18 @@ C-01 and R-01 both live in `packages/protocol` and touch its `package.json` and 
 
 **Still needed** (each blocks specific tasks, not the start):
 
-| Decision                                                                                                                                                               | Blocks                                    | Owner       |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- | ----------- |
-| Engine domain name (separate from ptbk.io)                                                                                                                             | I-02 (local and staging use placeholders) | Team        |
-| Cloudflare accounts and relay VPS provider accounts                                                                                                                    | I-01, I-02                                | Team        |
-| Release key holder and the three maintainer key holders (2 of 3 for security releases), hardware keys (e.g. YubiKey 5.7+ PIV for Ed25519) and a rehearsed key ceremony | X-03 for production signing, I-03         | Team        |
-| External audit of the relay and the protocols before general availability: vendor, budget (estimate €15–40k), timing                                                   | General availability (after I-06)         | Seb         |
-| Who builds the engine side, and when                                                                                                                                   | E-03                                      | Engine team |
+| Decision                                                                                                                                                                                                                                                             | Blocks                                             | Owner       |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- | ----------- |
+| Engine domain name (separate from ptbk.io)                                                                                                                                                                                                                           | I-02 (local and staging use placeholders)          | Team        |
+| Cloudflare accounts and relay VPS provider accounts                                                                                                                                                                                                                  | I-01, I-02                                         | Team        |
+| Release key holder and the three maintainer key holders (2 of 3 for security releases), hardware keys (e.g. YubiKey 5.7+ PIV for Ed25519) and a rehearsed key ceremony                                                                                               | X-03 for production signing, I-03                  | Team        |
+| External audit of the relay and the protocols before general availability: vendor, budget (estimate €15–40k), timing                                                                                                                                                 | General availability (after I-06)                  | Seb         |
+| Who builds the engine side, and when                                                                                                                                                                                                                                 | E-03                                               | Engine team |
+| GitHub plan: Actions minutes or billing (CI is currently refused); environments and environment secrets in a private repo need Team or Pro; required reviewers and "prevent self-review" in a private repo need Enterprise. Upgrade, or choose another approval gate | All merges (CI); X-03 publish gate, I-03 approvals | Seb         |
+| Stripe test-mode account (product, price, customer portal settings)                                                                                                                                                                                                  | D-07 manual check                                  | Seb         |
+| Abuse-feed vendor (Google Web Risk, Netcraft or other)                                                                                                                                                                                                               | I-05 apply                                         | Team        |
+| `ops@`, `abuse@` and `security@` mailboxes                                                                                                                                                                                                                           | I-02, I-04, I-05 apply                             | Seb         |
+| How I-07 changes relay DNS: Cloudflare health checks, or a dedicated zone-scoped token with the relay records outside OpenTofu (see I-07)                                                                                                                            | I-07 apply                                         | Team        |
 
 ## How to work a task
 
