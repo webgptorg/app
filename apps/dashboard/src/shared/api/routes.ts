@@ -1,3 +1,4 @@
+import { LinkCode } from '@ptbk/protocol';
 import { z } from 'zod';
 
 import { billingStatusSchema, featureSchema, planIdSchema, problemStatusSchema, quotaSchema } from '../billing';
@@ -110,6 +111,15 @@ export const problemOrganizationSchema = z.strictObject({
     updatedAt: timestampSchema,
 });
 export type ProblemOrganization = z.infer<typeof problemOrganizationSchema>;
+
+/** Shown once, at issuance; no endpoint returns the code again (the dashboard keeps only its SHA-256). */
+export const linkCodeViewSchema = z.strictObject({
+    linkCode: LinkCode,
+    /** The configured install command with the code filled in. */
+    installCommand: z.string().max(1024),
+    expiresAt: timestampSchema,
+});
+export type LinkCodeView = z.infer<typeof linkCodeViewSchema>;
 
 /** Where the SPA sends the browser, top level: Stripe Checkout or the portal, or back to `/billing` with the fake. */
 const redirectSchema = z.strictObject({ url: z.url({ protocol: /^https?$/ }).max(2048) });
@@ -388,6 +398,19 @@ export const apiRoutes = {
         input: NO_INPUT,
         output: z.strictObject({ organizations: z.array(problemOrganizationSchema) }),
         errorCodes: [],
+    }),
+
+    /** For the session's active organization only: the organization is never a request field. */
+    createLinkCode: defineRoute({
+        method: 'POST',
+        path: '/api/engines/link-codes',
+        auth: 'session',
+        permission: 'engine.link',
+        rateLimit: null,
+        input: NO_INPUT,
+        output: linkCodeViewSchema,
+        // `rate-limited` (429) is common: at most 5 active codes and 10 per hour per organization.
+        errorCodes: ['not-entitled', 'engine-limit'],
     }),
 
     /** Dev only, for e2e (X-05): mounted only with the fake email adapter, which the config allows in dev alone. */

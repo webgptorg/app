@@ -27,6 +27,7 @@
     "apps/dashboard": {
       "name": "@ptbk/dashboard",
       "dependencies": {
+        "@ptbk/protocol": "workspace:*",
         "@ptbk/ui": "workspace:*",
         "@simplewebauthn/browser": "catalog:",
         "@simplewebauthn/server": "catalog:",

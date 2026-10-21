@@ -54,7 +54,8 @@ export interface RouteArgs<C extends RouteContract> {
 
 export type RouteHandler<C extends RouteContract> = (args: RouteArgs<C>) => Promise<RouteResult<C>>;
 
-export type SignatureMode = Exclude<AuthMode, 'public' | 'session'>;
+/** Modes whose signature arrives in a header and covers the raw body. */
+export type SignatureMode = Exclude<AuthMode, 'public' | 'session' | 'engine-signature'>;
 
 /** Checks a signature over the exact request bytes and only then reads them; `payload` is parsed by the contract. */
 export type SignatureVerifier = (
@@ -121,6 +122,9 @@ export function assertMountable(contract: RouteContract, mount: string): void {
     }
     if (isSignatureMode(contract.auth) && (contract.input.body === null || contract.input.headers === null)) {
         problems.push('signed route without a body and a header schema');
+    }
+    if (contract.auth === 'engine-signature' && contract.input.body === null) {
+        problems.push('engine-signed route without a body schema');
     }
     if (problems.length > 0) {
         throw new Error(`refusing to mount ${contract.method} ${contract.path}: ${problems.join(', ')}`);
@@ -278,8 +282,9 @@ export function createRouteBinder(deps: RouteBinderDeps): RouteBinder {
         | { readonly kind: 'ok'; readonly session: ActiveSession | null }
         | { readonly kind: 'response'; readonly response: Response }
     > {
-        // Signed routes were verified with their body, before any of it was parsed.
-        if (contract.auth === 'public' || isSignatureMode(contract.auth)) {
+        // Header-signed routes were verified with their body, before any of it was parsed; engine-signed ones carry
+        // their proof in the parsed body, which the handler verifies first.
+        if (contract.auth === 'public' || contract.auth === 'engine-signature' || isSignatureMode(contract.auth)) {
             return { kind: 'ok', session: null };
         }
         const token = request.secretCookie(SESSION_COOKIE);

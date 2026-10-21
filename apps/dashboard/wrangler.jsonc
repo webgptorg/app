@@ -27,6 +27,8 @@
         "DASHBOARD_ORIGIN": "http://localhost:5173",
         "ENGINE_DOMAIN": "engines.ptbk.test",
         "RELAYS": [{ "relayId": "relay.ptbk.test", "region": "local" }],
+        // Shown on /engines/new with the link code; X-06's `dev:link` starts the local mock engine with it.
+        "INSTALL_COMMAND": "bun run dev:link {linkCode}",
         "ADAPTERS": { "email": "fake", "billing": "fake", "rateLimit": "memory" },
         "EMAIL_FROM": "no-reply@ptbk.test",
         // Dev only; config refuses it elsewhere. Staging and production: `wrangler secret put RATE_LIMIT_HMAC_KEY`.
@@ -73,6 +75,8 @@
                 "DASHBOARD_ORIGIN": "https://app.staging.<placeholder>",
                 "ENGINE_DOMAIN": "<staging-engine-domain>",
                 "RELAYS": [{ "relayId": "relay-1.staging.<placeholder>", "region": "eu-central" }],
+                // Placeholder until the engine team defines the install command (E-01).
+                "INSTALL_COMMAND": "<engine-install-command> {linkCode}",
                 "ADAPTERS": { "email": "cloudflare", "billing": "stripe", "rateLimit": "workers" },
                 "EMAIL_FROM": "no-reply@<staging-sending-domain>",
                 // Test-mode Stripe IDs; secrets via `wrangler secret put STRIPE_SECRET_KEY --env staging` (and
@@ -121,6 +125,8 @@
                 "DASHBOARD_ORIGIN": "https://app.ptbk.io",
                 "ENGINE_DOMAIN": "<engine-domain>",
                 "RELAYS": [{ "relayId": "relay-1.<engine-domain>", "region": "eu-central" }],
+                // Placeholder until the engine team defines the install command (E-01).
+                "INSTALL_COMMAND": "<engine-install-command> {linkCode}",
                 "ADAPTERS": { "email": "cloudflare", "billing": "stripe", "rateLimit": "workers" },
                 "EMAIL_FROM": "no-reply@<production-sending-domain>",
                 // Live-mode Stripe IDs; secrets via `wrangler secret put STRIPE_SECRET_KEY --env production` (and

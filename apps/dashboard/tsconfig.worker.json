@@ -6,6 +6,8 @@
     "types": ["./worker-configuration.d.ts", "@cloudflare/vitest-pool-workers/types"]
   },
   "include": [
+    "worker-configuration.d.ts",
+    "src/workerd-webcrypto.d.ts",
     "src/worker.ts",
     "src/worker-env.d.ts",
     "src/app/**/*",

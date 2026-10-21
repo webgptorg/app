@@ -11,6 +11,7 @@ const vars = {
     DASHBOARD_ORIGIN: 'http://localhost:5173',
     ENGINE_DOMAIN: 'engines.ptbk.test',
     RELAYS: [{ relayId: 'relay.ptbk.test', region: 'local' }],
+    INSTALL_COMMAND: 'bun run dev:link {linkCode}',
     ADAPTERS: { email: 'fake', billing: 'fake', rateLimit: 'memory' },
     EMAIL_FROM: 'no-reply@ptbk.test',
     RATE_LIMIT_HMAC_KEY: DEV_RATE_LIMIT_HMAC_KEY,

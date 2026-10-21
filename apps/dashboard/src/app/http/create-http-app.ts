@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 
 import { createAccountFlows } from '../../domain/auth/account';
+import { createEngineCreationPolicy } from '../../domain/registration/engine-creation-policy';
 import { toBase64Url } from '../../domain/auth/secrets';
 import type { RouteContract } from '../../shared/api/contract';
 import type { DashboardDeps } from '../deps';
@@ -56,9 +57,10 @@ export function createHttpApp(deps: HttpAppDeps): HttpApp {
             },
         },
     });
+    const policy = createEngineCreationPolicy(deps);
     const routers = [
-        [API_MOUNT, createApiRouter({ ...deps, routes })],
-        [V1_MOUNT, createV1Router({ config: deps.config, routes })],
+        [API_MOUNT, createApiRouter({ ...deps, policy, routes })],
+        [V1_MOUNT, createV1Router({ ...deps, policy, routes })],
         [INTERNAL_MOUNT, createInternalRouter()],
         [WEBHOOKS_MOUNT, createWebhooksRouter({ billing: deps.billing, routes })],
     ] as const;

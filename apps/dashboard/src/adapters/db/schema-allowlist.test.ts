@@ -13,6 +13,23 @@ const ALLOWLIST: Readonly<Record<string, readonly string[]>> = {
     admin_audit_log: ['id', 'admin_user_id', 'action', 'target_type', 'target_id', 'reason', 'created_at'],
     // Signup and recovery links: the token only as SHA-256, the address it was sent to, 15-minute lifetime.
     email_tokens: ['token_hash', 'purpose', 'email', 'user_id', 'created_at', 'expires_at', 'used_at'],
+    // Registered engines: the public key and what derives from it, the mode and version the engine signed, and the
+    // dashboard's status for it. Routing and billing metadata only.
+    engines: [
+        'engine_id',
+        'org_id',
+        'public_key',
+        'hostname',
+        'mode',
+        'engine_version',
+        'status',
+        'status_reason',
+        'created_at',
+        'updated_at',
+    ],
+    // One-time link codes: the code only as SHA-256, who issued it for which organization, a 30-minute lifetime, and
+    // the engine that redeemed it.
+    link_codes: ['code_hash', 'org_id', 'created_by_user_id', 'created_at', 'expires_at', 'used_at', 'engine_id'],
     memberships: ['org_id', 'user_id', 'role', 'created_at'],
     organizations: ['id', 'kind', 'name', 'created_at'],
     // Dashboard passkeys: public keys and counters only; private keys never leave the authenticator.

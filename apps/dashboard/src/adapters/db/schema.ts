@@ -168,3 +168,47 @@ export const stripeEvents = sqliteTable(
     },
     (t) => [index('stripe_events_received_at_idx').on(t.receivedAt)],
 );
+
+// Engine registration (D-03): routing and billing metadata only, never engine content.
+
+export const linkCodes = sqliteTable(
+    'link_codes',
+    {
+        // SHA-256 of the link code; the code itself is shown once and never stored.
+        codeHash: text('code_hash').primaryKey(),
+        orgId: text('org_id')
+            .notNull()
+            .references(() => organizations.id),
+        createdByUserId: text('created_by_user_id').notNull(),
+        createdAt: integer('created_at').notNull(),
+        expiresAt: integer('expires_at').notNull(),
+        usedAt: integer('used_at'),
+        engineId: text('engine_id'),
+    },
+    (t) => [index('link_codes_org_id_created_at_idx').on(t.orgId, t.createdAt)],
+);
+
+export const engines = sqliteTable(
+    'engines',
+    {
+        engineId: text('engine_id').primaryKey(),
+        orgId: text('org_id')
+            .notNull()
+            .references(() => organizations.id),
+        publicKey: text('public_key').notNull().unique(),
+        hostname: text('hostname').notNull().unique(),
+        mode: text('mode', { enum: ['tunnel', 'direct'] }).notNull(),
+        engineVersion: text('engine_version').notNull(),
+        status: text('status', { enum: ['active', 'suspended'] })
+            .notNull()
+            .default('active'),
+        statusReason: text('status_reason'),
+        createdAt: integer('created_at').notNull(),
+        updatedAt: integer('updated_at').notNull(),
+    },
+    (t) => [
+        check('engines_status_check', sql`${t.status} in ('active', 'suspended')`),
+        check('engines_mode_check', sql`${t.mode} in ('tunnel', 'direct')`),
+        index('engines_org_id_idx').on(t.orgId),
+    ],
+);

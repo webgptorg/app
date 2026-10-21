@@ -13,12 +13,15 @@ import { createHttpApp } from '../app/http/create-http-app';
 import type { AuthStore } from '../domain/auth/auth-store';
 import { createAuthorizer } from '../domain/authz/authorizer';
 import type { BillingStore } from '../domain/billing/billing-store';
+import type { EngineStore } from '../domain/registration/engine-store';
+import type { LinkCodeStore } from '../domain/registration/link-code-store';
 import { DASHBOARD_POLICY } from '../domain/authz/policy';
 import type { RateLimiter } from '../domain/ports/rate-limiter';
 import type { RouteContract } from '../shared/api/contract';
 import { syntheticWebhookSecret, TEST_PLANS } from './billing-fixtures';
 import { createSoftwareAuthenticator, type SoftwareAuthenticator } from './software-authenticator';
 import { stripeSignatureHeader } from './stripe-signature';
+import { createMemoryRegistrationStores } from './memory-registration-store';
 import { createTestBilling } from './test-billing';
 
 export const ORIGIN = 'https://app.ptbk.test';
@@ -87,6 +90,8 @@ export function createAuthHarness(options: {
     readonly email?: 'fake' | 'cloudflare';
     /** Defaults to an in-memory store; the auth tests that use the default never touch billing. */
     readonly billingStore?: BillingStore;
+    /** Default to in-memory stores whose organizations always exist. */
+    readonly registration?: { readonly linkCodes: LinkCodeStore; readonly engines: EngineStore };
 }): AuthHarness {
     const clock = createFakeClock(START_MS);
     const webhookSecret = syntheticWebhookSecret();
@@ -97,6 +102,7 @@ export function createAuthHarness(options: {
         DASHBOARD_ORIGIN: ORIGIN,
         ENGINE_DOMAIN: 'engines.ptbk.test',
         RELAYS: [{ relayId: 'relay-1.ptbk.test', region: 'eu-central' }],
+        INSTALL_COMMAND: 'bun run dev:link {linkCode}',
         ADAPTERS: { email: options.email ?? 'fake', billing: 'fake', rateLimit: 'memory' },
         EMAIL_FROM: 'no-reply@ptbk.test',
         RATE_LIMIT_HMAC_KEY: DEV_RATE_LIMIT_HMAC_KEY,
@@ -111,6 +117,7 @@ export function createAuthHarness(options: {
         webhookSecret,
         ...(options.billingStore === undefined ? {} : { store: options.billingStore }),
     });
+    const registration = options.registration ?? createMemoryRegistrationStores({ orgExists: () => true });
     const deps: DashboardDeps = {
         config,
         clock,
@@ -125,6 +132,8 @@ export function createAuthHarness(options: {
         devOutbox: options.email === 'cloudflare' ? null : outbox,
         billing: testBilling.billing,
         entitlements: testBilling.entitlements,
+        linkCodes: registration.linkCodes,
+        engines: registration.engines,
     };
     const { app: http, routes } = createHttpApp({
         ...deps,

@@ -16,6 +16,7 @@ export const RULE_ADAPTERS = {
     'signup-start-email': 'durable-object',
     'recovery-request-ip': 'durable-object',
     'recovery-request-email': 'durable-object',
+    'registration-ip': 'durable-object',
     'options-ip': 'binding',
     'verify-ip': 'binding',
     'public-read-ip': 'binding',

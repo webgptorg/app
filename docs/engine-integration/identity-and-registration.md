@@ -59,13 +59,13 @@ Errors are RFC 9457 problem+json (`ProblemDetails`, read with `TolerantProblemDe
 
 | `code`              | Status | Meaning                                                                    | What the engine does              |
 | ------------------- | ------ | -------------------------------------------------------------------------- | --------------------------------- |
-| `invalid-link-code` | 4xx    | The code is unknown, expired or used. One code for all three, on purpose.  | Ask the owner for a new link code |
-| `bad-signature`     | 4xx    | The signature does not verify                                              | A bug: report it, do not retry    |
+| `invalid-link-code` | 401    | The code is unknown, expired or used. One code for all three, on purpose.  | Ask the owner for a new link code |
+| `bad-signature`     | 401    | The signature does not verify                                              | A bug: report it, do not retry    |
 | `engine-exists`     | 409    | The key's engine ID belongs to another organisation; the code stays unused | Tell the owner; do not retry      |
 | `engine-suspended`  | 403    | The engine is suspended or revoked by its owner                            | Tell the owner; do not retry      |
-| `engine-limit`      | 4xx    | The account has no room for another engine                                 | Tell the owner                    |
+| `engine-limit`      | 403    | The account has no room for another engine                                 | Tell the owner                    |
 
-Only the statuses of `engine-exists` and `engine-suspended` are fixed in the contract today; the dashboard endpoint is not built yet (see the [open points](README.md#open-points)).
+The dashboard (D-03) also answers 403 `not-entitled` (the account's plan does not include engines; the code stays unused), 429 `rate-limited` (20 registration attempts per hour and address), 400 `invalid-request` (the body fails the strict schema) and 413 `too-large` (over `REGISTER_REQUEST_MAX_BYTES`). `not-entitled` and `rate-limited` are not in `REGISTRATION_ERROR_CODE` yet ([open points](README.md#open-points)); treat `not-entitled` like `engine-limit` and `rate-limited` as retryable later.
 
 Registering a key that is already registered:
 
