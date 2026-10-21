@@ -4,10 +4,11 @@ export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
 /**
  * How a route authenticates; there is no default. `public` routes are an allowlist checked by the route-table test.
- * `stripe-signature` routes are verified over the raw body before anything parses it. Machine modes (relay token,
- * engine signature) join this union with the tasks that verify them.
+ * `stripe-signature` routes are verified over the raw body before anything parses it. `engine-signature` routes carry
+ * the engine key's signature inside a strictly parsed body (C-03's registration), and the handler's first step
+ * verifies it before reading any state. The relay token joins this union with the task that verifies it.
  */
-export type AuthMode = 'public' | 'session' | 'stripe-signature';
+export type AuthMode = 'public' | 'session' | 'stripe-signature' | 'engine-signature';
 
 export interface RouteInput {
     readonly params: z.ZodType<Readonly<Record<string, string>>> | null;

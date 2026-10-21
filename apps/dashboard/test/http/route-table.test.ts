@@ -45,7 +45,7 @@ describe('route table', () => {
             expect(() => {
                 assertMountable(route, mount);
             }, `${route.method} ${route.path}`).not.toThrow();
-            expect(['public', 'session', 'stripe-signature']).toContain(route.auth);
+            expect(['public', 'session', 'stripe-signature', 'engine-signature']).toContain(route.auth);
             expect(route.input.body === null || route.method !== 'GET').toBe(true);
         }
     });
@@ -54,6 +54,13 @@ describe('route table', () => {
         const signed = harness.routes.filter((route) => route.auth === 'stripe-signature');
         expect(signed.map((route) => `${route.method} ${route.path} ${String(route.rateLimit)}`)).toEqual([
             'POST /webhooks/stripe webhook-ip',
+        ]);
+    });
+
+    it('takes exactly registration as engine-signed, verified by its handler first', () => {
+        const signed = harness.routes.filter((route) => route.auth === 'engine-signature');
+        expect(signed.map((route) => `${route.method} ${route.path} ${String(route.rateLimit)}`)).toEqual([
+            'POST /v1/engines/register registration-ip',
         ]);
     });
 

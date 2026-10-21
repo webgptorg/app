@@ -8,6 +8,7 @@ const devVars = {
     DASHBOARD_ORIGIN: 'https://app.ptbk.test',
     ENGINE_DOMAIN: 'engines.ptbk.test',
     RELAYS: [{ relayId: 'relay-1.ptbk.test', region: 'eu-central' }],
+    INSTALL_COMMAND: 'bun run dev:link {linkCode}',
     ADAPTERS: { email: 'fake', billing: 'fake', rateLimit: 'memory' },
     EMAIL_FROM: 'no-reply@ptbk.test',
     RATE_LIMIT_HMAC_KEY: DEV_RATE_LIMIT_HMAC_KEY,
@@ -47,6 +48,7 @@ describe('parseConfig', () => {
             dashboardOrigin: 'https://app.ptbk.test',
             engineDomain: 'engines.ptbk.test',
             relays: [{ relayId: 'relay-1.ptbk.test', region: 'eu-central' }],
+            installCommand: 'bun run dev:link {linkCode}',
             adapters: { email: 'fake', billing: 'fake', rateLimit: 'memory' },
             emailFrom: 'no-reply@ptbk.test',
             rateLimitHmacKey: new TextEncoder().encode('dev-only-rate-limit-key-not-secret'),
@@ -68,6 +70,7 @@ describe('parseConfig', () => {
         'DASHBOARD_ORIGIN',
         'ENGINE_DOMAIN',
         'RELAYS',
+        'INSTALL_COMMAND',
         'ADAPTERS',
         'EMAIL_FROM',
         'RATE_LIMIT_HMAC_KEY',
@@ -184,6 +187,16 @@ describe('parseConfig', () => {
         expect(
             failedPaths({ ...bindings, ...devVars, RELAYS: [{ relayId: 'r.ptbk.test', region: 'EU Central' }] }),
         ).toEqual(['RELAYS.0.region']);
+        const relay = { relayId: 'r.ptbk.test', region: 'eu' };
+        expect(failedPaths({ ...bindings, ...devVars, RELAYS: [relay, { ...relay, relayId: 'R.ptbk.test' }] })).toEqual(
+            ['RELAYS'],
+        );
+    });
+
+    it('needs the link code placeholder exactly once in the install command', () => {
+        for (const command of ['bun run dev:link', 'link {linkCode} {linkCode}', '']) {
+            expect(failedPaths({ ...bindings, ...devVars, INSTALL_COMMAND: command })).toEqual(['INSTALL_COMMAND']);
+        }
     });
 
     it('never puts a value into the error', () => {

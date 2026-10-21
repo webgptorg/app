@@ -21,6 +21,8 @@ export const RATE_LIMITS = {
     'verify-ip': { limit: 30, windowMs: MINUTE_MS },
     // Cheap public reads: the environment, health, the dev outbox.
     'public-read-ip': { limit: 120, windowMs: MINUTE_MS },
+    // Engine registration (D-03): link codes are 128-bit, single-use and short-lived, so this caps load, not guessing.
+    'registration-ip': { limit: 20, windowMs: HOUR_MS },
     // Stripe webhooks: generous, since Stripe sends bursts from few addresses and retries anything refused.
     'webhook-ip': { limit: 600, windowMs: MINUTE_MS },
 } as const satisfies Readonly<Record<string, RateLimitRule>>;

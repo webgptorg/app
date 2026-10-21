@@ -18,6 +18,7 @@
     "test:csp": "bun run build && playwright test"
   },
   "dependencies": {
+    "@ptbk/protocol": "workspace:*",
     "@ptbk/ui": "workspace:*",
     "@simplewebauthn/browser": "catalog:",
     "@simplewebauthn/server": "catalog:",

@@ -162,6 +162,15 @@ describe('DASHBOARD_POLICY', () => {
         },
     );
 
+    it('lets only an owner of the organization link engines to it, also right after a recovery', () => {
+        expect(authorizer.can(recovered, 'engine.link', { kind: 'org', orgId: ORG_A })).toEqual({ kind: 'allowed' });
+        expect(authorizer.can(owner, 'engine.link', { kind: 'org', orgId: ORG_B })).toEqual({
+            kind: 'denied',
+            reason: 'not-member',
+        });
+        expect(orgPermissions(DASHBOARD_POLICY, 'owner')).toContain('engine.link');
+    });
+
     it('keeps the billing problem list to platform admins', () => {
         expect(authorizer.can(owner, 'admin.billing.read', { kind: 'platform' })).toEqual({
             kind: 'denied',

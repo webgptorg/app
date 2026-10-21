@@ -8,6 +8,7 @@ import { createAuthorizer } from '../../domain/authz/authorizer';
 import { DASHBOARD_POLICY } from '../../domain/authz/policy';
 import { syntheticStripeKey, syntheticWebhookSecret, TEST_PLANS } from '../../testing/billing-fixtures';
 import { createMemoryAuthStore } from '../../testing/memory-auth-store';
+import { createMemoryRegistrationStores } from '../../testing/memory-registration-store';
 import { createTestBilling } from '../../testing/test-billing';
 import { DEV_RATE_LIMIT_HMAC_KEY, parseConfig } from '../config';
 import { authLinks } from '../deps';
@@ -25,6 +26,7 @@ function app(options: {
         DASHBOARD_ORIGIN: 'https://app.ptbk.test',
         ENGINE_DOMAIN: 'engines.ptbk.test',
         RELAYS: [{ relayId: 'relay-1.ptbk.test', region: 'eu-central' }],
+        INSTALL_COMMAND: 'bun run dev:link {linkCode}',
         ADAPTERS:
             options.environment === 'dev'
                 ? { email: 'fake', billing: 'fake', rateLimit: 'memory' }
@@ -57,6 +59,7 @@ function app(options: {
         devOutbox: null,
         billing,
         entitlements,
+        ...createMemoryRegistrationStores({ orgExists: () => true }),
         assets: { fetch: assets } as unknown as Fetcher,
         viteDevServer: options.viteDevServer,
     });

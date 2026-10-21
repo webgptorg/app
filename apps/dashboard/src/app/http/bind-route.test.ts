@@ -312,6 +312,10 @@ describe('route binder', () => {
             { auth: 'stripe-signature', permission: null, rateLimit: 'webhook-ip' },
         ],
         [
+            'an engine-signed route without a body schema',
+            { auth: 'engine-signature', permission: null, rateLimit: 'registration-ip' },
+        ],
+        [
             'a signed route without rate limit',
             {
                 auth: 'stripe-signature',

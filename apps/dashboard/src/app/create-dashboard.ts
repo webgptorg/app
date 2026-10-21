@@ -9,6 +9,7 @@ import { createCloudflareEmailSender } from '../adapters/email/cloudflare-email-
 import { createDatabase } from '../adapters/db/client';
 import { createD1AuthStore } from '../adapters/db/d1-auth-store';
 import { createD1BillingStore } from '../adapters/db/d1-billing-store';
+import { createD1EngineStore, createD1LinkCodeStore } from '../adapters/db/d1-registration-store';
 import { systemClock } from '../adapters/system-clock';
 import { createSimpleWebAuthnRelyingParty } from '../adapters/webauthn/simple-webauthn-relying-party';
 import { createAuthorizer } from '../domain/authz/authorizer';
@@ -142,6 +143,8 @@ export function createDashboard(
         store: createD1AuthStore(db),
         billing,
         entitlements: createSubscriptionEntitlements({ store: billingStore, catalogue: config.plans }),
+        linkCodes: createD1LinkCodeStore(db),
+        engines: createD1EngineStore(db),
         relyingParty: createSimpleWebAuthnRelyingParty({ origin: config.dashboardOrigin, rpName: RP_NAME }),
         rateLimiter: rateLimiter(env, config, dev),
         links: authLinks(config.dashboardOrigin),

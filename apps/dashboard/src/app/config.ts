@@ -1,3 +1,4 @@
+import { Hostname, MAX_RELAYS } from '@ptbk/protocol';
 import { z } from 'zod';
 
 import { fromBase64Url } from '../domain/auth/secrets';
@@ -6,29 +7,24 @@ import { environmentSchema, type Environment } from '../shared/environment';
 
 export type { Environment };
 
-/**
- * The rules of `@ptbk/protocol`'s `Hostname` (task C-01): ASCII, lowercased, 1–253 characters, at least two labels of
- * `[a-z0-9-]` without leading or trailing hyphens, no trailing dot, no IP literal. D-03 replaces this with the protocol
- * schema once C-01 has landed; the values are the same.
- */
-const hostnameSchema = z
-    .string()
-    .transform((value) => value.toLowerCase())
-    .pipe(
-        z
-            .string()
-            .max(253)
-            .regex(/^(?!-)[a-z0-9-]{1,63}(?<!-)(\.(?!-)[a-z0-9-]{1,63}(?<!-))+$/)
-            .refine((value) => !/^[0-9.]+$/.test(value), 'IP literals are not hostnames'),
-    );
-
 const relaySchema = z.strictObject({
-    relayId: hostnameSchema,
+    relayId: Hostname,
     region: z
         .string()
         .regex(/^[a-z0-9]+(-[a-z0-9]+)*$/)
         .max(32),
 });
+
+export const LINK_CODE_PLACEHOLDER = '{linkCode}';
+
+/**
+ * What `/engines/new` shows, with {@link LINK_CODE_PLACEHOLDER} exactly once. In dev it starts X-06's local mock engine;
+ * the real command comes from the engine team (E-01).
+ */
+const installCommandSchema = z
+    .string()
+    .max(512)
+    .refine((value) => value.split(LINK_CODE_PLACEHOLDER).length === 2, `must contain ${LINK_CODE_PLACEHOLDER} once`);
 
 const adaptersSchema = z.strictObject({
     email: z.enum(['cloudflare', 'fake']),
@@ -74,8 +70,16 @@ const varsSchema = z
     .strictObject({
         ENVIRONMENT: environmentSchema,
         DASHBOARD_ORIGIN: originSchema,
-        ENGINE_DOMAIN: hostnameSchema,
-        RELAYS: z.array(relaySchema).min(1).max(16),
+        ENGINE_DOMAIN: Hostname,
+        RELAYS: z
+            .array(relaySchema)
+            .min(1)
+            .max(MAX_RELAYS)
+            .refine(
+                (relays) => new Set(relays.map((relay) => relay.relayId)).size === relays.length,
+                'duplicate relayId',
+            ),
+        INSTALL_COMMAND: installCommandSchema,
         ADAPTERS: adaptersSchema,
         EMAIL_FROM: z.email().max(254),
         RATE_LIMIT_HMAC_KEY: hmacKeySchema,
@@ -120,8 +124,10 @@ export type RelayConfig = z.infer<typeof relaySchema>;
 export interface DashboardConfig {
     readonly environment: Environment;
     readonly dashboardOrigin: string;
-    readonly engineDomain: string;
+    readonly engineDomain: Hostname;
     readonly relays: readonly Readonly<RelayConfig>[];
+    /** Contains {@link LINK_CODE_PLACEHOLDER} exactly once. */
+    readonly installCommand: string;
     readonly adapters: Readonly<AdapterSelection>;
     /** The sender address for the `send_email` binding. */
     readonly emailFrom: string;
@@ -165,6 +171,7 @@ export function parseConfig(env: object): DashboardConfig {
         dashboardOrigin: parsed.DASHBOARD_ORIGIN,
         engineDomain: parsed.ENGINE_DOMAIN,
         relays: Object.freeze(parsed.RELAYS.map((relay) => Object.freeze({ ...relay }))),
+        installCommand: parsed.INSTALL_COMMAND,
         adapters: Object.freeze({ ...parsed.ADAPTERS }),
         emailFrom: parsed.EMAIL_FROM,
         rateLimitHmacKey: fromBase64Url(parsed.RATE_LIMIT_HMAC_KEY),

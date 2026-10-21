@@ -113,7 +113,7 @@ export function createSoftwareAuthenticator(config: {
                     'sign',
                     'verify',
                 ])) as CryptoKeyPair);
-            const raw = new Uint8Array((await crypto.subtle.exportKey('raw', keys.publicKey)) as ArrayBuffer);
+            const raw = new Uint8Array(await crypto.subtle.exportKey('raw', keys.publicKey));
             const credentialId = overrides.reuse?.id ?? crypto.getRandomValues(new Uint8Array(16));
             const rpId = overrides.rpId ?? options.rp.id;
             const credential: SoftwareCredential = {

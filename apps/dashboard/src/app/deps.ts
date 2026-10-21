@@ -5,6 +5,8 @@ import type { BillingService } from '../domain/billing/billing-service';
 import type { Entitlements } from '../domain/billing/entitlements';
 import type { Authorizer } from '../domain/authz/authorizer';
 import type { DashboardAction } from '../domain/authz/policy';
+import type { EngineStore } from '../domain/registration/engine-store';
+import type { LinkCodeStore } from '../domain/registration/link-code-store';
 import type { Clock } from '../domain/ports/clock';
 import type { EmailSender } from '../domain/ports/email-sender';
 import type { Logger } from '../domain/ports/logger';
@@ -28,6 +30,8 @@ export interface DashboardDeps {
     readonly billing: BillingService;
     /** What every gated action asks (ADR 0017); nothing outside billing sees plans or the provider. */
     readonly entitlements: Entitlements;
+    readonly linkCodes: LinkCodeStore;
+    readonly engines: EngineStore;
     /** The fake outbox behind `email` when `config.adapters.email` is `fake` (dev only), else null. */
     readonly devOutbox: FakeEmailSender | null;
 }
