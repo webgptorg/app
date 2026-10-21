@@ -1,7 +1,8 @@
-import type { EngineVersion, Hostname, RelayId } from '@ptbk/protocol';
+import type { EngineVersion, Hostname, LinkCode, RelayId } from '@ptbk/protocol';
 import {
     EngineVersion as EngineVersionSchema,
     Hostname as HostnameSchema,
+    LinkCode as LinkCodeSchema,
     MAX_RELAYS,
     RelayId as RelayIdSchema,
     TUNNEL_PATH,
@@ -12,10 +13,12 @@ import packageJson from '../../package.json';
 import type { DevCaFiles } from '../adapters/dev-ca';
 import type { FaultPlan } from '../domain/faults/fault-plan';
 import { NO_FAULTS, parseFaultPlanJson } from '../domain/faults/fault-plan';
+import { DEFAULT_HEARTBEAT_INTERVAL_S } from '../domain/heartbeat/heartbeat-loop';
 import type { NoProxyRule, ProxyConfig } from '../adapters/proxy-config';
 import type { LogLevel } from '../domain/logger';
 import { LOG_LEVELS } from '../domain/logger';
-import { secret } from '../domain/secret';
+import type { OneTimeSecret } from '../domain/secret';
+import { oneTimeSecret, secret } from '../domain/secret';
 import { Scenario } from '../domain/state/scenarios';
 import type { RelayTarget } from '../domain/tunnel/relay-target';
 
@@ -32,7 +35,10 @@ export interface MockEngineConfig {
     readonly mode: 'tunnel';
     /** `PTBK_DATA_DIR`: holds `engine-key.pem`; must be private to the engine's user. */
     readonly dataDir: string;
-    /** `PTBK_RELAYS`, in configured order, unique by relay ID. */
+    /**
+     * `PTBK_RELAYS`, in configured order, unique by relay ID; empty when unset. The relays from the registration
+     * replace it unless `dashboard.relaysOverride`.
+     */
     readonly relays: readonly RelayTarget[];
     readonly engineDomain: Hostname;
     readonly engineVersion: EngineVersion;
@@ -55,6 +61,21 @@ export interface MockEngineConfig {
     readonly devLogin: boolean;
     /** `MOCK_CONTROL=enabled` with `MOCK_CONTROL_HOST` and `MOCK_CONTROL_PORT`; refused with `NODE_ENV=production`. */
     readonly control: { readonly host: string; readonly port: number } | null;
+    /** `PTBK_DASHBOARD_URL` and what goes with it; null runs the M1 dev mode on `PTBK_RELAYS`, without heartbeats. */
+    readonly dashboard: DashboardConfig | null;
+    /** `MOCK_STATS`: the heartbeat's disk, memory and CPU figures from the host (`os`) or fixed per scenario. */
+    readonly stats: 'os' | 'scenario';
+}
+
+export interface DashboardConfig {
+    /** The dashboard's `https://` origin. */
+    readonly url: string;
+    /** `PTBK_LINK_CODE`: taken once, for the first registration, and never logged or written down. */
+    readonly linkCode: OneTimeSecret<LinkCode> | null;
+    /** `MOCK_HEARTBEAT_INTERVAL_S`, default 60. */
+    readonly heartbeatIntervalS: number;
+    /** `MOCK_RELAYS_OVERRIDE=enabled`: dial `PTBK_RELAYS` instead of the registration's relays (development only). */
+    readonly relaysOverride: boolean;
 }
 
 export interface IdentityConfig {
@@ -112,6 +133,16 @@ function parseUrl(text: string): URL | undefined {
     // `?` and `#` with nothing after them leave `search` and `hash` empty, so the raw text is checked too.
     if (text.length > MAX_URL_LENGTH || /[?#]/.test(text)) return undefined;
     return URL.parse(text) ?? undefined;
+}
+
+/** An `https://` origin: no credentials, path, query or fragment, so it joins with the contract's paths unambiguously. */
+function parseDashboardUrl(text: string, problem: (message: string) => void): string | undefined {
+    const url = parseUrl(text);
+    if (url?.protocol !== 'https:' || url.username !== '' || url.password !== '' || url.pathname !== '/') {
+        problem('must be an https:// origin without credentials or path');
+        return undefined;
+    }
+    return url.origin;
 }
 
 function parsePort(port: string, fallback: number): number {
@@ -290,7 +321,19 @@ const envSchema = z.strictObject({
     ).default(4480),
     PTBK_MODE: value(z.literal('tunnel'), 'only tunnel is supported by the mock engine').default('tunnel'),
     PTBK_DATA_DIR: filePath,
-    PTBK_RELAYS: parsed(parseRelays),
+    PTBK_RELAYS: parsed(parseRelays).optional(),
+    PTBK_DASHBOARD_URL: parsed(parseDashboardUrl).optional(),
+    PTBK_LINK_CODE: value(LinkCodeSchema, 'must be a link code').optional(),
+    MOCK_HEARTBEAT_INTERVAL_S: value(
+        z
+            .string()
+            .regex(/^[1-9]\d{0,3}$/)
+            .transform(Number)
+            .pipe(z.int().max(3600)),
+        'must be a whole number of seconds from 1 to 3600',
+    ).default(DEFAULT_HEARTBEAT_INTERVAL_S),
+    MOCK_RELAYS_OVERRIDE: toggle.default('disabled'),
+    MOCK_STATS: value(z.enum(['os', 'scenario']), 'must be os or scenario').default('os'),
     PTBK_ENGINE_DOMAIN: value(HostnameSchema, 'must be a hostname'),
     PTBK_ENGINE_VERSION: value(EngineVersionSchema, 'must be a SemVer version').default(DEFAULT_ENGINE_VERSION),
     MOCK_EXTRA_CA_FILE: filePath.optional(),
@@ -367,6 +410,7 @@ export function parseMockEngineConfig(env: Env): MockEngineConfig {
     ) {
         problems.push('MOCK_DEV_CA_CERT_FILE: must be set together with MOCK_DEV_CA_KEY_FILE');
     }
+    problems.push(...dashboardProblems(settings));
     if (result.success && result.data.NODE_ENV === 'production') {
         if (result.data.MOCK_CONTROL === 'enabled') problems.push('MOCK_CONTROL: must not be enabled in production');
         if (result.data.MOCK_DEV_LOGIN === 'enabled')
@@ -385,7 +429,7 @@ export function parseMockEngineConfig(env: Env): MockEngineConfig {
     return Object.freeze({
         mode: parsedEnv.PTBK_MODE,
         dataDir: parsedEnv.PTBK_DATA_DIR,
-        relays: parsedEnv.PTBK_RELAYS,
+        relays: parsedEnv.PTBK_RELAYS ?? Object.freeze([]),
         engineDomain: parsedEnv.PTBK_ENGINE_DOMAIN,
         engineVersion: parsedEnv.PTBK_ENGINE_VERSION,
         proxy,
@@ -402,7 +446,32 @@ export function parseMockEngineConfig(env: Env): MockEngineConfig {
             parsedEnv.MOCK_CONTROL === 'enabled'
                 ? Object.freeze({ host: parsedEnv.MOCK_CONTROL_HOST, port: parsedEnv.MOCK_CONTROL_PORT })
                 : null,
+        dashboard:
+            parsedEnv.PTBK_DASHBOARD_URL === undefined
+                ? null
+                : Object.freeze({
+                      url: parsedEnv.PTBK_DASHBOARD_URL,
+                      linkCode: parsedEnv.PTBK_LINK_CODE === undefined ? null : oneTimeSecret(parsedEnv.PTBK_LINK_CODE),
+                      heartbeatIntervalS: parsedEnv.MOCK_HEARTBEAT_INTERVAL_S,
+                      relaysOverride: parsedEnv.MOCK_RELAYS_OVERRIDE === 'enabled',
+                  }),
+        stats: parsedEnv.MOCK_STATS,
     });
+}
+
+/** Which relays the engine dials depends on whether a dashboard hands it a list (M-06); judged by presence only. */
+function dashboardProblems(settings: Readonly<Record<string, string>>): string[] {
+    const problems: string[] = [];
+    const linked = settings['PTBK_DASHBOARD_URL'] !== undefined;
+    const relays = settings['PTBK_RELAYS'] !== undefined;
+    if (!linked && !relays) problems.push('PTBK_RELAYS: is required without PTBK_DASHBOARD_URL');
+    if (!linked && settings['PTBK_LINK_CODE'] !== undefined) {
+        problems.push('PTBK_LINK_CODE: needs PTBK_DASHBOARD_URL');
+    }
+    if (settings['MOCK_RELAYS_OVERRIDE'] === 'enabled' && !relays) {
+        problems.push('MOCK_RELAYS_OVERRIDE: needs PTBK_RELAYS');
+    }
+    return problems;
 }
 
 /**

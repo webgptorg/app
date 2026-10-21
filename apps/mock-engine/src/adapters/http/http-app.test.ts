@@ -229,6 +229,7 @@ describe('control listener route table', () => {
         expect(routes.map(key).sort()).toEqual(
             [
                 'http DELETE /__mock/faults',
+                'http GET /__mock/heartbeat',
                 'http GET /__mock/members',
                 'http GET /__mock/state',
                 'http POST /__mock/reset',

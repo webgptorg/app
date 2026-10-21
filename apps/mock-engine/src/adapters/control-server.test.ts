@@ -1,8 +1,9 @@
-import { createCryptoRandom } from '@ptbk/protocol';
+import { Timestamp, createCryptoRandom } from '@ptbk/protocol';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { NO_FAULTS } from '../domain/faults/fault-plan';
 import { createSessionStore } from '../domain/gateway/sessions';
+import type { HeartbeatStatus } from '../domain/heartbeat/heartbeat-loop';
 import type { RateLimiter } from '../domain/rate-limit/rate-limiter';
 import type { EngineRuntime } from '../domain/state/engine-runtime';
 import { createEngineRuntime } from '../domain/state/engine-runtime';
@@ -24,6 +25,7 @@ async function start(
         scenario?: Scenario;
         rateLimiter?: RateLimiter;
         runtime?: (runtime: EngineRuntime) => EngineRuntime;
+        heartbeat?: () => HeartbeatStatus;
     } = {},
 ) {
     const clock = createFakeClock(Date.parse('2026-10-01T00:00:00Z'));
@@ -48,6 +50,7 @@ async function start(
         sessions: createSessionStore({ engine: () => base.controller(), clock, random: createCryptoRandom() }),
         faults: createFaultSettings(NO_FAULTS),
         rateLimiter: options.rateLimiter ?? ALLOW,
+        ...(options.heartbeat === undefined ? {} : { heartbeat: options.heartbeat }),
         logger,
         now: () => '2026-10-01T00:00:00Z',
     });
@@ -74,6 +77,20 @@ describe('fault settings', () => {
 });
 
 describe('control server', () => {
+    it('reports the heartbeat status, and nothing in the M1 dev mode', async () => {
+        const status: HeartbeatStatus = {
+            lastHeartbeat: { sentAt: Timestamp.parse('2026-10-01T00:00:00Z'), body: '{"v":1}' },
+            clockSkew: { seconds: -300, measuredAt: Timestamp.parse('2026-10-01T00:00:00Z') },
+        };
+        const linked = await start({ heartbeat: () => status });
+        const response = await fetch(`http://127.0.0.1:${String(linked.server.port)}/__mock/heartbeat`);
+        expect(response.status).toBe(200);
+        expect(await response.json()).toEqual(status);
+        const devMode = await start();
+        const empty = await fetch(`http://127.0.0.1:${String(devMode.server.port)}/__mock/heartbeat`);
+        expect(await empty.json()).toEqual({ lastHeartbeat: null, clockSkew: null });
+    });
+
     it('creates a synthetic member of the asked role when the scenario has none, numbering each one', async () => {
         const { runtime, post } = await start();
         const admin = await post('/__mock/sessions', { subject: { kind: 'member', role: 'admin' } });
@@ -128,6 +145,7 @@ describe('control server', () => {
         expect(server.routes.every((route) => route.auth === 'control' && route.rateLimit === 'control')).toBe(true);
         expect(server.routes.map((route) => `${route.method} ${route.path}`).sort()).toEqual([
             'DELETE /__mock/faults',
+            'GET /__mock/heartbeat',
             'GET /__mock/members',
             'GET /__mock/state',
             'POST /__mock/reset',

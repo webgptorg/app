@@ -1,14 +1,21 @@
 import type { JsonWebKey } from 'node:crypto';
 import { createPrivateKey, createPublicKey } from 'node:crypto';
 import { lstat, readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 
 import { createWebCryptoSigner, generateEd25519KeyPair } from '@ptbk/protocol';
 
 import type { EngineIdentity, IdentityStore } from '../domain/identity/engine-identity';
 import { engineIdentityFromSigner } from '../domain/identity/engine-identity';
 import type { PrivatePath } from './private-files';
-import { currentUid, ensurePrivateDirectory, lstatOrNull, privacyProblem, writeNewPrivateFile } from './private-files';
+import {
+    currentUid,
+    ensurePrivateDirectory,
+    lstatOrNull,
+    privacyProblem,
+    syncDirectory,
+    writeNewPrivateFile,
+} from './private-files';
 
 export const ENGINE_KEY_FILE = 'engine-key.pem';
 
@@ -40,11 +47,15 @@ function toPem(pkcs8: ArrayBuffer): string {
     return `-----BEGIN PRIVATE KEY-----\n${lines.join('\n')}\n-----END PRIVATE KEY-----\n`;
 }
 
-/** Writes a new key only if none exists; a concurrent first start that won the race keeps its key. */
+/**
+ * Writes a new key only if none exists; a concurrent first start that won the race keeps its key. The file and then
+ * the directory are synced before the key is used, so a crash cannot leave an engine registered with a key it lost.
+ */
 async function createKey(path: string): Promise<void> {
     // Extractable only for this one export; the key is imported non-extractable when loaded.
     const keyPair = await generateEd25519KeyPair({ extractable: true });
     await writeNewPrivateFile(path, toPem(await crypto.subtle.exportKey('pkcs8', keyPair.privateKey)));
+    await syncDirectory(dirname(path));
 }
 
 function parseKey(pem: string): { readonly der: Buffer; readonly jwk: JsonWebKey } | null {

@@ -18,15 +18,23 @@ import { createTlsStreamServer } from '../adapters/tls-stream-server';
 import type { TunnelDuplex } from '../adapters/tunnel-duplex';
 import { openTunnelDuplex } from '../adapters/tunnel-duplex';
 import { throttleDuplex } from '../adapters/tunnel-throttle';
+import { createRuntimeEngineStats } from '../adapters/runtime-engine-stats';
 import type { Clock } from '../domain/clock';
+import type { DashboardApi } from '../domain/dashboard/dashboard-api';
 import { createFaultInjector } from '../domain/faults/fault-injector';
 import type { SessionStore } from '../domain/gateway/sessions';
 import { createSessionStore } from '../domain/gateway/sessions';
+import type { HeartbeatLoop } from '../domain/heartbeat/heartbeat-loop';
+import { createHeartbeatLoop } from '../domain/heartbeat/heartbeat-loop';
+import { createScenarioSystemStats } from '../domain/heartbeat/scenario-system-stats';
+import type { SeqStore } from '../domain/heartbeat/seq-store';
+import type { SystemStats } from '../domain/heartbeat/system-stats';
 import type { EngineIdentity, IdentityStore } from '../domain/identity/engine-identity';
 import type { Logger } from '../domain/logger';
 import type { Random } from '../domain/random';
 import { createWindowRateLimiter } from '../domain/rate-limit/rate-limiter';
 import type { RateLimiter } from '../domain/rate-limit/rate-limiter';
+import type { Registration, RegistrationStore } from '../domain/registration/registration';
 import type { CertificateSource, ManagedCertificateSource } from '../domain/tls/certificate-source';
 import type { RemoteAddress } from '../domain/tunnel/tunnel-stream';
 import type { RelayDialer } from '../domain/tunnel/relay-dialer';
@@ -36,8 +44,10 @@ import type { EngineRuntime } from '../domain/state/engine-runtime';
 import { createEngineRuntime } from '../domain/state/engine-runtime';
 import { createSeededSequence, hashSeed } from '../domain/state/seed-random';
 import type { RelayTarget } from '../domain/tunnel/relay-target';
+import { relayTargetOf } from '../domain/tunnel/relay-target';
 import type { StreamEvents } from '../domain/tunnel/tunnel-stream';
 import type { MockEngineConfig } from './config';
+import { establishRegistration } from './establish-registration';
 
 /** Everything `@ptbk/protocol` implements, so the mock always advertises exactly the current contract. */
 export const DEFAULT_TUNNEL_OFFER: TunnelOfferConfig = Object.freeze({
@@ -59,6 +69,16 @@ export interface MockEngineDeps {
      * refused.
      */
     readonly certificates?: ManagedCertificateSource;
+    /** Required with `PTBK_DASHBOARD_URL`: registration and heartbeat. */
+    readonly dashboard?: DashboardDeps | undefined;
+}
+
+export interface DashboardDeps {
+    readonly api: DashboardApi;
+    readonly registrations: RegistrationStore;
+    readonly seqs: SeqStore;
+    /** The host's figures, used with `MOCK_STATS=os`. */
+    readonly systemStats: SystemStats;
 }
 
 /** A browser connection through `relay`; the TLS server inside the tunnel takes it from here. */
@@ -82,6 +102,10 @@ export interface MockEngine {
     readonly faults: FaultSettings;
     /** The dev-only control listener, when `MOCK_CONTROL=enabled`. */
     readonly control: ControlServer | null;
+    /** Null in the M1 dev mode (no `PTBK_DASHBOARD_URL`). */
+    readonly registration: Registration | null;
+    /** Null in the M1 dev mode. */
+    readonly heartbeat: HeartbeatLoop | null;
     /** Closes every tunnel cleanly and stops reconnecting. */
     close(): Promise<void>;
 }
@@ -91,10 +115,37 @@ function ignore(): void {
 }
 const REFUSED_EVENTS: StreamEvents = Object.freeze({ data: ignore, sendCredit: ignore, closed: ignore });
 
+function dashboardDeps(deps: MockEngineDeps): DashboardDeps {
+    if (deps.dashboard === undefined) throw new Error('PTBK_DASHBOARD_URL is set but no dashboard adapters were given');
+    return deps.dashboard;
+}
+
+/** The registration's relays, unless `MOCK_RELAYS_OVERRIDE` keeps `PTBK_RELAYS` (and always in the M1 dev mode). */
+function relaysToDial(config: MockEngineConfig, registration: Registration | null): readonly RelayTarget[] {
+    if (registration === null || config.dashboard?.relaysOverride === true) return config.relays;
+    return registration.relays.map(relayTargetOf);
+}
+
 export async function startMockEngine(config: MockEngineConfig, deps: MockEngineDeps): Promise<MockEngine> {
     const { logger } = deps;
+    const startedAtMs = deps.clock.nowMs();
     const identity = await deps.identityStore.loadOrCreate();
     const hostname = defaultHostname(identity.engineId, config.engineDomain);
+    const dashboard = config.dashboard === null ? null : { config: config.dashboard, deps: dashboardDeps(deps) };
+    const registration =
+        dashboard === null
+            ? null
+            : await establishRegistration({
+                  dashboard: dashboard.config,
+                  engineDomain: config.engineDomain,
+                  engineVersion: config.engineVersion,
+                  identity,
+                  api: dashboard.deps.api,
+                  store: dashboard.deps.registrations,
+                  logger,
+                  signal: new AbortController().signal,
+              });
+    const relays = relaysToDial(config, registration);
     const runtime = createEngineRuntime({
         seed: config.seed,
         scenario: config.scenario,
@@ -102,6 +153,28 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
         identity: { engineId: identity.engineId, hostname, mode: config.mode, version: config.engineVersion },
         clock: deps.clock,
     });
+    if (registration !== null) runtime.setDashboardUrl(registration.dashboardUrl);
+    const heartbeat =
+        dashboard === null
+            ? null
+            : createHeartbeatLoop({
+                  clock: deps.clock,
+                  logger,
+                  api: dashboard.deps.api,
+                  seqs: dashboard.deps.seqs,
+                  system:
+                      config.stats === 'scenario'
+                          ? createScenarioSystemStats(() => runtime.current().scenario)
+                          : dashboard.deps.systemStats,
+                  engine: createRuntimeEngineStats(runtime),
+                  identity,
+                  version: config.engineVersion,
+                  intervalS: dashboard.config.heartbeatIntervalS,
+                  startedAtMs,
+                  onSent: (sent) => {
+                      runtime.setLastHeartbeat(sent);
+                  },
+              });
     const sessions = createSessionStore({ engine: () => runtime.controller(), clock: deps.clock, random: deps.random });
     runtime.onReset(() => {
         sessions.clear();
@@ -142,6 +215,7 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
                   sessions,
                   faults,
                   rateLimiter: createWindowRateLimiter({ clock: deps.clock }),
+                  ...(heartbeat === null ? {} : { heartbeat: () => heartbeat.status() }),
                   logger,
                   now: () => new Date(deps.clock.nowMs()).toISOString().replace(/\.\d{3}Z$/, 'Z'),
               });
@@ -149,13 +223,14 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
         engineId: identity.engineId,
         hostname,
         version: config.engineVersion,
-        relays: config.relays.length,
+        relays: relays.length,
+        dashboard: registration !== null,
         proxy: config.proxy !== null,
         scenario: config.scenario,
         seed: config.seed,
     });
 
-    const links = config.relays.map((relay) => {
+    const links = relays.map((relay) => {
         const onStateChange = stateListener(relay, runtime, deps);
         return createRelayLink({
             relay,
@@ -181,6 +256,7 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
         });
     });
     for (const link of links) link.start();
+    heartbeat?.start();
 
     return {
         identity,
@@ -190,6 +266,8 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
         sessions,
         faults,
         control,
+        registration,
+        heartbeat,
         onStream(next) {
             handler = next;
             return () => {
@@ -197,7 +275,7 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
             };
         },
         async close() {
-            await Promise.all(links.map((link) => link.stop()));
+            await Promise.all([heartbeat?.stop(), ...links.map((link) => link.stop())]);
             await control?.close();
             server?.close();
             deps.certificates?.close();
