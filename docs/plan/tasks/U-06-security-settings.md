@@ -2,7 +2,7 @@
 
 - **Lane:** U · **Module:** `apps/engine-ui` · **Milestone:** M2
 - **Depends on:** U-02
-- **Status:** todo
+- **Status:** done (#41)
 - **Spec:** Transparency and verifiability (3 self-checks), What our platform can and cannot do (heartbeat, write-only credentials), Residual risks (update policy, CT), Security hardening (4 outbound list, 7 secrets), Pairing and identity (revoke), Enterprise-ready engine architecture; ADRs: [0003](../../adr/0003-ui-as-signed-bundle.md), [0015](../../adr/0015-ui-architecture-and-design-system.md); design: [ui.md](../../design/ui.md) (Trust mark, Security)
 
 ## Goal
@@ -41,25 +41,25 @@ The security panel is how a customer checks our claims without trusting us, so i
 
 ## Design notes
 
-- Response schemas come from C-04 and are strict: a secret object carrying a `value` field fails parsing, which is the intended tripwire.
+- Response schemas come from C-04. Engines are held to the strict schemas; the client reads tolerantly (AGENTS.md rule 5), so a `value` field an engine wrongly sends with secret metadata is dropped before the UI sees it. That is a safety net, not the check: a stolen session would read the API directly, so C-05's `engine-api.secrets.never-returned`, run against every engine, is what proves values are never returned (decided 2026-10-21).
 - The heartbeat payload is untrusted text from the UI's point of view: render as text only.
 - Fingerprints and hashes use `CodeText` with groups of four characters for readability, and copy the unformatted value.
 
 ## Acceptance criteria
 
-- [ ] Trust panel: the fingerprint code rendered for the in-memory client's seeded engine ID equals the shared `@ptbk/ui` test vector for that ID; the mark's accessible name contains the code; with `reducedMotion: 'reduce'` the verify animation does not run; activating the shell's trust mark navigates to `/security` and moves focus to the trust panel heading.
-- [ ] Security panel renders every section from the in-memory client; the heartbeat `<pre>` text equals the raw string byte for byte (test with unusual key order and spacing).
-- [ ] UI version mismatch shows the warning; a foreign CT certificate shows the danger banner; a relay `disconnected` shows text, not only colour.
-- [ ] Update policy change: step-up path tested; without `settings.manage` the control is read-only.
-- [ ] Secrets: create, replace, revoke and delete work; after create and replace, the value is absent from `document.body` (including attributes), from the serialised query cache, from the form store and from any toast; the input is cleared after submit and after a failed submit.
-- [ ] A secret response containing `value` is rejected by the client schema and the UI shows an error, not the value.
-- [ ] Members table is read-only: no invite, edit or remove controls exist; with an empty permission list `/members`, `/secrets` and `/security` show "no access".
-- [ ] Passkey revoke requires confirmation and step-up; revoking the current passkey warns first.
-- [ ] The members table pages through a `large-fleet`-sized in-memory data set; the secrets table pages through more than one server page; members cursor and secrets filters and cursor are restored from the URL on reload.
-- [ ] A failing security section shows its own error state with retry while the other sections render; empty states each have a test; each mutation shows a success or failure toast.
-- [ ] `axe-core` passes on each page; `test:csp` visits each page with zero violations and passes the UX checks (360 px without overflow, layout shift, reduced motion); each route stays within its bundle budget.
-- [ ] `bun run check` passes.
-- [ ] **Status** line above set to `done (#<PR>)`.
+- [x] Trust panel: the fingerprint code rendered for the in-memory client's seeded engine ID equals the shared `@ptbk/ui` test vector for that ID; the mark's accessible name contains the code; with `reducedMotion: 'reduce'` the verify animation does not run; activating the shell's trust mark navigates to `/security` and moves focus to the trust panel heading.
+- [x] Security panel renders every section from the in-memory client; the heartbeat `<pre>` text equals the raw string byte for byte (test with unusual key order and spacing).
+- [x] UI version mismatch shows the warning; a foreign CT certificate shows the danger banner; a relay `disconnected` shows text, not only colour.
+- [x] Update policy change: step-up path tested; without `settings.manage` the control is read-only.
+- [x] Secrets: create, replace, revoke and delete work; after create and replace, the value is absent from `document.body` (including attributes), from the serialised query cache, from the form store and from any toast; the input is cleared after submit and after a failed submit.
+- [x] A secret response carrying a `value` field never exposes it: the tolerant reader drops it before the UI sees it, so it reaches neither the DOM, the query cache nor a toast (test with a fake engine that leaks a canary). C-05 `engine-api.secrets.never-returned` is the authoritative check that engines never return values.
+- [x] Members table is read-only: no invite, edit or remove controls exist; with an empty permission list `/members`, `/secrets` and `/security` show "no access".
+- [x] Passkey revoke requires confirmation and step-up; revoking the current passkey warns first.
+- [x] The members table pages through a `large-fleet`-sized in-memory data set; the secrets table pages through more than one server page; members cursor and secrets filters and cursor are restored from the URL on reload.
+- [x] A failing security section shows its own error state with retry while the other sections render; empty states each have a test; each mutation shows a success or failure toast.
+- [x] `axe-core` passes on each page; `test:csp` visits each page with zero violations and passes the UX checks (360 px without overflow, layout shift, reduced motion); each route stays within its bundle budget.
+- [x] `bun run check` passes.
+- [x] **Status** line above set to `done (#<PR>)`.
 
 ## Risks and open points
 

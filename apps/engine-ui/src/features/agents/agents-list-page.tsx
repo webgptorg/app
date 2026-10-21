@@ -9,6 +9,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { classifyApiError } from '../../app/api-errors';
 import { useBrowser } from '../../app/browser-context';
+import { useDebouncedSearch } from '../../app/debounced-search';
 import { useEngineApi } from '../../app/engine-api-context';
 import { ButtonLink, Link } from '../../app/link';
 import { isForbidden, isStepUpRequired } from '../../app/mutations';
@@ -25,7 +26,6 @@ import { agentListQueryOptions } from './agents-queries';
 
 const route = getRouteApi('/agents/');
 
-export const SEARCH_DEBOUNCE_MS = 300;
 export const AGENT_COLUMNS_STORAGE_KEY = 'ptbk.agents.columns';
 const NO_AGENTS: readonly Agent[] = [];
 /** The previous-page cursor that means "the first page", which has no cursor of its own. */
@@ -145,32 +145,6 @@ function useAgentColumns(): DataTableColumnDef<Agent>[] {
     }, []);
 }
 
-/** Search typed into the box reaches the URL (and the engine) once typing pauses. */
-function useDebouncedQuery(search: AgentListSearch, apply: (q: string | undefined) => void) {
-    const [text, setText] = useState(search.q ?? '');
-    const [urlQuery, setUrlQuery] = useState(search.q);
-    if (search.q !== urlQuery) {
-        // Back, forward or a link changed the URL: show what it says, unless that is what is being typed.
-        setUrlQuery(search.q);
-        if (text.trim() !== (search.q ?? '')) setText(search.q ?? '');
-    }
-    const applyRef = useRef(apply);
-    useEffect(() => {
-        applyRef.current = apply;
-    });
-    useEffect(() => {
-        const next = text.trim() === '' ? undefined : text.trim();
-        if (next === search.q) return;
-        const handle = setTimeout(() => {
-            applyRef.current(next);
-        }, SEARCH_DEBOUNCE_MS);
-        return () => {
-            clearTimeout(handle);
-        };
-    }, [text, search.q]);
-    return [text, setText] as const;
-}
-
 export function AgentsListPage() {
     const search = route.useSearch();
     const navigate = route.useNavigate();
@@ -203,7 +177,7 @@ export function AgentsListPage() {
     const update = (change: Partial<AgentListSearch>, replace = false) => {
         void navigate({ search: (previous) => ({ ...previous, cursor: undefined, ...change }), replace });
     };
-    const [text, setText] = useDebouncedQuery(search, (q) => {
+    const [text, setText] = useDebouncedSearch(search.q, (q) => {
         update({ q }, true);
     });
 

@@ -1,6 +1,6 @@
 # @ptbk/engine-ui
 
-The full app for engine owners and members: agents, agent creation and editing, chat, security panel, secrets metadata, audit log.
+The full app for engine owners and members: agents, agent creation and editing, chat, security panel, members, passkeys, secrets metadata, audit log.
 
 It is built into a hashed static bundle, signed and logged as part of a release. The engine downloads it on update, verifies it and serves it from its own origin; we never serve it to browsers ([ADR 0003](../../docs/adr/0003-ui-as-signed-bundle.md)). It talks only to the engine API through `EngineApiClient` from `@ptbk/engine-api`.
 
@@ -71,6 +71,8 @@ Code checks permissions (`usePermissions().can()`, `<Can>`, `requirePermission()
 
 - Loaders prefetch with `queryClient.query({ ...xQueryOptions(context.engineApi, …), staleTime: 'static' })` (the former `ensureQueryData`) and components read the same `queryOptions` with `useSuspenseQuery`, so both hit one cache entry. Links preload on intent; `defaultPreloadStaleTime: 0` leaves freshness to TanStack Query.
 - Search params are zod schemas in `validateSearch` with `.catch()` defaults, so a bad URL falls back instead of throwing.
+- Server-side tables keep their state in typed search params and send it all to the engine: `useCursorPages` (`src/app/cursor-pages.ts`) for cursor paging, `useDebouncedSearch` for the search box, and `isInvalidCursor` / `isPageLevelFailure` (`src/app/list-errors.ts`) for an expired cursor and refusals the route explains.
+- Write-only values (secrets) never enter React state, a form store, a query or mutation cache, the URL or a toast: `SensitiveInput` is read once on submit and emptied at once, and the value travels in a `OneTimeValue` (`src/features/secrets/one-time-value.ts`) that the mutation takes once and that serialises to nothing. Code that needs the form layer (`@tanstack/react-form`) loads it lazily, as the secret dialogs do.
 - Client failures are mapped in one place, `src/app/api-errors.ts`. Queries retry at most twice and only on network errors, timeouts and 5xx.
 - Every mutation goes through `useStepUpAwareMutation` (`src/app/mutations.ts`): `step-up-required` opens the step-up dialog (then `STEP_UP_PATH?returnTo=…`), a 403 says "not allowed", every other failure is a toast; an optional `optimistic: { apply, rollback }` is rolled back on failure and every listed query is refetched on settle; success toasts where the feature brief asks.
 - Route-level states come from the router defaults (`src/app/route-states.tsx`): an error state with retry, a layout-shaped skeleton after 300 ms, not-found, and the access explanations.

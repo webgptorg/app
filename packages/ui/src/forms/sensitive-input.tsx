@@ -34,8 +34,9 @@ export interface SensitiveInputProps extends Omit<
 }
 
 /**
- * A secret value (API key, token): uncontrolled and masked, never registered with a form store, not autocompleted,
- * spell-checked or remembered by the browser. Put it inside `Field` like any control.
+ * A secret value (API key, token): uncontrolled and masked, never registered with a form store, not spell-checked or
+ * remembered by the browser. `new-password` rather than `off`, which browsers ignore on password fields and would
+ * autofill a saved password into. Put it inside `Field` like any control.
  */
 export function SensitiveInput({ handle, ...rest }: SensitiveInputProps) {
     const { inputRef } = handle;
@@ -44,7 +45,7 @@ export function SensitiveInput({ handle, ...rest }: SensitiveInputProps) {
             {...rest}
             ref={inputRef}
             type="password"
-            autoComplete="off"
+            autoComplete="new-password"
             autoCorrect="off"
             autoCapitalize="off"
             spellCheck={false}

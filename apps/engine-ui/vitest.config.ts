@@ -29,6 +29,8 @@ export default defineConfig({
         projects: [
             {
                 plugins: [react()],
+                // The version the in-memory engine reports for its UI bundle, so the security panel sees a match.
+                define: { __PTBK_UI_VERSION__: JSON.stringify('1.0.0') },
                 test: {
                     name: 'dom',
                     environment: 'jsdom',

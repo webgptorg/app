@@ -22,7 +22,7 @@ export interface StepUpAwareMutationOptions<Data, Variables, Snapshot> {
     /** A success toast, where the feature brief asks for one; failures are always reported. */
     readonly successMessage?: (data: Data, variables: Variables) => string;
     /** Overrides the generic failure text for failures other than step-up and 403. */
-    readonly errorMessage?: (failure: ApiFailure) => string;
+    readonly errorMessage?: (failure: ApiFailure, variables: Variables) => string;
     readonly onSuccess?: (data: Data, variables: Variables) => void;
 }
 
@@ -56,7 +56,7 @@ export function useStepUpAwareMutation<Data, Variables = void, Snapshot = undefi
             await Promise.all((options.invalidates ?? []).map((queryKey) => queryClient.cancelQueries({ queryKey })));
             return { snapshot: options.optimistic.apply(variables, queryClient) };
         },
-        onError: (error, _variables, context) => {
+        onError: (error, variables, context) => {
             if (options.optimistic !== undefined && context !== undefined && 'snapshot' in context) {
                 options.optimistic.rollback(context.snapshot, queryClient);
             }
@@ -67,7 +67,7 @@ export function useStepUpAwareMutation<Data, Variables = void, Snapshot = undefi
             }
             const title = isForbidden(failure)
                 ? m.error_forbidden_title()
-                : (options.errorMessage?.(failure) ?? m.error_mutation_failed());
+                : (options.errorMessage?.(failure, variables) ?? m.error_mutation_failed());
             toast.show({ tone: 'danger', title });
         },
         onSuccess: (data, variables) => {

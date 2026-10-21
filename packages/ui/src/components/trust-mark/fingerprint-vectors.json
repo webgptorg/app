@@ -57,6 +57,13 @@
       "code": "DG0PAJAYVD0JXFM05528",
       "formatted": "DG0P-AJAY-VD0J-XFM0-5528",
       "patternBits": "110111111000100"
+    },
+    {
+      "engineId": "memoryengine234567abcdefgh",
+      "digestHex": "3708c02547e71a070741c7400c991a3714ea3ebcaaa6337198de4fcb76f0cd0d",
+      "code": "6W4C09A7WWD0E1T1RX00",
+      "formatted": "6W4C-09A7-WWD0-E1T1-RX00",
+      "patternBits": "110010011001000"
     }
   ]
 }

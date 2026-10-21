@@ -187,7 +187,7 @@ describe('forms', () => {
         );
         const secretInput = screen.getByLabelText('API key');
         expect(secretInput.getAttribute('type')).toBe('password');
-        expect(secretInput.getAttribute('autocomplete')).toBe('off');
+        expect(secretInput.getAttribute('autocomplete')).toBe('new-password');
         await user.type(secretInput, 'sk-very-secret');
         expect(valuesContain(form?.state.values, 'sk-very-secret')).toBe(false);
 

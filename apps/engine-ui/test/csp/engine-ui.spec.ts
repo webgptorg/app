@@ -1,6 +1,6 @@
 import { ENGINE_API_PREFIX } from '@ptbk/engine-api';
 
-import { FAKE_AGENT_ID, FAKE_CHAT_ID } from './fake-engine-api.ts';
+import { FAKE_AGENT_ID, FAKE_CHAT_ID, RAW_HEARTBEAT } from './fake-engine-api.ts';
 import { expect, expectCleanPage, readBuiltIndexHtml, test } from './fixtures.ts';
 
 test.describe('the built bundle under the engine CSP', () => {
@@ -68,6 +68,34 @@ test.describe('the built bundle under the engine CSP', () => {
         await expect(history.getByText('<script>alert(1)</script>', { exact: false }).first()).toBeVisible();
         expect(await page.evaluate(() => window.__ptbkCspViolations ?? [])).toEqual([]);
         expect(foreign).toEqual([]);
+    });
+
+    test("/security shows the engine's own values verbatim and meets the UX checks", async ({ page, visit }) => {
+        const report = await visit('/security');
+
+        await expect(page.getByRole('heading', { name: /your data stays on your server/ })).toBeVisible();
+        await expect(page.getByText('A certificate this engine did not request exists for its hostname')).toBeVisible();
+        await expect(page.getByTestId('heartbeat-body')).toHaveText(RAW_HEARTBEAT, { useInnerText: false });
+        await expect(page.getByText('The UI version does not match')).toHaveCount(0);
+        expectCleanPage(report);
+    });
+
+    test('the new secret dialog loads its form under the CSP and keeps the value out of the page', async ({
+        page,
+        visit,
+    }) => {
+        const report = await visit('/secrets');
+        await expect(page.getByText('GITHUB_TOKEN')).toBeVisible();
+
+        await page.getByRole('button', { name: 'New secret' }).click();
+        const dialog = page.getByRole('dialog', { name: 'New secret' });
+        await dialog.getByRole('textbox', { name: /^Name/ }).fill('OPENAI_KEY');
+        await dialog.getByLabel(/^Value/).fill('sk-csp-canary');
+        await expect(dialog.getByLabel(/^Value/)).toHaveAttribute('type', 'password');
+        await dialog.getByRole('button', { name: 'Save secret' }).click();
+        await expect(page.getByText('Secret OPENAI_KEY saved')).toBeVisible();
+        expect(await page.content()).not.toContain('sk-csp-canary');
+        expectCleanPage(report);
     });
 
     test('row actions and the delete dialog work by keyboard and return focus', async ({ page, visit }) => {
