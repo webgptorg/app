@@ -20,6 +20,7 @@ The spec's relay epic is done when "a load test sustains 1,000 idle tunnels on o
   - `screencast.ts`: one or more simulated engines terminate TLS (`node:tls`, test certificate generated at run time) inside tunnel streams and serve a WebSocket that pushes frames of a set size at a set fps; a client through the relay counts frames, measures end-to-end latency (timestamp in each frame) and bytes.
   - `docker-compose.load.yml`: the relay built with R-02's production bundle in a container capped at **2 vCPU and 4 GB RAM** (Hetzner CX22-class; the "small VPS" to confirm), the generator in a separate uncapped container.
   - Sampling of relay RSS, heap and CPU every 5 s via `docker stats` or `/proc`, written as CSV next to the report.
+- `worst-case.ts`: slow-reading browsers against engines serving large responses, and a pre-ClientHello flood; reports relay RSS (heap and off-heap) per connection, so the global connection cap and R-06's memory budget can be sized for the 4 GB container.
 - `docs/perf/relay-load-test.md`: method, hardware, Node version, relay commit, raw tables, conclusions and recommended limits. Charts optional.
 - Adjust R-04 and R-03 default limits in `config.ts` where the numbers say so, in the same PR.
 
@@ -41,7 +42,7 @@ The spec's relay epic is done when "a load test sustains 1,000 idle tunnels on o
 ## Acceptance criteria
 
 - [ ] `bun run --filter @ptbk/relay load:idle` and `load:screencast` run the scenarios against the containerised relay with one command each, documented in the report.
-- [ ] Report in `docs/perf/relay-load-test.md` includes: RSS per idle tunnel, CPU at 1,000 idle tunnels, reconnect-storm recovery time, a screencast table (frame size by fps by concurrency: achieved fps, latency percentiles, GB per hour), the fairness result, and the tested limits.
+- [ ] Report in `docs/perf/relay-load-test.md` includes: RSS per idle tunnel, CPU at 1,000 idle tunnels, reconnect-storm recovery time, a screencast table (frame size by fps by concurrency: achieved fps, latency percentiles, GB per hour), the fairness result, the worst-case memory per connection with the recommended global cap and memory budget, and the tested limits.
 - [ ] 1,000 idle tunnels hold for 10 minutes on the capped container with zero unexpected disconnects, or the report states the measured ceiling and what limits it.
 - [ ] A single 100 KB, 5 fps screencast stream sustains at least 5 fps with p95 latency under 500 ms while 1,000 idle tunnels are connected, or the report explains why not.
 - [ ] Default limits in the relay config match the report's recommendations.
