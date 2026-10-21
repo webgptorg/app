@@ -1,6 +1,6 @@
 import { ENGINE_API_PREFIX } from '@ptbk/engine-api';
 
-import { FAKE_AGENT_ID } from './fake-engine-api.ts';
+import { FAKE_AGENT_ID, FAKE_CHAT_ID } from './fake-engine-api.ts';
 import { expect, expectCleanPage, readBuiltIndexHtml, test } from './fixtures.ts';
 
 test.describe('the built bundle under the engine CSP', () => {
@@ -29,6 +29,45 @@ test.describe('the built bundle under the engine CSP', () => {
         const settings = await visit(`/agents/${FAKE_AGENT_ID}/settings`);
         await expect(page.getByRole('combobox', { name: 'Visibility' })).toHaveValue('public');
         expectCleanPage(settings);
+    });
+
+    test(`/agents/${FAKE_AGENT_ID}/chat lists every chat and meets the UX checks`, async ({ page, visit }) => {
+        const report = await visit(`/agents/${FAKE_AGENT_ID}/chat`);
+        await expect(page.getByRole('tab', { name: 'Chat' })).toHaveAttribute('aria-selected', 'true');
+        await expect(page.getByRole('link', { name: 'Injection demo' })).toBeVisible();
+        await expect(page.getByRole('link', { name: 'Do you ship to Brno?' })).toBeVisible();
+        expectCleanPage(report);
+    });
+
+    test('hostile agent output stays inert, before and after sending a message', async ({ page, visit }) => {
+        const report = await visit(`/agents/${FAKE_AGENT_ID}/chat/${FAKE_CHAT_ID}`);
+        const history = page.getByRole('region', { name: 'Messages' });
+        await expect(history.getByText('Image: x').first()).toBeVisible();
+        // The code block's grammar is a lazy chunk; it loads from the engine's own origin.
+        await expect(history.locator('.tok-keyword').first()).toBeVisible();
+        expectCleanPage(report);
+
+        const foreign: string[] = [];
+        const origin = new URL(page.url()).origin;
+        page.on('request', (request) => {
+            if (new URL(request.url()).origin !== origin) foreign.push(request.url());
+        });
+        const composer = page.getByRole('textbox', { name: 'Message' });
+        await composer.fill('Show it again');
+        await composer.press('Enter');
+        await expect(page.locator('[aria-live="polite"][aria-atomic="true"]')).toHaveText('Ada replied');
+        await expect(history.getByText('Image: x')).toHaveCount(2);
+        await page.waitForLoadState('networkidle');
+
+        expect(await history.locator('img, script, iframe, object, embed, [src], [srcset]').count()).toBe(0);
+        const hrefs = await history
+            .locator('a[href]')
+            .evaluateAll((links) => links.map((link) => link.getAttribute('href')));
+        expect(hrefs.length).toBeGreaterThan(0);
+        expect(hrefs.every((href) => href?.startsWith('https://') === true)).toBe(true);
+        await expect(history.getByText('<script>alert(1)</script>', { exact: false }).first()).toBeVisible();
+        expect(await page.evaluate(() => window.__ptbkCspViolations ?? [])).toEqual([]);
+        expect(foreign).toEqual([]);
     });
 
     test('row actions and the delete dialog work by keyboard and return focus', async ({ page, visit }) => {

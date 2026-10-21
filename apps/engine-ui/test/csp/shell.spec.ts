@@ -1,13 +1,15 @@
 import type { Page } from '@playwright/test';
 
-import { FAKE_AGENT_ID } from './fake-engine-api.ts';
+import { FAKE_AGENT_ID, FAKE_CHAT_ID } from './fake-engine-api.ts';
 import { expect, expectCleanPage, test } from './fixtures.ts';
 
-/** Every route the shell registers, an agent page and its Settings tab, the gallery, and a path that does not exist. */
+/** Every route the shell registers, an agent page with its Settings and Chat tabs, a chat, the gallery, and a path that does not exist. */
 const ROUTES = [
     '/agents',
     `/agents/${FAKE_AGENT_ID}`,
     `/agents/${FAKE_AGENT_ID}/settings`,
+    `/agents/${FAKE_AGENT_ID}/chat`,
+    `/agents/${FAKE_AGENT_ID}/chat/${FAKE_CHAT_ID}`,
     '/members',
     '/security',
     '/secrets',

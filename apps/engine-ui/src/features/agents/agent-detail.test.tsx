@@ -19,7 +19,7 @@ const TIMEOUT_MS = 20_000;
 
 const label = (text: string) => () => text;
 
-/** What U-04, U-05 and U-09 to U-12 will register; their routes do not exist yet, so the paths are untyped here. */
+/** What U-04 and U-09 to U-12 will register; their routes do not exist yet, so the paths are untyped here. */
 function tabFeature(
     tab: keyof typeof AGENT_TABS,
     text: string,
@@ -46,7 +46,6 @@ const OTHER_TABS: readonly FeatureDefinition[] = [
         capability: KNOWN_CAPABILITIES.integrations,
         permission: 'integrations.read',
     }),
-    tabFeature('chat', 'Chat', { permission: 'chats.read' }),
     tabFeature('runs', 'Runs', { capability: KNOWN_CAPABILITIES.runs, permission: 'runs.read' }),
     tabFeature('triggers', 'Triggers', { capability: KNOWN_CAPABILITIES.triggers, permission: 'triggers.read' }),
     tabFeature('files', 'Files', { capability: KNOWN_CAPABILITIES.files, permission: 'files.read' }),
@@ -141,7 +140,7 @@ describe('agent tabs', { timeout: TIMEOUT_MS }, () => {
             ],
         });
         await renderAgent('/agents/agent-001', { features: [...FEATURES, notes] });
-        expect(tabNames()).toEqual(['Overview', 'Notes', 'Settings']);
+        expect(tabNames()).toEqual(['Overview', 'Chat', 'Notes', 'Settings']);
         expect(await screen.findByText('Notes for agent-001')).toBeDefined();
     });
 
@@ -149,7 +148,7 @@ describe('agent tabs', { timeout: TIMEOUT_MS }, () => {
         const { user, router } = await renderAgent();
         const overview = screen.getByRole('tab', { name: 'Overview' });
         overview.focus();
-        await user.keyboard('{ArrowRight}');
+        await user.keyboard('{ArrowRight}{ArrowRight}');
         const settings = screen.getByRole('tab', { name: 'Settings' });
         expect(document.activeElement).toBe(settings);
         await user.keyboard('{Enter}');
@@ -345,7 +344,7 @@ describe('agent header', { timeout: TIMEOUT_MS }, () => {
         expect(within(header).getByRole('link', { name: 'Chat' })).toBeDefined();
         expect(within(header).queryByRole('link', { name: 'Edit' })).toBeNull();
 
-        await renderAgent('/agents/agent-002');
+        await renderAgent('/agents/agent-002', { features: FEATURES.filter((feature) => feature.id !== 'chat') });
         const headers = screen.getAllByRole('heading', { level: 1, name: 'Agent 002' });
         expect(within(headers[0]?.closest('header') as HTMLElement).queryByRole('link', { name: 'Chat' })).toBeNull();
     });
@@ -406,7 +405,7 @@ describe('agent settings', { timeout: TIMEOUT_MS }, () => {
 
     it('is absent without agents.write and agents.delete, and a deep link says "no access"', async () => {
         await renderAgent('/agents/agent-001/settings', { permissions: allBut('agents.write', 'agents.delete') });
-        expect(tabNames()).toEqual(['Overview']);
+        expect(tabNames()).toEqual(['Overview', 'Chat']);
         expect(await screen.findByRole('heading', { level: 1, name: 'No access' })).toBeDefined();
     });
 

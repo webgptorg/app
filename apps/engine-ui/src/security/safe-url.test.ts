@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { safeImageSource, safeNextPath } from './safe-url';
+import { safeImageSource, safeLinkUrl, safeNextPath } from './safe-url';
 
 const origin = 'https://engine.example';
 
@@ -50,5 +50,44 @@ describe('safeImageSource', () => {
         'avatar.png',
     ])('refuses %s', (value) => {
         expect(safeImageSource(value)).toBeNull();
+    });
+});
+
+describe('safeLinkUrl', () => {
+    it.each([
+        ['https://example.com/a', 'https://example.com/a'],
+        ['http://example.com', 'http://example.com/'],
+        ['HTTPS://Example.COM/Path?q=1#h', 'https://example.com/Path?q=1#h'],
+        [' https://example.com/a ', 'https://example.com/a'],
+        ['https://engine.example.evil.com/', 'https://engine.example.evil.com/'],
+        ['https://engine.example:8443/', 'https://engine.example:8443/'],
+    ])('links %s', (href, expected) => {
+        expect(safeLinkUrl(href, origin)).toBe(expected);
+    });
+
+    it.each([
+        ['javascript:', 'javascript:alert(1)'],
+        ['mixed-case javascript:', 'JaVaScRiPt:alert(1)'],
+        ['javascript: after a space', ' javascript:alert(1)'],
+        ['javascript: split by a tab', 'java\tscript:alert(1)'],
+        ['javascript: split by a newline', 'java\nscript:alert(1)'],
+        ['data:', 'data:text/html,<script>alert(1)</script>'],
+        ['vbscript:', 'vbscript:msgbox(1)'],
+        ['blob:', 'blob:https://example.com/0b1c'],
+        ['file:', 'file:///etc/passwd'],
+        ['mailto:', 'mailto:someone@example.com'],
+        ['an API path', '/v1/agents/1'],
+        ['a relative path', 'agents/1'],
+        ['a fragment', '#top'],
+        ['a protocol-relative URL to this origin', '//engine.example/x'],
+        ['a protocol-relative URL elsewhere', '//evil.example/x'],
+        ['this origin', 'https://engine.example/agents'],
+        ['credentials that disguise the host', 'https://engine.example@evil.example/'],
+        ['a password', 'https://user:secret@example.com/'],
+        ['a scheme without a host', 'https:example.com'],
+        ['an unparsable URL', 'https://exa mple.com/'],
+        ['an empty string', ''],
+    ])('refuses %s', (_, href) => {
+        expect(safeLinkUrl(href, origin)).toBeNull();
     });
 });

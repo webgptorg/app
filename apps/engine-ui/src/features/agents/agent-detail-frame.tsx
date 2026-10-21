@@ -85,7 +85,11 @@ export function AgentDetailFrame() {
     });
     const tabs = useAgentTabs();
     const matchRoute = useMatchRoute();
-    const selected = tabs.find((tab) => matchRoute({ to: tab.to, params: tabParams(agent) }) !== false) ?? tabs[0];
+    // A tab owns its nested pages too (a chat under Chat); the most specific matching tab wins over Overview.
+    const selected =
+        tabs
+            .filter((tab) => matchRoute({ to: tab.to, params: tabParams(agent), fuzzy: true }) !== false)
+            .toSorted((a, b) => b.to.length - a.to.length)[0] ?? tabs[0];
     const chatTab = tabs.find((tab) => tab.id === AGENT_TABS.chat.id);
     const bookTab = can('agents.write') ? tabs.find((tab) => tab.id === AGENT_TABS.book.id) : undefined;
 
