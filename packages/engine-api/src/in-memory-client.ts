@@ -8,9 +8,11 @@ import type { AuditAction, AuditDetails, AuditTarget } from './audit';
 import { Activity } from './capabilities/activity';
 import { CapabilityRef, KNOWN_CAPABILITIES, supports } from './capabilities/capability';
 import { FileMetadata, FileVersion } from './capabilities/files';
+import type { FileScanStatus } from './capabilities/files';
 import { Integration } from './capabilities/integrations';
+import type { IntegrationStatus } from './capabilities/integrations';
 import { RunDetail } from './capabilities/runs';
-import type { Run } from './capabilities/runs';
+import type { Run, RunStatus } from './capabilities/runs';
 import { Trigger, TriggerFire } from './capabilities/triggers';
 import { Chat, Message } from './chats';
 import type { ChatSource, MessageRole } from './chats';
@@ -40,20 +42,31 @@ import { hashAuditEntry } from './in-memory/audit-chain';
 import { checkBook } from './in-memory/book';
 import { HANDLERS } from './in-memory/handlers';
 import type { HandlerContext } from './in-memory/handlers';
-import { addChatMessages, EMPTY_CHAT_SUMMARY, liveAgent, recordActivity, summariseMessage } from './in-memory/kit';
+import { addFile, setFileScan } from './in-memory/files';
+import type { NewFile } from './in-memory/files';
+import { setIntegrationStatus } from './in-memory/integrations';
+import {
+    addChatMessages,
+    DEFAULT_ENGINE_CHECKS,
+    EMPTY_CHAT_SUMMARY,
+    liveAgent,
+    recordActivity,
+    summariseMessage,
+} from './in-memory/kit';
 import type {
     ActivityInput,
     Actor,
     ChatSummary,
+    EngineChecks,
     EngineContext,
     ReplyProgress,
     ReplyScript,
     Sleep,
 } from './in-memory/kit';
-import { advanceRun } from './in-memory/runs';
-import type { RunOutcome } from './in-memory/runs';
+import { addProjectChange, advanceRun, findRuns, reportRunProgress, runSummary, startRun } from './in-memory/runs';
+import type { RunOutcome, RunReport, StartRun } from './in-memory/runs';
 import type { FileRecord, InMemoryState } from './in-memory/state';
-import { fireTrigger } from './in-memory/triggers';
+import { findTriggers, fireTrigger } from './in-memory/triggers';
 import { withClientReading } from './reader';
 import { Invite, Member } from './members';
 import { Passkey } from './passkeys';
@@ -182,6 +195,8 @@ export interface InMemoryEngineCoreOptions {
     readonly eventBufferSize?: number;
     /** Paces scripted replies; defaults to a timer. */
     readonly sleep?: Sleep;
+    /** The virus scan and connection test a real engine runs; by default files are clean and connections work. */
+    readonly checks?: Partial<EngineChecks>;
 }
 
 export interface InMemoryEngineApiOptions extends InMemoryEngineCoreOptions {
@@ -280,6 +295,32 @@ export interface InMemoryEngineController {
     fireTrigger(triggerId: string): TriggerFire;
     /** Sends an event as is, e.g. a change made by another member. */
     emit(event: Unbranded<z.input<typeof EngineEvent>>): void;
+    /** Queues a run outside a chat turn or a trigger (an API client, a member, a goal); announced as `run.queued`. */
+    startRun(run: StartRun): Run;
+    /** A runner's report on a queued or running run: its progress card, a tool call (by `id`), model and runner. */
+    reportRunProgress(runId: string, report: RunReport): Run;
+    /** A commit the run made, listed in its outputs; a diff over `MAX_RUN_TEXT_BYTES` is truncated and flagged. */
+    addProjectChange(runId: string, change: unknown): Run;
+    /** A file the engine stores itself, such as a run's output; announced as `file.created`. */
+    addFile(file: NewFile): Promise<FileMetadata>;
+    /** A scan result arrived; `failed` is announced as `file.scan-failed`. */
+    setFileScan(fileId: string, status: FileScanStatus): FileMetadata;
+    /** The engine noticed a connection change; announced as `integration.connected` or `integration.error`. */
+    setIntegrationStatus(
+        integrationId: string,
+        status: { readonly status: IntegrationStatus; readonly statusDetail?: string | null },
+    ): Integration;
+    getRun(runId: string): RunDetail | undefined;
+    findRuns(filter?: { readonly status?: readonly RunStatus[] }): readonly Run[];
+    getTrigger(triggerId: string): Trigger | undefined;
+    findTriggers(filter?: {
+        readonly kind?: Trigger['kind'];
+        readonly lifecycle?: Trigger['lifecycle'];
+    }): readonly Trigger[];
+    /** Agents that are not deleted. */
+    findAgents(): readonly Agent[];
+    /** Every event as it is published, before any member's filter; the returned function unsubscribes. */
+    onEvent(listener: (event: EngineEvent) => void): () => void;
     /** E.g. the dashboard URL once the engine is linked. `capabilities` come from the core's options. */
     updateEngine(patch: Partial<Omit<Unbranded<z.input<typeof EngineInfo>>, 'capabilities'>>): EngineInfo;
     /** E.g. each relay's link state. */
@@ -417,6 +458,7 @@ export function createInMemoryEngineCore(options: InMemoryEngineCoreOptions = {}
     const state = createState(options.seed ?? {}, seedMember, now, capabilities);
     const counters = new Map<string, number>();
     const eventWaiters = new Set<() => void>();
+    const eventListeners = new Set<(event: EngineEvent) => void>();
     const replyWaiters = new Map<string, Set<() => void>>();
     // Appends are serialised so each entry hashes over the previous one.
     let auditTail: Promise<unknown> = seedAudit(state, options.seed?.auditEntries ?? []);
@@ -434,6 +476,7 @@ export function createInMemoryEngineCore(options: InMemoryEngineCoreOptions = {}
         state.events.push({ id: String(state.eventSeq), seq: state.eventSeq, event });
         if (state.events.length > eventBufferSize) state.events.splice(0, state.events.length - eventBufferSize);
         for (const wake of [...eventWaiters]) wake();
+        for (const listener of [...eventListeners]) listener(event);
     };
     const nextEvent: HandlerContext['nextEvent'] = (afterSeq, signal) =>
         waitFor(eventWaiters, () => state.eventSeq > afterSeq, signal);
@@ -483,13 +526,32 @@ export function createInMemoryEngineCore(options: InMemoryEngineCoreOptions = {}
         });
     };
 
-    const system: EngineContext = { state, now, newId, publish, replies };
+    const checks: EngineChecks = { ...DEFAULT_ENGINE_CHECKS, ...options.checks };
+    const system: EngineContext = { state, checks, now, newId, publish, replies };
     const controller: InMemoryEngineController = {
         appendActivity: (activity) => recordActivity(system, activity as ActivityInput),
         advanceRun: (runId, outcome) => advanceRun(system, runId, outcome),
         fireTrigger: (triggerId) => fireTrigger(system, triggerId),
         emit: (event) => {
             publish(EngineEvent.parse(event));
+        },
+        startRun: (run) => startRun(system, run),
+        reportRunProgress: (runId, report) => reportRunProgress(system, runId, report),
+        addProjectChange: (runId, change) => addProjectChange(system, runId, change),
+        addFile: (file) => addFile(system, file),
+        setFileScan: (fileId, status) => setFileScan(system, fileId, status),
+        setIntegrationStatus: (integrationId, status) => setIntegrationStatus(system, integrationId, status),
+        getRun: (runId) => state.runs.get(runId),
+        findRuns: (filter = {}) => findRuns(system, filter).map(runSummary),
+        getTrigger: (triggerId) => state.triggers.get(triggerId)?.trigger,
+        findTriggers: (filter = {}) => findTriggers(system, filter),
+        findAgents: () =>
+            [...state.agents.values()].map(({ agent }) => agent).filter(({ deletedAt }) => deletedAt === null),
+        onEvent: (listener) => {
+            eventListeners.add(listener);
+            return () => {
+                eventListeners.delete(listener);
+            };
         },
         updateEngine: (patch) => {
             state.engine = EngineInfo.parse({ ...state.engine, ...patch, capabilities: state.engine.capabilities });
