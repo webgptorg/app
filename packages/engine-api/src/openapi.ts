@@ -92,7 +92,7 @@ import { PROBLEM_STATUS, type ProblemCode } from './problem-codes';
 import type { RouteDefinition, RouteResponse } from './route';
 import { ENGINE_API_ROUTE_LIST, commonProblems } from './routes';
 import { SecretMetadata, SecretPage, SecretScope } from './secrets';
-import { SecurityOverview } from './security';
+import { SecurityOverview, UiUpdateCheck, UnexpectedCertificate } from './security';
 import { Session, SessionPage } from './sessions';
 import { Settings, UpdatePolicy } from './settings';
 
@@ -184,6 +184,8 @@ const COMPONENT_SCHEMAS: Readonly<Record<string, z.ZodType>> = {
     SecretScope,
     SecretMetadata,
     SecretPage,
+    UiUpdateCheck,
+    UnexpectedCertificate,
     SecurityOverview,
     AuditAction,
     AuditActor,

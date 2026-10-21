@@ -55,7 +55,13 @@ const SECRET_NAMES = [
     'NOTION_TOKEN',
 ] as const;
 
-const PASSKEY_NAMES = ['MacBook Pro Touch ID', 'iPhone', 'YubiKey 5C', 'Pixel 9', 'Windows Hello'] as const;
+const PASSKEY_KINDS = [
+    { name: 'MacBook Pro Touch ID', authenticator: { attachment: 'platform', backedUp: true } },
+    { name: 'iPhone', authenticator: { attachment: 'platform', backedUp: true } },
+    { name: 'YubiKey 5C', authenticator: { attachment: 'cross-platform', backedUp: false } },
+    { name: 'Pixel 9', authenticator: { attachment: 'cross-platform', backedUp: true } },
+    { name: 'Windows Hello', authenticator: { attachment: 'platform', backedUp: false } },
+] as const;
 
 /** RFC 3339 UTC to the second: what an engine stores, and stable across runtimes. */
 function iso(ms: number): string {
@@ -315,23 +321,30 @@ export function seedEngine({ seed, scenario, epoch }: SeedInput): InMemorySeed {
     });
 
     const passkeys = members.flatMap((member) =>
-        Array.from({ length: member === owner ? size.ownerPasskeys : 1 }, (_, index) => ({
-            id: sequence.id('passkey'),
-            memberId: member.id,
-            name: PASSKEY_NAMES[(index + members.indexOf(member)) % PASSKEY_NAMES.length] ?? 'Passkey',
-            createdAt: iso(Date.parse(member.createdAt) + index * 3 * DAY),
-            lastUsedAt: index === 0 ? member.lastSeenAt : null,
-        })),
+        Array.from({ length: member === owner ? size.ownerPasskeys : 1 }, (_, index) => {
+            const kind = PASSKEY_KINDS[(index + members.indexOf(member)) % PASSKEY_KINDS.length] ?? PASSKEY_KINDS[0];
+            return {
+                id: sequence.id('passkey'),
+                memberId: member.id,
+                name: kind.name,
+                createdAt: iso(Date.parse(member.createdAt) + index * 3 * DAY),
+                lastUsedAt: index === 0 ? member.lastSeenAt : null,
+                authenticator: { ...kind.authenticator },
+            };
+        }),
     );
 
     const others = members.slice(1);
     const sessions = Array.from({ length: others.length > 0 ? size.otherSessions : 0 }, () => {
         const createdAtMs = epochMs - sequence.int(HOUR, 6 * DAY);
+        const id = sequence.id('session');
+        const memberId = sequence.pick(others).id;
         return {
-            id: sequence.id('session'),
-            memberId: sequence.pick(others).id,
+            id,
+            memberId,
             current: false,
             client: clientOf(faker),
+            passkeyId: passkeys.find((passkey) => passkey.memberId === memberId)?.id ?? null,
             createdAt: iso(createdAtMs),
             lastSeenAt: iso(createdAtMs + sequence.int(MINUTE, HOUR)),
             // Sessions outlive the epoch, so they are still listed when the engine starts.

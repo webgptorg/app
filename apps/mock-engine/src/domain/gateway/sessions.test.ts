@@ -38,6 +38,17 @@ function setup() {
         capabilities: [],
         seed: {
             members: [member('member-owner', 'owner'), member('member-ada', 'member')],
+            passkeys: [
+                { id: 'passkey-ada-old', memberId: 'member-ada', name: 'Old', createdAt: AT, lastUsedAt: null },
+                {
+                    id: 'passkey-ada-new',
+                    memberId: 'member-ada',
+                    name: 'New',
+                    createdAt: '2026-10-01T00:00:01Z',
+                    lastUsedAt: null,
+                },
+                { id: 'passkey-owner', memberId: 'member-owner', name: 'Owner', createdAt: AT, lastUsedAt: null },
+            ],
             sessions: [
                 {
                     id: 'session-seeded',
@@ -85,6 +96,19 @@ describe('gateway session store', () => {
             createdAt: AT,
             expiresAt: new Date(clock.nowMs() + SESSION_ABSOLUTE_TIMEOUT_MS).toISOString().replace('.000Z', 'Z'),
         });
+    });
+
+    it("signs in with the member's newest passkey, and revoking it signs the session out", async () => {
+        const { store, core } = setup();
+        const { token, sessionId } = store.signIn({ memberId: 'member-ada', permissions: null, client: CLIENT });
+        const session = core.controller.inspect().sessions.find(({ id }) => id === sessionId);
+        expect(session?.passkeyId).toBe('passkey-ada-new');
+        const ada = createEngineApiClient(
+            core.transport({ ...signedIn(store.authenticate(token, CLIENT)), stepUpFresh: true }),
+        );
+        const revoked = await ada.me.revokePasskey('passkey-ada-new' as never, AbortSignal.timeout(5_000));
+        expect(revoked.kind).toBe('ok');
+        expect(store.authenticate(token, CLIENT).kind).toBe('invalid');
     });
 
     it('resolves a token to the actor with the role permissions of the member', () => {

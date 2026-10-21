@@ -5,7 +5,7 @@ import { RUN_SOURCES, RunSource } from './capabilities/runs';
 import { AgentId, ChatId, Cursor, MemberId, MessageId, PageQuery, ProblemDetails, Timestamp, pageOf } from './common';
 import { MAX_CHAT_PREVIEW_LENGTH, MAX_MESSAGE_LENGTH } from './constants';
 import { defineRoute } from './route';
-import { toTolerant } from './tolerant';
+import { openEnum, toTolerant } from './tolerant';
 
 /**
  * What started a chat, with the same values as a run's source (`runs@1`): `web` for the engine UI and public agent
@@ -40,22 +40,11 @@ export const Chat = z.strictObject({
 export type Chat = z.infer<typeof Chat>;
 export const ChatPage = pageOf(Chat);
 
-const KNOWN_CHAT_SOURCES: ReadonlySet<string> = new Set(RUN_SOURCES);
-
 /**
  * A chat as the client reads it: a `source` this contract does not know yet (a newer engine's) reads as `unknown`, so
  * the UI shows it as such instead of failing the whole list.
  */
-export const ChatReader = toTolerant(
-    Chat.extend({
-        source: z
-            .string()
-            .max(64)
-            .transform((source): ChatSource | 'unknown' =>
-                KNOWN_CHAT_SOURCES.has(source) ? (source as ChatSource) : 'unknown',
-            ),
-    }),
-);
+export const ChatReader = toTolerant(Chat.extend({ source: openEnum(RUN_SOURCES) }));
 export type ReadChat = z.output<typeof ChatReader>;
 export const ChatPageReader = z.object({ items: z.array(ChatReader), nextCursor: Cursor.nullable() });
 

@@ -25,7 +25,13 @@ export const SecretMetadata = z.strictObject({
     status: SecretStatus,
     createdBy: MemberId,
     createdAt: Timestamp,
+    /** Moves with every change, including revoke. */
     updatedAt: Timestamp,
+    /**
+     * When the value was last set: `createdAt` until it is first replaced, so the UI's "last rotated". `null` from
+     * engines on API 1.2.
+     */
+    valueUpdatedAt: Timestamp.nullable().default(null),
     lastUsedAt: Timestamp.nullable(),
 });
 export type SecretMetadata = z.infer<typeof SecretMetadata>;

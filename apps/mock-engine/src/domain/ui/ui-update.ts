@@ -1,3 +1,5 @@
+import type { UiRefusalReason, UiRevocationReason } from '@ptbk/engine-api';
+import { UiUpdateCheck } from '@ptbk/engine-api';
 import type {
     Artifact,
     EngineVersion,
@@ -28,19 +30,6 @@ import type { UpdateStateStore } from './update-state-store';
 /** The largest `ui` artifact the loader downloads; the unpacked bundle has its own cap (200 MB, 10,000 files). */
 export const MAX_UI_ARTIFACT_BYTES = 200 * 1024 * 1024;
 
-export type UiRefusalReason =
-    | 'invalid-entry'
-    | 'signature-threshold-not-met'
-    | 'not-in-log'
-    | 'revoked'
-    | 'not-newer'
-    | 'delay-not-elapsed'
-    | 'hash-mismatch'
-    | 'manifest'
-    | 'engine-api'
-    | 'unpack'
-    | 'revocations-unverifiable';
-
 export type UiUpdateOutcome =
     | { readonly kind: 'up-to-date'; readonly version: EngineVersion }
     | { readonly kind: 'installed'; readonly version: EngineVersion; readonly sha256: string }
@@ -52,6 +41,26 @@ export type UiUpdateOutcome =
           readonly revocationReason?: RevocationsUnverifiableReason;
       }
     | { readonly kind: 'unavailable' };
+
+/**
+ * The outcome as the security panel reports it (`ui.lastUpdateCheck`). Refusal reasons are the engine API's own list,
+ * so the panel shows exactly what the loader decided.
+ */
+export function uiUpdateCheckOf(outcome: UiUpdateOutcome, atMs: number): UiUpdateCheck {
+    const at = new Date(atMs).toISOString().replace(/\.\d{3}Z$/, 'Z');
+    if (outcome.kind === 'unavailable') {
+        return UiUpdateCheck.parse({ at, outcome: 'unavailable', version: null, reason: null, revocationReason: null });
+    }
+    const refused = outcome.kind === 'refused' ? outcome : null;
+    const revocationReason: UiRevocationReason | null = refused?.revocationReason ?? null;
+    return UiUpdateCheck.parse({
+        at,
+        outcome: outcome.kind,
+        version: outcome.version,
+        reason: refused?.reason ?? null,
+        revocationReason,
+    });
+}
 
 export interface UiUpdateDeps {
     readonly source: ReleaseSource;

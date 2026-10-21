@@ -506,7 +506,9 @@ describe('in-memory core: controller levers', () => {
         const security = core.controller.updateSecurity({
             relays: [{ hostname: 'relay-a.ptbk.test', status: 'connected', since: AT }],
         });
-        expect(security.relays).toEqual([{ hostname: 'relay-a.ptbk.test', status: 'connected', since: AT }]);
+        expect(security.relays).toEqual([
+            { hostname: 'relay-a.ptbk.test', status: 'connected', since: AT, lastPingRttMs: null },
+        ]);
         expect(() => core.controller.updateSecurity({ relays: [{ hostname: 'x' }] } as never)).toThrow();
     });
 
@@ -522,6 +524,16 @@ describe('in-memory core: controller levers', () => {
         const snapshot = core.controller.inspect();
         expect(snapshot.counts).toMatchObject({ members: 3, sessions: 2, agents: 0, auditEntries: 0 });
         expect(snapshot.members.map(({ id }) => id).sort()).toEqual(['member-ada', 'member-owner', 'member-synthetic']);
+    });
+
+    it("records a session's passkey, refusing someone else's or an unknown one", () => {
+        const { core } = team();
+        const signedIn = { ...session('session-pk', 'member-owner'), passkeyId: 'passkey-owner' };
+        expect(core.controller.addSession(signedIn).passkeyId).toBe('passkey-owner');
+        for (const passkeyId of ['passkey-owner', 'passkey-nobody']) {
+            const foreign = { ...session(`session-${passkeyId}`, 'member-ada'), passkeyId };
+            expect(() => core.controller.addSession(foreign), passkeyId).toThrow();
+        }
     });
 
     it('audits nothing a lever does', async () => {

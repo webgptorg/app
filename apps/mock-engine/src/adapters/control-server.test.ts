@@ -79,7 +79,11 @@ describe('fault settings', () => {
 describe('control server', () => {
     it('reports the heartbeat status, and nothing in the M1 dev mode', async () => {
         const status: HeartbeatStatus = {
-            lastHeartbeat: { sentAt: Timestamp.parse('2026-10-01T00:00:00Z'), body: '{"v":1}' },
+            lastHeartbeat: {
+                sentAt: Timestamp.parse('2026-10-01T00:00:00Z'),
+                body: '{"v":1}',
+                signature: 'ed25519=sig',
+            },
             clockSkew: { seconds: -300, measuredAt: Timestamp.parse('2026-10-01T00:00:00Z') },
         };
         const linked = await start({ heartbeat: () => status });

@@ -4,6 +4,7 @@ import { KNOWN_CAPABILITIES } from '../capabilities/capability';
 import { ApiTokenId, ChatId, FolderId, InviteId, MessageId, SecretId } from '../common';
 import type { Chat, Message } from '../chats';
 import type { EngineEvent } from '../events';
+import type { Member } from '../members';
 import type { Passkey } from '../passkeys';
 import type { EngineApiStreamItem } from '../route';
 import type { Session } from '../sessions';
@@ -46,6 +47,13 @@ function setRunState(ctx: HandlerContext, agentId: AgentId, state: AgentRunState
         ctx.publish({ type: 'agent.status', agentId, state, since: record.runStatus.since });
     }
     return ok(record.runStatus);
+}
+
+/** `passkeyCount` is not stored: it is counted from the passkeys on every read. */
+function withPasskeyCount(ctx: HandlerContext, member: Member): Member {
+    let passkeyCount = 0;
+    for (const passkey of ctx.state.passkeys.values()) if (passkey.memberId === member.id) passkeyCount++;
+    return { ...member, passkeyCount };
 }
 
 /** `current` is not stored: it is whether the session is the one making this request. */
@@ -419,20 +427,20 @@ export const HANDLERS: Handlers = {
 
     listMembers: ({ query }, ctx) =>
         page(
-            ctx.state.members.values(),
+            [...ctx.state.members.values()].map((member) => withPasskeyCount(ctx, member)),
             sortBy('displayName', (member) => member.displayName.toLowerCase()),
             query,
         ),
     getMember: ({ params }, ctx) => {
         const member = ctx.state.members.get(params.memberId);
-        return member ? ok(member) : notFound('member');
+        return member ? ok(withPasskeyCount(ctx, member)) : notFound('member');
     },
     updateMember: ({ params, body }, ctx) => {
         const member = ctx.state.members.get(params.memberId);
         if (!member) return notFound('member');
         const updated = { ...member, role: body.role };
         ctx.state.members.set(member.id, updated);
-        return ok(updated);
+        return ok(withPasskeyCount(ctx, updated));
     },
     removeMember: ({ params }, ctx) => {
         if (!ctx.state.members.delete(params.memberId)) return notFound('member');
@@ -583,6 +591,7 @@ export const HANDLERS: Handlers = {
             createdBy: ctx.member.id,
             createdAt: now,
             updatedAt: now,
+            valueUpdatedAt: now,
             lastUsedAt: null,
         };
         ctx.state.secrets.set(secret.id, secret);
@@ -592,7 +601,8 @@ export const HANDLERS: Handlers = {
         const secret = ctx.state.secrets.get(params.secretId);
         if (!secret) return notFound('secret');
         if (secret.status === 'revoked') return fail('secret-revoked');
-        const replaced = { ...secret, updatedAt: ctx.now() };
+        const now = ctx.now();
+        const replaced = { ...secret, updatedAt: now, valueUpdatedAt: now };
         ctx.state.secrets.set(secret.id, replaced);
         return ok(replaced);
     },
@@ -645,6 +655,10 @@ function revokePasskey(ctx: HandlerContext, passkey: Passkey): HandlerResult<nul
     const remaining = [...ctx.state.passkeys.values()].filter(({ memberId }) => memberId === passkey.memberId);
     if (remaining.length === 1) return fail('last-passkey');
     ctx.state.passkeys.delete(passkey.id);
+    // A session lives no longer than the credential that signed it in, including the caller's own.
+    for (const session of [...ctx.state.sessions.values()]) {
+        if (session.passkeyId === passkey.id) ctx.state.sessions.delete(session.id);
+    }
     return ok(null);
 }
 

@@ -15,7 +15,11 @@ import { Chat, ReplyStreamEvent } from './chats';
 import { Hostname, PageQuery, ProblemDetails, SemVer, Timestamp } from './common';
 import type { RouteDefinition } from './route';
 import { ENGINE_API_ROUTE_LIST } from './routes';
+import { Member } from './members';
+import { Passkey, PasskeyPageReader } from './passkeys';
 import { CreateSecretBody, SecretMetadata } from './secrets';
+import { RekorEntryUuid, SecurityOverview, SecurityOverviewReader } from './security';
+import { Session } from './sessions';
 import { SetUpdatePolicyBody } from './settings';
 
 type Def = Readonly<Record<string, unknown>>;
@@ -397,6 +401,149 @@ describe('SetUpdatePolicyBody', () => {
         expect(SetUpdatePolicyBody.safeParse({ policy: 'pinned' }).success).toBe(false);
         expect(SetUpdatePolicyBody.safeParse({ policy: 'auto', pinnedVersion: '1.8.2' }).success).toBe(false);
         expect(SetUpdatePolicyBody.safeParse({ policy: 'pinned', pinnedVersion: 'latest' }).success).toBe(false);
+    });
+});
+
+/** A `GET /security` answer as an engine on API 1.2 sends it, without any field 1.3 added. */
+const securityV12 = {
+    engine: { version: '1.4.0', releaseLogIndex: 7 },
+    update: { status: 'none', policy: 'auto', pinnedVersion: null, availableVersion: null, eligibleAt: null },
+    ui: { version: '1.4.0', bundleSha256: SHA, releaseLogIndex: 8 },
+    tls: { certificateSha256: SHA, notAfter: NOW, lastCtCheck: { at: NOW, result: 'ok' } },
+    relays: [{ hostname: 'relay-a.ptbk.io', status: 'connected', since: NOW }],
+    hostnames: [{ hostname: 'e.ptbk.io', kind: 'default' }],
+    lastHeartbeat: { sentAt: NOW, body: '{"v":1}' },
+    outboundDestinations: [],
+};
+
+const securityV13 = {
+    ...securityV12,
+    engine: { ...securityV12.engine, releaseLogEntryUuid: `${'b'.repeat(16)}${'c'.repeat(64)}` },
+    ui: {
+        ...securityV12.ui,
+        releaseLogEntryUuid: 'd'.repeat(64),
+        lastUpdateCheck: {
+            at: NOW,
+            outcome: 'refused',
+            version: '1.5.0',
+            reason: 'revocations-unverifiable',
+            revocationReason: 'rolled-back',
+        },
+    },
+    tls: {
+        ...securityV12.tls,
+        lastCtCheck: {
+            at: NOW,
+            result: 'unexpected-certificate',
+            unexpectedCertificates: [{ sha256: SHA, issuer: 'CN=Some CA', notBefore: NOW, notAfter: NOW }],
+        },
+    },
+    relays: [{ ...securityV12.relays[0], lastPingRttMs: 42 }],
+    hostnames: [
+        { hostname: 'e.ptbk.io', kind: 'default', certificateStatus: 'valid', claimRegistered: null },
+        { hostname: 'ai.example.com', kind: 'custom', certificateStatus: 'pending', claimRegistered: true },
+    ],
+    lastHeartbeat: { ...securityV12.lastHeartbeat, signature: `ed25519=${'A'.repeat(86)}` },
+    clockSkew: { seconds: -300, measuredAt: NOW },
+};
+
+describe('SecurityOverview (API 1.3 fields)', () => {
+    it('reads a 1.2 answer with every new field as null or empty', () => {
+        const overview = SecurityOverview.parse(securityV12);
+        expect(overview.engine.releaseLogEntryUuid).toBeNull();
+        expect(overview.ui).toMatchObject({ releaseLogEntryUuid: null, lastUpdateCheck: null });
+        expect(overview.tls.lastCtCheck?.unexpectedCertificates).toEqual([]);
+        expect(overview.relays[0]?.lastPingRttMs).toBeNull();
+        expect(overview.hostnames[0]).toMatchObject({ certificateStatus: null, claimRegistered: null });
+        expect(overview.lastHeartbeat?.signature).toBeNull();
+        expect(overview.clockSkew).toBeNull();
+    });
+
+    it('accepts every 1.3 field and still rejects unknown ones', () => {
+        expect(SecurityOverview.parse(securityV13)).toEqual(securityV13);
+        expect(SecurityOverview.safeParse({ ...securityV13, extra: 1 }).success).toBe(false);
+    });
+
+    it('takes a Rekor entry UUID with or without the tree ID, in lowercase hex only', () => {
+        expect(RekorEntryUuid.safeParse('a'.repeat(64)).success).toBe(true);
+        expect(RekorEntryUuid.safeParse('a'.repeat(80)).success).toBe(true);
+        expect(RekorEntryUuid.safeParse('a'.repeat(72)).success).toBe(false);
+        expect(RekorEntryUuid.safeParse('A'.repeat(64)).success).toBe(false);
+    });
+
+    it('bounds the certificates a CT check reports and the relay round trip', () => {
+        const certificate = securityV13.tls.lastCtCheck.unexpectedCertificates[0];
+        const tooMany = { ...securityV13.tls.lastCtCheck, unexpectedCertificates: Array(17).fill(certificate) };
+        expect(
+            SecurityOverview.safeParse({ ...securityV13, tls: { ...securityV13.tls, lastCtCheck: tooMany } }).success,
+        ).toBe(false);
+        const negative = [{ ...securityV13.relays[0], lastPingRttMs: -1 }];
+        expect(SecurityOverview.safeParse({ ...securityV13, relays: negative }).success).toBe(false);
+    });
+
+    it('reads check outcomes, reasons and certificate statuses it does not know as unknown', () => {
+        const newer = {
+            ...securityV13,
+            ui: {
+                ...securityV13.ui,
+                lastUpdateCheck: {
+                    ...securityV13.ui.lastUpdateCheck,
+                    outcome: 'deferred',
+                    reason: 'quarantined',
+                    revocationReason: 'stale',
+                },
+            },
+            hostnames: [{ ...securityV13.hostnames[0], certificateStatus: 'revoked' }],
+        };
+        expect(SecurityOverview.safeParse(newer).success).toBe(false);
+        const read = SecurityOverviewReader.parse(newer);
+        expect(read.ui.lastUpdateCheck).toMatchObject({
+            outcome: 'unknown',
+            reason: 'unknown',
+            revocationReason: 'unknown',
+        });
+        expect(read.hostnames[0]?.certificateStatus).toBe('unknown');
+        expect(SecurityOverviewReader.parse(securityV13)).toEqual(securityV13);
+    });
+});
+
+describe('passkeys, sessions, members and secrets (API 1.3 fields)', () => {
+    const passkey = { id: 'pk_1', memberId: 'mem_1', name: 'iPhone', createdAt: NOW, lastUsedAt: null };
+
+    it('reads 1.2 records with the new fields as null', () => {
+        expect(Passkey.parse(passkey).authenticator).toBeNull();
+        expect(
+            Session.parse({
+                id: 'ses_1',
+                memberId: 'mem_1',
+                current: true,
+                client: null,
+                createdAt: NOW,
+                lastSeenAt: NOW,
+                expiresAt: NOW,
+            }).passkeyId,
+        ).toBeNull();
+        const member = {
+            id: 'mem_1',
+            displayName: 'Ada',
+            role: 'owner',
+            status: 'active',
+            createdAt: NOW,
+            lastSeenAt: null,
+        };
+        expect(Member.parse(member).passkeyCount).toBeNull();
+        expect(Member.safeParse({ ...member, passkeyCount: -1 }).success).toBe(false);
+        expect(SecretMetadata.parse(secret).valueUpdatedAt).toBeNull();
+    });
+
+    it('reads an authenticator attachment it does not know as unknown', () => {
+        const roaming = { ...passkey, authenticator: { attachment: 'cross-platform', backedUp: false } };
+        const hybrid = { ...passkey, id: 'pk_2', authenticator: { attachment: 'hybrid', backedUp: null } };
+        expect(Passkey.safeParse(hybrid).success).toBe(false);
+        expect(PasskeyPageReader.parse({ items: [roaming, hybrid], nextCursor: null }).items).toEqual([
+            roaming,
+            { ...hybrid, authenticator: { attachment: 'unknown', backedUp: null } },
+        ]);
     });
 });
 

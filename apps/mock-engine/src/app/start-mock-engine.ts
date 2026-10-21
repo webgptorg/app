@@ -50,6 +50,7 @@ import type { StreamEvents } from '../domain/tunnel/tunnel-stream';
 import type { BundleStore } from '../domain/ui/bundle-store';
 import type { UiLoader, UiLoaderDeps } from '../domain/ui/ui-loader';
 import { createUiLoader } from '../domain/ui/ui-loader';
+import { uiUpdateCheckOf } from '../domain/ui/ui-update';
 import type { MockEngineConfig } from './config';
 import { establishRegistration } from './establish-registration';
 
@@ -146,6 +147,9 @@ function configuredUiLoader(config: MockEngineConfig, deps: MockEngineDeps, runt
         onActive: (bundle) => {
             runtime.setUi({ version: bundle.version, bundleSha256: bundle.sha256, releaseLogIndex: bundle.logIndex });
         },
+        onChecked: (outcome, atMs) => {
+            runtime.setUiUpdateCheck(uiUpdateCheckOf(outcome, atMs));
+        },
     });
 }
 
@@ -200,8 +204,8 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
                   version: config.engineVersion,
                   intervalS: dashboard.config.heartbeatIntervalS,
                   startedAtMs,
-                  onSent: (sent) => {
-                      runtime.setLastHeartbeat(sent);
+                  onStatus: (status) => {
+                      runtime.setHeartbeat(status);
                   },
               });
     const sessions = createSessionStore({ engine: () => runtime.controller(), clock: deps.clock, random: deps.random });

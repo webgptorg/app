@@ -17,6 +17,8 @@ export interface LastHeartbeat {
     readonly sentAt: Timestamp;
     /** The exact text sent, byte for byte. */
     readonly body: string;
+    /** The exact `Ptbk-Signature` header value sent with it. */
+    readonly signature: string;
 }
 
 export interface ClockSkew {
@@ -43,8 +45,8 @@ export interface HeartbeatLoopDeps {
     readonly version: EngineVersion;
     readonly intervalS: number;
     readonly startedAtMs: number;
-    /** Each body as it goes out, for the security panel. */
-    readonly onSent?: (heartbeat: LastHeartbeat) => void;
+    /** Every change of the status (each body as it goes out, each skew measured or cleared), for the security panel. */
+    readonly onStatus?: (status: HeartbeatStatus) => void;
 }
 
 export interface HeartbeatLoop {
@@ -71,6 +73,7 @@ export function createHeartbeatLoop(deps: HeartbeatLoopDeps): HeartbeatLoop {
 
     function setStatus(patch: Partial<HeartbeatStatus>): void {
         status = Object.freeze({ ...status, ...patch });
+        deps.onStatus?.(status);
     }
 
     function recordSkew(problem: DashboardProblem | null): void {
@@ -100,9 +103,9 @@ export function createHeartbeatLoop(deps: HeartbeatLoopDeps): HeartbeatLoop {
             { clock, signer, signal },
         );
         // Recorded before the answer: once the request leaves, the dashboard may have the body whatever it answers.
-        const lastHeartbeat = Object.freeze({ sentAt: signed.ts, body: signed.body });
-        setStatus({ lastHeartbeat });
-        deps.onSent?.(lastHeartbeat);
+        setStatus({
+            lastHeartbeat: Object.freeze({ sentAt: signed.ts, body: signed.body, signature: signed.signature }),
+        });
         const result = await deps.api.heartbeat(deps.identity.engineId, signed.rawBody, signed.signature, signal);
         switch (result.kind) {
             case 'accepted':

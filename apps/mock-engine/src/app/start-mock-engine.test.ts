@@ -311,8 +311,8 @@ describe('startMockEngine', () => {
             ]);
             const security: Security = await read(started, 'getSecurityOverview');
             expect(security.hostnames).toEqual([
-                { hostname: started.engine.hostname, kind: 'default' },
-                { hostname: 'agents.customer.test', kind: 'custom' },
+                { hostname: started.engine.hostname, kind: 'default', certificateStatus: null, claimRegistered: null },
+                { hostname: 'agents.customer.test', kind: 'custom', certificateStatus: null, claimRegistered: null },
             ]);
             expect(security.engine.version).toBe('0.1.0');
         });

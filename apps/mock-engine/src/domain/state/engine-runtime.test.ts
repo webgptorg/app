@@ -1,5 +1,12 @@
 import type { EngineApiResponse } from '@ptbk/engine-api';
-import { ClientInfo, MemberId, OWNER_PERMISSIONS, SessionId, createEngineApiClient } from '@ptbk/engine-api';
+import {
+    ClientInfo,
+    MemberId,
+    OWNER_PERMISSIONS,
+    SessionId,
+    UiUpdateCheck,
+    createEngineApiClient,
+} from '@ptbk/engine-api';
 import type { Actor } from '@ptbk/engine-api/in-memory';
 import { describe, expect, it } from 'vitest';
 
@@ -77,8 +84,9 @@ describe('engine runtime', () => {
         runtime.setRelayStatus('relay-b.ptbk.test', 'disconnected');
         runtime.setHostnames([IDENTITY.hostname, 'agents.customer.test']);
         runtime.setDashboardUrl('https://app.ptbk.test/engines/abc');
-        const heartbeat = { sentAt: '2026-10-20T08:00:02Z', body: '{"v":1}' };
-        runtime.setLastHeartbeat(heartbeat);
+        const heartbeat = { sentAt: '2026-10-20T08:00:02Z', body: '{"v":1}', signature: `ed25519=${'A'.repeat(86)}` };
+        const clockSkew = { seconds: -300, measuredAt: '2026-10-20T08:00:02Z' };
+        runtime.setHeartbeat({ lastHeartbeat: heartbeat, clockSkew });
         const listened: string[] = [];
         runtime.onReset(() => listened.push('reset'));
         const before = ok(await client().security.get(signal()));
@@ -89,15 +97,43 @@ describe('engine runtime', () => {
         const after = ok(await client().security.get(signal()));
         expect(after.relays).toEqual(before.relays);
         expect(after.lastHeartbeat).toEqual(heartbeat);
+        expect(after.clockSkew).toEqual(clockSkew);
         expect(after.relays).toEqual([
-            { hostname: 'relay-a.ptbk.test', status: 'connected', since: '2026-10-20T08:00:01Z' },
-            { hostname: 'relay-b.ptbk.test', status: 'disconnected', since: '2026-10-20T08:00:02Z' },
+            { hostname: 'relay-a.ptbk.test', status: 'connected', since: '2026-10-20T08:00:01Z', lastPingRttMs: null },
+            {
+                hostname: 'relay-b.ptbk.test',
+                status: 'disconnected',
+                since: '2026-10-20T08:00:02Z',
+                lastPingRttMs: null,
+            },
         ]);
         expect(after.hostnames).toEqual([
-            { hostname: IDENTITY.hostname, kind: 'default' },
-            { hostname: 'agents.customer.test', kind: 'custom' },
+            { hostname: IDENTITY.hostname, kind: 'default', certificateStatus: null, claimRegistered: null },
+            { hostname: 'agents.customer.test', kind: 'custom', certificateStatus: null, claimRegistered: null },
         ]);
         expect(ok(await client().engine.get(signal())).dashboardUrl).toBe('https://app.ptbk.test/engines/abc');
+    });
+
+    it("reports the UI loader's last check, before and after a bundle is active, and keeps it across a reset", async () => {
+        const { runtime, client } = start();
+        const refused = {
+            at: '2026-10-20T08:00:00Z',
+            outcome: 'refused',
+            version: '1.1.0',
+            reason: 'revocations-unverifiable',
+            revocationReason: 'expired',
+        } as const;
+        runtime.setUiUpdateCheck(UiUpdateCheck.parse(refused));
+        expect(ok(await client().security.get(signal())).ui.lastUpdateCheck).toEqual(refused);
+        runtime.setUi({ version: '1.0.0', bundleSha256: 'c'.repeat(64), releaseLogIndex: 9 });
+        runtime.reset({ seed: 3, scenario: 'empty' });
+        expect(ok(await client().security.get(signal())).ui).toEqual({
+            version: '1.0.0',
+            bundleSha256: 'c'.repeat(64),
+            releaseLogIndex: 9,
+            releaseLogEntryUuid: null,
+            lastUpdateCheck: refused,
+        });
     });
 
     it("answers the injection demo agent with hostile markdown, paced on the runtime's clock", async () => {
