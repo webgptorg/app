@@ -42,7 +42,7 @@ M2 and M3 can run in parallel once M1's contracts exist. E-01 (the engine integr
 
 Decided 2026-10-21 (Seb): until the cloud accounts and tokens exist, build everything that needs none, so the whole product can be clicked through locally (dashboard, relay, mock engine, engine UI) with no external service.
 
-**First blocker: CI.** GitHub currently refuses to run Actions for billing reasons (see "Still needed"). Until CI runs again nothing merges: AGENTS.md step 9 stands, with no exceptions for red or missing checks. Agents may keep working on branches and opening PRs.
+**First blocker: CI.** GitHub currently refuses to run Actions for billing reasons (see "Still needed"). Until CI runs again, a PR merges once the checks CI would run pass locally on the rebased branch (`bun run check`, plus the e2e suite, `test:csp` and the conformance job's steps where the change touches them), with the results in the PR body (Seb, 2026-10-21). Once CI runs again, AGENTS.md step 9 applies unchanged and main's CI is re-run on the head merged meanwhile.
 
 Then, in this order, with the lanes in parallel:
 
