@@ -70,6 +70,16 @@ export interface ToolTemplate {
     readonly failed: string;
 }
 
+/** Subjects of the emails that started seeded `email` runs. */
+export const EMAIL_SUBJECTS = [
+    'Refund for order 4471',
+    'Re: Invoice INV-2026-0912 is overdue',
+    'Cannot sign in since the update',
+    'Partnership enquiry: Q4 webinar',
+    'Fwd: Contract renewal draft',
+    'Shipping address change for order 4502',
+] as const;
+
 export const TOOLS: readonly ToolTemplate[] = [
     {
         name: 'github.search_code',

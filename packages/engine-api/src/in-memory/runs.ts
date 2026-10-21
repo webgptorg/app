@@ -2,25 +2,31 @@ import { z } from 'zod';
 
 import type { ActivityActor } from '../capabilities/activity';
 import { ProjectChange, Run, RunProgress, TERMINAL_RUN_STATUSES, ToolCall } from '../capabilities/runs';
-import type { RunDetail, RunError, RunSource, RunStatus, RunUsage } from '../capabilities/runs';
+import type { RunDetail, RunError, RunSource, RunStats, RunStatus, RunUsage } from '../capabilities/runs';
 import { stripUnknownFields } from '../tolerant';
 import { ChatId, MemberId, RunId, TriggerId } from '../common';
 import type { AgentId, FileId, MessageId } from '../common';
-import { MAX_RUN_TEXT_BYTES } from '../constants';
-import { fail, liveAgent, notFound, ok, page, recordActivity, sortParam, time, within } from './kit';
+import { MAX_RUN_PREVIEW_LENGTH, MAX_RUN_TEXT_BYTES } from '../constants';
+import { fail, liveAgent, notFound, ok, page, previewText, recordActivity, sortParam, time, within } from './kit';
 import type { EngineContext, Handlers, HandlerResult } from './kit';
 
 const DAY_MS = 24 * 3600 * 1000;
 
+/** The run as the engine answers it: with the agent's name now, which the stored record does not keep current. */
+export function runDetailView(ctx: EngineContext, detail: RunDetail): RunDetail {
+    const agent = ctx.state.agents.get(detail.agentId)?.agent;
+    return agent === undefined ? detail : { ...detail, agentName: agent.name };
+}
+
 /** A run as lists show it: the detail without tool calls, outputs and report. */
-export function runSummary(detail: RunDetail): Run {
-    return Run.parse(stripUnknownFields(Run, detail));
+export function runSummary(ctx: EngineContext, detail: RunDetail): Run {
+    return Run.parse(stripUnknownFields(Run, runDetailView(ctx, detail)));
 }
 
 function save(ctx: EngineContext, detail: RunDetail): Run {
     ctx.state.runs.set(detail.id, detail);
     ctx.publish({ type: 'run.changed', runId: detail.id, agentId: detail.agentId, status: detail.status });
-    return runSummary(detail);
+    return runSummary(ctx, detail);
 }
 
 export interface NewRun {
@@ -32,12 +38,15 @@ export interface NewRun {
     readonly retryOf?: RunId;
     readonly createdBy: MemberId | null;
     readonly actor: ActivityActor;
+    /** The text that started the run, as the user wrote it; the core collapses and cuts it. */
+    readonly preview?: string | null;
 }
 
 export function queueRun(ctx: EngineContext, input: NewRun & RunnerInfo): RunDetail {
     const detail: RunDetail = {
         id: ctx.newId(RunId, 'run'),
         agentId: input.agentId,
+        agentName: ctx.state.agents.get(input.agentId)?.agent.name ?? null,
         source: input.source,
         status: 'queued',
         chatId: input.chatId ?? null,
@@ -55,10 +64,12 @@ export function queueRun(ctx: EngineContext, input: NewRun & RunnerInfo): RunDet
         progress: null,
         usage: null,
         error: null,
+        preview: input.preview === undefined || input.preview === null ? null : runPreview(input.preview),
         toolCalls: [],
         outputs: {
             messages: input.chatId && input.messageId ? [{ chatId: input.chatId, messageId: input.messageId }] : [],
             files: [],
+            fileNames: [],
             projectChanges: [],
         },
         report: { touchedProjects: [], externalSources: [] },
@@ -88,6 +99,8 @@ export interface StartRun extends RunnerInfo {
     readonly retryOf?: string;
     /** The member it runs for; `null` (the default) for a run no member started. */
     readonly createdBy?: string | null;
+    /** The request that started it, e.g. an API caller's instruction; `null` (the default) for none. */
+    readonly preview?: string | null;
 }
 
 /** Queues a run as the system (or as `createdBy`); throws for an unknown or deleted agent or an unknown member. */
@@ -107,8 +120,14 @@ export function startRun(ctx: EngineContext, input: StartRun): Run {
         actor: createdBy === null ? { kind: 'system' } : { kind: 'member', memberId: createdBy },
         ...(input.runner === undefined ? {} : { runner: input.runner }),
         ...(input.model === undefined ? {} : { model: input.model }),
+        ...(input.preview === undefined ? {} : { preview: input.preview }),
     });
-    return runSummary(detail);
+    return runSummary(ctx, detail);
+}
+
+/** A run's `preview`: whitespace runs collapsed, cut to `MAX_RUN_PREVIEW_LENGTH`; `null` for text with nothing visible. */
+export function runPreview(text: string): string | null {
+    return previewText(text, MAX_RUN_PREVIEW_LENGTH);
 }
 
 /** UTF-8 text cut to `MAX_RUN_TEXT_BYTES` on a code point boundary, as an engine stores logs and diffs. */
@@ -184,9 +203,20 @@ export function addProjectChange(ctx: EngineContext, runId: string, change: unkn
 }
 
 /** A file the run produced, listed in its outputs. */
-export function addRunOutputFile(ctx: EngineContext, runId: string, fileId: FileId): void {
+export function addRunOutputFile(
+    ctx: EngineContext,
+    runId: string,
+    file: { readonly id: FileId; readonly name: string },
+): void {
     const detail = activeRun(ctx, runId);
-    save(ctx, { ...detail, outputs: { ...detail.outputs, files: [...detail.outputs.files, fileId] } });
+    save(ctx, {
+        ...detail,
+        outputs: {
+            ...detail.outputs,
+            files: [...detail.outputs.files, file.id],
+            fileNames: [...detail.outputs.fileNames, file.name],
+        },
+    });
 }
 
 export function findRuns(ctx: EngineContext, filter: { readonly status?: readonly RunStatus[] }): RunDetail[] {
@@ -208,7 +238,7 @@ export function advanceRun(ctx: EngineContext, runId: string, outcome: RunOutcom
     if (!detail) throw new Error(`No run ${runId}`);
     const actor: ActivityActor = { kind: 'system' };
     const ref = { agentId: detail.agentId, actor, runId: detail.id, source: detail.source };
-    if (TERMINAL_RUN_STATUSES.includes(detail.status)) return runSummary(detail);
+    if (TERMINAL_RUN_STATUSES.includes(detail.status)) return runSummary(ctx, detail);
     const now = ctx.now();
     if (detail.status === 'queued' && detail.cancelRequestedAt === null && outcome.status !== 'cancelled') {
         const started = save(ctx, {
@@ -253,7 +283,7 @@ export function runForMessage(ctx: EngineContext, messageId: string): RunDetail 
 
 function found(ctx: EngineContext, runId: string): HandlerResult<RunDetail> {
     const detail = ctx.state.runs.get(runId);
-    return detail ? ok(detail) : notFound('run');
+    return detail ? ok(runDetailView(ctx, detail)) : notFound('run');
 }
 
 export const RUN_HANDLERS: Pick<Handlers, 'listRuns' | 'getRunStats' | 'getRun' | 'cancelRun' | 'retryRun'> = {
@@ -269,7 +299,7 @@ export const RUN_HANDLERS: Pick<Handlers, 'listRuns' | 'getRunStats' | 'getRun' 
                     (query.createdBy === undefined || run.createdBy === query.createdBy) &&
                     within(run.queuedAt, query.from, query.to),
             )
-            .map(runSummary);
+            .map((run) => runSummary(ctx, run));
         return page(runs, sortParam<Run>(query.sort, { queuedAt: (run) => time(run.queuedAt) }), query);
     },
     getRunStats: ({ query }, ctx) => {
@@ -279,6 +309,13 @@ export const RUN_HANDLERS: Pick<Handlers, 'listRuns' | 'getRunStats' | 'getRun' 
         const since = time(ctx.now()) - DAY_MS;
         const queued = runs.filter((run) => run.status === 'queued');
         const oldest = queued.map((run) => run.queuedAt).sort((a, b) => time(a) - time(b))[0];
+        let lastFinished: RunStats['lastFinished'] = null;
+        for (const run of runs) {
+            if (run.completedAt === null || run.status === 'queued' || run.status === 'running') continue;
+            if (lastFinished === null || time(run.completedAt) > time(lastFinished.at)) {
+                lastFinished = { status: run.status, at: run.completedAt };
+            }
+        }
         return ok({
             running: runs.filter((run) => run.status === 'running').length,
             queued: queued.length,
@@ -286,6 +323,7 @@ export const RUN_HANDLERS: Pick<Handlers, 'listRuns' | 'getRunStats' | 'getRun' 
                 (run) => run.status === 'failed' && run.completedAt !== null && time(run.completedAt) >= since,
             ).length,
             oldestQueuedAt: oldest ?? null,
+            lastFinished,
         });
     },
     getRun: ({ params }, ctx) => found(ctx, params.runId),
@@ -294,7 +332,7 @@ export const RUN_HANDLERS: Pick<Handlers, 'listRuns' | 'getRunStats' | 'getRun' 
         if (result.kind === 'problem') return result;
         const detail = result.data;
         if (TERMINAL_RUN_STATUSES.includes(detail.status)) return fail('run-finished');
-        if (detail.cancelRequestedAt !== null) return ok(runSummary(detail));
+        if (detail.cancelRequestedAt !== null) return ok(runSummary(ctx, detail));
         return ok(save(ctx, { ...detail, cancelRequestedAt: ctx.now() }));
     },
     retryRun: ({ params }, ctx) => {
@@ -310,7 +348,8 @@ export const RUN_HANDLERS: Pick<Handlers, 'listRuns' | 'getRunStats' | 'getRun' 
             retryOf: failed.id,
             createdBy: ctx.member.id,
             actor: { kind: 'member', memberId: ctx.member.id },
+            preview: failed.preview,
         });
-        return ok(runSummary(retry));
+        return ok(runSummary(ctx, retry));
     },
 };

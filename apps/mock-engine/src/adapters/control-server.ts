@@ -232,8 +232,8 @@ export function createControlRoutes(deps: ControlDeps): readonly HttpRoute[] {
             path: '/__mock/inbound-email',
             body: { kind: 'json', schema: InboundEmail, maxBytes: BODY_MAX_BYTES },
             handle: ({ body }) => {
-                // The sender and subject are accepted like a mail server would, and never stored or logged.
-                const outcome = runtime.simulation().inboundEmail(body.triggerId);
+                // Like an engine, the subject becomes the run's preview; the sender is not stored. Neither is logged.
+                const outcome = runtime.simulation().inboundEmail(body.triggerId, body.subject);
                 switch (outcome.kind) {
                     case 'not-found':
                         return problemResponse({ code: 'not-found' });

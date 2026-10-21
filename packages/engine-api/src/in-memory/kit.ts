@@ -206,9 +206,14 @@ export function summariseMessage(summary: ChatSummary, message: Message): ChatSu
 
 /** `null` for a message with no visible text, so the next user message gets its turn. */
 export function chatPreview(content: string): string | null {
+    return previewText(content, MAX_CHAT_PREVIEW_LENGTH);
+}
+
+/** Text with whitespace runs collapsed to one space, cut to `max` code units; `null` when nothing visible is left. */
+export function previewText(content: string, max: number): string | null {
     const text = content.replace(/\s+/g, ' ').trim();
     if (text === '') return null;
-    const cut = text.slice(0, MAX_CHAT_PREVIEW_LENGTH);
+    const cut = text.slice(0, max);
     // Never end on the first half of a surrogate pair.
     return /[\uD800-\uDBFF]$/.test(cut) ? cut.slice(0, -1) : cut;
 }

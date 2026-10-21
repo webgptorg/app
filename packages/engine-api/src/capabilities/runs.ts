@@ -3,6 +3,7 @@ import { z } from 'zod';
 import {
     AgentId,
     ChatId,
+    Cursor,
     FileId,
     MemberId,
     MessageId,
@@ -14,10 +15,11 @@ import {
     TriggerId,
     pageOf,
 } from '../common';
-import { MAX_RUN_TEXT_BYTES } from '../constants';
+import { MAX_RUN_PREVIEW_LENGTH, MAX_RUN_TEXT_BYTES } from '../constants';
 import { defineRoute } from '../route';
+import { openEnum, toTolerant } from '../tolerant';
 import { KNOWN_CAPABILITIES } from './capability';
-import { CommitHash } from './files';
+import { CommitHash, FileName } from './files';
 
 /** What started a run. Closed within `runs@1`. */
 export const RUN_SOURCES = ['web', 'api', 'email', 'schedule', 'member', 'goal', 'webhook'] as const;
@@ -75,6 +77,11 @@ export type RunProgress = z.infer<typeof RunProgress>;
 export const Run = z.strictObject({
     id: RunId,
     agentId: AgentId,
+    /**
+     * The agent's name when the engine answered (since API 1.5), so a list across agents needs no lookup per row; the
+     * name it had when it was deleted, `null` when the engine no longer knows it. Untrusted text: members type it.
+     */
+    agentName: z.string().min(1).max(256).nullable(),
     source: RunSource,
     status: RunStatus,
     chatId: ChatId.nullable(),
@@ -96,6 +103,12 @@ export const Run = z.strictObject({
     progress: RunProgress.nullable(),
     usage: RunUsage.nullable(),
     error: RunError.nullable(),
+    /**
+     * The text that started the run (since API 1.5): the user's message for a chat run, the subject of an inbound email,
+     * a schedule's message, an API or member request. Whitespace runs collapsed to one space, cut to
+     * `MAX_RUN_PREVIEW_LENGTH`; `null` when nothing textual started it. Untrusted text: render it as text only.
+     */
+    preview: z.string().max(MAX_RUN_PREVIEW_LENGTH).nullable(),
 });
 export type Run = z.infer<typeof Run>;
 export const RunPage = pageOf(Run);
@@ -139,13 +152,26 @@ export const ProjectChange = z.strictObject({
 });
 export type ProjectChange = z.infer<typeof ProjectChange>;
 
-export const RunDetail = Run.extend({
-    toolCalls: z.array(ToolCall).max(1000),
-    outputs: z.strictObject({
+export const RunOutputs = z
+    .strictObject({
         messages: z.array(z.strictObject({ chatId: ChatId, messageId: MessageId })).max(1000),
         files: z.array(FileId).max(1000),
+        /**
+         * The name of each file in `files`, same length and order (since API 1.5), so outputs read without `files@1`.
+         * The name the file had when the run produced it. Untrusted text.
+         */
+        fileNames: z.array(FileName).max(1000),
         projectChanges: z.array(ProjectChange).max(1000),
-    }),
+    })
+    .refine((outputs) => outputs.fileNames.length === outputs.files.length, {
+        message: 'fileNames must name each entry of files, in the same order.',
+        path: ['fileNames'],
+    });
+export type RunOutputs = z.infer<typeof RunOutputs>;
+
+export const RunDetail = Run.extend({
+    toolCalls: z.array(ToolCall).max(1000),
+    outputs: RunOutputs,
     /** What the run touched, for review: project names and external hostnames or URLs it read from. */
     report: z.strictObject({
         touchedProjects: z.array(z.string().min(1).max(256)).max(1000),
@@ -184,10 +210,26 @@ export const RunStats = z.strictObject({
     queued: z.int().min(0),
     failedLast24h: z.int().min(0),
     oldestQueuedAt: Timestamp.nullable(),
+    /**
+     * The run that finished last, by `completedAt` (since API 1.5), so a client can tell a recent failure that nothing
+     * has finished after from one a later run superseded. `null` when no run has finished.
+     */
+    lastFinished: z.strictObject({ status: z.enum(['completed', 'failed', 'cancelled']), at: Timestamp }).nullable(),
 });
 export type RunStats = z.infer<typeof RunStats>;
 
 export const RunParams = z.strictObject({ runId: RunId });
+
+/**
+ * Runs as the client reads them: a `status` or `source` this contract does not know yet (a newer engine's) reads as
+ * `unknown`, so the UI shows it as such instead of failing the whole list. Engines still answer with the closed enums.
+ */
+const openRunFields = { status: openEnum(RUN_STATUSES), source: openEnum(RUN_SOURCES) };
+export const RunReader = toTolerant(Run.extend(openRunFields));
+export type ReadRun = z.output<typeof RunReader>;
+export const RunPageReader = z.object({ items: z.array(RunReader), nextCursor: Cursor.nullable() });
+export const RunDetailReader = toTolerant(RunDetail.extend(openRunFields));
+export type ReadRunDetail = z.output<typeof RunDetailReader>;
 
 /** A hint to refetch; carries IDs and the new status, never content. */
 export const RunChangedEvent = z.strictObject({
@@ -196,6 +238,8 @@ export const RunChangedEvent = z.strictObject({
     agentId: AgentId,
     status: RunStatus,
 });
+/** `run.changed` as the client reads it: an unknown `status` reads as `unknown`, like `RunReader`. */
+export const RunChangedEventReader = RunChangedEvent.extend({ status: openEnum(RUN_STATUSES) });
 
 const capability = KNOWN_CAPABILITIES.runs;
 
@@ -208,7 +252,7 @@ export const RUN_ROUTES = {
         permission: 'runs.read',
         capability,
         query: RunListQuery,
-        responses: { 200: { kind: 'json', schema: RunPage } },
+        responses: { 200: { kind: 'json', schema: RunPage, read: RunPageReader } },
     }),
     getRunStats: defineRoute({
         id: 'getRunStats',
@@ -228,7 +272,7 @@ export const RUN_ROUTES = {
         permission: 'runs.read',
         capability,
         params: RunParams,
-        responses: { 200: { kind: 'json', schema: RunDetail } },
+        responses: { 200: { kind: 'json', schema: RunDetail, read: RunDetailReader } },
     }),
     cancelRun: defineRoute({
         id: 'cancelRun',
@@ -240,7 +284,7 @@ export const RUN_ROUTES = {
         permission: 'runs.control',
         capability,
         params: RunParams,
-        responses: { 202: { kind: 'json', schema: Run } },
+        responses: { 202: { kind: 'json', schema: Run, read: RunReader } },
         problems: ['run-finished'],
     }),
     retryRun: defineRoute({
@@ -252,7 +296,7 @@ export const RUN_ROUTES = {
         permission: 'runs.control',
         capability,
         params: RunParams,
-        responses: { 201: { kind: 'json', schema: Run } },
+        responses: { 201: { kind: 'json', schema: Run, read: RunReader } },
         problems: ['run-not-retryable'],
     }),
 } as const;

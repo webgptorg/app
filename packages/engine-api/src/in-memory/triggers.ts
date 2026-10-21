@@ -41,13 +41,18 @@ function scheduleEnd(config: ScheduleConfig, now: string): 'max-runs' | 'complet
     return null;
 }
 
+export interface FireInput {
+    /** What arrived, for the run's preview: an inbound email's subject. A schedule's run previews its message. */
+    readonly subject?: string;
+}
+
 /**
  * What the engine does when a trigger fires: a schedule comes due or an email arrives. An inactive trigger, or a
  * schedule before its `startsAt`, records a skipped fire; a schedule past its end ends instead (`max-runs` or
  * `completed`) and records a skipped fire. A trigger whose agent was deleted records a failed fire. Otherwise it
  * queues a run and, for schedules, counts it and works out the next fire.
  */
-export function fireTrigger(ctx: EngineContext, triggerId: string): TriggerFire {
+export function fireTrigger(ctx: EngineContext, triggerId: string, input: FireInput = {}): TriggerFire {
     const record = ctx.state.triggers.get(triggerId);
     if (!record) throw new Error(`No trigger ${triggerId}`);
     const trigger = record.trigger;
@@ -94,6 +99,7 @@ export function fireTrigger(ctx: EngineContext, triggerId: string): TriggerFire 
         triggerId: trigger.id,
         createdBy: null,
         actor,
+        preview: trigger.kind === 'schedule' ? trigger.config.message : (input.subject ?? null),
     });
     const fire = recordFire('started', run.id, null);
     let updated: Trigger = { ...trigger, lastFiredAt: now, updatedAt: now };

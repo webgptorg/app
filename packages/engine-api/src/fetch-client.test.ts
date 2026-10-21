@@ -517,6 +517,38 @@ describe('tolerant reading', () => {
         expect(response.data.tls).not.toHaveProperty('pinned');
     });
 
+    it('reads a run status or source a newer engine added as unknown, so the page still loads', async () => {
+        const run = {
+            id: 'run_1',
+            agentId: 'agt_1',
+            agentName: 'Ada',
+            source: 'kiosk',
+            status: 'paused',
+            chatId: null,
+            messageId: null,
+            triggerId: null,
+            retryOf: null,
+            createdBy: null,
+            queuedAt: AT,
+            startedAt: null,
+            completedAt: null,
+            cancelRequestedAt: null,
+            attemptCount: 0,
+            runner: null,
+            model: null,
+            progress: null,
+            usage: null,
+            error: null,
+            preview: null,
+            priority: 3,
+        };
+        const { client } = setup(() => json({ items: [run], nextCursor: null }));
+        const response = await client.runs.list({}, signal());
+        if (response.kind !== 'ok') throw new Error('expected a page');
+        expect(response.data.items[0]).toMatchObject({ status: 'unknown', source: 'unknown', agentName: 'Ada' });
+        expect(response.data.items[0]).not.toHaveProperty('priority');
+    });
+
     it('reads an audit action a newer engine added as its raw name, so the page still loads', async () => {
         const entry = {
             id: 'aud_1',

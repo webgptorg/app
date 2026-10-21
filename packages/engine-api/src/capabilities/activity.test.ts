@@ -154,8 +154,14 @@ describe('EngineEventReader', () => {
     });
 
     it('fails a known event that breaks its schema', () => {
-        const result = EngineEventReader.safeParse({ type: 'run.changed', runId: 'run-1', status: 'paused' });
+        const result = EngineEventReader.safeParse({ type: 'run.changed', runId: 'run-1', status: 'running' });
         expect(result.success).toBe(false);
-        expect(result.error?.issues.map(({ path }) => path.join('.')).sort()).toEqual(['agentId', 'status']);
+        expect(result.error?.issues.map(({ path }) => path.join('.'))).toEqual(['agentId']);
+    });
+
+    it('reads a run status a newer engine added as unknown', () => {
+        expect(
+            EngineEventReader.parse({ type: 'run.changed', runId: 'run-1', agentId: 'agent-1', status: 'paused' }),
+        ).toEqual({ type: 'run.changed', runId: 'run-1', agentId: 'agent-1', status: 'unknown' });
     });
 });

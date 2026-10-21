@@ -43,7 +43,8 @@ export interface Simulation {
     status(): SimulationStatus;
     /** Throws for an unknown or deleted agent. */
     scriptRun(input: ScriptedRunInput): Run;
-    inboundEmail(triggerId: string): InboundEmailOutcome;
+    /** An email arrived for an email trigger; its subject becomes the run's preview. */
+    inboundEmail(triggerId: string, subject: string): InboundEmailOutcome;
     /** The fault plan changed: runs held back by `stuckQueue` may go on. */
     faultsChanged(): void;
     stop(): void;
@@ -110,11 +111,11 @@ export function createSimulation(options: SimulationOptions): Simulation {
             runs.script(run.id, { outcome: input.outcome, steps: input.steps });
             return run;
         },
-        inboundEmail(triggerId) {
+        inboundEmail(triggerId, subject) {
             const trigger = controller.getTrigger(triggerId);
             if (trigger === undefined) return { kind: 'not-found' };
             if (trigger.kind !== 'email') return { kind: 'not-email' };
-            return { kind: 'fired', fire: controller.fireTrigger(triggerId) };
+            return { kind: 'fired', fire: controller.fireTrigger(triggerId, { subject }) };
         },
         faultsChanged() {
             runs.release();
