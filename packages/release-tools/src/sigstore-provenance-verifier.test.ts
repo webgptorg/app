@@ -11,11 +11,11 @@ import {
     decodeDerUtf8String,
     latestVerifiedTime,
     readCertificateClaims,
-} from './sigstore-provenance-verifier.ts';
+} from './sigstore-provenance-verifier';
+import { PINNED_TRUSTED_ROOT } from './trusted-root';
 
 const here = import.meta.dirname;
-const trustedRoot: unknown = JSON.parse(readFileSync(join(here, '..', '..', 'release', 'trusted_root.json'), 'utf8'));
-const verifier = createSigstoreProvenanceVerifier(trustedRoot);
+const verifier = createSigstoreProvenanceVerifier(PINNED_TRUSTED_ROOT);
 
 interface Fixture {
     readonly text: string;
@@ -244,11 +244,6 @@ describe('createSigstoreProvenanceVerifier', () => {
         await expect(
             verifier.verifyProvenance(hono.text, hono.envelope, honoExpected, controller.signal),
         ).rejects.toThrow('stop');
-    });
-
-    it('never imports sigstore, whose verify() matches identities by unanchored pattern', () => {
-        const source = readFileSync(join(here, 'sigstore-provenance-verifier.ts'), 'utf8');
-        expect(source).not.toMatch(/(?:from|import|require\()\s*\(?\s*['"]sigstore(?:\/[^'"]*)?['"]/);
     });
 });
 

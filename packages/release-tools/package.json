@@ -1,0 +1,24 @@
+{
+  "name": "@ptbk/release-tools",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "description": "Node-only release tooling shared by the UI release scripts and the engine's UI loader: the bundle archive's ustar codec, the Sigstore provenance verifier and the pinned trusted root (MIT, ADR 0002)",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "sideEffects": false,
+  "scripts": {
+    "typecheck": "tsc --noEmit -p .",
+    "test": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@ptbk/protocol": "workspace:*",
+    "@sigstore/bundle": "catalog:",
+    "@sigstore/protobuf-specs": "catalog:",
+    "@sigstore/verify": "catalog:"
+  },
+  "devDependencies": {
+    "eslint": "catalog:"
+  }
+}

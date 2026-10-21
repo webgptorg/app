@@ -84,9 +84,7 @@
         "@inlang/plugin-message-format": "catalog:",
         "@playwright/test": "catalog:",
         "@ptbk/protocol": "workspace:*",
-        "@sigstore/bundle": "catalog:",
-        "@sigstore/protobuf-specs": "catalog:",
-        "@sigstore/verify": "catalog:",
+        "@ptbk/release-tools": "workspace:*",
         "@tailwindcss/vite": "catalog:",
         "@tanstack/react-query-devtools": "5.104.2",
         "@tanstack/react-router-devtools": "1.167.2",
@@ -177,6 +175,18 @@
       "devDependencies": {
         "eslint": "catalog:",
         "fast-check": "4.10.2",
+      },
+    },
+    "packages/release-tools": {
+      "name": "@ptbk/release-tools",
+      "dependencies": {
+        "@ptbk/protocol": "workspace:*",
+        "@sigstore/bundle": "catalog:",
+        "@sigstore/protobuf-specs": "catalog:",
+        "@sigstore/verify": "catalog:",
+      },
+      "devDependencies": {
+        "eslint": "catalog:",
       },
     },
     "packages/ui": {
@@ -714,6 +724,8 @@
     "@ptbk/protocol": ["@ptbk/protocol@workspace:packages/protocol"],
 
     "@ptbk/relay": ["@ptbk/relay@workspace:apps/relay"],
+
+    "@ptbk/release-tools": ["@ptbk/release-tools@workspace:packages/release-tools"],
 
     "@ptbk/ui": ["@ptbk/ui@workspace:packages/ui"],
 

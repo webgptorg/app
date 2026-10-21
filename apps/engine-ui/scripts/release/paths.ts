@@ -7,9 +7,8 @@ import { z } from 'zod';
 /** `apps/engine-ui`. */
 export const APP_DIR = fileURLToPath(new URL('../..', import.meta.url));
 export const DIST_DIR = join(APP_DIR, 'dist');
-/** Build and signing output; only the pinned trust material in it is committed. */
+/** Build and signing output; only the staging trust policy in it is committed. */
 export const RELEASE_DIR = join(APP_DIR, 'release');
-export const TRUSTED_ROOT_FILE = join(RELEASE_DIR, 'trusted_root.json');
 export const STAGING_POLICY_FILE = join(RELEASE_DIR, 'trust-policy.staging.json');
 
 /** File names inside a release directory, the same in CI, in R2 (`ui/<version>/…`) and in a download. */

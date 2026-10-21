@@ -193,7 +193,7 @@ Download `ui/<version>/engine-ui.tar.zst` and `ui/<version>/manifest.json`, and 
 bun run --filter @ptbk/engine-ui release:verify <dir> [--policy <trust policy>] [--trusted-root <file>]
 ```
 
-It runs C-06's `verifyRelease` with the real Sigstore verifier (built on `@sigstore/verify`, exact identity, the pinned `apps/engine-ui/release/trusted_root.json`, no network): the release-key signature, the provenance with its Rekor entry and trusted time, then the archive hash and every file against the manifest. The update delay is the installing engine's concern and is not checked. Put a signed revocation list next to the files as `revocations.json` to check it too; without one, the output says so.
+It runs C-06's `verifyRelease` with the real Sigstore verifier (built on `@sigstore/verify`, exact identity, the pinned `packages/release-tools/src/trusted_root.json`, no network): the release-key signature, the provenance with its Rekor entry and trusted time, then the archive hash and every file against the manifest. The update delay is the installing engine's concern and is not checked. Put a signed revocation list next to the files as `revocations.json` to check it too; without one, the output says so.
 
 ### Locally
 

@@ -1,8 +1,7 @@
 import { createHash } from 'node:crypto';
 
-import { decompressArchive } from './archive.ts';
-import type { TarFile } from './tar.ts';
-import { compareBytes, readTar } from './tar.ts';
+import type { TarFile } from '@ptbk/release-tools';
+import { compareBytes, decompressArchive, readTar } from '@ptbk/release-tools';
 
 const sha256 = (bytes: Uint8Array): string => createHash('sha256').update(bytes).digest('hex');
 

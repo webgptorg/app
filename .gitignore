@@ -34,9 +34,8 @@ apps/engine-ui/project.inlang/*
 apps/engine-ui/reports/
 apps/engine-ui/playwright-report/
 apps/engine-ui/test-results/
-# Release output (X-03); only the pinned Sigstore trusted root and the staging trust policy are committed.
+# Release output (X-03); only the staging trust policy is committed (the pinned trusted root is in packages/release-tools).
 apps/engine-ui/release/*
-!apps/engine-ui/release/trusted_root.json
 !apps/engine-ui/release/trust-policy.staging.json
 
 # dashboard browser test output (test:csp).

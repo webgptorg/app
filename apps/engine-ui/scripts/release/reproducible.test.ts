@@ -1,8 +1,8 @@
+import { writeTar } from '@ptbk/release-tools';
 import { describe, expect, it } from 'vitest';
 
 import { compressArchive, packBundle } from './archive.ts';
 import { compareArchives, firstDifference } from './reproducible.ts';
-import { writeTar } from './tar.ts';
 
 const text = (value: string): Uint8Array<ArrayBuffer> => new TextEncoder().encode(value);
 const input = {

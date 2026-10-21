@@ -42,6 +42,9 @@ flowchart TD
     dashboard --> ui
     conformance --> protocol
     conformance --> engine-api
+    engine-ui --> release-tools
+    mock-engine --> release-tools
+    release-tools --> protocol
 ```
 
 ### `apps/relay`
@@ -76,6 +79,10 @@ The engine HTTP API that engine-ui consumes and every engine implements. Beyond 
 
 The private design system shared by engine-ui and the dashboard: tokens, accessible components, forms, `DataTable`, i18n helpers. CSP-safe by construction; imports no app or contract package.
 
+### `packages/release-tools`
+
+Node-only tooling both ends of a UI release run: the bundle archive's ustar codec, the Sigstore provenance verifier on `@sigstore/verify` (exact identity, never `sigstore.verify()`) and the pinned `trusted_root.json`. The release scripts in engine-ui use it to build and check a release (X-03), the mock engine's UI loader to verify and unpack one (M-05). MIT, imports only `protocol`, so it can move public with the contracts if the engine team wants it (ADR 0002).
+
 ### `packages/conformance`
 
 The test suite any engine must pass: engine API behaviour, tunnel handshake, heartbeat, registration, UI loader checks. Runs against the mock engine in CI now and against the real engine later.
@@ -92,6 +99,7 @@ Relay hosts, DNS (Cloudflare, DNS-only, so TLS stays end to end) and Cloudflare 
 
 - `apps/*` may depend on `packages/*`. Apps never import from each other.
 - `ui` imports no app and no contract package.
+- `release-tools` imports only `protocol` (and the pinned `@sigstore/*` packages), never `sigstore` itself.
 - `protocol` and `engine-api` depend on nothing in this repo and use only Web APIs, so they run in Node, Workers and browsers and can move to the public repo unchanged.
 - Cross-app communication goes over the documented interfaces, never shared code paths or a shared database.
 
