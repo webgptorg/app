@@ -731,9 +731,15 @@ export function engineApiClientSuite(makeEngine: MakeEngine): void {
                 { id: 'agent-b', source: 'Bob' },
             ],
             runs: [
-                runDetail('run-1', { status: 'completed', queuedAt: minutes(-50), completedAt: minutes(-49) }),
+                runDetail('run-1', {
+                    status: 'completed',
+                    queuedAt: minutes(-50),
+                    completedAt: minutes(-49),
+                    preview: 'Summarise the inbox',
+                }),
                 runDetail('run-2', {
                     status: 'failed',
+                    preview: 'Daily digest',
                     source: 'schedule',
                     createdBy: null,
                     queuedAt: minutes(-40),
@@ -811,12 +817,55 @@ export function engineApiClientSuite(makeEngine: MakeEngine): void {
                 queued: 2,
                 failedLast24h: 1,
                 oldestQueuedAt: minutes(-20),
+                lastFinished: { status: 'failed', at: minutes(-39) },
             });
             expect(ok(await client.runs.stats({ agentId: AgentId.parse('agent-b') }, signal()))).toMatchObject({
                 queued: 1,
+                lastFinished: null,
             });
             expect(ok(await client.runs.get(RunId.parse('run-2'), signal())).error?.code).toBe('tool-error');
             expect(problem(await client.runs.get(RunId.parse('nope'), signal())).code).toBe('not-found');
+        });
+
+        it('names the agent, previews what started each run and names its output files', async () => {
+            const { client, controller } = engine();
+            const run1 = ok(await client.runs.get(RunId.parse('run-1'), signal()));
+            expect(run1).toMatchObject({ agentName: 'Ada', preview: 'Summarise the inbox' });
+            expect(ok(await client.runs.list({ agentId: AgentId.parse('agent-b') }, signal())).items[0]).toMatchObject({
+                agentName: 'Bob',
+                preview: null,
+            });
+
+            const file = await controller.addFile({
+                name: 'summary.md',
+                contentType: 'text/markdown',
+                content: new Blob(['# Summary']),
+                purpose: 'output',
+                agentId: 'agent-b',
+                runId: 'run-3',
+                createdBy: 'member-owner',
+            });
+            const outputs = ok(await client.runs.get(RunId.parse('run-3'), signal())).outputs;
+            expect(outputs.files).toEqual([file.id]);
+            expect(outputs.fileNames).toEqual(['summary.md']);
+
+            const chat = ok(await client.chats.create(AgentId.parse('agent-a'), { title: 'Turn' }, signal()));
+            ok(await client.chats.sendMessage(chat.id, { content: '  Draft\n\n the   reply  ' }, signal()));
+            const web = ok(await client.runs.list({ source: 'web', limit: 1 }, signal())).items[0];
+            expect(web).toMatchObject({ chatId: chat.id, preview: 'Draft the reply', agentName: 'Ada' });
+
+            const inbox = ok(
+                await client.triggers.create(
+                    { kind: 'email', agentId: AgentId.parse('agent-a'), name: 'In' },
+                    signal(),
+                ),
+            );
+            const fire = controller.fireTrigger(inbox.id, { subject: 'Refund for order 1042' });
+            expect(ok(await client.runs.get(RunId.parse(fire.runId ?? ''), signal())).preview).toBe(
+                'Refund for order 1042',
+            );
+            const retry = ok(await client.runs.retry(RunId.parse('run-2'), signal()));
+            expect(retry.preview).toBe('Daily digest');
         });
 
         it('cancels idempotently and answers 409 once the run finished', async () => {

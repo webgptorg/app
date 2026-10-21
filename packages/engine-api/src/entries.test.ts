@@ -22,6 +22,7 @@ describe('package entries', () => {
             'createInMemoryEngineApiClient',
             'createInMemoryEngineCore',
             'nextScheduleFireAt',
+            'runPreview',
             'truncateRunText',
         ]);
         expect(Object.keys(http).sort()).toEqual(['createEngineApiHttpHandler', 'serveEngineApiRoute']);

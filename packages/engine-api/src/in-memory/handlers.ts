@@ -404,6 +404,7 @@ export const HANDLERS: Handlers = {
                 messageId: reply.id,
                 createdBy: ctx.member.id,
                 actor: memberActor(ctx),
+                preview: body.content,
             });
             advanceRun(ctx, run.id);
         }

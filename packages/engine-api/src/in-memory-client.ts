@@ -63,10 +63,19 @@ import type {
     ReplyScript,
     Sleep,
 } from './in-memory/kit';
-import { addProjectChange, advanceRun, findRuns, reportRunProgress, runSummary, startRun } from './in-memory/runs';
+import {
+    addProjectChange,
+    advanceRun,
+    findRuns,
+    reportRunProgress,
+    runDetailView,
+    runSummary,
+    startRun,
+} from './in-memory/runs';
 import type { RunOutcome, RunReport, StartRun } from './in-memory/runs';
 import type { FileRecord, InMemoryState } from './in-memory/state';
 import { findTriggers, fireTrigger } from './in-memory/triggers';
+import type { FireInput } from './in-memory/triggers';
 import { withClientReading } from './reader';
 import { Invite, Member } from './members';
 import { Passkey } from './passkeys';
@@ -124,6 +133,18 @@ export interface InMemorySeedAgent {
 /** A finished audit entry minus what the chain computes (`id`, `seq`, `hash`, `prevHash`). */
 export type InMemorySeedAuditEntry = Omit<Unbranded<z.input<typeof AuditEntry>>, 'id' | 'seq' | 'hash' | 'prevHash'>;
 
+type RunDetailInput = Unbranded<z.input<typeof RunDetail>>;
+
+/**
+ * A run in contract shape, minus what the core derives: `agentName` comes from the agent and `outputs.fileNames` from
+ * the seeded files; a missing `preview` is `null`.
+ */
+export type InMemorySeedRun = Omit<RunDetailInput, 'agentName' | 'preview' | 'outputs'> & {
+    readonly agentName?: string | null;
+    readonly preview?: string | null;
+    readonly outputs: Omit<RunDetailInput['outputs'], 'fileNames'> & { readonly fileNames?: readonly string[] };
+};
+
 /** Seed data in contract shapes; every record is validated against its schema when the client is created. */
 export interface InMemorySeed {
     readonly orgId?: string;
@@ -144,7 +165,7 @@ export interface InMemorySeed {
     readonly passkeys?: readonly Unbranded<z.input<typeof Passkey>>[];
     readonly sessions?: readonly Unbranded<z.input<typeof Session>>[];
     readonly files?: readonly InMemorySeedFile[];
-    readonly runs?: readonly Unbranded<z.input<typeof RunDetail>>[];
+    readonly runs?: readonly InMemorySeedRun[];
     readonly triggers?: readonly {
         readonly trigger: Unbranded<z.input<typeof Trigger>>;
         /** Oldest first. */
@@ -291,8 +312,8 @@ export interface InMemoryEngineController {
     appendActivity(activity: Unbranded<ActivityInput>): Activity;
     /** Starts a queued run, or ends a running one with `outcome` (default `completed`; `cancelled` if requested). */
     advanceRun(runId: string, outcome?: Unbranded<RunOutcome>): Run;
-    /** A schedule comes due, or an email arrives for an email trigger. */
-    fireTrigger(triggerId: string): TriggerFire;
+    /** A schedule comes due, or an email arrives for an email trigger (with its subject, for the run's preview). */
+    fireTrigger(triggerId: string, input?: FireInput): TriggerFire;
     /** Sends an event as is, e.g. a change made by another member. */
     emit(event: Unbranded<z.input<typeof EngineEvent>>): void;
     /** Queues a run outside a chat turn or a trigger (an API client, a member, a goal); announced as `run.queued`. */
@@ -531,7 +552,7 @@ export function createInMemoryEngineCore(options: InMemoryEngineCoreOptions = {}
     const controller: InMemoryEngineController = {
         appendActivity: (activity) => recordActivity(system, activity as ActivityInput),
         advanceRun: (runId, outcome) => advanceRun(system, runId, outcome),
-        fireTrigger: (triggerId) => fireTrigger(system, triggerId),
+        fireTrigger: (triggerId, input) => fireTrigger(system, triggerId, input),
         emit: (event) => {
             publish(EngineEvent.parse(event));
         },
@@ -541,8 +562,11 @@ export function createInMemoryEngineCore(options: InMemoryEngineCoreOptions = {}
         addFile: (file) => addFile(system, file),
         setFileScan: (fileId, status) => setFileScan(system, fileId, status),
         setIntegrationStatus: (integrationId, status) => setIntegrationStatus(system, integrationId, status),
-        getRun: (runId) => state.runs.get(runId),
-        findRuns: (filter = {}) => findRuns(system, filter).map(runSummary),
+        getRun: (runId) => {
+            const detail = state.runs.get(runId);
+            return detail === undefined ? undefined : runDetailView(system, detail);
+        },
+        findRuns: (filter = {}) => findRuns(system, filter).map((run) => runSummary(system, run)),
         getTrigger: (triggerId) => state.triggers.get(triggerId)?.trigger,
         findTriggers: (filter = {}) => findTriggers(system, filter),
         findAgents: () =>
@@ -1003,6 +1027,23 @@ function seedFile({ metadata, content, versions }: InMemorySeedFile): [string, F
     return [parsed.id, { metadata: parsed, versions: versionRecords }];
 }
 
+/** Agents are seeded later, so `agentName` stays as given here; the core reads the current name on every answer. */
+function seedRun(record: InMemorySeedRun, files: ReadonlyMap<string, FileRecord>): RunDetail {
+    const fileNames =
+        record.outputs.fileNames ??
+        record.outputs.files.map((fileId) => {
+            const file = files.get(fileId);
+            if (file === undefined) throw new Error(`Seeded run ${record.id} lists unknown output file ${fileId}`);
+            return file.metadata.name;
+        });
+    return RunDetail.parse({
+        ...record,
+        agentName: record.agentName ?? null,
+        preview: record.preview ?? null,
+        outputs: { ...record.outputs, fileNames },
+    });
+}
+
 function createState(
     seed: InMemorySeed,
     member: Member,
@@ -1021,6 +1062,7 @@ function createState(
             updatePolicy: { policy: 'auto', pinnedVersion: null },
         },
     );
+    const files = new Map((seed.files ?? []).map(seedFile));
     const state: InMemoryState = {
         orgId: OrgId.parse(seed.orgId ?? 'org-1'),
         engine: EngineInfo.parse({
@@ -1076,8 +1118,8 @@ function createState(
                 ]
             ).map((record) => Session.parse(record)),
         ),
-        files: new Map((seed.files ?? []).map(seedFile)),
-        runs: byId((seed.runs ?? []).map((record) => RunDetail.parse(record))),
+        files,
+        runs: byId((seed.runs ?? []).map((record) => seedRun(record, files))),
         triggers: new Map(
             (seed.triggers ?? []).map(({ trigger, fires }) => {
                 const parsed = Trigger.parse(trigger);

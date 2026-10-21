@@ -1,9 +1,10 @@
 import { ScheduleConfig } from '@ptbk/engine-api';
-import { nextScheduleFireAt, truncateRunText } from '@ptbk/engine-api/in-memory';
+import { nextScheduleFireAt, runPreview, truncateRunText } from '@ptbk/engine-api/in-memory';
 import type { InMemorySeed } from '@ptbk/engine-api/in-memory';
 
 import type { TaskTemplate } from './capability-texts';
 import {
+    EMAIL_SUBJECTS,
     ATTACHMENTS,
     EXTERNAL_SOURCES,
     KNOWLEDGE_FILES,
@@ -72,6 +73,8 @@ export interface SeedMessageRef {
     readonly chatId: string;
     readonly role: string;
     readonly createdAt: string;
+    /** Only user messages need it: they become the preview of the run that answered them. */
+    readonly content: string;
 }
 
 export interface SeedSecretRef {
@@ -149,6 +152,8 @@ interface RunPlan {
     readonly retryOf?: string;
     /** Chat runs only produce the reply, and are fast. */
     readonly chat?: boolean;
+    /** What started it; by default the task's title, as an API caller or member would have asked. */
+    readonly preview?: string | null;
 }
 
 function toolCall(
@@ -247,10 +252,12 @@ function buildRun(ctx: Context, plan: RunPlan): SeedRun {
               },
         usage,
         error,
+        preview: plan.preview === undefined ? task.title : plan.preview === null ? null : runPreview(plan.preview),
         toolCalls,
         outputs: {
             messages: plan.chatId && plan.messageId ? [{ chatId: plan.chatId, messageId: plan.messageId }] : [],
             files: [],
+            fileNames: [],
             projectChanges: [],
         },
         report: {
@@ -288,7 +295,10 @@ function seedWebRuns(ctx: Context): void {
     const { input } = ctx;
     const since = input.epochMs - input.size.runDays * DAY;
     const chats = new Map(input.chats.map((chat) => [chat.id, chat]));
+    // Messages come oldest first, so the user message a reply answers is the last one seen in its chat.
+    const lastAsked = new Map<string, string>();
     for (const message of input.messages) {
+        if (message.role === 'user') lastAsked.set(message.chatId, message.content);
         const at = Date.parse(message.createdAt);
         const chat = chats.get(message.chatId);
         if (message.role !== 'agent' || at < since || chat === undefined || !ctx.agentsById.has(chat.agentId)) continue;
@@ -302,6 +312,7 @@ function seedWebRuns(ctx: Context): void {
                 chatId: chat.id,
                 messageId: message.id,
                 chat: true,
+                preview: lastAsked.get(message.chatId) ?? null,
             }),
         );
     }
@@ -343,6 +354,7 @@ function seedOtherRuns(ctx: Context): void {
                 status: sequence.chance(0.7) ? 'completed' : 'failed',
                 createdBy: sequence.pick(ctx.writers).id,
                 retryOf: run.id,
+                preview: run.preview ?? null,
             });
             ctx.runs.push(run);
         }
@@ -462,12 +474,14 @@ function seedTriggers(ctx: Context): SeedTrigger[] {
         let config: SeedTrigger['trigger']['config'];
         let recurrence: Recurrence | null = null;
         let startsAtMs: number;
+        let preview: (fireIndex: number) => string | null;
         if (template.kind === 'email') {
             startsAtMs = input.epochMs - sequence.int(5 * DAY, 13 * DAY);
             fireAt = Array.from({ length: wanted }, () => sequence.int(startsAtMs + HOUR, latestFire)).sort(
                 (a, b) => a - b,
             );
             config = { address: `${id}@${input.hostname}` };
+            preview = (fireIndex) => EMAIL_SUBJECTS[(index + fireIndex) % EMAIL_SUBJECTS.length] ?? null;
         } else {
             const span = template.lifecycle === 'active' ? latestFire : input.epochMs - sequence.int(DAY, 4 * DAY);
             if (template.kind === 'once') {
@@ -498,6 +512,8 @@ function seedTriggers(ctx: Context): SeedTrigger[] {
                 runCount: 0,
                 message: sequence.pick(MESSAGES),
             };
+            const message = config.message;
+            preview = () => message;
         }
         const fires: SeedFire[] = [];
         const skipFrom = template.lifecycle === 'paused' && fireAt.length > 1 ? fireAt.length - 1 : fireAt.length;
@@ -532,6 +548,7 @@ function seedTriggers(ctx: Context): SeedTrigger[] {
                 status: terminalStatus(sequence),
                 createdBy: null,
                 triggerId: id,
+                preview: preview(fireIndex),
             });
             ctx.runs.push(run);
             fires.push({ id: sequence.id('fire'), at: iso(at), outcome: 'started', runId: run.id, error: null });
@@ -1123,7 +1140,13 @@ async function seedFiles(ctx: Context): Promise<SeedFile[]> {
             })),
         });
         const producer = metadata.runId ? runsById.get(metadata.runId) : undefined;
-        if (producer) producer.outputs = { ...producer.outputs, files: [...producer.outputs.files, metadata.id] };
+        if (producer) {
+            producer.outputs = {
+                ...producer.outputs,
+                files: [...producer.outputs.files, metadata.id],
+                fileNames: [...(producer.outputs.fileNames ?? []), metadata.name],
+            };
+        }
         const actor =
             metadata.purpose === 'output'
                 ? ({ kind: 'system' } as const)

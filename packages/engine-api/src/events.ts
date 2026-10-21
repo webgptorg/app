@@ -5,21 +5,21 @@ import { ActivityEvent, parseActivity } from './capabilities/activity';
 import type { ActivityItem } from './capabilities/activity';
 import { FileChangedEvent } from './capabilities/files';
 import { IntegrationChangedEvent } from './capabilities/integrations';
-import { RunChangedEvent } from './capabilities/runs';
+import { RunChangedEvent, RunChangedEventReader } from './capabilities/runs';
 import { TriggerChangedEvent } from './capabilities/triggers';
 import { AgentId, ChatId, Timestamp } from './common';
 import { defineRoute } from './route';
 import { toTolerant } from './tolerant';
 
-const CoreEngineEvent = z.discriminatedUnion('type', [
+const coreEvents = [
     z.strictObject({ type: z.literal('agent.status'), agentId: AgentId, state: AgentRunState, since: Timestamp }),
     z.strictObject({ type: z.literal('agent.changed'), agentId: AgentId }),
     z.strictObject({ type: z.literal('chat.changed'), chatId: ChatId }),
-    RunChangedEvent,
     TriggerChangedEvent,
     FileChangedEvent,
     IntegrationChangedEvent,
-]);
+] as const;
+const CoreEngineEvent = z.discriminatedUnion('type', [...coreEvents, RunChangedEvent]);
 
 /**
  * Change notifications, so the UI refreshes lists without polling. They carry IDs, never content, and the engine sends
@@ -30,10 +30,11 @@ export type EngineEvent = z.infer<typeof EngineEvent>;
 
 /** An event as the client reads it: activity goes through `parseActivity`, so an unknown kind is data, not an error. */
 export type ReadEngineEvent =
-    | Exclude<EngineEvent, { readonly type: 'activity' }>
+    | Exclude<EngineEvent, { readonly type: 'activity' | 'run.changed' }>
+    | z.output<typeof RunChangedEventReader>
     | { readonly type: 'activity'; readonly activity: ActivityItem };
 
-const tolerantCoreEvent = toTolerant(CoreEngineEvent);
+const tolerantCoreEvent = toTolerant(z.discriminatedUnion('type', [...coreEvents, RunChangedEventReader]));
 const KNOWN_EVENT_TYPES: ReadonlySet<string> = new Set(EngineEvent.options.map((option) => option.shape.type.value));
 
 /** `null` for events the client skips: unknown types, and activity without a valid base. */

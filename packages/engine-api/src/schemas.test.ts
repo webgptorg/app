@@ -7,13 +7,24 @@ import { Activity } from './capabilities/activity';
 import { FileMetadata, FileVersion } from './capabilities/files';
 import { activitySample } from './capabilities/fixtures/samples';
 import { CreateIntegrationBody, Integration } from './capabilities/integrations';
-import { Money, Run, RunDetail, RunListQuery, RunText } from './capabilities/runs';
+import {
+    Money,
+    Run,
+    RunDetail,
+    RunDetailReader,
+    RunListQuery,
+    RunPageReader,
+    RunReader,
+    RunStats,
+    RunText,
+} from './capabilities/runs';
 import { CreateTriggerBody, Recurrence, Trigger, TriggerFire } from './capabilities/triggers';
 import {
     MAX_AUDIT_DETAILS_BYTES,
     MAX_AUDIT_DETAILS_DEPTH,
     MAX_AUDIT_TARGET_NAME_LENGTH,
     MAX_CHAT_PREVIEW_LENGTH,
+    MAX_RUN_PREVIEW_LENGTH,
     MAX_RUN_TEXT_BYTES,
 } from './constants';
 import { EngineInfo } from './engine';
@@ -156,6 +167,7 @@ const completedEvent = {
 const run = {
     id: 'run_1',
     agentId: 'agt_1',
+    agentName: 'Iris',
     source: 'schedule',
     status: 'completed',
     chatId: null,
@@ -173,6 +185,7 @@ const run = {
     progress: { title: 'Digest', now: null, next: null, items: [{ id: '1', text: 'Read mail', status: 'completed' }] },
     usage: { inputTokens: 10, outputTokens: 5, durationMs: 1000, cost: { amount: '0.01', currency: 'EUR' } },
     error: null,
+    preview: 'Send the daily digest',
 };
 const runDetail = {
     ...run,
@@ -190,6 +203,7 @@ const runDetail = {
     outputs: {
         messages: [{ chatId: 'cht_1', messageId: 'msg_1' }],
         files: ['fil_1'],
+        fileNames: ['digest.md'],
         projectChanges: [
             {
                 projectName: 'site',
@@ -648,6 +662,36 @@ describe('Chat', () => {
 });
 
 describe('capability schema details', () => {
+    it('names each output file, in order, and bounds the run preview', () => {
+        expect(RunDetail.safeParse({ ...runDetail, outputs: { ...runDetail.outputs, fileNames: [] } }).success).toBe(
+            false,
+        );
+        expect(Run.safeParse({ ...run, preview: 'x'.repeat(MAX_RUN_PREVIEW_LENGTH) }).success).toBe(true);
+        expect(Run.safeParse({ ...run, preview: 'x'.repeat(MAX_RUN_PREVIEW_LENGTH + 1) }).success).toBe(false);
+        expect(Run.safeParse({ ...run, agentName: '' }).success).toBe(false);
+    });
+
+    it('reports the last finished run in stats, only with a terminal status', () => {
+        const stats = { running: 0, queued: 0, failedLast24h: 1, oldestQueuedAt: null };
+        expect(RunStats.safeParse({ ...stats, lastFinished: { status: 'failed', at: NOW } }).success).toBe(true);
+        expect(RunStats.safeParse({ ...stats, lastFinished: null }).success).toBe(true);
+        expect(RunStats.safeParse({ ...stats, lastFinished: { status: 'running', at: NOW } }).success).toBe(false);
+        expect(RunStats.safeParse(stats).success).toBe(false);
+    });
+
+    it('reads a run status or source a newer engine added as unknown, and strips unknown fields', () => {
+        const read = RunReader.parse({ ...run, status: 'paused', source: 'kiosk', extra: 1 });
+        expect(read.status).toBe('unknown');
+        expect(read.source).toBe('unknown');
+        expect(read).not.toHaveProperty('extra');
+        const detail = RunDetailReader.parse({ ...runDetail, status: 'paused' });
+        expect(detail.status).toBe('unknown');
+        expect(detail.outputs.fileNames).toEqual(['digest.md']);
+        expect(RunPageReader.parse({ items: [{ ...run, source: 'kiosk' }], nextCursor: null }).items[0]?.source).toBe(
+            'unknown',
+        );
+    });
+
     it('reads a run status filter as a set of statuses', () => {
         expect(RunListQuery.parse({ status: 'queued,running,queued' }).status).toEqual(['queued', 'running']);
         expect(RunListQuery.parse({}).sort).toBe('-queuedAt');

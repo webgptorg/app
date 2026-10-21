@@ -109,6 +109,7 @@ export function createDemoSeed(now: Date = new Date()): InMemorySeed {
         runs: [
             run('run-ada-review', {
                 agentId: 'agent-ada',
+                preview: 'Please review the billing pull request.',
                 chatId: 'chat-ada-1',
                 messageId: 'message-ada-2',
                 queuedAt: ago(90),
@@ -140,6 +141,7 @@ export function createDemoSeed(now: Date = new Date()): InMemorySeed {
             }),
             run('run-max-email', {
                 agentId: 'agent-max',
+                preview: 'Refund for order 1042',
                 source: 'email',
                 status: 'running',
                 triggerId: 'trigger-support-email',
@@ -158,6 +160,7 @@ export function createDemoSeed(now: Date = new Date()): InMemorySeed {
             }),
             run('run-iris-weekly-failed', {
                 agentId: 'agent-iris',
+                preview: 'Write the weekly report from the calendar and the reports project.',
                 source: 'schedule',
                 status: 'failed',
                 triggerId: 'trigger-weekly-report',
@@ -170,6 +173,7 @@ export function createDemoSeed(now: Date = new Date()): InMemorySeed {
             }),
             run('run-iris-weekly', {
                 agentId: 'agent-iris',
+                preview: 'Write the weekly report from the calendar and the reports project.',
                 source: 'schedule',
                 status: 'completed',
                 triggerId: 'trigger-weekly-report',
@@ -200,6 +204,7 @@ export function createDemoSeed(now: Date = new Date()): InMemorySeed {
             }),
             run('run-ada-queued', {
                 agentId: 'agent-ada',
+                preview: 'Summarise the open pull requests',
                 source: 'api',
                 status: 'queued',
                 queuedAt: ago(1),

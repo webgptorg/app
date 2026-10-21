@@ -70,7 +70,7 @@ describe('seedEngine', () => {
     it('gives a stable small-team seed for seed 42 and a fixed epoch, including every capability', async () => {
         const data = await seedFor(42, 'small-team');
         expect(await sha256(JSON.stringify(data))).toBe(
-            '472902ec76b5a9bcfd520aded9852a48d695d83ed66b0ae263e10344e13c6852',
+            'bd996f7fc1a5af859bf0dcf61976ca626dadc075444d60814ff56c6bad979d37',
         );
         for (const key of ['runs', 'files', 'triggers', 'integrations', 'activity'] as const) {
             expect(data[key]?.length, key).toBeGreaterThan(0);
@@ -272,6 +272,24 @@ describe('seedEngine: capabilities in small-team', () => {
         expect(new TextEncoder().encode(big?.diff).byteLength).toBeGreaterThan(MAX_RUN_TEXT_BYTES - 200);
         const changed = details.filter(({ outputs }) => outputs.projectChanges.length > 0);
         expect(changed.every(({ report }) => report.touchedProjects.length === 1)).toBe(true);
+    });
+
+    it("names each run's agent and previews what started it, and names its output files", async () => {
+        const { client } = await core('small-team');
+        const runs = await runsOf(client);
+        const agents = new Map(ok(await client.agents.list({ limit: 100 }, signal())).items.map((a) => [a.id, a.name]));
+        for (const run of runs) {
+            expect(run.agentName, run.id).toBe(agents.get(run.agentId));
+            expect(run.preview, run.id).not.toBeNull();
+        }
+        const email = runs.filter(({ source }) => source === 'email').map(({ preview }) => preview);
+        expect(email.length).toBeGreaterThan(0);
+        expect(email.every((preview) => preview !== null && preview.length > 0)).toBe(true);
+        const withFiles = await Promise.all(
+            runs.slice(0, 120).map(async ({ id }) => ok(await client.runs.get(id, signal())).outputs),
+        );
+        for (const outputs of withFiles) expect(outputs.fileNames).toHaveLength(outputs.files.length);
+        expect(withFiles.some(({ fileNames }) => fileNames.length > 0)).toBe(true);
     });
 
     it('seeds knowledge, attachments and outputs, a few PNGs, versions in git and scans that did not come back clean', async () => {

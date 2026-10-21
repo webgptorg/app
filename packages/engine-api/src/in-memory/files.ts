@@ -82,7 +82,7 @@ export async function addFile(ctx: EngineContext, input: NewFile): Promise<FileM
         name: metadata.name,
         purpose: metadata.purpose,
     });
-    if (runId !== null) addRunOutputFile(ctx, runId, metadata.id);
+    if (runId !== null) addRunOutputFile(ctx, runId, metadata);
     return metadata;
 }
 

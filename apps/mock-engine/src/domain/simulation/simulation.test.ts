@@ -327,15 +327,16 @@ describe('inbound email', () => {
     it('starts an email run for an email trigger and refuses anything else', async () => {
         const { runtime, client, agent } = await start();
         const email = ok(await client.triggers.create({ kind: 'email', agentId: agent.id, name: 'Inbox' }, signal()));
-        const outcome = runtime.simulation().inboundEmail(email.id);
+        const outcome = runtime.simulation().inboundEmail(email.id, 'Invoice   overdue');
         if (outcome.kind !== 'fired') throw new Error(outcome.kind);
         expect(ok(await client.runs.get(outcome.fire.runId ?? ('' as never), signal()))).toMatchObject({
             source: 'email',
             triggerId: email.id,
+            preview: 'Invoice overdue',
         });
         const [schedule] = ok(await client.triggers.list({ kind: 'schedule', limit: 1 }, signal())).items;
-        expect(runtime.simulation().inboundEmail(schedule?.id ?? '')).toEqual({ kind: 'not-email' });
-        expect(runtime.simulation().inboundEmail('trigger-unknown')).toEqual({ kind: 'not-found' });
+        expect(runtime.simulation().inboundEmail(schedule?.id ?? '', 'x')).toEqual({ kind: 'not-email' });
+        expect(runtime.simulation().inboundEmail('trigger-unknown', 'x')).toEqual({ kind: 'not-found' });
     });
 });
 

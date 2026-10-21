@@ -3,7 +3,7 @@
   "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
   "info": {
     "title": "Promptbook engine API",
-    "version": "1.4.0",
+    "version": "1.5.0",
     "license": {
       "name": "MIT",
       "identifier": "MIT"
@@ -12525,26 +12525,6 @@
             "properties": {
               "type": {
                 "type": "string",
-                "const": "run.changed"
-              },
-              "runId": {
-                "$ref": "#/components/schemas/RunId"
-              },
-              "agentId": {
-                "$ref": "#/components/schemas/AgentId"
-              },
-              "status": {
-                "$ref": "#/components/schemas/RunStatus"
-              }
-            },
-            "required": ["type", "runId", "agentId", "status"],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "type": {
-                "type": "string",
                 "const": "trigger.changed"
               },
               "triggerId": {
@@ -12603,6 +12583,26 @@
               }
             },
             "required": ["type", "integrationId", "agentId"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "run.changed"
+              },
+              "runId": {
+                "$ref": "#/components/schemas/RunId"
+              },
+              "agentId": {
+                "$ref": "#/components/schemas/AgentId"
+              },
+              "status": {
+                "$ref": "#/components/schemas/RunStatus"
+              }
+            },
+            "required": ["type", "runId", "agentId", "status"],
             "additionalProperties": false
           },
           {
@@ -14069,6 +14069,18 @@
           "agentId": {
             "$ref": "#/components/schemas/AgentId"
           },
+          "agentName": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "source": {
             "$ref": "#/components/schemas/RunSource"
           },
@@ -14214,11 +14226,23 @@
                 "type": "null"
               }
             ]
+          },
+          "preview": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
           "id",
           "agentId",
+          "agentName",
           "source",
           "status",
           "chatId",
@@ -14235,7 +14259,8 @@
           "model",
           "progress",
           "usage",
-          "error"
+          "error",
+          "preview"
         ],
         "additionalProperties": false
       },
@@ -14247,6 +14272,18 @@
           },
           "agentId": {
             "$ref": "#/components/schemas/AgentId"
+          },
+          "agentName": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "source": {
             "$ref": "#/components/schemas/RunSource"
@@ -14388,6 +14425,17 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/RunError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "preview": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
               },
               {
                 "type": "null"
@@ -14428,6 +14476,15 @@
                   "$ref": "#/components/schemas/FileId"
                 }
               },
+              "fileNames": {
+                "maxItems": 1000,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 255
+                }
+              },
               "projectChanges": {
                 "maxItems": 1000,
                 "type": "array",
@@ -14436,7 +14493,7 @@
                 }
               }
             },
-            "required": ["messages", "files", "projectChanges"],
+            "required": ["messages", "files", "fileNames", "projectChanges"],
             "additionalProperties": false
           },
           "report": {
@@ -14468,6 +14525,7 @@
         "required": [
           "id",
           "agentId",
+          "agentName",
           "source",
           "status",
           "chatId",
@@ -14485,6 +14543,7 @@
           "progress",
           "usage",
           "error",
+          "preview",
           "toolCalls",
           "outputs",
           "report"
@@ -14624,9 +14683,30 @@
                 "type": "null"
               }
             ]
+          },
+          "lastFinished": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": ["completed", "failed", "cancelled"]
+                  },
+                  "at": {
+                    "$ref": "#/components/schemas/Timestamp"
+                  }
+                },
+                "required": ["status", "at"],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
-        "required": ["running", "queued", "failedLast24h", "oldestQueuedAt"],
+        "required": ["running", "queued", "failedLast24h", "oldestQueuedAt", "lastFinished"],
         "additionalProperties": false
       },
       "RunStatus": {

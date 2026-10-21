@@ -426,7 +426,13 @@ export async function seedEngine({ seed, scenario, epoch, hostname }: SeedInput)
                 createdAt: agent.createdAt ?? '',
             })),
         chats: chats.map(({ id, agentId, createdBy }) => ({ id, agentId, createdBy })),
-        messages: messages.map(({ id, chatId, role, createdAt }) => ({ id, chatId, role, createdAt })),
+        messages: messages.map(({ id, chatId, role, createdAt, content }) => ({
+            id,
+            chatId,
+            role,
+            createdAt,
+            content,
+        })),
         secrets,
     });
 
