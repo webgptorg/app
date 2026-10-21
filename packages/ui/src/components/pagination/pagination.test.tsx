@@ -35,4 +35,23 @@ describe('Pagination', () => {
         rerender(<Pagination hasPrevious hasNext onPrevious={vi.fn()} onNext={vi.fn()} disabled />);
         expect(screen.queryAllByRole('button').every((button) => button.hasAttribute('disabled'))).toBe(true);
     });
+
+    it('reports hover and focus on each button as an intent', async () => {
+        const onPreviousIntent = vi.fn();
+        const onNextIntent = vi.fn();
+        const { user } = renderUi(
+            <Pagination
+                hasPrevious
+                hasNext
+                onPrevious={vi.fn()}
+                onNext={vi.fn()}
+                onPreviousIntent={onPreviousIntent}
+                onNextIntent={onNextIntent}
+            />,
+        );
+        await user.hover(screen.getByRole('button', { name: 'Next page' }));
+        expect(onNextIntent).toHaveBeenCalled();
+        await user.tab();
+        expect(onPreviousIntent).toHaveBeenCalledOnce();
+    });
 });
