@@ -2,7 +2,7 @@
 
 - **Lane:** X · **Module:** `e2e/` (plus small touches in `apps/dashboard` and `apps/mock-engine`) · **Milestone:** M3
 - **Depends on:** X-05
-- **Status:** todo
+- **Status:** in progress (feat/x-06-dev-stack)
 - **Spec:** Pairing and identity (First setup); What our platform can and cannot do; One address for users; ADRs: [0004](../../adr/0004-mock-engine-and-conformance.md)
 
 ## Goal
