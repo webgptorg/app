@@ -316,6 +316,45 @@ describe('tunnel endpoint over real sockets', () => {
         });
     });
 
+    it.each([
+        ['ignorable frames', () => Uint8Array.of(0x85, 0, 0, 0, 1, 9)],
+        ['CLOSE for an old stream', () => encodeFrame({ type: FrameType.CLOSE, streamId: StreamId.parse(1), code: 0 })],
+    ])('closes a tunnel that floods %s with PROTOCOL_ERROR at the frame budget', async (_, frame) => {
+        const harness = await start({ env: { RELAY_TUNNEL_FRAMES_PER_S: '50' } });
+        const engine = await register(harness, 105);
+        const client = await connected(harness, engine);
+        harness.listener.sessions.byEngine(engine.engineId)?.openStream(IPV4_CLIENT, noStream)?.close(0);
+        for (let index = 0; index <= 50; index++) client.ws.send(frame());
+        expect((await client.closed).code).toBe(TUNNEL_CLOSE_CODE.PROTOCOL_ERROR);
+        expect(harness.listener.terminations()['frame-budget']).toBe(1);
+        expect(JSON.stringify(harness.logger.entries)).not.toContain('frame-budget');
+    });
+
+    it.each(['before', 'after'])(
+        'terminates a peer that floods pings without reading the pongs, %s auth',
+        async (when) => {
+            const harness = await start({ env: { RELAY_TUNNEL_PING_BUFFER_BYTES: '16384' } });
+            const engine = await register(harness, 106);
+            const client = when === 'after' ? await connected(harness, engine) : harness.connect(engine);
+            if (when === 'before') await client.nextMessage();
+            client.ws.pause();
+            const payload = Buffer.alloc(125, 1);
+            for (let batch = 0; batch < 400 && harness.listener.terminations()['ping-buffer'] === 0; batch++) {
+                for (let index = 0; index < 1000; index++) client.ws.ping(payload);
+                await new Promise((resolve) => setTimeout(resolve, 5));
+            }
+            await vi.waitFor(() => {
+                expect(harness.listener.terminations()['ping-buffer']).toBe(1);
+            });
+            expect(harness.listener.sessions.sessions()).toEqual([]);
+            expect(harness.logger.entries).toContainEqual({
+                level: 'warn',
+                event: 'tunnel.terminated',
+                fields: { reason: 'ping-buffer' },
+            });
+        },
+    );
+
     it('replaces an older tunnel of the same engine with REPLACED', async () => {
         const harness = await start();
         const engine = await register(harness, 98);

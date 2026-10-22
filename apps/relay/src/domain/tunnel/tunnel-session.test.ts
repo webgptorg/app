@@ -14,8 +14,11 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import type { FakeTransport } from '../../testing/fake-transport';
 import { createFakeTransport } from '../../testing/fake-transport';
-import type { ClientAddress, StreamHandlers, TunnelSession, TunnelStream } from './tunnel-session';
-import { MAX_STREAM_ID, createTunnelSession } from './tunnel-session';
+import type { TestDeps } from '../../testing/test-deps';
+import { createTestDeps } from '../../testing/test-deps';
+import type { TunnelTerminationReason } from '../metrics/reason-counters';
+import type { ClientAddress, StreamHandlers, TunnelSession, TunnelSessionLimits, TunnelStream } from './tunnel-session';
+import { FRAME_BUDGET_CLOSE_CODE, MAX_STREAM_ID, createTunnelSession } from './tunnel-session';
 
 const ENGINE_ID: EngineId = EngineIdSchema.parse('a'.repeat(26));
 const IPV4: ClientAddress = { family: 4, address: Uint8Array.of(192, 0, 2, 7), port: 51_000 };
@@ -48,15 +51,19 @@ function recorder(): Recorded {
     return recorded;
 }
 
+const LIMITS: TunnelSessionLimits = { framesPerS: 1000, minWindowIncrementBytes: 1024 };
+
 const id = (value: number): StreamId => StreamId.parse(value);
 const bytes = (length: number, fill = 7): Bytes => new Uint8Array(length).fill(fill);
 
 describe('createTunnelSession', () => {
     let transport: FakeTransport;
     let closedWith: number[];
+    let terminated: TunnelTerminationReason[];
+    let clock: TestDeps['clock'];
     let session: TunnelSession;
 
-    const create = (firstStreamId?: number): TunnelSession =>
+    const create = (firstStreamId?: number, limits: Partial<TunnelSessionLimits> = {}): TunnelSession =>
         createTunnelSession({
             engineId: ENGINE_ID,
             remoteIp: '198.51.100.4',
@@ -64,8 +71,13 @@ describe('createTunnelSession', () => {
             features: [],
             transport,
             onClosed: (code) => closedWith.push(code),
+            clock,
+            limits: { ...LIMITS, ...limits },
+            terminations: { count: (reason) => terminated.push(reason) },
             ...(firstStreamId === undefined ? {} : { firstStreamId }),
         });
+    const dataSizes = (frames: readonly Frame[]): number[] =>
+        frames.map((frame) => (frame.type === FrameType.DATA ? frame.payload.length : 0));
     const receive = (frame: Frame): void => {
         session.receive(encodeFrame(frame));
     };
@@ -85,6 +97,8 @@ describe('createTunnelSession', () => {
     beforeEach(() => {
         transport = createFakeTransport();
         closedWith = [];
+        terminated = [];
+        clock = createTestDeps().clock;
         session = create();
     });
 
@@ -188,7 +202,8 @@ describe('createTunnelSession', () => {
         expect(stream.queuedBytes()).toBe(0);
         expect(recorded.drains).toBe(1);
         const tail = sentOfType(FrameType.DATA).slice(data.length);
-        expect(tail.map((frame) => (frame.type === FrameType.DATA ? frame.payload.length : 0))).toEqual([60, 40, 5]);
+        // One frame for the rest, across the two queued writes.
+        expect(dataSizes(tail)).toEqual([60, 45]);
         receive({ type: FrameType.WINDOW, streamId: stream.id, increment: 10 });
         expect(recorded.drains).toBe(1);
         expect(stream.write(new Uint8Array(0))).toBe(true);
@@ -270,5 +285,96 @@ describe('createTunnelSession', () => {
         expect(recorded.closed).toEqual([CLOSE_CODE.RESET]);
         stream.consumed(1);
         expect(sentOfType(FrameType.WINDOW)).toEqual([]);
+    });
+
+    describe('against a hostile engine', () => {
+        /** A stream whose window is open by `open` bytes, the rest of the initial window spent. */
+        const withOpenWindow = (openBytes: number) => {
+            const opened = open();
+            opened.stream.write(bytes(INITIAL_WINDOW_BYTES - openBytes));
+            transport.frames.length = 0;
+            return opened;
+        };
+
+        it('collects credit-limited sends until the minimum increment, so 1-byte grants buy no 1-byte frames', () => {
+            const { stream, recorded } = withOpenWindow(300);
+            expect(stream.write(bytes(5000))).toBe(false);
+            expect(sentOfType(FrameType.DATA)).toEqual([]);
+            for (let grant = 0; grant < 723; grant++)
+                receive({ type: FrameType.WINDOW, streamId: stream.id, increment: 1 });
+            expect(sentOfType(FrameType.DATA)).toEqual([]);
+            receive({ type: FrameType.WINDOW, streamId: stream.id, increment: 1 });
+            expect(dataSizes(sentOfType(FrameType.DATA))).toEqual([1024]);
+            // The window is closed now: a grant that reopens it is sent on at once, however small.
+            receive({ type: FrameType.WINDOW, streamId: stream.id, increment: 10 });
+            expect(dataSizes(sentOfType(FrameType.DATA))).toEqual([1024, 10]);
+            receive({ type: FrameType.WINDOW, streamId: stream.id, increment: MAX_FRAME_PAYLOAD_BYTES });
+            expect(stream.queuedBytes()).toBe(0);
+            expect(recorded.drains).toBe(1);
+            expect(dataSizes(sentOfType(FrameType.DATA))).toEqual([1024, 10, 5000 - 1034]);
+        });
+
+        it('fills one frame from several queued writes, ending inside one of them', () => {
+            const { stream } = withOpenWindow(0);
+            stream.write(bytes(10, 1));
+            stream.write(bytes(5000, 2));
+            receive({ type: FrameType.WINDOW, streamId: stream.id, increment: 1500 });
+            const [frame] = sentOfType(FrameType.DATA);
+            expect(frame?.type === FrameType.DATA && [...frame.payload.subarray(8, 12)]).toEqual([1, 1, 2, 2]);
+            expect(dataSizes(sentOfType(FrameType.DATA))).toEqual([1500]);
+            expect(stream.queuedBytes()).toBe(3510);
+        });
+
+        it('sends a small frame when it carries everything queued', () => {
+            const { stream } = withOpenWindow(300);
+            expect(stream.write(bytes(20))).toBe(true);
+            expect(dataSizes(sentOfType(FrameType.DATA))).toEqual([20]);
+        });
+
+        it('never sends DATA below the minimum increment unless the window was closed', () => {
+            const { stream } = withOpenWindow(700);
+            stream.write(bytes(100_000));
+            let available = 700;
+            const small: { readonly size: number; readonly wasClosed: boolean }[] = [];
+            for (let grant = 0; grant < 900; grant++) {
+                const increment = 1 + (grant % 7) * 150;
+                const wasClosed = available === 0;
+                const before = transport.frames.length;
+                receive({ type: FrameType.WINDOW, streamId: stream.id, increment });
+                const sizes = dataSizes(transport.frames.slice(before));
+                available += increment - sizes.reduce((total, size) => total + size, 0);
+                for (const size of sizes) if (size < 1024) small.push({ size, wasClosed });
+            }
+            expect(session.isClosed()).toBe(false);
+            expect(small.length).toBeGreaterThan(0);
+            expect(small.every((frame) => frame.wasClosed)).toBe(true);
+        });
+
+        it.each<[string, (stream: TunnelStream) => Uint8Array]>([
+            ['ignorable frames', () => Uint8Array.of(0x85, 0, 0, 0, 1, 9)],
+            [
+                'CLOSE for an old stream',
+                () => encodeFrame({ type: FrameType.CLOSE, streamId: id(1), code: CLOSE_CODE.NORMAL }),
+            ],
+            [
+                '1-byte WINDOW grants',
+                (stream) => encodeFrame({ type: FrameType.WINDOW, streamId: stream.id, increment: 1 }),
+            ],
+        ])('closes the tunnel when %s exceed the frame budget', (_, frame) => {
+            open().stream.close(CLOSE_CODE.NORMAL);
+            const { stream, recorded } = open();
+            stream.write(bytes(INITIAL_WINDOW_BYTES + 100_000));
+            for (let sent = 0; sent < LIMITS.framesPerS; sent++) session.receive(frame(stream));
+            expect(session.isClosed()).toBe(false);
+            // The budget refills with time: a second later the same burst is fine again.
+            clock.advance(1000);
+            for (let sent = 0; sent < LIMITS.framesPerS; sent++) session.receive(frame(stream));
+            expect(session.isClosed()).toBe(false);
+            session.receive(frame(stream));
+            expect(transport.closes).toEqual([{ code: FRAME_BUDGET_CLOSE_CODE, reason: '' }]);
+            expect(closedWith).toEqual([FRAME_BUDGET_CLOSE_CODE]);
+            expect(terminated).toEqual(['frame-budget']);
+            expect(recorded.closed).toEqual([CLOSE_CODE.RESET]);
+        });
     });
 });

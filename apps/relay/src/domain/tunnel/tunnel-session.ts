@@ -21,8 +21,28 @@ import {
     encodeFrame,
 } from '@ptbk/protocol';
 
+import type { Clock } from '../clock';
+import { createTokenBucket } from '../limits/token-bucket';
+import type { ReasonCounters, TunnelTerminationReason } from '../metrics/reason-counters';
+
 /** The largest stream ID (u32); the session closes rather than wrap around (C-02: IDs are never reused). */
 export const MAX_STREAM_ID = 0xffff_ffff;
+
+/**
+ * C-02 has no close code for exceeding a relay policy, and `PROTOCOL_ERROR` is what every other abuse of the frame
+ * layer gets; a dedicated code would be an addition to C-02 (ADR 0010).
+ */
+export const FRAME_BUDGET_CLOSE_CODE = TUNNEL_CLOSE_CODE.PROTOCOL_ERROR;
+
+export interface TunnelSessionLimits {
+    /** `RELAY_TUNNEL_FRAMES_PER_S`: frames from the engine per second, of any kind; also the burst. */
+    readonly framesPerS: number;
+    /**
+     * `RELAY_TUNNEL_MIN_WINDOW_INCREMENT_BYTES`: credit the relay collects before it sends DATA, unless the window was
+     * fully closed or the frame carries everything queued.
+     */
+    readonly minWindowIncrementBytes: number;
+}
 
 /** One authenticated WebSocket, binary messages only. */
 export interface TunnelTransport {
@@ -76,6 +96,9 @@ export interface TunnelSessionOptions {
     readonly transport: TunnelTransport;
     /** Called once, with the code this side sent or the transport reported. */
     readonly onClosed: (code: number) => void;
+    readonly clock: Clock;
+    readonly limits: TunnelSessionLimits;
+    readonly terminations: Pick<ReasonCounters<TunnelTerminationReason>, 'count'>;
     /** Where stream IDs start; only tests move it, to reach `MAX_STREAM_ID`. */
     readonly firstStreamId?: number;
 }
@@ -113,10 +136,14 @@ interface StreamState {
 /**
  * The relay's side of one tunnel: it alone opens streams, tracks each direction's credit, and closes the whole session
  * on any protocol violation by the engine (an invalid frame, `OPEN`, a frame for a stream never opened, data beyond
- * credit), since an engine that breaks the protocol cannot be trusted with the streams it still holds.
+ * credit), since an engine that breaks the protocol cannot be trusted with the streams it still holds. Every frame
+ * from the engine, even one that is ignored, spends the tunnel's frame budget, so frames that cost the relay work but
+ * break no rule (ignorable types, `CLOSE` for old streams, tiny `WINDOW` grants) cannot be sent without limit.
  */
 export function createTunnelSession(options: TunnelSessionOptions): TunnelSession {
-    const { engineId, remoteIp, protocolVersion, features, transport, onClosed } = options;
+    const { engineId, remoteIp, protocolVersion, features, transport, onClosed, clock, limits, terminations } = options;
+    const { framesPerS, minWindowIncrementBytes } = limits;
+    const frameBudget = createTokenBucket({ capacity: framesPerS, refillPerSecond: framesPerS, clock });
     const streams = new Map<StreamId, StreamState>();
     let nextStreamId = options.firstStreamId ?? 1;
     let closed = false;
@@ -139,15 +166,36 @@ export function createTunnelSession(options: TunnelSessionOptions): TunnelSessio
         finish(code);
     }
 
-    function flush(id: StreamId, stream: StreamState): void {
-        while (stream.queue.length > 0 && stream.send.available() > 0) {
-            const chunk = stream.queue[0] as Uint8Array;
-            const size = Math.min(chunk.length, stream.send.available(), MAX_FRAME_PAYLOAD_BYTES);
+    /** Takes `size` bytes off the front of the queue, copying only when they span chunks. */
+    function take(stream: StreamState, size: number): Bytes {
+        const head = stream.queue[0] as Uint8Array;
+        let payload: Uint8Array;
+        if (head.length >= size) {
+            payload = head.subarray(0, size);
+            if (head.length === size) stream.queue.shift();
+            else stream.queue[0] = head.subarray(size);
+        } else {
+            payload = new Uint8Array(size);
+            for (let filled = 0; filled < size;) {
+                const chunk = stream.queue[0] as Uint8Array;
+                const part = Math.min(chunk.length, size - filled);
+                payload.set(chunk.subarray(0, part), filled);
+                filled += part;
+                if (part === chunk.length) stream.queue.shift();
+                else stream.queue[0] = chunk.subarray(part);
+            }
+        }
+        stream.queued -= size;
+        return payload as Bytes;
+    }
+
+    /** Sends queued bytes as DATA; a frame smaller than `minFrameBytes` goes only if it empties the queue. */
+    function flush(id: StreamId, stream: StreamState, minFrameBytes: number): void {
+        for (;;) {
+            const size = Math.min(stream.queued, stream.send.available(), MAX_FRAME_PAYLOAD_BYTES);
+            if (size === 0 || (size < minFrameBytes && size < stream.queued)) return;
             stream.send.consume(size);
-            sendFrame({ type: FrameType.DATA, streamId: id, payload: chunk.subarray(0, size) as Bytes });
-            stream.queued -= size;
-            if (size === chunk.length) stream.queue.shift();
-            else stream.queue[0] = chunk.subarray(size);
+            sendFrame({ type: FrameType.DATA, streamId: id, payload: take(stream, size) });
         }
     }
 
@@ -185,12 +233,15 @@ export function createTunnelSession(options: TunnelSessionOptions): TunnelSessio
                 stream.handlers.closed(frame.code);
                 return;
             case FrameType.WINDOW: {
+                // A grant that reopens a closed window is sent on at once, so a peer that grants exactly what it
+                // consumed never stalls; smaller grants into an open window are coalesced first.
+                const wasClosed = stream.send.available() === 0;
                 if (stream.send.grant(frame.increment).kind === 'violation') {
                     violateFlowControl(id, stream);
                     return;
                 }
                 const blocked = stream.queued > 0;
-                flush(id, stream);
+                flush(id, stream, wasClosed ? 1 : minWindowIncrementBytes);
                 if (blocked && stream.queued === 0) stream.handlers.drain();
                 return;
             }
@@ -205,7 +256,7 @@ export function createTunnelSession(options: TunnelSessionOptions): TunnelSessio
                 if (bytes.length > 0) {
                     stream.queue.push(bytes);
                     stream.queued += bytes.length;
-                    flush(id, stream);
+                    flush(id, stream, minWindowIncrementBytes);
                 }
                 return stream.queued === 0;
             },
@@ -256,6 +307,11 @@ export function createTunnelSession(options: TunnelSessionOptions): TunnelSessio
         },
         receive(message) {
             if (closed) return;
+            if (!frameBudget.tryTake(1)) {
+                terminations.count('frame-budget');
+                close(FRAME_BUDGET_CLOSE_CODE);
+                return;
+            }
             const decoded = decodeFrame(message);
             switch (decoded.kind) {
                 case 'frame':

@@ -222,6 +222,7 @@ describe('createHttpEngineRegistry', () => {
                 auth: JSON.stringify(signed.auth),
                 challenge,
                 registry: cached,
+                admitLookup: () => true,
                 dns: deps.dns,
                 engineDomain: ENGINE_DOMAIN,
                 logger: deps.logger,

@@ -1,3 +1,5 @@
+import { writeSync } from 'node:fs';
+
 import { createJsonLogger } from './adapters/json-logger';
 import { createNodeRandom } from './adapters/node-random';
 import { StaticRegistryError } from './adapters/static-file-registry';
@@ -41,6 +43,22 @@ async function start(): Promise<Started | null> {
         return null;
     }
 }
+
+// After an error nothing caught, the relay's state is unknown: log the error's name only (its message may quote input)
+// and exit for systemd to restart a clean process (I-01). Written synchronously, so the line survives the exit.
+const crashLogger = createJsonLogger({
+    level: 'error',
+    clock: systemClock,
+    write: (line) => {
+        writeSync(1, `${line}\n`);
+    },
+});
+const crash = (event: string) => (error: unknown) => {
+    crashLogger.error(event, { problem: problemOf(error) });
+    process.exit(1);
+};
+process.on('uncaughtException', crash('relay.crashed'));
+process.on('unhandledRejection', crash('relay.crashed'));
 
 // Written by the signal handler while `start` runs, so it lives in an object TypeScript does not narrow.
 const lifecycle: { started: Started | null; stopSignal: NodeJS.Signals | null } = { started: null, stopSignal: null };

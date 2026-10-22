@@ -25,9 +25,9 @@ interface RunningRelay {
     readonly kill: (signal: NodeJS.Signals) => void;
 }
 
-function run(cwd: string, env: Record<string, string>): RunningRelay {
+function run(cwd: string, env: Record<string, string>, nodeArgs: readonly string[] = []): RunningRelay {
     // Only the relay's settings: the bundle must not depend on anything else in the environment.
-    const child = spawn(process.execPath, ['main.mjs'], { cwd, env, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(process.execPath, [...nodeArgs, 'main.mjs'], { cwd, env, stdio: ['ignore', 'pipe', 'pipe'] });
     let stdout = '';
     let stderr = '';
     const waiters: (() => void)[] = [];
@@ -136,6 +136,20 @@ describe('dist/main.mjs', () => {
             problem:
                 'RELAY_TLS_CERT_FILE and RELAY_TLS_KEY_FILE must be a readable PEM certificate and its private key',
         });
+    });
+
+    it.each([
+        ['an uncaught exception', 'throw new RangeError("detail that may quote input")', 'RangeError'],
+        ['an unhandled rejection', 'void Promise.reject(new TypeError("detail that may quote input"))', 'TypeError'],
+    ])('exits with 1 after %s, logging only its name', async (_, fault, problem) => {
+        // A bug stands in as a SIGUSR2 handler loaded before the bundle; the relay itself has no such hook.
+        const preload = `data:text/javascript,process.on("SIGUSR2",()=>{${fault}})`;
+        const relay = run(dir, env, ['--import', preload]);
+        await relay.waitFor('relay.started');
+        relay.kill('SIGUSR2');
+        await expect(relay.exited).resolves.toBe(1);
+        expect(relay.lines().at(-1)).toMatchObject({ level: 'error', event: 'relay.crashed', problem });
+        expect(relay.output()).not.toContain('detail that may quote input');
     });
 
     it('exits cleanly on SIGINT', async () => {

@@ -1,10 +1,12 @@
 import type { EngineId, Hostname, RelayId, TunnelChallenge } from '@ptbk/protocol';
 import { TUNNEL_CLOSE_CODE, TunnelReady } from '@ptbk/protocol';
 
+import type { CachedRegistry } from '../cached-registry';
 import type { Clock } from '../clock';
 import type { DnsResolver } from '../dns-resolver';
-import type { EngineRegistry } from '../engine-registry';
+import { createTokenBucket } from '../limits/token-bucket';
 import type { Logger } from '../logger';
+import type { ReasonCounters, TunnelTerminationReason } from '../metrics/reason-counters';
 import type { Random } from '../random';
 import type { RelayTunnelOffer } from './handshake';
 import { createChallenge, verifyAuth } from './handshake';
@@ -13,8 +15,11 @@ import { createHandshakeLimiter } from './handshake-limiter';
 import type { HandshakeFailure } from './reject-mapping';
 import { toWireRejection } from './reject-mapping';
 import type { SessionTable } from './session-table';
-import type { TunnelSession, TunnelTransport } from './tunnel-session';
+import type { TunnelSession, TunnelSessionLimits, TunnelTransport } from './tunnel-session';
 import { createTunnelSession } from './tunnel-session';
+
+/** How long a refused engine has to read `reject` and the close frame before its socket is destroyed. */
+export const REJECT_LINGER_MS = 1_000;
 
 /** One upgraded WebSocket: text messages during the handshake, binary frames after `ready`. */
 export interface TunnelConnection {
@@ -33,7 +38,7 @@ export interface ConnectionEvents {
 export interface PendingConnection {
     /** The WebSocket upgrade on `TUNNEL_PATH` succeeded. Call at most once. */
     attach(connection: TunnelConnection): ConnectionEvents;
-    /** The TCP socket closed, at any stage; idempotent. */
+    /** The TCP socket closed, at any stage; idempotent. Frees the connection's pending-handshake slot. */
     socketClosed(): void;
 }
 
@@ -41,26 +46,34 @@ export interface TunnelEndpointLimits extends HandshakeLimits {
     /** Counted from TCP accept to `ready`, so a slow TLS client cannot hold a slot. */
     readonly handshakeTimeoutMs: number;
     readonly maxTunnelsPerIp: number;
+    /**
+     * `RELAY_REGISTRY_MISSES_PER_S`: handshakes per second, relay-wide, whose engine is not in the registry cache (also
+     * the burst). Revalidation is not counted here; it is paced by its interval.
+     */
+    readonly registryMissesPerS: number;
+    readonly session: TunnelSessionLimits;
 }
 
 export interface TunnelEndpointOptions {
     readonly relayId: RelayId;
     readonly engineDomain: Hostname;
     readonly offer: RelayTunnelOffer;
-    readonly registry: EngineRegistry;
+    readonly registry: Pick<CachedRegistry, 'lookup' | 'has'>;
     readonly dns: DnsResolver;
     readonly random: Random;
     readonly clock: Clock;
     readonly logger: Logger;
     readonly limits: TunnelEndpointLimits;
     readonly table: SessionTable<TunnelSession>;
+    readonly terminations: Pick<ReasonCounters<TunnelTerminationReason>, 'count'>;
 }
 
 export interface TunnelEndpoint {
     /**
      * At TCP accept, or when the listener hands the socket over: `acceptedAtMs` (on this endpoint's clock) is when TCP
      * accepted it, so time spent before the hand-off counts against the deadline. `null`: drop the socket now.
-     * `abandon` runs if the handshake deadline passes before the upgrade; the caller then destroys the socket.
+     * `abandon` runs when the endpoint is done with the socket (the deadline passed before the upgrade, or a refused
+     * engine had `REJECT_LINGER_MS` to read its `reject`); the caller then destroys it.
      */
     accept(ip: string, abandon: () => void, acceptedAtMs?: number): PendingConnection | null;
     /** Refuses new connections and closes every tunnel with `SHUTTING_DOWN`, so engines reconnect to a peer at once. */
@@ -87,8 +100,14 @@ interface Live {
  * verification, `ready` or `reject`, then an authenticated session in the table.
  */
 export function createTunnelEndpoint(options: TunnelEndpointOptions): TunnelEndpoint {
-    const { relayId, engineDomain, offer, registry, dns, random, clock, logger, limits, table } = options;
+    const { relayId, engineDomain, offer, registry, dns, random, clock, logger, limits, table, terminations } = options;
     const limiter = createHandshakeLimiter(limits);
+    const misses = createTokenBucket({
+        capacity: limits.registryMissesPerS,
+        refillPerSecond: limits.registryMissesPerS,
+        clock,
+    });
+    const admitLookup = (engineId: EngineId): boolean => registry.has(engineId) || misses.tryTake(1);
     const live = new Set<Live>();
     let stopping = false;
 
@@ -105,11 +124,14 @@ export function createTunnelEndpoint(options: TunnelEndpointOptions): TunnelEndp
                 onDeadline,
                 acceptedAtMs + limits.handshakeTimeoutMs - clock.nowMs(),
             );
+            let cancelLinger = (): void => undefined;
 
+            // A handshake that ends keeps its slot until the socket is gone, so refused sockets still closing count
+            // against the limits; only `ready` frees it early, since the tunnel is then counted per IP instead.
             function settle(phase: Phase): void {
                 state.phase = phase;
                 cancelDeadline();
-                admission.release();
+                if (phase.kind === 'ready') admission.release();
                 if (phase.kind === 'ended') live.delete(state);
             }
 
@@ -119,6 +141,7 @@ export function createTunnelEndpoint(options: TunnelEndpointOptions): TunnelEndp
                 const wire = toWireRejection(failure);
                 if (wire.message !== null) connection.sendText(JSON.stringify(wire.message));
                 connection.transport.close(wire.closeCode, '');
+                cancelLinger = clock.setTimeout(abandon, REJECT_LINGER_MS);
                 logger.warn('tunnel.rejected', {
                     ...(engineId === undefined ? {} : { engineId }),
                     engineIp: ip,
@@ -137,6 +160,20 @@ export function createTunnelEndpoint(options: TunnelEndpointOptions): TunnelEndp
                     // `settle` cancels the deadline, so it fires only before `ready`.
                     fail((phase as HandshakePhase).connection, 'timeout');
                 }
+            }
+
+            // Only a bug gets here (verification itself never throws), so nothing about the connection is trusted.
+            function failed(connection: TunnelConnection, error: unknown): void {
+                logger.error('tunnel.failed', { problem: error instanceof Error ? error.name : 'unknown' });
+                terminations.count('failed');
+                const { phase } = state;
+                if (phase.kind === 'ready') {
+                    phase.session.close(TUNNEL_CLOSE_CODE.PROTOCOL_ERROR);
+                    return;
+                }
+                settle({ kind: 'ended' });
+                connection.transport.close(TUNNEL_CLOSE_CODE.PROTOCOL_ERROR, '');
+                cancelLinger = clock.setTimeout(abandon, REJECT_LINGER_MS);
             }
 
             function shutDown(): void {
@@ -162,6 +199,7 @@ export function createTunnelEndpoint(options: TunnelEndpointOptions): TunnelEndp
                     auth: text,
                     challenge,
                     registry,
+                    admitLookup,
                     dns,
                     engineDomain,
                     logger,
@@ -185,6 +223,9 @@ export function createTunnelEndpoint(options: TunnelEndpointOptions): TunnelEndp
                     protocolVersion,
                     features,
                     transport: connection.transport,
+                    clock,
+                    limits: limits.session,
+                    terminations,
                     onClosed(closeCode) {
                         settle({ kind: 'ended' });
                         table.remove(session);
@@ -215,8 +256,11 @@ export function createTunnelEndpoint(options: TunnelEndpointOptions): TunnelEndp
                     return {
                         text(text) {
                             const { phase } = state;
-                            if (phase.kind === 'awaiting-auth') void verify(text, phase.connection, phase.challenge);
-                            else if (phase.kind === 'verifying') fail(phase.connection, 'malformed');
+                            if (phase.kind === 'awaiting-auth') {
+                                verify(text, phase.connection, phase.challenge).catch((error: unknown) => {
+                                    failed(phase.connection, error);
+                                });
+                            } else if (phase.kind === 'verifying') fail(phase.connection, 'malformed');
                             else if (phase.kind === 'ready') phase.session.close(TUNNEL_CLOSE_CODE.PROTOCOL_ERROR);
                         },
                         binary(message) {
@@ -239,6 +283,8 @@ export function createTunnelEndpoint(options: TunnelEndpointOptions): TunnelEndp
                 socketClosed() {
                     // Once upgraded, the WebSocket's own close event reports the connection, with its close code.
                     if (state.phase.kind === 'tcp') settle({ kind: 'ended' });
+                    cancelLinger();
+                    admission.release();
                 },
             };
         },

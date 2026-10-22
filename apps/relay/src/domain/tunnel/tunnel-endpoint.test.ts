@@ -1,4 +1,4 @@
-import type { TunnelChallenge } from '@ptbk/protocol';
+import type { EngineId, TunnelChallenge } from '@ptbk/protocol';
 import {
     FrameType,
     RelayId,
@@ -17,10 +17,11 @@ import { createFakeConnection } from '../../testing/fake-connection';
 import { createFakeRandom } from '../../testing/fake-random';
 import type { TestDeps } from '../../testing/test-deps';
 import { createTestDeps } from '../../testing/test-deps';
+import type { TunnelTerminationReason } from '../metrics/reason-counters';
 import type { SessionTable } from './session-table';
 import { createSessionTable } from './session-table';
 import type { ConnectionEvents, PendingConnection, TunnelEndpoint, TunnelEndpointLimits } from './tunnel-endpoint';
-import { createTunnelEndpoint } from './tunnel-endpoint';
+import { REJECT_LINGER_MS, createTunnelEndpoint } from './tunnel-endpoint';
 import type { TunnelSession } from './tunnel-session';
 
 const RELAY_ID = RelayId.parse('relay-a.ptbk.test');
@@ -31,6 +32,8 @@ const LIMITS: TunnelEndpointLimits = {
     maxPending: 1000,
     maxPendingPerIp: 10,
     maxTunnelsPerIp: 50,
+    registryMissesPerS: 20,
+    session: { framesPerS: 1000, minWindowIncrementBytes: 1024 },
 };
 
 interface Attached {
@@ -45,19 +48,28 @@ describe('createTunnelEndpoint', () => {
     let table: SessionTable<TunnelSession>;
     let endpoint: TunnelEndpoint;
     let abandoned: number;
+    let cached: Set<EngineId>;
+    let terminated: TunnelTerminationReason[];
 
-    const create = (limits: Partial<TunnelEndpointLimits> = {}): TunnelEndpoint =>
+    const create = (
+        limits: Partial<TunnelEndpointLimits> = {},
+        sessions: SessionTable<TunnelSession> = table,
+    ): TunnelEndpoint =>
         createTunnelEndpoint({
             relayId: RELAY_ID,
             engineDomain: ENGINE_DOMAIN,
             offer: { versions: [1], features: [] },
-            registry: deps.registry,
+            registry: {
+                lookup: (engineId, signal) => deps.registry.lookup(engineId, signal),
+                has: (engineId) => cached.has(engineId),
+            },
             dns: deps.dns,
             random: createFakeRandom(),
             clock: deps.clock,
             logger: deps.logger,
             limits: { ...LIMITS, ...limits },
-            table,
+            table: sessions,
+            terminations: { count: (reason) => terminated.push(reason) },
         });
     const accept = (ip = IP): PendingConnection => {
         const pending = endpoint.accept(ip, () => {
@@ -107,6 +119,8 @@ describe('createTunnelEndpoint', () => {
         deps.registry.set(engine.engineId, engine.entry);
         table = createSessionTable<TunnelSession>({ logger: deps.logger });
         abandoned = 0;
+        cached = new Set();
+        terminated = [];
         endpoint = create();
     });
 
@@ -319,10 +333,9 @@ describe('createTunnelEndpoint', () => {
         accept('192.0.2.1');
         accept('192.0.2.2');
         expect(attach('192.0.2.3').connection.closes).toEqual([1013]);
-        // Waiting for their reject, two more fill the rate-limited pool.
+        // The refused one holds its slot until its socket is gone; one more fills the rate-limited pool.
         accept('192.0.2.4');
-        accept('192.0.2.5');
-        expect(endpoint.accept('192.0.2.6', () => undefined)).toBeNull();
+        expect(endpoint.accept('192.0.2.5', () => undefined)).toBeNull();
     });
 
     it('frees a pending slot when the socket closes before the upgrade', () => {
@@ -376,10 +389,12 @@ describe('createTunnelEndpoint', () => {
         endpoint = create({ maxPendingPerIp: 2 });
         const waiting = attach();
         waiting.events.closed(1006);
+        waiting.pending.socketClosed();
         deps.registry.setMode('hang');
         const verifying = attach();
         await authenticate(verifying);
         verifying.events.closed(1006);
+        verifying.pending.socketClosed();
         expect(attach().connection.closes).toEqual([]);
         deps.clock.advance(TIMEOUT_MS);
         expect(waiting.connection.closes).toEqual([]);
@@ -403,5 +418,131 @@ describe('createTunnelEndpoint', () => {
         expect(late.closes).toEqual([TUNNEL_CLOSE_CODE.SHUTTING_DOWN]);
         expect(endpoint.accept(IP, () => undefined)).toBeNull();
         expect(table.sessions()).toEqual([]);
+    });
+
+    describe('handshake limits', () => {
+        it("holds a refused connection's slot until its socket closes, and destroys the socket after the linger", async () => {
+            endpoint = create({ maxPendingPerIp: 1 });
+            const refused = attach();
+            refused.events.text('not json');
+            await vi.waitFor(() => {
+                expect(refused.connection.closes).toEqual([TUNNEL_CLOSE_CODE.PROTOCOL_ERROR]);
+            });
+            // Still closing: the next handshake from that IP is refused too.
+            const waiting = attach();
+            expect(waiting.connection.closes).toEqual([1013]);
+            deps.clock.advance(REJECT_LINGER_MS - 1);
+            expect(abandoned).toBe(0);
+            deps.clock.advance(1);
+            expect(abandoned).toBe(2);
+            refused.pending.socketClosed();
+            waiting.pending.socketClosed();
+            expect(attach().connection.closes).toEqual([]);
+        });
+
+        it('frees the slot once the refused socket is gone, and cancels its linger', () => {
+            endpoint = create({ maxPendingPerIp: 1 });
+            const refused = attach();
+            refused.events.binary(Uint8Array.of(1));
+            refused.pending.socketClosed();
+            deps.clock.advance(REJECT_LINGER_MS);
+            expect(abandoned).toBe(0);
+            expect(attach().connection.closes).toEqual([]);
+        });
+
+        it('counts pending handshakes and tunnels per IPv6 /64', async () => {
+            endpoint = create({ maxPendingPerIp: 1, maxTunnelsPerIp: 1 });
+            const first = await ready(engine, '2001:db8:1:2::1');
+            expect(first.connection.closes).toEqual([]);
+            const sameSlash64 = attach('2001:db8:1:2::ffff');
+            expect(sameSlash64.connection.messages()).toEqual([{ v: 1, type: 'reject', reason: 'rate-limited' }]);
+            expect(attach('2001:db8:1:3::1').connection.closes).toEqual([]);
+            expect(attach('2001:db8:1:3::2').connection.closes).toEqual([1013]);
+        });
+
+        it('refuses handshakes whose engine is not cached as rate-limited once the miss budget is spent', async () => {
+            endpoint = create({ registryMissesPerS: 2 });
+            const other = await createTestEngine(72);
+            deps.registry.set(other.engineId, other.entry);
+            const misses = [attach(), attach(), attach()];
+            for (const attached of misses) await authenticate(attached);
+            await vi.waitFor(() => {
+                expect(misses[2]?.connection.closes).toEqual([1013]);
+            });
+            expect(misses[2]?.connection.messages()[1]).toEqual({ v: 1, type: 'reject', reason: 'rate-limited' });
+            expect(deps.registry.calls()).toBe(2);
+            // A cached engine never spends the budget; an uncached one waits for it to refill.
+            cached.add(engine.engineId);
+            const hit = attach();
+            await authenticate(hit);
+            const miss = attach();
+            await authenticate(miss, other);
+            await vi.waitFor(() => {
+                expect(miss.connection.closes).toEqual([1013]);
+            });
+            await vi.waitFor(() => {
+                expect(hit.connection.messages()[1]).toMatchObject({ type: 'ready' });
+            });
+            deps.clock.advance(500);
+            const later = attach();
+            await authenticate(later, other);
+            await vi.waitFor(() => {
+                expect(later.connection.messages()[1]).toMatchObject({ type: 'ready' });
+            });
+        });
+    });
+
+    describe('a bug after verification', () => {
+        it('closes the tunnel it just registered with PROTOCOL_ERROR', async () => {
+            const throwing: SessionTable<TunnelSession> = {
+                ...table,
+                register() {
+                    throw new TypeError('bug');
+                },
+            };
+            endpoint = create({}, throwing);
+            const attached = attach();
+            await authenticate(attached);
+            await vi.waitFor(() => {
+                expect(attached.connection.closes).toEqual([TUNNEL_CLOSE_CODE.PROTOCOL_ERROR]);
+            });
+            expect(deps.logger.entries).toContainEqual({
+                level: 'error',
+                event: 'tunnel.failed',
+                fields: { problem: 'TypeError' },
+            });
+            expect(terminated).toEqual(['failed']);
+        });
+
+        it('closes the handshake with PROTOCOL_ERROR and lets the socket go after the linger', async () => {
+            endpoint = create({ session: { framesPerS: 0, minWindowIncrementBytes: 1024 } });
+            const attached = attach();
+            await authenticate(attached);
+            await vi.waitFor(() => {
+                expect(attached.connection.closes).toEqual([TUNNEL_CLOSE_CODE.PROTOCOL_ERROR]);
+            });
+            expect(table.sessions()).toEqual([]);
+            deps.clock.advance(REJECT_LINGER_MS);
+            expect(abandoned).toBe(1);
+        });
+
+        it('logs only the kind of a thrown value that is not an Error', async () => {
+            const throwing: SessionTable<TunnelSession> = {
+                ...table,
+                register() {
+                    // eslint-disable-next-line @typescript-eslint/only-throw-error -- a non-Error throw is the case
+                    throw 'detail that may quote input';
+                },
+            };
+            endpoint = create({}, throwing);
+            await authenticate(attach());
+            await vi.waitFor(() => {
+                expect(deps.logger.entries).toContainEqual({
+                    level: 'error',
+                    event: 'tunnel.failed',
+                    fields: { problem: 'unknown' },
+                });
+            });
+        });
     });
 });

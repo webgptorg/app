@@ -1,6 +1,7 @@
 import type { EngineId, Hostname, TunnelCloseCode } from '@ptbk/protocol';
 import { TUNNEL_CLOSE_CODE } from '@ptbk/protocol';
 
+import { ipLimitKey } from '../ip-address';
 import type { Logger } from '../logger';
 
 export interface TableSession {
@@ -22,6 +23,7 @@ export interface SessionTable<S extends TableSession> {
     /** Ignored unless `session` is the one registered for its engine, so a replaced session cannot evict its successor. */
     remove(session: S): void;
     sessions(): readonly S[];
+    /** Per IPv4 address and per IPv6 /64, like every per-IP limit. */
     countByIp(ip: string): number;
 }
 
@@ -58,9 +60,10 @@ export function createSessionTable<S extends TableSession>(deps: { readonly logg
     }
 
     function countIp(ip: string, delta: number): void {
-        const count = (perIp.get(ip) ?? 0) + delta;
-        if (count === 0) perIp.delete(ip);
-        else perIp.set(ip, count);
+        const key = ipLimitKey(ip);
+        const count = (perIp.get(key) ?? 0) + delta;
+        if (count === 0) perIp.delete(key);
+        else perIp.set(key, count);
     }
 
     function drop(session: S): void {
@@ -99,6 +102,6 @@ export function createSessionTable<S extends TableSession>(deps: { readonly logg
             if (byEngine.get(session.engineId) === session) drop(session);
         },
         sessions: () => [...byEngine.values()],
-        countByIp: (ip) => perIp.get(ip) ?? 0,
+        countByIp: (ip) => perIp.get(ipLimitKey(ip)) ?? 0,
     };
 }

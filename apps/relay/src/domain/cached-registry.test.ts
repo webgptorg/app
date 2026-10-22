@@ -5,8 +5,8 @@ import type { TestEngine } from '../testing/engines';
 import { createTestEngine } from '../testing/engines';
 import type { TestDeps } from '../testing/test-deps';
 import { createTestDeps } from '../testing/test-deps';
+import type { CachedRegistry } from './cached-registry';
 import { MAX_NEGATIVE_ENTRIES, createCachedRegistry } from './cached-registry';
-import type { EngineRegistry } from './engine-registry';
 
 const SECOND = 1000;
 const TTL_MS = 300 * SECOND;
@@ -22,7 +22,7 @@ describe('cached registry', () => {
     let clock: TestDeps['clock'];
     let inner: TestDeps['registry'];
     let logger: TestDeps['logger'];
-    let registry: EngineRegistry;
+    let registry: CachedRegistry;
 
     beforeEach(async () => {
         engine = await createTestEngine(20);
@@ -42,6 +42,61 @@ describe('cached registry', () => {
 
     const found = () => ({ kind: 'found', entry: engine.entry });
     const events = () => logger.entries.map((entry) => entry.event);
+
+    it('asks the inner registry for a fresh lookup even within the TTL, and caches its answer', async () => {
+        await registry.lookup(engine.engineId, signal);
+        const suspended = { ...engine.entry, status: 'suspended' as const };
+        inner.set(engine.engineId, suspended);
+        await expect(registry.lookup(engine.engineId, signal, { fresh: true })).resolves.toEqual({
+            kind: 'found',
+            entry: suspended,
+        });
+        await expect(registry.lookup(engine.engineId, signal)).resolves.toEqual({ kind: 'found', entry: suspended });
+        expect(inner.calls()).toBe(2);
+    });
+
+    it('serves a stale entry to a fresh lookup while the inner registry fails', async () => {
+        await registry.lookup(engine.engineId, signal);
+        inner.setMode('unavailable');
+        await expect(registry.lookup(engine.engineId, signal, { fresh: true })).resolves.toEqual(found());
+    });
+
+    it('says whether a lookup would be answered from the cache', async () => {
+        expect(registry.has(engine.engineId)).toBe(false);
+        await registry.lookup(engine.engineId, signal);
+        await registry.lookup(unknown.engineId, signal);
+        expect([registry.has(engine.engineId), registry.has(unknown.engineId)]).toEqual([true, true]);
+        clock.advance(NEGATIVE_TTL_MS);
+        expect([registry.has(engine.engineId), registry.has(unknown.engineId)]).toEqual([true, false]);
+        clock.advance(TTL_MS);
+        expect(registry.has(engine.engineId)).toBe(false);
+    });
+
+    it('expires every answer at once, keeping the last good entries for the stale window', async () => {
+        await registry.lookup(engine.engineId, signal);
+        await registry.lookup(unknown.engineId, signal);
+        registry.expireAll();
+        expect([registry.has(engine.engineId), registry.has(unknown.engineId)]).toEqual([false, false]);
+        inner.setMode('unavailable');
+        await expect(registry.lookup(engine.engineId, signal)).resolves.toEqual(found());
+        await expect(registry.lookup(unknown.engineId, signal)).resolves.toEqual({ kind: 'unavailable' });
+        inner.setMode('answer');
+        await registry.lookup(engine.engineId, signal);
+        expect(registry.has(engine.engineId)).toBe(true);
+    });
+
+    it('does not count an answer asked for before expireAll as fresh after it', async () => {
+        inner.setMode('hang');
+        const asked = registry.lookup(engine.engineId, signal);
+        registry.expireAll();
+        clock.advance(TIMEOUT_MS);
+        await expect(asked).resolves.toEqual({ kind: 'unavailable' });
+        inner.setMode('answer');
+        const late = registry.lookup(engine.engineId, signal);
+        registry.expireAll();
+        await late;
+        expect(registry.has(engine.engineId)).toBe(false);
+    });
 
     it('serves a hit within the TTL without asking the inner registry', async () => {
         await expect(registry.lookup(engine.engineId, signal)).resolves.toEqual(found());

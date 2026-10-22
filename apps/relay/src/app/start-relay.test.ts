@@ -1,6 +1,11 @@
+import { X509Certificate } from 'node:crypto';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { connect as connectTls } from 'node:tls';
+
+import { TUNNEL_CLOSE_CODE } from '@ptbk/protocol';
+import { WebSocket } from 'ws';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -14,9 +19,12 @@ import type { TestEngine } from '../testing/engines';
 import { createTestEngine } from '../testing/engines';
 import { TEST_RELAY_TOKEN, startFakeDashboard } from '../testing/fake-dashboard';
 import { createFakeRandom } from '../testing/fake-random';
-import { relayCertificate } from '../testing/relay-harness';
+import type { TestEngineClient } from '../testing/engine-client';
+import { connectEngine } from '../testing/engine-client';
+import { RELAY_ID, relayCertificate } from '../testing/relay-harness';
 import { createTestCertificate } from '../testing/test-pki';
 import { parseRelayConfig } from './config';
+import type { Relay } from './start-relay';
 import { RelayTlsError, createRelayServices, startRelay } from './start-relay';
 
 const signal = new AbortController().signal;
@@ -88,7 +96,7 @@ describe('startRelay', () => {
             await writeRegistry(engine, next);
             process.emit('SIGHUP', 'SIGHUP');
             await vi.waitFor(() => {
-                expect(logger.entries.at(-1)).toEqual({
+                expect(logger.entries).toContainEqual({
                     level: 'info',
                     event: 'registry.loaded',
                     fields: { engines: 2 },
@@ -97,6 +105,118 @@ describe('startRelay', () => {
         } finally {
             await relay.close();
         }
+    });
+
+    /** An authenticated tunnel to `relay`, trusting `ca`. */
+    const tunnel = async (relay: Relay, ca = relayCertificate().cert): Promise<TestEngineClient> => {
+        const client = connectEngine({ port: relay.port, relayId: RELAY_ID, ca, signer: engine.signer });
+        const challenge = await client.nextMessage();
+        if (challenge.type !== 'challenge') throw new Error('expected a challenge');
+        await client.authenticate(challenge);
+        expect(await client.nextMessage()).toMatchObject({ type: 'ready' });
+        return client;
+    };
+    const fingerprintAt = (port: number): Promise<string | undefined> =>
+        new Promise((resolve) => {
+            const socket = connectTls({ host: '127.0.0.1', port, servername: RELAY_ID, rejectUnauthorized: false });
+            socket.once('secureConnect', () => {
+                resolve(socket.getPeerX509Certificate()?.fingerprint256);
+                socket.destroy();
+            });
+        });
+
+    it('loads a new certificate on SIGHUP for new connections, keeping open tunnels connected', async () => {
+        const relay = await startRelay(env(), deps());
+        try {
+            const client = await tunnel(relay);
+            const next = createTestCertificate([RELAY_ID]);
+            await writeFile(join(dir, 'cert.pem'), next.cert);
+            await writeFile(join(dir, 'key.pem'), next.key);
+            process.emit('SIGHUP', 'SIGHUP');
+            await vi.waitFor(() => {
+                expect(events()).toContain('relay.certificate-loaded');
+            });
+            expect(await fingerprintAt(relay.port)).toBe(new X509Certificate(next.cert).fingerprint256);
+            expect(client.ws.readyState).toBe(WebSocket.OPEN);
+            await tunnel(relay, next.cert);
+            client.ws.terminate();
+        } finally {
+            await relay.close();
+        }
+    });
+
+    it.each<[string, () => Promise<void>, string]>([
+        [
+            'a key that does not match',
+            () => writeFile(join(dir, 'key.pem'), createTestCertificate([RELAY_ID]).key),
+            'Error',
+        ],
+        [
+            'a certificate for the engine domain',
+            async () => {
+                const engineWide = createTestCertificate([RELAY_ID, '*.engine.test']);
+                await writeFile(join(dir, 'cert.pem'), engineWide.cert);
+                await writeFile(join(dir, 'key.pem'), engineWide.key);
+            },
+            'RELAY_TLS_CERT_FILE must not be valid for RELAY_ENGINE_DOMAIN or any name under it',
+        ],
+    ])('keeps the old certificate on SIGHUP when the new files hold %s', async (_, replace, problem) => {
+        const relay = await startRelay(env(), deps());
+        try {
+            await replace();
+            process.emit('SIGHUP', 'SIGHUP');
+            await vi.waitFor(() => {
+                expect(logger.entries).toContainEqual({
+                    level: 'error',
+                    event: 'relay.certificate-rejected',
+                    fields: { problem },
+                });
+            });
+            expect(await fingerprintAt(relay.port)).toBe(new X509Certificate(relayCertificate().cert).fingerprint256);
+        } finally {
+            await relay.close();
+        }
+    });
+
+    it('expires the registry cache and revalidates on SIGHUP, so a suspension takes effect at once', async () => {
+        const relay = await startRelay(env(), deps());
+        try {
+            const client = await tunnel(relay);
+            await writeFile(
+                registryFile,
+                JSON.stringify({
+                    v: 1,
+                    engines: [{ engineId: engine.engineId, ...engine.entry, status: 'suspended' }],
+                }),
+            );
+            process.emit('SIGHUP', 'SIGHUP');
+            expect((await client.closed).code).toBe(TUNNEL_CLOSE_CODE.SUSPENDED);
+        } finally {
+            await relay.close();
+        }
+    });
+
+    it.each<[string, readonly string[]]>([
+        ['the engine domain itself', ['engine.test']],
+        ['a wildcard under it', [RELAY_ID, '*.engine.test']],
+        ['a wildcard above it', [RELAY_ID, '*.test']],
+        ['a name under it, written with a comma Node quotes', [RELAY_ID, 'a,b.engine.test']],
+    ])('refuses to start with a certificate valid for %s', async (_, names) => {
+        const engineWide = createTestCertificate(names);
+        await writeFile(join(dir, 'cert.pem'), engineWide.cert);
+        await writeFile(join(dir, 'key.pem'), engineWide.key);
+        const failure = startRelay(env(), deps());
+        await expect(failure).rejects.toBeInstanceOf(RelayTlsError);
+        await expect(failure).rejects.toThrow(
+            'RELAY_TLS_CERT_FILE must not be valid for RELAY_ENGINE_DOMAIN or any name under it',
+        );
+    });
+
+    it('refuses to start with a file that is PEM but not a certificate', async () => {
+        await writeFile(join(dir, 'cert.pem'), relayCertificate().key);
+        await expect(startRelay(env(), deps())).rejects.toThrow(
+            'RELAY_TLS_CERT_FILE and RELAY_TLS_KEY_FILE must be a readable PEM certificate and its private key',
+        );
     });
 
     it('refuses to start on an invalid registry file', async () => {
