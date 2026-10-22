@@ -57,6 +57,30 @@ describe('the activity feed cache', () => {
         expect(next?.pageParams).toEqual([null]);
     });
 
+    it('continues from an item it could not read as well', () => {
+        const unknown: ActivityItem = {
+            kind: 'unknown',
+            base: {
+                ...(item(1).kind === 'known' ? {} : {}),
+                kind: 'deploy.started',
+                v: 1,
+                id: 'activity-old',
+                at: new Date(START).toISOString(),
+                agentId: null,
+                agentName: null,
+                actor: { kind: 'system' },
+            } as never,
+            raw: {},
+        };
+        const data: FeedData = {
+            pages: [{ items: [...(pages([MAX_FEED_ITEMS, 2]).pages[0]?.items ?? []), unknown], next: null }],
+            pageParams: [null],
+        };
+        const next = prependActivity(data, item(MAX_FEED_ITEMS + 1));
+        expect(next?.pages[0]?.next).toEqual({ before: new Date(START + 2 * 1000 + 1).toISOString() });
+        expect(prependActivity({ pages: [], pageParams: [] }, item(1))).toEqual({ pages: [], pageParams: [] });
+    });
+
     it('lists each item once even when a page repeats an item at the boundary', () => {
         const data: FeedData = {
             pages: [

@@ -14,7 +14,7 @@ export function dayPart(hour: number): DayPart {
     return 'evening';
 }
 
-function greeting(name: string, part: DayPart): string {
+export function greeting(name: string, part: DayPart): string {
     switch (part) {
         case 'morning':
             return m.home_greeting_morning({ name });

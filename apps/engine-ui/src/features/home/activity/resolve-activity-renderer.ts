@@ -1,10 +1,11 @@
-import type { ActivityItem } from '@ptbk/engine-api';
+import type { Activity, ActivityItem } from '@ptbk/engine-api';
 
 import type { ActivityRendererEntry } from '../../../app/registry/feature';
 import { areaOf } from './activity-areas';
 
 export type ResolvedRenderer =
-    { readonly kind: 'renderer'; readonly entry: ActivityRendererEntry } | { readonly kind: 'fallback' };
+    | { readonly kind: 'renderer'; readonly entry: ActivityRendererEntry; readonly activity: Activity }
+    | { readonly kind: 'fallback' };
 
 const FALLBACK: ResolvedRenderer = { kind: 'fallback' };
 
@@ -22,8 +23,8 @@ export function resolveActivityRenderer(
     const claims = (entry: ActivityRendererEntry, claimed: string) =>
         entry.kind === claimed && entry.versions.includes(v);
     const exact = renderers.find((entry) => claims(entry, kind));
-    if (exact !== undefined) return { kind: 'renderer', entry: exact };
+    if (exact !== undefined) return { kind: 'renderer', entry: exact, activity: item.activity };
     const area = areaOf(kind);
     const prefix = area === null ? undefined : renderers.find((entry) => claims(entry, `${area}.*`));
-    return prefix === undefined ? FALLBACK : { kind: 'renderer', entry: prefix };
+    return prefix === undefined ? FALLBACK : { kind: 'renderer', entry: prefix, activity: item.activity };
 }

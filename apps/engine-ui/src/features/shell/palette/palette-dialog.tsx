@@ -25,7 +25,7 @@ const AGENT_RESULTS = 8;
 
 interface PaletteItem extends CommandPaletteItem {
     readonly select: () => void;
-    readonly preload?: () => void;
+    readonly preload?: (() => void) | undefined;
 }
 
 function iconOf(Icon: NavIcon | undefined) {
@@ -73,7 +73,7 @@ export function PaletteDialog({ open, onClose }: PaletteDialogProps) {
             items: navigationItems(features, query).map(({ id, label, icon, to }) => ({
                 id: `nav:${id}`,
                 label,
-                ...(icon === undefined ? {} : { icon: iconOf(icon) }),
+                icon: iconOf(icon),
                 select: go(to),
             })),
         },
@@ -84,10 +84,10 @@ export function PaletteDialog({ open, onClose }: PaletteDialogProps) {
             items: (provided.get(search.id)?.results ?? []).map((result) => ({
                 id: `search:${search.id}:${result.id}`,
                 label: result.label,
-                ...(result.detail === undefined ? {} : { detail: result.detail }),
-                ...(result.icon === undefined ? {} : { icon: iconOf(result.icon) }),
+                detail: result.detail,
+                icon: iconOf(result.icon),
                 select: result.select,
-                ...(result.preload === undefined ? {} : { preload: result.preload }),
+                preload: result.preload,
             })),
         })),
         {
@@ -157,7 +157,7 @@ function SearchProbe({
 interface NavigationItem {
     readonly id: string;
     readonly label: string;
-    readonly icon?: NavIcon;
+    readonly icon: NavIcon;
     readonly to: RoutePath;
 }
 

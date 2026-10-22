@@ -29,11 +29,11 @@ describe('resolveActivityRenderer', () => {
     const prefix = entry('run.*');
 
     it('prefers an exact kind, then the area prefix, then the generic card', () => {
-        expect(resolveActivityRenderer(known('run.failed'), [prefix, exact])).toEqual({
+        expect(resolveActivityRenderer(known('run.failed'), [prefix, exact])).toMatchObject({
             kind: 'renderer',
             entry: exact,
         });
-        expect(resolveActivityRenderer(known('run.started'), [prefix, exact])).toEqual({
+        expect(resolveActivityRenderer(known('run.started'), [prefix, exact])).toMatchObject({
             kind: 'renderer',
             entry: prefix,
         });
@@ -41,7 +41,7 @@ describe('resolveActivityRenderer', () => {
     });
 
     it('skips an entry that does not claim the version', () => {
-        expect(resolveActivityRenderer(known('run.failed'), [entry('run.failed', [2]), prefix])).toEqual({
+        expect(resolveActivityRenderer(known('run.failed'), [entry('run.failed', [2]), prefix])).toMatchObject({
             kind: 'renderer',
             entry: prefix,
         });

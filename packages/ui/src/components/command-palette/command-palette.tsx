@@ -12,7 +12,7 @@ export interface CommandPaletteItem {
     /** Plain text; rendered as text, so untrusted names are safe here. */
     readonly label: string;
     /** A second, quieter line of plain text (an agent's description, a run's agent). */
-    readonly detail?: string;
+    readonly detail?: string | undefined;
     readonly icon?: ReactNode;
 }
 

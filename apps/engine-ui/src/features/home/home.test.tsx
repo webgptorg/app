@@ -10,7 +10,7 @@ import { expectNoAxeViolations } from '../../testing/axe';
 import { OWNER_ID } from '../../testing/agents-engine';
 import { createHomeEngine, seededActivity } from '../../testing/home-engine';
 import { renderWithProviders } from '../../testing/render-with-providers';
-import { HOSTILE } from '../../testing/runs-engine';
+import { HOSTILE, runsSeed } from '../../testing/runs-engine';
 import { TEST_NOW } from '../../testing/test-engine-api';
 
 const TIMEOUT_MS = 20_000;
@@ -92,12 +92,18 @@ describe('home: control center', { timeout: TIMEOUT_MS }, () => {
                 useAttention: () => ({ count: 3, to: '/secrets', search: { status: 'revoked' } }),
             },
         });
+        const bare = defineFeature({
+            id: 'bare',
+            requires: {},
+            attention: { id: 'bare', useAttention: () => ({ count: 1, to: '/members' }) },
+        });
         const engine = createHomeEngine({ seed: { runs: [] } });
-        renderWithProviders({ path: '/', engineApi: engine.client, features: [...FEATURES, audit, secrets] });
+        renderWithProviders({ path: '/', engineApi: engine.client, features: [...FEATURES, audit, secrets, bare] });
 
         await waitFor(() => {
-            expect(countValue('Needs attention')).toBe('5');
+            expect(countValue('Needs attention')).toBe('6');
         });
+        expect(screen.getByRole('link', { name: 'bare: 1' }).getAttribute('href')).toBe('/members');
         expect(screen.getByRole('link', { name: '2 to review' }).getAttribute('href')).toBe('/audit');
         expect(screen.getByRole('link', { name: 'Vault: 3' }).getAttribute('href')).toBe('/secrets?status=revoked');
     });
@@ -193,6 +199,51 @@ describe('home: control center', { timeout: TIMEOUT_MS }, () => {
         });
     });
 
+    it('keeps a failing run count to its own tile', async () => {
+        const engine = createHomeEngine();
+        engine.spies.runStats.mockImplementation(() =>
+            Promise.resolve({ kind: 'problem', problem: createProblem('forbidden') }),
+        );
+        const { user } = renderWithProviders({ path: '/', engineApi: engine.client });
+
+        const counts = await screen.findByRole('region', { name: 'Right now' });
+        expect(await within(counts).findByText('This part of the page could not load.')).toBeDefined();
+        expect(within(counts).getByText('Needs attention')).toBeDefined();
+        engine.spies.runStats.mockRestore();
+        await user.click(within(counts).getByRole('button', { name: 'Try again' }));
+        await waitFor(() => {
+            expect(countValue('Running now')).not.toBeNull();
+        });
+    });
+
+    it('takes the banner down once the engine says it installed the update', async () => {
+        const engine = createHomeEngine();
+        renderWithProviders({ path: '/', engineApi: engine.client });
+        await feed();
+        act(() => {
+            engine.controller.appendActivity({
+                kind: 'engine.update-available',
+                agentId: null,
+                actor: { kind: 'system' },
+                version: SemVer.parse('9.2.0'),
+            });
+        });
+        expect(await screen.findByText('Version 9.2.0 is available.')).toBeDefined();
+
+        act(() => {
+            engine.controller.appendActivity({
+                kind: 'engine.updated',
+                agentId: null,
+                actor: { kind: 'system' },
+                fromVersion: SemVer.parse('9.1.0'),
+                toVersion: SemVer.parse('9.2.0'),
+            });
+        });
+        await waitFor(() => {
+            expect(screen.queryByText('Version 9.2.0 is available.')).toBeNull();
+        });
+    });
+
     it('shows a feed that fails with a retry, and the rest of home still renders', async () => {
         const engine = createHomeEngine();
         engine.spies.activity.mockImplementation(() =>
@@ -226,6 +277,53 @@ describe('home: member', { timeout: TIMEOUT_MS }, () => {
         expect(screen.queryByRole('region', { name: 'Activity' })).toBeNull();
         expect(screen.queryByText('Running now')).toBeNull();
         await expectNoAxeViolations(container);
+    });
+
+    it('says when nothing of theirs runs and they have no chats, without offering what they may not do', async () => {
+        const engine = createHomeEngine({
+            permissions: ['agents.read', 'chats.read', 'runs.read'],
+            seed: { runs: [], chats: [], messages: [], agents: [] },
+        });
+        renderWithProviders({ path: '/', engineApi: engine.client });
+
+        expect(await screen.findByText('Nothing of yours is running or queued.')).toBeDefined();
+        expect(await screen.findByText('No chats yet.')).toBeDefined();
+        const agents = await screen.findByRole('region', { name: 'Your agents' });
+        expect(await within(agents).findByText('No agents yet')).toBeDefined();
+        expect(within(agents).queryByRole('link', { name: 'New agent' })).toBeNull();
+        expect(screen.queryByRole('link', { name: 'New agent' })).toBeNull();
+    });
+
+    it('names an untitled chat and a run whose agent the engine no longer knows', async () => {
+        const engine = createHomeEngine({
+            permissions: ['agents.read', 'chats.read', 'runs.read'],
+            seed: { agents: [...(runsSeed().agents ?? []), { id: 'agent-solo', source: 'Solo' }] },
+        });
+        const runs = await engine.client.runs.list({ status: 'running' }, AbortSignal.timeout(1000));
+        if (runs.kind !== 'ok') throw new Error('no runs');
+        engine.spies.runs.mockResolvedValue({
+            ...runs,
+            data: { ...runs.data, items: runs.data.items.map((run) => ({ ...run, agentName: null })) },
+        });
+        engine.spies.chats.mockImplementation(async (query, signal) => {
+            const chats = await engine.client.chats.list('agent-ada' as never, query, signal);
+            return chats.kind === 'ok'
+                ? {
+                      ...chats,
+                      data: { ...chats.data, items: chats.data.items.map((chat) => ({ ...chat, title: ' ' })) },
+                  }
+                : chats;
+        });
+        renderWithProviders({ path: '/', engineApi: engine.client });
+
+        const recent = await screen.findByRole('region', { name: 'Recent chats' });
+        expect(await within(recent).findByRole('link', { name: 'Untitled chat' })).toBeDefined();
+        const solo = await screen.findByRole('link', { name: 'Solo' });
+        expect(solo.parentElement?.textContent).toBe('Solo');
+        const mine = await screen.findByRole('region', { name: 'Your running work' });
+        await waitFor(() => {
+            expect(within(mine).getAllByRole('listitem').length).toBeGreaterThan(0);
+        });
     });
 
     it('leaves out running work without runs.read', async () => {
@@ -350,6 +448,15 @@ describe('home: activity feed', { timeout: TIMEOUT_MS }, () => {
             expect.anything(),
         );
         expect(within(region).getByRole('button', { name: 'Members' }).getAttribute('aria-pressed')).toBe('true');
+
+        act(() => {
+            engine.controller.appendActivity(memberJoined(4));
+        });
+        expect(await within(region).findByText('Live member 4 joined')).toBeDefined();
+        await user.click(within(region).getByRole('button', { name: 'All' }));
+        await waitFor(() => {
+            expect(router.state.location.search).toEqual({});
+        });
     });
 
     it('shows a member without runs.read no run cards and no run chip, even from a careless engine', async () => {
@@ -385,6 +492,27 @@ describe('home: activity feed', { timeout: TIMEOUT_MS }, () => {
     });
 });
 
+describe('home: older activity', { timeout: TIMEOUT_MS }, () => {
+    it('offers a retry when older activity cannot load', async () => {
+        const engine = createHomeEngine({ activity: seededActivity(25) });
+        const { user } = renderWithProviders({ path: '/', engineApi: engine.client });
+        const region = await feed();
+        await waitFor(() => {
+            expect(within(region).getAllByRole('listitem')).toHaveLength(20);
+        });
+        engine.spies.activity.mockImplementationOnce(() =>
+            Promise.resolve({ kind: 'problem', problem: createProblem('forbidden') }),
+        );
+
+        await user.click(within(region).getByRole('button', { name: 'Load older' }));
+        expect(await within(region).findByText('Older activity could not load.')).toBeDefined();
+        await user.click(within(region).getByRole('button', { name: 'Try again' }));
+        await waitFor(() => {
+            expect(within(region).getAllByRole('listitem')).toHaveLength(25);
+        });
+    });
+});
+
 describe('home: activity cards', { timeout: TIMEOUT_MS }, () => {
     it('gives an unknown kind, a higher version and an invalid item the generic card with the raw kind as text', async () => {
         const engine = createHomeEngine();
@@ -401,6 +529,11 @@ describe('home: activity cards', { timeout: TIMEOUT_MS }, () => {
                     raw: { secret: 'payload-2' },
                 },
                 {
+                    kind: 'unknown',
+                    base: { ...base, id: 'a-4', kind: 'constructor.started', v: 1, agentName: null } as never,
+                    raw: {},
+                },
+                {
                     kind: 'invalid',
                     base: { ...base, id: 'a-3', kind: 'member.joined', v: 1 } as never,
                     issues: [{ path: 'displayName', code: 'invalid_type' }],
@@ -414,12 +547,14 @@ describe('home: activity cards', { timeout: TIMEOUT_MS }, () => {
         expect(cards.map((card) => card.querySelector('code')?.textContent)).toEqual([
             'deploy.started',
             'run.failed',
+            'constructor.started',
             'member.joined',
         ]);
         for (const card of cards) {
-            expect(card.textContent).toContain('Ada');
+            expect(card.textContent).toMatch(/Ada|Unnamed agent/);
             expect(card.textContent).not.toContain('payload');
         }
+        expect(cards[2]?.textContent).toContain('Unnamed agent');
     });
 
     it('renders a hostile agent name as text, linking by the agent ID', async () => {
@@ -453,6 +588,33 @@ describe('home: activity cards', { timeout: TIMEOUT_MS }, () => {
         for (const link of links) expect(link.getAttribute('href')).toBe('/agents/agent-ada');
         expect(region.querySelector('img, script')).toBeNull();
         expect(window.__ptbkCspViolations).toEqual([]);
+    });
+
+    it('announces the raw kind when a renderer cannot summarise its item', async () => {
+        const broken = defineFeature({
+            id: 'broken-summary',
+            requires: {},
+            activityRenderers: [
+                {
+                    kind: 'member.joined',
+                    versions: [1],
+                    component: () => null,
+                    summary: () => {
+                        throw new Error('summary bug');
+                    },
+                },
+            ],
+        });
+        const engine = createHomeEngine();
+        renderWithProviders({ path: '/', engineApi: engine.client, features: [broken, ...FEATURES] });
+        await within(await feed()).findAllByRole('listitem');
+
+        act(() => {
+            engine.controller.appendActivity(memberJoined(1));
+        });
+        await waitFor(() => {
+            expect(liveRegion()?.textContent).toBe('member.joined');
+        });
     });
 
     it('keeps a feed alive when a renderer throws, showing that item’s generic card', async () => {
