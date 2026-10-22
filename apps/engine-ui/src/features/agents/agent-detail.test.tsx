@@ -6,8 +6,8 @@ import { useSyncExternalStore } from 'react';
 import { describe, expect, it } from 'vitest';
 
 import { FEATURES } from '../../app/features';
-import { AGENT_TABS, defineFeature } from '../../app/registry/feature';
-import type { AgentLiveState, FeatureDefinition, FeatureRequirement, RoutePath } from '../../app/registry/feature';
+import { defineFeature } from '../../app/registry/feature';
+import type { AgentLiveState, FeatureDefinition, RoutePath } from '../../app/registry/feature';
 import { expectNoAxeViolations } from '../../testing/axe';
 import { createAgentsEngine } from '../../testing/agents-engine';
 import type { AgentsEngineOptions } from '../../testing/agents-engine';
