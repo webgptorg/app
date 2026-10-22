@@ -15,9 +15,12 @@
     "dev:smoke": "playwright test --config playwright.dev.config.ts"
   },
   "dependencies": {
+    "@ptbk/conformance": "workspace:*",
+    "@ptbk/engine-api": "workspace:*",
     "@ptbk/protocol": "workspace:*"
   },
   "devDependencies": {
+    "@axe-core/playwright": "catalog:",
     "@playwright/test": "catalog:"
   }
 }

@@ -9,6 +9,7 @@
 !packages/*/package.json
 !packages/protocol/
 !packages/engine-api/
+!packages/conformance/
 !packages/ui/
 !packages/release-tools/
 !apps/relay/

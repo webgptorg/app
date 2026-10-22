@@ -167,9 +167,12 @@
     "e2e": {
       "name": "@ptbk/e2e",
       "dependencies": {
+        "@ptbk/conformance": "workspace:*",
+        "@ptbk/engine-api": "workspace:*",
         "@ptbk/protocol": "workspace:*",
       },
       "devDependencies": {
+        "@axe-core/playwright": "catalog:",
         "@playwright/test": "catalog:",
       },
     },
