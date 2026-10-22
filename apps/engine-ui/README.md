@@ -13,6 +13,7 @@ The bundle runs under `ENGINE_UI_CSP` from `@ptbk/engine-api`, verbatim: no inli
 - `index.html` holds one module script and one stylesheet link, nothing inline. Assets are never inlined as `data:` URLs (`assetsInlineLimit: 0`), and the modulepreload polyfill (an inline script) is off.
 - No top-level await in the entry: it turns off Rolldown's merging of common chunks into the entry, which keeps `src/app/zod-jitless.ts` running before any zod schema is built (zod's `new Function` probe is a Trusted Types violation).
 - React's `style` prop is fine (CSSOM); libraries that append `<style>` or set `style` attributes as strings are not. TanStack devtools inject styles, so they load only on the dev server.
+- The book editor (CodeMirror 6) mounts in a shadow root, where `style-mod` adopts its rules as a constructable stylesheet; in the document it would append `<style>` elements ([ADR 0013](../../docs/adr/0013-book-editor.md)). Its stylesheet is adopted the same way, and its CSS draws small SVG backgrounds as `data:` images, which `img-src` allows and the dist test exempts in exactly that shape.
 - ESLint bans `dangerouslySetInnerHTML`, `innerHTML`, `outerHTML`, `insertAdjacentHTML`, `document.write`, `setAttribute('style', …)` and `new Worker('<string>')` everywhere except `src/security/trusted-html.ts` (created by U-05).
 - `src/security/csp-violation-listener.ts` logs violations loudly on the dev server (which sends no CSP) and records them into `window.__ptbkCspViolations` when a test harness defines it.
 

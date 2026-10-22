@@ -1,6 +1,16 @@
 import { EditorView } from '@codemirror/view';
 import { act, fireEvent, screen } from '@testing-library/react';
 
+/**
+ * CodeMirror measures text ranges and calls editing commands; jsdom has neither layout nor an editing model. Called by
+ * the test files that mount an editor, so no other suite runs with these stand-ins.
+ */
+export function installEditorDomGaps(): void {
+    Object.defineProperty(Document.prototype, 'execCommand', { value: () => false, configurable: true });
+    Range.prototype.getClientRects = () => Object.assign([], { item: () => null });
+    Range.prototype.getBoundingClientRect = () => new DOMRect();
+}
+
 /** The CodeMirror view inside a book editor or viewer host (`data-testid`), which lives in a shadow root. */
 export function editorView(testId: 'book-editor' | 'book-viewer' = 'book-editor', index = 0): EditorView {
     const host = screen.getAllByTestId(testId)[index];

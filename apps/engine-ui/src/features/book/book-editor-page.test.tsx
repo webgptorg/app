@@ -5,12 +5,21 @@ import { act, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { expectNoAxeViolations } from '../../testing/axe';
-import { appendToBook, bookText, editorView, pressSaveShortcut, replaceBook } from '../../testing/book-editor';
+import {
+    appendToBook,
+    bookText,
+    editorView,
+    installEditorDomGaps,
+    pressSaveShortcut,
+    replaceBook,
+} from '../../testing/book-editor';
 import { renderWithProviders } from '../../testing/render-with-providers';
 import { TEST_NOW } from '../../testing/test-engine-api';
 
 // Each test renders the whole app on the in-memory engine, and validation waits for its 500 ms debounce.
 const TIMEOUT_MS = 20_000;
+
+installEditorDomGaps();
 const WAIT = { timeout: 5_000 };
 
 const AGENT = AgentId.parse('agent-ada');
