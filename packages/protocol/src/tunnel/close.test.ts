@@ -9,6 +9,7 @@ describe('TUNNEL_CLOSE_CODE', () => {
             PROTOCOL_ERROR: 4002,
             SHUTTING_DOWN: 4003,
             SUSPENDED: 4004,
+            FRAME_BUDGET: 4005,
         });
     });
 

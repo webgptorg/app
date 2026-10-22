@@ -17,7 +17,11 @@ import {
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { STREAM_RESERVE_BYTES } from '../src/adapters/socket-stream-pipe';
-import { CLIENT_HELLO_MAX_BYTES } from '../src/adapters/tcp-listener';
+import {
+    CLIENT_HELLO_MAX_BYTES,
+    CLIENT_HELLO_MAX_CHUNKS,
+    CLIENT_HELLO_MAX_HELLO_BYTES,
+} from '../src/adapters/tcp-listener';
 import {
     SCHEDULER_SLICE_BYTES,
     TUNNEL_HIGH_WATER_BYTES,
@@ -278,13 +282,14 @@ describe('browser listener over real sockets', () => {
         await pipe(harness, target, custom);
     });
 
-    const tooLarge = Buffer.from([0x16, 0x03, 0x01, 0x40, 0x00, 0x01, 0x00, 0x3f, 0xfc]);
+    // Declares a handshake of 32 KiB + 1: refused as soon as its length is read.
+    const tooLarge = Buffer.from([0x16, 0x03, 0x01, 0x40, 0x00, 0x01, 0x00, 0x80, 0x01]);
 
     it.each([
         ['an unknown SNI', () => clientHello('nobody.example.test'), 'unknown-host'],
         ['a ClientHello without SNI', () => clientHello(), 'no-sni'],
         ['plain HTTP', () => Promise.resolve(Buffer.from('GET / HTTP/1.1\r\nHost: x\r\n\r\n')), 'malformed'],
-        ['a ClientHello over 16 KiB', () => Promise.resolve(tooLarge), 'too-large'],
+        ['a ClientHello over 32 KiB', () => Promise.resolve(tooLarge), 'too-large'],
         [
             'an engine hostname with no tunnel here',
             async () => clientHello((await createTestEngine(125)).defaultHostname),
@@ -305,7 +310,30 @@ describe('browser listener over real sockets', () => {
     });
 
     it('treats the too-large fixture as too large', () => {
-        expect(parseClientHello(tooLarge, { maxBytes: CLIENT_HELLO_MAX_BYTES })).toEqual({ kind: 'too-large' });
+        const limits = { maxBytes: CLIENT_HELLO_MAX_BYTES, maxHelloBytes: CLIENT_HELLO_MAX_HELLO_BYTES };
+        expect(parseClientHello(tooLarge, limits)).toEqual({ kind: 'too-large' });
+    });
+
+    it('closes a connection whose ClientHello is still incomplete after 64 chunks, with zero bytes', async () => {
+        const harness = await start();
+        const target = await online(harness, 127);
+        const hello = await clientHello(target.engine.defaultHostname);
+        expect(hello.length).toBeGreaterThan(CLIENT_HELLO_MAX_CHUNKS);
+        const client = browser(harness);
+        await connectionsReach(harness, 2);
+        for (let index = 0; index < CLIENT_HELLO_MAX_CHUNKS - 1; index++) {
+            client.socket.write(hello.subarray(index, index + 1));
+            // The listener has read this byte on its own before the next one is sent.
+            await vi.waitFor(() => {
+                expect(harness.listener.browser.bufferedBytes()).toBe(index + 1);
+            }, PATIENTLY);
+        }
+        expect(harness.listener.browser.refusals().malformed).toBe(0);
+        client.socket.write(hello.subarray(CLIENT_HELLO_MAX_CHUNKS - 1, CLIENT_HELLO_MAX_CHUNKS));
+        expect(await client.closed).toHaveLength(0);
+        expect(harness.listener.browser.refusals().malformed).toBe(1);
+        const opened = await Promise.race([target.streams.next(), Promise.resolve(null)]);
+        expect(opened).toBeNull();
     });
 
     it('closes a connection whose ClientHello is not complete within the timeout, with zero bytes', async () => {

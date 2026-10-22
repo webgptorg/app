@@ -73,6 +73,7 @@ After `ready`, a relay may close a tunnel with:
 - `SHUTTING_DOWN` (4003): the relay is draining. Reconnect soon, with a short jitter.
 - `SUSPENDED` (4004) or `AUTH_FAILED` (4001): the relay's periodic registry check refused the engine.
 - `PROTOCOL_ERROR` (4002): the engine sent something invalid.
+- `FRAME_BUDGET` (4005): the engine sent more frames per second than the relay allows a tunnel. Reconnect with backoff, and send fewer, larger frames.
 
 The engine should reconnect with exponential backoff and full jitter after every other close, after every `reject`, and after every close before `ready`. Fast retries before `ready` could loop against a relay that accepts and closes every connection. The mock engine uses a 500 ms base, factor 2, a 10 s cap and resets after 60 s of a healthy tunnel; those numbers are not part of the contract. After a relay restart, the tunnel should be back within 10 s (spike acceptance criterion). An engine that keeps getting `suspended` or `auth-failed` should show it in the security panel.
 
@@ -106,6 +107,8 @@ The engine must:
 - Each direction of each stream starts with `INITIAL_WINDOW_BYTES` (262,144) of credit, counted in `DATA` payload bytes.
 - The engine must not send more `DATA` than its credit; it waits for the relay's `WINDOW`. It grants credit back with `WINDOW` only after it has delivered bytes downstream (for example, as the TLS server reads them), so a slow consumer slows the sender instead of filling memory.
 - `DATA` beyond the credit the engine granted, or a grant that would take the window past `MAX_WINDOW_BYTES`, is a flow-control violation: close the stream with `CLOSE` `FLOW_CONTROL`. The mock engine also closes the tunnel with `PROTOCOL_ERROR`.
+- Every frame the engine sends counts against a per-tunnel frame budget on the relay, ignorable frames and `CLOSE` for old streams included. Grant credit in increments of at least 1 KiB where the stream allows it: the relay collects smaller grants before it sends `DATA`, unless a grant reopens a fully closed window, and many tiny grants spend the budget.
+- Time out TLS handshakes the engine does not complete: the relay resets a stream that gets no `DATA` from the engine within about 10 s of `OPEN`, and refused connections never send a byte.
 - `createSendWindow` and `createReceiveWindow` do the accounting and return `violation` instead of wrapping around.
 - Respect backpressure everywhere: never buffer without a bound.
 

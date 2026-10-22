@@ -8,7 +8,9 @@ export type MalformedReason =
     | 'length-mismatch'
     | 'bad-extensions'
     | 'duplicate-extension'
-    | 'bad-server-name';
+    | 'bad-server-name'
+    /** Only from `createClientHelloBuffer` with `maxChunks`: too many chunks went by without a complete ClientHello. */
+    | 'too-fragmented';
 
 export type ClientHelloParse =
     | { readonly kind: 'need-more' }
@@ -20,6 +22,20 @@ export type ClientHelloParse =
 export interface ClientHelloLimits {
     /** Most bytes, record headers included, the ClientHello may span before parsing gives up. */
     readonly maxBytes: number;
+    /**
+     * Most bytes of the ClientHello handshake message itself, across all its records and without their headers; a
+     * larger declared length is `too-large` as soon as it is read. Unset: only `maxBytes` applies.
+     */
+    readonly maxHelloBytes?: number;
+}
+
+/** Parses a connection's first bytes as they arrive, keeping its place between calls. */
+export interface ClientHelloParser {
+    /**
+     * Everything received so far; earlier bytes must be passed unchanged. Only bytes not seen before are examined, so
+     * the cost of a call does not grow with what came before it. A result other than `need-more` is final.
+     */
+    feed(bytes: Uint8Array): ClientHelloParse;
 }
 
 const RECORD_HEADER_BYTES = 5;
@@ -41,9 +57,14 @@ function malformed(reason: MalformedReason): ClientHelloParse {
     return { kind: 'malformed', reason };
 }
 
+function isPositiveInteger(value: number): boolean {
+    return Number.isSafeInteger(value) && value >= 1;
+}
+
 export function assertLimits(limits: ClientHelloLimits): void {
-    if (!Number.isSafeInteger(limits.maxBytes) || limits.maxBytes < 1) {
-        throw new RangeError('maxBytes must be a positive integer');
+    if (!isPositiveInteger(limits.maxBytes)) throw new RangeError('maxBytes must be a positive integer');
+    if (limits.maxHelloBytes !== undefined && !isPositiveInteger(limits.maxHelloBytes)) {
+        throw new RangeError('maxHelloBytes must be a positive integer');
     }
 }
 
@@ -55,51 +76,86 @@ export function assertLimits(limits: ClientHelloLimits): void {
  * verdict on a prefix is also the verdict on any longer input; `need-more` means only that.
  */
 export function parseClientHello(bytes: Uint8Array, limits: ClientHelloLimits): ClientHelloParse {
+    return createClientHelloParser(limits).feed(bytes);
+}
+
+/**
+ * The parser behind {@link parseClientHello}, for bytes that arrive in chunks. It keeps the record it is in and the
+ * handshake bytes reassembled so far, so feeding chunk by chunk reaches the verdict one call over all the bytes would,
+ * and each byte is examined once.
+ */
+export function createClientHelloParser(limits: ClientHelloLimits): ClientHelloParser {
     assertLimits(limits);
-    const { maxBytes } = limits;
-    const available = Math.min(bytes.byteLength, maxBytes);
-    const incomplete = available === maxBytes ? TOO_LARGE : NEED_MORE;
-    const view = new DataView(bytes.buffer, bytes.byteOffset, available);
+    const { maxBytes, maxHelloBytes = Number.POSITIVE_INFINITY } = limits;
     // A ClientHello may be fragmented over several records, so its bytes are reassembled here.
-    const handshake = new Uint8Array(available);
+    let handshake = new Uint8Array(0);
     let handshakeFilled = 0;
     let handshakeEnd: number | undefined;
-    let offset = 0;
+    /** Where the record being read starts in the input, how much of its payload is copied, and where it starts in `handshake`. */
+    let recordOffset = 0;
+    let recordCopied = 0;
+    let recordHandshakeStart = 0;
+    let outcome: ClientHelloParse = NEED_MORE;
 
-    for (;;) {
-        const headerProblem = recordHeaderProblem(view, offset);
-        if (headerProblem !== undefined) return malformed(headerProblem);
-        if (offset + RECORD_HEADER_BYTES > available) return incomplete;
-
-        const payloadLength = view.getUint16(offset + 3);
-        if (payloadLength === 0 || payloadLength > MAX_RECORD_PAYLOAD_BYTES) return malformed('length-mismatch');
-        const payloadStart = offset + RECORD_HEADER_BYTES;
-        const recordEnd = payloadStart + payloadLength;
-        if (recordEnd > maxBytes) return TOO_LARGE;
-
-        const handshakeBeforeRecord = handshakeFilled;
-        const copyEnd = Math.min(recordEnd, available);
-        handshake.set(bytes.subarray(payloadStart, copyEnd), handshakeFilled);
-        handshakeFilled += copyEnd - payloadStart;
-
-        if (handshakeFilled >= 1 && handshake[0] !== HANDSHAKE_CLIENT_HELLO) return malformed('not-client-hello');
-        if (handshakeEnd === undefined && handshakeFilled >= HANDSHAKE_HEADER_BYTES) {
-            handshakeEnd = HANDSHAKE_HEADER_BYTES + readUint24(handshake, 1);
+    function append(part: Uint8Array): void {
+        if (handshakeFilled + part.length > handshake.length) {
+            const grown = new Uint8Array(Math.max(handshakeFilled + part.length, handshake.length * 2));
+            grown.set(handshake.subarray(0, handshakeFilled));
+            handshake = grown;
         }
-        if (handshakeEnd !== undefined) {
-            const handshakeAfterRecord = handshakeBeforeRecord + payloadLength;
-            // Clients send nothing after the ClientHello until the server answers, and a TLS 1.3 key
-            // change (0-RTT) must fall on a record boundary, so a ClientHello sharing a record is invalid.
-            if (handshakeAfterRecord > handshakeEnd) return malformed('length-mismatch');
-            if (smallestEnd(recordEnd, handshakeEnd - handshakeAfterRecord) > maxBytes) return TOO_LARGE;
-        }
-
-        if (copyEnd < recordEnd) return incomplete;
-        if (handshakeFilled === handshakeEnd) {
-            return parseClientHelloBody(handshake.subarray(HANDSHAKE_HEADER_BYTES, handshakeEnd));
-        }
-        offset = recordEnd;
+        handshake.set(part, handshakeFilled);
+        handshakeFilled += part.length;
     }
+
+    function advance(bytes: Uint8Array): ClientHelloParse {
+        const available = Math.min(bytes.byteLength, maxBytes);
+        const incomplete = available === maxBytes ? TOO_LARGE : NEED_MORE;
+        const view = new DataView(bytes.buffer, bytes.byteOffset, available);
+
+        for (;;) {
+            const headerProblem = recordHeaderProblem(view, recordOffset);
+            if (headerProblem !== undefined) return malformed(headerProblem);
+            if (recordOffset + RECORD_HEADER_BYTES > available) return incomplete;
+
+            const payloadLength = view.getUint16(recordOffset + 3);
+            if (payloadLength === 0 || payloadLength > MAX_RECORD_PAYLOAD_BYTES) return malformed('length-mismatch');
+            const payloadStart = recordOffset + RECORD_HEADER_BYTES;
+            const recordEnd = payloadStart + payloadLength;
+            if (recordEnd > maxBytes) return TOO_LARGE;
+
+            const copyEnd = Math.min(recordEnd, available);
+            append(bytes.subarray(payloadStart + recordCopied, copyEnd));
+            recordCopied = copyEnd - payloadStart;
+
+            if (handshakeFilled >= 1 && handshake[0] !== HANDSHAKE_CLIENT_HELLO) return malformed('not-client-hello');
+            if (handshakeEnd === undefined && handshakeFilled >= HANDSHAKE_HEADER_BYTES) {
+                handshakeEnd = HANDSHAKE_HEADER_BYTES + readUint24(handshake, 1);
+            }
+            if (handshakeEnd !== undefined) {
+                if (handshakeEnd > maxHelloBytes) return TOO_LARGE;
+                const handshakeAfterRecord = recordHandshakeStart + payloadLength;
+                // Clients send nothing after the ClientHello until the server answers, and a TLS 1.3 key
+                // change (0-RTT) must fall on a record boundary, so a ClientHello sharing a record is invalid.
+                if (handshakeAfterRecord > handshakeEnd) return malformed('length-mismatch');
+                if (smallestEnd(recordEnd, handshakeEnd - handshakeAfterRecord) > maxBytes) return TOO_LARGE;
+            }
+
+            if (copyEnd < recordEnd) return incomplete;
+            if (handshakeFilled === handshakeEnd) {
+                return parseClientHelloBody(handshake.subarray(HANDSHAKE_HEADER_BYTES, handshakeEnd));
+            }
+            recordOffset = recordEnd;
+            recordCopied = 0;
+            recordHandshakeStart = handshakeFilled;
+        }
+    }
+
+    return {
+        feed(bytes) {
+            if (outcome.kind === 'need-more') outcome = advance(bytes);
+            return outcome;
+        },
+    };
 }
 
 /** Checks whichever of a record header's type and version bytes are already present. */

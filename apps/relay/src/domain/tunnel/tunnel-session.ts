@@ -28,12 +28,6 @@ import type { ReasonCounters, TunnelTerminationReason } from '../metrics/reason-
 /** The largest stream ID (u32); the session closes rather than wrap around (C-02: IDs are never reused). */
 export const MAX_STREAM_ID = 0xffff_ffff;
 
-/**
- * C-02 has no close code for exceeding a relay policy, and `PROTOCOL_ERROR` is what every other abuse of the frame
- * layer gets; a dedicated code would be an addition to C-02 (ADR 0010).
- */
-export const FRAME_BUDGET_CLOSE_CODE = TUNNEL_CLOSE_CODE.PROTOCOL_ERROR;
-
 export interface TunnelSessionLimits {
     /** `RELAY_TUNNEL_FRAMES_PER_S`: frames from the engine per second, of any kind; also the burst. */
     readonly framesPerS: number;
@@ -309,7 +303,7 @@ export function createTunnelSession(options: TunnelSessionOptions): TunnelSessio
             if (closed) return;
             if (!frameBudget.tryTake(1)) {
                 terminations.count('frame-budget');
-                close(FRAME_BUDGET_CLOSE_CODE);
+                close(TUNNEL_CLOSE_CODE.FRAME_BUDGET);
                 return;
             }
             const decoded = decodeFrame(message);

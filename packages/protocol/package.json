@@ -19,6 +19,6 @@
   },
   "devDependencies": {
     "eslint": "catalog:",
-    "fast-check": "4.10.2"
+    "fast-check": "catalog:"
   }
 }

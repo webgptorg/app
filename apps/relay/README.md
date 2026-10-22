@@ -42,7 +42,7 @@ Only `RELAY_*` and `LOG_LEVEL` are read; an unknown `RELAY_*` name is an error, 
 | `RELAY_MAX_PENDING_HANDSHAKES_PER_IP`     | `10`                | The same per client IP                                                                                                           |
 | `RELAY_MAX_TUNNELS_PER_IP`                | `50`                | Authenticated tunnels per client IP                                                                                              |
 | `RELAY_REGISTRY_MISSES_PER_S`             | `20`                | Handshakes per second, relay-wide, whose engine is not in the registry cache (also the burst); beyond it `rate-limited`          |
-| `RELAY_TUNNEL_FRAMES_PER_S`               | `20000`             | Frames from one engine per second, of any kind, also the burst; beyond it the tunnel closes with `PROTOCOL_ERROR`                |
+| `RELAY_TUNNEL_FRAMES_PER_S`               | `20000`             | Frames from one engine per second, of any kind, also the burst; beyond it the tunnel closes with `FRAME_BUDGET`                  |
 | `RELAY_TUNNEL_MIN_WINDOW_INCREMENT_BYTES` | `1024`              | Credit the relay collects before it sends DATA, unless the window was closed or the frame carries everything queued              |
 | `RELAY_TUNNEL_PING_BUFFER_BYTES`          | `1048576`           | Bytes queued towards an engine above which a ping it sends is not answered and the tunnel is cut                                 |
 | `RELAY_TUNNEL_MAX_BUFFERED_BYTES`         | `8388608`           | Bytes queued towards an engine that a send may not exceed; the tunnel is cut instead (at least 1 MiB)                            |
@@ -109,7 +109,7 @@ Logged: `tunnel.connected` and `tunnel.disconnected` (engine ID, engine IP, rela
 
 ## Browser listener
 
-Every connection on `RELAY_LISTEN_PORT` is admitted against the per-source limits (per IPv4 address; per IPv6 /64, /56 and /48) and the global cap, then read until R-01's parser can judge its ClientHello (at most 16 KiB, within `RELAY_CLIENT_HELLO_TIMEOUT_MS`). The SNI alone decides; ALPN is never read, so an ACME `acme-tls/1` validation reaches the engine like a browser.
+Every connection on `RELAY_LISTEN_PORT` is admitted against the per-source limits (per IPv4 address; per IPv6 /64, /56 and /48) and the global cap, then read until R-01's parser can judge its ClientHello (at most 32 KiB of handshake across its records, in at most 64 chunks, within `RELAY_CLIENT_HELLO_TIMEOUT_MS`). The parser keeps its place between chunks, so a ClientHello trickling in costs no more than one arriving whole. The SNI alone decides; ALPN is never read, so an ACME `acme-tls/1` validation reaches the engine like a browser.
 
 - **Before the ClientHello**, connections share their own budget (`RELAY_PENDING_CONNECTIONS_PERCENT` of the cap). Above 80% of it the ClientHello timeout drops to `RELAY_CLIENT_HELLO_PRESSURE_TIMEOUT_MS`, and when it is full (or the whole cap is) a new connection evicts the oldest pending one instead of being refused, so a browser that sends its ClientHello promptly gets through a flood of idle connections.
 - **The reserve** (`RELAY_RESERVED_CONNECTIONS_PERCENT` of the cap) is for the relay's own hostname: every connection is admitted against the whole cap, and once its SNI names an engine it must fit in the cap minus the reserve, so engines can always reconnect.

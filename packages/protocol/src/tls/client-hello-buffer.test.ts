@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createClientHelloBuffer } from './client-hello-buffer';
-import { clientHello, concat, latin1, serverNameExtension } from './fixtures/build-client-hello';
+import { clientHello, concat, latin1, paddingExtension, serverNameExtension } from './fixtures/build-client-hello';
 
 const hello = clientHello([serverNameExtension('a.example')]);
 const sni = { kind: 'sni', hostname: 'a.example', alpn: [] };
@@ -40,5 +40,48 @@ describe('createClientHelloBuffer', () => {
 
     it('throws on an invalid maxBytes', () => {
         expect(() => createClientHelloBuffer({ maxBytes: 0 })).toThrow(RangeError);
+    });
+
+    it('throws on an invalid maxChunks', () => {
+        expect(() => createClientHelloBuffer({ maxBytes: 1024, maxChunks: 0 })).toThrow(RangeError);
+        expect(() => createClientHelloBuffer({ maxBytes: 1024, maxChunks: 1.5 })).toThrow(RangeError);
+    });
+});
+
+describe('createClientHelloBuffer against a trickling client', () => {
+    // About 16 KiB, so it spans two records, as a post-quantum key share makes real ClientHellos do.
+    const large = clientHello([serverNameExtension('a.example'), paddingExtension(16_200)]);
+
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    it('refuses a ClientHello still incomplete after maxChunks chunks', () => {
+        const buffer = createClientHelloBuffer({ maxBytes: 32 * 1024, maxChunks: 64 });
+        for (let index = 0; index < 63; index++) {
+            expect(buffer.push(large.subarray(index, index + 1))).toEqual({ kind: 'need-more' });
+        }
+        expect(buffer.push(large.subarray(63, 64))).toEqual({ kind: 'malformed', reason: 'too-fragmented' });
+        expect(buffer.push(large.subarray(64))).toEqual({ kind: 'malformed', reason: 'too-fragmented' });
+        expect(buffer.bytes()).toHaveLength(64);
+    });
+
+    it('accepts a ClientHello completed by the last allowed chunk', () => {
+        const buffer = createClientHelloBuffer({ maxBytes: 32 * 1024, maxChunks: 3 });
+        buffer.push(large.subarray(0, 100));
+        buffer.push(large.subarray(100, 9000));
+        expect(buffer.push(large.subarray(9000))).toEqual(sni);
+    });
+
+    it('examines each byte once, however small the chunks', () => {
+        // Every byte is copied into the buffer, at most twice more as it grows, and once into the reassembled
+        // handshake; parsing everything again on each chunk would copy about length²/2 bytes.
+        const copied = vi.spyOn(Uint8Array.prototype, 'set');
+        const buffer = createClientHelloBuffer({ maxBytes: 32 * 1024 });
+        let result = buffer.push(large.subarray(0, 1));
+        for (let index = 1; index < large.length; index++) result = buffer.push(large.subarray(index, index + 1));
+        expect(result).toEqual(sni);
+        const total = copied.mock.calls.reduce((sum, [source]) => sum + source.length, 0);
+        expect(total).toBeLessThanOrEqual(5 * large.length);
     });
 });

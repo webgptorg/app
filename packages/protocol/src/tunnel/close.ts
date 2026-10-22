@@ -11,6 +11,11 @@ export const TUNNEL_CLOSE_CODE = Object.freeze({
     /** The relay drains; reconnect, preferably to another relay. */
     SHUTTING_DOWN: 4003,
     SUSPENDED: 4004,
+    /**
+     * The engine sent more frames than the relay allows a tunnel per second (its frame budget). Reconnect with
+     * backoff, and send fewer, larger frames: coalesce `WINDOW` grants and DATA.
+     */
+    FRAME_BUDGET: 4005,
 } as const);
 
 export type TunnelCloseCode = (typeof TUNNEL_CLOSE_CODE)[keyof typeof TUNNEL_CLOSE_CODE];
