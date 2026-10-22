@@ -87,6 +87,11 @@ async function saveElsewhere(real: Agents, source: string) {
 }
 
 describe('the book editor page', { timeout: TIMEOUT_MS }, () => {
+    it('says "not found" for an agent ID that cannot be one', async () => {
+        renderWithProviders({ path: '/agents/not%20an%20id/book' });
+        expect(await screen.findByRole('heading', { level: 1, name: 'Agent not found' }, WAIT)).toBeDefined();
+    });
+
     it('shows a skeleton while the book loads', async () => {
         const held = deferred<Awaited<ReturnType<Agents['getSource']>>>();
         setup({ agents: { getSource: () => held.promise } });

@@ -181,6 +181,18 @@ describe('the create-agent wizard', { timeout: TIMEOUT_MS }, () => {
         await stepHeading('Add knowledge');
     });
 
+    it('reports a create call that got no answer and stays on the book step', async () => {
+        const app = setup({ agents: { create: () => Promise.reject(new TypeError('Failed to fetch')) } });
+        await fillBrief(app);
+        await app.user.click(screen.getByRole('button', { name: 'Create agent' }));
+
+        expect(
+            await screen.findByText('The agent could not be created. Nothing was saved; try again.', {}, WAIT),
+        ).toBeDefined();
+        expect(screen.getByRole('heading', { level: 2, name: 'Write its book' })).toBeDefined();
+        expect(search(app)['agent']).toBeUndefined();
+    });
+
     it('maps field errors of the create call onto the brief and lists the rest', async () => {
         const app = setup({
             agents: {
