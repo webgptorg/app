@@ -18,7 +18,7 @@ import type { TestDeps } from '../../testing/test-deps';
 import { createTestDeps } from '../../testing/test-deps';
 import type { TunnelTerminationReason } from '../metrics/reason-counters';
 import type { ClientAddress, StreamHandlers, TunnelSession, TunnelSessionLimits, TunnelStream } from './tunnel-session';
-import { FRAME_BUDGET_CLOSE_CODE, MAX_STREAM_ID, createTunnelSession } from './tunnel-session';
+import { MAX_STREAM_ID, createTunnelSession } from './tunnel-session';
 
 const ENGINE_ID: EngineId = EngineIdSchema.parse('a'.repeat(26));
 const IPV4: ClientAddress = { family: 4, address: Uint8Array.of(192, 0, 2, 7), port: 51_000 };
@@ -371,8 +371,8 @@ describe('createTunnelSession', () => {
             for (let sent = 0; sent < LIMITS.framesPerS; sent++) session.receive(frame(stream));
             expect(session.isClosed()).toBe(false);
             session.receive(frame(stream));
-            expect(transport.closes).toEqual([{ code: FRAME_BUDGET_CLOSE_CODE, reason: '' }]);
-            expect(closedWith).toEqual([FRAME_BUDGET_CLOSE_CODE]);
+            expect(transport.closes).toEqual([{ code: TUNNEL_CLOSE_CODE.FRAME_BUDGET, reason: '' }]);
+            expect(closedWith).toEqual([TUNNEL_CLOSE_CODE.FRAME_BUDGET]);
             expect(terminated).toEqual(['frame-budget']);
             expect(recorded.closed).toEqual([CLOSE_CODE.RESET]);
         });

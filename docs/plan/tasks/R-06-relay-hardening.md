@@ -2,7 +2,7 @@
 
 - **Lane:** Relay · **Module:** `apps/relay`, `packages/protocol` (ClientHello reassembly only) · **Milestone:** M4
 - **Depends on:** R-04
-- **Status:** in progress (feat/r-06-hardening)
+- **Status:** in progress (feat/r-06-protocol)
 - **Spec:** Relay and tunnel (Fairness and DoS on a shared relay; No single point of failure); Security goals and threat model; Metadata we still see; Operations; ADRs: [0005](../../adr/0005-modular-architecture.md), [0010](../../adr/0010-protocol-design-principles.md), [0014](../../adr/0014-cryptography.md)
 
 ## Goal

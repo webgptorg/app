@@ -29,8 +29,15 @@ import { clientIp } from './own-tls-server';
 import type { SocketStreamPipe, StreamLimits } from './socket-stream-pipe';
 import { STREAM_RESERVE_BYTES, pipeSocketToStream } from './socket-stream-pipe';
 
-/** R-01's bound: a ClientHello that does not fit is refused as `too-large`. */
-export const CLIENT_HELLO_MAX_BYTES = 16_384;
+/** The ClientHello handshake message across its records, headers excluded; room for post-quantum key shares. */
+export const CLIENT_HELLO_MAX_HELLO_BYTES = 32 * 1024;
+/**
+ * Everything read before a verdict, record headers included: the hello plus headers for 64 records. Browsers split a
+ * ClientHello only at the 16 KiB record limit, so only a client padding it with tiny records reaches this first.
+ */
+export const CLIENT_HELLO_MAX_BYTES = CLIENT_HELLO_MAX_HELLO_BYTES + 64 * 5;
+/** Browsers send a ClientHello in one to three chunks; a client trickling it in more is refused as `malformed`. */
+export const CLIENT_HELLO_MAX_CHUNKS = 64;
 /** Streams have no idle timeout (SSE and WebSockets live long); keepalive finds browsers that vanished. */
 export const BROWSER_KEEPALIVE_MS = 60_000;
 /**
@@ -193,7 +200,11 @@ export function createBrowserListener(options: BrowserListenerOptions): BrowserL
             connection.release();
             ipAdmission.release();
         };
-        const hello = createClientHelloBuffer({ maxBytes: CLIENT_HELLO_MAX_BYTES });
+        const hello = createClientHelloBuffer({
+            maxBytes: CLIENT_HELLO_MAX_BYTES,
+            maxHelloBytes: CLIENT_HELLO_MAX_HELLO_BYTES,
+            maxChunks: CLIENT_HELLO_MAX_CHUNKS,
+        });
         const helloCharge = createMemoryCharge(memory);
         held.set(socket, () => hello.bytes().length);
         let piped = false;
