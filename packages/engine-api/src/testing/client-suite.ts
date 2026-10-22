@@ -1254,6 +1254,26 @@ export function engineApiClientSuite(makeEngine: MakeEngine): void {
             expect(ids(ok(await client.integrations.list({ status: 'needs-attention' }, signal())).items)).toEqual([
                 mcp.id,
             ]);
+            expect(
+                ids(ok(await client.integrations.list({ status: 'error,needs-attention' }, signal())).items),
+            ).toEqual([mcp.id]);
+            const agentA = AgentId.parse('agent-a');
+            expect(ids(ok(await client.integrations.list({ agentId: agentA }, signal())).items)).toEqual([repo.id]);
+            expect(
+                ids(ok(await client.integrations.list({ agentId: agentA, includeEngineWide: 'true' }, signal())).items),
+            ).toEqual([third.id, mcp.id, repo.id]);
+            expect(ok(await client.integrations.stats({}, signal()))).toEqual({
+                connected: 2,
+                needsAttention: 1,
+                disconnected: 0,
+                error: 0,
+            });
+            expect(ok(await client.integrations.stats({ agentId: agentA }, signal()))).toEqual({
+                connected: 1,
+                needsAttention: 0,
+                disconnected: 0,
+                error: 0,
+            });
             const disabled = ok(await client.integrations.disable(repo.id, signal()));
             expect(disabled.status).toBe('disconnected');
             expect(ok(await client.integrations.disable(repo.id, signal()))).toEqual(disabled);

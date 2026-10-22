@@ -17,8 +17,13 @@ const CREATED = 5;
 const CANARY_LENGTH = 32;
 const decoder = new TextDecoder();
 
-async function createMcpServer(world: World, label: string, secretNames: readonly string[] = []) {
-    const { id: agentId } = await world.agent();
+async function createMcpServer(
+    world: World,
+    label: string,
+    secretNames: readonly string[] = [],
+    scope: 'agent' | 'engine' = 'agent',
+) {
+    const agentId = scope === 'engine' ? null : (await world.agent()).id;
     const integration = await world.owner.ok(R.createIntegration, {
         body: {
             kind: 'mcp-server',
@@ -38,7 +43,7 @@ export const INTEGRATION_CHECKS: readonly ConformanceCheck[] = [
     {
         id: 'engine-api.integrations.paging',
         suite: SUITE,
-        title: 'GET /integrations pages without gaps or duplicates, and its filters list only matching integrations',
+        title: 'GET /integrations pages without gaps or duplicates, its filters list only matching integrations, and an agent sees the engine-wide ones',
         async run(ctx) {
             const world = await createWorld(ctx);
             await requireCapability(world, KNOWN_CAPABILITIES.integrations);
@@ -65,6 +70,41 @@ export const INTEGRATION_CHECKS: readonly ConformanceCheck[] = [
                     'status',
                     connected.items,
                     ({ status }) => status === 'connected',
+                );
+                const attention = await world.owner.ok(R.listIntegrations, {
+                    query: { status: 'needs-attention,error', limit: 50 },
+                });
+                checkFilter(
+                    findings,
+                    R.listIntegrations,
+                    'status set',
+                    attention.items,
+                    ({ status }) => status === 'needs-attention' || status === 'error',
+                );
+            });
+            await attempt(findings, async () => {
+                const engineWide = await createMcpServer(world, 'engine-wide', [], 'engine');
+                const own = await world.owner.ok(R.listIntegrations, { query: { agentId, limit: 100 } });
+                if (own.items.some(({ id }) => id === engineWide.id)) {
+                    findings.add(
+                        'GET /integrations: agentId without includeEngineWide lists an engine-wide integration',
+                    );
+                }
+                const usable = await world.owner.ok(R.listIntegrations, {
+                    query: { agentId, includeEngineWide: 'true', limit: 100 },
+                });
+                const ids = new Set<string>(usable.items.map(({ id }) => id));
+                if (!ids.has(engineWide.id) || created.some((id) => !ids.has(id))) {
+                    findings.add(
+                        "GET /integrations: includeEngineWide misses the agent's or the engine-wide integrations",
+                    );
+                }
+                checkFilter(
+                    findings,
+                    R.listIntegrations,
+                    'includeEngineWide',
+                    usable.items,
+                    (item) => item.agentId === agentId || item.agentId === null,
                 );
             });
             return findings.outcome();
@@ -107,6 +147,32 @@ export const INTEGRATION_CHECKS: readonly ConformanceCheck[] = [
                 const text = decoder.decode(bytes);
                 const found = forms.find(({ text: form }) => text.includes(form));
                 if (found) findings.add(`${describe(route)}: the referenced secret's value came back (${found.form})`);
+            }
+            return findings.outcome();
+        },
+    },
+    {
+        id: 'engine-api.integrations.stats',
+        suite: SUITE,
+        title: "GET /integrations/stats counts an agent's integrations by status and the engine's cover the agent's",
+        async run(ctx) {
+            const world = await createWorld(ctx);
+            await requireCapability(world, KNOWN_CAPABILITIES.integrations);
+            const findings = new Findings();
+            const { id: agentId } = await world.agent();
+            const total = (stats: Readonly<Record<string, number>>) =>
+                Object.values(stats).reduce((sum, count) => sum + count, 0);
+            const before = await world.owner.ok(R.getIntegrationStats, { query: { agentId } });
+            const integration = await createMcpServer(world, 'stats');
+            await world.owner.ok(R.disableIntegration, { params: { integrationId: integration.id } });
+            const disabled = await world.owner.ok(R.getIntegrationStats, { query: { agentId } });
+            if (total(disabled) !== total(before) + 1 || disabled.disconnected !== before.disconnected + 1) {
+                findings.add('GET /integrations/stats: a new, disabled integration is not counted as disconnected');
+            }
+            const all = await world.owner.ok(R.getIntegrationStats, {});
+            const keys = ['connected', 'needsAttention', 'disconnected', 'error'] as const;
+            if (keys.some((key) => all[key] < disabled[key])) {
+                findings.add("GET /integrations/stats: an engine-wide count is lower than one agent's");
             }
             return findings.outcome();
         },

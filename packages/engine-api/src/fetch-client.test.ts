@@ -408,6 +408,19 @@ describe('tolerant reading', () => {
         expect(JSON.stringify(response.data)).not.toContain(SENTINEL);
     });
 
+    it('reads an integration status or secret state it does not know as unknown', async () => {
+        const newer = {
+            ...integration,
+            status: 'sleeping',
+            secretRefs: integration.secretRefs.map((ref) => ({ ...ref, state: 'expired' })),
+        };
+        const { client } = setup(() => json(newer));
+        const response = await client.integrations.get(IntegrationId.parse('i1'), signal());
+        if (response.kind !== 'ok') throw new Error('expected an integration');
+        expect(response.data.status).toBe('unknown');
+        expect(response.data.secretRefs.map(({ state }) => state)).toEqual(['unknown']);
+    });
+
     it('reads a single integration and strips unknown config fields of a known kind', async () => {
         const { client } = setup(() => json({ ...integration, config: { ...integration.config, transport: 'sse' } }));
         expect(await client.integrations.get(IntegrationId.parse('i1'), signal())).toEqual({
@@ -417,7 +430,7 @@ describe('tolerant reading', () => {
     });
 
     it.each([
-        ['a known kind with a broken field', { ...integration, status: 'sleeping' }],
+        ['a known kind with a broken field', { ...integration, name: '' }],
         ['an unknown kind with a broken common field', { ...integration, kind: 'slack', name: '' }],
         ['a kind that is not a string', { ...integration, kind: 7 }],
     ])('rejects %s', async (_, body) => {
