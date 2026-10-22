@@ -1,6 +1,9 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { inspect } from 'node:util';
 
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 
 import { ConfigError, MAX_REGISTRY_STALE_S, parseRelayConfig } from './config';
 
@@ -271,7 +274,7 @@ describe('parseRelayConfig', () => {
         [
             'http without RELAY_REGISTRY_TOKEN',
             without(httpEnv, 'RELAY_REGISTRY_TOKEN'),
-            'RELAY_REGISTRY_TOKEN: is required',
+            'RELAY_REGISTRY_TOKEN: is required, or RELAY_REGISTRY_TOKEN_FILE',
         ],
         ['http with a non-http URL', { ...httpEnv, RELAY_REGISTRY_URL: 'ftp://app.ptbk.test' }, URL_PROBLEM],
         [
@@ -518,5 +521,92 @@ describe('parseRelayConfig', () => {
         expect(configError({ ...httpEnv, RELAY_REGISTRY_TOKEN: 'ptbk_rt_short' }).problems).toEqual([
             'RELAY_REGISTRY_TOKEN: must be a relay token (ptbk_rt_ and 43 base64url characters)',
         ]);
+    });
+
+    describe('RELAY_REGISTRY_TOKEN_FILE', () => {
+        const dir = mkdtempSync(join(tmpdir(), 'relay-config-'));
+        afterAll(() => {
+            rmSync(dir, { recursive: true, force: true });
+        });
+
+        function tokenFile(name: string, contents: string): string {
+            const path = join(dir, name);
+            writeFileSync(path, contents, { mode: 0o600 });
+            return path;
+        }
+
+        const fileEnv = (path: string): Record<string, string> => ({
+            ...without(httpEnv, 'RELAY_REGISTRY_TOKEN'),
+            RELAY_REGISTRY_TOKEN_FILE: path,
+        });
+
+        it.each([
+            ['a bare token', TOKEN],
+            ['a token and a newline', `${TOKEN}\n`],
+            ['a token and CRLF', `${TOKEN}\r\n`],
+        ])('reads %s from the file and keeps it redacted', (_, contents) => {
+            const config = parseRelayConfig(fileEnv(tokenFile('token', contents)));
+            if (config.registry.kind !== 'http') throw new Error('expected the http registry');
+            expect(config.registry.token.reveal()).toBe(TOKEN);
+            expect(JSON.stringify(config)).not.toContain(TOKEN);
+            expect(inspect(config, { depth: 10 })).not.toContain(TOKEN);
+        });
+
+        it('refuses the file together with RELAY_REGISTRY_TOKEN', () => {
+            const error = configError({ ...httpEnv, RELAY_REGISTRY_TOKEN_FILE: tokenFile('both', TOKEN) });
+            expect(error.problems).toEqual([
+                'RELAY_REGISTRY_TOKEN_FILE: must not be set together with RELAY_REGISTRY_TOKEN',
+            ]);
+            expect(error.message).not.toContain(TOKEN);
+        });
+
+        it('requires one of the two', () => {
+            expect(configError(without(httpEnv, 'RELAY_REGISTRY_TOKEN')).problems).toEqual([
+                'RELAY_REGISTRY_TOKEN: is required, or RELAY_REGISTRY_TOKEN_FILE',
+            ]);
+        });
+
+        it('treats an empty RELAY_REGISTRY_TOKEN_FILE as unset', () => {
+            expect(configError(fileEnv('')).problems).toEqual([
+                'RELAY_REGISTRY_TOKEN: is required, or RELAY_REGISTRY_TOKEN_FILE',
+            ]);
+        });
+
+        it.each([
+            ['a missing file', () => join(dir, 'missing')],
+            ['a directory', () => dir],
+            ['a file over 1 KiB', () => tokenFile('large', `${TOKEN}\n${' '.repeat(1024)}`)],
+        ])('refuses %s', (_, path) => {
+            expect(configError(fileEnv(path())).problems).toEqual([
+                'RELAY_REGISTRY_TOKEN_FILE: must be a readable file of at most 1024 bytes',
+            ]);
+        });
+
+        it.each([
+            ['a malformed token', 'ptbk_rt_short'],
+            ['two tokens', `${TOKEN}\n${TOKEN}`],
+            ['a token after a blank line', `\n${TOKEN}`],
+            ['an empty file', ''],
+        ])('refuses %s without quoting the file', (name, contents) => {
+            const error = configError(fileEnv(tokenFile(name.replaceAll(' ', '-'), contents)));
+            expect(error.problems).toEqual([
+                'RELAY_REGISTRY_TOKEN_FILE: must contain a relay token (ptbk_rt_ and 43 base64url characters)',
+            ]);
+            if (contents !== '') expect(error.message).not.toContain(contents.trim().split('\n')[0]);
+        });
+
+        it('reports a bad file beside other problems', () => {
+            const error = configError({ ...fileEnv(join(dir, 'missing')), RELAY_LISTEN_PORT: 'x' });
+            expect(error.problems).toEqual([
+                'RELAY_LISTEN_PORT: must be an integer from 0 to 65535',
+                'RELAY_REGISTRY_TOKEN_FILE: must be a readable file of at most 1024 bytes',
+            ]);
+        });
+
+        it('is not a setting of the static registry', () => {
+            expect(
+                configError({ ...staticEnv, RELAY_REGISTRY_TOKEN_FILE: tokenFile('static', TOKEN) }).problems,
+            ).toEqual(['RELAY_REGISTRY_TOKEN_FILE: is not a setting for this RELAY_REGISTRY_KIND']);
+        });
     });
 });

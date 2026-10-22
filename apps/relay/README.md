@@ -31,7 +31,8 @@ Only `RELAY_*` and `LOG_LEVEL` are read; an unknown `RELAY_*` name is an error, 
 | `RELAY_REGISTRY_KIND`                     | required            | `static` (a JSON file, local dev and e2e) or `http` (the dashboard's registry API, D-04)                                         |
 | `RELAY_REGISTRY_FILE`                     | required for static | Path to the static registry file; not allowed with `http`                                                                        |
 | `RELAY_REGISTRY_URL`                      | required for http   | Dashboard base URL: https (http only on 127.0.0.1, ::1, localhost), no credentials, query or fragment; not allowed with `static` |
-| `RELAY_REGISTRY_TOKEN`                    | required for http   | Relay token, `ptbk_rt_` and 43 base64url characters; secret, never logged                                                        |
+| `RELAY_REGISTRY_TOKEN`                    | required for http   | Relay token, `ptbk_rt_` and 43 base64url characters; secret, never logged. Set this or `RELAY_REGISTRY_TOKEN_FILE`, never both   |
+| `RELAY_REGISTRY_TOKEN_FILE`               | —                   | Path to a file holding the relay token (a trailing newline is ignored; at most 1 KiB), as systemd `LoadCredential` provides it   |
 | `RELAY_REGISTRY_TIMEOUT_MS`               | `3000`              | A slower registry answer counts as a failure                                                                                     |
 | `RELAY_REGISTRY_TTL_S`                    | `300`               | How long registry entries and CNAME answers are served from cache                                                                |
 | `RELAY_REGISTRY_MAX_STALE_S`              | `86400`             | How long the last good entry or CNAME answers while the source fails; at most 86400, ≥ TTL                                       |
