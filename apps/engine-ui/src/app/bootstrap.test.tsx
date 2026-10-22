@@ -56,6 +56,7 @@ function setUp(fetch: BrowserDeps['fetch']) {
         cspScope: window,
         storage: createMemoryStorage(),
         matchMedia: createFakeMatchMedia().matchMedia,
+        timeZone: 'UTC',
     };
     return { container, assign, browser };
 }

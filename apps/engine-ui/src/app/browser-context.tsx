@@ -13,6 +13,8 @@ export interface AppBrowser {
     /** For full-page navigations to the engine's gateway pages (sign-in, sign-out, step-up). */
     readonly location: BrowserLocation;
     readonly fetch: typeof fetch;
+    /** The reader's IANA time zone, which every time on screen is shown in unless a schedule names its own. */
+    readonly timeZone: string;
 }
 
 const BrowserContext = createContext<AppBrowser | null>(null);

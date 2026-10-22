@@ -2,7 +2,7 @@
 
 - **Lane:** U · **Module:** `apps/engine-ui` · **Milestone:** M2
 - **Depends on:** U-02, C-07
-- **Status:** todo
+- **Status:** done (#58)
 - **Spec:** Enterprise-ready engine architecture (API, Authorisation, Audit); ADRs: [0015](../../adr/0015-ui-architecture-and-design-system.md), [0016](../../adr/0016-engine-capabilities.md)
 
 ## Goal

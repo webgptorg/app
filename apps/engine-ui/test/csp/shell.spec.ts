@@ -1,9 +1,9 @@
 import type { Page } from '@playwright/test';
 
-import { FAKE_AGENT_ID, FAKE_CHAT_ID, FAKE_RUN_ID } from './fake-engine-api.ts';
+import { FAKE_AGENT_ID, FAKE_CHAT_ID, FAKE_RUN_ID, FAKE_TRIGGER_ID } from './fake-engine-api.ts';
 import { expect, expectCleanPage, test } from './fixtures.ts';
 
-/** Every route the shell registers, an agent page with its Settings, Chat and Runs tabs, a chat, a run, the gallery, and a path that does not exist. */
+/** Every route the shell registers, an agent page with its Settings, Chat, Runs and Triggers tabs, a chat, a run, a trigger, the gallery, and a path that does not exist. */
 const ROUTES = [
     '/agents',
     `/agents/${FAKE_AGENT_ID}`,
@@ -13,6 +13,10 @@ const ROUTES = [
     `/agents/${FAKE_AGENT_ID}/runs`,
     '/runs',
     `/runs/${FAKE_RUN_ID}`,
+    `/agents/${FAKE_AGENT_ID}/triggers`,
+    '/triggers',
+    `/triggers/${FAKE_TRIGGER_ID}`,
+    '/triggers/new',
     '/members',
     '/security',
     '/secrets',

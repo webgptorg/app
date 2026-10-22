@@ -4,6 +4,7 @@ import {
     FAKE_AGENT_ID,
     FAKE_CHAT_ID,
     FAKE_RUN_ID,
+    FAKE_TRIGGER_ID,
     HOSTILE_RUN_TEXT,
     HOSTILE_TARGET_NAME,
     RAW_HEARTBEAT,
@@ -174,6 +175,73 @@ test.describe('the built bundle under the engine CSP', () => {
         await page.keyboard.press('Enter');
         await expect(page.getByText('Cancelling…').first()).toBeVisible();
         expect(await page.evaluate(() => window.__ptbkCspViolations ?? [])).toEqual([]);
+    });
+
+    test('/triggers restores its filters from the URL, keeps pause and resume in reach at 360 px and meets the UX checks', async ({
+        page,
+        visit,
+    }) => {
+        const report = await visit('/triggers');
+        const table = page.getByRole('table');
+        await expect(table.getByRole('link', { name: 'Support inbox' })).toBeVisible();
+        await expect(table.getByText('Every weekday at 08:00, Europe/Prague')).toBeVisible();
+        expectCleanPage(report);
+
+        const filtered = await visit('/triggers?lifecycle=paused');
+        await expect(page.getByRole('combobox', { name: 'State' })).toHaveValue('paused');
+        await expect(page.getByRole('table').getByRole('link', { name: 'Every quarter hour' })).toBeVisible();
+        await expect(page.getByRole('table').getByRole('link', { name: 'Support inbox' })).toHaveCount(0);
+        expectCleanPage(filtered);
+
+        await visit('/triggers');
+        await page.setViewportSize({ width: 360, height: 740 });
+        const pause = page.getByRole('button', { name: 'Pause Support inbox' });
+        await pause.scrollIntoViewIfNeeded();
+        await expect(pause).toBeInViewport();
+        const resume = page.getByRole('button', { name: 'Resume Every quarter hour' });
+        await resume.scrollIntoViewIfNeeded();
+        await expect(resume).toBeInViewport();
+        expect(
+            await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth),
+        ).toBeLessThanOrEqual(0);
+        await pause.click();
+        await expect(page.getByRole('button', { name: 'Resume Support inbox' })).toBeVisible();
+        expect(await page.evaluate(() => window.__ptbkCspViolations ?? [])).toEqual([]);
+    });
+
+    test(`/triggers/${FAKE_TRIGGER_ID} keeps the planned message and fire errors inert, keeps Pause in reach at 360 px and meets the UX checks`, async ({
+        page,
+        visit,
+    }) => {
+        const report = await visit(`/triggers/${FAKE_TRIGGER_ID}`);
+        await expect(page.getByText('Every weekday at 08:00, Europe/Prague')).toBeVisible();
+        await expect(page.getByText(`Write the morning report. ${HOSTILE_RUN_TEXT}`)).toBeVisible();
+        const fires = page.getByRole('table', { name: 'Fire history' });
+        await expect(fires.getByText(`Nothing ran: ${HOSTILE_RUN_TEXT}`)).toBeVisible();
+        await expect(fires.getByRole('link', { name: 'Open run' })).toHaveAttribute('href', `/runs/${FAKE_RUN_ID}`);
+        expect(await page.locator('main img, main script, main iframe, main object, main embed').count()).toBe(0);
+        expect(await page.locator('main a[href^="javascript:"]').count()).toBe(0);
+        expectCleanPage(report);
+
+        await page.setViewportSize({ width: 360, height: 740 });
+        await page.mouse.wheel(0, 400);
+        await expect(page.getByRole('button', { name: /^Pause Morning report/ })).toBeInViewport();
+        expect(
+            await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth),
+        ).toBeLessThanOrEqual(0);
+    });
+
+    test('/triggers/new previews a schedule as an estimate and meets the UX checks', async ({ page, visit }) => {
+        const report = await visit('/triggers/new');
+        await page.getByRole('combobox', { name: /^Agent/ }).selectOption(FAKE_AGENT_ID);
+        await page.getByRole('textbox', { name: /^Name/ }).fill('Weekly digest');
+        await page.getByRole('combobox', { name: /^Time zone/ }).selectOption('Europe/Prague');
+        await page.getByRole('textbox', { name: /^Cron expression/ }).fill('*/15 * * * *');
+        const preview = page.getByRole('region', { name: 'Next fires' });
+        await expect(preview.getByText('Every 15 minutes, Europe/Prague')).toBeVisible();
+        await expect(preview.getByRole('listitem')).toHaveCount(5);
+        await expect(page.getByRole('combobox', { name: /^Kind/ }).locator('option[value="webhook"]')).toBeDisabled();
+        expectCleanPage(report);
     });
 
     test('/audit restores its filters from the URL and meets the UX checks', async ({ page, visit }) => {
