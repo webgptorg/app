@@ -60,6 +60,8 @@ export const queryKeys = {
     sessions: ['sessions'] as const,
     billing: ['billing'] as const,
     adminBilling: ['admin', 'billing'] as const,
+    engines: ['engines'] as const,
+    engine: (engineId: string) => ['engines', engineId] as const,
 };
 
 /** A 401 on any signed-in call means the session ended elsewhere (expired, revoked, signed out everywhere). */
@@ -131,5 +133,30 @@ export function adminBillingQuery(client: ApiClient) {
     return queryOptions({
         queryKey: queryKeys.adminBilling,
         queryFn: async ({ signal }) => dataOrThrow(await client.call(apiRoutes.adminBilling, {}, signal)).organizations,
+    });
+}
+
+/** Engine status comes from heartbeats every minute; the list follows while it is on screen, never in the background. */
+export const ENGINE_REFETCH_MS = 60_000;
+
+/** The active organization's engines with their live status (D-06). */
+export function enginesQuery(client: ApiClient) {
+    return queryOptions({
+        queryKey: queryKeys.engines,
+        queryFn: async ({ signal }) => dataOrThrow(await client.call(apiRoutes.listEngines, {}, signal)).engines,
+        refetchInterval: ENGINE_REFETCH_MS,
+        refetchIntervalInBackground: false,
+        refetchOnWindowFocus: true,
+    });
+}
+
+export function engineQuery(client: ApiClient, engineId: string) {
+    return queryOptions({
+        queryKey: queryKeys.engine(engineId),
+        queryFn: async ({ signal }) =>
+            dataOrThrow(await client.call(apiRoutes.getEngine, { params: { engineId } }, signal)).engine,
+        refetchInterval: ENGINE_REFETCH_MS,
+        refetchIntervalInBackground: false,
+        refetchOnWindowFocus: true,
     });
 }

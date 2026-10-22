@@ -7,7 +7,7 @@ import { NOW, session } from '../../testing/fixtures';
 import { renderApp } from '../../testing/render-app';
 import { ok, problem } from '../../testing/scripted-api';
 
-const OWNER = session({ permissions: ['org.read', 'billing.read', 'billing.manage', 'engine.link'] });
+const OWNER = session({ permissions: ['org.read', 'billing.read', 'billing.manage', 'engine.link', 'engine.read'] });
 const CODE = 'abcdefghijklmnopqrstuvwxya';
 
 function linkCode(overrides: Partial<LinkCodeView> = {}): LinkCodeView {

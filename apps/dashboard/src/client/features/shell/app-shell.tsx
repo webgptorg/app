@@ -9,6 +9,7 @@ import { Link } from '../../core/link';
 import { SessionProvider } from '../session/use-session';
 import { EnvironmentBadge } from './environment-badge';
 import { visibleNavEntries } from './navigation';
+import { OrgSwitcher } from './org-switcher';
 import { UserMenu } from './user-menu';
 
 const MAIN_ID = 'main-content';
@@ -22,7 +23,6 @@ export function AppShell() {
     if (session === undefined || session === null) {
         return null;
     }
-    const orgName = session.activeOrg.name ?? m.org_personal();
     return (
         <SessionProvider session={session}>
             <div className="flex min-h-dvh flex-col bg-surface text-text">
@@ -34,9 +34,7 @@ export function AppShell() {
                             <span aria-hidden="true" className="text-text-muted">
                                 /
                             </span>
-                            <span className="truncate text-sm font-medium" title={orgName}>
-                                {orgName}
-                            </span>
+                            <OrgSwitcher />
                             <EnvironmentBadge />
                         </div>
                         <UserMenu />
@@ -47,7 +45,6 @@ export function AppShell() {
                                         <Link
                                             to={entry.to}
                                             variant="standalone"
-                                            activeOptions={{ exact: entry.to === '/' }}
                                             className="inline-flex items-center gap-2 rounded-control px-2 py-1.5 text-sm font-medium text-text-muted hover:bg-hover data-[status=active]:text-text"
                                             activeProps={{ 'aria-current': 'page' }}
                                         >

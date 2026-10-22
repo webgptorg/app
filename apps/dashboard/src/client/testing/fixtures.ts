@@ -1,5 +1,6 @@
 import type {
     BillingView,
+    EngineView,
     PasskeyView,
     ProblemOrganization,
     SessionSummary,
@@ -42,10 +43,44 @@ export function session(
             kind: 'personal',
             name: overrides.name === undefined ? null : overrides.name,
             role: 'owner',
-            permissions: [...(overrides.permissions ?? ['org.read'])],
+            permissions: [...(overrides.permissions ?? ['org.read', 'engine.read'])],
         },
         memberships: [{ orgId: 'bbbbbbbbbbbbbbbbbbbbbbbbbb', kind: 'personal', name: null, role: 'owner' }],
         steppedUpUntil: null,
+    };
+}
+
+/** A test engine domain; nothing in the SPA may load from it. */
+export const ENGINE_DOMAIN = 'engines.ptbk.test';
+export const ENGINE_ID = 'k3v6xq2mfz4pd7h5wn2rbtcayu';
+
+/** An online engine with a recent heartbeat. */
+export function engineView(overrides: Partial<EngineView> = {}): EngineView {
+    const engineId = (overrides.engineId ?? ENGINE_ID) as EngineView['engineId'];
+    return {
+        engineId,
+        hostname: `${engineId}.${ENGINE_DOMAIN}` as EngineView['hostname'],
+        customHostnames: [],
+        mode: 'tunnel',
+        registeredVersion: '1.4.0' as EngineView['registeredVersion'],
+        status: 'online',
+        suspendedBy: null,
+        createdAt: NOW - 48 * HOUR,
+        lastSeenAt: NOW - 30_000,
+        heartbeat: {
+            seq: 1_760_000_000_123,
+            ts: new Date(NOW - 31_000).toISOString() as NonNullable<EngineView['heartbeat']>['ts'],
+            receivedAt: NOW - 30_000,
+            version: '1.4.2' as EngineView['registeredVersion'],
+            uptimeS: 3 * 3600 + 25 * 60,
+            diskPct: 40,
+            ramPct: 70,
+            cpuLoad: 'medium',
+            update: 'available',
+            agents: 3,
+            members: 2,
+        },
+        ...overrides,
     };
 }
 
