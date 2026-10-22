@@ -19,8 +19,9 @@ const distDir = join(appDir, 'dist');
  * router's fallback origin for an opaque `window.origin` (TanStack Router), Tailwind's licence banner, and Paraglide's
  * error documentation link, its base for parsing relative URLs and its origin outside a browser, and the bare scheme
  * GFM prefixes to `www.` autolinks in agent markdown (mdast-util-gfm-autolink-literal). Ours: the security panel's link
- * to Sigstore's public Rekor search, a navigation in a new tab that the bundle never fetches. The CSP test
- * proves at runtime that nothing leaves the origin; this list keeps every other URL out of the bundle.
+ * to Sigstore's public Rekor search and an integration's link to its GitHub repository, navigations in a new tab that
+ * the bundle never fetches. The CSP test proves at runtime that nothing leaves the origin; this list keeps every other
+ * URL out of the bundle.
  */
 const INERT_URLS = new Set([
     'http://www.w3.org/1998/Math/MathML',
@@ -40,6 +41,7 @@ const INERT_URLS = new Set([
     'http://fallback.com',
     'http://',
     'https://search.sigstore.dev/?logIndex=',
+    'https://github.com/',
 ]);
 
 /** Rendered only by `@ptbk/ui`'s `Gallery`. */

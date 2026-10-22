@@ -2,6 +2,7 @@ import {
     AgentId,
     ChatId,
     FileId,
+    IntegrationId,
     RunId,
     TriggerId,
     createProblem,
@@ -52,6 +53,7 @@ const messageId = (match: RegExpExecArray) => MessageId.parse(match[2] ?? '');
 const runId = (match: RegExpExecArray) => RunId.parse(match[1] ?? '');
 const triggerId = (match: RegExpExecArray) => TriggerId.parse(match[1] ?? '');
 const fileId = (match: RegExpExecArray) => FileId.parse(match[1] ?? '');
+const integrationId = (match: RegExpExecArray) => IntegrationId.parse(match[1] ?? '');
 
 /** The routes the visited pages call, with the success status the contract gives each; anything else answers 404. */
 const ROUTES: readonly (readonly ['GET' | 'POST', RegExp, number, Call])[] = [
@@ -165,6 +167,36 @@ const ROUTES: readonly (readonly ['GET' | 'POST', RegExp, number, Call])[] = [
         /^\/files\/([\w-]+)\/versions$/,
         200,
         (api, match, query, _, signal) => api.files.listVersions(fileId(match), Object.fromEntries(query), signal),
+    ],
+    [
+        'GET',
+        /^\/integrations$/,
+        200,
+        (api, _, query, __, signal) => api.integrations.list(Object.fromEntries(query), signal),
+    ],
+    [
+        'GET',
+        /^\/integrations\/stats$/,
+        200,
+        (api, _, query, __, signal) => api.integrations.stats(Object.fromEntries(query), signal),
+    ],
+    [
+        'GET',
+        /^\/integrations\/([\w-]+)$/,
+        200,
+        (api, match, _, __, signal) => api.integrations.get(integrationId(match), signal),
+    ],
+    ['POST', /^\/integrations$/, 201, (api, _, __, body, signal) => api.integrations.create(body as never, signal)],
+    [
+        'POST',
+        /^\/integrations\/([\w-]+)\/(enable|disable|check)$/,
+        200,
+        (api, match, _, __, signal) => {
+            const id = integrationId(match);
+            if (match[2] === 'enable') return api.integrations.enable(id, signal);
+            if (match[2] === 'disable') return api.integrations.disable(id, signal);
+            return api.integrations.check(id, signal);
+        },
     ],
     ['GET', /^\/audit$/, 200, (api, _, query, __, signal) => api.audit.list(Object.fromEntries(query), signal)],
     ['GET', /^\/audit\/verify$/, 200, (api, _, __, ___, signal) => api.audit.verify(signal)],
@@ -365,6 +397,64 @@ function fakeTriggers() {
                 createdAt: '2026-09-22T10:00:00.000Z',
                 config: { ...schedule, recurrence: { kind: 'interval' as const, everySeconds: 3_600 } },
             },
+        },
+    ];
+}
+
+/** An MCP server whose tool descriptions and status detail carry hostile text from the third party behind it. */
+export const FAKE_INTEGRATION_ID = 'int-docs';
+export const HOSTILE_TOOL_TEXT = '<img src=x onerror=alert(1)> <script>alert(1)</script> javascript:alert(1)';
+
+function fakeIntegrations() {
+    const base = {
+        statusDetail: null,
+        scopes: [],
+        secretRefs: [],
+        tools: [],
+        lastActivityAt: null,
+        createdBy: 'member-owner',
+        createdAt: '2026-09-20T10:00:00.000Z',
+        updatedAt: '2026-09-30T10:00:00.000Z',
+    };
+    return [
+        {
+            ...base,
+            id: FAKE_INTEGRATION_ID,
+            agentId: null,
+            name: 'Documentation search with a rather long name that has to wrap',
+            kind: 'mcp-server' as const,
+            status: 'connected' as const,
+            scopes: ['docs:read', 'docs:search', `x-${'very-long-scope-'.repeat(8)}`],
+            secretRefs: [{ name: 'GITHUB_TOKEN', secretId: 'secret-github', state: 'resolved' as const }],
+            tools: [
+                { name: 'search', description: 'Searches the documentation.' },
+                { name: 'fetch_page', description: HOSTILE_TOOL_TEXT },
+            ],
+            lastActivityAt: '2026-09-30T10:00:00.000Z',
+            config: { url: `https://mcp.example.com/${'deep/'.repeat(30)}sse` },
+        },
+        {
+            ...base,
+            id: 'int-billing',
+            agentId: FAKE_AGENT_ID,
+            name: 'Billing repository',
+            kind: 'repository' as const,
+            status: 'needs-attention' as const,
+            statusDetail: 'Secrets not available: DEPLOY_KEY.',
+            scopes: ['contents:read'],
+            secretRefs: [{ name: 'DEPLOY_KEY', secretId: null, state: 'missing' as const }],
+            config: { provider: 'github' as const, repository: 'acme/billing' },
+        },
+        {
+            ...base,
+            id: 'int-calendar',
+            agentId: FAKE_AGENT_ID,
+            name: 'Calendar',
+            kind: 'calendar' as const,
+            status: 'error' as const,
+            statusDetail: `The provider refused the token: ${HOSTILE_TOOL_TEXT}`,
+            secretRefs: [{ name: 'ADA_SEARCH_KEY', secretId: 'secret-ada', state: 'revoked' as const }],
+            config: { provider: 'google', account: 'ada@example.com' },
         },
     ];
 }
@@ -579,6 +669,7 @@ export async function routeFakeEngineApi(page: Page): Promise<void> {
             runs: fakeRuns(),
             triggers: fakeTriggers(),
             files: fakeFiles(),
+            integrations: fakeIntegrations(),
             members: [
                 {
                     id: 'member-jana',

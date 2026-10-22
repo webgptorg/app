@@ -2,6 +2,7 @@ import { agentsFeature } from '../features/agents/agents-feature';
 import { auditFeature } from '../features/audit/audit-feature';
 import { chatFeature } from '../features/chat/chat-feature';
 import { filesFeature } from '../features/files/files-feature';
+import { integrationsFeature } from '../features/integrations/integrations-feature';
 import { membersFeature } from '../features/members/members-feature';
 import { runsFeature } from '../features/runs/runs-feature';
 import { secretsFeature } from '../features/secrets/secrets-feature';
@@ -20,6 +21,7 @@ export const FEATURES: readonly FeatureDefinition[] = [
     runsFeature,
     triggersFeature,
     filesFeature,
+    integrationsFeature,
     membersFeature,
     securityFeature,
     secretsFeature,
