@@ -2,7 +2,7 @@
 
 - **Lane:** U · **Module:** `apps/engine-ui` · **Milestone:** M2
 - **Depends on:** U-03, U-05
-- **Status:** todo
+- **Status:** in progress (feat/u-04-agent-editor)
 - **Spec:** Security hardening (5, 6), Engine security baseline (Browser headers); ADRs: [0003](../../adr/0003-ui-as-signed-bundle.md), 0013 book editor (written by this task)
 
 ## Goal
