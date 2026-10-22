@@ -7,13 +7,14 @@ import { renderWithProviders } from '../testing/render-with-providers';
 import { createTestEngineApi, problemResponse } from '../testing/test-engine-api';
 
 describe('engine-ui app', () => {
-    it('redirects / to the agents route and renders it with the in-memory client', async () => {
+    it('renders home at / with the in-memory client', async () => {
         const { router, container } = renderWithProviders({ path: '/' });
 
-        expect(await screen.findByRole('heading', { name: 'Agents' })).toBeDefined();
-        expect(screen.getByText('Ada')).toBeDefined();
-        expect(screen.getByText('Grace')).toBeDefined();
-        expect(router.state.location.pathname).toBe('/agents');
+        expect(
+            await screen.findByRole('heading', { level: 1, name: /^Good (morning|afternoon|evening), Owner$/ }),
+        ).toBeDefined();
+        expect(await screen.findByRole('link', { name: 'Ada' })).toBeDefined();
+        expect(router.state.location.pathname).toBe('/');
         await expectNoAxeViolations(container);
     });
 
@@ -84,11 +85,11 @@ describe('engine-ui app', () => {
         await expectNoAxeViolations(container);
     });
 
-    it('opens the first section the member may use at /', async () => {
+    it('greets a member without permissions at / too', async () => {
         const { router } = renderWithProviders({ path: '/', permissions: [] });
 
-        expect(await screen.findByRole('heading', { level: 1, name: 'Settings' })).toBeDefined();
-        expect(router.state.location.pathname).toBe('/settings');
+        expect(await screen.findByRole('heading', { level: 1, name: /, Owner$/ })).toBeDefined();
+        expect(router.state.location.pathname).toBe('/');
     });
 });
 

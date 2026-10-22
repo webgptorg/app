@@ -598,8 +598,6 @@
   "audit_target_integration": "Integrace",
   "nav_runs": "Běhy",
   "agent_tab_runs": "Běhy",
-  "command_go_to_run": "Přejít na běh",
-  "command_stop_run": "Zastavit běh",
   "duration_seconds": "{seconds} s",
   "duration_minutes_seconds": "{minutes} min {seconds} s",
   "duration_hours_minutes": "{hours} h {minutes} min",
@@ -1177,5 +1175,110 @@
   "integration_secret_option_missing": "{name} (chybí)",
   "integration_cancel": "Zrušit",
   "integration_add": "Přidat",
-  "integration_save": "Uložit"
+  "integration_save": "Uložit",
+  "nav_home": "Domů",
+  "home_greeting_morning": "Dobré ráno, {name}",
+  "home_greeting_afternoon": "Dobré odpoledne, {name}",
+  "home_greeting_evening": "Dobrý večer, {name}",
+  "home_widget_failed": "Tuto část stránky se nepodařilo načíst.",
+  "home_counts_title": "Právě teď",
+  "home_running_now": "Právě běží",
+  "home_queued": "Ve frontě",
+  "home_needs_attention": "Vyžaduje pozornost",
+  "home_recent_agents": "Nedávní agenti",
+  "home_my_agents": "Vaši agenti",
+  "home_all_agents": "Všichni agenti",
+  "home_no_agents": "Zatím žádní agenti",
+  "home_no_agents_body": "Zde se objeví agenti, které vytvoříte nebo ke kterým dostanete přístup.",
+  "home_my_runs": "Vaše rozběhnutá práce",
+  "home_my_runs_empty": "Nic vašeho neběží ani nečeká ve frontě.",
+  "home_recent_chats": "Nedávné chaty",
+  "home_recent_chats_empty": "Zatím žádné chaty.",
+  "home_update_title": "Je dostupná aktualizace enginu",
+  "home_update_body": "Je dostupná nová verze enginu.",
+  "home_update_version": "Je dostupná verze {version}.",
+  "home_update_version_at": "Verzi {version} lze nainstalovat od {at}.",
+  "home_update_open": "Prohlédnout aktualizaci",
+  "activity_title": "Aktivita",
+  "activity_filter_label": "Zobrazit aktivitu",
+  "activity_area_all": "Vše",
+  "activity_area_run": "Běhy",
+  "activity_area_file": "Soubory",
+  "activity_area_trigger": "Spouštěče",
+  "activity_area_integration": "Integrace",
+  "activity_area_member": "Členové",
+  "activity_area_engine": "Engine",
+  "activity_empty": "Zatím žádná aktivita",
+  "activity_empty_body": "Co dělají vaši agenti a členové, se zde objeví hned, jak se to stane.",
+  "activity_failed": "Aktivitu se nepodařilo načíst.",
+  "activity_older_failed": "Starší aktivitu se nepodařilo načíst.",
+  "activity_load_older": "Načíst starší",
+  "activity_new_items": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} nová položka",
+        "countPlural=few": "{count} nové položky",
+        "countPlural=many": "{count} nové položky",
+        "countPlural=other": "{count} nových položek"
+      }
+    }
+  ],
+  "activity_announce_many": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} nová aktivita",
+        "countPlural=few": "{count} nové aktivity",
+        "countPlural=many": "{count} nové aktivity",
+        "countPlural=other": "{count} nových aktivit"
+      }
+    }
+  ],
+  "activity_agent_unnamed": "Agent bez jména",
+  "activity_generic": "Aktivita druhu, který tato verze nezobrazuje:",
+  "activity_summary_with_agent": "{agent}: {summary}",
+  "member_activity_joined": "{name} se připojil(a)",
+  "member_activity_role_changed": "{name}: role změněna z {from} na {to}",
+  "member_activity_removed": "{name} byl(a) odebrán(a)",
+  "member_activity_open": "Otevřít členy",
+  "engine_activity_update_available": "Je dostupná verze enginu {version}",
+  "engine_activity_updated": "Engine byl aktualizován z {from} na {to}",
+  "engine_activity_relay_disconnected": "Spojení s relayem {relay} se přerušilo",
+  "engine_activity_open": "Otevřít zabezpečení",
+  "runs_attention_failed": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} neúspěšný běh",
+        "countPlural=few": "{count} neúspěšné běhy",
+        "countPlural=many": "{count} neúspěšného běhu",
+        "countPlural=other": "{count} neúspěšných běhů"
+      }
+    }
+  ],
+  "palette_open": "Hledat a příkazy",
+  "palette_title": "Paleta příkazů",
+  "palette_label": "Hledat agenty, běhy, stránky a příkazy",
+  "palette_group_navigation": "Přejít na",
+  "palette_group_agents": "Agenti",
+  "palette_group_commands": "Příkazy",
+  "palette_empty": "Nic neodpovídá.",
+  "palette_results": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} výsledek",
+        "countPlural=few": "{count} výsledky",
+        "countPlural=many": "{count} výsledku",
+        "countPlural=other": "{count} výsledků"
+      }
+    }
+  ],
+  "palette_run_open": "Otevřít běh: {title}",
+  "palette_run_stop": "Zastavit běh: {title}"
 }

@@ -1,0 +1,11 @@
+:root {
+    --command-palette-bg: var(--color-raised);
+    --command-palette-text: var(--color-text);
+    --command-palette-muted: var(--color-text-muted);
+    --command-palette-border: var(--color-divider);
+    --command-palette-radius: var(--radius-surface);
+    --command-palette-shadow: var(--shadow-overlay);
+    --command-palette-option-radius: var(--radius-small);
+    --command-palette-option-active-bg: var(--color-selected);
+    --command-palette-marker: var(--color-accent-text);
+}

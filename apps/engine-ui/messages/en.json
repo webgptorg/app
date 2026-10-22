@@ -594,8 +594,6 @@
   "audit_target_integration": "Integration",
   "nav_runs": "Runs",
   "agent_tab_runs": "Runs",
-  "command_go_to_run": "Go to run",
-  "command_stop_run": "Stop run",
   "duration_seconds": "{seconds} s",
   "duration_minutes_seconds": "{minutes} min {seconds} s",
   "duration_hours_minutes": "{hours} h {minutes} min",
@@ -1161,5 +1159,102 @@
   "integration_secret_option_missing": "{name} (missing)",
   "integration_cancel": "Cancel",
   "integration_add": "Add",
-  "integration_save": "Save"
+  "integration_save": "Save",
+  "nav_home": "Home",
+  "home_greeting_morning": "Good morning, {name}",
+  "home_greeting_afternoon": "Good afternoon, {name}",
+  "home_greeting_evening": "Good evening, {name}",
+  "home_widget_failed": "This part of the page could not load.",
+  "home_counts_title": "Right now",
+  "home_running_now": "Running now",
+  "home_queued": "Queued",
+  "home_needs_attention": "Needs attention",
+  "home_recent_agents": "Recent agents",
+  "home_my_agents": "Your agents",
+  "home_all_agents": "All agents",
+  "home_no_agents": "No agents yet",
+  "home_no_agents_body": "Agents you create or are given access to appear here.",
+  "home_my_runs": "Your running work",
+  "home_my_runs_empty": "Nothing of yours is running or queued.",
+  "home_recent_chats": "Recent chats",
+  "home_recent_chats_empty": "No chats yet.",
+  "home_update_title": "Engine update available",
+  "home_update_body": "A new engine version is available.",
+  "home_update_version": "Version {version} is available.",
+  "home_update_version_at": "Version {version} can be installed from {at}.",
+  "home_update_open": "Review the update",
+  "activity_title": "Activity",
+  "activity_filter_label": "Show activity of",
+  "activity_area_all": "All",
+  "activity_area_run": "Runs",
+  "activity_area_file": "Files",
+  "activity_area_trigger": "Triggers",
+  "activity_area_integration": "Integrations",
+  "activity_area_member": "Members",
+  "activity_area_engine": "Engine",
+  "activity_empty": "No activity yet",
+  "activity_empty_body": "What your agents and members do shows up here as it happens.",
+  "activity_failed": "Activity could not load.",
+  "activity_older_failed": "Older activity could not load.",
+  "activity_load_older": "Load older",
+  "activity_new_items": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} new item",
+        "countPlural=other": "{count} new items"
+      }
+    }
+  ],
+  "activity_announce_many": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} new activity",
+        "countPlural=other": "{count} new activities"
+      }
+    }
+  ],
+  "activity_agent_unnamed": "Unnamed agent",
+  "activity_generic": "Activity of a kind this version does not show:",
+  "activity_summary_with_agent": "{agent}: {summary}",
+  "member_activity_joined": "{name} joined",
+  "member_activity_role_changed": "{name} changed from {from} to {to}",
+  "member_activity_removed": "{name} was removed",
+  "member_activity_open": "Open members",
+  "engine_activity_update_available": "Engine version {version} is available",
+  "engine_activity_updated": "The engine was updated from {from} to {to}",
+  "engine_activity_relay_disconnected": "The connection to relay {relay} dropped",
+  "engine_activity_open": "Open security",
+  "runs_attention_failed": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} failed run",
+        "countPlural=other": "{count} failed runs"
+      }
+    }
+  ],
+  "palette_open": "Search and commands",
+  "palette_title": "Command palette",
+  "palette_label": "Search agents, runs, pages and commands",
+  "palette_group_navigation": "Go to",
+  "palette_group_agents": "Agents",
+  "palette_group_commands": "Commands",
+  "palette_empty": "Nothing matches.",
+  "palette_results": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} result",
+        "countPlural=other": "{count} results"
+      }
+    }
+  ],
+  "palette_run_open": "Open run: {title}",
+  "palette_run_stop": "Stop run: {title}"
 }

@@ -33,6 +33,17 @@ describe('engine-ui decides by permission, never by role', () => {
         expect(found).toEqual([]);
     });
 
+    it('covers the home feature, whose variant is chosen by permission (U-08)', async () => {
+        const homeDir = join(srcDir, 'features', 'home');
+        const files = (await readdir(homeDir, { recursive: true })).filter((file) => /\.tsx?$/.test(file));
+        expect(files).toContain('home-variant.ts');
+        for (const file of files) {
+            const source = await readFile(join(homeDir, file), 'utf8');
+            expect(findRoleComparisons(source), file).toEqual([]);
+            expect(source, file).not.toMatch(/\broleLabel\b|\.role\b/);
+        }
+    });
+
     it.each([
         "if (member.role === 'owner') {}",
         "const isAdmin = 'admin' === me.role;",

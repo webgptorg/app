@@ -1,3 +1,4 @@
+import AxeBuilder from '@axe-core/playwright';
 import { ENGINE_API_PREFIX } from '@ptbk/engine-api';
 
 import {
@@ -7,21 +8,72 @@ import {
     FAKE_INTEGRATION_ID,
     FAKE_RUN_ID,
     FAKE_TRIGGER_ID,
+    HOSTILE_AGENT_NAME,
     HOSTILE_FILE_NAME,
     HOSTILE_RUN_TEXT,
     HOSTILE_TARGET_NAME,
     HOSTILE_TOOL_TEXT,
     RAW_HEARTBEAT,
+    routeFakeEngineApi,
 } from './fake-engine-api.ts';
 import { expect, expectCleanPage, readBuiltIndexHtml, test } from './fixtures.ts';
 
 test.describe('the built bundle under the engine CSP', () => {
-    test('/ redirects to the agents route and runs without a violation', async ({ page, visit }) => {
+    test("/ is the owner's control center, keeps engine text inert and meets the UX checks", async ({
+        page,
+        visit,
+    }) => {
         const report = await visit('/');
 
-        await expect(page).toHaveURL(/\/agents$/);
-        await expect(page.getByRole('heading', { name: 'Agents' })).toBeVisible();
+        await expect(page.getByRole('heading', { level: 1, name: /, Owner$/ })).toBeVisible();
+        await expect(page.getByText('Running now', { exact: true })).toBeVisible();
+        const feed = page.getByRole('region', { name: 'Activity' });
+        await expect(feed.getByText('deploy.started')).toBeVisible();
+        await expect(feed.getByText('Jana Nováková joined')).toBeVisible();
+        await expect(feed.getByRole('link', { name: HOSTILE_AGENT_NAME })).toHaveAttribute(
+            'href',
+            `/agents/${FAKE_AGENT_ID}`,
+        );
+        expect(await feed.locator('img, script, iframe').count()).toBe(0);
+        expect(await feed.textContent()).not.toContain('javascript:alert(1)');
         expectCleanPage(report);
+    });
+
+    test("/ is a member's own home without the control center and meets the UX checks", async ({ page, visit }) => {
+        await routeFakeEngineApi(page, {
+            member: {
+                id: 'member-jana',
+                displayName: 'Jana Nováková',
+                role: 'member',
+                permissions: ['agents.read', 'chats.read', 'chats.write', 'runs.read'],
+            },
+        });
+        const report = await visit('/');
+
+        await expect(page.getByRole('heading', { level: 1, name: /, Jana Nováková$/ })).toBeVisible();
+        await expect(
+            page.getByRole('region', { name: 'Your agents' }).getByRole('link', { name: 'Grace' }),
+        ).toBeVisible();
+        await expect(page.getByRole('region', { name: 'Recent chats' })).toBeVisible();
+        await expect(page.getByRole('region', { name: 'Activity' })).toHaveCount(0);
+        expectCleanPage(report);
+    });
+
+    test('the command palette opens with Ctrl+K, finds an agent, passes axe and navigates', async ({ page, visit }) => {
+        expectCleanPage(await visit('/settings'));
+
+        await page.keyboard.press('Control+k');
+        const search = page.getByRole('combobox', { name: 'Search agents, runs, pages and commands' });
+        await expect(search).toBeFocused();
+        await search.fill('Grace');
+        await expect(page.getByRole('group', { name: 'Agents' }).getByRole('option')).toHaveText([/^Grace/]);
+        const axe = await new AxeBuilder({ page }).include('dialog[open]').analyze();
+        expect(axe.violations.map((violation) => violation.id)).toEqual([]);
+
+        await search.press('Enter');
+        await expect(page).toHaveURL(/\/agents\/grace$/);
+        await expect(page.getByRole('heading', { level: 1, name: 'Grace' })).toBeVisible();
+        expect(await page.evaluate(() => window.__ptbkCspViolations ?? [])).toEqual([]);
     });
 
     test('/agents loads its data and meets the UX checks', async ({ page, visit }) => {

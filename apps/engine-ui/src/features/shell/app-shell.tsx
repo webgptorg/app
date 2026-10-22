@@ -13,6 +13,7 @@ import { LiveIndicator } from './live-indicator';
 import { persistSidebarCollapsed, readSidebarCollapsed } from './sidebar-preference';
 import { SidebarNav } from './sidebar-nav';
 import { NARROW_QUERY, useMediaQuery } from './use-media-query';
+import { CommandPaletteHost, PaletteButton, useCommandPalette } from './palette/palette-launcher';
 import { UserMenu } from './user-menu';
 
 const MAIN_ID = 'main-content';
@@ -23,11 +24,17 @@ const MAIN_ID = 'main-content';
  */
 export function AppShell() {
     const narrow = useMediaQuery(NARROW_QUERY);
+    const palette = useCommandPalette();
     return (
         <div className={cx('flex min-h-dvh', narrow && 'flex-col pt-14')}>
             <SkipLink targetId={MAIN_ID} />
             <FeatureEventSync />
-            {narrow ? <NarrowShell /> : <WideSidebar />}
+            {narrow ? (
+                <NarrowShell onOpenPalette={palette.openPalette} />
+            ) : (
+                <WideSidebar onOpenPalette={palette.openPalette} />
+            )}
+            <CommandPaletteHost state={palette} />
             <main id={MAIN_ID} tabIndex={-1} className="min-w-0 flex-1 px-4 py-6 outline-none md:px-8 md:py-8">
                 <div className="mx-auto w-full max-w-6xl">
                     <Outlet />
@@ -37,7 +44,7 @@ export function AppShell() {
     );
 }
 
-function WideSidebar() {
+function WideSidebar({ onOpenPalette }: { readonly onOpenPalette: () => void }) {
     const { storage } = useBrowser();
     const [collapsed, setCollapsed] = useState(() => readSidebarCollapsed(storage));
     const toggle = () => {
@@ -55,6 +62,9 @@ function WideSidebar() {
             )}
         >
             <ShellEngineSwitcher compact={collapsed} />
+            <div className={cx(collapsed && 'flex justify-center')}>
+                <PaletteButton onOpen={onOpenPalette} compact={collapsed} />
+            </div>
             <div className="min-h-0 flex-1 overflow-y-auto">
                 <SidebarNav collapsed={collapsed} />
             </div>
@@ -75,7 +85,7 @@ function WideSidebar() {
     );
 }
 
-function NarrowShell() {
+function NarrowShell({ onOpenPalette }: { readonly onOpenPalette: () => void }) {
     const [open, setOpen] = useState(false);
     return (
         <>
@@ -93,6 +103,7 @@ function NarrowShell() {
                     <ShellEngineSwitcher compact={false} />
                 </div>
                 <LiveIndicator compact />
+                <PaletteButton onOpen={onOpenPalette} compact />
                 <ShellTrustMark />
             </header>
             <Drawer

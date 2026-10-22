@@ -96,6 +96,37 @@ export interface ActivityRendererEntry {
 
 export type AgentLiveState = 'idle' | 'working' | 'waiting' | 'failed';
 
+/** One command palette result a feature finds for what the member typed. */
+export interface PaletteResult {
+    /** Unique across the palette, e.g. `run:<id>:stop`. */
+    readonly id: string;
+    /** Plain text; engine data is fine here, the palette renders it as text. */
+    readonly label: string;
+    readonly detail?: string;
+    readonly icon?: NavIcon;
+    /** Enter or a click: navigate with the typed router, or run an action. The palette closes afterwards. */
+    readonly select: () => void;
+    /** The option is active (keyboard or pointer): preload where it leads. */
+    readonly preload?: () => void;
+}
+
+export interface PaletteSearch {
+    readonly results: readonly PaletteResult[];
+    /** A request for this query is in flight. */
+    readonly loading: boolean;
+}
+
+/**
+ * A feature's own command palette results (U-08), e.g. runs found by ID. The hook runs while the palette is open, once
+ * per keystroke; it debounces and aborts its own requests (a query key per text does both).
+ */
+export interface PaletteSearchEntry {
+    readonly id: string;
+    /** The group heading. */
+    readonly label: () => string;
+    readonly useResults: (query: string) => PaletteSearch;
+}
+
 /**
  * A feature describes itself once; the shell, the agent detail, the command palette (U-08) and the activity feed read
  * these descriptions instead of knowing features by name (ADR 0015, ADR 0016).
@@ -107,10 +138,16 @@ export interface FeatureDefinition {
     readonly agentTabs?: readonly AgentTabEntry[];
     readonly agentOverviewCards?: readonly AgentOverviewCardEntry[];
     readonly commands?: readonly CommandEntry[];
-    readonly attention?: { readonly id: string; readonly useAttention: () => Attention };
+    readonly attention?: {
+        readonly id: string;
+        readonly useAttention: () => Attention;
+        /** What the count counts, e.g. "3 failed runs"; without it the home shows the feature's nav label. */
+        readonly label?: (count: number) => string;
+    };
     readonly liveIndicator?: { readonly useActiveCount: () => number };
     readonly agentStatusProvider?: { readonly useAgentLiveState: (agentId: AgentId) => AgentLiveState | null };
     readonly activityRenderers?: readonly ActivityRendererEntry[];
+    readonly paletteSearch?: PaletteSearchEntry;
     /**
      * Keeps the feature's cached data current from the engine's event stream for as long as the shell is mounted, so
      * the shell's live indicator, agent statuses and other screens' cards stay true without polling. Called once.
