@@ -133,7 +133,7 @@ for credential in registry-token tls.crt tls.key; do
 done
 
 step "a relay image, deployed as I-03's deploy script will (by digest)"
-docker build --quiet --tag localhost/ptbk-relay:ci --file infra/relay/test/relay.Containerfile .
+docker build --quiet --tag localhost/ptbk-relay:ci --file infra/relay/test/relay.Containerfile apps/relay/dist
 docker save localhost/ptbk-relay:ci | vm 'sudo podman load --quiet'
 digest=$(vm "sudo podman image inspect --format '{{.Digest}}' localhost/ptbk-relay:ci")
 vm "echo 'PTBK_RELAY_IMAGE=localhost/ptbk-relay@$digest' | sudo install -m 0644 /dev/stdin /etc/ptbk-relay/image.env"
