@@ -6,7 +6,7 @@ import type { ReactNode } from 'react';
 
 import { cx } from '../../../app/cx';
 import { Link } from '../../../app/link';
-import type { ActivityRendererEntry } from '../../../app/registry/feature';
+import type { ActivityRendererEntry, FeatureDefinition } from '../../../app/registry/feature';
 import { m } from '../../../paraglide/messages';
 import { activityKind } from './activity-feed-cache';
 import { resolveActivityRenderer } from './resolve-activity-renderer';
@@ -34,7 +34,8 @@ function areaIcon(kind: string): ReactNode {
 
 export interface ActivityCardProps {
     readonly item: ActivityItem;
-    readonly renderers: readonly ActivityRendererEntry[];
+    /** The visible features, whose `activityRenderers` draw the items they claim. */
+    readonly features: readonly FeatureDefinition[];
     /** For a card that just arrived: slides in, or fades under reduced motion. */
     readonly enterClassName?: string;
 }
@@ -43,10 +44,10 @@ export interface ActivityCardProps {
  * One feed item: its area icon, time and agent around the body its renderer draws. Everything from the engine is
  * text, and the only link out is built from the agent ID by the typed router.
  */
-export function ActivityCard({ item, renderers, enterClassName }: ActivityCardProps) {
+export function ActivityCard({ item, features, enterClassName }: ActivityCardProps) {
     const base = item.kind === 'known' ? item.activity : item.base;
     const kind = activityKind(item);
-    const resolved = resolveActivityRenderer(item, renderers);
+    const resolved = resolveActivityRenderer(item, features);
     const fallback = <FallbackBody kind={kind} />;
     return (
         <li className={cx('flex gap-3 py-3', enterClassName)}>
@@ -104,8 +105,8 @@ class RendererBoundary extends Component<
 }
 
 /** One line for an item, for the live region: the renderer's summary, or the raw kind. */
-export function activitySummary(item: ActivityItem, renderers: readonly ActivityRendererEntry[]): string {
-    const resolved = resolveActivityRenderer(item, renderers);
+export function activitySummary(item: ActivityItem, features: readonly FeatureDefinition[]): string {
+    const resolved = resolveActivityRenderer(item, features);
     const agent = (item.kind === 'known' ? item.activity : item.base).agentName;
     const line = resolved.kind === 'renderer' ? safeSummary(resolved.entry, resolved.activity) : activityKind(item);
     return agent === null ? line : m.activity_summary_with_agent({ agent, summary: line });

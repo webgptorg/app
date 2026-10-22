@@ -1,7 +1,7 @@
 import type { Activity, ActivityItem } from '@ptbk/engine-api';
 import { describe, expect, it } from 'vitest';
 
-import type { ActivityRendererEntry } from '../../../app/registry/feature';
+import type { ActivityRendererEntry, FeatureDefinition } from '../../../app/registry/feature';
 import { resolveActivityRenderer } from './resolve-activity-renderer';
 
 const entry = (kind: string, versions: readonly number[] = [1]): ActivityRendererEntry => ({
@@ -10,6 +10,14 @@ const entry = (kind: string, versions: readonly number[] = [1]): ActivityRendere
     component: () => null,
     summary: () => kind,
 });
+
+/** One feature per entry, as features register them. */
+const featuresOf = (...entries: readonly ActivityRendererEntry[]): FeatureDefinition[] =>
+    entries.map((activityRenderer, index) => ({
+        id: `feature-${String(index)}`,
+        requires: {},
+        activityRenderers: [activityRenderer],
+    }));
 
 const base = {
     id: 'activity-1',
@@ -29,23 +37,26 @@ describe('resolveActivityRenderer', () => {
     const prefix = entry('run.*');
 
     it('prefers an exact kind, then the area prefix, then the generic card', () => {
-        expect(resolveActivityRenderer(known('run.failed'), [prefix, exact])).toMatchObject({
+        expect(resolveActivityRenderer(known('run.failed'), featuresOf(prefix, exact))).toMatchObject({
             kind: 'renderer',
             entry: exact,
         });
-        expect(resolveActivityRenderer(known('run.started'), [prefix, exact])).toMatchObject({
+        expect(resolveActivityRenderer(known('run.started'), featuresOf(prefix, exact))).toMatchObject({
             kind: 'renderer',
             entry: prefix,
         });
-        expect(resolveActivityRenderer(known('run.started'), [entry('file.*'), exact])).toEqual({ kind: 'fallback' });
+        expect(resolveActivityRenderer(known('run.started'), featuresOf(entry('file.*'), exact))).toEqual({
+            kind: 'fallback',
+        });
     });
 
     it('skips an entry that does not claim the version', () => {
-        expect(resolveActivityRenderer(known('run.failed'), [entry('run.failed', [2]), prefix])).toMatchObject({
-            kind: 'renderer',
-            entry: prefix,
+        expect(
+            resolveActivityRenderer(known('run.failed'), featuresOf(entry('run.failed', [2]), prefix)),
+        ).toMatchObject({ kind: 'renderer', entry: prefix });
+        expect(resolveActivityRenderer(known('run.failed'), featuresOf(entry('run.*', [2])))).toEqual({
+            kind: 'fallback',
         });
-        expect(resolveActivityRenderer(known('run.failed'), [entry('run.*', [2])])).toEqual({ kind: 'fallback' });
     });
 
     it('gives an unknown kind, a higher version and an invalid item the generic card, whatever is registered', () => {
@@ -55,9 +66,9 @@ describe('resolveActivityRenderer', () => {
             { kind: 'invalid', base: { ...base, kind: 'run.failed', v: 1 } as never, issues: [] },
         ];
         for (const item of items) {
-            expect(resolveActivityRenderer(item, [entry('run.failed', [1, 2]), entry('run.*', [1, 2])])).toEqual({
-                kind: 'fallback',
-            });
+            expect(
+                resolveActivityRenderer(item, featuresOf(entry('run.failed', [1, 2]), entry('run.*', [1, 2]))),
+            ).toEqual({ kind: 'fallback' });
         }
     });
 });

@@ -41,7 +41,6 @@ export function ActivityFeed() {
     const area = route.useSearch({ select: (search) => search.activity ?? null });
     const navigate = route.useNavigate();
     const features = useVisibleFeatures();
-    const renderers = features.flatMap((feature) => feature.activityRenderers ?? []);
     const areas = visibleAreas(features);
     const { can } = usePermissions();
     const feed = useInfiniteQuery(activityFeedQueryOptions(useEngineApi(), area));
@@ -54,7 +53,7 @@ export function ActivityFeed() {
     const topId = items[0] === undefined ? null : activityId(items[0]);
 
     const arrivals = useArrivals(feed.data === undefined ? undefined : items, topId);
-    const announcement = useAnnouncement(arrivals.latest, renderers);
+    const announcement = useAnnouncement(arrivals.latest, features);
     const reducedMotion = useReducedMotion();
     const { sentinelRef, heldFrom, release } = useHoldWhileAway(topId);
     const heldIndex = heldFrom === null ? -1 : items.findIndex((item) => activityId(item) === heldFrom);
@@ -99,7 +98,7 @@ export function ActivityFeed() {
                             <ActivityCard
                                 key={id}
                                 item={item}
-                                renderers={renderers}
+                                features={features}
                                 {...(arrivals.ids.has(id)
                                     ? { enterClassName: reducedMotion ? ENTER_FADE : ENTER_SLIDE }
                                     : {})}
@@ -213,7 +212,7 @@ function useArrivals(items: readonly ActivityItem[] | undefined, topId: string |
     return state;
 }
 
-function useAnnouncement(latest: readonly ActivityItem[], renderers: Parameters<typeof activitySummary>[1]): string {
+function useAnnouncement(latest: readonly ActivityItem[], features: Parameters<typeof activitySummary>[1]): string {
     const [text, setText] = useState('');
     const [announcer] = useState(() =>
         createAnnouncer({
@@ -227,12 +226,12 @@ function useAnnouncement(latest: readonly ActivityItem[], renderers: Parameters<
             },
         }),
     );
-    const renderersRef = useRef(renderers);
+    const featuresRef = useRef(features);
     useEffect(() => {
-        renderersRef.current = renderers;
+        featuresRef.current = features;
     });
     useEffect(() => {
-        announcer.push(latest.map((item) => activitySummary(item, renderersRef.current)));
+        announcer.push(latest.map((item) => activitySummary(item, featuresRef.current)));
     }, [announcer, latest]);
     useEffect(
         () => () => {
