@@ -9,6 +9,7 @@
     "dev": "tsx watch src/main.ts",
     "build": "tsdown",
     "start": "node dist/main.mjs",
+    "register": "tsx src/main.ts register",
     "identity": "tsx src/identity.ts",
     "dev-ca": "tsx src/dev-ca.ts",
     "ui-test-release": "tsx src/ui-test-release.ts",

@@ -1,0 +1,30 @@
+# The dev stack's resolver for the host (X-06, compose.dev.yaml), published on 127.0.0.1:1053 only: the dashboard and
+# every engine hostname answer 127.0.0.1, where the stack publishes the dashboard (8444) and relay-a (443). The stack's
+# own containers keep using coredns/Corefile and its 10.89.231.0/24 addresses. `bun run dev:trust` points the host's
+# resolver at this for ptbk.test and engine.test only.
+
+ptbk.test:53 {
+    hosts {
+        127.0.0.1 app.ptbk.test
+        ttl 5
+    }
+    errors
+}
+
+# No IPv6, so browsers never try another family.
+engine.test:53 {
+    template IN A {
+        answer "{{ .Name }} 5 IN A 127.0.0.1"
+    }
+    template IN AAAA {
+        rcode NOERROR
+    }
+    errors
+}
+
+.:53 {
+    template ANY ANY {
+        rcode REFUSED
+    }
+    errors
+}

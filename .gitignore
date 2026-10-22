@@ -44,3 +44,6 @@ apps/dashboard/test-results/
 
 # e2e results: Playwright report, traces and service logs (X-01).
 e2e/test-results/
+
+# The local dev stack's persistent dev CA (with its key) and its --no-system Chrome profile (X-06).
+.dev/

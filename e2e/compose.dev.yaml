@@ -1,0 +1,81 @@
+# X-06: the local dev stack (`bun run dev:stack`, compose project ptbk-dev), layered over compose.yaml and
+# compose.dashboard.yaml. It changes only ports, volumes, profiles and environment: the volumes are the same named
+# volumes, kept across `down` and `up` (only `dev:stack reset` drops them); the dev CA is the persistent one in
+# .dev/pki/ that the host trusts; and the dashboard, relay-a and a resolver for the host are published on 127.0.0.1
+# only. The mock engine's control listener stays unpublished. Ports are repeated in src/dev-stack.ts; src/dev-stack.test.ts
+# fails if they drift apart.
+
+services:
+  # `dev:stack up` creates the CA in .dev/pki/dev-ca/ first (the mock engine's own `dev-ca`, run as the host user).
+  init:
+    environment:
+      E2E_DEV_CA_DIR: /dev-ca
+    volumes:
+      - ../.dev/pki/dev-ca:/dev-ca:ro
+
+  # Re-minted on every `up`; as long as the leaves init issues, so a stack that runs for days keeps its registry.
+  registry-keys:
+    environment:
+      REGISTRY_KEY_DAYS: '7'
+
+  # The browser on the host reaches engines through relay-a only. `--no-system` moves it to another loopback port,
+  # which Chromium's --host-resolver-rules map the engine hostnames to.
+  relay-a-net:
+    ports:
+      - 127.0.0.1:${PTBK_DEV_RELAY_PORT:-443}:443
+
+  # The origin carries the published port, so the WebAuthn origin, emailed links and the URLs the relays and the
+  # engine use inside the stack are one and the same. Link codes keep their default 30 minutes: a person copies them.
+  dashboard:
+    environment:
+      DASHBOARD_ORIGIN: https://app.ptbk.test:8444
+      DASHBOARD_VARS: >-
+        {"ENGINE_DOMAIN": "engine.test",
+        "RELAYS": [{"relayId": "relay-a.ptbk.test", "region": "local-a"}, {"relayId": "relay-b.ptbk.test", "region": "local-b"}],
+        "HEARTBEAT": {"intervalS": 15, "missedLimit": 2, "graceS": 5, "perEngineLimit": 5}}
+    ports:
+      - 127.0.0.1:8444:8444
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '/e2e/probe.ts',
+          '--ca',
+          '/pki/ca-cert.pem',
+          '--servername',
+          'app.ptbk.test',
+          '--port',
+          '8444',
+          '--path',
+          '/v1/health',
+          '--address',
+          '127.0.0.1',
+        ]
+
+  relay-a:
+    environment:
+      RELAY_REGISTRY_URL: https://app.ptbk.test:8444
+
+  relay-b:
+    environment:
+      RELAY_REGISTRY_URL: https://app.ptbk.test:8444
+
+  # Still on demand: `dev:stack up` starts it once it holds a registration, `dev:link` registers it first. The engine
+  # UI can be signed into from the member list (dev login), with the small-team data seeded.
+  mock-engine:
+    environment:
+      PTBK_DASHBOARD_URL: https://app.ptbk.test:8444
+      MOCK_DEV_LOGIN: enabled
+      MOCK_SCENARIO: small-team
+
+  host-dns:
+    image: coredns/coredns:1.14.7@sha256:7efd3c635b03efd68c4e8398fc45f0d993d0e9ab016f72c1cefb0fd6d01aa286
+    command: ['-conf', '/etc/coredns/Corefile']
+    volumes:
+      - ./coredns/Corefile.host:/etc/coredns/Corefile:ro
+    ports:
+      - 127.0.0.1:1053:53/udp
+      - 127.0.0.1:1053:53/tcp
+    networks:
+      - stack

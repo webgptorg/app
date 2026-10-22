@@ -30,4 +30,13 @@ describe('gateway routes', () => {
             expect(route.rateLimit).toBe('gateway-ip');
         }
     });
+
+    it('let their form posts carry this origin, which the engine-wide no-referrer policy would turn into null', async () => {
+        const signIn = createGatewayRoutes({ sessions, members: () => [], devLogin: true }).find(
+            (route) => route.method === 'GET' && route.path === SIGN_IN_PATH,
+        );
+        if (signIn?.transport !== 'http') throw new Error('no sign-in page');
+        const response = await signIn.handle({} as never);
+        expect(await response.text()).toContain('<meta name="referrer" content="same-origin">');
+    });
 });

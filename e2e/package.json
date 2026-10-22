@@ -11,7 +11,8 @@
     "e2e:down": "node src/cli.ts down",
     "e2e:logs": "node src/cli.ts logs",
     "typecheck": "tsc --noEmit -p .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "dev:smoke": "playwright test --config playwright.dev.config.ts"
   },
   "dependencies": {
     "@ptbk/protocol": "workspace:*"

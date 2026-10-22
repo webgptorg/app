@@ -1,11 +1,13 @@
-// Host-side driver for the stack: `bun run --filter @ptbk/e2e e2e | e2e:up | e2e:down | e2e:logs`. Only node:
-// imports, so it runs before (and without) an install.
-import { spawn } from 'node:child_process';
+// Host-side driver for the stack: `bun run --filter @ptbk/e2e e2e | e2e:up | e2e:down | e2e:logs`, and the local dev
+// stack's `bun run dev:stack | dev:link | dev:trust | dev:untrust` (dev-stack.ts). Only node: imports, so it runs
+// before (and without) an install.
 import { createWriteStream } from 'node:fs';
 import { mkdir, rm } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
-import { Writable } from 'node:stream';
 
+import { devMain } from './dev-stack.ts';
+import type { ComposeTarget } from './docker.ts';
+import { composeArgs, docker, dockerOutput, must } from './docker.ts';
 import type { Scenario } from './scenarios.ts';
 import { ALL_SCENARIO_OVERLAYS, ON_DEMAND_PROFILE, SCENARIOS, scenarioNamed } from './scenarios.ts';
 
@@ -15,16 +17,8 @@ const CONTAINER_RESULTS_DIR = '/repo/e2e/test-results';
 const DOCKER_SOCKET = '/var/run/docker.sock';
 const WAIT_TIMEOUT_S = 300;
 
-export interface ComposeTarget {
-    readonly project: string;
-    readonly e2eDir: string;
-    /** `compose.<name>.yaml` files layered over compose.yaml, in order. */
-    readonly overlays: readonly string[];
-    /** Selects the specs inside the playwright container (playwright.config.ts). */
-    readonly scenario: string;
-    /** Services `up` only creates; tests start copies of them (`Scenario.onDemand`). */
-    readonly onDemand: readonly string[];
-}
+export type { ComposeTarget };
+export { composeArgs };
 
 /**
  * One project per checkout, so two worktrees never drive each other's containers. The fixed subnet still allows only
@@ -49,20 +43,6 @@ export function parseOverlays(value: string | undefined): readonly string[] {
         if (!/^[a-z0-9-]+$/.test(name)) throw new Error(`E2E_OVERLAYS: "${name}" is not an overlay name`);
     }
     return names;
-}
-
-export function composeArgs(target: ComposeTarget, ...args: readonly string[]): readonly string[] {
-    return [
-        'compose',
-        '--project-name',
-        target.project,
-        '--project-directory',
-        target.e2eDir,
-        '--file',
-        join(target.e2eDir, 'compose.yaml'),
-        ...target.overlays.flatMap((name) => ['--file', join(target.e2eDir, `compose.${name}.yaml`)]),
-        ...args,
-    ];
 }
 
 /**
@@ -118,38 +98,6 @@ export function everyServiceTarget(target: ComposeTarget): ComposeTarget {
     return { ...target, overlays: [...new Set([...ALL_SCENARIO_OVERLAYS, ...target.overlays])] };
 }
 
-type Output = 'inherit' | 'ignore' | NodeJS.WritableStream;
-
-function docker(
-    args: readonly string[],
-    stdout: Output = 'inherit',
-    stderr: 'inherit' | 'ignore' = 'inherit',
-): Promise<number> {
-    return new Promise((resolve, reject) => {
-        const child = spawn('docker', [...args], {
-            stdio: ['ignore', typeof stdout === 'string' ? stdout : 'pipe', stderr],
-        });
-        if (typeof stdout !== 'string') child.stdout?.pipe(stdout, { end: false });
-        child.once('error', reject);
-        child.once('close', (code) => {
-            resolve(code ?? 1);
-        });
-    });
-}
-
-async function dockerOutput(args: readonly string[]): Promise<string> {
-    const chunks: Buffer[] = [];
-    const sink = new Writable({
-        write(chunk: Buffer, _encoding, callback) {
-            chunks.push(chunk);
-            callback();
-        },
-    });
-    const code = await docker(args, sink);
-    if (code !== 0) throw new Error(`docker ${args.slice(0, 3).join(' ')} … exited with ${String(code)}`);
-    return Buffer.concat(chunks).toString('utf8');
-}
-
 export function parseGid(output: string): string {
     const gid = output.trim();
     if (!/^\d{1,10}$/.test(gid)) throw new Error('could not read the group of the Docker socket');
@@ -182,11 +130,6 @@ async function dockerSocketGid(target: ComposeTarget): Promise<string> {
 /** Removes a leftover playwright run container; absent is fine. */
 function removeRunContainer(target: ComposeTarget): Promise<number> {
     return docker(['rm', '--force', '--volumes', playwrightContainerName(target)], 'ignore', 'ignore');
-}
-
-async function must(args: readonly string[]): Promise<void> {
-    const code = await docker(args);
-    if (code !== 0) throw new Error(`docker ${args.slice(0, 6).join(' ')} … exited with ${String(code)}`);
 }
 
 async function up(target: ComposeTarget): Promise<void> {
@@ -301,8 +244,13 @@ async function main(argv: readonly string[]): Promise<number> {
             return 0;
         case 'logs':
             return docker(withProfiles(everyServiceTarget(target), 'logs', '--no-color', '--timestamps', ...rest));
+        case 'dev':
+        case 'link':
+        case 'trust':
+        case 'untrust':
+            return devMain(command ?? '', rest, E2E_DIR);
         default:
-            process.stderr.write('usage: cli.ts e2e|up|run|down|logs [args]\n');
+            process.stderr.write('usage: cli.ts e2e|up|run|down|logs|dev|link|trust|untrust [args]\n');
             return 2;
     }
 }
