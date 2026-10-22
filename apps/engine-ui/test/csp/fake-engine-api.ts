@@ -11,8 +11,15 @@ import {
     MemberId,
     MessageId,
 } from '@ptbk/engine-api';
-import type { EngineApiClient, EngineApiResponse, EngineApiStreamItem, ReplyStreamEvent } from '@ptbk/engine-api';
+import type {
+    ActivityItem,
+    EngineApiClient,
+    EngineApiResponse,
+    EngineApiStreamItem,
+    ReplyStreamEvent,
+} from '@ptbk/engine-api';
 import { createInMemoryEngineApiClient } from '@ptbk/engine-api/in-memory';
+import type { InMemoryMember } from '@ptbk/engine-api/in-memory';
 import { readFileSync } from 'node:fs';
 
 import type { Page, Route } from '@playwright/test';
@@ -104,7 +111,8 @@ const ROUTES: readonly (readonly ['GET' | 'POST', RegExp, number, Call])[] = [
         200,
         (api, [, id = ''], _, __, signal) => api.members.get(MemberId.parse(id), signal),
     ],
-    ['GET', /^\/activity$/, 200, (api, _, query, __, signal) => api.activity.list(Object.fromEntries(query), signal)],
+    ['GET', /^\/activity$/, 200, (api, _, query, __, signal) => activityPage(api, query, signal)],
+    ['GET', /^\/chats$/, 200, (api, _, query, __, signal) => api.chats.listAll(Object.fromEntries(query), signal)],
     ['GET', /^\/security$/, 200, (api, _, __, ___, signal) => api.security.get(signal)],
     ['GET', /^\/members$/, 200, (api, _, query, __, signal) => api.members.list(Object.fromEntries(query), signal)],
     ['GET', /^\/secrets$/, 200, (api, _, query, __, signal) => api.secrets.list(Object.fromEntries(query), signal)],
@@ -201,6 +209,75 @@ const ROUTES: readonly (readonly ['GET' | 'POST', RegExp, number, Call])[] = [
     ['GET', /^\/audit$/, 200, (api, _, query, __, signal) => api.audit.list(Object.fromEntries(query), signal)],
     ['GET', /^\/audit\/verify$/, 200, (api, _, __, ___, signal) => api.audit.verify(signal)],
 ];
+
+/** An agent name the engine reports for an activity kind this UI does not know: it must stay text on home. */
+export const HOSTILE_AGENT_NAME = '<img src=x onerror=alert(1)> <script>alert(1)</script>';
+
+/** Back to the wire shape: the client reads items into `known`, `unknown` and `invalid`, the browser parses them again. */
+function wireItem(item: ActivityItem): unknown {
+    if (item.kind === 'known') return item.activity;
+    return item.kind === 'unknown' ? item.raw : item.base;
+}
+
+/**
+ * `GET /activity` from the in-memory engine, plus on the unfiltered first page an item of a kind no UI knows, named
+ * after an agent whose name is markup, with a payload that must never be shown.
+ */
+async function activityPage(
+    api: EngineApiClient,
+    query: URLSearchParams,
+    signal: AbortSignal,
+): Promise<EngineApiResponse<unknown>> {
+    const response = await api.activity.list(Object.fromEntries(query), signal);
+    if (response.kind !== 'ok') return response;
+    const items = response.data.items.map(wireItem);
+    if (!query.has('cursor') && !query.has('kind') && !query.has('agentId')) {
+        items.unshift({
+            kind: 'deploy.started',
+            v: 1,
+            id: 'activity-hostile',
+            at: '2026-10-01T11:59:00.000Z',
+            agentId: FAKE_AGENT_ID,
+            agentName: HOSTILE_AGENT_NAME,
+            actor: { kind: 'system' },
+            environment: HOSTILE_RUN_TEXT,
+        });
+    }
+    return { ...response, data: { items, nextCursor: response.data.nextCursor } };
+}
+
+/** What happened lately, oldest first: a run, a member joining, an update. */
+const FAKE_ACTIVITY = [
+    {
+        kind: 'member.joined',
+        v: 1,
+        id: 'activity-member',
+        at: '2026-10-01T09:00:00.000Z',
+        agentId: null,
+        actor: { kind: 'system' },
+        memberId: 'member-jana',
+        displayName: 'Jana Nováková',
+    },
+    {
+        kind: 'run.started',
+        v: 1,
+        id: 'activity-run',
+        at: '2026-10-01T11:58:30.000Z',
+        agentId: FAKE_AGENT_ID,
+        actor: { kind: 'member', memberId: 'member-owner' },
+        runId: 'run-hostile',
+        source: 'api',
+    },
+    {
+        kind: 'engine.update-available',
+        v: 1,
+        id: 'activity-update',
+        at: '2026-10-01T11:58:45.000Z',
+        agentId: null,
+        actor: { kind: 'system' },
+        version: '9.9.0',
+    },
+] as const;
 
 /** A running run of Ada whose logs, error-like text and diff carry the hostile samples. */
 export const FAKE_RUN_ID = 'run-hostile';
@@ -636,11 +713,17 @@ async function replyStream(engineApi: EngineApiClient, match: RegExpExecArray, s
 
 /**
  * Answers the engine API from the in-memory client until the mock engine (M-04) and the loader (M-05) serve the
- * bundle for real (X-04). Same origin as the bundle, so `connect-src 'self'` still applies.
+ * bundle for real (X-04). Same origin as the bundle, so `connect-src 'self'` still applies. `member` signs in as
+ * someone other than the owner; routed again on the same page, the newer routing wins.
  */
-export async function routeFakeEngineApi(page: Page): Promise<void> {
+export async function routeFakeEngineApi(
+    page: Page,
+    options: { readonly member?: InMemoryMember } = {},
+): Promise<void> {
     const engineApi = createInMemoryEngineApiClient({
+        ...(options.member === undefined ? {} : { member: options.member }),
         seed: {
+            activity: [...FAKE_ACTIVITY],
             engine: { name: 'CSP test engine', hostname: 'engine.localhost', dashboardUrl: null, mode: 'local' },
             security: SECURITY_OVERVIEW,
             secrets: [

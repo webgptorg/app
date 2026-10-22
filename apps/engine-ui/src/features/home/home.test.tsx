@@ -166,15 +166,31 @@ describe('home: control center', { timeout: TIMEOUT_MS }, () => {
         expect(await within(recent).findByRole('link', { name: 'Ada' })).toBeDefined();
     });
 
-    it('shows skeletons while widgets load, and empty states when there is nothing', async () => {
-        const engine = createHomeEngine({ activity: [], seed: { agents: [], runs: [], chats: [], messages: [] } });
+    it('shows skeletons shaped like each widget while it loads', async () => {
+        const engine = createHomeEngine();
         engine.spies.runStats.mockImplementation(() => new Promise(() => undefined));
+        engine.spies.activity.mockImplementation(() => new Promise(() => undefined));
+        engine.spies.agents.mockImplementation(() => new Promise(() => undefined));
         renderWithProviders({ path: '/', engineApi: engine.client });
 
         const counts = await screen.findByRole('region', { name: 'Right now' });
-        expect(counts.querySelector('[data-slot="skeleton"], .animate-pulse, [aria-hidden="true"]')).not.toBeNull();
-        expect(await screen.findByText('No agents yet')).toBeDefined();
-        expect(within(await feed()).getByText('No activity yet')).toBeDefined();
+        expect(counts.querySelectorAll('dd[aria-busy="true"]')).toHaveLength(2);
+        const recent = await screen.findByRole('region', { name: 'Recent agents' });
+        expect(recent.querySelector('[aria-busy="true"]')).not.toBeNull();
+        expect((await feed()).querySelector('ul[aria-busy="true"]')?.children).toHaveLength(4);
+    });
+
+    it('shows empty states when there is nothing yet, with a way to create the first agent', async () => {
+        const engine = createHomeEngine({ activity: [], seed: { agents: [], runs: [], chats: [], messages: [] } });
+        renderWithProviders({ path: '/', engineApi: engine.client });
+
+        const recent = await screen.findByRole('region', { name: 'Recent agents' });
+        expect(await within(recent).findByText('No agents yet')).toBeDefined();
+        expect(within(recent).getByRole('link', { name: 'New agent' }).getAttribute('href')).toBe('/agents/new');
+        expect(await within(await feed()).findByText('No activity yet')).toBeDefined();
+        await waitFor(() => {
+            expect(countValue('Running now')).toBe('0');
+        });
     });
 
     it('shows a feed that fails with a retry, and the rest of home still renders', async () => {

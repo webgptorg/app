@@ -5,6 +5,7 @@ import { expect, expectCleanPage, test } from './fixtures.ts';
 
 /** Every route the shell registers, an agent page with its Settings, Chat, Runs and Triggers tabs, a chat, a run, a trigger, the gallery, and a path that does not exist. */
 const ROUTES = [
+    '/',
     '/agents',
     `/agents/${FAKE_AGENT_ID}`,
     `/agents/${FAKE_AGENT_ID}/settings`,

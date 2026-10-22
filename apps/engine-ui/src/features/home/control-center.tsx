@@ -98,16 +98,18 @@ function Stat({
     value,
     children,
     className,
+    busy = false,
 }: {
     readonly label: string;
     readonly value: ReactNode;
+    readonly busy?: boolean;
     readonly children?: ReactNode;
     readonly className?: string;
 }) {
     return (
         <div className={cx('flex flex-col gap-1', className)}>
             <dt className="text-sm text-text-muted">{label}</dt>
-            <dd className="flex flex-col gap-2">
+            <dd className="flex flex-col gap-2" aria-busy={busy || undefined}>
                 <span className="font-display text-3xl font-semibold tabular-nums">{value}</span>
                 {children}
             </dd>
@@ -135,8 +137,8 @@ function RunCounts() {
         count === undefined ? <Skeleton className="h-9 w-12" /> : locale.formatNumber(count);
     return (
         <>
-            <Stat label={m.home_running_now()} value={value(stats.data?.running)} />
-            <Stat label={m.home_queued()} value={value(stats.data?.queued)} />
+            <Stat label={m.home_running_now()} value={value(stats.data?.running)} busy={stats.data === undefined} />
+            <Stat label={m.home_queued()} value={value(stats.data?.queued)} busy={stats.data === undefined} />
         </>
     );
 }
