@@ -1,11 +1,11 @@
 import { createFileRoute } from '@tanstack/react-router';
 
+import { AgentWizardPage } from '../../features/agent-wizard/agent-wizard-page';
+import { WizardSearch } from '../../features/agent-wizard/wizard-search';
 import { requirePermission } from '../../features/session/require-permission';
-import { PageStub } from '../../features/shell/page-stub';
-import { m } from '../../paraglide/messages';
 
-// U-04 replaces this with the create-agent wizard.
 export const Route = createFileRoute('/agents/new')({
     beforeLoad: requirePermission('agents.write'),
-    component: () => <PageStub title={m.agents_new()} />,
+    validateSearch: WizardSearch,
+    component: AgentWizardPage,
 });

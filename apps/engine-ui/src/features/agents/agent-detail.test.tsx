@@ -6,8 +6,8 @@ import { useSyncExternalStore } from 'react';
 import { describe, expect, it } from 'vitest';
 
 import { FEATURES } from '../../app/features';
-import { AGENT_TABS, defineFeature } from '../../app/registry/feature';
-import type { AgentLiveState, FeatureDefinition, FeatureRequirement, RoutePath } from '../../app/registry/feature';
+import { defineFeature } from '../../app/registry/feature';
+import type { AgentLiveState, FeatureDefinition, RoutePath } from '../../app/registry/feature';
 import { expectNoAxeViolations } from '../../testing/axe';
 import { createAgentsEngine } from '../../testing/agents-engine';
 import type { AgentsEngineOptions } from '../../testing/agents-engine';
@@ -18,29 +18,6 @@ import { problemResponse, TEST_NOW } from '../../testing/test-engine-api';
 const TIMEOUT_MS = 20_000;
 
 const label = (text: string) => () => text;
-
-/** What U-04, U-10 and U-11 will register; their routes do not exist yet, so the paths are untyped here. */
-function tabFeature(
-    tab: keyof typeof AGENT_TABS,
-    text: string,
-    requires: FeatureRequirement,
-    tabRequires?: FeatureRequirement,
-): FeatureDefinition {
-    return defineFeature({
-        id: `${tab}-feature`,
-        requires,
-        agentTabs: [
-            {
-                ...AGENT_TABS[tab],
-                label: label(text),
-                to: `/agents/$agentId/${tab}` as RoutePath,
-                ...(tabRequires === undefined ? {} : { requires: tabRequires }),
-            },
-        ],
-    });
-}
-
-const OTHER_TABS: readonly FeatureDefinition[] = [tabFeature('book', 'Book', { permission: 'agents.read' })];
 
 /** The agent page's own header (identity, state, primary actions), not the shell's. */
 const agentHeader = () => screen.getAllByRole('heading', { level: 1 })[0]?.closest('header') as HTMLElement;
@@ -65,7 +42,7 @@ const allBut = (...missing: readonly Permission[]) => PERMISSIONS.filter((permis
 
 describe('agent tabs', { timeout: TIMEOUT_MS }, () => {
     it('shows all eight tabs in the order of the design brief with every capability and permission', async () => {
-        await renderAgent('/agents/agent-001', { features: [...FEATURES, ...OTHER_TABS] });
+        await renderAgent('/agents/agent-001', { features: FEATURES });
         expect(tabNames()).toEqual([
             'Overview',
             'Chat',
@@ -81,13 +58,13 @@ describe('agent tabs', { timeout: TIMEOUT_MS }, () => {
     });
 
     it('shows only Overview, Chat, Book and Settings on an engine that advertises no capability', async () => {
-        await renderAgent('/agents/agent-001', { features: [...FEATURES, ...OTHER_TABS], capabilities: [] });
+        await renderAgent('/agents/agent-001', { features: FEATURES, capabilities: [] });
         expect(tabNames()).toEqual(['Overview', 'Chat', 'Book', 'Settings']);
     });
 
     it('hides Runs without runs.read, and a deep link to it says "no access"', async () => {
         await renderAgent('/agents/agent-001/runs', {
-            features: [...FEATURES, ...OTHER_TABS],
+            features: FEATURES,
             permissions: allBut('runs.read'),
         });
         expect(tabNames()).not.toContain('Runs');
@@ -96,14 +73,26 @@ describe('agent tabs', { timeout: TIMEOUT_MS }, () => {
     });
 
     it('says "not available on this engine" for a deep link to a tab whose capability is missing', async () => {
-        await renderAgent('/agents/agent-001/runs', { features: [...FEATURES, ...OTHER_TABS], capabilities: [] });
+        await renderAgent('/agents/agent-001/runs', { features: FEATURES, capabilities: [] });
         expect(await screen.findByRole('heading', { level: 1, name: 'Not available on this engine' })).toBeDefined();
     });
 
     it('checks a tab’s own requirement on a deep link, and says "not found" for a tab nobody registers', async () => {
-        // Book has no route yet (U-04), so the catch-all tab route decides.
-        const gated = tabFeature('book', 'Book', {}, { permission: 'integrations.manage' });
-        await renderAgent('/agents/agent-001/book', {
+        // Notes has no route, so the catch-all tab route decides.
+        const gated = defineFeature({
+            id: 'notes',
+            requires: {},
+            agentTabs: [
+                {
+                    id: 'notes',
+                    order: 75,
+                    label: label('Notes'),
+                    to: '/agents/$agentId/notes' as RoutePath,
+                    requires: { permission: 'integrations.manage' },
+                },
+            ],
+        });
+        await renderAgent('/agents/agent-001/notes', {
             features: [...FEATURES, gated],
             permissions: allBut('integrations.manage'),
         });
@@ -114,7 +103,12 @@ describe('agent tabs', { timeout: TIMEOUT_MS }, () => {
     });
 
     it('says "not found" for a registered tab that is allowed but has no route yet', async () => {
-        await renderAgent('/agents/agent-001/book', { features: [...FEATURES, ...OTHER_TABS] });
+        const notes = defineFeature({
+            id: 'notes',
+            requires: {},
+            agentTabs: [{ id: 'notes', order: 75, label: label('Notes'), to: '/agents/$agentId/notes' as RoutePath }],
+        });
+        await renderAgent('/agents/agent-001/notes', { features: [...FEATURES, notes] });
         expect(await screen.findByRole('heading', { level: 1, name: 'Not found' })).toBeDefined();
     });
 
@@ -139,6 +133,7 @@ describe('agent tabs', { timeout: TIMEOUT_MS }, () => {
             'Files',
             'Triggers',
             'Integrations',
+            'Book',
             'Notes',
             'Settings',
         ]);
@@ -149,7 +144,7 @@ describe('agent tabs', { timeout: TIMEOUT_MS }, () => {
         const { user, router } = await renderAgent();
         const overview = screen.getByRole('tab', { name: 'Overview' });
         overview.focus();
-        await user.keyboard('{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}');
+        await user.keyboard('{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}');
         const settings = screen.getByRole('tab', { name: 'Settings' });
         expect(document.activeElement).toBe(settings);
         await user.keyboard('{Enter}');
@@ -242,7 +237,7 @@ describe('agent overview', { timeout: TIMEOUT_MS }, () => {
     });
 
     it('has no axe violations', async () => {
-        const { container } = await renderAgent('/agents/agent-001', { features: [...FEATURES, ...OTHER_TABS] });
+        const { container } = await renderAgent('/agents/agent-001', { features: FEATURES });
         await screen.findByText('No activity yet');
         await expectNoAxeViolations(container);
     });
@@ -334,7 +329,7 @@ describe('agent live state', { timeout: TIMEOUT_MS }, () => {
 
 describe('agent header', { timeout: TIMEOUT_MS }, () => {
     it('offers Chat and Edit where those tabs exist and the member may edit', async () => {
-        await renderAgent('/agents/agent-001', { features: [...FEATURES, ...OTHER_TABS] });
+        await renderAgent('/agents/agent-001', { features: FEATURES });
         const header = agentHeader();
         expect(within(header).getByRole('link', { name: 'Chat' }).getAttribute('href')).toBe('/agents/agent-001/chat');
         expect(within(header).getByRole('link', { name: 'Edit' }).getAttribute('href')).toBe('/agents/agent-001/book');
@@ -342,7 +337,7 @@ describe('agent header', { timeout: TIMEOUT_MS }, () => {
 
     it('offers no Edit without agents.write, and no Chat where no feature registers it', async () => {
         await renderAgent('/agents/agent-001', {
-            features: [...FEATURES, ...OTHER_TABS],
+            features: FEATURES,
             permissions: allBut('agents.write'),
         });
         const header = agentHeader();
@@ -410,7 +405,7 @@ describe('agent settings', { timeout: TIMEOUT_MS }, () => {
 
     it('is absent without agents.write and agents.delete, and a deep link says "no access"', async () => {
         await renderAgent('/agents/agent-001/settings', { permissions: allBut('agents.write', 'agents.delete') });
-        expect(tabNames()).toEqual(['Overview', 'Chat', 'Runs', 'Files', 'Triggers', 'Integrations']);
+        expect(tabNames()).toEqual(['Overview', 'Chat', 'Runs', 'Files', 'Triggers', 'Integrations', 'Book']);
         expect(await screen.findByRole('heading', { level: 1, name: 'No access' })).toBeDefined();
     });
 

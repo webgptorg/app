@@ -3,6 +3,7 @@ import {
     ChatId,
     FileId,
     IntegrationId,
+    RevisionId,
     RunId,
     TriggerId,
     createProblem,
@@ -61,12 +62,44 @@ const runId = (match: RegExpExecArray) => RunId.parse(match[1] ?? '');
 const triggerId = (match: RegExpExecArray) => TriggerId.parse(match[1] ?? '');
 const fileId = (match: RegExpExecArray) => FileId.parse(match[1] ?? '');
 const integrationId = (match: RegExpExecArray) => IntegrationId.parse(match[1] ?? '');
+const revisionId = (match: RegExpExecArray) => RevisionId.parse(match[2] ?? '');
 
 /** The routes the visited pages call, with the success status the contract gives each; anything else answers 404. */
-const ROUTES: readonly (readonly ['GET' | 'POST', RegExp, number, Call])[] = [
+const ROUTES: readonly (readonly ['GET' | 'POST' | 'PUT', RegExp, number, Call])[] = [
     ['GET', /^\/engine$/, 200, (api, _, __, ___, signal) => api.engine.get(signal)],
     ['GET', /^\/me$/, 200, (api, _, __, ___, signal) => api.me.get(signal)],
     ['GET', /^\/agents$/, 200, (api, _, query, __, signal) => api.agents.list(Object.fromEntries(query), signal)],
+    ['POST', /^\/agents$/, 201, (api, _, __, body, signal) => api.agents.create(body as { source: string }, signal)],
+    [
+        'POST',
+        /^\/agents\/validate$/,
+        200,
+        (api, _, __, body, signal) => api.agents.validate(body as { source: string }, signal),
+    ],
+    [
+        'GET',
+        /^\/agents\/([\w-]+)\/source$/,
+        200,
+        (api, match, _, __, signal) => api.agents.getSource(agentId(match), signal),
+    ],
+    [
+        'PUT',
+        /^\/agents\/([\w-]+)\/source$/,
+        200,
+        (api, match, _, body, signal) => api.agents.updateSource(agentId(match), body as never, signal),
+    ],
+    [
+        'GET',
+        /^\/agents\/([\w-]+)\/revisions$/,
+        200,
+        (api, match, query, _, signal) => api.agents.listRevisions(agentId(match), Object.fromEntries(query), signal),
+    ],
+    [
+        'GET',
+        /^\/agents\/([\w-]+)\/revisions\/([\w-]+)$/,
+        200,
+        (api, match, _, __, signal) => api.agents.getRevision(agentId(match), revisionId(match), signal),
+    ],
     ['GET', /^\/agents\/([\w-]+)$/, 200, (api, match, _, __, signal) => api.agents.get(agentId(match), signal)],
     [
         'GET',
@@ -795,6 +828,7 @@ export async function routeFakeEngineApi(
         // Sent messages get the same hostile reply, streamed in pieces.
         replyScript: () => ({ chunks: HOSTILE_REPLY.match(/[\s\S]{1,40}/g) ?? [] }),
     });
+    await saveSecondBookVersion(engineApi);
     await page.route(`**${ENGINE_API_PREFIX}/**`, async (route) => {
         const request = route.request();
         const url = new URL(request.url());
@@ -822,13 +856,25 @@ export async function routeFakeEngineApi(
         for (const [method, pattern, status, call] of ROUTES) {
             const match = pattern.exec(path);
             if (request.method() === method && match !== null) {
-                const body: unknown = method === 'POST' ? (request.postDataJSON() as unknown) : undefined;
+                const body: unknown = method === 'GET' ? undefined : (request.postDataJSON() as unknown);
                 await fulfil(route, await call(engineApi, match, url.searchParams, body ?? {}, signal), status);
                 return;
             }
         }
         await fulfil(route, { kind: 'problem', problem: createProblem('not-found') }, 404);
     });
+}
+
+/** The agent whose book the editor checks open; a second version gives its history something to compare. */
+export const BOOK_AGENT_ID = 'grace';
+
+async function saveSecondBookVersion(engineApi: EngineApiClient): Promise<void> {
+    const signal = AbortSignal.timeout(5_000);
+    const id = AgentId.parse(BOOK_AGENT_ID);
+    const current = await engineApi.agents.getSource(id, signal);
+    if (current.kind === 'problem') throw new Error('The book agent is missing from the seed');
+    const source = `${current.data.source}\nRULE Be kind\nKNOWLEDGE https://example.com/guide.pdf`;
+    await engineApi.agents.updateSource(id, { source, baseRevisionId: current.data.revisionId }, signal);
 }
 
 function message(

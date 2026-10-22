@@ -53,6 +53,15 @@ const MOTION_MARKERS = ['data-layout-id'];
 const ABSOLUTE_URL = /\b[a-z][a-z0-9+.-]*:\/\/[^\s"'`()<>\\,;{}$]*/gi;
 const PROTOCOL_RELATIVE_URL = /["'`(]\/\/[a-z0-9-]+(\.[a-z0-9-]+)+/gi;
 const DATA_URL = /\bdata:(?:[a-z]+\/[a-z0-9.+-]+)?(?:;[a-z0-9=.+-]+)*,/gi;
+/**
+ * CodeMirror's style rules (the lint underline, the tab marker of `highlightWhitespace`) draw small SVG backgrounds as CSS
+ * `url('data:image/svg+xml,…')` images: what `img-src 'self' data:` allows, and the CSP test renders them in the book
+ * editor without a violation (ADR 0013). Only that exact CSS image shape is exempt; a data: URL anywhere else fails.
+ */
+const CSS_SVG_IMAGE_PREFIX = "url('";
+const isCssSvgImage = (text: string, index: number, match: string) =>
+    match.toLowerCase() === 'data:image/svg+xml,' &&
+    text.slice(index - CSS_SVG_IMAGE_PREFIX.length, index) === CSS_SVG_IMAGE_PREFIX;
 
 async function emittedFiles(): Promise<{ path: string; text: string }[]> {
     const paths = (await readdir(distDir, { recursive: true, withFileTypes: true }))
@@ -92,10 +101,21 @@ describe('dist/', () => {
         expect(html).not.toMatch(/<base\b/i);
     });
 
+    it('exempts only CSS SVG images from the data: URL check', () => {
+        const svg = "x{background:url('data:image/svg+xml,<svg/>')}";
+        expect(isCssSvgImage(svg, svg.indexOf('data:'), 'data:image/svg+xml,')).toBe(true);
+        const asset = 'src="data:image/svg+xml,<svg/>"';
+        expect(isCssSvgImage(asset, asset.indexOf('data:'), 'data:image/svg+xml,')).toBe(false);
+        const font = "url('data:font/woff2,AA')";
+        expect(isCssSvgImage(font, font.indexOf('data:'), 'data:font/woff2,')).toBe(false);
+    });
+
     it('contains no data: URL and no external URL', async () => {
         const found: string[] = [];
         for (const { path, text } of await emittedFiles()) {
-            for (const [match] of text.matchAll(DATA_URL)) found.push(`${path}: ${match}`);
+            for (const { 0: match, index } of text.matchAll(DATA_URL)) {
+                if (!isCssSvgImage(text, index, match)) found.push(`${path}: ${match}`);
+            }
             for (const [match] of text.matchAll(PROTOCOL_RELATIVE_URL)) found.push(`${path}: ${match}`);
             for (const [match] of text.matchAll(ABSOLUTE_URL)) {
                 if (!INERT_URLS.has(match)) found.push(`${path}: ${match}`);
