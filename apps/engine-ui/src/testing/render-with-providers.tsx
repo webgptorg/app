@@ -49,7 +49,12 @@ export interface RenderWithProvidersOptions {
     readonly fetch?: typeof fetch;
     /** The shared clock for live durations; defaults to a manual one stopped at `TEST_NOW`. */
     readonly ticker?: ManualTicker;
+    /** The reader's time zone; defaults to `TEST_TIME_ZONE`. */
+    readonly timeZone?: string;
 }
+
+/** The browser's zone in tests, fixed so times read the same on every machine. */
+export const TEST_TIME_ZONE = 'UTC';
 
 export interface RenderedApp extends RenderResult {
     readonly router: AppRouter;
@@ -97,7 +102,13 @@ export function renderWithProviders(options: RenderWithProvidersOptions = {}): R
             engineApi={engineApi}
             queryClient={queryClient}
             router={router}
-            browser={{ storage, matchMedia: media.matchMedia, location, fetch }}
+            browser={{
+                storage,
+                matchMedia: media.matchMedia,
+                location,
+                fetch,
+                timeZone: options.timeZone ?? TEST_TIME_ZONE,
+            }}
             ticker={ticker}
         />,
     );

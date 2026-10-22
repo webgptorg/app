@@ -65,7 +65,15 @@ export type CommandEntry = {
     readonly label: () => string;
     readonly keywords: () => readonly string[];
     readonly requires?: FeatureRequirement;
-} & ({ readonly to: RoutePath; readonly run?: never } | { readonly run: () => void; readonly to?: never });
+} & (
+    | {
+          readonly to: RoutePath;
+          /** Search params for `to`, e.g. a filter that lists exactly what the command acts on. */
+          readonly search?: Readonly<Record<string, string>>;
+          readonly run?: never;
+      }
+    | { readonly run: () => void; readonly to?: never }
+);
 
 export interface Attention {
     readonly count: number;

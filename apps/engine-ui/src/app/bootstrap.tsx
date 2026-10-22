@@ -22,6 +22,7 @@ export interface BrowserDeps {
     /** Theme and language preferences; `undefined` when the browser refuses storage. */
     readonly storage: PreferenceStorage | undefined;
     readonly matchMedia: ThemeMatchMedia;
+    readonly timeZone: string;
 }
 
 export interface MountedApp {
@@ -63,6 +64,7 @@ export async function bootstrap(container: HTMLElement, browser: BrowserDeps): P
                     matchMedia: browser.matchMedia,
                     location: browser.location,
                     fetch: browser.fetch,
+                    timeZone: browser.timeZone,
                 }}
             />
             {devtools}

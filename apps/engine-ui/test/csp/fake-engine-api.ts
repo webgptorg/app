@@ -2,6 +2,7 @@ import {
     AgentId,
     ChatId,
     RunId,
+    TriggerId,
     createProblem,
     encodeSseMessage,
     ENGINE_API_PREFIX,
@@ -48,6 +49,7 @@ const agentId = (match: RegExpExecArray) => AgentId.parse(match[1] ?? '');
 const chatId = (match: RegExpExecArray) => ChatId.parse(match[1] ?? '');
 const messageId = (match: RegExpExecArray) => MessageId.parse(match[2] ?? '');
 const runId = (match: RegExpExecArray) => RunId.parse(match[1] ?? '');
+const triggerId = (match: RegExpExecArray) => TriggerId.parse(match[1] ?? '');
 
 /** The routes the visited pages call, with the success status the contract gives each; anything else answers 404. */
 const ROUTES: readonly (readonly ['GET' | 'POST', RegExp, number, Call])[] = [
@@ -121,6 +123,32 @@ const ROUTES: readonly (readonly ['GET' | 'POST', RegExp, number, Call])[] = [
     ['GET', /^\/runs\/([\w-]+)$/, 200, (api, match, _, __, signal) => api.runs.get(runId(match), signal)],
     ['POST', /^\/runs\/([\w-]+)\/cancel$/, 202, (api, match, _, __, signal) => api.runs.cancel(runId(match), signal)],
     ['POST', /^\/runs\/([\w-]+)\/retry$/, 201, (api, match, _, __, signal) => api.runs.retry(runId(match), signal)],
+    ['GET', /^\/triggers$/, 200, (api, _, query, __, signal) => api.triggers.list(Object.fromEntries(query), signal)],
+    [
+        'GET',
+        /^\/triggers\/stats$/,
+        200,
+        (api, _, query, __, signal) => api.triggers.stats(Object.fromEntries(query), signal),
+    ],
+    ['GET', /^\/triggers\/([\w-]+)$/, 200, (api, match, _, __, signal) => api.triggers.get(triggerId(match), signal)],
+    [
+        'GET',
+        /^\/triggers\/([\w-]+)\/fires$/,
+        200,
+        (api, match, query, _, signal) => api.triggers.listFires(triggerId(match), Object.fromEntries(query), signal),
+    ],
+    [
+        'POST',
+        /^\/triggers\/([\w-]+)\/pause$/,
+        200,
+        (api, match, _, __, signal) => api.triggers.pause(triggerId(match), signal),
+    ],
+    [
+        'POST',
+        /^\/triggers\/([\w-]+)\/resume$/,
+        200,
+        (api, match, _, __, signal) => api.triggers.resume(triggerId(match), signal),
+    ],
     ['GET', /^\/audit$/, 200, (api, _, query, __, signal) => api.audit.list(Object.fromEntries(query), signal)],
     ['GET', /^\/audit\/verify$/, 200, (api, _, __, ___, signal) => api.audit.verify(signal)],
 ];
@@ -227,6 +255,98 @@ function fakeRuns() {
                 outputTokens: 800,
                 durationMs: 59_000,
                 cost: { amount: '0.0042', currency: 'USD' },
+            },
+        },
+    ];
+}
+
+/** A schedule of Ada in Prague whose planned message and failed fire carry the hostile samples. */
+export const FAKE_TRIGGER_ID = 'trigger-morning';
+
+function fakeTriggers() {
+    const base = {
+        agentId: FAKE_AGENT_ID,
+        lifecycle: 'active' as const,
+        endedReason: null,
+        lastFiredAt: null,
+        nextFireAt: null,
+        createdBy: 'member-owner',
+        createdAt: '2026-09-20T10:00:00.000Z',
+        updatedAt: '2026-09-20T10:00:00.000Z',
+    };
+    const schedule = {
+        startsAt: '2026-09-20T10:00:00.000Z',
+        endsAt: null,
+        maxRunCount: null,
+        runCount: 0,
+        message: 'Check the inbox.',
+    };
+    return [
+        {
+            trigger: {
+                ...base,
+                id: FAKE_TRIGGER_ID,
+                name: 'Morning report with a long name that has to wrap on a narrow screen',
+                kind: 'schedule' as const,
+                lastFiredAt: '2026-09-30T06:00:00.000Z',
+                nextFireAt: '2026-10-02T06:00:00.000Z',
+                createdAt: '2026-09-25T10:00:00.000Z',
+                config: {
+                    ...schedule,
+                    recurrence: { kind: 'cron' as const, expression: '0 8 * * 1-5', timeZone: 'Europe/Prague' },
+                    runCount: 2,
+                    maxRunCount: 100,
+                    message: `Write the morning report. ${HOSTILE_RUN_TEXT}`,
+                },
+            },
+            fires: [
+                {
+                    id: 'fire-failed',
+                    at: '2026-09-29T06:00:00.000Z',
+                    outcome: 'failed' as const,
+                    runId: null,
+                    error: { code: 'agent-unavailable', summary: `Nothing ran: ${HOSTILE_RUN_TEXT}` },
+                },
+                {
+                    id: 'fire-started',
+                    at: '2026-09-30T06:00:00.000Z',
+                    outcome: 'started' as const,
+                    runId: FAKE_RUN_ID,
+                    error: null,
+                },
+            ],
+        },
+        {
+            trigger: {
+                ...base,
+                id: 'trigger-inbox',
+                name: 'Support inbox',
+                kind: 'email' as const,
+                createdAt: '2026-09-24T10:00:00.000Z',
+                config: { address: 'support-inbox-7f3a9c@memoryengine234567abcdefgh.ptbk.io' },
+            },
+        },
+        {
+            trigger: {
+                ...base,
+                id: 'trigger-paused',
+                agentId: 'grace',
+                name: 'Every quarter hour',
+                kind: 'schedule' as const,
+                lifecycle: 'paused' as const,
+                createdAt: '2026-09-23T10:00:00.000Z',
+                config: { ...schedule, recurrence: { kind: 'interval' as const, everySeconds: 900 } },
+            },
+        },
+        {
+            trigger: {
+                ...base,
+                id: 'trigger-failed',
+                name: 'Calendar sync',
+                kind: 'schedule' as const,
+                lifecycle: 'failed' as const,
+                createdAt: '2026-09-22T10:00:00.000Z',
+                config: { ...schedule, recurrence: { kind: 'interval' as const, everySeconds: 3_600 } },
             },
         },
     ];
@@ -369,6 +489,7 @@ export async function routeFakeEngineApi(page: Page): Promise<void> {
             ],
             auditEntries: auditEntries(),
             runs: fakeRuns(),
+            triggers: fakeTriggers(),
             members: [
                 {
                     id: 'member-jana',

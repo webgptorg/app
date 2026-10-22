@@ -21,6 +21,7 @@ function UiProviders({ children }: { readonly children: ReactNode }) {
                     matchMedia: createFakeMatchMedia().matchMedia,
                     location: createFakeLocation('/'),
                     fetch: vi.fn<typeof fetch>(),
+                    timeZone: 'UTC',
                 }}
             >
                 {children}

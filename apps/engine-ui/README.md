@@ -1,6 +1,6 @@
 # @ptbk/engine-ui
 
-The full app for engine owners and members: agents, agent creation and editing, chat, runs, security panel, members, passkeys, secrets metadata, audit log.
+The full app for engine owners and members: agents, agent creation and editing, chat, runs, triggers and schedules, security panel, members, passkeys, secrets metadata, audit log.
 
 It is built into a hashed static bundle, signed and logged as part of a release. The engine downloads it on update, verifies it and serves it from its own origin; we never serve it to browsers ([ADR 0003](../../docs/adr/0003-ui-as-signed-bundle.md)). It talks only to the engine API through `EngineApiClient` from `@ptbk/engine-api`.
 

@@ -27,4 +27,5 @@ void bootstrap(container, {
     cspScope: window,
     storage,
     matchMedia,
+    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
 });
