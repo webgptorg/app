@@ -2,16 +2,24 @@ import { describe, expect, it } from 'vitest';
 
 import {
     composeArgs,
+    createOnDemandArgs,
     everyServiceTarget,
     parseGid,
     parseOverlays,
     projectName,
     runArgs,
     scenarioTarget,
+    withProfiles,
 } from './cli.ts';
 import { scenarioNamed } from './scenarios.ts';
 
-const TARGET = { project: 'ptbk-e2e-app', e2eDir: '/repo/e2e', overlays: ['proxy'], scenario: 'spike' } as const;
+const TARGET = {
+    project: 'ptbk-e2e-app',
+    e2eDir: '/repo/e2e',
+    overlays: ['proxy'],
+    scenario: 'spike',
+    onDemand: [],
+} as const;
 
 describe('projectName', () => {
     it('is one project per checkout, unless E2E_PROJECT names one', () => {
@@ -55,12 +63,36 @@ describe('composeArgs and runArgs', () => {
             '--no-deps',
             'playwright',
         ]);
+        expect(runArgs(TARGET, []).slice(9, 13)).toEqual(['--profile', 'test', '--profile', 'on-demand']);
         expect(runArgs(TARGET, ['--grep', 'sse']).slice(-5)).toEqual([
             'playwright',
             'node_modules/.bin/playwright',
             'test',
             '--grep',
             'sse',
+        ]);
+    });
+});
+
+describe('withProfiles and createOnDemandArgs', () => {
+    it('activates the test and on-demand profiles for everything but up', () => {
+        expect(withProfiles(TARGET, 'build').slice(-5)).toEqual([
+            '--profile',
+            'test',
+            '--profile',
+            'on-demand',
+            'build',
+        ]);
+    });
+
+    it("creates the scenario's on-demand services without starting them or their dependencies", () => {
+        expect(createOnDemandArgs(TARGET)).toBeNull();
+        expect(createOnDemandArgs({ ...TARGET, onDemand: ['mock-engine'] })?.slice(-5)).toEqual([
+            'up',
+            '--no-start',
+            '--no-build',
+            '--no-deps',
+            'mock-engine',
         ]);
     });
 });
@@ -73,7 +105,9 @@ describe('scenarioTarget and everyServiceTarget', () => {
             ...base,
             scenario: 'egress-443',
             overlays: ['nat', 'egress-443', 'debug'],
+            onDemand: [],
         });
+        expect(scenarioTarget(base, scenarioNamed('dashboard'), []).onDemand).toEqual(['mock-engine']);
     });
 
     it('cleans up with every overlay any scenario uses', () => {
@@ -85,6 +119,7 @@ describe('scenarioTarget and everyServiceTarget', () => {
             'connect-proxy',
             'tls-inspecting-proxy',
             'acme',
+            'dashboard',
             'debug',
         ]);
     });

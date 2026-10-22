@@ -1,0 +1,135 @@
+# X-05: the dashboard joins the stack and is the only registry. The relays look engines up in its registry API with
+# keys minted into its local D1 before they start (no static registry file exists anywhere); the mock engine is not
+# started by `up` but once someone has a link code for it: it registers with the dashboard, takes the relays it hands
+# out and sends a heartbeat every 15 s. Nothing test-only lives here, so X-06 can reuse this file for the local stack.
+# Addresses and timings are repeated from src/stack.ts; src/stack.test.ts fails if they drift apart.
+
+x-dashboard-build: &dashboard-build
+  context: ..
+  dockerfile: apps/dashboard/Dockerfile.dev
+
+services:
+  init:
+    environment:
+      E2E_REGISTRY: dashboard
+    volumes:
+      - dashboard-key:/dashboard-key
+
+  # One-shot, before the dashboard serves and the relays start: migrations, then one registry key per relay with
+  # D-04's mint script (e2e/dashboard/mint-registry-keys.sh). Only the key's hash reaches D1; the key itself goes to a
+  # volume that only its relay mounts, never to a log.
+  registry-keys:
+    build: *dashboard-build
+    command: ['sh', '/e2e/mint-registry-keys.sh', 'relay-a.ptbk.test', 'relay-b.ptbk.test']
+    environment:
+      WRANGLER_SEND_METRICS: 'false'
+    volumes:
+      - dashboard-state:/repo/apps/dashboard/.wrangler
+      - ./dashboard/mint-registry-keys.sh:/e2e/mint-registry-keys.sh:ro
+      - relay-a-registry-key:/registry-tokens/relay-a.ptbk.test
+      - relay-b-registry-key:/registry-tokens/relay-b.ptbk.test
+    network_mode: none
+
+  # D-01's dev container: the built SPA and Worker in workerd under the production CSP, local D1, fake email and
+  # billing. DASHBOARD_VARS points it at this stack: its engine domain, both relays (handed to engines at
+  # registration), heartbeats every 15 s with an engine offline after 2 missed ones plus 5 s, and 30 s link codes.
+  dashboard:
+    build: *dashboard-build
+    depends_on:
+      init:
+        condition: service_completed_successfully
+      registry-keys:
+        condition: service_completed_successfully
+      dns:
+        condition: service_started
+    environment:
+      DASHBOARD_ORIGIN: https://app.ptbk.test
+      DASHBOARD_TLS_CERT: /pki/app.ptbk.test.pem
+      DASHBOARD_TLS_KEY: /dashboard-key/key.pem
+      DASHBOARD_VARS: >-
+        {"ENGINE_DOMAIN": "engine.test",
+        "RELAYS": [{"relayId": "relay-a.ptbk.test", "region": "e2e-a"}, {"relayId": "relay-b.ptbk.test", "region": "e2e-b"}],
+        "HEARTBEAT": {"intervalS": 15, "missedLimit": 2, "graceS": 5, "perEngineLimit": 5},
+        "LINK_CODE_TTL_S": 30}
+      WRANGLER_SEND_METRICS: 'false'
+    volumes:
+      - dashboard-state:/repo/apps/dashboard/.wrangler
+      - public:/pki:ro
+      - dashboard-key:/dashboard-key:ro
+      - ./src/probe.ts:/e2e/probe.ts:ro
+    healthcheck:
+      interval: 1s
+      timeout: 5s
+      retries: 3
+      start_period: 120s
+      start_interval: 500ms
+      test:
+        [
+          'CMD',
+          'node',
+          '/e2e/probe.ts',
+          '--ca',
+          '/pki/ca-cert.pem',
+          '--servername',
+          'app.ptbk.test',
+          '--path',
+          '/v1/health',
+          '--address',
+          '127.0.0.1',
+        ]
+    dns: [10.89.231.53]
+    networks:
+      stack:
+        ipv4_address: 10.89.231.60
+
+  # The registry comes from the dashboard over HTTPS (trusting the dev CA); the token arrives as a file, because only
+  # the registry-keys service knows it, and becomes the relay's RELAY_REGISTRY_TOKEN as it starts.
+  relay-a:
+    depends_on:
+      registry-keys:
+        condition: service_completed_successfully
+    command:
+      ['sh', '-c', 'RELAY_REGISTRY_TOKEN="$$(cat /registry-token/token)" exec node --enable-source-maps /app/main.mjs']
+    environment:
+      RELAY_REGISTRY_KIND: http
+      RELAY_REGISTRY_URL: https://app.ptbk.test
+      RELAY_REGISTRY_FILE: !reset null
+      NODE_EXTRA_CA_CERTS: /pki/ca-cert.pem
+    volumes:
+      - relay-a-registry-key:/registry-token:ro
+
+  relay-b:
+    depends_on:
+      registry-keys:
+        condition: service_completed_successfully
+    command:
+      ['sh', '-c', 'RELAY_REGISTRY_TOKEN="$$(cat /registry-token/token)" exec node --enable-source-maps /app/main.mjs']
+    environment:
+      RELAY_REGISTRY_KIND: http
+      RELAY_REGISTRY_URL: https://app.ptbk.test
+      RELAY_REGISTRY_FILE: !reset null
+      NODE_EXTRA_CA_CERTS: /pki/ca-cert.pem
+    volumes:
+      - relay-b-registry-key:/registry-token:ro
+
+  # Started with a link code (PTBK_LINK_CODE) once one exists; it then stores its registration and starts without one.
+  # Its relays come from the registration, not from PTBK_RELAYS.
+  mock-engine:
+    profiles: [on-demand]
+    depends_on:
+      dashboard:
+        condition: service_healthy
+    environment:
+      PTBK_DASHBOARD_URL: https://app.ptbk.test
+      PTBK_RELAYS: !reset null
+      MOCK_HEARTBEAT_INTERVAL_S: '15'
+
+  # Its healthcheck needs a routed engine, which exists only after linking.
+  engine-probe:
+    profiles: [on-demand]
+
+volumes:
+  dashboard-key:
+  dashboard-state:
+  relay-a-registry-key:
+  relay-b-registry-key:

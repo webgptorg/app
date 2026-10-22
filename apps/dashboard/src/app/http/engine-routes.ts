@@ -58,7 +58,7 @@ export function bindEngineRoutes(
 
     bind(router, mount, apiRoutes.createLinkCode, async ({ request, session }) => {
         const outcome = await issueLinkCode(
-            deps,
+            { ...deps, linkCodeTtlMs: deps.config.linkCodeTtlMs },
             { orgId: session.actor.orgId, userId: session.actor.userId },
             request.signal,
         );

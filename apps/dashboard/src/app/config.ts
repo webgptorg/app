@@ -3,6 +3,7 @@ import { z } from 'zod';
 
 import { fromBase64Url } from '../domain/auth/secrets';
 import { createPlanCatalogue, planCatalogueSchema, type PlanCatalogue } from '../domain/billing/plan-catalogue';
+import { LINK_CODE_TTL_MS } from '../domain/registration/issue-link-code';
 import type { HeartbeatTiming } from '../domain/status/engine-status';
 import { environmentSchema, type Environment } from '../shared/environment';
 
@@ -59,6 +60,15 @@ const heartbeatSchema = z
     );
 
 /**
+ * How long a link code can be redeemed, in seconds; 30 minutes by default (D-03). Never longer, so the countdown on
+ * `/engines/new` and the spec's promise hold; the e2e stack shortens it to test expiry without a clock hook.
+ */
+const linkCodeTtlSchema = z
+    .int()
+    .min(10)
+    .max(LINK_CODE_TTL_MS / 1000);
+
+/**
  * The dev-only HMAC key for rate-limit keys, committed in wrangler.jsonc's top-level vars. Every other environment gets
  * its own from `wrangler secret put RATE_LIMIT_HMAC_KEY`; this value is refused there.
  */
@@ -102,6 +112,7 @@ const varsSchema = z
         RATE_LIMIT_HMAC_KEY: hmacKeySchema,
         BILLING_PLANS: planCatalogueSchema,
         HEARTBEAT: heartbeatSchema.optional(),
+        LINK_CODE_TTL_S: linkCodeTtlSchema.optional(),
         STRIPE_SECRET_KEY: stripeKeySchema.optional(),
         STRIPE_WEBHOOK_SECRET: stripeWebhookSecretSchema.optional(),
     })
@@ -153,6 +164,7 @@ export interface DashboardConfig {
     readonly rateLimitHmacKey: Uint8Array;
     readonly plans: PlanCatalogue;
     readonly heartbeat: HeartbeatTiming;
+    readonly linkCodeTtlMs: number;
     /** Secret; present whenever `adapters.billing` is `stripe`. */
     readonly stripeSecretKey: string | null;
     /** Secret; present whenever `adapters.billing` is `stripe`, optional with the fake. */
@@ -196,6 +208,7 @@ export function parseConfig(env: object): DashboardConfig {
         rateLimitHmacKey: fromBase64Url(parsed.RATE_LIMIT_HMAC_KEY),
         plans: createPlanCatalogue(parsed.BILLING_PLANS),
         heartbeat: Object.freeze({ ...(parsed.HEARTBEAT ?? heartbeatSchema.parse({})) }),
+        linkCodeTtlMs: parsed.LINK_CODE_TTL_S === undefined ? LINK_CODE_TTL_MS : parsed.LINK_CODE_TTL_S * 1000,
         stripeSecretKey: parsed.STRIPE_SECRET_KEY ?? null,
         stripeWebhookSecret: parsed.STRIPE_WEBHOOK_SECRET ?? null,
     });

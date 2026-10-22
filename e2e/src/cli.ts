@@ -7,7 +7,7 @@ import { basename, dirname, join } from 'node:path';
 import { Writable } from 'node:stream';
 
 import type { Scenario } from './scenarios.ts';
-import { ALL_SCENARIO_OVERLAYS, SCENARIOS, scenarioNamed } from './scenarios.ts';
+import { ALL_SCENARIO_OVERLAYS, ON_DEMAND_PROFILE, SCENARIOS, scenarioNamed } from './scenarios.ts';
 
 const E2E_DIR = dirname(import.meta.dirname);
 const RESULTS_DIR = join(E2E_DIR, 'test-results');
@@ -22,6 +22,8 @@ export interface ComposeTarget {
     readonly overlays: readonly string[];
     /** Selects the specs inside the playwright container (playwright.config.ts). */
     readonly scenario: string;
+    /** Services `up` only creates; tests start copies of them (`Scenario.onDemand`). */
+    readonly onDemand: readonly string[];
 }
 
 /**
@@ -63,6 +65,14 @@ export function composeArgs(target: ComposeTarget, ...args: readonly string[]): 
     ];
 }
 
+/**
+ * Every command but `up` sees the `test` profile (playwright) and the on-demand services, so they are built, cleaned up
+ * and logged, and so playwright's dependencies resolve.
+ */
+export function withProfiles(target: ComposeTarget, ...args: readonly string[]): readonly string[] {
+    return composeArgs(target, '--profile', 'test', '--profile', ON_DEMAND_PROFILE, ...args);
+}
+
 export function playwrightContainerName(target: ComposeTarget): string {
     return `${target.project}-playwright-run`;
 }
@@ -70,7 +80,7 @@ export function playwrightContainerName(target: ComposeTarget): string {
 /** `docker compose run` arguments; extra arguments go to `playwright test` (e.g. `--grep sse`). */
 export function runArgs(target: ComposeTarget, playwrightArgs: readonly string[]): readonly string[] {
     const command = playwrightArgs.length === 0 ? [] : ['node_modules/.bin/playwright', 'test', ...playwrightArgs];
-    return composeArgs(
+    return withProfiles(
         target,
         'run',
         '--name',
@@ -85,7 +95,7 @@ export function runArgs(target: ComposeTarget, playwrightArgs: readonly string[]
 
 /** The scenario's overlays, then any extra ones from `E2E_OVERLAYS` (such as `debug`). */
 export function scenarioTarget(
-    base: Omit<ComposeTarget, 'overlays' | 'scenario'>,
+    base: Omit<ComposeTarget, 'overlays' | 'scenario' | 'onDemand'>,
     scenario: Scenario,
     extraOverlays: readonly string[],
 ): ComposeTarget {
@@ -93,7 +103,14 @@ export function scenarioTarget(
         ...base,
         scenario: scenario.name,
         overlays: [...new Set([...scenario.overlays, ...extraOverlays])],
+        onDemand: scenario.onDemand ?? [],
     };
+}
+
+/** Creates the on-demand services' containers without starting them, as templates for the compose fixture's `run`. */
+export function createOnDemandArgs(target: ComposeTarget): readonly string[] | null {
+    if (target.onDemand.length === 0) return null;
+    return composeArgs(target, 'up', '--no-start', '--no-build', '--no-deps', ...target.onDemand);
 }
 
 /** `down` and `logs` see the services of every scenario, so they clean up whatever an earlier run started. */
@@ -174,7 +191,7 @@ async function must(args: readonly string[]): Promise<void> {
 
 async function up(target: ComposeTarget): Promise<void> {
     // Built together so the shared install and build run once; `up` itself never builds.
-    await must(composeArgs(target, '--profile', 'test', 'build'));
+    await must(withProfiles(target, 'build'));
     await must(
         composeArgs(
             target,
@@ -187,22 +204,13 @@ async function up(target: ComposeTarget): Promise<void> {
             String(WAIT_TIMEOUT_S),
         ),
     );
+    const onDemand = createOnDemandArgs(target);
+    if (onDemand !== null) await must(onDemand);
 }
 
 async function down(target: ComposeTarget): Promise<void> {
     await removeRunContainer(target);
-    await must(
-        composeArgs(
-            everyServiceTarget(target),
-            '--profile',
-            'test',
-            'down',
-            '--volumes',
-            '--remove-orphans',
-            '--timeout',
-            '10',
-        ),
-    );
+    await must(withProfiles(everyServiceTarget(target), 'down', '--volumes', '--remove-orphans', '--timeout', '10'));
 }
 
 function resultsDir(target: ComposeTarget): string {
@@ -213,7 +221,7 @@ async function saveLogs(target: ComposeTarget): Promise<void> {
     const dir = resultsDir(target);
     await mkdir(dir, { recursive: true });
     const file = createWriteStream(join(dir, 'compose.log'));
-    await docker(composeArgs(target, '--profile', 'test', 'logs', '--no-color', '--timestamps'), file);
+    await docker(withProfiles(target, 'logs', '--no-color', '--timestamps'), file);
     await new Promise((resolve) => file.end(resolve));
     process.stderr.write(`e2e: service logs in ${join(dir, 'compose.log')}\n`);
 }
@@ -221,7 +229,7 @@ async function saveLogs(target: ComposeTarget): Promise<void> {
 /** Runs the suite in the playwright container and copies its results out (no bind mount: no root-owned files). */
 async function runTests(target: ComposeTarget, playwrightArgs: readonly string[]): Promise<number> {
     // Cheap when nothing changed, and picks up edited tests against a running stack.
-    await must(composeArgs(target, '--profile', 'test', 'build', 'playwright'));
+    await must(withProfiles(target, 'build', 'playwright'));
     process.env['E2E_DOCKER_GID'] = await dockerSocketGid(target);
     await removeRunContainer(target);
     const code = await docker(runArgs(target, playwrightArgs));
@@ -254,7 +262,7 @@ async function runScenario(target: ComposeTarget, playwrightArgs: readonly strin
 
 /** Every scenario in turn (or only `E2E_SCENARIO`); one failing does not stop the others, so CI reports them all. */
 async function e2e(
-    base: Omit<ComposeTarget, 'overlays' | 'scenario'>,
+    base: Omit<ComposeTarget, 'overlays' | 'scenario' | 'onDemand'>,
     scenarios: readonly Scenario[],
     extraOverlays: readonly string[],
     playwrightArgs: readonly string[],
@@ -292,17 +300,7 @@ async function main(argv: readonly string[]): Promise<number> {
             await down(target);
             return 0;
         case 'logs':
-            return docker(
-                composeArgs(
-                    everyServiceTarget(target),
-                    '--profile',
-                    'test',
-                    'logs',
-                    '--no-color',
-                    '--timestamps',
-                    ...rest,
-                ),
-            );
+            return docker(withProfiles(everyServiceTarget(target), 'logs', '--no-color', '--timestamps', ...rest));
         default:
             process.stderr.write('usage: cli.ts e2e|up|run|down|logs [args]\n');
             return 2;

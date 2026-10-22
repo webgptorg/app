@@ -7,3 +7,7 @@
 apps/dashboard/src/paraglide
 **/routeTree.gen.ts
 **/worker-configuration.d.ts
+# The e2e stack builds this image; its sources and results would only invalidate the install layer on every edit.
+# Its manifest stays, since `bun install --frozen-lockfile` needs every workspace.
+e2e/*
+!e2e/package.json
