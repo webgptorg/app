@@ -42,6 +42,7 @@ describe('app shell', () => {
                 .map((heading) => heading.textContent),
         ).toEqual(['Work', 'Resources', 'Administration']);
         expect(await sidebarLinks()).toEqual([
+            'Home',
             'Agents',
             'Runs',
             'Files',
@@ -56,18 +57,26 @@ describe('app shell', () => {
         await expectNoAxeViolations(container);
     });
 
-    it('shows only Settings to a member without permissions, and "no access" on guarded routes', async () => {
+    it('shows only Home and Settings to a member without permissions, and "no access" on guarded routes', async () => {
         renderWithProviders({ path: '/members', permissions: [] });
 
         expect(await screen.findByRole('heading', { level: 1, name: 'No access' })).toBeDefined();
-        expect(await sidebarLinks()).toEqual(['Settings']);
+        expect(await sidebarLinks()).toEqual(['Home', 'Settings']);
     });
 
     it('shows every item with full permissions', async () => {
         renderWithProviders({ path: '/members', permissions: ALL_PERMISSIONS });
 
         expect(await screen.findByRole('heading', { level: 1, name: 'Members' })).toBeDefined();
-        expect(await sidebarLinks()).toEqual(['Agents', 'Members', 'Security', 'Secrets', 'Audit log', 'Settings']);
+        expect(await sidebarLinks()).toEqual([
+            'Home',
+            'Agents',
+            'Members',
+            'Security',
+            'Secrets',
+            'Audit log',
+            'Settings',
+        ]);
     });
 
     it('ignores permission strings it does not know', async () => {
@@ -86,7 +95,7 @@ describe('app shell', () => {
             },
         });
 
-        expect(await sidebarLinks()).toEqual(['Agents', 'Settings']);
+        expect(await sidebarLinks()).toEqual(['Home', 'Agents', 'Settings']);
     });
 
     it('hides a capability-gated feature the engine does not advertise, and its route says so', async () => {

@@ -6,24 +6,17 @@ import { BrowserProvider, useBrowser } from '../browser-context';
 import { renderWithProviders } from '../../testing/render-with-providers';
 import { createTestEngineApi } from '../../testing/test-engine-api';
 import { FEATURES } from '../features';
-import { defineFeature } from './feature';
-import { firstNavPath } from './first-nav-path';
 import { requireFeature } from './require-feature';
 
-const context = (features = FEATURES) => ({
+const context = () => ({
     queryClient: createAppQueryClient({ onUnauthenticated: () => undefined }),
     engineApi: createTestEngineApi(),
-    features,
+    features: FEATURES,
 });
 
 describe('registry guards', () => {
     it('refuse a route guarded by a feature that is not registered', async () => {
         await expect(requireFeature('nowhere')({ context: context() })).rejects.toThrow(/no feature "nowhere"/);
-    });
-
-    it('fall back to Settings when no feature has a sidebar entry', async () => {
-        const headless = defineFeature({ id: 'headless', requires: {} });
-        await expect(firstNavPath(context([headless]))).resolves.toBe('/settings');
     });
 
     it('answer "not found" for the gallery outside the test:csp build', async () => {

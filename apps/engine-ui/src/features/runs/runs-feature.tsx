@@ -8,6 +8,7 @@ import { AGENT_TABS, defineFeature } from '../../app/registry/feature';
 import type { Attention } from '../../app/registry/feature';
 import { m } from '../../paraglide/messages';
 import { RunActivityItem, runActivitySummary } from './run-activity';
+import { useRunPaletteResults } from './run-palette-search';
 import { useRunAgentLiveState } from './run-agent-state';
 import { useRunStats } from './runs-queries';
 import { useRunEventSync } from './use-run-event-sync';
@@ -45,18 +46,13 @@ export const runsFeature = defineFeature({
     agentTabs: [{ ...AGENT_TABS.runs, label: m.agent_tab_runs, to: '/agents/$agentId/runs' }],
     agentOverviewCards: [{ id: 'runs.recent', order: 10, component: RecentRunsOverviewCard }],
     activityRenderers: [{ kind: 'run.*', versions: [1], component: RunActivityItem, summary: runActivitySummary }],
-    attention: { id: 'runs.failed', useAttention: useFailedRunsAttention },
+    attention: {
+        id: 'runs.failed',
+        useAttention: useFailedRunsAttention,
+        label: (count) => m.runs_attention_failed({ count }),
+    },
     liveIndicator: { useActiveCount: useRunningCount },
     agentStatusProvider: { useAgentLiveState: useRunAgentLiveState },
     eventSync: { useEventSync: useRunEventSync },
-    commands: [
-        { id: 'runs.open', label: m.command_go_to_run, keywords: () => [m.nav_runs()], to: '/runs' },
-        {
-            id: 'runs.stop',
-            label: m.command_stop_run,
-            keywords: () => [m.nav_runs(), m.run_cancel()],
-            to: '/runs',
-            requires: { permission: 'runs.control' },
-        },
-    ],
+    paletteSearch: { id: 'runs', label: m.nav_runs, useResults: useRunPaletteResults },
 });

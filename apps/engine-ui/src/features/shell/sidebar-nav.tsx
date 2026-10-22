@@ -44,6 +44,8 @@ export function SidebarNav({ collapsed = false, onNavigate }: SidebarNavProps) {
                                     <li key={item.featureId}>
                                         <Link
                                             to={item.to}
+                                            // Every path starts with `/`, so Home is current only on itself.
+                                            activeOptions={{ exact: item.to === '/' }}
                                             variant="standalone"
                                             onClick={onNavigate}
                                             title={collapsed ? label : undefined}

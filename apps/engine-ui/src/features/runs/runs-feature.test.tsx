@@ -107,23 +107,18 @@ describe('recent runs overview card', { timeout: TIMEOUT_MS }, () => {
 });
 
 describe('registry gating', () => {
-    it('shows nav, tab, card, attention, commands and status only with runs@1 and runs.read', () => {
+    it('shows nav, tab, card, attention, palette search and status only with runs@1 and runs.read', () => {
         const full = visibleFeatures(FEATURES, access(PERMISSIONS)).find(({ id }) => id === 'runs');
         expect(full?.nav?.to).toBe('/runs');
         expect(full?.agentTabs?.map(({ id }) => id)).toEqual(['runs']);
         expect(full?.agentOverviewCards?.map(({ id }) => id)).toEqual(['runs.recent']);
-        expect(full?.commands?.map(({ id }) => id)).toEqual(['runs.open', 'runs.stop']);
+        expect(full?.paletteSearch?.id).toBe('runs');
         expect(full?.attention?.id).toBe('runs.failed');
         expect(full?.agentStatusProvider).toBeDefined();
 
         expect(visibleFeatures(FEATURES, access(allBut('runs.read'))).some(({ id }) => id === 'runs')).toBe(false);
         const withoutRuns = ALL_CAPABILITIES.filter(({ id }) => id !== 'runs');
         expect(visibleFeatures(FEATURES, access(PERMISSIONS, withoutRuns)).some(({ id }) => id === 'runs')).toBe(false);
-    });
-
-    it('offers "Stop run" only with runs.control', () => {
-        const readOnly = visibleFeatures(FEATURES, access(allBut('runs.control'))).find(({ id }) => id === 'runs');
-        expect(readOnly?.commands?.map(({ id }) => id)).toEqual(['runs.open']);
     });
 });
 

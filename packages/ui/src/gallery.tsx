@@ -15,6 +15,7 @@ import { emptyStateGallery } from './components/empty-state/empty-state.gallery'
 import { errorStateGallery } from './components/error-state/error-state.gallery';
 import { paginationGallery } from './components/pagination/pagination.gallery';
 import { codeTextGallery } from './components/code-text/code-text.gallery';
+import { commandPaletteGallery } from './components/command-palette/command-palette.gallery';
 import { copyButtonGallery } from './components/copy-button/copy-button.gallery';
 import { relativeTimeGallery } from './components/relative-time/relative-time.gallery';
 import { skipLinkGallery } from './components/skip-link/skip-link.gallery';
@@ -42,6 +43,7 @@ export const GALLERY_ENTRIES: readonly GalleryEntry[] = [
     cardGallery,
     checkboxGallery,
     codeTextGallery,
+    commandPaletteGallery,
     confirmDialogGallery,
     dataTableGallery,
     copyButtonGallery,

@@ -6,6 +6,7 @@
 @import './card/card.css';
 @import './checkbox/checkbox.css';
 @import './code-text/code-text.css';
+@import './command-palette/command-palette.css';
 @import './confirm-dialog/confirm-dialog.css';
 @import './copy-button/copy-button.css';
 @import './data-table/data-table.css';

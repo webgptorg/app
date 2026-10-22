@@ -69,6 +69,12 @@ export { ConfirmDialog } from './components/confirm-dialog/confirm-dialog';
 export type { ConfirmDialogProps } from './components/confirm-dialog/confirm-dialog';
 export { Drawer } from './components/drawer/drawer';
 export type { DrawerProps, DrawerSide } from './components/drawer/drawer';
+export { CommandPalette } from './components/command-palette/command-palette';
+export type {
+    CommandPaletteGroup,
+    CommandPaletteItem,
+    CommandPaletteProps,
+} from './components/command-palette/command-palette';
 export { Menu } from './components/menu/menu';
 export type {
     MenuEntry,
