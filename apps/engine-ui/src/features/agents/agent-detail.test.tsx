@@ -145,7 +145,7 @@ describe('agent tabs', { timeout: TIMEOUT_MS }, () => {
         const { user, router } = await renderAgent();
         const overview = screen.getByRole('tab', { name: 'Overview' });
         overview.focus();
-        await user.keyboard('{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}');
+        await user.keyboard('{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}');
         const settings = screen.getByRole('tab', { name: 'Settings' });
         expect(document.activeElement).toBe(settings);
         await user.keyboard('{Enter}');
