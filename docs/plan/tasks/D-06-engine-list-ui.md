@@ -43,15 +43,15 @@ An engine key cannot be rotated in place: the engine ID is the key's hash (ADR 0
 
 ## Acceptance criteria
 
-- [ ] Unit tests for `deriveEngineDisplayStatus`, covering all five outcomes.
-- [ ] Workers tests: a user of org A sees only org A's engines; `GET /api/engines/:engineId` with org B's engine ID → 404; no session → 401; a DO timeout returns `unknown` for that engine and the rest normally. Client tests: signed-out → redirect to `/signin`; an `unknown` engine renders as such without an error page.
-- [ ] Fingerprint: for every engine ID in `@ptbk/ui`'s shared fingerprint vectors, the list row and the detail page render the same code as engine-ui's security page (same function, same vectors); the mark's accessible name contains the code; status and fingerprint are not conveyed by colour alone.
-- [ ] A rendered "Open" link has `target="_blank"`, `rel="noopener noreferrer"`, `referrerpolicy="no-referrer"` and the exact `https://<engineId>.<engine domain>/` URL.
-- [ ] A test asserts the rendered engine pages' DOM contains no reference to the engine domain other than those anchor `href`s (no `src`, `link rel=prefetch|preconnect|dns-prefetch`, no `fetch` target), and that the typed client only targets `/api/*`.
-- [ ] Revoke, Workers tests: without a fresh step-up → step-up error and no change; within 72 hours of D-02 recovery → 403 `recovery-cooldown`; a non-owner → 403; org B's engine ID → 404; success sets `suspended` with `owner-revoked`, writes one `org_audit_log` row, and `deriveEngineDisplayStatus` then returns `suspended`. Client test: the dialog shows the recovery explanation and the request is sent only after the typed confirmation.
-- [ ] Both locales render the list and detail pages and the revoke dialog without missing keys.
-- [ ] `bun run check` passes.
-- [ ] **Status** line above set to `done (#<PR>)`.
+- [x] Unit tests for `deriveEngineDisplayStatus`, covering all five outcomes.
+- [x] Workers tests: a user of org A sees only org A's engines; `GET /api/engines/:engineId` with org B's engine ID → 404; no session → 401; a DO timeout returns `unknown` for that engine and the rest normally. Client tests: signed-out → redirect to `/signin`; an `unknown` engine renders as such without an error page.
+- [x] Fingerprint: for every engine ID in `@ptbk/ui`'s shared fingerprint vectors, the list row and the detail page render the same code as engine-ui's security page (same function, same vectors); the mark's accessible name contains the code; status and fingerprint are not conveyed by colour alone.
+- [x] A rendered "Open" link has `target="_blank"`, `rel="noopener noreferrer"`, `referrerpolicy="no-referrer"` and the exact `https://<engineId>.<engine domain>/` URL.
+- [x] A test asserts the rendered engine pages' DOM contains no reference to the engine domain other than those anchor `href`s (no `src`, `link rel=prefetch|preconnect|dns-prefetch`, no `fetch` target), and that the typed client only targets `/api/*`.
+- [x] Revoke, Workers tests: without a fresh step-up → step-up error and no change; within 72 hours of D-02 recovery → 403 `recovery-cooldown`; a non-owner → 403; org B's engine ID → 404; success sets `suspended` with `owner-revoked`, writes one `org_audit_log` row, and `deriveEngineDisplayStatus` then returns `suspended`. Client test: the dialog shows the recovery explanation and the request is sent only after the typed confirmation.
+- [x] Both locales render the list and detail pages and the revoke dialog without missing keys.
+- [x] `bun run check` passes.
+- [x] **Status** line above set to `done (#<PR>)`.
 
 ## Risks and open points
 
