@@ -22,6 +22,7 @@ const FIELD_NAMES = [
     'id',
     'at',
     'agentId',
+    'agentName',
     'actor',
     'memberId',
     'triggerId',

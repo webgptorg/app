@@ -42,6 +42,7 @@ export function activitySample(kind: ActivityKindName, id = 'activity-1'): Recor
         id,
         at: AT,
         agentId: 'agent-1',
+        agentName: 'Agent One',
         actor: { kind: 'member', memberId: 'member-1' },
         ...ACTIVITY_PAYLOADS[kind],
     };

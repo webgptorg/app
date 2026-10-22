@@ -1322,6 +1322,28 @@ export function engineApiClientSuite(makeEngine: MakeEngine): void {
             expect(await list({ agentId: AgentId.parse('agent-b') })).toEqual([]);
         });
 
+        it("names each activity item's agent, deleted or not, and none without an agent (API 1.9)", async () => {
+            const { client, controller } = engine();
+            controller.advanceRun('run-4');
+            controller.appendActivity({
+                kind: 'member.joined',
+                agentId: null,
+                actor: { kind: 'system' },
+                memberId: 'member-new',
+                displayName: 'New',
+            });
+            const names = async () =>
+                ok(await client.activity.list({}, signal())).items.map((item) =>
+                    item.kind === 'known' ? [item.activity.kind, item.activity.agentName] : [item.kind],
+                );
+            expect(await names()).toEqual([
+                ['member.joined', null],
+                ['run.started', 'Ada'],
+            ]);
+            ok(await client.agents.delete(AgentId.parse('agent-a'), signal()));
+            expect((await names())[1]).toEqual(['run.started', 'Ada']);
+        });
+
         it('hides runs, run activity and run events from a member without runs.read', async () => {
             const { client, controller } = engine({
                 member: {

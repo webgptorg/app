@@ -1,7 +1,8 @@
 import { ENGINE_API_ROUTES, parseActivity } from '@ptbk/engine-api';
+import type { Agent } from '@ptbk/engine-api';
 
 import type { ConformanceCheck } from '../../check';
-import { Findings, fail } from '../../check';
+import { Findings, fail, skip } from '../../check';
 import { describe } from './api';
 import { checkStableWalk } from './capability-support';
 import { SUITE, attempt } from './support';
@@ -85,6 +86,45 @@ export const ACTIVITY_CHECKS: readonly ConformanceCheck[] = [
                     findings.add('GET /activity: items are not newest first');
                 }
             });
+            return findings.outcome();
+        },
+    },
+    {
+        id: 'engine-api.activity.agent-names',
+        suite: SUITE,
+        title: 'Each activity item names its agent as GET /agents/{agentId} does, and an item without an agent names none',
+        async run(ctx) {
+            const world = await createWorld(ctx);
+            const findings = new Findings();
+            const response = await world.owner.send(R.listActivity, { query: { limit: PAGE_LIMIT } });
+            const page = JSON.parse(decoder.decode(response.bytes)) as { items?: unknown };
+            const items = (Array.isArray(page.items) ? page.items : []).flatMap((item: unknown) => {
+                const parsed = parseActivity(item);
+                return parsed.kind === 'known' ? [parsed.activity] : [];
+            });
+            if (items.length === 0) skip('the engine has no activity to check');
+            const names = new Map<string, string | null>();
+            const nameOf = async (agentId: string) => {
+                if (!names.has(agentId)) {
+                    const agent = await world.owner.send(R.getAgent, { params: { agentId } });
+                    // A deleted agent keeps the name it had, which GET /agents/{agentId} no longer answers.
+                    names.set(
+                        agentId,
+                        agent.status === 200 ? (JSON.parse(decoder.decode(agent.bytes)) as Agent).name : null,
+                    );
+                }
+                return names.get(agentId) ?? null;
+            };
+            for (const { id, agentId, agentName } of items) {
+                if (agentId === null) {
+                    if (agentName !== null) findings.add(`GET /activity: ${id} has no agent but names one`);
+                    continue;
+                }
+                const expected = await nameOf(agentId);
+                if (expected !== null && agentName !== expected) {
+                    findings.add(`GET /activity: ${id} does not name its agent as GET /agents/{agentId} does`);
+                }
+            }
             return findings.outcome();
         },
     },

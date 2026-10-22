@@ -43,6 +43,27 @@ describe('parseActivity', () => {
         expect(parseActivity(raw).kind).toBe('invalid');
     });
 
+    it('reads a known kind without its agent name as invalid', () => {
+        const raw = activitySample('run.started');
+        delete raw['agentName'];
+        expect(parseActivity(raw)).toMatchObject({ kind: 'invalid', issues: [{ path: 'agentName' }] });
+    });
+
+    it.each([
+        ['missing', undefined],
+        ['empty', ''],
+        ['too long', 'x'.repeat(257)],
+        ['not a string', 42],
+    ])('reads an unknown kind whose agent name is %s with a null name, not dropped', (_label, agentName) => {
+        const raw = { ...activitySample('run.queued'), kind: 'deploy.started', agentName };
+        expect(parseActivity(raw)).toMatchObject({ kind: 'unknown', base: { agentName: null } });
+    });
+
+    it('keeps the agent name of an unknown kind for its generic card', () => {
+        const raw = { ...activitySample('run.queued'), kind: 'deploy.started', agentName: '<img src=x>' };
+        expect(parseActivity(raw)).toMatchObject({ kind: 'unknown', base: { agentName: '<img src=x>' } });
+    });
+
     it('strips fields a known kind does not declare', () => {
         const sample = activitySample('trigger.fired');
         const parsed = parseActivity({

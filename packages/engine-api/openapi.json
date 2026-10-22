@@ -3,7 +3,7 @@
   "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
   "info": {
     "title": "Promptbook engine API",
-    "version": "1.8.0",
+    "version": "1.9.0",
     "license": {
       "name": "MIT",
       "identifier": "MIT"
@@ -11287,6 +11287,18 @@
                   }
                 ]
               },
+              "agentName": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
               "actor": {
                 "$ref": "#/components/schemas/ActivityActor"
               },
@@ -11297,7 +11309,7 @@
                 "$ref": "#/components/schemas/RunSource"
               }
             },
-            "required": ["kind", "v", "id", "at", "agentId", "actor", "runId", "source"],
+            "required": ["kind", "v", "id", "at", "agentId", "agentName", "actor", "runId", "source"],
             "additionalProperties": false
           },
           {
@@ -11327,6 +11339,18 @@
                   }
                 ]
               },
+              "agentName": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
               "actor": {
                 "$ref": "#/components/schemas/ActivityActor"
               },
@@ -11337,7 +11361,7 @@
                 "$ref": "#/components/schemas/RunSource"
               }
             },
-            "required": ["kind", "v", "id", "at", "agentId", "actor", "runId", "source"],
+            "required": ["kind", "v", "id", "at", "agentId", "agentName", "actor", "runId", "source"],
             "additionalProperties": false
           },
           {
@@ -11367,6 +11391,18 @@
                   }
                 ]
               },
+              "agentName": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
               "actor": {
                 "$ref": "#/components/schemas/ActivityActor"
               },
@@ -11387,7 +11423,7 @@
                 ]
               }
             },
-            "required": ["kind", "v", "id", "at", "agentId", "actor", "runId", "source", "usage"],
+            "required": ["kind", "v", "id", "at", "agentId", "agentName", "actor", "runId", "source", "usage"],
             "additionalProperties": false
           },
           {
@@ -11417,6 +11453,18 @@
                   }
                 ]
               },
+              "agentName": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
               "actor": {
                 "$ref": "#/components/schemas/ActivityActor"
               },
@@ -11437,7 +11485,7 @@
                 ]
               }
             },
-            "required": ["kind", "v", "id", "at", "agentId", "actor", "runId", "source", "error"],
+            "required": ["kind", "v", "id", "at", "agentId", "agentName", "actor", "runId", "source", "error"],
             "additionalProperties": false
           },
           {
@@ -11467,6 +11515,18 @@
                   }
                 ]
               },
+              "agentName": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
               "actor": {
                 "$ref": "#/components/schemas/ActivityActor"
               },
@@ -11477,7 +11537,7 @@
                 "$ref": "#/components/schemas/RunSource"
               }
             },
-            "required": ["kind", "v", "id", "at", "agentId", "actor", "runId", "source"],
+            "required": ["kind", "v", "id", "at", "agentId", "agentName", "actor", "runId", "source"],
             "additionalProperties": false
           },
           {
@@ -11507,6 +11567,18 @@
                   }
                 ]
               },
+              "agentName": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
               "actor": {
                 "$ref": "#/components/schemas/ActivityActor"
               },
@@ -11522,7 +11594,7 @@
                 "$ref": "#/components/schemas/FilePurpose"
               }
             },
-            "required": ["kind", "v", "id", "at", "agentId", "actor", "fileId", "name", "purpose"],
+            "required": ["kind", "v", "id", "at", "agentId", "agentName", "actor", "fileId", "name", "purpose"],
             "additionalProperties": false
           },
           {
@@ -11552,6 +11624,18 @@
                   }
                 ]
               },
+              "agentName": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
               "actor": {
                 "$ref": "#/components/schemas/ActivityActor"
               },
@@ -11564,7 +11648,7 @@
                 "maxLength": 255
               }
             },
-            "required": ["kind", "v", "id", "at", "agentId", "actor", "fileId", "name"],
+            "required": ["kind", "v", "id", "at", "agentId", "agentName", "actor", "fileId", "name"],
             "additionalProperties": false
           },
           {
@@ -11594,6 +11678,18 @@
                   }
                 ]
               },
+              "agentName": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
               "actor": {
                 "$ref": "#/components/schemas/ActivityActor"
               },
@@ -11606,7 +11702,7 @@
                 "maxLength": 255
               }
             },
-            "required": ["kind", "v", "id", "at", "agentId", "actor", "fileId", "name"],
+            "required": ["kind", "v", "id", "at", "agentId", "agentName", "actor", "fileId", "name"],
             "additionalProperties": false
           },
           {
@@ -11636,6 +11732,18 @@
                   }
                 ]
               },
+              "agentName": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
               "actor": {
                 "$ref": "#/components/schemas/ActivityActor"
               },
@@ -11657,7 +11765,7 @@
                 ]
               }
             },
-            "required": ["kind", "v", "id", "at", "agentId", "actor", "triggerId", "name", "runId"],
+            "required": ["kind", "v", "id", "at", "agentId", "agentName", "actor", "triggerId", "name", "runId"],
             "additionalProperties": false
           },
           {
@@ -11687,6 +11795,18 @@
                   }
                 ]
               },
+              "agentName": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
               "actor": {
                 "$ref": "#/components/schemas/ActivityActor"
               },
@@ -11701,7 +11821,7 @@
                 "$ref": "#/components/schemas/RunError"
               }
             },
-            "required": ["kind", "v", "id", "at", "agentId", "actor", "triggerId", "name", "error"],
+            "required": ["kind", "v", "id", "at", "agentId", "agentName", "actor", "triggerId", "name", "error"],
             "additionalProperties": false
           },
           {
@@ -11731,6 +11851,18 @@
                   }
                 ]
               },
+              "agentName": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
               "actor": {
                 "$ref": "#/components/schemas/ActivityActor"
               },
@@ -11742,7 +11874,7 @@
                 "maxLength": 256
               }
             },
-            "required": ["kind", "v", "id", "at", "agentId", "actor", "triggerId", "name"],
+            "required": ["kind", "v", "id", "at", "agentId", "agentName", "actor", "triggerId", "name"],
             "additionalProperties": false
           },
           {
@@ -11772,6 +11904,18 @@
                   }
                 ]
               },
+              "agentName": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
               "actor": {
                 "$ref": "#/components/schemas/ActivityActor"
               },
@@ -11783,7 +11927,7 @@
                 "maxLength": 256
               }
             },
-            "required": ["kind", "v", "id", "at", "agentId", "actor", "triggerId", "name"],
+            "required": ["kind", "v", "id", "at", "agentId", "agentName", "actor", "triggerId", "name"],
             "additionalProperties": false
           },
           {
@@ -11813,6 +11957,18 @@
                   }
                 ]
               },
+              "agentName": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
               "actor": {
                 "$ref": "#/components/schemas/ActivityActor"
               },
@@ -11824,7 +11980,7 @@
                 "maxLength": 256
               }
             },
-            "required": ["kind", "v", "id", "at", "agentId", "actor", "integrationId", "name"],
+            "required": ["kind", "v", "id", "at", "agentId", "agentName", "actor", "integrationId", "name"],
             "additionalProperties": false
           },
           {
@@ -11854,6 +12010,18 @@
                   }
                 ]
               },
+              "agentName": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
               "actor": {
                 "$ref": "#/components/schemas/ActivityActor"
               },
@@ -11876,7 +12044,18 @@
                 ]
               }
             },
-            "required": ["kind", "v", "id", "at", "agentId", "actor", "integrationId", "name", "statusDetail"],
+            "required": [
+              "kind",
+              "v",
+              "id",
+              "at",
+              "agentId",
+              "agentName",
+              "actor",
+              "integrationId",
+              "name",
+              "statusDetail"
+            ],
             "additionalProperties": false
           },
           {
@@ -11900,6 +12079,18 @@
                 "anyOf": [
                   {
                     "$ref": "#/components/schemas/AgentId"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "agentName": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
                   },
                   {
                     "type": "null"
@@ -11932,7 +12123,19 @@
                 ]
               }
             },
-            "required": ["kind", "v", "id", "at", "agentId", "actor", "integrationId", "name", "toolName", "runId"],
+            "required": [
+              "kind",
+              "v",
+              "id",
+              "at",
+              "agentId",
+              "agentName",
+              "actor",
+              "integrationId",
+              "name",
+              "toolName",
+              "runId"
+            ],
             "additionalProperties": false
           },
           {
@@ -11962,6 +12165,18 @@
                   }
                 ]
               },
+              "agentName": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
               "actor": {
                 "$ref": "#/components/schemas/ActivityActor"
               },
@@ -11973,7 +12188,7 @@
                 "maxLength": 256
               }
             },
-            "required": ["kind", "v", "id", "at", "agentId", "actor", "memberId", "displayName"],
+            "required": ["kind", "v", "id", "at", "agentId", "agentName", "actor", "memberId", "displayName"],
             "additionalProperties": false
           },
           {
@@ -12003,6 +12218,18 @@
                   }
                 ]
               },
+              "agentName": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
               "actor": {
                 "$ref": "#/components/schemas/ActivityActor"
               },
@@ -12026,6 +12253,7 @@
               "id",
               "at",
               "agentId",
+              "agentName",
               "actor",
               "memberId",
               "displayName",
@@ -12061,6 +12289,18 @@
                   }
                 ]
               },
+              "agentName": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
               "actor": {
                 "$ref": "#/components/schemas/ActivityActor"
               },
@@ -12072,7 +12312,7 @@
                 "maxLength": 256
               }
             },
-            "required": ["kind", "v", "id", "at", "agentId", "actor", "memberId", "displayName"],
+            "required": ["kind", "v", "id", "at", "agentId", "agentName", "actor", "memberId", "displayName"],
             "additionalProperties": false
           },
           {
@@ -12102,6 +12342,18 @@
                   }
                 ]
               },
+              "agentName": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
               "actor": {
                 "$ref": "#/components/schemas/ActivityActor"
               },
@@ -12109,7 +12361,7 @@
                 "$ref": "#/components/schemas/SemVer"
               }
             },
-            "required": ["kind", "v", "id", "at", "agentId", "actor", "version"],
+            "required": ["kind", "v", "id", "at", "agentId", "agentName", "actor", "version"],
             "additionalProperties": false
           },
           {
@@ -12139,6 +12391,18 @@
                   }
                 ]
               },
+              "agentName": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
               "actor": {
                 "$ref": "#/components/schemas/ActivityActor"
               },
@@ -12149,7 +12413,7 @@
                 "$ref": "#/components/schemas/SemVer"
               }
             },
-            "required": ["kind", "v", "id", "at", "agentId", "actor", "fromVersion", "toVersion"],
+            "required": ["kind", "v", "id", "at", "agentId", "agentName", "actor", "fromVersion", "toVersion"],
             "additionalProperties": false
           },
           {
@@ -12179,6 +12443,18 @@
                   }
                 ]
               },
+              "agentName": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
               "actor": {
                 "$ref": "#/components/schemas/ActivityActor"
               },
@@ -12186,7 +12462,7 @@
                 "$ref": "#/components/schemas/Hostname"
               }
             },
-            "required": ["kind", "v", "id", "at", "agentId", "actor", "relay"],
+            "required": ["kind", "v", "id", "at", "agentId", "agentName", "actor", "relay"],
             "additionalProperties": false
           }
         ]

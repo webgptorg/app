@@ -20,6 +20,7 @@ export type {
     InMemoryEngineSnapshot,
     InMemoryMember,
     InMemorySeed,
+    InMemorySeedActivity,
     InMemorySeedAgent,
     InMemorySeedAuditEntry,
     InMemorySeedChat,
