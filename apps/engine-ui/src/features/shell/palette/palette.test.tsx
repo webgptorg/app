@@ -209,6 +209,19 @@ describe('command palette', { timeout: TIMEOUT_MS }, () => {
         });
     });
 
+    it('takes a command to its view with the search params it names', async () => {
+        const { user, router } = renderWithProviders({ path: '/settings', engineApi: createHomeEngine().client });
+        await user.click(await screen.findByRole('button', { name: 'Search and commands' }));
+        await user.type(await searchBox(), 'pause trigger');
+
+        await screen.findByRole('option', { name: 'Pause trigger' });
+        await user.keyboard('{Enter}');
+        await waitFor(() => {
+            expect(router.state.location.pathname).toBe('/triggers');
+        });
+        expect(router.state.location.search).toMatchObject({ lifecycle: 'active' });
+    });
+
     it('finds a run by its ID and stops it with runs.control', async () => {
         const engine = createHomeEngine();
         const { user } = renderWithProviders({ path: '/settings', engineApi: engine.client });

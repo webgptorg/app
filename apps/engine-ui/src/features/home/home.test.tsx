@@ -339,7 +339,7 @@ describe('home: activity feed', { timeout: TIMEOUT_MS }, () => {
         const { user, router } = renderWithProviders({ path: '/', engineApi: engine.client });
         const region = await feed();
         const chips = within(within(region).getByRole('group', { name: 'Show activity of' })).getAllByRole('button');
-        expect(chips.map((chip) => chip.textContent)).toEqual(['All', 'Runs', 'Members', 'Engine']);
+        expect(chips.map((chip) => chip.textContent)).toEqual(['All', 'Runs', 'Triggers', 'Members', 'Engine']);
 
         await user.click(within(region).getByRole('button', { name: 'Members' }));
         await waitFor(() => {

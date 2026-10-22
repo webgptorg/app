@@ -63,8 +63,8 @@ export function PaletteDialog({ open, onClose }: PaletteDialogProps) {
         onClose();
     };
 
-    const go = (to: RoutePath) => () => {
-        void navigate({ to });
+    const go = (to: RoutePath, search?: Readonly<Record<string, string>>) => () => {
+        void navigate({ to, ...(search === undefined ? {} : { search }) });
     };
     const groups: CommandPaletteGroup<PaletteItem>[] = [
         {
@@ -97,7 +97,7 @@ export function PaletteDialog({ open, onClose }: PaletteDialogProps) {
                 id: `command:${command.id}`,
                 label: command.label(),
                 icon: <CornerDownRight aria-hidden className="size-4" />,
-                select: command.to === undefined ? command.run : go(command.to),
+                select: command.to === undefined ? command.run : go(command.to, command.search),
             })),
         },
     ];
