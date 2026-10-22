@@ -48,7 +48,7 @@ The relay needs raw TCP on 443 and long-lived connections, so it runs on plain V
 
 ## Acceptance criteria
 
-- [ ] ADR 0011 merged (by this task or I-02) with status `Accepted` and listed in `docs/adr/README.md`.
+- [x] ADR 0011 merged (by this task or I-02) with status `Accepted` and listed in `docs/adr/README.md`.
 - [ ] The CI checks in Scope run on every PR that touches `infra/` and pass, including `tofu test` for I-02's module.
 - [ ] In the CI VM, `verify.sh` passes, and a port scan shows only 443 open and 22 only from the allowlist; a deliberately broken setting (for example password SSH enabled) makes `verify.sh` fail (verified once, noted in the PR).
 - [x] `RELAY_REGISTRY_TOKEN_FILE` is supported and tested.

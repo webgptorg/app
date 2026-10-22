@@ -1,6 +1,6 @@
 # 0011. Infrastructure as code: OpenTofu and cloud-init
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-19 (relay hosts added 2026-10-22)
 
 ## Context
