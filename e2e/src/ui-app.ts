@@ -3,6 +3,7 @@
  * the specs need no API client of their own) and finding things on screen by their accessible names.
  */
 import { ENGINE_API_PREFIX } from '@ptbk/engine-api';
+import { expect } from '@playwright/test';
 import type { Locator, Page } from '@playwright/test';
 
 export interface ApiAnswer<Body> {
@@ -93,4 +94,24 @@ export function uniqueName(prefix: string): string {
 export function required<Value>(value: Value | undefined, what: string): Value {
     if (value === undefined) throw new Error(`the engine under test has no ${what}`);
     return value;
+}
+
+/** Creates an engine-wide secret through the Secrets page's dialog, as an owner would. */
+export async function createSecret(page: Page, name: string, value: string): Promise<void> {
+    await page.getByRole('button', { name: 'New secret' }).click();
+    const dialog = page.getByRole('dialog', { name: 'New secret' });
+    await dialog.getByRole('textbox', { name: /^Name/ }).fill(name);
+    await dialog.getByLabel(/^Value/).fill(value);
+    await dialog.getByRole('button', { name: 'Save secret' }).click();
+    await expect(page.getByText(`Secret ${name} saved`)).toBeVisible();
+}
+
+/** `@ptbk/ui`'s skeletons, which have no role: they pulse with this animation until their data is there. */
+export const SKELETON = '[class*="ptbk-skeleton-pulse"]';
+
+/**
+ * Waits until no skeleton shows. Not `networkidle`: the app keeps `GET /events` open for as long as it runs.
+ */
+export async function settled(page: Page): Promise<void> {
+    await expect(page.locator(SKELETON)).toHaveCount(0, { timeout: 15_000 });
 }

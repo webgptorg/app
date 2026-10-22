@@ -2,7 +2,7 @@
 // stays inert: no request to the attacker, no dialog, no image, no script link.
 import type { Page, Request } from '@playwright/test';
 
-import { apiList, required } from '../../src/ui-app.ts';
+import { apiList, required, settled } from '../../src/ui-app.ts';
 import { responsesContaining } from '../../src/response-recorder.ts';
 import { expect, test } from '../../src/ui-fixtures.ts';
 
@@ -79,7 +79,7 @@ test('a hostile reply makes no request, opens no dialog and renders no image or 
         new RegExp(`^${HOSTILE_AGENT} replied`),
         { timeout: 60_000 },
     );
-    await page.waitForLoadState('networkidle');
+    await settled(page);
 
     const history = page.getByRole('region', { name: 'Messages' });
     await expect(history.getByText('Image: x').first()).toBeVisible();

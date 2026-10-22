@@ -3,7 +3,7 @@
  * before every test, sessions, and the page guard every test runs under. The guard fails a test on any CSP or Trusted
  * Types violation, uncaught page error, request to another origin or native dialog, in any page of its context.
  */
-import type { BrowserContext, Page } from '@playwright/test';
+import type { BrowserContext } from '@playwright/test';
 
 import type { EngineControls, EngineTarget, UiSessionSubject } from './engine-target.ts';
 import { ALL_CAPABILITIES } from './engine-target.ts';
@@ -53,7 +53,7 @@ export function need<Name extends keyof EngineControls>(
     return control as NonNullable<EngineControls[Name]>;
 }
 
-interface MutableGuard {
+export interface MutableGuard {
     readonly cspViolations: GuardedViolation[];
     readonly policyMessages: string[];
     readonly pageErrors: string[];
@@ -62,7 +62,19 @@ interface MutableGuard {
     readonly consoleMessages: string[];
 }
 
-async function installGuard(context: BrowserContext, engineHost: string, guard: MutableGuard): Promise<void> {
+export function newGuard(): MutableGuard {
+    return {
+        cspViolations: [],
+        policyMessages: [],
+        pageErrors: [],
+        foreignRequests: [],
+        dialogs: [],
+        consoleMessages: [],
+    };
+}
+
+/** Hooks the page guard into a context; also for browsers a test launches itself (relay failover). */
+export async function installGuard(context: BrowserContext, engineHost: string, guard: MutableGuard): Promise<void> {
     await context.exposeBinding(GUARD_BINDING, (_source, violation: GuardedViolation) => {
         guard.cspViolations.push(violation);
     });
@@ -120,14 +132,7 @@ export const test = base.extend<UiTestFixtures, UiWorkerFixtures>({
     // Auto, so it hooks the context before the test's page exists and nothing the page does escapes it.
     guard: [
         async ({ context, engine }, use) => {
-            const guard: MutableGuard = {
-                cspViolations: [],
-                policyMessages: [],
-                pageErrors: [],
-                foreignRequests: [],
-                dialogs: [],
-                consoleMessages: [],
-            };
+            const guard = newGuard();
             await installGuard(context, engine.hostname, guard);
             await use(guard);
             expect(guardFindings(guard), 'CSP, Trusted Types, errors, foreign requests or dialogs').toEqual([]);
@@ -156,24 +161,3 @@ export const test = base.extend<UiTestFixtures, UiWorkerFixtures>({
         await use(recordResponses(context));
     },
 });
-
-/** `fetch` from inside the page, as a member could from the console: same origin, their cookie, the browser's headers. */
-export async function pageFetch(
-    page: Page,
-    path: string,
-    init: { readonly method: string; readonly body?: unknown } = { method: 'GET' },
-): Promise<{ readonly status: number; readonly code: string | null }> {
-    return page.evaluate(
-        async ({ path: target, method, body }) => {
-            const response = await fetch(target, {
-                method,
-                ...(body === undefined
-                    ? {}
-                    : { headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }),
-            });
-            const problem = (await response.json().catch(() => null)) as { code?: unknown } | null;
-            return { status: response.status, code: typeof problem?.code === 'string' ? problem.code : null };
-        },
-        { path, method: init.method, body: init.body },
-    );
-}
