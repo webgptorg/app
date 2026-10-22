@@ -1,0 +1,115 @@
+/*
+ * Adopted into the editor's shadow root (shadow-mount.ts), where app.css does not reach. Only design-system custom
+ * properties, which inherit into the shadow tree, so light and dark mode switch without re-mounting the editor.
+ */
+:host {
+    display: block;
+    min-width: 0;
+}
+
+.book-editor-root {
+    min-width: 0;
+}
+
+.cm-editor {
+    border: 1px solid var(--color-border);
+    border-radius: 0.5rem;
+    background-color: var(--color-surface);
+    color: var(--color-text);
+    font-size: 0.875rem;
+}
+
+.cm-editor.cm-focused {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+}
+
+.cm-editor {
+    height: 24rem;
+    max-height: 70vh;
+}
+
+.cm-scroller {
+    font-family: var(--font-mono);
+    line-height: 1.6;
+}
+
+.cm-content {
+    caret-color: var(--color-text);
+    padding-block: 0.5rem;
+}
+
+.cm-content ::selection {
+    background-color: var(--color-selected);
+}
+
+.cm-gutters {
+    border-right: 1px solid var(--color-divider);
+    border-radius: 0.5rem 0 0 0.5rem;
+    background-color: var(--color-sunken);
+    color: var(--color-text-muted);
+}
+
+.cm-specialChar {
+    color: var(--color-danger);
+}
+
+.cm-matchingBracket {
+    background-color: var(--color-accent-soft);
+}
+
+.cm-panels {
+    background-color: var(--color-raised);
+    color: var(--color-text);
+}
+
+.cm-panels input,
+.cm-panels button {
+    color: inherit;
+    font: inherit;
+}
+
+.cm-tooltip {
+    border: 1px solid var(--color-border);
+    background-color: var(--color-raised);
+    color: var(--color-text);
+}
+
+.cm-deletedChunk {
+    background-color: var(--color-danger-soft);
+}
+
+.cm-changedLine,
+.cm-insertedLine {
+    background-color: var(--color-success-soft);
+}
+
+.tok-heading {
+    color: var(--color-info);
+    font-weight: 600;
+}
+
+.tok-keyword {
+    color: var(--color-accent-text);
+    font-weight: 600;
+}
+
+.tok-url {
+    color: var(--color-info);
+    text-decoration: underline;
+}
+
+.tok-variableName {
+    color: var(--color-warning);
+}
+
+.tok-comment {
+    color: var(--color-text-muted);
+    font-style: italic;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .cm-cursor {
+        animation: none;
+    }
+}
