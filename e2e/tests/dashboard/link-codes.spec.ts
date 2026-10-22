@@ -3,9 +3,8 @@ import { DASHBOARD_TIMING } from '../../src/stack.ts';
 
 // Each engine here has a fresh key and only registers (`register --link`): the refusals happen at registration.
 
-test('a used link code links no second engine', async ({ authenticator, dashboard, mockEngines }) => {
+test('a used link code links no second engine', async ({ dashboard, mockEngines }) => {
     test.setTimeout(120_000);
-    expect(authenticator).not.toBe('');
     await dashboard.signUp(uniqueEmail('reuse'));
     await dashboard.subscribe();
     const { linkCode } = await dashboard.createLinkCode();
@@ -17,9 +16,8 @@ test('a used link code links no second engine', async ({ authenticator, dashboar
     await expect(await dashboard.reloadEngineRows()).toHaveCount(1);
 });
 
-test('an expired link code is refused at registration', async ({ page, authenticator, dashboard, mockEngines }) => {
+test('an expired link code is refused at registration', async ({ page, dashboard, mockEngines }) => {
     test.setTimeout(120_000);
-    expect(authenticator).not.toBe('');
     await dashboard.signUp(uniqueEmail('expired'));
     await dashboard.subscribe();
     const { linkCode } = await dashboard.createLinkCode();

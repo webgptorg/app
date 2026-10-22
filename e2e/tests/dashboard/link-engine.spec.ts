@@ -76,7 +76,6 @@ test('before linking, the engine hostname does not connect: the relays do not kn
 
 test('sign up with a passkey, link the engine, see it online, open it through a relay, sign in again', async ({
     page,
-    authenticator,
     dashboard,
     mockEngines,
     engineHost,
@@ -86,7 +85,6 @@ test('sign up with a passkey, link the engine, see it online, open it through a 
     cspViolations,
 }) => {
     test.setTimeout(240_000);
-    expect(authenticator).not.toBe('');
 
     await dashboard.signUp(uniqueEmail('link'));
     await dashboard.subscribe();

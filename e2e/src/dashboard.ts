@@ -51,7 +51,7 @@ export interface DashboardSteps {
     signOut(): Promise<void>;
     /** Usernameless sign-in with the passkey the authenticator holds. */
     signIn(): Promise<void>;
-    /** The engine list's rows, freshly loaded (the list refreshes itself only every 60 s). */
+    /** The engine list's rows once it has loaded, fetched anew (the list refreshes itself only every 60 s). */
     reloadEngineRows(): Promise<Locator>;
 }
 
@@ -71,22 +71,26 @@ async function attachLogs(testInfo: TestInfo, containers: readonly OneOffContain
 }
 
 export const test = base.extend<DashboardFixtures>({
-    authenticator: async ({ page }, use) => {
-        const cdp = await page.context().newCDPSession(page);
-        await cdp.send('WebAuthn.enable');
-        const { authenticatorId } = await cdp.send('WebAuthn.addVirtualAuthenticator', {
-            options: {
-                protocol: 'ctap2',
-                transport: 'internal',
-                hasResidentKey: true,
-                hasUserVerification: true,
-                isUserVerified: true,
-                automaticPresenceSimulation: true,
-            },
-        });
-        await use(authenticatorId);
-        await cdp.detach().catch(() => undefined);
-    },
+    authenticator: [
+        async ({ page }, use) => {
+            const cdp = await page.context().newCDPSession(page);
+            await cdp.send('WebAuthn.enable');
+            const { authenticatorId } = await cdp.send('WebAuthn.addVirtualAuthenticator', {
+                options: {
+                    protocol: 'ctap2',
+                    transport: 'internal',
+                    hasResidentKey: true,
+                    hasUserVerification: true,
+                    isUserVerified: true,
+                    automaticPresenceSimulation: true,
+                },
+            });
+            await use(authenticatorId);
+            await cdp.detach().catch(() => undefined);
+        },
+        // Every dashboard test signs up or in with a passkey, so the authenticator exists before any ceremony.
+        { auto: true },
+    ],
 
     dashboard: async ({ page, caCertificatePem }, use) => {
         const outboxLink = async (email: string, template: string): Promise<string> => {
@@ -143,8 +147,10 @@ export const test = base.extend<DashboardFixtures>({
             },
             async reloadEngineRows() {
                 await page.goto(`${DASHBOARD_ORIGIN}/engines`);
-                await expect(engineList).toBeVisible();
-                return page.getByRole('row').filter({ hasText: `.${ENGINE_DOMAIN}` });
+                const rows = page.getByRole('row').filter({ hasText: `.${ENGINE_DOMAIN}` });
+                // Loaded: engine rows or the empty state, not the skeleton rows shown while the list loads.
+                await expect(rows.first().or(page.getByText('No engines yet', { exact: true }))).toBeVisible();
+                return rows;
             },
         });
     },

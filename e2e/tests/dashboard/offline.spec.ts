@@ -4,13 +4,8 @@ import { DASHBOARD_TIMING } from '../../src/stack.ts';
 const { heartbeatIntervalS, missedLimit, graceS } = DASHBOARD_TIMING;
 const OFFLINE_AFTER_S = missedLimit * heartbeatIntervalS + graceS;
 
-test('a stopped engine shows offline after the missed-heartbeat threshold', async ({
-    authenticator,
-    dashboard,
-    mockEngines,
-}) => {
+test('a stopped engine shows offline after the missed-heartbeat threshold', async ({ dashboard, mockEngines }) => {
     test.setTimeout(240_000);
-    expect(authenticator).not.toBe('');
     await dashboard.signUp(uniqueEmail('offline'));
     await dashboard.subscribe();
     const { linkCode } = await dashboard.createLinkCode();

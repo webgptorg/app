@@ -5,14 +5,12 @@ import { DASHBOARD_ORIGIN } from '../../src/stack.ts';
 // linked engine in the account, makes no request to an engine hostname (and none the CSP had to stop).
 test('while on the dashboard, the browser makes no request to any engine hostname', async ({
     page,
-    authenticator,
     dashboard,
     mockEngines,
     requestLog,
     cspViolations,
 }) => {
     test.setTimeout(120_000);
-    expect(authenticator).not.toBe('');
     await dashboard.signUp(uniqueEmail('requests'));
     await dashboard.subscribe();
     const { linkCode } = await dashboard.createLinkCode();
