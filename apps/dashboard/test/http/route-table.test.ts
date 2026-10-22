@@ -93,8 +93,10 @@ describe('route table', () => {
     it('does not mount the dev outbox without the fake email adapter', async () => {
         const production = createAuthHarness({ store: createMemoryAuthStore(), email: 'cloudflare' });
         expect(production.routes.map((route) => route.path)).not.toContain('/api/__dev/emails');
-        const response = await production.http.request('https://app.ptbk.test/api/__dev/emails?to=a@example.test');
-        expect(response.status).toBe(404);
-        expect(await response.json()).toMatchObject({ code: 'not-found' });
+        for (const path of ['/api/__dev/emails?to=a@example.test', '/api/__dev/emails']) {
+            const response = await production.http.request(`https://app.ptbk.test${path}`);
+            expect(response.status, path).toBe(404);
+            expect(await response.json()).toMatchObject({ code: 'not-found' });
+        }
     });
 });

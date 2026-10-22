@@ -29,19 +29,21 @@ export function createApiRouter(
     const { devOutbox } = deps;
     // Not mounted at all otherwise: the fake adapter, and with it this route, exists only in dev (config.ts).
     if (devOutbox !== null && deps.config.adapters.email === 'fake') {
-        deps.routes.bind(router, API_MOUNT, apiRoutes.devEmails, ({ input }) =>
-            Promise.resolve({
+        deps.routes.bind(router, API_MOUNT, apiRoutes.devEmails, ({ input }) => {
+            const { to } = input.query;
+            const messages = to === undefined ? devOutbox.sent : devOutbox.sentTo(to.trim().toLowerCase());
+            return Promise.resolve({
                 kind: 'ok',
                 body: {
-                    emails: devOutbox.sentTo(input.query.to.trim().toLowerCase()).map((message) => ({
+                    emails: messages.map((message) => ({
                         template: message.template,
                         to: message.to,
                         locale: message.locale,
                         ...renderEmail(message),
                     })),
                 },
-            }),
-        );
+            });
+        });
     }
     return router;
 }

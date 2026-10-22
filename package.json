@@ -71,7 +71,11 @@
     "prepare": "husky",
     "plan": "node scripts/plan.ts",
     "engine-guide": "node scripts/check-engine-guide.ts",
-    "generate": "bun run --filter '*' --if-present generate"
+    "generate": "bun run --filter '*' --if-present generate",
+    "dev:stack": "node e2e/src/cli.ts dev",
+    "dev:link": "node e2e/src/cli.ts link",
+    "dev:trust": "node e2e/src/cli.ts trust",
+    "dev:untrust": "node e2e/src/cli.ts untrust"
   },
   "lint-staged": {
     "*.{ts,tsx,js,mjs}": [

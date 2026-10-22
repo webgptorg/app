@@ -186,6 +186,27 @@ describe('createDashboard adapter selection', () => {
         expect((await response.json<{ emails: { template: string }[] }>()).emails.at(-1)?.template).toBe('signup-link');
     });
 
+    it('lists every recorded message, oldest first, when the outbox is asked without an address', async () => {
+        const devAdapters = createDevAdapters();
+        for (const to of ['a@example.test', 'b@example.test']) {
+            await devAdapters.outbox.send(
+                { template: 'signup-link', to, locale: 'en', link: 'http://localhost:5173/signup#x' },
+                new AbortController().signal,
+            );
+        }
+        const dashboard = createDashboard(env(), { viteDevServer: false, devAdapters });
+        const everything = await dashboard.fetch(new Request('http://localhost:5173/api/__dev/emails'));
+        expect(everything.status).toBe(200);
+        expect((await everything.json<{ emails: { to: string }[] }>()).emails.map((email) => email.to)).toEqual([
+            'a@example.test',
+            'b@example.test',
+        ]);
+        const one = await dashboard.fetch(new Request('http://localhost:5173/api/__dev/emails?to=B@example.test'));
+        expect((await one.json<{ emails: { to: string }[] }>()).emails.map((email) => email.to)).toEqual([
+            'b@example.test',
+        ]);
+    });
+
     describe('Stripe webhooks', () => {
         const payload = stripeEvent({ id: 'evt_unknown1', type: 'balance.available', object: { object: 'balance' } });
 

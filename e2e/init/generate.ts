@@ -2,7 +2,7 @@
 // the registry into fresh volumes. Nothing it writes is committed, and it prints only public facts.
 import { execFile } from 'node:child_process';
 import { X509Certificate } from 'node:crypto';
-import { chmod, chown, copyFile, readFile, writeFile } from 'node:fs/promises';
+import { chmod, chown, copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 
@@ -23,6 +23,9 @@ import { parseIdentityReport, parseRegistrySource, staticRegistry } from './regi
 
 const MOCK_ENGINE_DIR = '/repo/apps/mock-engine';
 const KEY_FILE = 'key.pem';
+/** Where the mock engine keeps its dev CA under its data dir, and the two files in it (its `dev-ca` CLI). */
+const DEV_CA_DIRECTORY = 'dev-ca';
+const DEV_CA_FILES = ['ca-cert.pem', 'ca-key.pem'] as const;
 const PEBBLE_MINICA_SOURCE = '/pebble/minica.pem';
 
 const run = promisify(execFile);
@@ -46,8 +49,27 @@ function relayKeyDirectory(hostname: string): string {
     return join(MOUNTS.relayKeys, hostname);
 }
 
-/** Volumes start out root-owned; hand them to the services' user, private ones at 0700. */
-async function prepareVolumes(source: RegistrySource): Promise<void> {
+/**
+ * The dev stack (X-06) brings a persistent dev CA that the host trusts (`E2E_DEV_CA_DIR`, mounted read-only and owned
+ * by the host user). Copied into the engine's volume while init is still root, so the mock engine's `dev-ca` reuses it
+ * instead of creating a new one per run. Returns its certificate, read while init may still read the host's files.
+ */
+async function adoptDevCa(sourceDir: string): Promise<string> {
+    const target = join(MOUNTS.engine, DEV_CA_DIRECTORY);
+    await mkdir(target, { recursive: true, mode: 0o700 });
+    await chown(target, SERVICE_UID, SERVICE_UID);
+    await chmod(target, 0o700);
+    for (const name of DEV_CA_FILES) {
+        const file = join(target, name);
+        await copyFile(join(sourceDir, name), file);
+        await chown(file, SERVICE_UID, SERVICE_UID);
+        await chmod(file, 0o600);
+    }
+    return readFile(join(target, 'ca-cert.pem'), 'utf8');
+}
+
+/** Volumes start out root-owned; hand them to the services' user, private ones at 0700. Returns an adopted dev CA. */
+async function prepareVolumes(source: RegistrySource, devCaDir: string | null): Promise<string | null> {
     const volumes: readonly [string, number][] = [
         ...(source === 'dashboard' ? [[MOUNTS.dashboardKey, 0o700] as [string, number]] : []),
         [MOUNTS.public, 0o755],
@@ -60,9 +82,11 @@ async function prepareVolumes(source: RegistrySource): Promise<void> {
         await chown(path, SERVICE_UID, SERVICE_UID);
         await chmod(path, mode);
     }
+    const adoptedCa = devCaDir === null ? null : await adoptDevCa(devCaDir);
     if (process.setgid === undefined || process.setuid === undefined) throw new Error('init runs only on POSIX');
     process.setgid(SERVICE_UID);
     process.setuid(SERVICE_UID);
+    return adoptedCa;
 }
 
 function caCertificateFile(report: unknown): string {
@@ -79,12 +103,16 @@ async function writePublic(name: string, content: string): Promise<string> {
 
 async function main(): Promise<void> {
     const source = parseRegistrySource(process.env['E2E_REGISTRY']);
-    await prepareVolumes(source);
+    const adoptedCa = await prepareVolumes(source, process.env['E2E_DEV_CA_DIR'] ?? null);
 
     const identity = parseIdentityReport(await mockEngineCli(['identity']), ENGINE_DOMAIN);
     const caFile = join(MOUNTS.public, PUBLIC_FILES.caCertificate);
     await copyFile(caCertificateFile(await mockEngineCli(['dev-ca'])), caFile);
     await chmod(caFile, 0o644);
+    // The CLI replaces a CA that is about to expire or has other domains; the host would then trust the wrong one.
+    if (adoptedCa !== null && (await readFile(caFile, 'utf8')) !== adoptedCa) {
+        throw new Error('the dev CA in E2E_DEV_CA_DIR was not reused; recreate it (bun run dev:stack up does)');
+    }
 
     for (const relay of RELAYS) {
         await mockEngineCli([

@@ -605,14 +605,17 @@ export const apiRoutes = {
         errorCodes: [],
     }),
 
-    /** Dev only, for e2e (X-05): mounted only with the fake email adapter, which the config allows in dev alone. */
+    /**
+     * Dev only, for e2e (X-05) and the dev mailbox page (X-06): mounted only with the fake email adapter, which the
+     * config allows in dev alone. Without `to`, every recorded message, oldest first.
+     */
     devEmails: defineRoute({
         method: 'GET',
         path: '/api/__dev/emails',
         auth: 'public',
         permission: null,
         rateLimit: 'public-read-ip',
-        input: { ...NO_INPUT, query: z.strictObject({ to: emailSchema }) },
+        input: { ...NO_INPUT, query: z.strictObject({ to: emailSchema.optional() }) },
         output: z.strictObject({
             emails: z.array(
                 z.strictObject({

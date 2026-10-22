@@ -3,6 +3,8 @@
 **/.wrangler
 **/.dev.vars*
 **/.env*
+# The local dev stack's CA key and browser profile (X-06) never go into an image.
+.dev
 .git
 apps/dashboard/src/paraglide
 **/routeTree.gen.ts

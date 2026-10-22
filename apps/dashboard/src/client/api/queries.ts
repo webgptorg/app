@@ -62,6 +62,7 @@ export const queryKeys = {
     adminBilling: ['admin', 'billing'] as const,
     engines: ['engines'] as const,
     engine: (engineId: string) => ['engines', engineId] as const,
+    devEmails: ['dev', 'emails'] as const,
 };
 
 /** A 401 on any signed-in call means the session ended elsewhere (expired, revoked, signed out everywhere). */
@@ -83,6 +84,15 @@ export function environmentQuery(client: ApiClient) {
         queryKey: queryKeys.environment,
         queryFn: async ({ signal }) => dataOrThrow(await client.call(apiRoutes.getEnvironment, {}, signal)),
         staleTime: Infinity,
+    });
+}
+
+/** The fake email adapter's outbox (dev only); a `not-found` problem means the dashboard runs another adapter. */
+export function devEmailsQuery(client: ApiClient) {
+    return queryOptions({
+        queryKey: queryKeys.devEmails,
+        queryFn: async ({ signal }) =>
+            dataOrThrow(await client.call(apiRoutes.devEmails, { query: {} }, signal)).emails,
     });
 }
 

@@ -24,12 +24,18 @@ function escapeHtml(text: string): string {
     return text.replace(/[&<>"']/g, (char) => `&#${String(char.charCodeAt(0))};`);
 }
 
-/** No inline script or style: the page renders under the engine's CSP like everything else here. */
+/**
+ * No inline script or style: the page renders under the engine's CSP like everything else here. Its forms post as
+ * navigations, for which browsers send `Origin: null` under the engine's `Referrer-Policy: no-referrer`, and the
+ * gateway refuses a mutation without its own origin. The meta element relaxes only this document's policy, to
+ * `same-origin`, so the headers stay the engine's own and no referrer ever leaves the origin.
+ */
 function page(title: string, body: string): Response {
     const html = `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="referrer" content="same-origin">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escapeHtml(title)} · Promptbook mock engine</title>
 </head>
