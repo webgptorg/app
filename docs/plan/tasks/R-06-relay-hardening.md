@@ -56,6 +56,8 @@ Every limit is a config value with a documented default, every refusal keeps wri
 - Limits live in the domain (`domain/limits/`) as pure logic with the injected `Clock`; adapters only report events and apply decisions.
 - Evicting a pending connection, terminating a tunnel and refusing a connection all log a reason counter only: no IPs, hostnames or engine IDs in logs.
 - A stricter limit must never turn a legitimate engine reconnect storm (after a relay restart) into a lockout: the reserve and the handshake limits are tested together with a reconnect storm.
+- **Accepted deviation (Seb, 2026-10-22):** the memory budget charges each stream its maximum at admission (its window towards the browser plus one read towards the engine) instead of only the bytes it holds. A stream that does not fit is refused with `memory-limit`, so browsers that stop reading cannot hold back those that read; the cost is fewer concurrent streams per budget than measured usage alone would allow.
+- **Deferred (Seb, 2026-10-22):** Jazzer.js fuzzing and its nightly workflow are not part of the R-06 PRs.
 
 ## Acceptance criteria
 

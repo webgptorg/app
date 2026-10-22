@@ -8,6 +8,8 @@ import {
     clientHello,
     concat,
     extension,
+    handshakeMessage,
+    clientHelloBody,
     paddingExtension,
     record,
     serverNameExtension,
@@ -119,6 +121,49 @@ describe('parseClientHello properties', () => {
                     let result: ClientHelloParse = { kind: 'need-more' };
                     for (const chunk of splitAt(bytes, cuts)) result = buffer.push(chunk);
                     expect(result).toEqual(parseClientHello(bytes, chosen));
+                },
+            ),
+        );
+    });
+
+    it('reaches the one-shot verdict on a generated multi-record ClientHello within maxChunks, and too-fragmented beyond', () => {
+        fc.assert(
+            fc.property(
+                generatedHello,
+                fc.array(fc.nat(), { maxLength: 24 }),
+                fc.integer({ min: 1, max: 16 }),
+                ({ bytes }, cuts, maxChunks) => {
+                    const chunks = splitAt(bytes, cuts).filter((chunk) => chunk.length > 0);
+                    const buffer = createClientHelloBuffer({ ...limits, maxChunks });
+                    let result: ClientHelloParse = { kind: 'need-more' };
+                    for (const chunk of chunks) result = buffer.push(chunk);
+                    expect(result).toEqual(
+                        chunks.length <= maxChunks
+                            ? parseClientHello(bytes, limits)
+                            : { kind: 'malformed', reason: 'too-fragmented' },
+                    );
+                },
+            ),
+        );
+    });
+
+    it('applies maxHelloBytes to the handshake across records, fed in any chunks', () => {
+        const maxHelloBytes = 32 * 1024;
+        // Room for every record header, so only maxHelloBytes decides.
+        const roomy = { maxBytes: 64 * 1024, maxHelloBytes };
+        fc.assert(
+            fc.property(
+                fc.integer({ min: 30_000, max: 34_000 }),
+                fc.array(fc.integer({ min: 1, max: 4096 }), { maxLength: 4 }),
+                fc.array(fc.nat(), { maxLength: 63 }),
+                (padding, fragments, cuts) => {
+                    const extensions = [serverNameExtension('a.example'), paddingExtension(padding)];
+                    const handshakeBytes = handshakeMessage(1, clientHelloBody(extensions)).length;
+                    const bytes = clientHello(extensions, fragments);
+                    const buffer = createClientHelloBuffer({ ...roomy, maxChunks: 64 });
+                    let result: ClientHelloParse = { kind: 'need-more' };
+                    for (const chunk of splitAt(bytes, cuts)) result = buffer.push(chunk);
+                    expect(result.kind).toBe(handshakeBytes <= maxHelloBytes ? 'sni' : 'too-large');
                 },
             ),
         );
