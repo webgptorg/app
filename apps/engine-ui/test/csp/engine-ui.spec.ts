@@ -179,7 +179,7 @@ test.describe('the built bundle under the engine CSP', () => {
         const preview = drawer.getByRole('img', { name: 'photo.png' });
         await expect(preview).toBeVisible();
         await expect.poll(() => preview.evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
-        await expect(drawer.getByRole('link', { name: 'Download photo.png' })).toHaveAttribute(
+        await expect(drawer.getByRole('link', { name: 'Download photo.png', exact: true })).toHaveAttribute(
             'href',
             `${ENGINE_API_PREFIX}/files/${FAKE_FILE_ID}/content`,
         );
@@ -187,7 +187,7 @@ test.describe('the built bundle under the engine CSP', () => {
 
         const infected = await visit('/files?file=file-infected');
         const infectedDrawer = page.getByRole('dialog', { name: 'File details' });
-        await expect(infectedDrawer.getByRole('button', { name: 'Download invoice.png' })).toHaveAttribute(
+        await expect(infectedDrawer.getByRole('button', { name: 'Download invoice.png', exact: true })).toHaveAttribute(
             'aria-disabled',
             'true',
         );
@@ -200,7 +200,7 @@ test.describe('the built bundle under the engine CSP', () => {
         visit,
     }) => {
         const report = await visit(`/agents/${FAKE_AGENT_ID}/files`);
-        await expect(page.getByRole('tab', { name: 'Files' })).toHaveAttribute('aria-selected', 'true');
+        await expect(page.getByRole('tab', { name: 'Files', exact: true })).toHaveAttribute('aria-selected', 'true');
         await expect(page.getByRole('table').getByRole('link', { name: 'notes.md' })).toBeVisible();
         await expect(page.getByRole('button', { name: 'Choose files' })).toBeVisible();
         expectCleanPage(report);

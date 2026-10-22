@@ -84,7 +84,6 @@ export function KnowledgeUpload({ agentId }: KnowledgeUploadProps) {
     const policy = useUploadPolicy('knowledge');
     const { upload } = useFileMutations();
     const inputRef = useRef<HTMLInputElement>(null);
-    const inputId = useId();
     const hintId = useId();
     const nextKey = useRef(0);
     const controllers = useRef(new Map<number, AbortController>());
@@ -195,16 +194,11 @@ export function KnowledgeUpload({ agentId }: KnowledgeUploadProps) {
                 >
                     {m.files_upload_choose()}
                 </Button>
-                <label htmlFor={inputId} className="sr-only">
-                    {m.files_upload_choose()}
-                </label>
                 <input
                     ref={inputRef}
-                    id={inputId}
                     type="file"
                     multiple
-                    className="sr-only"
-                    tabIndex={-1}
+                    hidden
                     {...(accept === '' ? {} : { accept })}
                     onChange={(event) => {
                         add([...(event.target.files ?? [])]);

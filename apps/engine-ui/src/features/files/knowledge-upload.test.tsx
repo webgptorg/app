@@ -8,12 +8,19 @@ import { renderWithProviders } from '../../testing/render-with-providers';
 import { problemResponse } from '../../testing/test-engine-api';
 
 const TIMEOUT_MS = 30_000;
+/** The picker's input: hidden, since the visible "Choose files" button is the one control people use. */
+function fileInput(scope: HTMLElement): HTMLInputElement {
+    const input = scope.querySelector<HTMLInputElement>('input[type="file"]');
+    if (input === null) throw new Error('no file input');
+    return input;
+}
+
 const notes = () => new File(['# Notes'], 'notes.md', { type: '' });
 
 async function agentTab(engine = createFilesEngine()) {
     const app = renderWithProviders({ path: '/agents/agent-ada/files', engineApi: engine.client });
     await screen.findByRole('button', { name: 'Choose files' });
-    const input = screen.getByLabelText('Choose files', { selector: 'input' });
+    const input = fileInput(document.body);
     return { app, engine, input };
 }
 
@@ -136,7 +143,7 @@ describe('upload from the files page', { timeout: TIMEOUT_MS }, () => {
         expect(within(dialog).getByText('Choose the agent the knowledge is for.')).toBeDefined();
         await app.user.selectOptions(await within(dialog).findByLabelText(/^Agent/), 'agent-grace');
         await within(dialog).findByRole('button', { name: 'Choose files' });
-        await app.user.upload(within(dialog).getByLabelText('Choose files', { selector: 'input' }), notes());
+        await app.user.upload(fileInput(dialog), notes());
         expect(await within(dialog).findByText('Uploaded')).toBeDefined();
         expect(engine.spies.upload.mock.calls[0]?.[0]).toMatchObject({ agentId: 'agent-grace' });
         expect(app.router.state.location.search).toMatchObject({ upload: true });
