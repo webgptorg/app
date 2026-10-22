@@ -220,3 +220,26 @@ test.describe('the checks themselves', () => {
             .toContainEqual(expect.objectContaining({ directive: 'require-trusted-types-for' }));
     });
 });
+
+test('sign up by following the link on the dev mailbox page (X-06)', async ({
+    page,
+    authenticators,
+    browserReport,
+    checkScreen,
+}) => {
+    const email = uniqueEmail('mailbox');
+    await authenticators.add();
+    await requestLink(page, '/signup', email, 'Send the link');
+
+    await page.goto('/__dev/mailbox');
+    await expect(page.getByRole('heading', { name: 'Dev mailbox', level: 1 })).toBeVisible();
+    const message = page.getByRole('listitem').filter({ hasText: `To ${email}` });
+    await expect(message).toHaveCount(1);
+    await checkScreen('/__dev/mailbox');
+    await message.getByRole('link', { name: /\/signup#/ }).click();
+    await expect(page).toHaveURL((url) => url.pathname === '/signup' && url.hash === '');
+    await page.getByRole('button', { name: 'Create passkey' }).click();
+    await expect(page.getByRole('heading', { name: 'Your engines' })).toBeVisible();
+
+    expectNoBrowserErrors(browserReport());
+});
