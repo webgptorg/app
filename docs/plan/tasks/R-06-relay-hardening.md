@@ -57,7 +57,6 @@ Every limit is a config value with a documented default, every refusal keeps wri
 - Evicting a pending connection, terminating a tunnel and refusing a connection all log a reason counter only: no IPs, hostnames or engine IDs in logs.
 - A stricter limit must never turn a legitimate engine reconnect storm (after a relay restart) into a lockout: the reserve and the handshake limits are tested together with a reconnect storm.
 - **Accepted deviation (Seb, 2026-10-22):** the memory budget charges each stream its maximum at admission (its window towards the browser plus one read towards the engine) instead of only the bytes it holds. A stream that does not fit is refused with `memory-limit`, so browsers that stop reading cannot hold back those that read; the cost is fewer concurrent streams per budget than measured usage alone would allow.
-- **Deferred (Seb, 2026-10-22):** Jazzer.js fuzzing and its nightly workflow are not part of the R-06 PRs.
 
 ## Acceptance criteria
 
@@ -84,3 +83,7 @@ Every limit is a config value with a documented default, every refusal keeps wri
 - Per-IP caps hurt many users behind one corporate IPv4 address; R-05 and I-05 tune them, and the reasons are counted so tuning is evidence-based.
 - The engine side must cooperate: send WINDOW increments of at least the minimum and time out TLS handshakes it does not complete. Add both to the engine integration guide (E-01) and, when the conformance suite covers the tunnel, to C-05.
 - The task is large; it may land as several PRs (admission and streams; memory; tunnel control plane and frames; the rest), each with `Refs: R-06`.
+
+## Follow-ups
+
+- Coverage-guided fuzzing with Jazzer.js on `createClientHelloBuffer` and `decodeFrame`, run nightly in its own workflow (deferred by Seb, 2026-10-22). Until then, the property tests of the ClientHello parser and the frame codec and the model-based test of the session and pipe run in PR CI.
