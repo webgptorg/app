@@ -8,6 +8,9 @@ import { renderWithProviders } from '../../testing/render-with-providers';
 import { problemResponse } from '../../testing/test-engine-api';
 
 const TIMEOUT_MS = 30_000;
+/** The first render loads the agent route and the upload policy, slower than the default wait on a busy runner. */
+const FIRST_RENDER_MS = 10_000;
+
 /** The picker's input: hidden, since the visible "Choose files" button is the one control people use. */
 function fileInput(scope: HTMLElement): HTMLInputElement {
     const input = scope.querySelector<HTMLInputElement>('input[type="file"]');
@@ -19,7 +22,7 @@ const notes = () => new File(['# Notes'], 'notes.md', { type: '' });
 
 async function agentTab(engine = createFilesEngine()) {
     const app = renderWithProviders({ path: '/agents/agent-ada/files', engineApi: engine.client });
-    await screen.findByRole('button', { name: 'Choose files' });
+    await screen.findByRole('button', { name: 'Choose files' }, { timeout: FIRST_RENDER_MS });
     const input = fileInput(document.body);
     return { app, engine, input };
 }
