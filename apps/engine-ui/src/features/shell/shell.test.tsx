@@ -23,8 +23,6 @@ const ALL_PERMISSIONS: readonly Permission[] = [
     'audit.read',
 ];
 
-const Icon = () => null;
-
 /** The sidebar's links, in document order. */
 async function sidebarLinks(): Promise<string[]> {
     const nav = await screen.findByRole('navigation', { name: 'Main' });
@@ -35,12 +33,7 @@ async function sidebarLinks(): Promise<string[]> {
 
 describe('app shell', () => {
     it('renders the sidebar groups and items in the order of docs/design/ui.md', async () => {
-        const files = defineFeature({
-            id: 'files',
-            requires: {},
-            nav: { group: 'resources', order: 10, label: () => 'Files', icon: Icon, to: '/audit' },
-        });
-        const { container } = renderWithProviders({ path: '/settings', features: [...FEATURES, files] });
+        const { container } = renderWithProviders({ path: '/settings' });
 
         const nav = await screen.findByRole('navigation', { name: 'Main' });
         expect(
