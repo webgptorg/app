@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseClientHello } from './client-hello';
+import { createClientHelloParser, parseClientHello } from './client-hello';
 import {
     alpnExtension,
     clientHello,
@@ -20,6 +20,7 @@ import {
 import { CAPTURED_CLIENT_HELLOS } from './fixtures/captured';
 
 const limits = { maxBytes: 16 * 1024 };
+const smallHello = clientHello([serverNameExtension('a.example')]);
 
 function parse(bytes: Uint8Array): ReturnType<typeof parseClientHello> {
     return parseClientHello(bytes, limits);
@@ -257,5 +258,48 @@ describe('parseClientHello', () => {
         it.each([0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY])('throws on maxBytes %s', (maxBytes) => {
             expect(() => parseClientHello(hello, { maxBytes })).toThrow(RangeError);
         });
+    });
+
+    describe('maxHelloBytes', () => {
+        // About 32 KiB of handshake over two full-size records and a third, as large post-quantum key shares may need.
+        const extensions = [serverNameExtension('a.example'), paddingExtension(32_700)];
+        const handshakeBytes = handshakeMessage(1, clientHelloBody(extensions)).length;
+        const large = clientHello(extensions);
+
+        it('counts the handshake message across records, without their headers', () => {
+            expect(large.length).toBe(handshakeBytes + 3 * 5);
+            expect(parseClientHello(large, { maxBytes: 64 * 1024, maxHelloBytes: handshakeBytes })).toMatchObject({
+                kind: 'sni',
+            });
+            expect(parseClientHello(large, { maxBytes: 64 * 1024, maxHelloBytes: handshakeBytes - 1 })).toEqual({
+                kind: 'too-large',
+            });
+        });
+
+        it('refuses as soon as the declared length is read', () => {
+            // A record header and the handshake header: nothing else of the ClientHello is needed.
+            expect(parseClientHello(large.subarray(0, 9), { maxBytes: 64 * 1024, maxHelloBytes: 1024 })).toEqual({
+                kind: 'too-large',
+            });
+            expect(parseClientHello(large.subarray(0, 8), { maxBytes: 64 * 1024, maxHelloBytes: 1024 })).toEqual({
+                kind: 'need-more',
+            });
+        });
+
+        it.each([0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY])('throws on maxHelloBytes %s', (maxHelloBytes) => {
+            expect(() => parseClientHello(smallHello, { maxBytes: 1024, maxHelloBytes })).toThrow(RangeError);
+        });
+    });
+});
+
+describe('createClientHelloParser', () => {
+    it('reaches the one-call verdict when fed growing prefixes, and keeps a final verdict', () => {
+        const parser = createClientHelloParser(limits);
+        const bytes = concat(smallHello, latin1('after'));
+        for (let length = 0; length < smallHello.length; length++) {
+            expect(parser.feed(bytes.subarray(0, length))).toEqual({ kind: 'need-more' });
+        }
+        expect(parser.feed(bytes)).toEqual(parse(smallHello));
+        expect(parser.feed(latin1('anything'))).toEqual(parse(smallHello));
     });
 });

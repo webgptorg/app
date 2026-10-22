@@ -1,7 +1,7 @@
-export { parseClientHello } from './tls/client-hello';
-export type { ClientHelloLimits, ClientHelloParse, MalformedReason } from './tls/client-hello';
+export { createClientHelloParser, parseClientHello } from './tls/client-hello';
+export type { ClientHelloLimits, ClientHelloParse, ClientHelloParser, MalformedReason } from './tls/client-hello';
 export { createClientHelloBuffer } from './tls/client-hello-buffer';
-export type { ClientHelloBuffer } from './tls/client-hello-buffer';
+export type { ClientHelloBuffer, ClientHelloBufferLimits } from './tls/client-hello-buffer';
 export { decodeBase64Url, encodeBase64Url } from './base64url';
 export type { Base64UrlDecode } from './base64url';
 export { decodeBase64Std, encodeBase64Std } from './base64std';

@@ -104,6 +104,26 @@ describe('parseClientHello properties', () => {
         );
     });
 
+    it('gives the same verdict for random bytes split into random chunks as in one go', () => {
+        fc.assert(
+            fc.property(
+                fc.oneof(
+                    fc.uint8Array({ maxLength: 4096 }),
+                    fc.uint8Array({ maxLength: 4096 }).map((body) => record(concat(u8(1), u24(body.length), body))),
+                ),
+                fc.array(fc.nat(), { maxLength: 63 }),
+                fc.option(fc.integer({ min: 1, max: 8192 })),
+                (bytes, cuts, maxHelloBytes) => {
+                    const chosen = maxHelloBytes === null ? limits : { ...limits, maxHelloBytes };
+                    const buffer = createClientHelloBuffer({ ...chosen, maxChunks: 64 });
+                    let result: ClientHelloParse = { kind: 'need-more' };
+                    for (const chunk of splitAt(bytes, cuts)) result = buffer.push(chunk);
+                    expect(result).toEqual(parseClientHello(bytes, chosen));
+                },
+            ),
+        );
+    });
+
     it('returns need-more for every strict prefix of every fixture', () => {
         for (const { name, bytes } of CAPTURED_CLIENT_HELLOS) {
             for (let length = 0; length < bytes.length; length++) {
