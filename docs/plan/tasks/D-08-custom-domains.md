@@ -2,7 +2,7 @@
 
 - **Lane:** D · **Module:** `apps/dashboard` · **Milestone:** M3
 - **Depends on:** D-04, D-09
-- **Status:** in progress (feat/d-08-custom-domains)
+- **Status:** done (#63)
 - **Spec:** Relay and tunnel (Enterprise custom domains); Residual risks (Custom domain, strict mode); Interfaces (draft) 2 and 6 (`PTBK_CUSTOM_DOMAIN`); Moving existing deployments; ADRs: [0006](../../adr/0006-organizations-and-roles.md), [0014](../../adr/0014-cryptography.md)
 
 ## Goal
@@ -59,12 +59,12 @@ Custom domains are Enterprise only and set up by hand with each customer; there 
 
 ## Acceptance criteria
 
-- [ ] Unit tests for `addCustomHostname`, one per outcome, with a claim signed by a test key from the protocol package and a claim signed by another key (`bad-claim`), a claim for a different hostname (`bad-claim`) and one for a different engine ID (`bad-claim`).
-- [ ] Hostname normalisation tests: uppercase, trailing dot, Unicode IDN, IP literal, `*.example.com`, a subdomain of the engine domain, a 254-character name.
-- [ ] Workers tests: non-admin → 403; admin without fresh step-up → 403; add, check DNS with the fake resolver (`pending-dns` stays on a wrong target, `active` on the right one), and the registry endpoint from D-04 then lists the hostname with its claim; removal drops it from the registry; audit rows written.
-- [ ] Relay integration test (in `apps/relay`, using the HTTP adapter against a fake registry) shows an active custom hostname routed, a tampered claim dropped, and a hostname with a valid claim but a CNAME (fake `DnsResolver`) pointing elsewhere, at a relay name or missing not routed; reuse D-04's tests if they already cover it.
-- [ ] Runbook written; migration is drizzle-kit output and passes D-01's guards; schema allowlist updated; `bun run check` passes.
-- [ ] **Status** line above set to `done (#<PR>)`.
+- [x] Unit tests for `addCustomHostname`, one per outcome, with a claim signed by a test key from the protocol package and a claim signed by another key (`bad-claim`), a claim for a different hostname (`bad-claim`) and one for a different engine ID (`bad-claim`).
+- [x] Hostname normalisation tests: uppercase, trailing dot, Unicode IDN, IP literal, `*.example.com`, a subdomain of the engine domain, a 254-character name.
+- [x] Workers tests: non-admin → 403; admin without fresh step-up → 403; add, check DNS with the fake resolver (`pending-dns` stays on a wrong target, `active` on the right one), and the registry endpoint from D-04 then lists the hostname with its claim; removal drops it from the registry; audit rows written.
+- [x] Relay integration test (in `apps/relay`, using the HTTP adapter against a fake registry) shows an active custom hostname routed, a tampered claim dropped, and a hostname with a valid claim but a CNAME (fake `DnsResolver`) pointing elsewhere, at a relay name or missing not routed; reuse D-04's tests if they already cover it. Covered by D-04's tests: `apps/relay/src/adapters/http-engine-registry.test.ts` (HTTP adapter: an active custom hostname routed, a foreign claim dropped) and `apps/relay/src/domain/hostname-policy.test.ts` (a valid claim with a CNAME elsewhere, at a relay name, at the engine domain or missing is not routed).
+- [x] Runbook written ([apps/dashboard/runbooks/custom-domain.md](../../../apps/dashboard/runbooks/custom-domain.md), inside the module rather than `docs/runbooks/`); migration is drizzle-kit output and passes D-01's guards; schema allowlist updated; `bun run check` passes.
+- [x] **Status** line above set to `done (#<PR>)`.
 
 ## Risks and open points
 

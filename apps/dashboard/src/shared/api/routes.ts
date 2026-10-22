@@ -1,4 +1,4 @@
-import { Ed25519Signature, EngineId, Hostname, LinkCode } from '@ptbk/protocol';
+import { Ed25519Signature, EngineId, Hostname, LinkCode, MAX_REGISTRY_HOSTNAMES } from '@ptbk/protocol';
 import { z } from 'zod';
 
 import { billingStatusSchema, featureSchema, planIdSchema, problemStatusSchema, quotaSchema } from '../billing';
@@ -121,8 +121,8 @@ export const linkCodeViewSchema = z.strictObject({
 });
 export type LinkCodeView = z.infer<typeof linkCodeViewSchema>;
 
-/** At most C-03's registry entry minus the default hostname; the server refuses more. */
-const MAX_CUSTOM_HOSTNAMES = 31;
+/** What C-03's registry entry carries besides the default hostname; the server refuses more. */
+const MAX_CUSTOM_HOSTNAMES = MAX_REGISTRY_HOSTNAMES - 1;
 /** What an admin may type: the server normalises and validates it, and answers `invalid-hostname` with a reason. */
 const MAX_HOSTNAME_INPUT = 1024;
 

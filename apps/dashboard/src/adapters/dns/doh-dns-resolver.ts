@@ -69,7 +69,8 @@ export function createDohDnsResolver(deps: {
             try {
                 const response = await deps.fetch(`${endpoint}?${query.toString()}`, {
                     headers: { accept: 'application/dns-json' },
-                    redirect: 'error',
+                    // A redirect is an answer we did not ask for: `manual` hands back the 3xx, which is not `ok`.
+                    redirect: 'manual',
                     signal: AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)]),
                 });
                 if (!response.ok) {
