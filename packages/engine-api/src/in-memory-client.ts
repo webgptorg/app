@@ -154,6 +154,13 @@ export type InMemorySeedTrigger = TriggerInput extends infer Each
         : never
     : never;
 
+export type InMemorySeedActivity =
+    Unbranded<z.input<typeof Activity>> extends infer Each
+        ? Each extends Unbranded<z.input<typeof Activity>>
+            ? Omit<Each, 'agentName'> & { readonly agentName?: string | null }
+            : never
+        : never;
+
 /** Seed data in contract shapes; every record is validated against its schema when the client is created. */
 export interface InMemorySeed {
     readonly orgId?: string;
@@ -181,8 +188,8 @@ export interface InMemorySeed {
         readonly fires?: readonly Unbranded<z.input<typeof TriggerFire>>[];
     }[];
     readonly integrations?: readonly Unbranded<z.input<typeof Integration>>[];
-    /** Oldest first. */
-    readonly activity?: readonly Unbranded<z.input<typeof Activity>>[];
+    /** Oldest first; `agentName` defaults to `null`, and reads answer the agent's current name. */
+    readonly activity?: readonly InMemorySeedActivity[];
     readonly auditEntries?: readonly InMemorySeedAuditEntry[];
 }
 
@@ -1166,7 +1173,9 @@ function createState(
             }),
         ),
         integrations: byId((seed.integrations ?? []).map((record) => Integration.parse(record))),
-        activity: (seed.activity ?? []).map((record) => Activity.parse(record)),
+        activity: (seed.activity ?? []).map((record) =>
+            Activity.parse({ ...record, agentName: record.agentName ?? null }),
+        ),
         audit: [],
         events: [],
         eventSeq: 0,

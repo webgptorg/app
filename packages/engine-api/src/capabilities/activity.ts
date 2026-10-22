@@ -36,6 +36,13 @@ export const ActivityKind = z
     .regex(/^[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)+$/);
 
 /**
+ * The agent's name when the engine answered (since API 1.9), so a feed across agents needs no lookup per item; the name
+ * it had when it was deleted, `null` when the item has no agent or the engine no longer knows it. Untrusted text:
+ * members type it.
+ */
+export const ActivityAgentName = z.string().min(1).max(256);
+
+/**
  * What every activity item has, whatever its kind and version. Not strict, because it is read out of items whose other
  * fields this client may not know; an item without a valid base is dropped.
  */
@@ -45,11 +52,19 @@ export const ActivityBase = z.object({
     id: ActivityId,
     at: Timestamp,
     agentId: AgentId.nullable(),
+    /** Read leniently: a missing or malformed name reads as `null` rather than costing the item its generic card. */
+    agentName: ActivityAgentName.nullable().catch(null),
     actor: toTolerant(ActivityActor),
 });
 export type ActivityBase = z.infer<typeof ActivityBase>;
 
-const baseShape = { id: ActivityId, at: Timestamp, agentId: AgentId.nullable(), actor: ActivityActor };
+const baseShape = {
+    id: ActivityId,
+    at: Timestamp,
+    agentId: AgentId.nullable(),
+    agentName: ActivityAgentName.nullable(),
+    actor: ActivityActor,
+};
 const summaryName = z.string().max(256);
 
 function v1<Kind extends string, Shape extends z.ZodRawShape>(kind: Kind, payload: Shape) {

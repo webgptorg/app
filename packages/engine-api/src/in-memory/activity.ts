@@ -2,7 +2,7 @@ import { activityPermission } from '../capabilities/activity';
 import type { Activity } from '../capabilities/activity';
 import type { EngineEvent } from '../events';
 import type { Permission } from '../permissions';
-import { page, sortBy, time, within } from './kit';
+import { activityAgentName, page, sortBy, time, within } from './kit';
 import type { Handlers } from './kit';
 
 /**
@@ -49,7 +49,7 @@ export const ACTIVITY_HANDLERS: Pick<Handlers, 'listActivity'> = {
                 within(activity.at, query.from, query.to),
         );
         return page(
-            items,
+            items.map((activity) => ({ ...activity, agentName: activityAgentName(ctx, activity.agentId) })),
             sortBy('-at', (activity) => time(activity.at), true),
             query,
         );

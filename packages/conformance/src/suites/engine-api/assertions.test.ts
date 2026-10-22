@@ -786,6 +786,11 @@ const SKIPS: readonly Case[] = [
         (target) => ({ ...target, gateway: false }),
     ],
     [
+        'an engine without activity',
+        'engine-api.activity.agent-names',
+        { tamper: editJson(on('GET', /^\/activity$/), (page) => ({ ...page, items: [] })) },
+    ],
+    [
         'a member without passkeys',
         'engine-api.me.own-passkeys',
         { tamper: editJson(on('GET', /^\/me\/passkeys$/), (page) => ({ ...page, items: [] })) },
@@ -840,6 +845,19 @@ describe('each assertion bites', () => {
             response.status === 201 ? problem('step-up-required', 401) : response,
         );
         expect(await outcome('engine-api.permissions.mutations-denied', { tamper })).toEqual({ kind: 'pass' });
+    });
+
+    it('accepts any name for an agent the engine no longer answers', async () => {
+        const tamper = chain(
+            replace(on('GET', /^\/agents\/[^/]+$/), () => problem('not-found', 404)),
+            editJson(on('GET', /^\/activity$/), (page) => ({
+                ...page,
+                items: page.items.map((item: any) =>
+                    item.agentId === null ? item : { ...item, agentName: 'Before the rename' },
+                ),
+            })),
+        );
+        expect(await outcome('engine-api.activity.agent-names', { tamper })).toEqual({ kind: 'pass' });
     });
 
     it('runs the auth check with placeholders when there is no owner', async () => {
@@ -1305,6 +1323,28 @@ const CAPABILITY_FAILS: readonly Case[] = [
                 ...trigger,
                 lifecycle: 'active',
                 endedReason: null,
+            })),
+        },
+    ],
+    [
+        'activity that names another agent',
+        'engine-api.activity.agent-names',
+        {
+            tamper: editJson(on('GET', ACTIVITY), (page) => ({
+                ...page,
+                items: page.items.map((item: any) =>
+                    item.agentId === null ? item : { ...item, agentName: 'Someone else' },
+                ),
+            })),
+        },
+    ],
+    [
+        'activity without an agent that names one',
+        'engine-api.activity.agent-names',
+        {
+            tamper: editJson(on('GET', ACTIVITY), (page) => ({
+                ...page,
+                items: page.items.map((item: any) => (item.agentId === null ? { ...item, agentName: 'Ghost' } : item)),
             })),
         },
     ],

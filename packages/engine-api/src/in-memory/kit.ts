@@ -9,7 +9,7 @@ import type { CapabilityRef } from '../capabilities/capability';
 import type { FilePurpose, FileScanStatus } from '../capabilities/files';
 import type { Integration } from '../capabilities/integrations';
 import { ActivityId } from '../common';
-import type { ChatId, ClientInfo, MemberId, ProblemDetails, SessionId, Timestamp } from '../common';
+import type { AgentId, ChatId, ClientInfo, MemberId, ProblemDetails, SessionId, Timestamp } from '../common';
 import { MAX_CHAT_PREVIEW_LENGTH } from '../constants';
 import type { EngineEvent } from '../events';
 import type { Member } from '../members';
@@ -248,12 +248,23 @@ export function memberActor(ctx: HandlerContext): ActivityActor {
 
 type DistributiveOmit<T, Key extends PropertyKey> = T extends unknown ? Omit<T, Key> : never;
 
-/** An activity before the engine stamps it. */
-export type ActivityInput = DistributiveOmit<Activity, 'id' | 'at' | 'v'>;
+/** An activity before the engine stamps it; the engine also names its agent. */
+export type ActivityInput = DistributiveOmit<Activity, 'id' | 'at' | 'v' | 'agentName'>;
+
+/** The name of an item's agent as the engine knows it now, deleted or not; `null` without one. */
+export function activityAgentName(ctx: EngineContext, agentId: AgentId | null): string | null {
+    return agentId === null ? null : (ctx.state.agents.get(agentId)?.agent.name ?? null);
+}
 
 /** Appends to the feed and announces it on the event stream; the stream filters it per member. */
 export function recordActivity(ctx: EngineContext, input: ActivityInput): Activity {
-    const activity = Activity.parse({ ...input, v: 1, id: ctx.newId(ActivityId, 'activity'), at: ctx.now() });
+    const activity = Activity.parse({
+        ...input,
+        v: 1,
+        id: ctx.newId(ActivityId, 'activity'),
+        at: ctx.now(),
+        agentName: activityAgentName(ctx, input.agentId),
+    });
     ctx.state.activity.push(activity);
     ctx.publish({ type: 'activity', activity });
     return activity;
