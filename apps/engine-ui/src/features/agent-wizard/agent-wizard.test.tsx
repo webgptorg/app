@@ -1,5 +1,12 @@
 import { createProblem, PERMISSIONS } from '@ptbk/engine-api';
-import type { CapabilityRef, EngineApiClient, Permission } from '@ptbk/engine-api';
+import type {
+    CapabilityRef,
+    EngineApiClient,
+    EngineApiResponse,
+    FileMetadata,
+    Permission,
+    UploadOptions,
+} from '@ptbk/engine-api';
 import { createInMemoryEngine } from '@ptbk/engine-api/in-memory';
 import { screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
@@ -8,6 +15,7 @@ import { expectNoAxeViolations } from '../../testing/axe';
 import { bookText, editorView, installEditorDomGaps, replaceBook } from '../../testing/book-editor';
 import { renderWithProviders } from '../../testing/render-with-providers';
 import { TEST_NOW } from '../../testing/test-engine-api';
+import { TEST_UPLOAD_POLICIES } from '../../testing/files-engine';
 import { bookTemplate } from './book-template';
 
 // Each test renders the whole app on the in-memory engine, and validation waits for its 500 ms debounce.
@@ -25,6 +33,7 @@ interface Setup {
 
 function setup({ path = '/agents/new', permissions, capabilities, agents = {} }: Setup = {}) {
     const engine = createInMemoryEngine({
+        uploadPolicies: TEST_UPLOAD_POLICIES,
         clock: { now: () => TEST_NOW },
         seed: {
             engine: { name: 'Test engine', hostname: 'engine.localhost', dashboardUrl: null, mode: 'local' },
@@ -34,8 +43,13 @@ function setup({ path = '/agents/new', permissions, capabilities, agents = {} }:
         ...(capabilities === undefined ? {} : { capabilities }),
     });
     const real = engine.client.agents;
-    const client: EngineApiClient = { ...engine.client, agents: { ...real, ...agents } };
+    const client: EngineApiClient = {
+        ...engine.client,
+        agents: { ...real, ...agents },
+        files: { ...engine.client.files },
+    };
     const spies = {
+        upload: vi.spyOn(client.files, 'upload'),
         create: vi.spyOn(client.agents, 'create'),
         validate: vi.spyOn(client.agents, 'validate'),
         delete: vi.spyOn(client.agents, 'delete'),
@@ -259,6 +273,48 @@ describe('the create-agent wizard', { timeout: TIMEOUT_MS }, () => {
         await waitFor(() => {
             expect(app.router.state.location.pathname).toBe(`/agents/${agentId}`);
         });
+    });
+
+    it('uploads knowledge to the new agent with progress, refuses an over-limit file and reports a failure', async () => {
+        const app = setup();
+        await createAgent(app);
+        const agentId = String(search(app)['agent']);
+        await screen.findByRole('button', { name: 'Choose files' }, WAIT);
+        const input = document.querySelector<HTMLInputElement>('input[type="file"]');
+        if (input === null) throw new Error('no file input');
+        let progress: UploadOptions['onProgress'];
+        let finish: (response: EngineApiResponse<FileMetadata>) => void = () => undefined;
+        app.spies.upload.mockImplementationOnce(
+            (_, __, options) =>
+                new Promise((resolve) => {
+                    progress = options?.onProgress;
+                    finish = resolve;
+                }),
+        );
+
+        await app.user.upload(input, new File(['# Guide'], 'guide.md'));
+        const list = await screen.findByRole('list', { name: 'Uploads' });
+        await waitFor(() => {
+            expect(progress).toBeDefined();
+        });
+        progress?.({ loadedBytes: 30, totalBytes: 120 });
+        const bar = await within(list).findByRole('progressbar', { name: 'Upload progress of guide.md' });
+        await waitFor(() => {
+            expect(bar.getAttribute('value')).toBe('30');
+        });
+        expect(app.spies.upload.mock.calls[0]?.[0]).toMatchObject({ purpose: 'knowledge', agentId, name: 'guide.md' });
+        finish({ kind: 'problem', problem: createProblem('internal-error') });
+        expect(await within(list).findByText('Upload failed')).toBeDefined();
+
+        await app.user.upload(input, new File(['x'.repeat(1001)], 'big.md'));
+        expect(await within(list).findByText(/^Too large: the engine accepts up to/)).toBeDefined();
+        expect(app.spies.upload).toHaveBeenCalledOnce();
+
+        await app.user.upload(input, new File(['# Prices'], 'prices.md'));
+        expect(await within(list).findByText('Uploaded', {}, WAIT)).toBeDefined();
+        const files = await app.engineApi.files.list({ agentId: agentId as never }, AbortSignal.timeout(1_000));
+        expect(files.kind === 'ok' && files.data.items.map((file) => file.name)).toEqual(['prices.md']);
+        await expectNoAxeViolations(document.body);
     });
 
     it('says when knowledge cannot be added here, tests the agent in a chat and links onwards', async () => {

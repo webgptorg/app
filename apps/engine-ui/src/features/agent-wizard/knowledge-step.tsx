@@ -5,6 +5,7 @@ import type { Ref } from 'react';
 
 import { useEngineCapabilities } from '../../app/registry/use-visible-features';
 import { m } from '../../paraglide/messages';
+import { KnowledgeUpload } from '../files/knowledge-upload';
 import { usePermissions } from '../session/use-permissions';
 import { StepFrame } from './step-frame';
 
@@ -15,7 +16,10 @@ export interface KnowledgeStepProps {
     readonly onCancel: () => void;
 }
 
-/** Step 3: files the agent should know. Optional, and only where the engine has `files@1` and the member may upload. */
+/**
+ * Step 3: files the agent should know, through the same upload control as the agent's Files tab (U-10). Optional, and
+ * only where the engine has `files@1` and the member may upload.
+ */
 export function KnowledgeStep({ agentId, headingRef, onNext, onCancel }: KnowledgeStepProps) {
     const capabilities = useEngineCapabilities();
     const { can } = usePermissions();
@@ -37,7 +41,7 @@ export function KnowledgeStep({ agentId, headingRef, onNext, onCancel }: Knowled
                 </>
             }
         >
-            {available ? <span data-agent={agentId} /> : null}
+            {available ? <KnowledgeUpload agentId={agentId} /> : null}
         </StepFrame>
     );
 }
