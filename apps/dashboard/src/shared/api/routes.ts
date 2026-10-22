@@ -1,4 +1,4 @@
-import { LinkCode } from '@ptbk/protocol';
+import { Ed25519Signature, EngineId, Hostname, LinkCode, MAX_REGISTRY_HOSTNAMES } from '@ptbk/protocol';
 import { z } from 'zod';
 
 import { billingStatusSchema, featureSchema, planIdSchema, problemStatusSchema, quotaSchema } from '../billing';
@@ -120,6 +120,32 @@ export const linkCodeViewSchema = z.strictObject({
     expiresAt: timestampSchema,
 });
 export type LinkCodeView = z.infer<typeof linkCodeViewSchema>;
+
+/** What C-03's registry entry carries besides the default hostname; the server refuses more. */
+const MAX_CUSTOM_HOSTNAMES = MAX_REGISTRY_HOSTNAMES - 1;
+/** What an admin may type: the server normalises and validates it, and answers `invalid-hostname` with a reason. */
+const MAX_HOSTNAME_INPUT = 1024;
+
+export const customHostnameViewSchema = z.strictObject({
+    hostname: Hostname,
+    /** Only `active` hostnames reach relays, which check the claim and the CNAME again on their own. */
+    status: z.enum(['pending-dns', 'active']),
+    /** The last DNS check with a definite answer; null before the first. */
+    dnsCheckedAt: timestampSchema.nullable(),
+    createdAt: timestampSchema,
+});
+export type CustomHostnameView = z.infer<typeof customHostnameViewSchema>;
+
+/** What a DNS check found: one CNAME and its target, no CNAME (or no such name), or no answer at all. */
+export const cnameLookupViewSchema = z.discriminatedUnion('kind', [
+    z.strictObject({ kind: z.literal('cname'), target: Hostname }),
+    z.strictObject({ kind: z.literal('none') }),
+    z.strictObject({ kind: z.literal('error') }),
+]);
+export type CnameLookupView = z.infer<typeof cnameLookupViewSchema>;
+
+const adminEngineParams = z.strictObject({ engineId: EngineId });
+const adminHostnameParams = z.strictObject({ engineId: EngineId, hostname: Hostname });
 
 /** Where the SPA sends the browser, top level: Stripe Checkout or the portal, or back to `/billing` with the fake. */
 const redirectSchema = z.strictObject({ url: z.url({ protocol: /^https?$/ }).max(2048) });
@@ -397,6 +423,65 @@ export const apiRoutes = {
         rateLimit: null,
         input: NO_INPUT,
         output: z.strictObject({ organizations: z.array(problemOrganizationSchema) }),
+        errorCodes: [],
+    }),
+
+    /** D-08: an engine's custom hostnames, for platform admins, with the CNAME target the customer must set. */
+    adminListHostnames: defineRoute({
+        method: 'GET',
+        path: '/api/admin/engines/:engineId/hostnames',
+        auth: 'session',
+        permission: 'admin.hostnames.read',
+        rateLimit: null,
+        input: { ...NO_INPUT, params: adminEngineParams },
+        output: z.strictObject({
+            engineId: EngineId,
+            orgId: idSchema,
+            /** C-03's `expectedCnameTarget`: the engine's default hostname, never a relay name. */
+            expectedTarget: Hostname,
+            hostnames: z.array(customHostnameViewSchema).max(MAX_CUSTOM_HOSTNAMES),
+        }),
+        errorCodes: [],
+    }),
+    /** Stored as `pending-dns` once the engine's claim verifies; the hostname comes back normalised. */
+    adminAddHostname: defineRoute({
+        method: 'POST',
+        path: '/api/admin/engines/:engineId/hostnames',
+        auth: 'session',
+        permission: 'admin.hostnames.manage',
+        rateLimit: null,
+        input: {
+            ...NO_INPUT,
+            params: adminEngineParams,
+            body: z.strictObject({
+                hostname: z.string().min(1).max(MAX_HOSTNAME_INPUT),
+                claimSig: Ed25519Signature,
+            }),
+            maxBodyBytes: 4096,
+        },
+        output: z.strictObject({ hostname: customHostnameViewSchema }),
+        errorCodes: ['invalid-hostname', 'reserved-domain', 'taken', 'bad-claim', 'limit-reached'],
+    }),
+    /** `active` exactly when the CNAME points at the engine's default hostname; `lookup` says what DNS answered. */
+    adminCheckHostname: defineRoute({
+        method: 'POST',
+        path: '/api/admin/engines/:engineId/hostnames/:hostname/check',
+        auth: 'session',
+        permission: 'admin.hostnames.manage',
+        rateLimit: null,
+        input: { ...NO_INPUT, params: adminHostnameParams },
+        output: z.strictObject({ hostname: customHostnameViewSchema, lookup: cnameLookupViewSchema }),
+        errorCodes: [],
+    }),
+    /** Relays stop routing it within one registry cache TTL (5 minutes). */
+    adminRemoveHostname: defineRoute({
+        method: 'POST',
+        path: '/api/admin/engines/:engineId/hostnames/:hostname/remove',
+        auth: 'session',
+        permission: 'admin.hostnames.manage',
+        rateLimit: null,
+        input: { ...NO_INPUT, params: adminHostnameParams },
+        output: emptySchema,
         errorCodes: [],
     }),
 

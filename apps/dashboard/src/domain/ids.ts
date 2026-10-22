@@ -42,3 +42,8 @@ export function newUserId(random: Random): UserId {
 export function newRelayTokenId(random: Random): RelayTokenId {
     return relayTokenIdSchema.parse(randomId(random));
 }
+
+/** An `admin_audit_log` row. */
+export function newAdminAuditEntryId(random: Random): string {
+    return randomId(random);
+}

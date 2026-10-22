@@ -15,8 +15,10 @@ import { rateLimitRules } from '../app/rate-limiter';
 import type { AuthStore } from '../domain/auth/auth-store';
 import { createAuthorizer } from '../domain/authz/authorizer';
 import type { BillingStore } from '../domain/billing/billing-store';
+import type { CustomHostnameStore } from '../domain/custom-hostnames/custom-hostname-store';
 import type { EngineStore } from '../domain/registration/engine-store';
 import type { LinkCodeStore } from '../domain/registration/link-code-store';
+import type { EngineHostnameStore } from '../domain/registry/engine-hostname-store';
 import type { RegistryReader } from '../domain/registry/registry-reader';
 import type { RelayTokenStore } from '../domain/registry/relay-token-store';
 import { DASHBOARD_POLICY } from '../domain/authz/policy';
@@ -34,12 +36,9 @@ import {
     type MemoryEngineStatuses,
 } from './memory-engine-status';
 import { createMemoryRegistrationStores } from './memory-registration-store';
-import {
-    createMemoryEngineHostnameStore,
-    createMemoryRegistryReader,
-    createMemoryRelayTokenStore,
-    type MemoryEngineHostnameStore,
-} from './memory-registry-stores';
+import { createFakeDnsResolver, type FakeDnsResolver } from './fake-dns-resolver';
+import { createMemoryCustomHostnameStore, type MemoryCustomHostnameStore } from './memory-custom-hostname-store';
+import { createMemoryRegistryReader, createMemoryRelayTokenStore } from './memory-registry-stores';
 import { createTestBilling } from './test-billing';
 
 export const ORIGIN = 'https://app.ptbk.test';
@@ -77,8 +76,10 @@ export interface AuthHarness {
     readonly billingProvider: FakeBillingState;
     /** Generated per harness; the webhook route verifies with it. */
     readonly webhookSecret: string;
-    /** D-08's custom hostnames, until that task adds their table. */
-    readonly engineHostnames: MemoryEngineHostnameStore;
+    /** In-memory custom hostnames; wired unless `customHostnames` was passed (the D1 store, in the workers project). */
+    readonly engineHostnames: MemoryCustomHostnameStore;
+    /** Every DNS check admins run goes here; unknown names answer `none`. */
+    readonly dns: FakeDnsResolver;
     /** The engines' status objects, in process, with their alarms fired by hand. */
     readonly engineStatuses: MemoryEngineStatuses;
     /** Sends `body` exactly as given, for routes whose signature covers the raw bytes. */
@@ -124,6 +125,8 @@ export function createAuthHarness(options: {
     /** Default to in-memory ones; the registry reader then reads the registration stores' engines. */
     readonly relayTokens?: RelayTokenStore;
     readonly registry?: RegistryReader;
+    /** Defaults to an in-memory store over the registration stores' engines and the auth store's audit log. */
+    readonly customHostnames?: CustomHostnameStore & EngineHostnameStore;
     /** Defaults to a reader over the registration stores' engines. */
     readonly heartbeatEngines?: HeartbeatEngineReader;
     /** Defaults to nobody, for suites that never take an engine offline. */
@@ -157,7 +160,12 @@ export function createAuthHarness(options: {
         ...(options.billingStore === undefined ? {} : { store: options.billingStore }),
     });
     const registration = options.registration ?? createMemoryRegistrationStores({ orgExists: () => true });
-    const engineHostnames = createMemoryEngineHostnameStore();
+    const engineHostnames = createMemoryCustomHostnameStore({
+        engines: registration.engines,
+        auditLog: options.store.adminAudit,
+    });
+    const dns = createFakeDnsResolver();
+    const customHostnames = options.customHostnames ?? engineHostnames;
     const engineStatuses = createMemoryEngineStatuses({
         clock,
         logger,
@@ -185,7 +193,9 @@ export function createAuthHarness(options: {
         engines: registration.engines,
         relayTokens: options.relayTokens ?? createMemoryRelayTokenStore(),
         registry: options.registry ?? createMemoryRegistryReader(registration.engines),
-        engineHostnames,
+        engineHostnames: customHostnames,
+        customHostnames,
+        dns,
         heartbeatEngines: options.heartbeatEngines ?? createMemoryHeartbeatEngineReader(registration.engines),
         engineStatus: engineStatuses,
     };
@@ -221,6 +231,7 @@ export function createAuthHarness(options: {
         billingProvider: testBilling.provider,
         webhookSecret,
         engineHostnames,
+        dns,
         engineStatuses,
         settle,
         async post(path, body, headers = {}, postOptions = {}) {

@@ -5,16 +5,17 @@ import { createStripeApi, createStripeBillingProvider } from '../adapters/billin
 import { createStripeWebhookVerifier, rejectAllWebhooks } from '../adapters/billing/stripe-webhook-verifier';
 import { createConsoleLogger } from '../adapters/console-logger';
 import { cryptoRandom } from '../adapters/crypto-random';
+import { createDohDnsResolver } from '../adapters/dns/doh-dns-resolver';
 import { createCloudflareEmailSender } from '../adapters/email/cloudflare-email-sender';
 import { createDatabase } from '../adapters/db/client';
 import { createD1AuthStore } from '../adapters/db/d1-auth-store';
 import { createD1BillingStore } from '../adapters/db/d1-billing-store';
+import { createD1CustomHostnameStore } from '../adapters/db/d1-custom-hostname-store';
 import { createD1EngineStore, createD1LinkCodeStore } from '../adapters/db/d1-registration-store';
 import { createD1RegistryReader, createD1RelayTokenStore } from '../adapters/db/d1-registry-store';
 import { createD1HeartbeatEngineReader } from '../adapters/db/d1-status-store';
 import { createMemoryRateLimiter } from '../adapters/rate-limit/memory-rate-limiter';
 import { createDurableObjectEngineStatus } from '../adapters/status/durable-object-engine-status';
-import { noCustomHostnames } from '../adapters/no-custom-hostnames';
 import { systemClock } from '../adapters/system-clock';
 import { createSimpleWebAuthnRelyingParty } from '../adapters/webauthn/simple-webauthn-relying-party';
 import { createAuthorizer } from '../domain/authz/authorizer';
@@ -143,6 +144,7 @@ export function createDashboard(
         clock: systemClock,
         logger,
     });
+    const customHostnames = createD1CustomHostnameStore(db);
     const deps: DashboardDeps = {
         config,
         clock: systemClock,
@@ -156,7 +158,9 @@ export function createDashboard(
         engines: createD1EngineStore(db),
         relayTokens: createD1RelayTokenStore(db),
         registry: createD1RegistryReader(db),
-        engineHostnames: noCustomHostnames,
+        engineHostnames: customHostnames,
+        customHostnames,
+        dns: createDohDnsResolver({ fetch: (input, init) => fetch(input, init) }),
         heartbeatEngines: createD1HeartbeatEngineReader(db),
         engineStatus: createDurableObjectEngineStatus(env.ENGINE_STATUS),
         relyingParty: createSimpleWebAuthnRelyingParty({ origin: config.dashboardOrigin, rpName: RP_NAME }),

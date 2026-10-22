@@ -5,6 +5,7 @@ import type { BillingService } from '../domain/billing/billing-service';
 import type { Entitlements } from '../domain/billing/entitlements';
 import type { Authorizer } from '../domain/authz/authorizer';
 import type { DashboardAction } from '../domain/authz/policy';
+import type { CustomHostnameStore } from '../domain/custom-hostnames/custom-hostname-store';
 import type { EngineStore } from '../domain/registration/engine-store';
 import type { LinkCodeStore } from '../domain/registration/link-code-store';
 import type { EngineHostnameStore } from '../domain/registry/engine-hostname-store';
@@ -13,6 +14,7 @@ import type { RelayTokenStore } from '../domain/registry/relay-token-store';
 import type { EngineStatusDirectory } from '../domain/status/engine-status-directory';
 import type { HeartbeatEngineReader } from '../domain/status/heartbeat-engine-reader';
 import type { Clock } from '../domain/ports/clock';
+import type { DnsResolver } from '../domain/ports/dns-resolver';
 import type { EmailSender } from '../domain/ports/email-sender';
 import type { Logger } from '../domain/ports/logger';
 import type { Random } from '../domain/ports/random';
@@ -40,7 +42,12 @@ export interface DashboardDeps {
     readonly relayTokens: RelayTokenStore;
     /** Relays' unscoped read of engines (D-04). */
     readonly registry: RegistryReader;
+    /** Active custom hostnames with their claims, for the registry and the engine pages. */
     readonly engineHostnames: EngineHostnameStore;
+    /** The platform admin's side of the same table (D-08). */
+    readonly customHostnames: CustomHostnameStore;
+    /** Where admins' DNS checks of custom hostnames go. */
+    readonly dns: DnsResolver;
     /** Heartbeats' unscoped read of `engines` (D-05). */
     readonly heartbeatEngines: HeartbeatEngineReader;
     /** One status object per engine: heartbeats, offline detection, alerts. */

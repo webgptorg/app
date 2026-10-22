@@ -49,7 +49,7 @@ function blob(value: Uint8Array | null): Buffer | null {
     return value as Buffer | null;
 }
 
-function isUniqueViolation(error: unknown): boolean {
+export function isUniqueViolation(error: unknown): boolean {
     for (let current: unknown = error; current instanceof Error; current = current.cause) {
         if (current.message.includes('UNIQUE constraint failed')) {
             return true;
