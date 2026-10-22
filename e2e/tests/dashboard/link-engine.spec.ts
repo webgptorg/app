@@ -20,7 +20,9 @@ import { DASHBOARD_ORIGIN, ENGINE_DOMAIN, HTTPS_PORT, MOUNTS, PUBLIC_FILES, RELA
 test.describe.configure({ mode: 'serial' });
 
 const ONLINE_WITHIN_MS = 60_000;
-const ROUTED_WITHIN_MS = 60_000;
+// The first test leaves the engine ID in each relay's negative registry cache (30 s), and the engine backs off up to
+// 10 s between tunnel attempts it loses to that.
+const ROUTED_WITHIN_MS = 90_000;
 
 async function stackEnginePublicKey(): Promise<Uint8Array<ArrayBuffer>> {
     const report = JSON.parse(await readFile(join(MOUNTS.public, PUBLIC_FILES.engineIdentity), 'utf8')) as {
