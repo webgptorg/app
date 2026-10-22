@@ -1156,6 +1156,44 @@ const CAPABILITY_FAILS: readonly Case[] = [
         },
     ],
     [
+        'a status set that lists another status',
+        'engine-api.integrations.paging',
+        {
+            tamper: editJson(on('GET', INTEGRATIONS, query('status', 'needs-attention,error')), (page) => ({
+                ...page,
+                items: [{ ...page.items[0], status: 'connected' }, ...page.items.slice(1)],
+            })),
+        },
+    ],
+    [
+        'an agent listing without its engine-wide integrations',
+        'engine-api.integrations.paging',
+        {
+            tamper: editJson(on('GET', INTEGRATIONS, query('includeEngineWide', 'true')), (page) => ({
+                ...page,
+                items: page.items.filter((item: { agentId: string | null }) => item.agentId !== null),
+            })),
+        },
+    ],
+    [
+        'integration stats that do not count a new integration',
+        'engine-api.integrations.stats',
+        { tamper: firstAnswerAgain(on('GET', /^\/integrations\/stats$/, query('agentId'))) },
+    ],
+    [
+        'engine-wide integration stats lower than an agent\u2019s',
+        'engine-api.integrations.stats',
+        {
+            tamper: editJson(
+                on('GET', /^\/integrations\/stats$/, (request) => !query('agentId')(request)),
+                (stats) => ({
+                    ...stats,
+                    disconnected: 0,
+                }),
+            ),
+        },
+    ],
+    [
         'a secret reference that is not resolved',
         'engine-api.integrations.secrets-never-returned',
         { tamper: editJson(on('POST', INTEGRATIONS), (integration) => ({ ...integration, secretRefs: [] })) },

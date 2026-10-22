@@ -1,9 +1,20 @@
 import { z } from 'zod';
 
-import { AgentId, Cursor, IntegrationId, MemberId, PageQuery, SecretId, Slug, Timestamp, pageOf } from '../common';
+import {
+    AgentId,
+    Cursor,
+    IntegrationId,
+    MemberId,
+    PageQuery,
+    SecretId,
+    Slug,
+    Timestamp,
+    pageOf,
+    valueSet,
+} from '../common';
 import { defineRoute } from '../route';
 import { SecretName } from '../secrets';
-import { toTolerant } from '../tolerant';
+import { openEnum, toTolerant } from '../tolerant';
 import { KNOWN_CAPABILITIES } from './capability';
 
 /**
@@ -58,22 +69,22 @@ const integrationBase = {
     updatedAt: Timestamp,
 };
 
-export const Integration = z.discriminatedUnion('kind', [
-    z.strictObject({
-        ...integrationBase,
-        kind: z.literal('mcp-server'),
-        config: z.strictObject({ url: McpServerUrl }),
-    }),
-    z.strictObject({
-        ...integrationBase,
+const kindShapes = {
+    mcpServer: { kind: z.literal('mcp-server'), config: z.strictObject({ url: McpServerUrl }) },
+    calendar: {
         kind: z.literal('calendar'),
         config: z.strictObject({ provider: Slug, account: z.string().min(1).max(256) }),
-    }),
-    z.strictObject({
-        ...integrationBase,
+    },
+    repository: {
         kind: z.literal('repository'),
         config: z.strictObject({ provider: z.literal('github'), repository: RepositoryName }),
-    }),
+    },
+};
+
+export const Integration = z.discriminatedUnion('kind', [
+    z.strictObject({ ...integrationBase, ...kindShapes.mcpServer }),
+    z.strictObject({ ...integrationBase, ...kindShapes.calendar }),
+    z.strictObject({ ...integrationBase, ...kindShapes.repository }),
 ]);
 export type Integration = z.infer<typeof Integration>;
 export const IntegrationPage = pageOf(Integration);
@@ -86,10 +97,32 @@ export const UnknownKindIntegration = z.strictObject({
 });
 export type UnknownKindIntegration = z.infer<typeof UnknownKindIntegration>;
 
-export type ReadIntegration = Integration | UnknownKindIntegration;
+/**
+ * A `status` or secret reference `state` this contract does not know yet (a newer engine's) reads as `unknown` (since
+ * API 1.8), so adding one is additive instead of failing the whole list. Engines still answer with the closed enums.
+ */
+const readBase = {
+    ...integrationBase,
+    status: openEnum(INTEGRATION_STATUSES),
+    secretRefs: z.array(SecretRef.extend({ state: openEnum(SECRET_REF_STATES) })).max(50),
+};
+const ReadKnownIntegration = z.discriminatedUnion('kind', [
+    z.strictObject({ ...readBase, ...kindShapes.mcpServer }),
+    z.strictObject({ ...readBase, ...kindShapes.calendar }),
+    z.strictObject({ ...readBase, ...kindShapes.repository }),
+]);
+const ReadUnknownKindIntegration = z.strictObject({
+    ...readBase,
+    kind: z.literal('unknown'),
+    rawKind: IntegrationKindName,
+});
 
-const tolerantIntegration = toTolerant(Integration);
-const tolerantUnknownKind = toTolerant(UnknownKindIntegration);
+/** An integration as the client reads it: open `status` and secret `state`, and an unknown kind without `config`. */
+export type ReadIntegration = z.output<typeof ReadKnownIntegration> | z.output<typeof ReadUnknownKindIntegration>;
+export type ReadSecretRef = ReadIntegration['secretRefs'][number];
+
+const tolerantIntegration = toTolerant(ReadKnownIntegration);
+const tolerantUnknownKind = toTolerant(ReadUnknownKindIntegration);
 
 function isKnownKind(kind: string): kind is IntegrationKind {
     return (INTEGRATION_KINDS as readonly string[]).includes(kind);
@@ -117,9 +150,31 @@ export const IntegrationPageReader = z.object({ items: z.array(IntegrationReader
 
 export const IntegrationListQuery = PageQuery.extend({
     agentId: AgentId.optional(),
+    /**
+     * With `agentId`, also list the engine-wide integrations (`agentId: null`) that agent may use, in the same order and
+     * paging (since API 1.8). Ignored without `agentId`, which lists every integration anyway.
+     */
+    includeEngineWide: z
+        .enum(['true', 'false'])
+        .transform((value) => value === 'true')
+        .optional(),
     kind: IntegrationKindName.optional(),
-    status: IntegrationStatus.optional(),
+    /** One status or a comma-separated set, e.g. `needs-attention,error` (a set since API 1.8). */
+    status: valueSet(INTEGRATION_STATUSES).optional(),
 });
+
+export const IntegrationStatsQuery = z.strictObject({ agentId: AgentId.optional() });
+/**
+ * Integrations counted by status (since API 1.8), engine-wide or, with `agentId`, of that agent alone (like the list's
+ * `agentId` without `includeEngineWide`). Every key is always present.
+ */
+export const IntegrationStats = z.strictObject({
+    connected: z.int().min(0),
+    needsAttention: z.int().min(0),
+    disconnected: z.int().min(0),
+    error: z.int().min(0),
+});
+export type IntegrationStats = z.infer<typeof IntegrationStats>;
 
 export const IntegrationParams = z.strictObject({ integrationId: IntegrationId });
 
@@ -179,6 +234,16 @@ export const INTEGRATION_ROUTES = {
         capability,
         query: IntegrationListQuery,
         responses: { 200: { kind: 'json', schema: IntegrationPage, read: IntegrationPageReader } },
+    }),
+    getIntegrationStats: defineRoute({
+        id: 'getIntegrationStats',
+        method: 'GET',
+        path: '/integrations/stats',
+        summary: 'Count integrations by status',
+        permission: 'integrations.read',
+        capability,
+        query: IntegrationStatsQuery,
+        responses: { 200: { kind: 'json', schema: IntegrationStats } },
     }),
     createIntegration: defineRoute({
         id: 'createIntegration',

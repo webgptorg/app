@@ -6,7 +6,14 @@ import { AuditEntry, AuditPageReader, isAuditAction } from './audit';
 import { Activity } from './capabilities/activity';
 import { FileMetadata, FileVersion } from './capabilities/files';
 import { activitySample } from './capabilities/fixtures/samples';
-import { CreateIntegrationBody, Integration } from './capabilities/integrations';
+import {
+    CreateIntegrationBody,
+    Integration,
+    IntegrationListQuery,
+    IntegrationPageReader,
+    IntegrationReader,
+    IntegrationStats,
+} from './capabilities/integrations';
 import {
     Money,
     Run,
@@ -698,6 +705,41 @@ describe('capability schema details', () => {
         expect(RunListQuery.parse({}).sort).toBe('-queuedAt');
         expect(RunListQuery.safeParse({ status: 'queued,bogus' }).success).toBe(false);
         expect(RunListQuery.safeParse({ status: 'queued,' }).success).toBe(false);
+    });
+
+    it('reads an integration status filter as a set and engine-wide inclusion as a flag', () => {
+        const query = IntegrationListQuery.parse({ status: 'error,needs-attention,error', includeEngineWide: 'true' });
+        expect(query.status).toEqual(['error', 'needs-attention']);
+        expect(query.includeEngineWide).toBe(true);
+        expect(IntegrationListQuery.parse({ includeEngineWide: 'false' }).includeEngineWide).toBe(false);
+        expect(IntegrationListQuery.safeParse({ status: 'error,paused' }).success).toBe(false);
+        expect(IntegrationListQuery.safeParse({ includeEngineWide: 'yes' }).success).toBe(false);
+    });
+
+    it('counts integrations by every status, nothing else', () => {
+        const stats = { connected: 1, needsAttention: 2, disconnected: 0, error: 3 };
+        expect(IntegrationStats.parse(stats)).toEqual(stats);
+        expect(IntegrationStats.safeParse({ ...stats, error: -1 }).success).toBe(false);
+        expect(IntegrationStats.safeParse({ ...stats, paused: 0 }).success).toBe(false);
+        expect(IntegrationStats.safeParse({ ...stats, error: undefined }).success).toBe(false);
+    });
+
+    it('reads an integration status or secret state a newer engine added as unknown', () => {
+        const newer = {
+            ...integration,
+            status: 'paused',
+            secretRefs: [{ name: 'DOCS_TOKEN', secretId: 'sec_1', state: 'expired' }],
+        };
+        expect(Integration.safeParse(newer).success).toBe(false);
+        const read = IntegrationReader.parse(newer);
+        expect(read.status).toBe('unknown');
+        expect(read.secretRefs[0]?.state).toBe('unknown');
+        const unknownKind = IntegrationPageReader.parse({
+            items: [{ ...newer, kind: 'slack', config: { workspace: 'acme' } }],
+            nextCursor: null,
+        }).items[0];
+        expect(unknownKind).toMatchObject({ kind: 'unknown', rawKind: 'slack', status: 'unknown' });
+        expect(IntegrationReader.parse(integration)).toEqual(integration);
     });
 
     it('bounds run text by UTF-8 bytes, not characters', () => {

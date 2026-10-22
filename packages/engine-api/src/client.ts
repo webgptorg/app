@@ -268,6 +268,7 @@ export interface EngineApiClient {
     /** `integrations@1`. Integrations of a kind this client does not know read as `{ kind: 'unknown', rawKind }`. */
     readonly integrations: {
         list(query: Query<'listIntegrations'>, signal: AbortSignal): Result<'listIntegrations'>;
+        stats(query: Query<'getIntegrationStats'>, signal: AbortSignal): Result<'getIntegrationStats'>;
         create(body: Body<'createIntegration'>, signal: AbortSignal): Result<'createIntegration'>;
         connectCalendar(body: Body<'connectCalendar'>, signal: AbortSignal): Result<'connectCalendar'>;
         get(integrationId: Param<'getIntegration', 'integrationId'>, signal: AbortSignal): Result<'getIntegration'>;
@@ -437,6 +438,7 @@ export function createEngineApiClient(transport: EngineApiTransport): EngineApiC
         },
         integrations: {
             list: (query, signal) => call(R.listIntegrations, { query }, signal),
+            stats: (query, signal) => call(R.getIntegrationStats, { query }, signal),
             create: (body, signal) => call(R.createIntegration, { body }, signal),
             connectCalendar: (body, signal) => call(R.connectCalendar, { body }, signal),
             get: (integrationId, signal) => call(R.getIntegration, { params: { integrationId } }, signal),

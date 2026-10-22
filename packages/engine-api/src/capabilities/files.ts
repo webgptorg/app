@@ -11,6 +11,7 @@ import {
     Sha256Hex,
     Timestamp,
     pageOf,
+    valueSet,
 } from '../common';
 import { MAX_FILE_BYTES } from '../constants';
 import { defineRoute } from '../route';
@@ -65,17 +66,6 @@ export type FileVersion = z.infer<typeof FileVersion>;
 export const FileVersionPage = pageOf(FileVersion);
 
 export const FILE_SORTS = ['createdAt', '-createdAt', 'name', '-name', 'sizeBytes', '-sizeBytes'] as const;
-
-/** One value or a comma-separated set of them, e.g. `infected,failed`; read as the set's values. */
-function valueSet<const Values extends readonly [string, ...string[]]>(values: Values) {
-    const alternatives = values.join('|');
-    return z
-        .string()
-        .max(128)
-        .regex(new RegExp(`^(?:${alternatives})(?:,(?:${alternatives}))*$`))
-        .transform((value) => [...new Set(value.split(','))])
-        .pipe(z.array(z.enum(values)));
-}
 
 export const FileListQuery = PageQuery.extend({
     agentId: AgentId.optional(),

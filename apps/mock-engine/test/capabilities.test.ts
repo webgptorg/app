@@ -95,6 +95,7 @@ describe('capabilities through the mock HTTP server (contract)', () => {
             ),
         );
         await okFrom('listIntegrations', owner.integrations.list({ status: 'connected', limit: 5 }, signal()));
+        await okFrom('getIntegrationStats', owner.integrations.stats({}, signal()));
         await okFrom('getIntegration', owner.integrations.get(integration.id, signal()));
         await okFrom(
             'updateIntegration',

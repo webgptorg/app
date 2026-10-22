@@ -1,6 +1,6 @@
 import type { ActivityActor } from '../capabilities/activity';
 import { Integration, IntegrationStatus } from '../capabilities/integrations';
-import type { SecretRef } from '../capabilities/integrations';
+import type { IntegrationStats, SecretRef } from '../capabilities/integrations';
 import type { AgentId } from '../common';
 import { IntegrationId } from '../common';
 import { fail, invalid, liveAgent, memberActor, notFound, ok, page, recordActivity, sortBy, time } from './kit';
@@ -110,6 +110,7 @@ export function setIntegrationStatus(
 export const INTEGRATION_HANDLERS: Pick<
     Handlers,
     | 'listIntegrations'
+    | 'getIntegrationStats'
     | 'createIntegration'
     | 'connectCalendar'
     | 'getIntegration'
@@ -122,15 +123,25 @@ export const INTEGRATION_HANDLERS: Pick<
     listIntegrations: ({ query }, ctx) => {
         const integrations = [...ctx.state.integrations.values()].filter(
             (integration) =>
-                (query.agentId === undefined || integration.agentId === query.agentId) &&
+                (query.agentId === undefined ||
+                    integration.agentId === query.agentId ||
+                    (query.includeEngineWide === true && integration.agentId === null)) &&
                 (query.kind === undefined || integration.kind === query.kind) &&
-                (query.status === undefined || integration.status === query.status),
+                (query.status === undefined || query.status.includes(integration.status)),
         );
         return page(
             integrations,
             sortBy('-createdAt', (integration) => time(integration.createdAt), true),
             query,
         );
+    },
+    getIntegrationStats: ({ query }, ctx) => {
+        const stats: IntegrationStats = { connected: 0, needsAttention: 0, disconnected: 0, error: 0 };
+        for (const integration of ctx.state.integrations.values()) {
+            if (query.agentId !== undefined && integration.agentId !== query.agentId) continue;
+            stats[integration.status === 'needs-attention' ? 'needsAttention' : integration.status] += 1;
+        }
+        return ok(stats);
     },
     createIntegration: ({ body }, ctx) => {
         const agentId = body.agentId ?? null;

@@ -105,7 +105,7 @@ Route groups (each must be served, capability groups when advertised):
 | ENG-84 | `runs@1`                                       | A `RUN_ROUTES`                          | `engine-api.runs.paging`, `engine-api.runs.cancel-idempotent`, `engine-api.runs.retry-only-failed`                                                                 | Merged (M-07)                |
 | ENG-85 | `files@1`                                      | A `FILE_ROUTES`                         | `engine-api.files.paging`, `engine-api.files.download-attachment`, `engine-api.files.infected-refused`, `engine-api.files.stats`, `engine-api.files.upload-policy` | Merged (M-07)                |
 | ENG-86 | `triggers@1`                                   | A `TRIGGER_ROUTES`                      | `engine-api.triggers.paging`, `engine-api.triggers.pause-resume-idempotent`, `engine-api.triggers.invalid-schedule`, `engine-api.triggers.stats`                   | Merged (M-07)                |
-| ENG-87 | `integrations@1`                               | A `INTEGRATION_ROUTES`                  | `engine-api.integrations.paging`, `engine-api.integrations.secrets-never-returned`                                                                                 | Merged (M-07)                |
+| ENG-87 | `integrations@1`                               | A `INTEGRATION_ROUTES`                  | `engine-api.integrations.paging`, `engine-api.integrations.secrets-never-returned`, `engine-api.integrations.stats`                                                | Merged (M-07)                |
 
 ## Gateway
 

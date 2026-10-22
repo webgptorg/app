@@ -116,6 +116,17 @@ export const PageQuery = z.strictObject({
 });
 export type PageQuery = z.output<typeof PageQuery>;
 
+/** One value or a comma-separated set of them, e.g. `infected,failed`; read as the set's values. */
+export function valueSet<const Values extends readonly [string, ...string[]]>(values: Values) {
+    const alternatives = values.join('|');
+    return z
+        .string()
+        .max(128)
+        .regex(new RegExp(`^(?:${alternatives})(?:,(?:${alternatives}))*$`))
+        .transform((value) => [...new Set(value.split(','))])
+        .pipe(z.array(z.enum(values)));
+}
+
 export function pageOf<Item extends z.ZodType>(item: Item) {
     return z.strictObject({ items: z.array(item), nextCursor: Cursor.nullable() });
 }
