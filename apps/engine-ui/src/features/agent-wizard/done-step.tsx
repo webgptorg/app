@@ -3,6 +3,7 @@ import type { Ref } from 'react';
 
 import { ButtonLink } from '../../app/link';
 import { m } from '../../paraglide/messages';
+import { usePermissions } from '../session/use-permissions';
 import { StepFrame } from './step-frame';
 
 export interface DoneStepProps {
@@ -14,6 +15,7 @@ export interface DoneStepProps {
 /** Step 5: where to go next with the new agent. */
 export function DoneStep({ agentId, agentName, headingRef }: DoneStepProps) {
     const params = { agentId };
+    const { can } = usePermissions();
     return (
         <StepFrame
             title={m.wizard_done_title()}
@@ -24,9 +26,11 @@ export function DoneStep({ agentId, agentName, headingRef }: DoneStepProps) {
                     <ButtonLink to="/agents/$agentId" params={params} variant="primary">
                         {m.wizard_done_open()}
                     </ButtonLink>
-                    <ButtonLink to="/agents/$agentId/chat" params={params}>
-                        {m.wizard_done_chat()}
-                    </ButtonLink>
+                    {can('chats.read') ? (
+                        <ButtonLink to="/agents/$agentId/chat" params={params}>
+                            {m.wizard_done_chat()}
+                        </ButtonLink>
+                    ) : null}
                     <ButtonLink to="/agents/$agentId/book" params={params}>
                         {m.wizard_done_book()}
                     </ButtonLink>

@@ -2,7 +2,7 @@ import type { ReactNode, Ref } from 'react';
 
 export interface StepFrameProps {
     readonly title: string;
-    readonly description?: ReactNode;
+    readonly description: ReactNode;
     /** The wizard moves focus here when the step changes, so screen readers start at the new step. */
     readonly headingRef: Ref<HTMLHeadingElement>;
     readonly children?: ReactNode;
@@ -23,7 +23,7 @@ export function StepFrame({ title, description, headingRef, children, actions }:
                 >
                     {title}
                 </h2>
-                {description === undefined ? null : <p className="text-sm text-text-muted">{description}</p>}
+                <p className="text-sm text-text-muted">{description}</p>
             </div>
             {children}
             <div className="flex flex-wrap items-center justify-between gap-2 border-t border-divider pt-4">

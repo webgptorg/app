@@ -3,12 +3,12 @@ import { bracketMatching, syntaxHighlighting } from '@codemirror/language';
 import { lintGutter, lintKeymap, setDiagnostics } from '@codemirror/lint';
 import type { Diagnostic as LintDiagnostic } from '@codemirror/lint';
 import { search, searchKeymap } from '@codemirror/search';
-import { Compartment, EditorSelection, EditorState } from '@codemirror/state';
+import { EditorSelection, EditorState } from '@codemirror/state';
 import type { Extension } from '@codemirror/state';
 import { EditorView, highlightSpecialChars, keymap, lineNumbers } from '@codemirror/view';
 import { classHighlighter } from '@lezer/highlight';
 import type { Diagnostic } from '@ptbk/engine-api';
-import { useEffect, useImperativeHandle, useRef } from 'react';
+import { useCallback, useEffect, useImperativeHandle, useRef } from 'react';
 import type { Ref } from 'react';
 
 import { bookLanguage } from '../language/book-language';
@@ -29,6 +29,7 @@ export interface BookEditorProps {
     readonly diagnostics: readonly Diagnostic[];
     /** The editor's accessible name. */
     readonly label: string;
+    /** Fixed when the editor mounts, like the text: a member's permissions do not change on the page. */
     readonly readOnly?: boolean;
     /** `Mod-s`; the browser's own "save page" is suppressed while the editor has focus. */
     readonly onSave?: () => void;
@@ -61,12 +62,11 @@ export function BookEditor({
     const hostRef = useRef<HTMLDivElement>(null);
     const viewRef = useRef<EditorView | null>(null);
     const extensionsRef = useRef<readonly Extension[]>([]);
-    const readOnlyCompartment = useRef(new Compartment());
     const callbacks = useRef({ onChange, onSave });
     useEffect(() => {
         callbacks.current = { onChange, onSave };
     });
-    const initial = useRef({ initialSource, readOnly, label, diagnostics });
+    const initial = useRef({ initialSource, readOnly, label });
 
     useEffect(() => {
         const host = hostRef.current;
@@ -83,7 +83,7 @@ export function BookEditor({
             bookLanguage(),
             EditorView.lineWrapping,
             EditorView.contentAttributes.of({ 'aria-label': ariaLabel }),
-            readOnlyCompartment.current.of(EditorState.readOnly.of(startReadOnly)),
+            EditorState.readOnly.of(startReadOnly),
             keymap.of([
                 {
                     key: 'Mod-s',
@@ -104,7 +104,6 @@ export function BookEditor({
         ];
         const view = new EditorView({ parent: mountInShadow(host), state: EditorState.create({ doc, extensions }) });
         extensionsRef.current = extensions;
-        view.dispatch(setDiagnostics(view.state, lintDiagnostics(view.state, initial.current.diagnostics)));
         viewRef.current = view;
         return () => {
             view.destroy();
@@ -112,36 +111,36 @@ export function BookEditor({
         };
     }, []);
 
-    useEffect(() => {
+    // The view exists from the first effect on; before it and after unmount there is nothing to act on.
+    const withView = useCallback((act: (view: EditorView) => void) => {
         const view = viewRef.current;
-        if (view === null) return;
-        view.dispatch(setDiagnostics(view.state, lintDiagnostics(view.state, diagnostics)));
-    }, [diagnostics]);
+        if (view !== null) act(view);
+    }, []);
 
     useEffect(() => {
-        viewRef.current?.dispatch({
-            effects: readOnlyCompartment.current.reconfigure(EditorState.readOnly.of(readOnly)),
+        withView((view) => {
+            view.dispatch(setDiagnostics(view.state, lintDiagnostics(view.state, diagnostics)));
         });
-    }, [readOnly]);
+    }, [withView, diagnostics]);
 
     useImperativeHandle(
         ref,
         () => ({
             focusRange: (range) => {
-                const view = viewRef.current;
-                if (view === null) return;
-                const { from, to } = diagnosticRange(view.state.doc, range);
-                view.dispatch({ selection: EditorSelection.range(from, to), scrollIntoView: true });
-                view.focus();
+                withView((view) => {
+                    const { from, to } = diagnosticRange(view.state.doc, range);
+                    view.dispatch({ selection: EditorSelection.range(from, to), scrollIntoView: true });
+                    view.focus();
+                });
             },
             reset: (source) => {
-                const view = viewRef.current;
-                if (view === null) return;
-                // A fresh state, so undo cannot replay edits made to the replaced text.
-                view.setState(EditorState.create({ doc: source, extensions: [...extensionsRef.current] }));
+                withView((view) => {
+                    // A fresh state, so undo cannot replay edits made to the replaced text.
+                    view.setState(EditorState.create({ doc: source, extensions: [...extensionsRef.current] }));
+                });
             },
         }),
-        [],
+        [withView],
     );
 
     return <div ref={hostRef} className="min-h-96 min-w-0" data-testid="book-editor" />;

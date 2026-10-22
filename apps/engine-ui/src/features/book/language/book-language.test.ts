@@ -59,6 +59,13 @@ describe('the book language', () => {
         ]);
     });
 
+    it('skips blank lines before the name and keeps braces that are no parameter plain', () => {
+        expect(highlights('   \n\nAda\nRULE {not a parameter} and h or {}')).toEqual([
+            ['Ada', 'tok-heading'],
+            ['RULE', 'tok-keyword'],
+        ]);
+    });
+
     it('uses a keyword list it is given instead of the built-in one', () => {
         expect(highlights('Ada\nWALLET main\nPERSONA x', ['WALLET'])).toEqual([
             ['Ada', 'tok-heading'],

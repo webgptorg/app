@@ -5,7 +5,7 @@ import { screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { expectNoAxeViolations } from '../../testing/axe';
-import { bookText, installEditorDomGaps, replaceBook } from '../../testing/book-editor';
+import { bookText, editorView, installEditorDomGaps, replaceBook } from '../../testing/book-editor';
 import { renderWithProviders } from '../../testing/render-with-providers';
 import { TEST_NOW } from '../../testing/test-engine-api';
 import { bookTemplate } from './book-template';
@@ -141,6 +141,32 @@ describe('the create-agent wizard', { timeout: TIMEOUT_MS }, () => {
         expect(app.spies.create).toHaveBeenCalledTimes(2);
     });
 
+    it('reports any other failure to create, lets the member retry, and jumps to a problem from the list', async () => {
+        let fail = true;
+        const app = setup();
+        app.spies.create.mockImplementation((body, signal) =>
+            fail
+                ? Promise.resolve({ kind: 'problem', problem: createProblem('internal-error') })
+                : app.real.create(body, signal),
+        );
+        await fillBrief(app);
+        replaceBook('Iris\nMETA COLOR red');
+        const problem = await screen.findByRole('button', { name: /META COLOR needs/ }, WAIT);
+        await app.user.click(problem);
+        expect(
+            editorView().state.sliceDoc(editorView().state.selection.main.from, editorView().state.selection.main.to),
+        ).toBe('META COLOR red');
+
+        replaceBook('Iris\nPERSONA Writes');
+        await app.user.click(screen.getByRole('button', { name: 'Create agent' }));
+        expect(
+            await screen.findByText('The agent could not be created. Nothing was saved; try again.', {}, WAIT),
+        ).toBeDefined();
+        fail = false;
+        await app.user.click(screen.getByRole('button', { name: 'Create agent' }));
+        await stepHeading('Add knowledge');
+    });
+
     it('maps field errors of the create call onto the brief and lists the rest', async () => {
         const app = setup({
             agents: {
@@ -254,13 +280,38 @@ describe('the create-agent wizard', { timeout: TIMEOUT_MS }, () => {
         expect(screen.getByRole('link', { name: 'Edit book' }).getAttribute('href')).toBe(`/agents/${agentId}/book`);
     });
 
-    it('explains the test step to a member who may not start chats', async () => {
-        const app = setup({ permissions: PERMISSIONS.filter((permission) => permission !== 'chats.write') });
+    it('offers a retry when the test chat cannot be loaded', async () => {
+        const app = setup();
+        await createAgent(app);
+        await app.user.click(screen.getByRole('button', { name: 'Next' }));
+        await stepHeading('Try it out');
+        const getChat = vi
+            .spyOn(app.engineApi.chats, 'get')
+            .mockResolvedValue({ kind: 'problem', problem: createProblem('internal-error') });
+        await app.user.click(screen.getByRole('button', { name: 'Start a test chat' }));
+
+        expect(await screen.findByText('The test chat could not be loaded.', {}, WAIT)).toBeDefined();
+        getChat.mockRestore();
+        await app.user.click(screen.getByRole('button', { name: 'Try again' }));
+        expect(await screen.findByRole('textbox', { name: 'Message' }, WAIT)).toBeDefined();
+    });
+
+    it('explains the test step to a member who may not use chats, and links only where they may go', async () => {
+        const app = setup({
+            permissions: PERMISSIONS.filter(
+                (permission) => permission !== 'chats.write' && permission !== 'chats.read',
+            ),
+        });
         await createAgent(app);
         await app.user.click(screen.getByRole('button', { name: 'Next' }));
         await stepHeading('Try it out');
         expect(screen.getByText('Your role does not allow starting chats. You can continue.')).toBeDefined();
         expect(screen.queryByRole('button', { name: 'Start a test chat' })).toBeNull();
+
+        await app.user.click(screen.getByRole('button', { name: 'Next' }));
+        await stepHeading('Your agent is ready');
+        expect(screen.queryByRole('link', { name: 'Chat' })).toBeNull();
+        expect(screen.getByRole('link', { name: 'Edit book' })).toBeDefined();
     });
 
     it('has no axe violations on the brief and book steps', async () => {

@@ -1,5 +1,5 @@
 import type { AgentId, Revision, RevisionSummary } from '@ptbk/engine-api';
-import { Banner, Button, Dialog, ErrorState, Skeleton } from '@ptbk/ui';
+import { Banner, Button, Dialog, ErrorState, Skeleton, useLocale } from '@ptbk/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 
@@ -36,7 +36,7 @@ export function RevisionDialog({
 }: RevisionDialogProps) {
     const revision = useQuery(revisionQueryOptions(useEngineApi(), agentId, summary.id));
     const [compare, setCompare] = useState(false);
-    const savedAt = new Date(summary.createdAt).toLocaleString();
+    const savedAt = useLocale().formatDateTime(new Date(summary.createdAt));
 
     let body;
     if (revision.isPending) {

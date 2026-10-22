@@ -313,6 +313,28 @@ describe('the book editor page', { timeout: TIMEOUT_MS }, () => {
         expect(bookText()).toBe(`${SOURCE}\nRULE Second\nRULE Unsaved`);
     });
 
+    it('pages through a long history with cursors', async () => {
+        const app = await openEditor();
+        for (let index = 1; index <= 21; index += 1)
+            await saveElsewhere(app.real, `${SOURCE}\nRULE Version ${String(index)}`);
+        await app.queryClient.invalidateQueries({ queryKey: ['book', 'revisions'] });
+        await waitFor(() => {
+            expect(historyRows()).toHaveLength(20);
+        }, WAIT);
+
+        await app.user.click(screen.getByRole('button', { name: 'Next page' }));
+        await waitFor(() => {
+            expect(historyRows()).toHaveLength(2);
+        }, WAIT);
+        const query = app.spies.listRevisions.mock.lastCall?.[1];
+        expect(query?.limit).toBe(20);
+        expect(typeof query?.cursor).toBe('string');
+        await app.user.click(screen.getByRole('button', { name: 'Previous page' }));
+        await waitFor(() => {
+            expect(historyRows()).toHaveLength(20);
+        }, WAIT);
+    });
+
     it('shows an empty history and a history error with a retry', async () => {
         let fail = true;
         const app = setup({
