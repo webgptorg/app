@@ -33,6 +33,8 @@ test('while on the dashboard, the browser makes no request to any engine hostnam
         await page.waitForLoadState('networkidle');
     }
 
+    // Two nets: a load the CSP stops never reaches the network (no request event), only the violation list; anything
+    // the CSP does not govern, such as a navigation, shows up in the request log.
     expect(requestLog.length).toBeGreaterThan(0);
     expect(requestLog.filter(isEngineUrl)).toEqual([]);
     expect(requestLog.filter((url) => new URL(url).origin !== DASHBOARD_ORIGIN)).toEqual([]);

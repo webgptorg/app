@@ -54,7 +54,9 @@ test.beforeAll('the relays read their registry only from the dashboard', async (
         expect(mounts.map((mount) => mount.destination)).not.toContain(join(MOUNTS.public, PUBLIC_FILES.registry));
         const found = await compose.exec(relay.service, ['test', '-e', join(MOUNTS.public, PUBLIC_FILES.registry)]);
         expect(found.exitCode, `${relay.service} sees no static registry file`).toBe(1);
-        expect(await compose.logs(relay.service)).not.toContain('registry.loaded');
+        const logs = await compose.logs(relay.service);
+        expect(logs).toMatch(/"event":"relay\.started".*"registry":"http"/);
+        expect(logs).not.toContain('registry.loaded');
     }
 });
 
