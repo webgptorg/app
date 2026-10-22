@@ -88,3 +88,9 @@ export async function openRowMenu(page: Page, label: string): Promise<Locator> {
 export function uniqueName(prefix: string): string {
     return `${prefix} ${crypto.randomUUID().slice(0, 8)}`;
 }
+
+/** `value`, or a failure naming what the engine under test lacks. */
+export function required<Value>(value: Value | undefined, what: string): Value {
+    if (value === undefined) throw new Error(`the engine under test has no ${what}`);
+    return value;
+}

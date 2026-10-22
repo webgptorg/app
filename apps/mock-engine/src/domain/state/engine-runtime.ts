@@ -31,6 +31,13 @@ export interface UiBundleInfo {
     readonly releaseLogIndex: number | null;
 }
 
+/** The security panel's `tls`: the certificate the engine serves for its default hostname right now. */
+export interface TlsCertificateInfo {
+    /** SHA-256 of the leaf's DER, lowercase hex. */
+    readonly certificateSha256: string;
+    readonly notAfter: string;
+}
+
 export interface EngineIdentityInfo {
     readonly engineId: string;
     /** `<engineId>.<engine domain>`. */
@@ -91,6 +98,8 @@ export interface EngineRuntime {
     setUi(ui: UiBundleInfo): void;
     /** The UI loader's last update check (M-05). */
     setUiUpdateCheck(check: UiUpdateCheck): void;
+    /** The certificate served for the default hostname, after every issue or renewal. */
+    setTlsCertificate(certificate: TlsCertificateInfo): void;
 }
 
 function clockSleep(clock: Clock): Sleep {
@@ -134,6 +143,7 @@ export async function createEngineRuntime(options: EngineRuntimeOptions): Promis
         heartbeat: { lastHeartbeat: null, clockSkew: null } as HeartbeatInfo,
         ui: null as UiBundleInfo | null,
         uiUpdateCheck: null as UiUpdateCheck | null,
+        tls: null as TlsCertificateInfo | null,
     };
     const listeners: (() => void)[] = [];
     let current = { seed: options.seed, scenario: options.scenario, capabilities: options.capabilities };
@@ -203,8 +213,10 @@ export async function createEngineRuntime(options: EngineRuntimeOptions): Promis
 
     function applySecurity(core: InMemoryEngineCore): void {
         // Until a bundle is active the core's placeholder bundle stays, but a refused or failed check still shows.
-        const ui = sticky.ui ?? core.controller.updateSecurity({}).ui;
+        const overview = core.controller.updateSecurity({});
+        const ui = sticky.ui ?? overview.ui;
         core.controller.updateSecurity({
+            ...(sticky.tls === null ? {} : { tls: { ...overview.tls, ...sticky.tls } }),
             ui: { ...ui, lastUpdateCheck: sticky.uiUpdateCheck },
             lastHeartbeat: sticky.heartbeat.lastHeartbeat,
             clockSkew: sticky.heartbeat.clockSkew,
@@ -260,6 +272,10 @@ export async function createEngineRuntime(options: EngineRuntimeOptions): Promis
         },
         setUiUpdateCheck(check) {
             sticky.uiUpdateCheck = check;
+            applySecurity(engine.core);
+        },
+        setTlsCertificate(certificate) {
+            sticky.tls = certificate;
             applySecurity(engine.core);
         },
         setHostnames(hostnames) {

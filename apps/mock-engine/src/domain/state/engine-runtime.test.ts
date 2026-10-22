@@ -153,6 +153,15 @@ describe('engine runtime', () => {
         });
     });
 
+    it('reports the served certificate in the security panel, across a reset', async () => {
+        const { runtime, client } = await start();
+        const certificate = { certificateSha256: 'd'.repeat(64), notAfter: '2026-10-27T08:00:00Z' };
+        runtime.setTlsCertificate(certificate);
+        expect(ok(await client().security.get(signal())).tls).toMatchObject(certificate);
+        await runtime.reset({ seed: 3, scenario: 'empty' });
+        expect(ok(await client().security.get(signal())).tls).toMatchObject(certificate);
+    });
+
     it("answers the injection demo agent with hostile markdown, paced on the runtime's clock", async () => {
         const { clock, client } = await start();
         const agents = ok(await client().agents.list({ limit: 100 }, signal())).items;

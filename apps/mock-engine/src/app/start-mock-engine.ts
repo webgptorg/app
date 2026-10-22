@@ -14,6 +14,7 @@ import { createHttpApp } from '../adapters/http/http-app';
 import type { Route } from '../adapters/http/route';
 import { createSpikeRoutes } from '../adapters/http/spike-routes';
 import { createUiRoutes } from '../adapters/http/ui-routes';
+import { tlsCertificateInfo } from '../adapters/certificate-fingerprint';
 import { createClientHelloRouter } from '../adapters/client-hello-router';
 import { createTlsAlpnResponder } from '../adapters/tls-alpn-responder';
 import type { TlsStreamServer } from '../adapters/tls-stream-server';
@@ -245,6 +246,12 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
                   logger,
               });
     deps.certificates?.addHostnames([hostname]);
+    const reportCertificate = (): void => {
+        const credentials = deps.certificates?.current(hostname);
+        if (credentials !== undefined) runtime.setTlsCertificate(tlsCertificateInfo(credentials.certificateChainPem));
+    };
+    const stopReportingCertificate = deps.certificates?.onChange(reportCertificate);
+    reportCertificate();
     let handler: StreamHandler | null =
         server === null
             ? null
@@ -329,6 +336,7 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
         },
         async close() {
             runtime.simulation().stop();
+            stopReportingCertificate?.();
             await Promise.all([heartbeat?.stop(), ui?.stop(), ...links.map((link) => link.stop())]);
             await control?.close();
             server?.close();

