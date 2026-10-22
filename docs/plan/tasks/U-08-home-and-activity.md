@@ -2,7 +2,7 @@
 
 - **Lane:** U · **Module:** `apps/engine-ui`, `packages/ui` (one new module, `CommandPalette`) · **Milestone:** M2
 - **Depends on:** U-02, C-07
-- **Status:** todo
+- **Status:** in progress (feat/u-08-home)
 - **Spec:** Security hardening (preamble: nothing limits the owner, 5 agent output is untrusted), Enterprise-ready engine architecture (Authorisation); ADRs: [0006](../../adr/0006-organizations-and-roles.md), [0015](../../adr/0015-ui-architecture-and-design-system.md), [0016](../../adr/0016-engine-capabilities.md); product brief: [docs/design/ui.md](../../design/ui.md) (Key screens: Home; Shell: command palette)
 
 ## Goal
