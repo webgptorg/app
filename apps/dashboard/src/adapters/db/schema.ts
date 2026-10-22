@@ -228,3 +228,26 @@ export const relayTokens = sqliteTable(
     },
     (t) => [index('relay_tokens_relay_id_idx').on(t.relayId)],
 );
+
+// Custom hostnames (D-08): which engine serves a customer's hostname, with the engine's signed claim for it. Only
+// `active` rows reach relays, and relays verify the claim and the CNAME again on their own.
+export const engineHostnames = sqliteTable(
+    'engine_hostnames',
+    {
+        hostname: text('hostname').primaryKey(),
+        engineId: text('engine_id')
+            .notNull()
+            .references(() => engines.engineId),
+        orgId: text('org_id').notNull(),
+        claimSig: text('claim_sig').notNull(),
+        status: text('status', { enum: ['pending-dns', 'active'] }).notNull(),
+        dnsCheckedAt: integer('dns_checked_at'),
+        createdAt: integer('created_at').notNull(),
+        createdByUserId: text('created_by_user_id').notNull(),
+    },
+    (t) => [
+        check('engine_hostnames_status_check', sql`${t.status} in ('pending-dns', 'active')`),
+        // Every registry read looks an engine's rows up.
+        index('engine_hostnames_engine_id_idx').on(t.engineId),
+    ],
+);

@@ -15,6 +15,18 @@ const ALLOWLIST: Readonly<Record<string, readonly string[]>> = {
     email_tokens: ['token_hash', 'purpose', 'email', 'user_id', 'created_at', 'expires_at', 'used_at'],
     // Registered engines: the public key and what derives from it, the mode and version the engine signed, and the
     // dashboard's status for it. Routing and billing metadata only.
+    // Custom hostnames (D-08): the customer's hostname, which engine and organization it belongs to, the engine's
+    // signature claiming it, whether its CNAME was seen, and which platform admin added it. Routing metadata only.
+    engine_hostnames: [
+        'hostname',
+        'engine_id',
+        'org_id',
+        'claim_sig',
+        'status',
+        'dns_checked_at',
+        'created_at',
+        'created_by_user_id',
+    ],
     engines: [
         'engine_id',
         'org_id',

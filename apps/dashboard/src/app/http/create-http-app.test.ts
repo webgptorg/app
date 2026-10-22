@@ -7,7 +7,9 @@ import { createSimpleWebAuthnRelyingParty } from '../../adapters/webauthn/simple
 import { createAuthorizer } from '../../domain/authz/authorizer';
 import { DASHBOARD_POLICY } from '../../domain/authz/policy';
 import { syntheticStripeKey, syntheticWebhookSecret, TEST_PLANS } from '../../testing/billing-fixtures';
+import { createFakeDnsResolver } from '../../testing/fake-dns-resolver';
 import { createMemoryAuthStore } from '../../testing/memory-auth-store';
+import { createMemoryCustomHostnameStore } from '../../testing/memory-custom-hostname-store';
 import { createMemoryRegistrationStores } from '../../testing/memory-registration-store';
 import { createMemoryEngineHostnameStore, createMemoryRelayTokenStore } from '../../testing/memory-registry-stores';
 import { createTestBilling } from '../../testing/test-billing';
@@ -64,6 +66,11 @@ function app(options: {
         relayTokens: createMemoryRelayTokenStore(),
         registry: { findEngine: () => Promise.resolve(null) },
         engineHostnames: createMemoryEngineHostnameStore(),
+        customHostnames: createMemoryCustomHostnameStore({
+            engines: { findForRegistration: () => Promise.resolve(null) },
+            auditLog: { append: () => Promise.resolve() },
+        }),
+        dns: createFakeDnsResolver(),
         heartbeatEngines: { findEngine: () => Promise.resolve(null) },
         engineStatus: {
             recordHeartbeat: () => Promise.reject(new Error('not reached')),

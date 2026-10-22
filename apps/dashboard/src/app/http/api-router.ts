@@ -4,6 +4,7 @@ import { apiRoutes } from '../../shared/api/routes';
 import type { EngineCreationPolicy } from '../../domain/registration/engine-creation-policy';
 import type { DashboardDeps } from '../deps';
 import { renderEmail } from '../i18n/render-email';
+import { bindAdminHostnameRoutes } from './admin-hostname-routes';
 import { bindAuthRoutes } from './auth-routes';
 import { bindBillingRoutes } from './billing-routes';
 import { bindEngineRoutes } from './engine-routes';
@@ -24,6 +25,7 @@ export function createApiRouter(
     bindAuthRoutes(router, API_MOUNT, deps);
     bindBillingRoutes(router, API_MOUNT, deps);
     bindEngineRoutes(router, API_MOUNT, deps);
+    bindAdminHostnameRoutes(router, API_MOUNT, deps);
     const { devOutbox } = deps;
     // Not mounted at all otherwise: the fake adapter, and with it this route, exists only in dev (config.ts).
     if (devOutbox !== null && deps.config.adapters.email === 'fake') {
