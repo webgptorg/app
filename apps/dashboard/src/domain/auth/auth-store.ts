@@ -50,6 +50,8 @@ export interface SessionStore {
     find(idHash: string): Promise<SessionRecord | null>;
     touch(idHash: string, lastSeenAt: number): Promise<void>;
     markSteppedUp(idHash: string, at: number): Promise<void>;
+    /** Makes `orgId` the session's active organization, only if its user is a member there and it is not revoked. */
+    setActiveOrg(idHash: string, orgId: OrgId): Promise<'switched' | 'not-member'>;
     revoke(idHash: string, at: number): Promise<void>;
     revokeAllForUser(userId: UserId, at: number): Promise<void>;
     /** Not revoked and not past the absolute expiry; the caller applies the idle timeout. */

@@ -1,12 +1,12 @@
 import { Ed25519PublicKey, EngineId, EngineVersion, Hostname, RegistrationMode } from '@ptbk/protocol';
-import { and, count, eq, exists, gt, isNull, notExists, sql } from 'drizzle-orm';
+import { and, asc, count, eq, exists, gt, isNull, ne, notExists, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 
 import { orgIdSchema, type OrgId } from '../../domain/ids';
-import type { EngineRecord, EngineStore } from '../../domain/registration/engine-store';
+import { OWNER_REVOKED, type EngineRecord, type EngineStore } from '../../domain/registration/engine-store';
 import type { LinkCodeStore } from '../../domain/registration/link-code-store';
 import type { Database } from './client';
-import { engines, linkCodes } from './schema';
+import { engines, linkCodes, orgAuditLog } from './schema';
 
 const engineStatusSchema = z.enum(['active', 'suspended']);
 
@@ -156,8 +156,16 @@ export function createD1LinkCodeStore(db: Database): LinkCodeStore {
     };
 }
 
+const REVOKE_ACTION = 'engine.revoke';
+
 /** Every organization-facing query filters by `org_id`; `findForRegistration` is the documented exception. */
 export function createD1EngineStore(db: Database): EngineStore {
+    const inOrg = (orgId: OrgId, engineId: EngineId) => and(eq(engines.engineId, engineId), eq(engines.orgId, orgId));
+    const findInOrg = async (orgId: OrgId, engineId: EngineId) => {
+        const row = await db.select().from(engines).where(inOrg(orgId, engineId)).get();
+        return row === undefined ? null : toEngine(row);
+    };
+
     return {
         async countActive(orgId) {
             const row = await db
@@ -166,6 +174,76 @@ export function createD1EngineStore(db: Database): EngineStore {
                 .where(and(eq(engines.orgId, orgId), eq(engines.status, 'active')))
                 .get();
             return row?.total ?? 0;
+        },
+
+        async listForOrg(orgId) {
+            const rows = await db
+                .select()
+                .from(engines)
+                .where(eq(engines.orgId, orgId))
+                .orderBy(asc(engines.createdAt), asc(engines.engineId))
+                .all();
+            return rows.map(toEngine);
+        },
+
+        findInOrg,
+
+        // One batch (a transaction): the conditional update, then the audit insert, which only runs for a revoked
+        // engine that has no revocation entry yet. Revocation is permanent, so there is at most one per engine, and a
+        // concurrent second revoke can neither change the row again nor log twice.
+        async revoke(orgId, engineId, audit) {
+            const [revoked] = await db.batch([
+                db
+                    .update(engines)
+                    .set({ status: 'suspended', statusReason: OWNER_REVOKED, updatedAt: audit.at })
+                    .where(
+                        and(
+                            inOrg(orgId, engineId),
+                            or(
+                                ne(engines.status, 'suspended'),
+                                isNull(engines.statusReason),
+                                ne(engines.statusReason, OWNER_REVOKED),
+                            ),
+                        ),
+                    )
+                    .returning({ engineId: engines.engineId }),
+                db.insert(orgAuditLog).select((qb) =>
+                    qb
+                        // Every column of `org_audit_log`, in table order.
+                        .select({
+                            id: sql`${audit.id}`.as('id'),
+                            orgId: engines.orgId,
+                            actorUserId: sql`${audit.actorUserId}`.as('actor_user_id'),
+                            action: sql`${REVOKE_ACTION}`.as('action'),
+                            targetType: sql`'engine'`.as('target_type'),
+                            targetId: engines.engineId,
+                            createdAt: sql`${audit.at}`.as('created_at'),
+                        })
+                        .from(engines)
+                        .where(
+                            and(
+                                inOrg(orgId, engineId),
+                                eq(engines.statusReason, OWNER_REVOKED),
+                                notExists(
+                                    db
+                                        .select({ one: sql`1` })
+                                        .from(orgAuditLog)
+                                        .where(
+                                            and(
+                                                eq(orgAuditLog.orgId, orgId),
+                                                eq(orgAuditLog.action, REVOKE_ACTION),
+                                                eq(orgAuditLog.targetId, engineId),
+                                            ),
+                                        ),
+                                ),
+                            ),
+                        ),
+                ),
+            ]);
+            if (revoked.length === 1) {
+                return 'revoked';
+            }
+            return (await findInOrg(orgId, engineId)) === null ? 'not-found' : 'already-revoked';
         },
 
         async findForRegistration(engineId) {

@@ -1,7 +1,7 @@
 import type { EngineId } from '@ptbk/protocol';
 
-import type { OrgId } from '../domain/ids';
-import type { EngineRecord, EngineStore } from '../domain/registration/engine-store';
+import type { OrgAuditEntryId, OrgId, UserId } from '../domain/ids';
+import { OWNER_REVOKED, type EngineRecord, type EngineStore } from '../domain/registration/engine-store';
 import type { LinkCodeRecord, LinkCodeStore } from '../domain/registration/link-code-store';
 
 export interface StoredLinkCode extends LinkCodeRecord {
@@ -9,9 +9,21 @@ export interface StoredLinkCode extends LinkCodeRecord {
     readonly engineId: EngineId | null;
 }
 
+/** An `org_audit_log` row. */
+export interface StoredOrgAuditEntry {
+    readonly id: OrgAuditEntryId;
+    readonly orgId: OrgId;
+    readonly actorUserId: UserId;
+    readonly action: string;
+    readonly targetType: string;
+    readonly targetId: string;
+    readonly createdAt: number;
+}
+
 export interface MemoryRegistrationState {
     readonly linkCodes: Map<string, StoredLinkCode>;
     readonly engines: Map<EngineId, EngineRecord>;
+    readonly orgAudit: StoredOrgAuditEntry[];
 }
 
 export interface MemoryRegistrationStores {
@@ -33,7 +45,7 @@ function redeemable(code: StoredLinkCode | undefined, orgId: OrgId | null, now: 
 export function createMemoryRegistrationStores(deps: {
     readonly orgExists: (orgId: OrgId) => boolean;
 }): MemoryRegistrationStores {
-    const state: MemoryRegistrationState = { linkCodes: new Map(), engines: new Map() };
+    const state: MemoryRegistrationState = { linkCodes: new Map(), engines: new Map(), orgAudit: [] };
     const codes = () => [...state.linkCodes.values()];
 
     const linkCodes: LinkCodeStore = {
@@ -90,6 +102,41 @@ export function createMemoryRegistrationStores(deps: {
                 [...state.engines.values()].filter((engine) => engine.orgId === orgId && engine.status === 'active')
                     .length,
             ),
+        listForOrg: (orgId) =>
+            Promise.resolve(
+                [...state.engines.values()]
+                    .filter((engine) => engine.orgId === orgId)
+                    .sort((a, b) => a.createdAt - b.createdAt || (a.engineId < b.engineId ? -1 : 1)),
+            ),
+        findInOrg(orgId, engineId) {
+            const engine = state.engines.get(engineId);
+            return Promise.resolve(engine?.orgId === orgId ? engine : null);
+        },
+        revoke(orgId, engineId, audit) {
+            const engine = state.engines.get(engineId);
+            if (engine?.orgId !== orgId) {
+                return Promise.resolve('not-found');
+            }
+            if (engine.status === 'suspended' && engine.statusReason === OWNER_REVOKED) {
+                return Promise.resolve('already-revoked');
+            }
+            state.engines.set(engineId, {
+                ...engine,
+                status: 'suspended',
+                statusReason: OWNER_REVOKED,
+                updatedAt: audit.at,
+            });
+            state.orgAudit.push({
+                id: audit.id,
+                orgId,
+                actorUserId: audit.actorUserId,
+                action: 'engine.revoke',
+                targetType: 'engine',
+                targetId: engineId,
+                createdAt: audit.at,
+            });
+            return Promise.resolve('revoked');
+        },
         findForRegistration: (engineId) => Promise.resolve(state.engines.get(engineId) ?? null),
     };
 

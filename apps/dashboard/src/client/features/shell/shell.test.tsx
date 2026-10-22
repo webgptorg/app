@@ -26,9 +26,46 @@ describe('signed-in shell', () => {
 
     it('names a personal org and hides what the role does not allow', async () => {
         renderApp({ path: '/', session: session({ permissions: [] }) });
-        expect(await screen.findByText('Personal')).toBeTruthy();
+        expect(await screen.findByRole('button', { name: 'Organization: Personal' })).toBeTruthy();
         expect(nav().queryByRole('link', { name: 'Engines' })).toBeNull();
         expect(nav().getByRole('link', { name: 'Account' })).toBeTruthy();
+    });
+
+    it('lists the memberships in the org switcher and moves the session to another organization', async () => {
+        const acme = session({ name: 'Acme' });
+        const both = {
+            ...acme,
+            memberships: [
+                ...acme.memberships.map((membership) => ({ ...membership, name: 'Acme' })),
+                { orgId: 'cccccccccccccccccccccccccc', kind: 'team' as const, name: 'Beta', role: 'owner' },
+            ],
+        };
+        const beta = {
+            ...both,
+            activeOrg: { ...both.activeOrg, id: 'cccccccccccccccccccccccccc', kind: 'team' as const, name: 'Beta' },
+        };
+        const app = renderApp({
+            path: '/engines',
+            session: both,
+            script: (api) => api.on(apiRoutes.setActiveOrg, ok(beta)),
+        });
+        await app.user.click(await screen.findByRole('button', { name: 'Organization: Acme' }));
+        expect(screen.getByRole('menuitemradio', { name: 'Acme' }).getAttribute('aria-checked')).toBe('true');
+        await app.user.click(screen.getByRole('menuitemradio', { name: 'Beta' }));
+        expect(await screen.findByRole('button', { name: 'Organization: Beta' })).toBeTruthy();
+        expect(app.api.callsTo(apiRoutes.setActiveOrg)).toEqual([{ body: { orgId: 'cccccccccccccccccccccccccc' } }]);
+        expect(app.history.location.pathname).toBe('/engines');
+        // The engine list of the new organization is fetched afresh, never served from the old one's cache.
+        await waitFor(() => {
+            expect(app.api.callsTo(apiRoutes.listEngines).length).toBeGreaterThanOrEqual(2);
+        });
+    });
+
+    it('does not switch to the organization that is already active', async () => {
+        const app = renderApp({ path: '/engines', session: session({ name: 'Acme' }) });
+        await app.user.click(await screen.findByRole('button', { name: 'Organization: Acme' }));
+        await app.user.click(screen.getByRole('menuitemradio', { name: 'Personal' }));
+        expect(app.api.callsTo(apiRoutes.setActiveOrg)).toHaveLength(0);
     });
 
     it('marks a non-production environment', async () => {
@@ -68,7 +105,7 @@ describe('signed-in shell', () => {
         await app.user.click(await screen.findByRole('button', { name: 'Account menu for ada@example.test' }));
         await app.user.click(screen.getByRole('menuitem', { name: 'Sign out' }));
         expect(await screen.findByText('Signing out did not work. Try again.')).toBeTruthy();
-        expect(app.history.location.pathname).toBe('/');
+        expect(app.history.location.pathname).toBe('/engines');
     });
 
     it('switches language and theme from the user menu', async () => {
@@ -122,7 +159,7 @@ describe('admin area', () => {
 
 describe('route states', () => {
     it('shows an unknown URL as not found, with a way back', async () => {
-        const app = renderApp({ path: '/engines/nowhere', session: session() });
+        const app = renderApp({ path: '/nowhere/at/all', session: session() });
         expect(await screen.findByRole('heading', { name: 'Page not found' })).toBeTruthy();
         await app.user.click(screen.getByRole('link', { name: 'Back to the start' }));
         expect(await screen.findByRole('heading', { name: 'Your engines' })).toBeTruthy();

@@ -11,6 +11,7 @@ import { createSignupFlow, type DeferredDelivery } from '../../domain/auth/signu
 import { CHALLENGE_TTL_MS } from '../../domain/auth/timing';
 import { orgPermissions, RECOVERY_COOLDOWN_MS, STEP_UP_WINDOW_MS } from '../../domain/authz/authorizer';
 import { DASHBOARD_POLICY } from '../../domain/authz/policy';
+import { orgIdSchema } from '../../domain/ids';
 import { apiRoutes, type SessionView } from '../../shared/api/routes';
 import { resolveRequestLocale } from '../i18n/resolve-request-locale';
 import type { RequestContext, RouteBinder } from './bind-route';
@@ -194,6 +195,14 @@ export function bindAuthRoutes(router: Hono, mount: string, deps: AuthDeps & { r
         kind: 'ok',
         body: await sessionView(session),
     }));
+
+    bind(router, mount, apiRoutes.setActiveOrg, async ({ input, session }) => {
+        // The body schema is the same pattern, so this only brands it.
+        const switched = await account.switchActiveOrg(session, orgIdSchema.parse(input.body.orgId));
+        return switched === null
+            ? { kind: 'problem', status: 404, code: 'not-found' }
+            : { kind: 'ok', body: await sessionView(switched) };
+    });
 
     bind(router, mount, apiRoutes.stepUpOptions, async ({ session }) => {
         const { options, challengeId } = await account.stepUpOptions(session.user.id);

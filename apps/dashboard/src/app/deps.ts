@@ -20,6 +20,7 @@ import type { Logger } from '../domain/ports/logger';
 import type { Random } from '../domain/ports/random';
 import type { RateLimiter } from '../domain/ports/rate-limiter';
 import type { RelyingParty } from '../domain/ports/relying-party';
+import type { Timer } from '../domain/ports/timer';
 import type { DashboardConfig } from './config';
 
 /** Everything handlers may use. Later tasks add their ports here, built from the adapters `config.adapters` selects. */
@@ -27,6 +28,8 @@ export interface DashboardDeps {
     readonly config: DashboardConfig;
     readonly clock: Clock;
     readonly random: Random;
+    /** Deadlines, such as the engine list's per-engine status timeout. */
+    readonly timer: Timer;
     readonly logger: Logger;
     readonly authorizer: Authorizer<DashboardAction>;
     readonly store: AuthStore;

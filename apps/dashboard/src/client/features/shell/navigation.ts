@@ -1,6 +1,6 @@
 import type { LinkProps } from '@tanstack/react-router';
 import type { ComponentType } from 'react';
-import { CreditCard, House, ShieldCheck, UserRound } from 'lucide-react';
+import { CreditCard, Server, ShieldCheck, UserRound } from 'lucide-react';
 
 import type { SessionView } from '../../../shared/api/routes';
 import { m } from '../../../paraglide/messages';
@@ -20,9 +20,15 @@ export interface NavEntry {
     readonly requires: NavRequirement;
 }
 
-/** The shell's navigation; later screens (engines D-06, admin tools) add their entries here. */
+/** The shell's navigation; later screens (admin tools) add their entries here. */
 export const NAV_ENTRIES: readonly NavEntry[] = [
-    { id: 'home', to: '/', label: () => m.nav_home(), icon: House, requires: { permission: 'org.read' } },
+    {
+        id: 'engines',
+        to: '/engines',
+        label: () => m.nav_engines(),
+        icon: Server,
+        requires: { permission: 'engine.read' },
+    },
     {
         id: 'billing',
         to: '/billing',

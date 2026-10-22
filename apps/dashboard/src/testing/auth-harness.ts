@@ -3,6 +3,7 @@ import type { Hono } from 'hono';
 
 import type { FakeBillingState } from '../adapters/billing/fake-billing-provider';
 import { createFakeClock, type FakeClock } from '../adapters/fake-clock';
+import { createManualTimer, type ManualTimer } from './manual-timer';
 import { createFakeEmailSender, type FakeEmailSender } from '../adapters/email/fake-email-sender';
 import { createMemoryLogger, type MemoryLogger } from '../adapters/memory-logger';
 import { createMemoryRateLimiter } from '../adapters/rate-limit/memory-rate-limiter';
@@ -13,7 +14,7 @@ import { authLinks, type DashboardDeps } from '../app/deps';
 import { createHttpApp } from '../app/http/create-http-app';
 import { rateLimitRules } from '../app/rate-limiter';
 import type { AuthStore } from '../domain/auth/auth-store';
-import { createAuthorizer } from '../domain/authz/authorizer';
+import { createAuthorizer, type PolicyTable } from '../domain/authz/authorizer';
 import type { BillingStore } from '../domain/billing/billing-store';
 import type { CustomHostnameStore } from '../domain/custom-hostnames/custom-hostname-store';
 import type { EngineStore } from '../domain/registration/engine-store';
@@ -21,10 +22,11 @@ import type { LinkCodeStore } from '../domain/registration/link-code-store';
 import type { EngineHostnameStore } from '../domain/registry/engine-hostname-store';
 import type { RegistryReader } from '../domain/registry/registry-reader';
 import type { RelayTokenStore } from '../domain/registry/relay-token-store';
-import { DASHBOARD_POLICY } from '../domain/authz/policy';
+import { DASHBOARD_POLICY, type DashboardAction } from '../domain/authz/policy';
 import type { RateLimiter } from '../domain/ports/rate-limiter';
 import type { AlertRecipients } from '../domain/status/alert-recipients';
 import type { HeartbeatTiming } from '../domain/status/engine-status';
+import type { EngineStatusDirectory } from '../domain/status/engine-status-directory';
 import type { HeartbeatEngineReader } from '../domain/status/heartbeat-engine-reader';
 import type { RouteContract } from '../shared/api/contract';
 import { syntheticWebhookSecret, TEST_PLANS } from './billing-fixtures';
@@ -67,6 +69,8 @@ export interface AuthHarness {
     readonly http: Hono;
     readonly routes: readonly RouteContract[];
     readonly clock: FakeClock;
+    /** Deadlines pass only when a test calls `elapse`. */
+    readonly timer: ManualTimer;
     readonly outbox: FakeEmailSender;
     readonly logger: MemoryLogger;
     readonly store: AuthStore;
@@ -133,8 +137,13 @@ export function createAuthHarness(options: {
     readonly alertRecipients?: AlertRecipients;
     /** The `HEARTBEAT` var; the config's defaults otherwise. */
     readonly heartbeat?: Partial<HeartbeatTiming>;
+    /** What the routes see of the status objects, e.g. to stall one; `engineStatuses` itself is unchanged. */
+    readonly wrapEngineStatus?: (statuses: EngineStatusDirectory) => EngineStatusDirectory;
+    /** Defaults to `DASHBOARD_POLICY`; a test narrows a rule to act as a role v0 does not have yet. */
+    readonly policy?: PolicyTable<DashboardAction>;
 }): AuthHarness {
     const clock = createFakeClock(START_MS);
+    const timer = createManualTimer();
     const webhookSecret = syntheticWebhookSecret();
     const outbox = createFakeEmailSender();
     const logger = createMemoryLogger();
@@ -179,8 +188,9 @@ export function createAuthHarness(options: {
         config,
         clock,
         random: cryptoRandom,
+        timer,
         logger,
-        authorizer: createAuthorizer({ clock, policy: DASHBOARD_POLICY }),
+        authorizer: createAuthorizer({ clock, policy: options.policy ?? DASHBOARD_POLICY }),
         store: options.store,
         relyingParty: createSimpleWebAuthnRelyingParty({ origin: ORIGIN, rpName: 'Promptbook' }),
         email: outbox,
@@ -197,7 +207,7 @@ export function createAuthHarness(options: {
         customHostnames,
         dns,
         heartbeatEngines: options.heartbeatEngines ?? createMemoryHeartbeatEngineReader(registration.engines),
-        engineStatus: engineStatuses,
+        engineStatus: options.wrapEngineStatus?.(engineStatuses) ?? engineStatuses,
     };
     const { app: http, routes } = createHttpApp({
         ...deps,
@@ -223,6 +233,7 @@ export function createAuthHarness(options: {
         http,
         routes,
         clock,
+        timer,
         outbox,
         logger,
         store: options.store,

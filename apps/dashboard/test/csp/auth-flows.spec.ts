@@ -134,9 +134,9 @@ test('a signed-out visit to /account goes to sign-in and returns afterwards', as
     await expect(page.getByRole('heading', { name: 'Account', level: 1 })).toBeVisible();
 
     await page.goto('/signin');
-    await expect(page).toHaveURL(/\/$/);
+    await expect(page).toHaveURL(/\/engines$/);
     await page.goto('/signup');
-    await expect(page).toHaveURL(/\/$/);
+    await expect(page).toHaveURL(/\/engines$/);
 
     expectNoBrowserErrors(browserReport());
 });

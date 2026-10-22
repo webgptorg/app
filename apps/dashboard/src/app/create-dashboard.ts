@@ -17,6 +17,7 @@ import { createD1HeartbeatEngineReader } from '../adapters/db/d1-status-store';
 import { createMemoryRateLimiter } from '../adapters/rate-limit/memory-rate-limiter';
 import { createDurableObjectEngineStatus } from '../adapters/status/durable-object-engine-status';
 import { systemClock } from '../adapters/system-clock';
+import { systemTimer } from '../adapters/system-timer';
 import { createSimpleWebAuthnRelyingParty } from '../adapters/webauthn/simple-webauthn-relying-party';
 import { createAuthorizer } from '../domain/authz/authorizer';
 import type { BillingEvent, BillingProvider } from '../domain/billing/billing-provider';
@@ -149,6 +150,7 @@ export function createDashboard(
         config,
         clock: systemClock,
         random: cryptoRandom,
+        timer: systemTimer,
         logger,
         authorizer: createAuthorizer({ clock: systemClock, policy: DASHBOARD_POLICY }),
         store: createD1AuthStore(db),

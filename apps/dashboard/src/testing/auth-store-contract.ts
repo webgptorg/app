@@ -185,6 +185,19 @@ export function describeAuthStoreContract(name: string, makeStore: () => AuthSto
             expect(await store.sessions.find(randomId())).toBeNull();
         });
 
+        it('moves a session only to an organization its user is a member of', async () => {
+            const a = testAccount();
+            const b = testAccount();
+            await store.accounts.createAccount(a);
+            await store.accounts.createAccount(b);
+            expect(await store.sessions.setActiveOrg(a.session.idHash, a.orgId)).toBe('switched');
+            expect(await store.sessions.setActiveOrg(a.session.idHash, b.orgId)).toBe('not-member');
+            expect(await store.sessions.find(a.session.idHash)).toEqual(a.session);
+            expect(await store.sessions.setActiveOrg(randomId(), a.orgId)).toBe('not-member');
+            await store.sessions.revoke(a.session.idHash, NOW + 1);
+            expect(await store.sessions.setActiveOrg(a.session.idHash, a.orgId)).toBe('not-member');
+        });
+
         it('recovers an account: new passkey, every session revoked, recovered_at set, a new session', async () => {
             const a = testAccount();
             await store.accounts.createAccount(a);

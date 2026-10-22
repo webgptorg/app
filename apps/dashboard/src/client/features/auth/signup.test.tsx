@@ -62,7 +62,7 @@ describe('sign-up, passkey step', () => {
         app.api.on(apiRoutes.getSession, ok(session()));
         await app.user.click(screen.getByRole('button', { name: 'Create passkey' }));
         expect(await screen.findByRole('heading', { name: 'Your engines' })).toBeTruthy();
-        expect(app.history.location.pathname).toBe('/');
+        expect(app.history.location.pathname).toBe('/engines');
         expect(app.api.callsTo(apiRoutes.signupOptions)).toEqual([{ body: { token: TOKEN } }]);
         expect(app.api.callsTo(apiRoutes.signupVerify)).toEqual([
             { body: { token: TOKEN, response: REGISTRATION_RESPONSE } },

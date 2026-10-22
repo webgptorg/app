@@ -11,6 +11,9 @@ const ALLOWLIST: Readonly<Record<string, readonly string[]>> = {
     billing_customers: ['org_id', 'stripe_customer_id', 'created_at'],
     // Insert-only record of platform admin actions: who, what, on which target, why. No engine content.
     admin_audit_log: ['id', 'admin_user_id', 'action', 'target_type', 'target_id', 'reason', 'created_at'],
+    // Insert-only record of what organization members did to the organization's resources (D-06: engine revocation):
+    // who, what, on which target. No engine content, no free text.
+    org_audit_log: ['id', 'org_id', 'actor_user_id', 'action', 'target_type', 'target_id', 'created_at'],
     // Signup and recovery links: the token only as SHA-256, the address it was sent to, 15-minute lifetime.
     email_tokens: ['token_hash', 'purpose', 'email', 'user_id', 'created_at', 'expires_at', 'used_at'],
     // Registered engines: the public key and what derives from it, the mode and version the engine signed, and the

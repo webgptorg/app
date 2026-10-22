@@ -1,7 +1,8 @@
-import { createFileRoute } from '@tanstack/react-router';
+import { createFileRoute, redirect } from '@tanstack/react-router';
 
-import { HomePage } from '../../features/home/home-page';
-
+/** The engine list is the signed-in landing page; `/` stays the address sign-in and "back to the start" use. */
 export const Route = createFileRoute('/_app/')({
-    component: HomePage,
+    beforeLoad: () => {
+        throw redirect({ to: '/engines', replace: true });
+    },
 });

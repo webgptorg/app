@@ -1,4 +1,15 @@
-import { Ed25519Signature, EngineId, Hostname, LinkCode, MAX_REGISTRY_HOSTNAMES } from '@ptbk/protocol';
+import {
+    CpuLoad,
+    Ed25519Signature,
+    EngineId,
+    EngineVersion,
+    Hostname,
+    LinkCode,
+    MAX_REGISTRY_HOSTNAMES,
+    RegistrationMode,
+    Timestamp,
+    UpdateState,
+} from '@ptbk/protocol';
 import { z } from 'zod';
 
 import { billingStatusSchema, featureSchema, planIdSchema, problemStatusSchema, quotaSchema } from '../billing';
@@ -146,6 +157,53 @@ export type CnameLookupView = z.infer<typeof cnameLookupViewSchema>;
 
 const adminEngineParams = z.strictObject({ engineId: EngineId });
 const adminHostnameParams = z.strictObject({ engineId: EngineId, hostname: Hostname });
+
+/** `unknown`: the engine's status object did not answer in time; the rest of the list is unaffected. */
+export const engineDisplayStatusSchema = z.enum(['suspended', 'never-seen', 'online', 'offline', 'unknown']);
+export type EngineDisplayStatusView = z.infer<typeof engineDisplayStatusSchema>;
+
+const countSchema = z.int().min(0);
+
+/** The last accepted heartbeat, field for field as the dashboard stores it (D-05): numbers and closed enums only. */
+export const heartbeatViewSchema = z.strictObject({
+    seq: countSchema,
+    /** When the engine signed it (RFC 3339). */
+    ts: Timestamp,
+    receivedAt: timestampSchema,
+    version: EngineVersion,
+    uptimeS: countSchema,
+    /** Rounded by the engine to the nearest ten. */
+    diskPct: z.int().min(0).max(100),
+    ramPct: z.int().min(0).max(100),
+    cpuLoad: CpuLoad,
+    update: UpdateState,
+    agents: countSchema,
+    members: countSchema,
+});
+export type HeartbeatView = z.infer<typeof heartbeatViewSchema>;
+
+/** Registry data and heartbeat numbers only; nothing from inside the engine (AGENTS.md rule 2). */
+export const engineViewSchema = z.strictObject({
+    engineId: EngineId,
+    /** `<engineId>.<engine domain>`, as stored at registration: the only address the SPA links to. */
+    hostname: Hostname,
+    /** Active custom hostnames (D-08); shown, never linked or loaded. */
+    customHostnames: z.array(Hostname).max(MAX_CUSTOM_HOSTNAMES),
+    mode: RegistrationMode,
+    /** The version the engine registered with; the heartbeat carries the running one. */
+    registeredVersion: EngineVersion,
+    status: engineDisplayStatusSchema,
+    /** Who suspended it, when it is suspended: the owner (revoked, permanent) or the platform. */
+    suspendedBy: z.enum(['owner', 'platform']).nullable(),
+    createdAt: timestampSchema,
+    /** Null until the first heartbeat, and when the status could not be read. */
+    lastSeenAt: timestampSchema.nullable(),
+    /** Null before the first heartbeat, after the 30-day retention purge, and when the status could not be read. */
+    heartbeat: heartbeatViewSchema.nullable(),
+});
+export type EngineView = z.infer<typeof engineViewSchema>;
+
+const engineParams = z.strictObject({ engineId: EngineId });
 
 /** Where the SPA sends the browser, top level: Stripe Checkout or the portal, or back to `/billing` with the fake. */
 const redirectSchema = z.strictObject({ url: z.url({ protocol: /^https?$/ }).max(2048) });
@@ -496,6 +554,55 @@ export const apiRoutes = {
         output: linkCodeViewSchema,
         // `rate-limited` (429) is common: at most 5 active codes and 10 per hour per organization.
         errorCodes: ['not-entitled', 'engine-limit'],
+    }),
+
+    /** The active organization's engines, oldest first, with live status (D-06). */
+    listEngines: defineRoute({
+        method: 'GET',
+        path: '/api/engines',
+        auth: 'session',
+        permission: 'engine.read',
+        rateLimit: null,
+        input: NO_INPUT,
+        output: z.strictObject({ engines: z.array(engineViewSchema) }),
+        errorCodes: [],
+    }),
+    /** An engine of another organization is `not-found`, like one that does not exist. */
+    getEngine: defineRoute({
+        method: 'GET',
+        path: '/api/engines/:engineId',
+        auth: 'session',
+        permission: 'engine.read',
+        rateLimit: null,
+        input: { ...NO_INPUT, params: engineParams },
+        output: z.strictObject({ engine: engineViewSchema }),
+        errorCodes: [],
+    }),
+    /**
+     * Permanent: relays stop routing the engine ID within their registry TTL. Sensitive (`recovery-cooldown`) and needs
+     * a fresh step-up (`step-up-required`); revoking an engine already revoked changes nothing.
+     */
+    revokeEngine: defineRoute({
+        method: 'POST',
+        path: '/api/engines/:engineId/revoke',
+        auth: 'session',
+        permission: 'engine.revoke',
+        rateLimit: null,
+        input: { ...NO_INPUT, params: engineParams },
+        output: z.strictObject({ engine: engineViewSchema }),
+        errorCodes: [],
+    }),
+
+    /** Only to an organization the user is a member of; any other is `not-found`. */
+    setActiveOrg: defineRoute({
+        method: 'POST',
+        path: '/api/session/active-org',
+        auth: 'session',
+        permission: 'session.manage',
+        rateLimit: null,
+        input: { ...NO_INPUT, body: z.strictObject({ orgId: idSchema }), maxBodyBytes: SMALL_BODY_BYTES },
+        output: sessionViewSchema,
+        errorCodes: [],
     }),
 
     /** Dev only, for e2e (X-05): mounted only with the fake email adapter, which the config allows in dev alone. */

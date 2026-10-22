@@ -7,6 +7,7 @@ import { userEvent } from '@testing-library/user-event';
 import type { UserEvent } from '@testing-library/user-event';
 
 import { apiRoutes } from '../../shared/api/routes';
+import type { ApiClient } from '../api/api-client';
 import type { SessionView } from '../../shared/api/routes';
 import { App } from '../app';
 import { createFakePasskeys } from './fake-passkeys';
@@ -23,6 +24,8 @@ export interface RenderAppOptions {
     /** Called after the defaults are scripted, to add or override answers. */
     readonly script?: (api: ScriptedApi) => void;
     readonly storage?: PreferenceStorage;
+    /** Replaces the scripted API, e.g. with the real client over a fake `fetch`. */
+    readonly apiClient?: ApiClient;
 }
 
 export interface RenderedApp extends RenderResult {
@@ -44,6 +47,7 @@ export function renderApp(options: RenderAppOptions = {}): RenderedApp {
     const session = options.session ?? null;
     api.on(apiRoutes.getEnvironment, ok({ environment: 'production' as const }));
     api.on(apiRoutes.getSession, session === null ? problem(401, 'unauthorized') : ok(session));
+    api.on(apiRoutes.listEngines, ok({ engines: [] }));
     options.script?.(api);
     const passkeys = createFakePasskeys();
     const storage = options.storage ?? createMemoryStorage();
@@ -52,7 +56,7 @@ export function renderApp(options: RenderAppOptions = {}): RenderedApp {
     const navigations: string[] = [];
     const result = render(
         <App
-            apiClient={api}
+            apiClient={options.apiClient ?? api}
             browser={{
                 storage,
                 matchMedia: (query) => window.matchMedia(query),
