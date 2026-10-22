@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 
 import {
+    DASHBOARD,
     ENGINE_DOMAIN,
     MOUNTS,
     OUR_DOMAIN,
@@ -17,7 +18,8 @@ import {
     UI_RELEASES,
     relayCertificateFile,
 } from '../src/stack.ts';
-import { parseIdentityReport, staticRegistry } from './registry.ts';
+import type { RegistrySource } from './registry.ts';
+import { parseIdentityReport, parseRegistrySource, staticRegistry } from './registry.ts';
 
 const MOCK_ENGINE_DIR = '/repo/apps/mock-engine';
 const KEY_FILE = 'key.pem';
@@ -45,8 +47,9 @@ function relayKeyDirectory(hostname: string): string {
 }
 
 /** Volumes start out root-owned; hand them to the services' user, private ones at 0700. */
-async function prepareVolumes(): Promise<void> {
+async function prepareVolumes(source: RegistrySource): Promise<void> {
     const volumes: readonly [string, number][] = [
+        ...(source === 'dashboard' ? [[MOUNTS.dashboardKey, 0o700] as [string, number]] : []),
         [MOUNTS.public, 0o755],
         [MOUNTS.engine, 0o700],
         [MOUNTS.releases, 0o755],
@@ -75,7 +78,8 @@ async function writePublic(name: string, content: string): Promise<string> {
 }
 
 async function main(): Promise<void> {
-    await prepareVolumes();
+    const source = parseRegistrySource(process.env['E2E_REGISTRY']);
+    await prepareVolumes(source);
 
     const identity = parseIdentityReport(await mockEngineCli(['identity']), ENGINE_DOMAIN);
     const caFile = join(MOUNTS.public, PUBLIC_FILES.caCertificate);
@@ -98,6 +102,15 @@ async function main(): Promise<void> {
         join(MOUNTS.releaseStoreKey, KEY_FILE),
         RELEASE_STORE.hostname,
     ]);
+    if (source === 'dashboard') {
+        await mockEngineCli([
+            'dev-ca',
+            'issue',
+            join(MOUNTS.public, PUBLIC_FILES.dashboardCertificate),
+            join(MOUNTS.dashboardKey, KEY_FILE),
+            DASHBOARD.hostname,
+        ]);
+    }
     // Signs and publishes the UI bundles with release keys that exist only inside this one command.
     const releases = await mockEngineCli([
         'ui-test-release',
@@ -109,10 +122,13 @@ async function main(): Promise<void> {
     // Public by nature: the root of Pebble's own HTTPS listeners, from its image (stack.Dockerfile).
     await writePublic(PUBLIC_FILES.pebbleMinica, await readFile(PEBBLE_MINICA_SOURCE, 'utf8'));
     await writePublic(PUBLIC_FILES.engineIdentity, `${JSON.stringify(identity, null, 2)}\n`);
-    await writePublic(PUBLIC_FILES.registry, `${JSON.stringify(staticRegistry(identity), null, 2)}\n`);
+    // With the dashboard as the registry, no static one may exist for a relay to fall back on.
+    if (source === 'static') {
+        await writePublic(PUBLIC_FILES.registry, `${JSON.stringify(staticRegistry(identity), null, 2)}\n`);
+    }
 
     const fingerprint = new X509Certificate(await readFile(caFile)).fingerprint256;
-    process.stdout.write(`init: engine ${identity.engineId}, dev CA SHA-256 ${fingerprint}\n`);
+    process.stdout.write(`init: engine ${identity.engineId}, registry ${source}, dev CA SHA-256 ${fingerprint}\n`);
     process.stdout.write(`init: UI releases ${JSON.stringify(releases)}\n`);
 }
 

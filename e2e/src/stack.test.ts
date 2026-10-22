@@ -3,10 +3,15 @@ import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
+import { ON_DEMAND_PROFILE } from './scenarios.ts';
+
 import {
     CHALLTESTSRV,
     CONNECT_PROXY,
     CONNECT_PROXY_PORT,
+    DASHBOARD,
+    DASHBOARD_ORIGIN,
+    DASHBOARD_TIMING,
     DNS_IP,
     ENGINE_DOMAIN,
     ENGINE_HOST,
@@ -23,7 +28,9 @@ import {
     PEBBLE_VALIDITY_S,
     PUBLIC_FILES,
     RELAYS,
+    REGISTRY_TOKEN_FILE,
     RELEASE_STORE,
+    SERVICE_UID,
     SUBNET,
     UI_RELEASES,
     relayCertificateFile,
@@ -33,7 +40,16 @@ const E2E_DIR = join(import.meta.dirname, '..');
 const compose = readFileSync(join(E2E_DIR, 'compose.yaml'), 'utf8');
 const corefile = readFileSync(join(E2E_DIR, 'coredns', 'Corefile'), 'utf8');
 const overlay = (name: string): string => readFileSync(join(E2E_DIR, `compose.${name}.yaml`), 'utf8');
-const OVERLAYS = ['nat', 'capture', 'egress-443', 'connect-proxy', 'tls-inspecting-proxy', 'acme', 'debug'] as const;
+const OVERLAYS = [
+    'nat',
+    'capture',
+    'egress-443',
+    'connect-proxy',
+    'tls-inspecting-proxy',
+    'acme',
+    'dashboard',
+    'debug',
+] as const;
 
 describe('the topology in compose.yaml and the Corefile', () => {
     it('gives every relay the address and hostname stack.ts names', () => {
@@ -132,6 +148,40 @@ describe('the topology in compose.yaml and the Corefile', () => {
         const pebbleImage = /^\s+image: (ghcr\.io\/letsencrypt\/pebble:\S+)$/m.exec(acme)?.[1];
         const dockerfile = readFileSync(join(E2E_DIR, 'docker', 'stack.Dockerfile'), 'utf8');
         expect(dockerfile).toContain(`ARG PEBBLE_IMAGE=${pebbleImage ?? 'missing'}`);
+    });
+
+    it('puts the dashboard where stack.ts says, as the only registry, with the timings the tests expect', () => {
+        const dashboard = overlay('dashboard');
+        expect(DASHBOARD.hostname.endsWith(`.${OUR_DOMAIN}`)).toBe(true);
+        expect(DASHBOARD_ORIGIN).toBe(`https://${DASHBOARD.hostname}`);
+        expect(corefile).toContain(`${DASHBOARD.ip} ${DASHBOARD.hostname}`);
+        expect(dashboard).toContain(`  ${DASHBOARD.service}:\n`);
+        expect(dashboard).toContain(`ipv4_address: ${DASHBOARD.ip}`);
+        expect(dashboard).toContain(`DASHBOARD_ORIGIN: ${DASHBOARD_ORIGIN}`);
+        expect(dashboard).toContain(`DASHBOARD_TLS_CERT: ${MOUNTS.public}/${PUBLIC_FILES.dashboardCertificate}`);
+        expect(dashboard).toContain(`DASHBOARD_TLS_KEY: ${MOUNTS.dashboardKey}/key.pem`);
+        expect(dashboard).toContain(`dashboard-key:${MOUNTS.dashboardKey}\n`);
+        expect(dashboard).toContain(`'--servername',\n          '${DASHBOARD.hostname}',`);
+        expect(dashboard).toContain('E2E_REGISTRY: dashboard');
+        expect(dashboard).toContain(`"ENGINE_DOMAIN": "${ENGINE_DOMAIN}"`);
+        for (const relay of RELAYS) {
+            expect(dashboard).toContain(`{"relayId": "${relay.hostname}", "region": `);
+            expect(dashboard).toContain(`'${relay.hostname}'`);
+            expect(dashboard).toContain(`  ${relay.service}:\n    depends_on:\n      registry-keys:`);
+        }
+        expect(dashboard.split(`RELAY_REGISTRY_URL: ${DASHBOARD_ORIGIN}\n`)).toHaveLength(RELAYS.length + 1);
+        expect(dashboard.split('RELAY_REGISTRY_FILE: !reset null\n')).toHaveLength(RELAYS.length + 1);
+        expect(dashboard.split(`cat ${REGISTRY_TOKEN_FILE})`)).toHaveLength(RELAYS.length + 1);
+        expect(dashboard).toContain(`PTBK_DASHBOARD_URL: ${DASHBOARD_ORIGIN}`);
+        expect(dashboard.split(`profiles: [${ON_DEMAND_PROFILE}]`)).toHaveLength(3);
+        const { heartbeatIntervalS, missedLimit, graceS, linkCodeTtlS } = DASHBOARD_TIMING;
+        expect(dashboard).toContain(
+            `"HEARTBEAT": {"intervalS": ${String(heartbeatIntervalS)}, "missedLimit": ${String(missedLimit)}, "graceS": ${String(graceS)},`,
+        );
+        expect(dashboard).toContain(`"LINK_CODE_TTL_S": ${String(linkCodeTtlS)}}`);
+        expect(dashboard).toContain(`MOCK_HEARTBEAT_INTERVAL_S: '${String(heartbeatIntervalS)}'`);
+        const mint = readFileSync(join(E2E_DIR, 'dashboard', 'mint-registry-keys.sh'), 'utf8');
+        expect(mint).toContain(`chown ${String(SERVICE_UID)}:${String(SERVICE_UID)} `);
     });
 
     it('pins every image it pulls by digest', () => {

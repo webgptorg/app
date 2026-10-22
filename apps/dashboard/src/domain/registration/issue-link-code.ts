@@ -7,6 +7,7 @@ import type { Random } from '../ports/random';
 import type { EngineCreationPolicy, EntitlementDenial } from './engine-creation-policy';
 import type { LinkCodeStore } from './link-code-store';
 
+/** The default and the longest a deployment may configure (`LINK_CODE_TTL_S`). */
 export const LINK_CODE_TTL_MS = 30 * 60 * 1000;
 
 export interface IssueLinkCodeDeps {
@@ -14,6 +15,7 @@ export interface IssueLinkCodeDeps {
     readonly policy: Pick<EngineCreationPolicy, 'checkLinkCode'>;
     readonly random: Random;
     readonly clock: Clock;
+    readonly linkCodeTtlMs: number;
 }
 
 export type IssueLinkCodeOutcome =
@@ -33,7 +35,7 @@ export async function issueLinkCode(
     // The protocol's Random wants bytes over a plain ArrayBuffer; a copy gives exactly that.
     const linkCode = generateLinkCode({ bytes: (length) => new Uint8Array(deps.random.bytes(length)) });
     const now = deps.clock.nowMs();
-    const expiresAt = now + LINK_CODE_TTL_MS;
+    const expiresAt = now + deps.linkCodeTtlMs;
     await deps.linkCodes.insert({
         codeHash: await sha256Hex(linkCode),
         orgId: issuer.orgId,

@@ -10,8 +10,8 @@ import { LINK_CODE_TTL_MS } from './issue-link-code';
 
 const MINUTE = 60_000;
 
-function setup() {
-    const registration = createTestRegistration();
+function setup(options: { readonly linkCodeTtlMs?: number } = {}) {
+    const registration = createTestRegistration(options);
     const orgId = testOrgId();
     return { ...registration, orgId, issue: (org = orgId) => registration.tryIssue(org) };
 }
@@ -38,6 +38,18 @@ describe('issueLinkCode', () => {
             },
         ]);
         expect(JSON.stringify(stored)).not.toContain(outcome.linkCode);
+    });
+
+    it('gives the code the configured lifetime', async () => {
+        const t = setup({ linkCodeTtlMs: 30_000 });
+        const outcome = await t.issue();
+        if (outcome.kind !== 'issued') {
+            throw new Error('expected a code');
+        }
+        expect(outcome.expiresAt).toBe(NOW + 30_000);
+        expect(await t.unused(outcome.linkCode)).toBe(true);
+        t.clock.advance(30_000);
+        expect(await t.unused(outcome.linkCode)).toBe(false);
     });
 
     it('issues nothing to an organization without engines.create or at engines.max', async () => {

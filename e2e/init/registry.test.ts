@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { parseIdentityReport, staticRegistry } from './registry.ts';
+import { parseIdentityReport, parseRegistrySource, staticRegistry } from './registry.ts';
 
 const ENGINE_ID = 'abcdefghijklmnopqrstuvwxyz';
 const REPORT = {
@@ -39,5 +39,18 @@ describe('staticRegistry', () => {
                 },
             ],
         });
+    });
+});
+
+describe('parseRegistrySource', () => {
+    it('defaults to the static file and accepts the dashboard', () => {
+        expect(parseRegistrySource(undefined)).toBe('static');
+        expect(parseRegistrySource('')).toBe('static');
+        expect(parseRegistrySource('static')).toBe('static');
+        expect(parseRegistrySource('dashboard')).toBe('dashboard');
+    });
+
+    it('refuses anything else', () => {
+        expect(() => parseRegistrySource('http')).toThrow('E2E_REGISTRY');
     });
 });

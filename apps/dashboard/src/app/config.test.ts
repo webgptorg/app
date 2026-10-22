@@ -53,6 +53,7 @@ describe('parseConfig', () => {
             emailFrom: 'no-reply@ptbk.test',
             rateLimitHmacKey: new TextEncoder().encode('dev-only-rate-limit-key-not-secret'),
             heartbeat: { intervalS: 60, missedLimit: 3, graceS: 15, perEngineLimit: 5 },
+            linkCodeTtlMs: 30 * 60_000,
             stripeSecretKey: null,
             stripeWebhookSecret: null,
         });
@@ -79,6 +80,19 @@ describe('parseConfig', () => {
         ['a per-engine limit the interval would exceed', { intervalS: 5, perEngineLimit: 11 }],
     ])('refuses a HEARTBEAT with %s', (_, heartbeat) => {
         expect(failedPaths({ ...bindings, ...devVars, HEARTBEAT: heartbeat })[0]).toMatch(/^HEARTBEAT/);
+    });
+
+    it('takes the link code lifetime from LINK_CODE_TTL_S', () => {
+        expect(parseConfig({ ...bindings, ...devVars, LINK_CODE_TTL_S: 30 }).linkCodeTtlMs).toBe(30_000);
+    });
+
+    it.each([
+        ['shorter than 10 s', 9],
+        ['longer than 30 minutes', 1801],
+        ['fractional', 30.5],
+        ['a string', '30'],
+    ])('refuses a LINK_CODE_TTL_S that is %s', (_, ttl) => {
+        expect(failedPaths({ ...bindings, ...devVars, LINK_CODE_TTL_S: ttl })).toEqual(['LINK_CODE_TTL_S']);
     });
 
     it('accepts real adapters outside dev', () => {

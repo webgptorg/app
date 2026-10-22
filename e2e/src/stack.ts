@@ -32,6 +32,27 @@ export const RELEASE_STORE = {
     ip: '10.89.231.30',
 } as const;
 
+/**
+ * The dashboard (X-05, compose.dashboard.yaml): D-01's dev container, with a certificate from the dev CA. The relays
+ * read the registry from it and the mock engine registers with it and sends it heartbeats.
+ */
+export const DASHBOARD = { service: 'dashboard', hostname: `app.${OUR_DOMAIN}`, ip: '10.89.231.60' } as const;
+export const DASHBOARD_ORIGIN = `https://${DASHBOARD.hostname}`;
+
+/**
+ * The dashboard stack's short timings, set in compose.dashboard.yaml: the engine beats every 15 s and counts as
+ * offline after `missedLimit × intervalS + graceS` without one; link codes expire after 30 s instead of 30 minutes.
+ */
+export const DASHBOARD_TIMING = {
+    heartbeatIntervalS: 15,
+    missedLimit: 2,
+    graceS: 5,
+    linkCodeTtlS: 30,
+} as const;
+
+/** Where each relay of the dashboard stack reads the registry token minted for it (`registry-tokens` service). */
+export const REGISTRY_TOKEN_FILE = '/registry-token/token';
+
 /** The mock engine's dev-only control listener, plain HTTP on the stack network, for sessions and loader checks. */
 export const MOCK_ENGINE_CONTROL = { ip: '10.89.231.31', port: 4480 } as const;
 
@@ -52,6 +73,8 @@ export const MOUNTS = {
     relayKeys: '/relay-keys',
     releases: '/releases',
     releaseStoreKey: '/release-store-key',
+    /** The dashboard's TLS key (dashboard overlay only). */
+    dashboardKey: '/dashboard-key',
     /** Where init's image holds the bundles X-03's `pack` built (stack.Dockerfile, `ui-bundle`). */
     uiBundles: '/ui-bundles',
 } as const;
@@ -63,6 +86,8 @@ export const PUBLIC_FILES = {
     registry: 'registry.json',
     /** The release store's certificate, issued by the dev CA. */
     releaseStoreCertificate: `${RELEASE_STORE.hostname}.pem`,
+    /** The dashboard's certificate, issued by the dev CA (dashboard overlay only). */
+    dashboardCertificate: `${DASHBOARD.hostname}.pem`,
     /** The UI loader's `TrustPolicy`: the public halves of release keys that existed only while init ran. */
     uiTrustPolicy: 'ui-trust-policy.json',
     /**

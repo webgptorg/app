@@ -11,6 +11,7 @@ import {
     createComposeControl,
     demuxDockerLogs,
     demuxDockerStreams,
+    oneOffContainerSpec,
     ownComposeProject,
     unixSocketStreamTransport,
     unixSocketTransport,
@@ -179,6 +180,103 @@ describe('exec, inspect, streams and networks', () => {
         await expect(createComposeControl(daemon().transport, 'p').exportFilesystem('relay-a')).rejects.toThrow(
             'no streaming transport',
         );
+    });
+});
+
+describe('run', () => {
+    const TEMPLATE = {
+        Id: 'tpl',
+        Config: {
+            Image: 'p-mock-engine',
+            Env: ['PTBK_DATA_DIR=/engine', 'PATH=/usr/bin', 'MALFORMED'],
+            Cmd: ['node', '/app/main.mjs'],
+            Entrypoint: ['docker-entrypoint.sh'],
+            User: 'node',
+            WorkingDir: '/app',
+            Labels: { 'com.docker.compose.project': 'p', 'com.docker.compose.oneoff': 'False' },
+        },
+        HostConfig: { NetworkMode: 'p_stack', Dns: ['10.0.0.53'] },
+        NetworkSettings: { Networks: { p_stack: { IPAMConfig: { IPv4Address: '10.0.0.31' } } } },
+    };
+
+    /** The service's container `tpl`; `create` answers with `created` and `start` with `startStatus`. */
+    function daemon(startStatus = 204) {
+        const calls: { method: string; path: string; body: unknown }[] = [];
+        const transport: DockerTransport = (method, path, body) => {
+            calls.push({ method, path, body });
+            const url = new URL(path, 'http://docker');
+            if (url.pathname === '/containers/json') return Promise.resolve(json(200, [{ Id: 'tpl' }]));
+            if (url.pathname === '/containers/tpl/json') return Promise.resolve(json(200, TEMPLATE));
+            if (url.pathname === '/containers/create') return Promise.resolve(json(201, { Id: 'one' }));
+            if (url.pathname === '/containers/one/start') return Promise.resolve(json(startStatus, {}));
+            if (url.pathname === '/containers/one/wait') return Promise.resolve(json(200, { StatusCode: 1 }));
+            if (url.pathname === '/containers/one/logs') {
+                return Promise.resolve({ status: 200, body: frame(1, '{"outcome":"rejected"}\n') });
+            }
+            return Promise.resolve({ status: 204, body: Buffer.alloc(0) });
+        };
+        return { calls, transport };
+    }
+
+    it("copies the service container's config, with the overrides and labelled as a one-off", () => {
+        expect(
+            oneOffContainerSpec(TEMPLATE, {
+                env: { PTBK_DATA_DIR: '/tmp/engine', PTBK_LINK_CODE: 'abc' },
+                command: ['node', '/app/main.mjs', 'register'],
+            }),
+        ).toEqual({
+            Image: 'p-mock-engine',
+            Env: ['PATH=/usr/bin', 'MALFORMED', 'PTBK_DATA_DIR=/tmp/engine', 'PTBK_LINK_CODE=abc'],
+            Cmd: ['node', '/app/main.mjs', 'register'],
+            Entrypoint: ['docker-entrypoint.sh'],
+            User: 'node',
+            WorkingDir: '/app',
+            Labels: { 'com.docker.compose.project': 'p', 'com.docker.compose.oneoff': 'True' },
+            HostConfig: { NetworkMode: 'p_stack', Dns: ['10.0.0.53'] },
+            NetworkingConfig: { EndpointsConfig: { p_stack: {} } },
+        });
+    });
+
+    it('keeps the fixed address only when asked to, and the command unless replaced', () => {
+        const spec = oneOffContainerSpec(TEMPLATE, { fixedAddress: true });
+        expect(spec['NetworkingConfig']).toEqual({
+            EndpointsConfig: { p_stack: { IPAMConfig: { IPv4Address: '10.0.0.31' } } },
+        });
+        expect(spec['Cmd']).toEqual(['node', '/app/main.mjs']);
+        expect(spec['Env']).toEqual(TEMPLATE.Config.Env);
+    });
+
+    it('refuses a template without an image or host config', () => {
+        expect(() => oneOffContainerSpec({ Config: {} })).toThrow('no image or host config');
+        expect(() => oneOffContainerSpec(null)).toThrow('no image or host config');
+    });
+
+    it('creates and starts the container, then waits, reads, stops and removes it', async () => {
+        const { calls, transport } = daemon();
+        const container = await createComposeControl(transport, 'p').run('mock-engine', { env: { A: '1' } });
+        expect(container.id).toBe('one');
+        expect(container.name).toMatch(/^p-mock-engine-run-[0-9a-f]{12}$/);
+        expect(await container.wait()).toBe(1);
+        expect(await container.logs('stdout')).toBe('{"outcome":"rejected"}\n');
+        await container.logs();
+        await container.stop();
+        await container.remove();
+        expect(calls.slice(2).map((call) => `${call.method} ${call.path}`)).toEqual([
+            `POST /containers/create?name=${container.name}`,
+            'POST /containers/one/start',
+            'POST /containers/one/wait',
+            'GET /containers/one/logs?stdout=true&stderr=false',
+            'GET /containers/one/logs?stdout=true&stderr=true',
+            'POST /containers/one/stop?t=10',
+            'DELETE /containers/one?force=true&v=true',
+        ]);
+        expect((calls[2]?.body as { Env: string[] }).Env).toContain('A=1');
+    });
+
+    it('removes a container that failed to start', async () => {
+        const { calls, transport } = daemon(500);
+        await expect(createComposeControl(transport, 'p').run('mock-engine')).rejects.toThrow('Docker API status 500');
+        expect(calls.at(-1)).toMatchObject({ method: 'DELETE', path: '/containers/one?force=true&v=true' });
     });
 });
 

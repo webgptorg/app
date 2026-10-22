@@ -1,5 +1,6 @@
 // Control of the running stack from inside the playwright container, through the Docker Engine API on the mounted
 // socket: no docker CLI or compose files are needed there. Only containers of this compose project are ever touched.
+import { randomBytes } from 'node:crypto';
 import { request } from 'node:http';
 
 export const DOCKER_SOCKET = '/var/run/docker.sock';
@@ -15,7 +16,11 @@ export interface DockerResponse {
 }
 
 /** One Engine API call; a port so the control logic is tested without a daemon. */
-export type DockerTransport = (method: 'GET' | 'POST', path: string, body?: unknown) => Promise<DockerResponse>;
+export type DockerTransport = (
+    method: 'GET' | 'POST' | 'DELETE',
+    path: string,
+    body?: unknown,
+) => Promise<DockerResponse>;
 
 /** A GET whose body is streamed (container filesystem exports run to hundreds of megabytes). */
 export type DockerStreamTransport = (path: string) => Promise<{ status: number; body: AsyncIterable<Uint8Array> }>;
@@ -80,6 +85,32 @@ export interface ContainerInspection {
     readonly labels: Readonly<Record<string, string>>;
 }
 
+export interface RunOptions {
+    /** Set on top of the service's environment, replacing variables of the same name. */
+    readonly env?: Readonly<Record<string, string>>;
+    /** Replaces the service's command. */
+    readonly command?: readonly string[];
+    /**
+     * Keeps the service's fixed addresses, for the one container that stands in for the service itself. Off by
+     * default, so several one-off containers of a service can run side by side.
+     */
+    readonly fixedAddress?: boolean;
+}
+
+/** A container `run` started; tests remove it when they are done. */
+export interface OneOffContainer {
+    readonly id: string;
+    readonly name: string;
+    /** Resolves with the exit code once the process has ended. */
+    wait(): Promise<number>;
+    /** Its output since it started: stdout only, or stdout and stderr interleaved. */
+    logs(streams?: 'stdout' | 'all'): Promise<string>;
+    /** SIGTERM, then SIGKILL after 10 s. */
+    stop(): Promise<void>;
+    /** Gone, with its anonymous volumes; already gone is fine. */
+    remove(): Promise<void>;
+}
+
 export interface ComposeControl {
     readonly project: string;
     /** `docker compose stop`: SIGTERM, then SIGKILL after 10 s. */
@@ -108,6 +139,11 @@ export interface ComposeControl {
      */
     disconnectNetwork(service: string, network: string): Promise<string>;
     connectNetwork(service: string, network: string, ipv4Address: string): Promise<void>;
+    /**
+     * `docker compose run --detach`: a one-off container of `service`, made from the container compose created for it
+     * (for a service `up` leaves out, `up --no-start` creates one; see cli.ts) with `options` applied, and started.
+     */
+    run(service: string, options?: RunOptions): Promise<OneOffContainer>;
 }
 
 export class DockerApiError extends Error {
@@ -161,6 +197,63 @@ function isFrameHeader(body: Buffer, offset: number): boolean {
         body[offset + 2] === 0 &&
         body[offset + 3] === 0
     );
+}
+
+interface TemplateInspection {
+    readonly Config?: {
+        readonly Image?: unknown;
+        readonly Env?: unknown;
+        readonly Cmd?: unknown;
+        readonly Entrypoint?: unknown;
+        readonly User?: unknown;
+        readonly WorkingDir?: unknown;
+        readonly Labels?: unknown;
+    };
+    readonly HostConfig?: unknown;
+    readonly NetworkSettings?: {
+        readonly Networks?: Record<string, { readonly IPAMConfig?: { readonly IPv4Address?: unknown } | null }>;
+    };
+}
+
+/**
+ * The Engine API `create` body for a one-off container of a service, from `docker inspect` of the container compose
+ * made for it: same image, mounts, user, network and resolver, labelled as compose labels `run` containers.
+ */
+export function oneOffContainerSpec(template: unknown, options: RunOptions = {}): Record<string, unknown> {
+    const {
+        Config: config,
+        HostConfig: hostConfig,
+        NetworkSettings: networkSettings,
+    } = (template ?? {}) as TemplateInspection;
+    if (typeof config?.Image !== 'string' || typeof hostConfig !== 'object' || hostConfig === null) {
+        throw new DockerApiError('run: the service container has no image or host config');
+    }
+    const overrides = Object.entries(options.env ?? {});
+    const replaced = new Set(overrides.map(([name]) => name));
+    const env = [
+        ...stringList(config.Env).filter((entry) => !replaced.has(entry.split('=', 1)[0] ?? '')),
+        ...overrides.map(([name, value]) => `${name}=${value}`),
+    ];
+    const labels = typeof config.Labels === 'object' && config.Labels !== null ? config.Labels : {};
+    const endpoints = Object.fromEntries(
+        Object.entries(networkSettings?.Networks ?? {}).map(([network, endpoint]) => [
+            network,
+            options.fixedAddress === true && typeof endpoint.IPAMConfig?.IPv4Address === 'string'
+                ? { IPAMConfig: { IPv4Address: endpoint.IPAMConfig.IPv4Address } }
+                : {},
+        ]),
+    );
+    return {
+        Image: config.Image,
+        Env: env,
+        Cmd: options.command === undefined ? config.Cmd : [...options.command],
+        Entrypoint: config.Entrypoint,
+        User: config.User,
+        WorkingDir: config.WorkingDir,
+        Labels: { ...labels, [ONE_OFF_LABEL]: 'True' },
+        HostConfig: hostConfig,
+        NetworkingConfig: { EndpointsConfig: endpoints },
+    };
 }
 
 interface ContainerSummary {
@@ -272,6 +365,43 @@ export function createComposeControl(
 
     const networkName = (network: string): string => `${project}_${network}`;
 
+    function oneOff(id: string, name: string): OneOffContainer {
+        return {
+            id,
+            name,
+            async wait() {
+                const what = `wait for ${name}`;
+                const response = await transport('POST', `/containers/${id}/wait`);
+                expectStatus(response, what, [200]);
+                const code = (parseJson(response, what) as { StatusCode?: unknown } | null)?.StatusCode;
+                if (typeof code !== 'number') throw new DockerApiError(`${what}: no exit code`);
+                return code;
+            },
+            async logs(streams = 'all') {
+                const response = await transport(
+                    'GET',
+                    `/containers/${id}/logs?stdout=true&stderr=${streams === 'all' ? 'true' : 'false'}`,
+                );
+                expectStatus(response, `logs ${name}`, [200]);
+                return demuxDockerLogs(response.body);
+            },
+            async stop() {
+                expectStatus(
+                    await transport('POST', `/containers/${id}/stop?t=${String(STOP_TIMEOUT_S)}`),
+                    `stop ${name}`,
+                    [204, 304],
+                );
+            },
+            async remove() {
+                expectStatus(
+                    await transport('DELETE', `/containers/${id}?force=true&v=true`),
+                    `remove ${name}`,
+                    [204, 404],
+                );
+            },
+        };
+    }
+
     return {
         project,
         stop: (service) => post(service, 'stop', `?t=${String(STOP_TIMEOUT_S)}`),
@@ -356,6 +486,23 @@ export function createComposeControl(
                 `connect ${service}`,
                 [200],
             );
+        },
+        async run(service, options = {}) {
+            const spec = oneOffContainerSpec(await inspectRaw(service), options);
+            // Named like compose names `run` containers, so `docker ps` tells them apart.
+            const name = `${project}-${service}-run-${randomBytes(6).toString('hex')}`;
+            const what = `run ${service}`;
+            const created = await transport('POST', `/containers/create?name=${encodeURIComponent(name)}`, spec);
+            expectStatus(created, what, [201]);
+            const id = (parseJson(created, what) as { Id?: unknown } | null)?.Id;
+            if (typeof id !== 'string') throw new DockerApiError(`${what}: no container ID`);
+            const container = oneOff(id, name);
+            const started = await transport('POST', `/containers/${id}/start`);
+            if (started.status !== 204) {
+                await container.remove();
+                throw new DockerApiError(`${what}: Docker API status ${String(started.status)}`);
+            }
+            return container;
         },
     };
 }

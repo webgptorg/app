@@ -10,6 +10,11 @@ export interface Scenario {
     readonly overlays: readonly string[];
     /** Spec files, relative to tests/. */
     readonly specs: readonly string[];
+    /**
+     * Services in the `on-demand` profile, which `up` leaves out: cli.ts only creates their container, and tests start
+     * one-off copies of it with what they learn on the way (the compose fixture's `run`).
+     */
+    readonly onDemand?: readonly string[];
 }
 
 export const SCENARIOS: readonly Scenario[] = [
@@ -34,9 +39,14 @@ export const SCENARIOS: readonly Scenario[] = [
     },
     // M-03: the engine obtains its certificate from Pebble with TLS-ALPN-01 through relay-a, which relay-a captures.
     { name: 'acme', overlays: ['acme', 'capture'], specs: ['acme/*.spec.ts'] },
+    // X-05: the dashboard is the registry; the mock engine starts only once a test has a link code for it.
+    { name: 'dashboard', overlays: ['dashboard'], specs: ['dashboard/*.spec.ts'], onDemand: ['mock-engine'] },
 ];
 
 export const DEFAULT_SCENARIO = 'spike';
+
+/** The compose profile of services `up` leaves out (`Scenario.onDemand`). */
+export const ON_DEMAND_PROFILE = 'on-demand';
 
 /** Every overlay any scenario uses, so `down` removes whatever an earlier run left, whichever scenario it was. */
 export const ALL_SCENARIO_OVERLAYS: readonly string[] = [

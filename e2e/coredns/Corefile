@@ -1,12 +1,13 @@
 # The stack's only resolver for test names (compose.yaml points the playwright, relay and mock engine containers here).
 # Addresses are repeated from src/stack.ts; src/stack.test.ts fails if they drift apart.
 
-# Our own domain: one A record per relay, and the UI release store.
+# Our own domain: one A record per relay, the UI release store, and the dashboard (only the dashboard overlay runs it).
 ptbk.test:53 {
     hosts {
         10.89.231.11 relay-a.ptbk.test
         10.89.231.12 relay-b.ptbk.test
         10.89.231.30 releases.ptbk.test
+        10.89.231.60 app.ptbk.test
         ttl 5
     }
     errors

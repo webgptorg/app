@@ -55,3 +55,16 @@ export function staticRegistry(identity: EngineIdentityReport): StaticRegistryFi
         ],
     };
 }
+
+/**
+ * Where the relays read the registry from (`E2E_REGISTRY`): the static file init writes (default), or the dashboard
+ * (dashboard overlay), in which case no static registry exists anywhere in the stack and init issues the dashboard's
+ * certificate instead.
+ */
+export type RegistrySource = 'static' | 'dashboard';
+
+export function parseRegistrySource(value: string | undefined): RegistrySource {
+    if (value === undefined || value === '' || value === 'static') return 'static';
+    if (value === 'dashboard') return 'dashboard';
+    throw new Error('E2E_REGISTRY must be static or dashboard');
+}

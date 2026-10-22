@@ -2,7 +2,7 @@
 
 - **Lane:** X · **Module:** `e2e/` · **Milestone:** M3
 - **Depends on:** D-04, D-06, D-09, M-06, X-01
-- **Status:** todo
+- **Status:** done (#70)
 - **Spec:** Pairing and identity (First setup), Interfaces (1 registration, 2 registry lookup, 4 heartbeat), What our platform can and cannot do, One address for users; ADRs: [0004](../../adr/0004-mock-engine-and-conformance.md)
 
 ## Goal

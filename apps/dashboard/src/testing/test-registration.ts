@@ -6,7 +6,7 @@ import { createMemoryLogger } from '../adapters/memory-logger';
 import { sha256Hex } from '../domain/auth/secrets';
 import { newUserId, type OrgId } from '../domain/ids';
 import { createEngineCreationPolicy } from '../domain/registration/engine-creation-policy';
-import { issueLinkCode } from '../domain/registration/issue-link-code';
+import { issueLinkCode, LINK_CODE_TTL_MS } from '../domain/registration/issue-link-code';
 import type { LinkCodeStore } from '../domain/registration/link-code-store';
 import { registerEngine, type RegisterEngineDeps } from '../domain/registration/register-engine';
 import { createFakeEntitlements } from './fake-entitlements';
@@ -23,6 +23,7 @@ export const TEST_RELAYS = [Hostname.parse('relay-1.ptbk.test'), Hostname.parse(
 export function createTestRegistration(
     options: {
         readonly wrapLinkCodes?: (store: LinkCodeStore, stores: MemoryRegistrationStores) => LinkCodeStore;
+        readonly linkCodeTtlMs?: number;
     } = {},
 ) {
     const clock = createFakeClock(REGISTRATION_START_MS);
@@ -47,7 +48,13 @@ export function createTestRegistration(
     };
     const tryIssue = (orgId: OrgId) =>
         issueLinkCode(
-            { linkCodes: stores.linkCodes, policy, random: cryptoRandom, clock },
+            {
+                linkCodes: stores.linkCodes,
+                policy,
+                random: cryptoRandom,
+                clock,
+                linkCodeTtlMs: options.linkCodeTtlMs ?? LINK_CODE_TTL_MS,
+            },
             { orgId, userId: newUserId(cryptoRandom) },
             signal,
         );
