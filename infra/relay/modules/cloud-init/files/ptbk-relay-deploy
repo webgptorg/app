@@ -1,0 +1,8 @@
+#!/bin/bash
+# The deploy key's forced command, run through sudo with SSH_ORIGINAL_COMMAND kept. I-03 replaces it with the script
+# that pulls an image by digest, verifies its signature with cosign and restarts the relay; until then every deploy
+# is refused.
+set -euo pipefail
+
+echo "ptbk-relay-deploy: no deploy script is installed on this host yet (I-03)" >&2
+exit 1

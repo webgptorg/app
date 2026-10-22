@@ -1,0 +1,78 @@
+# The relay container (I-01). I-03's deploy writes image.env with a verified image digest; until then, and until the
+# secrets are placed (infra/relay/README.md), the conditions keep the unit from starting.
+[Unit]
+Description=Promptbook relay
+Documentation=https://github.com/webgptorg/app/tree/main/infra/relay
+Wants=network-online.target unbound.service nftables.service
+After=network-online.target unbound.service nftables.service
+ConditionPathExists=/etc/ptbk-relay/image.env
+ConditionPathExists=/etc/ptbk-relay/credentials/registry-token
+ConditionPathExists=/etc/ptbk-relay/credentials/tls.crt
+ConditionPathExists=/etc/ptbk-relay/credentials/tls.key
+StartLimitIntervalSec=0
+
+[Service]
+Type=notify
+NotifyAccess=all
+Delegate=yes
+Restart=always
+RestartSec=2
+TimeoutStartSec=120
+# The relay closes its tunnels within 10 s of SIGTERM, so engines move to a peer relay at once.
+TimeoutStopSec=30
+KillMode=mixed
+
+LoadCredential=registry-token:/etc/ptbk-relay/credentials/registry-token
+LoadCredential=tls.crt:/etc/ptbk-relay/credentials/tls.crt
+LoadCredential=tls.key:/etc/ptbk-relay/credentials/tls.key
+EnvironmentFile=/etc/ptbk-relay/image.env
+EnvironmentFile=/etc/ptbk-relay/limits.env
+RuntimeDirectory=ptbk-relay
+RuntimeDirectoryMode=0700
+
+# systemd hands credentials to the unit's user, root here, on a read-only ramfs. The relay runs as uid 10001 and
+# cannot read them there, so they are copied to a tmpfs only that user can read, which disappears with the service.
+ExecStartPre=/usr/bin/install -d -m 0500 -o 10001 -g 10001 %t/ptbk-relay/credentials
+ExecStartPre=/usr/bin/install -m 0400 -o 10001 -g 10001 %d/registry-token %d/tls.crt %d/tls.key %t/ptbk-relay/credentials/
+
+# Host network: the relay sees real client addresses for its per-IP limits, and no NAT or conntrack rules of a
+# container runtime sit beside nftables. Port 443 needs no capability because ip_unprivileged_port_start is 443.
+ExecStart=/usr/bin/podman run \
+    --name=ptbk-relay \
+    --cidfile=%t/%N.cid \
+    --replace \
+    --rm \
+    --detach \
+    --cgroups=split \
+    --sdnotify=conmon \
+    --pull=never \
+    --log-driver=journald \
+    --network=host \
+    --user=10001:10001 \
+    --read-only \
+    --read-only-tmpfs=false \
+    --cap-drop=all \
+    --security-opt=no-new-privileges \
+    --memory=${PTBK_RELAY_MEMORY_MAX} \
+    --memory-swap=${PTBK_RELAY_MEMORY_MAX} \
+    --pids-limit=512 \
+    --ulimit=nofile=${PTBK_RELAY_NOFILE}:${PTBK_RELAY_NOFILE} \
+    --stop-timeout=20 \
+    --env-file=/etc/ptbk-relay/relay.env \
+    --env=NODE_OPTIONS=--max-old-space-size=${PTBK_RELAY_HEAP_MIB} \
+    --volume=%t/ptbk-relay/credentials:/run/credentials/relay:ro \
+    ${PTBK_RELAY_IMAGE}
+ExecStop=/usr/bin/podman rm --volumes --force --ignore --cidfile=%t/%N.cid
+ExecStopPost=-/usr/bin/podman rm --volumes --force --ignore --cidfile=%t/%N.cid
+
+# podman itself runs as root (rootful: no setuid newuidmap, no subordinate ids on the host); the relay process is
+# confined by the container flags above. Nothing here may give the unit its own mount namespace: podman's mounts must
+# stay visible to the podman commands an admin or the deploy script runs.
+LimitNOFILE=1048576
+CapabilityBoundingSet=~CAP_SYS_MODULE CAP_SYS_RAWIO CAP_SYS_TIME CAP_SYS_BOOT CAP_SYS_PACCT CAP_SYS_TTY_CONFIG CAP_WAKE_ALARM CAP_BLOCK_SUSPEND CAP_SYSLOG CAP_LEASE CAP_LINUX_IMMUTABLE
+RestrictRealtime=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

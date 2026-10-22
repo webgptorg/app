@@ -1,0 +1,4 @@
+# The deploy key may run exactly one command as root (I-01), with the SSH command line in SSH_ORIGINAL_COMMAND; the
+# deploy script must parse it strictly.
+Defaults!/usr/local/sbin/ptbk-relay-deploy env_keep += "SSH_ORIGINAL_COMMAND"
+ptbk-deploy ALL=(root) NOPASSWD: /usr/local/sbin/ptbk-relay-deploy
