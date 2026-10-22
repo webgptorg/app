@@ -2,7 +2,7 @@
 
 - **Lane:** D · **Module:** `apps/dashboard` · **Milestone:** M3
 - **Depends on:** D-04, D-09
-- **Status:** todo
+- **Status:** in progress (feat/d-08-custom-domains)
 - **Spec:** Relay and tunnel (Enterprise custom domains); Residual risks (Custom domain, strict mode); Interfaces (draft) 2 and 6 (`PTBK_CUSTOM_DOMAIN`); Moving existing deployments; ADRs: [0006](../../adr/0006-organizations-and-roles.md), [0014](../../adr/0014-cryptography.md)
 
 ## Goal
