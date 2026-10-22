@@ -9,3 +9,4 @@ Infrastructure that does not belong to a single app:
 Tooling: OpenTofu (Hetzner and Cloudflare providers) plus cloud-init ([ADR 0011](../docs/adr/0011-infrastructure-as-code.md)); monitoring is Cloudflare-first (see tasks I-01, I-02, I-04).
 
 - [`cloudflare/`](cloudflare/README.md): engine DNS, relay hostnames, the dashboard's D1 databases and email domain, API tokens and account hardening, per environment.
+- [`relay/`](relay/README.md): relay hosts on Hetzner, hardened by cloud-init, with their firewall, the relay unit, its own certificate and `verify.sh`.

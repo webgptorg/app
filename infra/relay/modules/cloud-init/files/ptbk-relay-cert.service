@@ -1,0 +1,47 @@
+# Obtains and renews the relay's own certificate with ACME DNS-01 (ADR 0011). The DNS token can edit only the ACME
+# challenge zone, never the engine domain or the dashboard zone; _acme-challenge.<relay hostname> is a CNAME into it.
+[Unit]
+Description=Renew the Promptbook relay certificate
+Documentation=https://github.com/webgptorg/app/tree/main/infra/relay
+Wants=network-online.target unbound.service
+After=network-online.target unbound.service
+ConditionPathExists=/etc/ptbk-relay/credentials/acme-dns-token
+
+[Service]
+Type=oneshot
+DynamicUser=yes
+StateDirectory=ptbk-relay-cert
+StateDirectoryMode=0700
+LoadCredential=acme-dns-token:/etc/ptbk-relay/credentials/acme-dns-token
+EnvironmentFile=/etc/ptbk-relay/cert.env
+Environment=CF_DNS_API_TOKEN_FILE=%d/acme-dns-token
+ExecStart=/usr/local/libexec/ptbk-relay/renew-certificate
+# Privileged: installs a new certificate as the relay's credential and restarts the relay to load it.
+ExecStartPost=+/usr/local/libexec/ptbk-relay/install-certificate
+
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectProc=invisible
+ProcSubset=pid
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged
+SystemCallErrorNumber=EPERM
+UMask=0077

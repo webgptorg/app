@@ -1,0 +1,2 @@
+# Keeps a DHCP lease from replacing /etc/resolv.conf: the host resolves through the local unbound only.
+make_resolv_conf() { :; }

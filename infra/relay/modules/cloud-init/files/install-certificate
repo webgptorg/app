@@ -1,0 +1,25 @@
+#!/bin/bash
+# ExecStartPost of ptbk-relay-cert.service, as root: copies a new certificate and key from lego's state into the
+# relay's credential files and restarts the relay. systemd 257 does not refresh credentials on reload, so a renewal
+# restarts it; the relay closes its tunnels with SHUTTING_DOWN and engines move to a peer relay at once.
+set -euo pipefail
+
+: "${STATE_DIRECTORY:?}" "${PTBK_RELAY_HOSTNAME:?}"
+
+source_dir="$STATE_DIRECTORY/certificates"
+target_dir=/etc/ptbk-relay/credentials
+cert="$source_dir/$PTBK_RELAY_HOSTNAME.crt"
+key="$source_dir/$PTBK_RELAY_HOSTNAME.key"
+
+[[ -s "$cert" && -s "$key" ]] || exit 0
+if cmp -s "$cert" "$target_dir/tls.crt" && cmp -s "$key" "$target_dir/tls.key"; then
+    exit 0
+fi
+
+install -m 0600 -o root -g root "$key" "$target_dir/tls.key.new"
+install -m 0600 -o root -g root "$cert" "$target_dir/tls.crt.new"
+mv -f "$target_dir/tls.key.new" "$target_dir/tls.key"
+mv -f "$target_dir/tls.crt.new" "$target_dir/tls.crt"
+echo "installed a new certificate for $PTBK_RELAY_HOSTNAME"
+
+systemctl try-restart ptbk-relay.service

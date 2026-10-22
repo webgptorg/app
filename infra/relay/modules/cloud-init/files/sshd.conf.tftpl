@@ -1,0 +1,19 @@
+# Relay host SSH (I-01): keys only, named users only, no root. Sorted before 50-cloud-init.conf, so these win.
+PermitRootLogin no
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PubkeyAuthentication yes
+AuthenticationMethods publickey
+PermitEmptyPasswords no
+AllowUsers ${join(" ", users)}
+AllowTcpForwarding no
+AllowAgentForwarding no
+AllowStreamLocalForwarding no
+X11Forwarding no
+PermitTunnel no
+PermitUserEnvironment no
+MaxAuthTries 3
+MaxSessions 4
+LoginGraceTime 20
+ClientAliveInterval 60
+ClientAliveCountMax 3

@@ -1,3 +1,5 @@
+import { closeSync, fstatSync, openSync, readFileSync } from 'node:fs';
+
 import type { Hostname, RelayId } from '@ptbk/protocol';
 import {
     AUTH_TIMEOUT_MS,
@@ -67,6 +69,10 @@ function integer(min: number, max: number) {
 
 const ipAddress = z.union([z.ipv4(), z.ipv6()]);
 
+const RELAY_TOKEN = /^ptbk_rt_[A-Za-z0-9_-]{43}$/;
+const RELAY_TOKEN_SHAPE = 'a relay token (ptbk_rt_ and 43 base64url characters)';
+const MAX_TOKEN_FILE_BYTES = 1024;
+
 // The relay token travels as a bearer header, so cleartext is allowed only to this machine (local dev without TLS).
 const LOOPBACK_HOSTS: ReadonlySet<string> = new Set(['127.0.0.1', '[::1]', 'localhost']);
 
@@ -83,6 +89,42 @@ const filePath = value(
         .regex(/^[^\0]+$/),
     'must be a file path',
 );
+
+/**
+ * `RELAY_REGISTRY_TOKEN_FILE`, as systemd's `LoadCredential` provides it (I-01). Only a small regular file is read, so
+ * a mistaken path such as a device or a directory fails instead of blocking startup.
+ */
+function readTokenFile(path: string): string | null {
+    let fd: number | undefined;
+    try {
+        fd = openSync(path, 'r');
+        const stat = fstatSync(fd);
+        if (!stat.isFile() || stat.size > MAX_TOKEN_FILE_BYTES) return null;
+        return readFileSync(fd, 'utf8');
+    } catch {
+        return null;
+    } finally {
+        if (fd !== undefined) closeSync(fd);
+    }
+}
+
+const tokenFile = filePath.transform((path, ctx): string => {
+    const contents = readTokenFile(path);
+    if (contents === null) {
+        ctx.addIssue({
+            code: 'custom',
+            message: `must be a readable file of at most ${String(MAX_TOKEN_FILE_BYTES)} bytes`,
+        });
+        return z.NEVER;
+    }
+    // Files written by hand or by `echo` end with a newline; the token itself never contains whitespace.
+    const token = contents.trimEnd();
+    if (!RELAY_TOKEN.test(token)) {
+        ctx.addIssue({ code: 'custom', message: `must contain ${RELAY_TOKEN_SHAPE}` });
+        return z.NEVER;
+    }
+    return token;
+});
 
 const common = {
     RELAY_HOSTNAME: value(RelayIdSchema, 'must be a hostname'),
@@ -147,10 +189,8 @@ const envSchema = z
                     registryUrl,
                     'must be an https URL (http only on 127.0.0.1, ::1 or localhost) without credentials, query or fragment',
                 ),
-                RELAY_REGISTRY_TOKEN: value(
-                    z.string().regex(/^ptbk_rt_[A-Za-z0-9_-]{43}$/),
-                    'must be a relay token (ptbk_rt_ and 43 base64url characters)',
-                ),
+                RELAY_REGISTRY_TOKEN: value(z.string().regex(RELAY_TOKEN), `must be ${RELAY_TOKEN_SHAPE}`).optional(),
+                RELAY_REGISTRY_TOKEN_FILE: tokenFile.optional(),
             }),
         ],
         { error: 'must be static or http' },
@@ -171,6 +211,29 @@ const envSchema = z
                 message: 'must be at least RELAY_REGISTRY_TTL_S',
             });
         }
+    })
+    .transform((env, ctx) => {
+        if (env.RELAY_REGISTRY_KIND === 'static') return env;
+        // Exactly one source, so a token left behind in the environment can never silently win over the file.
+        const { RELAY_REGISTRY_TOKEN: inline, RELAY_REGISTRY_TOKEN_FILE: file, ...rest } = env;
+        if (inline !== undefined && file !== undefined) {
+            ctx.addIssue({
+                code: 'custom',
+                path: ['RELAY_REGISTRY_TOKEN_FILE'],
+                message: 'must not be set together with RELAY_REGISTRY_TOKEN',
+            });
+            return z.NEVER;
+        }
+        const token = inline ?? file;
+        if (token === undefined) {
+            ctx.addIssue({
+                code: 'custom',
+                path: ['RELAY_REGISTRY_TOKEN'],
+                message: 'is required, or RELAY_REGISTRY_TOKEN_FILE',
+            });
+            return z.NEVER;
+        }
+        return { ...rest, RELAY_REGISTRY_TOKEN: token };
     });
 
 export type RegistryConfig =

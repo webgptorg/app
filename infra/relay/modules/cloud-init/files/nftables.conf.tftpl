@@ -1,0 +1,105 @@
+#!/usr/sbin/nft -f
+# Relay host firewall (I-01). In: 443 from anywhere, 22 from the allowlist, ICMP. Out: what the relay, updates, DNS
+# and time sync need. Everything else is dropped. The provider firewall repeats the inbound rules in front of it.
+flush ruleset
+
+table inet ptbk {
+    set ssh_allow_v4 {
+        type ipv4_addr
+        flags interval
+%{ if length(ssh_allow_v4) > 0 ~}
+        elements = { ${join(", ", ssh_allow_v4)} }
+%{ endif ~}
+    }
+
+    set ssh_allow_v6 {
+        type ipv6_addr
+        flags interval
+%{ if length(ssh_allow_v6) > 0 ~}
+        elements = { ${join(", ", ssh_allow_v6)} }
+%{ endif ~}
+    }
+
+    # Per source (IPv4 address, IPv6 /64), above the relay's own limits (256 connections, 50 new per second), so
+    # these only stop floods before they reach Node.
+    set https_conns_v4 {
+        type ipv4_addr
+        size 131072
+        flags dynamic
+    }
+
+    set https_conns_v6 {
+        type ipv6_addr
+        size 131072
+        flags dynamic
+    }
+
+    set https_rate_v4 {
+        type ipv4_addr
+        size 131072
+        flags dynamic,timeout
+        timeout 1m
+    }
+
+    set https_rate_v6 {
+        type ipv6_addr
+        size 131072
+        flags dynamic,timeout
+        timeout 1m
+    }
+
+    chain input {
+        type filter hook input priority filter; policy drop;
+
+        iif "lo" accept
+        ct state invalid drop
+        ct state established,related accept
+
+        tcp dport 443 jump https_new
+        tcp dport 22 ip saddr @ssh_allow_v4 accept
+        tcp dport 22 ip6 saddr @ssh_allow_v6 accept
+
+        icmp type echo-request limit rate 20/second burst 50 packets accept
+        icmp type { destination-unreachable, time-exceeded, parameter-problem } accept
+        icmpv6 type echo-request limit rate 20/second burst 50 packets accept
+        icmpv6 type { destination-unreachable, packet-too-big, time-exceeded, parameter-problem } accept
+        icmpv6 type { nd-router-advert, nd-neighbor-solicit, nd-neighbor-advert } ip6 hoplimit 255 accept
+
+        # DHCPv4 replies (the provider assigns IPv4 by DHCP).
+        udp sport 67 udp dport 68 accept
+    }
+
+    chain https_new {
+        add @https_conns_v4 { ip saddr ct count over 512 } drop
+        add @https_conns_v6 { ip6 saddr & ffff:ffff:ffff:ffff:: ct count over 512 } drop
+        update @https_rate_v4 { ip saddr limit rate over 100/second burst 200 packets } drop
+        update @https_rate_v6 { ip6 saddr & ffff:ffff:ffff:ffff:: limit rate over 100/second burst 200 packets } drop
+        accept
+    }
+
+    chain forward {
+        type filter hook forward priority filter; policy drop;
+    }
+
+    chain output {
+        type filter hook output priority filter; policy drop;
+
+        oif "lo" accept
+        ct state invalid drop
+        ct state established,related accept
+
+        # The dashboard registry, ACME and the DNS API for the relay certificate, image pulls, HTTPS mirrors.
+        tcp dport 443 accept
+        # unbound resolves from the root down; lego checks the challenge record at the authoritative servers.
+        meta l4proto { tcp, udp } th dport 53 accept
+        udp dport 123 meta skuid "_chrony" accept
+        # apt over http (its downloads are signed) and the provider's metadata service, read by cloud-init at boot.
+        tcp dport 80 meta skuid "_apt" accept
+        ip daddr 169.254.169.254 tcp dport 80 meta skuid 0 accept
+        udp sport 68 udp dport 67 accept
+
+        icmp type { echo-request, destination-unreachable, time-exceeded, parameter-problem } accept
+        icmpv6 type { echo-request, destination-unreachable, packet-too-big, time-exceeded, parameter-problem } accept
+        icmpv6 type { nd-router-solicit, nd-neighbor-solicit, nd-neighbor-advert, mld2-listener-report } accept
+    }
+}

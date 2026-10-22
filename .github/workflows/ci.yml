@@ -177,6 +177,53 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
+  # Offline checks for infra/ (I-01): tofu fmt, validate and test (mocked providers, no backend, no credential), then
+  # the rendered relay host user data through cloud-init, nft, systemd-analyze, sshd, unbound and ShellCheck. The
+  # script runs everything in pinned containers, so it runs the same way on a laptop with Docker.
+  infra:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: infra/relay/scripts/check.sh
+
+  # The relay host's real user data booted in a Debian 13 cloud image under KVM, with secrets placed and a test relay
+  # image deployed the way the README and I-03 do it; then verify.sh, port scans from inside and outside the SSH
+  # allowlist, the deploy key's forced command, and verify.sh failing on password SSH (I-01).
+  relay-host-vm:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: package.json
+          no-cache: true
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - run: bun install --frozen-lockfile
+      - run: bun run --filter @ptbk/relay build
+      - name: Install QEMU and the test tools
+        run: |
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            qemu-system-x86 qemu-utils cloud-image-utils nmap
+      - name: Boot the relay host and check it
+        run: sudo VM_TEST_WORK="$RUNNER_TEMP/relay-vm" infra/relay/test/vm-test.sh
+      - name: Upload the VM console log
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: relay-vm-console
+          path: ${{ runner.temp }}/relay-vm/console.log
+          retention-days: 7
+          if-no-files-found: ignore
+
   workflows:
     runs-on: ubuntu-24.04
     timeout-minutes: 5

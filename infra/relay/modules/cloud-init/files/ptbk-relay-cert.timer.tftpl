@@ -1,0 +1,11 @@
+# One fixed time per host, after its reboot window, so the relays of an environment never restart together.
+[Unit]
+Description=Renew the Promptbook relay certificate daily
+
+[Timer]
+OnCalendar=*-*-* ${renew_time}:00 UTC
+Persistent=true
+RandomizedDelaySec=10min
+
+[Install]
+WantedBy=timers.target

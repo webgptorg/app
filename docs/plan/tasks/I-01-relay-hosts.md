@@ -2,7 +2,7 @@
 
 - **Lane:** I · **Module:** `infra/relay` · **Milestone:** M4
 - **Depends on:** R-04, R-06 (R-05 supplies only the sizing value; see Scope)
-- **Status:** todo
+- **Status:** in progress (feat/i-01-relay-hosts)
 - **Spec:** Relay and tunnel (Hosting; No single point of failure; Fairness and DoS); Hosting and stack; Operations; Metadata we still see; Legal and GDPR (sub-processors)
 
 ## Goal
@@ -48,11 +48,11 @@ The relay needs raw TCP on 443 and long-lived connections, so it runs on plain V
 
 ## Acceptance criteria
 
-- [ ] ADR 0011 merged (by this task or I-02) with status `Accepted` and listed in `docs/adr/README.md`.
+- [x] ADR 0011 merged (by this task or I-02) with status `Accepted` and listed in `docs/adr/README.md`.
 - [ ] The CI checks in Scope run on every PR that touches `infra/` and pass, including `tofu test` for I-02's module.
 - [ ] In the CI VM, `verify.sh` passes, and a port scan shows only 443 open and 22 only from the allowlist; a deliberately broken setting (for example password SSH enabled) makes `verify.sh` fail (verified once, noted in the PR).
-- [ ] `RELAY_REGISTRY_TOKEN_FILE` is supported and tested.
-- [ ] Production hosts are defined in code (two locations); staging and production differ only in sizes, counts and allowlists.
+- [x] `RELAY_REGISTRY_TOKEN_FILE` is supported and tested.
+- [x] Production hosts are defined in code (two locations); staging and production differ only in sizes, counts and allowlists.
 - [ ] `bun run check` passes.
 - [ ] **Status** line above set to `done (#<PR>)`.
 
