@@ -235,6 +235,7 @@ const fileVersion = { id: 'fv_1', createdAt: NOW, sizeBytes: 5, sha256: SHA, com
 const trigger = {
     id: 'trg_1',
     agentId: 'agt_1',
+    agentName: 'Ada',
     name: 'Daily digest',
     kind: 'schedule',
     lifecycle: 'active',

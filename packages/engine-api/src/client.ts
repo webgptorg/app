@@ -248,6 +248,7 @@ export interface EngineApiClient {
     /** `triggers@1`. */
     readonly triggers: {
         list(query: Query<'listTriggers'>, signal: AbortSignal): Result<'listTriggers'>;
+        stats(query: Query<'getTriggerStats'>, signal: AbortSignal): Result<'getTriggerStats'>;
         create(body: Body<'createTrigger'>, signal: AbortSignal): Result<'createTrigger'>;
         get(triggerId: Param<'getTrigger', 'triggerId'>, signal: AbortSignal): Result<'getTrigger'>;
         update(
@@ -425,6 +426,7 @@ export function createEngineApiClient(transport: EngineApiTransport): EngineApiC
         },
         triggers: {
             list: (query, signal) => call(R.listTriggers, { query }, signal),
+            stats: (query, signal) => call(R.getTriggerStats, { query }, signal),
             create: (body, signal) => call(R.createTrigger, { body }, signal),
             get: (triggerId, signal) => call(R.getTrigger, { params: { triggerId } }, signal),
             update: (triggerId, body, signal) => call(R.updateTrigger, { params: { triggerId }, body }, signal),

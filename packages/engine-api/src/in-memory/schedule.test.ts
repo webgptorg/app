@@ -26,18 +26,18 @@ describe('scheduleProblem', () => {
     const interval = Recurrence.parse({ kind: 'interval', everySeconds: 3600 });
 
     it('refuses an end at or before the start', () => {
-        expect(scheduleProblem(interval, MONDAY, MONDAY, MONDAY)).toMatch(/endsAt/);
-        expect(scheduleProblem(interval, MONDAY, '2026-10-19T09:00:00Z', MONDAY)).toMatch(/endsAt/);
+        expect(scheduleProblem(interval, MONDAY, MONDAY, MONDAY)?.message).toMatch(/endsAt/);
+        expect(scheduleProblem(interval, MONDAY, '2026-10-19T09:00:00Z', MONDAY)?.message).toMatch(/endsAt/);
         expect(scheduleProblem(interval, MONDAY, null, MONDAY)).toBeUndefined();
     });
 
     it('places a one-off time in the future and inside the range', () => {
         const once = (at: string) => Recurrence.parse({ kind: 'once', at });
-        expect(scheduleProblem(once('2026-10-19T09:00:00Z'), MONDAY, null, MONDAY)).toMatch(/past/);
-        expect(scheduleProblem(once('2026-10-19T11:00:00Z'), '2026-10-19T12:00:00Z', null, MONDAY)).toMatch(
+        expect(scheduleProblem(once('2026-10-19T09:00:00Z'), MONDAY, null, MONDAY)?.message).toMatch(/past/);
+        expect(scheduleProblem(once('2026-10-19T11:00:00Z'), '2026-10-19T12:00:00Z', null, MONDAY)?.message).toMatch(
             /before startsAt/,
         );
-        expect(scheduleProblem(once('2026-10-19T12:00:00Z'), MONDAY, '2026-10-19T12:00:00Z', MONDAY)).toMatch(
+        expect(scheduleProblem(once('2026-10-19T12:00:00Z'), MONDAY, '2026-10-19T12:00:00Z', MONDAY)?.message).toMatch(
             /after endsAt/,
         );
         expect(scheduleProblem(once('2026-10-19T11:00:00Z'), MONDAY, '2026-10-19T12:00:00Z', MONDAY)).toBeUndefined();
@@ -53,12 +53,29 @@ describe('scheduleProblem', () => {
         ['day names', '0 9 * * MON'],
         ['garbage', '0 9 * * ?x'],
     ])('refuses %s', (_label, expression) => {
-        expect(scheduleProblem(cron(expression), MONDAY, null, MONDAY)).toMatch(/cron/);
+        expect(scheduleProblem(cron(expression), MONDAY, null, MONDAY)?.message).toMatch(/cron/);
     });
 
     it('refuses an unknown time zone and an expression that never fires', () => {
-        expect(scheduleProblem(cron('0 9 * * *', 'Mars/Olympus'), MONDAY, null, MONDAY)).toMatch(/time zone/);
-        expect(scheduleProblem(cron('0 0 30 2 *'), MONDAY, null, MONDAY)).toMatch(/never fires/);
+        expect(scheduleProblem(cron('0 9 * * *', 'Mars/Olympus'), MONDAY, null, MONDAY)?.message).toMatch(/time zone/);
+        expect(scheduleProblem(cron('0 0 30 2 *'), MONDAY, null, MONDAY)?.message).toMatch(/never fires/);
+    });
+
+    it('names the field at fault', () => {
+        const paths = [
+            scheduleProblem(interval, MONDAY, MONDAY, MONDAY),
+            scheduleProblem(Recurrence.parse({ kind: 'once', at: '2026-10-19T09:00:00Z' }), MONDAY, null, MONDAY),
+            scheduleProblem(cron('61 * * * *'), MONDAY, null, MONDAY),
+            scheduleProblem(cron('0 0 30 2 *'), MONDAY, null, MONDAY),
+            scheduleProblem(cron('0 9 * * *', 'Mars/Olympus'), MONDAY, null, MONDAY),
+        ].map((problem) => problem?.path);
+        expect(paths).toEqual([
+            'body.endsAt',
+            'body.recurrence.at',
+            'body.recurrence.expression',
+            'body.recurrence.expression',
+            'body.recurrence.timeZone',
+        ]);
     });
 
     it('accepts working hours in Prague', () => {
