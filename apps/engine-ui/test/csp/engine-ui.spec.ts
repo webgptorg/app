@@ -4,11 +4,13 @@ import {
     FAKE_AGENT_ID,
     FAKE_CHAT_ID,
     FAKE_FILE_ID,
+    FAKE_INTEGRATION_ID,
     FAKE_RUN_ID,
     FAKE_TRIGGER_ID,
     HOSTILE_FILE_NAME,
     HOSTILE_RUN_TEXT,
     HOSTILE_TARGET_NAME,
+    HOSTILE_TOOL_TEXT,
     RAW_HEARTBEAT,
 } from './fake-engine-api.ts';
 import { expect, expectCleanPage, readBuiltIndexHtml, test } from './fixtures.ts';
@@ -302,6 +304,59 @@ test.describe('the built bundle under the engine CSP', () => {
         await expect(preview.getByText('Every 15 minutes, Europe/Prague')).toBeVisible();
         await expect(preview.getByRole('listitem')).toHaveCount(5);
         await expect(page.getByRole('combobox', { name: /^Kind/ }).locator('option[value="webhook"]')).toBeDisabled();
+        expectCleanPage(report);
+    });
+
+    test('/integrations lists integrations, restores its filters from the URL and meets the UX checks', async ({
+        page,
+        visit,
+    }) => {
+        const report = await visit('/integrations');
+        const table = page.getByRole('table');
+        await expect(table.getByRole('link', { name: 'Billing repository' })).toBeVisible();
+        await expect(table.getByText('Needs attention', { exact: true })).toBeVisible();
+        expectCleanPage(report);
+
+        const filtered = await visit('/integrations?status=needs-attention,error');
+        await expect(page.getByRole('checkbox', { name: 'Error' })).toBeChecked();
+        await expect(page.getByRole('table').getByRole('link', { name: 'Calendar' })).toBeVisible();
+        await expect(page.getByRole('table').getByRole('link', { name: /^Documentation search/ })).toHaveCount(0);
+        expectCleanPage(filtered);
+    });
+
+    test(`/integrations/${FAKE_INTEGRATION_ID} keeps third-party text inert and meets the UX checks`, async ({
+        page,
+        visit,
+    }) => {
+        const report = await visit(`/integrations/${FAKE_INTEGRATION_ID}`);
+        await expect(page.getByRole('heading', { level: 1, name: /^Documentation search/ })).toBeVisible();
+        const tools = page.getByRole('region', { name: 'Tools' });
+        await expect(tools.getByText(HOSTILE_TOOL_TEXT, { exact: true })).toBeVisible();
+        await expect(page.getByRole('region', { name: 'Secrets it uses' }).getByRole('link')).toHaveAttribute(
+            'href',
+            '/secrets?q=GITHUB_TOKEN',
+        );
+        expect(await page.locator('main img, main script, main iframe, main object, main embed').count()).toBe(0);
+        expect(await page.locator('main a[href^="javascript:"]').count()).toBe(0);
+        expectCleanPage(report);
+    });
+
+    test('the add MCP server dialog loads its form under the CSP and asks for no secret value', async ({
+        page,
+        visit,
+    }) => {
+        const report = await visit('/integrations');
+        await expect(page.getByRole('table').getByRole('link', { name: 'Billing repository' })).toBeVisible();
+        await page.getByRole('button', { name: 'Add MCP server' }).click();
+        const dialog = page.getByRole('dialog', { name: 'Add MCP server' });
+        await expect(dialog.getByRole('checkbox', { name: 'GITHUB_TOKEN' })).toBeVisible();
+        expect(await page.locator('input[type="password"]').count()).toBe(0);
+        await dialog.getByRole('textbox', { name: /^Name/ }).fill('Search');
+        await dialog.getByRole('textbox', { name: /^Server URL/ }).fill('https://search.example.com/mcp');
+        await dialog.getByRole('checkbox', { name: 'GITHUB_TOKEN' }).check();
+        await dialog.getByRole('button', { name: 'Add' }).click();
+        await expect(page.getByText('Search added')).toBeVisible();
+        expect(await page.evaluate(() => window.__ptbkCspViolations ?? [])).toEqual([]);
         expectCleanPage(report);
     });
 

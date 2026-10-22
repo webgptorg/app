@@ -46,6 +46,7 @@ describe('app shell', () => {
             'Runs',
             'Files',
             'Triggers',
+            'Integrations',
             'Members',
             'Security',
             'Secrets',
