@@ -319,13 +319,13 @@ describe('tunnel endpoint over real sockets', () => {
     it.each([
         ['ignorable frames', () => Uint8Array.of(0x85, 0, 0, 0, 1, 9)],
         ['CLOSE for an old stream', () => encodeFrame({ type: FrameType.CLOSE, streamId: StreamId.parse(1), code: 0 })],
-    ])('closes a tunnel that floods %s with PROTOCOL_ERROR at the frame budget', async (_, frame) => {
+    ])('closes a tunnel that floods %s with FRAME_BUDGET at the frame budget', async (_, frame) => {
         const harness = await start({ env: { RELAY_TUNNEL_FRAMES_PER_S: '50' } });
         const engine = await register(harness, 105);
         const client = await connected(harness, engine);
         harness.listener.sessions.byEngine(engine.engineId)?.openStream(IPV4_CLIENT, noStream)?.close(0);
         for (let index = 0; index <= 50; index++) client.ws.send(frame());
-        expect((await client.closed).code).toBe(TUNNEL_CLOSE_CODE.PROTOCOL_ERROR);
+        expect((await client.closed).code).toBe(TUNNEL_CLOSE_CODE.FRAME_BUDGET);
         expect(harness.listener.terminations()['frame-budget']).toBe(1);
         expect(JSON.stringify(harness.logger.entries)).not.toContain('frame-budget');
     });
