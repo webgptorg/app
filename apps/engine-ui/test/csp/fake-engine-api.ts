@@ -1,6 +1,7 @@
 import {
     AgentId,
     ChatId,
+    FileId,
     RunId,
     TriggerId,
     createProblem,
@@ -50,6 +51,7 @@ const chatId = (match: RegExpExecArray) => ChatId.parse(match[1] ?? '');
 const messageId = (match: RegExpExecArray) => MessageId.parse(match[2] ?? '');
 const runId = (match: RegExpExecArray) => RunId.parse(match[1] ?? '');
 const triggerId = (match: RegExpExecArray) => TriggerId.parse(match[1] ?? '');
+const fileId = (match: RegExpExecArray) => FileId.parse(match[1] ?? '');
 
 /** The routes the visited pages call, with the success status the contract gives each; anything else answers 404. */
 const ROUTES: readonly (readonly ['GET' | 'POST', RegExp, number, Call])[] = [
@@ -148,6 +150,21 @@ const ROUTES: readonly (readonly ['GET' | 'POST', RegExp, number, Call])[] = [
         /^\/triggers\/([\w-]+)\/resume$/,
         200,
         (api, match, _, __, signal) => api.triggers.resume(triggerId(match), signal),
+    ],
+    ['GET', /^\/files$/, 200, (api, _, query, __, signal) => api.files.list(Object.fromEntries(query), signal)],
+    ['GET', /^\/files\/stats$/, 200, (api, _, query, __, signal) => api.files.stats(Object.fromEntries(query), signal)],
+    [
+        'GET',
+        /^\/files\/upload-policy$/,
+        200,
+        (api, _, query, __, signal) => api.files.uploadPolicy({ purpose: query.get('purpose') as never }, signal),
+    ],
+    ['GET', /^\/files\/([\w-]+)$/, 200, (api, match, _, __, signal) => api.files.get(fileId(match), signal)],
+    [
+        'GET',
+        /^\/files\/([\w-]+)\/versions$/,
+        200,
+        (api, match, query, _, signal) => api.files.listVersions(fileId(match), Object.fromEntries(query), signal),
     ],
     ['GET', /^\/audit$/, 200, (api, _, query, __, signal) => api.audit.list(Object.fromEntries(query), signal)],
     ['GET', /^\/audit\/verify$/, 200, (api, _, __, ___, signal) => api.audit.verify(signal)],
@@ -438,6 +455,77 @@ const SECURITY_OVERVIEW = {
 } as const;
 
 const STREAM = /^\/chats\/([\w-]+)\/messages\/([\w-]+)\/stream$/;
+const CONTENT = /^\/files\/([\w-]+)\/content$/;
+
+/** The file the drawer checks: a real PNG, previewed from the content route. */
+export const FAKE_FILE_ID = 'file-photo';
+/** A file name that must stay text in the list, the drawer and the preview's alt text. */
+export const HOSTILE_FILE_NAME = '<img src=x onerror=alert(1)>.png';
+const PNG_1X1 = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
+    'base64',
+);
+
+function fakeFile(id: string, name: string, contentType: string, fields: Record<string, unknown> = {}) {
+    return {
+        metadata: {
+            id,
+            name,
+            contentType,
+            sizeBytes: PNG_1X1.byteLength,
+            sha256: 'ab'.repeat(32),
+            purpose: 'output' as const,
+            agentId: FAKE_AGENT_ID,
+            chatId: null,
+            runId: null,
+            scan: { status: 'clean' as const, checkedAt: '2026-09-30T10:00:00.000Z' },
+            createdBy: 'member-owner',
+            createdAt: '2026-09-30T10:00:00.000Z',
+            ...fields,
+        },
+        content: new Blob([PNG_1X1], { type: contentType }),
+    };
+}
+
+function fakeFiles() {
+    return [
+        fakeFile(FAKE_FILE_ID, 'photo.png', 'image/png', { createdAt: '2026-09-30T10:05:00.000Z' }),
+        fakeFile('file-hostile', HOSTILE_FILE_NAME, 'image/png', { createdAt: '2026-09-30T10:04:00.000Z' }),
+        fakeFile('file-svg', 'diagram.svg', 'image/svg+xml', { createdAt: '2026-09-30T10:03:00.000Z' }),
+        fakeFile('file-infected', 'invoice.png', 'image/png', {
+            purpose: 'attachment',
+            scan: { status: 'infected', checkedAt: '2026-09-30T10:02:00.000Z' },
+            createdAt: '2026-09-30T10:02:00.000Z',
+        }),
+        fakeFile('file-notes', 'notes.md', 'text/markdown', {
+            purpose: 'knowledge',
+            createdAt: '2026-09-30T10:01:00.000Z',
+        }),
+    ];
+}
+
+/** Content as an engine serves it: the declared type, nosniff and always an attachment; infected is a 409. */
+async function serveContent(engineApi: EngineApiClient, route: Route, match: RegExpExecArray, query: URLSearchParams) {
+    const signal = AbortSignal.timeout(5_000);
+    const id = fileId(match);
+    const version = query.get('version');
+    const content = await engineApi.files.download(id, version === null ? {} : { version: version as never }, signal);
+    const metadata = await engineApi.files.get(id, signal);
+    if (content.kind === 'problem' || metadata.kind === 'problem') {
+        await fulfil(
+            route,
+            content.kind === 'problem' ? content : { kind: 'problem', problem: createProblem('not-found') },
+            404,
+        );
+        return;
+    }
+    await route.fulfill({
+        status: 200,
+        contentType: metadata.data.contentType,
+        headers: { 'x-content-type-options': 'nosniff', 'content-disposition': 'attachment' },
+        body: Buffer.from(await content.data.arrayBuffer()),
+    });
+}
 
 /** The whole reply as one SSE body: the in-memory reply generates as it is read, so reading it ends it. */
 async function replyStream(engineApi: EngineApiClient, match: RegExpExecArray, signal: AbortSignal): Promise<string> {
@@ -490,6 +578,7 @@ export async function routeFakeEngineApi(page: Page): Promise<void> {
             auditEntries: auditEntries(),
             runs: fakeRuns(),
             triggers: fakeTriggers(),
+            files: fakeFiles(),
             members: [
                 {
                     id: 'member-jana',
@@ -528,6 +617,7 @@ export async function routeFakeEngineApi(page: Page): Promise<void> {
                 message('m-3', 'chat-visitor', 'user', 'Do you ship to Brno?', '2026-09-29T10:00:00.000Z', null),
             ],
         },
+        uploadPolicies: { knowledge: { maxBytes: 10 * 1024 * 1024, accept: ['.md', '.pdf', 'text/plain'] } },
         // Sent messages get the same hostile reply, streamed in pieces.
         replyScript: () => ({ chunks: HOSTILE_REPLY.match(/[\s\S]{1,40}/g) ?? [] }),
     });
@@ -539,6 +629,11 @@ export async function routeFakeEngineApi(page: Page): Promise<void> {
         if (path === '/events') {
             // A stream that ends at once: the app reconnects with backoff, and the page still goes network-idle.
             await route.fulfill({ status: 200, contentType: 'text/event-stream', body: '' });
+            return;
+        }
+        const content = CONTENT.exec(path);
+        if (request.method() === 'GET' && content !== null) {
+            await serveContent(engineApi, route, content, url.searchParams);
             return;
         }
         const stream = STREAM.exec(path);

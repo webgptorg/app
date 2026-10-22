@@ -46,7 +46,6 @@ const OTHER_TABS: readonly FeatureDefinition[] = [
         capability: KNOWN_CAPABILITIES.integrations,
         permission: 'integrations.read',
     }),
-    tabFeature('files', 'Files', { capability: KNOWN_CAPABILITIES.files, permission: 'files.read' }),
 ];
 
 /** The agent page's own header (identity, state, primary actions), not the shell's. */
@@ -138,7 +137,7 @@ describe('agent tabs', { timeout: TIMEOUT_MS }, () => {
             ],
         });
         await renderAgent('/agents/agent-001', { features: [...FEATURES, notes] });
-        expect(tabNames()).toEqual(['Overview', 'Chat', 'Runs', 'Triggers', 'Notes', 'Settings']);
+        expect(tabNames()).toEqual(['Overview', 'Chat', 'Runs', 'Files', 'Triggers', 'Notes', 'Settings']);
         expect(await screen.findByText('Notes for agent-001')).toBeDefined();
     });
 
@@ -146,7 +145,7 @@ describe('agent tabs', { timeout: TIMEOUT_MS }, () => {
         const { user, router } = await renderAgent();
         const overview = screen.getByRole('tab', { name: 'Overview' });
         overview.focus();
-        await user.keyboard('{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}');
+        await user.keyboard('{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}');
         const settings = screen.getByRole('tab', { name: 'Settings' });
         expect(document.activeElement).toBe(settings);
         await user.keyboard('{Enter}');
@@ -407,7 +406,7 @@ describe('agent settings', { timeout: TIMEOUT_MS }, () => {
 
     it('is absent without agents.write and agents.delete, and a deep link says "no access"', async () => {
         await renderAgent('/agents/agent-001/settings', { permissions: allBut('agents.write', 'agents.delete') });
-        expect(tabNames()).toEqual(['Overview', 'Chat', 'Runs', 'Triggers']);
+        expect(tabNames()).toEqual(['Overview', 'Chat', 'Runs', 'Files', 'Triggers']);
         expect(await screen.findByRole('heading', { level: 1, name: 'No access' })).toBeDefined();
     });
 

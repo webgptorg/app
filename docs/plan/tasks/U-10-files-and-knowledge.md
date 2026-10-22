@@ -2,7 +2,7 @@
 
 - **Lane:** U · **Module:** `apps/engine-ui` · **Milestone:** M2
 - **Depends on:** U-02, C-07
-- **Status:** todo
+- **Status:** done (#55)
 - **Spec:** Security hardening (5 agent output is untrusted), Engine security baseline (Browser headers); ADRs: [0015](../../adr/0015-ui-architecture-and-design-system.md), [0016](../../adr/0016-engine-capabilities.md)
 
 ## Goal
@@ -46,18 +46,18 @@ Files come in four purposes (C-07): knowledge an agent reads, chat attachments, 
 
 ## Acceptance criteria
 
-- [ ] With the in-memory client's seeded files: filters by purpose, scan, agent and search narrow results, are written to the URL and restored on reload; paging reaches every file.
-- [ ] Infected file: download is disabled with text, a forced 409 shows the message; scan status is never colour-only.
-- [ ] Preview renders an `<img>` only for the four raster types with scan `clean`; SVG, HTML, PDF and an infected PNG render no `<img>`, `iframe` or `object` (DOM assertions).
-- [ ] A file named `<img src=x onerror=alert(1)>.png` renders as literal text.
-- [ ] Upload: progress, cancel, over-limit file rejected before upload, upload error and success each tested; without `files.write` upload and delete are absent.
-- [ ] Versions list shows commit hashes and run links (run links hidden when `runs@1` is not advertised).
-- [ ] A `file.changed` event updates the list without a manual refetch; `file.*` activity renders through the registered renderer.
-- [ ] Without `files@1` the nav item, agent tab and overview card are absent and `/files` shows "not available on this engine"; without `files.read` it shows "no access".
-- [ ] Skeleton, empty, no-results and error states each have a test; `axe-core` passes; `test:csp` visits `/files`, the drawer and an agent's Files tab with zero violations and passes the UX checks (360 px without overflow, layout shift, reduced motion); routes stay within their bundle budgets.
-- [ ] Every string in `en` and `cs`.
-- [ ] `bun run check` passes.
-- [ ] **Status** line above set to `done (#<PR>)`.
+- [x] With the in-memory client's seeded files: filters by purpose, scan, agent and search narrow results, are written to the URL and restored on reload; paging reaches every file.
+- [x] Infected file: download is disabled with text, a forced 409 shows the message; scan status is never colour-only.
+- [x] Preview renders an `<img>` only for the four raster types with scan `clean`; SVG, HTML, PDF and an infected PNG render no `<img>`, `iframe` or `object` (DOM assertions).
+- [x] A file named `<img src=x onerror=alert(1)>.png` renders as literal text.
+- [x] Upload: progress, cancel, over-limit file rejected before upload, upload error and success each tested; without `files.write` upload and delete are absent.
+- [x] Versions list shows commit hashes and run links (run links hidden when `runs@1` is not advertised).
+- [x] A `file.changed` event updates the list without a manual refetch; `file.*` activity renders through the registered renderer.
+- [x] Without `files@1` the nav item, agent tab and overview card are absent and `/files` shows "not available on this engine"; without `files.read` it shows "no access".
+- [x] Skeleton, empty, no-results and error states each have a test; `axe-core` passes; `test:csp` visits `/files`, the drawer and an agent's Files tab with zero violations and passes the UX checks (360 px without overflow, layout shift, reduced motion); routes stay within their bundle budgets.
+- [x] Every string in `en` and `cs`.
+- [x] `bun run check` passes.
+- [x] **Status** line above set to `done (#<PR>)`.
 
 ## Risks and open points
 
