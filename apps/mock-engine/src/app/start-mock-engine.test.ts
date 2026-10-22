@@ -16,6 +16,8 @@ import {
 import { ENGINE_API_ROUTES, KNOWN_CAPABILITIES, MemberId, OWNER_PERMISSIONS, SessionId } from '@ptbk/engine-api';
 import { describe, expect, it } from 'vitest';
 
+import { tlsCertificateInfo } from '../adapters/certificate-fingerprint';
+import { createDevCa, issueLeaf } from '../adapters/dev-ca';
 import { createMemoryIdentityStore } from '../adapters/memory-identity-store';
 import { NO_FAULTS } from '../domain/faults/fault-plan';
 import type { TunnelDuplex } from '../adapters/tunnel-duplex';
@@ -316,6 +318,34 @@ describe('startMockEngine', () => {
                 { hostname: 'agents.customer.test', kind: 'custom', certificateStatus: null, claimRegistered: null },
             ]);
             expect(security.engine.version).toBe('0.1.0');
+        });
+
+        it('reports the certificate it serves for its hostname, again after a renewal', async () => {
+            const clock = createFakeClock(Date.parse('2026-10-20T08:00:00Z'));
+            const ca = createDevCa([Hostname.parse('engine.test')], clock);
+            let leaf: ReturnType<typeof issueLeaf> | undefined;
+            const listeners: (() => void)[] = [];
+            const source: ManagedCertificateSource = {
+                current: () =>
+                    leaf === undefined
+                        ? undefined
+                        : { certificateChainPem: leaf.certificatePem, privateKeyPem: leaf.privateKeyPem },
+                onChange: (listener) => {
+                    listeners.push(listener);
+                    return () => undefined;
+                },
+                addHostnames: (hostnames) => {
+                    leaf = issueLeaf(ca, [...hostnames], clock);
+                },
+                close: () => undefined,
+            };
+            const started = await start(source);
+            const tls = async () => ((await read(started, 'getSecurityOverview')) as { tls: unknown }).tls;
+            expect(await tls()).toMatchObject(tlsCertificateInfo(leaf?.certificatePem ?? ''));
+
+            leaf = issueLeaf(ca, [started.engine.hostname], clock);
+            for (const listener of listeners) listener();
+            expect(await tls()).toMatchObject(tlsCertificateInfo(leaf.certificatePem));
         });
 
         it('keeps relay status and the dashboard URL across a reset', async () => {
