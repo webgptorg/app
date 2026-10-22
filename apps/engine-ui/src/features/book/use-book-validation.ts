@@ -1,5 +1,5 @@
 import type { Diagnostic } from '@ptbk/engine-api';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { useEngineApi } from '../../app/engine-api-context';
 
@@ -32,6 +32,7 @@ export function useBookValidation(source: string, enabled: boolean): BookValidat
     const engineApi = useEngineApi();
     const [result, setResult] = useState<ValidationResult>(NONE);
     const [checking, setChecking] = useState(false);
+    const cancelPending = useRef<() => void>(() => undefined);
 
     useEffect(() => {
         if (!enabled) return;
@@ -57,14 +58,18 @@ export function useBookValidation(source: string, enabled: boolean): BookValidat
                 },
             );
         }, VALIDATION_DELAY_MS);
-        return () => {
+        const cancel = () => {
             clearTimeout(timer);
             controller.abort();
             setChecking(false);
         };
+        cancelPending.current = cancel;
+        return cancel;
     }, [engineApi, source, enabled]);
 
+    // A check still pending is for the same text, and its answer would only repeat these.
     const show = useCallback((diagnostics: readonly Diagnostic[]) => {
+        cancelPending.current();
         setResult({ diagnostics, failed: false });
     }, []);
 

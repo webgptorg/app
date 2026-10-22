@@ -217,6 +217,13 @@ describe('the book editor page', { timeout: TIMEOUT_MS }, () => {
         // Without a prior check, so what is shown comes from the refused save.
         app.spies.validate.mockResolvedValue({ kind: 'ok', data: [] });
         appendToBook('\nMETA COLOR red');
+        await waitFor(() => {
+            expect(app.spies.validate).toHaveBeenLastCalledWith(
+                { source: `${SOURCE}\nMETA COLOR red` },
+                expect.any(AbortSignal),
+            );
+        }, WAIT);
+        await screen.findByText('No problems found.', {}, WAIT);
         await app.user.click(screen.getByRole('button', { name: 'Save' }));
 
         expect(
