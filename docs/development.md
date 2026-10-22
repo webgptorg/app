@@ -25,6 +25,7 @@ This also points git at the hooks in `.husky/`: `pre-commit` runs ESLint and Pre
 | `bun run test`                          | Vitest in every package                                                 |
 | `bun run --filter @ptbk/relay <script>` | A script in one package                                                 |
 | `bun run --filter @ptbk/e2e e2e`        | The browser e2e suite in Docker Compose (see [End to end](#end-to-end)) |
+| `bun run dev:stack up`                  | The whole product on your machine (see [Local stack](#local-stack))     |
 
 ## Dependencies
 
@@ -119,7 +120,7 @@ E2E_SCENARIO=dashboard bun run --filter @ptbk/e2e e2e:run --grep offline  # and 
 
 The specs (`e2e/src/dashboard.ts` holds their fixtures: a CDP virtual authenticator, the sign-up, billing and link-code steps, and `mockEngines.start` and `register`): `link-engine` (the relays read no static registry; before linking the engine's hostname does not connect; then sign-up through the dev outbox, the fake Checkout, the link code, the engine online within 60 s under the hostname its key derives, "Open" loading the engine through a relay with the engine's own certificate, sign-out and passkey sign-in), `link-codes` (a used and an expired code are refused at registration), `no-engine-requests` (no dashboard screen requests an engine hostname) and `offline` (a stopped engine turns offline after the threshold).
 
-The stack is meant for Playwright inside its network; [X-06](plan/tasks/X-06-local-dev-stack.md) reuses `compose.dashboard.yaml` for a stack you click through from the host.
+The stack is meant for Playwright inside its network; the [local stack](#local-stack) reuses `compose.dashboard.yaml` for a stack you click through from the host.
 
 Extra overlays (`E2E_OVERLAYS`, comma-separated) are layered after the scenario's:
 
@@ -141,6 +142,80 @@ chromium --user-data-dir="$(mktemp -d)" \
 ```
 
 Chromium on Linux trusts the CA once it is in your NSS database (`certutil -A -d sql:$HOME/.pki/nssdb -n ptbk-e2e -t C,, -i /tmp/ptbk-e2e-ca.pem`; remove it with `certutil -D -d sql:$HOME/.pki/nssdb -n ptbk-e2e`); on macOS, add it to the login keychain only for the session and delete it afterwards. The CA is name-constrained to `engine.test` and `ptbk.test`, so it cannot vouch for any other site.
+
+## Local stack
+
+The whole product on your machine (X-06): the dashboard, both relays and the mock engine, from the same images and service definitions as the e2e `dashboard` scenario plus `e2e/compose.dev.yaml`. You sign up with a real passkey, link the mock engine, see it online, open it through relay-a and use the engine UI, with no cloud account and no token.
+
+### Prerequisites
+
+- macOS with OrbStack or Docker Desktop, or Linux with Docker Engine 25+ (Compose 2.24+). Windows is not supported for now.
+- Bun and Node 24, as above; `bun install` done.
+- Free on 127.0.0.1: ports 443 (relay-a), 8444 (dashboard) and 1053 (the resolver for the host). With `--no-system`, 8443 instead of 443.
+- Linux only: `certutil` (`libnss3-tools` on Debian and Ubuntu) and `systemd-resolved`.
+
+### First run
+
+```sh
+bun run dev:stack up     # builds, creates the dev CA in .dev/pki/, starts everything, prints the URLs
+bun run dev:trust        # once per machine: trust the dev CA and resolve the test domains (one sudo prompt)
+```
+
+Then open `https://app.ptbk.test:8444/`, sign up (the link is on `https://app.ptbk.test:8444/__dev/mailbox`), subscribe through the fake Checkout under Billing, create a link code on "Link an engine" and paste the command the page shows:
+
+```sh
+bun run dev:link <code>  # registers the stack's mock engine with that code and starts it
+```
+
+The engine turns online after its first heartbeat (every 15 s; the list refreshes every minute, or reload). "Open" goes to `https://<engineId>.engine.test/` through relay-a; sign in there by picking a member (the mock engine's dev login, `MOCK_DEV_LOGIN`), with the `small-team` data seeded. The engine UI runs under the engine's own CSP with Trusted Types, as everywhere.
+
+| Command                               | What it does                                                                                                    |
+| ------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `bun run dev:stack up [--no-system]`  | Builds, creates or reuses the dev CA, starts the stack (project `ptbk-dev`), starts the engine if it is linked  |
+| `bun run dev:stack down`              | Stops it; the account, passkeys, linked engine and engine data stay in the project's volumes                    |
+| `bun run dev:stack reset`             | Stops it and drops every volume: a new dashboard database and a new engine key. The dev CA stays                |
+| `bun run dev:stack logs [service...]` | Service logs with timestamps                                                                                    |
+| `bun run dev:link <code>`             | Registers the stack's engine with a link code from the dashboard and (re)starts it                              |
+| `bun run dev:trust [--dry-run]`       | Trusts the dev CA and adds the resolver entries; prints each command before it runs it, `--dry-run` only prints |
+| `bun run dev:untrust [--dry-run]`     | Removes both again and checks that nothing is left; `--check` only checks                                       |
+
+The fake billing state is in memory, so after `down` and `up` the account is unsubscribed again: repeat the Checkout before linking another engine. Nothing else is lost.
+
+What the stack publishes, all on 127.0.0.1 and nothing beyond (`dev:stack up` refuses a merged config that would): relay-a on 443, the dashboard on 8444, and a CoreDNS on 1053 that answers 127.0.0.1 for `app.ptbk.test` and every `*.engine.test` name. The mock engine's control listener is not published. The dashboard's origin is `https://app.ptbk.test:8444` inside the stack too, so emailed links, the WebAuthn origin and the relays' registry URL are one and the same. The dev and e2e stacks share the subnet `10.89.231.0/24`, so only one of them runs at a time: `bun run dev:stack down` before `bun run --filter @ptbk/e2e e2e`.
+
+### The dev CA and trusting it
+
+`dev:stack up` creates the CA once, with the mock engine's own `dev-ca` command run as you in a one-off container, in `.dev/pki/dev-ca/` (git-ignored, key 0600, kept out of every image's build context). It is name-constrained (critical) to `engine.test` and `ptbk.test`, and excludes every IP address, so even trusted it cannot vouch for any real site; the stack's `init` reuses it for the relays', the release store's and the dashboard's certificates, and the engine issues its own leaf from it. It is replaced only when it nears expiry (after a year) or its domains change; `up` then says to run `dev:trust` again.
+
+`dev:trust` checks those name constraints before it trusts anything, then:
+
+- macOS: `security add-trusted-cert -r trustRoot -k ~/Library/Keychains/login.keychain-db .dev/pki/dev-ca/ca-cert.pem` (macOS asks for your password or Touch ID), and one `sudo sh -c '…'` that writes `/etc/resolver/ptbk.test` and `/etc/resolver/engine.test` (`nameserver 127.0.0.1`, `port 1053`). Only those two domains, never all of `.test`.
+- Linux: `certutil -A -d sql:$HOME/.pki/nssdb -n ptbk-dev-ca -t C,,` (Chrome and Chromium read that database), and one `sudo sh -c '…'` that writes `/etc/systemd/resolved.conf.d/ptbk-dev.conf` (`DNS=127.0.0.1:1053`, `Domains=~ptbk.test ~engine.test`) and restarts `systemd-resolved`.
+
+`dev:untrust` deletes every certificate named "Promptbook mock engine dev CA" from the login keychain (with its trust settings) or the `ptbk-dev-ca` entry from NSS, removes the resolver files it wrote (a file with other content is reported, never removed), and fails unless nothing is left. Run `bun run dev:trust --dry-run` first to see exactly what it would do.
+
+### Without changing the machine: `--no-system`
+
+`bun run dev:stack up --no-system` trusts nothing and resolves nothing on the host. relay-a moves to 127.0.0.1:8443, and the command prints a Chrome launch line: its own profile in `.dev/chromium`, `--host-resolver-rules` mapping `app.ptbk.test` to 127.0.0.1:8444, `*.engine.test` to 127.0.0.1:8443 and every other name to nothing, and `--ignore-certificate-errors`. A browser profile cannot hold its own trust anchor on macOS, so that profile ignores certificate errors instead; the resolver rules keep it from reaching anything but the stack. Chrome allows WebAuthn under that flag (the smoke test below shows it with a virtual authenticator), so it is also the fallback when 443 cannot be bound.
+
+The automated smoke test drives exactly that path from the host, against a fresh stack:
+
+```sh
+bun run dev:stack reset && bun run dev:stack up --no-system
+bunx playwright install chromium                          # once, if Playwright's Chromium is missing on the host
+bun run --filter @ptbk/e2e dev:smoke                      # E2E_DEV_BROWSER_CHANNEL=chrome uses Google Chrome
+```
+
+`e2e/tests/dev-stack/click-through.spec.ts` signs up with a virtual authenticator through a link on `/__dev/mailbox`, completes the fake Checkout, runs the install command the page shows (`bun run dev:link <code>`), waits for the engine to be online, opens it (the engine's own certificate from the dev CA, the engine CSP with Trusted Types), signs in with the dev login and chats with an agent; then it signs out, runs `dev:stack down` and `up --no-system`, signs back in with the same passkey and sees the same engine online. No CSP violation may occur anywhere.
+
+### Troubleshooting
+
+- **`up` fails to bind 127.0.0.1:443.** OrbStack binds it as is; Docker Desktop needs its privileged port helper (it asks for the admin password once). Another local server on 443 must stop. Otherwise use `--no-system`.
+- **The browser cannot find `app.ptbk.test`.** `dig @127.0.0.1 -p 1053 app.ptbk.test` must answer 127.0.0.1 while the stack runs; `scutil --dns` (macOS) or `resolvectl status` (Linux) must list the two domains. Chrome's "Use secure DNS" with a fixed provider bypasses the system resolver: set it to the OS default.
+- **A certificate error, or passkeys refused.** WebAuthn needs a trusted certificate: run `bun run dev:trust` and restart the browser; check that `bun run dev:trust --dry-run` has nothing left to do. A CA replaced after a year has to be trusted again.
+- **`dev:link` says the engine was already linked.** The engine keeps its registration across `down` and `up`; the code was not used. `bun run dev:stack reset` starts over with a new engine.
+- **The engine stays offline.** `bun run dev:stack logs mock-engine relay-a dashboard`. Leaf certificates and relay registry keys last 7 days and are renewed on every `up`, so a stack that ran for a week needs `down` and `up`.
+- **The e2e suite fails with an overlapping network.** The dev stack is running: `bun run dev:stack down` first.
 
 ## Parallel work
 

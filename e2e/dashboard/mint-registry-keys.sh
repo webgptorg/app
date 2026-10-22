@@ -1,8 +1,9 @@
 #!/bin/sh
 # The registry-keys service (compose.dashboard.yaml), once per stack before the dashboard serves and the relays start:
 # applies the migrations to the dashboard's local D1 and mints one registry key per relay into it with D-04's own mint
-# script. Each key goes only to /registry-tokens/<relay>/token, in a volume that only that relay mounts, owned by the
-# relays' user (uid 1000, SERVICE_UID in src/stack.ts); everything else the script prints goes to the log.
+# script, valid for REGISTRY_KEY_DAYS (1 by default; the dev stack, which runs for days, sets 7). Each key goes only
+# to /registry-tokens/<relay>/token, in a volume that only that relay mounts, owned by the relays' user (uid 1000,
+# SERVICE_UID in src/stack.ts); everything else the script prints goes to the log.
 set -eu
 umask 077
 cd /repo/apps/dashboard

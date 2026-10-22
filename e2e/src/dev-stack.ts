@@ -64,7 +64,7 @@ function readCaFacts(repoRoot: string): Promise<DevCaFacts | null> {
 
 /**
  * The persistent dev CA: the mock engine's own `dev-ca` in a one-off init container, as the host user, so the files in
- * .dev/pki/ are the user's and the key never leaves this checkout. It reuses the CA until it nears expiry or its
+ * .dev/pki/ are the user's; besides this checkout, the key exists only in the stack's engine volume. It reuses the CA until it nears expiry or its
  * domains change, as the engine itself would; a new one has to be trusted again.
  */
 async function ensureDevCa(context: DevContext): Promise<DevCaFacts> {
@@ -206,6 +206,21 @@ async function up(context: DevContext, noSystem: boolean): Promise<void> {
     await printAccess(context, ca, noSystem);
 }
 
+interface RegisterReport {
+    readonly outcome?: unknown;
+    readonly hostname?: unknown;
+    readonly reason?: unknown;
+}
+
+/** The register command's last stdout line, its JSON report (mock engine README, `register`). */
+function parseReport(stdout: string): RegisterReport | null {
+    try {
+        return JSON.parse(stdout.trim().split('\n').at(-1) ?? '') as RegisterReport | null;
+    } catch {
+        return null;
+    }
+}
+
 /** `register --link` in a one-off engine container with the stack's key, then the engine service from that registration. */
 async function link(context: DevContext, code: string): Promise<number> {
     const { target } = context;
@@ -228,21 +243,19 @@ async function link(context: DevContext, code: string): Promise<number> {
             code,
         ),
     );
-    const report = JSON.parse(registered.stdout.trim().split('\n').at(-1) ?? 'null') as {
-        outcome?: unknown;
-        hostname?: unknown;
-        reason?: unknown;
-    } | null;
+    const report = parseReport(registered.stdout);
     if (registered.code !== 0 || typeof report?.hostname !== 'string') {
         say(`the engine was not linked: ${JSON.stringify(report?.reason ?? report?.outcome ?? 'no report')}`);
         if ((await linkedEngineHost(target)) !== null) await startEngine(target);
         return 1;
     }
+    await startEngine(target);
     if (report.outcome === 'already-registered') {
         say('the engine was already linked, so the code was not used; `bun run dev:stack reset` starts over');
+        say(`engine       https://${report.hostname}/`);
+    } else {
+        say(`engine linked: https://${report.hostname}/ (online on the dashboard after its first heartbeat)`);
     }
-    await startEngine(target);
-    say(`engine linked: https://${report.hostname}/ (online on the dashboard after its first heartbeat)`);
     return 0;
 }
 
@@ -285,7 +298,15 @@ function onlyFlags(args: readonly string[], allowed: readonly string[]): boolean
 
 /** Entry from cli.ts: `dev …`, `link <code>`, `trust [--dry-run]`, `untrust [--dry-run | --check]`. */
 export async function devMain(command: string, args: readonly string[], e2eDir: string): Promise<number> {
-    const context: DevContext = { repoRoot: join(e2eDir, '..'), target: devTarget(e2eDir) };
+    try {
+        return await dispatch(command, args, { repoRoot: join(e2eDir, '..'), target: devTarget(e2eDir) });
+    } catch (error) {
+        process.stderr.write(`dev:stack: ${error instanceof Error ? error.message : 'failed'}\n`);
+        return 1;
+    }
+}
+
+async function dispatch(command: string, args: readonly string[], context: DevContext): Promise<number> {
     switch (command) {
         case 'dev': {
             const parsed = parseDevStackArgs(args);
