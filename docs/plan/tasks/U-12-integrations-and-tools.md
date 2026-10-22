@@ -2,7 +2,7 @@
 
 - **Lane:** U · **Module:** `apps/engine-ui` · **Milestone:** M2
 - **Depends on:** U-02, C-07
-- **Status:** todo
+- **Status:** in progress (feat/u-12-integrations)
 - **Spec:** Security hardening (4 outbound list, 7 secrets), What our platform can and cannot do (write-only credentials); ADRs: [0015](../../adr/0015-ui-architecture-and-design-system.md), [0016](../../adr/0016-engine-capabilities.md)
 
 ## Goal
