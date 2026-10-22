@@ -14,6 +14,8 @@ import { filesFeature } from './files-feature';
 import { AgentFilesSearch, fileListParams, FilesSearch } from './files-search';
 
 const TIMEOUT_MS = 30_000;
+/** The card's code is lazy and waits for two queries, slower than the default wait on a busy runner. */
+const CARD_LOAD_MS = 10_000;
 const allBut = (...missing: readonly Permission[]) => PERMISSIONS.filter((permission) => !missing.includes(permission));
 const ALL_CAPABILITIES = Object.values(KNOWN_CAPABILITIES);
 const WITHOUT_FILES = ALL_CAPABILITIES.filter(({ id }) => id !== 'files');
@@ -130,7 +132,7 @@ describe('knowledge at a glance', { timeout: TIMEOUT_MS }, () => {
     it('counts files by purpose, links scan problems and lists the latest outputs', async () => {
         const engine = createFilesEngine();
         renderWithProviders({ path: '/agents/agent-ada', engineApi: engine.client });
-        const card = await screen.findByRole('region', { name: 'Knowledge at a glance' });
+        const card = await screen.findByRole('region', { name: 'Knowledge at a glance' }, { timeout: CARD_LOAD_MS });
         const outputs = await within(card).findByRole('link', { name: HOSTILE_FILE_NAME });
         expect(outputs.getAttribute('href')).toBe(`/agents/agent-ada/files?file=${FILE_IDS.hostile}`);
         expect(within(card).getByText('Knowledge').nextElementSibling?.textContent).toBe('2');
@@ -143,7 +145,7 @@ describe('knowledge at a glance', { timeout: TIMEOUT_MS }, () => {
     it('says when an agent has no scan problems and no outputs', async () => {
         const engine = createFilesEngine();
         renderWithProviders({ path: '/agents/agent-grace', engineApi: engine.client });
-        const card = await screen.findByRole('region', { name: 'Knowledge at a glance' });
+        const card = await screen.findByRole('region', { name: 'Knowledge at a glance' }, { timeout: CARD_LOAD_MS });
         expect(await within(card).findByText('This agent has produced no files yet.')).toBeDefined();
         expect(within(card).getByText(/1 file needs attention/)).toBeDefined();
     });
