@@ -1,9 +1,10 @@
 {
-  "$comment": "Gzipped bytes of JavaScript a route loads, its static imports included. The entry covers the shell; a route lists its source file. D-09 gives src/client/routes/_app/account.tsx 40000: the passkey and session tables bring DataTable (TanStack Table and Virtual), measured 36581. D-07 gives src/client/routes/_app/admin/billing.tsx the same 40000 for the same DataTable, measured 33776.",
+  "$comment": "Gzipped bytes of JavaScript a route loads, its static imports included. The entry covers the shell; a route lists its source file. D-09 gives src/client/routes/_app/account.tsx 40000: the passkey and session tables bring DataTable (TanStack Table and Virtual), measured 36581. D-07 gives src/client/routes/_app/admin/billing.tsx the same 40000 for the same DataTable, measured 33776. D-08 gives src/client/routes/_app/admin/engines/$engineId/hostnames.tsx 56000: the same DataTable plus the form layer (TanStack Form), measured 54141.",
   "entry": 160000,
   "routeDefault": 30000,
   "routes": {
     "src/client/routes/_app/account.tsx": 40000,
-    "src/client/routes/_app/admin/billing.tsx": 40000
+    "src/client/routes/_app/admin/billing.tsx": 40000,
+    "src/client/routes/_app/admin/engines/$engineId/hostnames.tsx": 56000
   }
 }

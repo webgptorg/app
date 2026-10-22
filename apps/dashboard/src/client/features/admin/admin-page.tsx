@@ -2,6 +2,7 @@ import { Card } from '@ptbk/ui';
 
 import { m } from '../../../paraglide/messages';
 import { Link } from '../../core/link';
+import { EngineLookupCard } from './hostnames/engine-lookup-card';
 
 /** `/admin`: the platform admin area; custom domains (D-08) and abuse tools (I-05) add their entries here. */
 export function AdminPage() {
@@ -16,6 +17,7 @@ export function AdminPage() {
                     </li>
                 </ul>
             </Card>
+            <EngineLookupCard />
         </div>
     );
 }
