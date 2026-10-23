@@ -1,0 +1,91 @@
+# R-05's load test: the relay from its production bundle, capped like a Hetzner CX22 (2 vCPU, 4 GB), and an uncapped
+# generator next to it. Driven by run.ts (`bun run --filter @ptbk/relay load:idle` and friends); by hand:
+#
+#   docker compose -f apps/relay/load/docker-compose.load.yml run --rm prepare
+#   docker compose -f apps/relay/load/docker-compose.load.yml up -d --wait relay
+#   docker compose -f apps/relay/load/docker-compose.load.yml run --rm generator load/idle-tunnels.ts --tunnels 50
+#   docker compose -f apps/relay/load/docker-compose.load.yml down -v
+#
+# Keys never share a volume with what does not own them: the relay mounts its own key and the public files only.
+
+name: ptbk-load
+
+x-build: &build
+  context: ../../..
+  dockerfile: apps/relay/load/Dockerfile
+
+# Linux's defaults, as on an Ubuntu VPS; OrbStack's VM lets receive buffers grow to 32 MB, which would let a
+# slow-reading browser's kernel soak up what the relay should have to hold.
+x-tcp-buffers: &tcp-buffers
+  net.ipv4.tcp_rmem: '4096 131072 6291456'
+  net.ipv4.tcp_wmem: '4096 16384 4194304'
+
+x-generator: &generator
+  image: ptbk-load-generator
+  build:
+    <<: *build
+    target: generator
+  profiles: [tools]
+  ulimits:
+    nofile: { soft: 1048576, hard: 1048576 }
+  sysctls:
+    <<: *tcp-buffers
+    net.ipv4.ip_local_port_range: '1024 65000'
+  networks: [load]
+
+services:
+  relay:
+    build:
+      <<: *build
+      target: relay
+    cpus: 2
+    mem_limit: 4g
+    memswap_limit: 4g
+    ulimits:
+      nofile: { soft: 1048576, hard: 1048576 }
+    sysctls: *tcp-buffers
+    env_file:
+      - relay.env
+      - ${LOAD_RELAY_ENV_FILE:-relay.env}
+    environment:
+      NODE_OPTIONS: --import=/load/relay-probe.mts
+      LOAD_SAMPLES_FILE: /results/${LOAD_LABEL:-manual}.relay.csv
+      LOAD_META_FILE: /results/${LOAD_LABEL:-manual}.relay-meta.json
+      LOAD_SAMPLE_INTERVAL_MS: ${LOAD_SAMPLE_INTERVAL_MS:-5000}
+    volumes:
+      - public:/pki:ro
+      - relay-key:/relay-key:ro
+      - ${LOAD_RESULTS_DIR:-./results/manual}:/results
+    networks: [load]
+    stop_grace_period: 15s
+    healthcheck:
+      test: ['CMD', 'node', '/load/healthcheck.mts']
+      # Rare once healthy: every check is a node process in the relay's cgroup, and would show up as relay CPU.
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+      start_interval: 500ms
+
+  prepare:
+    <<: *generator
+    command: [load/prepare.ts]
+    volumes:
+      - public:/pki
+      - relay-key:/relay-key
+      - engines:/engines
+
+  generator:
+    <<: *generator
+    volumes:
+      - public:/pki:ro
+      - engines:/engines:ro
+      - ${LOAD_RESULTS_DIR:-./results/manual}:/results
+
+networks:
+  load: {}
+
+volumes:
+  public: {}
+  relay-key: {}
+  engines: {}

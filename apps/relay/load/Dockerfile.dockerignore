@@ -1,0 +1,16 @@
+# Allowlist: only what the load images need, so local secrets, build output and results never reach an image.
+*
+!package.json
+!bun.lock
+!bunfig.toml
+!tsconfig.base.json
+!apps/*/package.json
+!packages/*/package.json
+!e2e/package.json
+!packages/protocol/
+!apps/relay/
+**/node_modules
+**/dist
+**/coverage
+**/.env*
+apps/relay/load/results

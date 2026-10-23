@@ -47,3 +47,6 @@ e2e/test-results/
 
 # The local dev stack's persistent dev CA (with its key) and its --no-system Chrome profile (X-06).
 .dev/
+
+# Relay load test output (R-05); the report keeps what it cites under docs/perf/.
+apps/relay/load/results/

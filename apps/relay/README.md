@@ -16,6 +16,16 @@ node apps/relay/dist/main.mjs        # needs no node_modules
 
 `SIGTERM` and `SIGINT` stop the relay gracefully: it stops accepting, closes every tunnel with `SHUTTING_DOWN` (4003) so engines reconnect to a peer relay at once, destroys sockets that have not closed after 2 s, then exits. `SIGHUP` reloads the static registry file (keeping the previous contents if the new file is invalid), expires the registry cache, loads the relay certificate and key into a fresh TLS context for new connections (open tunnels stay connected; unusable files are logged as `relay.certificate-rejected` and the old certificate stays), and runs a revalidation round, so a registry change takes effect at once. An uncaught exception or unhandled rejection is logged as `relay.crashed` with the error's name only, and the relay exits with 1 for systemd to restart it (I-01); it never continues in an unknown state. Logs are one JSON line per event on stdout and carry only the metadata the spec lists (Metadata we still see): no content, keys, tokens, file contents or browser hostnames. Every event and its fields are listed in `src/domain/log-events.ts`; the logger's types accept nothing else, the JSON logger drops any other field, and `test/log-allowlist.test.ts` fails if a list gains a browser IP, SNI, hostname or secret field or if the engine IP appears outside the tunnel events.
 
+## Load test
+
+`load/` (dev only, never bundled) measures the relay in a container capped like the reference host (2 vCPU, 4 GB): idle tunnels, a reconnect storm, screencast-shaped streams, fairness under a saturating engine, and worst-case memory per connection. The generator plays engines and browsers with `@ptbk/protocol` and `ws`, with M-01's `WINDOW` credit rules. One command per scenario; results land in `load/results/`. Method, numbers and the limits they set: [docs/perf/relay-load-test.md](../../docs/perf/relay-load-test.md).
+
+```sh
+bun run --filter @ptbk/relay load:idle         # 1,000 / 2,000 / 5,000 idle tunnels, reconnect storm
+bun run --filter @ptbk/relay load:screencast   # frame size × fps × streams with 1,000 idle tunnels, fairness
+bun run --filter @ptbk/relay load:worst-case   # slow-reading browsers, pre-ClientHello flood
+```
+
 ## Environment
 
 Only `RELAY_*` and `LOG_LEVEL` are read; an unknown `RELAY_*` name is an error, and an empty value counts as unset. Errors name the setting, never its value. The limits' defaults are starting points: R-05 measures them and I-05 sets the production values.

@@ -10,7 +10,10 @@
     "start": "node dist/main.mjs",
     "typecheck": "tsc --noEmit -p .",
     "test": "tsdown --log-level warn && vitest run --coverage",
-    "check:metrics": "sh scripts/check-metrics.sh"
+    "check:metrics": "sh scripts/check-metrics.sh",
+    "load:idle": "tsx load/run.ts idle",
+    "load:screencast": "tsx load/run.ts screencast",
+    "load:worst-case": "tsx load/run.ts worst-case"
   },
   "dependencies": {
     "@ptbk/protocol": "workspace:*",
