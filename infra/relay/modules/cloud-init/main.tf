@@ -123,7 +123,10 @@ locals {
 
     write_files = local.write_files
 
+    # lego first, while the image's own resolver is in place: in the VM test, GitHub's name did not resolve for a while
+    # right after the switch to the freshly restarted unbound.
     runcmd = [
+      ["/usr/local/libexec/ptbk-relay/install-lego"],
       ["install", "-d", "-m", "0700", "-o", "root", "-g", "root", "/etc/ptbk-relay/credentials"],
       ["modprobe", "nf_conntrack"],
       ["systemctl", "restart", "systemd-sysctl.service"],
@@ -135,7 +138,6 @@ locals {
       ["systemctl", "enable", "nftables.service"],
       ["systemctl", "restart", "nftables.service"],
       ["systemctl", "restart", "ssh.service"],
-      ["/usr/local/libexec/ptbk-relay/install-lego"],
       ["systemctl", "daemon-reload"],
       ["systemctl", "enable", "ptbk-relay.service", "ptbk-relay-cert.timer"],
       ["systemctl", "start", "ptbk-relay-cert.timer"],
