@@ -208,7 +208,8 @@ jobs:
       - run: bun run --filter @ptbk/relay check:metrics
 
   # The relay host's real user data booted in a Debian 13 cloud image under KVM, with secrets placed and a test relay
-  # image deployed the way the README and I-03 do it; then verify.sh, port scans from inside and outside the SSH
+  # image deployed the way the README and I-03 do it; the relay certificate issued by the host's own unit from a local
+  # Pebble through a Cloudflare API and DNS stand-in; then verify.sh, port scans from inside and outside the SSH
   # allowlist, the deploy key's forced command, and verify.sh failing on password SSH (I-01).
   relay-host-vm:
     runs-on: ubuntu-24.04

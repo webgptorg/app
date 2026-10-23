@@ -63,7 +63,8 @@ shellcheck --external-sources \
     "$infra"/relay/scripts/*.sh \
     "$infra"/relay/test/*.sh \
     "$infra"/cloudflare/scripts/*.sh \
-    "$infra"/relay/modules/cloud-init/files/{renew-certificate,install-certificate,ptbk-relay-deploy}
+    "$infra"/relay/modules/cloud-init/files/{renew-certificate,install-certificate,ptbk-relay-deploy} \
+    /usr/local/libexec/ptbk-relay/install-lego
 shellcheck --shell=sh "$infra/relay/modules/cloud-init/files/dhclient-enter-hook"
 
 printf '\nAll host file checks passed.\n'

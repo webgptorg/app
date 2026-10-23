@@ -147,6 +147,37 @@ run "staggers_reboot_and_renewal" {
   }
 }
 
+run "installs_the_pinned_lego" {
+  command = apply
+
+  assert {
+    condition     = !contains(local.cloud_config.packages, "lego")
+    error_message = "Debian's lego lacks the Cloudflare DNS provider; the pinned release replaces it."
+  }
+
+  assert {
+    condition = alltrue([
+      for value in [
+        "version=${local.lego.version}\n",
+        "amd64) sha256=${local.lego.sha256_amd64} ;;",
+        "arm64) sha256=${local.lego.sha256_arm64} ;;",
+        "sha256sum --check",
+      ] : strcontains(local.files["/usr/local/libexec/ptbk-relay/install-lego"], value)
+    ])
+    error_message = "The installer checks the pinned release's SHA-256 for the host's architecture."
+  }
+
+  assert {
+    condition     = contains(local.cloud_config.runcmd, ["/usr/local/libexec/ptbk-relay/install-lego"])
+    error_message = "cloud-init installs lego at first boot."
+  }
+
+  assert {
+    condition     = strcontains(local.files["/etc/systemd/system/ptbk-relay-cert.service"], "Environment=CLOUDFLARE_DNS_API_TOKEN_FILE=%d/acme-dns-token\n")
+    error_message = "lego reads the challenge zone token from the unit's credential."
+  }
+}
+
 run "keeps_logs_seven_days" {
   command = apply
 

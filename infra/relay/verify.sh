@@ -144,6 +144,12 @@ for setting in "passwordauthentication no" "kbdinteractiveauthentication no" "pe
 done
 report "no account has a usable password" "$(awk -F: '$2 !~ /^[!*]/ { print $1 }' /etc/shadow)"
 
+echo "== certificate"
+check "ptbk-relay-cert.timer is enabled" systemctl is-enabled --quiet ptbk-relay-cert.timer
+# Debian's lego is built without the Cloudflare DNS provider; cloud-init installs the pinned release instead.
+check "lego is installed from the pinned release" /usr/local/bin/lego --version
+check "Debian's lego is not installed" test -z "$(dpkg-query -W -f='${db:Status-Status}' lego 2>/dev/null | grep -x installed)"
+
 echo "== updates, time, logs"
 check "unattended-upgrades is installed" dpkg-query -W unattended-upgrades
 check "package lists update daily" apt_setting 'APT::Periodic::Update-Package-Lists "1";'

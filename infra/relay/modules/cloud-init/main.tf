@@ -11,6 +11,14 @@ locals {
 
   listen_backlog = 8192
 
+  # The upstream lego release the hosts install (ADR 0011), with the SHA-256 of each architecture's tarball from the
+  # release's checksums file. Bump all three together.
+  lego = {
+    version      = "5.5.2"
+    sha256_amd64 = "2a35505089e7772c92e1e9ac144df91151ef2eca8568630db0ff91fca06d9bef"
+    sha256_arm64 = "15b14ec2ab14fde69cc8396eb0204c5ce4327e31a486953225a6059b26db3e8c"
+  }
+
   # Every file is written after the packages are installed (defer), so package defaults never overwrite them, and
   # runcmd then (re)starts each service with its final configuration.
   write_files = [
@@ -61,6 +69,7 @@ locals {
       }) },
       { path = "/usr/local/libexec/ptbk-relay/renew-certificate", permissions = "0755", content = file("${local.files_dir}/renew-certificate") },
       { path = "/usr/local/libexec/ptbk-relay/install-certificate", permissions = "0700", content = file("${local.files_dir}/install-certificate") },
+      { path = "/usr/local/libexec/ptbk-relay/install-lego", permissions = "0700", content = templatefile("${local.files_dir}/install-lego.tftpl", local.lego) },
       { path = "/usr/local/sbin/ptbk-relay-deploy", permissions = "0755", content = file("${local.files_dir}/ptbk-relay-deploy") },
       { path = "/etc/sudoers.d/ptbk-deploy", permissions = "0440", content = file("${local.files_dir}/sudoers-ptbk-deploy") },
     ] : merge(entry, { owner = "root:root", defer = true })
@@ -82,7 +91,7 @@ locals {
     package_upgrade            = true
     package_reboot_if_required = true
     packages = [
-      "podman", "nftables", "unbound", "chrony", "unattended-upgrades", "lego", "bind9-dnsutils",
+      "podman", "nftables", "unbound", "chrony", "unattended-upgrades", "bind9-dnsutils", "curl",
     ]
 
     users = concat(
@@ -126,6 +135,7 @@ locals {
       ["systemctl", "enable", "nftables.service"],
       ["systemctl", "restart", "nftables.service"],
       ["systemctl", "restart", "ssh.service"],
+      ["/usr/local/libexec/ptbk-relay/install-lego"],
       ["systemctl", "daemon-reload"],
       ["systemctl", "enable", "ptbk-relay.service", "ptbk-relay-cert.timer"],
       ["systemctl", "start", "ptbk-relay-cert.timer"],

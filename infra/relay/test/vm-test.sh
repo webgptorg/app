@@ -1,13 +1,14 @@
 #!/bin/bash
 # Boots a Debian 13 cloud image with the relay host's real user data (NoCloud seed) under QEMU/KVM, places test
-# secrets and a test relay image the way an admin and the deploy would, then checks the host from outside:
-# verify.sh passes, a port scan shows 443 open to anyone and 22 only to the allowlist, the deploy key runs only its
-# forced command, and a deliberately broken setting (password SSH) makes verify.sh fail.
+# secrets and a test relay image the way an admin and the deploy would, has the host's own certificate unit issue the
+# relay certificate from a local Pebble through a stand-in Cloudflare API and DNS (acme-dns-standin.py), then checks
+# the host from outside: verify.sh passes, a port scan shows 443 open to anyone and 22 only to the allowlist, the
+# deploy key runs only its forced command, and a deliberately broken setting (password SSH) makes verify.sh fail.
 #
-# Needs root (bridge, tap, network namespace, NAT), Docker, qemu-system-x86, qemu-utils, cloud-image-utils, nmap and
-# curl, and /dev/kvm: without it (a laptop's Linux VM on Apple silicon) QEMU emulates the CPU, which takes about ten
-# times longer but boots the same image. Run from the repo root after `bun run --filter @ptbk/relay build`. Every
-# secret is generated here for this run and thrown away with the VM.
+# Needs root (bridge, tap, network namespace, NAT), Docker, qemu-system-x86, qemu-utils, cloud-image-utils, nmap,
+# curl, openssl and python3, and /dev/kvm: without it (a laptop's Linux VM on Apple silicon) QEMU emulates the CPU,
+# which takes about ten times longer but boots the same image. Run from the repo root after
+# `bun run --filter @ptbk/relay build`. Every secret is generated here for this run and thrown away with the VM.
 set -euo pipefail
 
 IMAGE_VERSION=20261017-2634
@@ -15,6 +16,7 @@ IMAGE_FILE=debian-13-genericcloud-amd64-$IMAGE_VERSION.qcow2
 IMAGE_URL=https://cloud.debian.org/images/cloud/trixie/$IMAGE_VERSION/$IMAGE_FILE
 IMAGE_SHA512=ec584ccabfef7120b4c4f7482adf0e615894d9292cedec446b64194b951ebe5dd97c336b5dcbae458333764b0edd516334506017f33c4f2020ef8d38b569ffe3
 TOFU_IMAGE=ghcr.io/opentofu/opentofu:1.11.14@sha256:6913ba3b281b0b7d2c2cb286e3aaf64d48c8c113e692218066b1b308fa2a2c8a
+PEBBLE_IMAGE=ghcr.io/letsencrypt/pebble:2.10.1@sha256:ddf230642b1a584f519f32e347de1b05a6e4c1f6c35c1863b33effeab5f78199
 
 BRIDGE=ptbk-br0
 TAP=ptbk-tap0
@@ -22,7 +24,11 @@ OUTSIDER=ptbk-outsider
 HOST_IP=10.231.0.1
 VM_IP=10.231.0.10
 OUTSIDER_IP=10.231.0.20
+# The Cloudflare API and DNS stand-in, and Pebble; both on 443, the only port the host may reach besides DNS.
+STANDIN_IP=10.231.0.2
+PEBBLE_IP=10.231.0.3
 RELAY_HOSTNAME=relay-ci.relays.ptbk.test
+CHALLENGE_ZONE=acme.ptbk.test
 
 repo=$(pwd)
 work=${VM_TEST_WORK:-$(mktemp -d)}
@@ -33,6 +39,8 @@ step() { printf '\n== %s\n' "$*"; }
 cleanup() {
     status=$?
     if [[ -f $work/qemu.pid ]]; then kill "$(cat "$work/qemu.pid")" 2>/dev/null || true; fi
+    if [[ -f $work/standin.pid ]]; then kill "$(cat "$work/standin.pid")" 2>/dev/null || true; fi
+    docker rm -f ptbk-vm-test-pebble >/dev/null 2>&1 || true
     if ((status != 0)) && [[ -f $work/console.log ]]; then
         echo "-- last lines of the VM console"
         tail -n 100 "$work/console.log"
@@ -56,6 +64,8 @@ vm() { ssh "${ssh_opts[@]}" "ci@$VM_IP" "$@"; }
 step "network: bridge, tap, an outsider outside the SSH allowlist, NAT to the internet"
 ip link add "$BRIDGE" type bridge
 ip addr add "$HOST_IP/24" dev "$BRIDGE"
+ip addr add "$STANDIN_IP/24" dev "$BRIDGE"
+ip addr add "$PEBBLE_IP/24" dev "$BRIDGE"
 ip link set "$BRIDGE" up
 ip tuntap add "$TAP" mode tap
 ip link set "$TAP" master "$BRIDGE" up
@@ -79,7 +89,7 @@ docker run --rm -e HOME=/tmp -v "$repo/infra:/infra" -v "$work:/work" -w /infra/
 docker run --rm -e HOME=/tmp -v "$repo/infra:/infra" -v "$work:/work" -w /infra/relay/test/render "$TOFU_IMAGE" \
     apply -no-color -auto-approve -input=false -state=/work/render.tfstate \
     -var "admin_key=$(cat "$work/admin.pub")" -var "deploy_key=$(cat "$work/deploy.pub")" \
-    -var "ssh_allowlist=[\"$HOST_IP/32\"]" >/dev/null
+    -var "ssh_allowlist=[\"$HOST_IP/32\"]" -var "acme_server=https://$PEBBLE_IP/dir" >/dev/null
 docker run --rm -e HOME=/tmp -v "$repo/infra:/infra" -v "$work:/work" -w /infra/relay/test/render "$TOFU_IMAGE" \
     output -no-color -state=/work/render.tfstate -raw user_data >"$work/user-data"
 printf 'instance-id: ptbk-relay-ci\nlocal-hostname: relay-ci\n' >"$work/meta-data"
@@ -97,6 +107,40 @@ ethernets:
       addresses: [9.9.9.9]
 EOF
 cloud-localds --network-config="$work/network-config" "$work/seed.iso" "$work/user-data" "$work/meta-data"
+
+step "Pebble and the Cloudflare API and DNS stand-in, under a CA made for this run"
+openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -days 2 -subj "/CN=ptbk VM test CA" \
+    -keyout "$work/test-ca.key" -out "$work/test-ca.pem" 2>/dev/null
+for ip in "$STANDIN_IP" "$PEBBLE_IP"; do
+    openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -days 2 -subj "/CN=$ip" \
+        -addext "subjectAltName=IP:$ip" -CA "$work/test-ca.pem" -CAkey "$work/test-ca.key" \
+        -keyout "$work/$ip.key" -out "$work/$ip.pem" 2>/dev/null
+done
+printf 'ptbk-vm-test-%s\n' "$(openssl rand -hex 16)" >"$work/acme-dns-token"
+python3 -I infra/relay/test/acme-dns-standin.py "$STANDIN_IP" "$work/acme-dns-token" "$work/$STANDIN_IP.pem" \
+    "$work/$STANDIN_IP.key" "$CHALLENGE_ZONE" "${RELAY_HOSTNAME#*.}" \
+    "_acme-challenge.$RELAY_HOSTNAME=${RELAY_HOSTNAME%%.*}.$CHALLENGE_ZONE" >"$work/standin.log" 2>&1 &
+echo $! >"$work/standin.pid"
+cat >"$work/pebble.json" <<EOF
+{
+  "pebble": {
+    "listenAddress": "$PEBBLE_IP:443",
+    "managementListenAddress": "$PEBBLE_IP:15000",
+    "certificate": "/work/$PEBBLE_IP.pem",
+    "privateKey": "/work/$PEBBLE_IP.key",
+    "httpPort": 5002,
+    "tlsPort": 5001,
+    "ocspResponderURL": "",
+    "externalAccountBindingRequired": false,
+    "domainBlocklist": [],
+    "retryAfter": { "authz": 3, "order": 5 },
+    "keyAlgorithm": "ecdsa",
+    "profiles": { "default": { "description": "90 days", "validityPeriod": 7776000 } }
+  }
+}
+EOF
+docker run -d --name ptbk-vm-test-pebble --network host -e PEBBLE_VA_NOSLEEP=1 -e PEBBLE_WFE_NONCEREJECT=0 \
+    -v "$work:/work:ro" "$PEBBLE_IMAGE" -config /work/pebble.json -dnsserver "$STANDIN_IP:53" >/dev/null
 
 step "Debian cloud image $IMAGE_VERSION"
 curl -fsSL --retry 3 -o "$work/$IMAGE_FILE" "$IMAGE_URL"
@@ -158,7 +202,8 @@ for _ in $(seq 60); do
     sleep 2
 done
 if ! healthy; then
-    vm 'sudo systemctl --no-pager status ptbk-relay.service; sudo journalctl --no-pager -n 100 -u ptbk-relay.service' || true
+    vm 'sudo systemctl --no-pager status ptbk-relay.service; sudo journalctl --no-pager -n 100 -u ptbk-relay.service' ||
+        true
     exit 1
 fi
 echo
@@ -168,7 +213,48 @@ metrics_url="https://$RELAY_HOSTNAME/metrics"
 status=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 3 -k --resolve "$RELAY_HOSTNAME:443:$VM_IP" "$metrics_url")
 test "$status" = 401
 curl -fsS --max-time 3 -k --resolve "$RELAY_HOSTNAME:443:$VM_IP" \
-    -H "Authorization: Bearer $(cat "$work/metrics-token")" "$metrics_url" | grep -q '^ptbk_relay_tunnels_active 0$'
+    -H "Authorization: Bearer $(cat "$work/metrics-token")" "$metrics_url" | grep -x 'ptbk_relay_tunnels_active 0'
+
+step "the relay certificate, from the host's own unit: lego, DNS-01 through the challenge zone (stand-ins)"
+# Test-only: the resolver asks the stand-in for ptbk.test (unsigned), and lego trusts this run's CA and calls the
+# stand-in instead of api.cloudflare.com. Everything else is the host as built.
+vm 'sudo install -m 0644 /dev/stdin /etc/unbound/unbound.conf.d/vm-test.conf' <<EOF
+server:
+    local-zone: "test." nodefault
+    domain-insecure: "ptbk.test"
+stub-zone:
+    name: "ptbk.test"
+    stub-addr: $STANDIN_IP
+EOF
+vm 'sudo systemctl restart unbound.service'
+vm 'sudo install -m 0644 /dev/stdin /etc/ptbk-relay/vm-test-ca.pem' <"$work/test-ca.pem"
+vm 'sudo install -D -m 0644 /dev/stdin /etc/systemd/system/ptbk-relay-cert.service.d/vm-test.conf' <<EOF
+[Service]
+Environment=SSL_CERT_FILE=/etc/ptbk-relay/vm-test-ca.pem
+Environment=CLOUDFLARE_BASE_URL=https://$STANDIN_IP/client/v4
+EOF
+vm 'sudo install -m 0600 -o root -g root /dev/stdin /etc/ptbk-relay/credentials/acme-dns-token' <"$work/acme-dns-token"
+vm 'sudo systemctl daemon-reload'
+if ! vm 'sudo systemctl start ptbk-relay-cert.service'; then
+    vm 'sudo journalctl --no-pager -n 60 -u ptbk-relay-cert.service' || true
+    tail -n 40 "$work/standin.log"
+    docker logs --tail 40 ptbk-vm-test-pebble
+    exit 1
+fi
+vm 'sudo journalctl --no-pager -o cat -u ptbk-relay-cert.service' | grep -E 'Found CNAME|installed a new certificate'
+curl -fsS --cacert "$work/test-ca.pem" "https://$PEBBLE_IP:15000/roots/0" >"$work/pebble-root.pem"
+# install-certificate restarted the relay with the new certificate; it must now verify against Pebble's root.
+for _ in $(seq 60); do
+    if curl -fsS --max-time 3 --cacert "$work/pebble-root.pem" --resolve "$RELAY_HOSTNAME:443:$VM_IP" \
+        "https://$RELAY_HOSTNAME/healthz" >/dev/null 2>&1; then break; fi
+    sleep 2
+done
+curl -fsS --max-time 3 --cacert "$work/pebble-root.pem" --resolve "$RELAY_HOSTNAME:443:$VM_IP" \
+    "https://$RELAY_HOSTNAME/healthz"
+echo
+# The daily run: nothing due, so no new certificate and no restart.
+vm 'sudo systemctl start ptbk-relay-cert.service'
+vm 'sudo journalctl --no-pager -o cat -u ptbk-relay-cert.service' | grep 'Skip renewal'
 
 step "verify.sh"
 infra/relay/verify.sh "ci@$VM_IP" "${ssh_opts[@]}"
