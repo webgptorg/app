@@ -307,10 +307,12 @@ export async function startRelayListener(
             certificateExpiresAtS,
         });
     };
-    const port = await browser.listen(config.listen.port, config.listen.host).catch((error: unknown) => {
-        processStats.stop();
-        throw error;
-    });
+    const port = await browser
+        .listen(config.listen.port, config.listen.host, config.listen.backlog)
+        .catch((error: unknown) => {
+            processStats.stop();
+            throw error;
+        });
     const revalidator = createRevalidator({
         clock,
         intervalMs: config.registry.ttlMs,

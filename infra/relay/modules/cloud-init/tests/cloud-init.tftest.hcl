@@ -123,6 +123,14 @@ run "sizes_the_relay" {
     condition     = strcontains(local.files["/etc/ptbk-relay/relay.env"], "RELAY_MAX_CONNECTIONS=10000\nRELAY_MEMORY_BUDGET_BYTES=1073741824\n")
     error_message = "The relay's own limits match the container sizing."
   }
+
+  assert {
+    condition = (
+      strcontains(local.files["/etc/ptbk-relay/relay.env"], "RELAY_LISTEN_BACKLOG=8192\n")
+      && strcontains(local.files["/etc/sysctl.d/90-ptbk-relay.conf"], "net.core.somaxconn = 8192\nnet.ipv4.tcp_max_syn_backlog = 8192\n")
+    )
+    error_message = "The relay listens with the backlog the kernel allows."
+  }
 }
 
 run "staggers_reboot_and_renewal" {

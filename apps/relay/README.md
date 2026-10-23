@@ -25,6 +25,7 @@ Only `RELAY_*` and `LOG_LEVEL` are read; an unknown `RELAY_*` name is an error, 
 | `RELAY_HOSTNAME`                          | required            | The relay's own hostname: the only name it terminates TLS for, and its `relayId` (C-02); never the engine domain or under it     |
 | `RELAY_LISTEN_HOST`                       | `0.0.0.0`           | IP address to listen on                                                                                                          |
 | `RELAY_LISTEN_PORT`                       | `443`               | `0` picks a free port (tests)                                                                                                    |
+| `RELAY_LISTEN_BACKLOG`                    | `511`               | Accept queue length (Node's default); the kernel caps it at `net.core.somaxconn`, so raise both together                         |
 | `RELAY_ENGINE_DOMAIN`                     | required            | Engine default hostnames are `<engineId>.<engine domain>`                                                                        |
 | `RELAY_TLS_CERT_FILE`                     | required            | Path to the relay's own certificate (PEM); refused if any DNS name or CN covers the engine domain or a name under it             |
 | `RELAY_TLS_KEY_FILE`                      | required            | Path to the relay's own private key (PEM)                                                                                        |

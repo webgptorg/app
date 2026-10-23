@@ -91,7 +91,7 @@ describe('createBrowserListener', () => {
         });
         listener = created;
         return {
-            port: await created.listen(port, '127.0.0.1'),
+            port: await created.listen(port, '127.0.0.1', 511),
             logger,
             hostname: engine.defaultHostname,
             listener: created,

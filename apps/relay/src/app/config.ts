@@ -134,6 +134,8 @@ const common = {
     RELAY_HOSTNAME: value(RelayIdSchema, 'must be a hostname'),
     RELAY_LISTEN_HOST: value(ipAddress, 'must be an IP address').default('0.0.0.0'),
     RELAY_LISTEN_PORT: integer(0, 65_535).default(443),
+    // Node's default; the kernel caps it at net.core.somaxconn.
+    RELAY_LISTEN_BACKLOG: integer(1, 65_535).default(511),
     RELAY_ENGINE_DOMAIN: value(HostnameSchema, 'must be a hostname'),
     RELAY_TLS_CERT_FILE: filePath,
     RELAY_TLS_KEY_FILE: filePath,
@@ -256,7 +258,8 @@ export type RegistryConfig =
 export interface RelayConfig {
     /** `RELAY_HOSTNAME`: the only name the relay terminates TLS for, and the `relayId` in tunnel challenges. */
     readonly relayId: RelayId;
-    readonly listen: { readonly host: string; readonly port: number };
+    /** `backlog` is the accept queue length, capped by the kernel at `net.core.somaxconn`. */
+    readonly listen: { readonly host: string; readonly port: number; readonly backlog: number };
     readonly engineDomain: Hostname;
     /** Paths to the relay's own certificate and key; never an engine's. */
     readonly tls: { readonly certFile: string; readonly keyFile: string };
@@ -358,7 +361,11 @@ export function parseRelayConfig(env: Readonly<Record<string, string | undefined
             : { kind: 'http', url: parsed.RELAY_REGISTRY_URL, token: secret(parsed.RELAY_REGISTRY_TOKEN) };
     return Object.freeze({
         relayId: parsed.RELAY_HOSTNAME,
-        listen: Object.freeze({ host: parsed.RELAY_LISTEN_HOST, port: parsed.RELAY_LISTEN_PORT }),
+        listen: Object.freeze({
+            host: parsed.RELAY_LISTEN_HOST,
+            port: parsed.RELAY_LISTEN_PORT,
+            backlog: parsed.RELAY_LISTEN_BACKLOG,
+        }),
         engineDomain: parsed.RELAY_ENGINE_DOMAIN,
         tls: Object.freeze({ certFile: parsed.RELAY_TLS_CERT_FILE, keyFile: parsed.RELAY_TLS_KEY_FILE }),
         registry: Object.freeze({

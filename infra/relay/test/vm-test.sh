@@ -108,7 +108,7 @@ if [[ -w /dev/kvm ]]; then
     boot_timeout=1500
 else
     echo "no /dev/kvm: emulating the CPU (TCG)"
-    accel=(-accel tcg,thread=multi -cpu max)
+    accel=(-accel 'tcg,thread=multi' -cpu max)
     boot_timeout=7200
 fi
 

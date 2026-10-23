@@ -9,6 +9,8 @@ locals {
 
   files_dir = "${path.module}/files"
 
+  listen_backlog = 8192
+
   # Every file is written after the packages are installed (defer), so package defaults never overwrite them, and
   # runcmd then (re)starts each service with its final configuration.
   write_files = [
@@ -17,7 +19,9 @@ locals {
         ssh_allow_v4 = local.ssh_allow_v4
         ssh_allow_v6 = local.ssh_allow_v6
       }) },
-      { path = "/etc/sysctl.d/90-ptbk-relay.conf", permissions = "0644", content = file("${local.files_dir}/sysctl.conf") },
+      { path = "/etc/sysctl.d/90-ptbk-relay.conf", permissions = "0644", content = templatefile("${local.files_dir}/sysctl.conf.tftpl", {
+        listen_backlog = local.listen_backlog
+      }) },
       { path = "/etc/modules-load.d/ptbk-relay.conf", permissions = "0644", content = file("${local.files_dir}/modules-load.conf") },
       { path = "/etc/systemd/journald.conf.d/ptbk-relay.conf", permissions = "0644", content = file("${local.files_dir}/journald.conf") },
       { path = "/etc/chrony/conf.d/ptbk-relay.conf", permissions = "0644", content = file("${local.files_dir}/chrony.conf") },
@@ -42,6 +46,7 @@ locals {
         registry_url        = var.registry_url
         max_connections     = var.max_connections
         memory_budget_bytes = var.memory_budget_mib * 1048576
+        listen_backlog      = local.listen_backlog
         settings            = var.relay_settings
       }) },
       { path = "/etc/ptbk-relay/limits.env", permissions = "0644", content = templatefile("${local.files_dir}/limits.env.tftpl", {
