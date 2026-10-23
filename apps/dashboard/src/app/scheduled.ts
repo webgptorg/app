@@ -29,7 +29,6 @@ function monitoringDeps(
     shared: {
         readonly metrics: DashboardMetrics;
         readonly logger: Logger;
-        readonly alerts: MonitoringJobDeps['alerts'];
     },
 ): MonitoringJobDeps | null {
     const { monitoring } = config;
@@ -56,7 +55,19 @@ function monitoringDeps(
     };
 }
 
-/** The Worker's one `scheduled` handler: dispatches the cron expression that fired to the jobs registered for it. */
+/** A cron run that cannot do its job must fail visibly, so Cloudflare's Cron Trigger log shows it as failed. */
+export class ScheduledConfigError extends Error {
+    constructor(problem: string) {
+        super(`scheduled run refused: ${problem}`);
+        this.name = 'ScheduledConfigError';
+    }
+}
+
+/**
+ * The Worker's one `scheduled` handler: dispatches the cron expression that fired to the jobs registered for it, then
+ * delivers the queued alerts. Outside dev a configuration that would leave monitoring off (invalid config, no
+ * `MONITORING`, no email binding) or a cron no job is registered for fails the run instead of passing quietly.
+ */
 export async function runScheduled(
     controller: Pick<ScheduledController, 'cron' | 'scheduledTime'>,
     env: Env,
@@ -67,18 +78,26 @@ export async function runScheduled(
     try {
         config = parseConfig(env);
     } catch (error) {
-        if (!(error instanceof ConfigError)) throw error;
-        createConsoleLogger({ service: 'dashboard' }).error('config.invalid', { paths: error.paths.join(',') });
-        return;
+        if (error instanceof ConfigError) {
+            createConsoleLogger({ service: 'dashboard' }).error('config.invalid', { paths: error.paths.join(',') });
+        }
+        throw error;
     }
     const logger = createConsoleLogger({ service: 'dashboard', environment: config.environment });
+    const strict = config.environment !== 'dev';
+    const refuse = (problem: string): never => {
+        logger.error('cron.refused', { problem });
+        throw new ScheduledConfigError(problem);
+    };
     const metrics = dashboardMetrics(env, config, dev);
     const email = emailSender(env, config, dev, metrics);
+    if (strict && config.monitoring === null) refuse('MONITORING is not set');
+    if (strict && email === null) refuse('the email binding is missing');
     const opsEmail = config.monitoring?.opsEmail;
     const alerts =
         email === null || opsEmail === undefined ? null : createEmailAlertSink({ email: email.email, to: opsEmail });
     const store = createDurableObjectMonitorStore(env.OPS_MONITOR);
-    const jobs = scheduledJobs({ monitoring: monitoringDeps(env, ctx, config, dev, { metrics, logger, alerts }) });
+    const jobs = scheduledJobs({ monitoring: monitoringDeps(env, ctx, config, dev, { metrics, logger }) });
     const dispatcher = createScheduledDispatcher({
         jobs,
         clock: systemClock,
@@ -86,8 +105,9 @@ export async function runScheduled(
         logger,
         metrics,
         recordRun: (run) => store.recordJobRun(run),
-        deliver: (fired) => deliverAlerts(fired, { alerts, logger }),
+        deliver: () => deliverAlerts({ store, alerts, metrics, logger }),
         jobTimeoutMs: JOB_TIMEOUT_MS,
     });
-    await dispatcher.dispatch(controller.cron, controller.scheduledTime);
+    const results = await dispatcher.dispatch(controller.cron, controller.scheduledTime);
+    if (strict && results.length === 0) refuse(`no job is registered for ${controller.cron}`);
 }

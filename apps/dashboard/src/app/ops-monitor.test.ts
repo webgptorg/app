@@ -32,7 +32,8 @@ describe('createOpsMonitor', () => {
     it('uses the default thresholds without MONITORING, and the configured ones with it', async () => {
         const defaults = createOpsMonitor(vars as unknown as Env, storage());
         const failed = (at: number) => ({ job: 'relay-monitor', outcome: 'failed', at }) as const;
-        expect(await defaults.recordJobRun(failed(1))).toEqual([]);
+        await defaults.recordJobRun(failed(1));
+        expect(await defaults.pending()).toEqual([]);
         const strict = createOpsMonitor(
             {
                 ...vars,
@@ -41,6 +42,7 @@ describe('createOpsMonitor', () => {
             } as unknown as Env,
             storage(),
         );
-        expect(await strict.recordJobRun(failed(1))).toMatchObject([{ rule: 'cron-job-failing', state: 'firing' }]);
+        await strict.recordJobRun(failed(1));
+        expect(await strict.pending()).toMatchObject([{ alert: { rule: 'cron-job-failing', state: 'firing' } }]);
     });
 });

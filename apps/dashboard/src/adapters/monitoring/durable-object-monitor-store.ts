@@ -1,10 +1,13 @@
-import type { Alert, JobRun, MonitorObservation } from '../../domain/monitoring/alert-rules';
+import type { DeliveryResult } from '../../domain/monitoring/alert-outbox';
+import type { JobRun, MonitorObservation, PendingAlert } from '../../domain/monitoring/alert-rules';
 import type { MonitorStore } from '../../domain/monitoring/monitor-store';
 
 /** The RPC surface of `OpsMonitor`, so this adapter does not depend on `cloudflare:workers`. */
 export interface OpsMonitorStub {
-    observe(observation: MonitorObservation): Promise<readonly Alert[]>;
-    recordJobRun(run: JobRun): Promise<readonly Alert[]>;
+    observe(observation: MonitorObservation): Promise<void>;
+    recordJobRun(run: JobRun): Promise<void>;
+    pending(): Promise<readonly PendingAlert[]>;
+    settle(results: readonly DeliveryResult[]): Promise<readonly PendingAlert[]>;
 }
 
 export interface OpsMonitorNamespace {
@@ -20,5 +23,7 @@ export function createDurableObjectMonitorStore(namespace: OpsMonitorNamespace):
     return {
         observe: (observation) => stub().observe(observation),
         recordJobRun: (run) => stub().recordJobRun(run),
+        pending: () => stub().pending(),
+        settle: (results) => stub().settle(results),
     };
 }

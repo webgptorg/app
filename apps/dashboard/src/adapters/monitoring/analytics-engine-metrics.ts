@@ -32,6 +32,8 @@ export function toDataPoint(metric: DashboardMetric): DataPoint {
         case 'ptbk_monitor_relay_health':
         case 'ptbk_monitor_relay_outcomes':
             return { blobs: [metric.name, '', metric.relay], doubles: [...metric.values] };
+        case 'ptbk_monitor_alert_deliveries_total':
+            return { blobs: [metric.name, metric.outcome], doubles: [1] };
         case 'ptbk_monitor_dashboard_checks_total':
             return { blobs: [metric.name, metric.healthy ? 'healthy' : 'unhealthy'], doubles: [1] };
     }

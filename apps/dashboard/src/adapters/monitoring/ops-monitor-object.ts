@@ -1,6 +1,7 @@
 import { DurableObject } from 'cloudflare:workers';
 
 import { monitorStateSchema } from '../../domain/monitoring/alert-rules';
+import type { DeliveryResult } from '../../domain/monitoring/alert-outbox';
 import type { JobRun, MonitorObservation } from '../../domain/monitoring/alert-rules';
 import type { MonitorStateStorage, MonitorStore } from '../../domain/monitoring/monitor-store';
 
@@ -44,5 +45,13 @@ export class OpsMonitorObject extends DurableObject<Env> {
 
     recordJobRun(run: JobRun) {
         return this.#get().recordJobRun(run);
+    }
+
+    pending() {
+        return this.#get().pending();
+    }
+
+    settle(results: readonly DeliveryResult[]) {
+        return this.#get().settle(results);
     }
 }

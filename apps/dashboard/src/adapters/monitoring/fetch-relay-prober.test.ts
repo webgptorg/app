@@ -69,6 +69,20 @@ describe('createFetchRelayProber', () => {
         await expect(prober(routes).adapter.probe(RELAY, signal)).resolves.toEqual({ kind: 'down', reason });
     });
 
+    it('cancels the body of a failed health check instead of leaving it unread', async () => {
+        let cancelled = false;
+        const body = new ReadableStream<Uint8Array>({
+            cancel() {
+                cancelled = true;
+            },
+        });
+        const failing = prober({ 'https://relay-a.ptbk.test/healthz': () => new Response(body, { status: 502 }) });
+        await expect(failing.adapter.probe(RELAY, signal)).resolves.toEqual({ kind: 'down', reason: 'healthz' });
+        expect(cancelled).toBe(true);
+        const empty = prober({ 'https://relay-a.ptbk.test/healthz': () => new Response(null, { status: 502 }) });
+        await expect(empty.adapter.probe(RELAY, signal)).resolves.toEqual({ kind: 'down', reason: 'healthz' });
+    });
+
     it('reports an aborted probe as a timeout, a relay without a token as metrics, and an empty body', async () => {
         const controller = new AbortController();
         const slow = prober({

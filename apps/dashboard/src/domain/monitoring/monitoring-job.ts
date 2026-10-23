@@ -2,7 +2,8 @@ import type { Hostname } from '@ptbk/protocol';
 
 import type { Clock } from '../ports/clock';
 import type { Logger } from '../ports/logger';
-import type { Alert, AlertThresholds, RelayCheck } from './alert-rules';
+import type { DeliveryResult } from './alert-outbox';
+import type { AlertThresholds, RelayCheck } from './alert-rules';
 import type { AlertSink } from './alert-sink';
 import type { DashboardMetrics, MetricsQuery } from './dashboard-metrics';
 import type { MonitorStore } from './monitor-store';
@@ -25,8 +26,6 @@ export interface MonitoringJobDeps {
     readonly metrics: DashboardMetrics;
     readonly query: MetricsQuery;
     readonly store: Pick<MonitorStore, 'observe'>;
-    /** Null without an ops address: alerts are then only logged. */
-    readonly alerts: AlertSink | null;
     readonly thresholds: AlertThresholds;
     readonly clock: Clock;
     readonly logger: Logger;
@@ -34,19 +33,40 @@ export interface MonitoringJobDeps {
     readonly probeTimeoutMs: number;
 }
 
-/** Hands each alert to the sink and logs it; one failed send never stops the others. */
-export async function deliverAlerts(
-    alerts: readonly Alert[],
-    deps: Pick<MonitoringJobDeps, 'alerts' | 'logger'>,
-): Promise<void> {
-    for (const alert of alerts) {
-        deps.logger.warn('ops.alert', { rule: alert.rule, subject: alert.subject, state: alert.state });
-        if (deps.alerts === null) continue;
-        try {
-            await deps.alerts.send(alert, AbortSignal.timeout(SEND_TIMEOUT_MS));
-        } catch {
-            deps.logger.error('ops.alert-failed', { rule: alert.rule, subject: alert.subject, state: alert.state });
+/** What delivering the queued alerts needs; the dispatcher does it once per cron run, after every job. */
+export interface AlertDeliveryDeps {
+    readonly store: Pick<MonitorStore, 'pending' | 'settle'>;
+    /** Null without an ops address: alerts are then only logged, which counts as delivered. */
+    readonly alerts: AlertSink | null;
+    readonly metrics: DashboardMetrics;
+    readonly logger: Logger;
+}
+
+/**
+ * Hands every queued alert to the sink and settles the queue: a failed send stays queued for the next run, up to
+ * `MAX_DELIVERY_ATTEMPTS`, then is dropped. Every attempt and drop is counted and logged.
+ */
+export async function deliverAlerts(deps: AlertDeliveryDeps): Promise<void> {
+    const results: DeliveryResult[] = [];
+    for (const { id, alert, attempts } of await deps.store.pending()) {
+        const fields = { rule: alert.rule, subject: alert.subject, state: alert.state, attempt: attempts + 1 };
+        deps.logger.warn('ops.alert', fields);
+        let delivered = true;
+        if (deps.alerts !== null) {
+            try {
+                await deps.alerts.send(alert, AbortSignal.timeout(SEND_TIMEOUT_MS));
+            } catch {
+                delivered = false;
+                deps.logger.error('ops.alert-failed', fields);
+            }
         }
+        deps.metrics.record({ name: 'ptbk_monitor_alert_deliveries_total', outcome: delivered ? 'sent' : 'failed' });
+        results.push({ id, delivered });
+    }
+    if (results.length === 0) return;
+    for (const { alert } of await deps.store.settle(results)) {
+        deps.logger.error('ops.alert-dropped', { rule: alert.rule, subject: alert.subject, state: alert.state });
+        deps.metrics.record({ name: 'ptbk_monitor_alert_deliveries_total', outcome: 'dropped' });
     }
 }
 
@@ -76,8 +96,8 @@ async function checkRelay(relay: MonitoredRelay, deps: MonitoringJobDeps): Promi
 
 /**
  * The monitoring job (I-04), once a minute: every relay's TLS handshake, `/healthz` and `/metrics`, the dashboard's
- * own health, the dashboard's counters for the last window; then the alert rules. A relay that is down is an
- * observation, not a failure of the run; only a broken store or sink fails it.
+ * own health, the dashboard's counters for the last window; then the alert rules, whose alerts the store queues for
+ * the dispatcher to deliver. A relay that is down is an observation, not a failure of the run; a broken store fails it.
  */
 export async function runMonitoring(deps: MonitoringJobDeps, signal: AbortSignal): Promise<void> {
     const at = deps.clock.nowMs();
@@ -91,6 +111,5 @@ export async function runMonitoring(deps: MonitoringJobDeps, signal: AbortSignal
         }),
     ]);
     deps.metrics.record({ name: 'ptbk_monitor_dashboard_checks_total', healthy: dashboardHealthy });
-    const alerts = await deps.store.observe({ at, relays, dashboardHealthy, counts });
-    await deliverAlerts(alerts, deps);
+    await deps.store.observe({ at, relays, dashboardHealthy, counts });
 }

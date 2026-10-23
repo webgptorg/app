@@ -99,17 +99,54 @@ describe('relay-unreachable', () => {
 });
 
 describe('relay-tunnels-dropped', () => {
-    it('fires when active tunnels fall by more than half within five minutes', () => {
-        const at = (minute: number) => T0 + minute * MINUTE;
-        const { alerts } = run([
+    const at = (minute: number) => T0 + minute * MINUTE;
+
+    it('fires on a fall by more than half within five minutes and stays open while the relay stays empty', () => {
+        const { alerts, state } = run([
             observation(at(0), [up('relay-a', at(0), { tunnels: 100 })]),
             observation(at(1), [up('relay-a', at(1), { tunnels: 60 })]),
             observation(at(2), [up('relay-a', at(2), { tunnels: 49 })]),
             observation(at(3), [up('relay-a', at(3), { tunnels: 49 })]),
-            // The 100 has left the window and 60 → 49 is no longer a drop by half.
-            observation(at(6), [up('relay-a', at(6), { tunnels: 49 })]),
+            // The 100 has long left the window; the alert remembers it.
+            observation(at(20), [up('relay-a', at(20), { tunnels: 49 })]),
+            observation(at(21), [up('relay-a', at(21), { tunnels: 79 })]),
+        ]);
+        expect(alerts).toEqual(['relay-tunnels-dropped firing relay-a']);
+        expect(state.open['relay-tunnels-dropped:relay-a']).toEqual({ since: at(2), peak: 100 });
+    });
+
+    it('resolves once tunnels are back to 80 % of the peak they fell from', () => {
+        const { alerts, state } = run([
+            observation(at(0), [up('relay-a', at(0), { tunnels: 100 })]),
+            observation(at(1), [up('relay-a', at(1), { tunnels: 10 })]),
+            observation(at(30), [up('relay-a', at(30), { tunnels: 80 })]),
         ]);
         expect(alerts).toEqual(['relay-tunnels-dropped firing relay-a', 'relay-tunnels-dropped resolved relay-a']);
+        expect(state.open).toEqual({});
+    });
+
+    it('resolves when the relay comes back from being down, without firing again on the reconnect', () => {
+        const { alerts } = run([
+            observation(at(0), [up('relay-a', at(0), { tunnels: 100 })]),
+            observation(at(1), [up('relay-a', at(1), { tunnels: 10 })]),
+            observation(at(2), [down('relay-a')]),
+            observation(at(3), [up('relay-a', at(3), { tunnels: 3 })]),
+            observation(at(4), [up('relay-a', at(4), { tunnels: 40 })]),
+        ]);
+        expect(alerts).toEqual(['relay-tunnels-dropped firing relay-a', 'relay-tunnels-dropped resolved relay-a']);
+    });
+
+    it('keeps an open drop while the relay does not report its tunnels, and reads a stored drop without a peak', () => {
+        const open = run([
+            observation(at(0), [up('relay-a', at(0), { tunnels: 100 })]),
+            observation(at(1), [up('relay-a', at(1), { tunnels: 10 })]),
+            observation(at(2), [up('relay-a', at(2))]),
+        ]);
+        expect(open.alerts).toEqual(['relay-tunnels-dropped firing relay-a']);
+        const legacy: MonitorState = { ...open.state, open: { 'relay-tunnels-dropped:relay-a': { since: at(1) } } };
+        expect(run([observation(at(3), [up('relay-a', at(3), { tunnels: 0 })])], legacy).alerts).toEqual([
+            'relay-tunnels-dropped resolved relay-a',
+        ]);
     });
 
     it('ignores a fall from fewer than two tunnels and a fall of exactly half', () => {

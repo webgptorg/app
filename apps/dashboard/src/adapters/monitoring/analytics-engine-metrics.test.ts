@@ -15,6 +15,7 @@ const EVERY_METRIC: readonly DashboardMetric[] = [
     { name: 'ptbk_monitor_relay_health', relay: 'relay-a', values: [1, 2, 3] },
     { name: 'ptbk_monitor_relay_outcomes', relay: 'relay-a', values: [4] },
     { name: 'ptbk_monitor_dashboard_checks_total', healthy: false },
+    { name: 'ptbk_monitor_alert_deliveries_total', outcome: 'dropped' },
 ];
 
 describe('toDataPoint', () => {

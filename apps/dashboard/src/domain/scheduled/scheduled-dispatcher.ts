@@ -1,7 +1,6 @@
 import type { Clock } from '../ports/clock';
 import type { Logger } from '../ports/logger';
 import type { Timer } from '../ports/timer';
-import type { Alert } from '../monitoring/alert-rules';
 import type { DashboardMetrics } from '../monitoring/dashboard-metrics';
 
 /** What a job learns about its run. */
@@ -40,19 +39,20 @@ export interface DispatcherDeps {
     readonly timer: Timer;
     readonly logger: Logger;
     readonly metrics: DashboardMetrics;
-    /** Records each run (the job-failure streaks) and answers the alerts it starts or ends. */
+    /** Records each run (the job-failure streaks), which queues the alerts it starts or ends. */
     readonly recordRun: (run: {
         readonly job: string;
         readonly outcome: 'ok' | 'failed';
         readonly at: number;
-    }) => Promise<readonly Alert[]>;
-    readonly deliver: (alerts: readonly Alert[]) => Promise<void>;
+    }) => Promise<void>;
+    /** Delivers every queued alert, once per dispatch after every job: those of the jobs and of earlier runs. */
+    readonly deliver: () => Promise<void>;
     /** A job still running after this has failed, and its signal aborts. */
     readonly jobTimeoutMs: number;
 }
 
 export interface ScheduledDispatcher {
-    /** Runs every job registered for `cron`, side by side; never rejects. */
+    /** Runs every job registered for `cron`, side by side, then delivers queued alerts; never rejects. */
     dispatch(cron: string, scheduledTime: number): Promise<readonly JobResult[]>;
 }
 
@@ -94,7 +94,7 @@ export function createScheduledDispatcher(deps: DispatcherDeps): ScheduledDispat
         const durationMs = deps.clock.nowMs() - startedAt;
         deps.metrics.record({ name: 'ptbk_dashboard_cron_runs_total', job: job.name, outcome, durationMs });
         try {
-            await deps.deliver(await deps.recordRun({ job: job.name, outcome, at: deps.clock.nowMs() }));
+            await deps.recordRun({ job: job.name, outcome, at: deps.clock.nowMs() });
         } catch (error) {
             deps.logger.error('cron.record-failed', { job: job.name, problem: errorName(error) });
         }
@@ -105,7 +105,13 @@ export function createScheduledDispatcher(deps: DispatcherDeps): ScheduledDispat
         async dispatch(cron, scheduledTime) {
             const due = deps.jobs.filter((job) => job.cron === cron);
             if (due.length === 0) deps.logger.warn('cron.no-jobs', { cron });
-            return Promise.all(due.map((job) => runOne(job, scheduledTime)));
+            const results = await Promise.all(due.map((job) => runOne(job, scheduledTime)));
+            try {
+                await deps.deliver();
+            } catch (error) {
+                deps.logger.error('ops.delivery-failed', { problem: errorName(error) });
+            }
+            return results;
         },
     };
 }

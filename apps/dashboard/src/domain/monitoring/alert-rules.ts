@@ -25,6 +25,8 @@ export const DEFAULT_THRESHOLDS = {
     tunnelDropWindowMinutes: 5,
     /** ...from at least this many, so one engine going away is not an alert. */
     tunnelDropMinTunnels: 2,
+    /** ...and the alert ends once they are back to this share of the peak before the fall (or the relay restarted). */
+    tunnelRecoveryPercent: 80,
     /** Registry lookups answered `stale` or `error`, over the window, above this share... */
     registryProblemPercent: 5,
     registryWindowMinutes: 10,
@@ -91,6 +93,20 @@ const DAY_MS = 86_400_000;
 /** Samples kept per relay: enough for the longest window at one a minute, with room for a late run. */
 const MAX_SAMPLES = 30;
 
+export const alertSchema = z.strictObject({
+    rule: z.enum(ALERT_RULES),
+    subject: z.string().max(64),
+    state: z.enum(['firing', 'resolved']),
+    at: z.number(),
+    detail: z.record(z.string(), z.number()),
+});
+
+/** An alert not yet handed to the sink, and how often that has failed. */
+export const pendingAlertSchema = z.strictObject({ id: z.string(), alert: alertSchema, attempts: z.int().min(0) });
+export type PendingAlert = z.infer<typeof pendingAlertSchema>;
+/** Alerts waiting to be delivered; beyond it the oldest are dropped, so a dead sink cannot grow the state forever. */
+export const MAX_OUTBOX = 50;
+
 const relaySampleSchema = z.strictObject({
     at: z.number(),
     tunnels: z.number().nullable(),
@@ -105,14 +121,23 @@ export const monitorStateSchema = z.strictObject({
     ),
     dashboardFailures: z.int().min(0),
     jobs: z.record(z.string(), z.strictObject({ failures: z.int().min(0) })),
-    /** Firing alerts by `rule:subject`, with when they started. */
-    open: z.record(z.string(), z.strictObject({ since: z.number() })),
+    /** Firing alerts by `rule:subject`, with when they started and, for a tunnel drop, the peak it fell from. */
+    open: z.record(z.string(), z.strictObject({ since: z.number(), peak: z.number().optional() })),
+    /** Alerts to deliver, oldest first (`alert-outbox.ts`). */
+    outbox: z.array(pendingAlertSchema).max(MAX_OUTBOX).default([]),
 });
 export type MonitorState = z.infer<typeof monitorStateSchema>;
 type RelayState = MonitorState['relays'][string];
 type StoredSample = RelayState['samples'][number];
 
-export const INITIAL_MONITOR_STATE: MonitorState = { v: 1, relays: {}, dashboardFailures: 0, jobs: {}, open: {} };
+export const INITIAL_MONITOR_STATE: MonitorState = {
+    v: 1,
+    relays: {},
+    dashboardFailures: 0,
+    jobs: {},
+    open: {},
+    outbox: [],
+};
 
 export interface Evaluation {
     readonly state: MonitorState;
@@ -120,11 +145,21 @@ export interface Evaluation {
     readonly alerts: readonly Alert[];
 }
 
+type OpenAlert = MonitorState['open'][string];
+
 interface Transitions {
-    readonly open: Readonly<Record<string, { readonly since: number }>>;
+    readonly open: Readonly<Record<string, OpenAlert>>;
     readonly alerts: readonly Alert[];
-    /** `firing: null` leaves the alert as it is (the rule could not be evaluated). */
-    apply(rule: AlertRule, subject: string, firing: boolean | null, detail: Readonly<Record<string, number>>): void;
+    /** The alert while it is firing. */
+    get(rule: AlertRule, subject: string): OpenAlert | undefined;
+    /** `firing: null` leaves the alert as it is (the rule could not be evaluated); `peak` is kept with a new one. */
+    apply(
+        rule: AlertRule,
+        subject: string,
+        firing: boolean | null,
+        detail: Readonly<Record<string, number>>,
+        peak?: number,
+    ): void;
 }
 
 function createTransitions(initial: MonitorState['open'], at: number): Transitions {
@@ -135,11 +170,12 @@ function createTransitions(initial: MonitorState['open'], at: number): Transitio
             return Object.fromEntries(open);
         },
         alerts,
-        apply(rule, subject, firing, detail) {
+        get: (rule, subject) => open.get(`${rule}:${subject}`),
+        apply(rule, subject, firing, detail, peak) {
             if (firing === null) return;
             const key = `${rule}:${subject}`;
             if (firing === open.has(key)) return;
-            if (firing) open.set(key, { since: at });
+            if (firing) open.set(key, peak === undefined ? { since: at } : { since: at, peak });
             else open.delete(key);
             alerts.push({ rule, subject, state: firing ? 'firing' : 'resolved', at, detail });
         },
@@ -159,6 +195,32 @@ function tunnelDrop(
         peak >= thresholds.tunnelDropMinTunnels &&
         current.tunnels < (peak * (100 - thresholds.tunnelDropPercent)) / 100;
     return { firing, detail: { fromTunnels: peak, toTunnels: current.tunnels } };
+}
+
+/**
+ * A drop fires against the peak of the window and is remembered with it; it ends once tunnels are back to
+ * `tunnelRecoveryPercent` of that peak, or when the relay comes back from being down (engines reconnect from zero).
+ */
+function evaluateTunnels(
+    relay: string,
+    state: RelayState,
+    current: StoredSample,
+    thresholds: AlertThresholds,
+    transitions: Transitions,
+): void {
+    const open = transitions.get('relay-tunnels-dropped', relay);
+    if (open === undefined) {
+        const drop = tunnelDrop(state.samples, current, thresholds);
+        transitions.apply('relay-tunnels-dropped', relay, drop.firing, drop.detail, drop.detail['fromTunnels']);
+        return;
+    }
+    const peak = open.peak ?? 0;
+    const returned = state.failures > 0;
+    const recovered = current.tunnels !== null && current.tunnels * 100 >= peak * thresholds.tunnelRecoveryPercent;
+    transitions.apply('relay-tunnels-dropped', relay, returned || recovered ? false : null, {
+        fromTunnels: peak,
+        toTunnels: current.tunnels ?? 0,
+    });
 }
 
 function registryProblems(
@@ -208,12 +270,12 @@ function evaluateRelay(
         transitions.apply('relay-unreachable', relay, failures >= thresholds.unreachableChecks ? true : null, {
             failedChecks: failures,
         });
-        return { ...state, failures };
+        // Counters and tunnels start over once it is back; samples from before would read as a drop or a burst.
+        return { failures, samples: [] };
     }
     transitions.apply('relay-unreachable', relay, false, { failedChecks: 0 });
     const current = storedSample(at, check.sample);
-    const drop = tunnelDrop(state.samples, current, thresholds);
-    transitions.apply('relay-tunnels-dropped', relay, drop.firing, drop.detail);
+    evaluateTunnels(relay, state, current, thresholds, transitions);
     const registry = registryProblems(state.samples, current, thresholds);
     transitions.apply('relay-registry-errors', relay, registry.firing, registry.detail);
     const expiresAtS = check.sample.values.get('ptbk_relay_certificate_expiry_timestamp_seconds');

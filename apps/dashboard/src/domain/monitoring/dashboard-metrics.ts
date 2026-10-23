@@ -73,7 +73,8 @@ export type DashboardMetric =
           readonly relay: string;
           readonly values: readonly number[];
       }
-    | { readonly name: 'ptbk_monitor_dashboard_checks_total'; readonly healthy: boolean };
+    | { readonly name: 'ptbk_monitor_dashboard_checks_total'; readonly healthy: boolean }
+    | { readonly name: 'ptbk_monitor_alert_deliveries_total'; readonly outcome: 'sent' | 'failed' | 'dropped' };
 
 export type DashboardMetricName = DashboardMetric['name'];
 

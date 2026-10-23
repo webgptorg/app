@@ -4,9 +4,9 @@ import type { MonitorState } from '../domain/monitoring/alert-rules';
 import { createMonitorService } from '../domain/monitoring/monitor-store';
 import { DEFAULT_THRESHOLDS } from '../domain/monitoring/alert-rules';
 import { TEST_PLANS, syntheticStripeKey, syntheticWebhookSecret } from '../testing/billing-fixtures';
-import { DEV_RATE_LIMIT_HMAC_KEY } from './config';
+import { ConfigError, DEV_RATE_LIMIT_HMAC_KEY } from './config';
 import { createDevAdapters } from './dev-adapters';
-import { runScheduled } from './scheduled';
+import { runScheduled, ScheduledConfigError } from './scheduled';
 
 const TOKEN = `ptbk_mt_${'q'.repeat(43)}`;
 const monitoredVars = {
@@ -44,6 +44,21 @@ function opsMonitor() {
     return binding({ idFromName: (name: string) => name, get: () => service });
 }
 
+/** A fresh staging environment, with its own monitor. */
+const staging = () => ({
+    ...monitoredVars,
+    ENVIRONMENT: 'staging',
+    ADAPTERS: { email: 'cloudflare', billing: 'stripe', rateLimit: 'workers' },
+    RATE_LIMIT_HMAC_KEY: 'c3RhZ2luZy1zZWNyZXQta2V5LWZvci1yYXRlLWxpbWl0cy0zMmI',
+    STRIPE_SECRET_KEY: syntheticStripeKey(),
+    STRIPE_WEBHOOK_SECRET: syntheticWebhookSecret(),
+    ANALYTICS: { accountId: 'f'.repeat(32), dataset: 'ptbk_ops_staging' },
+    ANALYTICS_API_TOKEN: 'T'.repeat(40),
+    OPS_METRICS: binding({ writeDataPoint: () => undefined }),
+    OPS_MONITOR: opsMonitor(),
+    EMAIL: binding({ send: () => Promise.resolve() }),
+});
+
 const ctx = { waitUntil: () => undefined, passThroughOnException: () => undefined } as unknown as ExecutionContext;
 const controller = { cron: '* * * * *', scheduledTime: 0 };
 
@@ -75,42 +90,69 @@ describe('runScheduled', () => {
         });
     });
 
-    it('runs no job without MONITORING, and nothing at all on a configuration it refuses', async () => {
+    it('runs no job without MONITORING in dev, and refuses a configuration it cannot parse', async () => {
         const fetch = vi.fn();
         vi.stubGlobal('fetch', fetch);
         const unmonitored = Object.fromEntries(Object.entries(monitoredVars).filter(([name]) => name !== 'MONITORING'));
         const dev = createDevAdapters();
         await runScheduled(controller, { ...unmonitored, OPS_MONITOR: opsMonitor() } as unknown as Env, ctx, dev);
-        await runScheduled(controller, { ...unmonitored, ENVIRONMENT: 'qa' } as unknown as Env, ctx, dev);
         expect(fetch).not.toHaveBeenCalled();
-        expect(dev.metrics.records).toEqual([]);
+        const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+        try {
+            await expect(
+                runScheduled(controller, { ...unmonitored, ENVIRONMENT: 'qa' } as unknown as Env, ctx, dev),
+            ).rejects.toThrow(ConfigError);
+        } finally {
+            errors.mockRestore();
+        }
     });
 
-    it('reads the counts from Analytics Engine outside dev, and logs alerts when the email binding is missing', async () => {
+    it('outside dev, fails the run when monitoring would be off or no job is registered for the cron', async () => {
+        vi.stubGlobal('fetch', () => Promise.reject(new TypeError('offline')));
+        const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+        try {
+            const unmonitored = Object.fromEntries(Object.entries(staging()).filter(([name]) => name !== 'MONITORING'));
+            await expect(
+                runScheduled(controller, unmonitored as unknown as Env, ctx, createDevAdapters()),
+            ).rejects.toThrow('MONITORING is not set');
+            const noEmail = Object.fromEntries(Object.entries(staging()).filter(([name]) => name !== 'EMAIL'));
+            await expect(runScheduled(controller, noEmail as unknown as Env, ctx, createDevAdapters())).rejects.toThrow(
+                'the email binding is missing',
+            );
+            await expect(
+                runScheduled(
+                    { ...controller, cron: '0 0 * * *' },
+                    staging() as unknown as Env,
+                    ctx,
+                    createDevAdapters(),
+                ),
+            ).rejects.toThrow(ScheduledConfigError);
+        } finally {
+            errors.mockRestore();
+        }
+    });
+
+    it('reads the counts from Analytics Engine outside dev and emails alerts through the email binding', async () => {
         const urls: string[] = [];
         vi.stubGlobal('fetch', (url: string) => {
             urls.push(url);
             return Promise.reject(new TypeError('offline'));
         });
-        const staging = {
-            ...monitoredVars,
-            ENVIRONMENT: 'staging',
-            ADAPTERS: { email: 'cloudflare', billing: 'stripe', rateLimit: 'workers' },
-            RATE_LIMIT_HMAC_KEY: 'c3RhZ2luZy1zZWNyZXQta2V5LWZvci1yYXRlLWxpbWl0cy0zMmI',
-            STRIPE_SECRET_KEY: syntheticStripeKey(),
-            STRIPE_WEBHOOK_SECRET: syntheticWebhookSecret(),
-            ANALYTICS: { accountId: 'f'.repeat(32), dataset: 'ptbk_ops_staging' },
-            ANALYTICS_API_TOKEN: 'T'.repeat(40),
-            OPS_METRICS: binding({ writeDataPoint: () => undefined }),
-            OPS_MONITOR: opsMonitor(),
-        };
+        const sent: unknown[] = [];
+        const env = { ...staging(), EMAIL: binding({ send: (message: unknown) => sent.push(message) }) };
         const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
         try {
-            await runScheduled(controller, staging as unknown as Env, ctx, createDevAdapters());
+            await runScheduled(controller, env as unknown as Env, ctx, createDevAdapters());
+            await runScheduled(controller, env as unknown as Env, ctx, createDevAdapters());
         } finally {
             errors.mockRestore();
         }
         expect(urls).toContain(`https://api.cloudflare.com/client/v4/accounts/${'f'.repeat(32)}/analytics_engine/sql`);
+        // This bare environment has no rate-limit bindings, so the Worker's own health check fails too.
+        expect((sent as { subject: string }[]).map((message) => message.subject).sort()).toEqual([
+            '[ptbk ops] FIRING: dashboard-unhealthy (dashboard)',
+            '[ptbk ops] FIRING: relay-unreachable (relay-1)',
+        ]);
     });
 
     it('rethrows what is not a configuration error', async () => {

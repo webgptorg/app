@@ -41,9 +41,11 @@ export function createFetchRelayProber(options: FetchRelayProberOptions): RelayP
         const token = options.tokens.get(relayId);
         if (token === undefined) return { kind: 'down', reason: 'metrics' };
         const health = await get(`https://${relayId}/healthz`, signal);
-        if (health.status !== 200 || (await readCapped(health, 64))?.trim() !== 'ok') {
+        if (health.status !== 200) {
+            await health.body?.cancel();
             return { kind: 'down', reason: 'healthz' };
         }
+        if ((await readCapped(health, 64))?.trim() !== 'ok') return { kind: 'down', reason: 'healthz' };
         const metrics = await get(`https://${relayId}/metrics`, signal, { Authorization: `Bearer ${token}` });
         if (metrics.status !== 200) {
             await metrics.body?.cancel();
