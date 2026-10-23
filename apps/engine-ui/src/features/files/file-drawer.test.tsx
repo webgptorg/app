@@ -138,7 +138,7 @@ describe('download', { timeout: TIMEOUT_MS }, () => {
         const { drawer, app, engine } = await openDrawer(FILE_IDS.pdf);
         const link = within(drawer).getByRole('link', { name: 'Download report.pdf' });
         expect(link.getAttribute('href')).toBe(`/api/v1/files/${FILE_IDS.pdf}/content`);
-        expect(link.hasAttribute('download')).toBe(true);
+        expect(link.getAttribute('download')).toBe('report.pdf');
         const calls = engine.spies.get.mock.calls.length;
         await app.user.click(link);
         await waitFor(() => {

@@ -56,7 +56,8 @@ export interface FileDownloadProps {
 
 /**
  * A plain same-origin link to the content route, which the engine serves as an attachment, so the browser saves the
- * file and nothing of it reaches this page. Disabled with the reason for an infected file.
+ * file and nothing of it reaches this page. The engine's `Content-Disposition` carries no name, so the link names the
+ * file; without it every download would be saved as "content" (browsers sanitise the name). Disabled with the reason for an infected file.
  */
 export function FileDownload({ file, versionId, label, size = 'sm' }: FileDownloadProps) {
     const check = useDownloadCheck();
@@ -100,7 +101,7 @@ export function FileDownload({ file, versionId, label, size = 'sm' }: FileDownlo
         <span className="flex flex-col items-start gap-1">
             <a
                 href={fileContentPath(file.id, versionId)}
-                download=""
+                download={file.name}
                 aria-label={name}
                 aria-busy={checking || undefined}
                 className={buttonClassName('secondary', size)}

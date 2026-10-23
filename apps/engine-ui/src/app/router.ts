@@ -17,6 +17,15 @@ export interface AppRouterOptions {
 export const PENDING_DELAY_MS = 300;
 export const PENDING_MIN_MS = 300;
 
+/**
+ * Only a change of route animates. Search-param updates (typing in a search box, a filter, the next page) follow each
+ * other faster than a transition runs, and a transition the next one skips rejects its `ready` promise, which the
+ * router never handles: every quick filter change would surface as an uncaught error.
+ */
+export const ROUTE_VIEW_TRANSITION = {
+    types: ({ pathChanged }: { readonly pathChanged: boolean }) => (pathChanged ? ['route'] : false),
+} as const;
+
 export function createAppRouter(context: RouterContext, options: AppRouterOptions = {}) {
     return createRouter({
         routeTree,
@@ -25,7 +34,7 @@ export function createAppRouter(context: RouterContext, options: AppRouterOption
         defaultPreload: 'intent',
         // TanStack Query alone decides freshness; the router always asks it.
         defaultPreloadStaleTime: 0,
-        defaultViewTransition: !prefersReducedMotion(options.matchMedia),
+        defaultViewTransition: prefersReducedMotion(options.matchMedia) ? false : ROUTE_VIEW_TRANSITION,
         defaultErrorComponent: RouteError,
         defaultPendingComponent: RoutePending,
         defaultPendingMs: PENDING_DELAY_MS,
