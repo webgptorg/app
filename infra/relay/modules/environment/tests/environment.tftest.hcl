@@ -53,8 +53,8 @@ run "production_has_two_relays_in_two_locations" {
   }
 
   assert {
-    condition     = alltrue([for server in hcloud_server.relay : server.server_type == "cx22" && server.image == "debian-13"])
-    error_message = "Every relay is a CX22-class Debian 13 host unless the tfvars say otherwise."
+    condition     = alltrue([for server in hcloud_server.relay : server.server_type == "cx23" && server.image == "debian-13"])
+    error_message = "Every relay is a CX23-class Debian 13 host unless the tfvars say otherwise."
   }
 
   assert {
