@@ -1,6 +1,7 @@
 # 0012. Monitoring backend: Cloudflare first, no new vendor
 
-- **Status:** Proposed
+- **Status:** Accepted
+- **Decided by:** Seb, 2026-10-23
 - **Date:** 2026-10-23
 
 ## Context
