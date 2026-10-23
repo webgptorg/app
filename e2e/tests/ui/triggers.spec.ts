@@ -2,7 +2,7 @@
 // started; paused it does not fire, resumed it does again; an email to an email trigger starts an email run.
 import type { Page } from '@playwright/test';
 
-import { apiGet, apiList, required, uniqueName } from '../../src/ui-app.ts';
+import { apiGet, apiList, eventsConnected, required, uniqueName } from '../../src/ui-app.ts';
 import { expect, need, test } from '../../src/ui-fixtures.ts';
 
 /** Past the next fire of an every-15-minutes schedule, wherever engine time stands. */
@@ -76,7 +76,10 @@ test('an email to an email trigger starts an email run in the timeline', async (
     const inboundEmail = need(engine, 'inboundEmail');
     const subject = uniqueName('Invoice question');
     await signIn();
+    const live = eventsConnected(page);
     await page.goto(appUrl('/runs?source=email'));
+    await expect(page.getByRole('table', { name: 'Runs' }).getByRole('link').first()).toBeVisible();
+    await live;
     const trigger = required(
         (await apiList<Trigger>(page, '/triggers?kind=email')).find((candidate) => candidate.lifecycle === 'active'),
         'active email trigger',

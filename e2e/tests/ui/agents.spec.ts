@@ -55,9 +55,11 @@ test('lists the seeded agents, searches and filters them, and keeps the filters 
     await expect(table.getByRole('link')).toHaveCount(privateAgents.length);
 });
 
-test('pages through a fleet larger than one page', async ({ page, engine, appUrl }) => {
+test('pages through a fleet larger than one page', async ({ page, engine, signIn, appUrl }) => {
     const reset = need(engine, 'reset');
     await reset({ scenario: 'large-fleet', seed: UI_SEED, capabilities: ALL_CAPABILITIES });
+    // A reset ends every session.
+    await signIn();
     await page.goto(appUrl('/agents'));
     const table = page.getByRole('table', { name: 'Agents' });
     const firstLink = table.getByRole('link').first();

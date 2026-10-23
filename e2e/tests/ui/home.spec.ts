@@ -3,7 +3,7 @@
 // member their own home.
 import type { Locator, Page } from '@playwright/test';
 
-import { apiGet, apiList, required } from '../../src/ui-app.ts';
+import { apiGet, apiList, eventsConnected, required } from '../../src/ui-app.ts';
 import { expect, need, test } from '../../src/ui-fixtures.ts';
 
 const PALETTE = 'Search agents, runs, pages and commands';
@@ -54,9 +54,11 @@ test("a scripted run's start and finish appear in the live activity feed without
     const scriptRun = need(engine, 'scriptRun');
     const advanceTime = need(engine, 'advanceTime');
     await signIn();
+    const live = eventsConnected(page);
     await page.goto(appUrl('/'));
     const feed = page.getByRole('region', { name: 'Activity' });
     await expect(feed).toBeVisible();
+    await live;
     const agent = required((await apiList<Agent>(page, '/agents'))[0], 'agent');
     let navigations = 0;
     page.on('framenavigated', (frame) => {

@@ -115,3 +115,13 @@ export const SKELETON = '[class*="ptbk-skeleton-pulse"]';
 export async function settled(page: Page): Promise<void> {
     await expect(page.locator(SKELETON)).toHaveCount(0, { timeout: 15_000 });
 }
+
+/**
+ * Resolves once the app's event stream (`GET /events`) has answered. Call it before the navigation and await it before
+ * changing engine state the page should show live: an event published before the stream connected is never replayed.
+ */
+export function eventsConnected(page: Page): Promise<unknown> {
+    return page.waitForResponse(
+        (response) => new URL(response.url()).pathname === '/api/v1/events' && response.status() === 200,
+    );
+}

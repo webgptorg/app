@@ -4,7 +4,7 @@
 import { PERMISSIONS } from '@ptbk/engine-api';
 import type { Page } from '@playwright/test';
 
-import { apiCall, apiGet, apiList, factValue, required } from '../../src/ui-app.ts';
+import { apiCall, apiGet, apiList, eventsConnected, factValue, required } from '../../src/ui-app.ts';
 import { expect, need, test } from '../../src/ui-fixtures.ts';
 
 interface Run {
@@ -38,7 +38,10 @@ test('a scripted run progresses live in the timeline and in its detail', async (
     const scriptRun = need(engine, 'scriptRun');
     const advanceTime = need(engine, 'advanceTime');
     await signIn();
+    const live = eventsConnected(page);
     await page.goto(appUrl('/runs'));
+    await expect(page.getByRole('table', { name: 'Runs' }).getByRole('link').first()).toBeVisible();
+    await live;
     const agent = required((await apiList<{ id: string }>(page, '/agents'))[0], 'agent');
     const { runId } = await scriptRun({
         agentId: agent.id,
@@ -66,7 +69,9 @@ test('a scripted run progresses live in the timeline and in its detail', async (
         .toContain('Completed');
     await expect(status).toContainText('Completed');
     await expect(page.getByRole('region', { name: 'Steps' }).getByText('Write the summary')).toBeVisible();
-    await expect(page.getByRole('region', { name: 'Tool calls' }).getByText('github.list_issues')).toBeVisible();
+    await expect(
+        page.getByRole('region', { name: 'Tool calls' }).getByText('github.list_issues').first(),
+    ).toBeVisible();
     await expect(page.getByRole('region', { name: 'Usage and cost' })).toBeVisible();
 });
 
