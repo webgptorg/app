@@ -16,6 +16,9 @@ dmarc_policy         = "none"
 
 security_contact = "<security-contact>"
 
+# I-04's ops mailbox; Cloudflare emails it when a relay leaves or rejoins the engine wildcard (I-07).
+ops_email = "<staging-ops-email>"
+
 # One staging host (I-01); addresses come from its outputs.
 relays = {
   relay-fsn = { ipv4 = "<staging-relay-fsn-ipv4>", ipv6 = "<staging-relay-fsn-ipv6>", in_rotation = true }

@@ -23,26 +23,15 @@ variables {
   relay_domain         = "dashboard.example"
   security_contact     = "security@dashboard.example"
   email_sending_domain = "mail.dashboard.example"
+  ops_email            = "ops@dashboard.example"
   relays = {
     relay-fsn = { ipv4 = "198.51.100.10", ipv6 = "2001:db8::10", in_rotation = true }
     relay-hel = { ipv4 = "198.51.100.20", ipv6 = "2001:db8::20", in_rotation = true }
   }
 }
 
-run "wildcard_points_at_every_relay_dns_only" {
+run "records_dns_only_in_their_zones" {
   command = plan
-
-  assert {
-    condition = toset([
-      for record in cloudflare_dns_record.this : "${record.type} ${record.content}" if record.name == "*.engines.example"
-    ]) == toset(["A 198.51.100.10", "A 198.51.100.20", "AAAA 2001:db8::10", "AAAA 2001:db8::20"])
-    error_message = "The wildcard must have one A and one AAAA record per relay in rotation."
-  }
-
-  assert {
-    condition     = alltrue([for record in cloudflare_dns_record.this : record.ttl == 60 if record.name == "*.engines.example"])
-    error_message = "The wildcard TTL must be 60 seconds so a dead relay drops out within a minute."
-  }
 
   assert {
     condition     = alltrue([for record in cloudflare_dns_record.this : record.proxied == false])
@@ -99,29 +88,6 @@ run "wildcard_points_at_every_relay_dns_only" {
       for record in cloudflare_dns_record.this : record.content if record.name == "_dmarc.mail.dashboard.example"
     ]) == "\"v=DMARC1; p=none; sp=none; adkim=s; aspf=s\""
     error_message = "The sending domain has a DMARC record."
-  }
-}
-
-run "relay_out_of_rotation_leaves_the_wildcard_only" {
-  command = plan
-
-  variables {
-    relays = {
-      relay-fsn = { ipv4 = "198.51.100.10", ipv6 = "2001:db8::10", in_rotation = true }
-      relay-hel = { ipv4 = "198.51.100.20", ipv6 = "2001:db8::20", in_rotation = false }
-    }
-  }
-
-  assert {
-    condition = toset([
-      for record in cloudflare_dns_record.this : record.content if record.name == "*.engines.example"
-    ]) == toset(["198.51.100.10", "2001:db8::10"])
-    error_message = "A relay out of rotation must not be in the wildcard."
-  }
-
-  assert {
-    condition     = contains(keys(cloudflare_dns_record.this), "relay-a-relay-hel")
-    error_message = "A relay out of rotation keeps its own hostname."
   }
 }
 
@@ -216,12 +182,13 @@ run "rejects_placeholders" {
     account_id       = "<staging-account-id>"
     engine_domain    = "<staging-engine-domain>"
     security_contact = "<security-contact>"
+    ops_email        = "<ops-email>"
     relays = {
       relay-fsn = { ipv4 = "<relay-fsn-ipv4>", ipv6 = "<relay-fsn-ipv6>", in_rotation = true }
     }
   }
 
-  expect_failures = [var.account_id, var.engine_domain, var.security_contact, var.relays]
+  expect_failures = [var.account_id, var.engine_domain, var.security_contact, var.ops_email, var.relays]
 }
 
 run "rejects_an_empty_wildcard" {
@@ -234,4 +201,165 @@ run "rejects_an_empty_wildcard" {
   }
 
   expect_failures = [var.relays]
+}
+
+# I-07: the engine wildcard is a DNS-only load balancer. The overrides give the pools and the monitor IDs at plan time.
+run "engine_wildcard_is_a_dns_only_load_balancer_over_every_relay" {
+  command = plan
+
+  override_resource {
+    target = cloudflare_load_balancer_pool.relays
+    values = { id = "pool-relays" }
+  }
+
+  override_resource {
+    target = cloudflare_load_balancer_pool.relays_fallback
+    values = { id = "pool-relays-fallback" }
+  }
+
+  override_resource {
+    target = cloudflare_load_balancer_monitor.relay
+    values = { id = "monitor-relay" }
+  }
+
+  assert {
+    condition = (
+      cloudflare_load_balancer.engine_wildcard.name == "*.engines.example"
+      && cloudflare_load_balancer.engine_wildcard.zone_id == "11111111111111111111111111111111"
+      && cloudflare_load_balancer.engine_wildcard.proxied == false
+    )
+    error_message = "The engine wildcard is a DNS-only load balancer in the engine zone: proxying would terminate engine TLS."
+  }
+
+  assert {
+    condition     = cloudflare_load_balancer.engine_wildcard.ttl == 30
+    error_message = "The engine wildcard's TTL is 30 seconds, so a relay that left reaches browsers within half a minute."
+  }
+
+  assert {
+    condition = (
+      cloudflare_load_balancer.engine_wildcard.default_pools == tolist(["pool-relays"])
+      && cloudflare_load_balancer.engine_wildcard.fallback_pool == "pool-relays-fallback"
+      && cloudflare_load_balancer.engine_wildcard.steering_policy == "off"
+    )
+    error_message = "The load balancer answers from the health-checked pool, and from the unchecked fallback pool when nothing in it is healthy."
+  }
+
+  assert {
+    condition = toset([
+      for origin in cloudflare_load_balancer_pool.relays.origins : "${origin.name} ${origin.address} ${one(origin.header.host)} ${origin.weight}"
+      ]) == toset([
+      "relay-fsn-ipv4 198.51.100.10 relay-fsn.dashboard.example 1",
+      "relay-fsn-ipv6 2001:db8::10 relay-fsn.dashboard.example 1",
+      "relay-hel-ipv4 198.51.100.20 relay-hel.dashboard.example 1",
+      "relay-hel-ipv6 2001:db8::20 relay-hel.dashboard.example 1",
+    ])
+    error_message = "One pool holds every relay address at equal weight, so DNS-only answers list every healthy relay; each is checked on its own hostname."
+  }
+
+  assert {
+    condition = (
+      cloudflare_load_balancer_pool.relays.monitor == "monitor-relay"
+      && cloudflare_load_balancer_pool.relays.minimum_origins == 1
+      && cloudflare_load_balancer_pool.relays.check_regions == tolist(["WEU", "EEU", "ENAM"])
+    )
+    error_message = "The pool is checked from three regions and stays in use while any relay is healthy."
+  }
+
+  assert {
+    condition = (
+      cloudflare_load_balancer_pool.relays_fallback.monitor == null
+      && toset([for origin in cloudflare_load_balancer_pool.relays_fallback.origins : origin.address])
+      == toset([for origin in cloudflare_load_balancer_pool.relays.origins : origin.address])
+    )
+    error_message = "The fallback pool holds the same relays, unchecked, so DNS never ends up empty."
+  }
+
+  assert {
+    condition = (
+      cloudflare_load_balancer_monitor.relay.type == "https"
+      && cloudflare_load_balancer_monitor.relay.path == "/healthz"
+      && cloudflare_load_balancer_monitor.relay.expected_codes == "200"
+      && cloudflare_load_balancer_monitor.relay.allow_insecure == false
+      && cloudflare_load_balancer_monitor.relay.interval == 15
+      && cloudflare_load_balancer_monitor.relay.timeout == 3
+      && cloudflare_load_balancer_monitor.relay.consecutive_down == 2
+      && cloudflare_load_balancer_monitor.relay.consecutive_up == 3
+    )
+    error_message = "Relays are checked over verified HTTPS every 15 s with a 3 s timeout, out after 2 failures, back after 3 passes."
+  }
+
+  assert {
+    condition = (
+      cloudflare_notification_policy.relay_health.alert_type == "load_balancing_health_alert"
+      && cloudflare_notification_policy.relay_health.enabled
+      && [for email in cloudflare_notification_policy.relay_health.mechanisms.email : email.id] == ["ops@dashboard.example"]
+      && cloudflare_notification_policy.relay_health.filters.pool_id == tolist(["pool-relays"])
+      && toset(cloudflare_notification_policy.relay_health.filters.new_health) == toset(["Healthy", "Unhealthy"])
+      && toset(cloudflare_notification_policy.relay_health.filters.event_source) == toset(["pool", "origin"])
+    )
+    error_message = "Every relay health change in the pool, and the pool's own, is emailed to the ops mailbox."
+  }
+
+  assert {
+    condition     = length([for record in cloudflare_dns_record.this : record if record.name == "*.engines.example"]) == 0
+    error_message = "No DNS record competes with the load balancer for the engine wildcard."
+  }
+}
+
+run "relay_out_of_rotation_leaves_both_pools_only" {
+  command = plan
+
+  variables {
+    relays = {
+      relay-fsn = { ipv4 = "198.51.100.10", ipv6 = "2001:db8::10", in_rotation = true }
+      relay-hel = { ipv4 = "198.51.100.20", ipv6 = "2001:db8::20", in_rotation = false }
+    }
+  }
+
+  assert {
+    condition = (
+      toset([for origin in cloudflare_load_balancer_pool.relays.origins : origin.address]) == toset(["198.51.100.10", "2001:db8::10"])
+      && toset([for origin in cloudflare_load_balancer_pool.relays_fallback.origins : origin.address]) == toset(["198.51.100.10", "2001:db8::10"])
+    )
+    error_message = "A relay out of rotation is in neither pool, so not even the fallback lists it."
+  }
+
+  assert {
+    condition     = contains(keys(cloudflare_dns_record.this), "relay-a-relay-hel")
+    error_message = "A relay out of rotation keeps its own hostname."
+  }
+}
+
+run "health_check_interval_and_regions_are_configurable" {
+  command = plan
+
+  variables {
+    relay_health_check = { interval_s = 60, regions = ["WEU", "EEU", "ENAM", "WNAM", "SEAS"] }
+  }
+
+  assert {
+    condition     = cloudflare_load_balancer_monitor.relay.interval == 60 && length(cloudflare_load_balancer_pool.relays.check_regions) == 5
+    error_message = "The interval and regions follow relay_health_check."
+  }
+}
+
+run "rejects_a_slow_or_single_region_health_check" {
+  command = plan
+
+  variables {
+    relay_health_check = { interval_s = 300, regions = ["WEU", "WEU"] }
+  }
+
+  expect_failures = [var.relay_health_check]
+}
+
+run "rejects_a_dns_record_on_the_engine_wildcard" {
+  command = plan
+
+  variables {
+    extra_records = [{ zone = "engine", name = "*.engines.example", type = "A", content = "198.51.100.30" }]
+  }
+
+  expect_failures = [cloudflare_dns_record.this]
 }

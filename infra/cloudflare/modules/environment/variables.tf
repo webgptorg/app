@@ -58,7 +58,7 @@ variable "relays" {
     ipv6        = string
     in_rotation = bool
   }))
-  description = "Relays by host label (relay-fsn becomes relay-fsn.<relay_domain>). in_rotation = false takes a relay out of the engine wildcard but keeps its own hostname."
+  description = "Relays by host label (relay-fsn becomes relay-fsn.<relay_domain>). in_rotation = false takes a relay out of the engine wildcard's load balancer pools but keeps its own hostname."
 
   validation {
     condition     = alltrue([for name, _ in var.relays : can(regex("^[a-z0-9]([a-z0-9-]*[a-z0-9])?$", name))])
@@ -87,6 +87,41 @@ variable "security_contact" {
   validation {
     condition     = can(regex(local.email_pattern, var.security_contact))
     error_message = "security_contact must be an email address; replace the <...> placeholder."
+  }
+}
+
+variable "ops_email" {
+  type        = string
+  description = "Ops mailbox (I-04's alerts) that Cloudflare notifies when a relay leaves or rejoins the engine wildcard."
+
+  validation {
+    condition     = can(regex(local.email_pattern, var.ops_email))
+    error_message = "ops_email must be an email address; replace the <...> placeholder."
+  }
+}
+
+variable "relay_health_check" {
+  type = object({
+    interval_s = optional(number, 15)
+    regions    = optional(list(string), ["WEU", "EEU", "ENAM"])
+  })
+  description = "How often and from where Cloudflare checks each relay. Failover takes about interval_s x 2 + 30 s (README, Relay DNS); a shorter interval needs a higher Load Balancing tier."
+  default     = {}
+
+  validation {
+    condition     = var.relay_health_check.interval_s >= 10 && var.relay_health_check.interval_s <= 60
+    error_message = "relay_health_check.interval_s must be between 10 and 60 seconds; slower checks leave a hung relay in DNS for minutes."
+  }
+
+  # Cloudflare marks an endpoint unhealthy when most check regions see it fail, so one region's view of the network
+  # cannot pull a relay; that takes at least three distinct regions.
+  validation {
+    condition = (
+      length(distinct(var.relay_health_check.regions)) >= 3
+      && length(distinct(var.relay_health_check.regions)) == length(var.relay_health_check.regions)
+      && alltrue([for region in var.relay_health_check.regions : contains(["WNAM", "ENAM", "WEU", "EEU", "NSAM", "SSAM", "OC", "ME", "NAF", "SAF", "SAS", "SEAS", "NEAS"], region)])
+    )
+    error_message = "relay_health_check.regions must name at least three distinct Cloudflare check regions (WEU, EEU, ENAM, ...)."
   }
 }
 

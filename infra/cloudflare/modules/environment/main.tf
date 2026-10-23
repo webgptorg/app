@@ -19,15 +19,6 @@ locals {
     dashboard = var.dashboard_zone
   }
 
-  wildcard_records = merge(
-    { for name, relay in local.relays_in_rotation : "engine-wildcard-a-${name}" => {
-      zone = "engine", name = local.wildcard, type = "A", content = relay.ipv4, ttl = 60
-    } },
-    { for name, relay in local.relays_in_rotation : "engine-wildcard-aaaa-${name}" => {
-      zone = "engine", name = local.wildcard, type = "AAAA", content = relay.ipv6, ttl = 60
-    } },
-  )
-
   relay_records = merge(
     { for name, relay in var.relays : "relay-a-${name}" => {
       zone = local.relay_zone, name = "${name}.${var.relay_domain}", type = "A", content = relay.ipv4, ttl = 60
@@ -76,7 +67,6 @@ locals {
 
   records = {
     for key, record in merge(
-      local.wildcard_records,
       local.relay_records,
       local.engine_caa_records,
       local.engine_no_mail_records,
@@ -135,6 +125,13 @@ resource "cloudflare_dns_record" "this" {
     precondition {
       condition     = !each.value.proxied || !(each.value.name == var.engine_domain || endswith(each.value.name, ".${var.engine_domain}"))
       error_message = "${each.value.name} is under the engine domain and must be DNS-only (proxied = false)."
+    }
+
+    # The engine wildcard is the load balancer's (relay-dns.tf). A record next to it would be served whenever the load
+    # balancer is disabled, unchecked, and could list a relay that is out of rotation.
+    precondition {
+      condition     = each.value.name != local.wildcard
+      error_message = "${local.wildcard} belongs to the relay load balancer (relay-dns.tf); declare no DNS record for it."
     }
 
     # Nothing may serve on the bare engine domain (spec, Abuse on our domains: before the PSL entry lands).

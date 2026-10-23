@@ -61,6 +61,7 @@ variable "email_sending_domain" {}
 variable "dmarc_policy" {}
 variable "security_contact" {}
 variable "relays" {}
+variable "ops_email" {}
 
 # Token from CLOUDFLARE_API_TOKEN: the staging IaC token (README, API tokens).
 provider "cloudflare" {}
@@ -77,6 +78,7 @@ module "environment" {
   dmarc_policy         = var.dmarc_policy
   security_contact     = var.security_contact
   relays               = var.relays
+  ops_email            = var.ops_email
 }
 
 output "engine_name_servers" {
