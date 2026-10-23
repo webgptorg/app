@@ -2,7 +2,7 @@
 
 - **Lane:** I · **Module:** `infra/cloudflare`, `apps/dashboard` (health check job), `e2e/` · **Milestone:** M4
 - **Depends on:** I-01, I-02, I-04
-- **Status:** todo
+- **Status:** in progress (feat/i-07-relay-dns-failover)
 - **Spec:** Relay and tunnel (failover); Operations (Availability and failure modes); Hosting and stack (Engine DNS, Monitoring jobs)
 
 ## Goal
