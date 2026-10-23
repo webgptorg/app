@@ -6,6 +6,7 @@ import type { Entitlements } from '../domain/billing/entitlements';
 import type { Authorizer } from '../domain/authz/authorizer';
 import type { DashboardAction } from '../domain/authz/policy';
 import type { CustomHostnameStore } from '../domain/custom-hostnames/custom-hostname-store';
+import type { PlatformEngineStore } from '../domain/engines/platform-engine-store';
 import type { EngineStore } from '../domain/registration/engine-store';
 import type { LinkCodeStore } from '../domain/registration/link-code-store';
 import type { EngineHostnameStore } from '../domain/registry/engine-hostname-store';
@@ -45,6 +46,8 @@ export interface DashboardDeps {
     readonly entitlements: Entitlements;
     readonly linkCodes: LinkCodeStore;
     readonly engines: EngineStore;
+    /** Platform admins' unscoped read and suspension of any engine (I-05). */
+    readonly platformEngines: PlatformEngineStore;
     readonly relayTokens: RelayTokenStore;
     /** Relays' unscoped read of engines (D-04). */
     readonly registry: RegistryReader;

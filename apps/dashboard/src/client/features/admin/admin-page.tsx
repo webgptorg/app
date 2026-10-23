@@ -4,7 +4,7 @@ import { m } from '../../../paraglide/messages';
 import { Link } from '../../core/link';
 import { EngineLookupCard } from './hostnames/engine-lookup-card';
 
-/** `/admin`: the platform admin area; custom domains (D-08) and abuse tools (I-05) add their entries here. */
+/** `/admin`: the platform admin area; engines (suspension, I-05, and custom domains, D-08) are found by ID below. */
 export function AdminPage() {
     return (
         <div className="flex flex-col gap-6">

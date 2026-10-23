@@ -37,6 +37,7 @@ function app(options: {
                 ? { email: 'fake', billing: 'fake', rateLimit: 'memory' }
                 : { email: 'cloudflare', billing: 'stripe', rateLimit: 'workers' },
         EMAIL_FROM: 'no-reply@ptbk.test',
+        ABUSE_EMAIL: 'abuse@ptbk.test',
         RATE_LIMIT_HMAC_KEY: options.environment === 'dev' ? DEV_RATE_LIMIT_HMAC_KEY : 'k'.repeat(43),
         BILLING_PLANS: TEST_PLANS,
         ...(options.environment === 'dev'

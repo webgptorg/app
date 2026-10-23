@@ -13,7 +13,11 @@ import { createDatabase } from '../adapters/db/client';
 import { createD1AuthStore } from '../adapters/db/d1-auth-store';
 import { createD1BillingStore } from '../adapters/db/d1-billing-store';
 import { createD1CustomHostnameStore } from '../adapters/db/d1-custom-hostname-store';
-import { createD1EngineStore, createD1LinkCodeStore } from '../adapters/db/d1-registration-store';
+import {
+    createD1EngineStore,
+    createD1LinkCodeStore,
+    createD1PlatformEngineStore,
+} from '../adapters/db/d1-registration-store';
 import { createD1RegistryReader, createD1RelayTokenStore } from '../adapters/db/d1-registry-store';
 import { createD1HeartbeatEngineReader } from '../adapters/db/d1-status-store';
 import { createMemoryRateLimiter } from '../adapters/rate-limit/memory-rate-limiter';
@@ -174,6 +178,7 @@ export function createDashboard(
         entitlements: createSubscriptionEntitlements({ store: billingStore, catalogue: config.plans }),
         linkCodes: createD1LinkCodeStore(db),
         engines: createD1EngineStore(db),
+        platformEngines: createD1PlatformEngineStore(db),
         relayTokens: createD1RelayTokenStore(db),
         registry: createD1RegistryReader(db),
         engineHostnames: customHostnames,

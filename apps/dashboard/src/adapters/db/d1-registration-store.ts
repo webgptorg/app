@@ -1,12 +1,19 @@
 import { Ed25519PublicKey, EngineId, EngineVersion, Hostname, RegistrationMode } from '@ptbk/protocol';
-import { and, asc, count, eq, exists, gt, isNull, ne, notExists, or, sql } from 'drizzle-orm';
+import { and, asc, count, eq, exists, gt, isNull, ne, notExists, or, sql, type SQL } from 'drizzle-orm';
 import { z } from 'zod';
 
+import type { AdminAuditEntry } from '../../domain/auth/records';
+import type { PlatformEngineStore } from '../../domain/engines/platform-engine-store';
 import { orgIdSchema, type OrgId } from '../../domain/ids';
-import { OWNER_REVOKED, type EngineRecord, type EngineStore } from '../../domain/registration/engine-store';
+import {
+    OWNER_REVOKED,
+    PLATFORM_SUSPENDED,
+    type EngineRecord,
+    type EngineStore,
+} from '../../domain/registration/engine-store';
 import type { LinkCodeStore } from '../../domain/registration/link-code-store';
 import type { Database } from './client';
-import { engines, linkCodes, orgAuditLog } from './schema';
+import { adminAuditLog, engines, linkCodes, orgAuditLog } from './schema';
 
 const engineStatusSchema = z.enum(['active', 'suspended']);
 
@@ -249,6 +256,80 @@ export function createD1EngineStore(db: Database): EngineStore {
         async findForRegistration(engineId) {
             const row = await db.select().from(engines).where(eq(engines.engineId, engineId)).get();
             return row === undefined ? null : toEngine(row);
+        },
+    };
+}
+
+/**
+ * Platform admin suspension (I-05). Each change is one `db.batch`, which D1 applies as a transaction: first the audit
+ * entry, inserted only while the engine is in the state the update expects, then the update under the same
+ * condition. Nothing runs between them, so an entry is written exactly when the engine changes.
+ */
+export function createD1PlatformEngineStore(db: Database): PlatformEngineStore {
+    const find = async (engineId: EngineId) => {
+        const row = await db.select().from(engines).where(eq(engines.engineId, engineId)).get();
+        return row === undefined ? null : toEngine(row);
+    };
+    const auditWhere = (entry: AdminAuditEntry, condition: SQL | undefined) =>
+        db.insert(adminAuditLog).select((qb) =>
+            qb
+                // Every column of `admin_audit_log`, in table order.
+                .select({
+                    id: sql`${entry.id}`.as('id'),
+                    adminUserId: sql`${entry.adminUserId}`.as('admin_user_id'),
+                    action: sql`${entry.action}`.as('action'),
+                    targetType: sql`${entry.targetType}`.as('target_type'),
+                    targetId: sql`${entry.targetId}`.as('target_id'),
+                    reason: sql`${entry.reason}`.as('reason'),
+                    createdAt: sql`${entry.createdAt}`.as('created_at'),
+                })
+                .from(engines)
+                .where(condition),
+        );
+
+    return {
+        find,
+
+        async suspend(engineId, audit) {
+            const active = and(eq(engines.engineId, engineId), eq(engines.status, 'active'));
+            const [, changed] = await db.batch([
+                auditWhere(audit, active),
+                db
+                    .update(engines)
+                    .set({ status: 'suspended', statusReason: PLATFORM_SUSPENDED, updatedAt: audit.createdAt })
+                    .where(active)
+                    .returning({ engineId: engines.engineId }),
+            ]);
+            if (changed.length === 1) {
+                return 'suspended';
+            }
+            return (await find(engineId)) === null ? 'not-found' : 'already-suspended';
+        },
+
+        async unsuspend(engineId, audit) {
+            const platformSuspended = and(
+                eq(engines.engineId, engineId),
+                eq(engines.status, 'suspended'),
+                eq(engines.statusReason, PLATFORM_SUSPENDED),
+            );
+            const [, changed] = await db.batch([
+                auditWhere(audit, platformSuspended),
+                db
+                    .update(engines)
+                    .set({ status: 'active', statusReason: null, updatedAt: audit.createdAt })
+                    .where(platformSuspended)
+                    .returning({ engineId: engines.engineId }),
+            ]);
+            if (changed.length === 1) {
+                return 'unsuspended';
+            }
+            const engine = await find(engineId);
+            if (engine === null) {
+                return 'not-found';
+            }
+            return engine.status === 'suspended' && engine.statusReason === OWNER_REVOKED
+                ? 'owner-revoked'
+                : 'not-suspended';
         },
     };
 }

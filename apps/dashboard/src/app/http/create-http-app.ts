@@ -13,6 +13,7 @@ import { problemResponse } from './problem';
 import { securityHeaders, withHeaders } from './security-headers';
 import { createV1Router, V1_MOUNT } from './v1-router';
 import { createWebhooksRouter, WEBHOOKS_MOUNT } from './webhooks-router';
+import { createWellKnownRouter, WELL_KNOWN_MOUNT } from './well-known-router';
 
 export interface HttpAppDeps extends DashboardDeps {
     /** The Workers static assets binding; answers `index.html` for deep links. */
@@ -21,7 +22,7 @@ export interface HttpAppDeps extends DashboardDeps {
     readonly viteDevServer: boolean;
 }
 
-const MACHINE_AND_API_MOUNTS = [API_MOUNT, V1_MOUNT, INTERNAL_MOUNT, WEBHOOKS_MOUNT] as const;
+const MACHINE_AND_API_MOUNTS = [API_MOUNT, V1_MOUNT, INTERNAL_MOUNT, WEBHOOKS_MOUNT, WELL_KNOWN_MOUNT] as const;
 
 const KNOWN_METHODS: ReadonlySet<string> = new Set(['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']);
 
@@ -78,6 +79,7 @@ export function createHttpApp(deps: HttpAppDeps): HttpApp {
         [V1_MOUNT, createV1Router({ ...deps, policy, routes })],
         [INTERNAL_MOUNT, createInternalRouter({ ...deps, routes })],
         [WEBHOOKS_MOUNT, createWebhooksRouter({ billing: deps.billing, routes })],
+        [WELL_KNOWN_MOUNT, createWellKnownRouter({ ...deps, routes })],
     ] as const;
     for (const [mount, router] of routers) {
         // An unknown path under an API prefix is a problem, never the SPA shell.

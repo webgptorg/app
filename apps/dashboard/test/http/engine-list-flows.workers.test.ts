@@ -3,7 +3,11 @@ import { env } from 'cloudflare:workers';
 import { createDatabase } from '../../src/adapters/db/client';
 import { createD1AuthStore } from '../../src/adapters/db/d1-auth-store';
 import { createD1BillingStore } from '../../src/adapters/db/d1-billing-store';
-import { createD1EngineStore, createD1LinkCodeStore } from '../../src/adapters/db/d1-registration-store';
+import {
+    createD1EngineStore,
+    createD1LinkCodeStore,
+    createD1PlatformEngineStore,
+} from '../../src/adapters/db/d1-registration-store';
 import { createD1RegistryReader } from '../../src/adapters/db/d1-registry-store';
 import { createD1HeartbeatEngineReader } from '../../src/adapters/db/d1-status-store';
 import { orgIdSchema, userIdSchema } from '../../src/domain/ids';
@@ -17,7 +21,11 @@ describeEngineListFlows('engine list on D1', (options) => {
             ...options,
             store: createD1AuthStore(db),
             billingStore: createD1BillingStore(db),
-            registration: { linkCodes: createD1LinkCodeStore(db), engines: createD1EngineStore(db) },
+            registration: {
+                linkCodes: createD1LinkCodeStore(db),
+                engines: createD1EngineStore(db),
+                platformEngines: createD1PlatformEngineStore(db),
+            },
             registry: createD1RegistryReader(db),
             heartbeatEngines: createD1HeartbeatEngineReader(db),
         }),

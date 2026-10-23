@@ -32,7 +32,7 @@ export interface RegistryFlowFixture {
     /** What `--revoke` does. */
     revokeRelayToken(id: RelayTokenId, at: number): Promise<void>;
     relayToken(id: RelayTokenId): Promise<StoredRelayToken | null>;
-    /** What D-06's revocation and I-05's suspension will do to the engine's row. */
+    /** What D-06's revocation and I-05's suspension do to the engine's row. */
     suspend(engineId: EngineId): Promise<void>;
 }
 
@@ -133,6 +133,21 @@ export function describeRegistryFlows(name: string, makeFixture: () => RegistryF
             const response = await asRelay(token, engine.engineId);
             expect(response.status).toBe(200);
             expect(RegistryEntry.parse(response.body).status).toBe('suspended');
+        });
+
+        it('withholds the custom hostnames of a suspended engine', async () => {
+            const engine = await registered();
+            const hostname = Hostname.parse('agents.customer.test');
+            const sig = ed25519SignatureFromBytes(await signHostnameClaim(engine.signer, hostname, engine.engineId));
+            harness.engineHostnames.set(engine.engineId, [{ hostname, sig }]);
+            await fixture.suspend(engine.engineId);
+            const { token } = await mint();
+            expect(RegistryEntry.parse((await asRelay(token, engine.engineId)).body)).toEqual({
+                enginePublicKey: engine.publicKey,
+                hostnames: [defaultHostname(engine.engineId, TEST_ENGINE_DOMAIN)],
+                claims: [],
+                status: 'suspended',
+            });
         });
 
         it('serves custom hostnames with a verifying claim and drops the rest', async () => {

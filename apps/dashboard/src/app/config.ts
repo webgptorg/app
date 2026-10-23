@@ -147,6 +147,7 @@ const varsSchema = z
         INSTALL_COMMAND: installCommandSchema,
         ADAPTERS: adaptersSchema,
         EMAIL_FROM: z.email().max(254),
+        ABUSE_EMAIL: z.email().max(254),
         RATE_LIMIT_HMAC_KEY: hmacKeySchema,
         BILLING_PLANS: planCatalogueSchema,
         HEARTBEAT: heartbeatSchema.optional(),
@@ -227,6 +228,11 @@ export interface DashboardConfig {
     readonly adapters: Readonly<AdapterSelection>;
     /** The sender address for the `send_email` binding. */
     readonly emailFrom: string;
+    /**
+     * The public abuse contact (I-05): on `/abuse`, in `security.txt`, on a suspended engine's page; abuse alerts go
+     * there too.
+     */
+    readonly abuseEmail: string;
     /** Secret: keys rate-limit counters, so raw IPs and emails are never stored. */
     readonly rateLimitHmacKey: Uint8Array;
     readonly plans: PlanCatalogue;
@@ -311,6 +317,7 @@ export function parseConfig(env: object): DashboardConfig {
         installCommand: parsed.INSTALL_COMMAND,
         adapters: Object.freeze({ ...parsed.ADAPTERS }),
         emailFrom: parsed.EMAIL_FROM,
+        abuseEmail: parsed.ABUSE_EMAIL,
         rateLimitHmacKey: fromBase64Url(parsed.RATE_LIMIT_HMAC_KEY),
         plans: createPlanCatalogue(parsed.BILLING_PLANS),
         heartbeat: Object.freeze({ ...(parsed.HEARTBEAT ?? heartbeatSchema.parse({})) }),

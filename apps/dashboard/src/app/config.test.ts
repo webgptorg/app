@@ -12,6 +12,7 @@ const devVars = {
     INSTALL_COMMAND: 'bun run dev:link {linkCode}',
     ADAPTERS: { email: 'fake', billing: 'fake', rateLimit: 'memory' },
     EMAIL_FROM: 'no-reply@ptbk.test',
+    ABUSE_EMAIL: 'abuse@ptbk.test',
     RATE_LIMIT_HMAC_KEY: DEV_RATE_LIMIT_HMAC_KEY,
     BILLING_PLANS: TEST_PLANS,
 };
@@ -52,6 +53,7 @@ describe('parseConfig', () => {
             installCommand: 'bun run dev:link {linkCode}',
             adapters: { email: 'fake', billing: 'fake', rateLimit: 'memory' },
             emailFrom: 'no-reply@ptbk.test',
+            abuseEmail: 'abuse@ptbk.test',
             rateLimitHmacKey: new TextEncoder().encode('dev-only-rate-limit-key-not-secret'),
             heartbeat: { intervalS: 60, missedLimit: 3, graceS: 15, perEngineLimit: 5 },
             linkCodeTtlMs: 30 * 60_000,
@@ -109,6 +111,7 @@ describe('parseConfig', () => {
         'INSTALL_COMMAND',
         'ADAPTERS',
         'EMAIL_FROM',
+        'ABUSE_EMAIL',
         'RATE_LIMIT_HMAC_KEY',
         'BILLING_PLANS',
     ])('fails closed without %s', (name) => {

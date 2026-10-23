@@ -43,6 +43,8 @@ export interface RouteContract {
     readonly input: RouteInput;
     /** Strict, so tests prove the server sends no undeclared field; the client reads it tolerantly. */
     readonly output: z.ZodType;
+    /** `text`: the output is a string sent as `text/plain` (`security.txt`); JSON otherwise. */
+    readonly responseType?: 'text';
     /** Endpoint-specific problem codes, on top of the common ones. */
     readonly errorCodes: readonly string[];
 }

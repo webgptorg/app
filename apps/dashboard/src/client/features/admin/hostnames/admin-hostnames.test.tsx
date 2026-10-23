@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 import { apiRoutes, type CustomHostnameView } from '../../../../shared/api/routes';
 import { expectNoAxeViolations } from '../../../testing/axe';
-import { NOW, session } from '../../../testing/fixtures';
+import { adminEngineView, NOW, session } from '../../../testing/fixtures';
 import { renderApp } from '../../../testing/render-app';
 import { ok, problem } from '../../../testing/scripted-api';
 
@@ -36,11 +36,14 @@ function listing(hostnames: readonly CustomHostnameView[]) {
 }
 
 describe('custom domains (platform admin)', () => {
-    it('opens an engine by ID from /admin, refusing anything that is not one', async () => {
+    it('opens an engine by ID from /admin, refusing anything that is not one, and links to its domains', async () => {
         const app = renderApp({
             path: '/admin',
             session: ADMIN,
-            script: (api) => api.on(apiRoutes.adminListHostnames, listing([])),
+            script: (api) => {
+                api.on(apiRoutes.adminListHostnames, listing([]));
+                api.on(apiRoutes.adminGetEngine, ok({ engine: adminEngineView({ engineId: ENGINE_ID }) }));
+            },
         });
         const field = await screen.findByLabelText(/Engine ID/);
         await app.user.type(field, 'not-an-engine');
@@ -49,6 +52,9 @@ describe('custom domains (platform admin)', () => {
         await app.user.clear(field);
         await app.user.type(field, ENGINE_ID.toUpperCase());
         await app.user.click(screen.getByRole('button', { name: 'Open' }));
+        expect(await screen.findByRole('heading', { name: 'Engine', level: 1 })).toBeTruthy();
+        expect(app.history.location.pathname).toBe(`/admin/engines/${ENGINE_ID}`);
+        await app.user.click(await screen.findByRole('link', { name: 'Custom domains' }));
         expect(await screen.findByRole('heading', { name: 'Custom domains', level: 1 })).toBeTruthy();
         expect(app.history.location.pathname).toBe(PATH);
     });

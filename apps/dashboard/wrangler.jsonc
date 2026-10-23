@@ -31,6 +31,8 @@
         "INSTALL_COMMAND": "bun run dev:link {linkCode}",
         "ADAPTERS": { "email": "fake", "billing": "fake", "rateLimit": "memory" },
         "EMAIL_FROM": "no-reply@ptbk.test",
+        // The public abuse contact (I-05): /abuse, security.txt, suspended engines' pages, and abuse alerts.
+        "ABUSE_EMAIL": "abuse@ptbk.test",
         // Optional everywhere; these are the defaults. An engine is offline after missedLimit × intervalS + graceS
         // seconds without an accepted heartbeat; perEngineLimit is heartbeats per engine and minute. The e2e stack
         // sends every 15 s and sets intervalS to match.
@@ -104,6 +106,7 @@
                 "INSTALL_COMMAND": "<engine-install-command> {linkCode}",
                 "ADAPTERS": { "email": "cloudflare", "billing": "stripe", "rateLimit": "workers" },
                 "EMAIL_FROM": "no-reply@<staging-sending-domain>",
+                "ABUSE_EMAIL": "abuse@<staging-abuse-domain>",
                 // I-04: alerts go to the ops mailbox; relay metrics tokens are the RELAY_METRICS_TOKENS secret and
                 // the analytics read token ANALYTICS_API_TOKEN (docs/runbooks/observability.md).
                 "MONITORING": { "opsEmail": "ops@<staging-ops-domain>" },
@@ -175,6 +178,7 @@
                 "INSTALL_COMMAND": "<engine-install-command> {linkCode}",
                 "ADAPTERS": { "email": "cloudflare", "billing": "stripe", "rateLimit": "workers" },
                 "EMAIL_FROM": "no-reply@<production-sending-domain>",
+                "ABUSE_EMAIL": "abuse@<production-abuse-domain>",
                 "MONITORING": { "opsEmail": "ops@<production-ops-domain>" },
                 "ANALYTICS": { "accountId": "<production-account-id>", "dataset": "ptbk_ops_production" },
                 // Live-mode Stripe IDs; secrets via `wrangler secret put STRIPE_SECRET_KEY --env production` (and

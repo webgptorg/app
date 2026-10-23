@@ -7,7 +7,10 @@ import { m } from '../../../../paraglide/messages';
 
 const ENGINE_ID_PATTERN = /^[a-z2-7]{26}$/;
 
-/** Custom domains are set up per engine, by its ID, which the customer gives the admin with their request. */
+/**
+ * Engines are found by their ID, which an abuse report (the hostname's first label) or a customer's request for a custom
+ * domain carries; the engine's page has suspension and links to its custom domains.
+ */
 export function EngineLookupCard() {
     const navigate = useNavigate();
     const schema = useMemo(
@@ -24,11 +27,11 @@ export function EngineLookupCard() {
     const form = useZodForm({
         schema,
         defaultValues: { engineId: '' },
-        onSubmit: ({ engineId }) => navigate({ to: '/admin/engines/$engineId/hostnames', params: { engineId } }),
+        onSubmit: ({ engineId }) => navigate({ to: '/admin/engines/$engineId', params: { engineId } }),
     });
     return (
-        <Card title={m.admin_hostnames_title()}>
-            <p className="mb-4 text-sm text-text-muted">{m.admin_hostnames_summary()}</p>
+        <Card title={m.admin_engines_title()}>
+            <p className="mb-4 text-sm text-text-muted">{m.admin_engines_summary()}</p>
             <Form form={form} className="flex flex-col gap-4 sm:flex-row sm:items-end">
                 <FormField
                     form={form}

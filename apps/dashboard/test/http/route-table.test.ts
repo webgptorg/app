@@ -7,7 +7,9 @@ import { createMemoryAuthStore } from '../../src/testing/memory-auth-store';
 
 /** Routes anyone may call without a session. Adding one is a security review point. */
 const PUBLIC_ROUTES = [
+    'GET /.well-known/security.txt',
     'GET /api/__dev/emails',
+    'GET /api/abuse-contact',
     'GET /api/environment',
     'GET /v1/health',
     'POST /api/auth/recovery/options',
@@ -20,7 +22,32 @@ const PUBLIC_ROUTES = [
     'POST /api/auth/signup/verify',
 ];
 
-const MOUNTS = ['/api', '/v1', '/internal', '/webhooks'];
+const MOUNTS = ['/api', '/v1', '/internal', '/webhooks', '/.well-known'];
+
+/**
+ * I-05's abuse review: every endpoint reachable without a session and the limits it is held to, per client IP (or per
+ * relay key) and per engine. The values are `RATE_LIMITS` (README, "Rate limits"); changing this table is a review
+ * point. Engine creation is limited through `Entitlements`, not here (ADR 0017).
+ */
+const ANONYMOUS_LIMITS = {
+    'GET /.well-known/security.txt': ['public-read-ip', null],
+    'GET /api/__dev/emails': ['public-read-ip', null],
+    'GET /api/abuse-contact': ['public-read-ip', null],
+    'GET /api/environment': ['public-read-ip', null],
+    'GET /internal/v1/engines/:engineId': ['registry-relay', null],
+    'GET /v1/health': ['public-read-ip', null],
+    'POST /api/auth/recovery/options': ['options-ip', null],
+    'POST /api/auth/recovery/request': ['recovery-request-ip', null],
+    'POST /api/auth/recovery/verify': ['verify-ip', null],
+    'POST /api/auth/signin/options': ['options-ip', null],
+    'POST /api/auth/signin/verify': ['verify-ip', null],
+    'POST /api/auth/signup/options': ['options-ip', null],
+    'POST /api/auth/signup/start': ['signup-start-ip', null],
+    'POST /api/auth/signup/verify': ['verify-ip', null],
+    'POST /v1/engines/:engineId/heartbeat': ['heartbeat-ip', 'heartbeat-engine'],
+    'POST /v1/engines/register': ['registration-ip', null],
+    'POST /webhooks/stripe': ['webhook-ip', null],
+};
 
 describe('route table', () => {
     // The dev configuration mounts the most routes (it adds the dev outbox).
@@ -81,6 +108,15 @@ describe('route table', () => {
         expect(relayRoutes.map((route) => `${route.method} ${route.path} ${String(route.rateLimit)}`)).toEqual([
             'GET /internal/v1/engines/:engineId registry-relay',
         ]);
+    });
+
+    it('holds every endpoint without a session to its reviewed rate limits', () => {
+        const limits = Object.fromEntries(
+            harness.routes
+                .filter((route) => route.auth !== 'session')
+                .map((route) => [`${route.method} ${route.path}`, [route.rateLimit, route.engineRateLimit ?? null]]),
+        );
+        expect(limits).toEqual(ANONYMOUS_LIMITS);
     });
 
     it('allows exactly the allowlisted public routes', () => {

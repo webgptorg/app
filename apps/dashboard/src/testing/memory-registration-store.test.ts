@@ -5,12 +5,14 @@ import { describeRegistrationStoreContract } from './registration-store-contract
 
 describeRegistrationStoreContract('memory', () => {
     const auth = createMemoryAuthStore();
-    const { linkCodes, engines, state } = createMemoryRegistrationStores({
+    const { linkCodes, engines, platformEngines, state, adminAuditEntries } = createMemoryRegistrationStores({
         orgExists: (orgId) => auth.state.orgs.has(orgId),
     });
     return {
         linkCodes,
         engines,
+        platformEngines,
+        adminAudit: (engineId) => Promise.resolve(adminAuditEntries.filter((entry) => entry.targetId === engineId)),
         async addOrg() {
             const account = testAccount();
             await auth.accounts.createAccount(account);
