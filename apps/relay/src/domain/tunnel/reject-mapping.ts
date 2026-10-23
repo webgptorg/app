@@ -9,6 +9,19 @@ export const TRY_AGAIN_LATER = 1013;
 /** Why a handshake ends without `ready`: a verification outcome (a limit included) or the handshake timeout. */
 export type HandshakeFailure = HandshakeRejectReason | 'timeout';
 
+/** Every {@link HandshakeFailure}, for metric labels; the test checks the list is complete. */
+export const HANDSHAKE_FAILURES = [
+    'unknown-engine',
+    'suspended',
+    'bad-signature',
+    'id-key-mismatch',
+    'registry-unavailable',
+    'unsupported-version',
+    'malformed',
+    'rate-limited',
+    'timeout',
+] as const satisfies readonly HandshakeFailure[];
+
 export interface WireRejection {
     /** `null`: close without a `reject` message (malformed input). */
     readonly message: TunnelReject | null;

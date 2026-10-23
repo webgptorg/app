@@ -70,6 +70,7 @@ describe('createRevalidator', () => {
             inner: deps.registry,
             clock: deps.clock,
             logger: deps.logger,
+            metrics: deps.metrics,
             ttlMs: TTL_MS,
             maxStaleMs: MAX_STALE_MS,
             negativeTtlMs: 30_000,

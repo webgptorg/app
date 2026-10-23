@@ -12,6 +12,7 @@ import type { DnsResolver } from '../domain/dns-resolver';
 import { certificateNameCovers } from '../domain/engine-domain';
 import type { EngineRegistry } from '../domain/engine-registry';
 import type { MemoryBudget } from '../domain/limits/memory-budget';
+import type { Metrics } from '../domain/metrics/catalog';
 import { createMemoryBudget } from '../domain/limits/memory-budget';
 import type { Logger } from '../domain/logger';
 import type { TunnelTerminationReason } from '../domain/metrics/reason-counters';
@@ -23,8 +24,12 @@ import { createSessionTable } from '../domain/tunnel/session-table';
 import { createTunnelEndpoint } from '../domain/tunnel/tunnel-endpoint';
 import type { TunnelSession } from '../domain/tunnel/tunnel-session';
 import { createHttpEngineRegistry } from '../adapters/http-engine-registry';
+import { createMetricsEndpoint } from '../adapters/metrics-endpoint';
 import { createNodeDnsResolver } from '../adapters/node-dns-resolver';
 import { createOwnTlsServer } from '../adapters/own-tls-server';
+import type { ProcessStats } from '../adapters/process-stats';
+import { createProcessStats } from '../adapters/process-stats';
+import type { PrometheusMetrics } from '../adapters/prometheus-metrics';
 import { createStaticFileRegistry } from '../adapters/static-file-registry';
 import type { BrowserListenerMetrics } from '../adapters/tcp-listener';
 import { createBrowserListener } from '../adapters/tcp-listener';
@@ -41,6 +46,8 @@ export interface RelayDeps {
     readonly livenessClock: Clock;
     /** Challenge nonces. */
     readonly random: Random;
+    /** Counters the relay records, rendered on `GET /metrics`. */
+    readonly metrics: PrometheusMetrics;
 }
 
 export interface RelayServices {
@@ -67,6 +74,8 @@ export interface RelayListener {
     readonly memory: Pick<MemoryBudget, 'used' | 'isOver'>;
     /** Tunnels the relay cut on its own, per reason, for I-04. */
     terminations(): Readonly<Record<TunnelTerminationReason, number>>;
+    /** What `GET /metrics` answers: every series, with gauges read now. */
+    renderMetrics(): string;
     /** One revalidation round now, past the registry cache; never rejects. */
     revalidate(): Promise<void>;
     /** New connections to the relay's own hostname use this certificate; open tunnels stay connected. */
@@ -128,14 +137,15 @@ async function registrySource(
 /** The registry source `RELAY_REGISTRY_KIND` picks, behind the one cache, and the cached DNS resolver. */
 export async function createRelayServices(
     config: RelayConfig,
-    deps: Pick<RelayDeps, 'logger' | 'clock'>,
+    deps: Pick<RelayDeps, 'logger' | 'clock'> & { readonly metrics: Metrics },
 ): Promise<RelayServices> {
-    const { logger, clock } = deps;
+    const { logger, clock, metrics } = deps;
     const origin = await registrySource(config, deps);
     const registry = createCachedRegistry({
         inner: origin.source,
         clock,
         logger,
+        metrics,
         ttlMs: config.registry.ttlMs,
         maxStaleMs: config.registry.maxStaleMs,
         negativeTtlMs: REGISTRY_NEGATIVE_TTL_MS,
@@ -182,6 +192,11 @@ export function assertRelayCertificate(cert: string, engineDomain: Hostname): vo
     }
 }
 
+/** When the leaf certificate expires, in Unix seconds; the PEM was checked when it was read. */
+export function certificateExpirySeconds(cert: string): number {
+    return Math.floor(new X509Certificate(cert).validToDate.getTime() / 1000);
+}
+
 /** Reads and checks the relay's own certificate and key; throws {@link RelayTlsError}. */
 export async function readRelayTls(config: RelayConfig): Promise<RelayTls> {
     const [cert, key] = await Promise.all([
@@ -206,7 +221,7 @@ export async function startRelayListener(
     tls: RelayTls,
     deps: RelayDeps,
 ): Promise<RelayListener> {
-    const { logger, clock, livenessClock, random } = deps;
+    const { logger, clock, livenessClock, random, metrics } = deps;
     const { registry, dns } = services;
     const table = createSessionTable<TunnelSession>({ logger });
     const memory = createMemoryBudget(config.memoryBudgetBytes);
@@ -233,7 +248,16 @@ export async function startRelayListener(
         },
         table,
         terminations,
+        metrics,
     });
+    const processStats = createProcessStats();
+    let certificateExpiresAtS = certificateExpirySeconds(tls.cert);
+    // Assigned below; scrapes arrive only once the listener accepts connections.
+    let collect = (): void => undefined;
+    const renderMetrics = (): string => {
+        collect();
+        return metrics.render();
+    };
     const server = (() => {
         try {
             return createOwnTlsServer({
@@ -253,6 +277,10 @@ export async function startRelayListener(
                 clock: livenessClock,
                 logger,
                 maxConnections: config.browser.maxConnections,
+                metrics:
+                    config.metrics === null
+                        ? null
+                        : createMetricsEndpoint({ token: config.metrics.token, render: renderMetrics }),
             });
         } catch {
             throw new RelayTlsError();
@@ -267,8 +295,22 @@ export async function startRelayListener(
         clock,
         logger,
         memory,
+        metrics,
     });
-    const port = await browser.listen(config.listen.port, config.listen.host);
+    collect = () => {
+        collectGauges(metrics, {
+            tunnels: table.sessions().length,
+            browser,
+            memoryUsed: memory.used(),
+            terminations: terminations.snapshot(),
+            process: processStats,
+            certificateExpiresAtS,
+        });
+    };
+    const port = await browser.listen(config.listen.port, config.listen.host).catch((error: unknown) => {
+        processStats.stop();
+        throw error;
+    });
     const revalidator = createRevalidator({
         clock,
         intervalMs: config.registry.ttlMs,
@@ -285,16 +327,56 @@ export async function startRelayListener(
         browser,
         memory,
         terminations: () => terminations.snapshot(),
+        renderMetrics,
         revalidate: () => revalidator.runOnce(),
         setCertificate(next) {
             server.setCertificate(next.cert, next.key);
+            certificateExpiresAtS = certificateExpirySeconds(next.cert);
         },
         async close() {
             revalidator.stop();
+            processStats.stop();
             // The TCP server waits for every connection, the tunnels too, so both close together.
             await Promise.all([browser.close(), server.close()]);
         },
     };
+}
+
+interface GaugeSources {
+    readonly tunnels: number;
+    readonly browser: BrowserListenerMetrics;
+    readonly memoryUsed: number;
+    readonly terminations: Readonly<Record<TunnelTerminationReason, number>>;
+    readonly process: ProcessStats;
+    readonly certificateExpiresAtS: number;
+}
+
+const entriesOf = <K extends string>(record: Readonly<Record<K, number>>): readonly (readonly [K, number])[] =>
+    Object.entries(record) as [K, number][];
+
+/** Reads every gauge, and the counters other parts keep per reason, into `metrics` just before a scrape. */
+function collectGauges(metrics: PrometheusMetrics, sources: GaugeSources): void {
+    const { browser, process } = sources;
+    metrics.set('ptbk_relay_tunnels_active', {}, sources.tunnels);
+    metrics.set('ptbk_relay_browser_connections_active', {}, browser.connections());
+    metrics.set('ptbk_relay_browser_connections_pending', {}, browser.pendingConnections());
+    for (const [reason, count] of entriesOf(browser.refusals())) {
+        metrics.set('ptbk_relay_browser_refusals_total', { reason }, count);
+    }
+    for (const [reason, count] of entriesOf(browser.resets())) {
+        metrics.set('ptbk_relay_stream_resets_total', { reason }, count);
+    }
+    for (const [reason, count] of entriesOf(sources.terminations)) {
+        metrics.set('ptbk_relay_tunnel_terminations_total', { reason }, count);
+    }
+    metrics.set('ptbk_relay_memory_budget_used_bytes', {}, sources.memoryUsed);
+    metrics.set('ptbk_relay_process_resident_memory_bytes', {}, process.residentMemoryBytes());
+    metrics.set('ptbk_relay_process_heap_used_bytes', {}, process.heapUsedBytes());
+    const fds = process.openFds();
+    if (fds !== null) metrics.set('ptbk_relay_process_open_fds', {}, fds);
+    metrics.set('ptbk_relay_event_loop_lag_seconds', {}, process.takeEventLoopLagSeconds());
+    metrics.set('ptbk_relay_process_start_time_seconds', {}, process.startTimeSeconds);
+    metrics.set('ptbk_relay_certificate_expiry_timestamp_seconds', {}, sources.certificateExpiresAtS);
 }
 
 /** The composition root. Resolves once the relay listens; `close` stops it and releases everything it holds. */

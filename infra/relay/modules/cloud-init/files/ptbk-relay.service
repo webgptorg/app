@@ -7,6 +7,7 @@ Wants=network-online.target unbound.service nftables.service
 After=network-online.target unbound.service nftables.service
 ConditionPathExists=/etc/ptbk-relay/image.env
 ConditionPathExists=/etc/ptbk-relay/credentials/registry-token
+ConditionPathExists=/etc/ptbk-relay/credentials/metrics-token
 ConditionPathExists=/etc/ptbk-relay/credentials/tls.crt
 ConditionPathExists=/etc/ptbk-relay/credentials/tls.key
 StartLimitIntervalSec=0
@@ -23,6 +24,7 @@ TimeoutStopSec=30
 KillMode=mixed
 
 LoadCredential=registry-token:/etc/ptbk-relay/credentials/registry-token
+LoadCredential=metrics-token:/etc/ptbk-relay/credentials/metrics-token
 LoadCredential=tls.crt:/etc/ptbk-relay/credentials/tls.crt
 LoadCredential=tls.key:/etc/ptbk-relay/credentials/tls.key
 EnvironmentFile=/etc/ptbk-relay/image.env
@@ -33,7 +35,7 @@ RuntimeDirectoryMode=0700
 # systemd hands credentials to the unit's user, root here, on a read-only ramfs. The relay runs as uid 10001 and
 # cannot read them there, so they are copied to a tmpfs only that user can read, which disappears with the service.
 ExecStartPre=/usr/bin/install -d -m 0500 -o 10001 -g 10001 %t/ptbk-relay/credentials
-ExecStartPre=/usr/bin/install -m 0400 -o 10001 -g 10001 %d/registry-token %d/tls.crt %d/tls.key %t/ptbk-relay/credentials/
+ExecStartPre=/usr/bin/install -m 0400 -o 10001 -g 10001 %d/registry-token %d/metrics-token %d/tls.crt %d/tls.key %t/ptbk-relay/credentials/
 
 # Host network: the relay sees real client addresses for its per-IP limits, and no NAT or conntrack rules of a
 # container runtime sit beside nftables. Port 443 needs no capability because ip_unprivileged_port_start is 443.

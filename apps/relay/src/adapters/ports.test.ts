@@ -69,13 +69,26 @@ describe('JSON logger', () => {
             clock: createFakeClock(0),
             write: (line) => lines.push(line),
         });
-        logger.info('relay.started', { relayId: 'relay-a.ptbk.test', event: 'spoofed', level: 'error' });
+        logger.info('relay.started', { relayId: 'relay-a.ptbk.test', event: 'spoofed', level: 'error' } as never);
         logger.warn('registry.stale', { ageS: 1 });
         logger.error('relay.start-failed', { problem: 'x' });
         expect(lines).toEqual([
             '{"time":"1970-01-01T00:00:00.000Z","level":"info","event":"relay.started","relayId":"relay-a.ptbk.test"}',
             '{"time":"1970-01-01T00:00:00.000Z","level":"warn","event":"registry.stale","ageS":1}',
             '{"time":"1970-01-01T00:00:00.000Z","level":"error","event":"relay.start-failed","problem":"x"}',
+        ]);
+    });
+
+    it('drops fields outside the event allowlist, even past the types', () => {
+        const lines: string[] = [];
+        const logger = createJsonLogger({
+            level: 'info',
+            clock: createFakeClock(0),
+            write: (line) => lines.push(line),
+        });
+        logger.info('tunnel.connected', { engineId: 'e', browserIp: '192.0.2.1', sni: 'x.example' } as never);
+        expect(lines).toEqual([
+            '{"time":"1970-01-01T00:00:00.000Z","level":"info","event":"tunnel.connected","engineId":"e"}',
         ]);
     });
 
@@ -105,13 +118,24 @@ describe('JSON logger', () => {
 describe('memory logger', () => {
     it('records entries with their level', () => {
         const logger = createMemoryLogger();
-        logger.info('a', {});
-        logger.warn('b', { n: 1 });
-        logger.error('c', { ok: false });
+        logger.info('relay.stopped', {});
+        logger.warn('registry.stale', { ageS: 1 });
+        logger.error('relay.certificate-rejected', { problem: 'x' });
         expect(logger.entries).toEqual([
-            { level: 'info', event: 'a', fields: {} },
-            { level: 'warn', event: 'b', fields: { n: 1 } },
-            { level: 'error', event: 'c', fields: { ok: false } },
+            { level: 'info', event: 'relay.stopped', fields: {} },
+            { level: 'warn', event: 'registry.stale', fields: { ageS: 1 } },
+            { level: 'error', event: 'relay.certificate-rejected', fields: { problem: 'x' } },
         ]);
+    });
+
+    it('throws on a field outside the event allowlist, so tests catch it', () => {
+        const logger = createMemoryLogger();
+        expect(() => {
+            logger.info('tunnel.connected', { engineId: 'e', sni: 'x.example' } as never);
+        }).toThrow('tunnel.connected may not log sni');
+        expect(() => {
+            logger.warn('unknown.event' as never, { a: 1 });
+        }).toThrow('unknown.event may not log a');
+        expect(logger.entries).toEqual([]);
     });
 });

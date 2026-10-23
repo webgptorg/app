@@ -91,7 +91,12 @@ run "relay_environment_holds_no_secret" {
   }
 
   assert {
-    condition     = !strcontains(output.user_data, "RELAY_REGISTRY_TOKEN=") && !strcontains(output.user_data, "ptbk_rt_") && !strcontains(output.user_data, "PRIVATE KEY")
+    condition     = strcontains(local.files["/etc/ptbk-relay/relay.env"], "RELAY_METRICS_TOKEN_FILE=/run/credentials/relay/metrics-token\n")
+    error_message = "The metrics token arrives as a credential file."
+  }
+
+  assert {
+    condition     = !strcontains(output.user_data, "RELAY_REGISTRY_TOKEN=") && !strcontains(output.user_data, "ptbk_rt_") && !strcontains(output.user_data, "ptbk_mt_") && !strcontains(output.user_data, "PRIVATE KEY")
     error_message = "No token or private key is ever part of the user data."
   }
 

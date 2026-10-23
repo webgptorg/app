@@ -1,10 +1,17 @@
 import { TUNNEL_CLOSE_CODE, TunnelReject } from '@ptbk/protocol';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, expectTypeOf, it } from 'vitest';
 
 import type { HandshakeFailure, WireRejection } from './reject-mapping';
-import { TRY_AGAIN_LATER, toWireRejection } from './reject-mapping';
+import { HANDSHAKE_FAILURES, TRY_AGAIN_LATER, toWireRejection } from './reject-mapping';
 
 const reject = (reason: string): unknown => ({ v: 1, type: 'reject', reason });
+
+describe('HANDSHAKE_FAILURES', () => {
+    it('lists every failure once', () => {
+        expectTypeOf<HandshakeFailure>().toEqualTypeOf<(typeof HANDSHAKE_FAILURES)[number]>();
+        expect(new Set(HANDSHAKE_FAILURES).size).toBe(HANDSHAKE_FAILURES.length);
+    });
+});
 
 describe('toWireRejection', () => {
     it.each<[HandshakeFailure, unknown, number]>([

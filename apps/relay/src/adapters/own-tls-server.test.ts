@@ -16,7 +16,9 @@ import { RELAY_ID } from '../testing/relay-harness';
 import { createTestCertificate } from '../testing/test-pki';
 import { createTestDeps } from '../testing/test-deps';
 import { TEST_SESSION_LIMITS, testWsTunnelOptions, uncached } from '../testing/tunnel-options';
+import { createMemoryMetrics } from '../testing/memory-metrics';
 import { createMemoryLogger } from './memory-logger';
+import { createMetricsEndpoint } from './metrics-endpoint';
 import type { OwnTlsServer } from './own-tls-server';
 import { CLOSE_GRACE_MS, RELAY_TLS_CIPHERS, clientIp, createOwnTlsServer } from './own-tls-server';
 import { createFakeClock } from './fake-clock';
@@ -24,6 +26,9 @@ import { systemClock } from './system-clock';
 
 type Handshake =
     { readonly ok: true; readonly protocol: string | null; readonly cipher: string } | { readonly ok: false };
+
+const METRICS_TOKEN = `ptbk_mt_${'k'.repeat(43)}`;
+const METRICS_BODY = '# TYPE ptbk_relay_tunnels_active gauge\nptbk_relay_tunnels_active 0\n';
 
 // An RSA certificate, so a client can offer static-RSA and DHE-RSA suites that the relay must refuse by policy.
 const certificate = createTestCertificate([RELAY_ID], 'rsa');
@@ -53,6 +58,7 @@ describe('createOwnTlsServer', () => {
             },
             table: createSessionTable<TunnelSession>({ logger }),
             terminations: { count: () => undefined },
+            metrics: createMemoryMetrics(),
         });
         server = createOwnTlsServer({
             ...certificate,
@@ -61,6 +67,7 @@ describe('createOwnTlsServer', () => {
             clock: systemClock,
             logger,
             maxConnections: 100,
+            metrics: createMetricsEndpoint({ token: { reveal: () => METRICS_TOKEN }, render: () => METRICS_BODY }),
         });
         port = await server.listen(0, '127.0.0.1');
     });
@@ -81,15 +88,28 @@ describe('createOwnTlsServer', () => {
         });
     }
 
-    function get(path: string, headers: Record<string, string> = {}): Promise<{ status: number; body: string }> {
+    function get(
+        path: string,
+        headers: Record<string, string> = {},
+        method = 'GET',
+    ): Promise<{ status: number; body: string; headers: Record<string, unknown> }> {
         return new Promise((resolve, reject) => {
             const outgoing = request(
-                { host: '127.0.0.1', port, path, servername: RELAY_ID, ca: certificate.cert, headers, agent: false },
+                {
+                    host: '127.0.0.1',
+                    port,
+                    path,
+                    method,
+                    servername: RELAY_ID,
+                    ca: certificate.cert,
+                    headers,
+                    agent: false,
+                },
                 (response) => {
                     let body = '';
                     response.setEncoding('utf8').on('data', (chunk: string) => (body += chunk));
                     response.on('end', () => {
-                        resolve({ status: response.statusCode ?? 0, body });
+                        resolve({ status: response.statusCode ?? 0, body, headers: response.headers });
                     });
                 },
             );
@@ -176,10 +196,41 @@ describe('createOwnTlsServer', () => {
     });
 
     it('answers GET /healthz with ok and everything else with 404', async () => {
-        await expect(get('/healthz')).resolves.toEqual({ status: 200, body: 'ok' });
+        await expect(get('/healthz')).resolves.toMatchObject({ status: 200, body: 'ok' });
         await expect(get('/')).resolves.toMatchObject({ status: 404 });
         await expect(get('/healthz?x=1')).resolves.toMatchObject({ status: 404 });
         await expect(get(TUNNEL_PATH)).resolves.toMatchObject({ status: 404 });
+    });
+
+    it('answers GET /metrics only with the metrics token', async () => {
+        const unauthorized = {
+            status: 401,
+            body: '',
+            headers: expect.objectContaining({ 'www-authenticate': 'Bearer' }) as unknown,
+        };
+        await expect(get('/metrics')).resolves.toMatchObject(unauthorized);
+        await expect(get('/metrics', { Authorization: `Bearer ${METRICS_TOKEN}x` })).resolves.toMatchObject(
+            unauthorized,
+        );
+        await expect(get('/metrics', { Authorization: `Basic ${METRICS_TOKEN}` })).resolves.toMatchObject(unauthorized);
+        await expect(get('/metrics', { Authorization: `Bearer ptbk_rt_${'k'.repeat(43)}` })).resolves.toMatchObject(
+            unauthorized,
+        );
+        await expect(get('/metrics', { Authorization: `bearer ${METRICS_TOKEN}` })).resolves.toMatchObject({
+            status: 200,
+            body: METRICS_BODY,
+            headers: expect.objectContaining({
+                'content-type': 'text/plain; version=0.0.4; charset=utf-8',
+                'cache-control': 'no-store',
+            }) as unknown,
+        });
+        await expect(get('/metrics', { Authorization: `Bearer ${METRICS_TOKEN}` }, 'POST')).resolves.toMatchObject({
+            status: 404,
+            body: '',
+        });
+        await expect(get('/metrics?x=1', { Authorization: `Bearer ${METRICS_TOKEN}` })).resolves.toMatchObject({
+            status: 404,
+        });
     });
 
     const upgrade = {
@@ -225,6 +276,7 @@ describe('createOwnTlsServer limits and shutdown', () => {
             },
             table: createSessionTable<TunnelSession>({ logger }),
             terminations: { count: () => undefined },
+            metrics: createMemoryMetrics(),
         });
         const server = createOwnTlsServer({
             ...certificate,
@@ -233,6 +285,7 @@ describe('createOwnTlsServer limits and shutdown', () => {
             clock: graceClock,
             logger,
             maxConnections: 100,
+            metrics: null,
         });
         const port = await server.listen(0, '127.0.0.1');
         return { server, port, clock, graceClock, logger };
@@ -298,6 +351,7 @@ describe('createOwnTlsServer limits and shutdown', () => {
             clock: systemClock,
             logger: createMemoryLogger(),
             maxConnections: 100,
+            metrics: null,
         });
         await expect(unlistened.close()).resolves.toBeUndefined();
     });
@@ -337,11 +391,13 @@ describe('createOwnTlsServer certificate and listener', () => {
                 },
                 table: createSessionTable<TunnelSession>({ logger }),
                 terminations: { count: () => undefined },
+                metrics: createMemoryMetrics(),
             }),
             tunnel: testWsTunnelOptions(systemClock),
             clock: systemClock,
             logger,
             maxConnections: 10,
+            metrics: null,
         });
         const port = await server.listen(0, '127.0.0.1');
         const fingerprint = (): Promise<string | undefined> =>
@@ -373,6 +429,7 @@ describe('createOwnTlsServer certificate and listener', () => {
             clock: systemClock,
             logger,
             maxConnections: 7,
+            metrics: null,
         });
         await server.listen(0, '127.0.0.1');
         const listening = listen.mock.contexts[0] as Server;
