@@ -167,3 +167,19 @@ export const PEBBLE_VALIDITY_S = 90;
 export function relayFirstAlias(relay: RelayNode): string {
     return `${relay.service}-first.order.${OUR_DOMAIN}`;
 }
+
+/**
+ * The nat scenario's stand-in for the engine domain's health-checked DNS (I-07, compose.relay-dns.yaml): it checks
+ * each relay's `/healthz` on its own hostname as Cloudflare's load balancer monitor does in production, and writes the
+ * zones CoreDNS serves for `engine.test` and `order.ptbk.test` into a volume. Production thresholds are in
+ * infra/cloudflare; these are shorter so the hung-relay test fits its 15 s limit.
+ */
+export const RELAY_DNS = {
+    service: 'relay-dns',
+    zonesMount: '/zones',
+    intervalMs: 1_000,
+    timeoutMs: 1_000,
+    consecutiveDown: 2,
+    consecutiveUp: 2,
+    ttlS: 5,
+} as const;

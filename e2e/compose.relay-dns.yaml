@@ -1,0 +1,39 @@
+# The engine domain's health-checked DNS (I-07), test-only: relay-dns stands in for Cloudflare's DNS-only load balancer
+# (infra/cloudflare, relay-dns.tf). It checks each relay's /healthz on its own hostname, writes the engine.test and
+# order.ptbk.test zones without a relay that failed its last checks, and logs an alert on every change; CoreDNS serves
+# those zones. Thresholds are in src/stack.ts (RELAY_DNS). Never part of the dashboard or any deployed image.
+
+services:
+  relay-dns:
+    build:
+      context: ..
+      dockerfile: e2e/docker/stack.Dockerfile
+      target: relay-dns
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    user: node
+    cap_drop: [ALL]
+    read_only: true
+    init: true
+    volumes:
+      - public:/pki:ro
+      - relay-dns-zones:/zones
+    healthcheck:
+      test: ['CMD', 'test', '-f', '/zones/engine.test.db']
+      interval: 1s
+      retries: 30
+      start_period: 30s
+      start_interval: 500ms
+    networks:
+      - stack
+
+  dns:
+    depends_on:
+      relay-dns:
+        condition: service_healthy
+    volumes:
+      - relay-dns-zones:/etc/coredns/zones:ro
+
+volumes:
+  relay-dns-zones:

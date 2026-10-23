@@ -1,0 +1,7 @@
+$ORIGIN order.ptbk.test.
+@ 5 IN SOA ns.order.ptbk.test. hostmaster.order.ptbk.test. 1 60 60 60 5
+@ 5 IN NS ns.order.ptbk.test.
+relay-a-first 5 IN A 10.89.231.11
+relay-a-first 5 IN A 10.89.231.12
+relay-b-first 5 IN A 10.89.231.12
+relay-b-first 5 IN A 10.89.231.11
