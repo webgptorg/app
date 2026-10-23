@@ -98,6 +98,7 @@ A scenario is one run of the stack: `compose.yaml` plus overlays (`e2e/compose.<
 | `tls-inspecting-proxy` | `nat`, `tls-inspecting-proxy` | `tests/network/tls-inspecting-proxy`                                                       | Through a TLS-inspecting proxy (mitmproxy), the browser still seeing the engine's certificate                                                 |
 | `acme`                 | `acme`, `capture`             | `tests/acme/`                                                                              | The engine obtains its own certificate with ACME TLS-ALPN-01 through the relay, no DNS action (Pebble; Let's Encrypt staging is a manual run) |
 | `dashboard`            | `dashboard`                   | `tests/dashboard/`                                                                         | M3: sign up with a passkey, link the engine, see it online, open it through a relay that reads its registry from the dashboard                |
+| `ui`                   | `ui`                          | `tests/ui/`                                                                                | M2: the owner flows in engine-ui, from the signed bundle through the loader, under the engine CSP; also in Firefox for agents, chat, secrets  |
 
 The `acme` scenario (M-03) adds Pebble (`.40`), an ACME test server, and `pebble-challtestsrv` (`.41`), its only resolver, which answers every name with relay-a's address. The mock engine runs with `MOCK_CERT_SOURCE=acme` and gets its certificate from Pebble with TLS-ALPN-01: Pebble's validation connects to relay-a with the engine's SNI and ALPN `acme-tls/1`, and relay-a routes it into the tunnel like a browser. Pebble issues 90-second certificates there, so the engine renews about once a minute; the tests launch Chromium with a fresh NSS database holding only Pebble's root, fetched from its management API (new every start). Pebble's own HTTPS listeners use its fixed test "minica", which init publishes as `/pki/pebble-minica.pem`. The whole flow and the Let's Encrypt staging runbook are in [spike/acme-tls-alpn-01.md](spike/acme-tls-alpn-01.md).
 
@@ -121,6 +122,24 @@ E2E_SCENARIO=dashboard bun run --filter @ptbk/e2e e2e:run --grep offline  # and 
 The specs (`e2e/src/dashboard.ts` holds their fixtures: a CDP virtual authenticator, the sign-up, billing and link-code steps, and `mockEngines.start` and `register`): `link-engine` (the relays read no static registry; before linking the engine's hostname does not connect; then sign-up through the dev outbox, the fake Checkout, the link code, the engine online within 60 s under the hostname its key derives, "Open" loading the engine through a relay with the engine's own certificate, sign-out and passkey sign-in), `link-codes` (a used and an expired code are refused at registration), `no-engine-requests` (no dashboard screen requests an engine hostname) and `offline` (a stopped engine turns offline after the threshold).
 
 The stack is meant for Playwright inside its network; the [local stack](#local-stack) reuses `compose.dashboard.yaml` for a stack you click through from the host.
+
+### The engine-ui flows
+
+The `ui` scenario (X-04, `e2e/compose.ui.yaml`) runs engine-ui as an owner uses it: the bundle packed from the checkout (`ui-bundle` stage), signed by init, installed and served by the mock engine's loader under `ENGINE_UI_CSP`, every byte through the relays. One spec per flow in `e2e/tests/ui/` (loader, agents, create agent, book, chat, security, secrets, audit, capabilities, faults, accessibility, home, runs, files, triggers, integrations, capability gating), plus `guard.spec.ts`, which proves the page guard catches what it promises.
+
+```sh
+E2E_SCENARIO=ui bun run --filter @ptbk/e2e e2e                                # build, start, every flow, stop
+E2E_SCENARIO=ui bun run --filter @ptbk/e2e e2e:up                             # or keep the stack running
+E2E_SCENARIO=ui bun run --filter @ptbk/e2e e2e:run tests/ui/chat.spec.ts      # one flow against it
+E2E_SCENARIO=ui bun run --filter @ptbk/e2e e2e:run --project chromium --grep hostile
+E2E_SCENARIO=ui bun run --filter @ptbk/e2e e2e:down
+```
+
+- Specs reach the engine only through the browser and an `EngineTarget` (`e2e/src/engine-target.ts`): its hostname, `session(subject)` and optional controls (reset, faults, simulation pause and advance, scripted runs, inbound email, bundle tampering, last heartbeat). `e2e/src/mock-engine-target.ts` is the only file that knows the mock's `/__mock/*` control listener; a flow whose control the target lacks skips with the reason, so the same specs can run against the real engine (E-03).
+- Before each test the engine is reset to `small-team`, seed 1, every capability, no faults and engine time paused; time-dependent flows advance it explicitly and never sleep. Sessions come from the target (C-05's mock target for the owner and permission sets) and are set as the gateway's cookie.
+- The page guard (`e2e/src/ui-fixtures.ts`, `ui-guard.ts`) fails every test, in any page of its context, on a `securitypolicyviolation`, a console message about the Content Security Policy or Trusted Types, an uncaught page error, a request to any origin but the engine's, or a native dialog.
+- Secrets and integrations record every text-like response (`e2e/src/response-recorder.ts`) and check that a canary generated at run time never comes back in the page, a response, browser storage or the console; each check has a positive control that the recorder saw traffic.
+- Chromium is the gate (Trusted Types). The agents, chat and secrets flows also run in Firefox, each test in a fresh profile whose certificate database is a copy of the one the entrypoint fills with the dev CA, so nothing is trusted system-wide.
 
 Extra overlays (`E2E_OVERLAYS`, comma-separated) are layered after the scenario's:
 

@@ -117,6 +117,8 @@ COPY --from=manifests /src/ ./
 RUN bun install --frozen-lockfile --filter @ptbk/e2e
 COPY tsconfig.base.json ./
 COPY packages/protocol packages/protocol
+COPY packages/engine-api packages/engine-api
+COPY packages/conformance packages/conformance
 COPY e2e e2e
 # Tests run as pwuser, which owns nothing else in the tree.
 RUN install -d -o pwuser -g pwuser /repo/e2e/test-results

@@ -120,6 +120,7 @@ describe('scenarioTarget and everyServiceTarget', () => {
             'tls-inspecting-proxy',
             'acme',
             'dashboard',
+            'ui',
             'debug',
         ]);
     });

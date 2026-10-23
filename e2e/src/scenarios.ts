@@ -15,6 +15,11 @@ export interface Scenario {
      * one-off copies of it with what they learn on the way (the compose fixture's `run`).
      */
     readonly onDemand?: readonly string[];
+    /**
+     * Specs that also run in Firefox, where Trusted Types may be missing, so the CSP is checked without them too. The
+     * Chromium run stays the gate.
+     */
+    readonly firefoxSpecs?: readonly string[];
 }
 
 export const SCENARIOS: readonly Scenario[] = [
@@ -41,6 +46,13 @@ export const SCENARIOS: readonly Scenario[] = [
     { name: 'acme', overlays: ['acme', 'capture'], specs: ['acme/*.spec.ts'] },
     // X-05: the dashboard is the registry; the mock engine starts only once a test has a link code for it.
     { name: 'dashboard', overlays: ['dashboard'], specs: ['dashboard/*.spec.ts'], onDemand: ['mock-engine'] },
+    // X-04: the owner flows in engine-ui, served by the mock engine's loader from the signed bundle, through the relays.
+    {
+        name: 'ui',
+        overlays: ['ui'],
+        specs: ['ui/*.spec.ts'],
+        firefoxSpecs: ['ui/agents.spec.ts', 'ui/chat.spec.ts', 'ui/secrets.spec.ts'],
+    },
 ];
 
 export const DEFAULT_SCENARIO = 'spike';

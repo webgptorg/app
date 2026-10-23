@@ -27,5 +27,16 @@ export default defineConfig({
         // Docker socket.
         launchOptions: { chromiumSandbox: true },
     },
-    projects: [{ name: 'chromium' }],
+    projects: [
+        { name: 'chromium' },
+        ...((scenario.firefoxSpecs ?? []).length === 0
+            ? []
+            : [
+                  {
+                      name: 'firefox',
+                      testMatch: (scenario.firefoxSpecs ?? []).map((spec) => `**/tests/${spec}`),
+                      use: { ...devices['Desktop Firefox'] },
+                  },
+              ]),
+    ],
 });

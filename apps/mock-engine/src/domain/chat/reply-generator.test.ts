@@ -4,6 +4,7 @@ import {
     HOSTILE_IMAGE,
     HOSTILE_LINK,
     HOSTILE_LONG_LINE_LENGTH,
+    HOSTILE_RAW_IMAGE,
     HOSTILE_SCRIPT,
     generateReply,
     tokenize,
@@ -76,7 +77,8 @@ describe('generateReply', () => {
 
     it('adds every hostile marker only in hostile mode', () => {
         const hostile = text(generateReply(input({ hostile: true })));
-        for (const marker of [HOSTILE_IMAGE, HOSTILE_SCRIPT, HOSTILE_LINK]) expect(hostile).toContain(marker);
+        for (const marker of [HOSTILE_IMAGE, HOSTILE_SCRIPT, HOSTILE_RAW_IMAGE, HOSTILE_LINK])
+            expect(hostile).toContain(marker);
         expect(Math.max(...hostile.split('\n').map((line) => line.length))).toBeGreaterThanOrEqual(
             HOSTILE_LONG_LINE_LENGTH,
         );

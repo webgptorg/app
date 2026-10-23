@@ -8,7 +8,7 @@ import type {
 } from '@ptbk/engine-api';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { HOSTILE_IMAGE, HOSTILE_LINK, HOSTILE_SCRIPT } from '../src/domain/chat/reply-generator';
+import { HOSTILE_IMAGE, HOSTILE_LINK, HOSTILE_RAW_IMAGE, HOSTILE_SCRIPT } from '../src/domain/chat/reply-generator';
 import { HOSTILE_AGENT_NAME } from '../src/domain/state/seed';
 import type { ApiHarness } from '../src/testing/api-harness';
 import { createApiHarness } from '../src/testing/api-harness';
@@ -122,7 +122,8 @@ describe('chat replies', () => {
         );
         await drain(clock);
         const text = textOf(await readAll(client, chatId, messageId));
-        for (const marker of [HOSTILE_IMAGE, HOSTILE_SCRIPT, HOSTILE_LINK]) expect(text).toContain(marker);
+        for (const marker of [HOSTILE_IMAGE, HOSTILE_SCRIPT, HOSTILE_RAW_IMAGE, HOSTILE_LINK])
+            expect(text).toContain(marker);
         expect(text.split('\n').some((line) => line.length > 2000)).toBe(true);
     });
 

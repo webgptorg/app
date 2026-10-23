@@ -1,0 +1,11 @@
+# X-04: the engine-ui flows. The base stack already installs init's signed UI release through the mock engine's loader
+# (M-05) and serves it under the engine CSP; this overlay only fixes the engine's data, so every flow starts from the
+# same seeded state (src/ui-fixtures.ts resets to it before each test) with engine time paused: time-dependent flows
+# advance it explicitly instead of sleeping.
+
+services:
+  mock-engine:
+    environment:
+      MOCK_SCENARIO: small-team
+      MOCK_SEED: '1'
+      MOCK_SIMULATION: paused
