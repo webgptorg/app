@@ -7,5 +7,5 @@
     // Node runs the CLI, init and the healthcheck probe straight from .ts, which needs explicit extensions.
     "allowImportingTsExtensions": true
   },
-  "include": ["src", "init", "tests", "*.ts"]
+  "include": ["src", "init", "tests", "dashboard", "*.ts"]
 }

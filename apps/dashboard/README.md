@@ -100,6 +100,13 @@ Stripe sits behind the `BillingProvider` port (`src/domain/billing/billing-provi
 - **Active organization:** `POST /api/session/active-org { orgId }` (`session.manage`) moves the session only to an organization the user is a member of (404 otherwise) and answers the new `GET /api/session` view. The header's organization switcher uses it.
 - **Timer port:** deadlines go through `Timer.wait(ms, signal)` (`systemTimer` in the Worker, a manual timer in tests), so the status timeout is tested without sleeping.
 
+### Monitoring and scheduled jobs (I-04)
+
+- **Scheduled dispatcher:** the Worker's one `scheduled` handler (`src/app/scheduled.ts`) runs, for the cron expression that fired, every job in `scheduledJobs` (`src/app/scheduled-jobs.ts`), side by side, each with 50 s and an abort signal (`src/domain/scheduled/scheduled-dispatcher.ts`). A failed or timed-out job is logged (`cron.job-failed`), counted, and recorded in the `OpsMonitor` object, where three failures in a row raise `cron-job-failing`; it never stops the other jobs. To add a job (I-05, I-07): implement `ScheduledJob` (`name`, `cron`, `run({ scheduledTime, signal })`), add it to `scheduledJobs`, and put its cron into `triggers.crons` of every environment; `scheduled-jobs.test.ts` fails if they disagree.
+- **`relay-monitor`:** with `MONITORING` set, every minute: each relay's `/healthz` and `/metrics` over HTTPS on its own hostname with its metrics token (`RELAY_METRICS_TOKENS`), the Worker's own `/v1/health`, and the dashboard's counters of the last 10 minutes; then the alert rules (`src/domain/monitoring/alert-rules.ts`) on the state in the `OpsMonitor` Durable Object (binding `OPS_MONITOR`, one instance `ops`, migration `v3`), and alerts by email to `MONITORING.opsEmail` (`ops-alert`, English only). Without `MONITORING` (dev, the local stack) no job runs.
+- **Metrics:** `DashboardMetrics` writes to Workers Analytics Engine (`OPS_METRICS`, dataset `ptbk_ops_<env>`) outside dev and to memory in dev, where the monitoring job reads them back; elsewhere it reads them with Analytics Engine's SQL API (`ANALYTICS`, `ANALYTICS_API_TOKEN`). Requests are counted by route template, never by path.
+- Rules, thresholds, retention, credentials and queries: [docs/runbooks/observability.md](../../docs/runbooks/observability.md).
+
 ### Tenancy and authorization
 
 An organization owns engines and billing; users join through a membership with a role ([ADR 0006](../../docs/adr/0006-organizations-and-roles.md)). Every authorization decision goes through `Authorizer.can(actor, action, resource)` in `src/domain/authz/`, deny by default, with one policy table in `policy.ts`. Rules for every later task:

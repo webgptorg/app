@@ -1,0 +1,53 @@
+# I-04, test only: the dashboard's monitoring job scrapes both relays with metrics tokens made when the stack starts.
+# Nothing fires the Cron Trigger on its own: tests/monitoring fires it through the dev server's trigger endpoint
+# (/cdn-cgi/local/scheduled, workerd's --test-scheduled), one run at a time. Never part of compose.dashboard.yaml or the
+# dev overlay: without MONITORING there, a stray trigger runs no job.
+
+x-dashboard-build: &dashboard-build
+  context: ..
+  dockerfile: apps/dashboard/Dockerfile.dev
+
+services:
+  metrics-tokens:
+    build: *dashboard-build
+    command: ['node', '/e2e/mint-metrics-tokens.ts', 'relay-a.ptbk.test', 'relay-b.ptbk.test']
+    volumes:
+      - ./dashboard/mint-metrics-tokens.ts:/e2e/mint-metrics-tokens.ts:ro
+      - monitoring-vars:/monitoring
+      - relay-a-metrics-token:/metrics-tokens/relay-a.ptbk.test
+      - relay-b-metrics-token:/metrics-tokens/relay-b.ptbk.test
+    network_mode: none
+
+  # Trusts the dev CA for its own requests to the relays (Miniflare reads NODE_EXTRA_CA_CERTS for workerd).
+  dashboard:
+    depends_on:
+      metrics-tokens:
+        condition: service_completed_successfully
+    environment:
+      DASHBOARD_VARS_FILE: /monitoring/vars.json
+      NODE_EXTRA_CA_CERTS: /pki/ca-cert.pem
+    volumes:
+      - monitoring-vars:/monitoring:ro
+
+  relay-a:
+    depends_on:
+      metrics-tokens:
+        condition: service_completed_successfully
+    environment:
+      RELAY_METRICS_TOKEN_FILE: /metrics-token/token
+    volumes:
+      - relay-a-metrics-token:/metrics-token:ro
+
+  relay-b:
+    depends_on:
+      metrics-tokens:
+        condition: service_completed_successfully
+    environment:
+      RELAY_METRICS_TOKEN_FILE: /metrics-token/token
+    volumes:
+      - relay-b-metrics-token:/metrics-token:ro
+
+volumes:
+  monitoring-vars:
+  relay-a-metrics-token:
+  relay-b-metrics-token:
