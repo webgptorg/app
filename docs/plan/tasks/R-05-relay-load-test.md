@@ -2,7 +2,7 @@
 
 - **Lane:** Relay · **Module:** `apps/relay` (load tooling in `apps/relay/load/`) · **Milestone:** M1
 - **Depends on:** R-04, M-01
-- **Status:** todo
+- **Status:** in progress (feat/r-05-relay-load-test)
 - **Spec:** Build plan (Spike acceptance criteria; v0 epics "Relay"); Operations (Bandwidth and cost); Hosting and stack; ADRs: [0005](../../adr/0005-modular-architecture.md)
 
 ## Goal
