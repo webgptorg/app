@@ -7,8 +7,11 @@ import { chmodSync, chownSync, writeFileSync } from 'node:fs';
 
 const RELAY_UID = 1000;
 
-/** Short checks, so the e2e sees an alert two triggers after a relay stops; the job runs only when triggered. */
-const MONITORING = { opsEmail: 'ops@ptbk.test', probeTimeoutMs: 3000 };
+/**
+ * Short checks, so the e2e sees an alert two triggers after a relay stops; the job runs only when triggered. The dev
+ * CA's relay certificates live 7 days, inside the production 14-day warning, so the certificate rule here warns at 1.
+ */
+const MONITORING = { opsEmail: 'ops@ptbk.test', probeTimeoutMs: 3000, thresholds: { certificateExpiryDays: 1 } };
 
 const tokens: Record<string, string> = {};
 for (const relay of process.argv.slice(2)) {
