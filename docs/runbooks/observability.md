@@ -1,0 +1,98 @@
+# Observability: monitoring without content
+
+How we know a relay or the dashboard is down or degraded (task I-04, ADR 0012). Everything here is an aggregate: no content, and no more metadata than the spec's table (Metadata we still see) allows.
+
+## What runs
+
+| Piece                | Where                                                                    | What it does                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| -------------------- | ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Relay metrics        | `GET https://<relay hostname>/metrics`, bearer metrics token             | Prometheus text: tunnels, connections by outcome, bytes, stream-open latency, registry lookups and latency, memory, event loop lag, open files, certificate expiry ([apps/relay/README.md](../../apps/relay/README.md#metrics))                                                                                                                                                                                                     |
+| Scheduled dispatcher | The dashboard Worker's one `scheduled` handler, Cron Trigger `* * * * *` | Runs every job registered for the cron that fired (`apps/dashboard/src/app/scheduled-jobs.ts`), each with a 50 s limit; records runs and failures; one job's failure never stops another; then delivers the queued alerts. Outside dev the run **fails** (`cron.refused`, a failed invocation in the Cron Trigger log) on invalid config, without `MONITORING`, without the `EMAIL` binding, or for a cron no job is registered for |
+| `relay-monitor` job  | Every minute                                                             | Per relay: TLS handshake and `/healthz` on its own hostname, then `/metrics`; the dashboard's own `/v1/health`; writes all of it to Analytics Engine; evaluates the alert rules; sends alerts                                                                                                                                                                                                                                       |
+| Dashboard metrics    | Written where they happen, to Analytics Engine                           | Requests by route template (never the path) and status; heartbeats and registrations by outcome; engine-status alarms; emails sent and failed by template; cron runs by job and outcome                                                                                                                                                                                                                                             |
+| Alert state          | Durable Object `OpsMonitor`, one instance named `ops`                    | Failed-check streaks, the last minutes of relay samples, open alerts (a tunnel drop with the peak it fell from), job failure streaks, and the queue of alerts not yet delivered                                                                                                                                                                                                                                                     |
+| Alerts               | `AlertSink`: email to `MONITORING.opsEmail` through the `EMAIL` binding  | `[ptbk ops] FIRING: <rule> (<subject>)`, then `resolved`; the rule, a relay's short name or a job's name, numbers, and a link to this runbook. Queued first: a failed send is retried on the next run, 5 attempts in all, then dropped (`ops.alert-dropped`); every attempt counts in `ptbk_monitor_alert_deliveries_total` (`sent`, `failed`, `dropped`)                                                                           |
+
+The dataset is `ptbk_ops_<environment>` (binding `OPS_METRICS`). Every data point has `blob1` = metric name and `blob2` = outcome (where it has one); `double1` is the count. Relay scrapes are two points per relay and minute, `ptbk_monitor_relay_health` and `ptbk_monitor_relay_outcomes`, whose doubles follow `RELAY_HEALTH_SERIES` and `RELAY_OUTCOME_SERIES` in `apps/dashboard/src/domain/monitoring/relay-sample.ts`; the dashboard keeps only those series, whatever else a relay sends. Relays are named by their hostname's first label (`relay-1`), never by address.
+
+## Alert rules
+
+Thresholds are the defaults in `apps/dashboard/src/domain/monitoring/alert-rules.ts`; `MONITORING.thresholds` in `wrangler.jsonc` overrides any of them per environment.
+
+| Rule                         | Fires when                                                                                   | Clears when                                                                                                             | First steps                                                                                                                                                                                                                   |
+| ---------------------------- | -------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `relay-unreachable`          | 2 checks in a row fail (handshake, `/healthz` or the scrape), one a minute: within 3 minutes | the next good check                                                                                                     | `curl https://<relay>/healthz`; on the host `systemctl status ptbk-relay`, `journalctl -u ptbk-relay -n 100`. A dead host: take it out of rotation ([infra/relay/README.md](../../infra/relay/README.md#remove-a-dead-relay)) |
+| `relay-tunnels-dropped`      | active tunnels fall by more than 50 % within 5 minutes, from at least 2                      | tunnels are back to 80 % of the peak they fell from (`tunnelRecoveryPercent`), or the relay comes back after being down | A relay restart or deploy explains it; otherwise the relay's `tunnel.disconnected` close codes and `ptbk_relay_tunnel_disconnects_total`, and the dashboard (registry answers)                                                |
+| `relay-registry-errors`      | `stale` plus `error` registry lookups exceed 5 % of at least 20 over 10 minutes              | the rate is back under                                                                                                  | The dashboard's `/internal/v1` health: `ptbk_dashboard_requests_total` for `/internal/v1/engines/:engineId`, the relay's `registry.error` kinds (401: its registry key expired or was revoked)                                |
+| `relay-certificate-expiring` | the certificate the relay serves expires in under 14 days                                    | renewed                                                                                                                 | `systemctl status ptbk-relay-cert.timer`, `journalctl -u ptbk-relay-cert`; renewal starts at 30 days left, so this means it has failed for two weeks                                                                          |
+| `dashboard-unhealthy`        | the Worker's own `/v1/health` fails twice in a row                                           | the next good check                                                                                                     | Usually invalid configuration (`config.invalid` in Workers Logs, with the offending var names)                                                                                                                                |
+| `heartbeat-rejections`       | at least 20 heartbeats refused in 10 minutes, and at least 10 % of all                       | the window is quiet again                                                                                               | Outcomes in Analytics Engine (query below): `stale-ts` points at clocks, `bad-signature` at a broken or hostile engine, `unknown-engine` at revoked engines still running                                                     |
+| `email-failures`             | any email the provider refused in 10 minutes                                                 | 10 minutes without one                                                                                                  | Workers Logs for the sending path; the Cloudflare Email Routing status for the sending domain                                                                                                                                 |
+| `cron-job-failing`           | one scheduled job fails 3 runs in a row                                                      | its next successful run                                                                                                 | `cron.job-failed` in Workers Logs gives the job and the error's name                                                                                                                                                          |
+
+`heartbeat-rejections` and `email-failures` read the last 10 minutes back through Analytics Engine's SQL API; when it cannot answer (`ops.counts-unavailable` in the logs), those two rules keep their state until it can. Every delivery attempt is logged as `ops.alert` (with its attempt number), a failed one as `ops.alert-failed`, so alerts stay visible in Workers Logs while email is broken.
+
+## What is kept, and for how long
+
+The spec's table, and how each line is enforced:
+
+| Data                                           | Where                                                                                   | Retention                                                              | Enforced by                                                                                                                                                                                                                                            |
+| ---------------------------------------------- | --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Engine IP, tunnel connect and disconnect times | Relay journal (`tunnel.*` events)                                                       | 7 days                                                                 | journald `MaxRetentionSec=7day` (I-01), checked by `infra/relay/verify.sh`; `test/log-allowlist.test.ts` keeps `engineIp` on tunnel events only                                                                                                        |
+| Browser IPs                                    | Nowhere                                                                                 | Not logged                                                             | The relay's log field allowlist (`apps/relay/src/domain/log-events.ts`) has no such field, and a test refuses one; the logger's types and the JSON logger drop anything unlisted                                                                       |
+| Byte counts per engine                         | The relay process's memory only (`createTrafficCounters`, per engine and UTC day, R-04) | Until UTC midnight (at most 24 h), or until the process restarts       | `TRAFFIC_RETAIN_DAYS = 1`. Nothing reads them yet: not logged, not in `/metrics`, never linked to an account; they exist for abuse handling (I-05). `/metrics` has only `ptbk_relay_bytes_total`, the total over all engines since the process started |
+| SNI hostname                                   | Nowhere                                                                                 | Not stored                                                             | No log event or metric label carries it (allowlist and label-cardinality tests)                                                                                                                                                                        |
+| Heartbeat values                               | The engine's `EngineStatus` Durable Object                                              | 30 days                                                                | D-05's purge                                                                                                                                                                                                                                           |
+| Dashboard logs                                 | Workers Logs                                                                            | At most 7 days (the plan's retention; nothing in this repo extends it) | Log fields never hold IPs, emails or tokens: engine IDs and outcome names only                                                                                                                                                                         |
+| Monitoring aggregates                          | Analytics Engine `ptbk_ops_<env>`                                                       | Analytics Engine's own (3 months)                                      | Acceptable because nothing in it identifies an engine, a person or an account: closed label lists, route templates, relay short names                                                                                                                  |
+
+## Credentials
+
+| Credential                                 | Made by                                                                                            | Lives in                                                                                                                          |
+| ------------------------------------------ | -------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| Metrics token, one per relay (`ptbk_mt_…`) | `printf 'ptbk_mt_%s\n' "$(openssl rand -base64 32 \| tr '+/' '-_' \| tr -d '=')"`                  | The relay's `/etc/ptbk-relay/credentials/metrics-token` ([infra/relay/README.md](../../infra/relay/README.md)), and the dashboard |
+| `RELAY_METRICS_TOKENS` (dashboard secret)  | A JSON object from relay hostname to its token, one entry for every relay in `RELAYS`              | `wrangler secret put RELAY_METRICS_TOKENS --env <env>`                                                                            |
+| `ANALYTICS_API_TOKEN` (dashboard secret)   | A Cloudflare API token with **Account Analytics: Read** on the environment's account, nothing else | `wrangler secret put ANALYTICS_API_TOKEN --env <env>`; the account ID and dataset are `ANALYTICS` in `wrangler.jsonc`             |
+
+To rotate a metrics token: update the dashboard secret first, then install the new token on the relay and restart it; the one check in between fails, which alerts nothing (two are needed). The relay's metrics token is optional on the host: a relay set up before I-04 starts without it, answers `/metrics` with 404, and shows as `relay-unreachable` (`metrics`) until the token is placed and the relay restarted, so place it before adding the relay to `RELAYS`. To rotate the analytics token: create the new one, put it, revoke the old one.
+
+## Queries
+
+Analytics Engine's SQL API (`POST https://api.cloudflare.com/client/v4/accounts/<account>/analytics_engine/sql`, body is the query) with the analytics token. `_sample_interval` restores what Analytics Engine sampled at high volume.
+
+```sql
+-- Active tunnels per relay, per minute, over the last day
+SELECT blob3 AS relay, toStartOfInterval(timestamp, INTERVAL '1' MINUTE) AS minute, max(double1) AS tunnels
+FROM ptbk_ops_production
+WHERE blob1 = 'ptbk_monitor_relay_health' AND timestamp > NOW() - INTERVAL '1' DAY
+GROUP BY relay, minute ORDER BY minute;
+
+-- Relay checks that failed, by reason, in the last hour
+SELECT blob3 AS relay, blob2 AS outcome, SUM(_sample_interval * double1) AS checks
+FROM ptbk_ops_production
+WHERE blob1 = 'ptbk_monitor_relay_checks_total' AND blob2 != 'up' AND timestamp > NOW() - INTERVAL '1' HOUR
+GROUP BY relay, outcome;
+
+-- Requests by route template and status, last hour
+SELECT blob3 AS route, blob2 AS status, SUM(_sample_interval * double1) AS requests
+FROM ptbk_ops_production
+WHERE blob1 = 'ptbk_dashboard_requests_total' AND timestamp > NOW() - INTERVAL '1' HOUR
+GROUP BY route, status ORDER BY requests DESC;
+
+-- Heartbeats by outcome, last 10 minutes (what heartbeat-rejections reads)
+SELECT blob2 AS outcome, SUM(_sample_interval * double1) AS heartbeats
+FROM ptbk_ops_production
+WHERE blob1 = 'ptbk_dashboard_heartbeats_total' AND timestamp > NOW() - INTERVAL '10' MINUTE
+GROUP BY outcome;
+```
+
+The doubles of `ptbk_monitor_relay_health` are, in order: tunnels active (`double1`), tunnel connects, browser connections active and pending, bytes in and out, registry lookups fresh, miss, stale and error, registry source seconds sum and count, stream open seconds sum and count, memory budget used, resident memory, open files, event loop lag, certificate expiry, process start time (`double20`). Counters are totals since the relay started; compare two minutes for a rate.
+
+## External uptime check (later)
+
+The scrape runs inside Cloudflare, so a Cloudflare or Worker outage alerts nobody. The external check Seb chooses will probe `https://<relay hostname>/healthz` (each relay, `ok`) and `https://app.ptbk.io/v1/health` (`{"ok":true,…}`), from outside Cloudflare, and alert the same ops address. Add the provider to the privacy policy's sub-processors when it is chosen.
+
+## Locally
+
+- Relay: `RELAY_METRICS_TOKEN=ptbk_mt_… bun run --filter @ptbk/relay dev`, then `curl -k -H "Authorization: Bearer $RELAY_METRICS_TOKEN" --resolve <relay>:443:127.0.0.1 https://<relay>/metrics`. `bun run --filter @ptbk/relay check:metrics` runs `promtool check metrics` over a real scrape (Docker).
+- Dashboard: Cron Triggers do not fire on their own in `vite dev` or the dev container. `E2E_SCENARIO=monitoring bun run --filter @ptbk/e2e e2e` runs the whole loop: both relays scraped, relay-a stopped, the alert in the ops outbox, relay-a started, the alert resolved ([docs/development.md](../development.md)). Only that scenario sets `MONITORING`, so a trigger anywhere else runs no job.

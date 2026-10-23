@@ -130,6 +130,8 @@ The relay applies the same rules to its non-HTTP input: every ClientHello, frame
 
 - Structured logs through a `Logger` port. Never log content, tokens, keys, cookies or full headers.
 - The relay logs only what the spec's "Metadata we still see" lists, and keeps it short-lived.
+- Every relay log event has a fixed field allowlist (`apps/relay/src/domain/log-events.ts`); the logger's types accept nothing else, and a test refuses a browser IP, SNI, hostname or secret field.
+- Metrics are aggregates with closed label lists: never an engine ID, hostname, address or account as a label (relay: `RELAY_METRICS`; dashboard: `DashboardMetric`). A label with engine-level cardinality is a review blocker; the label-cardinality tests enforce it. Monitoring is described in [runbooks/observability.md](runbooks/observability.md) and ADR 0012.
 
 ## Naming
 

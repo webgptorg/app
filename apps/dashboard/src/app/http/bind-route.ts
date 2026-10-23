@@ -83,6 +83,8 @@ export interface RouteBinderDeps {
         defer: (task: Promise<unknown>) => void,
     ): Promise<RelayActor | null>;
     readonly signatures: Readonly<Record<SignatureMode, SignatureVerifier>>;
+    /** The matched route's template per request, for the request metrics (never the raw path). */
+    readonly routeTemplates: WeakMap<Request, string>;
 }
 
 export interface RouteBinder {
@@ -360,6 +362,7 @@ export function createRouteBinder(deps: RouteBinderDeps): RouteBinder {
             assertMountable(contract, mount);
             routes.push(contract);
             router.on(contract.method, contract.path.slice(mount.length), async (context) => {
+                deps.routeTemplates.set(context.req.raw, contract.path);
                 const { rateLimit } = contract;
                 const limited = async (rule: RateLimitRuleName, key: string): Promise<boolean> => {
                     const outcome = await deps.rateLimiter.consume(rule, key, context.req.raw.signal);

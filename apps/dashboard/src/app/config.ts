@@ -5,6 +5,7 @@ import { fromBase64Url } from '../domain/auth/secrets';
 import { createPlanCatalogue, planCatalogueSchema, type PlanCatalogue } from '../domain/billing/plan-catalogue';
 import { LINK_CODE_TTL_MS } from '../domain/registration/issue-link-code';
 import type { HeartbeatTiming } from '../domain/status/engine-status';
+import { DEFAULT_THRESHOLDS, thresholdsSchema, type AlertThresholds } from '../domain/monitoring/alert-rules';
 import { environmentSchema, type Environment } from '../shared/environment';
 
 export type { Environment };
@@ -93,6 +94,43 @@ function isVar(value: unknown): boolean {
     return prototype === Object.prototype || prototype === null;
 }
 
+/** Per relay (I-04): `GET /metrics` on the relay's hostname answers only its token. Secret: `RELAY_METRICS_TOKENS`. */
+const METRICS_TOKEN = /^ptbk_mt_[A-Za-z0-9_-]{43}$/;
+
+/** A JSON object from relay ID to metrics token, as one secret, since a secret is a single string. */
+const relayMetricsTokensSchema = z
+    .string()
+    .max(64 * 1024)
+    .transform((value, ctx) => {
+        try {
+            return JSON.parse(value) as unknown;
+        } catch {
+            ctx.addIssue({ code: 'custom', message: 'must be a JSON object' });
+            return z.NEVER;
+        }
+    })
+    .pipe(z.record(Hostname, z.string().regex(METRICS_TOKEN)));
+
+/** I-04's monitoring job; without it no relay is scraped and alerts are not sent. */
+const monitoringSchema = z.strictObject({
+    opsEmail: z.email().max(254),
+    thresholds: thresholdsSchema.optional(),
+    /** Per relay, for its health check and scrape together. */
+    probeTimeoutMs: z.int().min(1000).max(30_000).default(10_000),
+});
+
+/** Analytics Engine's SQL API, where the alert rules read the dashboard's own counters back. */
+const analyticsSchema = z.strictObject({
+    accountId: z.string().regex(/^[0-9a-f]{32}$/),
+    dataset: z.string().regex(/^[a-z][a-z0-9_]{0,63}$/),
+});
+const analyticsTokenSchema = z.string().regex(/^[A-Za-z0-9_-]{40,128}$/);
+
+/** The label a relay has in metrics and alerts: its hostname's first label, which must be unique among the relays. */
+export function relayName(relayId: string): string {
+    return relayId.replace(/\..*$/, '');
+}
+
 const varsSchema = z
     .strictObject({
         ENVIRONMENT: environmentSchema,
@@ -115,6 +153,10 @@ const varsSchema = z
         LINK_CODE_TTL_S: linkCodeTtlSchema.optional(),
         STRIPE_SECRET_KEY: stripeKeySchema.optional(),
         STRIPE_WEBHOOK_SECRET: stripeWebhookSecretSchema.optional(),
+        MONITORING: monitoringSchema.optional(),
+        RELAY_METRICS_TOKENS: relayMetricsTokensSchema.optional(),
+        ANALYTICS: analyticsSchema.optional(),
+        ANALYTICS_API_TOKEN: analyticsTokenSchema.optional(),
     })
     .superRefine((vars, ctx) => {
         if (vars.ADAPTERS.billing === 'stripe') {
@@ -126,6 +168,31 @@ const varsSchema = z
         }
         if (vars.ENVIRONMENT !== 'production' && vars.STRIPE_SECRET_KEY?.includes('_live_') === true) {
             ctx.addIssue({ code: 'custom', path: ['STRIPE_SECRET_KEY'], message: 'live keys run only in production' });
+        }
+        if (vars.MONITORING !== undefined) {
+            const tokens = vars.RELAY_METRICS_TOKENS ?? {};
+            const relayIds = vars.RELAYS.map((relay) => relay.relayId as string);
+            if (relayIds.some((id) => !Object.hasOwn(tokens, id)) || Object.keys(tokens).length !== relayIds.length) {
+                ctx.addIssue({
+                    code: 'custom',
+                    path: ['RELAY_METRICS_TOKENS'],
+                    message: 'needs exactly one token per relay with MONITORING',
+                });
+            }
+            if (new Set(relayIds.map(relayName)).size !== relayIds.length) {
+                ctx.addIssue({
+                    code: 'custom',
+                    path: ['RELAYS'],
+                    message: 'relay names (first labels) must be unique',
+                });
+            }
+            if (vars.ENVIRONMENT !== 'dev') {
+                for (const name of ['ANALYTICS', 'ANALYTICS_API_TOKEN'] as const) {
+                    if (vars[name] === undefined) {
+                        ctx.addIssue({ code: 'custom', path: [name], message: 'required by MONITORING outside dev' });
+                    }
+                }
+            }
         }
         if (vars.ENVIRONMENT === 'dev') {
             return;
@@ -169,6 +236,22 @@ export interface DashboardConfig {
     readonly stripeSecretKey: string | null;
     /** Secret; present whenever `adapters.billing` is `stripe`, optional with the fake. */
     readonly stripeWebhookSecret: string | null;
+    /** I-04; null where `MONITORING` is not set: no relay is scraped and no alert is sent. */
+    readonly monitoring: MonitoringConfig | null;
+}
+
+export interface MonitoringConfig {
+    readonly opsEmail: string;
+    readonly thresholds: AlertThresholds;
+    readonly probeTimeoutMs: number;
+    /** Every configured relay, with its metrics token (secret). */
+    readonly relays: readonly {
+        readonly relayId: Hostname;
+        readonly name: string;
+        readonly metricsToken: string;
+    }[];
+    /** Required outside dev; in dev the counters stay in memory and this is not used. */
+    readonly analytics: { readonly accountId: string; readonly dataset: string; readonly token: string } | null;
 }
 
 export class ConfigError extends Error {
@@ -180,6 +263,29 @@ export class ConfigError extends Error {
         this.name = 'ConfigError';
         this.paths = paths;
     }
+}
+
+function monitoringConfig(parsed: z.infer<typeof varsSchema>): MonitoringConfig | null {
+    const { MONITORING: monitoring, RELAY_METRICS_TOKENS: tokens = {}, ANALYTICS: analytics } = parsed;
+    const token = parsed.ANALYTICS_API_TOKEN;
+    if (monitoring === undefined) {
+        return null;
+    }
+    return Object.freeze({
+        opsEmail: monitoring.opsEmail,
+        thresholds: monitoring.thresholds ?? DEFAULT_THRESHOLDS,
+        probeTimeoutMs: monitoring.probeTimeoutMs,
+        relays: Object.freeze(
+            parsed.RELAYS.map((relay) =>
+                Object.freeze({
+                    relayId: relay.relayId,
+                    name: relayName(relay.relayId),
+                    metricsToken: tokens[relay.relayId] as string,
+                }),
+            ),
+        ),
+        analytics: analytics === undefined || token === undefined ? null : Object.freeze({ ...analytics, token }),
+    });
 }
 
 /** Parses Workers bindings once, in the composition root; nothing else reads `env`. Throws {@link ConfigError}. */
@@ -211,5 +317,6 @@ export function parseConfig(env: object): DashboardConfig {
         linkCodeTtlMs: parsed.LINK_CODE_TTL_S === undefined ? LINK_CODE_TTL_MS : parsed.LINK_CODE_TTL_S * 1000,
         stripeSecretKey: parsed.STRIPE_SECRET_KEY ?? null,
         stripeWebhookSecret: parsed.STRIPE_WEBHOOK_SECRET ?? null,
+        monitoring: monitoringConfig(parsed),
     });
 }

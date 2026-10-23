@@ -2,6 +2,7 @@
 # Entry point of Dockerfile.dev. The origin is set at start, so one image serves any dev hostname without a rebuild:
 # `vite preview` reads the Worker's vars from dist/<worker>/.dev.vars. Optional `DASHBOARD_VARS`, a JSON object, sets
 # other vars the same way (the e2e stack's engine domain, relays and timings), through the built Worker config.
+# `DASHBOARD_VARS_FILE`, a path to such a JSON object, is merged after it.
 set -eu
 : "${DASHBOARD_ORIGIN:?set DASHBOARD_ORIGIN, e.g. https://app.ptbk.test}"
 : "${DASHBOARD_TLS_CERT:?set DASHBOARD_TLS_CERT to the certificate path}"

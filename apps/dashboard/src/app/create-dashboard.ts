@@ -7,6 +7,8 @@ import { createConsoleLogger } from '../adapters/console-logger';
 import { cryptoRandom } from '../adapters/crypto-random';
 import { createDohDnsResolver } from '../adapters/dns/doh-dns-resolver';
 import { createCloudflareEmailSender } from '../adapters/email/cloudflare-email-sender';
+import { createMeteredEmailSender } from '../adapters/email/metered-email-sender';
+import { createAnalyticsEngineMetrics } from '../adapters/monitoring/analytics-engine-metrics';
 import { createDatabase } from '../adapters/db/client';
 import { createD1AuthStore } from '../adapters/db/d1-auth-store';
 import { createD1BillingStore } from '../adapters/db/d1-billing-store';
@@ -25,6 +27,7 @@ import { createBillingService } from '../domain/billing/billing-service';
 import { createSubscriptionEntitlements } from '../domain/billing/entitlements';
 import { DASHBOARD_POLICY } from '../domain/authz/policy';
 import type { Logger } from '../domain/ports/logger';
+import type { DashboardMetrics } from '../domain/monitoring/dashboard-metrics';
 import { ConfigError, parseConfig, type DashboardConfig } from './config';
 import { authLinks, type DashboardDeps } from './deps';
 import { createDevAdapters, type DevAdapters } from './dev-adapters';
@@ -42,20 +45,31 @@ function misconfigured(logger: Logger, paths: readonly string[]): Pick<Hono, 'fe
     return { fetch: () => withHeaders(problemResponse(503, 'misconfigured'), securityHeaders('production')) };
 }
 
-/** The configured email adapter, or null when its binding is missing; the engines' status objects send through it too. */
-export function emailSender(env: Env, config: DashboardConfig, dev: DevAdapters) {
+/** Analytics Engine everywhere but dev, where the counters stay in the isolate for the monitoring job to read. */
+export function dashboardMetrics(env: Env, config: DashboardConfig, dev: DevAdapters): DashboardMetrics {
+    return config.environment === 'dev' ? dev.metrics : createAnalyticsEngineMetrics(env.OPS_METRICS);
+}
+
+/**
+ * The configured email adapter, counted per template and outcome, or null when its binding is missing; the engines'
+ * status objects and the monitoring job send through it too.
+ */
+export function emailSender(env: Env, config: DashboardConfig, dev: DevAdapters, metrics: DashboardMetrics) {
     switch (config.adapters.email) {
         case 'fake':
-            return { email: dev.outbox, devOutbox: dev.outbox };
+            return { email: createMeteredEmailSender(dev.outbox, metrics), devOutbox: dev.outbox };
         case 'cloudflare':
             return env.EMAIL === undefined
                 ? null
                 : {
-                      email: createCloudflareEmailSender({
-                          binding: env.EMAIL,
-                          from: config.emailFrom,
-                          render: renderEmail,
-                      }),
+                      email: createMeteredEmailSender(
+                          createCloudflareEmailSender({
+                              binding: env.EMAIL,
+                              from: config.emailFrom,
+                              render: renderEmail,
+                          }),
+                          metrics,
+                      ),
                       devOutbox: null,
                   };
     }
@@ -127,7 +141,8 @@ export function createDashboard(
     }
     const logger = createConsoleLogger({ service: 'dashboard', environment: config.environment });
     const dev = options.devAdapters ?? createDevAdapters();
-    const email = emailSender(env, config, dev);
+    const metrics = dashboardMetrics(env, config, dev);
+    const email = emailSender(env, config, dev, metrics);
     if (email === null) {
         return misconfigured(logger, ['EMAIL']);
     }
@@ -152,6 +167,7 @@ export function createDashboard(
         random: cryptoRandom,
         timer: systemTimer,
         logger,
+        metrics,
         authorizer: createAuthorizer({ clock: systemClock, policy: DASHBOARD_POLICY }),
         store: createD1AuthStore(db),
         billing,

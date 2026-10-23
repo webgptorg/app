@@ -7,7 +7,7 @@ import { systemClock } from '../adapters/system-clock';
 import { createEngineStatusService, type EngineStatusService } from '../domain/status/engine-status-service';
 import type { EngineStatusStorage } from '../domain/status/engine-status-storage';
 import { parseConfig } from './config';
-import { emailSender } from './create-dashboard';
+import { dashboardMetrics, emailSender } from './create-dashboard';
 import type { DevAdapters } from './dev-adapters';
 
 /**
@@ -16,11 +16,12 @@ import type { DevAdapters } from './dev-adapters';
  */
 export function createEngineStatus(env: Env, storage: EngineStatusStorage, dev: DevAdapters): EngineStatusService {
     const config = parseConfig(env);
-    const email = emailSender(env, config, dev);
+    const metrics = dashboardMetrics(env, config, dev);
+    const email = emailSender(env, config, dev, metrics);
     if (email === null) {
         throw new Error('engine status: the email binding is missing');
     }
-    return createEngineStatusService({
+    const service = createEngineStatusService({
         storage,
         clock: systemClock,
         logger: createConsoleLogger({ service: 'dashboard', environment: config.environment }),
@@ -30,4 +31,11 @@ export function createEngineStatus(env: Env, storage: EngineStatusStorage, dev: 
         engineHostname: (engineId) => defaultHostname(engineId, config.engineDomain),
         engineLink: (engineId) => `${config.dashboardOrigin}/engines/${engineId}`,
     });
+    return {
+        ...service,
+        alarm() {
+            metrics.record({ name: 'ptbk_dashboard_alarms_total', object: 'engine-status' });
+            return service.alarm();
+        },
+    };
 }

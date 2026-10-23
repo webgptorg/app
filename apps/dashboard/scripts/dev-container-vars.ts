@@ -12,6 +12,10 @@ function isObject(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+function fileContents(path: string | undefined): string | undefined {
+    return path === undefined || path === '' ? undefined : readFileSync(path, 'utf8');
+}
+
 /** The built config (`dist/<worker>/wrangler.json`) with `vars` overriding its vars by name. */
 export function mergeWorkerVars(configText: string, varsText: string): string {
     const config: unknown = JSON.parse(configText);
@@ -30,13 +34,17 @@ export function mergeWorkerVars(configText: string, varsText: string): string {
 }
 
 if (import.meta.main) {
-    const varsText = process.env['DASHBOARD_VARS'];
-    if (varsText !== undefined && varsText !== '') {
-        const appDir = dirname(dirname(fileURLToPath(import.meta.url)));
-        const configPath = join(appDir, 'dist', 'ptbk_dashboard', 'wrangler.json');
+    const appDir = dirname(dirname(fileURLToPath(import.meta.url)));
+    const configPath = join(appDir, 'dist', 'ptbk_dashboard', 'wrangler.json');
+    // DASHBOARD_VARS_FILE comes second, so a stack can add vars made at start (the e2e monitoring overlay's metrics
+    // tokens) to the ones in its compose file. Its contents are never printed, only the names.
+    const sources = [
+        ['DASHBOARD_VARS', process.env['DASHBOARD_VARS']],
+        ['DASHBOARD_VARS_FILE', fileContents(process.env['DASHBOARD_VARS_FILE'])],
+    ] as const;
+    for (const [name, varsText] of sources) {
+        if (varsText === undefined || varsText === '') continue;
         writeFileSync(configPath, mergeWorkerVars(readFileSync(configPath, 'utf8'), varsText));
-        console.log(
-            `dev-container: vars from DASHBOARD_VARS: ${Object.keys(JSON.parse(varsText) as object).join(', ')}`,
-        );
+        console.log(`dev-container: vars from ${name}: ${Object.keys(JSON.parse(varsText) as object).join(', ')}`);
     }
 }

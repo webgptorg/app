@@ -65,4 +65,29 @@ describe('renderEmail', () => {
         expect(text).toContain('abcdefghijklmnopqrstuvwxyz\n');
         expect(text).toContain(locale === 'en' ? 'October 19, 2026 at 2:30' : '19. října 2026 v 14:30');
     });
+
+    it('renders an ops alert in English with its rule, subject, time and numbers only', () => {
+        const message: EmailMessage = {
+            template: 'ops-alert',
+            to: 'ops@ptbk.test',
+            locale: 'en',
+            rule: 'relay-unreachable',
+            subject: 'relay-a',
+            state: 'firing',
+            at: RECOVERED_AT,
+            detail: { failedChecks: 2 },
+        };
+        expect(renderEmail(message)).toEqual({
+            subject: '[ptbk ops] FIRING: relay-unreachable (relay-a)',
+            text: [
+                'relay-unreachable is FIRING for relay-a since 2026-10-19T14:30:00.000Z.',
+                'failedChecks: 2',
+                '',
+                'Runbook: docs/runbooks/observability.md',
+            ].join('\n'),
+        });
+        expect(renderEmail({ ...message, state: 'resolved', detail: {} }).subject).toBe(
+            '[ptbk ops] resolved: relay-unreachable (relay-a)',
+        );
+    });
 });

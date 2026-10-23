@@ -23,6 +23,8 @@ export interface HttpAppDeps extends DashboardDeps {
 
 const MACHINE_AND_API_MOUNTS = [API_MOUNT, V1_MOUNT, INTERNAL_MOUNT, WEBHOOKS_MOUNT] as const;
 
+const KNOWN_METHODS: ReadonlySet<string> = new Set(['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']);
+
 function isUnder(path: string, mount: string): boolean {
     return path === mount || path.startsWith(`${mount}/`);
 }
@@ -39,9 +41,19 @@ export function createHttpApp(deps: HttpAppDeps): HttpApp {
     );
     const app = new Hono();
 
+    const routeTemplates = new WeakMap<Request, string>();
     app.use('*', async (context, next) => {
         await next();
+        const { method } = context.req;
         const isApi = MACHINE_AND_API_MOUNTS.some((mount) => isUnder(context.req.path, mount));
+        deps.metrics.record({
+            name: 'ptbk_dashboard_requests_total',
+            route:
+                routeTemplates.get(context.req.raw) ??
+                (isApi || (method !== 'GET' && method !== 'HEAD') ? 'unmatched' : 'assets'),
+            method: KNOWN_METHODS.has(method) ? method : 'OTHER',
+            status: context.res.status,
+        });
         context.res = withHeaders(context.res, isApi ? { ...headers, 'Cache-Control': 'no-store' } : headers);
     });
 
@@ -52,6 +64,7 @@ export function createHttpApp(deps: HttpAppDeps): HttpApp {
         logger: deps.logger,
         resolveSession: (token) => accounts.resolveSession(token),
         authenticateRelay: (authorization, defer) => authenticateRelay(deps, authorization, defer),
+        routeTemplates,
         signatures: {
             'stripe-signature': async (payload, signature) => {
                 const verified = await deps.billing.verifyWebhook(payload, signature);

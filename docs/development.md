@@ -123,6 +123,12 @@ The specs (`e2e/src/dashboard.ts` holds their fixtures: a CDP virtual authentica
 
 The stack is meant for Playwright inside its network; the [local stack](#local-stack) reuses `compose.dashboard.yaml` for a stack you click through from the host.
 
+The `monitoring` scenario (I-04, `compose.dashboard.yaml` plus the test-only `e2e/compose.monitoring.yaml`) runs the dashboard's monitoring job against both relays. A one-shot `metrics-tokens` service makes one metrics token per relay at start (`e2e/dashboard/mint-metrics-tokens.ts`): each relay reads its own as `RELAY_METRICS_TOKEN_FILE`, and the dashboard gets them all with `MONITORING` through `DASHBOARD_VARS_FILE`, and trusts the dev CA for its scrapes (`NODE_EXTRA_CA_CERTS`). Nothing fires the Cron Trigger on its own: `tests/monitoring/relay-alert.spec.ts` fires it through the dev server's trigger endpoint (`/cdn-cgi/local/scheduled`), stops relay-a, expects one `relay-unreachable` alert in the ops outbox after the second failed check, starts relay-a and expects the alert resolved. The dev overlay and `compose.dashboard.yaml` leave `MONITORING` unset, so a trigger there runs no job ([runbook](runbooks/observability.md)).
+
+```sh
+E2E_SCENARIO=monitoring bun run --filter @ptbk/e2e e2e
+```
+
 ### The engine-ui flows
 
 The `ui` scenario (X-04, `e2e/compose.ui.yaml`) runs engine-ui as an owner uses it: the bundle packed from the checkout (`ui-bundle` stage), signed by init, installed and served by the mock engine's loader under `ENGINE_UI_CSP`, every byte through the relays. One spec per flow in `e2e/tests/ui/` (loader, agents, create agent, book, chat, security, secrets, audit, capabilities, faults, accessibility, home, runs, files, triggers, integrations, capability gating), plus `guard.spec.ts`, which proves the page guard catches what it promises.

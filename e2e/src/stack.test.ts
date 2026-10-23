@@ -48,6 +48,7 @@ const OVERLAYS = [
     'tls-inspecting-proxy',
     'acme',
     'dashboard',
+    'monitoring',
     'debug',
 ] as const;
 
