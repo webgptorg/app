@@ -82,7 +82,7 @@ First boot takes a few minutes: packages, hardening, possibly one reboot for a n
    ssh <admin>@<host> 'sudo install -m 0600 /dev/stdin /etc/ptbk-relay/credentials/acme-dns-token' < acme-dns-token
    ```
 2. **Obtain the certificate** (needs the challenge CNAME from Bootstrap): `ssh <admin>@<host> sudo systemctl start ptbk-relay-cert.service`, then `sudo journalctl -u ptbk-relay-cert` shows the result. The timer renews it daily from then on, when fewer than 30 days remain.
-3. **Deploy the relay** with I-03's pipeline. It writes `/etc/ptbk-relay/image.env` with a verified digest and starts `ptbk-relay.service`; until all of `image.env`, `registry-token`, `metrics-token`, `tls.crt` and `tls.key` exist, the unit does not start.
+3. **Deploy the relay** with I-03's pipeline. It writes `/etc/ptbk-relay/image.env` with a verified digest and starts `ptbk-relay.service`; until all of `image.env`, `registry-token`, `tls.crt` and `tls.key` exist. `metrics-token` is optional: without it the relay starts with `/metrics` answering 404, and the dashboard's scrape alerts `relay-unreachable` for that relay until it is placed (`sudo systemctl restart ptbk-relay` after placing it), the unit does not start.
 4. **Verify** from outside: `infra/relay/verify.sh <admin>@<host>` must print `all checks passed`; a port scan from outside the allowlist (`nmap -Pn -p- <host>`) must show only 443.
 5. **Add it to DNS**: put its addresses into `relays` in `infra/cloudflare/environments/<env>/terraform.tfvars` (with I-02), plan and apply there.
 

@@ -91,8 +91,8 @@ run "relay_environment_holds_no_secret" {
   }
 
   assert {
-    condition     = strcontains(local.files["/etc/ptbk-relay/relay.env"], "RELAY_METRICS_TOKEN_FILE=/run/credentials/relay/metrics-token\n")
-    error_message = "The metrics token arrives as a credential file."
+    condition     = !strcontains(local.files["/etc/ptbk-relay/relay.env"], "RELAY_METRICS_TOKEN") && strcontains(local.files["/etc/systemd/system/ptbk-relay.service"], "echo RELAY_METRICS_TOKEN_FILE=/run/credentials/relay/metrics-token")
+    error_message = "The metrics token is optional: the unit hands it over as a file only when it exists."
   }
 
   assert {
