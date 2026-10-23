@@ -249,8 +249,11 @@ for _ in $(seq 60); do
         "https://$RELAY_HOSTNAME/healthz" >/dev/null 2>&1; then break; fi
     sleep 2
 done
-curl -fsS --max-time 3 --cacert "$work/pebble-root.pem" --resolve "$RELAY_HOSTNAME:443:$VM_IP" \
-    "https://$RELAY_HOSTNAME/healthz"
+if ! curl -fsS --max-time 3 --cacert "$work/pebble-root.pem" --resolve "$RELAY_HOSTNAME:443:$VM_IP" \
+    "https://$RELAY_HOSTNAME/healthz"; then
+    vm 'sudo journalctl --no-pager -n 40 -u ptbk-relay.service' || true
+    exit 1
+fi
 echo
 # The daily run: nothing due, so no new certificate and no restart.
 vm 'sudo systemctl start ptbk-relay-cert.service'

@@ -172,7 +172,9 @@ function unquote(value: string): string {
 /** Every name a TLS client could match the leaf certificate against: its DNS SANs and its subject CN. */
 function certificateNames(certificate: X509Certificate): readonly string[] {
     const sans = [...(certificate.subjectAltName ?? '').matchAll(/(?:^|, )DNS:("(?:[^"\\]|\\.)*"|[^,]*)/g)];
-    const cns = [...certificate.subject.matchAll(/^CN=(.*)$/gm)];
+    // Node returns undefined for an empty subject, which lego and ACME CAs issue: the names are in the SAN only.
+    const subject = certificate.subject as string | undefined;
+    const cns = [...(subject ?? '').matchAll(/^CN=(.*)$/gm)];
     return [...sans, ...cns].map((match) => unquote(match[1] as string));
 }
 

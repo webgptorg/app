@@ -51,9 +51,14 @@ const SIGNATURE_ALGORITHMS = {
 
 /**
  * Self-signed for `names` (DNS names and IP addresses in the SAN), valid from an hour ago for a day. `rsa` lets TLS
- * tests offer non-ECDHE suites (static RSA, DHE-RSA) that an ECDSA key could not use anyway.
+ * tests offer non-ECDHE suites (static RSA, DHE-RSA) that an ECDSA key could not use anyway. `subject: 'empty'` leaves
+ * the subject empty with the names in the SAN only, as lego and ACME CAs issue them.
  */
-export function createTestCertificate(names: readonly string[], keyType: 'rsa' | 'ec' = 'ec'): TestCertificate {
+export function createTestCertificate(
+    names: readonly string[],
+    keyType: 'rsa' | 'ec' = 'ec',
+    subject: 'cn' | 'empty' = 'cn',
+): TestCertificate {
     const { publicKey, privateKey } =
         keyType === 'rsa'
             ? generateKeyPairSync('rsa', { modulusLength: 2048 })
@@ -73,7 +78,7 @@ export function createTestCertificate(names: readonly string[], keyType: 'rsa' |
         algorithm,
         name,
         sequence(utcTime(new Date(now - 3_600_000)), utcTime(new Date(now + 86_400_000))),
-        name,
+        subject === 'cn' ? name : sequence(),
         publicKey.export({ type: 'spki', format: 'der' }),
         der(0xa3, sequence(sequence(oid('2.5.29.17'), der(0x04, san)))),
     );
