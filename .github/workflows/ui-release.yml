@@ -110,13 +110,14 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  # The staging environment holds the staging release key and the R2 credentials and requires a reviewer. The staging
-  # key must never be in a production trust policy.
+  # The release environment (I-03) holds the release key and the R2 token for the release bucket only, and needs a
+  # second maintainer's approval (required reviewers, no self-review, `ui-v*` tags only). Until the key ceremony it
+  # holds the staging release key, which must never be in a production trust policy.
   publish:
     needs: [build, sign]
     runs-on: ubuntu-24.04
     timeout-minutes: 15
-    environment: staging
+    environment: release
     permissions:
       contents: read
     defaults:

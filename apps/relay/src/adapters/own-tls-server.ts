@@ -64,6 +64,8 @@ export interface OwnTlsServerOptions {
     readonly maxConnections: number;
     /** `null`: no metrics token is configured, and `/metrics` is 404 like any unknown path. */
     readonly metrics: MetricsEndpoint | null;
+    /** Sent with `/healthz` as `ptbk-relay-image`, so the deploy pipeline sees which signed image runs (I-03). */
+    readonly imageDigest?: string | null;
 }
 
 export interface OwnTlsServer {
@@ -125,12 +127,14 @@ function serveMetrics(metrics: MetricsEndpoint, request: IncomingMessage, respon
 
 /**
  * The only place the relay terminates TLS, and only for its own hostname: `GET /v1/tunnel` upgrades to the tunnel
- * WebSocket, `GET /healthz` answers `ok`, `GET /metrics` answers the metrics token (ADR 0008), everything else is
- * 404. The endpoint admits each socket at TCP accept, so
- * the handshake deadline and the pending-handshake limits cover the TLS handshake too.
+ * WebSocket, `GET /healthz` answers `ok` (with the image digest in `ptbk-relay-image` when the host set one),
+ * `GET /metrics` answers the metrics token (ADR 0008), everything else is 404. The endpoint admits each socket at TCP
+ * accept, so the handshake deadline and the pending-handshake limits cover the TLS handshake too.
  */
 export function createOwnTlsServer(options: OwnTlsServerOptions): OwnTlsServer {
     const { endpoint, tunnel, clock, logger } = options;
+    const healthHeaders: Record<string, string> = { 'content-type': 'text/plain; charset=utf-8' };
+    if (options.imageDigest != null) healthHeaders['ptbk-relay-image'] = options.imageDigest;
     let secureContext = createRelaySecureContext(options.cert, options.key);
     const pendingBySocket = new WeakMap<Duplex, PendingConnection>();
     const sockets = new Set<Socket>();
@@ -155,7 +159,7 @@ export function createOwnTlsServer(options: OwnTlsServerOptions): OwnTlsServer {
         { maxHeaderSize: MAX_HEADER_BYTES },
         (request: IncomingMessage, response: ServerResponse) => {
             if (request.method === 'GET' && request.url === '/healthz') {
-                response.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' }).end('ok');
+                response.writeHead(200, healthHeaders).end('ok');
             } else if (request.method === 'GET' && request.url === METRICS_PATH && options.metrics !== null) {
                 serveMetrics(options.metrics, request, response);
             } else {

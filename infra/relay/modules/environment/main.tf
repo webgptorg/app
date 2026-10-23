@@ -34,7 +34,6 @@ module "cloud_init" {
   registry_url   = var.registry_url
   acme_email     = var.acme_email
   admins         = var.admins
-  deploy_key     = var.deploy_key
   ssh_allowlist  = var.ssh_allowlist
   reboot_time    = each.value.reboot_time
   relay_settings = var.relay_settings

@@ -1,0 +1,12 @@
+# How often a relay looks at its deploy tag (I-03). release-relay.yml waits this long plus the deploy's own window
+# before it calls a rollout failed.
+[Unit]
+Description=Look for a new Promptbook relay image every minute
+
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=1min
+AccuracySec=5s
+
+[Install]
+WantedBy=timers.target

@@ -150,6 +150,16 @@ check "ptbk-relay-cert.timer is enabled" systemctl is-enabled --quiet ptbk-relay
 check "lego is installed from the pinned release" /usr/local/bin/lego --version
 check "Debian's lego is not installed" test -z "$(dpkg-query -W -f='${db:Status-Status}' lego 2>/dev/null | grep -x installed)"
 
+echo "== deploys"
+deploy_env=/etc/ptbk-relay/deploy.env
+report "no deploy user or deploy key: relays pull their deploys" \
+    "$(getent passwd ptbk-deploy; ls /etc/sudoers.d/ptbk-deploy 2>/dev/null; grep -ls 'command=' /home/*/.ssh/authorized_keys 2>/dev/null)"
+check "ptbk-relay-deploy.timer is active" systemctl is-active --quiet ptbk-relay-deploy.timer
+check "cosign is installed" /usr/local/bin/cosign version
+check "deploys accept only release-relay.yml on main" test "$(env_value "$deploy_env" PTBK_DEPLOY_CERT_IDENTITY)" = \
+    https://github.com/webgptorg/app/.github/workflows/release-relay.yml@refs/heads/main
+check "deploys verify against Sigstore's public-good root" test -z "$(env_value "$deploy_env" PTBK_DEPLOY_TRUSTED_ROOT)"
+
 echo "== updates, time, logs"
 check "unattended-upgrades is installed" dpkg-query -W unattended-upgrades
 check "package lists update daily" apt_setting 'APT::Periodic::Update-Package-Lists "1";'

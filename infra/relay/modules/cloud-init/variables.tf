@@ -85,24 +85,14 @@ variable "admins" {
 
   validation {
     condition = alltrue([
-      for name, _ in var.admins : can(regex(local.user_pattern, name)) && !contains(["root", "ptbk-deploy", "ptbk-relay"], name)
+      for name, _ in var.admins : can(regex(local.user_pattern, name)) && !contains(["root", "ptbk-relay"], name)
     ])
-    error_message = "Admin names must be lower-case user names other than root, ptbk-deploy and ptbk-relay."
+    error_message = "Admin names must be lower-case user names other than root and ptbk-relay."
   }
 
   validation {
     condition     = alltrue(flatten([for keys in values(var.admins) : [for key in keys : can(regex(local.ssh_key_pattern, key))]]))
     error_message = "Admin keys must be ed25519 or ECDSA P-256 public keys (hardware-backed sk- keys welcome), without options; replace the <...> placeholders."
-  }
-}
-
-variable "deploy_key" {
-  type        = string
-  description = "Public key of the CI deploy key (I-03). It can only run the forced deploy command."
-
-  validation {
-    condition     = can(regex(local.ssh_key_pattern, var.deploy_key))
-    error_message = "deploy_key must be an ed25519 or ECDSA P-256 public key without options; replace the <...> placeholder."
   }
 }
 

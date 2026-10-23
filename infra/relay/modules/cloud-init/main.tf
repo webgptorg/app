@@ -37,7 +37,7 @@ locals {
       { path = "/etc/ptbk-relay/resolv.conf", permissions = "0644", content = file("${local.files_dir}/resolv.conf") },
       { path = "/etc/dhcp/dhclient-enter-hooks.d/ptbk-relay", permissions = "0644", content = file("${local.files_dir}/dhclient-enter-hook") },
       { path = "/etc/ssh/sshd_config.d/10-ptbk-relay.conf", permissions = "0600", content = templatefile("${local.files_dir}/sshd.conf.tftpl", {
-        users = concat(sort(keys(var.admins)), ["ptbk-deploy"])
+        users = sort(keys(var.admins))
       }) },
       { path = "/etc/apt/apt.conf.d/20auto-upgrades", permissions = "0644", content = file("${local.files_dir}/auto-upgrades.conf") },
       { path = "/etc/apt/apt.conf.d/52ptbk-relay-unattended-upgrades", permissions = "0644", content = templatefile("${local.files_dir}/unattended-upgrades.conf.tftpl", {
@@ -70,8 +70,11 @@ locals {
       { path = "/usr/local/libexec/ptbk-relay/renew-certificate", permissions = "0755", content = file("${local.files_dir}/renew-certificate") },
       { path = "/usr/local/libexec/ptbk-relay/install-certificate", permissions = "0700", content = file("${local.files_dir}/install-certificate") },
       { path = "/usr/local/libexec/ptbk-relay/install-lego", permissions = "0700", content = templatefile("${local.files_dir}/install-lego.tftpl", local.lego) },
-      { path = "/usr/local/sbin/ptbk-relay-deploy", permissions = "0755", content = file("${local.files_dir}/ptbk-relay-deploy") },
-      { path = "/etc/sudoers.d/ptbk-deploy", permissions = "0440", content = file("${local.files_dir}/sudoers-ptbk-deploy") },
+      { path = "/usr/local/sbin/ptbk-relay-deploy", permissions = "0700", content = file("${local.files_dir}/ptbk-relay-deploy") },
+      { path = "/etc/systemd/system/ptbk-relay-deploy.service", permissions = "0644", content = file("${local.files_dir}/ptbk-relay-deploy.service") },
+      { path = "/etc/systemd/system/ptbk-relay-deploy.timer", permissions = "0644", content = file("${local.files_dir}/ptbk-relay-deploy.timer") },
+      { path = "/etc/ptbk-relay/deploy.env", permissions = "0644", content = file("${local.files_dir}/deploy.env") },
+      { path = "/usr/local/libexec/ptbk-relay/install-cosign", permissions = "0700", content = file("${local.files_dir}/install-cosign") },
     ] : merge(entry, { owner = "root:root", defer = true })
   ]
 
@@ -91,7 +94,7 @@ locals {
     package_upgrade            = true
     package_reboot_if_required = true
     packages = [
-      "podman", "nftables", "unbound", "chrony", "unattended-upgrades", "bind9-dnsutils", "curl",
+      "podman", "nftables", "unbound", "chrony", "unattended-upgrades", "bind9-dnsutils", "curl", "skopeo",
     ]
 
     users = concat(
@@ -103,12 +106,6 @@ locals {
         ssh_authorized_keys = var.admins[name]
       }],
       [
-        {
-          name                = "ptbk-deploy"
-          shell               = "/bin/sh"
-          lock_passwd         = true
-          ssh_authorized_keys = ["restrict,command=\"sudo -n /usr/local/sbin/ptbk-relay-deploy\" ${var.deploy_key}"]
-        },
         {
           # The relay container runs as this uid (ptbk-relay.service: --user=10001:10001).
           name           = "ptbk-relay"
@@ -138,9 +135,10 @@ locals {
       ["systemctl", "enable", "nftables.service"],
       ["systemctl", "restart", "nftables.service"],
       ["systemctl", "restart", "ssh.service"],
+      ["/usr/local/libexec/ptbk-relay/install-cosign"],
       ["systemctl", "daemon-reload"],
-      ["systemctl", "enable", "ptbk-relay.service", "ptbk-relay-cert.timer"],
-      ["systemctl", "start", "ptbk-relay-cert.timer"],
+      ["systemctl", "enable", "ptbk-relay.service", "ptbk-relay-cert.timer", "ptbk-relay-deploy.timer"],
+      ["systemctl", "start", "ptbk-relay-cert.timer", "ptbk-relay-deploy.timer"],
     ]
   }
 }

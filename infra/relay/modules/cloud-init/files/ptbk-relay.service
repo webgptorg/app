@@ -1,5 +1,5 @@
-# The relay container (I-01). I-03's deploy writes image.env with a verified image digest; until then, and until the
-# secrets are placed (infra/relay/README.md), the conditions keep the unit from starting.
+# The relay container (I-01). ptbk-relay-deploy (I-03) writes image.env with a verified image digest; until then, and
+# until the secrets are placed (infra/relay/README.md), the conditions keep the unit from starting.
 [Unit]
 Description=Promptbook relay
 Documentation=https://github.com/webgptorg/app/tree/main/infra/relay
@@ -64,6 +64,7 @@ ExecStart=/usr/bin/podman run \
     --env-file=/etc/ptbk-relay/relay.env \
     --env-file=%t/ptbk-relay/metrics.env \
     --env=NODE_OPTIONS=--max-old-space-size=${PTBK_RELAY_HEAP_MIB} \
+    --env=RELAY_IMAGE_DIGEST=${PTBK_RELAY_IMAGE_DIGEST} \
     --volume=%t/ptbk-relay/credentials:/run/credentials/relay:ro \
     ${PTBK_RELAY_IMAGE}
 ExecStop=/usr/bin/podman rm --volumes --force --ignore --cidfile=%t/%N.cid

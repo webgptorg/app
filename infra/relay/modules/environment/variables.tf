@@ -75,10 +75,6 @@ variable "admins" {
   type = map(list(string))
 }
 
-variable "deploy_key" {
-  type = string
-}
-
 variable "ssh_allowlist" {
   type = list(string)
 }

@@ -12,7 +12,10 @@ One TCP listener on `RELAY_LISTEN_PORT` reads the SNI of every connection: the r
 bun run --filter @ptbk/relay dev     # tsx watch, from source
 bun run --filter @ptbk/relay build   # dist/main.mjs: one self-contained ESM file plus sourcemap
 node apps/relay/dist/main.mjs        # needs no node_modules
+docker build --file apps/relay/Dockerfile .   # the production image, from the repository root (I-03)
 ```
+
+The image is that one file on Node 24 (base pinned by digest), running as uid 10001. `release-relay.yml` builds it with no cache and signs it, and the relay hosts pull it ([infra/relay](../../infra/relay/README.md#deploys)).
 
 `SIGTERM` and `SIGINT` stop the relay gracefully: it stops accepting, closes every tunnel with `SHUTTING_DOWN` (4003) so engines reconnect to a peer relay at once, destroys sockets that have not closed after 2 s, then exits. `SIGHUP` reloads the static registry file (keeping the previous contents if the new file is invalid), expires the registry cache, loads the relay certificate and key into a fresh TLS context for new connections (open tunnels stay connected; unusable files are logged as `relay.certificate-rejected` and the old certificate stays), and runs a revalidation round, so a registry change takes effect at once. An uncaught exception or unhandled rejection is logged as `relay.crashed` with the error's name only, and the relay exits with 1 for systemd to restart it (I-01); it never continues in an unknown state. Logs are one JSON line per event on stdout and carry only the metadata the spec lists (Metadata we still see): no content, keys, tokens, file contents or browser hostnames. Every event and its fields are listed in `src/domain/log-events.ts`; the logger's types accept nothing else, the JSON logger drops any other field, and `test/log-allowlist.test.ts` fails if a list gains a browser IP, SNI, hostname or secret field or if the engine IP appears outside the tunnel events.
 
@@ -66,6 +69,7 @@ Only `RELAY_*` and `LOG_LEVEL` are read; an unknown `RELAY_*` name is an error, 
 | `RELAY_MEMORY_BUDGET_BYTES`               | `1073741824`        | Bytes held for others, relay-wide (1 MiB to 8 GiB); sized for the 4 GB reference host until R-05 measures it                     |
 | `RELAY_METRICS_TOKEN`                     | —                   | Metrics token, `ptbk_mt_` and 43 base64url characters; `GET /metrics` answers only it. Unset: no metrics endpoint (404)          |
 | `RELAY_METRICS_TOKEN_FILE`                | —                   | Path to a file holding the metrics token, as for the registry token; never both                                                  |
+| `RELAY_IMAGE_DIGEST`                      | —                   | `sha256:<64 hex>` of the image the host runs; `/healthz` reports it in `ptbk-relay-image` for the deploy pipeline (I-03)         |
 | `LOG_LEVEL`                               | `info`              | `info`, `warn` or `error`                                                                                                        |
 
 ## Static registry file
@@ -99,7 +103,7 @@ Every registry adapter is wrapped by `createCachedRegistry`: entries are fresh f
 
 ## Tunnel endpoint
 
-The relay terminates TLS here and nowhere else, with its own certificate: TLS 1.2 minimum, and for TLS 1.2 only ECDHE with AES-GCM or ChaCha20-Poly1305 (ADR 0014). `GET /v1/tunnel` with the `ptbk-tunnel` subprotocol upgrades to the tunnel WebSocket, `GET /healthz` answers `ok`, `GET /metrics` answers the metrics token (below), everything else is 404.
+The relay terminates TLS here and nowhere else, with its own certificate: TLS 1.2 minimum, and for TLS 1.2 only ECDHE with AES-GCM or ChaCha20-Poly1305 (ADR 0014). `GET /v1/tunnel` with the `ptbk-tunnel` subprotocol upgrades to the tunnel WebSocket, `GET /healthz` answers `ok` (with the `ptbk-relay-image` header when `RELAY_IMAGE_DIGEST` is set: which signed image runs, nothing about engines), `GET /metrics` answers the metrics token (below), everything else is 404.
 
 - **Handshake** (C-02): the relay sends `challenge` with a fresh 32-byte nonce and its versions and features; the engine answers `auth`; the relay looks the engine up in the cached registry, checks that the engine ID derives from the registry key, verifies the signature against the challenge it sent (strict Ed25519), then checks suspension and negotiates the version, and answers `ready` with the routable hostnames. Refusals map onto C-02's coarse reasons in `src/domain/tunnel/reject-mapping.ts`: unknown engine, bad signature, ID/key mismatch and registry outage all look like `auth-failed`; malformed input closes with `PROTOCOL_ERROR` and no `reject`.
 - **Limits:** the handshake deadline counts from TCP accept (the listener passes its accept time on), so a slow ClientHello or TLS client spends it too; the pending-handshake limits count from the hand-off. A connection over a limit may finish TLS only to receive `reject` `rate-limited` and close code 1013; those connections have a pool as large as the limit, and beyond it sockets are dropped before TLS.

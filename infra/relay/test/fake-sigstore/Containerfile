@@ -1,0 +1,13 @@
+# fake-sigstore for deploy-test.sh: built from go.mod and go.sum (checksummed modules), run on the test network with
+# the test CA as its only trust anchor.
+FROM docker.io/library/golang:1.26.9-trixie@sha256:f06b7122f888680048afb247c4e5f49c0069eb6c4c1ccae0f3f4834527a8d22c AS build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY main.go ./
+RUN CGO_ENABLED=0 go build -trimpath -mod=readonly -o /fake-sigstore .
+
+FROM docker.io/library/debian:trixie@sha256:4c25275446ca371766b8b093c696782eabce06263fccacb8d5d813b3dc44b308
+COPY --from=build /fake-sigstore /usr/local/bin/fake-sigstore
+USER 65534:65534
+ENTRYPOINT ["/usr/local/bin/fake-sigstore"]

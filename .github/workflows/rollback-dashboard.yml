@@ -1,0 +1,72 @@
+name: Roll back dashboard
+
+# Points an environment's Worker back to an earlier version (`wrangler versions list --env <env>` lists them), behind
+# the same environment approval as a deploy (I-03). It does not undo D1 migrations; they are backward compatible by
+# rule (expand, deploy, contract), so the earlier Worker runs on the migrated schema. docs/runbooks/deploy.md.
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment
+        required: true
+        type: choice
+        options: [staging, production]
+      version:
+        description: Worker version ID to roll back to (a UUID from `wrangler versions list`)
+        required: true
+      reason:
+        description: Why (recorded with the rollback)
+        required: true
+
+permissions: {}
+
+concurrency:
+  group: dashboard-deploy-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  rollback:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: ${{ inputs.environment }}
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: apps/dashboard
+    env:
+      CLOUDFLARE_ENV: ${{ inputs.environment }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: package.json
+          no-cache: true
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - run: bun install --frozen-lockfile
+        working-directory: .
+      - name: Roll back
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          VERSION: ${{ inputs.version }}
+          REASON: ${{ inputs.reason }}
+        run: |
+          if [[ ! $VERSION =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]; then
+            echo "::error::not a Worker version ID"
+            exit 1
+          fi
+          bunx --no-install wrangler rollback "$VERSION" --env "$CLOUDFLARE_ENV" --message "$REASON (run $GITHUB_RUN_ID)" --yes
+      # The built config is the only place the environment's origin lives; nothing from this build is uploaded.
+      - name: Smoke test
+        run: |
+          bun run generate
+          bun run build
+          origin=$(node -p 'require("./dist/ptbk_dashboard/wrangler.json").vars.DASHBOARD_ORIGIN')
+          node scripts/smoke-test.ts --origin "$origin" --environment "$CLOUDFLARE_ENV"

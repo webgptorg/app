@@ -36,7 +36,6 @@ variables {
   admins = {
     ada = ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIODl1HFc9w2tQEYLZv2a7Q6WsBdDk0Rgoxk/YQuqGbj+ ada"]
   }
-  deploy_key    = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEAvFcF9TjUmm57Av3oVnBfv6lwzliXetJmpL5iZ/p0m deploy"
   ssh_allowlist = ["198.51.100.0/24", "2001:db8:1::/48"]
   relays = {
     relay-fsn = { location = "fsn1", reboot_time = "02:00" }

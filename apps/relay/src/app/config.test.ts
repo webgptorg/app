@@ -88,6 +88,7 @@ describe('parseRelayConfig', () => {
             },
             memoryBudgetBytes: 1_073_741_824,
             metrics: null,
+            imageDigest: null,
             logLevel: 'info',
         });
         expect(Object.isFrozen(config)).toBe(true);
@@ -137,6 +138,7 @@ describe('parseRelayConfig', () => {
             RELAY_STREAM_DRAIN_TIMEOUT_MS: '6000',
             RELAY_STREAM_END_TIMEOUT_MS: '7000',
             RELAY_MEMORY_BUDGET_BYTES: '268435456',
+            RELAY_IMAGE_DIGEST: `sha256:${'0f'.repeat(32)}`,
             LOG_LEVEL: 'warn',
         });
         expect(config.relayId).toBe('relay-a.ptbk.test');
@@ -174,6 +176,7 @@ describe('parseRelayConfig', () => {
             endTimeoutMs: 7000,
         });
         expect(config.memoryBudgetBytes).toBe(268_435_456);
+        expect(config.imageDigest).toBe(`sha256:${'0f'.repeat(32)}`);
         expect(config.logLevel).toBe('warn');
     });
 
@@ -466,6 +469,11 @@ describe('parseRelayConfig', () => {
             'RELAY_MEMORY_BUDGET_BYTES: must be an integer from 1048576 to 8589934592',
         ],
         ['an unknown LOG_LEVEL', { ...staticEnv, LOG_LEVEL: 'debug' }, 'LOG_LEVEL: must be one of info, warn, error'],
+        [
+            'an image digest that is not a sha256 digest',
+            { ...staticEnv, RELAY_IMAGE_DIGEST: 'ghcr.io/webgptorg/relay:latest' },
+            'RELAY_IMAGE_DIGEST: must be sha256:<64 hex digits>',
+        ],
         [
             'a DNS server given by name',
             { ...staticEnv, RELAY_DNS_SERVERS: 'dns.google' },

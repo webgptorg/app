@@ -267,6 +267,7 @@ GitHub Actions in `.github/workflows`:
 - `ci.yml`: install, then `bun run check` as one step (generate, lint, format, types, tests, plan), so whatever runs locally runs in CI; `engine-ui-csp`, which runs the built engine UI in Chromium under the engine's CSP (`bun run --filter @ptbk/engine-ui test:csp`); `e2e`, the browser suite in Docker Compose ([End to end](#end-to-end); images are built from scratch every run, and `e2e/test-results/` is uploaded on failure); and a zizmor audit of the workflows themselves.
 - `commits.yml`: commitlint on every commit in a PR and on the PR title.
 - `ui-release.yml`: builds, signs and publishes the engine UI bundle on a `ui-v*` tag push (see [UI releases](#ui-releases)).
+- `deploy-dashboard.yml`, `rollback-dashboard.yml` and `release-relay.yml`: the dashboard and relay deploys behind the `staging` and `production` environments, and the signed relay image; pull requests only build and dry-run them ([runbooks/deploy.md](runbooks/deploy.md)). `ci.yml`'s `relay-deploy` job runs `infra/relay/test/deploy-test.sh`: the relay hosts' deploy script, signature refusals and a rolling deploy with a broken image, against two hosts in containers.
 
 Workflow rules: actions pinned to full commit SHAs, `permissions: contents: read` by default, `persist-credentials: false`, no caches, no `pull_request_target`, untrusted values (PR title, branch names) passed through `env`, never interpolated into scripts.
 
@@ -283,9 +284,9 @@ The workflow has three jobs:
 
 1. **build**: checks the tag, runs `check` and `test:csp`, then `pack` and `verify-reproducible` (two more builds in fresh worktrees with another TZ, locale, umask and path, compared byte for byte with the first).
 2. **sign** (the only job with `id-token: write`): signs the archive keylessly (`engine-ui.tar.zst.sigstore.json`), writes the C-06 `ReleaseEntry` payload bytes once (`release-payload.json`) and attests them with `sigstore.attest()`, which logs a DSSE entry in Rekor with an RFC 3161 timestamp (`release-provenance.sigstore.json`).
-3. **publish** (GitHub environment `staging`, reviewer required): signs the payload's DSSE PAE with the staging release key, writes the `SignedRelease` (`release.json`), runs `release:verify` against the staging trust policy, and, unless it is a dry run, uploads `ui/<version>/engine-ui.tar.zst`, `ui/<version>/manifest.json`, `ui/<version>/engine-ui.tar.zst.sigstore.json` and `release-log/ui-<version>.json`. A version that exists is never overwritten: any existing key stops the upload, and every PUT carries `If-None-Match: *`.
+3. **publish** (GitHub environment `release`, a second maintainer approves; see [the deploy runbook](runbooks/deploy.md)): signs the payload's DSSE PAE with the staging release key, writes the `SignedRelease` (`release.json`), runs `release:verify` against the staging trust policy, and, unless it is a dry run, uploads `ui/<version>/engine-ui.tar.zst`, `ui/<version>/manifest.json`, `ui/<version>/engine-ui.tar.zst.sigstore.json`, `ui/<version>/trusted_root.json` (the pinned Sigstore trusted root it verifies against, for offline verifiers and mirrors) and `release-log/ui-<version>.json`. A version that exists is never overwritten: any existing key stops the upload, and every PUT carries `If-None-Match: *`.
 
-What the `staging` environment needs (repository settings, set by a maintainer):
+What the `release` environment needs (repository settings, set by a maintainer):
 
 | Name                              | Kind     | Value                                                                                    |
 | --------------------------------- | -------- | ---------------------------------------------------------------------------------------- |
@@ -306,7 +307,7 @@ git tag ui-v0.2.0 && git push origin ui-v0.2.0
 git tag ui-v0.0.0-dryrun.4 && git push origin ui-v0.0.0-dryrun.4
 ```
 
-Approve the `publish` job when it waits for the `staging` environment. A dry run's `release.json` is a workflow artifact (`ui-release`).
+Approve the `publish` job when it waits for the `release` environment (another maintainer than the one who pushed the tag). A dry run's `release.json` is a workflow artifact (`ui-release`).
 
 ### Verifying a release
 
