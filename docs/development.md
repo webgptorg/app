@@ -139,7 +139,7 @@ E2E_SCENARIO=ui bun run --filter @ptbk/e2e e2e:down
 - Before each test the engine is reset to `small-team`, seed 1, every capability, no faults and engine time paused; time-dependent flows advance it explicitly and never sleep. Sessions come from the target (C-05's mock target for the owner and permission sets) and are set as the gateway's cookie.
 - The page guard (`e2e/src/ui-fixtures.ts`, `ui-guard.ts`) fails every test, in any page of its context, on a `securitypolicyviolation`, a console message about the Content Security Policy or Trusted Types, an uncaught page error, a request to any origin but the engine's, or a native dialog.
 - Secrets and integrations record every text-like response (`e2e/src/response-recorder.ts`) and check that a canary generated at run time never comes back in the page, a response, browser storage or the console; each check has a positive control that the recorder saw traffic.
-- Chromium is the gate (Trusted Types). The agents, chat and secrets flows also run in Firefox, which trusts the dev CA through an enterprise policy in the Playwright image.
+- Chromium is the gate (Trusted Types). The agents, chat and secrets flows also run in Firefox, each test in a fresh profile whose certificate database is a copy of the one the entrypoint fills with the dev CA, so nothing is trusted system-wide.
 
 Extra overlays (`E2E_OVERLAYS`, comma-separated) are layered after the scenario's:
 

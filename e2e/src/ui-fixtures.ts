@@ -3,6 +3,11 @@
  * before every test, sessions, and the page guard every test runs under. The guard fails a test on any CSP or Trusted
  * Types violation, uncaught page error, request to another origin or native dialog, in any page of its context.
  */
+import { copyFile, mkdtemp, rm } from 'node:fs/promises';
+import { homedir, tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+import { devices } from '@playwright/test';
 import type { BrowserContext } from '@playwright/test';
 
 import type { EngineControls, EngineTarget, UiSessionSubject } from './engine-target.ts';
@@ -103,7 +108,36 @@ export async function installGuard(context: BrowserContext, engineHost: string, 
     });
 }
 
+/** The NSS database the Playwright entrypoint fills with the stack's dev CA (docker/playwright-entrypoint.sh). */
+const NSS_DATABASE = join(homedir(), '.pki', 'nssdb');
+const NSS_FILES = ['cert9.db', 'key4.db', 'pkcs11.txt'] as const;
+
 export const test = base.extend<UiTestFixtures, UiWorkerFixtures>({
+    // Chromium reads the dev CA from pwuser's NSS database. Firefox keeps its roots in each profile, so its tests run
+    // in a fresh profile whose certificate database is a copy of that one: nothing is trusted system-wide.
+    context: async ({ context, browserName, playwright }, use) => {
+        if (browserName !== 'firefox') {
+            await use(context);
+            return;
+        }
+        const profile = await mkdtemp(join(tmpdir(), 'ptbk-firefox-'));
+        try {
+            for (const file of NSS_FILES) await copyFile(join(NSS_DATABASE, file), join(profile, file));
+            const { viewport, userAgent, deviceScaleFactor, isMobile, hasTouch } = devices['Desktop Firefox'];
+            const persistent = await playwright.firefox.launchPersistentContext(profile, {
+                viewport,
+                userAgent,
+                deviceScaleFactor,
+                isMobile,
+                hasTouch,
+            });
+            await use(persistent);
+            await persistent.close();
+        } finally {
+            await rm(profile, { recursive: true, force: true });
+        }
+    },
+
     engine: [
         async ({ engineHost }, use) => {
             await use(

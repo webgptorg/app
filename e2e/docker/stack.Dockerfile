@@ -111,13 +111,6 @@ FROM ${PLAYWRIGHT_IMAGE} AS playwright
 RUN apt-get update \
     && apt-get install -y --no-install-recommends libnss3-tools=2:3.98-1ubuntu0.2 \
     && rm -rf /var/lib/apt/lists/*
-# Firefox (X-04's second browser) keeps its roots in each profile, not in pwuser's NSS database: an enterprise policy
-# has every profile import the stack's dev CA, which init writes fresh to /pki on every run.
-RUN for dir in /ms-playwright/firefox-*/firefox; do \
-        test -x "${dir}/firefox" && mkdir -p "${dir}/distribution" \
-        && printf '%s\n' '{"policies":{"Certificates":{"Install":["/pki/ca-cert.pem"]}}}' \
-            > "${dir}/distribution/policies.json" || exit 1; \
-    done
 COPY --from=bun /usr/local/bin/bun /usr/local/bin/bun
 WORKDIR /repo
 COPY --from=manifests /src/ ./
