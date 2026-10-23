@@ -37,17 +37,25 @@ report() {
 
 env_value() { sed -n "s/^$2=//p" "$1" 2>/dev/null | tail -n 1; }
 at_least() { [[ $1 =~ ^[0-9]+$ ]] && ((10#$1 >= $2)); }
-apt_setting() { apt-config dump | grep -qxF "$1"; }
-chain_policy_drop() { nft list chain inet ptbk "$1" | grep -q 'policy drop;'; }
-journald_setting() { systemd-analyze cat-config systemd/journald.conf | grep -E "^$1=" | tail -n 1 | grep -Eqx "$1=$2"; }
+# Never grep -q at the end of a pipe: it exits at the first match, and under pipefail the writer's SIGPIPE then
+# fails the check.
+apt_setting() { apt-config dump | grep -xF "$1" >/dev/null; }
+chain_policy_drop() { nft list chain inet ptbk "$1" | grep 'policy drop;' >/dev/null; }
+journald_setting() {
+    systemd-analyze cat-config systemd/journald.conf | grep -E "^$1=" | tail -n 1 | grep -Ex "$1=$2" >/dev/null
+}
 only_local_nameservers() {
     awk '$1 == "nameserver" { any = 1; if ($2 != "127.0.0.1" && $2 != "::1") bad = 1 } END { exit bad || !any }' \
         /etc/resolv.conf
 }
 runs_as_relay_user() { awk '/^Uid:/ { exit !($2 == 10001 && $3 == 10001 && $4 == 10001) }' "/proc/$1/status"; }
 holds_no_capabilities() { awk '/^Cap(Inh|Prm|Eff|Amb):/ && $2 !~ /^0+$/ { bad = 1 } END { exit bad }' "/proc/$1/status"; }
-dnssec_authenticates() { dig @127.0.0.1 +dnssec +time=5 +tries=2 isc.org SOA | grep -Eq 'flags:[a-z ]* ad[ ;]'; }
-dnssec_refuses_bogus() { dig @127.0.0.1 +time=5 +tries=2 dnssec-failed.org A | grep -q 'status: SERVFAIL'; }
+dnssec_authenticates() {
+    dig @127.0.0.1 +dnssec +time=5 +tries=2 isc.org SOA | grep -E 'flags:[a-z ]* ad[ ;]' >/dev/null
+}
+dnssec_refuses_bogus() {
+    dig @127.0.0.1 +time=5 +tries=2 dnssec-failed.org A | grep 'status: SERVFAIL' >/dev/null
+}
 
 relay_env=/etc/ptbk-relay/relay.env
 engine_domain=$(env_value "$relay_env" RELAY_ENGINE_DOMAIN)
@@ -100,6 +108,10 @@ check "net.ipv4.tcp_syncookies = 1" test "$(sysctl -n net.ipv4.tcp_syncookies)" 
 check "net.core.somaxconn >= 4096" at_least "$(sysctl -n net.core.somaxconn)" 4096
 check "net.ipv4.tcp_max_syn_backlog >= 4096" at_least "$(sysctl -n net.ipv4.tcp_max_syn_backlog)" 4096
 check "net.netfilter.nf_conntrack_max >= 262144" at_least "$(sysctl -n net.netfilter.nf_conntrack_max)" 262144
+# A listening socket's Send-Q is its backlog, already capped at somaxconn.
+listen_backlog=$(ss -H -l -n -t 'sport = :443' | awk '{ print $3; exit }')
+check "the relay listens on 443 with a backlog of net.core.somaxconn" \
+    test "${listen_backlog:-none}" = "$(sysctl -n net.core.somaxconn)"
 
 echo "== firewall"
 check "nftables.service is active" systemctl is-active --quiet nftables.service
@@ -162,7 +174,7 @@ else
             # Every certificate in the file, not only the first.
             awk '/-----BEGIN CERTIFICATE-----/ { pem = "" } { pem = pem $0 "\n" }
                 /-----END CERTIFICATE-----/ { cmd = "openssl x509 -noout -subject -ext subjectAltName"; printf "%s", pem | cmd; close(cmd) }' \
-                "$file" 2>/dev/null | grep -Eiq "$covers_engine_domain" && echo "$file"
+                "$file" 2>/dev/null | grep -Ei "$covers_engine_domain" >/dev/null && echo "$file"
         done || true)
     report "no certificate for the engine domain ($engine_domain)" "$engine_certificates"
 fi

@@ -151,13 +151,16 @@ docker save localhost/ptbk-relay:ci | vm 'sudo podman load --quiet'
 digest=$(vm "sudo podman image inspect --format '{{.Digest}}' localhost/ptbk-relay:ci")
 vm "echo 'PTBK_RELAY_IMAGE=localhost/ptbk-relay@$digest' | sudo install -m 0644 /dev/stdin /etc/ptbk-relay/image.env"
 vm 'sudo systemctl start ptbk-relay.service'
-for _ in $(seq 30); do
-    if curl -fsS --max-time 3 -k --resolve "$RELAY_HOSTNAME:443:$VM_IP" "https://$RELAY_HOSTNAME/healthz" >/dev/null; then
-        break
-    fi
+healthy() { curl -fsS --max-time 3 -k --resolve "$RELAY_HOSTNAME:443:$VM_IP" "https://$RELAY_HOSTNAME/healthz"; }
+# The unit's own start timeout is 120 s.
+for _ in $(seq 60); do
+    if healthy >/dev/null 2>&1; then break; fi
     sleep 2
 done
-curl -fsS --max-time 3 -k --resolve "$RELAY_HOSTNAME:443:$VM_IP" "https://$RELAY_HOSTNAME/healthz"
+if ! healthy; then
+    vm 'sudo systemctl --no-pager status ptbk-relay.service; sudo journalctl --no-pager -n 100 -u ptbk-relay.service' || true
+    exit 1
+fi
 echo
 
 step "metrics: 401 without the token, the series with it (I-04)"
