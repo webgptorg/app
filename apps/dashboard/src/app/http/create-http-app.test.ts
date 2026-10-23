@@ -16,6 +16,7 @@ import { createMemoryEngineHostnameStore, createMemoryRelayTokenStore } from '..
 import { createTestBilling } from '../../testing/test-billing';
 import { DEV_RATE_LIMIT_HMAC_KEY, parseConfig } from '../config';
 import { authLinks } from '../deps';
+import { createMemoryDashboardMetrics } from '../../adapters/monitoring/memory-dashboard-metrics';
 import { createHttpApp } from './create-http-app';
 
 const clock = { nowMs: () => 0 };
@@ -49,12 +50,14 @@ function app(options: {
     });
     const logger = createMemoryLogger();
     const assets = options.assets ?? (() => Promise.resolve(new Response('<!doctype html>')));
+    const metrics = createMemoryDashboardMetrics(clock);
     const { app: http } = createHttpApp({
         config,
         clock,
         random: { bytes: (n) => new Uint8Array(n) },
         timer: createManualTimer(),
         logger,
+        metrics,
         authorizer: createAuthorizer({ clock, policy: DASHBOARD_POLICY }),
         store: createMemoryAuthStore(),
         relyingParty: createSimpleWebAuthnRelyingParty({ origin: 'https://app.ptbk.test', rpName: 'Promptbook' }),
@@ -82,10 +85,24 @@ function app(options: {
         assets: { fetch: assets } as unknown as Fetcher,
         viteDevServer: options.viteDevServer,
     });
-    return { http, logger };
+    return { http, logger, metrics };
 }
 
 describe('createHttpApp', () => {
+    it('counts every request by route template, method and status, never by its path (I-04)', async () => {
+        const { http, metrics } = app({ environment: 'staging', viteDevServer: false });
+        await http.request('/v1/health');
+        await http.request('/api/nope/abcdefghijklmnopqrstuvwxyz');
+        await http.request('/engines/abcdefghijklmnopqrstuvwxyz');
+        await http.request('/engines/x', { method: 'PROPFIND' });
+        expect(metrics.records.map((record) => record.metric)).toEqual([
+            { name: 'ptbk_dashboard_requests_total', route: '/v1/health', method: 'GET', status: 200 },
+            { name: 'ptbk_dashboard_requests_total', route: 'unmatched', method: 'GET', status: 404 },
+            { name: 'ptbk_dashboard_requests_total', route: 'assets', method: 'GET', status: 200 },
+            { name: 'ptbk_dashboard_requests_total', route: 'unmatched', method: 'OTHER', status: 404 },
+        ]);
+    });
+
     it('serves health and the UI API without caching, and 404s unknown API paths as problems', async () => {
         const { http } = app({ environment: 'staging', viteDevServer: false });
         const health = await http.request('/v1/health');

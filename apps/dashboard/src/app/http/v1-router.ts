@@ -86,7 +86,7 @@ export const heartbeatRoute = defineRoute({
 export function createV1Router(
     deps: Pick<
         DashboardDeps,
-        'config' | 'clock' | 'logger' | 'linkCodes' | 'engines' | 'heartbeatEngines' | 'engineStatus'
+        'config' | 'clock' | 'logger' | 'metrics' | 'linkCodes' | 'engines' | 'heartbeatEngines' | 'engineStatus'
     > & {
         readonly policy: EngineCreationPolicy;
         readonly routes: RouteBinder;
@@ -103,6 +103,7 @@ export function createV1Router(
     };
     deps.routes.bind(router, V1_MOUNT, registerRoute, async ({ input, request }) => {
         const outcome = await registerEngine(registration, input.body, request.signal);
+        deps.metrics.record({ name: 'ptbk_dashboard_registrations_total', outcome: outcome.kind });
         switch (outcome.kind) {
             case 'registered':
                 return { kind: 'ok', body: outcome.response };
@@ -123,6 +124,7 @@ export function createV1Router(
             rawBody: input.body,
             signatureHeader: input.headers[SIGNATURE_HEADER] ?? null,
         });
+        deps.metrics.record({ name: 'ptbk_dashboard_heartbeats_total', outcome: outcome.kind });
         switch (outcome.kind) {
             case 'accepted':
                 return { kind: 'ok', body: undefined, status: 204 };

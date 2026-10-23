@@ -24,6 +24,15 @@ export type EmailMessage =
           readonly lastSeenAt: number;
           /** The engine's page in the dashboard. Nothing else is known about the engine, so nothing else is sent. */
           readonly link: string;
+      })
+    | (Envelope & {
+          /** I-04: to the ops address only; numbers and names of our own relays and jobs, never engine data. */
+          readonly template: 'ops-alert';
+          readonly rule: string;
+          readonly subject: string;
+          readonly state: 'firing' | 'resolved';
+          readonly at: number;
+          readonly detail: Readonly<Record<string, number>>;
       });
 
 export type EmailTemplate = EmailMessage['template'];

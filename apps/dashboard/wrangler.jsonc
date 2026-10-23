@@ -59,12 +59,19 @@
         "bindings": [
             { "name": "HOURLY_RATE_LIMITER", "class_name": "HourlyRateLimiter" },
             { "name": "ENGINE_STATUS", "class_name": "EngineStatus" },
+            { "name": "OPS_MONITOR", "class_name": "OpsMonitor" },
         ],
     },
     "migrations": [
         { "tag": "v1", "new_sqlite_classes": ["HourlyRateLimiter"] },
         { "tag": "v2", "new_sqlite_classes": ["EngineStatus"] },
+        { "tag": "v3", "new_sqlite_classes": ["OpsMonitor"] },
     ],
+    // One Cron Trigger for every scheduled job (I-04); src/app/scheduled.ts lists the jobs, and a test keeps the two in
+    // step. Locally nothing fires on its own: the e2e monitoring overlay triggers it.
+    "triggers": { "crons": ["* * * * *"] },
+    // Monitoring data (I-04, ADR 0012): aggregates only, no engine, hostname, address or account.
+    "analytics_engine_datasets": [{ "binding": "OPS_METRICS", "dataset": "ptbk_ops_dev" }],
     // Per-minute rate limits; limit and period must match RATE_LIMITS in src/domain/ports/rate-limiter.ts.
     "ratelimits": [
         { "name": "RATE_LIMIT_OPTIONS", "namespace_id": "1001", "simple": { "limit": 30, "period": 60 } },
@@ -77,6 +84,8 @@
     "env": {
         "staging": {
             "routes": [{ "pattern": "app.staging.<placeholder>", "custom_domain": true }],
+            "triggers": { "crons": ["* * * * *"] },
+            "analytics_engine_datasets": [{ "binding": "OPS_METRICS", "dataset": "ptbk_ops_staging" }],
             "d1_databases": [
                 {
                     "binding": "DB",
@@ -94,6 +103,10 @@
                 "INSTALL_COMMAND": "<engine-install-command> {linkCode}",
                 "ADAPTERS": { "email": "cloudflare", "billing": "stripe", "rateLimit": "workers" },
                 "EMAIL_FROM": "no-reply@<staging-sending-domain>",
+                // I-04: alerts go to the ops mailbox; relay metrics tokens are the RELAY_METRICS_TOKENS secret and
+                // the analytics read token ANALYTICS_API_TOKEN (docs/runbooks/observability.md).
+                "MONITORING": { "opsEmail": "ops@<staging-ops-domain>" },
+                "ANALYTICS": { "accountId": "<staging-account-id>", "dataset": "ptbk_ops_staging" },
                 // Test-mode Stripe IDs; secrets via `wrangler secret put STRIPE_SECRET_KEY --env staging` (and
                 // STRIPE_WEBHOOK_SECRET). Quotas are placeholders until pricing is decided.
                 "BILLING_PLANS": {
@@ -114,11 +127,13 @@
                 "bindings": [
                     { "name": "HOURLY_RATE_LIMITER", "class_name": "HourlyRateLimiter" },
                     { "name": "ENGINE_STATUS", "class_name": "EngineStatus" },
+                    { "name": "OPS_MONITOR", "class_name": "OpsMonitor" },
                 ],
             },
             "migrations": [
                 { "tag": "v1", "new_sqlite_classes": ["HourlyRateLimiter"] },
                 { "tag": "v2", "new_sqlite_classes": ["EngineStatus"] },
+                { "tag": "v3", "new_sqlite_classes": ["OpsMonitor"] },
             ],
             "ratelimits": [
                 { "name": "RATE_LIMIT_OPTIONS", "namespace_id": "2001", "simple": { "limit": 30, "period": 60 } },
@@ -139,6 +154,8 @@
         },
         "production": {
             "routes": [{ "pattern": "app.ptbk.io", "custom_domain": true }],
+            "triggers": { "crons": ["* * * * *"] },
+            "analytics_engine_datasets": [{ "binding": "OPS_METRICS", "dataset": "ptbk_ops_production" }],
             "d1_databases": [
                 {
                     "binding": "DB",
@@ -156,6 +173,8 @@
                 "INSTALL_COMMAND": "<engine-install-command> {linkCode}",
                 "ADAPTERS": { "email": "cloudflare", "billing": "stripe", "rateLimit": "workers" },
                 "EMAIL_FROM": "no-reply@<production-sending-domain>",
+                "MONITORING": { "opsEmail": "ops@<production-ops-domain>" },
+                "ANALYTICS": { "accountId": "<production-account-id>", "dataset": "ptbk_ops_production" },
                 // Live-mode Stripe IDs; secrets via `wrangler secret put STRIPE_SECRET_KEY --env production` (and
                 // STRIPE_WEBHOOK_SECRET). Quotas are placeholders until pricing is decided.
                 "BILLING_PLANS": {
@@ -176,11 +195,13 @@
                 "bindings": [
                     { "name": "HOURLY_RATE_LIMITER", "class_name": "HourlyRateLimiter" },
                     { "name": "ENGINE_STATUS", "class_name": "EngineStatus" },
+                    { "name": "OPS_MONITOR", "class_name": "OpsMonitor" },
                 ],
             },
             "migrations": [
                 { "tag": "v1", "new_sqlite_classes": ["HourlyRateLimiter"] },
                 { "tag": "v2", "new_sqlite_classes": ["EngineStatus"] },
+                { "tag": "v3", "new_sqlite_classes": ["OpsMonitor"] },
             ],
             "ratelimits": [
                 { "name": "RATE_LIMIT_OPTIONS", "namespace_id": "3001", "simple": { "limit": 30, "period": 60 } },

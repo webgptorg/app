@@ -65,6 +65,7 @@ function harness(options: { readonly limit?: RateLimitOutcome; readonly session?
         logger,
         resolveSession: (token) => Promise.resolve(token === TOKEN ? (options.session ?? null) : null),
         authenticateRelay: () => Promise.resolve(null),
+        routeTemplates: new WeakMap(),
         signatures: { 'stripe-signature': () => Promise.resolve({ kind: 'invalid' }) },
     });
     const router = new Hono();
@@ -115,6 +116,7 @@ function signedHarness(payload: unknown = { id: 'evt' }) {
         logger: createMemoryLogger(),
         resolveSession: () => Promise.reject(new Error('signed routes never read a session')),
         authenticateRelay: () => Promise.reject(new Error('signed routes never read a relay key')),
+        routeTemplates: new WeakMap(),
         signatures: {
             'stripe-signature': (bytes, signature) => {
                 verified.push({ bytes: new TextDecoder().decode(bytes), signature });
@@ -275,6 +277,7 @@ describe('route binder', () => {
             logger: createMemoryLogger(),
             resolveSession: () => Promise.resolve(session()),
             authenticateRelay: () => Promise.resolve(null),
+            routeTemplates: new WeakMap(),
             signatures: { 'stripe-signature': () => Promise.resolve({ kind: 'invalid' }) },
         });
         const router = new Hono();
@@ -443,6 +446,7 @@ describe('route binder', () => {
                             : null,
                     );
                 },
+                routeTemplates: new WeakMap(),
                 signatures: { 'stripe-signature': () => Promise.resolve({ kind: 'invalid' }) },
             });
             const router = new Hono();
@@ -520,6 +524,7 @@ describe('route binder', () => {
                 logger: createMemoryLogger(),
                 resolveSession: () => Promise.reject(new Error('engine routes never read a session')),
                 authenticateRelay: () => Promise.reject(new Error('engine routes never read a relay key')),
+                routeTemplates: new WeakMap(),
                 signatures: { 'stripe-signature': () => Promise.resolve({ kind: 'invalid' }) },
             });
             const router = new Hono();

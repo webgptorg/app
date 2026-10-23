@@ -32,6 +32,16 @@ describe('createEngineStatus', () => {
         expect(await service.getStatus()).toEqual({ state: 'never-seen' });
     });
 
+    it('counts every alarm it handles (I-04)', async () => {
+        const dev = createDevAdapters();
+        const service = createEngineStatus(env(), createMemoryEngineStatusStorage(), dev);
+        await service.alarm();
+        await service.reset();
+        expect(dev.metrics.records.map((record) => record.metric)).toEqual([
+            { name: 'ptbk_dashboard_alarms_total', object: 'engine-status' },
+        ]);
+    });
+
     it('refuses a configuration the Worker would refuse, and a missing email binding', () => {
         const storage = createMemoryEngineStatusStorage();
         expect(() => createEngineStatus(env({ ENVIRONMENT: 'qa' }), storage, createDevAdapters())).toThrow(ConfigError);

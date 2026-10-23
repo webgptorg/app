@@ -53,5 +53,22 @@ export function renderEmail(message: EmailMessage): RenderedEmail {
                     options,
                 ),
             };
+        case 'ops-alert':
+            return renderOpsAlert(message);
     }
+}
+
+/** Ops alerts go to the team only, in English, so they are not part of the translated catalogue. */
+function renderOpsAlert(message: Extract<EmailMessage, { readonly template: 'ops-alert' }>): RenderedEmail {
+    const state = message.state === 'firing' ? 'FIRING' : 'resolved';
+    const detail = Object.entries(message.detail).map(([name, value]) => `${name}: ${String(value)}`);
+    return {
+        subject: `[ptbk ops] ${state}: ${message.rule} (${message.subject})`,
+        text: [
+            `${message.rule} is ${state} for ${message.subject} since ${new Date(message.at).toISOString()}.`,
+            ...detail,
+            '',
+            'Runbook: docs/runbooks/observability.md',
+        ].join('\n'),
+    };
 }

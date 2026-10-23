@@ -95,6 +95,23 @@ export function describeHeartbeatFlows(name: string, makeFixture: () => Heartbea
             });
         });
 
+        it('counts registrations and heartbeats by outcome, and requests by route template only (I-04)', async () => {
+            const engine = await registered();
+            expect((await send(engine.engineId, await beat(engine, 1))).status).toBe(204);
+            expect((await send(engine.engineId, await beat(engine, 1))).status).toBe(409);
+            const metrics = harness.metrics.records.map((record) => record.metric);
+            expect(metrics).toContainEqual({ name: 'ptbk_dashboard_registrations_total', outcome: 'registered' });
+            expect(metrics).toContainEqual({ name: 'ptbk_dashboard_heartbeats_total', outcome: 'accepted' });
+            expect(metrics).toContainEqual({ name: 'ptbk_dashboard_heartbeats_total', outcome: 'replayed-seq' });
+            expect(metrics).toContainEqual({
+                name: 'ptbk_dashboard_requests_total',
+                route: '/v1/engines/:engineId/heartbeat',
+                method: 'POST',
+                status: 409,
+            });
+            expect(JSON.stringify(metrics)).not.toContain(engine.engineId);
+        });
+
         it('keeps only the numbers: no signature, address or header reaches the stored status', async () => {
             const engine = await registered();
             const heartbeat = await beat(engine, 1);

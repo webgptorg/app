@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import { syntheticStripeKey, syntheticWebhookSecret, TEST_PLANS } from '../testing/billing-fixtures';
-import { ConfigError, DEV_RATE_LIMIT_HMAC_KEY, parseConfig } from './config';
+import { DEFAULT_THRESHOLDS } from '../domain/monitoring/alert-rules';
+import { ConfigError, DEV_RATE_LIMIT_HMAC_KEY, parseConfig, relayName } from './config';
 
 const devVars = {
     ENVIRONMENT: 'dev',
@@ -56,6 +57,7 @@ describe('parseConfig', () => {
             linkCodeTtlMs: 30 * 60_000,
             stripeSecretKey: null,
             stripeWebhookSecret: null,
+            monitoring: null,
         });
         expect(plans.plans.map((plan) => plan.id)).toEqual(['starter', 'scale']);
         expect(Object.isFrozen(parseConfig({ ...bindings, ...devVars }))).toBe(true);
@@ -244,5 +246,116 @@ describe('parseConfig', () => {
         })();
         expect(error).toBeInstanceOf(ConfigError);
         expect(String(error)).not.toContain('secret-value');
+    });
+
+    describe('MONITORING (I-04)', () => {
+        const tokenA = `ptbk_mt_${'a'.repeat(43)}`;
+        const tokenB = `ptbk_mt_${'b'.repeat(43)}`;
+        const twoRelays = [
+            { relayId: 'relay-1.ptbk.test', region: 'eu-central' },
+            { relayId: 'relay-2.ptbk.test', region: 'eu-west' },
+        ];
+        const tokens = JSON.stringify({ 'relay-1.ptbk.test': tokenA, 'relay-2.ptbk.test': tokenB });
+        const analytics = { accountId: 'f'.repeat(32), dataset: 'ptbk_ops_staging' };
+        const analyticsToken = 'T'.repeat(40);
+        const monitored = {
+            ...bindings,
+            ...devVars,
+            RELAYS: twoRelays,
+            MONITORING: { opsEmail: 'ops@ptbk.test' },
+            RELAY_METRICS_TOKENS: tokens,
+        };
+
+        it('leaves monitoring off without MONITORING', () => {
+            expect(parseConfig({ ...bindings, ...devVars, RELAY_METRICS_TOKENS: tokens }).monitoring).toBeNull();
+        });
+
+        it('names each relay by its first label and pairs it with its token', () => {
+            const { monitoring } = parseConfig(monitored);
+            expect(monitoring).toEqual({
+                opsEmail: 'ops@ptbk.test',
+                thresholds: DEFAULT_THRESHOLDS,
+                probeTimeoutMs: 10_000,
+                relays: [
+                    { relayId: 'relay-1.ptbk.test', name: 'relay-1', metricsToken: tokenA },
+                    { relayId: 'relay-2.ptbk.test', name: 'relay-2', metricsToken: tokenB },
+                ],
+                analytics: null,
+            });
+            expect(Object.isFrozen(monitoring?.relays[0])).toBe(true);
+            expect(relayName('relay')).toBe('relay');
+        });
+
+        it('overrides single thresholds and keeps the other defaults', () => {
+            const { monitoring } = parseConfig({
+                ...monitored,
+                MONITORING: { opsEmail: 'ops@ptbk.test', thresholds: { unreachableChecks: 3 }, probeTimeoutMs: 5000 },
+            });
+            expect(monitoring?.thresholds).toEqual({ ...DEFAULT_THRESHOLDS, unreachableChecks: 3 });
+            expect(monitoring?.probeTimeoutMs).toBe(5000);
+        });
+
+        it.each([
+            ['a zero threshold', { thresholds: { cronFailures: 0 } }],
+            ['a percentage above 100', { thresholds: { tunnelDropPercent: 101 } }],
+            ['an unknown threshold', { thresholds: { anything: 1 } }],
+            ['a short probe timeout', { probeTimeoutMs: 10 }],
+        ])('refuses %s', (_, extra) => {
+            expect(failedPaths({ ...monitored, MONITORING: { opsEmail: 'ops@ptbk.test', ...extra } })[0]).toMatch(
+                /^MONITORING/,
+            );
+        });
+
+        it.each([
+            ['missing', undefined],
+            ['not JSON', 'nope'],
+            ['short of a relay', JSON.stringify({ 'relay-1.ptbk.test': tokenA })],
+            ['naming another relay', JSON.stringify({ 'relay-1.ptbk.test': tokenA, 'relay-3.ptbk.test': tokenB })],
+            [
+                'holding a registry token',
+                JSON.stringify({ 'relay-1.ptbk.test': tokenA, 'relay-2.ptbk.test': `ptbk_rt_${'b'.repeat(43)}` }),
+            ],
+        ])('refuses RELAY_METRICS_TOKENS %s, without quoting it', (_, value) => {
+            const env = { ...monitored, RELAY_METRICS_TOKENS: value };
+            expect(failedPaths(env)[0]).toMatch(/^RELAY_METRICS_TOKENS/);
+            try {
+                parseConfig(env);
+            } catch (error) {
+                expect(String(error)).not.toContain(tokenA);
+            }
+        });
+
+        it('refuses two relays with the same first label', () => {
+            expect(
+                failedPaths({
+                    ...monitored,
+                    RELAYS: [
+                        { relayId: 'relay-1.ptbk.test', region: 'eu-central' },
+                        { relayId: 'relay-1.ptbk.example', region: 'eu-west' },
+                    ],
+                    RELAY_METRICS_TOKENS: JSON.stringify({
+                        'relay-1.ptbk.test': tokenA,
+                        'relay-1.ptbk.example': tokenB,
+                    }),
+                }),
+            ).toEqual(['RELAYS']);
+        });
+
+        it('needs the analytics account, dataset and token outside dev, and reads them', () => {
+            const staging = { ...monitored, ...stagingVars, RELAYS: twoRelays };
+            expect(failedPaths(staging)).toEqual(['ANALYTICS', 'ANALYTICS_API_TOKEN']);
+            expect(
+                parseConfig({ ...staging, ANALYTICS: analytics, ANALYTICS_API_TOKEN: analyticsToken }).monitoring
+                    ?.analytics,
+            ).toEqual({ ...analytics, token: analyticsToken });
+            expect(
+                failedPaths({
+                    ...staging,
+                    ANALYTICS: { ...analytics, dataset: 'ops; DROP' },
+                    ANALYTICS_API_TOKEN: analyticsToken,
+                }),
+            ).toEqual(['ANALYTICS.dataset']);
+            expect(parseConfig({ ...monitored, ANALYTICS: analytics }).monitoring?.analytics).toBeNull();
+        });
     });
 });

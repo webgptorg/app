@@ -31,6 +31,7 @@ export default defineConfig(async () => {
                     // Durable Object classes: run only in workerd, covered by the workers project.
                     'src/adapters/rate-limit/hourly-rate-limiter-object.ts',
                     'src/adapters/status/engine-status-object.ts',
+                    'src/adapters/monitoring/ops-monitor-object.ts',
                 ],
                 thresholds: {
                     lines: 90,
@@ -55,7 +56,21 @@ export default defineConfig(async () => {
                 },
                 {
                     // Runs the built Worker (`build` comes first in `test`), so headers and CSP are the production ones.
-                    plugins: [cloudflareTest({ wrangler: { configPath: './dist/ptbk_dashboard/wrangler.json' } })],
+                    plugins: [
+                        cloudflareTest({
+                            wrangler: { configPath: './dist/ptbk_dashboard/wrangler.json' },
+                            // The monitoring job on (I-04), for the scheduled handler's tests; a relay that does not
+                            // resolve answers fast, and its test token is no secret.
+                            miniflare: {
+                                bindings: {
+                                    MONITORING: { opsEmail: 'ops@ptbk.test', probeTimeoutMs: 2000 },
+                                    RELAY_METRICS_TOKENS: JSON.stringify({
+                                        'relay.ptbk.test': `ptbk_mt_${'w'.repeat(43)}`,
+                                    }),
+                                },
+                            },
+                        }),
+                    ],
                     test: {
                         name: 'workers',
                         include: WORKERS_TESTS,

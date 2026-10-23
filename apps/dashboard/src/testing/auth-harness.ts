@@ -42,6 +42,10 @@ import { createFakeDnsResolver, type FakeDnsResolver } from './fake-dns-resolver
 import { createMemoryCustomHostnameStore, type MemoryCustomHostnameStore } from './memory-custom-hostname-store';
 import { createMemoryRegistryReader, createMemoryRelayTokenStore } from './memory-registry-stores';
 import { createTestBilling } from './test-billing';
+import {
+    createMemoryDashboardMetrics,
+    type MemoryDashboardMetrics,
+} from '../adapters/monitoring/memory-dashboard-metrics';
 
 export const ORIGIN = 'https://app.ptbk.test';
 export const START_MS = 1_800_000_000_000;
@@ -73,6 +77,8 @@ export interface AuthHarness {
     readonly timer: ManualTimer;
     readonly outbox: FakeEmailSender;
     readonly logger: MemoryLogger;
+    /** Every counter the dashboard recorded (I-04). */
+    readonly metrics: MemoryDashboardMetrics;
     readonly store: AuthStore;
     readonly deps: DashboardDeps;
     readonly billingStore: BillingStore;
@@ -184,12 +190,14 @@ export function createAuthHarness(options: {
         engineHostname: (engineId) => defaultHostname(engineId, config.engineDomain),
         engineLink: (engineId) => `${ORIGIN}/engines/${engineId}`,
     });
+    const metrics = createMemoryDashboardMetrics(clock);
     const deps: DashboardDeps = {
         config,
         clock,
         random: cryptoRandom,
         timer,
         logger,
+        metrics,
         authorizer: createAuthorizer({ clock, policy: options.policy ?? DASHBOARD_POLICY }),
         store: options.store,
         relyingParty: createSimpleWebAuthnRelyingParty({ origin: ORIGIN, rpName: 'Promptbook' }),
@@ -236,6 +244,7 @@ export function createAuthHarness(options: {
         timer,
         outbox,
         logger,
+        metrics,
         store: options.store,
         deps,
         billingStore: testBilling.store,
