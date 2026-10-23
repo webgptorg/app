@@ -2,7 +2,7 @@
 
 - **Lane:** X · **Module:** `e2e/` · **Milestone:** M2
 - **Depends on:** X-01, M-05, U-03, U-04, U-05, U-06, U-07, U-08, U-09, U-10, U-11, U-12, M-07
-- **Status:** in progress (feat/x-04-e2e-ui-flows)
+- **Status:** done (#72)
 - **Spec:** Architecture (UI delivery), Security hardening (5, 7), Transparency and verifiability (3), Interfaces (5); ADRs: [0003](../../adr/0003-ui-as-signed-bundle.md), [0004](../../adr/0004-mock-engine-and-conformance.md)
 
 ## Goal
