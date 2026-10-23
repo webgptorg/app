@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { syntheticStripeKey, syntheticWebhookSecret, TEST_PLANS } from '../testing/billing-fixtures';
 import { DEFAULT_THRESHOLDS } from '../domain/monitoring/alert-rules';
-import { ConfigError, DEV_RATE_LIMIT_HMAC_KEY, parseConfig, relayName } from './config';
+import { ConfigError, DEFAULT_ABUSE_MONITORING, DEV_RATE_LIMIT_HMAC_KEY, parseConfig, relayName } from './config';
 
 const devVars = {
     ENVIRONMENT: 'dev',
@@ -60,6 +60,7 @@ describe('parseConfig', () => {
             stripeSecretKey: null,
             stripeWebhookSecret: null,
             monitoring: null,
+            abuseMonitoring: { ...DEFAULT_ABUSE_MONITORING, certSpotterApiKey: null },
         });
         expect(plans.plans.map((plan) => plan.id)).toEqual(['starter', 'scale']);
         expect(Object.isFrozen(parseConfig({ ...bindings, ...devVars }))).toBe(true);
@@ -359,6 +360,47 @@ describe('parseConfig', () => {
                 }),
             ).toEqual(['ANALYTICS.dataset']);
             expect(parseConfig({ ...monitored, ANALYTICS: analytics }).monitoring?.analytics).toBeNull();
+        });
+    });
+
+    describe('ABUSE_MONITORING (I-05)', () => {
+        it('overrides the defaults field by field and reads the Cert Spotter key', () => {
+            const fingerprint = 'c'.repeat(64);
+            const config = parseConfig({
+                ...bindings,
+                ...devVars,
+                ABUSE_MONITORING: {
+                    ctSources: ['certspotter', 'certspotter'],
+                    allowedIssuers: ['Google Trust Services'],
+                    issuanceSpike: { limit: 5, days: 3 },
+                    publicFace: { fingerprints: [fingerprint] },
+                },
+                CERTSPOTTER_API_KEY: 'k_123456789',
+            }).abuseMonitoring;
+            expect(config).toEqual({
+                ctSources: ['certspotter'],
+                allowedIssuers: ['Google Trust Services'],
+                issuanceSpike: { limit: 5, days: 3 },
+                publicFace: { fingerprints: [fingerprint], perRun: 30 },
+                certSpotterApiKey: 'k_123456789',
+            });
+            expect(
+                parseConfig({ ...bindings, ...devVars, ABUSE_MONITORING: { publicFace: { perRun: 50 } } })
+                    .abuseMonitoring.publicFace,
+            ).toEqual({ fingerprints: DEFAULT_ABUSE_MONITORING.publicFace.fingerprints, perRun: 50 });
+        });
+
+        it('refuses an unknown source, a malformed fingerprint or key, and unknown fields', () => {
+            expect(failedPaths({ ...bindings, ...devVars, ABUSE_MONITORING: { ctSources: ['google'] } })).toEqual([
+                'ABUSE_MONITORING.ctSources.0',
+            ]);
+            expect(
+                failedPaths({ ...bindings, ...devVars, ABUSE_MONITORING: { publicFace: { fingerprints: ['nope'] } } }),
+            ).toEqual(['ABUSE_MONITORING.publicFace.fingerprints.0']);
+            expect(failedPaths({ ...bindings, ...devVars, ABUSE_MONITORING: { feeds: [] } })).toEqual([
+                'ABUSE_MONITORING.feeds',
+            ]);
+            expect(failedPaths({ ...bindings, ...devVars, CERTSPOTTER_API_KEY: 'k' })).toEqual(['CERTSPOTTER_API_KEY']);
         });
     });
 });

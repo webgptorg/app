@@ -89,5 +89,8 @@ describe('renderEmail', () => {
         expect(renderEmail({ ...message, state: 'resolved', detail: {} }).subject).toBe(
             '[ptbk ops] resolved: relay-unreachable (relay-a)',
         );
+        const abuse = renderEmail({ ...message, rule: 'ct-wildcard', subject: 'a'.repeat(64), detail: {} });
+        expect(abuse.subject).toBe(`[ptbk abuse] FIRING: ct-wildcard (${'a'.repeat(64)})`);
+        expect(abuse.text).toContain('Runbook: docs/runbooks/abuse-takedown.md');
     });
 });

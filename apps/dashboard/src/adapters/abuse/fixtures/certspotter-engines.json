@@ -1,0 +1,56 @@
+[
+  {
+    "id": "7300000101",
+    "tbs_sha256": "6b2f8a3c1d0e9f7a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a",
+    "cert_sha256": "1f2e3d4c5b6a79881f2e3d4c5b6a79881f2e3d4c5b6a79881f2e3d4c5b6a7988",
+    "dns_names": ["k3v6xq2mfz4pd7h5wn2rbtcayu.engines.ptbk.test"],
+    "pubkey_sha256": "aa11bb22cc33dd44ee55ff6600770088009911aa22bb33cc44dd55ee66ff7700",
+    "issuer": {
+      "friendly_name": "Let's Encrypt",
+      "website": "https://letsencrypt.org/",
+      "caa_domains": ["letsencrypt.org"],
+      "operator": { "name": "ISRG", "website": "https://www.abetterinternet.org/" },
+      "pubkey_sha256": "885e6c4b3c4d1a6b39f2e0a6c3b7a1c0d9e8f7a6b5c4d3e2f1a0b9c8d7e6f5a4",
+      "name": "C=US, O=Let's Encrypt, CN=R11"
+    },
+    "not_before": "2026-10-20T07:00:00Z",
+    "not_after": "2027-01-18T06:59:59Z",
+    "revoked": false
+  },
+  {
+    "id": "7300000102",
+    "tbs_sha256": "0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b",
+    "cert_sha256": "2a3b4c5d6e7f80912a3b4c5d6e7f80912a3b4c5d6e7f80912a3b4c5d6e7f8091",
+    "dns_names": ["*.engines.ptbk.test"],
+    "pubkey_sha256": "bb22cc33dd44ee55ff6600770088009911aa22bb33cc44dd55ee66ff77001188",
+    "issuer": {
+      "friendly_name": "Let's Encrypt",
+      "website": "https://letsencrypt.org/",
+      "caa_domains": ["letsencrypt.org"],
+      "operator": { "name": "ISRG", "website": "https://www.abetterinternet.org/" },
+      "pubkey_sha256": "4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b",
+      "name": "C=US, O=Let's Encrypt, CN=E6"
+    },
+    "not_before": "2026-10-21T09:12:00Z",
+    "not_after": "2027-01-19T09:11:59Z",
+    "revoked": false
+  },
+  {
+    "id": "7300000103",
+    "tbs_sha256": "5d4e3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e",
+    "cert_sha256": "3c4d5e6f7a8b9c0d3c4d5e6f7a8b9c0d3c4d5e6f7a8b9c0d3c4d5e6f7a8b9c0d",
+    "dns_names": ["abcdefghijklmnopqrstuvwxyz.engines.ptbk.test", "agents.customer.example"],
+    "pubkey_sha256": "cc33dd44ee55ff6600770088009911aa22bb33cc44dd55ee66ff7700118822aa",
+    "issuer": {
+      "friendly_name": "Let's Encrypt",
+      "website": "https://letsencrypt.org/",
+      "caa_domains": ["letsencrypt.org"],
+      "operator": { "name": "ISRG", "website": "https://www.abetterinternet.org/" },
+      "pubkey_sha256": "885e6c4b3c4d1a6b39f2e0a6c3b7a1c0d9e8f7a6b5c4d3e2f1a0b9c8d7e6f5a4",
+      "name": "C=US, O=Let's Encrypt, CN=R11"
+    },
+    "not_before": "2026-10-22T12:30:00Z",
+    "not_after": "2027-01-20T12:29:59Z",
+    "revoked": false
+  }
+]

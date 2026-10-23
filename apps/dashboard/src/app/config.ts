@@ -3,6 +3,8 @@ import { z } from 'zod';
 
 import { fromBase64Url } from '../domain/auth/secrets';
 import { createPlanCatalogue, planCatalogueSchema, type PlanCatalogue } from '../domain/billing/plan-catalogue';
+import { CT_SOURCES, type CtSourceName } from '../domain/abuse/ct-log-source';
+import { MOCK_ENGINE_SIGN_IN_FINGERPRINT } from '../domain/abuse/public-face';
 import { LINK_CODE_TTL_MS } from '../domain/registration/issue-link-code';
 import type { HeartbeatTiming } from '../domain/status/engine-status';
 import { DEFAULT_THRESHOLDS, thresholdsSchema, type AlertThresholds } from '../domain/monitoring/alert-rules';
@@ -126,6 +128,52 @@ const analyticsSchema = z.strictObject({
 });
 const analyticsTokenSchema = z.string().regex(/^[A-Za-z0-9_-]{40,128}$/);
 
+/**
+ * I-05's abuse jobs, which run with `MONITORING` (they alert through it). Every field is optional; the defaults are
+ * {@link DEFAULT_ABUSE_MONITORING}.
+ */
+const abuseMonitoringSchema = z.strictObject({
+    ctSources: z.array(z.enum(CT_SOURCES)).min(1).max(CT_SOURCES.length).optional(),
+    /** `O=` values of the expected issuers. */
+    allowedIssuers: z.array(z.string().min(1).max(128)).min(1).max(10).optional(),
+    issuanceSpike: z.strictObject({ limit: z.int().min(1).max(1000), days: z.int().min(1).max(90) }).optional(),
+    publicFace: z
+        .strictObject({
+            fingerprints: z
+                .array(z.string().regex(/^[0-9a-f]{64}$/))
+                .min(1)
+                .max(20)
+                .optional(),
+            perRun: z.int().min(1).max(200).optional(),
+        })
+        .optional(),
+});
+
+/** Cert Spotter answers without a key, within an hourly allowance; a key lifts it. */
+const certSpotterKeySchema = z.string().regex(/^[A-Za-z0-9_-]{8,128}$/);
+
+export interface AbuseMonitoringConfig {
+    readonly ctSources: readonly CtSourceName[];
+    readonly allowedIssuers: readonly string[];
+    readonly issuanceSpike: { readonly limit: number; readonly days: number };
+    readonly publicFace: { readonly fingerprints: readonly string[]; readonly perRun: number };
+    /** Secret, optional. */
+    readonly certSpotterApiKey: string | null;
+}
+
+/**
+ * The defaults, until production says otherwise: engines get Let's Encrypt certificates only (M-03), so any other
+ * issuer is unexpected; Let's Encrypt allows 5 duplicate certificates per week, so a fourth within 7 days means an
+ * engine is burning through it (a renewal loop or key churn); the public-face check knows only the mock engine's
+ * sign-in page until the engine team publishes a marker, and 30 engines per 15-minute run cover 2,880 a day.
+ */
+export const DEFAULT_ABUSE_MONITORING: Omit<AbuseMonitoringConfig, 'certSpotterApiKey'> = {
+    ctSources: CT_SOURCES,
+    allowedIssuers: ["Let's Encrypt"],
+    issuanceSpike: { limit: 3, days: 7 },
+    publicFace: { fingerprints: [MOCK_ENGINE_SIGN_IN_FINGERPRINT], perRun: 30 },
+};
+
 /** The label a relay has in metrics and alerts: its hostname's first label, which must be unique among the relays. */
 export function relayName(relayId: string): string {
     return relayId.replace(/\..*$/, '');
@@ -158,6 +206,8 @@ const varsSchema = z
         RELAY_METRICS_TOKENS: relayMetricsTokensSchema.optional(),
         ANALYTICS: analyticsSchema.optional(),
         ANALYTICS_API_TOKEN: analyticsTokenSchema.optional(),
+        ABUSE_MONITORING: abuseMonitoringSchema.optional(),
+        CERTSPOTTER_API_KEY: certSpotterKeySchema.optional(),
     })
     .superRefine((vars, ctx) => {
         if (vars.ADAPTERS.billing === 'stripe') {
@@ -244,6 +294,8 @@ export interface DashboardConfig {
     readonly stripeWebhookSecret: string | null;
     /** I-04; null where `MONITORING` is not set: no relay is scraped and no alert is sent. */
     readonly monitoring: MonitoringConfig | null;
+    /** I-05's abuse jobs; they run only with `monitoring`. */
+    readonly abuseMonitoring: AbuseMonitoringConfig;
 }
 
 export interface MonitoringConfig {
@@ -294,6 +346,21 @@ function monitoringConfig(parsed: z.infer<typeof varsSchema>): MonitoringConfig 
     });
 }
 
+function abuseMonitoringConfig(parsed: z.infer<typeof varsSchema>): AbuseMonitoringConfig {
+    const vars = parsed.ABUSE_MONITORING ?? {};
+    const defaults = DEFAULT_ABUSE_MONITORING;
+    return Object.freeze({
+        ctSources: Object.freeze([...new Set(vars.ctSources ?? defaults.ctSources)]),
+        allowedIssuers: Object.freeze([...(vars.allowedIssuers ?? defaults.allowedIssuers)]),
+        issuanceSpike: Object.freeze({ ...(vars.issuanceSpike ?? defaults.issuanceSpike) }),
+        publicFace: Object.freeze({
+            fingerprints: Object.freeze([...(vars.publicFace?.fingerprints ?? defaults.publicFace.fingerprints)]),
+            perRun: vars.publicFace?.perRun ?? defaults.publicFace.perRun,
+        }),
+        certSpotterApiKey: parsed.CERTSPOTTER_API_KEY ?? null,
+    });
+}
+
 /** Parses Workers bindings once, in the composition root; nothing else reads `env`. Throws {@link ConfigError}. */
 export function parseConfig(env: object): DashboardConfig {
     const entries: readonly [string, unknown][] = Object.entries(env);
@@ -325,5 +392,6 @@ export function parseConfig(env: object): DashboardConfig {
         stripeSecretKey: parsed.STRIPE_SECRET_KEY ?? null,
         stripeWebhookSecret: parsed.STRIPE_WEBHOOK_SECRET ?? null,
         monitoring: monitoringConfig(parsed),
+        abuseMonitoring: abuseMonitoringConfig(parsed),
     });
 }

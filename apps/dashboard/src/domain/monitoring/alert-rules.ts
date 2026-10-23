@@ -13,6 +13,13 @@ export const ALERT_RULES = [
     'heartbeat-rejections',
     'email-failures',
     'cron-job-failing',
+    // I-05's abuse jobs; they go to the abuse inbox (`alert-routes.ts`).
+    'ct-wildcard',
+    'ct-foreign-issuer',
+    'ct-unknown-hostname',
+    'ct-issuance-spike',
+    'public-face-mismatch',
+    'abuse-feed-listed',
 ] as const;
 export type AlertRule = (typeof ALERT_RULES)[number];
 
@@ -65,7 +72,10 @@ export const thresholdsSchema = z
         return Object.freeze({ ...DEFAULT_THRESHOLDS, ...Object.fromEntries(set) });
     });
 
-/** What an alert says: which rule, about what (a relay's short name, a job, `dashboard`), and numbers only. */
+/**
+ * What an alert says: which rule, about what (a relay's short name, a job, `dashboard`; for the abuse rules an engine
+ * ID or a certificate's issuance key), and numbers only.
+ */
 export interface Alert {
     readonly rule: AlertRule;
     readonly subject: string;
@@ -362,4 +372,25 @@ export function recordJobRun(state: MonitorState, run: JobRun, thresholds: Alert
         state: { ...state, jobs: { ...state.jobs, [run.job]: { failures } }, open: transitions.open },
         alerts: transitions.alerts,
     };
+}
+
+/** One check of a tracked alert's subject; `firing: null` leaves its alert as it is (the check said nothing). */
+export interface TrackedOutcome {
+    readonly subject: string;
+    readonly firing: boolean | null;
+    readonly detail: Readonly<Record<string, number>>;
+}
+
+/** Alerts that start when a check fails and end when it passes again, for the abuse jobs (I-05). */
+export function trackAlerts(
+    state: MonitorState,
+    rule: AlertRule,
+    outcomes: readonly TrackedOutcome[],
+    at: number,
+): Evaluation {
+    const transitions = createTransitions(state.open, at);
+    for (const outcome of outcomes) {
+        transitions.apply(rule, outcome.subject, outcome.firing, outcome.detail);
+    }
+    return { state: { ...state, open: transitions.open }, alerts: transitions.alerts };
 }

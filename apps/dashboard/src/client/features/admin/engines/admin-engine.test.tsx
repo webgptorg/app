@@ -123,6 +123,12 @@ describe('engine page (platform admin)', () => {
         expect(await screen.findByText('Active')).toBeTruthy();
     });
 
+    it('does not exist for an ID that is not an engine ID', async () => {
+        const app = renderApp({ path: '/admin/engines/not-an-engine', session: ADMIN });
+        expect(await screen.findByRole('heading', { name: 'Page not found' })).toBeTruthy();
+        expect(app.api.callsTo(apiRoutes.adminGetEngine)).toHaveLength(0);
+    });
+
     it('does not exist for anyone else, and asks the API for nothing', async () => {
         const app = renderApp({ path: PATH, session: session() });
         expect(await screen.findByRole('heading', { name: 'Page not found' })).toBeTruthy();
