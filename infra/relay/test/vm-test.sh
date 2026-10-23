@@ -4,9 +4,10 @@
 # verify.sh passes, a port scan shows 443 open to anyone and 22 only to the allowlist, the deploy key runs only its
 # forced command, and a deliberately broken setting (password SSH) makes verify.sh fail.
 #
-# Needs root (bridge, tap, network namespace, NAT), /dev/kvm, Docker, qemu-system-x86, qemu-utils, cloud-image-utils,
-# nmap and curl. Run from the repo root after `bun run --filter @ptbk/relay build`. Every secret is generated here
-# for this run and thrown away with the VM.
+# Needs root (bridge, tap, network namespace, NAT), Docker, qemu-system-x86, qemu-utils, cloud-image-utils, nmap and
+# curl, and /dev/kvm: without it (a laptop's Linux VM on Apple silicon) QEMU emulates the CPU, which takes about ten
+# times longer but boots the same image. Run from the repo root after `bun run --filter @ptbk/relay build`. Every
+# secret is generated here for this run and thrown away with the VM.
 set -euo pipefail
 
 IMAGE_VERSION=20261017-2634
@@ -102,15 +103,24 @@ curl -fsSL --retry 3 -o "$work/$IMAGE_FILE" "$IMAGE_URL"
 echo "$IMAGE_SHA512  $work/$IMAGE_FILE" | sha512sum -c -
 qemu-img create -q -f qcow2 -F qcow2 -b "$work/$IMAGE_FILE" "$work/disk.qcow2" 10G
 
+if [[ -w /dev/kvm ]]; then
+    accel=(-enable-kvm -cpu host)
+    boot_timeout=1500
+else
+    echo "no /dev/kvm: emulating the CPU (TCG)"
+    accel=(-accel tcg,thread=multi -cpu max)
+    boot_timeout=7200
+fi
+
 step "boot"
-qemu-system-x86_64 -enable-kvm -cpu host -m 4096 -smp 2 -nographic -daemonize -pidfile "$work/qemu.pid" \
+qemu-system-x86_64 "${accel[@]}" -m 4096 -smp 2 -display none -daemonize -pidfile "$work/qemu.pid" \
     -serial "file:$work/console.log" -monitor none \
     -drive "file=$work/disk.qcow2,if=virtio" -drive "file=$work/seed.iso,if=virtio,format=raw,readonly=on" \
     -netdev "tap,id=net0,ifname=$TAP,script=no,downscript=no" -device virtio-net-pci,netdev=net0,mac=52:54:00:12:34:56
 
 # cloud-init installs packages and may reboot once for a new kernel (package_reboot_if_required), so wait for it
 # across the reboot.
-deadline=$((SECONDS + 1500))
+deadline=$((SECONDS + boot_timeout))
 status=""
 until [[ $status == "done" || $status == "error" ]]; do
     if ((SECONDS > deadline)); then
@@ -134,7 +144,9 @@ for credential in registry-token metrics-token tls.crt tls.key; do
 done
 
 step "a relay image, deployed as I-03's deploy script will (by digest)"
-docker build --quiet --tag localhost/ptbk-relay:ci --file infra/relay/test/relay.Containerfile apps/relay/dist
+# The VM is amd64 whatever the machine running this test is.
+docker build --quiet --platform linux/amd64 --tag localhost/ptbk-relay:ci --file infra/relay/test/relay.Containerfile \
+    apps/relay/dist
 docker save localhost/ptbk-relay:ci | vm 'sudo podman load --quiet'
 digest=$(vm "sudo podman image inspect --format '{{.Digest}}' localhost/ptbk-relay:ci")
 vm "echo 'PTBK_RELAY_IMAGE=localhost/ptbk-relay@$digest' | sudo install -m 0644 /dev/stdin /etc/ptbk-relay/image.env"

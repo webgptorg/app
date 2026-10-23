@@ -2,7 +2,7 @@
 
 - **Lane:** I · **Module:** `infra/relay` · **Milestone:** M4
 - **Depends on:** R-04, R-06 (R-05 supplies only the sizing value; see Scope)
-- **Status:** in progress (feat/i-01-relay-hosts)
+- **Status:** in progress (fix/i-01-local-ci)
 - **Spec:** Relay and tunnel (Hosting; No single point of failure; Fairness and DoS); Hosting and stack; Operations; Metadata we still see; Legal and GDPR (sub-processors)
 
 ## Goal
