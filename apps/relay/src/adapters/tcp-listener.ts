@@ -15,6 +15,8 @@ import { createIpLimiter } from '../domain/limits/ip-limiter';
 import type { MemoryBudget } from '../domain/limits/memory-budget';
 import { createMemoryCharge } from '../domain/limits/memory-budget';
 import type { Logger } from '../domain/logger';
+import type { Metrics } from '../domain/metrics/catalog';
+import { refusalOutcome } from '../domain/metrics/catalog';
 import type { RefusalReason, StreamResetReason } from '../domain/metrics/reason-counters';
 import { REFUSAL_REASONS, STREAM_RESET_REASONS, createReasonCounters } from '../domain/metrics/reason-counters';
 import type { DailyTraffic } from '../domain/metrics/traffic-counters';
@@ -46,8 +48,11 @@ export const BROWSER_KEEPALIVE_MS = 60_000;
  * before the pool could evict for them.
  */
 export const SERVER_CONNECTIONS_FACTOR = 2;
-/** Today and yesterday, so a day's totals survive until I-04 reads them after midnight. */
-const TRAFFIC_RETAIN_DAYS = 2;
+/**
+ * Today only: per-engine byte counts live in this process's memory alone, never logged or exported, and a day's totals
+ * are dropped at UTC midnight (spec, Metadata we still see: at most 24 h). `/metrics` carries only the aggregate.
+ */
+const TRAFFIC_RETAIN_DAYS = 1;
 
 export interface BrowserListenerLimits extends IpLimits, ConnectionPoolLimits, StreamLimits {
     readonly maxStreamsPerEngine: number;
@@ -67,6 +72,8 @@ export interface BrowserListenerOptions {
     readonly logger: Logger;
     /** The relay-wide budget; ClientHellos being read and data in transit count against it. */
     readonly memory: MemoryBudget;
+    /** Outcomes, aggregate bytes and stream-open latency; never which browser, engine or hostname. */
+    readonly metrics: Metrics;
 }
 
 /** In-memory counters for I-04; nothing here names a browser, an IP or a hostname. */
@@ -100,7 +107,7 @@ const errorName = (error: unknown): string => (error instanceof Error ? error.na
  * once piped, its stream ended too.
  */
 export function createBrowserListener(options: BrowserListenerOptions): BrowserListener {
-    const { relayId, engineDomain, sessions, own, limits, clock, logger, memory } = options;
+    const { relayId, engineDomain, sessions, own, limits, clock, logger, memory, metrics } = options;
     const ipLimiter = createIpLimiter(limits, clock);
     const pool = createConnectionPool(limits, clock);
     const engineLimiter = createEngineLimiter(
@@ -145,6 +152,7 @@ export function createBrowserListener(options: BrowserListenerOptions): BrowserL
 
     function refuse(socket: Socket, reason: RefusalReason): void {
         refusals.count(reason);
+        metrics.count('ptbk_relay_browser_connections_total', { outcome: refusalOutcome(reason) });
         socket.destroy();
     }
 
@@ -217,6 +225,7 @@ export function createBrowserListener(options: BrowserListenerOptions): BrowserL
                 const parse = hello.push(chunk);
                 helloCharge.set(hello.bytes().length);
                 if (parse.kind === 'need-more') return;
+                const judgedAtMs = clock.nowMs();
                 socket.pause();
                 socket.off('data', onData);
                 helloCharge.set(0);
@@ -224,6 +233,7 @@ export function createBrowserListener(options: BrowserListenerOptions): BrowserL
                 switch (decision.kind) {
                     case 'own':
                         connection.route('own');
+                        metrics.count('ptbk_relay_browser_connections_total', { outcome: 'own-hostname' });
                         held.delete(socket);
                         // R-03's TLS server reads these bytes back before anything still in the kernel.
                         socket.unshift(hello.bytes());
@@ -242,7 +252,7 @@ export function createBrowserListener(options: BrowserListenerOptions): BrowserL
                             refuse(socket, 'global-limit');
                             return;
                         }
-                        piped = pipeToEngine(socket, ip, decision.session, hello.bytes(), release);
+                        piped = pipeToEngine(socket, ip, decision.session, hello.bytes(), release, judgedAtMs);
                         return;
                 }
             });
@@ -257,6 +267,7 @@ export function createBrowserListener(options: BrowserListenerOptions): BrowserL
         session: TunnelSession,
         buffered: Uint8Array,
         release: () => void,
+        helloAtMs: number,
     ): boolean {
         const address = parseIpAddress(ip);
         if (address === null) throw new Error('socket address is not an IP address');
@@ -266,6 +277,7 @@ export function createBrowserListener(options: BrowserListenerOptions): BrowserL
             refuse(socket, admission.reason);
             return false;
         }
+        let answered = false;
         let pipe: SocketStreamPipe | null;
         try {
             pipe = pipeSocketToStream({
@@ -280,6 +292,11 @@ export function createBrowserListener(options: BrowserListenerOptions): BrowserL
                 throttle: (bytes) => engineLimiter.throttle(engineId, bytes),
                 countTraffic: (direction, bytes) => {
                     traffic.record(engineId, direction, bytes);
+                    metrics.count('ptbk_relay_bytes_total', { direction }, bytes);
+                    if (direction === 'out' && !answered) {
+                        answered = true;
+                        metrics.observe('ptbk_relay_stream_open_seconds', {}, (clock.nowMs() - helloAtMs) / 1000);
+                    }
                 },
                 clock,
                 limits,
@@ -308,6 +325,7 @@ export function createBrowserListener(options: BrowserListenerOptions): BrowserL
             return false;
         }
         held.set(socket, pipe.bufferedBytes);
+        metrics.count('ptbk_relay_browser_connections_total', { outcome: 'routed' });
         return true;
     }
 

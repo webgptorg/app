@@ -128,7 +128,8 @@ step "secrets, placed as an admin would (README)"
 openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -days 2 -subj "/CN=$RELAY_HOSTNAME" \
     -addext "subjectAltName=DNS:$RELAY_HOSTNAME" -keyout "$work/tls.key" -out "$work/tls.crt" 2>/dev/null
 printf 'ptbk_rt_%s\n' "$(openssl rand -base64 32 | tr '+/' '-_' | tr -d '=')" >"$work/registry-token"
-for credential in registry-token tls.crt tls.key; do
+printf 'ptbk_mt_%s\n' "$(openssl rand -base64 32 | tr '+/' '-_' | tr -d '=')" >"$work/metrics-token"
+for credential in registry-token metrics-token tls.crt tls.key; do
     vm "sudo install -m 0600 -o root -g root /dev/stdin /etc/ptbk-relay/credentials/$credential" <"$work/$credential"
 done
 
@@ -146,6 +147,13 @@ for _ in $(seq 30); do
 done
 curl -fsS --max-time 3 -k --resolve "$RELAY_HOSTNAME:443:$VM_IP" "https://$RELAY_HOSTNAME/healthz"
 echo
+
+step "metrics: 401 without the token, the series with it (I-04)"
+metrics_url="https://$RELAY_HOSTNAME/metrics"
+status=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 3 -k --resolve "$RELAY_HOSTNAME:443:$VM_IP" "$metrics_url")
+test "$status" = 401
+curl -fsS --max-time 3 -k --resolve "$RELAY_HOSTNAME:443:$VM_IP" \
+    -H "Authorization: Bearer $(cat "$work/metrics-token")" "$metrics_url" | grep -q '^ptbk_relay_tunnels_active 0$'
 
 step "verify.sh"
 infra/relay/verify.sh "ci@$VM_IP" "${ssh_opts[@]}"

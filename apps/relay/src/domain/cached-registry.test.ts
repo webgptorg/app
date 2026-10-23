@@ -22,17 +22,19 @@ describe('cached registry', () => {
     let clock: TestDeps['clock'];
     let inner: TestDeps['registry'];
     let logger: TestDeps['logger'];
+    let metrics: TestDeps['metrics'];
     let registry: CachedRegistry;
 
     beforeEach(async () => {
         engine = await createTestEngine(20);
         unknown = await createTestEngine(21);
-        ({ clock, registry: inner, logger } = createTestDeps());
+        ({ clock, registry: inner, logger, metrics } = createTestDeps());
         inner.set(engine.engineId, engine.entry);
         registry = createCachedRegistry({
             inner,
             clock,
             logger,
+            metrics,
             ttlMs: TTL_MS,
             maxStaleMs: MAX_STALE_MS,
             negativeTtlMs: NEGATIVE_TTL_MS,
@@ -96,6 +98,26 @@ describe('cached registry', () => {
         registry.expireAll();
         await late;
         expect(registry.has(engine.engineId)).toBe(false);
+    });
+
+    it('counts lookups by result and times the source, never naming the engine', async () => {
+        const lookups = (result: 'fresh' | 'stale' | 'miss' | 'error') =>
+            metrics.total('ptbk_relay_registry_lookups_total', { result });
+        await registry.lookup(engine.engineId, signal);
+        await registry.lookup(engine.engineId, signal);
+        await registry.lookup(unknown.engineId, signal);
+        clock.advance(TTL_MS);
+        inner.setMode('hang');
+        const stale = registry.lookup(engine.engineId, signal);
+        await Promise.resolve();
+        clock.advance(TIMEOUT_MS);
+        await stale;
+        inner.setMode('unavailable');
+        clock.advance(NEGATIVE_TTL_MS);
+        await registry.lookup(unknown.engineId, signal);
+        expect([lookups('fresh'), lookups('miss'), lookups('stale'), lookups('error')]).toEqual([1, 2, 1, 1]);
+        expect(metrics.observations('ptbk_relay_registry_source_seconds')).toEqual([0, 0, TIMEOUT_MS / SECOND, 0]);
+        expect(JSON.stringify(metrics.records)).not.toContain(engine.engineId);
     });
 
     it('serves a hit within the TTL without asking the inner registry', async () => {

@@ -87,6 +87,7 @@ describe('parseRelayConfig', () => {
                 endTimeoutMs: 30_000,
             },
             memoryBudgetBytes: 1_073_741_824,
+            metrics: null,
             logLevel: 'info',
         });
         expect(Object.isFrozen(config)).toBe(true);
@@ -607,6 +608,56 @@ describe('parseRelayConfig', () => {
             expect(
                 configError({ ...staticEnv, RELAY_REGISTRY_TOKEN_FILE: tokenFile('static', TOKEN) }).problems,
             ).toEqual(['RELAY_REGISTRY_TOKEN_FILE: is not a setting for this RELAY_REGISTRY_KIND']);
+        });
+    });
+
+    describe('RELAY_METRICS_TOKEN', () => {
+        const METRICS_TOKEN = `ptbk_mt_${'m'.repeat(43)}`;
+        const dir = mkdtempSync(join(tmpdir(), 'relay-metrics-config-'));
+        afterAll(() => {
+            rmSync(dir, { recursive: true, force: true });
+        });
+        const file = (contents: string): string => {
+            const path = join(dir, 'metrics-token');
+            writeFileSync(path, contents, { mode: 0o600 });
+            return path;
+        };
+
+        it('leaves the metrics endpoint off when unset', () => {
+            expect(parseRelayConfig(staticEnv).metrics).toBeNull();
+        });
+
+        it.each([
+            ['the variable', () => ({ RELAY_METRICS_TOKEN: METRICS_TOKEN })],
+            ['a file', () => ({ RELAY_METRICS_TOKEN_FILE: file(`${METRICS_TOKEN}\n`) })],
+        ])('reads the token from %s with either registry kind and keeps it redacted', (_, extra) => {
+            for (const env of [staticEnv, httpEnv]) {
+                const config = parseRelayConfig({ ...env, ...extra() });
+                expect(config.metrics?.token.reveal()).toBe(METRICS_TOKEN);
+                expect(JSON.stringify(config)).not.toContain(METRICS_TOKEN);
+                expect(inspect(config, { depth: 10 })).not.toContain(METRICS_TOKEN);
+            }
+        });
+
+        it('refuses the registry token as a metrics token, without quoting it', () => {
+            const error = configError({ ...staticEnv, RELAY_METRICS_TOKEN: TOKEN });
+            expect(error.problems).toEqual([
+                'RELAY_METRICS_TOKEN: must be a metrics token (ptbk_mt_ and 43 base64url characters)',
+            ]);
+            expect(error.message).not.toContain(TOKEN);
+            expect(configError({ ...staticEnv, RELAY_METRICS_TOKEN_FILE: file(TOKEN) }).problems).toEqual([
+                'RELAY_METRICS_TOKEN_FILE: must contain a metrics token (ptbk_mt_ and 43 base64url characters)',
+            ]);
+        });
+
+        it('refuses both sources at once', () => {
+            expect(
+                configError({
+                    ...staticEnv,
+                    RELAY_METRICS_TOKEN: METRICS_TOKEN,
+                    RELAY_METRICS_TOKEN_FILE: file(METRICS_TOKEN),
+                }).problems,
+            ).toEqual(['RELAY_METRICS_TOKEN_FILE: must not be set together with RELAY_METRICS_TOKEN']);
         });
     });
 });

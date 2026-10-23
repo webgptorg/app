@@ -38,16 +38,17 @@ Staging and production use the same modules and identical roots (`check.sh` diff
 
 ## Credentials
 
-| Credential                                                                   | Where it lives                                                          | Used for                         |
-| ---------------------------------------------------------------------------- | ----------------------------------------------------------------------- | -------------------------------- |
-| `HCLOUD_TOKEN`, read and write on the environment's project                  | Password manager; environment variable while running tofu               | Creating hosts                   |
-| R2 token for `ptbk-tofu-state-<env>`, state passphrase                       | Password manager (the same as `infra/cloudflare`)                       | State; `TF_VAR_state_passphrase` |
-| Admin SSH public keys, `ssh_allowlist`                                       | `terraform.tfvars`                                                      | Admin access                     |
-| Deploy key (private half)                                                    | GitHub environment secret (I-03); its public half in `terraform.tfvars` | Deploys                          |
-| `registry-token`: relay token, one per relay (D-04's mint script)            | `/etc/ptbk-relay/credentials/registry-token` on that host only          | `RELAY_REGISTRY_TOKEN_FILE`      |
-| `acme-dns-token`: Cloudflare token, DNS edit on the ACME challenge zone only | `/etc/ptbk-relay/credentials/acme-dns-token`                            | The relay's own certificate      |
-| `tls.key`, `tls.crt`                                                         | Created on the host by `ptbk-relay-cert`                                | The relay's own TLS listener     |
-| GHCR pull token, if the image is private                                     | I-03                                                                    | Image pulls                      |
+| Credential                                                                   | Where it lives                                                                      | Used for                          |
+| ---------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- | --------------------------------- |
+| `HCLOUD_TOKEN`, read and write on the environment's project                  | Password manager; environment variable while running tofu                           | Creating hosts                    |
+| R2 token for `ptbk-tofu-state-<env>`, state passphrase                       | Password manager (the same as `infra/cloudflare`)                                   | State; `TF_VAR_state_passphrase`  |
+| Admin SSH public keys, `ssh_allowlist`                                       | `terraform.tfvars`                                                                  | Admin access                      |
+| Deploy key (private half)                                                    | GitHub environment secret (I-03); its public half in `terraform.tfvars`             | Deploys                           |
+| `registry-token`: relay token, one per relay (D-04's mint script)            | `/etc/ptbk-relay/credentials/registry-token` on that host only                      | `RELAY_REGISTRY_TOKEN_FILE`       |
+| `metrics-token`: metrics token, one per relay (`ptbk_mt_` and 43 base64url)  | `/etc/ptbk-relay/credentials/metrics-token`; the dashboard's `RELAY_METRICS_TOKENS` | `RELAY_METRICS_TOKEN_FILE` (I-04) |
+| `acme-dns-token`: Cloudflare token, DNS edit on the ACME challenge zone only | `/etc/ptbk-relay/credentials/acme-dns-token`                                        | The relay's own certificate       |
+| `tls.key`, `tls.crt`                                                         | Created on the host by `ptbk-relay-cert`                                            | The relay's own TLS listener      |
+| GHCR pull token, if the image is private                                     | I-03                                                                                | Image pulls                       |
 
 The ACME token must not be able to edit anything but the challenge zone: not the engine zone (with it, a compromised relay could obtain certificates for engine hostnames) and not the dashboard zone. Restrict it to the relays' addresses with the token's client IP filter once they exist.
 
@@ -76,10 +77,12 @@ First boot takes a few minutes: packages, hardening, possibly one reboot for a n
 1. **Place the secrets.** From a machine that holds them, never through the repo, a PR or a chat:
    ```sh
    ssh <admin>@<host> 'sudo install -m 0600 /dev/stdin /etc/ptbk-relay/credentials/registry-token' < registry-token
+   printf 'ptbk_mt_%s\n' "$(openssl rand -base64 32 | tr '+/' '-_' | tr -d '=')" > metrics-token   # once per relay
+   ssh <admin>@<host> 'sudo install -m 0600 /dev/stdin /etc/ptbk-relay/credentials/metrics-token' < metrics-token
    ssh <admin>@<host> 'sudo install -m 0600 /dev/stdin /etc/ptbk-relay/credentials/acme-dns-token' < acme-dns-token
    ```
 2. **Obtain the certificate** (needs the challenge CNAME from Bootstrap): `ssh <admin>@<host> sudo systemctl start ptbk-relay-cert.service`, then `sudo journalctl -u ptbk-relay-cert` shows the result. The timer renews it daily from then on, when fewer than 30 days remain.
-3. **Deploy the relay** with I-03's pipeline. It writes `/etc/ptbk-relay/image.env` with a verified digest and starts `ptbk-relay.service`; until all of `image.env`, `registry-token`, `tls.crt` and `tls.key` exist, the unit does not start.
+3. **Deploy the relay** with I-03's pipeline. It writes `/etc/ptbk-relay/image.env` with a verified digest and starts `ptbk-relay.service`; until all of `image.env`, `registry-token`, `tls.crt` and `tls.key` exist. `metrics-token` is optional: without it the relay starts with `/metrics` answering 404, and the dashboard's scrape alerts `relay-unreachable` for that relay until it is placed (`sudo systemctl restart ptbk-relay` after placing it), the unit does not start.
 4. **Verify** from outside: `infra/relay/verify.sh <admin>@<host>` must print `all checks passed`; a port scan from outside the allowlist (`nmap -Pn -p- <host>`) must show only 443.
 5. **Add it to DNS**: put its addresses into `relays` in `infra/cloudflare/environments/<env>/terraform.tfvars` (with I-02), plan and apply there.
 
@@ -90,6 +93,7 @@ The same steps, with `tofu apply -replace='module.environment.hcloud_server.rela
 ## Rotate secrets
 
 - **Registry token**: mint a new one (D-04), install it as above, `sudo systemctl restart ptbk-relay`, then revoke the old one in the dashboard.
+- **Metrics token**: generate a new one, update the relay's entry in the dashboard's `RELAY_METRICS_TOKENS` secret first, then install it as above and `sudo systemctl restart ptbk-relay`; the scrape alerts for the minute in between.
 - **ACME token**: roll it in Cloudflare, install it as above; nothing to restart.
 - **Relay certificate**: issued and renewed by the timer. To replace it at once (for example after a key leak), `sudo rm -rf /var/lib/private/ptbk-relay-cert/certificates` and `sudo systemctl start ptbk-relay-cert`.
 - **Admin keys, allowlist, deploy key**: change `terraform.tfvars` and rebuild the hosts one at a time (the user data applies at first boot only). For a leaked key, remove it from `~/.ssh/authorized_keys` on every host by hand at once, then rebuild.

@@ -70,6 +70,7 @@ describe('createTunnelEndpoint', () => {
             limits: { ...LIMITS, ...limits },
             table: sessions,
             terminations: { count: (reason) => terminated.push(reason) },
+            metrics: deps.metrics,
         });
     const accept = (ip = IP): PendingConnection => {
         const pending = endpoint.accept(ip, () => {
@@ -217,6 +218,8 @@ describe('createTunnelEndpoint', () => {
         });
         expect(attached.connection.messages()[1]).toEqual({ v: 1, type: 'reject', reason: 'auth-failed' });
         expect(deps.logger.entries).toEqual([rejected({ reason: 'bad-signature' })]);
+        expect(deps.metrics.total('ptbk_relay_tunnel_handshake_failures_total', { reason: 'bad-signature' })).toBe(1);
+        expect(deps.metrics.total('ptbk_relay_tunnel_connects_total')).toBe(0);
     });
 
     it('refuses as auth-failed when the registry throws', async () => {
@@ -373,6 +376,10 @@ describe('createTunnelEndpoint', () => {
             event: 'tunnel.disconnected',
             fields: { engineId: engine.engineId, engineIp: IP, relayId: RELAY_ID, closeCode: 1001 },
         });
+        expect(deps.metrics.total('ptbk_relay_tunnel_connects_total')).toBe(1);
+        expect(deps.metrics.total('ptbk_relay_tunnel_disconnects_total')).toBe(1);
+        expect(deps.metrics.total('ptbk_relay_tunnel_disconnects_total', { code: 'going-away' })).toBe(1);
+        expect(JSON.stringify(deps.metrics.records)).not.toMatch(new RegExp(`${engine.engineId}|${IP}`));
     });
 
     it('replaces an older tunnel of the same engine with REPLACED', async () => {

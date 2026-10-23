@@ -6,6 +6,8 @@ import type { Clock } from '../clock';
 import type { DnsResolver } from '../dns-resolver';
 import { createTokenBucket } from '../limits/token-bucket';
 import type { Logger } from '../logger';
+import type { Metrics } from '../metrics/catalog';
+import { disconnectCode } from '../metrics/catalog';
 import type { ReasonCounters, TunnelTerminationReason } from '../metrics/reason-counters';
 import type { Random } from '../random';
 import type { RelayTunnelOffer } from './handshake';
@@ -66,6 +68,8 @@ export interface TunnelEndpointOptions {
     readonly limits: TunnelEndpointLimits;
     readonly table: SessionTable<TunnelSession>;
     readonly terminations: Pick<ReasonCounters<TunnelTerminationReason>, 'count'>;
+    /** Connects, disconnects and refusals; never which engine or address. */
+    readonly metrics: Metrics;
 }
 
 export interface TunnelEndpoint {
@@ -100,7 +104,8 @@ interface Live {
  * verification, `ready` or `reject`, then an authenticated session in the table.
  */
 export function createTunnelEndpoint(options: TunnelEndpointOptions): TunnelEndpoint {
-    const { relayId, engineDomain, offer, registry, dns, random, clock, logger, limits, table, terminations } = options;
+    const { relayId, engineDomain, offer, registry, dns, random, clock, logger, limits, table, terminations, metrics } =
+        options;
     const limiter = createHandshakeLimiter(limits);
     const misses = createTokenBucket({
         capacity: limits.registryMissesPerS,
@@ -142,6 +147,7 @@ export function createTunnelEndpoint(options: TunnelEndpointOptions): TunnelEndp
                 if (wire.message !== null) connection.sendText(JSON.stringify(wire.message));
                 connection.transport.close(wire.closeCode, '');
                 cancelLinger = clock.setTimeout(abandon, REJECT_LINGER_MS);
+                metrics.count('ptbk_relay_tunnel_handshake_failures_total', { reason: failure });
                 logger.warn('tunnel.rejected', {
                     ...(engineId === undefined ? {} : { engineId }),
                     engineIp: ip,
@@ -229,12 +235,14 @@ export function createTunnelEndpoint(options: TunnelEndpointOptions): TunnelEndp
                     onClosed(closeCode) {
                         settle({ kind: 'ended' });
                         table.remove(session);
+                        metrics.count('ptbk_relay_tunnel_disconnects_total', { code: disconnectCode(closeCode) });
                         logger.info('tunnel.disconnected', { engineId, engineIp: ip, relayId, closeCode });
                     },
                 });
                 settle({ kind: 'ready', session });
                 connection.sendText(JSON.stringify(ready));
                 table.register(session, hostnames);
+                metrics.count('ptbk_relay_tunnel_connects_total', {});
                 logger.info('tunnel.connected', { engineId, engineIp: ip, relayId });
             }
 

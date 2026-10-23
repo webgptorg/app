@@ -10,6 +10,7 @@ import { createSessionTable } from '../domain/tunnel/session-table';
 import type { TunnelSession, TunnelStream } from '../domain/tunnel/tunnel-session';
 import { captureClientHello, rawClient } from '../testing/client-hello';
 import { ENGINE_DOMAIN, createTestEngine } from '../testing/engines';
+import { createMemoryMetrics } from '../testing/memory-metrics';
 import { RELAY_ID } from '../testing/relay-harness';
 import { createFakeClock } from './fake-clock';
 import { createMemoryLogger } from './memory-logger';
@@ -86,6 +87,7 @@ describe('createBrowserListener', () => {
             clock: createFakeClock(),
             logger,
             memory: createMemoryBudget(1_048_576),
+            metrics: createMemoryMetrics(),
         });
         listener = created;
         return {

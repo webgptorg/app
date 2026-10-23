@@ -2,7 +2,7 @@
 
 - **Lane:** I · **Module:** `apps/relay` (metrics), `apps/dashboard` (metrics, uptime and alert jobs), `infra/` · **Milestone:** M4
 - **Depends on:** I-01, I-02, D-04, D-05
-- **Status:** todo
+- **Status:** in progress (feat/i-04-observability)
 - **Spec:** Metadata we still see; Operations (Availability and failure modes); Hosting and stack (Monitoring jobs); Legal and GDPR (sub-processors); docs/engineering.md (Logging and metadata)
 
 ## Goal

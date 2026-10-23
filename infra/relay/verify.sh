@@ -91,7 +91,7 @@ fi
 echo "== credentials"
 check "the credentials directory is root-only" test "$(stat -c '%U %a' /etc/ptbk-relay/credentials)" = "root 700"
 unexpected=$(find /etc/ptbk-relay/credentials -mindepth 1 \
-    -not \( -type f -user root -perm 0600 -regex '.*/\(registry-token\|tls\.crt\|tls\.key\|acme-dns-token\)' \) \
+    -not \( -type f -user root -perm 0600 -regex '.*/\(registry-token\|metrics-token\|tls\.crt\|tls\.key\|acme-dns-token\)' \) \
     2>/dev/null || echo /etc/ptbk-relay/credentials)
 report "credentials are the relay's own, in root-owned 0600 files" "$unexpected"
 

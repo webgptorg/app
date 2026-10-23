@@ -5,6 +5,7 @@ import { callWithTimeout } from './call-with-timeout';
 import type { Clock } from './clock';
 import type { EngineRegistry, RegistryLookup } from './engine-registry';
 import type { Logger } from './logger';
+import type { Metrics } from './metrics/catalog';
 import { createSingleFlight } from './single-flight';
 
 /**
@@ -17,6 +18,8 @@ export interface CachedRegistryOptions {
     readonly inner: EngineRegistry;
     readonly clock: Clock;
     readonly logger: Logger;
+    /** Lookups by result and the source's latency; never which engine. */
+    readonly metrics: Metrics;
     /** How long a `found` entry is served without asking `inner` (`RELAY_REGISTRY_TTL_S`). */
     readonly ttlMs: number;
     /** How old a `found` entry may be and still answer while `inner` fails (`RELAY_REGISTRY_MAX_STALE_S`). */
@@ -50,7 +53,7 @@ interface Positive {
  * younger than `maxStaleMs`, so a suspension takes effect within that window even while the dashboard is down.
  */
 export function createCachedRegistry(options: CachedRegistryOptions): CachedRegistry {
-    const { inner, clock, logger, ttlMs, maxStaleMs, negativeTtlMs, lookupTimeoutMs } = options;
+    const { inner, clock, logger, metrics, ttlMs, maxStaleMs, negativeTtlMs, lookupTimeoutMs } = options;
     const positives = new Map<EngineId, Positive>();
     const negatives = new Map<EngineId, number>();
     const flights = createSingleFlight<EngineId, RegistryLookup>();
@@ -77,17 +80,21 @@ export function createCachedRegistry(options: CachedRegistryOptions): CachedRegi
     async function refresh(engineId: EngineId): Promise<RegistryLookup> {
         // An answer requested before `expireAll` may predate what it was meant to pick up, so it is not fresh after it.
         const askedIn = generation;
+        const askedAtMs = clock.nowMs();
         const outcome = await callWithTimeout(clock, lookupTimeoutMs, (signal) => inner.lookup(engineId, signal));
         const nowMs = clock.nowMs();
+        metrics.observe('ptbk_relay_registry_source_seconds', {}, (nowMs - askedAtMs) / 1000);
         if (outcome.kind === 'done') {
             const lookup = outcome.value;
             switch (lookup.kind) {
                 case 'found':
                     negatives.delete(engineId);
                     positives.set(engineId, { entry: lookup.entry, fetchedAtMs: nowMs, generation: askedIn });
+                    metrics.count('ptbk_relay_registry_lookups_total', { result: 'miss' });
                     return lookup;
                 case 'not-found':
                     rememberNotFound(engineId, nowMs);
+                    metrics.count('ptbk_relay_registry_lookups_total', { result: 'miss' });
                     return lookup;
                 case 'unavailable':
                     break;
@@ -97,9 +104,11 @@ export function createCachedRegistry(options: CachedRegistryOptions): CachedRegi
         const stale = positives.get(engineId);
         if (stale !== undefined && nowMs - stale.fetchedAtMs < maxStaleMs) {
             logger.warn('registry.stale', { engineId, reason, ageS: Math.floor((nowMs - stale.fetchedAtMs) / 1000) });
+            metrics.count('ptbk_relay_registry_lookups_total', { result: 'stale' });
             return { kind: 'found', entry: stale.entry };
         }
         logger.warn('registry.unavailable', { engineId, reason });
+        metrics.count('ptbk_relay_registry_lookups_total', { result: 'error' });
         return { kind: 'unavailable' };
     }
 
@@ -107,7 +116,10 @@ export function createCachedRegistry(options: CachedRegistryOptions): CachedRegi
         lookup(engineId, signal, lookupOptions = {}) {
             if (signal.aborted) return Promise.reject(signal.reason as Error);
             const hit = lookupOptions.fresh === true ? undefined : cached(engineId, clock.nowMs());
-            if (hit !== undefined) return Promise.resolve(hit);
+            if (hit !== undefined) {
+                metrics.count('ptbk_relay_registry_lookups_total', { result: 'fresh' });
+                return Promise.resolve(hit);
+            }
             return abortable(
                 flights.run(engineId, () => refresh(engineId)),
                 signal,

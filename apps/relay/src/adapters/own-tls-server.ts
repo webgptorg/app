@@ -14,6 +14,7 @@ import { WebSocketServer } from 'ws';
 import type { Clock } from '../domain/clock';
 import type { Logger } from '../domain/logger';
 import type { PendingConnection, TunnelEndpoint } from '../domain/tunnel/tunnel-endpoint';
+import type { MetricsEndpoint } from './metrics-endpoint';
 import type { WsTunnelOptions } from './ws-tunnel-transport';
 import { attachWsTunnel } from './ws-tunnel-transport';
 
@@ -45,7 +46,8 @@ export const WS_CLOSE_TIMEOUT_MS = 2_000;
  */
 export const MAX_WS_MESSAGE_PARTS = 128;
 const MAX_WS_MESSAGE_BYTES = FRAME_HEADER_BYTES + MAX_FRAME_PAYLOAD_BYTES;
-/** Request heads are tiny here (an upgrade or a health check). */
+export const METRICS_PATH = '/metrics';
+/** Request heads are tiny here (an upgrade, a health check or a metrics scrape). */
 const MAX_HEADER_BYTES = 8_192;
 
 export interface OwnTlsServerOptions {
@@ -60,6 +62,8 @@ export interface OwnTlsServerOptions {
     readonly logger: Logger;
     /** Backstop for `listen`'s own server; in production the browser listener admits every socket. */
     readonly maxConnections: number;
+    /** `null`: no metrics token is configured, and `/metrics` is 404 like any unknown path. */
+    readonly metrics: MetricsEndpoint | null;
 }
 
 export interface OwnTlsServer {
@@ -111,9 +115,18 @@ function offersSubprotocol(request: IncomingMessage): boolean {
     return header?.split(',').some((protocol) => protocol.trim() === TUNNEL_SUBPROTOCOL) === true;
 }
 
+function serveMetrics(metrics: MetricsEndpoint, request: IncomingMessage, response: ServerResponse): void {
+    if (!metrics.authorize(request.headers.authorization)) {
+        response.writeHead(401, { 'www-authenticate': 'Bearer', 'cache-control': 'no-store' }).end();
+        return;
+    }
+    response.writeHead(200, { 'content-type': metrics.contentType, 'cache-control': 'no-store' }).end(metrics.render());
+}
+
 /**
  * The only place the relay terminates TLS, and only for its own hostname: `GET /v1/tunnel` upgrades to the tunnel
- * WebSocket, `GET /healthz` answers `ok`, everything else is 404. The endpoint admits each socket at TCP accept, so
+ * WebSocket, `GET /healthz` answers `ok`, `GET /metrics` answers the metrics token (ADR 0008), everything else is
+ * 404. The endpoint admits each socket at TCP accept, so
  * the handshake deadline and the pending-handshake limits cover the TLS handshake too.
  */
 export function createOwnTlsServer(options: OwnTlsServerOptions): OwnTlsServer {
@@ -143,6 +156,8 @@ export function createOwnTlsServer(options: OwnTlsServerOptions): OwnTlsServer {
         (request: IncomingMessage, response: ServerResponse) => {
             if (request.method === 'GET' && request.url === '/healthz') {
                 response.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' }).end('ok');
+            } else if (request.method === 'GET' && request.url === METRICS_PATH && options.metrics !== null) {
+                serveMetrics(options.metrics, request, response);
             } else {
                 response.writeHead(404).end();
             }

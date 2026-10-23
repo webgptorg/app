@@ -7,6 +7,7 @@ import type { InMemoryDnsResolver } from '../adapters/in-memory-dns-resolver';
 import type { InMemoryRegistry } from '../adapters/in-memory-registry';
 import type { MemoryLogger } from '../adapters/memory-logger';
 import { systemClock } from '../adapters/system-clock';
+import { createPrometheusMetrics } from '../adapters/prometheus-metrics';
 import type { RelayConfig } from '../app/config';
 import { parseRelayConfig } from '../app/config';
 import type { RelayListener } from '../app/start-relay';
@@ -69,6 +70,7 @@ export interface HarnessOptions {
 export async function startHarness(options: HarnessOptions = {}): Promise<RelayHarness> {
     const { clock, logger, registry, dns } = createTestDeps();
     const random = createFakeRandom();
+    const metrics = createPrometheusMetrics();
     const certificate = relayCertificate();
     const config = parseRelayConfig({
         RELAY_HOSTNAME: RELAY_ID,
@@ -98,6 +100,7 @@ export async function startHarness(options: HarnessOptions = {}): Promise<RelayH
                   }),
         clock,
         logger,
+        metrics,
         ttlMs: config.registry.ttlMs,
         maxStaleMs: config.registry.maxStaleMs,
         negativeTtlMs: REGISTRY_NEGATIVE_TTL_MS,
@@ -116,6 +119,7 @@ export async function startHarness(options: HarnessOptions = {}): Promise<RelayH
         clock,
         livenessClock: options.livenessClock ?? systemClock,
         random,
+        metrics,
     });
     const clients: TestEngineClient[] = [];
     return {

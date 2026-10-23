@@ -2,6 +2,7 @@ import { writeSync } from 'node:fs';
 
 import { createJsonLogger } from './adapters/json-logger';
 import { createNodeRandom } from './adapters/node-random';
+import { createPrometheusMetrics } from './adapters/prometheus-metrics';
 import { StaticRegistryError } from './adapters/static-file-registry';
 import { systemClock } from './adapters/system-clock';
 import { ConfigError, parseRelayConfig } from './app/config';
@@ -35,6 +36,7 @@ async function start(): Promise<Started | null> {
                 clock: systemClock,
                 livenessClock: systemClock,
                 random: createNodeRandom(),
+                metrics: createPrometheusMetrics(),
             }),
             logger,
         };
@@ -53,7 +55,7 @@ const crashLogger = createJsonLogger({
         writeSync(1, `${line}\n`);
     },
 });
-const crash = (event: string) => (error: unknown) => {
+const crash = (event: 'relay.crashed') => (error: unknown) => {
     crashLogger.error(event, { problem: problemOf(error) });
     process.exit(1);
 };

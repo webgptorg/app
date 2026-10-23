@@ -71,6 +71,9 @@ const ipAddress = z.union([z.ipv4(), z.ipv6()]);
 
 const RELAY_TOKEN = /^ptbk_rt_[A-Za-z0-9_-]{43}$/;
 const RELAY_TOKEN_SHAPE = 'a relay token (ptbk_rt_ and 43 base64url characters)';
+/** Not the registry token: whoever scrapes metrics must not be able to read the registry, and the reverse. */
+const METRICS_TOKEN = /^ptbk_mt_[A-Za-z0-9_-]{43}$/;
+const METRICS_TOKEN_SHAPE = 'a metrics token (ptbk_mt_ and 43 base64url characters)';
 const MAX_TOKEN_FILE_BYTES = 1024;
 
 // The relay token travels as a bearer header, so cleartext is allowed only to this machine (local dev without TLS).
@@ -91,7 +94,7 @@ const filePath = value(
 );
 
 /**
- * `RELAY_REGISTRY_TOKEN_FILE`, as systemd's `LoadCredential` provides it (I-01). Only a small regular file is read, so
+ * A token file, as systemd's `LoadCredential` provides it (I-01). Only a small regular file is read, so
  * a mistaken path such as a device or a directory fails instead of blocking startup.
  */
 function readTokenFile(path: string): string | null {
@@ -108,23 +111,24 @@ function readTokenFile(path: string): string | null {
     }
 }
 
-const tokenFile = filePath.transform((path, ctx): string => {
-    const contents = readTokenFile(path);
-    if (contents === null) {
-        ctx.addIssue({
-            code: 'custom',
-            message: `must be a readable file of at most ${String(MAX_TOKEN_FILE_BYTES)} bytes`,
-        });
-        return z.NEVER;
-    }
-    // Files written by hand or by `echo` end with a newline; the token itself never contains whitespace.
-    const token = contents.trimEnd();
-    if (!RELAY_TOKEN.test(token)) {
-        ctx.addIssue({ code: 'custom', message: `must contain ${RELAY_TOKEN_SHAPE}` });
-        return z.NEVER;
-    }
-    return token;
-});
+const tokenFile = (pattern: RegExp, shape: string) =>
+    filePath.transform((path, ctx): string => {
+        const contents = readTokenFile(path);
+        if (contents === null) {
+            ctx.addIssue({
+                code: 'custom',
+                message: `must be a readable file of at most ${String(MAX_TOKEN_FILE_BYTES)} bytes`,
+            });
+            return z.NEVER;
+        }
+        // Files written by hand or by `echo` end with a newline; the token itself never contains whitespace.
+        const token = contents.trimEnd();
+        if (!pattern.test(token)) {
+            ctx.addIssue({ code: 'custom', message: `must contain ${shape}` });
+            return z.NEVER;
+        }
+        return token;
+    });
 
 const common = {
     RELAY_HOSTNAME: value(RelayIdSchema, 'must be a hostname'),
@@ -170,6 +174,8 @@ const common = {
     RELAY_STREAM_DRAIN_TIMEOUT_MS: integer(1, MAX_TIMEOUT_MS).default(30_000),
     RELAY_STREAM_END_TIMEOUT_MS: integer(1, MAX_TIMEOUT_MS).default(30_000),
     RELAY_MEMORY_BUDGET_BYTES: integer(MIB, 8192 * MIB).default(DEFAULT_MEMORY_BUDGET_BYTES),
+    RELAY_METRICS_TOKEN: value(z.string().regex(METRICS_TOKEN), `must be ${METRICS_TOKEN_SHAPE}`).optional(),
+    RELAY_METRICS_TOKEN_FILE: tokenFile(METRICS_TOKEN, METRICS_TOKEN_SHAPE).optional(),
     LOG_LEVEL: value(z.enum(LOG_LEVELS), `must be one of ${LOG_LEVELS.join(', ')}`).default('info'),
 };
 
@@ -190,7 +196,7 @@ const envSchema = z
                     'must be an https URL (http only on 127.0.0.1, ::1 or localhost) without credentials, query or fragment',
                 ),
                 RELAY_REGISTRY_TOKEN: value(z.string().regex(RELAY_TOKEN), `must be ${RELAY_TOKEN_SHAPE}`).optional(),
-                RELAY_REGISTRY_TOKEN_FILE: tokenFile.optional(),
+                RELAY_REGISTRY_TOKEN_FILE: tokenFile(RELAY_TOKEN, RELAY_TOKEN_SHAPE).optional(),
             }),
         ],
         { error: 'must be static or http' },
@@ -202,6 +208,13 @@ const envSchema = z
                 code: 'custom',
                 path: ['RELAY_HOSTNAME'],
                 message: 'must not be RELAY_ENGINE_DOMAIN or a name under it',
+            });
+        }
+        if (env.RELAY_METRICS_TOKEN !== undefined && env.RELAY_METRICS_TOKEN_FILE !== undefined) {
+            ctx.addIssue({
+                code: 'custom',
+                path: ['RELAY_METRICS_TOKEN_FILE'],
+                message: 'must not be set together with RELAY_METRICS_TOKEN',
             });
         }
         if (env.RELAY_REGISTRY_MAX_STALE_S < env.RELAY_REGISTRY_TTL_S) {
@@ -296,6 +309,8 @@ export interface RelayConfig {
     };
     /** Every byte the relay holds for others: data waiting for credit, queued frames, unflushed socket writes. */
     readonly memoryBudgetBytes: number;
+    /** `GET /metrics` on the relay's own hostname answers only this bearer token; `null`: no metrics endpoint. */
+    readonly metrics: { readonly token: Secret } | null;
     readonly logLevel: LogLevel;
 }
 
@@ -336,6 +351,7 @@ export function parseRelayConfig(env: Readonly<Record<string, string | undefined
     if (!result.success) throw new ConfigError(result.error.issues.flatMap(toProblems));
     const parsed = result.data;
     const maxConnections = parsed.RELAY_MAX_CONNECTIONS;
+    const metricsToken = parsed.RELAY_METRICS_TOKEN ?? parsed.RELAY_METRICS_TOKEN_FILE;
     const registry: RegistryConfig =
         parsed.RELAY_REGISTRY_KIND === 'static'
             ? { kind: 'static', file: parsed.RELAY_REGISTRY_FILE }
@@ -384,6 +400,7 @@ export function parseRelayConfig(env: Readonly<Record<string, string | undefined
             endTimeoutMs: parsed.RELAY_STREAM_END_TIMEOUT_MS,
         }),
         memoryBudgetBytes: parsed.RELAY_MEMORY_BUDGET_BYTES,
+        metrics: metricsToken === undefined ? null : Object.freeze({ token: secret(metricsToken) }),
         logLevel: parsed.LOG_LEVEL,
     });
 }

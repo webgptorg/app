@@ -15,9 +15,11 @@ import type { MemoryLogger } from '../adapters/memory-logger';
 import { createMemoryLogger } from '../adapters/memory-logger';
 import { createInMemoryRegistry } from '../adapters/in-memory-registry';
 import { StaticRegistryError } from '../adapters/static-file-registry';
+import { createPrometheusMetrics } from '../adapters/prometheus-metrics';
 import type { TestEngine } from '../testing/engines';
 import { createTestEngine } from '../testing/engines';
 import { TEST_RELAY_TOKEN, startFakeDashboard } from '../testing/fake-dashboard';
+import { createMemoryMetrics } from '../testing/memory-metrics';
 import { createFakeRandom } from '../testing/fake-random';
 import type { TestEngineClient } from '../testing/engine-client';
 import { connectEngine } from '../testing/engine-client';
@@ -57,6 +59,7 @@ describe('startRelay', () => {
         clock: createFakeClock(1_700_000_000_000),
         livenessClock: systemClock,
         random: createFakeRandom(),
+        metrics: createPrometheusMetrics(),
     });
     const events = () => logger.entries.map((entry) => entry.event);
 
@@ -294,7 +297,7 @@ describe('createRelayServices', () => {
                     RELAY_REGISTRY_FILE: registryFile,
                     RELAY_DNS_SERVERS: '127.0.0.1',
                 }),
-                { logger, clock: createFakeClock(0) },
+                { logger, clock: createFakeClock(0), metrics: createMemoryMetrics() },
             );
             await expect(services.registry.lookup(engine.engineId, signal)).resolves.toEqual({
                 kind: 'found',
