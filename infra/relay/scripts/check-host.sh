@@ -43,7 +43,7 @@ systemd-analyze verify --man=no /etc/systemd/system/ptbk-relay.service /etc/syst
 step "systemd-analyze security"
 systemd-analyze security --offline=true --threshold=20 /etc/systemd/system/ptbk-relay-cert.service
 systemd-analyze security --offline=true --threshold=87 /etc/systemd/system/ptbk-relay.service
-systemd-analyze security --offline=true --threshold=60 /etc/systemd/system/ptbk-relay-deploy.service
+systemd-analyze security --offline=true --threshold=54 /etc/systemd/system/ptbk-relay-deploy.service
 
 step "sshd -t"
 ssh-keygen -A >/dev/null

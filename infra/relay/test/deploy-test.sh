@@ -325,6 +325,13 @@ for relay in "${RELAYS[@]}"; do
     wait_engine "$relay"
 done
 
+# The deploy counts engines with the relay's tunnel gauge (I-04's /metrics and the host's metrics token).
+# shellcheck disable=SC2016 # runs on the relay
+gauge=$(on relay-a bash -c 'printf "header = \"Authorization: Bearer %s\"\n" "$(tr -d "\n" </etc/ptbk-relay/credentials/metrics-token)" |
+    curl -fsS -K - --resolve relay-a.relays.ptbk.test:443:127.0.0.1 https://relay-a.relays.ptbk.test/metrics' |
+    grep '^ptbk_relay_tunnels_active ') || fail "relay-a has no tunnel gauge"
+echo "relay-a: $gauge"
+
 step "second rollout: good-2, each relay waits for the engine to come back"
 rollout good-2
 for relay in "${RELAYS[@]}"; do

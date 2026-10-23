@@ -217,7 +217,7 @@ jobs:
   # The relay host's real user data booted in a Debian 13 cloud image under KVM, with secrets placed and a test relay
   # image deployed the way the README and I-03 do it; the relay certificate issued by the host's own unit from a local
   # Pebble through a Cloudflare API and DNS stand-in; then verify.sh, port scans from inside and outside the SSH
-  # allowlist, the deploy key's forced command, and verify.sh failing on password SSH (I-01).
+  # allowlist (no deploy user or key: relays pull their deploys), and verify.sh failing on password SSH (I-01).
   relay-host-vm:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
@@ -250,9 +250,9 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
-  # Two relay hosts in privileged containers (systemd, sshd, rootful Podman, the user data's files and cosign), a
-  # registry and a fake Sigstore: the deploy key's forced command, signature refusals, a rolling deploy and the
-  # rollback of a broken image (I-03).
+  # Two relay hosts in privileged containers (systemd, rootful Podman, the user data's files, deploy timer and cosign),
+  # a registry with their deploy tags and a fake Sigstore: signature refusals, the downgrade guard, a rolling deploy by
+  # tag and the rollback of a broken image (I-03).
   relay-deploy:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
