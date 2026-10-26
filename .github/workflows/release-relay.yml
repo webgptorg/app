@@ -33,8 +33,11 @@ on:
 
 permissions: {}
 
+# A rollback (a dispatch with `digest`) has its own groups here and in the deploy jobs, so it is never queued behind
+# a running rollout or replaced by a pending one. The break-glass path that needs no workflow at all is
+# `sudo ptbk-relay-deploy rollback` on each relay (docs/runbooks/deploy.md).
 concurrency:
-  group: release-relay-${{ github.ref }}
+  group: release-relay-${{ github.ref }}-${{ inputs.digest != '' && 'rollback' || 'release' }}
   cancel-in-progress: false
 
 env:
@@ -244,7 +247,7 @@ jobs:
     timeout-minutes: 30
     environment: staging
     concurrency:
-      group: relay-deploy-staging
+      group: relay-deploy-staging-${{ inputs.digest != '' && 'rollback' || 'release' }}
       cancel-in-progress: false
     permissions:
       contents: read
@@ -271,7 +274,7 @@ jobs:
     timeout-minutes: 45
     environment: production
     concurrency:
-      group: relay-deploy-production
+      group: relay-deploy-production-${{ inputs.digest != '' && 'rollback' || 'release' }}
       cancel-in-progress: false
     permissions:
       contents: read

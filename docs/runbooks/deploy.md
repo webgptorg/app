@@ -78,7 +78,9 @@ Tunnel counts stay on the relay: the pipeline sees only which image a relay repo
 
 - **Automatic:** a relay that does not come up rolls itself back, and the rollout moves its tag back and stops.
 - **To an earlier release, everywhere:** run **Release relay** (`release-relay.yml`) from `main` with `digest: sha256:<…>`. The digest must carry this workflow's signature from `main`; `select` and every relay check it, and it moves the tags as for a release. The previous release always passes the downgrade guard; anything older needs its digest in `allow-downgrade` on each relay first (as an admin). Digests are in each run's summary, on the image's GHCR page, or on a relay: `sudo ptbk-relay-deploy status`.
-- **One relay, at once (admin):** `sudo ptbk-relay-deploy rollback` swaps back to the previous image, which stays on the host, so it needs neither GHCR nor Sigstore, and the relay keeps it even though its tag still names the newer image. `sudo ptbk-relay-deploy resume` lets the relay follow its tag again.
+- **Break glass, one relay at once (admin):** `sudo ptbk-relay-deploy rollback` swaps back to the previous image, which stays on the host, so it needs neither GitHub, GHCR nor Sigstore, and the relay keeps it even though its tag still names the newer image. `sudo ptbk-relay-deploy resume` lets the relay follow its tag again. Use this when the workflow cannot run or is too slow.
+
+A rollback dispatch runs in its own concurrency groups, so it is not queued behind a rollout or replaced by a pending one; it can therefore run while a rollout moves the same tags. In an emergency, cancel the running rollout first, or use break glass.
 
 ## UI releases
 
