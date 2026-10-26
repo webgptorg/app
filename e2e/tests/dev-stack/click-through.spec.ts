@@ -111,7 +111,7 @@ test('sign up from the dev mailbox, subscribe, link with dev:link, open the engi
     await expect(page.getByRole('heading', { name: 'Your engines' })).toBeVisible();
 
     await page.getByRole('link', { name: 'Billing' }).click();
-    await page.getByRole('button', { name: 'Subscribe to standard' }).click();
+    await page.getByRole('button', { name: 'Subscribe to Standard' }).click();
     await expect(page).toHaveURL(/\/billing\?checkout=success$/);
 
     await page.goto(`${DEV_DASHBOARD_ORIGIN}/engines/new`);

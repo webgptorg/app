@@ -15,6 +15,8 @@ describe('plan catalogue', () => {
         const catalogue = createPlanCatalogue(planCatalogueSchema.parse(TEST_PLANS));
         expect(catalogue.none).toEqual({
             id: 'none',
+            name: null,
+            price: null,
             stripeProductId: null,
             stripePriceId: null,
             features: [],
@@ -28,6 +30,37 @@ describe('plan catalogue', () => {
         expect(catalogue.byPriceId('price_unknown')).toBeNull();
         expect(Object.isFrozen(catalogue.plans[0]?.features)).toBe(true);
         expect(Object.isFrozen(catalogue.none.quotas)).toBe(true);
+        expect(catalogue.byId('starter')?.price).toEqual({ amount: '12', currency: 'EUR', interval: 'month' });
+        expect(Object.isFrozen(catalogue.byId('starter')?.price)).toBe(true);
+        expect(Object.isFrozen(catalogue.byId('starter')?.name)).toBe(true);
+        expect(catalogue.byId('scale')).toMatchObject({ name: { en: 'Scale', cs: 'Růst' }, price: null });
+    });
+
+    it('requires a name in every locale and checks a stated price', () => {
+        expect(issues({ ...TEST_PLANS, plans: [{ ...starter, name: undefined }] })).toEqual(['plans.0.name']);
+        expect(issues({ ...TEST_PLANS, plans: [{ ...starter, name: { en: 'Starter' } }] })).toEqual([
+            'plans.0.name.cs',
+        ]);
+        expect(issues({ ...TEST_PLANS, plans: [{ ...starter, name: { en: ' ', cs: 'Začátek' } }] })).toEqual([
+            'plans.0.name.en',
+        ]);
+        expect(issues({ ...TEST_PLANS, plans: [{ ...starter, name: { ...starter.name, de: 'Anfang' } }] })).toEqual([
+            'plans.0.name',
+        ]);
+        for (const amount of ['29.5', '29.50', '0', '1200']) {
+            expect(issues({ ...TEST_PLANS, plans: [{ ...starter, price: { ...starter.price, amount } }] })).toEqual([]);
+        }
+        for (const amount of ['-1', '1e3', '29.999', '029', '29.', '', '12345678']) {
+            expect(issues({ ...TEST_PLANS, plans: [{ ...starter, price: { ...starter.price, amount } }] })).toEqual([
+                'plans.0.price.amount',
+            ]);
+        }
+        expect(
+            issues({ ...TEST_PLANS, plans: [{ ...starter, price: { ...starter.price, currency: 'eur' } }] }),
+        ).toEqual(['plans.0.price.currency']);
+        expect(
+            issues({ ...TEST_PLANS, plans: [{ ...starter, price: { ...starter.price, interval: 'week' } }] }),
+        ).toEqual(['plans.0.price.interval']);
     });
 
     it('rejects duplicate plan IDs and duplicate price IDs', () => {
@@ -61,7 +94,7 @@ describe('plan catalogue', () => {
         expect(issues({ ...TEST_PLANS, plans: [{ ...starter, stripePriceId: '<staging-price-id>' }] })).toEqual([
             'plans.0.stripePriceId',
         ]);
-        expect(issues({ ...TEST_PLANS, plans: [{ ...starter, name: 'Starter' }] })).toEqual(['plans.0']);
+        expect(issues({ ...TEST_PLANS, plans: [{ ...starter, description: 'Starter' }] })).toEqual(['plans.0']);
         expect(
             issues({ ...TEST_PLANS, plans: [{ ...starter, quotas: { ...starter.quotas, 'engines.max': -1 } }] }),
         ).toEqual(['plans.0.quotas.engines.max']);

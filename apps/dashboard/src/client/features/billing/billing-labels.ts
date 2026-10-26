@@ -1,7 +1,8 @@
 import type { BadgeTone } from '@ptbk/ui';
 
 import { m } from '../../../paraglide/messages';
-import type { BillingStatus, Feature, Quota } from '../../../shared/billing';
+import type { Locale } from '../../../paraglide/runtime';
+import type { BillingStatus, Feature, PlanName, PlanPrice, Quota } from '../../../shared/billing';
 
 // Records over the closed unions: a new feature, quota or status fails to compile until it has a label.
 
@@ -40,4 +41,23 @@ export function quotaValue(limit: number | null, used: number | null): string {
     return limit === null
         ? m.billing_quota_used_unlimited({ used: String(used) })
         : m.billing_quota_used({ used: String(used), limit: String(limit) });
+}
+
+/** A plan's name in the current locale; `null` is the `none` plan, which only the message catalogues name. */
+export function planNameText(name: PlanName | null, locale: Locale): string {
+    return name === null ? m.billing_plan_none() : name[locale];
+}
+
+/** "€29.00 per month", or where to see the price when the plan catalogue does not state it. */
+export function planPriceText(price: PlanPrice | null, formatCurrency: (amount: string, currency: string) => string) {
+    if (price === null) {
+        return m.billing_price_at_checkout();
+    }
+    const amount = formatCurrency(price.amount, price.currency);
+    switch (price.interval) {
+        case 'month':
+            return m.billing_price_per_month({ price: amount });
+        case 'year':
+            return m.billing_price_per_year({ price: amount });
+    }
 }

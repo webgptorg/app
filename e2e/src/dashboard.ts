@@ -123,7 +123,7 @@ export const test = base.extend<DashboardFixtures>({
             },
             async subscribe() {
                 await page.getByRole('link', { name: 'Billing' }).click();
-                await page.getByRole('button', { name: 'Subscribe to standard' }).click();
+                await page.getByRole('button', { name: 'Subscribe to Standard' }).click();
                 await expect(page).toHaveURL(/\/billing\?checkout=success$/);
             },
             async createLinkCode() {

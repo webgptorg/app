@@ -78,11 +78,19 @@ export function describeBillingFlows(
             expect(before).toMatchObject({
                 status: 'none',
                 planId: 'none',
+                planName: null,
                 hasBillingAccount: false,
                 canSubscribe: true,
                 entitlements: { features: [] },
             });
-            expect(before.plans.map((plan) => plan.id)).toEqual(['starter', 'scale']);
+            expect(before.plans.map(({ id, name, price }) => ({ id, name, price }))).toEqual([
+                {
+                    id: 'starter',
+                    name: { en: 'Starter', cs: 'Začátek' },
+                    price: { amount: '12', currency: 'EUR', interval: 'month' },
+                },
+                { id: 'scale', name: { en: 'Scale', cs: 'Růst' }, price: null },
+            ]);
             expect(await harness.deps.entitlements.allows(orgId, 'engines.create', new AbortController().signal)).toBe(
                 false,
             );
@@ -93,6 +101,7 @@ export function describeBillingFlows(
             expect(after).toMatchObject({
                 status: 'active',
                 planId: 'starter',
+                planName: { en: 'Starter', cs: 'Začátek' },
                 hasBillingAccount: true,
                 canSubscribe: false,
                 cancelAtPeriodEnd: false,

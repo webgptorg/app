@@ -28,6 +28,8 @@ export const TEST_PLANS = {
     plans: [
         {
             id: 'starter',
+            name: { en: 'Starter', cs: 'Začátek' },
+            price: { amount: '12', currency: 'EUR', interval: 'month' },
             stripeProductId: 'prod_teststarter',
             stripePriceId: TEST_PRICE_IDS.starter,
             features: ['engines.create'],
@@ -35,6 +37,7 @@ export const TEST_PLANS = {
         },
         {
             id: 'scale',
+            name: { en: 'Scale', cs: 'Růst' },
             stripeProductId: 'prod_testscale',
             stripePriceId: TEST_PRICE_IDS.scale,
             features: ['engines.create'],

@@ -20,7 +20,7 @@ test('subscribe through the fake Checkout and open the portal under the producti
     await expect(page.getByRole('heading', { name: 'Billing', level: 1 })).toBeVisible();
     await checkScreen('/billing');
 
-    await page.getByRole('button', { name: 'Subscribe to standard' }).click();
+    await page.getByRole('button', { name: 'Subscribe to Standard' }).click();
     await expect(page).toHaveURL(/\/billing\?checkout=success$/);
     await expect(page.getByText('Thank you, your subscription is starting')).toBeVisible();
     await expect(page.getByText('Active', { exact: true })).toBeVisible();

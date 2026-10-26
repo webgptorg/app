@@ -13,7 +13,16 @@ import { billingQuery, dataOrThrow, problemCode, queryKeys } from '../../api/que
 import { useBrowser } from '../../core/browser';
 import { useAppMutation } from '../../core/mutations';
 import { useSession } from '../session/use-session';
-import { FEATURE_LABELS, QUOTA_LABELS, quotaValue, STATUS_LABELS, STATUS_TONES } from './billing-labels';
+import { useLocale } from '../../i18n/locale';
+import {
+    FEATURE_LABELS,
+    planNameText,
+    planPriceText,
+    QUOTA_LABELS,
+    quotaValue,
+    STATUS_LABELS,
+    STATUS_TONES,
+} from './billing-labels';
 import { isAllowedRedirect, UnsafeRedirectError } from './billing-redirect';
 
 export type CheckoutReturn = 'success' | 'cancel';
@@ -152,6 +161,7 @@ function SubscriptionCard(props: { readonly billing: BillingView; readonly canMa
     const { billing } = props;
     const api = useApiClient();
     const formatters = useFormatters();
+    const { locale } = useLocale();
     const portal = useRedirectMutation(async () => dataOrThrow(await api.call(apiRoutes.billingPortal, {})));
     const period = periodText(billing, (value) => formatters.formatDate(value));
     return (
@@ -175,7 +185,9 @@ function SubscriptionCard(props: { readonly billing: BillingView; readonly canMa
             <dl className="grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2 text-sm">
                 <dt className="text-text-muted">{m.billing_plan_label()}</dt>
                 <dd>
-                    <Badge tone="accent">{billing.planId}</Badge>
+                    <Badge tone={billing.planName === null ? 'neutral' : 'accent'}>
+                        {planNameText(billing.planName, locale)}
+                    </Badge>
                 </dd>
                 <dt className="text-text-muted">{m.billing_status_label()}</dt>
                 <dd>
@@ -196,22 +208,30 @@ function PlanOffer(props: {
 }) {
     const { plan, onBusy } = props;
     const api = useApiClient();
+    const formatters = useFormatters();
+    const { locale } = useLocale();
+    const name = planNameText(plan.name, locale);
     const checkout = useRedirectMutation(async (planId: string) =>
         dataOrThrow(await api.call(apiRoutes.billingCheckout, { body: { planId } })),
     );
     return (
         <li className="flex flex-col gap-3 rounded-control border border-border p-4">
-            <Badge tone="accent">{plan.id}</Badge>
+            <div className="flex flex-col gap-1">
+                <h3 className="font-display text-lg font-semibold">{name}</h3>
+                <p className={plan.price === null ? 'text-sm text-text-muted' : 'font-medium tabular-nums'}>
+                    {planPriceText(plan.price, (amount, currency) => formatters.formatCurrency(amount, currency))}
+                </p>
+            </div>
             <EntitlementList
                 features={plan.features}
                 quotas={plan.quotas}
-                label={m.billing_plan_includes({ plan: plan.id })}
+                label={m.billing_plan_includes({ plan: name })}
             />
             <Button
                 variant="primary"
                 loading={checkout.isPending}
                 disabled={props.busy && !checkout.isPending}
-                aria-label={m.billing_subscribe_named({ plan: plan.id })}
+                aria-label={m.billing_subscribe_named({ plan: name })}
                 onClick={() => {
                     onBusy(true);
                     checkout.mutate(plan.id, {

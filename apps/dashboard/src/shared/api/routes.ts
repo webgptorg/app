@@ -12,7 +12,15 @@ import {
 } from '@ptbk/protocol';
 import { z } from 'zod';
 
-import { billingStatusSchema, featureSchema, planIdSchema, problemStatusSchema, quotaSchema } from '../billing';
+import {
+    billingStatusSchema,
+    featureSchema,
+    planIdSchema,
+    planNameSchema,
+    planPriceSchema,
+    problemStatusSchema,
+    quotaSchema,
+} from '../billing';
 import { environmentSchema } from '../environment';
 import { defineRoute, NO_INPUT } from './contract';
 import {
@@ -85,6 +93,9 @@ const quotaLimitSchema = z.number().int().nonnegative().nullable();
 
 const planViewSchema = z.strictObject({
     id: planIdSchema,
+    name: planNameSchema,
+    /** Null where the plan catalogue does not state the price; Checkout always shows it. */
+    price: planPriceSchema.nullable(),
     features: z.array(featureSchema),
     /** `limit: null` is unlimited. */
     quotas: z.array(z.strictObject({ quota: quotaSchema, limit: quotaLimitSchema })),
@@ -98,6 +109,8 @@ export const billingViewSchema = z.strictObject({
     cancelAtPeriodEnd: z.boolean(),
     /** The plan the entitlements come from: the subscribed one, or `none`. For display only; gate on `entitlements`. */
     planId: planIdSchema,
+    /** Null for `none`, which the SPA names itself. */
+    planName: planNameSchema.nullable(),
     /** A provider customer exists, so the portal has payment methods and invoices to show. */
     hasBillingAccount: z.boolean(),
     /** No live subscription: Checkout may start one. */

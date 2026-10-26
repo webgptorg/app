@@ -5,13 +5,21 @@ import {
     featureSchema,
     NONE_PLAN_ID,
     planIdSchema,
+    planNameSchema,
+    planPriceSchema,
     QUOTAS,
     type Feature,
+    type PlanName,
+    type PlanPrice,
     type Quota,
 } from '../../shared/billing';
 
 export interface Plan {
     readonly id: string;
+    /** Null only for the `none` plan, whose name the SPA's message catalogues carry. */
+    readonly name: PlanName | null;
+    /** Null for `none`, and for a paid plan whose configuration does not state its price. */
+    readonly price: PlanPrice | null;
     /** Null only for the `none` plan, which nobody subscribes to. */
     readonly stripeProductId: string | null;
     readonly stripePriceId: string | null;
@@ -22,6 +30,7 @@ export interface Plan {
 
 /** A plan Checkout can sell. */
 export interface PaidPlan extends Plan {
+    readonly name: PlanName;
     readonly stripeProductId: string;
     readonly stripePriceId: string;
 }
@@ -49,6 +58,8 @@ const featuresSchema = z
 
 const paidPlanSchema = z.strictObject({
     id: planIdSchema.refine((id) => id !== NONE_PLAN_ID, `"${NONE_PLAN_ID}" is reserved`),
+    name: planNameSchema,
+    price: planPriceSchema.optional(),
     stripeProductId: z.string().regex(/^prod_[A-Za-z0-9]{1,64}$/),
     stripePriceId: z.string().regex(/^price_[A-Za-z0-9]{1,64}$/),
     features: featuresSchema,
@@ -77,11 +88,20 @@ export function createPlanCatalogue(parsed: z.output<typeof planCatalogueSchema>
     const freeze = <P extends Plan>(plan: P): P =>
         Object.freeze({
             ...plan,
+            name: plan.name === null ? null : Object.freeze({ ...plan.name }),
+            price: plan.price === null ? null : Object.freeze({ ...plan.price }),
             features: Object.freeze([...plan.features]),
             quotas: Object.freeze({ ...plan.quotas }),
         });
-    const none = freeze({ id: NONE_PLAN_ID, stripeProductId: null, stripePriceId: null, ...parsed.none });
-    const plans = Object.freeze(parsed.plans.map(freeze));
+    const none = freeze({
+        id: NONE_PLAN_ID,
+        name: null,
+        price: null,
+        stripeProductId: null,
+        stripePriceId: null,
+        ...parsed.none,
+    });
+    const plans = Object.freeze(parsed.plans.map(({ price, ...plan }) => freeze({ ...plan, price: price ?? null })));
     return Object.freeze({
         none,
         plans,

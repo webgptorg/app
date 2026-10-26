@@ -65,9 +65,14 @@ describe('engine list', () => {
         expect(screen.getByRole('link', { name: 'Engines' }).getAttribute('aria-current')).toBe('page');
     });
 
-    it('explains the empty list and links to linking an engine', async () => {
+    it('shows an empty state instead of an empty table, with linking an engine as the next step', async () => {
         const app = renderApp({ path: '/engines', session: OWNER });
-        expect(await screen.findByText('No engines yet')).toBeTruthy();
+        expect(await screen.findByRole('heading', { name: 'No engines yet', level: 2 })).toBeTruthy();
+        expect(screen.queryByRole('table')).toBeNull();
+        expect(screen.queryByRole('columnheader')).toBeNull();
+        expect(screen.queryByRole('button', { name: 'Columns' })).toBeNull();
+        expect(screen.getAllByRole('link', { name: 'Link an engine' })).toHaveLength(1);
+        await expectNoAxeViolations(app.container);
         await app.user.click(screen.getByRole('link', { name: 'Link an engine' }));
         expect(await screen.findByRole('heading', { name: 'Link an engine', level: 1 })).toBeTruthy();
         expect(app.history.location.pathname).toBe('/engines/new');
@@ -164,6 +169,12 @@ describe('engine list', () => {
         app.api.on(apiRoutes.listEngines, ok({ engines: [engineView()] }));
         await app.user.click(screen.getByRole('button', { name: 'Try again' }));
         expect(await screen.findByText('Online')).toBeTruthy();
+    });
+
+    it('offers no way to link an engine on the empty list without engine.link', async () => {
+        renderApp({ path: '/engines', session: session({ permissions: ['org.read', 'engine.read'] }) });
+        expect(await screen.findByRole('heading', { name: 'No engines yet', level: 2 })).toBeTruthy();
+        expect(screen.queryByRole('link', { name: 'Link an engine' })).toBeNull();
     });
 
     it('tells a role without engine.read that it cannot see engines, without asking the API', async () => {

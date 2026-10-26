@@ -40,7 +40,7 @@ test('link an engine, see it online, open its page and revoke it, under the prod
     await checkScreen('/engines/new not entitled');
 
     await page.getByRole('link', { name: 'Go to billing' }).click();
-    await page.getByRole('button', { name: 'Subscribe to standard' }).click();
+    await page.getByRole('button', { name: 'Subscribe to Standard' }).click();
     await expect(page).toHaveURL(/\/billing\?checkout=success$/);
 
     await page.goto('/engines/new');
