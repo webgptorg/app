@@ -94,21 +94,22 @@ jobs:
           docker save --output "$RUNNER_TEMP/relay.tar" relay:build
           docker run --rm --user "$(id -u):$(id -g)" -v "$RUNNER_TEMP:/work" "$SYFT_IMAGE" \
             docker-archive:/work/relay.tar --output spdx-json=/work/relay.spdx.json
+      # The digest comes from the push itself, never from reading the tag back: any workflow run with
+      # `packages: write` could move the tag in between, and sign would then sign someone else's image.
       - name: Push
         id: push
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
-          printf '%s' "$GITHUB_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
-          docker tag relay:build "$IMAGE:git-$GITHUB_SHA"
-          docker push --quiet "$IMAGE:git-$GITHUB_SHA"
-          digest=$(docker buildx imagetools inspect --format '{{json .Manifest}}' "$IMAGE:git-$GITHUB_SHA" | jq -r .digest)
+          export REGISTRY_AUTH_FILE="$RUNNER_TEMP/registry-auth.json"
+          trap 'rm -f "$REGISTRY_AUTH_FILE"' EXIT
+          printf '%s' "$GITHUB_TOKEN" | skopeo login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          skopeo copy --quiet --digestfile "$RUNNER_TEMP/digest" "docker-archive:$RUNNER_TEMP/relay.tar" \
+            "docker://$IMAGE:git-$GITHUB_SHA"
+          digest=$(cat "$RUNNER_TEMP/digest")
           [[ $digest =~ ^sha256:[0-9a-f]{64}$ ]]
           echo "digest=$digest" >> "$GITHUB_OUTPUT"
           echo "pushed $IMAGE@$digest" >> "$GITHUB_STEP_SUMMARY"
-      - name: Log out of GHCR
-        if: always()
-        run: docker logout ghcr.io
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: relay-sbom
