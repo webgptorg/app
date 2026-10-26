@@ -56,7 +56,7 @@ Several agents work in parallel, and `main` has no branch protection yet: **you 
    git worktree add --no-track -b <type>/<task-id>-<slug> ../app-<task-id> origin/main
    cd ../app-<task-id> && bun install
    ```
-   e.g. `feat/c-01-protocol-primitives`. Work only in that worktree.
+   e.g. `feat/c-01-protocol-primitives`. Work only in that worktree. Never use `git stash`: the stash is shared by every worktree, so a parallel agent can pop your change or you theirs. Commit work in progress to your branch instead.
 4. **Claim it immediately**, before writing code: set the **Status** line in your brief to `in progress (<branch>)`, commit, then
    ```sh
    git push -u origin HEAD
