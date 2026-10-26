@@ -141,7 +141,7 @@ describe('engine runtime', () => {
             revocationReason: 'expired',
         } as const;
         runtime.setUiUpdateCheck(UiUpdateCheck.parse(refused));
-        expect(ok(await client().security.get(signal())).ui.lastUpdateCheck).toEqual(refused);
+        expect(ok(await client().security.get(signal())).ui.lastUpdateCheck).toEqual({ ...refused, eligibleAt: null });
         runtime.setUi({ version: '1.0.0', bundleSha256: 'c'.repeat(64), releaseLogIndex: 9 });
         await runtime.reset({ seed: 3, scenario: 'empty' });
         expect(ok(await client().security.get(signal())).ui).toEqual({
@@ -149,8 +149,19 @@ describe('engine runtime', () => {
             bundleSha256: 'c'.repeat(64),
             releaseLogIndex: 9,
             releaseLogEntryUuid: null,
-            lastUpdateCheck: refused,
+            lastUpdateCheck: { ...refused, eligibleAt: null },
         });
+    });
+
+    it('shows the placeholder bundle again once no bundle is active, as before the first install', async () => {
+        const { runtime, client } = await start();
+        const placeholder = ok(await client().security.get(signal())).ui;
+        runtime.setUi({ version: '1.1.0', bundleSha256: 'c'.repeat(64), releaseLogIndex: 9 });
+        expect(ok(await client().security.get(signal())).ui.version).toBe('1.1.0');
+        runtime.setUi(null);
+        expect(ok(await client().security.get(signal())).ui).toEqual(placeholder);
+        await runtime.reset({ seed: 3, scenario: 'empty' });
+        expect(ok(await client().security.get(signal())).ui).toEqual(placeholder);
     });
 
     it('reports the served certificate in the security panel, across a reset', async () => {

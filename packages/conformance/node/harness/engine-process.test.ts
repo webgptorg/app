@@ -82,7 +82,7 @@ describe('createEngineProcess', () => {
                 '--input-type=module',
                 '-e',
                 `import { createEngineProcess } from ${JSON.stringify(new URL('./engine-process.ts', import.meta.url).href)};
-                const engine = createEngineProcess({ command: { command: 'exec sleep 600', cwd: '/' }, dataDir: '/', env: {} });
+                const engine = createEngineProcess({ command: { command: 'exec sleep 6061', cwd: '/' }, dataDir: '/', env: {} });
                 await engine.start();
                 process.stdout.write(String(engine.starts));
                 setInterval(() => {}, 1000);`,
@@ -93,7 +93,7 @@ describe('createEngineProcess', () => {
         const groups = execFileSync('ps', ['-o', 'pgid=', '-o', 'command=', '-A'], { encoding: 'utf8' })
             .split('\n')
             .map((line) => /^\s*(\d+)\s+(.*)$/.exec(line))
-            .filter((match) => match?.[2] === 'sleep 600')
+            .filter((match) => match?.[2] === 'sleep 6061')
             .map((match) => Number(match?.[1]));
         expect(groups).toHaveLength(1);
         harness.kill('SIGTERM');

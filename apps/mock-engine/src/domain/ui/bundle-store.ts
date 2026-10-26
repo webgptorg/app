@@ -37,8 +37,28 @@ export interface BundleStore {
     activate(stagingId: string, bundle: Omit<InstalledBundle, 'id'>): Promise<InstalledBundle>;
     /** Deletes a staged bundle that failed verification. */
     discard(stagingId: string): Promise<void>;
+    /**
+     * Stops serving every installed bundle whose version `isRevoked` names, durably: a revoked active bundle gives way
+     * to the previous one unless that is revoked too, and then no bundle is active. A revoked bundle is deleted, never
+     * kept as previous, so nothing can bring it back. Returns the active bundle afterwards.
+     */
+    withdraw(isRevoked: (version: EngineVersion) => boolean): Promise<InstalledBundle | undefined>;
     /** One file of an installed bundle by its manifest path, or `undefined`. */
     read(bundle: InstalledBundle, path: string): Promise<Uint8Array | undefined>;
+}
+
+export interface InstalledPair {
+    readonly active: InstalledBundle | undefined;
+    readonly previous: InstalledBundle | undefined;
+}
+
+/** What {@link BundleStore.withdraw} leaves installed; the same rule for every adapter. */
+export function withdrawn(installed: InstalledPair, isRevoked: (version: EngineVersion) => boolean): InstalledPair {
+    const kept = (bundle: InstalledBundle | undefined) =>
+        bundle !== undefined && !isRevoked(bundle.version) ? bundle : undefined;
+    const active = kept(installed.active);
+    if (active === undefined) return { active: kept(installed.previous), previous: undefined };
+    return { active, previous: kept(installed.previous) };
 }
 
 /** `<version>-<first 16 hex of sha256>`. */

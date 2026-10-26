@@ -42,7 +42,7 @@ import { ENGINE_API_ROUTE_LIST } from './routes';
 import { Member } from './members';
 import { Passkey, PasskeyPageReader } from './passkeys';
 import { CreateSecretBody, SecretMetadata } from './secrets';
-import { RekorEntryUuid, SecurityOverview, SecurityOverviewReader } from './security';
+import { RekorEntryUuid, SecurityOverview, SecurityOverviewReader, UiUpdateCheck } from './security';
 import { Session } from './sessions';
 import { SetUpdatePolicyBody } from './settings';
 
@@ -475,6 +475,12 @@ const securityV13 = {
     clockSkew: { seconds: -300, measuredAt: NOW },
 };
 
+/** What a 1.3 answer parses to since API 1.10 defaults `eligibleAt`. */
+const securityV13Parsed = {
+    ...securityV13,
+    ui: { ...securityV13.ui, lastUpdateCheck: { ...securityV13.ui.lastUpdateCheck, eligibleAt: null } },
+};
+
 describe('SecurityOverview (API 1.3 fields)', () => {
     it('reads a 1.2 answer with every new field as null or empty', () => {
         const overview = SecurityOverview.parse(securityV12);
@@ -488,7 +494,7 @@ describe('SecurityOverview (API 1.3 fields)', () => {
     });
 
     it('accepts every 1.3 field and still rejects unknown ones', () => {
-        expect(SecurityOverview.parse(securityV13)).toEqual(securityV13);
+        expect(SecurityOverview.parse(securityV13)).toEqual(securityV13Parsed);
         expect(SecurityOverview.safeParse({ ...securityV13, extra: 1 }).success).toBe(false);
     });
 
@@ -531,7 +537,34 @@ describe('SecurityOverview (API 1.3 fields)', () => {
             revocationReason: 'unknown',
         });
         expect(read.hostnames[0]?.certificateStatus).toBe('unknown');
-        expect(SecurityOverviewReader.parse(securityV13)).toEqual(securityV13);
+        expect(SecurityOverviewReader.parse(securityV13)).toEqual(securityV13Parsed);
+    });
+});
+
+describe('UiUpdateCheck.eligibleAt (API 1.10)', () => {
+    const delayed = {
+        at: NOW,
+        outcome: 'refused',
+        version: '1.5.0',
+        reason: 'delay-not-elapsed',
+        revocationReason: null,
+        eligibleAt: '2026-10-22T08:00:00Z',
+    };
+
+    it('reads a check from an engine before 1.10 with eligibleAt as null', () => {
+        expect(SecurityOverview.parse(securityV13).ui.lastUpdateCheck?.eligibleAt).toBeNull();
+        expect(SecurityOverviewReader.parse(securityV13).ui.lastUpdateCheck?.eligibleAt).toBeNull();
+    });
+
+    it('carries when a delayed release becomes eligible', () => {
+        expect(UiUpdateCheck.parse(delayed)).toEqual(delayed);
+        const overview = { ...securityV13, ui: { ...securityV13.ui, lastUpdateCheck: delayed } };
+        expect(SecurityOverviewReader.parse(overview).ui.lastUpdateCheck?.eligibleAt).toBe(delayed.eligibleAt);
+    });
+
+    it('refuses an eligibleAt that is not a timestamp', () => {
+        expect(UiUpdateCheck.safeParse({ ...delayed, eligibleAt: 'in three days' }).success).toBe(false);
+        expect(UiUpdateCheck.safeParse({ ...delayed, eligibleAt: 1_761_120_000 }).success).toBe(false);
     });
 });
 

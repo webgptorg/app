@@ -59,11 +59,6 @@ describe('the suite against an in-process engine', () => {
             // The fake advertises every capability, so no route can be checked for capability-not-supported.
             'engine-api.capabilities.unadvertised-404':
                 'skip: the engine advertises every capability this contract defines',
-            'ui-loader.signature.strict-ed25519': 'skip: not-implemented',
-            'ui-loader.dsse.pae-only': 'skip: not-implemented',
-            'ui-loader.provenance.exact-identity': 'skip: not-implemented',
-            'ui-loader.delay.trusted-time': 'skip: not-implemented',
-            'ui-loader.revocations.expired-keeps-current': 'skip: not-implemented',
         });
         expect(report.engineVersion).not.toBeNull();
         expect(report.results.every(({ cleanupFailures }) => cleanupFailures === 0)).toBe(true);

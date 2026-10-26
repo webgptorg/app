@@ -376,9 +376,10 @@ describe('checkForUiUpdate: update delay under auto', () => {
         await freshRevocations(w, NOW - HOUR);
         const old = new Date(NOW - 30 * 24 * HOUR);
         await publish(w, '1.0.0', { release: { publishedAt: old, provenance: { timestamps: [old] } } });
-        expect(await check(w)).toMatchObject({ kind: 'refused', reason: 'delay-not-elapsed' });
+        const eligibleAt = new Date(NOW + delay);
+        expect(await check(w)).toEqual({ kind: 'refused', version: '1.0.0', reason: 'delay-not-elapsed', eligibleAt });
         w.clock.advance(delay - 1);
-        expect(await check(w)).toMatchObject({ kind: 'refused', reason: 'delay-not-elapsed' });
+        expect(await check(w)).toMatchObject({ kind: 'refused', reason: 'delay-not-elapsed', eligibleAt });
         w.clock.advance(1);
         expect(await check(w)).toMatchObject({ kind: 'installed', version: '1.0.0' });
     });
@@ -390,9 +391,10 @@ describe('checkForUiUpdate: update delay under auto', () => {
         await publish(w, '1.0.0', {
             release: { publishedAt: new Date(NOW - 1000 * HOUR), provenance: { timestamps } },
         });
-        expect(await check(w)).toMatchObject({ kind: 'refused', reason: 'delay-not-elapsed' });
+        const eligibleAt = new Date(NOW + 2 * HOUR + delay);
+        expect(await check(w)).toMatchObject({ kind: 'refused', reason: 'delay-not-elapsed', eligibleAt });
         w.clock.advance(delay);
-        expect(await check(w)).toMatchObject({ kind: 'refused', reason: 'delay-not-elapsed' });
+        expect(await check(w)).toMatchObject({ kind: 'refused', reason: 'delay-not-elapsed', eligibleAt });
         w.clock.advance(2 * HOUR);
         expect(await check(w)).toMatchObject({ kind: 'installed' });
     });
@@ -401,10 +403,12 @@ describe('checkForUiUpdate: update delay under auto', () => {
         const w = world({ kind: 'auto' });
         await freshRevocations(w, NOW - HOUR);
         await publish(w, '1.0.0', { release: { publishedAt: new Date(NOW - 1000 * HOUR) } });
-        expect(await check(w)).toMatchObject({ reason: 'delay-not-elapsed' });
-        w.clock.advance(delay);
+        expect(await check(w)).toMatchObject({ reason: 'delay-not-elapsed', eligibleAt: new Date(NOW + delay) });
+        w.clock.advance(HOUR);
         // A restart: a new store that loads what the old one persisted.
         w.state = createMemoryUpdateStateStore(w.state.snapshot());
+        expect(await check(w)).toMatchObject({ reason: 'delay-not-elapsed', eligibleAt: new Date(NOW + delay) });
+        w.clock.advance(delay - HOUR);
         await freshRevocations(w, w.clock.nowMs() - HOUR);
         expect(await check(w)).toMatchObject({ kind: 'installed' });
     });
@@ -501,6 +505,140 @@ describe('checkForUiUpdate: revocation list', () => {
     });
 });
 
+describe('checkForUiUpdate: a revoked active bundle', () => {
+    const revoke = (w: World, ...versions: string[]) =>
+        freshRevocations(
+            w,
+            w.clock.nowMs(),
+            versions.map((text) => ({ version: text, reason: 'compromised' })),
+        );
+
+    /** 1.0.0 then 1.1.0 installed, so 1.1.0 is active and 1.0.0 previous. */
+    async function twoInstalled(): Promise<World> {
+        const w = await installed();
+        await publish(w, '1.1.0');
+        expect(await check(w)).toMatchObject({ kind: 'installed', version: '1.1.0' });
+        w.clock.advance(1000);
+        return w;
+    }
+
+    it('stops serving it at once and brings the previous bundle back', async () => {
+        const w = await twoInstalled();
+        await revoke(w, '1.1.0');
+        expect(await check(w)).toEqual({ kind: 'refused', version: '1.1.0', reason: 'revoked' });
+        expect(w.store.active()?.version).toBe('1.0.0');
+        expect(w.store.previous()).toBeUndefined();
+        expect(w.logger.entries).toContainEqual({
+            level: 'error',
+            event: 'ui.revoked-active',
+            fields: { version: '1.1.0', restored: '1.0.0' },
+        });
+        expect(await check(w)).toEqual({ kind: 'refused', version: '1.1.0', reason: 'revoked' });
+        expect(w.store.active()?.version).toBe('1.0.0');
+    });
+
+    it('leaves no bundle active when the previous one is revoked too', async () => {
+        const w = await twoInstalled();
+        await revoke(w, '1.0.0', '1.1.0');
+        expect(await check(w)).toEqual({ kind: 'refused', version: '1.1.0', reason: 'revoked' });
+        expect(w.store.active()).toBeUndefined();
+        expect(w.store.previous()).toBeUndefined();
+        expect(w.logger.entries).toContainEqual({
+            level: 'error',
+            event: 'ui.revoked-active',
+            fields: { version: '1.1.0' },
+        });
+    });
+
+    it('reports the revoked bundle, not the candidate, when the candidate is the previous one', async () => {
+        const w = await twoInstalled();
+        await revoke(w, '1.1.0');
+        w.policy = { kind: 'pinned', version: version('1.0.0') };
+        expect(await check(w)).toEqual({ kind: 'refused', version: '1.1.0', reason: 'revoked' });
+        expect(w.store.active()?.version).toBe('1.0.0');
+    });
+
+    it('reports the install when the same check installs a newer release', async () => {
+        const w = await twoInstalled();
+        await revoke(w, '1.1.0');
+        await publish(w, '1.2.0');
+        expect(await check(w)).toMatchObject({ kind: 'installed', version: '1.2.0' });
+        expect(w.store.active()?.version).toBe('1.2.0');
+        expect(w.store.previous()?.version).toBe('1.0.0');
+    });
+
+    it('judges the candidate against the bundle it fell back to', async () => {
+        const w = await installed({ kind: 'pinned', version: version('1.0.0') });
+        await publish(w, '1.2.0');
+        w.policy = { kind: 'pinned', version: version('1.2.0') };
+        expect(await check(w)).toMatchObject({ kind: 'installed', version: '1.2.0' });
+        await publish(w, '1.1.0', { latest: false });
+        await revoke(w, '1.2.0');
+        w.policy = { kind: 'pinned', version: version('1.1.0') };
+        expect(await check(w)).toMatchObject({ kind: 'installed', version: '1.1.0' });
+        expect(w.store.previous()?.version).toBe('1.0.0');
+    });
+
+    it('still reports the revoked bundle when the candidate is refused for another reason', async () => {
+        const w = await twoInstalled();
+        await revoke(w, '1.1.0');
+        await publish(w, '1.2.0', { serve: flip });
+        expect(await check(w)).toEqual({ kind: 'refused', version: '1.1.0', reason: 'revoked' });
+        expect(w.store.active()?.version).toBe('1.0.0');
+        expect(w.logger.entries).toContainEqual({
+            level: 'warn',
+            event: 'ui.refused',
+            fields: { version: '1.2.0', reason: 'hash-mismatch' },
+        });
+    });
+
+    it('drops a revoked previous bundle and keeps serving the active one', async () => {
+        const w = await twoInstalled();
+        await revoke(w, '1.0.0');
+        expect(await check(w)).toEqual({ kind: 'up-to-date', version: '1.1.0' });
+        expect(w.store.active()?.version).toBe('1.1.0');
+        expect(w.store.previous()).toBeUndefined();
+        expect(w.logger.entries).toContainEqual({
+            level: 'warn',
+            event: 'ui.revoked-previous',
+            fields: { version: '1.0.0' },
+        });
+    });
+
+    it('matches revoked versions by SemVer precedence, ignoring build metadata', async () => {
+        const w = await twoInstalled();
+        await revoke(w, '1.1.0+rebuilt');
+        expect(await check(w)).toEqual({ kind: 'refused', version: '1.1.0', reason: 'revoked' });
+        expect(w.store.active()?.version).toBe('1.0.0');
+    });
+
+    it('never acts on a list it could not accept: expired, untrusted, rolled back, or never checked', async () => {
+        const w = await twoInstalled();
+        const signed = (issuedAt: number, validMs: number, signer = keys.release) =>
+            signTestRevocations(keys, {
+                issuedAt: new Date(issuedAt),
+                expiresAt: new Date(issuedAt + validMs),
+                revoked: [{ version: '1.1.0', reason: 'compromised' }],
+                signer,
+            });
+        const unverifiable = async (revocationReason: string) => {
+            expect(await check(w)).toMatchObject({ reason: 'revocations-unverifiable', revocationReason });
+        };
+        w.source.setRevocations(await signed(w.clock.nowMs() - 2 * HOUR, HOUR));
+        await unverifiable('expired');
+        w.source.setRevocations(await signed(w.clock.nowMs(), HOUR, keys.outsider));
+        await unverifiable('invalid');
+        w.source.setRevocations(await signed(NOW - 2 * HOUR, 24 * HOUR));
+        await unverifiable('rolled-back');
+        await publish(w, '1.2.0', { release: { provenance: null } });
+        await revoke(w, '1.1.0');
+        expect(await check(w)).toMatchObject({ reason: 'signature-threshold-not-met' });
+        expect(w.store.active()?.version).toBe('1.1.0');
+        expect(w.store.previous()?.version).toBe('1.0.0');
+        expect(w.logger.entries.map(({ event }) => event)).not.toContain('ui.revoked-active');
+    });
+});
+
 function never(): never {
     throw new Error('unreachable');
 }
@@ -521,6 +659,7 @@ describe('uiUpdateCheckOf', () => {
             version: '1.2.0',
             reason: null,
             revocationReason: null,
+            eligibleAt: null,
         });
         expect(uiUpdateCheckOf({ kind: 'up-to-date', version }, at)).toMatchObject({
             outcome: 'up-to-date',
@@ -537,6 +676,19 @@ describe('uiUpdateCheckOf', () => {
                 { kind: 'refused', version, reason: 'revocations-unverifiable', revocationReason: 'rolled-back' },
                 at,
             ),
-        ).toMatchObject({ reason: 'revocations-unverifiable', revocationReason: 'rolled-back' });
+        ).toMatchObject({ reason: 'revocations-unverifiable', revocationReason: 'rolled-back', eligibleAt: null });
+    });
+
+    it('reports when a delayed release becomes eligible, rounded up to the second', () => {
+        const delayed = (eligibleAt: string) =>
+            uiUpdateCheckOf(
+                { kind: 'refused', version, reason: 'delay-not-elapsed', eligibleAt: new Date(eligibleAt) },
+                at,
+            );
+        expect(delayed('2026-10-23T10:00:00.000Z')).toMatchObject({
+            reason: 'delay-not-elapsed',
+            eligibleAt: '2026-10-23T10:00:00Z',
+        });
+        expect(delayed('2026-10-23T10:00:00.001Z').eligibleAt).toBe('2026-10-23T10:00:01Z');
     });
 });

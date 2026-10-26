@@ -42,6 +42,11 @@ const uiUpdateCheckShape = {
     reason: z.enum(UI_REFUSAL_REASONS).nullable(),
     /** Set exactly when `reason` is `revocations-unverifiable`. */
     revocationReason: z.enum(UI_REVOCATION_REASONS).nullable(),
+    /**
+     * Set exactly when `reason` is `delay-not-elapsed`: when the delayed release becomes eligible (`null` from engines
+     * on API 1.9 and older).
+     */
+    eligibleAt: Timestamp.nullable().default(null),
 };
 
 /** The UI loader's last update check, so a refused or unverifiable release shows in the panel, not only in logs. */

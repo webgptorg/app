@@ -182,11 +182,15 @@
         "ptbk-conformance": "./dist/ptbk-conformance.js",
       },
       "dependencies": {
+        "@noble/curves": "catalog:",
         "@ptbk/engine-api": "workspace:*",
         "@ptbk/protocol": "workspace:*",
         "ws": "catalog:",
       },
       "devDependencies": {
+        "@sigstore/bundle": "catalog:",
+        "@sigstore/protobuf-specs": "catalog:",
+        "@sigstore/verify": "catalog:",
         "@types/ws": "catalog:",
       },
     },

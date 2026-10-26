@@ -96,15 +96,33 @@ export interface UiLoaderConfig {
     readonly releaseUrl: string;
     /** `PTBK_UPDATE_POLICY` with `PTBK_PINNED_VERSION`. */
     readonly updatePolicy: UpdatePolicy;
-    /** `MOCK_UI_TRUST_POLICY_FILE`: C-06's `TrustPolicy` as JSON. */
-    readonly trustPolicyFile: string;
-    /** `MOCK_UI_TRUSTED_ROOT_FILE`; null uses the pinned Sigstore trusted root. */
-    readonly trustedRootFile: string | null;
+    readonly trust: UiTrustConfig;
     /** `MOCK_UI_CHECK_INTERVAL_S`, default 3600. */
     readonly checkIntervalS: number;
-    /** `MOCK_UI_FAKE_PROVENANCE=enabled`: test attestations instead of Sigstore. Refused with `NODE_ENV=production`. */
-    readonly fakeProvenance: boolean;
 }
+
+/** Where the loader's trust policy and Sigstore trusted root come from. */
+export type UiTrustConfig =
+    | {
+          readonly kind: 'files';
+          /** `MOCK_UI_TRUST_POLICY_FILE`: C-06's `TrustPolicy` as JSON. */
+          readonly trustPolicyFile: string;
+          /** `MOCK_UI_TRUSTED_ROOT_FILE`; null uses the pinned Sigstore trusted root. */
+          readonly trustedRootFile: string | null;
+          /**
+           * `MOCK_UI_FAKE_PROVENANCE=enabled`: test attestations instead of Sigstore. Refused with `NODE_ENV=production`.
+           */
+          readonly fakeProvenance: boolean;
+      }
+    | {
+          readonly kind: 'conformance';
+          /**
+           * `PTBK_CONFORMANCE_TRUST_FILE`: the conformance suite's `ConformanceTrustFile` (trust policy and trusted
+           * root, verified with the real Sigstore verifier), as a conformance build of the engine reads it. Excludes the
+           * `MOCK_UI_*` trust settings; refused with `NODE_ENV=production`.
+           */
+          readonly file: string;
+      };
 
 export interface DashboardConfig {
     /** The dashboard's `https://` origin. */
@@ -414,6 +432,7 @@ const envSchema = z.strictObject({
         'must be a whole number of seconds from 1 to 86400',
     ).default(DEFAULT_UI_CHECK_INTERVAL_S),
     MOCK_UI_FAKE_PROVENANCE: toggle.default('disabled'),
+    PTBK_CONFORMANCE_TRUST_FILE: filePath.optional(),
     PTBK_ENGINE_DOMAIN: value(HostnameSchema, 'must be a hostname'),
     PTBK_ENGINE_VERSION: value(EngineVersionSchema, 'must be a SemVer version').default(DEFAULT_ENGINE_VERSION),
     MOCK_EXTRA_CA_FILE: filePath.optional(),
@@ -501,6 +520,9 @@ export function parseMockEngineConfig(env: Env): MockEngineConfig {
         if (result.data.MOCK_UI_FAKE_PROVENANCE === 'enabled') {
             problems.push('MOCK_UI_FAKE_PROVENANCE: must not be enabled in production');
         }
+        if (result.data.PTBK_CONFORMANCE_TRUST_FILE !== undefined) {
+            problems.push('PTBK_CONFORMANCE_TRUST_FILE: must not be set in production');
+        }
     }
     if (!result.success || problems.length > 0) throw new ConfigError(problems);
     const parsedEnv = result.data;
@@ -555,8 +577,22 @@ export function parseMockEngineConfig(env: Env): MockEngineConfig {
     });
 }
 
+function uiTrustConfig(env: z.output<typeof envSchema>): UiTrustConfig | null {
+    if (env.PTBK_CONFORMANCE_TRUST_FILE !== undefined) {
+        return Object.freeze({ kind: 'conformance', file: env.PTBK_CONFORMANCE_TRUST_FILE });
+    }
+    if (env.MOCK_UI_TRUST_POLICY_FILE === undefined) return null;
+    return Object.freeze({
+        kind: 'files',
+        trustPolicyFile: env.MOCK_UI_TRUST_POLICY_FILE,
+        trustedRootFile: env.MOCK_UI_TRUSTED_ROOT_FILE ?? null,
+        fakeProvenance: env.MOCK_UI_FAKE_PROVENANCE === 'enabled',
+    });
+}
+
 function uiConfig(env: z.output<typeof envSchema>): UiLoaderConfig | null {
-    if (env.PTBK_UI_RELEASE_URL === undefined || env.MOCK_UI_TRUST_POLICY_FILE === undefined) return null;
+    const trust = uiTrustConfig(env);
+    if (env.PTBK_UI_RELEASE_URL === undefined || trust === null) return null;
     const updatePolicy: UpdatePolicy =
         env.PTBK_UPDATE_POLICY === 'pinned' && env.PTBK_PINNED_VERSION !== undefined
             ? Object.freeze({ kind: 'pinned', version: env.PTBK_PINNED_VERSION })
@@ -564,10 +600,8 @@ function uiConfig(env: z.output<typeof envSchema>): UiLoaderConfig | null {
     return Object.freeze({
         releaseUrl: env.PTBK_UI_RELEASE_URL,
         updatePolicy,
-        trustPolicyFile: env.MOCK_UI_TRUST_POLICY_FILE,
-        trustedRootFile: env.MOCK_UI_TRUSTED_ROOT_FILE ?? null,
+        trust,
         checkIntervalS: env.MOCK_UI_CHECK_INTERVAL_S,
-        fakeProvenance: env.MOCK_UI_FAKE_PROVENANCE === 'enabled',
     });
 }
 
@@ -577,6 +611,14 @@ const UI_LOADER_SETTINGS = [
     'MOCK_UI_TRUST_POLICY_FILE',
     'MOCK_UI_TRUSTED_ROOT_FILE',
     'MOCK_UI_CHECK_INTERVAL_S',
+    'MOCK_UI_FAKE_PROVENANCE',
+    'PTBK_CONFORMANCE_TRUST_FILE',
+] as const;
+
+/** The development trust switches; the conformance trust file replaces all three, so none may be beside it. */
+const UI_TRUST_FILE_SETTINGS = [
+    'MOCK_UI_TRUST_POLICY_FILE',
+    'MOCK_UI_TRUSTED_ROOT_FILE',
     'MOCK_UI_FAKE_PROVENANCE',
 ] as const;
 
@@ -589,7 +631,11 @@ function uiProblems(settings: Readonly<Record<string, string>>): string[] {
         }
         return problems;
     }
-    if (settings['MOCK_UI_TRUST_POLICY_FILE'] === undefined) {
+    if (settings['PTBK_CONFORMANCE_TRUST_FILE'] !== undefined) {
+        for (const name of UI_TRUST_FILE_SETTINGS) {
+            if (settings[name] !== undefined) problems.push(`${name}: cannot be set with PTBK_CONFORMANCE_TRUST_FILE`);
+        }
+    } else if (settings['MOCK_UI_TRUST_POLICY_FILE'] === undefined) {
         problems.push('MOCK_UI_TRUST_POLICY_FILE: is required with PTBK_UI_RELEASE_URL');
     }
     if (settings['MOCK_UI_FAKE_PROVENANCE'] === 'enabled' && settings['MOCK_UI_TRUSTED_ROOT_FILE'] !== undefined) {

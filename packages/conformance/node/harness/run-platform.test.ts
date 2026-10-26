@@ -2,22 +2,22 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import type { CheckResult } from '../../src/index';
 import { writeJunitReport } from '../../src/index';
-import { PLATFORM_SUITES } from '../index';
+import { REGISTRATION_SUITE } from '../index';
 import { SELF_TEST_HEARTBEAT_INTERVAL_S, fakeEngineCommand } from '../testing/engines';
 import type { EngineCommand } from './engine-process';
 import { liveEngineGroups } from './engine-process';
 import { runPlatformConformance } from './run-platform';
 import { startRegisteredEngine } from '../fakes/dashboard';
 import type { PlatformSuite } from './platform';
+import { chmod, mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
-/** The tunnel suite runs minutes per engine and has its own self-test (node/suites/tunnel, node/tunnel/checks). */
-const SUITES = PLATFORM_SUITES.filter(({ id }) => id !== 'tunnel');
-
+/** The harness itself, through the registration suite: the tunnel and ui-loader suites have self-tests of their own. */
 async function run(command: EngineCommand, filter?: string) {
     return runPlatformConformance({
         command,
-        suites: SUITES,
+        suites: [REGISTRATION_SUITE],
         timeoutMs: 30_000,
         signal: new AbortController().signal,
         seed: 1,
@@ -181,7 +181,7 @@ describe('the harness', () => {
     it('stops an engine that ignores SIGTERM when the check times out', async () => {
         const report = await runPlatformConformance({
             command: { command: "trap '' TERM; sleep 600 & wait", cwd: process.cwd() },
-            suites: SUITES,
+            suites: [REGISTRATION_SUITE],
             filter: (check) => check.id === 'registration.request.signature-verifies',
             timeoutMs: 500,
             stopGraceMs: 200,
@@ -189,5 +189,42 @@ describe('the harness', () => {
             expectations: { startTimeoutMs: 60_000 },
         });
         expect(report.results[0]?.outcome).toEqual({ kind: 'fail', detail: 'timed out after 500 ms' });
+    });
+});
+
+describe('the run directory', () => {
+    it('is removed even where the engine made directories read-only', async () => {
+        const root = await mkdtemp(join(tmpdir(), 'run-platform-test-'));
+        try {
+            const suite: PlatformSuite = {
+                id: 'example',
+                checks: [
+                    {
+                        id: 'example.read-only.data',
+                        suite: 'example',
+                        title: 'Leaves a read-only tree behind, as the mock does with unpacked UI bundles',
+                        async run(ctx) {
+                            const bundle = join(await ctx.tempDir('engine'), 'ui', 'bundle');
+                            await mkdir(join(bundle, 'assets'), { recursive: true });
+                            await writeFile(join(bundle, 'assets', 'app.js'), 'x');
+                            await chmod(join(bundle, 'assets'), 0o500);
+                            await chmod(bundle, 0o500);
+                            return { kind: 'pass' };
+                        },
+                    },
+                ],
+            };
+            const report = await runPlatformConformance({
+                command: { command: 'exit 0', cwd: process.cwd() },
+                suites: [suite],
+                timeoutMs: 5000,
+                signal: new AbortController().signal,
+                tempRoot: root,
+            });
+            expect(report.results.map((result) => result.outcome)).toEqual([{ kind: 'pass' }]);
+            expect(await readdir(root)).toEqual([]);
+        } finally {
+            await rm(root, { recursive: true, force: true });
+        }
     });
 });

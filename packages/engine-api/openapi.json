@@ -3,7 +3,7 @@
   "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
   "info": {
     "title": "Promptbook engine API",
-    "version": "1.9.0",
+    "version": "1.10.0",
     "license": {
       "name": "MIT",
       "identifier": "MIT"
@@ -16777,9 +16777,20 @@
                 "type": "null"
               }
             ]
+          },
+          "eligibleAt": {
+            "default": null,
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Timestamp"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
-        "required": ["at", "outcome", "version", "reason", "revocationReason"],
+        "required": ["at", "outcome", "version", "reason", "revocationReason", "eligibleAt"],
         "additionalProperties": false
       },
       "UnexpectedCertificate": {

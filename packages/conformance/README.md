@@ -9,7 +9,7 @@ MIT, moves to the public repo with the other contracts ([ADR 0002](../../docs/ad
 - **`engine-api`** (v1): the HTTP API engine-ui depends on (C-04, C-07), reached through the engine gateway as a browser would. Every response it reads is judged strictly: a success must parse with its route's strict schema (no undeclared fields), and every 4xx and 5xx must be `application/problem+json` with a known `code` and the status that code always has. A violation in any check fails that check.
 - **`registration`** and **`heartbeat`** (C-08): the harness starts the engine itself and acts as the dashboard ([below](#starting-the-engine)).
 - **`tunnel`** (C-09, starts the engine): acts as the relays the engine dials, from a fake relay on loopback whose names the engine gets in `PTBK_RELAYS`. It checks the handshake (signatures, negotiation, refusals), TLS ended by the engine inside a stream, framing and flow control, reconnects and backoff, liveness and the proxy. See [tunnel-client.md](../../docs/engine-integration/tunnel-client.md#conformance).
-- **`ui-loader`**: its check IDs are registered now and always report `skip` (`not-implemented`), so engine teams can track the cryptographic requirements of [ADR 0014](../../docs/adr/0014-cryptography.md) before the suite exists.
+- **`ui-loader`** (C-10, starts the engine): the engine's UI loader, black-box. The harness runs a [conformance build](../../docs/engine-integration/ui-loader.md#testing-the-loader-conformance-build) of the engine against a fake release store, restarts it per scenario and reaches its API through C-09's fake relay; see [UI loader suite](#ui-loader-suite).
 
 Check IDs are stable: engine teams track results by them, so renaming one is a breaking change. Every ID is listed in the engine integration guide's [checklist](../../docs/engine-integration/checklist.md).
 
@@ -44,8 +44,8 @@ Starting the engine (the harness plays the dashboard and the rest of the platfor
 
 Options:
   --suite <id>                Run only these suites (repeatable or comma-separated)
-                              against --base-url: engine-api, ui-loader
-                              with --engine-cmd: registration, heartbeat, tunnel
+                              against --base-url: engine-api
+                              with --engine-cmd: registration, heartbeat, tunnel, ui-loader
   --filter <text>             Run only checks whose ID contains this text (repeatable)
   --report json|junit         Report format (default json)
   --out <file>                Write the report here instead of stdout
@@ -232,17 +232,41 @@ Rerunning with the report's `seed` reproduces the names and values a run used.
 | `tunnel.reconnect.backoff`                       | Consecutive failed attempts back off: no tight reconnect loop                                                                                                                                  |
 | `tunnel.reconnect.replaced-no-loop`              | After REPLACED the engine does not reconnect in a loop                                                                                                                                         |
 | `tunnel.proxy.connect`                           | HTTPS_PROXY tunnels through CONNECT with the relay certificate still verified; NO_PROXY bypasses it                                                                                            |
-| `ui-loader.signature.strict-ed25519`             | Not implemented yet (skip)                                                                                                                                                                     |
-| `ui-loader.dsse.pae-only`                        | Not implemented yet (skip)                                                                                                                                                                     |
-| `ui-loader.provenance.exact-identity`            | Not implemented yet (skip)                                                                                                                                                                     |
-| `ui-loader.delay.trusted-time`                   | Not implemented yet (skip)                                                                                                                                                                     |
-| `ui-loader.revocations.expired-keeps-current`    | Not implemented yet (skip)                                                                                                                                                                     |
+| `ui-loader.install.pinned-valid`                 | A valid regular release installs under `pinned`; the panel shows its version, archive SHA-256 and log index; it is served                                                                      |
+| `ui-loader.serve.listed-files-only`              | Every manifest file is served byte for byte; an unlisted asset is 404; HTML navigations get the entry; the engine's reserved paths never do                                                    |
+| `ui-loader.serve.security-headers`               | Entry, asset, fallback and 404 carry `ENGINE_UI_CSP` and the full header set, for a bundle whose manifest `csp` differs                                                                        |
+| `ui-loader.signature.strict-ed25519`             | Release-key signatures over the PAE for each case class of `ed25519-vectors.json` get exactly the protocol's strict verdict                                                                    |
+| `ui-loader.signature.threshold`                  | Release key alone, provenance alone, maintainers only and security releases short of 2 distinct maintainers are refused                                                                        |
+| `ui-loader.dsse.pae-only`                        | A raw-payload signature, a payload changed after signing and another payload type are refused                                                                                                  |
+| `ui-loader.entry.strict-payload`                 | A signed payload with a duplicate (also escaped) key or an unknown field is refused                                                                                                            |
+| `ui-loader.provenance.exact-identity`            | Wrong repository, repository ID, workflow, tag, commit, ref, runner, trigger or issuer, a SAN with a prefix or suffix, and non-UTF8String extensions are refused                               |
+| `ui-loader.provenance.log-required`              | No Rekor entry, no SCT or a CA outside the trusted root is refused                                                                                                                             |
+| `ui-loader.artifact.hash-mismatch`               | An archive that differs from the entry's SHA-256 is refused                                                                                                                                    |
+| `ui-loader.manifest.files-enforced`              | Unlisted, missing or changed files, a wrong size, and a manifest for another version or commit or with an unknown field are refused                                                            |
+| `ui-loader.archive.unsafe-entries`               | `../`, absolute paths, symbolic and hard links are refused                                                                                                                                     |
+| `ui-loader.manifest.engine-api-range`            | A bundle for another engine API major is refused                                                                                                                                               |
+| `ui-loader.rollback.not-newer`                   | An older version, and the active version with other bytes, are not installed                                                                                                                   |
+| `ui-loader.revocations.expired-keeps-current`    | An expired list keeps the current bundle (`revocations-unverifiable`, `expired`)                                                                                                               |
+| `ui-loader.revocations.unverifiable`             | A missing list, an untrusted signer, a future `issuedAt` and an over-long validity keep the current bundle with the matching reason                                                            |
+| `ui-loader.revocations.rollback-persisted`       | After a restart, a list older than the accepted one is `rolled-back`                                                                                                                           |
+| `ui-loader.revocations.revoked-refused`          | A revoked candidate is refused                                                                                                                                                                 |
+| `ui-loader.store.unavailable-keeps-current`      | A 503 record or an archive cut off halfway keeps the current bundle                                                                                                                            |
+| `ui-loader.delay.trusted-time`                   | Under `auto`, `eligibleAt` is 72 h after the latest of `publishedAt`, the trusted time and first sight                                                                                         |
+| `ui-loader.delay.first-seen-persisted`           | `eligibleAt` survives a restart                                                                                                                                                                |
+| `ui-loader.policy.honoured`                      | `pinned` installs exactly its version, `auto` checks `latest.json`, `manual` installs nothing at startup                                                                                       |
+| `ui-loader.revocations.revoked-current`          | A revoked active bundle stops being served, falling back to the previous one or to the plain engine page, also after a restart                                                                 |
 
 Every `runs`, `files`, `triggers` and `integrations` check skips with reason `capability-not-advertised` when `GET /engine` does not list that capability; the permission checks cover every mutating route of each advertised capability.
 
 ### Audit expectations
 
 The contract fixes the action names (`AUDIT_ACTIONS`); the suite expects each mutating route's entry to carry the action named for it and a target of the kind the route acts on, with the ID from its path or, for a create, the created resource. For example `PATCH /agents/{agentId}` is `agent.update` on the agent, `POST /chats/{chatId}/messages` is `chat.message.send` on the chat, `POST /chats/{chatId}/messages/{messageId}/cancel` is `chat.reply.cancel` on the message, and settings changes have no target. The full table is `AUDIT_EXPECTATIONS` in `src/suites/engine-api/audit.ts`.
+
+## UI loader suite
+
+The suite drives the engine through a lab (`node/suites/ui-loader/platform-lab.ts`), one per check: a registered engine from the harness, reached through an `EngineEndpoints` route (the relay), and a fake release store in the [mirror layout v1](../../docs/engine-integration/ui-loader.md#release-mirror-layout-v1) over HTTPS, and the engine restarted with `PTBK_UPDATE_POLICY`, `PTBK_PINNED_VERSION` and a `PTBK_CONFORMANCE_TRUST_FILE` for each scenario (the update check at startup is the trigger). Each run generates its release keys and an ephemeral test Sigstore (`src/suites/ui-loader/sigstore/`), so every release is signed on the fly and verified by the engine's real Sigstore adapter. It reads `GET /security` → `ui` with an owner session and fetches what the engine serves. Each refusal check also asserts that the previous bundle is still active and served. Versions within a run only increase (`1.0.<n>`).
+
+The package tests run every check against an in-process fake loader built on `verifyRelease`, once correct and once per deliberate defect (`src/testing/ui-loader/fake-ui-lab.ts`), so each check is shown to pass and to fail.
 
 ## Against the mock engine (this repo)
 

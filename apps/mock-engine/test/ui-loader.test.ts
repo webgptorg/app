@@ -51,6 +51,8 @@ interface Engine {
         bundle?: Partial<TestBundleInput>,
         serve?: (archive: Uint8Array) => Uint8Array,
     ): Promise<string>;
+    /** Publishes a fresh revocation list naming these versions. */
+    revoke(...versions: string[]): Promise<void>;
 }
 
 async function start(options: { readonly pinned?: string } = {}): Promise<Engine> {
@@ -60,7 +62,7 @@ async function start(options: { readonly pinned?: string } = {}): Promise<Engine
         await signTestRevocations(keys, { issuedAt: new Date(NOW - HOUR), expiresAt: new Date(NOW + 24 * HOUR) }),
     );
     const store = createMemoryBundleStore();
-    let onActive: (info: { version: string; sha256: string; logIndex: number }) => void = () => undefined;
+    let onActive: (info: { version: string; sha256: string; logIndex: number } | undefined) => void = () => undefined;
     let onChecked: (outcome: UiUpdateOutcome, atMs: number) => void = () => undefined;
     const loader = createUiLoader({
         updatePolicy:
@@ -87,7 +89,11 @@ async function start(options: { readonly pinned?: string } = {}): Promise<Engine
     harness = await createApiHarness({ bundles: store, ui: loader });
     const runtime = harness.runtime;
     onActive = (bundle) =>
-        runtime?.setUi({ version: bundle.version, bundleSha256: bundle.sha256, releaseLogIndex: bundle.logIndex });
+        runtime?.setUi(
+            bundle === undefined
+                ? null
+                : { version: bundle.version, bundleSha256: bundle.sha256, releaseLogIndex: bundle.logIndex },
+        );
     onChecked = (outcome, atMs) => runtime?.setUiUpdateCheck(uiUpdateCheckOf(outcome, atMs));
     return {
         harness,
@@ -106,6 +112,15 @@ async function start(options: { readonly pinned?: string } = {}): Promise<Engine
                 artifacts: new Map([[TEST_ARCHIVE_NAME, serve?.(bundle.archive) ?? bundle.archive]]),
             });
             return bundle.sha256;
+        },
+        async revoke(...versions) {
+            source.setRevocations(
+                await signTestRevocations(keys, {
+                    issuedAt: new Date(NOW),
+                    expiresAt: new Date(NOW + 24 * HOUR),
+                    revoked: versions.map((version) => ({ version, reason: 'compromised' })),
+                }),
+            );
         },
     };
 }
@@ -134,7 +149,7 @@ describe('UI routes', () => {
         const engine = await start();
         const before = await get(engine, '/', engine.owner);
         expect(before.status).toBe(503);
-        expect(await before.text()).toContain('not installed yet');
+        expect(await before.text()).toContain('The app is unavailable');
 
         await engine.publish('1.0.0');
         expect(await engine.loader.checkNow()).toMatchObject({ kind: 'installed' });
@@ -361,8 +376,55 @@ describe('security panel and control listener', () => {
                 version: '1.0.0',
                 reason: null,
                 revocationReason: null,
+                eligibleAt: null,
             },
         });
+    });
+
+    it('stop serving a revoked active bundle: the previous one comes back, then the plain page', async () => {
+        const engine = await start({ pinned: '1.0.0' });
+        const first = await engine.publish('1.0.0');
+        await engine.loader.checkNow();
+        await engine.publish('1.1.0', { files: [...TEST_BUNDLE_FILES, { path: 'new.txt', bytes: new Uint8Array(1) }] });
+        engine.loader.pin(EngineVersion.parse('1.1.0'));
+        expect(await engine.loader.checkNow()).toMatchObject({ kind: 'installed', version: '1.1.0' });
+        expect((await get(engine, '/new.txt', engine.owner, '*/*')).status).toBe(200);
+        const panel = async () => {
+            const overview = await engine.harness.client(engine.owner).security.get(new AbortController().signal);
+            if (overview.kind !== 'ok') throw new Error('no security overview');
+            return overview.data.ui;
+        };
+        const placeholder = await (async () => {
+            const fresh = await createApiHarness({});
+            try {
+                const overview = await fresh
+                    .client(fresh.signIn({ memberId: fresh.ownerId() }))
+                    .security.get(new AbortController().signal);
+                if (overview.kind !== 'ok') throw new Error('no security overview');
+                return overview.data.ui;
+            } finally {
+                await fresh.close();
+            }
+        })();
+
+        await engine.revoke('1.1.0');
+        expect(await engine.loader.checkNow()).toEqual({ kind: 'refused', version: '1.1.0', reason: 'revoked' });
+        expect((await get(engine, '/new.txt', engine.owner, '*/*')).status).toBe(404);
+        expect((await get(engine, '/', engine.owner)).status).toBe(200);
+        expect(await panel()).toMatchObject({
+            version: '1.0.0',
+            bundleSha256: first,
+            lastUpdateCheck: { outcome: 'refused', version: '1.1.0', reason: 'revoked', eligibleAt: null },
+        });
+
+        await engine.revoke('1.0.0', '1.1.0');
+        await engine.loader.checkNow();
+        const page = await get(engine, '/', engine.owner);
+        expect(page.status).toBe(503);
+        expect(await page.text()).toContain('The app is unavailable');
+        const withdrawn = await panel();
+        expect(withdrawn).toEqual({ ...placeholder, lastUpdateCheck: withdrawn.lastUpdateCheck });
+        expect(withdrawn.lastUpdateCheck).toMatchObject({ outcome: 'refused', version: '1.0.0', reason: 'revoked' });
     });
 
     it('run a check on POST /__mock/ui/check, re-pin under pinned, and keep the old bundle on a refusal', async () => {

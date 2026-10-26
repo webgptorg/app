@@ -94,8 +94,8 @@ export interface EngineRuntime {
     setRelayStatus(relayHostname: string, status: RelayStatus): void;
     setHostnames(hostnames: readonly string[]): void;
     setHeartbeat(heartbeat: HeartbeatInfo): void;
-    /** The UI bundle the loader serves (M-05). */
-    setUi(ui: UiBundleInfo): void;
+    /** The UI bundle the loader serves (M-05); `null` once none is, as before the first install. */
+    setUi(ui: UiBundleInfo | null): void;
     /** The UI loader's last update check (M-05). */
     setUiUpdateCheck(check: UiUpdateCheck): void;
     /** The certificate served for the default hostname, after every issue or renewal. */
@@ -145,6 +145,8 @@ export async function createEngineRuntime(options: EngineRuntimeOptions): Promis
         uiUpdateCheck: null as UiUpdateCheck | null,
         tls: null as TlsCertificateInfo | null,
     };
+    // Each core's own placeholder, so it comes back when a revocation leaves no bundle active.
+    const placeholderUi = new WeakMap<InMemoryEngineCore, SecurityOverview['ui']>();
     const listeners: (() => void)[] = [];
     let current = { seed: options.seed, scenario: options.scenario, capabilities: options.capabilities };
     const now = (): string => new Date(clock.nowMs()).toISOString().replace(/\.\d{3}Z$/, 'Z');
@@ -220,7 +222,8 @@ export async function createEngineRuntime(options: EngineRuntimeOptions): Promis
     function applySecurity(core: InMemoryEngineCore): void {
         // Until a bundle is active the core's placeholder bundle stays, but a refused or failed check still shows.
         const overview = core.controller.updateSecurity({});
-        const ui = sticky.ui ?? overview.ui;
+        if (!placeholderUi.has(core)) placeholderUi.set(core, overview.ui);
+        const ui = sticky.ui ?? placeholderUi.get(core) ?? overview.ui;
         core.controller.updateSecurity({
             ...(sticky.tls === null ? {} : { tls: { ...overview.tls, ...sticky.tls } }),
             ui: { ...ui, lastUpdateCheck: sticky.uiUpdateCheck },

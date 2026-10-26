@@ -413,10 +413,8 @@ describe('startMockEngine', () => {
             ui: {
                 releaseUrl: 'https://releases.ptbk.test/',
                 updatePolicy: { kind: 'manual' },
-                trustPolicyFile: '/unused',
-                trustedRootFile: null,
+                trust: { kind: 'files', trustPolicyFile: '/unused', trustedRootFile: null, fakeProvenance: true },
                 checkIntervalS: 3600,
-                fakeProvenance: true,
             },
         };
         const base = () => ({
