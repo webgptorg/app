@@ -25,7 +25,7 @@ The engine is `apps/agents-server` in `webgptorg/promptbook`: a Next.js app rout
 | Engine key, registration, heartbeat `seq`, UI update state, ACME account key, certificates   | Files in `PTBK_DATA_DIR`, as the topic files require.                                                                                                                                                                                                                         |
 | Next.js app                                                                                  | Not reachable from the tunnel. If the engine still needs it for something other than the UI, it listens on 127.0.0.1 only and the gateway never proxies to it. The engine origin serves the gateway pages, `/api/v1` and our bundle, nothing else ([gateway.md](gateway.md)). |
 
-**Replace, do not reuse.** The engine's existing access code must not sit in front of the engine API or the UI: its login and admin login, its session cookie, its API token checks, its CORS handling, its IP and visibility middleware, its server actions, and any custom JavaScript or stylesheet injection. The gateway replaces all of them. The spec's [Security hardening](../spec/zero-trust-spec.md#security-hardening) explains why; the details are in a separate private report. Domain logic (agents, books, chat execution, knowledge, file storage) can be reused behind the transport, once you have checked that it takes no access decision of its own from the old request context.
+**Replace, do not reuse.** The engine's existing access code must not sit in front of the engine API or the UI: its login and admin login, its session cookie, its API token checks, its CORS handling, its IP and visibility middleware, its server actions, and any custom JavaScript or stylesheet injection. The gateway replaces all of them. The spec's [Security hardening](../spec/zero-trust-spec.md#security-hardening) explains why; the findings, file by file with what replaces each, are in `docs/security/agents-server-review.md` in the platform checkout, a private page for readers with access. Domain logic (agents, books, chat execution, knowledge, file storage) can be reused behind the transport, once you have checked that it takes no access decision of its own from the old request context.
 
 **Two different `/api/v1`s.** The engine already has a management API under `/api/v1` with its own OpenAPI document. It is not our contract and must not be reachable through the gateway. The contract's `/api/v1` is served only from `ENGINE_API_ROUTE_LIST`.
 
@@ -44,7 +44,7 @@ The engine is `apps/agents-server` in `webgptorg/promptbook`: a Next.js app rout
    export PLATFORM_DIR="$(cd ../ptbk-platform && pwd)"
    ```
 
-2. Until the contracts are published (task E-02), depend on them by path from the package that holds the new code. npm only links the directories and does not install their dependencies (their `catalog:` and `workspace:` specifiers are Bun's, which npm does not read); `zod`, `@noble/curves`, `@sigstore/*` and `@ptbk/protocol` then resolve from the platform checkout's `node_modules`, which is why `bun install` must have run there. We checked this with npm 11 and Node 24.
+2. Depend on the contracts by path from the package that holds the new code. This is the supported way to consume them; publishing them to a registry (task E-02) is the maintainer's call and changes nothing else in this plan. npm only links the directories and does not install their dependencies (their `catalog:` and `workspace:` specifiers are Bun's, which npm does not read); `zod`, `@noble/curves`, `@sigstore/*` and `@ptbk/protocol` then resolve from the platform checkout's `node_modules`, which is why `bun install` must have run there. We checked this with npm 11 and Node 24.
 
    ```sh
    npm install --save "file:$PLATFORM_DIR/packages/protocol" "file:$PLATFORM_DIR/packages/engine-api"
@@ -60,7 +60,7 @@ The engine is `apps/agents-server` in `webgptorg/promptbook`: a Next.js app rout
 
 **Pitfalls:**
 
-- Never copy contract sources, schemas or tarballs into the engine repository, and do not push the path dependency to a public branch: until E-02 the contracts are not public. Ask the maintainer how this work is shared before you push.
+- Never copy contract sources, schemas or tarballs into the engine repository: the checkout is the one source, and a copy drifts. Whether and when the engine's work goes public is the maintainer's decision.
 - The contracts use zod 4 from the platform checkout. Do not compose their schemas with another zod instance; call the exported schemas and parse functions as they are.
 - If the engine's typecheck reports errors inside `@ptbk/*` sources, align the compiler options for the new module (the contracts are checked with `strict`, `exactOptionalPropertyTypes`, `lib: ["ES2024", "DOM"]`). Never edit the contract sources.
 - Pinning one platform commit matters: the guide, the contracts, the mock engine and the conformance suite at that commit agree with each other. Move the pin deliberately, and rerun every phase's checks when you do.
@@ -133,7 +133,7 @@ The engine is `apps/agents-server` in `webgptorg/promptbook`: a Next.js app rout
 
 **Reference:** [build-heartbeat.ts](../../apps/mock-engine/src/domain/heartbeat/build-heartbeat.ts), [heartbeat-loop.ts](../../apps/mock-engine/src/domain/heartbeat/heartbeat-loop.ts), [fs-seq-store.ts](../../apps/mock-engine/src/adapters/fs-seq-store.ts), [os-system-stats.ts](../../apps/mock-engine/src/adapters/os-system-stats.ts).
 
-**Pitfalls:** our stacks' dashboard expects a beat every 15 s, so keep the 60 s interval as the default and add a development setting to change it (phase 9); never re-serialise the body after signing; the digest goes into the signing input as 32 raw bytes, not hex; the heartbeat goes straight to the dashboard, never through a relay; the body is numbers only, so no agent names or versions of anything but the engine.
+**Pitfalls:** keep 60 s as the interval; the local stacks accept it (a shorter development setting is an optional convenience, see [testing-against-the-platform.md](testing-against-the-platform.md#b-the-local-dev-stack)); never re-serialise the body after signing; the digest goes into the signing input as 32 raw bytes, not hex; the heartbeat goes straight to the dashboard, never through a relay; the body is numbers only, so no agent names or versions of anything but the engine.
 
 ## Phase 4: tunnel client
 
@@ -186,7 +186,7 @@ The engine is `apps/agents-server` in `webgptorg/promptbook`: a Next.js app rout
 - Step-up: a fresh passkey assertion for `stepUp` routes, 401 `step-up-required` otherwise, `STEP_UP_PATH` with a return address.
 - The security headers from [gateway.md](gateway.md#security-headers) on every response, `ENGINE_UI_CSP` byte for byte, and gateway pages without inline script or style.
 - Rate limits on anonymous endpoints per client IP (the `OPEN` frame's address) and audit entries for `auth.*`, `passkey.*` and `session.*`.
-- A way for the conformance suite to get sessions: see the [open point](conformance.md#sessions-on-a-real-engine). Agree it with the maintainer before you build it.
+- A way for the conformance suite to get sessions. The proposed answer ([conformance.md](conformance.md#sessions-on-a-real-engine)): a server-side command that exists only in the engine's conformance build, creates the owner or a member with chosen permissions and prints a session cookie; production builds refuse it, and it is never an HTTP endpoint. Your conformance target module runs it. Confirm the details with the maintainer before you build it.
 
 **Prove:**
 

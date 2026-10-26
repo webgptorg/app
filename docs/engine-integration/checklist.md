@@ -119,6 +119,6 @@ Route groups (each must be served, capability groups when advertised):
 
 ## Conformance
 
-| ID     | Requirement                                                                                            | Spec                                                | Contract                   | Check | Reference                                      |
-| ------ | ------------------------------------------------------------------------------------------------------ | --------------------------------------------------- | -------------------------- | ----- | ---------------------------------------------- |
-| ENG-99 | A way for the conformance suite to get owner and member sessions on a passkey-only engine (open point) | [Build plan](../spec/zero-trust-spec.md#build-plan) | `ConformanceTarget` (C-05) | —     | Mock: dev-only control listener, merged (M-04) |
+| ID     | Requirement                                                                                                                                                                   | Spec                                                | Contract                   | Check | Reference                                      |
+| ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- | -------------------------- | ----- | ---------------------------------------------- |
+| ENG-99 | A way for the conformance suite to get owner and member sessions on a passkey-only engine (proposed: a session command in the conformance build only, never an HTTP endpoint) | [Build plan](../spec/zero-trust-spec.md#build-plan) | `ConformanceTarget` (C-05) | —     | Mock: dev-only control listener, merged (M-04) |
