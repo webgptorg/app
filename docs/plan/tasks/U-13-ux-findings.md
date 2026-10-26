@@ -51,6 +51,13 @@ Content and wording:
 - Pagination and column-picker visibility are decided by the `DataTable` pattern in `packages/ui`, not per screen.
 - Everything stays under the engine CSP: no inline styles, Trusted Types, i18n for every string.
 
+## Outcome
+
+1. **Authorization bug, now fixed (#90).** An agent's `visibility` is about anonymous access through the gateway (`private` means not public), not about which members see it. The contract leaves it to the engine which chats a member may read ("every chat the member can see"), and the mock gives members `chats.read` engine-wide. So listing the owner's agents and chats to a member is intended. Writing is different: the UI shows another member's chat read-only, but any member with `chats.write` could send or cancel in it. The in-memory core now enforces this as a contract rule: only the member who started a chat writes in it, and anyone else gets 403 `forbidden` plus a `denied` audit entry. `engine-api.md` documents the rule, and the new conformance check `engine-api.cross-member.chat-writes` covers it. The existing cross-member check only tests the agent routes a target declares, so it could not have caught this. The member home now names chats with `chatName`, the same way the chat page does (title, then first message), so they no longer show as "Untitled chat". It now titles its agent list "Agents you can use".
+2. **Fixed (#90).** A secret scoped to a deleted agent shows the agent's name with a "Deleted" badge and no link, because the agent's page answers 404. The heartbeat's `agents` now leaves out soft-deleted agents, like the default agent list and billing do; `heartbeat.md` defines both counts. The mock now also reports the default hostname's certificate status from the certificate it serves.
+
+- Also in #90: the flaky home test "shows the update banner on an engine.update-available event" matched the feed's polite live region as well as the card, depending on when the announcer flushed. The test now looks inside the list and asserts the announcement separately.
+
 ## Acceptance criteria
 
 - [ ] Finding 1 is decided with evidence from the contract; an authorization bug has a failing test first and, if the conformance suite should have caught it, a tightened cross-member check.
@@ -62,3 +69,4 @@ Content and wording:
 ## Risks and open points
 
 - X-04's e2e flows cover several of these screens; run them once the dev stack frees the e2e subnet.
+- Whether members should read each other's chats at all is engine policy that the contract leaves open. The mock allows it. Agree on it with the engine team (E-04).
