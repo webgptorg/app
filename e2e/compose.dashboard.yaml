@@ -77,10 +77,10 @@ services:
           '--address',
           '127.0.0.1',
         ]
-    dns: [10.89.231.53]
+    dns: ['${PTBK_STACK_NET:-10.89.231}.53']
     networks:
       stack:
-        ipv4_address: 10.89.231.60
+        ipv4_address: ${PTBK_STACK_NET:-10.89.231}.60
 
   # The registry comes from the dashboard over HTTPS (trusting the dev CA); the token arrives as a file, because only
   # the registry-keys service knows it, and becomes the relay's RELAY_REGISTRY_TOKEN as it starts.

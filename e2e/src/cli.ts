@@ -10,6 +10,8 @@ import type { ComposeTarget } from './docker.ts';
 import { composeArgs, docker, dockerOutput, must } from './docker.ts';
 import type { Scenario } from './scenarios.ts';
 import { ALL_SCENARIO_OVERLAYS, ON_DEMAND_PROFILE, SCENARIOS, scenarioNamed } from './scenarios.ts';
+import { STACK_NET_VARIABLE } from './dev-stack-config.ts';
+import { STACK_NET } from './stack.ts';
 
 const E2E_DIR = dirname(import.meta.dirname);
 const RESULTS_DIR = join(E2E_DIR, 'test-results');
@@ -22,7 +24,8 @@ export { composeArgs };
 
 /**
  * One project per checkout, so two worktrees never drive each other's containers. The fixed subnet still allows only
- * one running stack per Docker host; a second `up` fails on the overlapping network instead of hijacking the first.
+ * one running e2e stack per Docker host; a second `up` fails on the overlapping network instead of hijacking the
+ * first. The dev stack has a network of its own (X-08) and runs next to either.
  */
 export function projectName(repoRoot: string, env: Readonly<Record<string, string | undefined>>): string {
     const configured = env['E2E_PROJECT'];
@@ -222,6 +225,8 @@ async function e2e(
 
 async function main(argv: readonly string[]): Promise<number> {
     const [command, ...rest] = argv;
+    // The tests address the stack by stack.ts's constants, so e2e never takes a moved network from the environment.
+    process.env[STACK_NET_VARIABLE] = STACK_NET;
     const base = { project: projectName(dirname(E2E_DIR), process.env), e2eDir: E2E_DIR };
     const extraOverlays = parseOverlays(process.env['E2E_OVERLAYS']);
     const chosen = process.env['E2E_SCENARIO'];

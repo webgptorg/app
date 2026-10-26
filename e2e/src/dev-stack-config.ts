@@ -4,6 +4,7 @@
 import { join } from 'node:path';
 
 import type { ComposeTarget } from './docker.ts';
+import { STACK_NET } from './stack.ts';
 
 /** Its own compose project, so `e2e:down` of a worktree never touches it, and its volumes survive `down`. */
 export const DEV_PROJECT = 'ptbk-dev';
@@ -35,6 +36,38 @@ export const DEV_PKI_DIR = join(DEV_DIR, 'pki');
 /** Where the mock engine's `dev-ca`, run with `PTBK_DATA_DIR` = DEV_PKI_DIR, keeps the CA. */
 export const DEV_CA_CERT_FILE = join(DEV_PKI_DIR, 'dev-ca', 'ca-cert.pem');
 export const DEV_CHROMIUM_PROFILE = join(DEV_DIR, 'chromium');
+
+/** The compose variable holding the stack network's first three octets (compose.yaml). */
+export const STACK_NET_VARIABLE = 'PTBK_STACK_NET';
+/**
+ * The dev stack's network, so it runs next to any e2e stack: clear of e2e's stack network (src/stack.ts, STACK_NET)
+ * and of the nat scenarios' engine LAN (ENGINE_LAN_SUBNET), which the dev stack never layers.
+ */
+export const DEV_STACK_NET = '10.89.241';
+export const DEV_SUBNET = `${DEV_STACK_NET}.0/24`;
+/** coredns/ with its addresses moved onto DEV_STACK_NET; compose.dev.yaml mounts it as the stack resolver's config. */
+export const DEV_COREDNS_DIR = join(DEV_DIR, 'coredns');
+
+const E2E_STACK_ADDRESS = new RegExp(`(?<![\\d.])${STACK_NET.replaceAll('.', '\\.')}\\.(\\d{1,3})(?!\\d)`, 'g');
+
+/**
+ * A CoreDNS file of the e2e stack (Corefile, zone file) for a stack on `stackNet`: every address on the e2e stack
+ * network moves there, host part kept. The e2e files stay the only source, whatever they serve the names with.
+ */
+export function moveStackAddresses(text: string, stackNet: string): string {
+    return text.replace(E2E_STACK_ADDRESS, (_match, host: string) => `${stackNet}.${host}`);
+}
+
+/**
+ * Why `up` must not reuse the project's existing stack network, from `docker network inspect --format` listing its
+ * subnets; null when it is already on `subnet`. A stack created before X-08 sits on e2e's subnet and has to come down
+ * once, which compose would not say clearly.
+ */
+export function staleNetwork(inspectedSubnets: string, subnet: string): string | null {
+    const subnets = inspectedSubnets.split(/\s+/).filter((entry) => entry !== '');
+    if (subnets.length === 0 || subnets.every((entry) => entry === subnet)) return null;
+    return `the dev stack's network is still on ${subnets.join(', ')}, not ${subnet}; run \`bun run dev:stack down\`, then \`up\` again (your account, passkeys and linked engine stay)`;
+}
 
 const LINK_CODE = /^[a-z2-7]{26}$/;
 

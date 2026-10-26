@@ -113,6 +113,7 @@ bun run plan --check  # validates statuses and dependencies (part of bun run che
 | [M-06](tasks/M-06-mock-engine-registration-heartbeat.md) | Mock engine registration and heartbeat client                                    | M    | M3        |
 | [X-05](tasks/X-05-e2e-dashboard-flow.md)                 | E2E: sign up, link engine, see it online, open it                                | X    | M3        |
 | [X-06](tasks/X-06-local-dev-stack.md)                    | Local dev stack for humans: the whole product on one machine                     | X    | M3        |
+| [X-08](tasks/X-08-dev-stack-address-space.md)            | The dev stack and e2e side by side                                               | X    | M3        |
 | [I-01](tasks/I-01-relay-hosts.md)                        | Relay hosts: provisioning and hardening                                          | I    | M4        |
 | [I-02](tasks/I-02-dns-cloudflare.md)                     | DNS and Cloudflare environments                                                  | I    | M4        |
 | [I-03](tasks/I-03-deploy-pipelines.md)                   | Deploy and release pipelines                                                     | I    | M4        |
@@ -140,7 +141,7 @@ Tasks in the same wave have no dependencies on each other and can run at the sam
 | 8    | D-06, D-08, I-03, I-04, X-04                                                 |
 | 9    | I-05, I-07, X-05                                                             |
 | 10   | E-03, I-06, X-06                                                             |
-| 11   | E-04                                                                         |
+| 11   | E-04, X-08                                                                   |
 
 C-01 and R-01 both live in `packages/protocol` and touch its `package.json` and `src/index.ts`; whoever merges second rebases (AGENTS.md, step 7). Wave 1 starts four agents at once; wave 4 is the widest with thirteen.
 
