@@ -2,7 +2,7 @@
 
 - **Lane:** I · **Module:** `apps/relay` (metrics), `apps/dashboard` (metrics, uptime and alert jobs), `infra/` · **Milestone:** M4
 - **Depends on:** I-01, I-02, D-04, D-05
-- **Status:** in progress (feat/i-04-observability)
+- **Status:** done (#80)
 - **Spec:** Metadata we still see; Operations (Availability and failure modes); Hosting and stack (Monitoring jobs); Legal and GDPR (sub-processors); docs/engineering.md (Logging and metadata)
 
 ## Goal
@@ -39,13 +39,13 @@ The relay pipes ciphertext and must log only what "Metadata we still see" lists,
 
 ## Acceptance criteria
 
-- [ ] ADR 0012 merged and listed in `docs/adr/README.md`.
-- [ ] Relay unit tests for the metrics port; `/metrics` returns 401 without the token and the documented series with it; no series carries an engine ID, hostname or IP label (test).
-- [ ] Label-cardinality test, and `promtool check metrics` over the relay's `/metrics` output; alert rules are evaluated in the dashboard Worker, so they are unit-tested as domain code, and the scheduled dispatcher runs under the Workers test pool.
-- [ ] Compose e2e: with short intervals and the fake `AlertSink`, stopping relay-a raises an alert and restarting it clears it. The cron is fired locally through workerd's `--test-scheduled` (`/__scheduled`) in a test-only overlay, never in `compose.dashboard.yaml` or the dev overlay.
-- [ ] Log field allowlist test passes; journald retention is checked by I-01's `verify.sh` in its CI VM.
-- [ ] Runbook written; `bun run check` passes.
-- [ ] **Status** line above set to `done (#<PR>)`.
+- [x] ADR 0012 merged and listed in `docs/adr/README.md`.
+- [x] Relay unit tests for the metrics port; `/metrics` returns 401 without the token and the documented series with it; no series carries an engine ID, hostname or IP label (test).
+- [x] Label-cardinality test, and `promtool check metrics` over the relay's `/metrics` output; alert rules are evaluated in the dashboard Worker, so they are unit-tested as domain code, and the scheduled dispatcher runs under the Workers test pool.
+- [x] Compose e2e: with short intervals and the fake `AlertSink`, stopping relay-a raises an alert and restarting it clears it. The cron is fired locally through workerd's `--test-scheduled` (`/__scheduled`) in a test-only overlay, never in `compose.dashboard.yaml` or the dev overlay.
+- [x] Log field allowlist test passes; journald retention is checked by I-01's `verify.sh` in its CI VM.
+- [x] Runbook written; `bun run check` passes.
+- [x] **Status** line above set to `done (#<PR>)`.
 
 ## Apply (needs credentials)
 
