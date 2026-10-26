@@ -1,6 +1,8 @@
+import { createHash } from 'node:crypto';
+import { realpathSync } from 'node:fs';
+import { chmod, rm, rmdir } from 'node:fs/promises';
 import { request } from 'node:http';
-import { chmod, rm } from 'node:fs/promises';
-import { join } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 
 import { z } from 'zod';
 
@@ -12,12 +14,14 @@ import type { PlainHttpServer } from './http/plain-http-server';
 import { startPlainHttpServer } from './http/plain-http-server';
 import type { HttpRoute } from './http/route';
 import { defineHttpRoute } from './http/route';
-import { lstatOrNull } from './private-files';
+import { currentUid, ensurePrivateDirectory, lstatOrNull, privacyProblem } from './private-files';
 
-/** Inside `PTBK_DATA_DIR`, which only the engine's user can enter: reaching the socket is shell access to the host. */
-export const OPERATOR_SOCKET_FILE = 'operator.sock';
-/** `sun_path` holds 104 bytes on macOS and 108 on Linux, terminator included. */
-const MAX_SOCKET_PATH_BYTES = 103;
+/**
+ * `/tmp`, not `os.tmpdir()` or the data directory: a Unix socket path holds at most 103 bytes (104 on macOS with the
+ * terminator), and macOS gives every user a temporary directory deep under `/var/folders`.
+ */
+const SOCKET_ROOT = '/tmp';
+export const OPERATOR_SOCKET_FILE = 'op.sock';
 
 export const OPERATOR_PATHS = { status: '/v1/status', link: '/v1/link' } as const;
 
@@ -29,14 +33,44 @@ export class OperatorSocketError extends Error {
     }
 }
 
-export function operatorSocketPath(dataDir: string): string {
-    const path = join(dataDir, OPERATOR_SOCKET_FILE);
-    if (Buffer.byteLength(path) > MAX_SOCKET_PATH_BYTES) {
-        throw new OperatorSocketError(
-            `PTBK_DATA_DIR is too long for the operator socket ${path} (at most ${String(MAX_SOCKET_PATH_BYTES)} bytes)`,
-        );
+/**
+ * One short directory per data directory, named after a hash of its real path, so the engine and the host's commands
+ * find the same socket however long `PTBK_DATA_DIR` is. It is 0700 and the engine user's own; anything else there
+ * (another user's directory, a symbolic link, loose modes) is refused, as a socket someone else could plant would
+ * answer the operator's commands in the engine's name.
+ */
+export function operatorSocketDir(dataDir: string): string {
+    return join(SOCKET_ROOT, `ptbk-${createHash('sha256').update(canonicalPath(dataDir)).digest('hex').slice(0, 16)}`);
+}
+
+/**
+ * The real path, also for a data directory the engine has yet to create: its nearest existing ancestor is resolved
+ * and the rest appended, so a command run before the first start names the same socket (on macOS `/var` is a link
+ * to `/private/var`).
+ */
+function canonicalPath(path: string): string {
+    const missing: string[] = [];
+    for (let current = resolve(path); ; current = dirname(current)) {
+        try {
+            return join(realpathSync(current), ...missing);
+        } catch {
+            if (dirname(current) === current) return resolve(path);
+            missing.unshift(basename(current));
+        }
     }
-    return path;
+}
+
+export function operatorSocketPath(dataDir: string): string {
+    return join(operatorSocketDir(dataDir), OPERATOR_SOCKET_FILE);
+}
+
+const SOCKET_DIR_LABEL = 'operator socket directory';
+
+/** The directory's privacy problem, if it exists and is not the engine user's own 0700 directory. */
+export async function socketDirProblem(dataDir: string, uid: number | null = currentUid()): Promise<string | null> {
+    const path = operatorSocketDir(dataDir);
+    const stats = await lstatOrNull(path);
+    return stats === null ? null : privacyProblem(stats, { label: SOCKET_DIR_LABEL, path, kind: 'directory' }, uid);
 }
 
 /** Whether something answers on the socket: a running engine. */
@@ -92,7 +126,7 @@ function operatorRoutes(api: OperatorApi): readonly HttpRoute[] {
 }
 
 /**
- * The operator channel: HTTP on a Unix socket at `<dataDir>/operator.sock`, mode 0600, never on the network. A socket
+ * The operator channel: HTTP on a Unix socket at `/tmp/ptbk-<hash>/op.sock`, mode 0600, never on the network. A socket
  * left by a crashed engine is replaced; one that still answers means another engine runs from this data directory,
  * and starting would give both the same key, so startup is refused.
  */
@@ -102,6 +136,12 @@ export async function startOperatorSocket(deps: {
     readonly clock: Clock;
     readonly logger: Logger;
 }): Promise<PlainHttpServer> {
+    const dir = operatorSocketDir(deps.dataDir);
+    const problem = await ensurePrivateDirectory(
+        { label: SOCKET_DIR_LABEL, path: dir, kind: 'directory' },
+        currentUid(),
+    );
+    if (problem !== null) throw new OperatorSocketError(problem);
     const path = operatorSocketPath(deps.dataDir);
     const existing = await lstatOrNull(path);
     if (existing !== null) {
@@ -118,7 +158,7 @@ export async function startOperatorSocket(deps: {
         errorEvent: 'operator.error',
         listen: { path },
     });
-    // The directory is 0700 already; the mode keeps the socket private if the directory is ever loosened.
+    // The directory is 0700 already; the mode keeps the socket private even so.
     await chmod(path, 0o600);
     deps.logger.info('operator.listening', { socket: OPERATOR_SOCKET_FILE });
     return {
@@ -126,6 +166,8 @@ export async function startOperatorSocket(deps: {
         close: async () => {
             await server.close();
             await rm(path, { force: true });
+            // Best effort: another engine's command may be looking at it, and a leftover empty directory is harmless.
+            await rmdir(dir).catch(() => undefined);
         },
     };
 }

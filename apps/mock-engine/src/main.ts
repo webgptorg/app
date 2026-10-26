@@ -217,6 +217,16 @@ async function start(): Promise<{ readonly engine: MockEngine; readonly logger: 
     }
 }
 
+/**
+ * The launch contract: an engine that refuses to start exits non-zero, rather than waiting on whatever it opened before
+ * it failed. On macOS stdout to a pipe is asynchronous, so the failure line is flushed first.
+ */
+function exitAfterOutput(code: number): void {
+    process.stdout.write('', () => {
+        process.stderr.write('', () => process.exit(code));
+    });
+}
+
 function serve(engine: MockEngine, logger: Logger): void {
     // Clock timers are unref'd, so while every relay is in backoff nothing else would keep the process running.
     const keepAlive = setInterval(() => undefined, 2 ** 30);
@@ -287,6 +297,6 @@ if (verb === 'status') {
     await conformanceSession(args);
 } else {
     const started = await start();
-    if (started === null) process.exitCode ??= EXIT_CODE.failed;
+    if (started === null) exitAfterOutput(typeof process.exitCode === 'number' ? process.exitCode : EXIT_CODE.failed);
     else serve(started.engine, started.logger);
 }

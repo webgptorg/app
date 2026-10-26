@@ -1,8 +1,10 @@
 import { spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { once } from 'node:events';
-import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:https';
 import type { AddressInfo } from 'node:net';
+import { createServer as createNetServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -12,6 +14,7 @@ import { Hostname, RelayId, defaultHostname } from '@ptbk/protocol';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { createFsIdentityStore } from '../src/adapters/fs-identity-store';
+import { operatorSocketDir, operatorSocketPath } from '../src/adapters/operator-socket';
 import { startConnectProxy } from '../src/testing/connect-proxy';
 import type { FakeDashboard } from '../src/testing/fake-dashboard';
 import { createFakeDashboard } from '../src/testing/fake-dashboard';
@@ -206,6 +209,38 @@ async function startHttpsDashboard(dir: string): Promise<{ dashboard: FakeDashbo
     return { dashboard, url: `https://localhost:${String((server.address() as AddressInfo).port)}`, caFile };
 }
 
+async function freePort(): Promise<number> {
+    const probe = createNetServer();
+    await new Promise<void>((resolve) => probe.listen(0, '127.0.0.1', resolve));
+    const { port } = probe.address() as AddressInfo;
+    await new Promise((resolve) => probe.close(resolve));
+    return port;
+}
+
+describe('a refused start', () => {
+    it(
+        'exits non-zero even with listeners already open, here for an operator socket directory others can enter',
+        async () => {
+            const dataDir = join(await tempDir(), 'data');
+            const socketDir = operatorSocketDir(dataDir);
+            await mkdir(socketDir, { mode: 0o755 });
+            await chmod(socketDir, 0o755);
+            cleanups.push(() => rm(socketDir, { recursive: true, force: true }));
+            const engine = run('src/main.ts', {
+                PTBK_DATA_DIR: dataDir,
+                PTBK_ENGINE_DOMAIN: ENGINE_DOMAIN,
+                PTBK_RELAYS: `wss://${RELAY}:1`,
+                MOCK_CONTROL: 'enabled',
+                MOCK_CONTROL_PORT: String(await freePort()),
+            });
+            expect(await engine.exited).toBe(1);
+            expect(engine.stdout()).toContain('"event":"engine.start-failed"');
+            expect(engine.stdout()).toContain('operator socket directory');
+        },
+        PROCESS_TIMEOUT_MS,
+    );
+});
+
 describe('register command and dashboard mode', () => {
     it(
         'registers once over HTTPS, never writes the link code down, then beats from the stored registration',
@@ -288,7 +323,7 @@ describe('register command and dashboard mode', () => {
 
             engine.child.kill('SIGTERM');
             expect(await engine.exited).toBe(0);
-            expect(await readdir(dataDir)).not.toContain('operator.sock');
+            expect(existsSync(operatorSocketPath(dataDir))).toBe(false);
             const stopped = run('src/main.ts', env, ['status']);
             expect(await stopped.exited).toBe(1);
             expect(stopped.stderr()).toContain('The engine is not running');
