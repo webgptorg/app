@@ -610,9 +610,12 @@ describe('browser listener over real sockets', () => {
         const credited = stream.received();
         const upload = randomBytes(INITIAL_WINDOW_BYTES + 100);
         client.socket.end(upload);
-        // The relay spent the window, read the browser's FIN and closed its own side (no half-open streams).
+        // The relay spent the window, read the browser's FIN and closed its own side (no half-open streams). The FIN
+        // reaches the browser on its own socket, so the window's last DATA may still be on its way to the engine.
         await once(client.socket, 'end');
-        expect(stream.received() - credited).toBe(INITIAL_WINDOW_BYTES);
+        await vi.waitFor(() => {
+            expect(stream.received() - credited).toBe(INITIAL_WINDOW_BYTES);
+        }, PATIENTLY);
         // Nothing can reach the browser any more: the relay drops this.
         stream.write('too late');
         expect(await digestOf(stream, upload.length)).toBe(sha256(upload));
