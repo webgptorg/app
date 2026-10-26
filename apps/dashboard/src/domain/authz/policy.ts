@@ -21,6 +21,10 @@ export const DASHBOARD_POLICY = {
     'engine.revoke': { scope: 'org', orgRoles: ['owner'], ...SENSITIVE_STEP_UP },
     // Read-only list of organizations in a problem state; acting on one (suspension, I-05) needs its own step-up action.
     'admin.billing.read': { scope: 'platform', ...PLAIN },
+    // Any organization's engine with its status, for abuse handling (I-05).
+    'admin.engine.read': { scope: 'platform', ...PLAIN },
+    // Suspend and unsuspend an engine for abuse or non-payment (I-05); audited, with the admin's reason.
+    'admin.engine.suspend': { scope: 'platform', ...STEP_UP },
     // An engine's custom hostnames and the CNAME target to hand the customer (D-08).
     'admin.hostnames.read': { scope: 'platform', ...PLAIN },
     // Attach, DNS-check and remove an Enterprise customer's hostname (D-08); every change is audited.

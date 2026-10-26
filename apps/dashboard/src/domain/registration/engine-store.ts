@@ -7,6 +7,9 @@ export type EngineStatus = 'active' | 'suspended';
 /** `status_reason` of an engine its owner revoked (D-06): permanent, and never lifted by an admin unsuspend (I-05). */
 export const OWNER_REVOKED = 'owner-revoked';
 
+/** `status_reason` of an engine a platform admin suspended (I-05); the admin's own words go to the audit log only. */
+export const PLATFORM_SUSPENDED = 'platform-suspended';
+
 /** The `org_audit_log` entry a revocation writes with it. */
 export interface RevocationAudit {
     readonly id: OrgAuditEntryId;

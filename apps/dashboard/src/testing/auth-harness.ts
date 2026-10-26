@@ -17,6 +17,7 @@ import type { AuthStore } from '../domain/auth/auth-store';
 import { createAuthorizer, type PolicyTable } from '../domain/authz/authorizer';
 import type { BillingStore } from '../domain/billing/billing-store';
 import type { CustomHostnameStore } from '../domain/custom-hostnames/custom-hostname-store';
+import type { PlatformEngineStore } from '../domain/engines/platform-engine-store';
 import type { EngineStore } from '../domain/registration/engine-store';
 import type { LinkCodeStore } from '../domain/registration/link-code-store';
 import type { EngineHostnameStore } from '../domain/registry/engine-hostname-store';
@@ -131,7 +132,11 @@ export function createAuthHarness(options: {
     /** Defaults to an in-memory store; the auth tests that use the default never touch billing. */
     readonly billingStore?: BillingStore;
     /** Default to in-memory stores whose organizations always exist. */
-    readonly registration?: { readonly linkCodes: LinkCodeStore; readonly engines: EngineStore };
+    readonly registration?: {
+        readonly linkCodes: LinkCodeStore;
+        readonly engines: EngineStore;
+        readonly platformEngines: PlatformEngineStore;
+    };
     /** Default to in-memory ones; the registry reader then reads the registration stores' engines. */
     readonly relayTokens?: RelayTokenStore;
     readonly registry?: RegistryReader;
@@ -161,6 +166,7 @@ export function createAuthHarness(options: {
         INSTALL_COMMAND: 'bun run dev:link {linkCode}',
         ADAPTERS: { email: options.email ?? 'fake', billing: 'fake', rateLimit: 'memory' },
         EMAIL_FROM: 'no-reply@ptbk.test',
+        ABUSE_EMAIL: 'abuse@ptbk.test',
         RATE_LIMIT_HMAC_KEY: DEV_RATE_LIMIT_HMAC_KEY,
         BILLING_PLANS: TEST_PLANS,
         STRIPE_WEBHOOK_SECRET: webhookSecret,
@@ -174,7 +180,9 @@ export function createAuthHarness(options: {
         webhookSecret,
         ...(options.billingStore === undefined ? {} : { store: options.billingStore }),
     });
-    const registration = options.registration ?? createMemoryRegistrationStores({ orgExists: () => true });
+    const registration =
+        options.registration ??
+        createMemoryRegistrationStores({ orgExists: () => true, adminAudit: options.store.adminAudit });
     const engineHostnames = createMemoryCustomHostnameStore({
         engines: registration.engines,
         auditLog: options.store.adminAudit,
@@ -209,6 +217,7 @@ export function createAuthHarness(options: {
         entitlements: testBilling.entitlements,
         linkCodes: registration.linkCodes,
         engines: registration.engines,
+        platformEngines: registration.platformEngines,
         relayTokens: options.relayTokens ?? createMemoryRelayTokenStore(),
         registry: options.registry ?? createMemoryRegistryReader(registration.engines),
         engineHostnames: customHostnames,

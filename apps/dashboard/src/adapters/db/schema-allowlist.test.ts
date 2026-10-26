@@ -16,6 +16,11 @@ const ALLOWLIST: Readonly<Record<string, readonly string[]>> = {
     org_audit_log: ['id', 'org_id', 'actor_user_id', 'action', 'target_type', 'target_id', 'created_at'],
     // Signup and recovery links: the token only as SHA-256, the address it was sent to, 15-minute lifetime.
     email_tokens: ['token_hash', 'purpose', 'email', 'user_id', 'created_at', 'expires_at', 'used_at'],
+    // Certificates for the engine domain from Certificate Transparency (I-05): public metadata only, the names, the
+    // issuer, when it was issued, which source first showed it and why it was flagged.
+    ct_certs: ['issuance_sha256', 'source', 'first_seen_at', 'not_before', 'hostnames', 'issuer', 'alert'],
+    // Where each CT source's next query starts.
+    ct_cursors: ['source', 'cursor'],
     // Registered engines: the public key and what derives from it, the mode and version the engine signed, and the
     // dashboard's status for it. Routing and billing metadata only.
     // Custom hostnames (D-08): the customer's hostname, which engine and organization it belongs to, the engine's
@@ -75,6 +80,9 @@ const ALLOWLIST: Readonly<Record<string, readonly string[]>> = {
         'cancel_at_period_end',
         'updated_at',
     ],
+    // The public-face check (I-05): what an anonymous visit to an engine's default hostname saw, as a match against
+    // the known sign-in page and a SHA-256 fingerprint; never the page itself. Kept 30 days.
+    public_face_checks: ['engine_id', 'checked_at', 'result', 'fingerprint'],
     // Session IDs only as SHA-256.
     sessions: [
         'id_hash',

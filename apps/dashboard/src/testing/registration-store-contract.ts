@@ -4,6 +4,9 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { cryptoRandom } from '../adapters/crypto-random';
 import { toBase64Url } from '../domain/auth/secrets';
 import { newOrgAuditEntryId, newUserId, type OrgId } from '../domain/ids';
+import type { AdminAuditEntry } from '../domain/auth/records';
+import type { PlatformEngineStore } from '../domain/engines/platform-engine-store';
+import { newAdminAuditEntryId } from '../domain/ids';
 import type { EngineRecord, EngineStore, RevocationAudit } from '../domain/registration/engine-store';
 import type { LinkCodeRecord, LinkCodeStore } from '../domain/registration/link-code-store';
 import type { StoredOrgAuditEntry } from './memory-registration-store';
@@ -15,15 +18,30 @@ const TTL = 30 * 60 * 1000;
 export interface RegistrationStoreFixture {
     readonly linkCodes: LinkCodeStore;
     readonly engines: EngineStore;
+    readonly platformEngines: PlatformEngineStore;
     addOrg(): Promise<OrgId>;
-    /** What I-05's suspension will do; the port has no write for it yet. */
+    /** Sets the engine's row directly, e.g. to a status reason no write produces. */
     suspend(engine: EngineRecord, reason: string): Promise<void>;
+    /** The `admin_audit_log` entries about one engine, oldest first. */
+    adminAudit(engineId: string): Promise<readonly AdminAuditEntry[]>;
     /** The organization's `org_audit_log` rows, oldest first; the repository itself has no read. */
     orgAudit(orgId: OrgId): Promise<readonly StoredOrgAuditEntry[]>;
 }
 
 function audit(at: number): RevocationAudit {
     return { id: newOrgAuditEntryId(cryptoRandom), actorUserId: newUserId(cryptoRandom), at };
+}
+
+function adminAudit(action: string, engineId: string, at: number): AdminAuditEntry {
+    return {
+        id: newAdminAuditEntryId(cryptoRandom),
+        adminUserId: newUserId(cryptoRandom),
+        action,
+        targetType: 'engine',
+        targetId: engineId,
+        reason: 'Report #1',
+        createdAt: at,
+    };
 }
 
 function codeRecord(orgId: OrgId, overrides: Partial<LinkCodeRecord> = {}): LinkCodeRecord {
@@ -265,6 +283,115 @@ export function describeRegistrationStoreContract(name: string, makeFixture: () 
             ]);
             expect([...outcomes].sort()).toEqual(['already-revoked', 'revoked']);
             expect(await fixture.orgAudit(orgA)).toHaveLength(1);
+        });
+        describe('platform suspension (I-05)', () => {
+            it('suspends an active engine of any organization once, with one audit entry', async () => {
+                const { row } = await created(orgB);
+                const entry = adminAudit('admin.engine.suspend', engine.engineId, NOW + 20);
+                expect(await fixture.platformEngines.find(engine.engineId)).toEqual(row);
+                expect(await fixture.platformEngines.suspend(engine.engineId, entry)).toBe('suspended');
+                const suspended = {
+                    ...row,
+                    status: 'suspended',
+                    statusReason: 'platform-suspended',
+                    updatedAt: NOW + 20,
+                };
+                expect(await fixture.platformEngines.find(engine.engineId)).toEqual(suspended);
+                expect(await fixture.adminAudit(engine.engineId)).toEqual([entry]);
+                expect(
+                    await fixture.platformEngines.suspend(
+                        engine.engineId,
+                        adminAudit('admin.engine.suspend', engine.engineId, NOW + 30),
+                    ),
+                ).toBe('already-suspended');
+                expect(await fixture.platformEngines.find(engine.engineId)).toEqual(suspended);
+                expect(await fixture.adminAudit(engine.engineId)).toEqual([entry]);
+                expect(await fixture.engines.countActive(orgB)).toBe(0);
+            });
+
+            it('lifts a platform suspension with its own audit entry, and nothing else', async () => {
+                const { row } = await created(orgA);
+                expect(
+                    await fixture.platformEngines.unsuspend(
+                        engine.engineId,
+                        adminAudit('admin.engine.unsuspend', engine.engineId, NOW + 10),
+                    ),
+                ).toBe('not-suspended');
+                await fixture.platformEngines.suspend(
+                    engine.engineId,
+                    adminAudit('admin.engine.suspend', engine.engineId, NOW + 20),
+                );
+                const lift = adminAudit('admin.engine.unsuspend', engine.engineId, NOW + 30);
+                expect(await fixture.platformEngines.unsuspend(engine.engineId, lift)).toBe('unsuspended');
+                expect(await fixture.platformEngines.find(engine.engineId)).toEqual({ ...row, updatedAt: NOW + 30 });
+                expect((await fixture.adminAudit(engine.engineId)).map((entry) => entry.action)).toEqual([
+                    'admin.engine.suspend',
+                    'admin.engine.unsuspend',
+                ]);
+                await fixture.suspend(row, 'unpaid');
+                expect(
+                    await fixture.platformEngines.unsuspend(
+                        engine.engineId,
+                        adminAudit('admin.engine.unsuspend', engine.engineId, NOW + 40),
+                    ),
+                ).toBe('not-suspended');
+                expect(await fixture.adminAudit(engine.engineId)).toHaveLength(2);
+            });
+
+            it('never lifts an owner revocation', async () => {
+                const { row } = await created(orgA);
+                expect(await fixture.engines.revoke(orgA, engine.engineId, audit(NOW + 10))).toBe('revoked');
+                const revoked = await fixture.platformEngines.find(engine.engineId);
+                expect(revoked).toMatchObject({ status: 'suspended', statusReason: 'owner-revoked' });
+                for (const at of [NOW + 20, NOW + 30]) {
+                    expect(
+                        await fixture.platformEngines.unsuspend(
+                            engine.engineId,
+                            adminAudit('admin.engine.unsuspend', engine.engineId, at),
+                        ),
+                    ).toBe('owner-revoked');
+                }
+                expect(
+                    await fixture.platformEngines.suspend(
+                        engine.engineId,
+                        adminAudit('admin.engine.suspend', engine.engineId, NOW + 40),
+                    ),
+                ).toBe('already-suspended');
+                expect(await fixture.platformEngines.find(engine.engineId)).toEqual(revoked);
+                expect(await fixture.adminAudit(engine.engineId)).toEqual([]);
+                expect(row.status).toBe('active');
+            });
+
+            it('answers not-found for an engine that does not exist, writing nothing', async () => {
+                const unknown = (await createTestEngine()).engineId;
+                expect(await fixture.platformEngines.find(unknown)).toBeNull();
+                expect(
+                    await fixture.platformEngines.suspend(unknown, adminAudit('admin.engine.suspend', unknown, NOW)),
+                ).toBe('not-found');
+                expect(
+                    await fixture.platformEngines.unsuspend(
+                        unknown,
+                        adminAudit('admin.engine.unsuspend', unknown, NOW),
+                    ),
+                ).toBe('not-found');
+                expect(await fixture.adminAudit(unknown)).toEqual([]);
+            });
+
+            it('logs a concurrent double suspension once', async () => {
+                await created(orgA);
+                const outcomes = await Promise.all([
+                    fixture.platformEngines.suspend(
+                        engine.engineId,
+                        adminAudit('admin.engine.suspend', engine.engineId, NOW + 20),
+                    ),
+                    fixture.platformEngines.suspend(
+                        engine.engineId,
+                        adminAudit('admin.engine.suspend', engine.engineId, NOW + 20),
+                    ),
+                ]);
+                expect([...outcomes].sort()).toEqual(['already-suspended', 'suspended']);
+                expect(await fixture.adminAudit(engine.engineId)).toHaveLength(1);
+            });
         });
     });
 }

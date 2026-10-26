@@ -269,3 +269,57 @@ export const orgAuditLog = sqliteTable(
     },
     (t) => [index('org_audit_log_org_id_created_at_idx').on(t.orgId, t.createdAt)],
 );
+
+// Abuse monitoring (I-05): public metadata about certificates for the engine domain, and what the public-face check
+// saw. Certificate metadata and fingerprints only, never a page body.
+
+/**
+ * Every certificate for the engine domain seen in Certificate Transparency, once. The key is SHA-256 over its issuer,
+ * validity start and names: crt.sh's JSON carries no certificate hash, and a precertificate and its certificate, or the
+ * same issuance from both sources, must count once. Pruned 400 days after it was first seen, past any validity.
+ */
+export const ctCerts = sqliteTable(
+    'ct_certs',
+    {
+        issuanceSha256: text('issuance_sha256').primaryKey(),
+        source: text('source', { enum: ['crt.sh', 'certspotter'] }).notNull(),
+        firstSeenAt: integer('first_seen_at').notNull(),
+        /** Start of the certificate's validity: when it was issued, for the issuance-count rule. */
+        notBefore: integer('not_before').notNull(),
+        /** JSON array of the certificate's DNS names, lower-case. */
+        hostnames: text('hostnames').notNull(),
+        issuer: text('issuer').notNull(),
+        /** Comma-separated reasons it was flagged (`wildcard`, `foreign-issuer`, `unknown-hostname`), or null. */
+        alert: text('alert'),
+    },
+    (t) => [
+        check('ct_certs_source_check', sql`${t.source} in ('crt.sh', 'certspotter')`),
+        index('ct_certs_first_seen_at_idx').on(t.firstSeenAt),
+        index('ct_certs_not_before_idx').on(t.notBefore),
+    ],
+);
+
+/** Where each CT source's next query starts. */
+export const ctCursors = sqliteTable('ct_cursors', {
+    source: text('source').primaryKey(),
+    cursor: text('cursor').notNull(),
+});
+
+/** One anonymous visit to an engine's default hostname; kept 30 days. */
+export const publicFaceChecks = sqliteTable(
+    'public_face_checks',
+    {
+        engineId: text('engine_id')
+            .notNull()
+            .references(() => engines.engineId),
+        checkedAt: integer('checked_at').notNull(),
+        result: text('result', { enum: ['match', 'mismatch', 'unreachable'] }).notNull(),
+        /** SHA-256 of what the visit saw (status, path, media type, title); null when unreachable. */
+        fingerprint: text('fingerprint'),
+    },
+    (t) => [
+        primaryKey({ columns: [t.engineId, t.checkedAt] }),
+        check('public_face_checks_result_check', sql`${t.result} in ('match', 'mismatch', 'unreachable')`),
+        index('public_face_checks_checked_at_idx').on(t.checkedAt),
+    ],
+);

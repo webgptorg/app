@@ -4,6 +4,7 @@ import { apiRoutes } from '../../shared/api/routes';
 import type { EngineCreationPolicy } from '../../domain/registration/engine-creation-policy';
 import type { DashboardDeps } from '../deps';
 import { renderEmail } from '../i18n/render-email';
+import { bindAdminEngineRoutes } from './admin-engine-routes';
 import { bindAdminHostnameRoutes } from './admin-hostname-routes';
 import { bindAuthRoutes } from './auth-routes';
 import { bindBillingRoutes } from './billing-routes';
@@ -22,9 +23,13 @@ export function createApiRouter(
     deps.routes.bind(router, API_MOUNT, apiRoutes.getEnvironment, () =>
         Promise.resolve({ kind: 'ok', body: { environment: deps.config.environment } }),
     );
+    deps.routes.bind(router, API_MOUNT, apiRoutes.getAbuseContact, () =>
+        Promise.resolve({ kind: 'ok', body: { email: deps.config.abuseEmail } }),
+    );
     bindAuthRoutes(router, API_MOUNT, deps);
     bindBillingRoutes(router, API_MOUNT, deps);
     bindEngineRoutes(router, API_MOUNT, deps);
+    bindAdminEngineRoutes(router, API_MOUNT, deps);
     bindAdminHostnameRoutes(router, API_MOUNT, deps);
     const { devOutbox } = deps;
     // Not mounted at all otherwise: the fake adapter, and with it this route, exists only in dev (config.ts).

@@ -46,4 +46,16 @@ describe('OpsMonitor', () => {
         });
         expect(await monitor.pending()).toEqual([]);
     });
+
+    it('queues one-off abuse alerts and tracks a check per subject over RPC (I-05)', async () => {
+        const monitor = env.OPS_MONITOR.get(env.OPS_MONITOR.idFromName('abuse-test'));
+        await monitor.raise([{ rule: 'ct-wildcard', subject: 'a'.repeat(64), state: 'firing', at: 1, detail: {} }]);
+        await monitor.track('public-face-mismatch', [{ subject: 'e'.repeat(26), firing: true, detail: {} }], 2);
+        await monitor.track('public-face-mismatch', [{ subject: 'e'.repeat(26), firing: true, detail: {} }], 3);
+        await monitor.track('public-face-mismatch', [{ subject: 'e'.repeat(26), firing: null, detail: {} }], 4);
+        expect((await monitor.pending()).map((pending) => [pending.alert.rule, pending.alert.state])).toEqual([
+            ['ct-wildcard', 'firing'],
+            ['public-face-mismatch', 'firing'],
+        ]);
+    });
 });

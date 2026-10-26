@@ -46,6 +46,29 @@ describe('dashboard Worker', () => {
         expectSecurityHeaders(response);
     });
 
+    it('serves the public abuse page and its contact, signed out (I-05)', async () => {
+        const page = await get('/abuse');
+        expect(page.status).toBe(200);
+        expect(await page.text()).toContain('<div id="root"></div>');
+        expectSecurityHeaders(page);
+        const contact = await get('/api/abuse-contact');
+        expect(contact.status).toBe(200);
+        expect(await contact.json()).toEqual({ email: 'abuse@ptbk.test' });
+    });
+
+    it('serves security.txt as RFC 9116 plain text, with no secret in it (I-05)', async () => {
+        const response = await get('/.well-known/security.txt');
+        expect(response.status).toBe(200);
+        expect(response.headers.get('Content-Type')).toBe('text/plain; charset=utf-8');
+        expectSecurityHeaders(response);
+        const fields = (await response.text())
+            .trim()
+            .split('\n')
+            .map((line) => line.slice(0, line.indexOf(':')));
+        expect(fields).toEqual(['Contact', 'Expires', 'Policy', 'Preferred-Languages', 'Canonical']);
+        await expectProblem(await get('/.well-known/nope'), 404, 'not-found');
+    });
+
     it('sets the headers on other static files served through the Worker', async () => {
         const response = await get('/favicon.svg');
         expect(response.status).toBe(200);

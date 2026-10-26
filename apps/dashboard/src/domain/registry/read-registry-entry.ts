@@ -22,9 +22,9 @@ export type RegistryEntryOutcome =
     { readonly kind: 'found'; readonly entry: RegistryEntry } | { readonly kind: 'not-found' };
 
 /**
- * C-03's registry entry for one engine: its key, its default hostname plus every custom hostname whose claim verifies
- * (through `resolveRoutableHostnames`, so a bad row is never served), and its status. Relays verify the claims again;
- * this only keeps the dashboard from handing out claims it cannot stand behind.
+ * C-03's registry entry for one engine: its key, its default hostname plus, unless it is suspended, every custom
+ * hostname whose claim verifies (through `resolveRoutableHostnames`, so a bad row is never served), and its status.
+ * Relays verify the claims again; this only keeps the dashboard from handing out claims it cannot stand behind.
  */
 export async function readRegistryEntry(
     deps: ReadRegistryEntryDeps,
@@ -34,7 +34,12 @@ export async function readRegistryEntry(
     if (record === null) {
         return { kind: 'not-found' };
     }
-    const custom = (await deps.engineHostnames.activeCustomHostnames(engineId)).slice(0, MAX_REGISTRY_HOSTNAMES - 1);
+    // A suspended engine is not routed at all; withholding its custom hostnames also keeps a relay from serving them
+    // from an older entry's claims after the suspension (I-05).
+    const custom =
+        record.status === 'suspended'
+            ? []
+            : (await deps.engineHostnames.activeCustomHostnames(engineId)).slice(0, MAX_REGISTRY_HOSTNAMES - 1);
     const candidate: RegistryEntry = {
         enginePublicKey: record.publicKey,
         hostnames: [defaultHostname(engineId, deps.engineDomain), ...custom.map((claim) => claim.hostname)],

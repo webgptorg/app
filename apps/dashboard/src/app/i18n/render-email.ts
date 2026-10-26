@@ -1,4 +1,5 @@
 import type { RenderedEmail } from '../../adapters/email/cloudflare-email-sender';
+import { ALERT_RUNBOOKS, alertRoute } from '../../domain/monitoring/alert-routes';
 import type { EmailMessage } from '../../domain/ports/email-sender';
 import { m } from '../../paraglide/messages';
 
@@ -61,14 +62,15 @@ export function renderEmail(message: EmailMessage): RenderedEmail {
 /** Ops alerts go to the team only, in English, so they are not part of the translated catalogue. */
 function renderOpsAlert(message: Extract<EmailMessage, { readonly template: 'ops-alert' }>): RenderedEmail {
     const state = message.state === 'firing' ? 'FIRING' : 'resolved';
+    const route = alertRoute(message.rule);
     const detail = Object.entries(message.detail).map(([name, value]) => `${name}: ${String(value)}`);
     return {
-        subject: `[ptbk ops] ${state}: ${message.rule} (${message.subject})`,
+        subject: `[ptbk ${route}] ${state}: ${message.rule} (${message.subject})`,
         text: [
             `${message.rule} is ${state} for ${message.subject} since ${new Date(message.at).toISOString()}.`,
             ...detail,
             '',
-            'Runbook: docs/runbooks/observability.md',
+            `Runbook: ${ALERT_RUNBOOKS[route]}`,
         ].join('\n'),
     };
 }

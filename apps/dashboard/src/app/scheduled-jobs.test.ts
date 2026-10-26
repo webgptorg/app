@@ -3,8 +3,54 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
+import { Hostname } from '@ptbk/protocol';
+
 import { DEFAULT_THRESHOLDS } from '../domain/monitoring/alert-rules';
-import { EVERY_MINUTE, scheduledJobs } from './scheduled-jobs';
+import { createFakeAbuseFeed } from '../testing/fake-abuse-feed';
+import { createFakePublicFaceFetcher } from '../testing/fake-public-face-fetcher';
+import { createMemoryCtStore } from '../testing/memory-ct-store';
+import { createMemoryPublicFaceStore } from '../testing/memory-public-face-store';
+import { createMemoryMonitor } from '../testing/test-monitoring';
+import { EVERY_15_MINUTES, EVERY_MINUTE, scheduledJobs, type AbuseJobDeps } from './scheduled-jobs';
+
+const clock = { nowMs: () => 0 };
+const logger = { info: () => undefined, warn: () => undefined, error: () => undefined };
+const engineDomain = Hostname.parse('engines.ptbk.test');
+
+function abuse(withFeeds: boolean): AbuseJobDeps {
+    const monitor = createMemoryMonitor();
+    return {
+        ctWatch: {
+            engineDomain,
+            sources: [],
+            store: createMemoryCtStore(),
+            monitor,
+            settings: { allowedIssuers: [], issuanceSpike: { limit: 1, days: 1 }, sourceTimeoutMs: 1 },
+            clock,
+            logger,
+        },
+        publicFace: {
+            engineDomain,
+            fetcher: createFakePublicFaceFetcher(),
+            store: createMemoryPublicFaceStore({ engines: () => [] }),
+            monitor,
+            settings: { fingerprints: new Set(), perRun: 1, concurrency: 1, timeoutMs: 1 },
+            clock,
+            logger,
+        },
+        abuseFeeds: withFeeds
+            ? {
+                  feeds: [createFakeAbuseFeed('test')],
+                  engines: { list: () => Promise.resolve([]) },
+                  monitor,
+                  maxEngines: 1,
+                  timeoutMs: 1,
+                  clock,
+                  logger,
+              }
+            : null,
+    };
+}
 
 /** wrangler.jsonc without its `//` comments and trailing commas; strings are copied untouched. */
 function parseJsonc(text: string): unknown {
@@ -33,8 +79,8 @@ const workerConfig = z.object({
 });
 const wranglerSchema = workerConfig.extend({ env: z.record(z.string(), workerConfig) });
 
-describe('Cron Triggers and scheduled jobs (I-04)', () => {
-    it('agree in every environment, with the monitor object and the metrics dataset bound', () => {
+describe('Cron Triggers and scheduled jobs (I-04, I-05)', () => {
+    it('agree in every environment, with the monitor object and the metrics dataset bound', async () => {
         const wrangler = wranglerSchema.parse(
             parseJsonc(readFileSync(new URL('../../wrangler.jsonc', import.meta.url).pathname, 'utf8')),
         );
@@ -51,10 +97,23 @@ describe('Cron Triggers and scheduled jobs (I-04)', () => {
                 logger: { info: () => undefined, warn: () => undefined, error: () => undefined },
                 probeTimeoutMs: 1000,
             },
+            abuse: abuse(true),
         });
+        expect(jobs.map((job) => `${job.name} ${job.cron}`)).toEqual([
+            `relay-monitor ${EVERY_MINUTE}`,
+            `ct-watch ${EVERY_15_MINUTES}`,
+            `public-face ${EVERY_15_MINUTES}`,
+            `abuse-feeds ${EVERY_15_MINUTES}`,
+        ]);
         const crons = [...new Set(jobs.map((job) => job.cron))].sort();
-        expect(crons).toEqual([EVERY_MINUTE]);
-        expect(scheduledJobs({ monitoring: null })).toEqual([]);
+        expect(crons).toEqual([EVERY_MINUTE, EVERY_15_MINUTES]);
+        expect(scheduledJobs({ monitoring: null, abuse: null })).toEqual([]);
+        // Without a feed provider the 15-minute cron still has its jobs, so a run never finds none registered.
+        expect(scheduledJobs({ monitoring: null, abuse: abuse(false) }).map((job) => job.name)).toEqual([
+            'ct-watch',
+            'public-face',
+        ]);
+        for (const job of jobs.slice(1)) await job.run({ scheduledTime: 0, signal: new AbortController().signal });
         for (const [name, config] of [['dev', wrangler] as const, ...Object.entries(wrangler.env)]) {
             expect([...config.triggers.crons].sort(), name).toEqual(crons);
             expect(

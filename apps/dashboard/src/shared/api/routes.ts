@@ -218,6 +218,30 @@ export type EngineView = z.infer<typeof engineViewSchema>;
 
 const engineParams = z.strictObject({ engineId: EngineId });
 
+/** An engine as a platform admin sees it (I-05): registry data and our status for it, any organization's. */
+export const adminEngineViewSchema = z.strictObject({
+    engineId: EngineId,
+    orgId: idSchema,
+    hostname: Hostname,
+    mode: RegistrationMode,
+    registeredVersion: EngineVersion,
+    status: z.enum(['active', 'suspended']),
+    /** Who suspended it: the owner (revoked, permanent) or the platform (can be lifted here). */
+    suspendedBy: z.enum(['owner', 'platform']).nullable(),
+    createdAt: timestampSchema,
+    updatedAt: timestampSchema,
+});
+export type AdminEngineView = z.infer<typeof adminEngineViewSchema>;
+
+/** At most a ticket or report reference and a sentence; it lands in the audit log, never with the owner. */
+export const SUSPENSION_REASON_MAX = 500;
+const suspensionInput = {
+    ...NO_INPUT,
+    params: adminEngineParams,
+    body: z.strictObject({ reason: z.string().trim().min(1).max(SUSPENSION_REASON_MAX) }),
+    maxBodyBytes: 4096,
+} as const;
+
 /** Where the SPA sends the browser, top level: Stripe Checkout or the portal, or back to `/billing` with the fake. */
 const redirectSchema = z.strictObject({ url: z.url({ protocol: /^https?$/ }).max(2048) });
 
@@ -263,6 +287,18 @@ export const apiRoutes = {
         rateLimit: 'public-read-ip',
         input: NO_INPUT,
         output: z.strictObject({ environment: environmentSchema }),
+        errorCodes: [],
+    }),
+
+    /** I-05: where to report abuse; for `/abuse` and a suspended engine's page, signed in or not. */
+    getAbuseContact: defineRoute({
+        method: 'GET',
+        path: '/api/abuse-contact',
+        auth: 'public',
+        permission: null,
+        rateLimit: 'public-read-ip',
+        input: NO_INPUT,
+        output: z.strictObject({ email: z.email().max(254) }),
         errorCodes: [],
     }),
 
@@ -495,6 +531,43 @@ export const apiRoutes = {
         input: NO_INPUT,
         output: z.strictObject({ organizations: z.array(problemOrganizationSchema) }),
         errorCodes: [],
+    }),
+
+    /** I-05: any organization's engine, for abuse handling. */
+    adminGetEngine: defineRoute({
+        method: 'GET',
+        path: '/api/admin/engines/:engineId',
+        auth: 'session',
+        permission: 'admin.engine.read',
+        rateLimit: null,
+        input: { ...NO_INPUT, params: adminEngineParams },
+        output: z.strictObject({ engine: adminEngineViewSchema }),
+        errorCodes: [],
+    }),
+    /**
+     * Relays close the engine's tunnel within one registry TTL and refuse new ones; heartbeats and registration are
+     * refused; its custom hostnames leave the registry. An engine already suspended (or revoked) stays as it is.
+     */
+    adminSuspendEngine: defineRoute({
+        method: 'POST',
+        path: '/api/admin/engines/:engineId/suspend',
+        auth: 'session',
+        permission: 'admin.engine.suspend',
+        rateLimit: null,
+        input: suspensionInput,
+        output: z.strictObject({ engine: adminEngineViewSchema }),
+        errorCodes: [],
+    }),
+    /** Lifts a platform suspension; `owner-revoked` (409) for an engine its owner revoked, which stays revoked. */
+    adminUnsuspendEngine: defineRoute({
+        method: 'POST',
+        path: '/api/admin/engines/:engineId/unsuspend',
+        auth: 'session',
+        permission: 'admin.engine.suspend',
+        rateLimit: null,
+        input: suspensionInput,
+        output: z.strictObject({ engine: adminEngineViewSchema }),
+        errorCodes: ['owner-revoked'],
     }),
 
     /** D-08: an engine's custom hostnames, for platform admins, with the CNAME target the customer must set. */

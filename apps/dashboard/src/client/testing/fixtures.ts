@@ -1,4 +1,5 @@
 import type {
+    AdminEngineView,
     BillingView,
     EngineView,
     PasskeyView,
@@ -53,6 +54,23 @@ export function session(
 /** A test engine domain; nothing in the SPA may load from it. */
 export const ENGINE_DOMAIN = 'engines.ptbk.test';
 export const ENGINE_ID = 'k3v6xq2mfz4pd7h5wn2rbtcayu';
+
+/** An active engine of another organization, as a platform admin sees it. */
+export function adminEngineView(overrides: Partial<AdminEngineView> = {}): AdminEngineView {
+    const engineId = (overrides.engineId ?? ENGINE_ID) as AdminEngineView['engineId'];
+    return {
+        engineId,
+        orgId: 'bbbbbbbbbbbbbbbbbbbbbbbbbb',
+        hostname: `${engineId}.${ENGINE_DOMAIN}` as AdminEngineView['hostname'],
+        mode: 'tunnel',
+        registeredVersion: '1.4.0' as AdminEngineView['registeredVersion'],
+        status: 'active',
+        suspendedBy: null,
+        createdAt: NOW - 48 * HOUR,
+        updatedAt: NOW - 48 * HOUR,
+        ...overrides,
+    };
+}
 
 /** An online engine with a recent heartbeat. */
 export function engineView(overrides: Partial<EngineView> = {}): EngineView {

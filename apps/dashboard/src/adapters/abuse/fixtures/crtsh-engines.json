@@ -1,0 +1,62 @@
+[
+  {
+    "issuer_ca_id": 295815,
+    "issuer_name": "C=US, O=Let's Encrypt, CN=R11",
+    "common_name": "k3v6xq2mfz4pd7h5wn2rbtcayu.engines.ptbk.test",
+    "name_value": "k3v6xq2mfz4pd7h5wn2rbtcayu.engines.ptbk.test",
+    "id": 15000001001,
+    "entry_timestamp": "2026-10-20T08:00:01.512",
+    "not_before": "2026-10-20T07:00:00",
+    "not_after": "2027-01-18T06:59:59",
+    "serial_number": "04a1b2c3d4e5f60718293a4b5c6d7e8f9a0b",
+    "result_count": 2
+  },
+  {
+    "issuer_ca_id": 295815,
+    "issuer_name": "C=US, O=Let's Encrypt, CN=R11",
+    "common_name": "k3v6xq2mfz4pd7h5wn2rbtcayu.engines.ptbk.test",
+    "name_value": "k3v6xq2mfz4pd7h5wn2rbtcayu.engines.ptbk.test",
+    "id": 15000001002,
+    "entry_timestamp": "2026-10-20T08:00:02.907",
+    "not_before": "2026-10-20T07:00:00",
+    "not_after": "2027-01-18T06:59:59",
+    "serial_number": "04a1b2c3d4e5f60718293a4b5c6d7e8f9a0b",
+    "result_count": 2
+  },
+  {
+    "issuer_ca_id": 295819,
+    "issuer_name": "C=US, O=Let's Encrypt, CN=E6",
+    "common_name": "*.engines.ptbk.test",
+    "name_value": "*.engines.ptbk.test",
+    "id": 15000001003,
+    "entry_timestamp": "2026-10-21T10:12:44.003",
+    "not_before": "2026-10-21T09:12:00",
+    "not_after": "2027-01-19T09:11:59",
+    "serial_number": "03f0e1d2c3b4a5968778695a4b3c2d1e0f11",
+    "result_count": 1
+  },
+  {
+    "issuer_ca_id": 185752,
+    "issuer_name": "C=US, O=DigiCert Inc, CN=DigiCert Global G2 TLS RSA SHA256 2020 CA1",
+    "common_name": "abcdefghijklmnopqrstuvwxyz.engines.ptbk.test",
+    "name_value": "abcdefghijklmnopqrstuvwxyz.engines.ptbk.test",
+    "id": 15000001004,
+    "entry_timestamp": "2026-10-21T15:40:10.250",
+    "not_before": "2026-10-21T00:00:00",
+    "not_after": "2027-10-20T23:59:59",
+    "serial_number": "0b9a8f7e6d5c4b3a29180716f5e4d3c2",
+    "result_count": 1
+  },
+  {
+    "issuer_ca_id": 295815,
+    "issuer_name": "C=US, O=Let's Encrypt, CN=R10",
+    "common_name": "login.engines.ptbk.test",
+    "name_value": "login.engines.ptbk.test",
+    "id": 15000001005,
+    "entry_timestamp": "2026-10-22T06:01:31.777",
+    "not_before": "2026-10-22T05:01:00",
+    "not_after": "2027-01-20T05:00:59",
+    "serial_number": "04ffeeddccbbaa99887766554433221100aa",
+    "result_count": 1
+  }
+]

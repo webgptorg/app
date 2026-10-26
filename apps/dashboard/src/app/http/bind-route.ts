@@ -151,6 +151,9 @@ export function assertMountable(contract: RouteContract, mount: string): void {
     if ((contract.input.body === null) !== (contract.input.maxBodyBytes === 0)) {
         problems.push('body schema and size cap disagree');
     }
+    if (contract.responseType === 'text' && contract.auth !== 'public') {
+        problems.push('text response outside a public route');
+    }
     if (contract.path.includes('/:') && contract.input.params === null) {
         problems.push('path parameters without a schema');
     }
@@ -434,6 +437,11 @@ export function createRouteBinder(deps: RouteBinderDeps): RouteBinder {
                 });
                 switch (result.kind) {
                     case 'ok':
+                        if (contract.responseType === 'text') {
+                            return context.text(String(result.body), 200, {
+                                'Content-Type': 'text/plain; charset=utf-8',
+                            });
+                        }
                         return withCookies(
                             result.status === 204
                                 ? context.body(null, 204)

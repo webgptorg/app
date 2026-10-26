@@ -8,6 +8,7 @@ import type { EngineView, HeartbeatView } from '../../../shared/api/routes';
 import { useApiClient } from '../../api/api-client-context';
 import { engineQuery, problemCode } from '../../api/queries';
 import { Link } from '../../core/link';
+import { AbuseContactLink } from '../abuse/abuse-contact';
 import { useSession } from '../session/use-session';
 import { EngineOpenLink } from './engine-open-link';
 import { EngineStatusBadge } from './engine-status-badge';
@@ -66,10 +67,19 @@ function HeartbeatFields(props: { readonly heartbeat: HeartbeatView }) {
 
 function StatusNotice(props: { readonly engine: EngineView }) {
     const { engine } = props;
+    if (engine.suspendedBy === 'owner') {
+        return <Banner tone="danger">{m.engine_revoked_body()}</Banner>;
+    }
     if (engine.status === 'suspended') {
         return (
             <Banner tone="danger">
-                {engine.suspendedBy === 'owner' ? m.engine_revoked_body() : m.engine_suspended_body()}
+                <span className="flex flex-col gap-1">
+                    <span>{m.engine_suspended_body()}</span>
+                    <span>
+                        {m.engine_suspended_contact()} <AbuseContactLink />.{' '}
+                        <Link to="/abuse">{m.engine_suspended_policy()}</Link>
+                    </span>
+                </span>
             </Banner>
         );
     }

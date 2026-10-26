@@ -31,6 +31,8 @@
         "INSTALL_COMMAND": "bun run dev:link {linkCode}",
         "ADAPTERS": { "email": "fake", "billing": "fake", "rateLimit": "memory" },
         "EMAIL_FROM": "no-reply@ptbk.test",
+        // The public abuse contact (I-05): /abuse, security.txt, suspended engines' pages, and abuse alerts.
+        "ABUSE_EMAIL": "abuse@ptbk.test",
         // Optional everywhere; these are the defaults. An engine is offline after missedLimit × intervalS + graceS
         // seconds without an accepted heartbeat; perEngineLimit is heartbeats per engine and minute. The e2e stack
         // sends every 15 s and sets intervalS to match.
@@ -68,9 +70,9 @@
         { "tag": "v2", "new_sqlite_classes": ["EngineStatus"] },
         { "tag": "v3", "new_sqlite_classes": ["OpsMonitor"] },
     ],
-    // One Cron Trigger for every scheduled job (I-04); src/app/scheduled.ts lists the jobs, and a test keeps the two in
-    // step. Locally nothing fires on its own: the e2e monitoring overlay triggers it.
-    "triggers": { "crons": ["* * * * *"] },
+    // The relay monitor every minute (I-04), the abuse jobs every 15 minutes (I-05); src/app/scheduled-jobs.ts lists the
+    // jobs, and a test keeps the two in step. Locally nothing fires on its own: the e2e monitoring overlay triggers it.
+    "triggers": { "crons": ["* * * * *", "*/15 * * * *"] },
     // Monitoring data (I-04, ADR 0012): aggregates only, no engine, hostname, address or account.
     "analytics_engine_datasets": [{ "binding": "OPS_METRICS", "dataset": "ptbk_ops_dev" }],
     // Per-minute rate limits; limit and period must match RATE_LIMITS in src/domain/ports/rate-limiter.ts.
@@ -85,7 +87,7 @@
     "env": {
         "staging": {
             "routes": [{ "pattern": "app.staging.<placeholder>", "custom_domain": true }],
-            "triggers": { "crons": ["* * * * *"] },
+            "triggers": { "crons": ["* * * * *", "*/15 * * * *"] },
             "analytics_engine_datasets": [{ "binding": "OPS_METRICS", "dataset": "ptbk_ops_staging" }],
             "d1_databases": [
                 {
@@ -104,6 +106,7 @@
                 "INSTALL_COMMAND": "<engine-install-command> {linkCode}",
                 "ADAPTERS": { "email": "cloudflare", "billing": "stripe", "rateLimit": "workers" },
                 "EMAIL_FROM": "no-reply@<staging-sending-domain>",
+                "ABUSE_EMAIL": "abuse@<staging-abuse-domain>",
                 // I-04: alerts go to the ops mailbox; relay metrics tokens are the RELAY_METRICS_TOKENS secret and
                 // the analytics read token ANALYTICS_API_TOKEN (docs/runbooks/observability.md).
                 "MONITORING": { "opsEmail": "ops@<staging-ops-domain>" },
@@ -156,7 +159,7 @@
         },
         "production": {
             "routes": [{ "pattern": "app.ptbk.io", "custom_domain": true }],
-            "triggers": { "crons": ["* * * * *"] },
+            "triggers": { "crons": ["* * * * *", "*/15 * * * *"] },
             "analytics_engine_datasets": [{ "binding": "OPS_METRICS", "dataset": "ptbk_ops_production" }],
             "d1_databases": [
                 {
@@ -175,6 +178,7 @@
                 "INSTALL_COMMAND": "<engine-install-command> {linkCode}",
                 "ADAPTERS": { "email": "cloudflare", "billing": "stripe", "rateLimit": "workers" },
                 "EMAIL_FROM": "no-reply@<production-sending-domain>",
+                "ABUSE_EMAIL": "abuse@<production-abuse-domain>",
                 "MONITORING": { "opsEmail": "ops@<production-ops-domain>" },
                 "ANALYTICS": { "accountId": "<production-account-id>", "dataset": "ptbk_ops_production" },
                 // Live-mode Stripe IDs; secrets via `wrangler secret put STRIPE_SECRET_KEY --env production` (and

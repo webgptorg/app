@@ -63,6 +63,8 @@ export const queryKeys = {
     engines: ['engines'] as const,
     engine: (engineId: string) => ['engines', engineId] as const,
     devEmails: ['dev', 'emails'] as const,
+    abuseContact: ['abuse-contact'] as const,
+    adminEngine: (engineId: string) => ['admin', 'engines', engineId] as const,
 };
 
 /** A 401 on any signed-in call means the session ended elsewhere (expired, revoked, signed out everywhere). */
@@ -93,6 +95,24 @@ export function devEmailsQuery(client: ApiClient) {
         queryKey: queryKeys.devEmails,
         queryFn: async ({ signal }) =>
             dataOrThrow(await client.call(apiRoutes.devEmails, { query: {} }, signal)).emails,
+    });
+}
+
+/** Where to report abuse (I-05); configuration, so it does not change while the page is open. */
+export function abuseContactQuery(client: ApiClient) {
+    return queryOptions({
+        queryKey: queryKeys.abuseContact,
+        queryFn: async ({ signal }) => dataOrThrow(await client.call(apiRoutes.getAbuseContact, {}, signal)).email,
+        staleTime: Infinity,
+    });
+}
+
+/** Any organization's engine, for platform admins (I-05). */
+export function adminEngineQuery(client: ApiClient, engineId: string) {
+    return queryOptions({
+        queryKey: queryKeys.adminEngine(engineId),
+        queryFn: async ({ signal }) =>
+            dataOrThrow(await client.call(apiRoutes.adminGetEngine, { params: { engineId } }, signal)).engine,
     });
 }
 

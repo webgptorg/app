@@ -14,6 +14,7 @@ const vars = {
     INSTALL_COMMAND: 'bun run dev:link {linkCode}',
     ADAPTERS: { email: 'fake', billing: 'fake', rateLimit: 'memory' },
     EMAIL_FROM: 'no-reply@ptbk.test',
+    ABUSE_EMAIL: 'abuse@ptbk.test',
     RATE_LIMIT_HMAC_KEY: DEV_RATE_LIMIT_HMAC_KEY,
     BILLING_PLANS: TEST_PLANS,
 };

@@ -2,7 +2,7 @@ import { DurableObject } from 'cloudflare:workers';
 
 import { monitorStateSchema } from '../../domain/monitoring/alert-rules';
 import type { DeliveryResult } from '../../domain/monitoring/alert-outbox';
-import type { JobRun, MonitorObservation } from '../../domain/monitoring/alert-rules';
+import type { Alert, AlertRule, JobRun, MonitorObservation, TrackedOutcome } from '../../domain/monitoring/alert-rules';
 import type { MonitorStateStorage, MonitorStore } from '../../domain/monitoring/monitor-store';
 
 const STATE_KEY = 'state';
@@ -45,6 +45,14 @@ export class OpsMonitorObject extends DurableObject<Env> {
 
     recordJobRun(run: JobRun) {
         return this.#get().recordJobRun(run);
+    }
+
+    raise(alerts: readonly Alert[]) {
+        return this.#get().raise(alerts);
+    }
+
+    track(rule: AlertRule, outcomes: readonly TrackedOutcome[], at: number) {
+        return this.#get().track(rule, outcomes, at);
     }
 
     pending() {

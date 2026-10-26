@@ -17,6 +17,7 @@ const monitoredVars = {
     INSTALL_COMMAND: 'bun run dev:link {linkCode}',
     ADAPTERS: { email: 'fake', billing: 'fake', rateLimit: 'memory' },
     EMAIL_FROM: 'no-reply@ptbk.test',
+    ABUSE_EMAIL: 'abuse@ptbk.test',
     RATE_LIMIT_HMAC_KEY: DEV_RATE_LIMIT_HMAC_KEY,
     BILLING_PLANS: TEST_PLANS,
     MONITORING: { opsEmail: 'ops@ptbk.test' },
@@ -153,6 +154,25 @@ describe('runScheduled', () => {
             '[ptbk ops] FIRING: dashboard-unhealthy (dashboard)',
             '[ptbk ops] FIRING: relay-unreachable (relay-1)',
         ]);
+    });
+
+    it('runs the abuse jobs on the 15-minute cron, each failing on its own without the database', async () => {
+        const fetch = vi.fn(() => Promise.reject(new TypeError('offline')));
+        vi.stubGlobal('fetch', fetch);
+        const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+        try {
+            const env = { ...monitoredVars, DB: binding({}), OPS_MONITOR: opsMonitor() } as unknown as Env;
+            await runScheduled({ cron: '*/15 * * * *', scheduledTime: 0 }, env, ctx, createDevAdapters());
+            const failed = errors.mock.calls
+                .map(([line]) => JSON.parse(String(line)) as { event: string; job?: string })
+                .filter((entry) => entry.event === 'cron.job-failed')
+                .map((entry) => entry.job)
+                .sort();
+            expect(failed).toEqual(['ct-watch', 'public-face']);
+        } finally {
+            errors.mockRestore();
+        }
+        expect(fetch).not.toHaveBeenCalled();
     });
 
     it('rethrows what is not a configuration error', async () => {

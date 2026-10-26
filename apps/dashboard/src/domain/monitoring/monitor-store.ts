@@ -1,5 +1,14 @@
-import type { AlertThresholds, JobRun, MonitorObservation, MonitorState, PendingAlert } from './alert-rules';
-import { INITIAL_MONITOR_STATE, evaluateAlerts, recordJobRun } from './alert-rules';
+import type {
+    Alert,
+    AlertRule,
+    AlertThresholds,
+    JobRun,
+    MonitorObservation,
+    MonitorState,
+    PendingAlert,
+    TrackedOutcome,
+} from './alert-rules';
+import { INITIAL_MONITOR_STATE, evaluateAlerts, recordJobRun, trackAlerts } from './alert-rules';
 import type { DeliveryResult } from './alert-outbox';
 import { enqueueAlerts, settleAlerts } from './alert-outbox';
 
@@ -12,6 +21,13 @@ export interface MonitorStore {
     observe(observation: MonitorObservation): Promise<void>;
     /** Applies one scheduled job's run and queues the job-failure alert it starts or ends, if any. */
     recordJobRun(run: JobRun): Promise<void>;
+    /** Queues one-off alerts (a certificate seen in CT): they fire once and never resolve. */
+    raise(alerts: readonly Alert[]): Promise<void>;
+    /**
+     * Applies one check per subject of `rule` (an engine's public face, a feed listing) and queues the alerts that
+     * start or end with them; subjects not in `outcomes` keep their state.
+     */
+    track(rule: AlertRule, outcomes: readonly TrackedOutcome[], at: number): Promise<void>;
     /** The alerts waiting to be delivered, oldest first. */
     pending(): Promise<readonly PendingAlert[]>;
     /** Takes delivered alerts out of the queue; resolves with those dropped after too many failed attempts. */
@@ -37,6 +53,13 @@ export function createMonitorService(deps: {
         },
         async recordJobRun(run) {
             const next = recordJobRun(await load(), run, thresholds);
+            await storage.save(enqueueAlerts(next.state, next.alerts));
+        },
+        async raise(alerts) {
+            await storage.save(enqueueAlerts(await load(), alerts));
+        },
+        async track(rule, outcomes, at) {
+            const next = trackAlerts(await load(), rule, outcomes, at);
             await storage.save(enqueueAlerts(next.state, next.alerts));
         },
         async pending() {

@@ -1,7 +1,15 @@
 import type { EngineId } from '@ptbk/protocol';
 
+import type { AdminAuditLog } from '../domain/auth/auth-store';
+import type { AdminAuditEntry } from '../domain/auth/records';
+import type { PlatformEngineStore } from '../domain/engines/platform-engine-store';
 import type { OrgAuditEntryId, OrgId, UserId } from '../domain/ids';
-import { OWNER_REVOKED, type EngineRecord, type EngineStore } from '../domain/registration/engine-store';
+import {
+    OWNER_REVOKED,
+    PLATFORM_SUSPENDED,
+    type EngineRecord,
+    type EngineStore,
+} from '../domain/registration/engine-store';
 import type { LinkCodeRecord, LinkCodeStore } from '../domain/registration/link-code-store';
 
 export interface StoredLinkCode extends LinkCodeRecord {
@@ -29,6 +37,7 @@ export interface MemoryRegistrationState {
 export interface MemoryRegistrationStores {
     readonly linkCodes: LinkCodeStore;
     readonly engines: EngineStore;
+    readonly platformEngines: PlatformEngineStore;
     readonly state: MemoryRegistrationState;
 }
 
@@ -39,12 +48,15 @@ function redeemable(code: StoredLinkCode | undefined, orgId: OrgId | null, now: 
 }
 
 /**
- * {@link LinkCodeStore} and {@link EngineStore} in memory, sharing one state as the D1 tables share one database; the
- * contract suite holds them to the D1 adapter's behaviour. `orgExists` stands in for the foreign key to `organizations`.
+ * {@link LinkCodeStore}, {@link EngineStore} and {@link PlatformEngineStore} in memory, sharing one state as the D1
+ * tables share one database; the contract suite holds them to the D1 adapter's behaviour. `orgExists` stands in for the
+ * foreign key to `organizations`; admin audit entries go to `adminAudit` (the auth store's log, as D1 writes them to
+ * the same table) or are kept in `adminAuditEntries`.
  */
 export function createMemoryRegistrationStores(deps: {
     readonly orgExists: (orgId: OrgId) => boolean;
-}): MemoryRegistrationStores {
+    readonly adminAudit?: AdminAuditLog;
+}): MemoryRegistrationStores & { readonly adminAuditEntries: readonly AdminAuditEntry[] } {
     const state: MemoryRegistrationState = { linkCodes: new Map(), engines: new Map(), orgAudit: [] };
     const codes = () => [...state.linkCodes.values()];
 
@@ -140,5 +152,56 @@ export function createMemoryRegistrationStores(deps: {
         findForRegistration: (engineId) => Promise.resolve(state.engines.get(engineId) ?? null),
     };
 
-    return { linkCodes, engines, state };
+    const adminAuditEntries: AdminAuditEntry[] = [];
+    const appendAudit = (entry: AdminAuditEntry): Promise<void> => {
+        if (deps.adminAudit !== undefined) {
+            return deps.adminAudit.append(entry);
+        }
+        adminAuditEntries.push(entry);
+        return Promise.resolve();
+    };
+
+    const platformEngines: PlatformEngineStore = {
+        find: (engineId) => Promise.resolve(state.engines.get(engineId) ?? null),
+        async suspend(engineId, audit) {
+            const engine = state.engines.get(engineId);
+            if (engine === undefined) {
+                return 'not-found';
+            }
+            if (engine.status !== 'active') {
+                return 'already-suspended';
+            }
+            // Changed before the audit write yields, as D1's transaction would, so a concurrent call sees it.
+            state.engines.set(engineId, {
+                ...engine,
+                status: 'suspended',
+                statusReason: PLATFORM_SUSPENDED,
+                updatedAt: audit.createdAt,
+            });
+            await appendAudit(audit);
+            return 'suspended';
+        },
+        async unsuspend(engineId, audit) {
+            const engine = state.engines.get(engineId);
+            if (engine === undefined) {
+                return 'not-found';
+            }
+            if (engine.status === 'suspended' && engine.statusReason === OWNER_REVOKED) {
+                return 'owner-revoked';
+            }
+            if (engine.status !== 'suspended' || engine.statusReason !== PLATFORM_SUSPENDED) {
+                return 'not-suspended';
+            }
+            state.engines.set(engineId, {
+                ...engine,
+                status: 'active',
+                statusReason: null,
+                updatedAt: audit.createdAt,
+            });
+            await appendAudit(audit);
+            return 'unsuspended';
+        },
+    };
+
+    return { linkCodes, engines, platformEngines, state, adminAuditEntries };
 }
