@@ -154,7 +154,12 @@ describe('home: control center', { timeout: TIMEOUT_MS }, () => {
             });
         });
         expect(await screen.findByText('Version 9.2.0 is available.')).toBeDefined();
-        expect(await within(await feed()).findByText('Engine version 9.2.0 is available')).toBeDefined();
+        // The feed's live region repeats the line once its announcer flushes, so look for the card in the list only.
+        const list = within(await feed()).getByRole('list');
+        expect(await within(list).findByText('Engine version 9.2.0 is available')).toBeDefined();
+        await waitFor(() => {
+            expect(liveRegion()?.textContent).toBe('Engine version 9.2.0 is available');
+        });
     });
 
     it('keeps a failing widget to itself and retries it', async () => {
