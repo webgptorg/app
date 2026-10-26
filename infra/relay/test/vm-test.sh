@@ -2,8 +2,8 @@
 # Boots a Debian 13 cloud image with the relay host's real user data (NoCloud seed) under QEMU/KVM, places test
 # secrets and a test relay image the way an admin and the deploy would, has the host's own certificate unit issue the
 # relay certificate from a local Pebble through a stand-in Cloudflare API and DNS (acme-dns-standin.py), then checks
-# the host from outside: verify.sh passes, a port scan shows 443 open to anyone and 22 only to the allowlist, the
-# deploy key runs only its forced command, and a deliberately broken setting (password SSH) makes verify.sh fail.
+# the host from outside: verify.sh passes (no deploy user or key: relays pull their deploys), a port scan shows 443
+# open to anyone and 22 only to the allowlist, and a deliberately broken setting (password SSH) makes verify.sh fail.
 #
 # Needs root (bridge, tap, network namespace, NAT), Docker, qemu-system-x86, qemu-utils, cloud-image-utils, nmap,
 # curl, openssl and python3, and /dev/kvm: without it (a laptop's Linux VM on Apple silicon) QEMU emulates the CPU,
@@ -83,12 +83,11 @@ iptables -I FORWARD -o "$BRIDGE" -m conntrack --ctstate ESTABLISHED,RELATED -j A
 
 step "keys, user data and seed"
 ssh-keygen -q -t ed25519 -N '' -C ci-admin -f "$work/admin"
-ssh-keygen -q -t ed25519 -N '' -C ci-deploy -f "$work/deploy"
 docker run --rm -e HOME=/tmp -v "$repo/infra:/infra" -v "$work:/work" -w /infra/relay/test/render "$TOFU_IMAGE" \
     init -no-color -backend=false -input=false >/dev/null
 docker run --rm -e HOME=/tmp -v "$repo/infra:/infra" -v "$work:/work" -w /infra/relay/test/render "$TOFU_IMAGE" \
     apply -no-color -auto-approve -input=false -state=/work/render.tfstate \
-    -var "admin_key=$(cat "$work/admin.pub")" -var "deploy_key=$(cat "$work/deploy.pub")" \
+    -var "admin_key=$(cat "$work/admin.pub")" \
     -var "ssh_allowlist=[\"$HOST_IP/32\"]" -var "acme_server=https://$PEBBLE_IP/dir" >/dev/null
 docker run --rm -e HOME=/tmp -v "$repo/infra:/infra" -v "$work:/work" -w /infra/relay/test/render "$TOFU_IMAGE" \
     output -no-color -state=/work/render.tfstate -raw user_data >"$work/user-data"
@@ -187,13 +186,14 @@ for credential in registry-token metrics-token tls.crt tls.key; do
     vm "sudo install -m 0600 -o root -g root /dev/stdin /etc/ptbk-relay/credentials/$credential" <"$work/$credential"
 done
 
-step "a relay image, deployed as I-03's deploy script will (by digest)"
+step "a relay image, by digest, as I-03's deploy writes it"
 # The VM is amd64 whatever the machine running this test is.
 docker build --quiet --platform linux/amd64 --tag localhost/ptbk-relay:ci --file infra/relay/test/relay.Containerfile \
     apps/relay/dist
 docker save localhost/ptbk-relay:ci | vm 'sudo podman load --quiet'
 digest=$(vm "sudo podman image inspect --format '{{.Digest}}' localhost/ptbk-relay:ci")
-vm "echo 'PTBK_RELAY_IMAGE=localhost/ptbk-relay@$digest' | sudo install -m 0644 /dev/stdin /etc/ptbk-relay/image.env"
+vm "printf 'PTBK_RELAY_IMAGE=localhost/ptbk-relay@%s\nPTBK_RELAY_IMAGE_DIGEST=%s\n' $digest $digest |
+    sudo install -D -m 0644 /dev/stdin /var/lib/ptbk-relay-deploy/image.env"
 vm 'sudo systemctl start ptbk-relay.service'
 healthy() { curl -fsS --max-time 3 -k --resolve "$RELAY_HOSTNAME:443:$VM_IP" "https://$RELAY_HOSTNAME/healthz"; }
 # The unit's own start timeout is 120 s.
@@ -273,12 +273,6 @@ ip netns exec "$OUTSIDER" nmap -Pn -n -p- -T4 --max-retries 1 --open -oG "$work/
 open_outsider=$(grep -o '[0-9]*/open/tcp' "$work/scan-outsider" | cut -d/ -f1 | sort -n | xargs)
 echo "open: $open_outsider"
 test "$open_outsider" = 443
-
-step "the deploy key runs only its forced command"
-deploy_output=$(ssh -i "$work/deploy" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR \
-    -o BatchMode=yes "ptbk-deploy@$VM_IP" 'id' 2>&1 || true)
-echo "$deploy_output"
-grep -q 'no deploy script is installed on this host yet' <<<"$deploy_output"
 
 step "a broken setting fails verify.sh: password SSH enabled"
 vm "echo 'PasswordAuthentication yes' | sudo install -m 0600 /dev/stdin /etc/ssh/sshd_config.d/00-broken.conf"

@@ -1,0 +1,296 @@
+name: Release relay
+
+# Builds the relay image, pushes it to GHCR by digest, signs it keylessly (Rekor entry and RFC 3161 timestamp) and
+# rolls it out to the staging relays, then, after approval, to the production relays, one relay at a time (I-03).
+# Each relay pulls its image itself and verifies the signature with the exact identity of this workflow on main
+# (ADR 0014), so moving a tag cannot put anything else on a relay. Pull requests only build. A dispatch with `digest`
+# moves the tags back to an image this workflow signed before (rollback); a dispatch from another branch builds and
+# signs, and the relays refuse it.
+on:
+  push:
+    branches: [main]
+    paths:
+      - apps/relay/**
+      - packages/protocol/**
+      - package.json
+      - bun.lock
+      - infra/relay/scripts/rolling-deploy.sh
+      - infra/relay/modules/cloud-init/files/install-cosign
+      - .github/workflows/release-relay.yml
+  pull_request:
+    paths:
+      - apps/relay/**
+      - packages/protocol/**
+      - package.json
+      - bun.lock
+      - .github/workflows/release-relay.yml
+  workflow_dispatch:
+    inputs:
+      digest:
+        description: 'Roll back to (or redeploy) an image this workflow signed: sha256:<64 hex>. Empty builds HEAD.'
+        required: false
+        default: ''
+
+permissions: {}
+
+# A rollback (a dispatch with `digest`) has its own groups here and in the deploy jobs, so it is never queued behind
+# a running rollout or replaced by a pending one. The break-glass path that needs no workflow at all is
+# `sudo ptbk-relay-deploy rollback` on each relay (docs/runbooks/deploy.md).
+concurrency:
+  group: release-relay-${{ github.ref }}-${{ inputs.digest != '' && 'rollback' || 'release' }}
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/webgptorg/relay
+  # What the relays accept (infra/relay/modules/cloud-init/files/deploy.env): this workflow, on main, in this
+  # repository, through GitHub's OIDC issuer. Exact values only; never a pattern.
+  SIGNER_IDENTITY: https://github.com/webgptorg/app/.github/workflows/release-relay.yml@refs/heads/main
+  SIGNER_ISSUER: https://token.actions.githubusercontent.com
+  SIGNER_REPOSITORY: webgptorg/app
+
+# Actions are pinned to full commit SHAs and nothing is cached: no actions/cache, no registry or GHA layer cache, every
+# image built from scratch (spec, Security hardening item 10). cosign is the release the relays run, checked by
+# SHA-256 (install-cosign).
+jobs:
+  # Pull requests: the image must build, with no token that could push or sign.
+  build:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build the image (no cache)
+        run: docker build --no-cache --pull --provenance=false --sbom=false --file apps/relay/Dockerfile --tag relay:pr .
+      - name: The image runs as uid 10001 on bases pinned by digest
+        run: |
+          test "$(docker image inspect --format '{{.Config.User}}' relay:pr)" = 10001:10001
+          ! grep -E '^FROM ' apps/relay/Dockerfile | grep -v '@sha256:[0-9a-f]\{64\}'
+
+  publish:
+    if: github.event_name != 'pull_request' && inputs.digest == ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write # push the image
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build the image (no cache)
+        # One image manifest, no BuildKit attestations: the SBOM and provenance are signed attestations below.
+        run: docker build --no-cache --pull --provenance=false --sbom=false --file apps/relay/Dockerfile --tag relay:build .
+      - name: The image runs as uid 10001 on bases pinned by digest
+        run: |
+          test "$(docker image inspect --format '{{.Config.User}}' relay:build)" = 10001:10001
+          ! grep -E '^FROM ' apps/relay/Dockerfile | grep -v '@sha256:[0-9a-f]\{64\}'
+      - name: SBOM
+        env:
+          SYFT_IMAGE: docker.io/anchore/syft:v1.54.1@sha256:3eb5379ba7b409c3f4069b686110527af0c47df993fa5c10d13e7cf34f49b1aa
+        run: |
+          docker save --output "$RUNNER_TEMP/relay.tar" relay:build
+          docker run --rm --user "$(id -u):$(id -g)" -v "$RUNNER_TEMP:/work" "$SYFT_IMAGE" \
+            docker-archive:/work/relay.tar --output spdx-json=/work/relay.spdx.json
+      # The digest comes from the push itself, never from reading the tag back: any workflow run with
+      # `packages: write` could move the tag in between, and sign would then sign someone else's image.
+      - name: Push
+        id: push
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          export REGISTRY_AUTH_FILE="$RUNNER_TEMP/registry-auth.json"
+          trap 'rm -f "$REGISTRY_AUTH_FILE"' EXIT
+          printf '%s' "$GITHUB_TOKEN" | skopeo login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          skopeo copy --quiet --digestfile "$RUNNER_TEMP/digest" "docker-archive:$RUNNER_TEMP/relay.tar" \
+            "docker://$IMAGE:git-$GITHUB_SHA"
+          digest=$(cat "$RUNNER_TEMP/digest")
+          [[ $digest =~ ^sha256:[0-9a-f]{64}$ ]]
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          echo "pushed $IMAGE@$digest" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: relay-sbom
+          path: ${{ runner.temp }}/relay.spdx.json
+          if-no-files-found: error
+          retention-days: 30
+
+  # The only job that can mint an OIDC token, and it never runs for a pull request.
+  sign:
+    needs: publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write # keyless signing: a Fulcio certificate for this run
+      packages: write # signature, SBOM and provenance go next to the image
+    env:
+      DIGEST: ${{ needs.publish.outputs.digest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: sudo infra/relay/modules/cloud-init/files/install-cosign
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: relay-sbom
+          path: ${{ runner.temp }}/sbom
+      - name: Log in to GHCR
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: printf '%s' "$GITHUB_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+      # cosign 3 takes Fulcio, Rekor and the timestamp authority from Sigstore's TUF signing config, which includes
+      # timestamp.sigstore.dev; --use-signed-timestamps below makes the timestamp mandatory, as on the relays.
+      - name: Sign
+        run: cosign sign --yes "$IMAGE@$DIGEST"
+      - name: Verify as the relays will
+        run: |
+          if cosign verify --certificate-identity "$SIGNER_IDENTITY" --certificate-oidc-issuer "$SIGNER_ISSUER" \
+            --certificate-github-workflow-repository "$SIGNER_REPOSITORY" --use-signed-timestamps \
+            "$IMAGE@$DIGEST" > /dev/null; then
+            if [[ $GITHUB_REF != refs/heads/main ]]; then
+              echo "::error::a signature made on $GITHUB_REF verified as $SIGNER_IDENTITY"
+              exit 1
+            fi
+            echo "verified $IMAGE@$DIGEST as $SIGNER_IDENTITY" >> "$GITHUB_STEP_SUMMARY"
+          elif [[ $GITHUB_REF == refs/heads/main ]]; then
+            exit 1
+          else
+            echo "signed on $GITHUB_REF: the relays refuse $IMAGE@$DIGEST, as they must" >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Attach the SBOM
+        run: cosign attest --yes --type spdxjson --predicate "$RUNNER_TEMP/sbom/relay.spdx.json" "$IMAGE@$DIGEST"
+      # SLSA v1 build provenance in the shape GitHub's own attestations use, signed by this run's identity.
+      - name: Attach the build provenance
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REPOSITORY_ID: ${{ github.repository_id }}
+          OWNER_ID: ${{ github.repository_owner_id }}
+        run: |
+          jq -n --arg repo "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" --arg path "${GITHUB_WORKFLOW_REF#*/*/}" \
+            --arg ref "$GITHUB_REF" --arg sha "$GITHUB_SHA" --arg event "$EVENT_NAME" \
+            --arg repository_id "$REPOSITORY_ID" --arg owner_id "$OWNER_ID" \
+            --arg run "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT" '{
+              buildDefinition: {
+                buildType: "https://actions.github.io/buildtypes/workflow/v1",
+                externalParameters: { workflow: { ref: $ref, repository: $repo, path: ($path | sub("@.*$"; "")) } },
+                internalParameters: { github: { event_name: $event, repository_id: $repository_id,
+                  repository_owner_id: $owner_id, runner_environment: "github-hosted" } },
+                resolvedDependencies: [{ uri: ("git+" + $repo + "@" + $ref), digest: { gitCommit: $sha } }]
+              },
+              runDetails: {
+                builder: { id: "https://github.com/actions/runner/github-hosted" },
+                metadata: { invocationId: $run }
+              }
+            }' > "$RUNNER_TEMP/provenance.json"
+          cosign attest --yes --type slsaprovenance1 --predicate "$RUNNER_TEMP/provenance.json" "$IMAGE@$DIGEST"
+      - name: Log out of GHCR
+        if: always()
+        run: docker logout ghcr.io
+
+  # The digest to roll out, on main only: the one just signed, or a dispatched one, which must carry this workflow's
+  # signature from main before any relay is touched (the relays check again).
+  select:
+    needs: [publish, sign]
+    if: >-
+      !cancelled() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' &&
+      (needs.sign.result == 'success' || (needs.publish.result == 'skipped' && inputs.digest != ''))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: read # the image is private unless the team decides otherwise
+    outputs:
+      digest: ${{ steps.digest.outputs.digest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: sudo infra/relay/modules/cloud-init/files/install-cosign
+      - name: Digest
+        id: digest
+        env:
+          BUILT: ${{ needs.publish.outputs.digest }}
+          REQUESTED: ${{ inputs.digest }}
+        run: |
+          digest=${BUILT:-$REQUESTED}
+          if [[ ! $digest =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::not a digest: expected sha256:<64 hex>"
+            exit 1
+          fi
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+      - name: Verify as the relays will
+        env:
+          DIGEST: ${{ steps.digest.outputs.digest }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          printf '%s' "$GITHUB_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          cosign verify --certificate-identity "$SIGNER_IDENTITY" --certificate-oidc-issuer "$SIGNER_ISSUER" \
+            --certificate-github-workflow-repository "$SIGNER_REPOSITORY" --use-signed-timestamps \
+            "$IMAGE@$DIGEST" > /dev/null
+          docker logout ghcr.io
+          echo "rolling out $IMAGE@$DIGEST" >> "$GITHUB_STEP_SUMMARY"
+
+  # Relays pull their deploys (ptbk-relay-deploy.timer): nothing reaches into a relay, and there is no deploy key. Each
+  # relay follows its own tag, `deploy-<relay hostname>`; rolling-deploy.sh moves one tag at a time, watches that relay's
+  # /healthz report the new image through its deploy window, and moves the tag back and stops at the first failure.
+  # Each relay verifies the signature, refuses an image much older than the one it runs, and rolls itself back if
+  # it does not answer and win back its engines. RELAY_HOSTS lists the environment's relays in rollout order.
+  staging:
+    needs: select
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: staging
+    concurrency:
+      group: relay-deploy-staging-${{ inputs.digest != '' && 'rollback' || 'release' }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: write # move the relays' deploy tags
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Roll out to the staging relays
+        env:
+          DIGEST: ${{ needs.select.outputs.digest }}
+          RELAY_HOSTS: ${{ vars.RELAY_HOSTS }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          export REGISTRY_AUTH_FILE="$RUNNER_TEMP/registry-auth.json"
+          trap 'rm -f "$REGISTRY_AUTH_FILE"' EXIT
+          printf '%s' "$GITHUB_TOKEN" | skopeo login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          read -ra hosts <<< "$RELAY_HOSTS"
+          infra/relay/scripts/rolling-deploy.sh "$DIGEST" "${hosts[@]}"
+
+  production:
+    needs: [select, staging]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    environment: production
+    concurrency:
+      group: relay-deploy-production-${{ inputs.digest != '' && 'rollback' || 'release' }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: write # move the relays' deploy tags
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Roll out to the production relays
+        env:
+          DIGEST: ${{ needs.select.outputs.digest }}
+          RELAY_HOSTS: ${{ vars.RELAY_HOSTS }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          export REGISTRY_AUTH_FILE="$RUNNER_TEMP/registry-auth.json"
+          trap 'rm -f "$REGISTRY_AUTH_FILE"' EXIT
+          printf '%s' "$GITHUB_TOKEN" | skopeo login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          read -ra hosts <<< "$RELAY_HOSTS"
+          infra/relay/scripts/rolling-deploy.sh "$DIGEST" "${hosts[@]}"

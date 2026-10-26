@@ -1,17 +1,18 @@
-# Renders one host's user data with fixed, credential-free values, for the checks in scripts/check.sh and the VM test
-# (test/vm-test.sh). Public keys of throwaway key pairs (private halves discarded) and documentation addresses only.
+# Renders one host's user data with fixed, credential-free values, for the checks in scripts/check.sh, the VM test
+# (test/vm-test.sh) and the deploy test (test/deploy-test.sh, once per test relay). Public keys of throwaway key pairs
+# (private halves discarded) and documentation addresses only.
 terraform {
   required_version = "~> 1.10"
+}
+
+variable "name" {
+  type    = string
+  default = "relay-ci"
 }
 
 variable "admin_key" {
   type    = string
   default = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIODl1HFc9w2tQEYLZv2a7Q6WsBdDk0Rgoxk/YQuqGbj+ ci-admin"
-}
-
-variable "deploy_key" {
-  type    = string
-  default = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEAvFcF9TjUmm57Av3oVnBfv6lwzliXetJmpL5iZ/p0m ci-deploy"
 }
 
 # The VM test points the certificate unit at a local Pebble.
@@ -28,14 +29,13 @@ variable "ssh_allowlist" {
 module "host" {
   source = "../../modules/cloud-init"
 
-  name          = "relay-ci"
+  name          = var.name
   relay_domain  = "relays.ptbk.test"
   engine_domain = "engines.ptbk.test"
   registry_url  = "https://app.ptbk.test"
   acme_email    = "ops@ptbk.test"
   acme_server   = var.acme_server
   admins        = { ci = [var.admin_key] }
-  deploy_key    = var.deploy_key
   ssh_allowlist = var.ssh_allowlist
   reboot_time   = "02:00"
 }

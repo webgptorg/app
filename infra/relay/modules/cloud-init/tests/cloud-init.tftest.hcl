@@ -9,7 +9,6 @@ variables {
   admins = {
     ada = ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIODl1HFc9w2tQEYLZv2a7Q6WsBdDk0Rgoxk/YQuqGbj+ ada"]
   }
-  deploy_key    = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEAvFcF9TjUmm57Av3oVnBfv6lwzliXetJmpL5iZ/p0m deploy"
   ssh_allowlist = ["198.51.100.0/24", "2001:db8:1::/48"]
   reboot_time   = "23:30"
 }
@@ -28,10 +27,8 @@ run "hardens_ssh_and_users" {
   }
 
   assert {
-    condition = [for user in local.cloud_config.users : user.ssh_authorized_keys if user.name == "ptbk-deploy"][0] == [
-      "restrict,command=\"sudo -n /usr/local/sbin/ptbk-relay-deploy\" ${var.deploy_key}"
-    ]
-    error_message = "The deploy key can only run the forced deploy command, with every forwarding restricted."
+    condition     = [for user in local.cloud_config.users : user.name if can(user.ssh_authorized_keys)] == ["ada"]
+    error_message = "Only the named admins have SSH keys: relays pull their deploys, so there is no deploy key (I-03)."
   }
 
   assert {
@@ -40,13 +37,13 @@ run "hardens_ssh_and_users" {
   }
 
   assert {
-    condition     = strcontains(local.files["/etc/ssh/sshd_config.d/10-ptbk-relay.conf"], "AllowUsers ada ptbk-deploy\n")
-    error_message = "Only the named admins and the deploy user may log in."
+    condition     = strcontains(local.files["/etc/ssh/sshd_config.d/10-ptbk-relay.conf"], "AllowUsers ada\n")
+    error_message = "Only the named admins may log in."
   }
 
   assert {
-    condition     = strcontains(local.files["/etc/sudoers.d/ptbk-deploy"], "ptbk-deploy ALL=(root) NOPASSWD: /usr/local/sbin/ptbk-relay-deploy\n")
-    error_message = "The deploy user may run exactly the deploy command as root."
+    condition     = length([for path in keys(local.files) : path if strcontains(path, "sudoers")]) == 0
+    error_message = "No sudoers rule besides the admins' own."
   }
 }
 
@@ -108,6 +105,45 @@ run "relay_environment_holds_no_secret" {
   assert {
     condition     = strcontains(local.files["/etc/ptbk-relay/relay.env"], "RELAY_DNS_SERVERS=127.0.0.1\n")
     error_message = "The relay resolves through the local validating resolver."
+  }
+}
+
+run "deploys_only_what_release_relay_signed_on_main" {
+  command = apply
+
+  assert {
+    condition     = strcontains(local.files["/etc/ptbk-relay/deploy.env"], "\nPTBK_DEPLOY_CERT_IDENTITY=https://github.com/webgptorg/app/.github/workflows/release-relay.yml@refs/heads/main\n")
+    error_message = "A relay accepts images signed by release-relay.yml on main, by exact identity."
+  }
+
+  assert {
+    condition     = strcontains(local.files["/etc/ptbk-relay/deploy.env"], "\nPTBK_DEPLOY_CERT_OIDC_ISSUER=https://token.actions.githubusercontent.com\nPTBK_DEPLOY_CERT_REPOSITORY=webgptorg/app\n")
+    error_message = "The issuer and the repository extension are pinned too."
+  }
+
+  assert {
+    condition     = strcontains(local.files["/etc/ptbk-relay/deploy.env"], "\nPTBK_DEPLOY_TRUSTED_ROOT=\n") && strcontains(local.files["/etc/ptbk-relay/deploy.env"], "\nPTBK_DEPLOY_IMAGE_REPOSITORY=ghcr.io/webgptorg/relay\n")
+    error_message = "Production verifies against Sigstore's public-good root and pulls only the relay repository."
+  }
+
+  assert {
+    condition     = length(regexall("identity-regexp", join("\n", values(local.files)))) == 0
+    error_message = "No host file uses an identity pattern (ADR 0014)."
+  }
+
+  assert {
+    condition     = strcontains(local.files["/etc/ptbk-relay/deploy.env"], "\nPTBK_DEPLOY_MAX_DOWNGRADE_DAYS=30\n")
+    error_message = "An image built more than 30 days before the running one is refused."
+  }
+
+  assert {
+    condition     = contains(local.cloud_config.runcmd, ["systemctl", "enable", "ptbk-relay.service", "ptbk-relay-cert.timer", "ptbk-relay-deploy.timer"]) && strcontains(local.files["/etc/systemd/system/ptbk-relay-deploy.service"], "LoadCredential=registry-auth:/etc/ptbk-relay/credentials/registry-auth\n")
+    error_message = "The relay pulls its deploys on a timer, with the read-only registry token as a credential."
+  }
+
+  assert {
+    condition     = contains(local.cloud_config.runcmd, ["/usr/local/libexec/ptbk-relay/install-cosign"]) && length(regexall("\\[(amd64|arm64)\\]=[0-9a-f]{64}\n", local.files["/usr/local/libexec/ptbk-relay/install-cosign"])) == 2
+    error_message = "cosign is installed at first boot from a release pinned by SHA-256 for both architectures."
   }
 }
 
@@ -229,12 +265,11 @@ run "refuses_placeholders" {
     registry_url  = "https://app.<staging-zone>"
     acme_email    = "<ops-email>"
     admins        = { "<admin-name>" = ["<admin-ssh-public-key>"] }
-    deploy_key    = "<deploy-ssh-public-key>"
     ssh_allowlist = ["<admin-network-cidr>"]
   }
 
   expect_failures = [
-    var.relay_domain, var.engine_domain, var.registry_url, var.acme_email, var.admins, var.deploy_key, var.ssh_allowlist,
+    var.relay_domain, var.engine_domain, var.registry_url, var.acme_email, var.admins, var.ssh_allowlist,
   ]
 }
 
@@ -272,11 +307,10 @@ run "refuses_rsa_and_keys_with_options" {
   command = plan
 
   variables {
-    admins     = { ada = ["ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQ ada"] }
-    deploy_key = "command=\"/bin/sh\" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEAvFcF9TjUmm57Av3oVnBfv6lwzliXetJmpL5iZ/p0m"
+    admins = { ada = ["ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQ ada", "command=\"/bin/sh\" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEAvFcF9TjUmm57Av3oVnBfv6lwzliXetJmpL5iZ/p0m"] }
   }
 
-  expect_failures = [var.admins, var.deploy_key]
+  expect_failures = [var.admins]
 }
 
 run "refuses_a_reserved_admin_name" {

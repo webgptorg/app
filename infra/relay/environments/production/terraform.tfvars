@@ -19,5 +19,4 @@ acme_email    = "<ops-email>"
 admins = {
   "<admin-name>" = ["<admin-ssh-public-key>"]
 }
-deploy_key    = "<production-deploy-ssh-public-key>"
 ssh_allowlist = ["<admin-network-cidr>"]

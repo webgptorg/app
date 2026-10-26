@@ -80,10 +80,12 @@ describe('publishRelease with curl --aws-sigv4', { timeout: 30_000 }, () => {
             'HEAD /ptbk-staging/ui/0.1.0/engine-ui.tar.zst',
             'HEAD /ptbk-staging/ui/0.1.0/manifest.json',
             'HEAD /ptbk-staging/ui/0.1.0/engine-ui.tar.zst.sigstore.json',
+            'HEAD /ptbk-staging/ui/0.1.0/trusted_root.json',
             'HEAD /ptbk-staging/release-log/ui-0.1.0.json',
             'PUT /ptbk-staging/ui/0.1.0/engine-ui.tar.zst',
             'PUT /ptbk-staging/ui/0.1.0/manifest.json',
             'PUT /ptbk-staging/ui/0.1.0/engine-ui.tar.zst.sigstore.json',
+            'PUT /ptbk-staging/ui/0.1.0/trusted_root.json',
             'PUT /ptbk-staging/release-log/ui-0.1.0.json',
         ]);
         const lastPut = requests.at(-1);

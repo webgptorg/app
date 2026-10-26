@@ -150,6 +150,7 @@ const common = {
         `must be a comma-separated list of 1 to ${String(MAX_DNS_SERVERS)} IP addresses`,
     ).optional(),
     RELAY_DNS_TIMEOUT_MS: integer(1, MAX_TIMEOUT_MS).default(3000),
+    RELAY_IMAGE_DIGEST: value(z.string().regex(/^sha256:[0-9a-f]{64}$/), 'must be sha256:<64 hex digits>').optional(),
     RELAY_TUNNEL_HANDSHAKE_TIMEOUT_MS: integer(1, MAX_TIMEOUT_MS).default(AUTH_TIMEOUT_MS),
     RELAY_MAX_PENDING_HANDSHAKES: integer(1, MAX_CONNECTION_LIMIT).default(1000),
     RELAY_MAX_PENDING_HANDSHAKES_PER_IP: integer(1, MAX_CONNECTION_LIMIT).default(10),
@@ -314,6 +315,8 @@ export interface RelayConfig {
     readonly memoryBudgetBytes: number;
     /** `GET /metrics` on the relay's own hostname answers only this bearer token; `null`: no metrics endpoint. */
     readonly metrics: { readonly token: Secret } | null;
+    /** The image digest the host runs this relay from (I-03's deploy), reported on `/healthz`; null when unknown. */
+    readonly imageDigest: string | null;
     readonly logLevel: LogLevel;
 }
 
@@ -408,6 +411,7 @@ export function parseRelayConfig(env: Readonly<Record<string, string | undefined
         }),
         memoryBudgetBytes: parsed.RELAY_MEMORY_BUDGET_BYTES,
         metrics: metricsToken === undefined ? null : Object.freeze({ token: secret(metricsToken) }),
+        imageDigest: parsed.RELAY_IMAGE_DIGEST ?? null,
         logLevel: parsed.LOG_LEVEL,
     });
 }

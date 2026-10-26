@@ -283,6 +283,7 @@ export async function startRelayListener(
                     config.metrics === null
                         ? null
                         : createMetricsEndpoint({ token: config.metrics.token, render: renderMetrics }),
+                imageDigest: config.imageDigest,
             });
         } catch {
             throw new RelayTlsError();

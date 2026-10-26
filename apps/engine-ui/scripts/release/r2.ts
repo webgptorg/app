@@ -1,6 +1,8 @@
 import { spawn } from 'node:child_process';
 import { join } from 'node:path';
 
+import { PINNED_TRUSTED_ROOT_FILE } from '@ptbk/release-tools';
+
 import { RELEASE_FILES } from './paths.ts';
 
 /** An S3-compatible bucket (R2) reached with `curl --aws-sigv4`. */
@@ -60,6 +62,12 @@ export function releaseUploads(dir: string, version: string): Upload[] {
         {
             key: `${prefix}/${RELEASE_FILES.archiveBundle}`,
             file: join(dir, RELEASE_FILES.archiveBundle),
+            contentType: 'application/json',
+        },
+        // The trusted root the release verifies against, for offline verifiers and mirrors; an engine pins its own.
+        {
+            key: `${prefix}/trusted_root.json`,
+            file: PINNED_TRUSTED_ROOT_FILE,
             contentType: 'application/json',
         },
         {

@@ -59,7 +59,6 @@ variable "engine_domain" {}
 variable "registry_url" {}
 variable "acme_email" {}
 variable "admins" {}
-variable "deploy_key" {}
 variable "ssh_allowlist" {}
 variable "server_type" {}
 
@@ -81,7 +80,6 @@ module "environment" {
   registry_url  = var.registry_url
   acme_email    = var.acme_email
   admins        = var.admins
-  deploy_key    = var.deploy_key
   ssh_allowlist = var.ssh_allowlist
   server_type   = var.server_type
 

@@ -1,0 +1,53 @@
+# Pulls the image this relay's deploy tag names, verifies it and swaps the relay to it (I-03). Root, because it pulls
+# with rootful podman and restarts ptbk-relay.service; everything else is closed off. Skipped until the registry
+# token is placed (infra/relay/README.md).
+[Unit]
+Description=Deploy the Promptbook relay image this relay's tag names
+Documentation=https://github.com/webgptorg/app/tree/main/infra/relay
+Wants=network-online.target
+After=network-online.target unbound.service
+ConditionPathExists=/etc/ptbk-relay/credentials/registry-auth
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/ptbk-relay-deploy run
+LoadCredential=registry-auth:/etc/ptbk-relay/credentials/registry-auth
+# The state directory holds image.env (read by ptbk-relay.service), the previous image, the high-water mark and the
+# refused digest; the runtime directory the lock and each run's registry login.
+StateDirectory=ptbk-relay-deploy
+StateDirectoryMode=0700
+RuntimeDirectory=ptbk-relay-deploy
+RuntimeDirectoryMode=0700
+RuntimeDirectoryPreserve=yes
+# A pull, the signature check, up to 60 s for the relay and the same again to roll back.
+TimeoutStartSec=15min
+SyslogIdentifier=ptbk-relay-deploy
+
+NoNewPrivileges=yes
+ProtectSystem=strict
+# ProtectSystem=strict leaves /run writable, /run/systemd included. Besides the unit's own directories, podman's
+# image store, runtime state and netavark's lock in /run/lock are all it may write. On a fresh host nothing has
+# created the runtime directories yet, and podman could not under the read-only /run; optional (`-`), because systemd
+# sets up the namespace for the ExecStartPre that creates them too.
+ReadOnlyPaths=/run
+ReadWritePaths=/var/lib/containers /run/lock -/run/containers -/run/libpod
+ExecStartPre=+/usr/bin/mkdir -p /run/containers /run/libpod
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectControlGroups=yes
+RestrictNamespaces=~user pid net uts ipc cgroup
+MemoryDenyWriteExecute=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+RestrictRealtime=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+SystemCallFilter=~@clock @cpu-emulation @debug @module @obsolete @raw-io @reboot @swap
+SystemCallErrorNumber=EPERM
+CapabilityBoundingSet=~CAP_SYS_MODULE CAP_SYS_RAWIO CAP_SYS_TIME CAP_SYS_BOOT CAP_SYS_PACCT CAP_SYS_TTY_CONFIG CAP_WAKE_ALARM CAP_BLOCK_SUSPEND CAP_SYSLOG CAP_LEASE CAP_LINUX_IMMUTABLE CAP_NET_ADMIN CAP_NET_RAW CAP_SYS_PTRACE CAP_BPF CAP_IPC_LOCK
+UMask=0077

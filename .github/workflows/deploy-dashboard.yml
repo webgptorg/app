@@ -1,0 +1,184 @@
+name: Deploy dashboard
+
+# app.ptbk.io (I-03): every push to main that touches the dashboard runs the full check, then deploys to staging
+# (D1 migrations, then the Worker and its SPA assets in one upload) and smoke-tests it; production waits for approval
+# and rebuilds the same commit for production, because the Cloudflare Vite plugin bakes the environment in at build
+# time. Pull requests build both environments and dry-run the upload, with no credential. Application secrets (Stripe,
+# rate-limit key) are set by humans with `wrangler secret put` (docs/runbooks/deploy.md); CI never carries them.
+on:
+  push:
+    branches: [main]
+    paths:
+      - apps/dashboard/**
+      - packages/protocol/**
+      - packages/ui/**
+      - package.json
+      - bun.lock
+      - .github/workflows/deploy-dashboard.yml
+  pull_request:
+    paths:
+      - apps/dashboard/**
+      - packages/protocol/**
+      - packages/ui/**
+      - package.json
+      - bun.lock
+      - .github/workflows/deploy-dashboard.yml
+  workflow_dispatch: {}
+
+permissions: {}
+
+concurrency:
+  group: deploy-dashboard-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# Actions are pinned to full commit SHAs and nothing is cached (spec, Security hardening item 10).
+jobs:
+  dry-run:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    strategy:
+      matrix:
+        environment: [staging, production]
+    defaults:
+      run:
+        working-directory: apps/dashboard
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: package.json
+          no-cache: true
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - run: bun install --frozen-lockfile
+        working-directory: .
+      - run: bun run generate
+      - name: Build
+        env:
+          CLOUDFLARE_ENV: ${{ matrix.environment }}
+        run: bun run build
+      - name: Dry-run the upload
+        env:
+          CLOUDFLARE_ENV: ${{ matrix.environment }}
+        run: bunx --no-install wrangler deploy --dry-run --env "$CLOUDFLARE_ENV"
+
+  # The same single `check` step as ci.yml, so the D1 drift and destructive-change guards run before any deploy.
+  check:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: package.json
+          no-cache: true
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - run: bun install --frozen-lockfile
+      - run: bun run check
+
+  staging:
+    needs: check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: staging
+    concurrency:
+      group: dashboard-deploy-staging
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: apps/dashboard
+    env:
+      CLOUDFLARE_ENV: staging
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: package.json
+          no-cache: true
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - run: bun install --frozen-lockfile
+        working-directory: .
+      - run: bun run generate
+      - run: bun run build
+      # Migrations first: they are backward compatible with the Worker that is live (expand, deploy, contract;
+      # apps/dashboard/README.md), so the old code keeps working until the new one is up.
+      - name: Apply D1 migrations
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: bunx --no-install wrangler d1 migrations apply DB --env "$CLOUDFLARE_ENV" --remote
+      - name: Deploy the Worker and its assets
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: bunx --no-install wrangler deploy --env "$CLOUDFLARE_ENV" --strict --message "git $GITHUB_SHA"
+      - name: Smoke test
+        run: |
+          origin=$(node -p 'require("./dist/ptbk_dashboard/wrangler.json").vars.DASHBOARD_ORIGIN')
+          node scripts/smoke-test.ts --origin "$origin" --environment "$CLOUDFLARE_ENV"
+
+  production:
+    needs: staging
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: production
+    concurrency:
+      group: dashboard-deploy-production
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: apps/dashboard
+    env:
+      CLOUDFLARE_ENV: production
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: package.json
+          no-cache: true
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - run: bun install --frozen-lockfile
+        working-directory: .
+      - run: bun run generate
+      - run: bun run build
+      - name: Apply D1 migrations
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: bunx --no-install wrangler d1 migrations apply DB --env "$CLOUDFLARE_ENV" --remote
+      - name: Deploy the Worker and its assets
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: bunx --no-install wrangler deploy --env "$CLOUDFLARE_ENV" --strict --message "git $GITHUB_SHA"
+      - name: Smoke test
+        run: |
+          origin=$(node -p 'require("./dist/ptbk_dashboard/wrangler.json").vars.DASHBOARD_ORIGIN')
+          node scripts/smoke-test.ts --origin "$origin" --environment "$CLOUDFLARE_ENV"

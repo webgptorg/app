@@ -27,7 +27,6 @@ for entry in config["write_files"]:
     print(path)
 PY
 useradd --system --uid 10001 --no-create-home --shell /usr/sbin/nologin ptbk-relay 2>/dev/null
-useradd --system --no-create-home --shell /bin/sh ptbk-deploy
 useradd --no-create-home --shell /bin/bash ci
 
 step "nft -c"
@@ -35,7 +34,8 @@ nft -c -f /etc/nftables.conf
 
 step "systemd-analyze verify"
 systemd-analyze verify --man=no /etc/systemd/system/ptbk-relay.service /etc/systemd/system/ptbk-relay-cert.service \
-    /etc/systemd/system/ptbk-relay-cert.timer
+    /etc/systemd/system/ptbk-relay-cert.timer /etc/systemd/system/ptbk-relay-deploy.service \
+    /etc/systemd/system/ptbk-relay-deploy.timer
 
 # The certificate unit runs lego and holds a DNS token, so it is sandboxed as far as systemd allows. The relay unit
 # runs rootful podman, which needs most of the host; the relay process itself is confined by the container flags.
@@ -43,6 +43,7 @@ systemd-analyze verify --man=no /etc/systemd/system/ptbk-relay.service /etc/syst
 step "systemd-analyze security"
 systemd-analyze security --offline=true --threshold=20 /etc/systemd/system/ptbk-relay-cert.service
 systemd-analyze security --offline=true --threshold=87 /etc/systemd/system/ptbk-relay.service
+systemd-analyze security --offline=true --threshold=39 /etc/systemd/system/ptbk-relay-deploy.service
 
 step "sshd -t"
 ssh-keygen -A >/dev/null
@@ -54,16 +55,13 @@ step "unbound-checkconf"
 install -o unbound -m 0644 /usr/share/dns/root.key /var/lib/unbound/root.key
 unbound-checkconf
 
-step "visudo -c"
-visudo -c -f /etc/sudoers.d/ptbk-deploy
-
 step "shellcheck"
 shellcheck --external-sources \
     "$infra/relay/verify.sh" \
     "$infra"/relay/scripts/*.sh \
     "$infra"/relay/test/*.sh \
     "$infra"/cloudflare/scripts/*.sh \
-    "$infra"/relay/modules/cloud-init/files/{renew-certificate,install-certificate,ptbk-relay-deploy} \
+    "$infra"/relay/modules/cloud-init/files/{renew-certificate,install-certificate,install-cosign,ptbk-relay-deploy} \
     /usr/local/libexec/ptbk-relay/install-lego
 shellcheck --shell=sh "$infra/relay/modules/cloud-init/files/dhclient-enter-hook"
 

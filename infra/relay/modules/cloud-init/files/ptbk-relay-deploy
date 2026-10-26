@@ -1,8 +1,376 @@
 #!/bin/bash
-# The deploy key's forced command, run through sudo with SSH_ORIGINAL_COMMAND kept. I-03 replaces it with the script
-# that pulls an image by digest, verifies its signature with cosign and restarts the relay; until then every deploy
-# is refused.
+# The relay's pull-based deploy (I-03). ptbk-relay-deploy.timer runs `run` every minute as root: it reads which
+# image this relay should run from its own tag in the registry (`deploy-<relay hostname>`, moved by
+# release-relay.yml), and if that is not what runs, it verifies, swaps and rolls back on failure. Nothing reaches
+# the host to deploy; it only ever pulls.
+#
+#   ptbk-relay-deploy run        one pass, what the timer runs
+#   ptbk-relay-deploy status     the current, previous and refused image, the high-water mark, the unit's state and
+#                                the connected engines
+#   ptbk-relay-deploy rollback   break glass: back to the previous image at once, and the current digest is not
+#                                deployed again until the tag points elsewhere or an admin runs `resume`
+#   ptbk-relay-deploy resume     forget the refused or failed digest, so the next run tries what the tag names again
+#
+# Whoever can move the tag can only choose among images release-relay.yml signed on main (ADR 0014: exact identity,
+# no patterns, from deploy.env), and none built long before the newest this host ever ran (the downgrade guard).
+# Only a refusal is remembered: an outage of the registry, Sigstore or DNS fails this run and the next one retries.
 set -euo pipefail
+umask 077
 
-echo "ptbk-relay-deploy: no deploy script is installed on this host yet (I-03)" >&2
-exit 1
+readonly CONFIG=/etc/ptbk-relay/deploy.env
+readonly RELAY_ENV=/etc/ptbk-relay/relay.env
+readonly ALLOW_DOWNGRADE=/etc/ptbk-relay/allow-downgrade
+readonly STATE_DIR=/var/lib/ptbk-relay-deploy
+readonly RUN_DIR=/run/ptbk-relay-deploy
+# ptbk-relay.service reads the image to run from here.
+readonly IMAGE_ENV=$STATE_DIR/image.env
+readonly PREVIOUS=$STATE_DIR/previous-image
+readonly FAILED=$STATE_DIR/failed-digest
+# The newest build time (Unix seconds) of any image this host has run; it only ever goes up.
+readonly HIGH_WATER=$STATE_DIR/high-water
+# `<from> <to>` while a swap is under way, so a reboot in the middle is finished or undone on the next run.
+readonly PENDING=$STATE_DIR/pending-swap
+readonly UNIT=ptbk-relay.service
+readonly CONTAINER=ptbk-relay
+
+# Under the unit, stdout is already the journal; run by hand, lines go to the journal too.
+log() {
+    printf 'ptbk-relay-deploy: %s\n' "$*"
+    if [[ -z ${INVOCATION_ID:-} ]]; then logger -t ptbk-relay-deploy -- "$*" 2>/dev/null || true; fi
+}
+die() {
+    log "$*" >&2
+    exit 1
+}
+
+# deploy.env is root's file, but it is parsed, not sourced: only these keys, only these shapes.
+load_config() {
+    local line key value
+    min_created=0
+    while IFS= read -r line || [[ -n $line ]]; do
+        [[ -z $line || $line == \#* ]] && continue
+        [[ $line =~ ^([A-Z_]+)=(.*)$ ]] || die "malformed line in $CONFIG"
+        key=${BASH_REMATCH[1]}
+        value=${BASH_REMATCH[2]}
+        case $key in
+            PTBK_DEPLOY_IMAGE_REPOSITORY)
+                [[ $value =~ ^[a-z0-9.-]+(:[0-9]+)?(/[a-z0-9._-]+)+$ ]] && repository=$value ;;
+            PTBK_DEPLOY_CERT_IDENTITY)
+                [[ $value =~ ^https://github\.com/[A-Za-z0-9._-]+/[A-Za-z0-9._-]+/\.github/workflows/[A-Za-z0-9._-]+\.ya?ml@refs/heads/[A-Za-z0-9._/-]+$ ]] &&
+                    identity=$value ;;
+            PTBK_DEPLOY_CERT_OIDC_ISSUER)
+                [[ $value == https://token.actions.githubusercontent.com ]] && issuer=$value ;;
+            PTBK_DEPLOY_CERT_REPOSITORY)
+                [[ $value =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]] && cert_repository=$value ;;
+            PTBK_DEPLOY_TRUSTED_ROOT)
+                [[ -z $value || $value =~ ^/[A-Za-z0-9._/-]+\.json$ ]] && trusted_root=$value ;;
+            PTBK_DEPLOY_TIMEOUT_S)
+                [[ $value =~ ^[1-9][0-9]{0,2}$ ]] && timeout_s=$value ;;
+            PTBK_DEPLOY_TUNNEL_RECOVERY_PERCENT)
+                [[ $value =~ ^([0-9]|[1-9][0-9]|100)$ ]] && recovery_percent=$value ;;
+            PTBK_DEPLOY_MAX_DOWNGRADE_DAYS)
+                [[ $value =~ ^[0-9]{1,4}$ ]] && max_downgrade_days=$value ;;
+            PTBK_DEPLOY_MIN_CREATED)
+                if [[ -n $value ]]; then
+                    if ! [[ $value =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}(T[0-9]{2}:[0-9]{2}:[0-9]{2}Z)?$ ]] ||
+                        ! min_created=$(date -u -d "$value" +%s); then
+                        die "PTBK_DEPLOY_MIN_CREATED is not a UTC date"
+                    fi
+                fi
+                ;;
+            *) die "unknown key $key in $CONFIG" ;;
+        esac
+    done <"$CONFIG"
+    [[ -n ${repository:-} && -n ${identity:-} && -n ${issuer:-} && -n ${cert_repository:-} && -n ${timeout_s:-} &&
+        -n ${recovery_percent:-} && -n ${max_downgrade_days:-} && -v trusted_root ]] ||
+        die "$CONFIG is incomplete or has an invalid value"
+    # The identity must belong to the repository the extension is pinned to, so the two checks cannot disagree.
+    [[ $identity == "https://github.com/$cert_repository/"* ]] || die "the identity is not in $cert_repository"
+
+    relay_hostname=$(sed -n 's/^RELAY_HOSTNAME=//p' "$RELAY_ENV")
+    [[ $relay_hostname =~ ^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,63}$ && ${#relay_hostname} -le 121 ]] ||
+        die "no valid RELAY_HOSTNAME in $RELAY_ENV"
+    deploy_tag=$repository:deploy-$relay_hostname
+}
+
+current_image() {
+    if [[ -f $IMAGE_ENV ]]; then sed -n 's/^PTBK_RELAY_IMAGE=//p' "$IMAGE_ENV"; fi
+}
+
+read_state() {
+    if [[ -f $1 ]]; then cat "$1"; fi
+}
+
+write_file() {
+    local path=$1 content=$2 mode=$3
+    printf '%s\n' "$content" | install -m "$mode" -o root -g root /dev/stdin "$path.new"
+    mv -f "$path.new" "$path"
+}
+
+# The read-only registry token (`<account>:<token>`) from the unit's credentials, or from its file when an admin runs
+# this by hand, handed to skopeo, podman and cosign in a file that disappears with the run.
+setup_registry_auth() {
+    local credential=${CREDENTIALS_DIRECTORY:-/etc/ptbk-relay/credentials}/registry-auth auth
+    work=$(mktemp -d "$RUN_DIR/run.XXXXXX")
+    trap 'rm -rf "$work"' EXIT
+    mkdir "$work/docker"
+    [[ -f $credential ]] || die "no registry credential (credentials/registry-auth)"
+    auth=$(tr -d '\n' <"$credential" | base64 -w0)
+    printf '{"auths":{"%s":{"auth":"%s"}}}\n' "${repository%%/*}" "$auth" >"$work/docker/config.json"
+}
+
+# The digest this relay's tag points at (of the manifest as stored, an index included), or nothing when the tag does
+# not exist yet. Any other failure is an outage: this run fails and the next one tries again.
+wanted_digest() {
+    if skopeo inspect --raw --authfile "$work/docker/config.json" "docker://$deploy_tag" >"$work/manifest" \
+        2>"$work/inspect.err"; then
+        echo "sha256:$(sha256sum "$work/manifest" | cut -d' ' -f1)"
+    elif ! grep -qiE 'manifest unknown|not found' "$work/inspect.err"; then
+        die "cannot read $deploy_tag, trying again next time: $(tail -n 1 "$work/inspect.err" | cut -c1-200)"
+    fi
+}
+
+# Remembers the wanted digest as refused, so it is not tried again until the tag moves. Only for a verdict about the
+# image itself, never for an outage.
+refuse() {
+    write_file "$FAILED" "$wanted" 0600
+    die "refused: $*"
+}
+
+# Rekor entry, SCT and an RFC 3161 timestamp are all required. cosign keeps Sigstore's TUF metadata (the trusted
+# root, unless deploy.env pins one) in $HOME/.sigstore, here the deploy state directory. A verdict on the image
+# (no signature, another identity, a missing timestamp or log entry) is a refusal; anything else, such as the
+# registry, TUF or DNS not answering, fails this run only.
+verify_signature() {
+    local image=$1
+    local args=(verify
+        --certificate-identity "$identity"
+        --certificate-oidc-issuer "$issuer"
+        --certificate-github-workflow-repository "$cert_repository"
+        --use-signed-timestamps)
+    if [[ -n $trusted_root ]]; then args+=(--trusted-root "$trusted_root"); fi
+    log "verifying $image as $identity"
+    if HOME=$STATE_DIR DOCKER_CONFIG=$work/docker cosign "${args[@]}" "$image" >"$work/verify.out" 2>&1; then
+        return 0
+    fi
+    grep -E '^Error' "$work/verify.out" | head -n 3 | sed 's/^/  cosign: /' >&2 || true
+    if grep -qE '^Error: (no signatures found|no matching (signatures|attestations):)' "$work/verify.out"; then
+        refuse "$image has no valid signature from $identity"
+    fi
+    die "could not verify $image, trying again next time"
+}
+
+# Moving the tag chooses among signed images only; this keeps it from choosing an old, possibly vulnerable one. The
+# build time is in the image config, which the signed digest covers. The floor is the newest build time this host
+# ever ran, less the allowed days, and never below PTBK_DEPLOY_MIN_CREATED, which covers a fresh or rebuilt host. This
+# host's previous image (a rollback) and digests an admin lists in allow-downgrade (root's, not writable by others)
+# are exempt.
+check_downgrade() {
+    local image=$1 high_water floor
+    if [[ $image == "$(read_state "$PREVIOUS")" ]]; then
+        log "$image is the previous image; the downgrade guard lets a rollback through"
+    elif [[ -f $ALLOW_DOWNGRADE && $(stat -c '%u %a' "$ALLOW_DOWNGRADE") =~ ^0\ [0-7][0-5][0-5]$ ]] &&
+        grep -qxF "${image##*@}" "$ALLOW_DOWNGRADE"; then
+        log "allow-downgrade lists ${image##*@}"
+    else
+        high_water=$(read_state "$HIGH_WATER")
+        floor=$((${high_water:-0} - max_downgrade_days * 86400))
+        ((floor > min_created)) || floor=$min_created
+        if ((wanted_created < floor)); then
+            refuse "$image was built $(((floor - wanted_created) / 86400 + 1)) days before the oldest build this" \
+                "host still accepts ($max_downgrade_days days before the newest it ran, and not before" \
+                "PTBK_DEPLOY_MIN_CREATED); list its digest in $ALLOW_DOWNGRADE to allow it"
+        fi
+    fi
+}
+
+# The image's build time from its config, without pulling it. No build time at all is a refusal.
+read_created() {
+    local image=$1
+    wanted_created=$(skopeo inspect --authfile "$work/docker/config.json" \
+        --format '{{if .Created}}{{.Created.Unix}}{{end}}' "docker://$image" 2>"$work/created.err") ||
+        die "cannot read the build time of $image, trying again next time: $(tail -n 1 "$work/created.err" | cut -c1-200)"
+    [[ $wanted_created =~ ^[0-9]+$ ]] || refuse "$image has no build time"
+}
+
+pull() {
+    log "pulling $1"
+    podman pull --quiet --authfile "$work/docker/config.json" "$1" >/dev/null ||
+        die "could not pull $1, trying again next time"
+}
+
+# Engines connected to the running relay: its tunnel gauge on /metrics (I-04) when the host has the metrics token,
+# otherwise its own log in the journal (connects minus disconnects; should journald rate-limit the relay, that
+# undercounts, which only lowers the bar a deploy has to clear). The token goes to curl on stdin, not in argv.
+active_tunnels() {
+    local token=/etc/ptbk-relay/credentials/metrics-token id count connected disconnected
+    if [[ -f $token ]] && count=$(printf 'header = "Authorization: Bearer %s"\n' "$(tr -d '\n' <"$token")" |
+        curl -fsS --max-time 3 -K - --resolve "$relay_hostname:443:127.0.0.1" "https://$relay_hostname/metrics" \
+            2>/dev/null | sed -n 's/^ptbk_relay_tunnels_active \([0-9][0-9]*\)$/\1/p') && [[ -n $count ]]; then
+        echo "$count"
+        return
+    fi
+    if ! id=$(podman container inspect --format '{{.Id}}' "$CONTAINER" 2>/dev/null); then
+        echo 0
+        return
+    fi
+    connected=$(journalctl --no-pager -o cat "CONTAINER_ID_FULL=$id" | grep -c '"event":"tunnel.connected"' || true)
+    disconnected=$(journalctl --no-pager -o cat "CONTAINER_ID_FULL=$id" | grep -c '"event":"tunnel.disconnected"' || true)
+    echo $((connected > disconnected ? connected - disconnected : 0))
+}
+
+# The unit is active, its container runs the expected image, and the relay answers /healthz on its own hostname with
+# a certificate the host trusts.
+answers() {
+    local image=$1 running
+    running=$(podman container inspect --format '{{.ImageDigest}}' "$CONTAINER" 2>/dev/null || true)
+    systemctl is-active --quiet "$UNIT" && [[ ${image##*@} == "$running" ]] &&
+        [[ $(curl -fsS --max-time 3 --resolve "$relay_hostname:443:127.0.0.1" "https://$relay_hostname/healthz" \
+            2>/dev/null) == ok ]]
+}
+
+# Healthy once the relay answers and at least recovery_percent of the engines connected before the swap are back.
+wait_healthy() {
+    local image=$1 baseline=$2 need deadline=$((SECONDS + timeout_s)) answered=no tunnels=0
+    need=$(((baseline * recovery_percent + 99) / 100))
+    while ((SECONDS < deadline)); do
+        answered=no
+        if answers "$image"; then
+            answered=yes
+            tunnels=$(active_tunnels)
+            if ((tunnels >= need)); then
+                log "healthy: /healthz ok, $tunnels engines connected ($need of $baseline needed)"
+                return 0
+            fi
+        fi
+        sleep 1
+    done
+    log "not healthy after ${timeout_s}s: answers $answered, $tunnels engines connected ($need of $baseline needed)" >&2
+    return 1
+}
+
+# image.env also carries the bare digest, which the relay reports on /healthz (RELAY_IMAGE_DIGEST).
+restart_with() {
+    local image=$1
+    if [[ -n $image ]]; then
+        write_file "$IMAGE_ENV" "PTBK_RELAY_IMAGE=$image
+PTBK_RELAY_IMAGE_DIGEST=${image##*@}" 0644
+        systemctl restart "$UNIT" || true
+    else
+        rm -f "$IMAGE_ENV"
+        systemctl stop "$UNIT" || true
+    fi
+}
+
+# Keeps the current and the previous image; anything older is pulled and verified again if it is ever deployed.
+prune_images() {
+    local keep id digest
+    keep=" $(current_image) $(read_state "$PREVIOUS") "
+    while read -r id digest; do
+        if [[ $keep != *"@$digest "* ]]; then podman image rm --force "$id" >/dev/null 2>&1 || true; fi
+    done < <(podman images --no-trunc --format '{{.ID}} {{.Digest}}')
+}
+
+# What a successful swap leaves behind: the previous image, a higher high-water mark, no pending marker.
+settle() {
+    local from=$1 target=$2 created=$3 high_water
+    high_water=$(read_state "$HIGH_WATER")
+    if [[ -n $from && $from != "$target" ]]; then write_file "$PREVIOUS" "$from" 0600; fi
+    if [[ -n $created ]] && ((created > ${high_water:-0})); then write_file "$HIGH_WATER" "$created" 0600; fi
+    rm -f "$PENDING"
+    prune_images
+    log "deployed $target"
+}
+
+# Moves the relay to $1 and back to what ran before if it does not come up within the timeout. The previous image
+# stays on the host, so rolling back needs neither the registry nor Sigstore.
+swap_to() {
+    local target=$1 created=${2:-} from baseline
+    from=$(current_image)
+    baseline=$(active_tunnels)
+    log "swapping ${from:-nothing} -> $target ($baseline engines connected)"
+    write_file "$PENDING" "${from:--} $target ${created:--}" 0600
+    restart_with "$target"
+    if wait_healthy "$target" "$baseline"; then
+        settle "$from" "$target" "$created"
+        return 0
+    fi
+    write_file "$FAILED" "${target##*@}" 0600
+    log "rolling back to ${from:-nothing}" >&2
+    restart_with "$from"
+    rm -f "$PENDING"
+    if [[ -n $from ]] && ! wait_healthy "$from" 0; then
+        die "ROLLBACK FAILED: the relay does not come up on $from either; an admin must look"
+    fi
+    die "deploy of $target failed; rolled back to ${from:-nothing}"
+}
+
+# A swap that a reboot or crash interrupted: finish it if the new image is healthy, undo it otherwise.
+recover_pending() {
+    local from target created
+    read -r from target created <"$PENDING"
+    [[ $from == - ]] && from=""
+    [[ $created == - ]] && created=""
+    log "finishing a swap that was interrupted: ${from:-nothing} -> $target"
+    if [[ $(current_image) == "$target" ]] && wait_healthy "$target" 0; then
+        settle "$from" "$target" "$created"
+    else
+        write_file "$FAILED" "${target##*@}" 0600
+        restart_with "$from"
+        rm -f "$PENDING"
+        log "rolled the interrupted swap back to ${from:-nothing}"
+    fi
+}
+
+run() {
+    local image current
+    if [[ -f $PENDING ]]; then recover_pending; fi
+    setup_registry_auth
+    wanted=$(wanted_digest)
+    if [[ -z $wanted ]]; then
+        log "no $deploy_tag yet; nothing to deploy"
+        return 0
+    fi
+    image=$repository@$wanted
+    current=$(current_image)
+    [[ $image != "$current" ]] || return 0
+    if [[ $wanted == "$(read_state "$FAILED")" ]]; then
+        log "$wanted failed or was refused here; waiting for $deploy_tag to move"
+        return 0
+    fi
+    verify_signature "$image"
+    read_created "$image"
+    check_downgrade "$image"
+    pull "$image"
+    swap_to "$image" "$wanted_created"
+    rm -f "$FAILED"
+}
+
+main() {
+    local command=${1:-run} previous
+    install -d -m 0700 "$STATE_DIR" "$RUN_DIR"
+    exec 9>"$RUN_DIR/lock"
+    flock --wait 600 9 || die "another deploy is still running"
+    load_config
+    case $command in
+        run) run ;;
+        rollback)
+            previous=$(read_state "$PREVIOUS")
+            [[ -n $previous ]] || die "no previous image to roll back to"
+            write_file "$FAILED" "$(current_image | sed 's/.*@//')" 0600
+            swap_to "$previous"
+            ;;
+        resume)
+            rm -f "$FAILED"
+            log "the next run deploys what $deploy_tag names"
+            ;;
+        status)
+            printf 'current %s\nprevious %s\nrefused %s\nhigh-water %s\nunit %s\nengines %s\ntag %s\n' \
+                "$(current_image)" "$(read_state "$PREVIOUS")" "$(read_state "$FAILED")" "$(read_state "$HIGH_WATER")" \
+                "$(systemctl is-active "$UNIT" || true)" "$(active_tunnels)" "$deploy_tag"
+            ;;
+        *) die "usage: ptbk-relay-deploy [run|status|rollback|resume]" ;;
+    esac
+}
+
+main "$@"

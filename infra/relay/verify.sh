@@ -66,7 +66,7 @@ echo "== relay service"
 check "ptbk-relay.service has Restart=always" test "$(systemctl show -P Restart ptbk-relay.service)" = always
 check "ptbk-relay.service is active" systemctl is-active --quiet ptbk-relay.service
 check "the relay image is pinned by digest" \
-    grep -Eq '^PTBK_RELAY_IMAGE=[^@[:space:]]+@sha256:[0-9a-f]{64}$' /etc/ptbk-relay/image.env
+    grep -Eq '^PTBK_RELAY_IMAGE=[^@[:space:]]+@sha256:[0-9a-f]{64}$' /var/lib/ptbk-relay-deploy/image.env
 
 pid=$(podman inspect --format '{{.State.Pid}}' ptbk-relay 2>/dev/null || true)
 if [[ $pid =~ ^[1-9][0-9]*$ ]]; then
@@ -149,6 +149,16 @@ check "ptbk-relay-cert.timer is enabled" systemctl is-enabled --quiet ptbk-relay
 # Debian's lego is built without the Cloudflare DNS provider; cloud-init installs the pinned release instead.
 check "lego is installed from the pinned release" /usr/local/bin/lego --version
 check "Debian's lego is not installed" test -z "$(dpkg-query -W -f='${db:Status-Status}' lego 2>/dev/null | grep -x installed)"
+
+echo "== deploys"
+deploy_env=/etc/ptbk-relay/deploy.env
+report "no deploy user or deploy key: relays pull their deploys" \
+    "$(getent passwd ptbk-deploy; ls /etc/sudoers.d/ptbk-deploy 2>/dev/null; grep -ls 'command=' /home/*/.ssh/authorized_keys 2>/dev/null)"
+check "ptbk-relay-deploy.timer is active" systemctl is-active --quiet ptbk-relay-deploy.timer
+check "cosign is installed" /usr/local/bin/cosign version
+check "deploys accept only release-relay.yml on main" test "$(env_value "$deploy_env" PTBK_DEPLOY_CERT_IDENTITY)" = \
+    https://github.com/webgptorg/app/.github/workflows/release-relay.yml@refs/heads/main
+check "deploys verify against Sigstore's public-good root" test -z "$(env_value "$deploy_env" PTBK_DEPLOY_TRUSTED_ROOT)"
 
 echo "== updates, time, logs"
 check "unattended-upgrades is installed" dpkg-query -W unattended-upgrades

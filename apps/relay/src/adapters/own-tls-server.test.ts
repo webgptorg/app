@@ -33,6 +33,36 @@ const METRICS_BODY = '# TYPE ptbk_relay_tunnels_active gauge\nptbk_relay_tunnels
 // An RSA certificate, so a client can offer static-RSA and DHE-RSA suites that the relay must refuse by policy.
 const certificate = createTestCertificate([RELAY_ID], 'rsa');
 
+const IMAGE_DIGEST = `sha256:${'ab'.repeat(32)}`;
+
+interface Answer {
+    readonly status: number;
+    readonly body: string;
+    readonly image: string | undefined;
+}
+
+function getFrom(port: number, path: string, headers: Record<string, string> = {}): Promise<Answer> {
+    return new Promise((resolve, reject) => {
+        const outgoing = request(
+            { host: '127.0.0.1', port, path, servername: RELAY_ID, ca: certificate.cert, headers, agent: false },
+            (response) => {
+                let body = '';
+                response.setEncoding('utf8').on('data', (chunk: string) => (body += chunk));
+                response.on('end', () => {
+                    const image = response.headers['ptbk-relay-image'];
+                    resolve({
+                        status: response.statusCode ?? 0,
+                        body,
+                        image: typeof image === 'string' ? image : undefined,
+                    });
+                });
+            },
+        );
+        outgoing.on('error', reject);
+        outgoing.end();
+    });
+}
+
 describe('createOwnTlsServer', () => {
     let server: OwnTlsServer;
     let port: number;
@@ -68,6 +98,7 @@ describe('createOwnTlsServer', () => {
             logger,
             maxConnections: 100,
             metrics: createMetricsEndpoint({ token: { reveal: () => METRICS_TOKEN }, render: () => METRICS_BODY }),
+            imageDigest: IMAGE_DIGEST,
         });
         port = await server.listen(0, '127.0.0.1');
     });
@@ -195,8 +226,12 @@ describe('createOwnTlsServer', () => {
         }
     });
 
-    it('answers GET /healthz with ok and everything else with 404', async () => {
-        await expect(get('/healthz')).resolves.toMatchObject({ status: 200, body: 'ok' });
+    it('answers GET /healthz with ok and the image digest, and everything else with 404', async () => {
+        await expect(get('/healthz')).resolves.toMatchObject({
+            status: 200,
+            body: 'ok',
+            headers: { 'ptbk-relay-image': IMAGE_DIGEST },
+        });
         await expect(get('/')).resolves.toMatchObject({ status: 404 });
         await expect(get('/healthz?x=1')).resolves.toMatchObject({ status: 404 });
         await expect(get(TUNNEL_PATH)).resolves.toMatchObject({ status: 404 });
@@ -291,6 +326,12 @@ describe('createOwnTlsServer limits and shutdown', () => {
         return { server, port, clock, graceClock, logger };
     };
     const closedSocket = (socket: Socket): Promise<unknown> => new Promise((resolve) => socket.once('close', resolve));
+
+    it('sends no image digest when the host set none', async () => {
+        const { server, port } = await start({ maxPending: 10, maxPendingPerIp: 10 });
+        await expect(getFrom(port, '/healthz')).resolves.toEqual({ status: 200, body: 'ok', image: undefined });
+        await server.close();
+    });
 
     it('drops a socket at once when even the rate-limited pool is full', async () => {
         const { server, port, clock } = await start({ maxPending: 1, maxPendingPerIp: 1 });
