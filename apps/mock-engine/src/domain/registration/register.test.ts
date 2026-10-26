@@ -179,6 +179,8 @@ describe('registerEngine', () => {
                 'engine-limit',
                 'engine-suspended',
                 'invalid-link-code',
+                'not-entitled',
+                'rate-limited',
             ]);
         });
     });
@@ -244,10 +246,14 @@ describe('registerEngine', () => {
 
         it('treats an unknown problem code as unavailable and logs its status and code', async () => {
             const { dashboard, store, logger, deps } = await setup();
-            dashboard.overrideRegister(() => problem(429, 'rate-limited'));
+            dashboard.overrideRegister(() => problem(503, 'a-code-added-later'));
             expect(await registerEngine(deps(dashboard.issueLinkCode('org-a')))).toEqual({ kind: 'unavailable' });
             expect(logger.entries).toEqual([
-                { level: 'warn', event: 'registration.unavailable', fields: { status: 429, code: 'rate-limited' } },
+                {
+                    level: 'warn',
+                    event: 'registration.unavailable',
+                    fields: { status: 503, code: 'a-code-added-later' },
+                },
             ]);
             expect(await store.load()).toBeNull();
         });

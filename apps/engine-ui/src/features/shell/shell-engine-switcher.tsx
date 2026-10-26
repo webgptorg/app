@@ -1,3 +1,4 @@
+import { deriveEngineFingerprint } from '@ptbk/protocol';
 import { EngineSwitcher } from '@ptbk/ui';
 import { useSuspenseQuery } from '@tanstack/react-query';
 
@@ -14,7 +15,11 @@ export function ShellEngineSwitcher({ compact }: { readonly compact: boolean }) 
     const links = dashboardLinks(engine.dashboardUrl);
     return (
         <EngineSwitcher
-            current={{ name: engine.name, engineId: engine.engineId, hostname: engine.hostname }}
+            current={{
+                name: engine.name,
+                fingerprint: engine.engineId === null ? null : deriveEngineFingerprint(engine.engineId),
+                hostname: engine.hostname,
+            }}
             engines={[]}
             allEnginesHref={links.allEngines}
             addEngineHref={links.addEngine}

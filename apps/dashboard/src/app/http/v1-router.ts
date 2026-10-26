@@ -44,7 +44,7 @@ export const registerRoute = defineRoute({
     rateLimit: 'registration-ip',
     input: { ...NO_INPUT, body: RegisterEngineRequest, maxBodyBytes: REGISTER_REQUEST_MAX_BYTES },
     output: RegisterEngineResponse,
-    errorCodes: [...Object.values(REGISTRATION_ERROR_CODE), 'not-entitled'],
+    errorCodes: Object.values(REGISTRATION_ERROR_CODE),
 });
 
 /** The problem codes of C-03's `verifyHeartbeat` outcomes; `stale-timestamp` carries `serverTime`. */

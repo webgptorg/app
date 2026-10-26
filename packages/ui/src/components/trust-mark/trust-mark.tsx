@@ -1,16 +1,20 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 
 import { useUiMessages } from '../../i18n/ui-provider';
 import { cx } from '../../internal/cx';
 import { useReducedMotion } from '../../motion/reduced-motion';
-import { deriveEngineFingerprint, FINGERPRINT_GRID_SIZE, fingerprintColour } from './fingerprint';
+import { FINGERPRINT_GRID_SIZE, fingerprintColour } from './fingerprint';
+import type { TrustMarkFingerprint } from './fingerprint';
 
 export type TrustMarkState = 'verifying' | 'verified';
 export type TrustMarkSize = 'sm' | 'md' | 'lg';
 
 export interface TrustMarkProps {
-    /** `null` until the engine reports its ID; the seal then renders without a fingerprint. */
-    readonly engineId: string | null;
+    /**
+     * `deriveEngineFingerprint(engineId)` from `@ptbk/protocol`, or `null` until the engine reports its ID; the seal
+     * then renders without a fingerprint.
+     */
+    readonly fingerprint: TrustMarkFingerprint | null;
     readonly state: TrustMarkState;
     readonly size?: TrustMarkSize;
     /** Replaces the state's default accessible name; the fingerprint code is always appended. */
@@ -63,10 +67,9 @@ const SIZE_CLASSES: Readonly<Record<TrustMarkSize, { readonly seal: string; read
  * The Promptbook seal with the engine fingerprint (docs/design/ui.md, Trust mark). Moving from `verifying` to
  * `verified` draws the seal once; it never animates on first render or under reduced motion.
  */
-export function TrustMark({ engineId, state, size = 'md', label, showCode = true, className }: TrustMarkProps) {
+export function TrustMark({ fingerprint, state, size = 'md', label, showCode = true, className }: TrustMarkProps) {
     const messages = useUiMessages();
     const reducedMotion = useReducedMotion();
-    const fingerprint = useMemo(() => (engineId === null ? null : deriveEngineFingerprint(engineId)), [engineId]);
     const [previousState, setPreviousState] = useState(state);
     const [sealing, setSealing] = useState(false);
     if (previousState !== state) {

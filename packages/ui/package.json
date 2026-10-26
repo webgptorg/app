@@ -8,8 +8,7 @@
     ".": {
       "style": "./src/theme.css",
       "default": "./src/index.ts"
-    },
-    "./fingerprint-vectors.json": "./src/components/trust-mark/fingerprint-vectors.json"
+    }
   },
   "sideEffects": [
     "*.css"
@@ -24,7 +23,6 @@
     "zod": "^4.6.0"
   },
   "dependencies": {
-    "@noble/hashes": "catalog:",
     "@tanstack/react-form": "catalog:",
     "@tanstack/react-table": "catalog:",
     "@tanstack/react-virtual": "catalog:",

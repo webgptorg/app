@@ -6,11 +6,11 @@ import { REDUCED_MOTION, setMedia } from '../../testing/dom-gaps';
 import { renderUi } from '../../testing/render';
 import { UiProvider } from '../../i18n/ui-provider';
 import { TEST_MESSAGES } from '../../testing/test-messages';
-import vectorFile from './fingerprint-vectors.json';
+import { SAMPLE_FINGERPRINTS } from './sample-fingerprints';
 import { TrustMark } from './trust-mark';
 
-const [first, second] = vectorFile.vectors;
-const ENGINE_ID = first?.engineId ?? '';
+const FINGERPRINT = SAMPLE_FINGERPRINTS.lead;
+const SAMPLES = Object.values(SAMPLE_FINGERPRINTS);
 const SEALING = 'trust-mark-sealing';
 
 function seal(container: HTMLElement): SVGElement {
@@ -20,18 +20,35 @@ function seal(container: HTMLElement): SVGElement {
 }
 
 describe('TrustMark', () => {
-    it.each(vectorFile.vectors)('names and shows the fingerprint code of $engineId', (vector) => {
-        renderUi(<TrustMark engineId={vector.engineId} state="verified" />);
+    it.each(SAMPLES)('names and shows the fingerprint code $formatted', (fingerprint) => {
+        renderUi(<TrustMark fingerprint={fingerprint} state="verified" />);
         const mark = screen.getByRole('img');
-        expect(mark.getAttribute('aria-label')).toBe(`Private engine verified, Engine fingerprint ${vector.formatted}`);
-        expect(screen.getByText(vector.formatted)).toBeDefined();
-        expect(mark.querySelector('[data-fingerprint]')?.getAttribute('data-fingerprint')).toBe(vector.patternBits);
+        expect(mark.getAttribute('aria-label')).toBe(
+            `Private engine verified, Engine fingerprint ${fingerprint.formatted}`,
+        );
+        expect(screen.getByText(fingerprint.formatted)).toBeDefined();
+        expect(mark.querySelector('[data-fingerprint]')?.getAttribute('data-fingerprint')).toBe(
+            fingerprint.patternBits,
+        );
     });
 
-    it('renders the same pattern for the same engine ID and a different one for another', () => {
-        const a = renderUi(<TrustMark engineId={ENGINE_ID} state="verified" />);
-        const b = renderUi(<TrustMark engineId={ENGINE_ID} state="verifying" size="lg" />);
-        const c = renderUi(<TrustMark engineId={second?.engineId ?? ''} state="verified" />);
+    it.each(SAMPLES)('draws exactly the filled cells of $formatted', (fingerprint) => {
+        const { container } = renderUi(<TrustMark fingerprint={fingerprint} state="verified" />);
+        // The 5×5 grid of 5-unit cells with 1-unit gaps, centred in the 64-unit seal.
+        const index = (offset: string | null) => (Number(offset) - 17.5) / 6;
+        const drawn = [...container.querySelectorAll('[data-fingerprint] rect')].map(
+            (cell) => `${String(index(cell.getAttribute('y')))},${String(index(cell.getAttribute('x')))}`,
+        );
+        const filled = fingerprint.cells.flatMap((row, rowIndex) =>
+            row.flatMap((isFilled, columnIndex) => (isFilled ? [`${String(rowIndex)},${String(columnIndex)}`] : [])),
+        );
+        expect(drawn).toEqual(filled);
+    });
+
+    it('renders the same pattern for the same fingerprint and a different one for another', () => {
+        const a = renderUi(<TrustMark fingerprint={FINGERPRINT} state="verified" />);
+        const b = renderUi(<TrustMark fingerprint={FINGERPRINT} state="verifying" size="lg" />);
+        const c = renderUi(<TrustMark fingerprint={SAMPLE_FINGERPRINTS.lab} state="verified" />);
         const pattern = (container: HTMLElement) =>
             [...container.querySelectorAll('[data-fingerprint] rect')].map((cell) =>
                 ['x', 'y', 'class'].map((name) => cell.getAttribute(name)).join(' '),
@@ -42,24 +59,26 @@ describe('TrustMark', () => {
     });
 
     it('renders the seal without a fingerprint while the engine ID is unknown', () => {
-        const { container } = renderUi(<TrustMark engineId={null} state="verifying" />);
+        const { container } = renderUi(<TrustMark fingerprint={null} state="verifying" />);
         expect(screen.getByRole('img').getAttribute('aria-label')).toBe('Verifying engine');
         expect(container.querySelector('[data-fingerprint]')).toBeNull();
         expect(container.querySelector('.font-mono')).toBeNull();
     });
 
     it('takes a custom label and can hide the code text but not from the accessible name', () => {
-        renderUi(<TrustMark engineId={ENGINE_ID} state="verified" label="Lead engine" showCode={false} size="sm" />);
-        expect(screen.getByRole('img').getAttribute('aria-label')).toBe(
-            `Lead engine, Engine fingerprint ${first?.formatted ?? ''}`,
+        renderUi(
+            <TrustMark fingerprint={FINGERPRINT} state="verified" label="Lead engine" showCode={false} size="sm" />,
         );
-        expect(screen.queryByText(first?.formatted ?? '')).toBeNull();
+        expect(screen.getByRole('img').getAttribute('aria-label')).toBe(
+            `Lead engine, Engine fingerprint ${FINGERPRINT.formatted}`,
+        );
+        expect(screen.queryByText(FINGERPRINT.formatted)).toBeNull();
     });
 
     it('plays the seal animation on verifying → verified only, and replays it after verifying again', () => {
         const ui = (state: 'verifying' | 'verified') => (
             <UiProvider messages={TEST_MESSAGES} locale="en">
-                <TrustMark engineId={ENGINE_ID} state={state} />
+                <TrustMark fingerprint={FINGERPRINT} state={state} />
             </UiProvider>
         );
         const { container, rerender } = render(ui('verified'));
@@ -80,7 +99,7 @@ describe('TrustMark', () => {
         setMedia(REDUCED_MOTION, true);
         const ui = (state: 'verifying' | 'verified') => (
             <UiProvider messages={TEST_MESSAGES} locale="en">
-                <TrustMark engineId={ENGINE_ID} state={state} />
+                <TrustMark fingerprint={FINGERPRINT} state={state} />
             </UiProvider>
         );
         const { container, rerender } = render(ui('verifying'));
@@ -91,7 +110,7 @@ describe('TrustMark', () => {
     it('drops a running seal animation when reduced motion is switched on', () => {
         const ui = (state: 'verifying' | 'verified') => (
             <UiProvider messages={TEST_MESSAGES} locale="en">
-                <TrustMark engineId={ENGINE_ID} state={state} />
+                <TrustMark fingerprint={FINGERPRINT} state={state} />
             </UiProvider>
         );
         const { container, rerender } = render(ui('verifying'));
@@ -106,8 +125,8 @@ describe('TrustMark', () => {
     it.each(['light', 'dark'] as const)('has no axe violations (%s)', async (theme) => {
         const { container } = renderUi(
             <div>
-                <TrustMark engineId={ENGINE_ID} state="verified" />
-                <TrustMark engineId={null} state="verifying" size="sm" />
+                <TrustMark fingerprint={FINGERPRINT} state="verified" />
+                <TrustMark fingerprint={null} state="verifying" size="sm" />
             </div>,
             { theme },
         );

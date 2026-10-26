@@ -51,14 +51,8 @@ engine-ui runs under the engine's CSP with Trusted Types, so the same ESLint ban
 
 ## Engine fingerprint
 
-`TrustMark` carries the engine fingerprint: a code and a pattern that users compare between engine-ui's security page (U-06) and the dashboard's engine list (D-06), like Signal safety numbers. Both render it through `TrustMark` or `deriveEngineFingerprint` from this package and test against [`fingerprint-vectors.json`](src/components/trust-mark/fingerprint-vectors.json), so the same engine ID shows the same mark everywhere by construction. It is a recognition aid; the security property stays the engine ID in the hostname.
+`TrustMark` draws the engine fingerprint: a code and a pattern that users compare between the engine's terminal and setup page, engine-ui's security page (U-06) and the dashboard's engine list (D-06), like Signal safety numbers. It is a recognition aid; the security property stays the engine ID in the hostname.
 
-Derivation `ptbk-fingerprint-v1` (decided 2026-10-20):
+This package never derives it. The derivation `ptbk-fingerprint-v1` and its vectors live in the open contract, `@ptbk/protocol` (`deriveEngineFingerprint`, C-11), so the open engine derives the same code; this package imports no contract package, so the apps derive and pass the result: `<TrustMark fingerprint={engineId === null ? null : deriveEngineFingerprint(engineId)} … />`, and `EngineSwitcher` takes a `fingerprint` per engine. `TrustMarkFingerprint` is the part of protocol's `EngineFingerprint` the seal reads. The gallery and tests use fixed `SAMPLE_FINGERPRINTS` copied from the vectors.
 
-1. `digest = SHA-256(UTF-8("ptbk-fingerprint-v1") ‖ UTF-8(engineId))`, the prefix immediately followed by the engine ID with no separator (the prefix has a fixed length, so the input is unambiguous).
-2. Digest bits are read most significant bit first, byte 0 first.
-3. Code: bits 0–99 as twenty 5-bit groups, each mapped to the Crockford base32 alphabet `0123456789ABCDEFGHJKMNPQRSTVWXYZ` (uppercase, no check symbol). Shown in five groups of four joined by `-`: `XXXX-XXXX-XXXX-XXXX-XXXX`. 100 bits make a targeted key search for a matching code infeasible.
-4. Pattern: bits 100–114 fill a 5×5 grid row by row over columns 0–2 (cell `(row, column)` is bit `100 + 3 × row + column`, `1` = filled); column 3 mirrors column 1 and column 4 mirrors column 0.
-5. Colours are positional and not part of the fingerprint: a filled cell takes `--trust-mark-fp-N` with `N = ((row + min(column, 4 − column)) mod 6) + 1`.
-
-The vectors were computed independently of the TypeScript code (Python `hashlib`, digests cross-checked with OpenSSL). Changing any step changes every engine's mark, so a new derivation gets a new prefix (`ptbk-fingerprint-v2`) and new vectors, and engine-ui and the dashboard switch together.
+Colours are positional and not part of the fingerprint: a filled cell takes `--trust-mark-fp-N` with `N = ((row + min(column, 4 − column)) mod 6) + 1` (`fingerprintColour`).

@@ -1,6 +1,6 @@
 import { KNOWN_CAPABILITIES, SIGN_IN_PATH, SIGN_OUT_PATH } from '@ptbk/engine-api';
 import type { Permission } from '@ptbk/engine-api';
-import { deriveEngineFingerprint } from '@ptbk/ui';
+import { deriveEngineFingerprint } from '@ptbk/protocol';
 import { act, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 

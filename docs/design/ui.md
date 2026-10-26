@@ -62,7 +62,7 @@ The agent detail tabs and the main sections come from the feature registry, so a
 
 Not a generic padlock. A distinctive Promptbook seal: a custom SVG mark, quietly present in the shell, with a short calm animation when the engine verifies (like the sense of sealed, end-to-end security in Signal or WhatsApp). Opening it shows "Private engine: your data stays on your server" and the trust panel.
 
-It carries an **engine fingerprint**: a visual pattern and a short code derived from the engine ID, also shown in the dashboard for the same engine. Users can compare them across devices the way Signal users compare safety numbers. A different fingerprint means a different engine. Rendered from the engine ID only, deterministic, accessible (code readable by screen readers).
+It carries an **engine fingerprint**: a visual pattern and a short code derived from the engine ID, also shown in the dashboard, the engine's terminal and its setup page for the same engine (one derivation, `deriveEngineFingerprint` in `@ptbk/protocol`). Users can compare them across devices the way Signal users compare safety numbers. A different fingerprint means a different engine. Rendered from the engine ID only, deterministic, accessible (code readable by screen readers).
 
 ## Dashboard (app.ptbk.io)
 

@@ -3,10 +3,11 @@ import { describe, expect, it } from 'vitest';
 
 import { expectNoAxeViolations } from '../../testing/axe';
 import { renderUi } from '../../testing/render';
+import { SAMPLE_FINGERPRINTS } from '../trust-mark/sample-fingerprints';
 import { EngineSwitcher } from './engine-switcher';
 import type { EngineSwitcherProps } from './engine-switcher';
 
-const CURRENT = { name: 'Acme engine', engineId: 'local-dev-engine-7', hostname: 'acme.engine.test' };
+const CURRENT = { name: 'Acme engine', fingerprint: SAMPLE_FINGERPRINTS.local, hostname: 'acme.engine.test' };
 
 const ENGINE_UI: EngineSwitcherProps = {
     current: CURRENT,
@@ -18,17 +19,23 @@ const ENGINE_UI: EngineSwitcherProps = {
 const DASHBOARD: EngineSwitcherProps = {
     ...ENGINE_UI,
     engines: [
-        { name: 'Lab', engineId: 'a', hostname: 'lab.engine.test', status: 'online', href: 'https://lab.engine.test/' },
+        {
+            name: 'Lab',
+            fingerprint: SAMPLE_FINGERPRINTS.lead,
+            hostname: 'lab.engine.test',
+            status: 'online',
+            href: 'https://lab.engine.test/',
+        },
         {
             name: 'Old',
-            engineId: null,
+            fingerprint: null,
             hostname: 'old.engine.test',
             status: 'offline',
             href: 'https://old.engine.test/',
         },
         {
             name: 'New',
-            engineId: 'b',
+            fingerprint: SAMPLE_FINGERPRINTS.lab,
             hostname: 'new.engine.test',
             status: 'unknown',
             href: 'https://new.engine.test/',

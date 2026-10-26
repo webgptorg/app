@@ -1,3 +1,4 @@
+import { deriveEngineFingerprint } from '@ptbk/protocol';
 import { Banner, Card, CodeText, EmptyState, ErrorState, Skeleton, TrustMark, useLocale } from '@ptbk/ui';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, SearchX } from 'lucide-react';
@@ -103,7 +104,7 @@ function EngineDetail(props: { readonly engine: EngineView; readonly canRevoke: 
             <Card title={m.engine_fingerprint_title()}>
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                     <TrustMark
-                        engineId={engine.engineId}
+                        fingerprint={deriveEngineFingerprint(engine.engineId)}
                         state="verified"
                         size="lg"
                         label={m.engines_fingerprint_label({ shortId: shortEngineId(engine.engineId) })}
