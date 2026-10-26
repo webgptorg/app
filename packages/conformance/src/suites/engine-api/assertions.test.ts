@@ -58,6 +58,23 @@ function firstAnswerAgain(match: Match): Tamper {
     };
 }
 
+/** Answers a refused call with the last accepted answer to the same route, as if the engine had let it through. */
+function acceptAgain(match: Match): Tamper {
+    let accepted: { readonly status: number; readonly body: string } | undefined;
+    return async (request, response) => {
+        if (!match(request)) return response;
+        if (response.ok) {
+            accepted = { status: response.status, body: await response.clone().text() };
+            return response;
+        }
+        if (response.status !== 403 || accepted === undefined) return response;
+        return new Response(accepted.body, {
+            status: accepted.status,
+            headers: { 'content-type': 'application/json' },
+        });
+    };
+}
+
 function chain(...tampers: Tamper[]): Tamper {
     return async (request, response) => {
         let current = response;
@@ -770,6 +787,25 @@ const FAILS: readonly Case[] = [
         },
     ],
     [
+        "another member's message accepted",
+        'engine-api.cross-member.chat-writes',
+        { tamper: acceptAgain(on('POST', /^\/chats\/[^/]+\/messages$/)) },
+    ],
+    [
+        'a refused message that still lands in the chat',
+        'engine-api.cross-member.chat-writes',
+        {
+            tamper: fromCall(
+                2,
+                editJson(on('GET', /^\/chats\/[^/]+$/), (chat) => ({
+                    ...chat,
+                    messageCount: Number(chat.messageCount) + 1,
+                })),
+                on('GET', /^\/chats\/[^/]+$/),
+            ),
+        },
+    ],
+    [
         'a cross-site refusal that is not 403',
         'engine-api.gateway.cross-site-refused',
         {
@@ -867,6 +903,13 @@ describe('each assertion bites', () => {
             })),
         );
         expect(await outcome('engine-api.activity.agent-names', { tamper })).toEqual({ kind: 'pass' });
+    });
+
+    it("passes an engine that hides another member's chat writes behind 404", async () => {
+        const tamper = replace(on('POST', /^\/chats\/[^/]+\/messages/), (_, response) =>
+            response.status === 403 ? problem('not-found', 404) : response,
+        );
+        expect(await outcome('engine-api.cross-member.chat-writes', { tamper })).toEqual({ kind: 'pass' });
     });
 
     it('runs the auth check with placeholders when there is no owner', async () => {
