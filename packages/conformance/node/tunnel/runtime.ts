@@ -72,13 +72,14 @@ export const CONTRACT_TIMING: TunnelTiming = Object.freeze({
 type RelayMode = { readonly kind: 'auto' } | { readonly kind: 'manual'; readonly queue: EventQueue<RelayConnection> };
 
 /**
- * The relay side of a run: by default every relay accepts the engine as an honest relay would and keeps its tunnel
+ * The relay side of one check: by default every relay accepts the engine as an honest relay would and keeps its tunnel
  * ready; a check takes one relay into manual mode to script the next connections itself.
  */
 export class TunnelRuntime {
     readonly relay: FakeRelay;
     readonly engineDomain: Hostname;
     readonly timing: TunnelTiming;
+    /** Every tunnel that reached `ready`, closed ones too, so a check can judge all the engine's frames. */
     readonly allTunnels: RelayTunnel[] = [];
     readonly #modes = new Map<RelayId, RelayMode>();
     readonly #tunnels = new Map<RelayId, RelayTunnel[]>();
