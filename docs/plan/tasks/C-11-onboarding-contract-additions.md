@@ -2,7 +2,7 @@
 
 - **Lane:** Contracts · **Module:** `packages/protocol` (plus the callers named below) · **Milestone:** M3
 - **Depends on:** C-03, U-02, E-05
-- **Status:** todo
+- **Status:** in progress (feat/c-11-onboarding-contract-additions)
 - **Spec:** Interfaces (draft) 1; Pairing and identity (First setup); design: [onboarding.md](../../design/onboarding.md), [ui.md](../../design/ui.md) (Trust mark); guide: [installation.md](../../engine-integration/installation.md)
 
 ## Goal
