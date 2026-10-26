@@ -101,13 +101,13 @@ The same steps, with `tofu apply -replace='module.environment.hcloud_server.rela
 
 ## Remove a dead relay
 
-1. Take it out of the engine wildcard: `in_rotation = false` in `infra/cloudflare` (its README, Runbook: a relay out of rotation). A relay that stops answering its health check has already left by itself (I-07, within about a minute); this keeps it out while you work on it. Engines and browsers already use the other relays.
+1. Take it out of the engine wildcard: `in_rotation = false` in `infra/cloudflare` (its README, Runbook: a relay out of rotation). Where the engine wildcard is a load balancer (`relay_dns_mode`), a relay that stops answering its health check has already left by itself (I-07, within about a minute); this keeps it out while you work on it, and in records mode it is what takes it out. Engines and browsers already use the other relays.
 2. Rebuild it (above), or remove it from `relays` here and in `infra/cloudflare`. Its primary IPs have delete protection: lift it in the Hetzner console first if the addresses should go too.
 3. Put it back in rotation once `verify.sh` passes and engines have reconnected.
 
 ## DDoS
 
-Hetzner filters network-layer floods for free. It does not stop TLS-handshake floods or slow connections; the relay's own limits (R-06) do, and nftables drops a single source's floods before they reach Node. What keeps engines reachable is several relays, all in DNS: browsers retry the next address and engines keep tunnels to every relay. A relay that is flooded until it cannot finish handshakes for its own hostname leaves DNS through the load balancer's health check (`infra/cloudflare` README, Relay DNS) and comes back once it passes again.
+Hetzner filters network-layer floods for free. It does not stop TLS-handshake floods or slow connections; the relay's own limits (R-06) do, and nftables drops a single source's floods before they reach Node. What keeps engines reachable is several relays, all in DNS: browsers retry the next address and engines keep tunnels to every relay. A relay that is flooded until it cannot finish handshakes for its own hostname leaves DNS through the load balancer's health check where the engine wildcard is one (`infra/cloudflare` README, Relay DNS) and comes back once it passes again.
 
 Escalation when a relay is attacked:
 

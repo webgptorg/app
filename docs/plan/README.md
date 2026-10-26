@@ -167,7 +167,7 @@ C-01 and R-01 both live in `packages/protocol` and touch its `package.json` and 
 - Cryptography ([ADR 0014](../adr/0014-cryptography.md)): WebCrypto signs, `@noble/curves` verifies in strict mode; length-prefixed signature inputs; DSSE envelopes instead of JSON canonicalisation; signed tunnel negotiation; trusted time for the update delay; exact Sigstore identity pinning.
 - Engine registration is signed by the engine key; regular releases need both the CI's keyless signature and a human-held release key; our own npm scope is exempt from the 7-day release age.
 - Organizations, members and roles are modelled from day one ([ADR 0006](../adr/0006-organizations-and-roles.md)).
-- Relay DNS failover (I-07, decided 2026-10-23 by the orchestrator, delegated by Seb): the engine wildcard is a Cloudflare DNS-only load balancer with health checks, managed in `infra/cloudflare`, not a checker holding an engine-zone token. Its subscription is a paid add-on (see apply.md).
+- Relay DNS failover (I-07, decided 2026-10-23 by the orchestrator, delegated by Seb): the engine wildcard is a Cloudflare DNS-only load balancer with health checks, managed in `infra/cloudflare`, not a checker holding an engine-zone token. Its subscription is a paid add-on (see apply.md); an environment with a single relay (staging for now) uses plain wildcard records instead (`relay_dns_mode`).
 
 **Still needed** (each blocks specific tasks, not the start):
 
