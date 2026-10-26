@@ -1,8 +1,8 @@
 # C-09. Tunnel conformance suite: a fake relay the engine dials
 
 - **Lane:** Contracts · **Module:** `packages/conformance` (`node/`) · **Milestone:** M5
-- **Depends on:** C-02, C-05, C-08, M-01, M-02
-- **Status:** in progress (feat/c-09-tunnel-conformance)
+- **Depends on:** C-02, C-05, M-01, M-02
+- **Status:** done (#85)
 - **Spec:** Interfaces (draft) 3. Tunnel protocol, Relay and tunnel; ADRs: [0004](../../adr/0004-mock-engine-and-conformance.md), [0010](../../adr/0010-protocol-design-principles.md), [0014](../../adr/0014-cryptography.md)
 
 ## Goal
@@ -11,7 +11,7 @@ The `tunnel` suite acts as the relays the engine dials and checks the engine's t
 
 ## Context
 
-C-05 registered three tunnel check IDs as `skip`. C-08 added the platform harness, which for each check spawns the engine under test, registers it with a fake dashboard and hands the check a test CA the engine trusts through `NODE_EXTRA_CA_CERTS`. This task builds on that harness with a fake relay inside the conformance package. No app is spawned or imported; the relay in `apps/relay` and the mock engine's tunnel client serve only as reference implementations. Where the spec's Interface 3 differs from the contract code in `@ptbk/protocol`, the code wins (tunnel-client.md says so).
+C-05 registered three tunnel check IDs as `skip`. C-08's platform harness (merged in #87; the rest of C-08 does not block this task) for each check spawns the engine under test, registers it with a fake dashboard and hands the check a test CA the engine trusts through `NODE_EXTRA_CA_CERTS`. This task builds on that harness with a fake relay inside the conformance package. No app is spawned or imported; the relay in `apps/relay` and the mock engine's tunnel client serve only as reference implementations. Where the spec's Interface 3 differs from the contract code in `@ptbk/protocol`, the code wins (tunnel-client.md says so).
 
 Other suites need to reach the engine API on the engine's own origin in harness runs: C-10's UI loader checks, the engine API suite and C-08's heartbeat skew check. They get it through this task's relay, as a `fetch` whose requests run as a real TLS client through a tunnel stream.
 
@@ -89,7 +89,7 @@ Other suites need to reach the engine API on the engine's own origin in harness 
 - [x] The package's coverage stays at or above 90% for lines and branches.
 - [x] Every check ID is in checklist.md; conformance.md and tunnel-client.md describe the suite.
 - [x] `bun run check` passes.
-- [ ] **Status** line above set to `done (#<PR>)`.
+- [x] **Status** line above set to `done (#<PR>)`.
 
 ## Risks and open points
 
