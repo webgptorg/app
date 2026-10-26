@@ -223,7 +223,14 @@ describe('the ui-loader platform suite', () => {
         for (const check of suite.checks) {
             expect(check.id.startsWith('ui-loader.')).toBe(true);
             expect(check.suite).toBe('ui-loader');
-            expect(check.timeoutMs?.({ heartbeatIntervalMs: 1, startTimeoutMs: 1 })).toBe(UI_LOADER_CHECK_TIMEOUT_MS);
+            expect(
+                check.timeoutMs?.({
+                    heartbeatIntervalMs: 1,
+                    intervalOverridden: false,
+                    startTimeoutMs: 1,
+                    quietWindowMs: 1,
+                }),
+            ).toBe(UI_LOADER_CHECK_TIMEOUT_MS);
         }
     });
 
