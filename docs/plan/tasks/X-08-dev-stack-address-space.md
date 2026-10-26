@@ -2,7 +2,7 @@
 
 - **Lane:** X · **Module:** `e2e/` · **Milestone:** M3
 - **Depends on:** X-06
-- **Status:** in progress (feat/x-08-dev-stack-address-space)
+- **Status:** done (#88)
 - **Spec:** none (developer tooling); ADRs: [0004](../../adr/0004-mock-engine-and-conformance.md)
 
 ## Goal
