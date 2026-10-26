@@ -154,6 +154,17 @@ variable "dnssec" {
   default     = true
 }
 
+variable "psl_pull_request" {
+  type        = string
+  description = "URL of the publicsuffix/list pull request that adds engine_domain (I-05), published as the _psl TXT record. null until that request is opened."
+  default     = null
+
+  validation {
+    condition     = var.psl_pull_request == null || can(regex("^https://github\\.com/publicsuffix/list/pull/[1-9][0-9]*$", coalesce(var.psl_pull_request, "-")))
+    error_message = "psl_pull_request must be https://github.com/publicsuffix/list/pull/<number>; replace the <...> placeholder."
+  }
+}
+
 variable "email_sending_domain" {
   type        = string
   description = "Domain the dashboard sends mail from through Cloudflare Email Service. Inside dashboard_zone, never under engine_domain."

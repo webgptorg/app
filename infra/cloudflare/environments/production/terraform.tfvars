@@ -20,6 +20,10 @@ dmarc_policy         = "none"
 
 security_contact = "<security-contact>"
 
+# Unset until the Public Suffix List pull request for the engine domain is opened (I-05, docs/runbooks/abuse-takedown.md);
+# then its URL, which publishes the _psl TXT record the PSL maintainers check.
+# psl_pull_request = "https://github.com/publicsuffix/list/pull/<number>"
+
 # The engine wildcard is a health-checked load balancer (Load Balancing add-on; README, Relay DNS). Until the add-on is
 # bought, "records" applies the plain wildcard records instead.
 relay_dns_mode = "load_balancer"

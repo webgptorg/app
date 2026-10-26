@@ -65,6 +65,9 @@ variable "ops_email" {
   default = null
 }
 variable "relay_dns_mode" {}
+variable "psl_pull_request" {
+  default = null
+}
 
 # Token from CLOUDFLARE_API_TOKEN: the production IaC token (README, API tokens).
 provider "cloudflare" {}
@@ -83,6 +86,7 @@ module "environment" {
   relays               = var.relays
   ops_email            = var.ops_email
   relay_dns_mode       = var.relay_dns_mode
+  psl_pull_request     = var.psl_pull_request
 }
 
 output "engine_name_servers" {

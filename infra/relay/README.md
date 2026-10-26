@@ -100,7 +100,14 @@ The user data installs cosign 3.1.3 from its GitHub release, pinned by SHA-256 (
 
 ## Rebuild a host
 
-The same steps, with `tofu apply -replace='module.environment.hcloud_server.relay["<name>"]'`. The primary IPs stay, so DNS needs no change; the server shuts down first, so the relay closes its tunnels and engines move to a peer relay. Then place the secrets again, start `ptbk-relay-cert`, deploy and verify. Changing the user data or the server type also replaces the host. Record the timings in the apply PR.
+The same steps, with `tofu apply -replace='module.environment.hcloud_server.relay["<name>"]'`. The primary IPs stay, so DNS needs no change; the server shuts down first, so the relay closes its tunnels and engines move to a peer relay. Then place the secrets again and start `ptbk-relay-cert`. Before placing `registry-auth`, set the downgrade floor to the UTC day the current release was built (its digest is in `sudo ptbk-relay-deploy status` on a peer relay; `skopeo login ghcr.io` first), because the rebuilt host has no high-water mark and the empty default would accept any image we ever signed until its first deploy:
+
+```sh
+skopeo inspect --format '{{.Created}}' docker://ghcr.io/webgptorg/relay@<current digest>   # e.g. 2026-10-20T09:14:02Z
+ssh <admin>@<host> "sudo sed -i 's/^PTBK_DEPLOY_MIN_CREATED=.*/PTBK_DEPLOY_MIN_CREATED=<that day, e.g. 2026-10-20>/' /etc/ptbk-relay/deploy.env"
+```
+
+Then place `registry-auth`, deploy and verify. Changing the user data or the server type also replaces the host. Record the timings in the apply PR.
 
 ## Rotate secrets
 

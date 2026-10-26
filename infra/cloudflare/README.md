@@ -10,6 +10,7 @@ Per environment, in that environment's own Cloudflare account:
 | `*.<engine domain>`: every relay in rotation, health-checked or plain (`relay_dns_mode`) | DNS-only, TTL 30 s; a load balancer or A and AAAA records, see Relay DNS below (I-07) |
 | CAA on the engine domain                                                                 | `0 issue "letsencrypt.org"`, `0 issuewild ";"`, `0 iodef "mailto:<security contact>"` |
 | No-mail records on the engine domain                                                     | Null MX, `v=spf1 -all`, DMARC `p=reject`: nothing may send mail as it                 |
+| `_psl.<engine domain>` TXT, once `psl_pull_request` is set                               | The Public Suffix List pull request's URL, which the PSL maintainers check (I-05)     |
 | `<relay>.<relay domain>` A and AAAA for every relay                                      | DNS-only, TTL 60 s; stays while a relay is out of rotation                            |
 | D1 database `ptbk-dashboard-<env>`                                                       | Location hint `weur`; its ID goes into `apps/dashboard/wrangler.jsonc`                |
 | Email Service sending domain in the dashboard zone, plus its DMARC record                | Cloudflare publishes SPF, DKIM and return-path records for it; DMARC is ours          |
@@ -59,6 +60,7 @@ Nothing can be applied yet. These wait on the decisions in the plan's "Still nee
 | `<email-sending-domain>`, `<staging-email-sending-domain>` | `terraform.tfvars`                                  | Sending subdomain (D-02 sets the from address)                                    |
 | `<security-contact>`                                       | `terraform.tfvars`                                  | Security mailbox (with I-05's abuse address)                                      |
 | `<ops-email>`                                              | production `terraform.tfvars`                       | Ops mailbox (I-04's alerts); Cloudflare's relay health notifications go there     |
+| `psl_pull_request` (unset)                                 | production `terraform.tfvars`                       | The PSL pull request, opened once the engine domain is applied (I-05's runbook)   |
 | Relay addresses                                            | `terraform.tfvars`                                  | I-01 outputs                                                                      |
 | `<staging-d1-id>`, `<production-d1-id>`                    | `apps/dashboard/wrangler.jsonc`                     | `d1_database_id` output after the first apply                                     |
 
@@ -193,4 +195,4 @@ Email: send a message from the staging dashboard to an external mailbox and chec
 
 ## Not here
 
-Relay hosts (I-01), deploy workflows (I-03), uptime checks and the dashboard's alerts (I-04), the PSL submission and CT watch (I-05). A second DNS provider and per-engine records (with per-engine CAA `accounturi` pinning, RFC 8657) come in v1 or later.
+Relay hosts (I-01), deploy workflows (I-03), uptime checks and the dashboard's alerts (I-04), the PSL submission itself and the CT watch (I-05, [abuse-takedown.md](../../docs/runbooks/abuse-takedown.md#public-suffix-list)). A second DNS provider and per-engine records (with per-engine CAA `accounturi` pinning, RFC 8657) come in v1 or later.
