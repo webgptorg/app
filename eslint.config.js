@@ -171,6 +171,14 @@ export default tseslint.config(
         }),
     },
     {
+        // Node-only (it hosts the fake platform and runs the engine), but it moves public with the rest of the suite.
+        files: ['packages/conformance/node/**/*.ts'],
+        rules: restrictImports({
+            group: ['@ptbk/*', '!@ptbk/protocol', '!@ptbk/engine-api'],
+            message: 'The conformance suite imports only the contracts.',
+        }),
+    },
+    {
         // Node-only, but like the contracts it may move public (ADR 0002), so it depends on nothing private.
         files: ['packages/release-tools/src/**/*.ts'],
         rules: restrictImports(sigstoreVerifyBan, {

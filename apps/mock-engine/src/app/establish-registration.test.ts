@@ -20,7 +20,7 @@ async function setup() {
     const identity = await createMemoryIdentityStore().loadOrCreate();
     const establish = (linkCode: DashboardConfig['linkCode']) =>
         establishRegistration({
-            dashboard: { url: 'https://app.ptbk.test', linkCode, heartbeatIntervalS: 60, relaysOverride: false },
+            dashboard: { url: 'https://app.ptbk.test', linkCode, heartbeatIntervalS: 60 },
             engineDomain: ENGINE_DOMAIN,
             engineVersion: EngineVersion.parse('0.1.0'),
             identity,

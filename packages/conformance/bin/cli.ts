@@ -3,7 +3,13 @@ import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 
-import type { CheckResult, ConformanceTarget, SessionCredential } from '../src/index';
+import {
+    DEFAULT_HEARTBEAT_INTERVAL_MS,
+    PLATFORM_SUITES,
+    createMockEngineTargetFactory,
+    runPlatformConformance,
+} from '../node/index';
+import type { CheckResult, ConformanceReport, ConformanceTarget, SessionCredential } from '../src/index';
 import {
     ALL_SUITES,
     createMockEngineTarget,
@@ -14,6 +20,7 @@ import {
 } from '../src/index';
 
 export const USAGE = `Usage: ptbk-conformance --base-url <https://engine> [options]
+       ptbk-conformance --engine-cmd <shell command> [options]
 
 Credentials (one of):
   --target-module <file>      A module exporting createConformanceTarget({ baseUrl, fetch }) → ConformanceTarget
@@ -21,8 +28,16 @@ Credentials (one of):
   PTBK_CONFORMANCE_OWNER_COOKIE=<name=value>
                               An owner session cookie; checks that need members then skip
 
+Starting the engine (the harness plays the dashboard and the rest of the platform):
+  --engine-cmd <command>      Starts the engine under test (run by /bin/sh), once per check and scenario
+  --engine-cwd <dir>          Its working directory (default: the current one)
+  --heartbeat-interval-s <n>  The interval the engine was told to use (default 60; anything else skips the cadence check)
+  --mock-control              The engine is the mock engine: sessions from its dev-only control listener
+
 Options:
-  --suite <id>                Run only this suite (repeatable): ${ALL_SUITES.map(({ id }) => id).join(', ')}
+  --suite <id>                Run only these suites (repeatable or comma-separated)
+                              against --base-url: ${ALL_SUITES.map(({ id }) => id).join(', ')}
+                              with --engine-cmd: ${PLATFORM_SUITES.map(({ id }) => id).join(', ')}
   --filter <text>             Run only checks whose ID contains this text (repeatable)
   --report json|junit         Report format (default json)
   --out <file>                Write the report here instead of stdout
@@ -73,6 +88,10 @@ async function run(argv: readonly string[], io: CliIo): Promise<number> {
             'no-gateway': { type: 'boolean', default: false },
             seed: { type: 'string' },
             'timeout-ms': { type: 'string', default: '120000' },
+            'engine-cmd': { type: 'string' },
+            'engine-cwd': { type: 'string' },
+            'heartbeat-interval-s': { type: 'string' },
+            'mock-control': { type: 'boolean', default: false },
             help: { type: 'boolean', default: false },
         },
     }) as { values: Record<string, string | string[] | boolean | undefined> };
@@ -80,31 +99,65 @@ async function run(argv: readonly string[], io: CliIo): Promise<number> {
         io.stdout(`${USAGE}\n`);
         return 0;
     }
-    const baseUrl = parseUrl(values['base-url'], '--base-url');
     const report = values['report'];
     if (report !== 'json' && report !== 'junit') throw new UsageError('--report must be json or junit');
     const seed = values['seed'] === undefined ? undefined : integer(values['seed'], '--seed', 2 ** 32 - 1);
     const timeoutMs = integer(values['timeout-ms'], '--timeout-ms', 3_600_000);
-    const suiteIds = (values['suite'] as string[] | undefined) ?? ALL_SUITES.map(({ id }) => id);
-    const suites = suiteIds.map((id) => {
-        const suite = ALL_SUITES.find((candidate) => candidate.id === id);
-        if (suite === undefined) throw new UsageError(`unknown suite ${id}`);
-        return suite;
-    });
+    const suiteIds = ((values['suite'] as string[] | undefined) ?? []).flatMap((list) =>
+        list.split(',').map((id) => id.trim()),
+    );
     const filters = (values['filter'] as string[] | undefined) ?? [];
-
-    const target = await targetFrom(values, baseUrl, io);
-    const result = await runConformance({
-        target,
-        suites,
+    const filter =
+        filters.length === 0
+            ? {}
+            : { filter: (check: { id: string }) => filters.some((text) => check.id.includes(text)) };
+    const common = {
         timeoutMs,
         signal: io.signal,
         ...(seed === undefined ? {} : { seed }),
-        ...(filters.length === 0 ? {} : { filter: (check) => filters.some((text) => check.id.includes(text)) }),
-        onResult: (check) => {
+        ...filter,
+        onResult: (check: CheckResult) => {
             io.stderr(progressLine(check));
         },
-    });
+    };
+
+    let result: ConformanceReport;
+    const engineCmd = values['engine-cmd'];
+    if (typeof engineCmd === 'string') {
+        if (values['base-url'] !== undefined) throw new UsageError('give either --base-url or --engine-cmd');
+        const suites = pick(suiteIds, PLATFORM_SUITES, (id) =>
+            ALL_SUITES.some((suite) => suite.id === id)
+                ? `${id} runs against --base-url; the harness cannot reach the engine API yet`
+                : `unknown suite ${id}`,
+        );
+        const intervalS =
+            values['heartbeat-interval-s'] === undefined
+                ? DEFAULT_HEARTBEAT_INTERVAL_MS / 1000
+                : integer(values['heartbeat-interval-s'], '--heartbeat-interval-s', 3600);
+        if (intervalS === 0) throw new UsageError('--heartbeat-interval-s must be at least 1');
+        const cwd = values['engine-cwd'];
+        result = await runPlatformConformance({
+            ...common,
+            command: { command: engineCmd, cwd: resolve(typeof cwd === 'string' ? cwd : '.') },
+            suites,
+            expectations: { heartbeatIntervalMs: intervalS * 1000 },
+            ...(values['mock-control'] === true ? { targets: createMockEngineTargetFactory() } : {}),
+            parentEnv: io.env,
+        });
+    } else {
+        for (const flag of ['engine-cwd', 'heartbeat-interval-s'] as const) {
+            if (values[flag] !== undefined) throw new UsageError(`--${flag} needs --engine-cmd`);
+        }
+        if (values['mock-control'] === true) throw new UsageError('--mock-control needs --engine-cmd');
+        const baseUrl = parseUrl(values['base-url'], '--base-url');
+        const suites = pick(suiteIds, ALL_SUITES, (id) =>
+            PLATFORM_SUITES.some((suite) => suite.id === id)
+                ? `${id} starts the engine itself: give --engine-cmd instead of --base-url`
+                : `unknown suite ${id}`,
+        );
+        const target = await targetFrom(values, baseUrl, io);
+        result = await runConformance({ ...common, target, suites });
+    }
     const text = report === 'json' ? writeJsonReport(result) : writeJunitReport(result);
     const out = values['out'];
     if (typeof out === 'string') await writeFile(out, text);
@@ -161,6 +214,20 @@ async function targetFrom(
         session: (subject) => Promise.resolve(subject.kind === 'owner' ? owner : null),
         ...extras,
     };
+}
+
+/** The suites named, in the order given, or every one of `available` when none is. */
+function pick<Suite extends { readonly id: string }>(
+    ids: readonly string[],
+    available: readonly Suite[],
+    problem: (id: string) => string,
+): Suite[] {
+    if (ids.length === 0) return [...available];
+    return ids.map((id) => {
+        const suite = available.find((candidate) => candidate.id === id);
+        if (suite === undefined) throw new UsageError(problem(id));
+        return suite;
+    });
 }
 
 function progressLine(check: CheckResult): string {

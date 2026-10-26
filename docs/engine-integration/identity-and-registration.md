@@ -93,7 +93,29 @@ Spec Interface 6 defines the engine's environment:
 | `HTTPS_PROXY`, `NO_PROXY`                   | Use them for the tunnel, registration, heartbeat and updates                                                                                         |
 | `PTBK_DATA_DIR`                             | Keep keys, certificates, database and audit log there, mode 0700                                                                                     |
 
-The spec names no variables for the link code or the dashboard URL; that is the engine's choice. The mock engine uses `PTBK_LINK_CODE` and `PTBK_DASHBOARD_URL`, and `mock-engine register --link <code>` registers and exits.
+The spec names no variables for the link code or the dashboard URL. The launch contract below fixes them, so the conformance harness can start any engine the same way. `mock-engine register --link <code>` registers and exits.
+
+### Launch contract
+
+The conformance harness (`ptbk-conformance --engine-cmd`, [conformance.md](conformance.md#an-engine-the-harness-starts)) starts the engine itself and plays the dashboard, the relays and the release store on loopback. The engine must honour these variables. Each one is safe in production as well, so an engine needs no test mode to pass:
+
+| Variable              | The engine must                                                                                                                                                                     | Why it is safe in production                                                                                           |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `PTBK_DATA_DIR`       | Keep its state there. When the directory does not exist, create it with mode 0700                                                                                                   | Spec Interface 6                                                                                                       |
+| `PTBK_MODE`           | Run in that mode; the harness sets `tunnel`                                                                                                                                         | Spec Interface 6                                                                                                       |
+| `PTBK_ENGINE_DOMAIN`  | Use it as the engine domain: its default hostname, and the domain `checkRegistrationResponse` checks against. Without it, the production engine domain                              | The dashboard's answer is checked against it, so a wrong value only makes registration fail                            |
+| `PTBK_DASHBOARD_URL`  | Register and send heartbeats to this `https://` origin. Without it, the production dashboard                                                                                        | Operator configuration. Registration grants nothing inside the engine                                                  |
+| `PTBK_LINK_CODE`      | Register with it once, when the engine holds no registration. Never write it to disk or a log                                                                                       | One-time, and useless once consumed                                                                                    |
+| `PTBK_RELAYS`         | When set (comma-separated `wss://<relay hostname>[:port]` URLs), dial exactly these relays instead of the relays from the registration                                              | An operator-trusted override: the engine still verifies each relay's TLS certificate, and a relay never sees plaintext |
+| `NODE_EXTRA_CA_CERTS` | Trust this PEM CA in addition to the default roots, for the dashboard, the relays and the release store. Node does this for every TLS connection unless the code replaces the roots | It adds a root and never replaces the defaults, as for a TLS-inspecting proxy ([tunnel-client.md](tunnel-client.md))   |
+
+The UI loader adds `PTBK_UI_RELEASE_URL`, `PTBK_UPDATE_POLICY` and `PTBK_PINNED_VERSION` ([ui-loader.md](ui-loader.md)).
+
+The harness removes `HTTPS_PROXY`, `NO_PROXY` and any other `PTBK_*` variable from the engine's environment. Engine-specific settings, such as a shorter development heartbeat interval, belong in the engine command, not in this list. The engine must also:
+
+- exit within 10 s of SIGTERM;
+- exit with a non-zero status when it refuses to start (an unsafe data directory or key file, invalid configuration);
+- write its logs to stdout or stderr. The harness reads them to check what the engine tells its operator, and to check that no secret is logged.
 
 ## Contract exports
 
@@ -109,7 +131,7 @@ Golden vector: the `registration` case in [`signed-message-vectors.json`](../../
 
 ## Conformance
 
-The `registration` suite, in which the conformance CLI starts the engine and acts as the dashboard, is pending (task C-08); until it merges, the checklist rows for this page have no check ID. The registration golden vector and `checkRegistrationResponse` are the reference, and the local dev stack shows a registration against the real dashboard ([testing-against-the-platform.md](testing-against-the-platform.md)).
+The `registration` suite (C-08) starts the engine with the [launch contract](#launch-contract) and acts as the dashboard. `registration.request.signature-verifies` checks the request: the strict schema, the link code, `mode: tunnel` and the signature over the exact bytes. The rest of the suite (identity, link code, responses, errors, key handling) is being added under C-08. The local dev stack shows a registration against the real dashboard ([testing-against-the-platform.md](testing-against-the-platform.md)).
 
 ## Reference implementation
 

@@ -87,7 +87,7 @@ Through the tunnel every `/__mock/*` route is 404, as before.
 
 The engine's only conversation with the dashboard, straight over HTTPS (never through a relay), through `HTTPS_PROXY` and `NO_PROXY` like the tunnels and trusting `MOCK_EXTRA_CA_FILE` as well as the default roots.
 
-**Startup.** With `PTBK_DASHBOARD_URL` set: a stored `registration.json` is loaded and checked again against the key, the engine domain and the dashboard (a mismatch stops startup); otherwise `PTBK_LINK_CODE` registers; with neither, startup fails. Without `PTBK_DASHBOARD_URL` the engine runs in the M1 dev mode on `PTBK_RELAYS`, without registration or heartbeats. The registration's relays replace `PTBK_RELAYS` unless `MOCK_RELAYS_OVERRIDE=enabled`, and `GET /engine` reports the dashboard URL.
+**Startup.** With `PTBK_DASHBOARD_URL` set: a stored `registration.json` is loaded and checked again against the key, the engine domain and the dashboard (a mismatch stops startup); otherwise `PTBK_LINK_CODE` registers; with neither, startup fails. Without `PTBK_DASHBOARD_URL` the engine runs in the M1 dev mode on `PTBK_RELAYS`, without registration or heartbeats. The engine dials the registration's relays, unless `PTBK_RELAYS` is set: then that list replaces them (an operator override from the launch contract, which the conformance harness uses to point the engine at its loopback relays), and `GET /engine` reports the dashboard URL.
 
 **Registration** (`src/domain/registration/register.ts`): the request is built and signed with `signRegistration` (`mode: tunnel`), the answer is read tolerantly (`TolerantRegisterEngineResponse`, unknown fields stripped, known ones checked, within `REGISTER_RESPONSE_MAX_BYTES`) and then checked with `checkRegistrationResponse`: an engine ID the key does not derive, or a hostname outside the engine domain, is refused and nothing is stored. Problem codes map to `rejected` with the C-03 reason (`invalid-link-code` covers unknown, expired and used codes alike); no answer, a timeout or an error without a readable problem is `unavailable`. An engine that already holds a registration makes no network call. Re-registering a kept key after `registration.json` is lost is idempotent on the dashboard and yields the same engine ID. The link code is taken once from the configuration (and removed from `process.env`), never stored or logged.
 
@@ -130,46 +130,45 @@ To trust it locally, add `PTBK_DATA_DIR/dev-ca/ca-cert.pem` to the browser's or 
 
 ## Configuration
 
-| Variable                      | Meaning                                                                                                 |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `PTBK_MODE`                   | `tunnel` (default; the only mode the mock supports)                                                     |
-| `PTBK_DATA_DIR`               | Required. Holds `engine-key.pem`, `registration.json`, `heartbeat-seq`, `ui/`, and `acme/` and `tls/`   |
-| `PTBK_RELAYS`                 | Comma-separated `wss://<relay hostname>[:port][/v1/tunnel]` URLs. Required without `PTBK_DASHBOARD_URL` |
-| `PTBK_DASHBOARD_URL`          | The dashboard's `https://` origin; enables registration and heartbeats                                  |
-| `PTBK_LINK_CODE`              | One-time link code for the first registration; needs `PTBK_DASHBOARD_URL`                               |
-| `MOCK_HEARTBEAT_INTERVAL_S`   | Seconds between heartbeats, 1 to 3600, default 60 (e2e uses 15)                                         |
-| `MOCK_RELAYS_OVERRIDE`        | `enabled` keeps `PTBK_RELAYS` instead of the registration's relays; default `disabled`                  |
-| `MOCK_STATS`                  | `os` (default) or `scenario`: where disk, memory and CPU figures come from                              |
-| `PTBK_ENGINE_DOMAIN`          | Required. The engine's default hostname is `<engineId>.<PTBK_ENGINE_DOMAIN>`                            |
-| `PTBK_ENGINE_VERSION`         | Signed into the tunnel `auth`; defaults to this package's version                                       |
-| `HTTPS_PROXY` / `https_proxy` | `http://[user:password@]host:port`; both set and different is an error                                  |
-| `NO_PROXY` / `no_proxy`       | Comma-separated hosts (and their subdomains), optional `:port`, or `*`                                  |
-| `MOCK_EXTRA_CA_FILE`          | PEM added to Node's default roots, for the dev relay CA or a TLS-inspecting proxy                       |
-| `MOCK_DEV_CA_CERT_FILE`       | PEM dev CA certificate to issue engine certificates from; set together with `MOCK_DEV_CA_KEY_FILE`      |
-| `MOCK_DEV_CA_KEY_FILE`        | Its PKCS#8 PEM ECDSA P-256 key, mode 0600 or stricter                                                   |
-| `MOCK_DEV_CA_DOMAINS`         | Comma-separated e2e domains a generated dev CA permits besides `PTBK_ENGINE_DOMAIN`                     |
-| `MOCK_CERT_SOURCE`            | `dev-ca` (default) or `acme`; each refuses the other's settings                                         |
-| `PTBK_ACME_DIRECTORY_URL`     | Required with `acme`: the CA's `https://` directory URL                                                 |
-| `PTBK_ACME_EMAIL`             | Optional account contact with `acme`                                                                    |
-| `LOG_LEVEL`                   | `info` (default), `warn`, `error`                                                                       |
-| `MOCK_SEED`                   | Integer 0 to 2³²−1, default 1                                                                           |
-| `MOCK_SCENARIO`               | `empty`, `small-team` (default) or `large-fleet`                                                        |
-| `MOCK_SEED_EPOCH`             | RFC 3339 UTC; seeded timestamps lie before it. Default `2026-10-01T00:00:00Z`                           |
-| `MOCK_FAULTS`                 | A JSON `FaultPlan`; default none                                                                        |
-| `MOCK_CAPABILITIES`           | Comma-separated `runs`, `files`, `triggers`, `integrations`, or `none`; default all four                |
-| `MOCK_SIMULATION`             | `running` (default) or `paused`                                                                         |
-| `MOCK_SIMULATION_SPEED`       | Simulated seconds per real second, 0.1 to 3600, default 1                                               |
-| `MOCK_DEV_LOGIN`              | `enabled` or `disabled` (default)                                                                       |
-| `MOCK_CONTROL`                | `enabled` or `disabled` (default)                                                                       |
-| `MOCK_CONTROL_HOST`           | IP or hostname for the control listener, default `127.0.0.1`                                            |
-| `MOCK_CONTROL_PORT`           | Default `4480`                                                                                          |
-| `PTBK_UI_RELEASE_URL`         | `https://` URL of the release store or mirror, path ending in `/`; enables the UI loader                |
-| `PTBK_UPDATE_POLICY`          | `auto` (default), `manual` or `pinned`                                                                  |
-| `PTBK_PINNED_VERSION`         | The version to install; required with `pinned`, refused otherwise                                       |
-| `MOCK_UI_TRUST_POLICY_FILE`   | Required with `PTBK_UI_RELEASE_URL`: C-06's `TrustPolicy` as JSON                                       |
-| `MOCK_UI_TRUSTED_ROOT_FILE`   | A Sigstore `trusted_root.json` instead of the pinned one in `@ptbk/release-tools`                       |
-| `MOCK_UI_CHECK_INTERVAL_S`    | Seconds between update checks, 1 to 86400, default 3600                                                 |
-| `MOCK_UI_FAKE_PROVENANCE`     | `enabled` accepts test attestations instead of Sigstore (tests and e2e only; refused in production)     |
+| Variable                      | Meaning                                                                                                                                              |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PTBK_MODE`                   | `tunnel` (default; the only mode the mock supports)                                                                                                  |
+| `PTBK_DATA_DIR`               | Required. Holds `engine-key.pem`, `registration.json`, `heartbeat-seq`, `ui/`, and `acme/` and `tls/`                                                |
+| `PTBK_RELAYS`                 | Comma-separated `wss://<relay hostname>[:port][/v1/tunnel]` URLs. Required without `PTBK_DASHBOARD_URL`; with it, replaces the registration's relays |
+| `PTBK_DASHBOARD_URL`          | The dashboard's `https://` origin; enables registration and heartbeats                                                                               |
+| `PTBK_LINK_CODE`              | One-time link code for the first registration; needs `PTBK_DASHBOARD_URL`                                                                            |
+| `MOCK_HEARTBEAT_INTERVAL_S`   | Seconds between heartbeats, 1 to 3600, default 60 (e2e uses 15)                                                                                      |
+| `MOCK_STATS`                  | `os` (default) or `scenario`: where disk, memory and CPU figures come from                                                                           |
+| `PTBK_ENGINE_DOMAIN`          | Required. The engine's default hostname is `<engineId>.<PTBK_ENGINE_DOMAIN>`                                                                         |
+| `PTBK_ENGINE_VERSION`         | Signed into the tunnel `auth`; defaults to this package's version                                                                                    |
+| `HTTPS_PROXY` / `https_proxy` | `http://[user:password@]host:port`; both set and different is an error                                                                               |
+| `NO_PROXY` / `no_proxy`       | Comma-separated hosts (and their subdomains), optional `:port`, or `*`                                                                               |
+| `MOCK_EXTRA_CA_FILE`          | PEM added to Node's default roots, for the dev relay CA or a TLS-inspecting proxy                                                                    |
+| `MOCK_DEV_CA_CERT_FILE`       | PEM dev CA certificate to issue engine certificates from; set together with `MOCK_DEV_CA_KEY_FILE`                                                   |
+| `MOCK_DEV_CA_KEY_FILE`        | Its PKCS#8 PEM ECDSA P-256 key, mode 0600 or stricter                                                                                                |
+| `MOCK_DEV_CA_DOMAINS`         | Comma-separated e2e domains a generated dev CA permits besides `PTBK_ENGINE_DOMAIN`                                                                  |
+| `MOCK_CERT_SOURCE`            | `dev-ca` (default) or `acme`; each refuses the other's settings                                                                                      |
+| `PTBK_ACME_DIRECTORY_URL`     | Required with `acme`: the CA's `https://` directory URL                                                                                              |
+| `PTBK_ACME_EMAIL`             | Optional account contact with `acme`                                                                                                                 |
+| `LOG_LEVEL`                   | `info` (default), `warn`, `error`                                                                                                                    |
+| `MOCK_SEED`                   | Integer 0 to 2³²−1, default 1                                                                                                                        |
+| `MOCK_SCENARIO`               | `empty`, `small-team` (default) or `large-fleet`                                                                                                     |
+| `MOCK_SEED_EPOCH`             | RFC 3339 UTC; seeded timestamps lie before it. Default `2026-10-01T00:00:00Z`                                                                        |
+| `MOCK_FAULTS`                 | A JSON `FaultPlan`; default none                                                                                                                     |
+| `MOCK_CAPABILITIES`           | Comma-separated `runs`, `files`, `triggers`, `integrations`, or `none`; default all four                                                             |
+| `MOCK_SIMULATION`             | `running` (default) or `paused`                                                                                                                      |
+| `MOCK_SIMULATION_SPEED`       | Simulated seconds per real second, 0.1 to 3600, default 1                                                                                            |
+| `MOCK_DEV_LOGIN`              | `enabled` or `disabled` (default)                                                                                                                    |
+| `MOCK_CONTROL`                | `enabled` or `disabled` (default)                                                                                                                    |
+| `MOCK_CONTROL_HOST`           | IP or hostname for the control listener, default `127.0.0.1`                                                                                         |
+| `MOCK_CONTROL_PORT`           | Default `4480`                                                                                                                                       |
+| `PTBK_UI_RELEASE_URL`         | `https://` URL of the release store or mirror, path ending in `/`; enables the UI loader                                                             |
+| `PTBK_UPDATE_POLICY`          | `auto` (default), `manual` or `pinned`                                                                                                               |
+| `PTBK_PINNED_VERSION`         | The version to install; required with `pinned`, refused otherwise                                                                                    |
+| `MOCK_UI_TRUST_POLICY_FILE`   | Required with `PTBK_UI_RELEASE_URL`: C-06's `TrustPolicy` as JSON                                                                                    |
+| `MOCK_UI_TRUSTED_ROOT_FILE`   | A Sigstore `trusted_root.json` instead of the pinned one in `@ptbk/release-tools`                                                                    |
+| `MOCK_UI_CHECK_INTERVAL_S`    | Seconds between update checks, 1 to 86400, default 3600                                                                                              |
+| `MOCK_UI_FAKE_PROVENANCE`     | `enabled` accepts test attestations instead of Sigstore (tests and e2e only; refused in production)                                                  |
 
 Logs are JSON lines with relay URLs, states, close codes, attempt numbers, certificate expiry and dashboard status codes; never a key, signatures, the link code, heartbeat bodies, proxy credentials or stream bytes.
 

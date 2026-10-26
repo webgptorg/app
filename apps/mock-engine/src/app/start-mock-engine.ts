@@ -161,9 +161,9 @@ function configuredUiLoader(config: MockEngineConfig, deps: MockEngineDeps, runt
     });
 }
 
-/** The registration's relays, unless `MOCK_RELAYS_OVERRIDE` keeps `PTBK_RELAYS` (and always in the M1 dev mode). */
+/** `PTBK_RELAYS` when set (an operator override, and always in the M1 dev mode), else the registration's relays. */
 function relaysToDial(config: MockEngineConfig, registration: Registration | null): readonly RelayTarget[] {
-    if (registration === null || config.dashboard?.relaysOverride === true) return config.relays;
+    if (registration === null || config.relays.length > 0) return config.relays;
     return registration.relays.map(relayTargetOf);
 }
 

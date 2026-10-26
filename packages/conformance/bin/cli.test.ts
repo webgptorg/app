@@ -14,6 +14,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { SessionSubject } from '../src/index';
 import type { FakeEngine, FakeEngineOptions } from '../src/testing/fake-engine';
 import { createFakeEngine } from '../src/testing/fake-engine';
+import { SELF_TEST_HEARTBEAT_INTERVAL_S, fakeEngineCommand } from '../node/testing/engines';
 import type { CliIo } from './cli';
 import { USAGE, runCli } from './cli';
 
@@ -152,6 +153,13 @@ describe('runCli', () => {
             ['--base-url', 'https://engine.test', '--mock-control-url', 'http://x', '--target-module', 'x.mjs'],
             'give one of',
         ],
+        [['--base-url', 'https://engine.test', '--suite', 'registration'], 'registration starts the engine itself'],
+        [['--engine-cmd', 'true', '--suite', 'engine-api'], 'engine-api runs against --base-url'],
+        [['--engine-cmd', 'true', '--suite', 'nope'], 'unknown suite nope'],
+        [['--engine-cmd', 'true', '--base-url', 'https://engine.test'], 'give either --base-url or --engine-cmd'],
+        [['--engine-cmd', 'true', '--heartbeat-interval-s', '0'], '--heartbeat-interval-s must be at least 1'],
+        [['--base-url', 'https://engine.test', '--mock-control'], '--mock-control needs --engine-cmd'],
+        [['--base-url', 'https://engine.test', '--engine-cwd', '.'], '--engine-cwd needs --engine-cmd'],
     ])('refuses %j with exit code 2', async (argv, message) => {
         const streams = io();
         expect(await runCli(argv, streams)).toBe(2);
@@ -224,6 +232,26 @@ describe('runCli', () => {
         ];
         expect(await runCli(argv, streams)).toBe(1);
         expect(streams.out.join('')).toContain('<failure message=');
+    });
+
+    it('starts the engine itself with --engine-cmd and runs the platform suites', async () => {
+        const streams = io({ env: { PATH: process.env['PATH'] ?? '/usr/bin:/bin', PTBK_RELAYS: 'wss://ignored' } });
+        const argv = [
+            '--engine-cmd',
+            fakeEngineCommand().command,
+            '--engine-cwd',
+            directory,
+            '--heartbeat-interval-s',
+            String(SELF_TEST_HEARTBEAT_INTERVAL_S),
+            '--mock-control',
+            '--suite',
+            'registration',
+            '--report',
+            'junit',
+        ];
+        expect(await runCli(argv, streams)).toBe(0);
+        expect(streams.err.join('')).toContain('pass  registration.request.signature-verifies');
+        expect(streams.out.join('')).toContain('<testsuite name="registration"');
     });
 
     it('runs whole suites without a filter', async () => {

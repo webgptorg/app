@@ -12,8 +12,8 @@ export interface ResourceTracker {
     defer(cleanup: (signal: AbortSignal) => Promise<unknown>): void;
 }
 
-export interface CheckContext {
-    readonly target: ConformanceTarget;
+/** What every check gets, whatever it tests: engine API checks add the target, platform checks the harness. */
+export interface BaseCheckContext {
     /** Seeded per run, so the names and values a failing run used can be reproduced. */
     readonly random: Random;
     /** Aborts when the check times out or the run is cancelled. */
@@ -23,23 +23,27 @@ export interface CheckContext {
     readonly runId: string;
 }
 
+export interface CheckContext extends BaseCheckContext {
+    readonly target: ConformanceTarget;
+}
+
 /**
  * One conformance requirement. `id` is stable: engine teams track results by it, so renaming one is a breaking change.
  * Every ID is declared as an `id: '<suite>.<group>.<name>'` literal; the engine integration guide's checklist is
  * checked against those literals.
  */
-export interface ConformanceCheck {
+export interface ConformanceCheck<Context extends BaseCheckContext = CheckContext> {
     readonly id: string;
     readonly suite: string;
     readonly title: string;
-    run(ctx: CheckContext): Promise<CheckOutcome>;
+    run(ctx: Context): Promise<CheckOutcome>;
 }
 
-export interface ConformanceSuite {
+export interface ConformanceSuite<Context extends BaseCheckContext = CheckContext> {
     readonly id: string;
-    readonly checks: readonly ConformanceCheck[];
+    readonly checks: readonly ConformanceCheck<Context>[];
     /** What the report names as the engine's version, if the suite can find out. */
-    engineVersion?(ctx: CheckContext): Promise<string | null>;
+    engineVersion?(ctx: Context): Promise<string | null>;
 }
 
 /** Thrown inside a check to fail it; the runner turns it into a `fail` outcome. */

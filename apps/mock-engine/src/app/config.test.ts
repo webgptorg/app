@@ -199,7 +199,6 @@ describe('parseMockEngineConfig', () => {
                 url: 'https://app.ptbk.test',
                 linkCode: null,
                 heartbeatIntervalS: 60,
-                relaysOverride: false,
             });
             expect(parseMockEngineConfig(BASE).dashboard).toBeNull();
         });
@@ -217,10 +216,9 @@ describe('parseMockEngineConfig', () => {
                 ...LINKED,
                 PTBK_RELAYS: 'wss://relay-a.example.test',
                 MOCK_HEARTBEAT_INTERVAL_S: '15',
-                MOCK_RELAYS_OVERRIDE: 'enabled',
                 MOCK_STATS: 'scenario',
             });
-            expect(config.dashboard).toMatchObject({ heartbeatIntervalS: 15, relaysOverride: true });
+            expect(config.dashboard).toMatchObject({ heartbeatIntervalS: 15 });
             expect(config.relays).toHaveLength(1);
             expect(config.stats).toBe('scenario');
         });
@@ -246,11 +244,8 @@ describe('parseMockEngineConfig', () => {
             expect(problemsOf({ ...LINKED, PTBK_DASHBOARD_URL: 'https://app.ptbk.test/?x' })).toHaveLength(1);
         });
 
-        it('needs a dashboard for a link code and relays for the override', () => {
+        it('needs a dashboard for a link code', () => {
             expect(problemsOf({ ...BASE, PTBK_LINK_CODE: CODE })).toEqual(['PTBK_LINK_CODE: needs PTBK_DASHBOARD_URL']);
-            expect(problemsOf({ ...LINKED, MOCK_RELAYS_OVERRIDE: 'enabled' })).toEqual([
-                'MOCK_RELAYS_OVERRIDE: needs PTBK_RELAYS',
-            ]);
         });
     });
 

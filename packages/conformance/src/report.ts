@@ -41,6 +41,9 @@ export function writeJunitReport(report: ConformanceReport): string {
                     lines.push(
                         `${open}>`,
                         `      <failure message="${xml(firstLine(result.outcome.detail))}">${xml(`${result.title}\n${result.outcome.detail}`)}</failure>`,
+                        ...(result.engineOutput === undefined
+                            ? []
+                            : [`      <system-out>${xml(result.engineOutput)}</system-out>`]),
                         '    </testcase>',
                     );
                     break;

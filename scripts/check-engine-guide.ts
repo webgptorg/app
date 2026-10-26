@@ -79,7 +79,7 @@ function isCheckSource(path: string): boolean {
 
 function declaredCheckIds(conformanceDir: string): Map<string, string> {
     const ids = new Map<string, string>();
-    for (const dir of ['src', 'bin']) {
+    for (const dir of ['src', 'node', 'bin']) {
         for (const file of walk(join(conformanceDir, dir), isCheckSource)) {
             for (const match of readFileSync(file, 'utf8').matchAll(CHECK_ID_DECLARATION)) {
                 const id = match[2];
