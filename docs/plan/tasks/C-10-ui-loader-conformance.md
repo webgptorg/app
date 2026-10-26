@@ -52,9 +52,9 @@ The mock engine accepts `PTBK_CONFORMANCE_TRUST_FILE` too (refused under `NODE_E
   - `sigstore/`: an ephemeral test Sigstore (CA, CT log, Rekor log keys; DER encoder) that writes a trusted root and DSSE bundles `@sigstore/verify` accepts.
   - `releases.ts`: test release keys, release entries, `SignedRelease` records, revocation lists, UI archives (deterministic ustar with raw-block zstd frames, plus deliberately unsafe archives), and Ed25519 signatures crafted per strict-verification case.
   - `store-layout.ts`: the mirror layout v1, in one place.
-  - `lab.ts`: the `UiLoaderLab` port the checks use (start or restart the engine with settings, a fresh data directory or the same one; the fake store's contents and request log; the engine target) and the helpers that publish a release and wait for its check.
-  - `checks/*.ts` and `index.ts`: the suite. Without a lab (the portable CLI) every check skips with `needs-engine-harness`.
-- `packages/conformance/node/ui-loader/`: the Node lab: the fake store over HTTPS (certificate from the harness test CA on a `*.localhost` name), the trust file, and the engine handle from C-08's harness (a private spawner until its skeleton merges).
+  - `lab.ts`: the `UiLoaderLab` port the checks use (start or restart the engine with settings, a fresh data directory or the same one; the fake store's contents and request log; the engine target); `bench.ts`: the helpers that publish a release, restart the engine and wait for its check.
+  - `checks/*.ts` and `index.ts`: the checks, also run in-process against fake loaders by the package tests.
+- `packages/conformance/node/suites/ui-loader/`: the platform suite on C-08's harness, registered in `PLATFORM_SUITES`: a lab per check (the fake store over HTTPS with a certificate from the harness CA on a `*.localhost` name, the trust file, the registered engine restarted with new settings), and an `EngineEndpoints` port for reaching the engine API through a relay. Until C-09's fake relay provides one for real runs, the checks skip with `engine-api-unreachable`; the package test supplies a test-only relay endpoint and runs every check against the mock engine.
 - `packages/engine-api`: `UiUpdateCheck.eligibleAt`, `ENGINE_API_VERSION` 1.10.0, OpenAPI in sync.
 - `apps/mock-engine`: `PTBK_CONFORMANCE_TRUST_FILE`, `eligibleAt`, and the revoked-current fallback.
 - Docs: [ui-loader.md](../../engine-integration/ui-loader.md) (conformance build, mirror layout v1, revoked current bundle, `eligibleAt`), [conformance.md](../../engine-integration/conformance.md) (`ui-loader` row), [checklist.md](../../engine-integration/checklist.md) (every check ID), the conformance README.
@@ -91,7 +91,7 @@ The five IDs C-05 registered keep their names; the rest are new. Every refusal c
 
 ## Out of scope
 
-- The harness itself (C-08: `--engine-cmd`, `EngineProcess`, test CA trust). The relay suite (C-09). Engine binary updates.
+- The harness itself (C-08: `--engine-cmd`, `EngineProcess`, test CA trust). The relay suite and its fake relay (C-09), which also gives real runs their `EngineEndpoints`. Engine binary updates.
 - Session bootstrap on the real engine (C-05's open point).
 
 ## Design notes
@@ -102,7 +102,7 @@ The five IDs C-05 registered keep their names; the rest are new. Every refusal c
 
 ## Acceptance criteria
 
-- [ ] Every check above passes against the mock engine through the Node lab, as a package test and in the CI conformance job.
+- [ ] Every check above passes against the mock engine through the platform harness, as a package test (so in `bun run check` and CI).
 - [ ] Each check fails against at least one deliberately broken fake loader (package tests).
 - [ ] Minted Sigstore bundles verify with `@sigstore/verify` 4.1.2 and the reference verifier in `@ptbk/release-tools`; the negative knobs are refused.
 - [ ] Coverage ≥ 90% lines and branches for `packages/conformance` (signature and verification code included).
