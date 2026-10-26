@@ -47,6 +47,8 @@ export { Badge } from './components/badge/badge';
 export type { BadgeProps, BadgeTone } from './components/badge/badge';
 export { Banner } from './components/banner/banner';
 export type { BannerProps, BannerTone } from './components/banner/banner';
+export { Monogram } from './components/monogram/monogram';
+export type { MonogramProps } from './components/monogram/monogram';
 export { Skeleton } from './components/skeleton/skeleton';
 export type { SkeletonProps } from './components/skeleton/skeleton';
 export { EmptyState } from './components/empty-state/empty-state';

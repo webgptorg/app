@@ -1,4 +1,4 @@
-import { Menu, useToast } from '@ptbk/ui';
+import { Menu, Monogram, useToast } from '@ptbk/ui';
 import type { MenuEntry } from '@ptbk/ui';
 import { THEME_PREFERENCES } from '@ptbk/ui';
 import { LogOut } from 'lucide-react';
@@ -56,7 +56,6 @@ export function UserMenu({ compact = false }: { readonly compact?: boolean }) {
             },
         },
     ];
-    const initial = member.displayName.trim().charAt(0).toUpperCase();
     return (
         <Menu
             label={m.user_menu()}
@@ -69,12 +68,7 @@ export function UserMenu({ compact = false }: { readonly compact?: boolean }) {
                     aria-label={compact ? `${m.user_menu()}: ${member.displayName}` : undefined}
                     className="flex w-full min-w-0 cursor-pointer items-center gap-3 rounded-control p-2 text-start hover:bg-hover motion-safe:transition-colors motion-safe:duration-(--motion-state)"
                 >
-                    <span
-                        aria-hidden="true"
-                        className="inline-flex size-8 shrink-0 items-center justify-center rounded-pill bg-accent-soft font-display text-sm font-semibold text-accent-text"
-                    >
-                        {initial}
-                    </span>
+                    <Monogram name={member.displayName} />
                     {compact ? null : (
                         <span className="flex min-w-0 flex-col">
                             <span className="truncate text-sm font-medium">{member.displayName}</span>
