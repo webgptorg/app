@@ -2,7 +2,7 @@
 
 - **Lane:** I · **Module:** `apps/dashboard`, `apps/relay`, `infra/cloudflare`, `docs/runbooks` · **Milestone:** M4
 - **Depends on:** R-04, D-04, D-07, D-09, I-02, I-04
-- **Status:** in progress (code merged in #81 and #94; the takedown runbook and the `_psl` TXT record remain)
+- **Status:** in progress (docs/i-05-takedown-runbook-psl; code merged in #81 and #94)
 - **Spec:** Abuse on our domains (all items); Relay and tunnel (Fairness and DoS on a shared relay); Interfaces (draft) 2 (`suspended`); Hosting and stack (Monitoring jobs; CT monitor; Known hard problems, Let's Encrypt rate limits); Metadata we still see
 
 ## Goal
