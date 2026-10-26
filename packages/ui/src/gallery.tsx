@@ -10,6 +10,7 @@ import { externalLinkGallery } from './components/external-link/external-link.ga
 import { cardGallery } from './components/card/card.gallery';
 import { badgeGallery } from './components/badge/badge.gallery';
 import { bannerGallery } from './components/banner/banner.gallery';
+import { monogramGallery } from './components/monogram/monogram.gallery';
 import { skeletonGallery } from './components/skeleton/skeleton.gallery';
 import { emptyStateGallery } from './components/empty-state/empty-state.gallery';
 import { errorStateGallery } from './components/error-state/error-state.gallery';
@@ -61,6 +62,7 @@ export const GALLERY_ENTRIES: readonly GalleryEntry[] = [
     paginationGallery,
     relativeTimeGallery,
     selectGallery,
+    monogramGallery,
     skeletonGallery,
     skipLinkGallery,
     spinnerGallery,
