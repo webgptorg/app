@@ -1,14 +1,24 @@
-import { Banner, CodeText, CopyButton, createDataTableColumnHelper, DataTable, TrustMark, useLocale } from '@ptbk/ui';
+import {
+    Banner,
+    Card,
+    CodeText,
+    CopyButton,
+    createDataTableColumnHelper,
+    DataTable,
+    EmptyState,
+    TrustMark,
+    useLocale,
+} from '@ptbk/ui';
 import type { DataTableColumnDef, Formatters } from '@ptbk/ui';
 import { useQuery } from '@tanstack/react-query';
-import { Plus } from 'lucide-react';
+import { Plus, Server } from 'lucide-react';
 import { useMemo } from 'react';
 
 import { m } from '../../../paraglide/messages';
 import type { EngineView } from '../../../shared/api/routes';
 import { useApiClient } from '../../api/api-client-context';
 import { enginesQuery } from '../../api/queries';
-import { Link } from '../../core/link';
+import { ButtonLink, Link } from '../../core/link';
 import { useSession } from '../session/use-session';
 import { EngineOpenLink } from './engine-open-link';
 import { EngineStatusBadge } from './engine-status-badge';
@@ -145,6 +155,33 @@ function engineColumns(formatters: Formatters, now: Date): DataTableColumnDef<En
     ];
 }
 
+/**
+ * Without engines there is nothing to compare across twelve columns, so the page leads with the one next step instead
+ * of an empty table.
+ */
+function NoEngines(props: { readonly canLink: boolean }) {
+    return (
+        <Card>
+            <EmptyState
+                icon={<Server aria-hidden className="size-6" />}
+                title={m.engines_empty_title()}
+                headingLevel={2}
+                description={m.engines_empty_body()}
+                {...(props.canLink
+                    ? {
+                          action: (
+                              <ButtonLink to="/engines/new" variant="primary">
+                                  <Plus aria-hidden className="size-4" />
+                                  {m.engines_add()}
+                              </ButtonLink>
+                          ),
+                      }
+                    : {})}
+            />
+        </Card>
+    );
+}
+
 /** `/engines`, the signed-in landing page: registry data and heartbeat numbers, never anything from the engines. */
 export function EngineListPage() {
     const api = useApiClient();
@@ -155,48 +192,51 @@ export function EngineListPage() {
     const engines = useQuery({ ...enginesQuery(api), enabled: canRead });
     const now = useNowFor(engines.dataUpdatedAt);
     const tableColumns = useMemo(() => engineColumns(formatters, now), [formatters, now]);
-    const addLink = (
-        <Link to="/engines/new" variant="standalone" className="inline-flex items-center gap-1">
-            <Plus aria-hidden className="size-4" />
-            {m.engines_add()}
-        </Link>
-    );
+    const hasEngines = (engines.data?.length ?? 0) > 0;
+
+    function content() {
+        if (!canRead) {
+            return <Banner tone="info">{m.engines_not_allowed()}</Banner>;
+        }
+        if (engines.data !== undefined && !hasEngines) {
+            return <NoEngines canLink={canLink} />;
+        }
+        return (
+            <DataTable<EngineView>
+                caption={m.engines_table_caption()}
+                mode="client"
+                columns={tableColumns}
+                data={engines.data ?? NO_ENGINES}
+                getRowId={(engine) => engine.engineId}
+                getRowLabel={(engine) => shortEngineId(engine.engineId)}
+                loading={engines.isPending}
+                virtualizeAbove={ENGINE_PAGE_ROWS}
+                skeletonRows={2}
+                {...(engines.isError
+                    ? {
+                          error: {
+                              message: m.engines_error(),
+                              onRetry: () => void engines.refetch(),
+                              retrying: engines.isFetching,
+                          },
+                      }
+                    : {})}
+            />
+        );
+    }
 
     return (
         <div className="flex flex-col gap-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
                 <h1 className="font-display text-2xl font-semibold">{m.engines_title()}</h1>
-                {canLink && (engines.data?.length ?? 0) > 0 ? addLink : null}
+                {canLink && hasEngines ? (
+                    <Link to="/engines/new" variant="standalone" className="inline-flex items-center gap-1">
+                        <Plus aria-hidden className="size-4" />
+                        {m.engines_add()}
+                    </Link>
+                ) : null}
             </div>
-            {canRead ? (
-                <DataTable<EngineView>
-                    caption={m.engines_table_caption()}
-                    mode="client"
-                    columns={tableColumns}
-                    data={engines.data ?? NO_ENGINES}
-                    getRowId={(engine) => engine.engineId}
-                    getRowLabel={(engine) => shortEngineId(engine.engineId)}
-                    loading={engines.isPending}
-                    virtualizeAbove={ENGINE_PAGE_ROWS}
-                    skeletonRows={2}
-                    empty={{
-                        title: m.engines_empty_title(),
-                        description: m.engines_empty_body(),
-                        ...(canLink ? { action: addLink } : {}),
-                    }}
-                    {...(engines.isError
-                        ? {
-                              error: {
-                                  message: m.engines_error(),
-                                  onRetry: () => void engines.refetch(),
-                                  retrying: engines.isFetching,
-                              },
-                          }
-                        : {})}
-                />
-            ) : (
-                <Banner tone="info">{m.engines_not_allowed()}</Banner>
-            )}
+            {content()}
         </div>
     );
 }
