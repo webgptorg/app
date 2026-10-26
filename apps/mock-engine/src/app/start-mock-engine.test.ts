@@ -1,4 +1,3 @@
-import type { TunnelAuth } from '@ptbk/protocol';
 import {
     CLOSE_CODE,
     EngineVersion,
@@ -8,9 +7,7 @@ import {
     StreamId,
     TUNNEL_FEATURES,
     TUNNEL_PROTOCOL_VERSIONS,
-    TunnelAuth as TunnelAuthSchema,
     decodeFrame,
-    encodeBase64Url,
     encodeFrame,
 } from '@ptbk/protocol';
 import { ENGINE_API_ROUTES, KNOWN_CAPABILITIES, MemberId, OWNER_PERMISSIONS, SessionId } from '@ptbk/engine-api';
@@ -26,8 +23,9 @@ import type { RelayLinkState } from '../domain/tunnel/relay-link';
 import type { RelayTarget } from '../domain/tunnel/relay-target';
 import { createFakeClock } from '../testing/fake-clock';
 import type { FakeConnection } from '../testing/fake-dialer';
-import { createFakeDialer, flush, until } from '../testing/fake-dialer';
+import { createFakeDialer, until } from '../testing/fake-dialer';
 import { createMemoryLogger } from '../testing/memory-logger';
+import { completeHandshake } from '../testing/relay-handshake';
 import { createSeededRandom } from '../testing/seeded-random';
 import type { MockEngineConfig } from './config';
 import { DEFAULT_TUNNEL_OFFER, startMockEngine } from './start-mock-engine';
@@ -79,27 +77,11 @@ async function handshake(
     index: number,
     extraHostnames: readonly string[] = [],
 ): Promise<FakeConnection> {
-    const dial = started.dialer.dials[index];
-    if (dial === undefined) throw new Error('no dial');
-    const connection = dial.open();
-    await flush();
-    connection.relayJson({
-        v: 1,
-        type: 'challenge',
-        nonce: encodeBase64Url(new Uint8Array(32).fill(index + 1)),
-        relayId: dial.target.relayId,
-        protocolVersions: [1],
-        features: [],
-    });
-    await until(() => connection.texts.length === 1);
-    const auth: TunnelAuth = TunnelAuthSchema.parse(JSON.parse(connection.texts[0] ?? ''));
-    connection.relayJson({
-        v: 1,
-        type: 'ready',
-        protocolVersion: 1,
-        features: [],
-        hostnames: [started.engine.hostname, ...extraHostnames],
-    });
+    const { connection, auth } = await completeHandshake(
+        started.dialer.dials[index],
+        [started.engine.hostname, ...extraHostnames],
+        index + 1,
+    );
     expect(auth.engineId).toBe(started.engine.identity.engineId);
     return connection;
 }
@@ -131,7 +113,7 @@ describe('startMockEngine', () => {
         expect(started.engine.links.map((link) => link.state().kind)).toEqual(['backoff', 'ready']);
         expect(started.states).toContainEqual(['relay-b.ptbk.test', 'ready']);
         expect(started.engine.hostname).toBe(`${started.engine.identity.engineId}.engines.ptbk.test`);
-        expect(started.logger.entries[0]).toEqual({
+        expect(started.logger.entries.find(({ event }) => event === 'engine.started')).toEqual({
             level: 'info',
             event: 'engine.started',
             fields: {

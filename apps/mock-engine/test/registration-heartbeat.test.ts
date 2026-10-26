@@ -1,13 +1,5 @@
 import type { LinkCode } from '@ptbk/protocol';
-import {
-    EngineVersion,
-    Heartbeat,
-    Hostname,
-    RelayId,
-    TunnelAuth as TunnelAuthSchema,
-    encodeBase64Url,
-    heartbeatPath,
-} from '@ptbk/protocol';
+import { EngineVersion, Heartbeat, Hostname, RelayId, heartbeatPath } from '@ptbk/protocol';
 import { ENGINE_API_ROUTES, MemberId, OWNER_PERMISSIONS, SessionId } from '@ptbk/engine-api';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -19,6 +11,7 @@ import type { MockEngineConfig } from '../src/app/config';
 import { RegistrationFailedError } from '../src/app/establish-registration';
 import type { DashboardDeps, MockEngine } from '../src/app/start-mock-engine';
 import { startMockEngine } from '../src/app/start-mock-engine';
+import { registerEngine } from '../src/domain/registration/register';
 import { oneTimeSecret } from '../src/domain/secret';
 import type { IdentityStore } from '../src/domain/identity/engine-identity';
 import type { RelayTarget } from '../src/domain/tunnel/relay-target';
@@ -26,11 +19,12 @@ import type { FakeDashboard } from '../src/testing/fake-dashboard';
 import { createFakeDashboard } from '../src/testing/fake-dashboard';
 import type { FakeClock } from '../src/testing/fake-clock';
 import { createFakeClock } from '../src/testing/fake-clock';
-import type { FakeDialer } from '../src/testing/fake-dialer';
+import type { FakeConnection, FakeDialer } from '../src/testing/fake-dialer';
 import { createFakeDialer, flush, until } from '../src/testing/fake-dialer';
 import type { MemoryLogger } from '../src/testing/memory-logger';
 import { createMemoryLogger } from '../src/testing/memory-logger';
 import { DEFAULT_MOCK_SETTINGS } from '../src/testing/mock-settings';
+import { completeHandshake } from '../src/testing/relay-handshake';
 import { createSeededRandom } from '../src/testing/seeded-random';
 
 const ENGINE_DOMAIN = Hostname.parse('engines.ptbk.test');
@@ -107,11 +101,31 @@ function world(clockOffsetMs = 0): World {
 }
 
 const engines: MockEngine[] = [];
+const tunnels = new Map<MockEngine, FakeConnection[]>();
+
+/** Closes the engine, answering its going-away close on every tunnel as a relay would. */
+async function stop(engine: MockEngine): Promise<void> {
+    engines.splice(engines.indexOf(engine), 1);
+    const closing = engine.close();
+    for (const connection of tunnels.get(engine) ?? []) {
+        await until(() => connection.closeCodes.length > 0);
+        connection.relayClose(1001);
+    }
+    tunnels.delete(engine);
+    await closing;
+}
+
 afterEach(async () => {
-    for (const engine of engines.splice(0)) await engine.close();
+    for (const engine of [...engines]) await stop(engine);
 });
 
-async function start(w: World, config: MockEngineConfig, dialer: FakeDialer = createFakeDialer()) {
+/** Starts the engine and, unless told not to, lets the first relay take its tunnel, which sends the first beat. */
+async function start(
+    w: World,
+    config: MockEngineConfig,
+    dialer: FakeDialer = createFakeDialer(),
+    options: { readonly tunnel: boolean } = { tunnel: true },
+) {
     const engine = await startMockEngine(config, {
         logger: w.logger,
         clock: w.clock,
@@ -121,7 +135,14 @@ async function start(w: World, config: MockEngineConfig, dialer: FakeDialer = cr
         dashboard: w.deps,
     });
     engines.push(engine);
+    if (options.tunnel && dialer.dials.length > 0) await tunnel(engine, dialer, 0);
     return { engine, dialer };
+}
+
+async function tunnel(engine: MockEngine, dialer: FakeDialer, index: number): Promise<void> {
+    const { connection } = await completeHandshake(dialer.dials[index], [engine.hostname]);
+    tunnels.set(engine, [...(tunnels.get(engine) ?? []), connection]);
+    await until(() => engine.links[index]?.state().kind === 'ready');
 }
 
 async function beats(w: World, count: number): Promise<void> {
@@ -181,7 +202,7 @@ describe('registration and heartbeat at startup', () => {
         const w = world();
         const first = await start(w, linked(w.dashboard.issueLinkCode('org-a')));
         await beats(w, 1);
-        await first.engine.close();
+        await stop(first.engine);
         const second = await start(w, linked(null));
         expect(second.engine.registration?.engineId).toBe(first.engine.identity.engineId);
         expect(w.dashboard.registerRequests).toHaveLength(1);
@@ -201,43 +222,69 @@ describe('registration and heartbeat at startup', () => {
         expect(dialer.dials.map((dial) => dial.target.url)).toEqual(['wss://relay-dev.ptbk.test:8443/v1/tunnel']);
     });
 
-    it('refuses to start unregistered without a link code, or when the dashboard rejects the code', async () => {
+    it('waits unlinked without a link code, then goes online when connect stores a registration', async () => {
         const w = world();
-        await expect(start(w, linked(null))).rejects.toThrow(RegistrationFailedError);
-        await expect(start(w, linked(w.dashboard.issueLinkCode('org-a')))).resolves.toBeDefined();
+        const { engine, dialer } = await start(w, linked(null));
+        expect(engine.registration).toBeNull();
+        expect(dialer.dials).toEqual([]);
+        expect(engine.operator.status()).toMatchObject({ mode: 'local', dashboardUrl: null, relays: [] });
+        const info: { mode: string } = await read(engine, 'getEngine');
+        expect(info.mode).toBe('local');
+        expect(w.logger.entries.map(({ event }) => event)).toContain('engine.not-linked');
+        expect(await engine.operator.link()).toEqual({ outcome: 'not-registered' });
+        // What `connect` does in its own process: register into the same data directory.
+        await registerEngine({
+            store: w.deps.registrations,
+            identity: engine.identity,
+            dashboardUrl: DASHBOARD_URL,
+            engineDomain: ENGINE_DOMAIN,
+            api: w.deps.api,
+            engineVersion: BASE.engineVersion,
+            linkCode: w.dashboard.issueLinkCode('org-a'),
+            logger: w.logger,
+            signal: AbortSignal.timeout(5_000),
+        });
+        const [first, second] = await Promise.all([engine.operator.link(), engine.operator.link()]);
+        expect(first).toEqual({ outcome: 'linked', relays: 2 });
+        expect(second).toEqual(first);
+        expect(await engine.operator.link()).toEqual({ outcome: 'already-linked' });
+        expect(dialer.dials.map((dial) => dial.target.url)).toEqual([
+            'wss://relay-x.ptbk.test/v1/tunnel',
+            'wss://relay-y.ptbk.test/v1/tunnel',
+        ]);
+        const linkedInfo: { mode: string; dashboardUrl: string } = await read(engine, 'getEngine');
+        expect(linkedInfo).toMatchObject({ mode: 'tunnel', dashboardUrl: DASHBOARD_URL });
+        await tunnel(engine, dialer, 1);
+        await beats(w, 1);
+    });
+
+    it('sends the first beat after one interval when no relay takes the tunnel', async () => {
+        const w = world();
+        await start(w, linked(w.dashboard.issueLinkCode('org-a')), createFakeDialer(), { tunnel: false });
+        await flush(5);
+        expect(w.dashboard.heartbeats).toHaveLength(0);
+        w.clock.advance(60_000);
+        await beats(w, 1);
+    });
+
+    it('refuses to start when the dashboard rejects the code, without logging it', async () => {
         const other = world();
         const code = other.dashboard.issueLinkCode('org-a');
         other.dashboard.overrideRegister(() => ({
             status: 401,
             body: { type: 'about:blank', title: 'x', status: 401, code: 'invalid-link-code' },
         }));
-        await expect(start(other, linked(code))).rejects.toThrow('registration rejected: invalid-link-code');
+        await expect(start(other, linked(code))).rejects.toThrow(RegistrationFailedError);
         expect(other.logger.text()).not.toContain(code);
     });
 
     it('keeps the tunnels up while the dashboard is unreachable, and the next beat uses the next seq', async () => {
         const w = world();
-        const { engine, dialer } = await start(w, linked(w.dashboard.issueLinkCode('org-a')));
+        const { engine } = await start(w, linked(w.dashboard.issueLinkCode('org-a')));
         await beats(w, 1);
         w.dashboard.unreachable = true;
         w.clock.advance(60_000);
         await until(() => w.logger.entries.some((entry) => entry.event === 'heartbeat.unavailable'));
-        const dial = dialer.dials[0];
-        if (dial === undefined) throw new Error('no dial');
-        const connection = dial.open();
-        await flush();
-        connection.relayJson({
-            v: 1,
-            type: 'challenge',
-            nonce: encodeBase64Url(new Uint8Array(32).fill(1)),
-            relayId: dial.target.relayId,
-            protocolVersions: [1],
-            features: [],
-        });
-        await until(() => connection.texts.length === 1);
-        TunnelAuthSchema.parse(JSON.parse(connection.texts[0] ?? ''));
-        connection.relayJson({ v: 1, type: 'ready', protocolVersion: 1, features: [], hostnames: [engine.hostname] });
-        await until(() => engine.links[0]?.state().kind === 'ready');
         w.dashboard.unreachable = false;
         w.clock.advance(60_000);
         await beats(w, 2);
@@ -246,11 +293,6 @@ describe('registration and heartbeat at startup', () => {
         );
         expect(two).toBeGreaterThan((one ?? 0) + 1);
         expect(engine.links[0]?.state().kind).toBe('ready');
-        engines.splice(engines.indexOf(engine), 1);
-        const closing = engine.close();
-        await until(() => connection.closeCodes.length > 0);
-        connection.relayClose(1001);
-        await closing;
     });
 
     it('shows the clock skew from a stale-timestamp answer on the control listener and in the security panel', async () => {

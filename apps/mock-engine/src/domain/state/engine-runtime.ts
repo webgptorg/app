@@ -60,6 +60,11 @@ export interface EngineRuntimeOptions {
     readonly faults: () => FaultPlan;
     /** Unexpected errors inside the simulation; it carries on. */
     readonly onSimulationError: (error: unknown) => void;
+    /**
+     * `MOCK_PASSKEYS`: `seeded` keeps the scenario's passkeys and sessions, so the owner is set up; `none` drops them,
+     * as on a fresh engine whose owner has yet to open the setup link. Members and data stay either way.
+     */
+    readonly passkeys?: 'seeded' | 'none';
 }
 
 export interface ResetInput {
@@ -91,6 +96,8 @@ export interface EngineRuntime {
     /** Runs after every reset, e.g. to drop the gateway's sessions, which the new core does not list. */
     onReset(listener: () => void): void;
     setDashboardUrl(url: string | null): void;
+    /** `local` while the engine waits for `connect`, then `tunnel`; kept across resets like the dashboard URL. */
+    setMode(mode: EngineIdentityInfo['mode']): void;
     setRelayStatus(relayHostname: string, status: RelayStatus): void;
     setHostnames(hostnames: readonly string[]): void;
     setHeartbeat(heartbeat: HeartbeatInfo): void;
@@ -138,6 +145,7 @@ export async function createEngineRuntime(options: EngineRuntimeOptions): Promis
     });
     const sticky = {
         dashboardUrl: null as string | null,
+        mode: identity.mode,
         relays: new Map<string, { readonly status: RelayStatus; readonly since: string }>(),
         hostnames: [identity.hostname] as readonly string[],
         heartbeat: { lastHeartbeat: null, clockSkew: null } as HeartbeatInfo,
@@ -156,7 +164,13 @@ export async function createEngineRuntime(options: EngineRuntimeOptions): Promis
         scenario: Scenario,
         capabilities: readonly CapabilityRef[],
     ): Promise<{ readonly core: InMemoryEngineCore; readonly simulation: Simulation }> {
-        const seed = await seedEngine({ seed: seedValue, scenario, epoch: options.epoch, hostname: identity.hostname });
+        const seeded = await seedEngine({
+            seed: seedValue,
+            scenario,
+            epoch: options.epoch,
+            hostname: identity.hostname,
+        });
+        const seed = options.passkeys === 'none' ? { ...seeded, passkeys: [], sessions: [] } : seeded;
         const replyScript: ReplyScript = ({ agent, content, chatId, messageIndex }) => ({
             chunks: generateReply({
                 seed: seedValue,
@@ -175,7 +189,7 @@ export async function createEngineRuntime(options: EngineRuntimeOptions): Promis
                     name: seed.settings?.name ?? 'Mock engine',
                     hostname: identity.hostname,
                     dashboardUrl: sticky.dashboardUrl,
-                    mode: identity.mode,
+                    mode: sticky.mode,
                 },
             },
             clock: { now: () => new Date(simulationClock.nowMs()) },
@@ -266,6 +280,10 @@ export async function createEngineRuntime(options: EngineRuntimeOptions): Promis
         setDashboardUrl(url) {
             sticky.dashboardUrl = url;
             engine.core.controller.updateEngine({ dashboardUrl: url });
+        },
+        setMode(mode) {
+            sticky.mode = mode;
+            engine.core.controller.updateEngine({ mode });
         },
         setRelayStatus(relayHostname, status) {
             if (sticky.relays.get(relayHostname)?.status === status) return;

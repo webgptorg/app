@@ -27,11 +27,19 @@ export interface ClockSkew {
     readonly measuredAt: Timestamp;
 }
 
+/** How the dashboard answered the last beat; `status` is the HTTP status when there was one. */
+export interface HeartbeatAnswer {
+    readonly kind: 'accepted' | 'refused' | 'unavailable';
+    readonly status: number | null;
+}
+
 /** What the owner sees about the heartbeat: everything the dashboard learns, and whether our clock is off. */
 export interface HeartbeatStatus {
     readonly lastHeartbeat: LastHeartbeat | null;
     /** Null while unknown: no stale-timestamp answer, one without `serverTime`, or accepted since. */
     readonly clockSkew: ClockSkew | null;
+    /** Null until the first beat is answered (or fails). */
+    readonly lastAnswer: HeartbeatAnswer | null;
 }
 
 export interface HeartbeatLoopDeps {
@@ -66,7 +74,7 @@ export function createHeartbeatLoop(deps: HeartbeatLoopDeps): HeartbeatLoop {
     const { clock, logger } = deps;
     const intervalMs = deps.intervalS * 1000;
     const signer = signerOf(deps.identity);
-    let status: HeartbeatStatus = Object.freeze({ lastHeartbeat: null, clockSkew: null });
+    let status: HeartbeatStatus = Object.freeze({ lastHeartbeat: null, clockSkew: null, lastAnswer: null });
     let cancelTimer: (() => void) | null = null;
     let inFlight: Promise<void> | null = null;
     let abort = new AbortController();
@@ -109,14 +117,16 @@ export function createHeartbeatLoop(deps: HeartbeatLoopDeps): HeartbeatLoop {
         const result = await deps.api.heartbeat(deps.identity.engineId, signed.rawBody, signed.signature, signal);
         switch (result.kind) {
             case 'accepted':
-                setStatus({ clockSkew: null });
+                setStatus({ clockSkew: null, lastAnswer: { kind: 'accepted', status: result.status } });
                 return;
             case 'refused':
                 logger.warn('heartbeat.refused', { status: result.status });
+                setStatus({ lastAnswer: { kind: 'refused', status: result.status } });
                 recordSkew(result.problem);
                 return;
             case 'unavailable':
                 logger.warn('heartbeat.unavailable', {});
+                setStatus({ lastAnswer: { kind: 'unavailable', status: null } });
                 return;
         }
     }

@@ -500,6 +500,7 @@ describe('parseIdentityConfig', () => {
             ['MOCK_FAULTS', '{"errorRate":2}'],
             ['MOCK_FAULTS', '{"surprise":true}'],
             ['MOCK_DEV_LOGIN', 'yes'],
+            ['MOCK_PASSKEYS', 'some'],
             ['MOCK_CONTROL', 'on'],
             ['MOCK_CONTROL_HOST', 'not a host'],
             ['MOCK_CONTROL_PORT', '70000'],
@@ -508,6 +509,11 @@ describe('parseIdentityConfig', () => {
             expect(problems.length).toBeGreaterThan(0);
             expect(problems.every((problem) => problem.startsWith(`${name}: `))).toBe(true);
             if (text.length > 3) expect(problems.join(' ')).not.toContain(text);
+        });
+
+        it('keeps the seeded passkeys unless told the owner is still to come (M-08)', () => {
+            expect(parseMockEngineConfig(BASE).passkeys).toBe('seeded');
+            expect(parseMockEngineConfig({ ...BASE, MOCK_PASSKEYS: 'none' }).passkeys).toBe('none');
         });
 
         it('reads the capabilities and the simulation settings (M-07)', () => {

@@ -5,6 +5,7 @@ import type { Clock } from '../domain/clock';
 import type { DashboardApi } from '../domain/dashboard/dashboard-api';
 import type { IdentityStore } from '../domain/identity/engine-identity';
 import type { Logger } from '../domain/logger';
+import type { LinkAnswer } from '../domain/onboarding/operator-api';
 import type { Random } from '../domain/random';
 import type { RegistrationOutcome, UnavailableReason } from '../domain/registration/register';
 import { registerWithRetry } from '../domain/registration/register-with-retry';
@@ -84,6 +85,8 @@ export interface ConnectCommandDeps {
     /** The operator's terminal; nothing secret is ever said here. */
     readonly say: Say;
     readonly signal: AbortSignal;
+    /** Tells an engine already running from this data directory to pick up the registration; null if none answers. */
+    readonly joinRunning: () => Promise<LinkAnswer | null>;
 }
 
 export interface ConnectResult {
@@ -108,7 +111,8 @@ function reportOf(outcome: RegistrationOutcome): ConnectReport {
 
 /**
  * Creates the engine key if there is none, then registers with the link code, retrying while the platform is
- * unreachable and the code can still be valid. The key and data are kept whatever the outcome.
+ * unreachable and the code can still be valid, and hands the registration to an engine already running from this
+ * data directory. The key and data are kept whatever the outcome.
  */
 export async function runConnectCommand(
     command: ConnectCommand,
@@ -139,5 +143,27 @@ export async function runConnectCommand(
     });
     const exitCode = registrationExitCode(outcome);
     deps.say(`${exitCode === 0 ? DONE : FAILED} ${registrationSentence(outcome)}`);
+    if (exitCode === 0) await join(deps);
     return { report: reportOf(outcome), exitCode };
+}
+
+/** An engine started without a link code waits in local mode; once linked here, it goes online without a restart. */
+async function join(deps: ConnectCommandDeps): Promise<void> {
+    const answer = await deps.joinRunning();
+    if (answer === null) {
+        deps.say('Start the engine to bring it online; it uses this registration.');
+        return;
+    }
+    switch (answer.outcome) {
+        case 'linked':
+            deps.say(
+                `${DONE} The running engine is linked and connects to ${String(answer.relays)} relay${answer.relays === 1 ? '' : 's'}`,
+            );
+            return;
+        case 'already-linked':
+            return;
+        case 'not-registered':
+            deps.say(`${FAILED} The running engine could not read this registration; restart it.`);
+            return;
+    }
 }

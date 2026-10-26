@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import { createMemoryIdentityStore } from '../adapters/memory-identity-store';
 import type { DashboardApi, RegisterCall } from '../domain/dashboard/dashboard-api';
+import type { LinkAnswer } from '../domain/onboarding/operator-api';
 import { createFakeClock, settleWithClock } from '../testing/fake-clock';
 import { createFakeDashboard } from '../testing/fake-dashboard';
 import { createMemoryLogger } from '../testing/memory-logger';
@@ -82,6 +83,7 @@ describe('runConnectCommand', () => {
         const dashboard = createFakeDashboard({ clock, engineDomain: ENGINE_DOMAIN, relays: RELAYS });
         const lines: string[] = [];
         const logger = createMemoryLogger();
+        let running: LinkAnswer | null = null;
         const deps = {
             identityStore: createMemoryIdentityStore(),
             registrations: createMemoryRegistrationStore(),
@@ -91,8 +93,18 @@ describe('runConnectCommand', () => {
             random: createSeededRandom(5),
             say: (line: string) => lines.push(line),
             signal: new AbortController().signal,
+            joinRunning: () => Promise.resolve(running),
         };
-        return { clock, dashboard, deps, lines, logger };
+        return {
+            clock,
+            dashboard,
+            deps,
+            lines,
+            logger,
+            runEngine: (answer: LinkAnswer | null) => {
+                running = answer;
+            },
+        };
     }
 
     it('creates the key, links and shows the identity the dashboard shows, then reports already linked', async () => {
@@ -115,6 +127,7 @@ describe('runConnectCommand', () => {
             `        Address       https://${identity.engineId}.engines.ptbk.test`,
             `        Fingerprint   ${deriveEngineFingerprint(identity.engineId).formatted}   (the dashboard shows the same)`,
             '✓ Linked to your Promptbook account',
+            'Start the engine to bring it online; it uses this registration.',
         ]);
         const second = await runConnectCommand(
             { linkCode: dashboard.issueLinkCode('org-a'), json: false },
@@ -122,8 +135,21 @@ describe('runConnectCommand', () => {
             deps,
         );
         expect(second.report.outcome).toBe('already-registered');
-        expect(lines.at(-1)).toBe('✓ Already linked to your Promptbook account');
+        expect(lines.at(-2)).toBe('✓ Already linked to your Promptbook account');
         expect(lines.join('\n')).not.toContain(code);
+    });
+
+    it('hands the registration to an engine running unlinked', async () => {
+        const { dashboard, deps, lines, runEngine } = setup();
+        runEngine({ outcome: 'linked', relays: 2 });
+        await runConnectCommand({ linkCode: dashboard.issueLinkCode('org-a'), json: false }, CONFIG, deps);
+        expect(lines.at(-1)).toBe('✓ The running engine is linked and connects to 2 relays');
+        runEngine({ outcome: 'not-registered' });
+        await runConnectCommand({ linkCode: dashboard.issueLinkCode('org-a'), json: false }, CONFIG, deps);
+        expect(lines.at(-1)).toBe('✗ The running engine could not read this registration; restart it.');
+        runEngine({ outcome: 'already-linked' });
+        await runConnectCommand({ linkCode: dashboard.issueLinkCode('org-a'), json: false }, CONFIG, deps);
+        expect(lines.at(-1)).toBe('✓ Already linked to your Promptbook account');
     });
 
     it('exits with the class of a refusal and says what to do', async () => {

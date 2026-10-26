@@ -71,6 +71,8 @@ export interface MockEngineConfig {
     readonly simulation: { readonly mode: SimulationMode; readonly speed: number };
     /** `MOCK_DEV_LOGIN=enabled`: the sign-in page lets anyone pick a member. Refused with `NODE_ENV=production`. */
     readonly devLogin: boolean;
+    /** `MOCK_PASSKEYS`: `seeded` (the owner is set up) or `none` (a fresh engine that waits for its owner). */
+    readonly passkeys: 'seeded' | 'none';
     /** `MOCK_CONTROL=enabled` with `MOCK_CONTROL_HOST` and `MOCK_CONTROL_PORT`; refused with `NODE_ENV=production`. */
     readonly control: { readonly host: string; readonly port: number } | null;
     /** `PTBK_DASHBOARD_URL` and what goes with it; null runs the M1 dev mode on `PTBK_RELAYS`, without heartbeats. */
@@ -391,6 +393,7 @@ const envSchema = z.strictObject({
         `must be a number from ${String(MIN_SIMULATION_SPEED)} to ${String(MAX_SIMULATION_SPEED)}`,
     ).default(1),
     MOCK_DEV_LOGIN: toggle.default('disabled'),
+    MOCK_PASSKEYS: value(z.enum(['seeded', 'none']), 'must be seeded or none').default('seeded'),
     MOCK_CONTROL: toggle.default('disabled'),
     MOCK_CONTROL_HOST: value(
         z.union([z.ipv4(), z.ipv6(), HostnameSchema]),
@@ -560,6 +563,7 @@ export function parseMockEngineConfig(env: Env): MockEngineConfig {
         capabilities: parsedEnv.MOCK_CAPABILITIES ?? ALL_CAPABILITY_NAMES,
         simulation: Object.freeze({ mode: parsedEnv.MOCK_SIMULATION, speed: parsedEnv.MOCK_SIMULATION_SPEED }),
         devLogin: parsedEnv.MOCK_DEV_LOGIN === 'enabled',
+        passkeys: parsedEnv.MOCK_PASSKEYS,
         control:
             parsedEnv.MOCK_CONTROL === 'enabled'
                 ? Object.freeze({ host: parsedEnv.MOCK_CONTROL_HOST, port: parsedEnv.MOCK_CONTROL_PORT })

@@ -57,8 +57,19 @@ import type { BundleStore } from '../domain/ui/bundle-store';
 import type { UiLoader, UiLoaderDeps } from '../domain/ui/ui-loader';
 import { createUiLoader } from '../domain/ui/ui-loader';
 import { uiUpdateCheckOf } from '../domain/ui/ui-update';
+import type { AddressGap } from '../domain/onboarding/address';
+import { addressGaps } from '../domain/onboarding/address';
+import type { LinkAnswer, OperatorApi } from '../domain/onboarding/operator-api';
+import { hasOwner } from '../domain/onboarding/owner';
+import { loadRegistration } from '../domain/registration/register';
 import type { MockEngineConfig } from './config';
+import { engineStatus } from './engine-status';
 import { establishRegistration } from './establish-registration';
+import type { Say } from './operator-lines';
+import { WAITING } from './operator-lines';
+import { retrySentence } from './registration-messages';
+import type { StartupProgress } from './startup-progress';
+import { createStartupProgress } from './startup-progress';
 
 /** Everything `@ptbk/protocol` implements, so the mock always advertises exactly the current contract. */
 export const DEFAULT_TUNNEL_OFFER: TunnelOfferConfig = Object.freeze({
@@ -86,6 +97,10 @@ export interface MockEngineDeps {
     readonly dashboard?: DashboardDeps | undefined;
     /** Required with `PTBK_UI_RELEASE_URL`: the UI loader's release store, bundle store, state and verifiers. */
     readonly ui?: UiLoaderDeps | undefined;
+    /** The operator's terminal, when the engine runs in one; never given when stdout is a log stream. */
+    readonly say?: Say | null;
+    /** Serves the operator API to the host's commands (the Unix socket); none in tests that drive `operator` directly. */
+    readonly operatorChannel?: (api: OperatorApi) => Promise<{ close(): Promise<void> }>;
 }
 
 export interface DashboardDeps {
@@ -103,7 +118,7 @@ export interface MockEngine {
     readonly identity: EngineIdentity;
     /** `<engineId>.<engine domain>`. */
     readonly hostname: Hostname;
-    /** One per configured relay, each independent of the others. */
+    /** One per relay to dial, each independent of the others; none while the engine waits to be linked. */
     readonly links: readonly RelayLink[];
     /**
      * Replaces the stream handler (the TLS server, if `certificates` was given); returns a function that restores it.
@@ -117,12 +132,14 @@ export interface MockEngine {
     readonly faults: FaultSettings;
     /** The dev-only control listener, when `MOCK_CONTROL=enabled`. */
     readonly control: ControlServer | null;
-    /** Null in the M1 dev mode (no `PTBK_DASHBOARD_URL`). */
+    /** Null in the M1 dev mode (no `PTBK_DASHBOARD_URL`), and until `connect` links an engine started without one. */
     readonly registration: Registration | null;
     /** Null in the M1 dev mode. */
     readonly heartbeat: HeartbeatLoop | null;
     /** Null without `PTBK_UI_RELEASE_URL`: then the app's routes answer 503. */
     readonly ui: UiLoader | null;
+    /** What the host's commands ask, also served on the operator channel. */
+    readonly operator: OperatorApi;
     /** Closes every tunnel cleanly and stops reconnecting. */
     close(): Promise<void>;
 }
@@ -143,7 +160,12 @@ const NO_BUNDLES: Pick<BundleStore, 'active' | 'read'> = Object.freeze({
     read: () => Promise.resolve(undefined),
 });
 
-function configuredUiLoader(config: MockEngineConfig, deps: MockEngineDeps, runtime: EngineRuntime): UiLoader | null {
+function configuredUiLoader(
+    config: MockEngineConfig,
+    deps: MockEngineDeps,
+    runtime: EngineRuntime,
+    progress: StartupProgress,
+): UiLoader | null {
     if (config.ui === null) return null;
     if (deps.ui === undefined) throw new Error('PTBK_UI_RELEASE_URL is set but no UI loader adapters were given');
     return createUiLoader({
@@ -153,6 +175,7 @@ function configuredUiLoader(config: MockEngineConfig, deps: MockEngineDeps, runt
         clock: deps.clock,
         logger: deps.logger,
         onActive: (bundle) => {
+            if (bundle !== undefined) progress.ui(bundle.version);
             runtime.setUi(
                 bundle === undefined
                     ? null
@@ -176,8 +199,10 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
     const startedAtMs = deps.clock.nowMs();
     const identity = await deps.identityStore.loadOrCreate();
     const hostname = defaultHostname(identity.engineId, config.engineDomain);
+    const progress = createStartupProgress({ logger, say: deps.say ?? null, engineId: identity.engineId, hostname });
+    progress.identity();
     const dashboard = config.dashboard === null ? null : { config: config.dashboard, deps: dashboardDeps(deps) };
-    const registration =
+    let registration =
         dashboard === null
             ? null
             : await establishRegistration({
@@ -191,23 +216,31 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
                   clock: deps.clock,
                   random: deps.random,
                   signal: new AbortController().signal,
+                  onRetry: (retry) => {
+                      deps.say?.(`${WAITING} ${retrySentence(retry)}`);
+                  },
               });
-    const relays = relaysToDial(config, registration);
+    const linkedAtStart = dashboard === null || registration !== null;
     const faults = createFaultSettings(config.faults);
     const runtime = await createEngineRuntime({
         seed: config.seed,
         scenario: config.scenario,
         epoch: config.seedEpoch,
-        identity: { engineId: identity.engineId, hostname, mode: config.mode, version: config.engineVersion },
+        identity: {
+            engineId: identity.engineId,
+            hostname,
+            mode: linkedAtStart ? config.mode : 'local',
+            version: config.engineVersion,
+        },
         clock: deps.clock,
         capabilities: capabilitiesFor(config.capabilities),
         simulation: config.simulation,
+        passkeys: config.passkeys,
         faults: () => faults.plan(),
         onSimulationError: (error) => {
             logger.error('simulation.error', { problem: error instanceof Error ? error.name : 'unknown' });
         },
     });
-    if (registration !== null) runtime.setDashboardUrl(registration.dashboardUrl);
     const heartbeat =
         dashboard === null
             ? null
@@ -233,7 +266,7 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
     runtime.onReset(() => {
         sessions.clear();
     });
-    const ui = configuredUiLoader(config, deps, runtime);
+    const ui = configuredUiLoader(config, deps, runtime, progress);
     const server =
         deps.certificates === undefined
             ? null
@@ -251,13 +284,28 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
                   clock: deps.clock,
                   logger,
               });
+    let links: readonly RelayLink[] = [];
+    let certificateNotAfter: string | null = null;
+    const addressGapsNow = (): AddressGap[] =>
+        addressGaps({
+            relaysReady: links.filter((link) => link.state().kind === 'ready').length,
+            certificateValid: certificateNotAfter !== null && Date.parse(certificateNotAfter) > deps.clock.nowMs(),
+        });
+    const ownerSetUpNow = (): boolean => hasOwner(runtime.controller().inspect());
+    const onboardingChanged = (): void => {
+        progress.onboarding({ addressGaps: addressGapsNow(), ownerSetUp: ownerSetUpNow() });
+    };
     deps.certificates?.addHostnames([hostname]);
     const reportCertificate = (): void => {
         const credentials = deps.certificates?.current(hostname);
-        if (credentials !== undefined) runtime.setTlsCertificate(tlsCertificateInfo(credentials.certificateChainPem));
+        if (credentials === undefined) return;
+        const certificate = tlsCertificateInfo(credentials.certificateChainPem);
+        runtime.setTlsCertificate(certificate);
+        if (certificate.notAfter !== certificateNotAfter) progress.certificate(certificate.notAfter);
+        certificateNotAfter = certificate.notAfter;
+        onboardingChanged();
     };
     const stopReportingCertificate = deps.certificates?.onChange(reportCertificate);
-    reportCertificate();
     let handler: StreamHandler | null =
         server === null
             ? null
@@ -283,57 +331,148 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
                   logger,
                   now: () => new Date(deps.clock.nowMs()).toISOString().replace(/\.\d{3}Z$/, 'Z'),
               });
+
+    // The first beat waits for the first tunnel, so the dashboard's first look already shows the engine reachable;
+    // one interval at most, so an engine no relay takes is still seen online.
+    let heartbeatStarted = false;
+    let cancelHeartbeatFallback: (() => void) | null = null;
+    const startHeartbeat = (): void => {
+        if (heartbeatStarted || heartbeat === null || dashboard === null) return;
+        heartbeatStarted = true;
+        cancelHeartbeatFallback?.();
+        heartbeat.start();
+    };
+    const relayCount = (): void => {
+        progress.relays(links.filter((link) => link.state().kind === 'ready').length, links.length);
+    };
+
+    function dial(relays: readonly RelayTarget[]): void {
+        links = relays.map((relay) =>
+            createRelayLink({
+                relay,
+                identity,
+                engineVersion: config.engineVersion,
+                offer: deps.offer ?? DEFAULT_TUNNEL_OFFER,
+                defaultHostname: hostname,
+                dialer: deps.dialer,
+                clock: deps.clock,
+                random: deps.random,
+                logger,
+                onStream: (stream) => {
+                    if (handler === null) {
+                        logger.warn('stream.refused', { relay: relay.url, stream: stream.id });
+                        stream.close(CLOSE_CODE.REFUSED);
+                        return REFUSED_EVENTS;
+                    }
+                    const duplex = openTunnelDuplex(stream);
+                    handler(duplex, relay);
+                    return duplex.events;
+                },
+                onStateChange: stateListener(relay, runtime, deps, (state) => {
+                    if (state.kind === 'ready') startHeartbeat();
+                    relayCount();
+                    onboardingChanged();
+                }),
+            }),
+        );
+        for (const link of links) link.start();
+        if (heartbeat !== null && dashboard !== null) {
+            cancelHeartbeatFallback = deps.clock.setTimeout(startHeartbeat, dashboard.config.heartbeatIntervalS * 1000);
+        }
+    }
+
+    function goOnline(linked: Registration | null): void {
+        if (linked !== null) {
+            runtime.setDashboardUrl(linked.dashboardUrl);
+            runtime.setMode(config.mode);
+        }
+        dial(relaysToDial(config, linked));
+    }
+
+    let linking: Promise<LinkAnswer> | null = null;
+    async function linkStored(linked: NonNullable<typeof dashboard>): Promise<LinkAnswer> {
+        let stored: Registration | null;
+        try {
+            stored = await loadRegistration({
+                store: linked.deps.registrations,
+                identity,
+                dashboardUrl: linked.config.url,
+                engineDomain: config.engineDomain,
+            });
+        } catch (error) {
+            logger.error('registration.refused-stored', { problem: error instanceof Error ? error.name : 'unknown' });
+            return { outcome: 'not-registered' };
+        }
+        if (stored === null) return { outcome: 'not-registered' };
+        registration = stored;
+        logger.info('registration.linked', { engineId: stored.engineId, relays: stored.relays.length });
+        progress.linked(false);
+        goOnline(stored);
+        return { outcome: 'linked', relays: links.length };
+    }
+
+    const operator: OperatorApi = {
+        status: () =>
+            engineStatus({
+                engineId: identity.engineId,
+                hostname,
+                version: config.engineVersion,
+                registration,
+                withDashboard: dashboard !== null,
+                links,
+                certificateNotAfter,
+                uiVersion: ui?.store.active()?.version ?? null,
+                updatePolicy: ui?.policy() ?? { kind: 'auto' },
+                ownerSetUp: ownerSetUpNow(),
+                heartbeat: heartbeat?.status() ?? null,
+                addressGaps: addressGapsNow(),
+            }),
+        link() {
+            if (dashboard === null || registration !== null) return Promise.resolve({ outcome: 'already-linked' });
+            // Two `connect` calls racing share one attempt, so the engine never dials twice.
+            linking ??= linkStored(dashboard).finally(() => {
+                linking = null;
+            });
+            return linking;
+        },
+    };
+    const operatorChannel = deps.operatorChannel === undefined ? null : await deps.operatorChannel(operator);
+
     logger.info('engine.started', {
         engineId: identity.engineId,
         hostname,
         version: config.engineVersion,
-        relays: relays.length,
+        relays: linkedAtStart ? relaysToDial(config, registration).length : 0,
         dashboard: registration !== null,
         proxy: config.proxy !== null,
         scenario: config.scenario,
         seed: config.seed,
     });
-
-    const links = relays.map((relay) => {
-        const onStateChange = stateListener(relay, runtime, deps);
-        return createRelayLink({
-            relay,
-            identity,
-            engineVersion: config.engineVersion,
-            offer: deps.offer ?? DEFAULT_TUNNEL_OFFER,
-            defaultHostname: hostname,
-            dialer: deps.dialer,
-            clock: deps.clock,
-            random: deps.random,
-            logger,
-            onStream: (stream) => {
-                if (handler === null) {
-                    logger.warn('stream.refused', { relay: relay.url, stream: stream.id });
-                    stream.close(CLOSE_CODE.REFUSED);
-                    return REFUSED_EVENTS;
-                }
-                const duplex = openTunnelDuplex(stream);
-                handler(duplex, relay);
-                return duplex.events;
-            },
-            onStateChange,
-        });
-    });
-    for (const link of links) link.start();
-    heartbeat?.start();
+    if (linkedAtStart) {
+        if (registration !== null) progress.linked(true);
+        goOnline(registration);
+    } else {
+        progress.notLinked();
+    }
+    reportCertificate();
     ui?.start();
 
     return {
         identity,
         hostname,
-        links,
+        get links() {
+            return links;
+        },
         runtime,
         sessions,
         faults,
         control,
-        registration,
+        get registration() {
+            return registration;
+        },
         heartbeat,
         ui,
+        operator,
         onStream(next) {
             handler = next;
             return () => {
@@ -343,7 +482,10 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
         async close() {
             runtime.simulation().stop();
             stopReportingCertificate?.();
-            await Promise.all([heartbeat?.stop(), ui?.stop(), ...links.map((link) => link.stop())]);
+            cancelHeartbeatFallback?.();
+            const stopping = Promise.all([heartbeat?.stop(), ui?.stop(), ...links.map((link) => link.stop())]);
+            await operatorChannel?.close();
+            await stopping;
             await control?.close();
             server?.close();
             deps.certificates?.close();
@@ -366,6 +508,7 @@ function stateListener(
     relay: RelayTarget,
     runtime: EngineRuntime,
     deps: MockEngineDeps,
+    onChange: (state: RelayLinkState) => void,
 ): (state: RelayLinkState) => void {
     const { certificates, onLinkState } = deps;
     return (state) => {
@@ -374,6 +517,7 @@ function stateListener(
             certificates?.addHostnames(state.session.hostnames);
             runtime.setHostnames(state.session.hostnames);
         }
+        onChange(state);
         onLinkState?.(relay, state);
     };
 }

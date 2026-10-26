@@ -10,7 +10,7 @@ import { createMemoryLogger } from '../testing/memory-logger';
 import { createSeededRandom } from '../testing/seeded-random';
 import { EXIT_CODE } from './exit-codes';
 import type { DashboardConfig } from './config';
-import { RegistrationFailedError, describeOutcome, establishRegistration } from './establish-registration';
+import { describeOutcome, establishRegistration } from './establish-registration';
 
 const ENGINE_DOMAIN = Hostname.parse('engines.ptbk.test');
 const RELAYS = [Hostname.parse('relay-a.ptbk.test')];
@@ -43,7 +43,7 @@ describe('establishRegistration', () => {
         const code = dashboard.issueLinkCode('org-a');
         const secret = oneTimeSecret(code);
         const registration = await establish(secret);
-        expect(registration.engineId).toBe(identity.engineId);
+        expect(registration?.engineId).toBe(identity.engineId);
         expect(secret.take()).toBeNull();
         expect(logger.entries).toContainEqual({
             level: 'info',
@@ -61,11 +61,10 @@ describe('establishRegistration', () => {
         expect(logger.entries.at(-1)?.event).toBe('registration.already-registered');
     });
 
-    it('fails without a registration or a link code', async () => {
-        const { establish } = await setup();
-        await expect(establish(null)).rejects.toThrow(
-            new RegistrationFailedError('not registered: set PTBK_LINK_CODE or run the connect command'),
-        );
+    it('has no registration without a stored one or a link code, so the engine waits for connect', async () => {
+        const { dashboard, establish } = await setup();
+        expect(await establish(null)).toBeNull();
+        expect(dashboard.registerRequests).toHaveLength(0);
     });
 
     it('fails on a rejection, a refused response and an unreachable dashboard, naming only the outcome', async () => {

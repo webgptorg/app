@@ -254,6 +254,49 @@ describe('register command and dashboard mode', () => {
     );
 
     it(
+        'waits unlinked, joins on connect, reports status over the operator socket and refuses a second engine',
+        async () => {
+            const dir = await tempDir();
+            const dataDir = join(dir, 'data');
+            const { dashboard, url, caFile } = await startHttpsDashboard(dir);
+            const env = {
+                PTBK_DATA_DIR: dataDir,
+                PTBK_ENGINE_DOMAIN: ENGINE_DOMAIN,
+                PTBK_DASHBOARD_URL: url,
+                MOCK_EXTRA_CA_FILE: caFile,
+            };
+            const engine = run('src/main.ts', env);
+            await engine.printed('"event":"engine.not-linked"');
+            expect(engine.stdout()).toContain('"event":"operator.listening"');
+            const before = run('src/main.ts', env, ['status', '--json']);
+            expect(await before.exited).toBe(0);
+            expect(JSON.parse(before.stdout())).toMatchObject({ running: true, mode: 'local', relays: [] });
+
+            const second = run('src/main.ts', env);
+            expect(await second.exited).toBe(1);
+            expect(second.stdout()).toContain('another engine is running from this data directory');
+
+            const code = dashboard.issueLinkCode('org-a');
+            const connect = run('src/main.ts', env, ['connect', '--link', code]);
+            expect(await connect.exited).toBe(0);
+            expect(connect.stdout()).toContain('✓ The running engine is linked and connects to 1 relay');
+            const after = run('src/main.ts', env, ['status']);
+            expect(await after.exited).toBe(0);
+            expect(after.stdout()).toContain(`Link          linked to ${url}`);
+            expect(after.stdout()).toContain('Relays        0 of 1 connected');
+            expect(engine.stdout() + connect.stdout() + after.stdout()).not.toContain(code);
+
+            engine.child.kill('SIGTERM');
+            expect(await engine.exited).toBe(0);
+            expect(await readdir(dataDir)).not.toContain('operator.sock');
+            const stopped = run('src/main.ts', env, ['status']);
+            expect(await stopped.exited).toBe(1);
+            expect(stopped.stderr()).toContain('The engine is not running');
+        },
+        PROCESS_TIMEOUT_MS * 2,
+    );
+
+    it(
         'connects with human lines, and exits 3 for a refused code with the next step',
         async () => {
             const dir = await tempDir();
