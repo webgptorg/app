@@ -1,7 +1,5 @@
 import { sha256 } from '@noble/hashes/sha2.js';
 
-import { concatBytes, utf8Encode } from './bytes';
-
 /**
  * The derivation's domain prefix. It carries the version: changing anything below changes every engine's mark, so a
  * new derivation is `ptbk-fingerprint-v2` next to this one, never an edit of it.
@@ -27,8 +25,12 @@ export interface EngineFingerprint {
     readonly cells: readonly (readonly boolean[])[];
 }
 
+// TextEncoder rather than bytes.ts: sharing that module with the dashboard's entry chunk made the bundler split the
+// entry and exceed its size budget. The prefix is ASCII, so encoding the joined string gives the same bytes.
+const encoder = new TextEncoder();
+
 function digestBits(engineId: string): string {
-    const digest = sha256(concatBytes(utf8Encode(FINGERPRINT_DERIVATION), utf8Encode(engineId)));
+    const digest = sha256(encoder.encode(`${FINGERPRINT_DERIVATION}${engineId}`));
     return Array.from(digest, (byte) => byte.toString(2).padStart(8, '0')).join('');
 }
 
