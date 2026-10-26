@@ -87,6 +87,11 @@ export interface FakeDashboardOptions {
     /** Scripted answers: return one to send it instead of the dashboard's own, or undefined to answer normally. */
     readonly onRegister?: (registration: Omit<ReceivedRegistration, 'answer'>) => DashboardAnswer | undefined;
     readonly onHeartbeat?: (heartbeat: Omit<ReceivedHeartbeat, 'answer'>) => DashboardAnswer | undefined;
+    /**
+     * Changes the body of a successful registration answer, after the dashboard has stored the engine: extra fields,
+     * another identity, padding. The engine is registered either way, as with a dashboard that answers wrongly.
+     */
+    readonly decorateRegistration?: (response: RegisterEngineResponse) => unknown;
 }
 
 export interface FakeDashboard {
@@ -183,7 +188,7 @@ export async function startFakeDashboard(
             hostname: defaultHostname(engineId, ctx.engineDomain),
             relays: [...relays],
         };
-        return jsonAnswer(200, response);
+        return jsonAnswer(200, options.decorateRegistration?.(response) ?? response);
     }
 
     async function heartbeat(at: number, incoming: IncomingMessage, rawBody: Buffer, pathEngineId: string) {

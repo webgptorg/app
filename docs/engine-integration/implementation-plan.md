@@ -52,7 +52,7 @@ The engine is `apps/agents-server` in `webgptorg/promptbook`: a Next.js app rout
    ```
 
 3. The packages ship TypeScript source with extensionless imports, so plain `node` cannot run them. Run the new entry point with a loader or bundler that compiles TypeScript from linked packages: `tsx` in development, and esbuild, tsup or tsdown for the production build (the mock engine uses `tsx` and `tsdown`). Check it with a one-line script that imports `deriveEngineId` from `@ptbk/protocol` and `ENGINE_API_VERSION` from `@ptbk/engine-api` and prints the version (`1.9.0` at the time of writing).
-4. Give the engine one start command that the conformance harness can run with `--engine-cmd` (pending C-08). Its launch contract: the engine reads its settings from the environment (the variables in [the harness table](testing-against-the-platform.md#engine-settings-the-harness-uses)), creates `PTBK_DATA_DIR` itself if it does not exist, writes its logs to stdout or stderr, exits with a non-zero status when it refuses to start, and exits within 10 s of SIGTERM.
+4. Give the engine one start command that the conformance harness can run with `--engine-cmd`. Its launch contract: the engine reads its settings from the environment (the variables in [the harness table](testing-against-the-platform.md#engine-settings-the-harness-uses)), creates `PTBK_DATA_DIR` itself if it does not exist, writes its logs to stdout or stderr, exits with a non-zero status when it refuses to start, and exits within 10 s of SIGTERM ([launch contract](identity-and-registration.md#launch-contract)). For the engine API checks, its conformance build also ships the [`conformance-session` command](identity-and-registration.md#conformance-sessions).
 5. Add a lint rule that forbids `eval`, `new Function`, `vm` and string timers in the new code.
 6. Add a test that runs every case in [`ed25519-vectors.json`](../../packages/protocol/src/ed25519-vectors.json) through `verifyEd25519` and compares `valid`. It proves the import works and keeps you honest if you ever add another verifier.
 
@@ -78,7 +78,7 @@ The engine is `apps/agents-server` in `webgptorg/promptbook`: a Next.js app rout
 **Prove:**
 
 - Unit tests: a second start loads the same key; a concurrent first start does not overwrite it; a group-readable key file, a foreign-owned directory and a symlinked key file each refuse to start with the path and mode in the error and no key material; the runtime key is not extractable.
-- _Pending C-08:_ `registration.data-dir.private`, `registration.key-file.private`, `registration.key-file.loose-modes-refused` and `registration.identity.stable-across-restarts` (they run with phase 2's registration in place).
+- `registration.data-dir.private`, `registration.key-file.private`, `registration.key-file.loose-modes-refused` and `registration.identity.stable-across-restarts` (they run with phase 2's registration in place).
 - `engine-api.engine.id-matches-key` once the API exists (phase 7).
 - Checklist: ENG-10, ENG-11, ENG-15.
 
@@ -101,7 +101,7 @@ The engine is `apps/agents-server` in `webgptorg/promptbook`: a Next.js app rout
 
 - Golden vector: the `registration` case in [`signed-message-vectors.json`](../../packages/protocol/src/signed-message-vectors.json). Rebuild the signing input from its fields and compare the bytes; verify the signature with `verifyEd25519`.
 - Unit tests for each error code, for a response with an engine ID the key does not derive and a hostname outside the engine domain (both refused, nothing stored), and for a body over the size cap.
-- _Pending C-08:_ the conformance `registration` suite, which starts the engine with `--engine-cmd` and plays the dashboard: `registration.request.signature-verifies`, `registration.identity.engine-id-derived`, `registration.link-code.used-once`, `registration.secrets.never-logged`, `registration.response.unknown-fields-ignored`, `registration.response.invalid-refused` and one `registration.errors.*` check per problem code. The errors checks expect no tight retry loop (one attempt for final codes, at most three in 10 s for `rate-limited` and 5xx), the problem `code` named in the output, and nothing stored.
+- the conformance `registration` suite, which starts the engine with `--engine-cmd` and plays the dashboard: `registration.request.signature-verifies`, `registration.identity.engine-id-derived`, `registration.link-code.used-once`, `registration.secrets.never-logged`, `registration.response.unknown-fields-ignored`, `registration.response.invalid-refused` and one `registration.errors.*` check per problem code. The errors checks expect no tight retry loop (one attempt for final codes, at most three in 10 s for `rate-limited` and 5xx), the problem `code` named in the output, and nothing stored.
 
   ```sh
   node "$PLATFORM_DIR/packages/conformance/dist/ptbk-conformance.js" \
@@ -128,7 +128,7 @@ The engine is `apps/agents-server` in `webgptorg/promptbook`: a Next.js app rout
 - Golden vector: the `heartbeat` case in [`signed-message-vectors.json`](../../packages/protocol/src/signed-message-vectors.json) (body bytes, digest, signing input, header).
 - Unit tests: `seq` after a crash between persisting and sending is still higher; a `stale-timestamp` answer with `serverTime` records the skew; `replayed-seq` moves `seq` forward; failures are not retried or backfilled.
 - `engine-api.security.heartbeat-body` once the API exists (phase 7).
-- _Pending C-08:_ the conformance `heartbeat` suite (acting as the dashboard): `heartbeat.signature.verifies` (the first beat within 30 s of start), `heartbeat.body.strict`, `heartbeat.seq.increasing-across-restarts`, `heartbeat.cadence.interval` (the real 60 s; it skips when `--heartbeat-interval-s` overrides it, so run it once without), `heartbeat.errors.keeps-sending` and `heartbeat.stale-ts.skew-shown`. Same command as phase 2 with `--suite heartbeat`. Until it merges: the engine shows online in the local stack's dashboard.
+- the conformance `heartbeat` suite (acting as the dashboard): `heartbeat.signature.verifies` (the first beat within 30 s of start), `heartbeat.body.strict`, `heartbeat.seq.increasing-across-restarts`, `heartbeat.cadence.interval` (the real 60 s; it skips when `--heartbeat-interval-s` overrides it, so run it once without), `heartbeat.errors.keeps-sending` and `heartbeat.stale-ts.skew-shown`. Same command as phase 2 with `--suite heartbeat`. Until it merges: the engine shows online in the local stack's dashboard.
 - Checklist: ENG-40 to ENG-43.
 
 **Reference:** [build-heartbeat.ts](../../apps/mock-engine/src/domain/heartbeat/build-heartbeat.ts), [heartbeat-loop.ts](../../apps/mock-engine/src/domain/heartbeat/heartbeat-loop.ts), [fs-seq-store.ts](../../apps/mock-engine/src/adapters/fs-seq-store.ts), [os-system-stats.ts](../../apps/mock-engine/src/adapters/os-system-stats.ts).

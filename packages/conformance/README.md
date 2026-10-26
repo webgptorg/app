@@ -7,7 +7,7 @@ MIT, moves to the public repo with the other contracts ([ADR 0002](../../docs/ad
 ## What it checks
 
 - **`engine-api`** (v1): the HTTP API engine-ui depends on (C-04, C-07), reached through the engine gateway as a browser would. Every response it reads is judged strictly: a success must parse with its route's strict schema (no undeclared fields), and every 4xx and 5xx must be `application/problem+json` with a known `code` and the status that code always has. A violation in any check fails that check.
-- **`registration`** and **`heartbeat`** (C-08, in progress): the harness starts the engine itself and acts as the dashboard ([below](#starting-the-engine)).
+- **`registration`** and **`heartbeat`** (C-08): the harness starts the engine itself and acts as the dashboard ([below](#starting-the-engine)).
 - **`tunnel`** (C-09, starts the engine): acts as the relays the engine dials, from a fake relay on loopback whose names the engine gets in `PTBK_RELAYS`. It checks the handshake (signatures, negotiation, refusals), TLS ended by the engine inside a stream, framing and flow control, reconnects and backoff, liveness and the proxy. See [tunnel-client.md](../../docs/engine-integration/tunnel-client.md#conformance).
 - **`ui-loader`**: its check IDs are registered now and always report `skip` (`not-implemented`), so engine teams can track the cryptographic requirements of [ADR 0014](../../docs/adr/0014-cryptography.md) before the suite exists.
 
@@ -36,12 +36,14 @@ Starting the engine (the harness plays the dashboard and the rest of the platfor
   --engine-cmd <command>      Starts the engine under test (run by /bin/sh), once per check and scenario
   --engine-cwd <dir>          Its working directory (default: the current one)
   --heartbeat-interval-s <n>  The interval the engine was told to use (default 60; anything else skips the cadence check)
+  --engine-session-cmd <cmd>  The engine's conformance-session command, run with --subject owner|member
+                              [--permissions a,b]; it prints {"cookie"}, {"bearer"} or null as JSON
   --mock-control              The engine is the mock engine: sessions from its dev-only control listener
 
 Options:
   --suite <id>                Run only these suites (repeatable or comma-separated)
                               against --base-url: engine-api, ui-loader
-                              with --engine-cmd: registration, tunnel
+                              with --engine-cmd: registration, heartbeat, tunnel
   --filter <text>             Run only checks whose ID contains this text (repeatable)
   --report json|junit         Report format (default json)
   --out <file>                Write the report here instead of stdout
@@ -71,7 +73,7 @@ The run's CA reaches the engine as `NODE_EXTRA_CA_CERTS`. It is ECDSA P-256, val
 - `startRegisteredEngine(ctx, { relays, env })` ([dashboard.ts](node/fakes/dashboard.ts)) starts a fake dashboard and an engine with a link code. It resolves once the engine has registered and sent its first accepted heartbeat, with `identity` (engine ID and public key). `restart(patch)` resolves at the next accepted heartbeat, which is the ready signal after a restart.
 - `ctx.ca.issue(hostnames)` issues certificates the engine trusts. `createTestCa(name)` from [test-ca.ts](node/pki/test-ca.ts) makes an untrusted CA. `listenLoopback()` serves on 127.0.0.1 and ::1 with one port.
 - `ctx.use(server)` closes a fake server after the check; `ctx.tempDir(label)` creates a private directory.
-- `ctx.engineTarget(engine, { baseUrl, fetch })` gives a `ConformanceTarget` for an engine's API once a relay routes it, or `null` when the run has no session source. With `--mock-control`, each mock engine gets its own control listener, whose port stays the same across restarts.
+- `ctx.engineTarget(engine, { baseUrl, fetch })` gives a `ConformanceTarget` for an engine's API once a relay routes it, or `null` when the run has no session source. With `--engine-session-cmd`, `session()` runs the engine's [conformance-session command](../../docs/engine-integration/identity-and-registration.md#conformance-sessions) with the engine's environment. With `--mock-control`, each mock engine gets its own control listener, whose port stays the same across restarts. Both work again after a restart.
 - `timeoutMs(expectations)` raises a check's timeout, for checks that wait for heartbeats.
 - **Reaching the engine API through a relay** ([tunnel-relay.ts](node/tunnel/tunnel-relay.ts)): `startTunnelRelay(ctx)` starts a fake relay and gives the `env` (`PTBK_RELAYS`) to start the engine with; once it registered, `endpointFor(registered)` returns `{ baseUrl, fetch }` for `ctx.engineTarget`. The `fetch` opens a tunnel stream per request and runs TLS to the engine inside it, with SNI = `<engineId>.<engine domain>`, as a browser behind the relay would. It verifies the engine's certificate chain against `ctx.engineCertificateAuthority(engine)` (from the target factory's `certificateAuthority`; the mock's is its dev CA), and only its name and dates when there is none.
 
@@ -178,6 +180,27 @@ Rerunning with the report's `seed` reproduces the names and values a run used.
 | `engine-api.cross-member.private-resources`      | A second member with the same permissions gets 403 or 404 on another's private agent; skips unless the target reports such resources                                                           |
 | `engine-api.gateway.cross-site-refused`          | A state-changing request with `Sec-Fetch-Site: cross-site` is 403 even with a valid session; skips with `gateway: false`                                                                       |
 | `registration.request.signature-verifies`        | The registration request is a strict `RegisterEngineRequest` within the size cap, with the given link code and `mode: tunnel`, and `verifyRegistration` accepts it                             |
+| `registration.identity.engine-id-derived`        | The engine heartbeats as `deriveEngineId(enginePublicKey)`, in the path and the body                                                                                                           |
+| `registration.identity.stable-across-restarts`   | After a restart: no new key registered, the same engine ID, an accepted heartbeat                                                                                                              |
+| `registration.link-code.used-once`               | Restarted with the same environment, the engine sends the link code no second time                                                                                                             |
+| `registration.secrets.never-logged`              | Neither the link code nor the engine key is in the engine's output, in any encoding; the link code is in no file under `PTBK_DATA_DIR`                                                         |
+| `registration.response.unknown-fields-ignored`   | A registration answer with extra fields is accepted                                                                                                                                            |
+| `registration.response.invalid-refused`          | Another engine ID, a hostname outside the engine domain or an oversized answer is refused: no heartbeat, nothing stored                                                                        |
+| `registration.errors.invalid-link-code`          | 401 `invalid-link-code`: one attempt, the output names the code, nothing stored                                                                                                                |
+| `registration.errors.engine-exists`              | 409 `engine-exists`: the same                                                                                                                                                                  |
+| `registration.errors.engine-suspended`           | 403 `engine-suspended`: the same                                                                                                                                                               |
+| `registration.errors.not-entitled`               | 403 `not-entitled`: the same                                                                                                                                                                   |
+| `registration.errors.rate-limited`               | 429 `rate-limited`: at most three attempts in the watch window, the code named, nothing stored                                                                                                 |
+| `registration.errors.unavailable`                | 503: the same                                                                                                                                                                                  |
+| `registration.data-dir.private`                  | `PTBK_DATA_DIR` is created as a 0700 directory owned by the engine user                                                                                                                        |
+| `registration.key-file.private`                  | The file holding the engine key is a regular file owned by the engine user, mode 0600                                                                                                          |
+| `registration.key-file.loose-modes-refused`      | A 0755 data directory, a 0640 key file or a symlinked key: exit non-zero, no request, the path named                                                                                           |
+| `heartbeat.signature.verifies`                   | The first beat goes to `heartbeatPath(engineId)` and `verifyHeartbeat` accepts it over the exact bytes                                                                                         |
+| `heartbeat.body.strict`                          | Bodies within 4 KiB, strict `Heartbeat`, current `ts`, the registered `version`                                                                                                                |
+| `heartbeat.seq.increasing-across-restarts`       | `seq` strictly increases, also across a restart                                                                                                                                                |
+| `heartbeat.cadence.interval`                     | Beats every 60 s, no early retry after a 503; skips with `--heartbeat-interval-s` other than 60                                                                                                |
+| `heartbeat.errors.keeps-sending`                 | After 429, 403, 404, 401 and `stale-timestamp` answers the engine keeps beating on the interval                                                                                                |
+| `heartbeat.stale-ts.skew-shown`                  | The security panel shows the clock skew a `stale-timestamp` answer reports; skips until C-09                                                                                                   |
 | `tunnel.dial.websocket-upgrade`                  | The engine upgrades to a WebSocket on TUNNEL_PATH with the ptbk-tunnel subprotocol                                                                                                             |
 | `tunnel.dial.every-relay`                        | Exactly one ready tunnel to every relay in the list; a relay that stalls holds up no other                                                                                                     |
 | `tunnel.auth.signature-verifies`                 | auth is strict, names the engine's own ID and verifies with verifyTunnelAuth, in time                                                                                                          |

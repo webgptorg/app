@@ -65,7 +65,18 @@ Golden vector: the `heartbeat` case in [`signed-message-vectors.json`](../../pac
 
 ## Conformance
 
-The `heartbeat` suite, in which the conformance CLI acts as the dashboard, is pending (task C-08). Until it merges, C-05 v1 checks only that the security panel's `lastHeartbeat.body` parses with the protocol `Heartbeat` schema (security panel checks in [conformance.md](conformance.md)).
+The `heartbeat` suite (C-08) starts the engine with the [launch contract](identity-and-registration.md#launch-contract) and acts as the dashboard. `engine-api.security.heartbeat-body` checks the security panel's copy of the body.
+
+| Check                                      | What it proves                                                                                                                                                         |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `heartbeat.signature.verifies`             | The first beat goes to `heartbeatPath(engineId)` with `Ptbk-Signature`, and `verifyHeartbeat` accepts it over the exact bytes                                          |
+| `heartbeat.body.strict`                    | Every body is within `HEARTBEAT_MAX_BODY_BYTES`, a strict `Heartbeat` (percentages in tens), its `ts` within `HEARTBEAT_MAX_SKEW_MS`, its `version` the registered one |
+| `heartbeat.seq.increasing-across-restarts` | `seq` strictly increases from beat to beat and across a restart                                                                                                        |
+| `heartbeat.cadence.interval`               | Beats come every 60 s (5 s early to 10 s late), and a beat answered 503 is not retried before the next tick. Skips when the run overrides the interval                 |
+| `heartbeat.errors.keeps-sending`           | After 429, 403 `engine-suspended`, 404, 401 `bad-signature` and 401 `stale-timestamp` the engine keeps running and beats on the interval, never sooner                 |
+| `heartbeat.stale-ts.skew-shown`            | After a `stale-timestamp` answer, the security panel's `clockSkew`; skips until the tunnel suite (C-09) reaches the engine API                                         |
+
+The interval is not part of the launch contract. To iterate faster, give the engine a development setting of its own in the engine command and pass `--heartbeat-interval-s` with the same value. Only a run at the default interval passes the cadence check.
 
 ## Reference implementation
 

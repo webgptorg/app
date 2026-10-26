@@ -19,6 +19,11 @@ import { UpdateStateStoreError } from './adapters/ui/fs-update-state-store';
 import { createWsRelayDialer } from './adapters/ws-relay-dialer';
 import type { MockEngineConfig } from './app/config';
 import { ConfigError, parseMockEngineConfig } from './app/config';
+import {
+    ConformanceSessionUsageError,
+    parseConformanceSessionCommand,
+    runConformanceSessionCommand,
+} from './app/conformance-session-command';
 import { RegistrationFailedError } from './app/establish-registration';
 import { RegisterUsageError, isRegistered, parseRegisterCommand, runRegisterCommand } from './app/register-command';
 import type { DashboardDeps, MockEngine } from './app/start-mock-engine';
@@ -197,9 +202,28 @@ function serve(engine: MockEngine, logger: Logger): void {
     process.on('SIGINT', shutdown);
 }
 
+/** `mock-engine conformance-session --subject …`: prints a session credential as JSON for the conformance harness. */
+async function conformanceSession(args: readonly string[]): Promise<void> {
+    try {
+        const subject = parseConformanceSessionCommand(args);
+        const credential = await runConformanceSessionCommand(
+            subject,
+            parseConfig(),
+            globalThis.fetch.bind(globalThis),
+        );
+        process.stdout.write(`${JSON.stringify(credential)}\n`);
+    } catch (error) {
+        const problem = error instanceof ConformanceSessionUsageError ? error.message : problemOf(error);
+        process.stderr.write(`conformance-session: ${problem}\n`);
+        process.exitCode = 1;
+    }
+}
+
 const [verb, ...args] = process.argv.slice(2);
 if (verb === 'register') {
     await register(args);
+} else if (verb === 'conformance-session') {
+    await conformanceSession(args);
 } else {
     const started = await start();
     if (started === null) process.exitCode = 1;

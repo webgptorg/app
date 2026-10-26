@@ -160,6 +160,11 @@ describe('runCli', () => {
         [['--engine-cmd', 'true', '--heartbeat-interval-s', '0'], '--heartbeat-interval-s must be at least 1'],
         [['--base-url', 'https://engine.test', '--mock-control'], '--mock-control needs --engine-cmd'],
         [['--base-url', 'https://engine.test', '--engine-cwd', '.'], '--engine-cwd needs --engine-cmd'],
+        [['--base-url', 'https://engine.test', '--engine-session-cmd', 'x'], '--engine-session-cmd needs --engine-cmd'],
+        [
+            ['--engine-cmd', 'true', '--engine-session-cmd', 'x', '--mock-control'],
+            'give either --engine-session-cmd or --mock-control',
+        ],
     ])('refuses %j with exit code 2', async (argv, message) => {
         const streams = io();
         expect(await runCli(argv, streams)).toBe(2);
@@ -245,7 +250,9 @@ describe('runCli', () => {
             String(SELF_TEST_HEARTBEAT_INTERVAL_S),
             '--mock-control',
             '--suite',
-            'registration',
+            'registration,heartbeat',
+            '--filter',
+            'registration.request.signature-verifies',
             '--report',
             'junit',
         ];

@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { CheckResult } from '../../src/index';
 import { writeJunitReport } from '../../src/index';
 import { PLATFORM_SUITES } from '../index';
-import { SELF_TEST_HEARTBEAT_INTERVAL_S, fakeEngineCommand, mockEngineCommand } from '../testing/engines';
+import { SELF_TEST_HEARTBEAT_INTERVAL_S, fakeEngineCommand } from '../testing/engines';
 import type { EngineCommand } from './engine-process';
 import { liveEngineGroups } from './engine-process';
 import { runPlatformConformance } from './run-platform';
@@ -26,10 +26,6 @@ async function run(command: EngineCommand, filter?: string) {
     });
 }
 
-function outcomes(results: readonly CheckResult[]): Record<string, string> {
-    return Object.fromEntries(results.map((result) => [result.id, result.outcome.kind]));
-}
-
 function failure(results: readonly CheckResult[], id: string): string {
     const outcome = results.find((result) => result.id === id)?.outcome;
     return outcome?.kind === 'fail' ? outcome.detail : `not failed: ${outcome?.kind ?? 'missing'}`;
@@ -37,26 +33,6 @@ function failure(results: readonly CheckResult[], id: string): string {
 
 afterEach(() => {
     expect(liveEngineGroups()).toEqual([]);
-});
-
-describe('the platform suites', () => {
-    it('pass against the mock engine', async () => {
-        const report = await run(mockEngineCommand());
-        expect(outcomes(report.results)).toEqual({ 'registration.request.signature-verifies': 'pass' });
-    });
-
-    it('pass against the self-test engine', async () => {
-        const report = await run(fakeEngineCommand());
-        expect(outcomes(report.results)).toEqual({ 'registration.request.signature-verifies': 'pass' });
-    });
-
-    it.each([
-        ['bad-registration-signature', 'registration.request.signature-verifies', 'sig does not verify'],
-        ['wrong-mode', 'registration.request.signature-verifies', 'mode is direct'],
-    ])('fail for the defect %s', async (defect, id, expected) => {
-        const report = await run(fakeEngineCommand(defect), id);
-        expect(failure(report.results, id)).toContain(expected);
-    });
 });
 
 /** How C-09 and C-10 use the harness: a registered engine, its identity, a restart in the same data directory. */
@@ -85,6 +61,15 @@ const registeredEngineSuite: PlatformSuite = {
             },
         },
         {
+            id: 'example.fixture.close-fails',
+            suite: 'example',
+            title: 'A fixture that fails to close does not stop the run',
+            run(ctx) {
+                ctx.use({ close: () => Promise.reject(new Error('stuck')) });
+                return Promise.resolve({ kind: 'pass' });
+            },
+        },
+        {
             id: 'example.registered.exits',
             suite: 'example',
             title: 'An engine that stops before registering is reported as such',
@@ -105,6 +90,17 @@ describe('the harness', () => {
             timeoutMs: 5000,
             signal: new AbortController().signal,
             expectations: { heartbeatIntervalMs: SELF_TEST_HEARTBEAT_INTERVAL_S * 1000, startTimeoutMs: 10_000 },
+        });
+        expect(report.results.map((result) => result.outcome)).toEqual([{ kind: 'pass' }]);
+    });
+
+    it('carries on when a fixture fails to close', async () => {
+        const report = await runPlatformConformance({
+            command: { command: 'true', cwd: process.cwd() },
+            suites: [registeredEngineSuite],
+            filter: (check) => check.id === 'example.fixture.close-fails',
+            timeoutMs: 5000,
+            signal: new AbortController().signal,
         });
         expect(report.results.map((result) => result.outcome)).toEqual([{ kind: 'pass' }]);
     });
@@ -138,13 +134,17 @@ describe('the harness', () => {
     });
 
     it('reports the engine output of a failed check', async () => {
-        const report = await run({ command: 'echo "engine says hello" >&2; exit 3', cwd: process.cwd() });
+        const report = await run(
+            { command: 'echo "engine says hello" >&2; exit 3', cwd: process.cwd() },
+            'registration.request.signature-verifies',
+        );
         const [result] = report.results;
         expect(result?.outcome).toEqual({
             kind: 'fail',
             detail: expect.stringContaining('exited (status 3) before it could send a registration request') as string,
         });
         expect(result?.engineOutput).toContain('engine says hello');
+        expect(report.results.every((entry) => entry.outcome.kind === 'fail')).toBe(true);
         expect(writeJunitReport(report)).toContain('<system-out>--- engine 1: 1 starts, exits: 3 ---');
     });
 
@@ -152,6 +152,7 @@ describe('the harness', () => {
         const report = await runPlatformConformance({
             command: { command: "trap '' TERM; sleep 600 & wait", cwd: process.cwd() },
             suites: SUITES,
+            filter: (check) => check.id === 'registration.request.signature-verifies',
             timeoutMs: 500,
             stopGraceMs: 200,
             signal: new AbortController().signal,

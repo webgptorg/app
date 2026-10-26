@@ -7,6 +7,7 @@ import {
     DEFAULT_HEARTBEAT_INTERVAL_MS,
     PLATFORM_SUITES,
     createMockEngineTargetFactory,
+    createSessionCommandTargetFactory,
     runPlatformConformance,
 } from '../node/index';
 import type { CheckResult, ConformanceReport, ConformanceTarget, SessionCredential } from '../src/index';
@@ -32,6 +33,8 @@ Starting the engine (the harness plays the dashboard and the rest of the platfor
   --engine-cmd <command>      Starts the engine under test (run by /bin/sh), once per check and scenario
   --engine-cwd <dir>          Its working directory (default: the current one)
   --heartbeat-interval-s <n>  The interval the engine was told to use (default 60; anything else skips the cadence check)
+  --engine-session-cmd <cmd>  The engine's conformance-session command, run with --subject owner|member
+                              [--permissions a,b]; it prints {"cookie"}, {"bearer"} or null as JSON
   --mock-control              The engine is the mock engine: sessions from its dev-only control listener
 
 Options:
@@ -92,6 +95,7 @@ async function run(argv: readonly string[], io: CliIo): Promise<number> {
             'engine-cwd': { type: 'string' },
             'heartbeat-interval-s': { type: 'string' },
             'mock-control': { type: 'boolean', default: false },
+            'engine-session-cmd': { type: 'string' },
             help: { type: 'boolean', default: false },
         },
     }) as { values: Record<string, string | string[] | boolean | undefined> };
@@ -136,12 +140,23 @@ async function run(argv: readonly string[], io: CliIo): Promise<number> {
                 : integer(values['heartbeat-interval-s'], '--heartbeat-interval-s', 3600);
         if (intervalS === 0) throw new UsageError('--heartbeat-interval-s must be at least 1');
         const cwd = values['engine-cwd'];
+        const engineCwd = resolve(typeof cwd === 'string' ? cwd : '.');
+        const sessionCmd = values['engine-session-cmd'];
+        if (typeof sessionCmd === 'string' && values['mock-control'] === true) {
+            throw new UsageError('give either --engine-session-cmd or --mock-control');
+        }
+        const targets =
+            typeof sessionCmd === 'string'
+                ? createSessionCommandTargetFactory({ command: sessionCmd, cwd: engineCwd })
+                : values['mock-control'] === true
+                  ? createMockEngineTargetFactory()
+                  : undefined;
         result = await runPlatformConformance({
             ...common,
-            command: { command: engineCmd, cwd: resolve(typeof cwd === 'string' ? cwd : '.') },
+            command: { command: engineCmd, cwd: engineCwd },
             suites,
             expectations: { heartbeatIntervalMs: intervalS * 1000 },
-            ...(values['mock-control'] === true ? { targets: createMockEngineTargetFactory() } : {}),
+            ...(targets === undefined ? {} : { targets }),
             parentEnv: io.env,
         });
     } else {
@@ -149,6 +164,7 @@ async function run(argv: readonly string[], io: CliIo): Promise<number> {
             if (values[flag] !== undefined) throw new UsageError(`--${flag} needs --engine-cmd`);
         }
         if (values['mock-control'] === true) throw new UsageError('--mock-control needs --engine-cmd');
+        if (values['engine-session-cmd'] !== undefined) throw new UsageError('--engine-session-cmd needs --engine-cmd');
         const baseUrl = parseUrl(values['base-url'], '--base-url');
         const suites = pick(suiteIds, ALL_SUITES, (id) =>
             PLATFORM_SUITES.some((suite) => suite.id === id)

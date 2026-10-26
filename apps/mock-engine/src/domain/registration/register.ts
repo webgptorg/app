@@ -95,7 +95,8 @@ export async function registerEngine(deps: RegisterEngineDeps): Promise<Registra
             return { kind: 'refused-response', reason: 'invalid' };
         case 'problem':
             if (isRejection(call.problem.code)) return { kind: 'rejected', reason: call.problem.code };
-            deps.logger.warn('registration.unavailable', { status: call.status });
+            // The code (e.g. not-entitled, rate-limited) is what tells the operator what to do; it carries no content.
+            deps.logger.warn('registration.unavailable', { status: call.status, code: call.problem.code });
             return { kind: 'unavailable' };
         case 'ok': {
             const check = await checkRegistrationResponse(call.response, deps.identity.publicKey, deps.engineDomain);

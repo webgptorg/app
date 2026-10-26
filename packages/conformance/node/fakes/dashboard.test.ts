@@ -184,6 +184,15 @@ describe('the fake dashboard', () => {
         expect(code(mismatch.body)).toBe('engine-mismatch');
     });
 
+    it('answers 500 when a script throws', async () => {
+        const target = await dashboard({
+            onRegister: () => {
+                throw new Error('script broke');
+            },
+        });
+        expect((await register(target, await signer(), target.issueLinkCode())).status).toBe(500);
+    });
+
     it('waits for what a check needs, and gives up with a reason', async () => {
         const target = await dashboard();
         const waiting = target.waitFor(() => target.registrations.at(0), 5000, ctx.signal);

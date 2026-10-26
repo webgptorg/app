@@ -242,12 +242,12 @@ describe('registerEngine', () => {
             expect(await store.load()).toBeNull();
         });
 
-        it('treats an unknown problem code as unavailable and logs its status only', async () => {
+        it('treats an unknown problem code as unavailable and logs its status and code', async () => {
             const { dashboard, store, logger, deps } = await setup();
             dashboard.overrideRegister(() => problem(429, 'rate-limited'));
             expect(await registerEngine(deps(dashboard.issueLinkCode('org-a')))).toEqual({ kind: 'unavailable' });
             expect(logger.entries).toEqual([
-                { level: 'warn', event: 'registration.unavailable', fields: { status: 429 } },
+                { level: 'warn', event: 'registration.unavailable', fields: { status: 429, code: 'rate-limited' } },
             ]);
             expect(await store.load()).toBeNull();
         });
