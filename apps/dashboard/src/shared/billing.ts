@@ -21,7 +21,8 @@ const planNameTextSchema = z.string().trim().min(1).max(48);
 
 /**
  * A plan's name in every locale the SPA speaks. Plans are configuration (ADR 0017), so their names are too: a new plan
- * needs no message in the catalogues. The SPA indexes this by its locale, so a new locale fails to compile until here.
+ * needs no message in the catalogues. The SPA indexes it by its locale, so adding a locale fails to compile until the
+ * schema names it.
  */
 export const planNameSchema = z.strictObject({ en: planNameTextSchema, cs: planNameTextSchema });
 export type PlanName = z.infer<typeof planNameSchema>;
