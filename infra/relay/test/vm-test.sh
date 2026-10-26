@@ -193,7 +193,7 @@ docker build --quiet --platform linux/amd64 --tag localhost/ptbk-relay:ci --file
 docker save localhost/ptbk-relay:ci | vm 'sudo podman load --quiet'
 digest=$(vm "sudo podman image inspect --format '{{.Digest}}' localhost/ptbk-relay:ci")
 vm "printf 'PTBK_RELAY_IMAGE=localhost/ptbk-relay@%s\nPTBK_RELAY_IMAGE_DIGEST=%s\n' $digest $digest |
-    sudo install -m 0644 /dev/stdin /etc/ptbk-relay/image.env"
+    sudo install -D -m 0644 /dev/stdin /var/lib/ptbk-relay-deploy/image.env"
 vm 'sudo systemctl start ptbk-relay.service'
 healthy() { curl -fsS --max-time 3 -k --resolve "$RELAY_HOSTNAME:443:$VM_IP" "https://$RELAY_HOSTNAME/healthz"; }
 # The unit's own start timeout is 120 s.

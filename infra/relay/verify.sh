@@ -66,7 +66,7 @@ echo "== relay service"
 check "ptbk-relay.service has Restart=always" test "$(systemctl show -P Restart ptbk-relay.service)" = always
 check "ptbk-relay.service is active" systemctl is-active --quiet ptbk-relay.service
 check "the relay image is pinned by digest" \
-    grep -Eq '^PTBK_RELAY_IMAGE=[^@[:space:]]+@sha256:[0-9a-f]{64}$' /etc/ptbk-relay/image.env
+    grep -Eq '^PTBK_RELAY_IMAGE=[^@[:space:]]+@sha256:[0-9a-f]{64}$' /var/lib/ptbk-relay-deploy/image.env
 
 pid=$(podman inspect --format '{{.State.Pid}}' ptbk-relay 2>/dev/null || true)
 if [[ $pid =~ ^[1-9][0-9]*$ ]]; then

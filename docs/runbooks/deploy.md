@@ -66,10 +66,10 @@ Relays pull their deploys; nothing reaches into a relay to deploy, and there is 
 
 What a relay does (`ptbk-relay-deploy.timer`, every minute, runs `ptbk-relay-deploy.service`, root, sandboxed):
 
-1. Reads its tag with the read-only registry token (`/etc/ptbk-relay/credentials/registry-auth` through `LoadCredential`). Nothing to do if it names what runs, or a digest this relay already refused or rolled back from.
+1. Reads its tag with the read-only registry token (`/etc/ptbk-relay/credentials/registry-auth` through `LoadCredential`). Nothing to do if it names what runs, or a digest this relay already refused or rolled back from. If the registry, Sigstore's TUF repository or DNS does not answer, the run fails without remembering anything and the next one tries again; only a verdict on the image itself (no or another signature, no timestamp, no build time, too old) is remembered as refused.
 2. Verifies the image with cosign: `--certificate-identity https://github.com/webgptorg/app/.github/workflows/release-relay.yml@refs/heads/main --certificate-oidc-issuer https://token.actions.githubusercontent.com --certificate-github-workflow-repository webgptorg/app --use-signed-timestamps`, against Sigstore's public-good root through TUF. Exact values from `/etc/ptbk-relay/deploy.env`, never a pattern ([ADR 0014](../adr/0014-cryptography.md)). Anything else is refused before it is pulled.
-3. **Downgrade guard:** refuses an image built more than `PTBK_DEPLOY_MAX_DOWNGRADE_DAYS` (30) days before the running one (its build time is in the image config, which the signed digest covers), unless it is this relay's previous image or its digest is listed in `/etc/ptbk-relay/allow-downgrade` (root's, one digest per line). So moving a tag can only choose a recent signed image.
-4. Pulls it, writes `/etc/ptbk-relay/image.env`, restarts `ptbk-relay.service` (the relay closes its tunnels with `SHUTTING_DOWN`; engines move to a peer relay and come back within 10 s).
+3. **Downgrade guard:** refuses an image built more than `PTBK_DEPLOY_MAX_DOWNGRADE_DAYS` (30) days before the newest image this relay ever ran (a high-water mark in its state directory that only goes up), or before `PTBK_DEPLOY_MIN_CREATED`, the floor that covers a fresh or rebuilt host. The build time is in the image config, which the signed digest covers; an image without one is refused. Exempt: this relay's previous image (a rollback) and digests listed in `/etc/ptbk-relay/allow-downgrade` (root's, one per line). So moving a tag can only choose a recent signed image, and a chain of small steps cannot walk a relay back either.
+4. Pulls it, writes `/var/lib/ptbk-relay-deploy/image.env`, restarts `ptbk-relay.service` (the relay closes its tunnels with `SHUTTING_DOWN`; engines move to a peer relay and come back within 10 s).
 5. Waits up to 60 s for the unit to run the new image, `/healthz` to answer on the relay's own hostname with its own certificate, and 90 % of the engines connected before the swap to be back. Otherwise it restores the previous image and remembers the digest as failed.
 
 Tunnel counts stay on the relay: the pipeline sees only which image a relay reports, which is why it waits out the relay's own window instead of reading engine numbers from outside.
@@ -81,6 +81,10 @@ Tunnel counts stay on the relay: the pipeline sees only which image a relay repo
 - **Break glass, one relay at once (admin):** `sudo ptbk-relay-deploy rollback` swaps back to the previous image, which stays on the host, so it needs neither GitHub, GHCR nor Sigstore, and the relay keeps it even though its tag still names the newer image. `sudo ptbk-relay-deploy resume` lets the relay follow its tag again. Use this when the workflow cannot run or is too slow.
 
 A rollback dispatch runs in its own concurrency groups, so it is not queued behind a rollout or replaced by a pending one; it can therefore run while a rollout moves the same tags. In an emergency, cancel the running rollout first, or use break glass.
+
+### What a tag move can and cannot do
+
+`packages: write` is not scoped to an environment: any workflow run that grants it, on any branch, gets a `GITHUB_TOKEN` that can move the `deploy-*` tags, and so can any person with write access to the package. The relays bound what that buys: each one verifies that the image was signed by `release-relay.yml` on `main` and refuses anything built long before the newest image it ever ran. The worst case is therefore a denial of service (tags pointed at images the relays refuse, or at an older recent release), not code we did not sign on `main`, and not an old vulnerable release. Follow-up once the GitHub plan has environment secrets: move the tags with a dedicated, environment-scoped token (a machine account with write access to the relay package only) instead of `GITHUB_TOKEN`, so only an approved environment job can move them.
 
 ## UI releases
 
