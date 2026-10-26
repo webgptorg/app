@@ -2,7 +2,7 @@
 
 - **Lane:** R · **Module:** `apps/relay` and `apps/dashboard` (two modules, see Context) · **Milestone:** M3
 - **Depends on:** D-04, D-05, R-03
-- **Status:** in progress (feat/r-07-tunnel-presence)
+- **Status:** done (#105)
 - **Spec:** Metadata we still see; Relay and tunnel; Operations; ADRs: [0005](../../adr/0005-modular-architecture.md); design: [onboarding.md](../../design/onboarding.md) (What each side can observe)
 
 ## Goal
