@@ -436,7 +436,18 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
             return linking;
         },
     };
-    const operatorChannel = deps.operatorChannel === undefined ? null : await deps.operatorChannel(operator);
+    let operatorChannel: { close(): Promise<void> } | null = null;
+    try {
+        operatorChannel = deps.operatorChannel === undefined ? null : await deps.operatorChannel(operator);
+    } catch (error) {
+        // Nothing started so far may outlive a refused start: a listening control server would keep the process up.
+        runtime.simulation().stop();
+        stopReportingCertificate?.();
+        await control?.close();
+        server?.close();
+        deps.certificates?.close();
+        throw error;
+    }
 
     logger.info('engine.started', {
         engineId: identity.engineId,

@@ -3,7 +3,7 @@ import { request } from 'node:http';
 import type { z } from 'zod';
 
 import { LinkAnswer, OperatorStatus } from '../domain/onboarding/operator-api';
-import { OPERATOR_PATHS, operatorSocketPath } from './operator-socket';
+import { OPERATOR_PATHS, OperatorSocketError, operatorSocketPath, socketDirProblem } from './operator-socket';
 
 const TIMEOUT_MS = 10_000;
 const MAX_RESPONSE_BYTES = 64 * 1024;
@@ -73,8 +73,14 @@ function call<S extends z.ZodType>(socketPath: string, method: 'GET' | 'POST', p
  */
 export function createOperatorClient(dataDir: string): OperatorClient {
     const socketPath = operatorSocketPath(dataDir);
+    // Checked before every call: a socket in a directory someone else controls could answer in the engine's name.
+    async function guarded<T>(run: () => Promise<T>): Promise<T> {
+        const problem = await socketDirProblem(dataDir);
+        if (problem !== null) throw new OperatorSocketError(problem);
+        return run();
+    }
     return {
-        status: () => call(socketPath, 'GET', OPERATOR_PATHS.status, OperatorStatus),
-        link: () => call(socketPath, 'POST', OPERATOR_PATHS.link, LinkAnswer),
+        status: () => guarded(() => call(socketPath, 'GET', OPERATOR_PATHS.status, OperatorStatus)),
+        link: () => guarded(() => call(socketPath, 'POST', OPERATOR_PATHS.link, LinkAnswer)),
     };
 }

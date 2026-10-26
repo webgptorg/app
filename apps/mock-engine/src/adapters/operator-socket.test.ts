@@ -1,5 +1,5 @@
 import { createServer } from 'node:net';
-import { chmod, mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
 import { request } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -10,7 +10,13 @@ import type { LinkAnswer, OperatorApi, OperatorStatus } from '../domain/onboardi
 import { createFakeClock } from '../testing/fake-clock';
 import { createMemoryLogger } from '../testing/memory-logger';
 import { OperatorAnswerError, createOperatorClient } from './operator-client';
-import { OPERATOR_SOCKET_FILE, OperatorSocketError, operatorSocketPath, startOperatorSocket } from './operator-socket';
+import {
+    OPERATOR_SOCKET_FILE,
+    OperatorSocketError,
+    operatorSocketDir,
+    operatorSocketPath,
+    startOperatorSocket,
+} from './operator-socket';
 
 const STATUS: OperatorStatus = {
     engineId: 'k5dq4tabcdefghijklmnopqrst',
@@ -33,11 +39,13 @@ afterEach(async () => {
     for (const step of cleanup.splice(0).reverse()) await step();
 });
 
-async function dataDir(): Promise<string> {
-    // Short on purpose: a Unix socket path holds about 100 bytes.
-    const dir = await mkdtemp(join(tmpdir(), 'op-'));
+async function dataDir(name = 'op-'): Promise<string> {
+    const dir = await mkdtemp(join(tmpdir(), name));
     await chmod(dir, 0o700);
-    cleanup.push(() => rm(dir, { recursive: true, force: true }));
+    cleanup.push(async () => {
+        await rm(dir, { recursive: true, force: true });
+        await rm(operatorSocketDir(dir), { recursive: true, force: true });
+    });
     return dir;
 }
 
@@ -75,7 +83,8 @@ describe('operator socket', () => {
     it('answers status and link on a 0600 socket in the data directory', async () => {
         const dir = await dataDir();
         const { logger } = await serve(dir);
-        expect(((await stat(join(dir, OPERATOR_SOCKET_FILE))).mode & 0o777).toString(8)).toBe('600');
+        expect(((await stat(operatorSocketPath(dir))).mode & 0o777).toString(8)).toBe('600');
+        expect(((await stat(operatorSocketDir(dir))).mode & 0o777).toString(8)).toBe('700');
         const client = createOperatorClient(dir);
         expect(await client.status()).toEqual(STATUS);
         expect(await client.link()).toEqual({ outcome: 'linked', relays: 2 });
@@ -120,14 +129,15 @@ describe('operator socket', () => {
         await serve(dir);
         await expect(serve(dir)).rejects.toThrow(
             new OperatorSocketError(
-                `another engine is running from this data directory (${join(dir, OPERATOR_SOCKET_FILE)} answers)`,
+                `another engine is running from this data directory (${operatorSocketPath(dir)} answers)`,
             ),
         );
     });
 
     it('replaces a socket a crashed engine left behind, and refuses a file that is not a socket', async () => {
         const dir = await dataDir();
-        const path = join(dir, OPERATOR_SOCKET_FILE);
+        const path = operatorSocketPath(dir);
+        await mkdir(operatorSocketDir(dir), { mode: 0o700 });
         // A listener that never answers HTTP stands in for a dead socket file once it is closed.
         const stale = createServer();
         await new Promise<void>((resolve) => stale.listen(path, resolve));
@@ -141,8 +151,9 @@ describe('operator socket', () => {
         expect(await createOperatorClient(dir).status()).toEqual(STATUS);
 
         const other = await dataDir();
-        await writeFile(join(other, OPERATOR_SOCKET_FILE), 'not a socket');
-        await expect(serve(other)).rejects.toThrow(`${join(other, OPERATOR_SOCKET_FILE)} exists and is not a socket`);
+        await mkdir(operatorSocketDir(other), { mode: 0o700 });
+        await writeFile(operatorSocketPath(other), 'not a socket');
+        await expect(serve(other)).rejects.toThrow(`${operatorSocketPath(other)} exists and is not a socket`);
     });
 
     it('removes the socket on close, after which the client finds no engine', async () => {
@@ -154,7 +165,26 @@ describe('operator socket', () => {
         expect(await createOperatorClient(dir).link()).toBeNull();
     });
 
-    it('refuses a data directory too long for a socket path', () => {
-        expect(() => operatorSocketPath(`/${'d'.repeat(120)}`)).toThrow(OperatorSocketError);
+    it('works for a data directory far longer than a socket path may be, at one short path per directory', async () => {
+        const dir = await dataDir(`${'long-data-directory-'.repeat(8)}-`);
+        expect(Buffer.byteLength(join(dir, OPERATOR_SOCKET_FILE))).toBeGreaterThan(104);
+        expect(Buffer.byteLength(operatorSocketPath(dir))).toBeLessThan(64);
+        expect(operatorSocketPath(dir)).toBe(operatorSocketPath(`${dir}/`));
+        // Named the same before and after the engine creates the directory, through any symbolic link above it.
+        const later = join(dir, 'not-yet', 'data');
+        const before = operatorSocketPath(later);
+        await mkdir(later, { recursive: true });
+        expect(operatorSocketPath(later)).toBe(before);
+        expect(operatorSocketPath(dir)).not.toBe(operatorSocketPath(await dataDir()));
+        await serve(dir);
+        expect(await createOperatorClient(dir).status()).toEqual(STATUS);
+    });
+
+    it('refuses a socket directory others can enter, on the engine and in the commands', async () => {
+        const dir = await dataDir();
+        await mkdir(operatorSocketDir(dir), { mode: 0o755 });
+        await chmod(operatorSocketDir(dir), 0o755);
+        await expect(serve(dir)).rejects.toThrow(OperatorSocketError);
+        await expect(createOperatorClient(dir).status()).rejects.toThrow(OperatorSocketError);
     });
 });
