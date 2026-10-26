@@ -50,3 +50,6 @@ ADR 0002: contracts start here so they can iterate with the relay and mock engin
 - Package names, destination and timing are open (spec: "pick the moment and the package name with the engine team").
 - Moving into the engine monorepo couples contract releases to its release process; a separate repo is simpler to publish but is one more repo to audit. List the trade-off in the ADR.
 - A contract change during the move window lands in two places; freeze contract changes from the start of this task until the switch PR merges.
+- Recommendations from E-04 for whoever runs the move (the engine maintainer decides whether and when; until then the engine consumes the contracts from a checkout of this repository, which is the supported path):
+  - Give each package a `version` and publish a built `dist` (JavaScript plus declarations) next to the TypeScript source. Today the packages have no version and export source with extensionless imports, so they cannot be packed, and plain `node` cannot load them.
+  - Move `@ptbk/release-tools` with the three contract packages. It holds the Sigstore provenance adapter and the pinned trusted root that the engine's UI loader should reuse rather than reimplement, and it is already MIT and imports only `@ptbk/protocol`.

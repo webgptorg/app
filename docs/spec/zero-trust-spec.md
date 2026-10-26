@@ -569,6 +569,14 @@ The UI bundle is an artifact of the same release (`"kind": "ui"`), so engine and
 | `PTBK_CUSTOM_DOMAIN` | Optional hostname (no apex in v0) with a CNAME to the engine's default hostname; the relay checks the CNAME and the signed claim |
 | `HTTPS_PROXY`, `NO_PROXY` | Standard proxy settings for the tunnel and updates |
 | `PTBK_DATA_DIR` | Keys, certificates, database and audit log; mode 0700 |
+| `PTBK_ENGINE_DOMAIN` | The engine domain; default: the production engine domain. The registration answer is checked against it |
+| `PTBK_DASHBOARD_URL` | The dashboard API's `https://` origin for registration and heartbeats; default: the production dashboard |
+| `PTBK_LINK_CODE` | One-time link code for the first registration; never written to disk or logged |
+| `PTBK_RELAYS` | Optional comma-separated `wss://<relay hostname>[:port]` URLs, dialled instead of the relays from the registration |
+| `PTBK_UI_RELEASE_URL` | The release store or a mirror, `https://` with a path ending in `/` |
+| `PTBK_ACME_DIRECTORY_URL`, `PTBK_ACME_EMAIL` | The ACME CA's directory URL (default: Let's Encrypt) and an optional account contact |
+
+The engine also honours `NODE_EXTRA_CA_CERTS` as a root added to the default ones, never replacing them. The conformance harness starts engines with these variables; the engine integration guide's launch contract lists what it relies on.
 
 ## Build plan
 

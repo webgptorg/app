@@ -59,11 +59,13 @@ Subjects are described by permissions, not role names, because the role-to-permi
 
 ## Sessions on a real engine
 
-How the suite obtains a session on an engine whose only sign-in is a passkey is an **open point for the engine team**, and it must be agreed before the real engine swaps in (task E-03). Options:
+How the suite obtains sessions on an engine whose only sign-in is a passkey is still to be confirmed with the engine team before the real engine swaps in (task E-03). The **proposed answer**:
 
-- A test-only session bootstrap behind a flag that is off by default and refused in production builds.
-- Scoped API tokens for chosen permission sets.
-- WebAuthn virtual authenticators driving the real sign-in.
+- The engine's **conformance build** (the build C-10 introduces for test trust: a compile-time constant that release builds set to false, so the code is removed from them) adds a server-side command, for example `<engine> conformance session --owner` or `--permissions agents.read,agents.write`. It creates the owner or a fresh member holding exactly those permissions and prints a session cookie (`name=value`) on stdout.
+- A production build refuses the command and names it. It is never an HTTP endpoint and never reachable through the tunnel: running it needs a shell on the engine's server, which already allows an owner reset.
+- The engine's conformance target module (`--target-module`) runs that command in `session(subject)` and returns `{ cookie }`. Each member call gives a new member, as the suite expects.
+
+The alternatives were weaker: scoped API tokens share the owner's member ID, so cross-member and own-credential checks cannot use them; WebAuthn virtual authenticators would need a browser in the suite.
 
 The mock engine's answer, a dev-only control endpoint that hands out sessions, must never be copied into the real engine ([mock-engine.md](mock-engine.md#dev-only-control-endpoint)).
 
