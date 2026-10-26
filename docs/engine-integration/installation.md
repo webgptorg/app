@@ -124,7 +124,7 @@ In v0, connecting is a command on the host only, not a form in the engine UI: sh
 
 ## Configuration
 
-Interface 6 of the spec defines `PTBK_MODE`, `PTBK_UPDATE_POLICY`, `PTBK_PINNED_VERSION`, `PTBK_CUSTOM_DOMAIN`, `HTTPS_PROXY`, `NO_PROXY` and `PTBK_DATA_DIR`. The other names below match the mock engine ([mock-engine.md](mock-engine.md)); the engine should use them too, so tools that start an engine (the installer, the conformance runner, the local stack) can start any engine the same way.
+Interface 6 of the spec defines `PTBK_MODE`, `PTBK_UPDATE_POLICY`, `PTBK_PINNED_VERSION`, `PTBK_CUSTOM_DOMAIN`, `HTTPS_PROXY`, `NO_PROXY` and `PTBK_DATA_DIR`. The other names below match the mock engine ([mock-engine.md](mock-engine.md)); the engine should use them too, so tools that start an engine (the installer, the conformance runner, the local stack) can start any engine the same way. The test harnesses' view of the same names is in [testing-against-the-platform.md](testing-against-the-platform.md#engine-settings-the-harness-uses).
 
 | Variable                                     | Default                        | The engine must                                                                                                                                                                                                  |
 | -------------------------------------------- | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

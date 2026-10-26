@@ -337,7 +337,7 @@ What exists today against this spec, as briefs. They run in this order: C-11, th
 | [R-07](../plan/tasks/R-07-tunnel-presence.md)               | Relay       | Relays report which engines have a ready tunnel; the dashboard shows "Reachable" or "Not reachable"                                                                                                                                                                                                   |
 | [X-07](../plan/tasks/X-07-e2e-onboarding.md)                | E2E         | Journey 1 end to end on the compose stack, with the negative paths and the targets measured                                                                                                                                                                                                           |
 
-Engine-side work is listed in [installation.md](../engine-integration/installation.md) and [checklist.md](../engine-integration/checklist.md) (ENG-100 to ENG-110); C-08, the conformance runner's engine launch contract (referred to by E-04, no brief yet), should start engines with the variables in installation.md's configuration table.
+Engine-side work is listed in [installation.md](../engine-integration/installation.md) and [checklist.md](../engine-integration/checklist.md) (ENG-100 to ENG-110). The configuration names there are the same ones the test harnesses use ([testing-against-the-platform.md](../engine-integration/testing-against-the-platform.md#engine-settings-the-harness-uses)); C-08, the conformance runner's launch contract, fixes them for conformance.
 
 ## Decisions
 

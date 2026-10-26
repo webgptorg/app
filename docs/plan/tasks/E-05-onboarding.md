@@ -49,5 +49,5 @@ The engine is built by an external maintainer in `webgptorg/promptbook`. Today i
 ## Risks and open points
 
 - The engine maintainer has not reviewed the engine side yet; command names, the installer's location and the image name are his choice.
-- C-08 (the conformance runner's engine launch contract, referred to by E-04) has no brief yet; `installation.md`'s configuration table is the proposal it should start engines with.
+- C-08 (the conformance runner's engine launch contract) has no brief yet; `installation.md`'s configuration uses the same names as E-04's harness table, which C-08 is to fix for conformance.
 - How the engine release carries the UI bundle (decision 7) needs the engine team and the release key holders.
