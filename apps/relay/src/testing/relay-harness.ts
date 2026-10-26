@@ -61,6 +61,21 @@ export interface HarnessOptions {
      * instead of reading `registry` directly.
      */
     readonly viaDashboard?: boolean;
+    /**
+     * Runs limits, caches and deadlines on the system clock, so token buckets refill as they do in production: for
+     * load tests that measure time. `clock.advance` then throws.
+     */
+    readonly realTime?: boolean;
+}
+
+function realTimeClock(): FakeClock {
+    return {
+        ...systemClock,
+        advance() {
+            throw new Error('this harness runs on real time');
+        },
+        pendingTimers: () => 0,
+    };
 }
 
 /**
@@ -68,7 +83,9 @@ export interface HarnessOptions {
  * in-memory sources), with a fake clock for deadlines, caching and revalidation.
  */
 export async function startHarness(options: HarnessOptions = {}): Promise<RelayHarness> {
-    const { clock, logger, registry, dns } = createTestDeps();
+    const deps = createTestDeps();
+    const { logger, registry, dns } = deps;
+    const clock = options.realTime === true ? realTimeClock() : deps.clock;
     const random = createFakeRandom();
     const metrics = createPrometheusMetrics();
     const certificate = relayCertificate();

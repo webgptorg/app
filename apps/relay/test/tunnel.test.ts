@@ -284,6 +284,15 @@ describe('tunnel endpoint over real sockets', () => {
         await expectRefused(client, 'rate-limited', 1013);
     });
 
+    it('refuses handshakes from one IP past its rate per minute with rate-limited, until the rate refills', async () => {
+        const harness = await start({ env: { RELAY_TUNNEL_HANDSHAKES_PER_IP_PER_MIN: '1' } });
+        const engine = await register(harness, 107);
+        await connected(harness, engine);
+        await expectRefused(harness.connect(engine), 'rate-limited', 1013);
+        harness.clock.advance(60_000);
+        challengeOf(await harness.connect(engine).nextMessage());
+    });
+
     it('closes a tunnel that sends DATA beyond its credit with PROTOCOL_ERROR', async () => {
         const harness = await start();
         const engine = await register(harness, 96);

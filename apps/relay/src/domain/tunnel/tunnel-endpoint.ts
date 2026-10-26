@@ -106,7 +106,7 @@ interface Live {
 export function createTunnelEndpoint(options: TunnelEndpointOptions): TunnelEndpoint {
     const { relayId, engineDomain, offer, registry, dns, random, clock, logger, limits, table, terminations, metrics } =
         options;
-    const limiter = createHandshakeLimiter(limits);
+    const limiter = createHandshakeLimiter(limits, clock);
     const misses = createTokenBucket({
         capacity: limits.registryMissesPerS,
         refillPerSecond: limits.registryMissesPerS,

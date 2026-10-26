@@ -9,7 +9,7 @@
     "build": "tsdown",
     "start": "node dist/main.mjs",
     "typecheck": "tsc --noEmit -p .",
-    "test": "tsdown --log-level warn && vitest run --coverage",
+    "test": "tsdown --log-level warn && vitest run --coverage --project relay && vitest run --project fairness",
     "check:metrics": "sh scripts/check-metrics.sh"
   },
   "dependencies": {

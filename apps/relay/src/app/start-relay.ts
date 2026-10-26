@@ -242,6 +242,7 @@ export async function startRelayListener(
             maxPending: config.tunnel.maxPendingHandshakes,
             maxPendingPerIp: config.tunnel.maxPendingHandshakesPerIp,
             maxTunnelsPerIp: config.tunnel.maxTunnelsPerIp,
+            handshakesPerIpPerMin: config.tunnel.handshakesPerIpPerMin,
             registryMissesPerS: config.tunnel.registryMissesPerS,
             session: {
                 framesPerS: config.tunnel.framesPerS,

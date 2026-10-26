@@ -1,8 +1,9 @@
-import { defineConfig } from 'vitest/config';
+import { configDefaults, defineConfig } from 'vitest/config';
+
+const FAIRNESS = 'test/fairness.test.ts';
 
 export default defineConfig({
     test: {
-        include: ['src/**/*.test.ts', 'test/**/*.test.ts'],
         coverage: {
             provider: 'v8',
             include: ['src/**/*.ts'],
@@ -21,5 +22,22 @@ export default defineConfig({
                 'src/app/config.ts': { lines: 100, branches: 100 },
             },
         },
+        projects: [
+            {
+                extends: true,
+                test: {
+                    name: 'relay',
+                    include: ['src/**/*.test.ts', 'test/**/*.test.ts'],
+                    exclude: [...configDefaults.exclude, FAIRNESS],
+                    sequence: { groupOrder: 0 },
+                },
+            },
+            {
+                // Compares latencies, so it runs alone, after the other files and without coverage (`test` script).
+                // Other load on the machine can still skew one run; a real regression fails every attempt.
+                extends: true,
+                test: { name: 'fairness', include: [FAIRNESS], retry: 2, sequence: { groupOrder: 1 } },
+            },
+        ],
     },
 });
