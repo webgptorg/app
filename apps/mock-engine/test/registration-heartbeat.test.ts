@@ -208,8 +208,8 @@ describe('registration and heartbeat at startup', () => {
         const other = world();
         const code = other.dashboard.issueLinkCode('org-a');
         other.dashboard.overrideRegister(() => ({
-            status: 400,
-            body: { type: 'about:blank', title: 'x', status: 400, code: 'invalid-link-code' },
+            status: 401,
+            body: { type: 'about:blank', title: 'x', status: 401, code: 'invalid-link-code' },
         }));
         await expect(start(other, linked(code))).rejects.toThrow('registration rejected: invalid-link-code');
         expect(other.logger.text()).not.toContain(code);

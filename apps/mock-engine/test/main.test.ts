@@ -254,7 +254,29 @@ describe('register command and dashboard mode', () => {
     );
 
     it(
-        'exits with code 1 on a bad link code without echoing it',
+        'connects with human lines, and exits 3 for a refused code with the next step',
+        async () => {
+            const dir = await tempDir();
+            const { dashboard, url, caFile } = await startHttpsDashboard(dir);
+            const env = {
+                PTBK_DATA_DIR: join(dir, 'data'),
+                PTBK_ENGINE_DOMAIN: ENGINE_DOMAIN,
+                PTBK_DASHBOARD_URL: url,
+                MOCK_EXTRA_CA_FILE: caFile,
+            };
+            const refused = run('src/main.ts', env, ['connect', '--link', 'abcdefghijklmnopqrstuvwxya']);
+            expect(await refused.exited).toBe(3);
+            expect(refused.stdout()).toContain('✓ Engine key ready');
+            expect(refused.stdout()).toContain('✗ The link code was not accepted.');
+            const linked = run('src/main.ts', env, ['connect', '--link', dashboard.issueLinkCode('org-a')]);
+            expect(await linked.exited).toBe(0);
+            expect(linked.stdout()).toContain('✓ Linked to your Promptbook account');
+        },
+        PROCESS_TIMEOUT_MS,
+    );
+
+    it(
+        'exits with the usage code on a bad link code without echoing it',
         async () => {
             const dir = await tempDir();
             const failed = run(
@@ -266,7 +288,7 @@ describe('register command and dashboard mode', () => {
                 },
                 ['register', '--link', 'not-a-real-code'],
             );
-            expect(await failed.exited).toBe(1);
+            expect(await failed.exited).toBe(2);
             expect(failed.stderr()).toContain('--link must be a link code');
             expect(failed.stderr() + failed.stdout()).not.toContain('not-a-real-code');
         },

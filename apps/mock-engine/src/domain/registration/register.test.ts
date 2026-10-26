@@ -162,6 +162,27 @@ describe('registerEngine', () => {
             expect(await store.load()).toBeNull();
         });
 
+        it('maps a plan without engines to not-entitled', async () => {
+            const { dashboard, store, deps } = await setup();
+            dashboard.overrideRegister(() => problem(403, REGISTRATION_ERROR_CODE.notEntitled));
+            expect(await registerEngine(deps(dashboard.issueLinkCode('org-a')))).toEqual({
+                kind: 'rejected',
+                reason: 'not-entitled',
+            });
+            expect(await store.load()).toBeNull();
+        });
+
+        it('takes rate-limited as a request to come back later, not a rejection', async () => {
+            const { dashboard, store, logger, deps } = await setup();
+            dashboard.overrideRegister(() => problem(429, REGISTRATION_ERROR_CODE.rateLimited));
+            expect(await registerEngine(deps(dashboard.issueLinkCode('org-a')))).toEqual({
+                kind: 'unavailable',
+                reason: 'rate-limited',
+            });
+            expect(logger.entries[0]?.fields).toEqual({ status: 429, code: 'rate-limited' });
+            expect(await store.load()).toBeNull();
+        });
+
         it('maps a refused signature to bad-signature', async () => {
             const { dashboard, store, deps } = await setup();
             dashboard.overrideRegister(() => problem(401, REGISTRATION_ERROR_CODE.badSignature));
@@ -239,7 +260,10 @@ describe('registerEngine', () => {
         it('reports an unreachable dashboard and logs nothing but the event', async () => {
             const { dashboard, store, logger, deps } = await setup();
             dashboard.unreachable = true;
-            expect(await registerEngine(deps(dashboard.issueLinkCode('org-a')))).toEqual({ kind: 'unavailable' });
+            expect(await registerEngine(deps(dashboard.issueLinkCode('org-a')))).toEqual({
+                kind: 'unavailable',
+                reason: 'no-answer',
+            });
             expect(logger.entries).toEqual([{ level: 'warn', event: 'registration.unavailable', fields: {} }]);
             expect(await store.load()).toBeNull();
         });
@@ -247,7 +271,10 @@ describe('registerEngine', () => {
         it('treats an unknown problem code as unavailable and logs its status and code', async () => {
             const { dashboard, store, logger, deps } = await setup();
             dashboard.overrideRegister(() => problem(503, 'a-code-added-later'));
-            expect(await registerEngine(deps(dashboard.issueLinkCode('org-a')))).toEqual({ kind: 'unavailable' });
+            expect(await registerEngine(deps(dashboard.issueLinkCode('org-a')))).toEqual({
+                kind: 'unavailable',
+                reason: 'unknown-code',
+            });
             expect(logger.entries).toEqual([
                 {
                     level: 'warn',
@@ -266,6 +293,7 @@ describe('registerEngine', () => {
             };
             expect(await registerEngine(deps(dashboard.issueLinkCode('org-a'), { api: failing }))).toEqual({
                 kind: 'unavailable',
+                reason: 'error-status',
             });
             expect(logger.entries[0]?.fields).toEqual({ status: 502 });
         });

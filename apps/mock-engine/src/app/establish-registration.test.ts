@@ -4,9 +4,11 @@ import { describe, expect, it } from 'vitest';
 import { createMemoryIdentityStore } from '../adapters/memory-identity-store';
 import { createMemoryRegistrationStore } from '../testing/memory-registration-store';
 import { oneTimeSecret } from '../domain/secret';
-import { createFakeClock } from '../testing/fake-clock';
+import { createFakeClock, settleWithClock } from '../testing/fake-clock';
 import { createFakeDashboard } from '../testing/fake-dashboard';
 import { createMemoryLogger } from '../testing/memory-logger';
+import { createSeededRandom } from '../testing/seeded-random';
+import { EXIT_CODE } from './exit-codes';
 import type { DashboardConfig } from './config';
 import { RegistrationFailedError, describeOutcome, establishRegistration } from './establish-registration';
 
@@ -14,7 +16,8 @@ const ENGINE_DOMAIN = Hostname.parse('engines.ptbk.test');
 const RELAYS = [Hostname.parse('relay-a.ptbk.test')];
 
 async function setup() {
-    const dashboard = createFakeDashboard({ clock: createFakeClock(), engineDomain: ENGINE_DOMAIN, relays: RELAYS });
+    const clock = createFakeClock();
+    const dashboard = createFakeDashboard({ clock, engineDomain: ENGINE_DOMAIN, relays: RELAYS });
     const store = createMemoryRegistrationStore();
     const logger = createMemoryLogger();
     const identity = await createMemoryIdentityStore().loadOrCreate();
@@ -27,9 +30,11 @@ async function setup() {
             api: dashboard.api,
             store,
             logger,
+            clock,
+            random: createSeededRandom(2),
             signal: new AbortController().signal,
         });
-    return { dashboard, store, logger, identity, establish };
+    return { clock, dashboard, store, logger, identity, establish };
 }
 
 describe('establishRegistration', () => {
@@ -59,14 +64,16 @@ describe('establishRegistration', () => {
     it('fails without a registration or a link code', async () => {
         const { establish } = await setup();
         await expect(establish(null)).rejects.toThrow(
-            new RegistrationFailedError('not registered: set PTBK_LINK_CODE or run the register command'),
+            new RegistrationFailedError('not registered: set PTBK_LINK_CODE or run the connect command'),
         );
     });
 
     it('fails on a rejection, a refused response and an unreachable dashboard, naming only the outcome', async () => {
-        const { dashboard, logger, establish } = await setup();
+        const { clock, dashboard, logger, establish } = await setup();
         const unknown = LinkCode.parse('abcdefghijklmnopqrstuvwxya');
-        await expect(establish(oneTimeSecret(unknown))).rejects.toThrow('registration rejected: invalid-link-code');
+        const rejected = establish(oneTimeSecret(unknown));
+        await expect(rejected).rejects.toThrow('registration rejected: invalid-link-code');
+        await expect(rejected).rejects.toMatchObject({ exitCode: EXIT_CODE.linkCodeRefused });
         expect(logger.entries.at(-1)).toEqual({
             level: 'error',
             event: 'registration.rejected',
@@ -80,14 +87,14 @@ describe('establishRegistration', () => {
             'registration refused-response: engine-id-mismatch',
         );
         dashboard.unreachable = true;
-        await expect(establish(oneTimeSecret(dashboard.issueLinkCode('org-a')))).rejects.toThrow(
-            'registration unavailable',
-        );
+        const unreachable = settleWithClock(establish(oneTimeSecret(dashboard.issueLinkCode('org-a'))), clock);
+        await expect(unreachable).rejects.toThrow('registration unavailable: no-answer');
+        await expect(unreachable).rejects.toMatchObject({ exitCode: EXIT_CODE.unreachable });
         expect(logger.text()).not.toContain(unknown);
     });
 
     it('describes every outcome', () => {
-        expect(describeOutcome({ kind: 'unavailable' })).toBe('unavailable');
+        expect(describeOutcome({ kind: 'unavailable', reason: 'rate-limited' })).toBe('unavailable: rate-limited');
         expect(describeOutcome({ kind: 'rejected', reason: 'engine-limit' })).toBe('rejected: engine-limit');
         expect(describeOutcome({ kind: 'refused-response', reason: 'invalid' })).toBe('refused-response: invalid');
     });
