@@ -2,7 +2,7 @@
 
 - **Lane:** Engine integration · **Module:** `docs/design/`, `docs/engine-integration/` · **Milestone:** M3
 - **Depends on:** E-01, D-03, D-06, D-09, M-06
-- **Status:** in progress (docs/e-05-onboarding)
+- **Status:** done (#83)
 - **Spec:** Pairing and identity, One address for users, Moving existing deployments, Operations, Interfaces (draft) 1, 4 and 6, Build plan (Distribution); ADRs: [0006](../../adr/0006-organizations-and-roles.md), [0014](../../adr/0014-cryptography.md), [0017](../../adr/0017-billing-entitlements.md); design: [ui.md](../../design/ui.md)
 
 ## Goal
@@ -44,7 +44,7 @@ The engine is built by an external maintainer in `webgptorg/promptbook`. Today i
 - [x] Follow-up briefs exist for every follow-up (C-11, M-08, D-10, D-11, D-12, R-07, X-07), added to the plan table, with `bun run plan --check` passing and waves regenerated.
 - [x] The guide's link and private-content checks pass over `docs/engine-integration/` (`bun run engine-guide`).
 - [ ] `bun run check` passes.
-- [ ] **Status** line above set to `done (#<PR>)`.
+- [x] **Status** line above set to `done (#<PR>)`.
 
 ## Risks and open points
 
