@@ -1,3 +1,5 @@
+import { Fragment } from 'react';
+
 import { cx } from '../../internal/cx';
 import { CopyButton } from '../copy-button/copy-button';
 
@@ -26,12 +28,14 @@ function groups(value: string, size: number | undefined): readonly string[] {
 export function CodeText({ value, group, copyable = false, copyLabel, className }: CodeTextProps) {
     return (
         <span className={cx('inline-flex max-w-full items-center gap-1', className)}>
-            <code className="min-w-0 rounded-small bg-(--code-text-bg) px-1.5 py-0.5 font-mono text-sm break-all text-(--code-text-text)">
+            <code className="min-w-0 rounded-small bg-(--code-text-bg) px-1.5 py-0.5 font-mono text-sm wrap-anywhere text-(--code-text-text)">
                 {groups(value, group).map((part, index) => (
-                    // Groups can repeat (e.g. "AAAA"), so the position is the identity.
-                    <span key={index} className={index === 0 ? undefined : 'ms-1'}>
-                        {part}
-                    </span>
+                    // Groups can repeat (e.g. "AAAA"), so the position is the identity. A line breaks between
+                    // groups (`<wbr>`), and inside one only when a single group is wider than the line.
+                    <Fragment key={index}>
+                        {index === 0 ? null : <wbr />}
+                        <span className={index === 0 ? undefined : 'ms-1'}>{part}</span>
+                    </Fragment>
                 ))}
             </code>
             {copyable ? <CopyButton value={value} {...(copyLabel === undefined ? {} : { label: copyLabel })} /> : null}
