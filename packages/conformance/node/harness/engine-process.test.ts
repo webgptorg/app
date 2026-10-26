@@ -1,3 +1,4 @@
+import { execFileSync, spawn } from 'node:child_process';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -72,6 +73,48 @@ describe('createEngineProcess', () => {
         expect(liveEngineGroups()).toHaveLength(1);
         await process.stop();
         expect(liveEngineGroups()).toEqual([]);
+    });
+
+    it('kills its engines when the harness itself is ended by SIGTERM', async () => {
+        const harness = spawn(
+            process.execPath,
+            [
+                '--input-type=module',
+                '-e',
+                `import { createEngineProcess } from ${JSON.stringify(new URL('./engine-process.ts', import.meta.url).href)};
+                const engine = createEngineProcess({ command: { command: 'exec sleep 600', cwd: '/' }, dataDir: '/', env: {} });
+                await engine.start();
+                process.stdout.write(String(engine.starts));
+                setInterval(() => {}, 1000);`,
+            ],
+            { stdio: ['ignore', 'pipe', 'inherit'] },
+        );
+        await new Promise((resolve) => harness.stdout.once('data', resolve));
+        const groups = execFileSync('ps', ['-o', 'pgid=', '-o', 'command=', '-A'], { encoding: 'utf8' })
+            .split('\n')
+            .map((line) => /^\s*(\d+)\s+(.*)$/.exec(line))
+            .filter((match) => match?.[2] === 'sleep 600')
+            .map((match) => Number(match?.[1]));
+        expect(groups).toHaveLength(1);
+        harness.kill('SIGTERM');
+        const exit = await new Promise<NodeJS.Signals | null>((resolve) =>
+            harness.once('exit', (_code, signal) => {
+                resolve(signal);
+            }),
+        );
+        expect(exit).toBe('SIGTERM');
+        await expect
+            .poll(() =>
+                groups.filter((pgid) => {
+                    try {
+                        process.kill(-pgid, 0);
+                        return true;
+                    } catch {
+                        return false;
+                    }
+                }),
+            )
+            .toEqual([]);
     });
 
     it('rejects a start that cannot spawn', async () => {

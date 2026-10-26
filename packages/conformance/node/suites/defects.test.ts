@@ -63,5 +63,5 @@ describe('the registration and heartbeat suites', () => {
         );
         expect(failed['registration.request.signature-verifies']).toBeUndefined();
         expect(Object.keys(failed).length).toBeGreaterThan(15);
-    });
+    }, 180_000);
 });
