@@ -1,4 +1,4 @@
-import type { Server } from 'node:net';
+import type { AddressInfo, Server } from 'node:net';
 import { createServer } from 'node:net';
 
 /** Parent of every name the harness serves; `*.localhost` resolves to loopback (RFC 6761), on both address families. */
@@ -14,8 +14,7 @@ function listen(server: Server, port: number, host: string): Promise<number> {
         };
         const onListening = (): void => {
             server.off('error', onError);
-            const address = server.address();
-            resolve(typeof address === 'object' && address !== null ? address.port : port);
+            resolve((server.address() as AddressInfo).port);
         };
         server.once('error', onError);
         server.once('listening', onListening);
@@ -36,7 +35,7 @@ function close(server: Server): Promise<void> {
 }
 
 function code(error: unknown): string | undefined {
-    return error instanceof Error && 'code' in error && typeof error.code === 'string' ? error.code : undefined;
+    return (error as NodeJS.ErrnoException).code;
 }
 
 export interface LoopbackListener {

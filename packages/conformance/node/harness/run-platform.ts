@@ -20,7 +20,7 @@ import type {
     PlatformExpectations,
     PlatformSuite,
 } from './platform';
-import { DEFAULT_HEARTBEAT_INTERVAL_MS, DEFAULT_START_TIMEOUT_MS } from './platform';
+import { DEFAULT_HEARTBEAT_INTERVAL_MS, DEFAULT_QUIET_WINDOW_MS, DEFAULT_START_TIMEOUT_MS } from './platform';
 
 export interface RunPlatformOptions {
     readonly command: EngineCommand;
@@ -54,9 +54,13 @@ const TEARDOWN_TIMEOUT_MS = 30_000;
  * down when the check ends, whatever its outcome. One ephemeral CA serves the whole run.
  */
 export async function runPlatformConformance(options: RunPlatformOptions): Promise<ConformanceReport> {
+    const heartbeatIntervalMs = options.expectations?.heartbeatIntervalMs ?? DEFAULT_HEARTBEAT_INTERVAL_MS;
     const expectations: PlatformExpectations = {
-        heartbeatIntervalMs: options.expectations?.heartbeatIntervalMs ?? DEFAULT_HEARTBEAT_INTERVAL_MS,
+        heartbeatIntervalMs,
+        intervalOverridden:
+            options.expectations?.intervalOverridden ?? heartbeatIntervalMs !== DEFAULT_HEARTBEAT_INTERVAL_MS,
         startTimeoutMs: options.expectations?.startTimeoutMs ?? DEFAULT_START_TIMEOUT_MS,
+        quietWindowMs: options.expectations?.quietWindowMs ?? DEFAULT_QUIET_WINDOW_MS,
     };
     const runDir = await mkdtemp(join(options.tempRoot ?? tmpdir(), 'ptbk-conformance-'));
     await chmod(runDir, 0o700);

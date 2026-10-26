@@ -2,7 +2,7 @@
 
 - **Lane:** Contracts · **Module:** `packages/conformance` (plus the conformance CI job, `apps/mock-engine` fixes if a check finds a mock bug) · **Milestone:** M5
 - **Depends on:** C-05, M-06
-- **Status:** in progress (feat/c-08-platform-harness)
+- **Status:** done (#101)
 - **Spec:** Interfaces (draft) 1, 4 and 6; Pairing and identity; What our platform can and cannot do (Heartbeat); Build plan (Mock engine first, real engine last); ADRs: [0004](../../adr/0004-mock-engine-and-conformance.md), [0014](../../adr/0014-cryptography.md)
 
 ## Goal
@@ -20,7 +20,8 @@ The engine maintainer wants to implement the protocol in one go, with the confor
 - **Platform plug-in interface** (`node/harness/platform.ts`, below). A platform check gets a context with a fresh private temp root, the run's test CA, the engine domain, a factory for engine processes and the expected heartbeat interval. It starts the fake servers it needs itself, through their own modules, and registers them for teardown.
 - **Test PKI** (`node/pki/test-ca.ts`): one ephemeral ECDSA P-256 CA per run, name-constrained to `localhost` and excluding every IP address. The engine trusts it through `NODE_EXTRA_CA_CERTS`, which adds to the default roots. C-09 uses the same module for relay certificates and for an untrusted CA of its own.
 - **Fake dashboard** (`node/fakes/dashboard.ts`): `REGISTER_PATH` and `heartbeatPath` over HTTPS on loopback (`dashboard.localhost`), verifying with C-03's `verifyRegistration` and `verifyHeartbeat` over the exact bytes. It has real D-03 semantics by default: link codes issued per organisation and consumed once, idempotent same-organisation re-registration, `engine-exists`, `engine-suspended`. It also takes scripted answers per request, and it records every request with its arrival time.
-- **CLI**: `--engine-cmd <shell command>`, `--engine-cwd <dir>`, `--heartbeat-interval-s <n>` (expectation, default 60) and `--suite` (repeatable or comma-separated). Without `--engine-cmd` the CLI behaves as in C-05. A failed check's report carries the engine's output.
+- **CLI**: `--engine-cmd <shell command>`, `--engine-cwd <dir>`, `--heartbeat-interval-s <n>` (expectation, default 60), `--engine-session-cmd <command>` with `--engine-ca-file <file>`, or `--mock-control`, for engine API sessions, and `--suite` (repeatable or comma-separated). Without `--engine-cmd` the CLI behaves as in C-05. A failed check's report carries the engine's output.
+- **Conformance sessions** (ENG-99, decided 2026-10-26): the engine's conformance build ships `conformance-session --subject owner|member [--permissions a,b]`, which prints `{"cookie"}`, `{"bearer"}` or `null` as JSON. A production build refuses it, and it is never an HTTP endpoint. `createSessionCommandTargetFactory` (`node/targets/session-command.ts`) runs it with the engine's environment. The mock implements the command over its dev-only control listener, and the self-test exercises that path.
 - **`registration` suite** (acting as dashboard), check IDs:
   - `registration.request.signature-verifies`: the request is within `REGISTER_REQUEST_MAX_BYTES`, parses with the strict `RegisterEngineRequest`, carries the configured link code and `mode: tunnel`, and `verifyRegistration` accepts it.
   - `registration.identity.engine-id-derived`: the engine then uses `deriveEngineId(enginePublicKey)` as its engine ID (heartbeat path and body).
@@ -39,8 +40,8 @@ The engine maintainer wants to implement the protocol in one go, with the confor
   - `heartbeat.seq.increasing-across-restarts`: `seq` strictly increases between beats and across a restart.
   - `heartbeat.cadence.interval`: beats arrive every 60 s (±5 s, +10 s late), and a beat answered 503 is not retried before the next tick. Skips when `--heartbeat-interval-s` overrides the default, so a passing run proves the production cadence.
   - `heartbeat.errors.keeps-sending`: after answers 429 `rate-limited`, 403 `engine-suspended`, 404 `not-found`, 401 `bad-signature` and 401 `stale-timestamp`, the engine keeps running and sends the next beat on the interval, never sooner.
-  - `heartbeat.stale-ts.skew-shown`: after a `stale-timestamp` answer whose `serverTime` is 10 minutes ahead, the security panel's `clockSkew.seconds` is about −600. It needs engine API access through C-09's relay and a session; until then it skips with `engine-api-unreachable`.
-- **Self-test**: the package test runs both suites against the mock engine (`apps/mock-engine/dist/main.mjs`, built first, `MOCK_HEARTBEAT_INTERVAL_S=2`), and against deliberately broken fake engines (small Node scripts) to prove each check can fail. The conformance CI job runs them too.
+  - `heartbeat.stale-ts.skew-shown`: after `stale-timestamp` answers whose `serverTime` is 10 minutes ahead, the security panel's `clockSkew.seconds` is about −600. It reaches the engine API through C-09's relay (`startTunnelRelay`, `endpointFor`) and skips without a session source.
+- **Self-test**: the package test runs both suites against the mock engine (`apps/mock-engine/dist/main.mjs`, built first, `MOCK_HEARTBEAT_INTERVAL_S=2`). It also runs them against `node/testing/fake-engine.ts`, an independent implementation on plain `node:crypto` whose `FAKE_ENGINE_DEFECTS` break one rule each, to prove every check can fail. The conformance CI job runs the suites against the mock, plus the cadence check at the real 60 s.
 - **Docs**: the engine launch contract in [identity-and-registration.md](../../engine-integration/identity-and-registration.md#launch-contract); [conformance.md](../../engine-integration/conformance.md) (status rows, running with `--engine-cmd`); every new check ID in [checklist.md](../../engine-integration/checklist.md); the package README.
 
 ## Engine launch contract
@@ -128,18 +129,19 @@ A suite that is not about registration (tunnel, UI loader) calls `startRegistere
 
 ## Acceptance criteria
 
-- [ ] `ptbk-conformance --engine-cmd "node apps/mock-engine/dist/main.mjs"` (with `MOCK_HEARTBEAT_INTERVAL_S` set in the command) passes every registration and heartbeat check against the mock engine, except `heartbeat.cadence.interval` (skip: interval overridden) and `heartbeat.stale-ts.skew-shown` (skip until C-09). The same run at the default interval passes the cadence check.
-- [ ] For every check, a broken fake engine in the self-test makes it fail.
-- [ ] No engine process outlives a check, a failed run or Ctrl-C (a test asserts the process group is gone).
-- [ ] Coverage of `node/` is at least 90% lines and branches (it verifies signatures).
-- [ ] Every new check ID is in checklist.md (`bun run check` enforces it); conformance.md, identity-and-registration.md and the README describe the launch contract and harness mode.
-- [ ] The conformance CI job runs the harness against the mock engine.
-- [ ] `bun run check` passes.
-- [ ] **Status** line above set to `done (#<PR>)`.
+- [x] `ptbk-conformance --engine-cmd "node apps/mock-engine/dist/main.mjs"` (with `MOCK_HEARTBEAT_INTERVAL_S` set in the command) passes every registration and heartbeat check against the mock engine (with `--mock-control` for the engine API), except `heartbeat.cadence.interval` (skip: interval overridden). The same run at the default interval passes the cadence check.
+- [x] For every check, a broken fake engine in the self-test makes it fail.
+- [x] No engine process outlives a check, a failed run or Ctrl-C (a test asserts the process group is gone).
+- [x] Coverage of `node/` is at least 90% lines and branches (it verifies signatures).
+- [x] Every new check ID is in checklist.md (`bun run check` enforces it); conformance.md, identity-and-registration.md and the README describe the launch contract and harness mode.
+- [x] The conformance CI job runs the harness against the mock engine.
+- [x] `bun run check` passes (fast policy for #101: conformance and mock-engine lint, typecheck and tests, plus the conformance job replay).
+- [x] **Status** line above set to `done (#<PR>)`.
 
 ## Risks and open points
 
-- **Trust for a non-Node engine.** `NODE_EXTRA_CA_CERTS` is Node's. The engine is TypeScript on Node, so it applies. An engine on another runtime would need an equivalent additive root setting, for example a `PTBK_EXTRA_CA_FILE` that is added to the defaults and never replaces them. Proposed only if needed, not added now.
-- **Heartbeat interval.** A test-only interval setting is not part of the contract: the cadence check runs at the real 60 s and skips when the expectation is overridden. The other checks can use an engine's own development setting through `--heartbeat-interval-s` to run faster.
-- **Registration failure behaviour.** The guide says "tell the owner, do not retry". This task makes it testable: the output names the `code`, and a retryable failure waits at least 5 s and backs off. Exiting is allowed but not required.
-- **Engine API through the harness** (follow-up after C-09): `--mock-control-url` or `--target-module` would then create a target for each engine the harness starts. For a real engine it also needs a fake ACME CA, because its certificate comes from ACME.
+- **Trust for a non-Node engine.** `NODE_EXTRA_CA_CERTS` is Node's, and the engine is TypeScript on Node. Decided 2026-10-26: no non-Node trust variable for now.
+- **Heartbeat interval.** Decided 2026-10-26: the cadence check runs at the real 60 s, and the contract has no interval setting. The check skips when the run overrides the interval, which only speeds up the other checks through an engine's own development setting.
+- **Registration failure behaviour.** This task makes "tell the owner, do not retry" testable: the output names the `code`, and a retryable failure waits at least 5 s and backs off. It is to confirm in the engine-team review (guide open points). The missing `REGISTRATION_ERROR_CODE` values (`not-entitled`, `rate-limited`) are task C-11.
+- **Engine API through the harness**: works through C-09's relay. Decided 2026-10-26: the conformance build serves its API certificate from a development CA whose certificate file is in the data directory (the mock's `<dataDir>/dev-ca/ca-cert.pem` pattern), passed as `--engine-ca-file "{dataDir}/…"`.
+- **Watch windows.** A check that must see nothing happen (no retry loop, no heartbeat) watches for 8 s by default. That catches a tight loop, not a slow one, and it is why a retrying engine must wait at least 5 s before its first retry.

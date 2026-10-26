@@ -65,7 +65,13 @@ Errors are RFC 9457 problem+json (`ProblemDetails`, read with `TolerantProblemDe
 | `engine-suspended`  | 403    | The engine is suspended or revoked by its owner                            | Tell the owner; do not retry      |
 | `engine-limit`      | 403    | The account has no room for another engine                                 | Tell the owner                    |
 
-The dashboard (D-03) also answers 403 `not-entitled` (the account's plan does not include engines; the code stays unused), 429 `rate-limited` (20 registration attempts per hour and address), 400 `invalid-request` (the body fails the strict schema) and 413 `too-large` (over `REGISTER_REQUEST_MAX_BYTES`). `not-entitled` and `rate-limited` are not in `REGISTRATION_ERROR_CODE` yet ([open points](README.md#open-points)); treat `not-entitled` like `engine-limit` and `rate-limited` as retryable later.
+The dashboard (D-03) also answers 403 `not-entitled` (the account's plan does not include engines; the code stays unused), 429 `rate-limited` (20 registration attempts per hour and address), 400 `invalid-request` (the body fails the strict schema) and 413 `too-large` (over `REGISTER_REQUEST_MAX_BYTES`). `not-entitled` and `rate-limited` are not in `REGISTRATION_ERROR_CODE` yet (task C-11, [open points](README.md#open-points)); treat `not-entitled` like `engine-limit` and `rate-limited` as retryable later.
+
+Whatever the answer, the engine must (to confirm in the engine-team review, [open points](README.md#open-points)):
+
+- name the problem `code` in its output (log or console), so its operator can tell what to do;
+- never retry in a loop: no retry at all after `invalid-link-code`, `bad-signature`, `engine-exists`, `engine-suspended`, `engine-limit` or `not-entitled`. After `rate-limited`, a 5xx or no answer, wait at least 5 s before the first retry and back off exponentially. Exiting instead is allowed;
+- store nothing from a refused registration, so a later start with a working dashboard registers normally.
 
 Registering a key that is already registered:
 
@@ -117,6 +123,26 @@ The harness removes `HTTPS_PROXY`, `NO_PROXY` and any other `PTBK_*` variable fr
 - exit with a non-zero status when it refuses to start (an unsafe data directory or key file, invalid configuration);
 - write its logs to stdout or stderr. The harness reads them to check what the engine tells its operator, and to check that no secret is logged.
 
+#### Conformance sessions
+
+The engine API checks need sessions: the owner, and members holding exactly the permissions a check chooses. A passkey-only engine cannot hand them out over HTTP, and it must not. Instead, its **conformance build** ships a command (decided 2026-10-26, ENG-99):
+
+```sh
+<engine> conformance-session --subject owner
+<engine> conformance-session --subject member --permissions agents.read,chats.read
+```
+
+- It runs next to the running engine with the same environment (`PTBK_DATA_DIR` and the rest), so it reaches the engine's own session store. `member` creates a new member each time, holding exactly the listed permissions (none when the list is empty).
+- It prints one JSON value on stdout and exits 0: `{"cookie":"<name>=<value>"}`, `{"bearer":"<token>"}`, or `null` when that subject cannot be had. The checks that need it then skip.
+- It exists only in the conformance build, behind the same build-time gate as `PTBK_CONFORMANCE_TRUST_FILE` ([ui-loader.md](ui-loader.md)). A production build refuses to run it. It is never an HTTP endpoint.
+
+The harness runs it with `ptbk-conformance --engine-session-cmd "<engine> conformance-session"`, so no hand-written target module is needed. Its checks reach the engine API through the fake relay, so they also need the CA the engine's own certificates chain to. The conformance build therefore also must, decided 2026-10-26:
+
+- serve its API certificate from a development CA it creates in `PTBK_DATA_DIR`, with the CA certificate in a file there, as the mock engine does at `<PTBK_DATA_DIR>/dev-ca/ca-cert.pem`. A production build never does this;
+- document that file's path, which the harness takes as `--engine-ca-file "{dataDir}/<path>"` (`{dataDir}` stands for the engine's data directory).
+
+Without `--engine-ca-file` the harness checks the engine's certificate only for its name and dates. The mock engine implements the same command over its dev-only control listener (`MOCK_CONTROL=enabled`).
+
 ## Contract exports
 
 | Need                | Export                                                                                                                                                                                                                     | Source                                                                                                 |
@@ -131,7 +157,21 @@ Golden vector: the `registration` case in [`signed-message-vectors.json`](../../
 
 ## Conformance
 
-The `registration` suite (C-08) starts the engine with the [launch contract](#launch-contract) and acts as the dashboard. `registration.request.signature-verifies` checks the request: the strict schema, the link code, `mode: tunnel` and the signature over the exact bytes. The rest of the suite (identity, link code, responses, errors, key handling) is being added under C-08. The local dev stack shows a registration against the real dashboard ([testing-against-the-platform.md](testing-against-the-platform.md)).
+The `registration` suite (C-08) starts the engine with the [launch contract](#launch-contract) and acts as the dashboard. Each check starts a fresh engine with an empty `PTBK_DATA_DIR`. The local dev stack shows a registration against the real dashboard ([testing-against-the-platform.md](testing-against-the-platform.md)).
+
+| Check                                          | What it proves                                                                                                                                                        |
+| ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `registration.request.signature-verifies`      | The request is within `REGISTER_REQUEST_MAX_BYTES`, a strict `RegisterEngineRequest` with the given link code and `mode: tunnel`, and `verifyRegistration` accepts it |
+| `registration.identity.engine-id-derived`      | The engine then heartbeats as `deriveEngineId(enginePublicKey)`, in the path and the body                                                                             |
+| `registration.identity.stable-across-restarts` | After a restart: no new key registered, the same engine ID, an accepted heartbeat                                                                                     |
+| `registration.link-code.used-once`             | Restarted with the same environment, the engine uses its stored registration; the link code is sent once                                                              |
+| `registration.secrets.never-logged`            | Neither the link code nor the engine key appears in the output (raw, hex, base64, base64url); the link code is in no file under `PTBK_DATA_DIR`                       |
+| `registration.response.unknown-fields-ignored` | An answer with fields a later version added is accepted                                                                                                               |
+| `registration.response.invalid-refused`        | An engine ID the key does not derive, a hostname outside the engine domain, or an answer over `REGISTER_RESPONSE_MAX_BYTES`: no heartbeat, nothing stored             |
+| `registration.errors.<code>`                   | For `invalid-link-code`, `engine-exists`, `engine-suspended`, `not-entitled`, `rate-limited` and `unavailable` (503): the rules above                                 |
+| `registration.data-dir.private`                | The engine creates `PTBK_DATA_DIR` as a 0700 directory owned by its user                                                                                              |
+| `registration.key-file.private`                | The file holding the key (PKCS#8 PEM or DER, a JWK, or a raw 32-byte seed) is a regular file owned by the engine user, mode 0600                                      |
+| `registration.key-file.loose-modes-refused`    | With the directory at 0755, the key file at 0640, or the key a symbolic link, the engine exits non-zero, contacts nobody and names the path                           |
 
 ## Reference implementation
 

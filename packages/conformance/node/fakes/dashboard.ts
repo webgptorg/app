@@ -87,6 +87,11 @@ export interface FakeDashboardOptions {
     /** Scripted answers: return one to send it instead of the dashboard's own, or undefined to answer normally. */
     readonly onRegister?: (registration: Omit<ReceivedRegistration, 'answer'>) => DashboardAnswer | undefined;
     readonly onHeartbeat?: (heartbeat: Omit<ReceivedHeartbeat, 'answer'>) => DashboardAnswer | undefined;
+    /**
+     * Changes the body of a successful registration answer, after the dashboard has stored the engine: extra fields,
+     * another identity, padding. The engine is registered either way, as with a dashboard that answers wrongly.
+     */
+    readonly decorateRegistration?: (response: RegisterEngineResponse) => unknown;
 }
 
 export interface FakeDashboard {
@@ -183,7 +188,7 @@ export async function startFakeDashboard(
             hostname: defaultHostname(engineId, ctx.engineDomain),
             relays: [...relays],
         };
-        return jsonAnswer(200, response);
+        return jsonAnswer(200, options.decorateRegistration?.(response) ?? response);
     }
 
     async function heartbeat(at: number, incoming: IncomingMessage, rawBody: Buffer, pathEngineId: string) {
@@ -348,6 +353,8 @@ async function readBody(incoming: IncomingMessage): Promise<Buffer> {
 export interface RegisteredEngineOptions extends EngineOptions {
     /** What the dashboard answers as the engine's relays (default: unreachable ones). */
     readonly relays?: readonly Hostname[];
+    /** Scripted answers for the dashboard; a script must let the first registration and heartbeat through. */
+    readonly dashboard?: Omit<FakeDashboardOptions, 'relays'>;
 }
 
 export interface EngineIdentity {
@@ -376,11 +383,14 @@ export async function startRegisteredEngine(
     options: RegisteredEngineOptions = {},
 ): Promise<RegisteredEngine> {
     const dashboard = ctx.use(
-        await startFakeDashboard(ctx, options.relays === undefined ? {} : { relays: options.relays }),
+        await startFakeDashboard(ctx, {
+            ...options.dashboard,
+            ...(options.relays === undefined ? {} : { relays: options.relays }),
+        }),
     );
     const linkCode = dashboard.issueLinkCode();
     const engine = await ctx.engine({
-        ...options,
+        ...(options.dataDir === undefined ? {} : { dataDir: options.dataDir }),
         env: { ...dashboard.env, PTBK_LINK_CODE: linkCode, ...options.env },
     });
     await engine.start();

@@ -36,7 +36,7 @@ export function tlv(tag: number, ...content: readonly Uint8Array[]): Buffer {
 export const sequence = (...items: readonly Uint8Array[]): Buffer => tlv(TAG.sequence, ...items);
 export const set = (...items: readonly Uint8Array[]): Buffer => tlv(TAG.set, ...items);
 export const octetString = (content: Uint8Array): Buffer => tlv(TAG.octetString, content);
-export const bitString = (content: Uint8Array, unusedBits = 0): Buffer =>
+export const bitString = (content: Uint8Array, unusedBits: number): Buffer =>
     tlv(TAG.bitString, Buffer.of(unusedBits), content);
 export const boolean = (value: boolean): Buffer => tlv(TAG.boolean, Buffer.of(value ? 0xff : 0));
 export const utf8String = (text: string): Buffer => tlv(TAG.utf8String, Buffer.from(text, 'utf8'));

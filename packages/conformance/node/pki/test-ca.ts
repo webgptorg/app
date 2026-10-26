@@ -179,7 +179,7 @@ function signCertificate(fields: CertificateFields): string {
         fields.publicKey.export({ type: 'spki', format: 'der' }),
         explicit(3, sequence(...fields.extensions)),
     );
-    const der = sequence(tbs, algorithm, bitString(sign('sha256', tbs, fields.issuerKey)));
+    const der = sequence(tbs, algorithm, bitString(sign('sha256', tbs, fields.issuerKey), 0));
     const base64 = der.toString('base64').replace(/.{64}/g, '$&\n');
     return `-----BEGIN CERTIFICATE-----\n${base64.replace(/\n$/, '')}\n-----END CERTIFICATE-----\n`;
 }

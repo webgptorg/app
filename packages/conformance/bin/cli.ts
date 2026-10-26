@@ -7,6 +7,7 @@ import {
     DEFAULT_HEARTBEAT_INTERVAL_MS,
     PLATFORM_SUITES,
     createMockEngineTargetFactory,
+    createSessionCommandTargetFactory,
     runPlatformConformance,
 } from '../node/index';
 import type { CheckResult, ConformanceReport, ConformanceTarget, SessionCredential } from '../src/index';
@@ -32,6 +33,10 @@ Starting the engine (the harness plays the dashboard and the rest of the platfor
   --engine-cmd <command>      Starts the engine under test (run by /bin/sh), once per check and scenario
   --engine-cwd <dir>          Its working directory (default: the current one)
   --heartbeat-interval-s <n>  The interval the engine was told to use (default 60; anything else skips the cadence check)
+  --engine-session-cmd <cmd>  The engine's conformance-session command, run with --subject owner|member
+                              [--permissions a,b]; it prints {"cookie"}, {"bearer"} or null as JSON
+  --engine-ca-file <file>     The CA the engine's own certificates chain to under test ({dataDir} for its data
+                              directory); with --engine-session-cmd
   --mock-control              The engine is the mock engine: sessions from its dev-only control listener
 
 Options:
@@ -92,6 +97,8 @@ async function run(argv: readonly string[], io: CliIo): Promise<number> {
             'engine-cwd': { type: 'string' },
             'heartbeat-interval-s': { type: 'string' },
             'mock-control': { type: 'boolean', default: false },
+            'engine-session-cmd': { type: 'string' },
+            'engine-ca-file': { type: 'string' },
             help: { type: 'boolean', default: false },
         },
     }) as { values: Record<string, string | string[] | boolean | undefined> };
@@ -127,7 +134,7 @@ async function run(argv: readonly string[], io: CliIo): Promise<number> {
         if (values['base-url'] !== undefined) throw new UsageError('give either --base-url or --engine-cmd');
         const suites = pick(suiteIds, PLATFORM_SUITES, (id) =>
             ALL_SUITES.some((suite) => suite.id === id)
-                ? `${id} runs against --base-url; the harness cannot reach the engine API yet`
+                ? `${id} runs against --base-url; with --engine-cmd the platform suites reach the engine API through their fake relay where they need it`
                 : `unknown suite ${id}`,
         );
         const intervalS =
@@ -136,12 +143,29 @@ async function run(argv: readonly string[], io: CliIo): Promise<number> {
                 : integer(values['heartbeat-interval-s'], '--heartbeat-interval-s', 3600);
         if (intervalS === 0) throw new UsageError('--heartbeat-interval-s must be at least 1');
         const cwd = values['engine-cwd'];
+        const engineCwd = resolve(typeof cwd === 'string' ? cwd : '.');
+        const sessionCmd = values['engine-session-cmd'];
+        if (typeof sessionCmd === 'string' && values['mock-control'] === true) {
+            throw new UsageError('give either --engine-session-cmd or --mock-control');
+        }
+        if (values['engine-ca-file'] !== undefined && typeof sessionCmd !== 'string') {
+            throw new UsageError('--engine-ca-file needs --engine-session-cmd');
+        }
+        const targets =
+            typeof sessionCmd === 'string'
+                ? createSessionCommandTargetFactory(
+                      { command: sessionCmd, cwd: engineCwd },
+                      typeof values['engine-ca-file'] === 'string' ? { caFile: values['engine-ca-file'] } : {},
+                  )
+                : values['mock-control'] === true
+                  ? createMockEngineTargetFactory()
+                  : undefined;
         result = await runPlatformConformance({
             ...common,
-            command: { command: engineCmd, cwd: resolve(typeof cwd === 'string' ? cwd : '.') },
+            command: { command: engineCmd, cwd: engineCwd },
             suites,
             expectations: { heartbeatIntervalMs: intervalS * 1000 },
-            ...(values['mock-control'] === true ? { targets: createMockEngineTargetFactory() } : {}),
+            ...(targets === undefined ? {} : { targets }),
             parentEnv: io.env,
         });
     } else {
@@ -149,6 +173,7 @@ async function run(argv: readonly string[], io: CliIo): Promise<number> {
             if (values[flag] !== undefined) throw new UsageError(`--${flag} needs --engine-cmd`);
         }
         if (values['mock-control'] === true) throw new UsageError('--mock-control needs --engine-cmd');
+        if (values['engine-session-cmd'] !== undefined) throw new UsageError('--engine-session-cmd needs --engine-cmd');
         const baseUrl = parseUrl(values['base-url'], '--base-url');
         const suites = pick(suiteIds, ALL_SUITES, (id) =>
             PLATFORM_SUITES.some((suite) => suite.id === id)

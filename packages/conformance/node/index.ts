@@ -1,4 +1,5 @@
 import type { PlatformSuite } from './harness/platform';
+import { HEARTBEAT_SUITE } from './suites/heartbeat';
 import { REGISTRATION_SUITE } from './suites/registration';
 import { TUNNEL_SUITE } from './suites/tunnel';
 
@@ -18,7 +19,7 @@ export type {
     PlatformExpectations,
     PlatformSuite,
 } from './harness/platform';
-export { DEFAULT_HEARTBEAT_INTERVAL_MS, DEFAULT_START_TIMEOUT_MS } from './harness/platform';
+export { DEFAULT_HEARTBEAT_INTERVAL_MS, DEFAULT_QUIET_WINDOW_MS, DEFAULT_START_TIMEOUT_MS } from './harness/platform';
 export type { RunPlatformOptions } from './harness/run-platform';
 export { HARNESS_ENGINE_DOMAIN, runPlatformConformance } from './harness/run-platform';
 export type { IssueOptions, IssuedCertificate, TestCa, TestCaOptions } from './pki/test-ca';
@@ -51,7 +52,8 @@ export type { TunnelRelay, TunnelRelayOptions } from './tunnel/tunnel-relay';
 export { startTunnelRelay } from './tunnel/tunnel-relay';
 export type { TunnelTiming } from './tunnel/runtime';
 export { CONTRACT_TIMING } from './tunnel/runtime';
-export { REGISTRATION_SUITE, TUNNEL_SUITE };
+export { SessionCommandError, createSessionCommandTargetFactory, parseSessionOutput } from './targets/session-command';
+export { HEARTBEAT_SUITE, REGISTRATION_SUITE, TUNNEL_SUITE };
 
 /** Every suite that starts the engine itself and acts as the platform around it, in the order they run. */
-export const PLATFORM_SUITES: readonly PlatformSuite[] = [REGISTRATION_SUITE, TUNNEL_SUITE];
+export const PLATFORM_SUITES: readonly PlatformSuite[] = [REGISTRATION_SUITE, HEARTBEAT_SUITE, TUNNEL_SUITE];

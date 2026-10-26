@@ -9,13 +9,21 @@ import type { LaunchEnv } from './launch-env';
 export interface PlatformExpectations {
     /** The heartbeat interval the engine was started with: 60 s unless `--heartbeat-interval-s` overrides it. */
     readonly heartbeatIntervalMs: number;
+    /**
+     * True when the run told the engine to use another interval than the production one. The cadence check then
+     * skips, so only a run at the default proves the production cadence.
+     */
+    readonly intervalOverridden: boolean;
     /** How long an engine may take from spawn to its first request to the platform. */
     readonly startTimeoutMs: number;
+    /** How long a check watches for something that must not happen, such as a retry loop or a heartbeat. */
+    readonly quietWindowMs: number;
 }
 
 /** The interval heartbeat.md fixes; a run that expects another one cannot pass the cadence check. */
 export const DEFAULT_HEARTBEAT_INTERVAL_MS = 60_000;
 export const DEFAULT_START_TIMEOUT_MS = 30_000;
+export const DEFAULT_QUIET_WINDOW_MS = 8000;
 
 /** Anything a check starts that must be shut down when the check ends: a fake server, a relay, a store. */
 export interface Closable {

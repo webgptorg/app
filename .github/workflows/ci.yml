@@ -107,7 +107,7 @@ jobs:
   # reach it. `*.localhost` names resolve to loopback (systemd-resolved), so no DNS or hosts file is touched.
   conformance:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 20
     env:
       ENGINE_DOMAIN: engine.localhost
       # Not RELAY_*: the relay refuses environment names it does not know.
@@ -170,6 +170,11 @@ jobs:
           node packages/conformance/dist/ptbk-conformance.js \
             --engine-cmd "MOCK_SCENARIO=empty MOCK_HEARTBEAT_INTERVAL_S=2 exec node $GITHUB_WORKSPACE/apps/mock-engine/dist/main.mjs" \
             --heartbeat-interval-s 2 --mock-control --seed 1 --report junit --out conformance-platform-report.xml
+      - name: Check the production heartbeat cadence (60 s) of a mock engine the harness starts
+        run: |
+          node packages/conformance/dist/ptbk-conformance.js \
+            --engine-cmd "MOCK_SCENARIO=empty exec node $GITHUB_WORKSPACE/apps/mock-engine/dist/main.mjs" \
+            --filter heartbeat.cadence.interval --seed 1 --report junit --out conformance-cadence-report.xml
       - name: Show the stack's logs
         if: failure()
         run: tail -n 200 "$RUNNER_TEMP/conformance/relay.log" "$RUNNER_TEMP/conformance/mock-engine.log"
@@ -181,6 +186,7 @@ jobs:
           path: |
             conformance-report.xml
             conformance-platform-report.xml
+            conformance-cadence-report.xml
           retention-days: 7
           if-no-files-found: ignore
 

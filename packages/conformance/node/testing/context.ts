@@ -15,7 +15,12 @@ export function createTestContext(): PlatformCheckContext & { closeAll(): Promis
         resources: { defer: () => undefined },
         ca: createTestCa('unit test CA', { permittedDomains: ['localhost'] }),
         engineDomain: HARNESS_ENGINE_DOMAIN,
-        expectations: { heartbeatIntervalMs: 1000, startTimeoutMs: 1000 },
+        expectations: {
+            heartbeatIntervalMs: 1000,
+            intervalOverridden: false,
+            startTimeoutMs: 1000,
+            quietWindowMs: 500,
+        },
         tempDir: () => Promise.reject(new Error('no temp dirs in unit tests')),
         engine: () => Promise.reject(new Error('no engines in unit tests')),
         use(fixture) {

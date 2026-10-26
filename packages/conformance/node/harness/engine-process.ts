@@ -70,9 +70,22 @@ function installExitHook(): void {
     if (exitHookInstalled) return;
     exitHookInstalled = true;
     // Synchronous on purpose: on `exit` nothing asynchronous runs any more, and a leaked engine would keep a port.
-    process.on('exit', () => {
-        for (const pid of liveGroups) killGroup(pid, 'SIGKILL');
-    });
+    process.on('exit', killAll);
+    // A harness ended by a signal never reaches `exit` (a test runner stopping its worker, a CI job cancelled), and
+    // the engines run in their own process groups, so nothing else would stop them.
+    for (const signal of ['SIGTERM', 'SIGHUP'] as const) {
+        const onSignal = (): void => {
+            killAll();
+            process.off(signal, onSignal);
+            // Someone else handles the signal; otherwise end the way the default handler would.
+            if (process.listenerCount(signal) === 0) process.kill(process.pid, signal);
+        };
+        process.on(signal, onSignal);
+    }
+}
+
+function killAll(): void {
+    for (const pid of liveGroups) killGroup(pid, 'SIGKILL');
 }
 
 /** Engines this process started whose process group still exists; for tests that assert nothing leaked. */
