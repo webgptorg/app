@@ -1,3 +1,6 @@
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
+
 import { createMockEngineTarget } from '../../src/index';
 import { freeLoopbackPort } from '../harness/loopback';
 import type { EngineTargetFactory } from '../harness/platform';
@@ -28,6 +31,10 @@ export function createMockEngineTargetFactory(): EngineTargetFactory {
                 fetch: globalThis.fetch.bind(globalThis),
             });
             return { ...target, fetch: endpoint.fetch };
+        },
+        async certificateAuthority(engine) {
+            // The mock issues its certificates from a dev CA it generates in its data directory on first start.
+            return readFile(join(engine.dataDir, 'dev-ca', 'ca-cert.pem'), 'utf8').catch(() => null);
         },
     };
 }

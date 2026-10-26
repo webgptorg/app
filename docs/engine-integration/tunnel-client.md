@@ -10,7 +10,7 @@ The code in `@ptbk/protocol` is more precise than the spec's Interface 3, which 
 
 The engine must:
 
-- Keep one tunnel to **every** relay in its list (from registration, at most `MAX_RELAYS`). Tunnels are independent: one failing relay never delays the others, and a stream lives on exactly one tunnel. DNS returns all relays for the engine's hostname, so a browser tries the next one when one is down.
+- Keep one tunnel to **every** relay in its list (from registration, at most `MAX_RELAYS`; `PTBK_RELAYS`, when the operator sets it, replaces that list, see the [launch contract](identity-and-registration.md#launch-contract)). Tunnels are independent: one failing relay never delays the others, and a stream lives on exactly one tunnel. DNS returns all relays for the engine's hostname, so a browser tries the next one when one is down.
 - Connect to `wss://<relay hostname>` + `TUNNEL_PATH` (`/v1/tunnel`) with the WebSocket subprotocol `TUNNEL_SUBPROTOCOL` (`ptbk-tunnel`). The subprotocol names the protocol only; the version is negotiated in the handshake.
 - Verify the relay's TLS certificate for the relay's hostname with the system's trust roots, also through a proxy. A certificate for another name or from an untrusted CA fails the attempt. An operator may add a CA (for a TLS-inspecting proxy), but never replace the default roots.
 - Honour `HTTPS_PROXY` and `NO_PROXY`: when a proxy applies, open the TCP connection with HTTP `CONNECT` (basic auth from the proxy URL if present), then TLS to the relay over that socket, still checking the relay's name. A non-2xx answer fails the attempt; log the status code only, never the proxy credentials.
@@ -96,8 +96,8 @@ The type byte is a flag bit and a code. Bit 7 is `FRAME_IGNORABLE_FLAG` (`0x80`)
 
 The engine must:
 
-- Accept streams only from the relay. Stream IDs are non-zero u32 values (`StreamId`) that increase per tunnel and are never reused. A duplicate `OPEN`, a reused ID or a frame for a stream that was never opened is a protocol error; a late frame for a stream that already closed may be dropped.
-- Treat an `invalid` frame as a protocol error and close the tunnel with `PROTOCOL_ERROR`.
+- Accept streams only from the relay. Stream IDs are non-zero u32 values (`StreamId`) that increase per tunnel and are never reused. A duplicate `OPEN`, a reused ID or a frame for a stream that was never opened is a protocol error. A late frame for a stream that already closed is dropped, never a protocol error: the relay may have had it in flight when the stream closed.
+- Treat an `invalid` frame as a protocol error and close the tunnel with `PROTOCOL_ERROR`. Capping the WebSocket message size at `FRAME_HEADER_BYTES + MAX_FRAME_PAYLOAD_BYTES` is fine too: the WebSocket layer then closes an oversized frame with 1009.
 - Use the `OPEN` address as the client IP for rate limits and the audit log (the engine API's `client.ip`).
 - Close a stream with `CLOSE` when it ends; destroying either side closes the other. `CLOSE` closes the stream fully; there is no half-close, and TLS `close_notify` covers orderly shutdown.
 - Refuse a stream it cannot serve with `CLOSE` `REFUSED`.
@@ -165,13 +165,22 @@ Golden vectors: [`tunnel/vectors.json`](../../packages/protocol/src/tunnel/vecto
 
 ## Conformance
 
-Planned in C-05, registered as `skip` (`not-implemented`) until the tunnel suite exists:
+The `tunnel` suite of [`@ptbk/conformance`](../../packages/conformance/README.md) (C-09) acts as the relays your engine dials. It starts your engine through the platform harness ([conformance.md](conformance.md#an-engine-the-harness-starts)), registers it with a fake dashboard and gives it `PTBK_RELAYS` with three relay hostnames under `localhost`, all served by one fake relay on loopback. Each check gets a fresh engine. Run it with `--engine-cmd … --suite tunnel`; every check ID is in [checklist.md](checklist.md) (ENG-20 to ENG-30).
 
-- `tunnel.negotiation.downgrade-refused`: acting as relay, a `ready` with a lower version, a missing or an extra feature makes the engine close with `PROTOCOL_ERROR`.
-- `tunnel.auth.list-encoding`: a `challenge` with unsorted multi-element lists gets an `auth` that `verifyTunnelAuth` accepts.
-- `tunnel.auth.version-signed`: the `auth` signature verifies only over the `version` the engine sent.
+What your engine must support to be tested, all of it production behaviour:
 
-Until then, check your client against `tunnel/vectors.json`.
+- **`PTBK_RELAYS`** as an override of the registration's relays, with a port in each URL.
+- **The relay CA from `NODE_EXTRA_CA_CERTS`**, added to the default roots. A relay certificate for another name, from another CA or expired must still fail.
+- **`HTTPS_PROXY` and `NO_PROXY`** read at start, for `tunnel.proxy.connect`.
+- **A restart with the same data directory** (SIGTERM, then a new start), which some checks use to reset backoff.
+- **The certificate you would serve anyway** for `<engineId>.<engine domain>`, inside each stream. The suite checks TLS 1.3, the name and the dates. It checks the chain too when your conformance target factory names the CA your certificates chain to (`certificateAuthority(engine)`; the mock's is its dev CA). Your engine never accepts a CA from the suite for anything it verifies. For a run, a development or test CA mode that issues your own leaf is enough. Production keeps ACME.
+
+What the suite measures, and its tolerances:
+
+- Timeouts are the contract's plus a margin: `auth` within `AUTH_TIMEOUT_MS`, back within 5 s of `SHUTTING_DOWN`, within 30 s of any other close, within 15 s of a relay restart, and a ping within `PING_INTERVAL_MS` + 10 s of `ready` (only the first interval is measured, to keep the run short).
+- Backoff: one reconnect may come at once under full jitter, so five consecutive failed attempts are judged together: the engine's own delays, from each closed connection to its next TCP connection, must add up to at least 1 s. The relay's handshake work is not counted, so a busy machine only makes a correct engine look slower. After `REPLACED`, at most one reconnect in 10 s.
+- Flow control is tested with HTTP/1.1 requests sent one after another on one connection, as a browser sends them, never pipelined.
+- A missing-feature downgrade is tried only when the engine offers features; v1 has none.
 
 ## Reference implementation
 

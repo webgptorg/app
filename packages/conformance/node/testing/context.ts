@@ -23,6 +23,7 @@ export function createTestContext(): PlatformCheckContext & { closeAll(): Promis
             return fixture;
         },
         engineTarget: () => null,
+        engineCertificateAuthority: () => Promise.resolve(null),
         async closeAll() {
             for (const fixture of fixtures.reverse()) await fixture.close();
         },

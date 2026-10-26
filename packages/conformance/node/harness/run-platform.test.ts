@@ -11,10 +11,13 @@ import { startRegisteredEngine } from '../fakes/dashboard';
 import type { PlatformSuite } from './platform';
 import { tmpdir } from 'node:os';
 
+/** The tunnel suite runs minutes per engine and has its own self-test (node/suites/tunnel, node/tunnel/checks). */
+const SUITES = PLATFORM_SUITES.filter(({ id }) => id !== 'tunnel');
+
 async function run(command: EngineCommand, filter?: string) {
     return runPlatformConformance({
         command,
-        suites: PLATFORM_SUITES,
+        suites: SUITES,
         timeoutMs: 30_000,
         signal: new AbortController().signal,
         seed: 1,
@@ -148,7 +151,7 @@ describe('the harness', () => {
     it('stops an engine that ignores SIGTERM when the check times out', async () => {
         const report = await runPlatformConformance({
             command: { command: "trap '' TERM; sleep 600 & wait", cwd: process.cwd() },
-            suites: PLATFORM_SUITES,
+            suites: SUITES,
             timeoutMs: 500,
             stopGraceMs: 200,
             signal: new AbortController().signal,

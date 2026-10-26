@@ -184,6 +184,10 @@
       "dependencies": {
         "@ptbk/engine-api": "workspace:*",
         "@ptbk/protocol": "workspace:*",
+        "ws": "catalog:",
+      },
+      "devDependencies": {
+        "@types/ws": "catalog:",
       },
     },
     "packages/engine-api": {
