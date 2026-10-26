@@ -36,21 +36,22 @@ The topic files below stay normative; the kit orders them and points into them. 
 
 ## Reading order
 
-| #   | File                                                               | Covers (spec, Interfaces)                                         |
-| --- | ------------------------------------------------------------------ | ----------------------------------------------------------------- |
-| 1   | [cryptography.md](cryptography.md)                                 | Encodings and verification rules every signature uses             |
-| 2   | [identity-and-registration.md](identity-and-registration.md)       | Engine key, engine ID, registration (1), configuration (6)        |
-| 3   | [tunnel-client.md](tunnel-client.md)                               | Tunnel protocol (3), custom hostnames, ACME through the relay (2) |
-| 4   | [heartbeat.md](heartbeat.md)                                       | Signed heartbeat (4)                                              |
-| 5   | [ui-loader.md](ui-loader.md)                                       | Release log and UI bundle (5)                                     |
-| 6   | [engine-api.md](engine-api.md)                                     | The HTTP API the UI uses                                          |
-| 7   | [gateway.md](gateway.md)                                           | What the API assumes from the open gateway                        |
-| 8   | [conformance.md](conformance.md)                                   | Running the conformance suite against an engine                   |
-| 9   | [mock-engine.md](mock-engine.md)                                   | The mock engine as reference implementation                       |
-| 10  | [checklist.md](checklist.md)                                       | Every requirement in one table, for your tracker                  |
-| 11  | [implementation-plan.md](implementation-plan.md)                   | The build plan, in phases                                         |
-| 12  | [testing-against-the-platform.md](testing-against-the-platform.md) | Testing the engine against our stack                              |
-| 13  | [AGENT_BRIEF.md](AGENT_BRIEF.md)                                   | The prompt for a coding agent                                     |
+| #   | File                                                               | Covers (spec, Interfaces)                                               |
+| --- | ------------------------------------------------------------------ | ----------------------------------------------------------------------- |
+| 1   | [cryptography.md](cryptography.md)                                 | Encodings and verification rules every signature uses                   |
+| 2   | [identity-and-registration.md](identity-and-registration.md)       | Engine key, engine ID, registration (1), configuration (6)              |
+| 3   | [tunnel-client.md](tunnel-client.md)                               | Tunnel protocol (3), custom hostnames, ACME through the relay (2)       |
+| 4   | [heartbeat.md](heartbeat.md)                                       | Signed heartbeat (4)                                                    |
+| 5   | [ui-loader.md](ui-loader.md)                                       | Release log and UI bundle (5)                                           |
+| 6   | [engine-api.md](engine-api.md)                                     | The HTTP API the UI uses                                                |
+| 7   | [gateway.md](gateway.md)                                           | What the API assumes from the open gateway                              |
+| 8   | [conformance.md](conformance.md)                                   | Running the conformance suite against an engine                         |
+| 9   | [mock-engine.md](mock-engine.md)                                   | The mock engine as reference implementation                             |
+| 10  | [checklist.md](checklist.md)                                       | Every requirement in one table, for your tracker                        |
+| 11  | [implementation-plan.md](implementation-plan.md)                   | The build plan, in phases                                               |
+| 12  | [testing-against-the-platform.md](testing-against-the-platform.md) | Testing the engine against our stack                                    |
+| 13  | [AGENT_BRIEF.md](AGENT_BRIEF.md)                                   | The prompt for a coding agent                                           |
+| 14  | [installation.md](installation.md)                                 | Install paths, configuration, first-start output, the setup link (1, 6) |
 
 Interface 2 (the relay's registry lookup) is between the relay and the dashboard. The engine never calls it, but it decides which hostnames the relay routes, so [tunnel-client.md](tunnel-client.md#custom-hostnames) explains what the engine must do for it.
 
