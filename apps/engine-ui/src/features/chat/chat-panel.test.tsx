@@ -377,6 +377,26 @@ describe('chat panel access', { timeout: TIMEOUT_MS }, () => {
     });
 });
 
+describe('chat layout', { timeout: TIMEOUT_MS }, () => {
+    it('fits the screen in a one-line agent header, with the composer under the history', async () => {
+        const own = seededConversation(CHAT_ID, 2, OWNER_ID);
+        const engine = createChatEngine({ chats: [own.chat], messages: own.messages });
+        renderWithProviders({ path: chatPath(), engineApi: engine.client });
+        await screen.findByRole('heading', { level: 2, name: 'Question 1' });
+        const section = screen.getAllByRole('heading', { level: 1 })[0]?.closest('section');
+        // The frame takes the height the shell leaves; the panel and its composer flex into it.
+        expect(section?.className).toContain('h-(--main-fill-height)');
+        const header = section?.querySelector('header') as HTMLElement;
+        expect(within(header).queryByRole('link', { name: 'Chat' })).toBeNull();
+        expect(screen.getByRole('tabpanel').className).toContain('flex-1');
+        const composer = screen.getByRole('textbox', { name: 'Message' });
+        expect(composer.getAttribute('rows')).toBe('2');
+        expect(document.getElementById(composer.getAttribute('aria-describedby') ?? '')?.textContent).toBe(
+            'Enter sends, Shift+Enter adds a line, Esc stops a reply.',
+        );
+    });
+});
+
 describe('chat panel states', { timeout: TIMEOUT_MS }, () => {
     it('shows an empty history and a history that failed to load, with retry', async () => {
         const empty = seededConversation('chat-empty', 0, OWNER_ID);
