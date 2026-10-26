@@ -10,7 +10,7 @@ import type { RegisteredEngine, RegisteredEngineOptions } from '../../fakes/dash
 import type { EngineProcess } from '../../harness/engine-process';
 import type { EngineApiEndpoint, PlatformCheckContext } from '../../harness/platform';
 import { createTestContext } from '../../testing/context';
-import type { EngineRoute } from './endpoints';
+import type { EngineEndpoints, EngineRoute } from './endpoints';
 import { UI_LOADER_CHECK_TIMEOUT_MS, createUiLoaderPlatformSuite } from './index';
 import type { RegisterEngine } from './platform-lab';
 import { UI_STORE_HOSTNAME, openPlatformLab } from './platform-lab';
@@ -71,6 +71,17 @@ function routeTo(endpointFor: EngineRoute['endpointFor'] = () => Promise.resolve
     };
 }
 
+function endpointsOf(route: EngineRoute): EngineEndpoints & { prepared: number } {
+    const endpoints = {
+        prepared: 0,
+        prepare: () => {
+            endpoints.prepared += 1;
+            return Promise.resolve(route);
+        },
+    };
+    return endpoints;
+}
+
 const settings = (update: EngineSettings['update']): EngineSettings => ({ update, trust: TRUST });
 const pinned = (version: string): EngineSettings => settings({ policy: 'pinned', version });
 const signal = new AbortController().signal;
@@ -106,7 +117,7 @@ describe('the platform ui-loader lab', () => {
     it('registers the engine on the first start with the route and the update settings', async () => {
         const { register, engines } = fakeRegistry();
         const route = routeTo();
-        const lab = await openPlatformLab(ctx, { route, register });
+        const lab = await openPlatformLab(ctx, { endpoints: endpointsOf(route), register });
         expect(lab.store.url.hostname).toBe(UI_STORE_HOSTNAME);
 
         const target = await lab.start(pinned('1.0.1'), { fresh: true, signal });
@@ -130,7 +141,7 @@ describe('the platform ui-loader lab', () => {
     it('restarts the same engine afterwards, removing the pinned version when the policy changes', async () => {
         const { register, engines } = fakeRegistry();
         const route = routeTo();
-        const lab = await openPlatformLab(ctx, { route, register });
+        const lab = await openPlatformLab(ctx, { endpoints: endpointsOf(route), register });
         await lab.start(settings({ policy: 'auto' }), { fresh: false, signal });
         expect(engines[0]?.options.env).not.toHaveProperty('PTBK_PINNED_VERSION');
         await lab.start(pinned('1.0.2'), { fresh: false, signal });
@@ -149,11 +160,15 @@ describe('the platform ui-loader lab', () => {
         expect(route.routed).toHaveLength(3);
     });
 
-    it('registers a new engine for a fresh start and stops the previous one', async () => {
+    it('registers a new engine on a route of its own for a fresh start, and stops the previous one', async () => {
         const { register, engines } = fakeRegistry();
-        const lab = await openPlatformLab(ctx, { route: routeTo(), register });
+        const endpoints = endpointsOf(routeTo());
+        const lab = await openPlatformLab(ctx, { endpoints, register });
         await lab.start(pinned('1.0.1'), { fresh: false, signal });
+        await lab.start(pinned('1.0.3'), { fresh: false, signal });
+        expect(endpoints.prepared).toBe(1);
         await lab.start(pinned('1.0.2'), { fresh: true, signal });
+        expect(endpoints.prepared).toBe(2);
         expect(engines).toHaveLength(2);
         expect(engines[0]?.stopped).toBe(1);
         expect(engines[1]?.restarts).toEqual([]);
@@ -163,7 +178,7 @@ describe('the platform ui-loader lab', () => {
 
     it('shows the last 40 lines of the engine output, and nothing before a start', async () => {
         const { register } = fakeRegistry();
-        const lab = await openPlatformLab(ctx, { route: routeTo(), register });
+        const lab = await openPlatformLab(ctx, { endpoints: endpointsOf(routeTo()), register });
         expect(lab.logTail()).toBe('');
         await lab.start(pinned('1.0.1'), { fresh: false, signal });
         const tail = lab.logTail().split('\n');
@@ -174,13 +189,16 @@ describe('the platform ui-loader lab', () => {
 
     it('skips when the run has no way to get sessions for the engine', async () => {
         const { register } = fakeRegistry();
-        const lab = await openPlatformLab({ ...ctx, engineTarget: () => null }, { route: routeTo(), register });
+        const lab = await openPlatformLab(
+            { ...ctx, engineTarget: () => null },
+            { endpoints: endpointsOf(routeTo()), register },
+        );
         await expect(lab.start(pinned('1.0.1'), { fresh: false, signal })).rejects.toThrow(CheckSkip);
     });
 
     it('refuses to start once the check is aborted', async () => {
         const { register, engines } = fakeRegistry();
-        const lab = await openPlatformLab(ctx, { route: routeTo(), register });
+        const lab = await openPlatformLab(ctx, { endpoints: endpointsOf(routeTo()), register });
         const aborted = AbortSignal.abort(new Error('check timed out'));
         await expect(lab.start(pinned('1.0.1'), { fresh: false, signal: aborted })).rejects.toThrow('check timed out');
         expect(engines).toHaveLength(0);

@@ -156,6 +156,8 @@ describe('runCli', () => {
         [['--base-url', 'https://engine.test', '--suite', 'registration'], 'registration starts the engine itself'],
         [['--engine-cmd', 'true', '--suite', 'engine-api'], 'engine-api runs against --base-url'],
         [['--engine-cmd', 'true', '--suite', 'nope'], 'unknown suite nope'],
+        [['--base-url', 'https://engine.test', '--suite', 'tunnel'], 'tunnel starts the engine itself'],
+        [['--base-url', 'https://engine.test', '--suite', 'ui-loader'], 'ui-loader starts the engine itself'],
         [['--engine-cmd', 'true', '--base-url', 'https://engine.test'], 'give either --base-url or --engine-cmd'],
         [['--engine-cmd', 'true', '--heartbeat-interval-s', '0'], '--heartbeat-interval-s must be at least 1'],
         [['--base-url', 'https://engine.test', '--mock-control'], '--mock-control needs --engine-cmd'],
@@ -260,12 +262,6 @@ describe('runCli', () => {
         expect(await runCli(argv, streams)).toBe(0);
         expect(streams.err.join('')).toContain('pass  registration.request.signature-verifies');
         expect(streams.out.join('')).toContain('<testsuite name="registration"');
-    });
-
-    it('runs whole suites without a filter', async () => {
-        const streams = io();
-        expect(await runCli(['--base-url', 'https://engine.test', '--suite', 'ui-loader'], streams)).toBe(0);
-        expect(streams.err.join('')).toMatch(/0 passed, 0 failed, [1-9]\d* skipped/);
     });
 
     it('signs in through the mock control listener', async () => {

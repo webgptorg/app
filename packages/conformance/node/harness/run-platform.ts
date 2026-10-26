@@ -1,4 +1,4 @@
-import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { chmod, lstat, mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -128,15 +128,29 @@ export async function runPlatformConformance(options: RunPlatformOptions): Promi
                         await Promise.all(engines.map((engine) => engine.stop()));
                         const engineOutput = outcome.kind === 'fail' ? outputOf(engines) : undefined;
                         for (const fixture of fixtures.reverse()) await bounded(fixture.close());
-                        await rm(checkDir, { recursive: true, force: true });
+                        await removeTree(checkDir);
                         return engineOutput === undefined ? {} : { engineOutput };
                     },
                 };
             },
         });
     } finally {
-        await rm(runDir, { recursive: true, force: true });
+        await removeTree(runDir);
     }
+}
+
+/**
+ * `rm -r` that also empties directories the engine made read-only, as the mock does with unpacked UI bundles: a
+ * plain recursive `rm` fails on them with EACCES and would leave the run's directory behind.
+ */
+async function removeTree(path: string): Promise<void> {
+    const stats = await lstat(path).catch(() => null);
+    if (stats === null) return;
+    if (stats.isDirectory()) {
+        if ((stats.mode & 0o700) !== 0o700) await chmod(path, 0o700);
+        for (const entry of await readdir(path)) await removeTree(join(path, entry));
+    }
+    await rm(path, { recursive: true, force: true });
 }
 
 function outputOf(engines: readonly EngineProcess[]): string | undefined {

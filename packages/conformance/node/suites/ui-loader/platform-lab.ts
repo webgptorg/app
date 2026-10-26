@@ -7,7 +7,7 @@ import type { RegisteredEngine, RegisteredEngineOptions } from '../../fakes/dash
 import { startRegisteredEngine } from '../../fakes/dashboard';
 import { LOOPBACK_DOMAIN } from '../../harness/loopback';
 import type { PlatformCheckContext } from '../../harness/platform';
-import type { EngineRoute } from './endpoints';
+import type { EngineEndpoints, EngineRoute } from './endpoints';
 import type { StoreServer } from './store-server';
 import { openStoreServer } from './store-server';
 
@@ -18,7 +18,7 @@ const LOG_TAIL_LINES = 40;
 export type RegisterEngine = (ctx: PlatformCheckContext, options: RegisteredEngineOptions) => Promise<RegisteredEngine>;
 
 export interface PlatformLabOptions {
-    readonly route: EngineRoute;
+    readonly endpoints: EngineEndpoints;
     readonly register?: RegisterEngine;
 }
 
@@ -37,8 +37,9 @@ function withoutRemovals(patch: Readonly<Record<string, string | null>>): Record
 /**
  * The `ui-loader` lab on the platform harness, for one check: a fake release store over HTTPS on loopback (its
  * certificate from the run's CA, which the engine trusts through `NODE_EXTRA_CA_CERTS`), and a registered engine
- * reached through `route`. The first start registers the engine; later ones restart it in the same data directory,
- * and `fresh` registers a new engine on a new one, so every piece of loader state starts empty.
+ * reached through a route from `endpoints`. The first start registers the engine; later ones restart it in the same
+ * data directory, and `fresh` registers a new engine on a new one, so every piece of loader state starts empty. Each
+ * registered engine gets a route of its own, so a relay never mistakes the new engine's tunnels for the old one's.
  */
 export async function openPlatformLab(ctx: PlatformCheckContext, options: PlatformLabOptions): Promise<UiLoaderLab> {
     const register = options.register ?? startRegisteredEngine;
@@ -46,7 +47,7 @@ export async function openPlatformLab(ctx: PlatformCheckContext, options: Platfo
         await openStoreServer({ hostname: UI_STORE_HOSTNAME, ...ctx.ca.issue([UI_STORE_HOSTNAME]) }),
     );
     const trustFile = join(await ctx.tempDir('ui-loader'), 'conformance-trust.json');
-    let current: RegisteredEngine | null = null;
+    let current: { readonly engine: RegisteredEngine; readonly route: EngineRoute } | null = null;
 
     return {
         store,
@@ -61,20 +62,21 @@ export async function openPlatformLab(ctx: PlatformCheckContext, options: Platfo
                 ...updatePatch(settings.update),
             };
             if (current === null || fresh) {
-                await current?.engine.stop();
-                current = await register(ctx, { env: { ...options.route.env, ...withoutRemovals(patch) } });
+                await current?.engine.engine.stop();
+                const route = await options.endpoints.prepare(ctx);
+                current = { route, engine: await register(ctx, { env: { ...route.env, ...withoutRemovals(patch) } }) };
             } else {
-                await current.restart(patch);
+                await current.engine.restart(patch);
             }
             signal.throwIfAborted();
-            const endpoint = await options.route.endpointFor(current);
-            const target = ctx.engineTarget(current.engine, endpoint);
+            const endpoint = await current.route.endpointFor(current.engine);
+            const target = ctx.engineTarget(current.engine.engine, endpoint);
             if (target === null) skip('engine-api-unreachable');
             return target;
         },
-        logTail: () => current?.engine.logs().split('\n').slice(-LOG_TAIL_LINES).join('\n') ?? '',
+        logTail: () => current?.engine.engine.logs().split('\n').slice(-LOG_TAIL_LINES).join('\n') ?? '',
         async close() {
-            await current?.engine.stop();
+            await current?.engine.engine.stop();
         },
     };
 }
