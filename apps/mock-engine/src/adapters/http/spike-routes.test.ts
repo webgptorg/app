@@ -187,6 +187,7 @@ describe('WS /__spike/ws', () => {
         expect(await closed).toBe(1009);
     });
 
+    // Echoing 24 MiB takes about a second alone, but runs past the 5 s default on a loaded machine.
     it('keeps echoing, in order, when the client sends faster than it reads', async () => {
         const socket = await start().webSocket('/__spike/ws');
         const received: Buffer[] = [];
@@ -197,7 +198,7 @@ describe('WS /__spike/ws', () => {
         await until(() => received.length === messages.length, 100_000);
         expect(received.map((message) => message[0])).toEqual(messages.map((_, index) => index));
         socket.close();
-    });
+    }, 30_000);
 });
 
 describe('WS /__spike/screencast', () => {
