@@ -65,7 +65,7 @@ Golden vector: the `heartbeat` case in [`signed-message-vectors.json`](../../pac
 
 ## Conformance
 
-No heartbeat suite exists yet. C-05 v1 checks only that the security panel's `lastHeartbeat.body` parses with the protocol `Heartbeat` schema (security panel checks in [conformance.md](conformance.md)).
+The `heartbeat` suite, in which the conformance CLI acts as the dashboard, is pending (task C-08). Until it merges, C-05 v1 checks only that the security panel's `lastHeartbeat.body` parses with the protocol `Heartbeat` schema (security panel checks in [conformance.md](conformance.md)).
 
 ## Reference implementation
 

@@ -38,15 +38,16 @@ The folder moves public with the contracts (E-02), so the same rules as E-01 app
 
 ## Acceptance criteria
 
-- [ ] The README no longer contradicts `main` (conformance checks, task statuses, versions, environment variables); every fix is listed in the PR.
-- [ ] `implementation-plan.md` covers every phase from setup to the full e2e run, and each phase names its conformance checks and the command that runs them.
-- [ ] `AGENT_BRIEF.md` can be pasted into an agent as is and links only to files in this folder or to contract code.
-- [ ] `testing-against-the-platform.md` covers the conformance CLI, the local dev stack and E-03, with a troubleshooting table; parts that have not merged are marked pending with their task ID.
-- [ ] The guide's link and private-content checks pass.
-- [ ] `bun run check` passes.
+- [x] The README no longer contradicts `main` (conformance checks, task statuses, versions, environment variables); every fix is listed in the PR.
+- [x] `implementation-plan.md` covers every phase from setup to the full e2e run, and each phase names its conformance checks and the command that runs them.
+- [x] `AGENT_BRIEF.md` can be pasted into an agent as is and names only files in the platform checkout and the engine repository.
+- [x] `testing-against-the-platform.md` covers the conformance CLI, the local dev stack and E-03, with a troubleshooting table; parts that have not merged are marked pending with their task ID.
+- [x] The guide's link and private-content checks pass.
+- [x] `bun run check` passes.
 - [ ] **Status** line above set to `done (#<PR>)`.
 
 ## Risks and open points
 
 - The suites and the `--engine-cmd` mode are moving while this is written; the follow-up PR reconciles the kit with what merged.
-- Gaps where the contracts are too vague for an agent to implement without guessing are reported to a human as questions, not decided here.
+- Gaps where the contracts are too vague for an agent to implement without guessing are reported to a human as questions, not decided here. The first PR lists them as integration points 9 to 13 in the guide's README.
+- C-08, C-09 and C-10 were in flight when the first PR merged; the kit follows their briefs and marks their parts pending. The follow-up PR (`Refs: E-04`) reconciles the kit with what they merge.
