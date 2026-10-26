@@ -31,7 +31,9 @@ export const TolerantProblemDetails = z.object(shape);
 /**
  * Registration failures. `invalid-link-code` covers a bad, expired and used code alike, so the dashboard is no oracle.
  * `engine-exists` (409): the engine ID derived from the key belongs to another organisation. `engine-suspended` (403):
- * the engine is suspended or owner-revoked.
+ * the engine is suspended or owner-revoked. `not-entitled` (403): the account's plan includes no engines; final, like
+ * `engine-limit`. `rate-limited` (429): too many attempts from this address; the only retryable one. Codes are only
+ * ever added, so an engine handles one it does not know like a 5xx.
  */
 export const REGISTRATION_ERROR_CODE = Object.freeze({
     invalidLinkCode: 'invalid-link-code',
@@ -39,6 +41,8 @@ export const REGISTRATION_ERROR_CODE = Object.freeze({
     engineSuspended: 'engine-suspended',
     engineLimit: 'engine-limit',
     badSignature: 'bad-signature',
+    notEntitled: 'not-entitled',
+    rateLimited: 'rate-limited',
 } as const);
 
 export type RegistrationErrorCode = (typeof REGISTRATION_ERROR_CODE)[keyof typeof REGISTRATION_ERROR_CODE];

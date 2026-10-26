@@ -1,4 +1,4 @@
-import vectors from '@ptbk/ui/fingerprint-vectors.json';
+import vectors from '@ptbk/protocol/fingerprint-vectors.json';
 import { EngineId } from '@ptbk/protocol';
 import { screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';

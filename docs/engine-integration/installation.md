@@ -197,7 +197,7 @@ In this order, as each step completes or fails, in the log stream and on the ter
 | Owner        | "No owner yet. Run `promptbook-engine setup-link` on this host to get the setup link." (no link) | none                                                                                           |
 | Ready        | "Ready: https://<hostname>/"                                                                     | none                                                                                           |
 
-The fingerprint is the dashboard's `ptbk-fingerprint-v1` code of the engine ID, printed as five groups of four characters. Until its derivation is published in `@ptbk/protocol` (open point below), the engine may omit it.
+The fingerprint is `deriveEngineFingerprint(engineId).formatted` from `@ptbk/protocol`, five groups of four characters, the same code the dashboard and the engine UI show ([identity-and-registration.md](identity-and-registration.md#engine-fingerprint)).
 
 Registration problems, by `code` ([identity-and-registration.md](identity-and-registration.md#errors-and-re-registration)):
 
@@ -243,7 +243,7 @@ The owner's first passkey is registered with a one-time setup secret (spec, Pair
 6. After the first passkey is registered, mark setup complete, reject every setup secret, and audit the event with the client IP from the tunnel.
 7. Rate-limit `/setup` per client IP and answer a wrong and an expired secret the same way.
 
-The setup page is open engine code served by the gateway ([gateway.md](gateway.md)), under `ENGINE_UI_CSP`, with no inline script or style. Portable MIT reference pages and a stylesheet with the platform's design tokens are published for it to copy (see [Open points](#open-points), point 6). It should show the engine ID, the address and the fingerprint before the passkey prompt, so a careful owner can compare them with the terminal. Its states:
+The setup page is open engine code served by the gateway ([gateway.md](gateway.md)), under `ENGINE_UI_CSP`, with no inline script or style. Portable MIT reference pages and a stylesheet with the platform's design tokens are published for it to copy (see [Open points](#open-points), point 4). It should show the engine ID, the address and the fingerprint before the passkey prompt, so a careful owner can compare them with the terminal. Its states:
 
 | State                            | Says                                                                                                |
 | -------------------------------- | --------------------------------------------------------------------------------------------------- |
@@ -321,10 +321,8 @@ Things the new engine does differently, so operators are not surprised: no admin
 
 ## Open points
 
-1. **Fingerprint derivation.** The dashboard and the engine UI show a fingerprint derived from the engine ID (`ptbk-fingerprint-v1`). Its derivation and vectors are moving into `@ptbk/protocol` so the terminal and the setup page can show the same code; until then the engine may omit it.
-2. **Registration codes.** `not-entitled` and `rate-limited` are answered by the dashboard but not yet in `REGISTRATION_ERROR_CODE` ([README.md](README.md#open-points), point 4); they are being added.
-3. **The first UI bundle inside the engine release.** How the engine's release carries the UI bundle and which signing identity covers it ([The first UI bundle](#the-first-ui-bundle)); for the engine team and the release key holders.
-4. **Installer location and image name.** The installer URL, the image name and its registry are the engine team's choice; the dashboard's install command is configuration and follows them.
-5. **Outbound defaults of today's engine.** The predecessor reports errors and traces to a default error-reporting service and syncs default agents with a central server every few minutes. In the new engine both must be off unless the owner turns them on, and listed on the Security page ([Networking](#networking)); for the engine team.
-6. **Setup and sign-in pages.** A small MIT stylesheet with the platform's design tokens and portable, CSP-safe reference pages for `/setup` and sign-in will be published with the contracts; the engine team may copy them and owns what it ships.
-7. **Reference implementation.** The mock engine does not yet implement the setup link, `/setup`, `owner --reset`, `connect` or `status`; it signs in with a development-only member picker. Until it does, this guide's onboarding sections have no reference code.
+1. **The first UI bundle inside the engine release.** How the engine's release carries the UI bundle and which signing identity covers it ([The first UI bundle](#the-first-ui-bundle)); for the engine team and the release key holders.
+2. **Installer location and image name.** The installer URL, the image name and its registry are the engine team's choice; the dashboard's install command is configuration and follows them.
+3. **Outbound defaults of today's engine.** The predecessor reports errors and traces to a default error-reporting service and syncs default agents with a central server every few minutes. In the new engine both must be off unless the owner turns them on, and listed on the Security page ([Networking](#networking)); for the engine team.
+4. **Setup and sign-in pages.** A small MIT stylesheet with the platform's design tokens and portable, CSP-safe reference pages for `/setup` and sign-in will be published with the contracts; the engine team may copy them and owns what it ships.
+5. **Reference implementation.** The mock engine does not yet implement the setup link, `/setup`, `owner --reset`, `connect` or `status`; it signs in with a development-only member picker. Until it does, this guide's onboarding sections have no reference code.

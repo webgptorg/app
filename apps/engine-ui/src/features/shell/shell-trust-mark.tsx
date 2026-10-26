@@ -1,3 +1,4 @@
+import { deriveEngineFingerprint } from '@ptbk/protocol';
 import { TrustMark } from '@ptbk/ui';
 import { useSuspenseQuery } from '@tanstack/react-query';
 
@@ -29,7 +30,12 @@ export function ShellTrustMark({
             onClick={onNavigate}
         >
             <span className="sr-only">{m.trust_mark_open()}</span>
-            <TrustMark engineId={engine.engineId} state="verified" size="sm" showCode={showCode} />
+            <TrustMark
+                fingerprint={engine.engineId === null ? null : deriveEngineFingerprint(engine.engineId)}
+                state="verified"
+                size="sm"
+                showCode={showCode}
+            />
         </Link>
     );
 }

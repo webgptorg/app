@@ -1,6 +1,6 @@
 import { OWNER_PERMISSIONS } from '@ptbk/engine-api';
 import { setMedia } from '@ptbk/ui';
-import vectors from '@ptbk/ui/fingerprint-vectors.json';
+import vectors from '@ptbk/protocol/fingerprint-vectors.json';
 import { screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 

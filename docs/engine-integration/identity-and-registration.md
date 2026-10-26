@@ -25,6 +25,15 @@ The spec also asks that only the tunnel and TLS process can read the engine key 
 - `engineIdFromDefaultHostname(hostname, engineDomain)` tells a default hostname (`default`), a hostname outside the engine domain (`custom`) and anything else inside the engine domain (`invalid`) apart.
 - The engine should show its engine ID and default hostname at setup, so the owner can compare them with the dashboard.
 
+## Engine fingerprint
+
+The dashboard and the engine UI show each engine's fingerprint: a 20-character code and a 5×5 pattern derived from the engine ID, which people compare across screens like Signal safety numbers. Onboarding asks the owner to compare the code in the engine's terminal and on its setup page with the dashboard's ([installation.md](installation.md#first-start-output)), so the engine derives it with the same function:
+
+- `deriveEngineFingerprint(engineId)` returns `{ code, formatted, patternBits, cells }`. `formatted` is the code in five groups of four (`XXXX-XXXX-XXXX-XXXX-XXXX`), the form to print and show. `cells` is the pattern, 5 rows of 5 booleans, for a page that draws it.
+- Derivation `FINGERPRINT_DERIVATION` (`ptbk-fingerprint-v1`): SHA-256 over the UTF-8 prefix `ptbk-fingerprint-v1` immediately followed by the engine ID, with no separator and no normalisation. The code is the digest's first 100 bits in Crockford base32 (`0123456789ABCDEFGHJKMNPQRSTVWXYZ`); the next 15 bits fill columns 0 to 2 of the grid row by row, mirrored into columns 4 and 3.
+- `fingerprint-vectors.json` (`@ptbk/protocol/fingerprint-vectors.json`) pins it; an implementation in another language must reproduce every vector. A changed derivation would be `ptbk-fingerprint-v2` next to v1, never an edit.
+- It is a recognition aid. The security property stays the engine ID in the hostname, which the browser checks.
+
 ## Registration
 
 ```mermaid
@@ -57,15 +66,17 @@ The engine must:
 
 Errors are RFC 9457 problem+json (`ProblemDetails`, read with `TolerantProblemDetails`) with a `code` from `REGISTRATION_ERROR_CODE`:
 
-| `code`              | Status | Meaning                                                                    | What the engine does              |
-| ------------------- | ------ | -------------------------------------------------------------------------- | --------------------------------- |
-| `invalid-link-code` | 401    | The code is unknown, expired or used. One code for all three, on purpose.  | Ask the owner for a new link code |
-| `bad-signature`     | 401    | The signature does not verify                                              | A bug: report it, do not retry    |
-| `engine-exists`     | 409    | The key's engine ID belongs to another organisation; the code stays unused | Tell the owner; do not retry      |
-| `engine-suspended`  | 403    | The engine is suspended or revoked by its owner                            | Tell the owner; do not retry      |
-| `engine-limit`      | 403    | The account has no room for another engine                                 | Tell the owner                    |
+| `code`              | Status | Meaning                                                                    | What the engine does                                            |
+| ------------------- | ------ | -------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| `invalid-link-code` | 401    | The code is unknown, expired or used. One code for all three, on purpose.  | Ask the owner for a new link code                               |
+| `bad-signature`     | 401    | The signature does not verify                                              | A bug: report it, do not retry                                  |
+| `engine-exists`     | 409    | The key's engine ID belongs to another organisation; the code stays unused | Tell the owner; do not retry                                    |
+| `engine-suspended`  | 403    | The engine is suspended or revoked by its owner                            | Tell the owner; do not retry                                    |
+| `engine-limit`      | 403    | The account has no room for another engine                                 | Tell the owner                                                  |
+| `not-entitled`      | 403    | The account's plan does not include engines; the code stays unused         | Tell the owner, like `engine-limit`                             |
+| `rate-limited`      | 429    | Too many attempts from this address (20 per hour)                          | Retry later with backoff while the link code can still be valid |
 
-The dashboard (D-03) also answers 403 `not-entitled` (the account's plan does not include engines; the code stays unused), 429 `rate-limited` (20 registration attempts per hour and address), 400 `invalid-request` (the body fails the strict schema) and 413 `too-large` (over `REGISTER_REQUEST_MAX_BYTES`). `not-entitled` and `rate-limited` are not in `REGISTRATION_ERROR_CODE` yet (task C-11, [open points](README.md#open-points)); treat `not-entitled` like `engine-limit` and `rate-limited` as retryable later.
+The dashboard (D-03) also answers 400 `invalid-request` (the body fails the strict schema) and 413 `too-large` (over `REGISTER_REQUEST_MAX_BYTES`), which are bugs on the engine's side. Codes are only ever added to `REGISTRATION_ERROR_CODE`: handle a code you do not know like a 5xx.
 
 Whatever the answer, the engine must (to confirm in the engine-team review, [open points](README.md#open-points)):
 

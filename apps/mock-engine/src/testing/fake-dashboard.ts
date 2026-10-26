@@ -88,6 +88,8 @@ const PROBLEM_STATUS: Readonly<Record<RegistrationErrorCode, number>> = {
     'engine-exists': 409,
     'engine-suspended': 403,
     'engine-limit': 402,
+    'not-entitled': 403,
+    'rate-limited': 429,
 };
 
 function problem(status: number, code: string, extra: Record<string, unknown> = {}): RegisterAnswer {

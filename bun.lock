@@ -88,6 +88,7 @@
         "@lezer/python": "1.1.19",
         "@lezer/yaml": "1.0.4",
         "@ptbk/engine-api": "workspace:*",
+        "@ptbk/protocol": "workspace:*",
         "@ptbk/ui": "workspace:*",
         "@tanstack/react-query": "catalog:",
         "@tanstack/react-router": "catalog:",
@@ -105,7 +106,6 @@
         "@inlang/paraglide-js": "catalog:",
         "@inlang/plugin-message-format": "catalog:",
         "@playwright/test": "catalog:",
-        "@ptbk/protocol": "workspace:*",
         "@ptbk/release-tools": "workspace:*",
         "@tailwindcss/vite": "catalog:",
         "@tanstack/react-query-devtools": "5.104.2",
@@ -203,6 +203,7 @@
       "name": "@ptbk/protocol",
       "dependencies": {
         "@noble/curves": "catalog:",
+        "@noble/hashes": "catalog:",
         "zod": "catalog:",
       },
       "devDependencies": {
@@ -225,7 +226,6 @@
     "packages/ui": {
       "name": "@ptbk/ui",
       "dependencies": {
-        "@noble/hashes": "catalog:",
         "@tanstack/react-form": "catalog:",
         "@tanstack/react-table": "catalog:",
         "@tanstack/react-virtual": "catalog:",

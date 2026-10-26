@@ -36,6 +36,8 @@ describe('ProblemDetails', () => {
             'engine-suspended',
             'engine-limit',
             'bad-signature',
+            'not-entitled',
+            'rate-limited',
         ]);
         for (const code of Object.values(REGISTRATION_ERROR_CODE)) {
             expect(ProblemDetails.safeParse({ ...problem, code }).success).toBe(true);
@@ -46,6 +48,14 @@ describe('ProblemDetails', () => {
 describe('TolerantProblemDetails', () => {
     it('strips unknown members', () => {
         expect(TolerantProblemDetails.parse({ ...problem, retryAfter: 30 })).toEqual(problem);
+    });
+
+    it.each([
+        [403, REGISTRATION_ERROR_CODE.notEntitled],
+        [429, REGISTRATION_ERROR_CODE.rateLimited],
+        [409, 'a-code-added-later'],
+    ])('reads a %i %s problem as sent', (status, code) => {
+        expect(TolerantProblemDetails.parse({ ...problem, status, code })).toEqual({ ...problem, status, code });
     });
 
     it('still validates known members', () => {

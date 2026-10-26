@@ -9,6 +9,7 @@ import {
     TrustMark,
     useLocale,
 } from '@ptbk/ui';
+import { deriveEngineFingerprint } from '@ptbk/protocol';
 import type { DataTableColumnDef, Formatters } from '@ptbk/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Plus, Server } from 'lucide-react';
@@ -74,7 +75,7 @@ function engineColumns(formatters: Formatters, now: Date): DataTableColumnDef<En
             header: m.engines_column_fingerprint(),
             cell: ({ row }) => (
                 <TrustMark
-                    engineId={row.original.engineId}
+                    fingerprint={deriveEngineFingerprint(row.original.engineId)}
                     state="verified"
                     size="sm"
                     label={m.engines_fingerprint_label({ shortId: shortEngineId(row.original.engineId) })}

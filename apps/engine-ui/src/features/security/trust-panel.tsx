@@ -1,4 +1,5 @@
 import type { ReadSecurityOverview } from '@ptbk/engine-api';
+import { deriveEngineFingerprint } from '@ptbk/protocol';
 import { CodeText, Skeleton, TrustMark } from '@ptbk/ui';
 import { useSuspenseQuery } from '@tanstack/react-query';
 import type { UseQueryResult } from '@tanstack/react-query';
@@ -49,7 +50,7 @@ export function TrustPanel({ overview }: { readonly overview: UseQueryResult<Rea
             className="flex flex-col gap-6 rounded-(--card-radius) border border-(--card-border) bg-(--card-bg) p-6 shadow-(--card-shadow) sm:flex-row sm:items-start"
         >
             <TrustMark
-                engineId={engine.engineId}
+                fingerprint={engine.engineId === null ? null : deriveEngineFingerprint(engine.engineId)}
                 state={verified ? 'verified' : 'verifying'}
                 size="lg"
                 {...(label === undefined ? {} : { label })}

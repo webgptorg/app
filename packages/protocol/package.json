@@ -5,7 +5,8 @@
   "type": "module",
   "description": "Versioned wire contracts shared by the engine, relay and dashboard (MIT; moves to the public repo, ADR 0002)",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./fingerprint-vectors.json": "./src/fingerprint-vectors.json"
   },
   "sideEffects": false,
   "scripts": {
@@ -15,6 +16,7 @@
   },
   "dependencies": {
     "@noble/curves": "catalog:",
+    "@noble/hashes": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {

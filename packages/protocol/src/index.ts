@@ -16,6 +16,8 @@ export type { KeyOptions, Signer } from './ed25519';
 export { expectedCnameTarget } from './custom-hostname';
 export { defaultHostname, deriveEngineId, engineIdFromDefaultHostname } from './engine-id';
 export type { DefaultHostnameMatch } from './engine-id';
+export { FINGERPRINT_DERIVATION, FINGERPRINT_GRID_SIZE, deriveEngineFingerprint } from './fingerprint';
+export type { EngineFingerprint } from './fingerprint';
 export {
     CpuLoad,
     HEARTBEAT_MAX_BODY_BYTES,

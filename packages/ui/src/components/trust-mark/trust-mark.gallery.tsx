@@ -2,18 +2,17 @@ import { useState } from 'react';
 
 import type { GalleryEntry } from '../../gallery-entry';
 import { Button } from '../button/button';
+import { SAMPLE_FINGERPRINTS } from './sample-fingerprints';
 import { TrustMark } from './trust-mark';
 import type { TrustMarkSize, TrustMarkState } from './trust-mark';
 
-const SAMPLE_ENGINE_ID = 'k3v6xq2mfz4pd7h5wn2rbtcayu';
-const OTHER_ENGINE_ID = 'q4ndy7ejw3zkp6ftr2hcm5sxlg';
 const SIZES: readonly TrustMarkSize[] = ['sm', 'md', 'lg'];
 
 function ReplaySeal() {
     const [state, setState] = useState<TrustMarkState>('verified');
     return (
         <div className="flex flex-wrap items-center gap-4">
-            <TrustMark engineId={SAMPLE_ENGINE_ID} state={state} size="lg" />
+            <TrustMark fingerprint={SAMPLE_FINGERPRINTS.lead} state={state} size="lg" />
             <Button
                 onClick={() => {
                     setState('verifying');
@@ -35,12 +34,12 @@ export const trustMarkGallery: GalleryEntry = {
         <div className="flex flex-col gap-4">
             {SIZES.map((size) => (
                 <div key={size} className="flex flex-wrap items-center gap-6">
-                    <TrustMark engineId={SAMPLE_ENGINE_ID} state="verified" size={size} />
-                    <TrustMark engineId={OTHER_ENGINE_ID} state="verifying" size={size} />
-                    <TrustMark engineId={null} state="verified" size={size} />
+                    <TrustMark fingerprint={SAMPLE_FINGERPRINTS.lead} state="verified" size={size} />
+                    <TrustMark fingerprint={SAMPLE_FINGERPRINTS.lab} state="verifying" size={size} />
+                    <TrustMark fingerprint={null} state="verified" size={size} />
                 </div>
             ))}
-            <TrustMark engineId={SAMPLE_ENGINE_ID} state="verified" showCode={false} />
+            <TrustMark fingerprint={SAMPLE_FINGERPRINTS.lead} state="verified" showCode={false} />
             <ReplaySeal />
         </div>
     ),

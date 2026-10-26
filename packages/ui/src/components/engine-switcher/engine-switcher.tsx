@@ -8,13 +8,15 @@ import { Badge } from '../badge/badge';
 import type { BadgeTone } from '../badge/badge';
 import { Menu } from '../menu/menu';
 import type { MenuEntry } from '../menu/menu';
+import type { TrustMarkFingerprint } from '../trust-mark/fingerprint';
 import { TrustMark } from '../trust-mark/trust-mark';
 
 export type EngineStatus = 'online' | 'offline' | 'unknown';
 
 export interface CurrentEngine {
     readonly name: string;
-    readonly engineId: string | null;
+    /** The engine's `TrustMark` fingerprint, `null` while its engine ID is unknown. */
+    readonly fingerprint: TrustMarkFingerprint | null;
     readonly hostname: string;
 }
 
@@ -56,7 +58,7 @@ function EngineIdentity({ engine, status }: { readonly engine: CurrentEngine; re
     return (
         <span className="flex min-w-0 flex-1 items-center gap-2">
             <span aria-hidden="true" className="inline-flex shrink-0">
-                <TrustMark engineId={engine.engineId} state="verified" size="sm" showCode={false} />
+                <TrustMark fingerprint={engine.fingerprint} state="verified" size="sm" showCode={false} />
             </span>
             <span className="flex min-w-0 flex-1 flex-col">
                 <span className="truncate font-medium text-(--engine-switcher-text)">{engine.name}</span>
@@ -133,7 +135,7 @@ export function EngineSwitcher({
                 >
                     {compact ? (
                         <span aria-hidden="true" className="inline-flex">
-                            <TrustMark engineId={current.engineId} state="verified" size="sm" showCode={false} />
+                            <TrustMark fingerprint={current.fingerprint} state="verified" size="sm" showCode={false} />
                         </span>
                     ) : (
                         <>

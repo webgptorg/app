@@ -114,14 +114,8 @@ export type { ServerFieldError } from './forms/server-errors';
 export { SensitiveInput, useSensitiveInput } from './forms/sensitive-input';
 export type { SensitiveInputHandle, SensitiveInputProps } from './forms/sensitive-input';
 
-export {
-    deriveEngineFingerprint,
-    FINGERPRINT_COLOURS,
-    FINGERPRINT_DERIVATION,
-    FINGERPRINT_GRID_SIZE,
-    fingerprintColour,
-} from './components/trust-mark/fingerprint';
-export type { EngineFingerprint } from './components/trust-mark/fingerprint';
+export { FINGERPRINT_COLOURS, FINGERPRINT_GRID_SIZE, fingerprintColour } from './components/trust-mark/fingerprint';
+export type { TrustMarkFingerprint } from './components/trust-mark/fingerprint';
 export { TrustMark } from './components/trust-mark/trust-mark';
 export type { TrustMarkProps, TrustMarkSize, TrustMarkState } from './components/trust-mark/trust-mark';
 
