@@ -22,6 +22,7 @@ const ACTION_LABELS: Readonly<Record<AuditAction, () => string>> = {
     'agent.source.update': m.audit_action_agent_source_update,
     'agent.start': m.audit_action_agent_start,
     'agent.stop': m.audit_action_agent_stop,
+    'agent.test-chat.start': m.audit_action_agent_test_chat_start,
     'folder.create': m.audit_action_folder_create,
     'folder.rename': m.audit_action_folder_rename,
     'folder.delete': m.audit_action_folder_delete,

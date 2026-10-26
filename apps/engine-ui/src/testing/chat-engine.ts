@@ -1,4 +1,11 @@
-import type { EngineApiClient, EngineApiStreamItem, Message, Permission, ReplyStreamEvent } from '@ptbk/engine-api';
+import type {
+    EngineApiClient,
+    EngineApiStreamItem,
+    Message,
+    Permission,
+    ReplyStreamEvent,
+    TestChatEvent,
+} from '@ptbk/engine-api';
 import { createInMemoryEngine } from '@ptbk/engine-api/in-memory';
 import type { InMemoryEngineController, InMemorySeed, InMemorySeedChat, ReplyScript } from '@ptbk/engine-api/in-memory';
 import { vi } from 'vitest';
@@ -102,28 +109,31 @@ export function createChatEngine(options: ChatEngineOptions = {}): ChatEngine {
     return { client: { ...engine.client, chats }, controller: engine.controller, spies };
 }
 
-type StreamItem = EngineApiStreamItem<ReplyStreamEvent>;
+/** Both reply streams number their deltas with `seq`, which is also the SSE id. */
+type StreamEvent = ReplyStreamEvent | TestChatEvent;
 
 /**
  * A reply stream the test drives by hand: each `push` delivers one event, `end` closes it without a final event (a
  * dropped connection), and the consumer's abort ends it too, as the fetch client's stream would.
  */
-export interface ControlledStream {
-    readonly iterable: AsyncIterable<StreamItem>;
-    push(event: ReplyStreamEvent): void;
+export interface ControlledStream<Event extends StreamEvent = ReplyStreamEvent> {
+    readonly iterable: AsyncIterable<EngineApiStreamItem<Event>>;
+    push(event: Event): void;
     end(): void;
     readonly aborted: () => boolean;
 }
 
-export function createControlledStream(signal: AbortSignal): ControlledStream {
-    const queue: (StreamItem | null)[] = [];
+export function createControlledStream<Event extends StreamEvent = ReplyStreamEvent>(
+    signal: AbortSignal,
+): ControlledStream<Event> {
+    const queue: (EngineApiStreamItem<Event> | null)[] = [];
     let wake: (() => void) | undefined;
     const notify = () => {
         wake?.();
         wake = undefined;
     };
     signal.addEventListener('abort', notify, { once: true });
-    const iterable: AsyncIterable<StreamItem> = {
+    const iterable: AsyncIterable<EngineApiStreamItem<Event>> = {
         async *[Symbol.asyncIterator]() {
             for (;;) {
                 if (signal.aborted) return;
