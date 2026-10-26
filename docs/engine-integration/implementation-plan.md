@@ -6,7 +6,7 @@ How to read a phase:
 
 - **Read:** the sections that define the phase. Read them fully before writing code.
 - **Build:** what must exist at the end, with links to the normative text. Contract exports are named, never copied.
-- **Prove:** the checks that must pass and the exact commands. A check marked _pending C-0x_ belongs to a conformance suite that has not merged yet; until it does, the listed fallback is the proof.
+- **Prove:** the checks that must pass and the exact commands. Every suite named here exists; the only part still pending is the full end-to-end run (task E-03) in phase 9.
 - **Reference:** the mock engine files that do the same thing ([mock-engine.md](mock-engine.md)). Port the logic, never the dev-only parts.
 - **Pitfalls:** mistakes we made or expect.
 
@@ -67,12 +67,13 @@ The engine is `apps/agents-server` in `webgptorg/promptbook`: a Next.js app rout
 
 ## Phase 1: identity and key storage
 
-**Read:** [identity-and-registration.md](identity-and-registration.md#engine-key-handling) (Engine key handling, Engine ID and hostname), [cryptography.md](cryptography.md) (Signing input, Randomness and secrets).
+**Read:** [identity-and-registration.md](identity-and-registration.md#engine-key-handling) (Engine key handling, Engine ID and hostname, Engine fingerprint), [cryptography.md](cryptography.md) (Signing input, Randomness and secrets).
 
 **Build:**
 
 - Load or create the engine key in `PTBK_DATA_DIR` exactly as the seven numbered rules say: 0700 directory, `O_CREAT | O_EXCL` and 0600, `fsync` of file then directory, ownership, mode and symlink checks, non-extractable at runtime. Use `generateEd25519KeyPair`, `importEd25519PrivateKey` and `createWebCryptoSigner`.
-- `deriveEngineId` and `defaultHostname`; the engine domain is configuration (`PTBK_ENGINE_DOMAIN` in the mock engine).
+- `deriveEngineId` and `defaultHostname`; the engine domain is configuration (`PTBK_ENGINE_DOMAIN`, spec Interface 6).
+- The engine fingerprint with `deriveEngineFingerprint(engineId)` ([identity-and-registration.md](identity-and-registration.md#engine-fingerprint)): its `formatted` code is what the engine prints at first start and shows on its setup page, and what the dashboard shows, so the owner can compare them. Check it against [`fingerprint-vectors.json`](../../packages/protocol/src/fingerprint-vectors.json).
 - A command that prints `{ engineId, enginePublicKey, hostname }` as JSON, like the mock engine's `identity` command. Our test stacks call it to write the relay's static registry, so keep that exact shape.
 
 **Prove:**
@@ -88,20 +89,21 @@ The engine is `apps/agents-server` in `webgptorg/promptbook`: a Next.js app rout
 
 ## Phase 2: registration
 
-**Read:** [identity-and-registration.md](identity-and-registration.md#registration) (Registration, Errors and re-registration, Configuration), the [registration open points](README.md#open-points) (item 4).
+**Read:** [identity-and-registration.md](identity-and-registration.md#registration) (Registration, Errors and re-registration, Configuration, [Launch contract](identity-and-registration.md#launch-contract)), [installation.md](installation.md#first-start-output) (First-start output, Operator commands), the [registration open points](README.md#open-points) (item 4).
 
 **Build:**
 
 - `POST REGISTER_PATH` to the dashboard API with a body from `signRegistration`, through `HTTPS_PROXY` and `NO_PROXY`, within `REGISTER_REQUEST_MAX_BYTES`.
 - Read the answer with `TolerantRegisterEngineResponse` within `REGISTER_RESPONSE_MAX_BYTES`, then `checkRegistrationResponse`; map every problem code in the errors table to the behaviour it names.
 - Store the registration durably in `PTBK_DATA_DIR`; on every start, check the stored one again against the key and the engine domain; make no network call when one is stored.
-- Take the link code once from configuration, never store or log it, and drop it after the request. The mock engine reads `PTBK_DASHBOARD_URL` and `PTBK_LINK_CODE` and has a `register --link <code>` command that prints a JSON outcome; our dev stack and e2e use that command, so offering the same command and output saves you a harness change (see [testing-against-the-platform.md](testing-against-the-platform.md#engine-settings-the-harness-uses)).
+- Report each first-start step the way [installation.md](installation.md#first-start-output) requires (identity with the engine ID, default hostname and fingerprint code; registration; relays; certificate; UI bundle; owner; ready), map every registration problem `code` to its sentence and next step, and never print what that section forbids. The platform's onboarding depends on that output. The [operator commands](installation.md#operator-commands) (`connect --link`, `setup-link`, `status`, `owner --reset`, `reset --identity`) come with it; their names are suggestions, their behaviour is normative.
+- Take the link code once from configuration, never store or log it, and drop it after the request. The mock engine reads `PTBK_DASHBOARD_URL` and `PTBK_LINK_CODE` and has `connect --link <code>`, the operator command from installation.md, plus `register --link <code>`, the same as `connect --json`, which prints one JSON outcome. Our dev stack and e2e call `register`, so offering the same output saves you a harness change (see [testing-against-the-platform.md](testing-against-the-platform.md#engine-settings-the-harness-uses)).
 
 **Prove:**
 
 - Golden vector: the `registration` case in [`signed-message-vectors.json`](../../packages/protocol/src/signed-message-vectors.json). Rebuild the signing input from its fields and compare the bytes; verify the signature with `verifyEd25519`.
 - Unit tests for each error code, for a response with an engine ID the key does not derive and a hostname outside the engine domain (both refused, nothing stored), and for a body over the size cap.
-- the conformance `registration` suite, which starts the engine with `--engine-cmd` and plays the dashboard: `registration.request.signature-verifies`, `registration.identity.engine-id-derived`, `registration.link-code.used-once`, `registration.secrets.never-logged`, `registration.response.unknown-fields-ignored`, `registration.response.invalid-refused` and one `registration.errors.*` check per problem code. The errors checks expect no tight retry loop (one attempt for final codes, at most three in 10 s for `rate-limited` and 5xx), the problem `code` named in the output, and nothing stored.
+- The conformance `registration` suite, which starts the engine with `--engine-cmd` and plays the dashboard: `registration.request.signature-verifies`, `registration.identity.engine-id-derived`, `registration.link-code.used-once`, `registration.secrets.never-logged`, `registration.response.unknown-fields-ignored`, `registration.response.invalid-refused` and one `registration.errors.*` check per problem code (`invalid-link-code`, `engine-exists`, `engine-suspended`, `not-entitled`, `rate-limited`, `unavailable`). The errors checks expect no tight retry loop (one attempt for final codes, at most three in 10 s for `rate-limited` and 5xx), the problem `code` named in the output, and nothing stored.
 
   ```sh
   node "$PLATFORM_DIR/packages/conformance/dist/ptbk-conformance.js" \
@@ -109,7 +111,7 @@ The engine is `apps/agents-server` in `webgptorg/promptbook`: a Next.js app rout
     --suite registration --report junit --out registration-report.xml
   ```
 
-  Until it merges: register against the local stack's dashboard with a link code ([testing-against-the-platform.md](testing-against-the-platform.md#b-the-local-dev-stack)).
+  The local stack's dashboard then shows the same registration in a browser ([testing-against-the-platform.md](testing-against-the-platform.md#b-the-local-dev-stack)).
 
 - Checklist: ENG-12, ENG-13, ENG-14, ENG-16.
 
@@ -128,7 +130,7 @@ The engine is `apps/agents-server` in `webgptorg/promptbook`: a Next.js app rout
 - Golden vector: the `heartbeat` case in [`signed-message-vectors.json`](../../packages/protocol/src/signed-message-vectors.json) (body bytes, digest, signing input, header).
 - Unit tests: `seq` after a crash between persisting and sending is still higher; a `stale-timestamp` answer with `serverTime` records the skew; `replayed-seq` moves `seq` forward; failures are not retried or backfilled.
 - `engine-api.security.heartbeat-body` once the API exists (phase 7).
-- the conformance `heartbeat` suite (acting as the dashboard): `heartbeat.signature.verifies` (the first beat within 30 s of start), `heartbeat.body.strict`, `heartbeat.seq.increasing-across-restarts`, `heartbeat.cadence.interval` (the real 60 s; it skips when `--heartbeat-interval-s` overrides it, so run it once without), `heartbeat.errors.keeps-sending` and `heartbeat.stale-ts.skew-shown`. Same command as phase 2 with `--suite heartbeat`. Until it merges: the engine shows online in the local stack's dashboard.
+- The conformance `heartbeat` suite (acting as the dashboard): `heartbeat.signature.verifies` (the first beat within 30 s of start), `heartbeat.body.strict`, `heartbeat.seq.increasing-across-restarts`, `heartbeat.cadence.interval` (the real 60 s; it skips when `--heartbeat-interval-s` overrides it, so run it once without), `heartbeat.errors.keeps-sending` and `heartbeat.stale-ts.skew-shown`. Same command as phase 2 with `--suite heartbeat`; `heartbeat.stale-ts.skew-shown` reads the security panel, so it needs `--engine-session-cmd` and `--engine-ca-file` (phase 9's command) and the API from phase 7.
 - Checklist: ENG-40 to ENG-43.
 
 **Reference:** [build-heartbeat.ts](../../apps/mock-engine/src/domain/heartbeat/build-heartbeat.ts), [heartbeat-loop.ts](../../apps/mock-engine/src/domain/heartbeat/heartbeat-loop.ts), [fs-seq-store.ts](../../apps/mock-engine/src/adapters/fs-seq-store.ts), [os-system-stats.ts](../../apps/mock-engine/src/adapters/os-system-stats.ts).
@@ -139,13 +141,13 @@ The engine is `apps/agents-server` in `webgptorg/promptbook`: a Next.js app rout
 
 **Read:** [tunnel-client.md](tunnel-client.md) from Dialling to Liveness, the tunnel [open points](README.md#open-points) (item 1).
 
-**Build:** one independent link per relay from the registration, WSS on `TUNNEL_PATH` with `TUNNEL_SUBPROTOCOL`, relay certificate verified for the relay hostname (also through a `CONNECT` proxy), the handshake with `signTunnelAuth` and `checkTunnelReady`, the close-code policy, frames with `encodeFrame` and `decodeFrame`, flow control with `createSendWindow` and `createReceiveWindow`, pings every `PING_INTERVAL_MS`, reconnect with full-jitter backoff. Each stream becomes a duplex the TLS server reads from in phase 5. The tunnel suite runs its fake relays on loopback ports, which the registration's bare relay hostnames cannot express, so it sets `PTBK_RELAYS` as an override of the registration's relays (pending C-09, which fixes the exact rule).
+**Build:** one independent link per relay from the registration, WSS on `TUNNEL_PATH` with `TUNNEL_SUBPROTOCOL`, relay certificate verified for the relay hostname (also through a `CONNECT` proxy), the handshake with `signTunnelAuth` and `checkTunnelReady`, the close-code policy, frames with `encodeFrame` and `decodeFrame`, flow control with `createSendWindow` and `createReceiveWindow`, pings every `PING_INTERVAL_MS`, reconnect with full-jitter backoff. Each stream becomes a duplex the TLS server reads from in phase 5. The tunnel suite runs its fake relays on loopback ports, which the registration's bare relay hostnames cannot express, so it sets `PTBK_RELAYS`: when it is set, the engine dials exactly those relays instead of the registration's ([launch contract](identity-and-registration.md#launch-contract)).
 
 **Prove:**
 
 - Golden vectors: [`tunnel/vectors.json`](../../packages/protocol/src/tunnel/vectors.json). The signed handshake reproduces part by part; every `auth` that must not verify fails `verifyTunnelAuth`; every `ready` that must fail `checkTunnelReady` makes your client close with `PROTOCOL_ERROR`; every frame decodes to the recorded `frame`, `ignored` or `invalid`.
 - Unit tests: a challenge for another relay is never signed (`wrong-relay`); `REPLACED` stops that relay's link; `SHUTTING_DOWN` reconnects soon; `DATA` beyond the granted credit closes the stream with `FLOW_CONTROL`; a stream ID reused or never opened closes the tunnel.
-- _Pending C-09:_ the conformance `tunnel` suite, acting as a relay: `tunnel.negotiation.downgrade-refused`, `tunnel.auth.list-encoding`, `tunnel.auth.version-signed` and the checks C-09 adds. Until it merges, they report `skip` and the vectors are the proof. The tunnel also gets exercised end to end in phase 7.
+- The conformance `tunnel` suite, acting as every relay the engine dials: `tunnel.dial.*` (WebSocket upgrade, every relay, relay certificate), `tunnel.auth.*` (signature, fresh nonce, `version`, list encoding, wrong relay refused), `tunnel.negotiation.downgrade-refused`, `tunnel.handshake.invalid-message-refused`, `tunnel.stream.*` (TLS through the tunnel, unknown SNI, concurrent streams, `CLOSE`), `tunnel.flow.*`, `tunnel.frames.*`, `tunnel.reconnect.*` (after closes and rejects, backoff, `REPLACED` without a loop, relay restart), `tunnel.liveness.ping` and `tunnel.proxy.connect`. Same command as phase 2 with `--suite tunnel`. `tunnel.stream.tls-through-tunnel` needs phase 5's TLS server, and with `--engine-ca-file` it also verifies the certificate chain.
 - Checklist: ENG-20 to ENG-29.
 
 **Reference:** [relay-link.ts](../../apps/mock-engine/src/domain/tunnel/relay-link.ts), [backoff.ts](../../apps/mock-engine/src/domain/tunnel/backoff.ts), [ws-relay-dialer.ts](../../apps/mock-engine/src/adapters/ws-relay-dialer.ts), [http-connect-proxy.ts](../../apps/mock-engine/src/adapters/http-connect-proxy.ts), [stream-mux.ts](../../apps/mock-engine/src/domain/tunnel/stream-mux.ts), [tunnel-duplex.ts](../../apps/mock-engine/src/adapters/tunnel-duplex.ts), and the in-test relay and proxy in [`src/testing/`](../../apps/mock-engine/src/testing/).
@@ -175,7 +177,7 @@ The engine is `apps/agents-server` in `webgptorg/promptbook`: a Next.js app rout
 
 ## Phase 6: the gateway
 
-**Read:** [gateway.md](gateway.md) (the whole page), [engine-api.md](engine-api.md#permissions) (Permissions, Step-up), the spec's [Pairing and identity](../spec/zero-trust-spec.md#pairing-and-identity) (first setup with the setup secret, owner reset) and [Security hardening](../spec/zero-trust-spec.md#security-hardening) items 1 and 8. The onboarding flow is being specified in `installation.md` (task E-05, forthcoming).
+**Read:** [gateway.md](gateway.md) (the whole page), [engine-api.md](engine-api.md#permissions) (Permissions, Step-up), the spec's [Pairing and identity](../spec/zero-trust-spec.md#pairing-and-identity) (first setup with the setup secret, owner reset) and [Security hardening](../spec/zero-trust-spec.md#security-hardening) items 1 and 8. The onboarding flow and the setup link are in [installation.md](installation.md#the-setup-link).
 
 **Build:**
 
@@ -186,7 +188,7 @@ The engine is `apps/agents-server` in `webgptorg/promptbook`: a Next.js app rout
 - Step-up: a fresh passkey assertion for `stepUp` routes, 401 `step-up-required` otherwise, `STEP_UP_PATH` with a return address.
 - The security headers from [gateway.md](gateway.md#security-headers) on every response, `ENGINE_UI_CSP` byte for byte, and gateway pages without inline script or style.
 - Rate limits on anonymous endpoints per client IP (the `OPEN` frame's address) and audit entries for `auth.*`, `passkey.*` and `session.*`.
-- A way for the conformance suite to get sessions. The proposed answer ([conformance.md](conformance.md#sessions-on-a-real-engine)): a server-side command that exists only in the engine's conformance build, creates the owner or a member with chosen permissions and prints a session cookie; production builds refuse it, and it is never an HTTP endpoint. Your conformance target module runs it. Confirm the details with the maintainer before you build it.
+- The [`conformance-session` command](identity-and-registration.md#conformance-sessions) (decided): only in the conformance build, behind the same build-time gate as `PTBK_CONFORMANCE_TRUST_FILE`, refused by production builds, never an HTTP endpoint. `--subject owner`, or `--subject member --permissions a,b` for a new member each time; it prints `{"cookie":"<name>=<value>"}`, `{"bearer":"…"}` or `null`. The conformance build also serves its certificates from a development CA it creates in `PTBK_DATA_DIR` and documents that file's path for `--engine-ca-file`.
 
 **Prove:**
 
@@ -208,9 +210,9 @@ The engine is `apps/agents-server` in `webgptorg/promptbook`: a Next.js app rout
 - Start with the core groups (me, engine, agents, chats with SSE replies, secrets, security, audit, events, settings, API tokens, passkeys, sessions, folders, members, activity). Answer `draft` routes with 404 `not-found` if you have no behaviour for them.
 - Then the capabilities you choose to ship (`runs@1`, `files@1`, `triggers@1`, `integrations@1`), each advertised in `GET /engine` only when all its routes work; every route of an unadvertised one answers 404 `capability-not-supported`.
 - The audit hash chain covering every field, `target.name` and `details` included, and `GET /audit/verify`.
-- A conformance target module that gives the suite owner and member sessions (phase 6).
+- A conformance target module that runs your `conformance-session` command (phase 6); [testing-against-the-platform.md](testing-against-the-platform.md#against-a-running-engine-the-engine-api-suite) has one.
 
-**Prove:** the full `engine-api` suite, first on a local listener, then through a relay:
+**Prove:** the full `engine-api` suite against the running engine. It takes `--base-url`, not `--engine-cmd` (the CLI refuses that combination), so start your conformance build where the suite can reach it on its own hostname: through the local stack's relay ([testing-against-the-platform.md](testing-against-the-platform.md#against-a-running-engine-the-engine-api-suite)), or on a local listener while you build.
 
 ```sh
 NODE_EXTRA_CA_CERTS=<CA that issued the engine's certificate> \
@@ -234,10 +236,11 @@ node "$PLATFORM_DIR/packages/conformance/dist/ptbk-conformance.js" \
 - Strict responses: an extra field anywhere fails `engine-api.schemas.responses-strict`. Build responses from the contract types, not from your database rows.
 - `engine-api.secrets.never-returned` looks for a canary value in every GET route and the event stream, raw, hex and base64. Secrets never go into audit `details`, events or errors.
 - Denials must change nothing and must be audited with outcome `denied`.
+- Chat writes belong to whoever started the chat: another member, even one with the same permissions, gets 403 or 404 on posting to it or cancelling its reply (`engine-api.cross-member.chat-writes`).
 
 ## Phase 8: UI loader
 
-**Read:** [ui-loader.md](ui-loader.md) (the whole page), the release log [open points](README.md#open-points) (item 3), [cryptography.md](cryptography.md#what-the-engine-must-do).
+**Read:** [ui-loader.md](ui-loader.md) (the whole page, especially [Testing the loader: conformance build](ui-loader.md#testing-the-loader-conformance-build) and its [open points](ui-loader.md#open-points-decided-2026-10-26)), the release log [open points](README.md#open-points) (item 3), [cryptography.md](cryptography.md#what-the-engine-must-do).
 
 **Build:** fetching the release record and the revocation list with timeouts and size caps, `verifyRelease` with the persisted `firstSeenAt` and `lastAcceptedRevocationIssuedAt`, the provenance adapter (use `createSigstoreProvenanceVerifier` from [`@ptbk/release-tools`](../../packages/release-tools/README.md) with its pinned trusted root rather than writing your own), the artifact's SHA-256, the safe unpacker, `verifyManifestFiles` and `satisfiesEngineApiRange`, atomic activation, keeping the previous bundle, serving only listed files with the SPA fallback outside `ENGINE_RESERVED_PATHS`, the update policy (`PTBK_UPDATE_POLICY`, `PTBK_PINNED_VERSION`), and `GET /security` → `ui`.
 
@@ -245,17 +248,16 @@ node "$PLATFORM_DIR/packages/conformance/dist/ptbk-conformance.js" \
 
 - Golden vectors: [`release/vectors.json`](../../packages/protocol/src/release/vectors.json) through your fetch-and-verify path, not only through `verifyRelease`.
 - Unit tests: a tarball with `..`, a symlink or a duplicate path is refused; an unlisted file is refused; a lost state file restarts the delay and is logged as an error; a missing, expired or rolled-back revocation list keeps the current bundle.
-- _Pending C-10:_ the conformance `ui-loader` suite, acting as the release store, against the conformance build: the five IDs C-05 registered (`ui-loader.signature.strict-ed25519`, `ui-loader.dsse.pae-only`, `ui-loader.provenance.exact-identity`, `ui-loader.delay.trusted-time`, `ui-loader.revocations.expired-keeps-current`) and the checks C-10 adds for thresholds, strict payloads, log inclusion, `firstSeenAt` persistence, artifact hashes, manifests, unsafe archives, the `engineApi` range, downgrades, every revocation case, an unavailable store, the update policy, served files and headers. Same command as phase 2 with `--suite ui-loader`. Until it merges, the five registered IDs report `skip`.
+- The conformance `ui-loader` suite, acting as the release store, against your conformance build: install, strict Ed25519 for every case class, the signature threshold, DSSE PAE, strict payloads, exact provenance identity and log entry, the delay from trusted time persisted across restarts, artifact hashes, manifests, unsafe archives, the `engineApi` range, downgrades, every revocation case including a revoked active bundle, an unavailable store, the update policy, served files and headers ([checklist](checklist.md#ui-loader-interface-5)). It reads `GET /security`, so it needs phase 9's command with `--suite ui-loader`. A slow engine raises the per-check timeout with `--timeout-ms`.
 - Checklist: ENG-50 to ENG-55.
 
 **Reference:** [ui-update.ts](../../apps/mock-engine/src/domain/ui/ui-update.ts) (the part to port), [fs-bundle-store.ts](../../apps/mock-engine/src/adapters/ui/fs-bundle-store.ts), [bundle-unpacker.ts](../../apps/mock-engine/src/adapters/ui/bundle-unpacker.ts), [fs-update-state-store.ts](../../apps/mock-engine/src/adapters/ui/fs-update-state-store.ts), [http-release-source.ts](../../apps/mock-engine/src/adapters/ui/http-release-source.ts), [static-route.ts](../../apps/mock-engine/src/domain/ui/static-route.ts), [ui-routes.ts](../../apps/mock-engine/src/adapters/http/ui-routes.ts).
 
 **Pitfalls:**
 
-- **The conformance build** (decided in C-10, pending its merge; C-10 adds the normative rules to [ui-loader.md](ui-loader.md)). The suite mints real Sigstore-format bundles under an ephemeral trust root, so the engine must be able to load a test trust policy and trusted root, and only in a build made for it: a compile-time constant (for example `PTBK_CONFORMANCE_BUILD`), false in release builds so the code path is removed, enables reading `PTBK_CONFORMANCE_TRUST_FILE` (`{ v: 1, trustPolicy, trustedRoot }`, parsed strictly), which replaces the pinned trust policy and trusted root and nothing else. A production build that sees the variable set refuses to start and names it. The engine's release workflow asserts the constant is off. Never read a trust root or key from the environment in any other way, and never build a fake-provenance mode like the mock's `MOCK_UI_FAKE_PROVENANCE`.
-- **The release mirror layout v1** (C-10, proposed for your review): `ui/latest.json`, `release-log/ui-<version>.json`, `release-log/revocations.json` and `ui/<version>/<artifact name>` below `PTBK_UI_RELEASE_URL`, the layout the mock engine reads.
-- **A revoked current bundle stops being served** (C-10): the previous bundle comes back if it is not revoked, otherwise the plain engine page.
-- The release store layout is the mock's, not a contract yet (open point); keep the fetcher behind a port so the layout can change.
+- **The conformance build** ([ui-loader.md](ui-loader.md#testing-the-loader-conformance-build), decided). The suite mints real Sigstore-format bundles under an ephemeral trust root, so the engine must be able to load a test trust policy and trusted root, and only in a build made for it: a compile-time constant (for example `PTBK_CONFORMANCE_BUILD`), false in release builds so the code path is removed, enables reading `PTBK_CONFORMANCE_TRUST_FILE` (`{ v: 1, trustPolicy, trustedRoot }`, parsed strictly), which replaces the pinned trust policy and trusted root and nothing else. A production build that sees the variable set refuses to start and names it. The engine's release workflow asserts the constant is off. Never read a trust root or key from the environment in any other way, and never build a fake-provenance mode like the mock's `MOCK_UI_FAKE_PROVENANCE`.
+- **The [release mirror layout v1](ui-loader.md#release-mirror-layout-v1)** (adopted, open for your review before the freeze): `ui/latest.json`, `release-log/ui-<version>.json`, `release-log/revocations.json` and `ui/<version>/<artifact name>` below `PTBK_UI_RELEASE_URL`. Keep the fetcher behind a port anyway.
+- **A revoked active bundle stops being served** once an accepted list names it: the previous bundle comes back if it is not revoked, otherwise the plain engine page.
 - Never read the manifest's `csp`; the engine's headers are engine code.
 - Find the UI artifact by `kind: 'ui'`, not by name.
 
@@ -267,8 +269,20 @@ node "$PLATFORM_DIR/packages/conformance/dist/ptbk-conformance.js" \
 
 **Prove:**
 
-- Every conformance suite that has merged, with no failure.
-- The local stack with your engine in place of the mock: link with a link code, online in the dashboard, open through the relay, sign in with a passkey, chat with an agent, no CSP violation in the browser console.
+- The two conformance runs from [AGENT_BRIEF.md](AGENT_BRIEF.md#when-you-are-done), with no failure: the platform suites, which start your conformance build themselves,
+
+  ```sh
+  node "$PLATFORM_DIR/packages/conformance/dist/ptbk-conformance.js" \
+    --engine-cmd "<start command of your conformance build>" --engine-cwd "<directory to run it in>" \
+    --engine-session-cmd "<your engine> conformance-session" \
+    --engine-ca-file "{dataDir}/<path of its development CA certificate>" \
+    --suite registration,heartbeat,tunnel,ui-loader \
+    --report junit --out platform-report.xml
+  ```
+
+  and the `engine-api` suite against the running engine (phase 7). Run the platform command once without any heartbeat interval override, so `heartbeat.cadence.interval` proves the production 60 s.
+
+- The local stack with your engine in place of the mock: link with a link code, online in the dashboard, open through the relay, sign in with a passkey, no CSP violation in the browser console. Serving the UI there, and chatting with an agent in it, waits for E-03, which re-signs the stack's UI releases for a conformance build.
 - _Pending E-03:_ the full e2e suite with `ENGINE_IMPL=real`: spike network tests (NAT, 443 only, `CONNECT` and TLS-inspecting proxies, relay restart and failover, packet capture), ACME through the relay, the UI flows under the strict CSP, and the dashboard flow.
 - Every row in [checklist.md](checklist.md) is done or listed in your report with its reason.
 

@@ -2,7 +2,7 @@
 
 - **Lane:** Engine integration · **Module:** `docs/engine-integration/` · **Milestone:** M5
 - **Depends on:** E-01, C-05, X-06
-- **Status:** in progress (docs/e-04-engine-agent-kit)
+- **Status:** done (#115)
 - **Spec:** Interfaces (draft) 1–6, Build plan; ADRs: [0002](../../adr/0002-public-private-split.md), [0004](../../adr/0004-mock-engine-and-conformance.md), [0014](../../adr/0014-cryptography.md)
 
 ## Goal
@@ -44,7 +44,7 @@ The folder moves public with the contracts (E-02), so the same rules as E-01 app
 - [x] `testing-against-the-platform.md` covers the conformance CLI, the local dev stack and E-03, with a troubleshooting table; parts that have not merged are marked pending with their task ID.
 - [x] The guide's link and private-content checks pass.
 - [x] `bun run check` passes.
-- [ ] **Status** line above set to `done (#<PR>)`.
+- [x] **Status** line above set to `done (#<PR>)`.
 
 ## Risks and open points
 
@@ -52,3 +52,4 @@ The folder moves public with the contracts (E-02), so the same rules as E-01 app
 - Gaps where the contracts are too vague for an agent to implement without guessing are reported to a human as questions, not decided here. The first PR lists them as integration points 9 to 13 in the guide's README.
 - C-08, C-09 and C-10 were in flight when the first PR merged; the kit follows their briefs and marks their parts pending. The follow-up PR (`Refs: E-04`) reconciles the kit with what they merge.
 - Decided after the first PR (2026-10-26; Seb for the publication, private-links and review questions, the coordinator for the rest): the checkout is the supported way to consume the contracts and going public is the maintainer's call; the mock's `PTBK_*` names join Interface 6; conformance sessions come from a conformance-build-only command; re-signing the stacks' UI releases and decoupling the e2e harness from mock internals are in E-03; X-08 relaxes the dev stack's heartbeat expectation; the agents-server findings live in the private `docs/security/agents-server-review.md`.
+- Final pass after C-08, C-09, C-10, C-11, E-05, U-13 and X-08 merged: no pending marks remain except E-03's. The definition of done is two conformance commands, because the CLI refuses `engine-api` together with `--engine-cmd`.
