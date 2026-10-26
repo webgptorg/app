@@ -34,8 +34,6 @@ export interface ConnectionClosed {
 export interface RelayCounters {
     /** ClientHellos naming the relay. */
     clientHellos: number;
-    /** TLS handshakes the engine completed. */
-    secured: number;
     /** WebSocket upgrades on `TUNNEL_PATH`. */
     upgrades: number;
     /** Requests on any other path, or without an upgrade. */
@@ -164,7 +162,7 @@ export async function startFakeRelay(options: FakeRelayOptions): Promise<FakeRel
     const untrustedCa = createTestCa('ptbk-conformance-untrusted');
     const contexts = new Map<string, tls.SecureContext>();
     const counters = new Map<string, RelayCounters>(
-        options.relayIds.map((id) => [id, { clientHellos: 0, secured: 0, upgrades: 0, strayRequests: 0 }]),
+        options.relayIds.map((id) => [id, { clientHellos: 0, upgrades: 0, strayRequests: 0 }]),
     );
     const sockets = new Set<Socket>();
     const connections = new Set<RelayConnection>();
@@ -226,10 +224,6 @@ export async function startFakeRelay(options: FakeRelayOptions): Promise<FakeRel
             }
             sockets.add(socket);
             socket.once('close', () => sockets.delete(socket));
-        });
-        server.on('secureConnection', (socket: tls.TLSSocket) => {
-            const name = servernameOf(socket);
-            if (relayIds.has(name)) counterOf(name).secured++;
         });
         server.on('tlsClientError', () => undefined);
         server.on('request', (request: IncomingMessage, response: ServerResponse) => {

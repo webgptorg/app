@@ -2,7 +2,7 @@ import { PassThrough } from 'node:stream';
 
 import { describe, expect, it } from 'vitest';
 
-import { ResponseReader, readResponses, requestBytes } from './http1';
+import { ResponseReader, requestBytes } from './http1';
 
 function feed(...chunks: string[]): PassThrough {
     const stream = new PassThrough();
@@ -60,14 +60,6 @@ describe('ResponseReader', () => {
         const brokenReader = new ResponseReader(broken);
         broken.destroy(new Error('boom'));
         expect(await brokenReader.next(100)).toMatchObject({ kind: 'failed', reason: 'connection error (Error)' });
-    });
-
-    it('reads several responses in a row, and says how many came', async () => {
-        const two = 'HTTP/1.1 401 Unauthorized\r\nContent-Length: 0\r\n\r\n'.repeat(2);
-        expect((await readResponses(feed(two), 2, 100)).kind).toBe('ok');
-        const partial = await readResponses(feed(two), 3, 20);
-        expect(partial).toMatchObject({ kind: 'failed' });
-        expect(partial.responses).toHaveLength(2);
     });
 
     it('writes a request with Host, Connection and extra headers', () => {

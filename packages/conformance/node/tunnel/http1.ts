@@ -7,10 +7,6 @@ export interface HttpResponse {
     readonly body: Buffer;
 }
 
-export type ResponsesRead =
-    | { readonly kind: 'ok'; readonly responses: readonly HttpResponse[] }
-    | { readonly kind: 'failed'; readonly reason: string; readonly responses: readonly HttpResponse[] };
-
 const MAX_HEADER_BYTES = 64 * 1024;
 const MAX_BODY_BYTES = 16 * 1024 * 1024;
 
@@ -84,13 +80,11 @@ export type ResponseRead =
  * engine API answer uses.
  */
 export class ResponseReader {
-    readonly #socket: Duplex;
     #buffer = Buffer.alloc(0);
     #ended: string | null = null;
     #wake: (() => void) | null = null;
 
     constructor(socket: Duplex) {
-        this.#socket = socket;
         socket.on('data', (chunk: Buffer) => {
             this.#buffer = Buffer.concat([this.#buffer, chunk]);
             this.#wake?.();
@@ -141,24 +135,6 @@ export class ResponseReader {
             this.#wake = null;
         }
     }
-
-    /** Stops listening; for a socket handed on to something else. */
-    detach(): void {
-        this.#socket.removeAllListeners('data');
-    }
-}
-
-/** Reads `count` responses in a row; used where the requests went out one after another. */
-export async function readResponses(socket: Duplex, count: number, timeoutMs: number): Promise<ResponsesRead> {
-    const reader = new ResponseReader(socket);
-    const responses: HttpResponse[] = [];
-    const deadline = performance.now() + timeoutMs;
-    while (responses.length < count) {
-        const read = await reader.next(Math.max(1, deadline - performance.now()));
-        if (read.kind === 'failed') return { kind: 'failed', reason: read.reason, responses };
-        responses.push(read.response);
-    }
-    return { kind: 'ok', responses };
 }
 
 export interface RequestOptions {

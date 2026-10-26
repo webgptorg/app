@@ -79,8 +79,6 @@ export class TunnelRuntime {
     readonly relay: FakeRelay;
     readonly engineDomain: Hostname;
     readonly timing: TunnelTiming;
-    /** Every connection the engine opened, per relay, in order: when it came and how it ended. */
-    readonly attempts = new Map<RelayId, number[]>();
     readonly allTunnels: RelayTunnel[] = [];
     readonly #modes = new Map<RelayId, RelayMode>();
     readonly #tunnels = new Map<RelayId, RelayTunnel[]>();
@@ -101,7 +99,6 @@ export class TunnelRuntime {
         for (const relayId of relay.relayIds) {
             this.#modes.set(relayId, { kind: 'auto' });
             this.#tunnels.set(relayId, []);
-            this.attempts.set(relayId, []);
         }
         relay.onConnection((connection) => {
             this.#onConnection(connection);
@@ -284,7 +281,6 @@ export class TunnelRuntime {
     }
 
     #onConnection(connection: RelayConnection): void {
-        this.attempts.get(connection.relayId)?.push(connection.openedAt);
         const mode = this.#modes.get(connection.relayId) ?? { kind: 'auto' };
         if (mode.kind === 'manual') {
             mode.queue.push(connection);
