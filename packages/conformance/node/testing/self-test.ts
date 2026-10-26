@@ -4,7 +4,8 @@ import type { CheckResult } from '../../src/index';
 import type { EngineCommand } from '../harness/engine-process';
 import { liveEngineGroups } from '../harness/engine-process';
 import { runPlatformConformance } from '../harness/run-platform';
-import { PLATFORM_SUITES } from '../index';
+import type { EngineTargetFactory, PlatformSuite } from '../harness/platform';
+import { HEARTBEAT_SUITE, REGISTRATION_SUITE } from '../index';
 import { SELF_TEST_HEARTBEAT_INTERVAL_S } from './engines';
 
 /**
@@ -18,14 +19,19 @@ export const EXPECTATIONS = {
     quietWindowMs: 2000,
 };
 
+/** The suites this self-test covers; the tunnel suite has its own. */
+export const DASHBOARD_SUITES: readonly PlatformSuite[] = [REGISTRATION_SUITE, HEARTBEAT_SUITE];
+
 export async function run(
     command: EngineCommand,
     ids?: readonly string[],
     expectations: Partial<typeof EXPECTATIONS> = {},
+    targets?: EngineTargetFactory,
 ): Promise<readonly CheckResult[]> {
     const report = await runPlatformConformance({
         command,
-        suites: PLATFORM_SUITES,
+        suites: DASHBOARD_SUITES,
+        ...(targets === undefined ? {} : { targets }),
         timeoutMs: 30_000,
         stopGraceMs: 2000,
         signal: new AbortController().signal,
@@ -52,6 +58,7 @@ export function notPassing(results: readonly CheckResult[]): Record<string, stri
     );
 }
 
-export const UNTIL_C09 = {
+/** The self-test engine has no engine API, so the one check that reads the security panel skips. */
+export const WITHOUT_ENGINE_API = {
     'heartbeat.stale-ts.skew-shown': expect.stringMatching(/^skip: engine-api-unreachable/) as unknown,
 };

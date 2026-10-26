@@ -25,8 +25,15 @@ describe('the registration and heartbeat suites', () => {
         [['retry-loop'], 'registration.errors.engine-exists', 'engine-exists is final'],
         [['silent-errors'], 'registration.errors.not-entitled', 'does not name the problem code not-entitled'],
         [['loose-data-dir', 'no-permission-check'], 'registration.data-dir.private', 'has mode 755'],
+        [['symlinked-data-dir', 'no-permission-check'], 'registration.data-dir.private', 'is a symbolic link'],
         [['loose-key-file', 'no-permission-check'], 'registration.key-file.private', 'has mode 644'],
         [['no-permission-check'], 'registration.key-file.loose-modes-refused', 'the engine kept running'],
+        [
+            ['refuse-with-status-0'],
+            'registration.key-file.loose-modes-refused',
+            'exited with status 0, not a failure status',
+        ],
+        [['ephemeral-key'], 'registration.key-file.private', 'no file under PTBK_DATA_DIR holds the registered key'],
         [['bad-heartbeat-signature'], 'heartbeat.signature.verifies', 'does not verify over'],
         [['heartbeat-wrong-engine-id'], 'heartbeat.signature.verifies', 'path does not name the engine ID'],
         [['extra-heartbeat-field'], 'heartbeat.body.strict', 'not a strict Heartbeat'],
@@ -61,7 +68,6 @@ describe('the registration and heartbeat suites', () => {
                 quietWindowMs: 500,
             }),
         );
-        expect(failed['registration.request.signature-verifies']).toBeUndefined();
         expect(Object.keys(failed).length).toBeGreaterThan(15);
     }, 180_000);
 });

@@ -35,6 +35,8 @@ Starting the engine (the harness plays the dashboard and the rest of the platfor
   --heartbeat-interval-s <n>  The interval the engine was told to use (default 60; anything else skips the cadence check)
   --engine-session-cmd <cmd>  The engine's conformance-session command, run with --subject owner|member
                               [--permissions a,b]; it prints {"cookie"}, {"bearer"} or null as JSON
+  --engine-ca-file <file>     The CA the engine's own certificates chain to under test ({dataDir} for its data
+                              directory); with --engine-session-cmd
   --mock-control              The engine is the mock engine: sessions from its dev-only control listener
 
 Options:
@@ -96,6 +98,7 @@ async function run(argv: readonly string[], io: CliIo): Promise<number> {
             'heartbeat-interval-s': { type: 'string' },
             'mock-control': { type: 'boolean', default: false },
             'engine-session-cmd': { type: 'string' },
+            'engine-ca-file': { type: 'string' },
             help: { type: 'boolean', default: false },
         },
     }) as { values: Record<string, string | string[] | boolean | undefined> };
@@ -145,9 +148,15 @@ async function run(argv: readonly string[], io: CliIo): Promise<number> {
         if (typeof sessionCmd === 'string' && values['mock-control'] === true) {
             throw new UsageError('give either --engine-session-cmd or --mock-control');
         }
+        if (values['engine-ca-file'] !== undefined && typeof sessionCmd !== 'string') {
+            throw new UsageError('--engine-ca-file needs --engine-session-cmd');
+        }
         const targets =
             typeof sessionCmd === 'string'
-                ? createSessionCommandTargetFactory({ command: sessionCmd, cwd: engineCwd })
+                ? createSessionCommandTargetFactory(
+                      { command: sessionCmd, cwd: engineCwd },
+                      typeof values['engine-ca-file'] === 'string' ? { caFile: values['engine-ca-file'] } : {},
+                  )
                 : values['mock-control'] === true
                   ? createMockEngineTargetFactory()
                   : undefined;

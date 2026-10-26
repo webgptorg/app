@@ -61,6 +61,18 @@ const registeredEngineSuite: PlatformSuite = {
             },
         },
         {
+            id: 'example.output.long',
+            suite: 'example',
+            title: 'A failed check reports the end of a long output, and engines that never ran',
+            async run(ctx) {
+                await ctx.engine();
+                const talkative = await ctx.engine();
+                await talkative.start();
+                await talkative.waitForExit(5000);
+                return { kind: 'fail', detail: 'on purpose' };
+            },
+        },
+        {
             id: 'example.fixture.close-fails',
             suite: 'example',
             title: 'A fixture that fails to close does not stop the run',
@@ -92,6 +104,24 @@ describe('the harness', () => {
             expectations: { heartbeatIntervalMs: SELF_TEST_HEARTBEAT_INTERVAL_S * 1000, startTimeoutMs: 10_000 },
         });
         expect(report.results.map((result) => result.outcome)).toEqual([{ kind: 'pass' }]);
+    });
+
+    it('reports only the end of a long engine output', async () => {
+        const report = await runPlatformConformance({
+            command: {
+                command: "head -c 40000 /dev/zero | tr '\\0' x; echo; echo the-end; exit 2",
+                cwd: process.cwd(),
+            },
+            suites: [registeredEngineSuite],
+            filter: (check) => check.id === 'example.output.long',
+            timeoutMs: 10_000,
+            signal: new AbortController().signal,
+        });
+        const output = report.results[0]?.engineOutput ?? '';
+        expect(output).toContain('--- engine 1: 0 starts, exits: none ---');
+        expect(output).toContain('--- engine 2: 1 starts, exits: 2 ---\n…');
+        expect(output).toContain('the-end');
+        expect(output.length).toBeLessThan(20_000);
     });
 
     it('carries on when a fixture fails to close', async () => {

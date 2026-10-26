@@ -353,6 +353,8 @@ async function readBody(incoming: IncomingMessage): Promise<Buffer> {
 export interface RegisteredEngineOptions extends EngineOptions {
     /** What the dashboard answers as the engine's relays (default: unreachable ones). */
     readonly relays?: readonly Hostname[];
+    /** Scripted answers for the dashboard; a script must let the first registration and heartbeat through. */
+    readonly dashboard?: Omit<FakeDashboardOptions, 'relays'>;
 }
 
 export interface EngineIdentity {
@@ -381,11 +383,14 @@ export async function startRegisteredEngine(
     options: RegisteredEngineOptions = {},
 ): Promise<RegisteredEngine> {
     const dashboard = ctx.use(
-        await startFakeDashboard(ctx, options.relays === undefined ? {} : { relays: options.relays }),
+        await startFakeDashboard(ctx, {
+            ...options.dashboard,
+            ...(options.relays === undefined ? {} : { relays: options.relays }),
+        }),
     );
     const linkCode = dashboard.issueLinkCode();
     const engine = await ctx.engine({
-        ...options,
+        ...(options.dataDir === undefined ? {} : { dataDir: options.dataDir }),
         env: { ...dashboard.env, PTBK_LINK_CODE: linkCode, ...options.env },
     });
     await engine.start();

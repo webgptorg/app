@@ -1,4 +1,6 @@
 import { spawn } from 'node:child_process';
+import { readFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
 
 import type { SessionCredential, SessionSubject } from '../../src/index';
 import type { EngineCommand } from '../harness/engine-process';
@@ -48,11 +50,23 @@ export function parseSessionOutput(stdout: string): SessionCredential | null {
  * Sessions on an engine that has no HTTP way to hand them out (ENG-99): the engine's own conformance build ships a
  * `conformance-session` command, run here next to the engine with the same environment, so it reaches the same data
  * directory. It prints `{"cookie":"name=value"}`, `{"bearer":"…"}` or `null` (that subject cannot be had, so the checks
- * that need it skip).
+ * that need it skip). `caFile` is the CA the engine's own certificates chain to in a conformance run (`{dataDir}` stands
+ * for its data directory); without it, the engine's certificate is checked only for its name and dates.
  */
-export function createSessionCommandTargetFactory(command: EngineCommand): EngineTargetFactory {
+export function createSessionCommandTargetFactory(
+    command: EngineCommand,
+    options: { readonly caFile?: string } = {},
+): EngineTargetFactory {
+    const { caFile } = options;
     return {
         engineEnv: () => Promise.resolve({}),
+        ...(caFile === undefined
+            ? {}
+            : {
+                  // The engine's test CA may only exist once the engine has started, e.g. in its data directory.
+                  certificateAuthority: (engine) =>
+                      readFile(resolve(command.cwd, caFile.replaceAll('{dataDir}', engine.dataDir)), 'utf8'),
+              }),
         target(engine, endpoint) {
             return {
                 baseUrl: endpoint.baseUrl,

@@ -6,7 +6,17 @@
  */
 import { createHash, createPrivateKey, generateKeyPairSync, sign } from 'node:crypto';
 import type { KeyObject } from 'node:crypto';
-import { closeSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import {
+    closeSync,
+    fsyncSync,
+    lstatSync,
+    mkdirSync,
+    openSync,
+    readFileSync,
+    renameSync,
+    symlinkSync,
+    writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 
 const env = process.env;
@@ -41,6 +51,10 @@ function isCode(error: unknown, code: string): boolean {
 function checkPrivate(path: string, kind: 'directory' | 'file'): void {
     if (defects.has('no-permission-check')) return;
     const stats = lstatSync(path);
+    if (defects.has('refuse-with-status-0') && (stats.isSymbolicLink() || (stats.mode & 0o077) !== 0)) {
+        process.stderr.write(`fake-engine: ${path} is not private\n`);
+        process.exit(0);
+    }
     if (stats.isSymbolicLink()) fatal(`${path} is a symbolic link`);
     if (kind === 'directory' ? !stats.isDirectory() : !stats.isFile()) fatal(`${path} is not a ${kind}`);
     if (stats.uid !== process.getuid?.()) fatal(`${path} is not owned by this user`);
@@ -48,6 +62,14 @@ function checkPrivate(path: string, kind: 'directory' | 'file'): void {
 }
 
 function privateDirectory(path: string): void {
+    if (defects.has('symlinked-data-dir')) {
+        mkdirSync(`${path}-target`, { mode: 0o700, recursive: true });
+        try {
+            symlinkSync(`${path}-target`, path);
+        } catch (error) {
+            if (!isCode(error, 'EEXIST')) throw error;
+        }
+    }
     try {
         mkdirSync(path, { mode: defects.has('loose-data-dir') ? 0o755 : 0o700 });
     } catch (error) {

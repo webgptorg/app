@@ -136,7 +136,7 @@ The engine API checks need sessions: the owner, and members holding exactly the 
 - It prints one JSON value on stdout and exits 0: `{"cookie":"<name>=<value>"}`, `{"bearer":"<token>"}`, or `null` when that subject cannot be had. The checks that need it then skip.
 - It exists only in the conformance build, behind the same build-time gate as `PTBK_CONFORMANCE_TRUST_FILE` ([ui-loader.md](ui-loader.md)). A production build refuses to run it. It is never an HTTP endpoint.
 
-The harness runs it with `ptbk-conformance --engine-session-cmd "<engine> conformance-session"`, so no hand-written target module is needed. The mock engine implements the same command over its dev-only control listener (`MOCK_CONTROL=enabled`).
+The harness runs it with `ptbk-conformance --engine-session-cmd "<engine> conformance-session"`, so no hand-written target module is needed. Its checks reach the engine API through the fake relay, so they also need the CA the engine's own certificates chain to under test: pass it with `--engine-ca-file <file>`, where `{dataDir}` stands for the engine's data directory (e.g. a development CA the conformance build creates there). Without it the engine's certificate is checked only for its name and dates. The mock engine implements the same command over its dev-only control listener (`MOCK_CONTROL=enabled`).
 
 ## Contract exports
 

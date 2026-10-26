@@ -161,6 +161,7 @@ describe('runCli', () => {
         [['--base-url', 'https://engine.test', '--mock-control'], '--mock-control needs --engine-cmd'],
         [['--base-url', 'https://engine.test', '--engine-cwd', '.'], '--engine-cwd needs --engine-cmd'],
         [['--base-url', 'https://engine.test', '--engine-session-cmd', 'x'], '--engine-session-cmd needs --engine-cmd'],
+        [['--engine-cmd', 'true', '--engine-ca-file', 'ca.pem'], '--engine-ca-file needs --engine-session-cmd'],
         [
             ['--engine-cmd', 'true', '--engine-session-cmd', 'x', '--mock-control'],
             'give either --engine-session-cmd or --mock-control',

@@ -72,6 +72,18 @@ describe('createSessionCommandTargetFactory', () => {
         expect(await createSessionCommandTargetFactory({ command: 'true', cwd: '.' }).engineEnv()).toEqual({});
     });
 
+    it("reads the engine's test CA from the file given, with {dataDir} replaced", async () => {
+        await writeFile(join(dir, 'ca.pem'), 'PEM');
+        const engine = { env: {}, dataDir: dir } as unknown as EngineProcess;
+        const withCa = createSessionCommandTargetFactory({ command: 'true', cwd: '/' }, { caFile: '{dataDir}/ca.pem' });
+        expect(await withCa.certificateAuthority?.(engine)).toBe('PEM');
+        const relative = createSessionCommandTargetFactory({ command: 'true', cwd: dir }, { caFile: 'ca.pem' });
+        expect(await relative.certificateAuthority?.(engine)).toBe('PEM');
+        const missing = createSessionCommandTargetFactory({ command: 'true', cwd: dir }, { caFile: 'missing.pem' });
+        await expect(missing.certificateAuthority?.(engine)).rejects.toThrow();
+        expect('certificateAuthority' in createSessionCommandTargetFactory({ command: 'true', cwd: dir })).toBe(false);
+    });
+
     it('fails a session when the command fails or prints something else', async () => {
         await expect(targetFor(join(dir, 'failing-session')).session({ kind: 'owner' })).rejects.toThrow(
             'exited with status 3',
