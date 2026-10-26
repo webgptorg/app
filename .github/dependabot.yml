@@ -29,8 +29,11 @@ updates:
       # typescript-eslint supports TypeScript < 6.1 only (ADR 0001); lift when it supports 7.
       - dependency-name: typescript
         update-types: ['version-update:semver-major']
-      # The Workers test pool supports Vitest 4.1 only; lift when it supports the next major.
+      # The Workers test pool supports Vitest 4.1 only, and the plan pins Vitest 4.1 repo-wide (docs/plan/README.md,
+      # Decisions); its @vitest/* packages must move with it. Lift when a Vitest 5 upgrade is its own task.
       - dependency-name: vitest
+        update-types: ['version-update:semver-major']
+      - dependency-name: '@vitest/*'
         update-types: ['version-update:semver-major']
       # Node types follow the runtime (Node 24 LTS), not the newest Node.
       - dependency-name: '@types/node'
