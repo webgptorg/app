@@ -125,6 +125,7 @@ bun run plan --check  # validates statuses and dependencies (part of bun run che
 | [E-02](tasks/E-02-publish-contracts.md)                  | Move the contracts public and consume published versions                         | E    | M5        |
 | [E-03](tasks/E-03-real-engine-swap.md)                   | Run conformance and e2e against the real engine                                  | E    | M5        |
 | [E-04](tasks/E-04-engine-agent-kit.md)                   | Engine implementation kit for coding agents                                      | E    | M5        |
+| [E-05](tasks/E-05-onboarding.md)                         | Onboarding: product spec and engine install guide                                | E    | M3        |
 
 ## Parallel waves
 
@@ -140,7 +141,7 @@ Tasks in the same wave have no dependencies on each other and can run at the sam
 | 6    | C-05, D-03, R-05, R-06, X-01                                                 |
 | 7    | C-08, D-04, D-05, E-02, I-01, M-03, M-05, M-07, X-02                         |
 | 8    | D-06, D-08, I-03, I-04, X-04                                                 |
-| 9    | I-05, I-07, X-05                                                             |
+| 9    | E-05, I-05, I-07, X-05                                                       |
 | 10   | E-03, I-06, X-06                                                             |
 | 11   | E-04, X-08                                                                   |
 
