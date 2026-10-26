@@ -25,8 +25,13 @@ SyslogIdentifier=ptbk-relay-deploy
 
 NoNewPrivileges=yes
 ProtectSystem=strict
-# Podman's image store and its runtime state; nothing else on the host is writable.
-ReadWritePaths=/var/lib/containers -/run/containers -/run/libpod
+# ProtectSystem=strict leaves /run writable, /run/systemd included. Besides the unit's own directories, podman's
+# image store, runtime state and netavark's lock in /run/lock are all it may write. On a fresh host nothing has
+# created the runtime directories yet, and podman could not under the read-only /run; optional (`-`), because systemd
+# sets up the namespace for the ExecStartPre that creates them too.
+ReadOnlyPaths=/run
+ReadWritePaths=/var/lib/containers /run/lock -/run/containers -/run/libpod
+ExecStartPre=+/usr/bin/mkdir -p /run/containers /run/libpod
 ProtectHome=yes
 PrivateTmp=yes
 PrivateDevices=yes
