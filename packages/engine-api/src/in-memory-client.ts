@@ -4,7 +4,7 @@ import { Agent, AgentRunState } from './agents';
 import type { AgentVisibility } from './agents';
 import { ApiToken } from './api-tokens';
 import { AuditEntry } from './audit';
-import type { AuditAction, AuditDetails, AuditTarget } from './audit';
+import type { AuditAction, AuditActor, AuditDetails, AuditTarget } from './audit';
 import { Activity } from './capabilities/activity';
 import { CapabilityRef, KNOWN_CAPABILITIES, supports } from './capabilities/capability';
 import { FileMetadata, FileVersion } from './capabilities/files';
@@ -374,7 +374,28 @@ export interface InMemoryEngineController {
     addSession(session: Omit<Unbranded<z.input<typeof Session>>, 'current'>): Session;
     /** A sign-out or expiry; `false` if the session was not listed. */
     removeSession(sessionId: string): boolean;
+    /**
+     * The engine revokes a passkey on its own, e.g. the operator's `owner --reset` on the host: unlike the API route,
+     * a member's last passkey may go too. Every session it signed in ends with it. `false` if it was not listed.
+     */
+    removePasskey(passkeyId: string): boolean;
+    /** The gateway registered a passkey (the API only lists and revokes them); throws for an unknown member or a taken ID. */
+    addPasskey(passkey: Unbranded<z.input<typeof Passkey>>): Passkey;
+    /** A sign-in or step-up used this passkey: its `lastUsedAt` and backup state. `false` if it is not listed. */
+    recordPasskeyUse(passkeyId: string, use: { readonly at: string; readonly backedUp: boolean | null }): boolean;
+    /** An entry for something the gateway or the host did outside the API (a sign-in, a reset), on the same chain. */
+    recordAudit(entry: InMemoryAuditInput): void;
     inspect(): InMemoryEngineSnapshot;
+}
+
+export interface InMemoryAuditInput {
+    readonly actor: Unbranded<AuditActor>;
+    readonly action: AuditAction;
+    readonly target: Unbranded<AuditTarget> | null;
+    readonly outcome: AuditEntry['outcome'];
+    /** `null` for what happened on the host rather than through a browser. */
+    readonly client: Unbranded<ClientInfo> | null;
+    readonly details?: AuditDetails | null;
 }
 
 export interface InMemoryEngine {
@@ -566,13 +587,7 @@ export function createInMemoryEngineCore(options: InMemoryEngineCoreOptions = {}
             return settled;
         },
     };
-    const audit = (
-        actor: Actor,
-        action: AuditAction,
-        target: AuditEntry['target'],
-        outcome: AuditEntry['outcome'],
-        details: AuditDetails | null,
-    ): void => {
+    const appendAudit = (input: Omit<AuditEntry, 'id' | 'seq' | 'at' | 'hash' | 'prevHash'>): void => {
         const at = now();
         auditTail = auditTail.then(async () => {
             const previous = state.audit.at(-1);
@@ -581,15 +596,26 @@ export function createInMemoryEngineCore(options: InMemoryEngineCoreOptions = {}
                 id: AuditEntryId.parse(`audit-${String(seq).padStart(6, '0')}`),
                 seq,
                 at,
-                actor: { kind: 'member' as const, memberId: actor.memberId },
-                action,
-                target,
-                outcome,
-                client: actor.client,
-                details,
+                ...input,
                 prevHash: previous?.hash ?? null,
             };
             state.audit.push({ ...entry, hash: await hashAuditEntry(entry) });
+        });
+    };
+    const audit = (
+        actor: Actor,
+        action: AuditAction,
+        target: AuditEntry['target'],
+        outcome: AuditEntry['outcome'],
+        details: AuditDetails | null,
+    ): void => {
+        appendAudit({
+            actor: { kind: 'member', memberId: actor.memberId },
+            action,
+            target,
+            outcome,
+            client: actor.client,
+            details,
         });
     };
 
@@ -676,6 +702,36 @@ export function createInMemoryEngineCore(options: InMemoryEngineCoreOptions = {}
             return session;
         },
         removeSession: (sessionId) => state.sessions.delete(sessionId),
+        removePasskey: (passkeyId) => {
+            if (!state.passkeys.delete(passkeyId)) return false;
+            for (const session of [...state.sessions.values()]) {
+                if (session.passkeyId === passkeyId) state.sessions.delete(session.id);
+            }
+            return true;
+        },
+        addPasskey: (input) => {
+            const passkey = Passkey.parse(input);
+            if (!state.members.has(passkey.memberId)) throw new Error('passkey for an unknown member');
+            if (state.passkeys.has(passkey.id)) throw new Error('passkey ID already taken');
+            state.passkeys.set(passkey.id, passkey);
+            return passkey;
+        },
+        recordPasskeyUse: (passkeyId, use) => {
+            const passkey = state.passkeys.get(passkeyId);
+            if (passkey === undefined) return false;
+            const authenticator =
+                passkey.authenticator === null ? null : { ...passkey.authenticator, backedUp: use.backedUp };
+            state.passkeys.set(passkeyId, Passkey.parse({ ...passkey, lastUsedAt: use.at, authenticator }));
+            return true;
+        },
+        recordAudit: (input) => {
+            appendAudit(
+                AuditEntry.omit({ id: true, seq: true, at: true, hash: true, prevHash: true }).parse({
+                    ...input,
+                    details: input.details ?? null,
+                }),
+            );
+        },
         inspect: () => ({
             counts: {
                 members: state.members.size,

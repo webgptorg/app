@@ -14,6 +14,8 @@ export interface GatewayRouteDeps {
     readonly members: () => readonly Member[];
     /** `MOCK_DEV_LOGIN=enabled`: anyone who reaches the page can sign in as any member. Never in production. */
     readonly devLogin: boolean;
+    /** The passkey pages serve `SIGN_IN_PATH` without dev login; this placeholder only stands in when they are absent. */
+    readonly passkeyPages?: boolean;
 }
 
 const NO_QUERY = z.strictObject({});
@@ -83,6 +85,25 @@ export function createGatewayRoutes(deps: GatewayRouteDeps): readonly Route[] {
     const routes: Route[] = [
         defineHttpRoute({
             transport: 'http',
+            method: 'POST',
+            path: SIGN_OUT_PATH,
+            auth: 'session',
+            permission: null,
+            rateLimit: 'gateway-ip',
+            params: null,
+            query: NO_QUERY,
+            headers: null,
+            body: null,
+            handle: ({ actor }) => {
+                deps.sessions.signOut(actor.sessionId);
+                return redirect(SIGN_IN_PATH, clearedSessionCookie());
+            },
+        }),
+    ];
+    if (!deps.devLogin && deps.passkeyPages === true) return routes;
+    routes.push(
+        defineHttpRoute({
+            transport: 'http',
             method: 'GET',
             path: SIGN_IN_PATH,
             auth: 'public',
@@ -100,23 +121,7 @@ export function createGatewayRoutes(deps: GatewayRouteDeps): readonly Route[] {
                           '<p>Development sign-in is disabled. Sessions come from the control listener.</p>',
                       ),
         }),
-        defineHttpRoute({
-            transport: 'http',
-            method: 'POST',
-            path: SIGN_OUT_PATH,
-            auth: 'session',
-            permission: null,
-            rateLimit: 'gateway-ip',
-            params: null,
-            query: NO_QUERY,
-            headers: null,
-            body: null,
-            handle: ({ actor }) => {
-                deps.sessions.signOut(actor.sessionId);
-                return redirect(SIGN_IN_PATH, clearedSessionCookie());
-            },
-        }),
-    ];
+    );
     if (!deps.devLogin) return routes;
     routes.push(
         defineHttpRoute({

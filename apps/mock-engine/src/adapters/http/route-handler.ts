@@ -54,7 +54,9 @@ function check(location: string, schema: z.ZodType, value: unknown, errors: Vali
     const result = schema.safeParse(value);
     if (result.success) return result.data;
     for (const issue of result.error.issues) {
-        errors.push({ path: [location, ...issue.path.map(String)].join('.'), message: issue.message });
+        // Zod names unknown keys in its message; a key is input too (`/setup?<secret>`), so it is never echoed.
+        const message = issue.code === 'unrecognized_keys' ? 'Unrecognized key' : issue.message;
+        errors.push({ path: [location, ...issue.path.map(String)].join('.'), message });
     }
     return undefined;
 }

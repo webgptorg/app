@@ -1,3 +1,5 @@
+import { createInterface } from 'node:readline';
+
 import { createCryptoRandom } from '@ptbk/protocol';
 
 import { AcmeSetupError, loadOrCreateAcmeAccountKey } from './adapters/acme-account-key';
@@ -12,6 +14,9 @@ import { RegistrationStoreError, createFsRegistrationStore } from './adapters/fs
 import { SeqStoreError, createFsSeqStore } from './adapters/fs-seq-store';
 import { createHttpsFetch } from './adapters/https-fetch';
 import { createJsonLogger } from './adapters/json-logger';
+import { PasskeyStoreError, createFsPasskeyStore } from './adapters/fs-passkey-store';
+import { SetupSecretStoreError, createFsSetupSecretStore } from './adapters/fs-setup-secret-store';
+import { gatewayPagesDir, loadGatewayPageFiles } from './adapters/http/gateway-page-files';
 import { OperatorAnswerError, createOperatorClient } from './adapters/operator-client';
 import { OperatorSocketError, startOperatorSocket } from './adapters/operator-socket';
 import { createOsSystemStats } from './adapters/os-system-stats';
@@ -31,6 +36,15 @@ import { ConnectUsageError, parseConnectCommand, parseRegisterCommand, runConnec
 import { RegistrationFailedError } from './app/establish-registration';
 import { EXIT_CODE } from './app/exit-codes';
 import { FAILED } from './app/operator-lines';
+import type { SetupLinkDeps } from './app/setup-link-command';
+import {
+    SetupLinkUsageError,
+    localClockTime,
+    parseOwnerCommand,
+    parseSetupLinkCommand,
+    runOwnerResetCommand,
+    runSetupLinkCommand,
+} from './app/setup-link-command';
 import { StatusUsageError, parseStatusCommand, runStatusCommand } from './app/status-command';
 import type { DashboardDeps, MockEngine } from './app/start-mock-engine';
 import { startMockEngine } from './app/start-mock-engine';
@@ -57,6 +71,9 @@ function problemOf(error: unknown): string {
         error instanceof SeqStoreError ||
         error instanceof ConnectUsageError ||
         error instanceof StatusUsageError ||
+        error instanceof SetupLinkUsageError ||
+        error instanceof SetupSecretStoreError ||
+        error instanceof PasskeyStoreError ||
         error instanceof OperatorSocketError ||
         error instanceof OperatorAnswerError ||
         error instanceof UiLoaderSetupError ||
@@ -184,6 +201,11 @@ async function start(): Promise<{ readonly engine: MockEngine; readonly logger: 
             logger,
             // Human progress only on a terminal: a service's stdout is a log stream that gets shipped and read by others.
             say: process.stdout.isTTY ? stdoutLine : null,
+            onboarding: {
+                setupSecrets: createFsSetupSecretStore(config.dataDir),
+                passkeys: createFsPasskeyStore(config.dataDir),
+                pages: await loadGatewayPageFiles(gatewayPagesDir(import.meta.url)),
+            },
             operatorChannel: (api) => startOperatorSocket({ dataDir: config.dataDir, api, clock: systemClock, logger }),
             clock: systemClock,
             random: createCryptoRandom(),
@@ -286,9 +308,53 @@ async function status(args: readonly string[]): Promise<void> {
     }
 }
 
+function ask(prompt: string): Promise<string | null> {
+    if (!process.stdin.isTTY) return Promise.resolve(null);
+    const reader = createInterface({ input: process.stdin, output: process.stderr });
+    return new Promise((resolve) => {
+        reader.question(prompt, (answer) => {
+            reader.close();
+            resolve(answer);
+        });
+    });
+}
+
+function setupLinkDeps(dataDir: string): SetupLinkDeps {
+    return {
+        client: createOperatorClient(dataDir),
+        out: stdoutLine,
+        err: stderrLine,
+        terminal: process.stdout.isTTY,
+        sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+        nowMs: () => Date.now(),
+        clockTime: localClockTime,
+        ask,
+    };
+}
+
+/**
+ * `mock-engine setup-link [--no-wait] [--json]` and `mock-engine owner --reset [--yes] [--no-wait] [--json]`: the only
+ * places the setup link is ever printed, on stdout and only to a terminal unless `--json` asks for it.
+ */
+async function owner(run: 'setup-link' | 'owner', args: readonly string[]): Promise<void> {
+    try {
+        const config = parseConfig();
+        const deps = setupLinkDeps(config.dataDir);
+        process.exitCode =
+            run === 'setup-link'
+                ? await runSetupLinkCommand(parseSetupLinkCommand(args), deps)
+                : await runOwnerResetCommand(parseOwnerCommand(args), deps);
+    } catch (error) {
+        stderrLine(problemOf(error));
+        process.exitCode = error instanceof SetupLinkUsageError ? EXIT_CODE.usage : EXIT_CODE.failed;
+    }
+}
+
 const [verb, ...args] = process.argv.slice(2);
 if (verb === 'status') {
     await status(args);
+} else if (verb === 'setup-link' || verb === 'owner') {
+    await owner(verb, args);
 } else if (verb === 'connect') {
     await connect(parseConnectCommand, args);
 } else if (verb === 'register') {

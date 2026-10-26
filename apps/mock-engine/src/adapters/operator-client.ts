@@ -2,7 +2,7 @@ import { request } from 'node:http';
 
 import type { z } from 'zod';
 
-import { LinkAnswer, OperatorStatus } from '../domain/onboarding/operator-api';
+import { LinkAnswer, OperatorStatus, ResetAnswer, SetupLinkAnswer } from '../domain/onboarding/operator-api';
 import { OPERATOR_PATHS, OperatorSocketError, operatorSocketPath, socketDirProblem } from './operator-socket';
 
 const TIMEOUT_MS = 10_000;
@@ -12,6 +12,8 @@ const MAX_RESPONSE_BYTES = 64 * 1024;
 export interface OperatorClient {
     status(): Promise<OperatorStatus | null>;
     link(): Promise<LinkAnswer | null>;
+    setupLink(): Promise<SetupLinkAnswer | null>;
+    resetOwner(): Promise<ResetAnswer | null>;
 }
 
 /** The engine answered with something this build does not understand: a bug, never a secret to print. */
@@ -82,5 +84,7 @@ export function createOperatorClient(dataDir: string): OperatorClient {
     return {
         status: () => guarded(() => call(socketPath, 'GET', OPERATOR_PATHS.status, OperatorStatus)),
         link: () => guarded(() => call(socketPath, 'POST', OPERATOR_PATHS.link, LinkAnswer)),
+        setupLink: () => guarded(() => call(socketPath, 'POST', OPERATOR_PATHS.setupLink, SetupLinkAnswer)),
+        resetOwner: () => guarded(() => call(socketPath, 'POST', OPERATOR_PATHS.resetOwner, ResetAnswer)),
     };
 }

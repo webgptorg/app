@@ -34,9 +34,14 @@ describe('owner state', () => {
 
 describe('addressGaps', () => {
     it('names what the address still needs', () => {
-        expect(addressGaps({ relaysReady: 0, certificateValid: false })).toEqual(['relay', 'certificate']);
-        expect(addressGaps({ relaysReady: 2, certificateValid: false })).toEqual(['certificate']);
-        expect(addressGaps({ relaysReady: 0, certificateValid: true })).toEqual(['relay']);
-        expect(addressGaps({ relaysReady: 1, certificateValid: true })).toEqual([]);
+        const served = { setupPageServed: true };
+        expect(addressGaps({ relaysReady: 0, certificateValid: false, setupPageServed: false })).toEqual([
+            'relay',
+            'certificate',
+            'setup-page',
+        ]);
+        expect(addressGaps({ relaysReady: 2, certificateValid: false, ...served })).toEqual(['certificate']);
+        expect(addressGaps({ relaysReady: 0, certificateValid: true, ...served })).toEqual(['relay']);
+        expect(addressGaps({ relaysReady: 1, certificateValid: true, ...served })).toEqual([]);
     });
 });

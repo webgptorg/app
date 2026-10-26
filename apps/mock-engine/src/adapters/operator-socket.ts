@@ -23,7 +23,12 @@ import { currentUid, ensurePrivateDirectory, lstatOrNull, privacyProblem } from 
 const SOCKET_ROOT = '/tmp';
 export const OPERATOR_SOCKET_FILE = 'op.sock';
 
-export const OPERATOR_PATHS = { status: '/v1/status', link: '/v1/link' } as const;
+export const OPERATOR_PATHS = {
+    status: '/v1/status',
+    link: '/v1/link',
+    setupLink: '/v1/setup-link',
+    resetOwner: '/v1/owner/reset',
+} as const;
 
 /** The socket cannot be served. Messages name the path and the problem, nothing else. */
 export class OperatorSocketError extends Error {
@@ -121,6 +126,32 @@ function operatorRoutes(api: OperatorApi): readonly HttpRoute[] {
             headers: null,
             body: null,
             handle: async () => Response.json(await api.link()),
+        }),
+        defineHttpRoute({
+            transport: 'http',
+            method: 'POST',
+            path: OPERATOR_PATHS.setupLink,
+            auth: 'control',
+            permission: null,
+            rateLimit: 'control',
+            params: null,
+            query: NO_QUERY,
+            headers: null,
+            body: null,
+            handle: async () => Response.json(await api.setupLink()),
+        }),
+        defineHttpRoute({
+            transport: 'http',
+            method: 'POST',
+            path: OPERATOR_PATHS.resetOwner,
+            auth: 'control',
+            permission: null,
+            rateLimit: 'control',
+            params: null,
+            query: NO_QUERY,
+            headers: null,
+            body: null,
+            handle: async () => Response.json(await api.resetOwner()),
         }),
     ];
 }

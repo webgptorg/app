@@ -12,6 +12,15 @@ export default defineConfig({
     minify: false,
     dts: false,
     clean: true,
+    // The reference gateway pages are read at runtime, so the engine image carries them next to the bundle.
+    copy: {
+        from: [
+            '../../packages/gateway-pages/pages/*.html',
+            '../../packages/gateway-pages/pages/*.css',
+            '../../packages/gateway-pages/pages/*.js',
+        ],
+        to: 'dist/gateway-pages',
+    },
     deps: {
         alwaysBundle: [/.*/],
         onlyBundle: [
@@ -20,6 +29,14 @@ export default defineConfig({
             'hono',
             '@hono/node-server',
             '@faker-js/faker',
+            // The reference gateway pages' helpers, and WebAuthn (M-08) with what it pulls in.
+            '@ptbk/gateway-pages',
+            '@simplewebauthn/server',
+            '@hexagon/base64',
+            '@levischuck/tiny-cbor',
+            '@peculiar/asn1-android',
+            '@peculiar/asn1-x509-post-quantum',
+            '@peculiar/asn1-asym-key',
             // The UI loader (M-05): C-06's signature checks and the Sigstore verifier from @ptbk/release-tools.
             '@noble/curves',
             '@noble/hashes',

@@ -14,6 +14,8 @@ export const RATE_LIMITS = {
     'ui-ip': { limit: 1_200, windowMs: 60_000 },
     /** Gateway pages and forms: sign-in, sign-out, step-up. */
     'gateway-ip': { limit: 60, windowMs: 60_000 },
+    /** The setup secret's endpoints: a 128-bit secret cannot be guessed anyway, but nobody gets to try at speed. */
+    'setup-ip': { limit: 10, windowMs: 60_000 },
     /** The dev-only control listener, driven by test suites. */
     control: { limit: 6_000, windowMs: 60_000 },
 } as const satisfies Readonly<Record<string, { readonly limit: number; readonly windowMs: number }>>;

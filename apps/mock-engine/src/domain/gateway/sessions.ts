@@ -47,6 +47,8 @@ export interface SignInRequest {
     readonly sessionId?: string;
     /** A sign-in is a passkey assertion, so it is fresh unless told otherwise. */
     readonly stepUp?: 'fresh' | 'none';
+    /** The passkey the gateway verified; without one (dev login, control sessions) the member's newest stands in. */
+    readonly passkeyId?: string;
 }
 
 export interface SignedIn {
@@ -112,7 +114,7 @@ export function createSessionStore(deps: {
                     : snapshot.sessions.find(({ id, memberId }) => id === request.sessionId && memberId === member.id);
             const sessionId = SessionId.parse(existing?.id ?? newId());
             if (existing === undefined) {
-                // The stand-in has no WebAuthn ceremony; it signs in as if with the member's newest passkey.
+                // Without a ceremony (dev login, control sessions) it signs in as if with the member's newest passkey.
                 const passkey = snapshot.passkeys
                     .filter(({ memberId }) => memberId === member.id)
                     .reduce<Passkey | null>(
@@ -123,7 +125,7 @@ export function createSessionStore(deps: {
                 engine.addSession({
                     id: sessionId,
                     memberId: member.id,
-                    passkeyId: passkey?.id ?? null,
+                    passkeyId: request.passkeyId ?? passkey?.id ?? null,
                     client: request.client,
                     createdAt: timestamp(nowMs),
                     lastSeenAt: timestamp(nowMs),

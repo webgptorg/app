@@ -258,6 +258,28 @@ describe('registration and heartbeat at startup', () => {
         await beats(w, 1);
     });
 
+    it('counts members who can sign in, 0 in the next beat after owner --reset, and waits for the address before a link', async () => {
+        const w = world();
+        const { engine } = await start(w, linked(w.dashboard.issueLinkCode('org-a')));
+        await beats(w, 1);
+        const members = (index: number): number =>
+            Heartbeat.parse(JSON.parse(decoder.decode(w.dashboard.heartbeats[index]?.rawBody))).members;
+        expect(members(0)).toBeGreaterThan(0);
+        expect(engine.operator.status().ownerSetUp).toBe(true);
+        expect(await engine.operator.setupLink()).toEqual({
+            outcome: 'not-ready',
+            missing: ['certificate', 'setup-page'],
+        });
+        const reset = await engine.operator.resetOwner();
+        expect(reset.passkeys).toBeGreaterThan(0);
+        w.clock.advance(60_000);
+        await beats(w, 2);
+        expect(members(1)).toBe(0);
+        expect(engine.operator.status().ownerSetUp).toBe(false);
+        expect(engine.runtime.controller().inspect().counts.agents).toBeGreaterThan(0);
+        expect(w.logger.entries.map(({ event }) => event)).toContain('owner.reset');
+    });
+
     it('sends the first beat after one interval when no relay takes the tunnel', async () => {
         const w = world();
         await start(w, linked(w.dashboard.issueLinkCode('org-a')), createFakeDialer(), { tunnel: false });

@@ -575,6 +575,79 @@ describe('in-memory core: controller levers', () => {
         }
     });
 
+    it("removes a passkey, even a member's last one, with the sessions it signed in", () => {
+        const { core } = team();
+        core.controller.addSession({ ...session('session-pk', 'member-owner'), passkeyId: 'passkey-owner' });
+        expect(core.controller.removePasskey('passkey-owner')).toBe(true);
+        expect(core.controller.removePasskey('passkey-owner')).toBe(false);
+        const snapshot = core.controller.inspect();
+        expect(snapshot.passkeys).toEqual([]);
+        expect(snapshot.sessions.map(({ id }) => id).sort()).toEqual(['session-ada', 'session-owner']);
+    });
+
+    it('adds a passkey the gateway registered and records its use', () => {
+        const { core } = team();
+        const passkey = {
+            id: 'passkey-new',
+            memberId: 'member-ada',
+            name: 'Laptop',
+            createdAt: AT,
+            lastUsedAt: null,
+            authenticator: { attachment: 'platform' as const, backedUp: false },
+        };
+        expect(core.controller.addPasskey(passkey).id).toBe('passkey-new');
+        expect(() => core.controller.addPasskey(passkey)).toThrow();
+        expect(() => core.controller.addPasskey({ ...passkey, id: 'passkey-x', memberId: 'member-nobody' })).toThrow();
+        expect(core.controller.recordPasskeyUse('passkey-new', { at: '2026-10-20T08:00:00Z', backedUp: true })).toBe(
+            true,
+        );
+        expect(core.controller.inspect().passkeys.find(({ id }) => id === 'passkey-new')).toMatchObject({
+            lastUsedAt: '2026-10-20T08:00:00Z',
+            authenticator: { attachment: 'platform', backedUp: true },
+        });
+        expect(core.controller.recordPasskeyUse('passkey-owner', { at: AT, backedUp: null })).toBe(true);
+        expect(core.controller.recordPasskeyUse('passkey-nobody', { at: AT, backedUp: null })).toBe(false);
+    });
+
+    it('records audit entries for the gateway and the host on the same chain', async () => {
+        const { core, owner } = team();
+        core.controller.recordAudit({
+            actor: { kind: 'member', memberId: 'member-owner' },
+            action: 'passkey.register',
+            target: { kind: 'passkey', id: 'passkey-owner', name: 'Laptop' },
+            outcome: 'success',
+            client: { ip: '203.0.113.7', userAgent: 'test' },
+        });
+        core.controller.recordAudit({
+            actor: { kind: 'system' },
+            action: 'passkey.revoke',
+            target: null,
+            outcome: 'success',
+            client: null,
+            details: { passkeys: 1 },
+        });
+        expect(() => {
+            core.controller.recordAudit({
+                actor: { kind: 'system' },
+                action: 'no.such-action' as never,
+                target: null,
+                outcome: 'success',
+                client: null,
+            });
+        }).toThrow();
+        const items = ok(await owner.audit.list({}, signal())).items;
+        expect(items.map(({ action, actor: who, client, details }) => ({ action, who, client, details }))).toEqual([
+            { action: 'passkey.revoke', who: { kind: 'system' }, client: null, details: { passkeys: 1 } },
+            {
+                action: 'passkey.register',
+                who: { kind: 'member', memberId: 'member-owner' },
+                client: { ip: '203.0.113.7', userAgent: 'test' },
+                details: null,
+            },
+        ]);
+        expect(ok(await owner.audit.verify(signal()))).toMatchObject({ status: 'intact', checkedEntries: 2 });
+    });
+
     it('audits nothing a lever does', async () => {
         const { core, owner } = team();
         core.controller.addMember(member('member-z', 'viewer'));
