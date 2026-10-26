@@ -130,6 +130,7 @@ bun run plan --check  # validates statuses and dependencies (part of bun run che
 | [I-05](tasks/I-05-abuse-controls.md)                     | Abuse controls and monitoring jobs                                                           | I    | M4        |
 | [I-06](tasks/I-06-security-review.md)                    | Internal security review gate                                                                | I    | M4        |
 | [I-07](tasks/I-07-health-checked-relay-dns.md)           | Health-checked relay DNS                                                                     | I    | M4        |
+| [I-08](tasks/I-08-web-risk-abuse-feed.md)                | Google Web Risk abuse feed                                                                   | I    | M4        |
 | [C-08](tasks/C-08-platform-harness.md)                   | Platform harness, registration and heartbeat conformance suites                              | C    | M5        |
 | [C-09](tasks/C-09-tunnel-conformance.md)                 | Tunnel conformance suite: a fake relay the engine dials                                      | C    | M5        |
 | [C-10](tasks/C-10-ui-loader-conformance.md)              | UI loader conformance suite: fake release store, test Sigstore, black-box checks             | C    | M5        |
