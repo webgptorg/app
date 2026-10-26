@@ -2,7 +2,7 @@
 
 - **Lane:** I · **Module:** `infra/relay` · **Milestone:** M4
 - **Depends on:** R-04, R-06 (R-05 supplies only the sizing value; see Scope)
-- **Status:** in progress (feat/i-01-relay-hosts)
+- **Status:** done (#77)
 - **Spec:** Relay and tunnel (Hosting; No single point of failure; Fairness and DoS); Hosting and stack; Operations; Metadata we still see; Legal and GDPR (sub-processors)
 
 ## Goal
@@ -49,12 +49,12 @@ The relay needs raw TCP on 443 and long-lived connections, so it runs on plain V
 ## Acceptance criteria
 
 - [x] ADR 0011 merged (by this task or I-02) with status `Accepted` and listed in `docs/adr/README.md`.
-- [ ] The CI checks in Scope run on every PR that touches `infra/` and pass, including `tofu test` for I-02's module.
-- [ ] In the CI VM, `verify.sh` passes, and a port scan shows only 443 open and 22 only from the allowlist; a deliberately broken setting (for example password SSH enabled) makes `verify.sh` fail (verified once, noted in the PR).
+- [x] The CI checks in Scope run on every PR that touches `infra/` and pass, including `tofu test` for I-02's module. (Verified locally in #77 because GitHub Actions is down: `infra/relay/scripts/check.sh` as the `infra` job runs it.)
+- [x] In the CI VM, `verify.sh` passes, and a port scan shows only 443 open and 22 only from the allowlist; a deliberately broken setting (for example password SSH enabled) makes `verify.sh` fail (verified once, noted in the PR). (Verified locally in #77 because GitHub Actions is down: `infra/relay/test/vm-test.sh` with the amd64 image under QEMU TCG, as no KVM was available.)
 - [x] `RELAY_REGISTRY_TOKEN_FILE` is supported and tested.
 - [x] Production hosts are defined in code (two locations); staging and production differ only in sizes, counts and allowlists.
-- [ ] `bun run check` passes.
-- [ ] **Status** line above set to `done (#<PR>)`.
+- [x] `bun run check` passes.
+- [x] **Status** line above set to `done (#<PR>)`.
 
 ## Apply (needs credentials)
 
@@ -70,4 +70,5 @@ Tracked in [apply.md](../apply.md). Needs a Hetzner project and `HCLOUD_TOKEN` p
 - Provider accounts and who holds them are a pending human decision (plan README).
 - SSH access model: IP allowlist versus a bastion or WireGuard; decide in the ADR with the team.
 - Relay hostname domain (under the engine domain or a separate infra domain) is decided in I-02.
-- Instance size depends on R-05 results; 1,000 idle tunnels per small VPS is a target to confirm. Only the `server_type` default changes with it.
+- Instance size depends on R-05 results; 1,000 idle tunnels per small VPS is a target to confirm. Only the `server_type` default changes with it. The default is `cx23`: Hetzner no longer sells `cx22`, and `cx23` is the same 2 vCPU, 4 GB class.
+- The relay certificate needs lego's Cloudflare DNS provider, which Debian 13's lego (4.9.1) lacks: hosts install the upstream release pinned by SHA-256 instead (Seb, 2026-10-23; ADR 0011). It gets no Debian security updates, so its pin is bumped by hand until Renovate runs.

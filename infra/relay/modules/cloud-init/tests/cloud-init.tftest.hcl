@@ -123,6 +123,14 @@ run "sizes_the_relay" {
     condition     = strcontains(local.files["/etc/ptbk-relay/relay.env"], "RELAY_MAX_CONNECTIONS=10000\nRELAY_MEMORY_BUDGET_BYTES=1073741824\n")
     error_message = "The relay's own limits match the container sizing."
   }
+
+  assert {
+    condition = (
+      strcontains(local.files["/etc/ptbk-relay/relay.env"], "RELAY_LISTEN_BACKLOG=8192\n")
+      && strcontains(local.files["/etc/sysctl.d/90-ptbk-relay.conf"], "net.core.somaxconn = 8192\nnet.ipv4.tcp_max_syn_backlog = 8192\n")
+    )
+    error_message = "The relay listens with the backlog the kernel allows."
+  }
 }
 
 run "staggers_reboot_and_renewal" {
@@ -136,6 +144,37 @@ run "staggers_reboot_and_renewal" {
   assert {
     condition     = strcontains(local.files["/etc/systemd/system/ptbk-relay-cert.timer"], "OnCalendar=*-*-* 00:30:00 UTC\n")
     error_message = "The certificate renewal runs an hour after the reboot window, across midnight."
+  }
+}
+
+run "installs_the_pinned_lego" {
+  command = apply
+
+  assert {
+    condition     = !contains(local.cloud_config.packages, "lego")
+    error_message = "Debian's lego lacks the Cloudflare DNS provider; the pinned release replaces it."
+  }
+
+  assert {
+    condition = alltrue([
+      for value in [
+        "version=${local.lego.version}\n",
+        "amd64) sha256=${local.lego.sha256_amd64} ;;",
+        "arm64) sha256=${local.lego.sha256_arm64} ;;",
+        "sha256sum --check",
+      ] : strcontains(local.files["/usr/local/libexec/ptbk-relay/install-lego"], value)
+    ])
+    error_message = "The installer checks the pinned release's SHA-256 for the host's architecture."
+  }
+
+  assert {
+    condition     = contains(local.cloud_config.runcmd, ["/usr/local/libexec/ptbk-relay/install-lego"])
+    error_message = "cloud-init installs lego at first boot."
+  }
+
+  assert {
+    condition     = strcontains(local.files["/etc/systemd/system/ptbk-relay-cert.service"], "Environment=CLOUDFLARE_DNS_API_TOKEN_FILE=%d/acme-dns-token\n")
+    error_message = "lego reads the challenge zone token from the unit's credential."
   }
 }
 

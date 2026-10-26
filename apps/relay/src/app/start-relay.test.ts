@@ -215,6 +215,27 @@ describe('startRelay', () => {
         );
     });
 
+    it('starts with a certificate whose subject is empty, the relay named in its SAN only (lego, ACME CAs)', async () => {
+        const sanOnly = createTestCertificate([RELAY_ID], 'ec', 'empty');
+        await writeFile(join(dir, 'cert.pem'), sanOnly.cert);
+        await writeFile(join(dir, 'key.pem'), sanOnly.key);
+        const relay = await startRelay(env(), deps());
+        try {
+            expect(await fingerprintAt(relay.port)).toBe(new X509Certificate(sanOnly.cert).fingerprint256);
+        } finally {
+            await relay.close();
+        }
+    });
+
+    it('refuses to start with a certificate for the engine domain whose subject is empty', async () => {
+        const engineWide = createTestCertificate([RELAY_ID, '*.engine.test'], 'ec', 'empty');
+        await writeFile(join(dir, 'cert.pem'), engineWide.cert);
+        await writeFile(join(dir, 'key.pem'), engineWide.key);
+        await expect(startRelay(env(), deps())).rejects.toThrow(
+            'RELAY_TLS_CERT_FILE must not be valid for RELAY_ENGINE_DOMAIN or any name under it',
+        );
+    });
+
     it('refuses to start with a file that is PEM but not a certificate', async () => {
         await writeFile(join(dir, 'cert.pem'), relayCertificate().key);
         await expect(startRelay(env(), deps())).rejects.toThrow(

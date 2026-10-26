@@ -1,0 +1,27 @@
+#!/bin/bash
+# Installs the lego release pinned in the cloud-init module, checked against its SHA-256 (ADR 0011). Debian's lego is
+# built without the Cloudflare DNS provider. Run by cloud-init at first boot; exits at once if that release is in place.
+set -euo pipefail
+
+version=${version}
+case $(dpkg --print-architecture) in
+amd64) sha256=${sha256_amd64} ;;
+arm64) sha256=${sha256_arm64} ;;
+*)
+    echo "no lego release is pinned for $(dpkg --print-architecture)" >&2
+    exit 1
+    ;;
+esac
+
+if [[ $(/usr/local/bin/lego --version 2>/dev/null || true) == "lego version $version "* ]]; then
+    exit 0
+fi
+
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+curl -fsSL --proto '=https' --retry 10 --retry-all-errors --retry-delay 3 -o "$work/lego.tar.gz" \
+    "https://github.com/go-acme/lego/releases/download/v$version/lego_v$${version}_linux_$(dpkg --print-architecture).tar.gz"
+echo "$sha256  $work/lego.tar.gz" | sha256sum --check --quiet -
+tar -xzf "$work/lego.tar.gz" -C "$work" lego
+install -m 0755 -o root -g root "$work/lego" /usr/local/bin/lego
+/usr/local/bin/lego --version

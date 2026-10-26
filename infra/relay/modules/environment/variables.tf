@@ -46,7 +46,7 @@ variable "relays" {
 variable "server_type" {
   type        = string
   description = "Hetzner server type of every relay. R-05's load test may change it; nothing else depends on it."
-  default     = "cx22"
+  default     = "cx23"
 }
 
 variable "image" {

@@ -9,6 +9,16 @@ locals {
 
   files_dir = "${path.module}/files"
 
+  listen_backlog = 8192
+
+  # The upstream lego release the hosts install (ADR 0011), with the SHA-256 of each architecture's tarball from the
+  # release's checksums file. Bump all three together.
+  lego = {
+    version      = "5.5.2"
+    sha256_amd64 = "2a35505089e7772c92e1e9ac144df91151ef2eca8568630db0ff91fca06d9bef"
+    sha256_arm64 = "15b14ec2ab14fde69cc8396eb0204c5ce4327e31a486953225a6059b26db3e8c"
+  }
+
   # Every file is written after the packages are installed (defer), so package defaults never overwrite them, and
   # runcmd then (re)starts each service with its final configuration.
   write_files = [
@@ -17,7 +27,9 @@ locals {
         ssh_allow_v4 = local.ssh_allow_v4
         ssh_allow_v6 = local.ssh_allow_v6
       }) },
-      { path = "/etc/sysctl.d/90-ptbk-relay.conf", permissions = "0644", content = file("${local.files_dir}/sysctl.conf") },
+      { path = "/etc/sysctl.d/90-ptbk-relay.conf", permissions = "0644", content = templatefile("${local.files_dir}/sysctl.conf.tftpl", {
+        listen_backlog = local.listen_backlog
+      }) },
       { path = "/etc/modules-load.d/ptbk-relay.conf", permissions = "0644", content = file("${local.files_dir}/modules-load.conf") },
       { path = "/etc/systemd/journald.conf.d/ptbk-relay.conf", permissions = "0644", content = file("${local.files_dir}/journald.conf") },
       { path = "/etc/chrony/conf.d/ptbk-relay.conf", permissions = "0644", content = file("${local.files_dir}/chrony.conf") },
@@ -42,6 +54,7 @@ locals {
         registry_url        = var.registry_url
         max_connections     = var.max_connections
         memory_budget_bytes = var.memory_budget_mib * 1048576
+        listen_backlog      = local.listen_backlog
         settings            = var.relay_settings
       }) },
       { path = "/etc/ptbk-relay/limits.env", permissions = "0644", content = templatefile("${local.files_dir}/limits.env.tftpl", {
@@ -56,6 +69,7 @@ locals {
       }) },
       { path = "/usr/local/libexec/ptbk-relay/renew-certificate", permissions = "0755", content = file("${local.files_dir}/renew-certificate") },
       { path = "/usr/local/libexec/ptbk-relay/install-certificate", permissions = "0700", content = file("${local.files_dir}/install-certificate") },
+      { path = "/usr/local/libexec/ptbk-relay/install-lego", permissions = "0700", content = templatefile("${local.files_dir}/install-lego.tftpl", local.lego) },
       { path = "/usr/local/sbin/ptbk-relay-deploy", permissions = "0755", content = file("${local.files_dir}/ptbk-relay-deploy") },
       { path = "/etc/sudoers.d/ptbk-deploy", permissions = "0440", content = file("${local.files_dir}/sudoers-ptbk-deploy") },
     ] : merge(entry, { owner = "root:root", defer = true })
@@ -77,7 +91,7 @@ locals {
     package_upgrade            = true
     package_reboot_if_required = true
     packages = [
-      "podman", "nftables", "unbound", "chrony", "unattended-upgrades", "lego", "bind9-dnsutils",
+      "podman", "nftables", "unbound", "chrony", "unattended-upgrades", "bind9-dnsutils", "curl",
     ]
 
     users = concat(
@@ -109,7 +123,10 @@ locals {
 
     write_files = local.write_files
 
+    # lego first, while the image's own resolver is in place: in the VM test, GitHub's name did not resolve for a while
+    # right after the switch to the freshly restarted unbound.
     runcmd = [
+      ["/usr/local/libexec/ptbk-relay/install-lego"],
       ["install", "-d", "-m", "0700", "-o", "root", "-g", "root", "/etc/ptbk-relay/credentials"],
       ["modprobe", "nf_conntrack"],
       ["systemctl", "restart", "systemd-sysctl.service"],

@@ -14,6 +14,12 @@ variable "deploy_key" {
   default = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEAvFcF9TjUmm57Av3oVnBfv6lwzliXetJmpL5iZ/p0m ci-deploy"
 }
 
+# The VM test points the certificate unit at a local Pebble.
+variable "acme_server" {
+  type    = string
+  default = "https://acme-v02.api.letsencrypt.org/directory"
+}
+
 variable "ssh_allowlist" {
   type    = list(string)
   default = ["192.0.2.0/24", "2001:db8:22::/48"]
@@ -27,6 +33,7 @@ module "host" {
   engine_domain = "engines.ptbk.test"
   registry_url  = "https://app.ptbk.test"
   acme_email    = "ops@ptbk.test"
+  acme_server   = var.acme_server
   admins        = { ci = [var.admin_key] }
   deploy_key    = var.deploy_key
   ssh_allowlist = var.ssh_allowlist

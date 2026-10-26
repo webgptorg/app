@@ -1,7 +1,8 @@
 # Relay host kernel settings (I-01).
 net.ipv4.tcp_syncookies = 1
-net.core.somaxconn = 8192
-net.ipv4.tcp_max_syn_backlog = 8192
+# The relay listens with the same backlog (RELAY_LISTEN_BACKLOG); the kernel caps a listener's at somaxconn.
+net.core.somaxconn = ${listen_backlog}
+net.ipv4.tcp_max_syn_backlog = ${listen_backlog}
 # Connection tracking stays on, because the per-source limits on 443 count tracked connections; this leaves room for
 # 10,000+ long-lived connections with headroom. nf_conntrack is loaded first (modules-load.d).
 net.netfilter.nf_conntrack_max = 262144

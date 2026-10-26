@@ -16,3 +16,5 @@ packages/release-tools/src/trusted_root.json
 e2e/test-results/
 # Vendored unchanged from Playwright (X-01).
 e2e/docker/seccomp_profile.json
+# OpenTofu working directories (infra/.gitignore), left by tofu init and infra/relay/scripts/check.sh.
+**/.terraform/

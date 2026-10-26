@@ -7,7 +7,7 @@ relays = {
   relay-fsn = { location = "fsn1", reboot_time = "02:00" }
   relay-hel = { location = "hel1", reboot_time = "04:00" }
 }
-server_type = "cx22"
+server_type = "cx23"
 
 # Under ptbk.io or another domain in infra/cloudflare's zones, never under the engine domain: the relay refuses a
 # hostname there (apps/relay, RELAY_HOSTNAME).

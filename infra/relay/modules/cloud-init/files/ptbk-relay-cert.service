@@ -14,7 +14,7 @@ StateDirectory=ptbk-relay-cert
 StateDirectoryMode=0700
 LoadCredential=acme-dns-token:/etc/ptbk-relay/credentials/acme-dns-token
 EnvironmentFile=/etc/ptbk-relay/cert.env
-Environment=CF_DNS_API_TOKEN_FILE=%d/acme-dns-token
+Environment=CLOUDFLARE_DNS_API_TOKEN_FILE=%d/acme-dns-token
 ExecStart=/usr/local/libexec/ptbk-relay/renew-certificate
 # Privileged: installs a new certificate as the relay's credential and restarts the relay to load it.
 ExecStartPost=+/usr/local/libexec/ptbk-relay/install-certificate

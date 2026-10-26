@@ -1,22 +1,19 @@
 #!/bin/bash
-# Runs as ptbk-relay-cert.service (a dynamic user): issues the relay certificate once, then renews it when fewer than
-# 30 days remain. lego follows the _acme-challenge CNAME into the challenge zone.
+# Runs as ptbk-relay-cert.service (a dynamic user): issues the relay certificate once, then renews it when lego's
+# default says so (a third of its lifetime left, or the CA's renewal info), which follows shorter CA lifetimes. lego
+# follows the _acme-challenge CNAME into the challenge zone.
 set -euo pipefail
 
 : "${STATE_DIRECTORY:?}" "${PTBK_RELAY_HOSTNAME:?}" "${PTBK_ACME_EMAIL:?}" "${PTBK_ACME_SERVER:?}"
 
-lego_args=(
-    --accept-tos
-    --path="$STATE_DIRECTORY"
-    --server="$PTBK_ACME_SERVER"
-    --email="$PTBK_ACME_EMAIL"
-    --domains="$PTBK_RELAY_HOSTNAME"
-    --key-type=ec256
-    --dns=cloudflare
-    --dns.resolvers=127.0.0.1:53
-)
-
-if [[ -s "$STATE_DIRECTORY/certificates/$PTBK_RELAY_HOSTNAME.crt" ]]; then
-    exec lego "${lego_args[@]}" renew --days=30
-fi
-exec lego "${lego_args[@]}" run
+# The timer already spreads the runs (RandomizedDelaySec), so lego's own random sleep would only delay it.
+exec lego --log.format=text run \
+    --accept-tos \
+    --path="$STATE_DIRECTORY" \
+    --server="$PTBK_ACME_SERVER" \
+    --email="$PTBK_ACME_EMAIL" \
+    --domains="$PTBK_RELAY_HOSTNAME" \
+    --key-type=EC256 \
+    --dns=cloudflare \
+    --dns.resolvers=127.0.0.1:53 \
+    --no-random-sleep

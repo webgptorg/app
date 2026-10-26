@@ -47,7 +47,7 @@ describe('parseRelayConfig', () => {
         const config = parseRelayConfig({ ...staticEnv, PATH: '/usr/bin', HOME: '/root', RELAY_LISTEN_HOST: '' });
         expect(config).toEqual({
             relayId: 'relay-a.ptbk.test',
-            listen: { host: '0.0.0.0', port: 443 },
+            listen: { host: '0.0.0.0', port: 443, backlog: 511 },
             engineDomain: 'engine.test',
             tls: { certFile: '/etc/relay/cert.pem', keyFile: '/etc/relay/key.pem' },
             registry: {
@@ -106,6 +106,7 @@ describe('parseRelayConfig', () => {
             RELAY_ENGINE_DOMAIN: 'Engine.TEST',
             RELAY_LISTEN_HOST: '::',
             RELAY_LISTEN_PORT: '0',
+            RELAY_LISTEN_BACKLOG: '8192',
             RELAY_REGISTRY_TIMEOUT_MS: '500',
             RELAY_REGISTRY_TTL_S: '60',
             RELAY_REGISTRY_MAX_STALE_S: '3600',
@@ -140,7 +141,7 @@ describe('parseRelayConfig', () => {
         });
         expect(config.relayId).toBe('relay-a.ptbk.test');
         expect(config.engineDomain).toBe('engine.test');
-        expect(config.listen).toEqual({ host: '::', port: 0 });
+        expect(config.listen).toEqual({ host: '::', port: 0, backlog: 8192 });
         expect(config.registry).toMatchObject({ timeoutMs: 500, ttlMs: 60_000, maxStaleMs: 3_600_000 });
         expect(config.dns).toEqual({ servers: ['1.1.1.1', '2606:4700:4700::1111'], timeoutMs: 1000 });
         expect(Object.isFrozen(config.dns.servers)).toBe(true);
@@ -343,6 +344,16 @@ describe('parseRelayConfig', () => {
             'a negative port',
             { ...staticEnv, RELAY_LISTEN_PORT: '-1' },
             'RELAY_LISTEN_PORT: must be an integer from 0 to 65535',
+        ],
+        [
+            'a zero listen backlog',
+            { ...staticEnv, RELAY_LISTEN_BACKLOG: '0' },
+            'RELAY_LISTEN_BACKLOG: must be an integer from 1 to 65535',
+        ],
+        [
+            'a listen backlog above 65535',
+            { ...staticEnv, RELAY_LISTEN_BACKLOG: '65536' },
+            'RELAY_LISTEN_BACKLOG: must be an integer from 1 to 65535',
         ],
         [
             'a listen host that is not an IP',

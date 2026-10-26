@@ -5,7 +5,7 @@
 relays = {
   relay-fsn = { location = "fsn1", reboot_time = "02:00" }
 }
-server_type = "cx22"
+server_type = "cx23"
 
 # Inside the staging dashboard zone, as in infra/cloudflare's staging tfvars; never under the engine domain.
 relay_domain  = "<staging-zone>"

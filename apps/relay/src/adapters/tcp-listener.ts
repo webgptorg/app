@@ -92,7 +92,7 @@ export interface BrowserListenerMetrics {
 
 export interface BrowserListener extends BrowserListenerMetrics {
     /** Resolves with the bound port. */
-    listen(port: number, host: string): Promise<number>;
+    listen(port: number, host: string, backlog: number): Promise<number>;
     /** Stops accepting and destroys every connection not handed to the TLS server; resolves once the server closed. */
     close(): Promise<void>;
 }
@@ -330,10 +330,10 @@ export function createBrowserListener(options: BrowserListenerOptions): BrowserL
     }
 
     return {
-        listen(port, host) {
+        listen(port, host, backlog) {
             return new Promise((resolve, reject) => {
                 server.once('error', reject);
-                server.listen(port, host, () => {
+                server.listen({ port, host, backlog }, () => {
                     server.off('error', reject);
                     // Accept errors (EMFILE) are emitted here; without a listener they would end the process.
                     server.on('error', (error: Error) => {
