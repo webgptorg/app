@@ -71,9 +71,9 @@ test("a scripted run's start and finish appear in the live activity feed without
         steps: [{ text: 'Read the inbox' }, { text: 'Reply' }],
     });
     await advanceTime(2_000);
-    await expect(feed.getByText('A run from API started').first()).toBeVisible();
+    await expect(feed.getByText('A run from the API started').first()).toBeVisible();
     await advanceTime(30_000);
-    await expect(feed.getByText('A run from API completed').first()).toBeVisible();
+    await expect(feed.getByText('A run from the API completed').first()).toBeVisible();
     expect(navigations).toBe(0);
 });
 
