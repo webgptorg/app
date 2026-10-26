@@ -4,7 +4,11 @@ import { beforeEach } from 'vitest';
 import { createDatabase } from '../../src/adapters/db/client';
 import { createD1AuthStore } from '../../src/adapters/db/d1-auth-store';
 import { createD1BillingStore } from '../../src/adapters/db/d1-billing-store';
-import { createD1EngineStore, createD1LinkCodeStore } from '../../src/adapters/db/d1-registration-store';
+import {
+    createD1EngineStore,
+    createD1LinkCodeStore,
+    createD1PlatformEngineStore,
+} from '../../src/adapters/db/d1-registration-store';
 import { createD1RegistryReader, createD1RelayTokenStore } from '../../src/adapters/db/d1-registry-store';
 import { createD1RelayPresenceStore } from '../../src/adapters/db/d1-relay-presence-store';
 import { createAuthHarness } from '../../src/testing/auth-harness';
@@ -20,7 +24,11 @@ describePresenceFlows('relay presence on D1', () => {
         harness: createAuthHarness({
             store: createD1AuthStore(db),
             billingStore: createD1BillingStore(db),
-            registration: { linkCodes: createD1LinkCodeStore(db), engines: createD1EngineStore(db) },
+            registration: {
+                linkCodes: createD1LinkCodeStore(db),
+                engines: createD1EngineStore(db),
+                platformEngines: createD1PlatformEngineStore(db),
+            },
             relayTokens: createD1RelayTokenStore(db),
             registry: createD1RegistryReader(db),
             relayPresence: createD1RelayPresenceStore(db),
