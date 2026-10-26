@@ -2,7 +2,7 @@
 
 - **Lane:** I · **Module:** `infra/cloudflare`, `apps/dashboard` (health check job), `e2e/` · **Milestone:** M4
 - **Depends on:** I-01, I-02, I-04
-- **Status:** todo
+- **Status:** done (#82)
 - **Spec:** Relay and tunnel (failover); Operations (Availability and failure modes); Hosting and stack (Engine DNS, Monitoring jobs)
 
 ## Goal
@@ -27,22 +27,26 @@ X-02 measured (2026-10-21) that a relay which hangs while its kernel still accep
 
 ## Acceptance criteria
 
-- [ ] X-02's known-limit test (`e2e/tests/network/relay-failover.spec.ts` › "a hung relay that still accepts TCP is not failed over by the browser (known limit, I-07)") is turned into a passing failover test: with relay-a paused and listed first, a fresh browser loads the engine through relay-b in under 15 s, counted from the moment the relay hung.
-- [ ] Unit tests for the checker: consecutive failure and success thresholds, never removing the last healthy relay, alert on every change.
-- [ ] The engine domain's relay records carry the short TTL, set in infra code.
-- [ ] `bun run check` passes.
-- [ ] **Status** line above set to `done (#<PR>)`.
+- [x] X-02's known-limit test (`e2e/tests/network/relay-failover.spec.ts` › "a hung relay that still accepts TCP is not failed over by the browser (known limit, I-07)") is turned into a passing failover test: with relay-a paused and listed first, a fresh browser loads the engine through relay-b in under 15 s, counted from the moment the relay hung.
+- [x] Unit tests for the checker: consecutive failure and success thresholds, never removing the last healthy relay, alert on every change.
+- [x] The engine domain's relay records carry the short TTL, set in infra code.
+- [x] `bun run check` passes.
+- [x] **Status** line above set to `done (#<PR>)`.
 
 ## Apply (needs credentials)
 
-Tracked in [apply.md](../apply.md). Needs I-01's and I-02's applied staging and the decision below.
+Tracked in [apply.md](../apply.md). Needs I-01's and I-02's applied environments, the Load Balancing add-on and the ops mailbox for every environment that uses the load balancer, and two relays in it.
 
-- The checker runs against the staging relays and changes the staging records; record what production resolvers do with the short TTL.
+- Verify the load balancer where it first runs (production before traffic, or staging once it has two relays; `infra/cloudflare` README, Relay DNS); record what production resolvers do with the short TTL.
 
 ## Risks and open points
 
-- **Conflict with I-02, needs a human decision.** I-02 keeps every DNS token out of the dashboard Worker, and the engine domain's relay records are managed by OpenTofu: a checker that edits them needs a privileged token where I-02 forbids one, and its edits drift from the OpenTofu state, so the next `apply` would put a hung relay back. Options: (1) a Cloudflare DNS-only load balancer with health checks, with the engine domain's wildcard CNAMEd to it (paid add-on; support for a DNS-only wildcard setup to be confirmed); or (2) the checker moves out of the dashboard into a separate Worker that alone holds a token scoped to the engine zone, with the relay records excluded from OpenTofu. Build the checker logic, thresholds and the CoreDNS e2e behind a `RelayDnsWriter` port now; the adapter waits for the decision (plan's "Still needed" table).
+- **Decided 2026-10-23 (the orchestrator, delegated by Seb): option 1, a Cloudflare DNS-only load balancer.** The conflict with I-02: a checker that edits the engine domain's relay records needs a privileged token where I-02 forbids one, and its edits drift from the OpenTofu state, so the next `apply` would put a hung relay back. Options were (1) a DNS-only load balancer with health checks on the engine wildcard, or (2) a separate Worker holding a token scoped to the engine zone, with the relay records outside OpenTofu. Option 2 is rejected: Cloudflare tokens cannot be scoped below a zone, so that Worker could repoint any engine hostname and pass ACME challenges for it, which is what the zero-trust credential rule forbids for relays. With option 1 no token exists at runtime, and the relay records stay in OpenTofu:
+  - `infra/cloudflare/modules/environment/relay-dns.tf`: the load balancer on `*.<engine domain>` (DNS-only, TTL 30 s) replaces I-02's wildcard A and AAAA records. One primary pool with every relay address at equal weight, because a DNS-only load balancer then answers with every healthy endpoint of the pool and drops only the unhealthy ones (one pool per relay would answer with one relay per query and lose the browser's own retry of the next address). An HTTPS monitor asks each relay's own hostname for `/healthz` (certificate verified, 3 s timeout, one retry, every 15 s, out after 2 failures, back after 3 passes) from three regions, and Cloudflare counts a relay unhealthy only when most regions see it fail. A fallback pool holds the same relays without a monitor, so if every relay fails, every relay stays listed and the notification policy alerts the ops mailbox, as it does for every pool and endpoint health change.
+  - To confirm at Apply: a DNS-only load balancer on a wildcard hostname (Cloudflare documents wildcard load balancer records, not this combination); A answers carry only the IPv4 endpoints and AAAA answers only the IPv6 ones, and what an A query gets while every IPv4 endpoint is down but an IPv6 one is healthy (the pool counts as healthy); the monitor sends the Host header as the TLS server name. If the wildcard does not work DNS-only, the fallback is option 2 behind a `RelayDnsWriter` port, the seam the e2e stand-in already has (`e2e/src/relay-dns/checker.ts`), with its own ADR; it is documented, not built.
+  - `relay_dns_mode` per environment (added at review): `"load_balancer"` as above, or `"records"`, I-02's plain wildcard records with the same 30 s TTL, which needs no add-on and drops no hung relay. Production defaults to the load balancer; staging uses records while it has one relay, where the fallback pool would keep that relay listed anyway, so I-02's first apply does not wait for the add-on. The load balancer is refused with fewer than two relays.
+  - The e2e stand-in (`compose.relay-dns.yaml`, `e2e/src/relay-dns/`) applies the same rule to the stack's CoreDNS and is test-only; nothing of it ships with the dashboard, whose `scheduled` dispatcher gets no I-07 job.
 
-- DNS caching beyond the TTL (resolvers, operating systems, browsers) delays failover; the e2e test measures it with Chromium only. Record what production resolvers do once relays run in staging.
-- A check from one location can remove a relay that is only unreachable from there; use more than one vantage point or a quorum before removing a relay in production. I-01 spreads relays over several providers, so a single provider's outage must not read as every relay failing.
-- A relay under a TLS-handshake flood (R-06) can look hung to the checker; thresholds must not pull a relay that is only shedding load, or an attack on one relay could take it out of DNS.
+- DNS caching beyond the TTL (resolvers, operating systems, browsers) delays failover; the e2e test measures it with Chromium only. Record what production resolvers do once relays run in staging. Production failover takes about interval × consecutive down + TTL, 15 × 2 + 30 = 60 s plus resolver caching (`infra/cloudflare` README, Relay DNS).
+- A check from one location can remove a relay that is only unreachable from there; use more than one vantage point or a quorum before removing a relay in production. I-01 spreads relays over several providers, so a single provider's outage must not read as every relay failing. Addressed: three check regions with Cloudflare's majority rule, and the fallback pool when every relay fails.
+- A relay under a TLS-handshake flood (R-06) can look hung to the checker; thresholds must not pull a relay that is only shedding load, or an attack on one relay could take it out of DNS. Partly addressed: two failed checks in a row from most regions, each with a retry; R-06 keeps part of its connection cap for the relay's own hostname, which is what the monitor asks for, but its budget for connections still before their ClientHello is shared and evicts the oldest under a flood, so a heavy handshake flood can still fail the checks. A relay that cannot finish a handshake for 30 s from most regions is failing browsers too, so leaving DNS is then the right outcome; a flood against every relay ends in the fallback pool, not in empty DNS.

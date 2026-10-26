@@ -1,0 +1,5 @@
+$ORIGIN engine.test.
+@ 5 IN SOA ns.engine.test. hostmaster.engine.test. 1 60 60 60 5
+@ 5 IN NS ns.engine.test.
+* 5 IN A 10.89.231.11
+* 5 IN A 10.89.231.12

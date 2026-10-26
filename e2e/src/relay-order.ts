@@ -1,8 +1,10 @@
+import { Resolver } from 'node:dns/promises';
+
 import type { Browser, BrowserType } from '@playwright/test';
 
 import { tlsPeerCertificate } from './certificates.ts';
 import type { RelayNode } from './stack.ts';
-import { HTTPS_PORT, RELAYS, relayFirstAlias } from './stack.ts';
+import { DNS_IP, HTTPS_PORT, RELAYS, relayFirstAlias } from './stack.ts';
 
 /**
  * A Chromium of its own whose resolver maps the engine hostname onto a name listing `relay` first, so the browser
@@ -39,4 +41,18 @@ export async function relayServesEngine(
 export async function everyRelayServesEngine(engineHost: string, caCertificatePem: string): Promise<boolean> {
     const results = await Promise.all(RELAYS.map((relay) => relayServesEngine(relay, engineHost, caCertificatePem)));
     return results.every(Boolean);
+}
+
+/**
+ * The addresses the stack's DNS lists right now for the name `launchPreferringRelay(…, relay)` resolves, in order,
+ * asked of CoreDNS directly so no cache in between hides a change. Empty when the lookup fails.
+ */
+export async function addressesListedFor(relay: RelayNode): Promise<readonly string[]> {
+    const resolver = new Resolver({ timeout: 1_000, tries: 1 });
+    resolver.setServers([DNS_IP]);
+    try {
+        return await resolver.resolve4(relayFirstAlias(relay));
+    } catch {
+        return [];
+    }
 }

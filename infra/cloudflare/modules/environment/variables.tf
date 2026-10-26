@@ -58,7 +58,7 @@ variable "relays" {
     ipv6        = string
     in_rotation = bool
   }))
-  description = "Relays by host label (relay-fsn becomes relay-fsn.<relay_domain>). in_rotation = false takes a relay out of the engine wildcard but keeps its own hostname."
+  description = "Relays by host label (relay-fsn becomes relay-fsn.<relay_domain>). in_rotation = false takes a relay out of the engine wildcard (its records or the load balancer's pools) but keeps its own hostname."
 
   validation {
     condition     = alltrue([for name, _ in var.relays : can(regex("^[a-z0-9]([a-z0-9-]*[a-z0-9])?$", name))])
@@ -87,6 +87,64 @@ variable "security_contact" {
   validation {
     condition     = can(regex(local.email_pattern, var.security_contact))
     error_message = "security_contact must be an email address; replace the <...> placeholder."
+  }
+}
+
+variable "ops_email" {
+  type        = string
+  description = "Ops mailbox (I-04's alerts) that Cloudflare notifies when a relay leaves or rejoins the engine wildcard. Required with relay_dns_mode = \"load_balancer\"."
+  default     = null
+
+  validation {
+    condition     = var.ops_email == null || can(regex(local.email_pattern, coalesce(var.ops_email, "-")))
+    error_message = "ops_email must be an email address; replace the <...> placeholder."
+  }
+}
+
+variable "relay_dns_mode" {
+  type        = string
+  description = "How the engine wildcard lists relays: \"load_balancer\" (health-checked, Load Balancing add-on) or \"records\" (plain A and AAAA records). README, Relay DNS."
+  default     = "load_balancer"
+
+  validation {
+    condition     = contains(["records", "load_balancer"], var.relay_dns_mode)
+    error_message = "relay_dns_mode must be records or load_balancer."
+  }
+
+  # With one relay the fallback pool always lists it: a load balancer would cost money and drop nothing.
+  validation {
+    condition     = var.relay_dns_mode != "load_balancer" || length(var.relays) >= 2
+    error_message = "relay_dns_mode = \"load_balancer\" needs at least two relays; use \"records\" for a single relay."
+  }
+
+  validation {
+    condition     = var.relay_dns_mode != "load_balancer" || var.ops_email != null
+    error_message = "relay_dns_mode = \"load_balancer\" needs ops_email for the relay health notifications."
+  }
+}
+
+variable "relay_health_check" {
+  type = object({
+    interval_s = optional(number, 15)
+    regions    = optional(list(string), ["WEU", "EEU", "ENAM"])
+  })
+  description = "How often and from where Cloudflare checks each relay. Failover takes about interval_s x 2 + 30 s (README, Relay DNS); a shorter interval needs a higher Load Balancing tier."
+  default     = {}
+
+  validation {
+    condition     = var.relay_health_check.interval_s >= 10 && var.relay_health_check.interval_s <= 60
+    error_message = "relay_health_check.interval_s must be between 10 and 60 seconds; slower checks leave a hung relay in DNS for minutes."
+  }
+
+  # Cloudflare marks an endpoint unhealthy when most check regions see it fail, so one region's view of the network
+  # cannot pull a relay; that takes at least three distinct regions.
+  validation {
+    condition = (
+      length(distinct(var.relay_health_check.regions)) >= 3
+      && length(distinct(var.relay_health_check.regions)) == length(var.relay_health_check.regions)
+      && alltrue([for region in var.relay_health_check.regions : contains(["WNAM", "ENAM", "WEU", "EEU", "NSAM", "SSAM", "OC", "ME", "NAF", "SAF", "SAS", "SEAS", "NEAS"], region)])
+    )
+    error_message = "relay_health_check.regions must name at least three distinct Cloudflare check regions (WEU, EEU, ENAM, ...)."
   }
 }
 

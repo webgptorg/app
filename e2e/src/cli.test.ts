@@ -115,6 +115,7 @@ describe('scenarioTarget and everyServiceTarget', () => {
         expect(everyServiceTarget(target).overlays).toEqual([
             'nat',
             'capture',
+            'relay-dns',
             'egress-443',
             'connect-proxy',
             'tls-inspecting-proxy',

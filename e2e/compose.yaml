@@ -50,6 +50,8 @@ services:
     command: ['-conf', '/etc/coredns/Corefile']
     volumes:
       - ./coredns/Corefile:/etc/coredns/Corefile:ro
+      # Every relay, always; the nat scenario mounts the relay-dns stand-in's zones here instead.
+      - ./coredns/zones:/etc/coredns/zones:ro
     networks:
       stack:
         ipv4_address: ${PTBK_STACK_NET:-10.89.231}.53

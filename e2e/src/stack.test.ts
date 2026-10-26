@@ -19,6 +19,7 @@ import {
     ENGINE_HOST_PORTS,
     ENGINE_LAN_SUBNET,
     GATEWAY,
+    RELAY_DNS,
     RELAY_OTHER_PORT,
     TLS_INSPECTING_PROXY,
     TLS_INSPECTING_PROXY_PORT,
@@ -53,6 +54,7 @@ const OVERLAYS = [
     'acme',
     'dashboard',
     'monitoring',
+    'relay-dns',
     'debug',
 ] as const;
 
@@ -65,7 +67,6 @@ describe('the topology in compose.yaml and the Corefile', () => {
             expect(compose).toContain(`${MOUNTS.public}/${relayCertificateFile(relay)}`);
             expect(compose).toContain(`${relay.service}-key:${MOUNTS.relayKeys}/${relay.hostname}`);
             expect(corefile).toContain(`${relay.ip} ${relay.hostname}`);
-            expect(corefile).toContain(`IN A ${relay.ip}"`);
         }
     });
 
@@ -108,6 +109,20 @@ describe('the topology in compose.yaml and the Corefile', () => {
         for (const name of OVERLAYS) {
             expect(dnsServers(overlay(name)).every((server) => server === DNS_IP)).toBe(true);
         }
+    });
+
+    it('serves the engine domain from zone files that the relay-dns stand-in replaces in its overlay', () => {
+        for (const zone of [ENGINE_DOMAIN, `order.${OUR_DOMAIN}`]) {
+            expect(corefile).toContain(`${zone}:53 {\n    file /etc/coredns/zones/${zone}.db {\n        reload 1s`);
+        }
+        expect(compose).toContain('- ./coredns/zones:/etc/coredns/zones:ro');
+        const relayDns = overlay('relay-dns');
+        expect(relayDns).toContain(`  ${RELAY_DNS.service}:\n`);
+        expect(relayDns).toContain(`- relay-dns-zones:${RELAY_DNS.zonesMount}\n`);
+        expect(relayDns).toContain(`'${RELAY_DNS.zonesMount}/${ENGINE_DOMAIN}.db'`);
+        expect(relayDns).toContain('- relay-dns-zones:/etc/coredns/zones:ro');
+        const dockerfile = readFileSync(join(E2E_DIR, 'docker', 'stack.Dockerfile'), 'utf8');
+        expect(dockerfile).toContain(`RUN install -d -o node -g node ${RELAY_DNS.zonesMount}`);
     });
 
     it('gives the release store and the mock engine control listener the addresses stack.ts names', () => {

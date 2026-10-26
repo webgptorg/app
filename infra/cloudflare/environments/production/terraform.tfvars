@@ -20,6 +20,13 @@ dmarc_policy         = "none"
 
 security_contact = "<security-contact>"
 
+# The engine wildcard is a health-checked load balancer (Load Balancing add-on; README, Relay DNS). Until the add-on is
+# bought, "records" applies the plain wildcard records instead.
+relay_dns_mode = "load_balancer"
+
+# I-04's ops mailbox; Cloudflare emails it when a relay leaves or rejoins the engine wildcard (I-07).
+ops_email = "<ops-email>"
+
 # Two hosts in different Hetzner locations (I-01); addresses come from its outputs.
 relays = {
   relay-fsn = { ipv4 = "<relay-fsn-ipv4>", ipv6 = "<relay-fsn-ipv6>", in_rotation = true }

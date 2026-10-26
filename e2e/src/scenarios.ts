@@ -26,7 +26,7 @@ export const SCENARIOS: readonly Scenario[] = [
     { name: 'spike', overlays: [], specs: ['harness/sandbox.spec.ts', 'spike/*.spec.ts', 'ui-loader/*.spec.ts'] },
     {
         name: 'nat',
-        overlays: ['nat', 'capture'],
+        overlays: ['nat', 'capture', 'relay-dns'],
         specs: [
             'network/nat.spec.ts',
             'network/packet-capture.spec.ts',

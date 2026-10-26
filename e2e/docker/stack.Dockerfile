@@ -98,6 +98,16 @@ COPY e2e/proxy/tinyproxy.conf /etc/tinyproxy.conf
 USER nobody
 CMD ["tinyproxy", "-d", "-c", "/etc/tinyproxy.conf"]
 
+# The nat scenario's stand-in for the engine domain's health-checked DNS (I-07, compose.relay-dns.yaml); test-only.
+# /zones seeds the zones volume with an owner that may write to it.
+FROM ${NODE_IMAGE} AS relay-dns
+RUN install -d -o node -g node /zones
+COPY e2e/src/stack.ts e2e/src/probe.ts /e2e/src/
+COPY e2e/src/relay-dns/health.ts e2e/src/relay-dns/checker.ts e2e/src/relay-dns/zones.ts e2e/src/relay-dns/main.ts \
+    /e2e/src/relay-dns/
+USER node
+CMD ["node", "/e2e/src/relay-dns/main.ts"]
+
 FROM ${NODE_IMAGE} AS release-store
 COPY e2e/src/release-store.ts /e2e/release-store.ts
 USER node
