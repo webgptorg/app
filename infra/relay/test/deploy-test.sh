@@ -17,7 +17,12 @@
 #     and leaves the second relay untouched (same image, the broken one never pulled);
 #   - a signed image that starts but loses the engine is rolled back;
 #   - the downgrade guard refuses a signed image built long before the running one, unless it is the previous image
-#     (a rollback by digest) or an admin lists it in allow-downgrade; `rollback` and `resume` work for an admin.
+#     (a rollback by digest) or an admin lists it in allow-downgrade; `rollback` and `resume` work for an admin;
+#   - it also refuses a signed image without a build time, counts from the newest image a relay ever ran, so two small
+#     steps back cannot add up to a large one, and on a rebuilt host, which knows no newest image, holds the
+#     PTBK_DEPLOY_MIN_CREATED floor;
+#   - an outage (the registry gone from the network, Sigstore's trusted root unavailable) fails the run without
+#     remembering the image as refused, and the run after it deploys.
 #
 # Needs Docker (privileged containers: systemd and Podman run inside), `bun install`, and the built mock engine
 # (`bun run --filter @ptbk/mock-engine build`). Run from the repo root. Every key, password and certificate is
@@ -154,9 +159,13 @@ declare -A variant_lines=(
     [other-issuer]=''
     [no-timestamp]=''
     [old]=''
+    [no-created]=''
+    [back-1]=''
+    [back-2]=''
 )
-# Build times, as the downgrade guard sees them: good-1 is 40 days older than good-2, old 60 days.
-declare -A age_days=([good-1]=40 [old]=60)
+# Build times, as the downgrade guard sees them: good-1 is 40 days older than good-2, old 60 days. back-2 is 25 days
+# older than back-1, but 45 days older than good-2. no-created has none.
+declare -A age_days=([good-1]=40 [old]=60 [back-1]=20 [back-2]=45)
 for variant in "${!variant_lines[@]}"; do
     printf 'FROM ptbk-relay:test\nLABEL org.ptbk.deploy-test.variant=%s\n%s\n' "$variant" "${variant_lines[$variant]}" |
         docker build --quiet --tag "ptbk-relay-test:$variant" - >/dev/null
@@ -192,16 +201,18 @@ docker run -d --label "ptbk-deploy-test=$run" --name "$run-registry" --network "
 sigstore init -dir /work/sigstore
 declare -A digest
 for variant in "${!variant_lines[@]}"; do
+    push_flags=(-age-days "${age_days[$variant]:-0}")
+    if [[ $variant == no-created ]]; then push_flags+=(-no-created); fi
     for _ in $(seq 10); do
         if digest[$variant]=$(sigstore push -archive "/work/images/$variant.tar" -ref "$REPOSITORY:$variant" \
-            -age-days "${age_days[$variant]:-0}" 2>/dev/null); then
+            "${push_flags[@]}" 2>/dev/null); then
             break
         fi
         sleep 1
     done
     [[ ${digest[$variant]:-} =~ ^sha256:[0-9a-f]{64}$ ]] || fail "could not push $variant"
 done
-for variant in good-1 good-2 broken-crash broken-tunnels old; do
+for variant in good-1 good-2 broken-crash broken-tunnels old no-created back-1 back-2; do
     sigstore sign -dir /work/sigstore -image "$REPOSITORY@${digest[$variant]}"
 done
 sigstore sign -dir /work/sigstore -image "$REPOSITORY@${digest[other-repository]}" -repository someone-else/app
@@ -426,5 +437,58 @@ expect_current relay-b good-1
 on relay-b /usr/local/sbin/ptbk-relay-deploy resume
 on relay-b systemctl start ptbk-relay-deploy.service
 expect_current relay-b good-2
+
+step "downgrade guard: a signed image without a build time is refused"
+point_to relay-a no-created
+journal_has relay-a "refused: $REPOSITORY@${digest[no-created]} has no build time" || fail "no refusal"
+expect_current relay-a good-2
+[[ $(status_of relay-a refused) == "${digest[no-created]}" ]] || fail "relay-a did not remember the refusal"
+if on relay-a podman image exists "$REPOSITORY@${digest[no-created]}"; then fail "relay-a pulled no-created"; fi
+
+step "downgrade guard: counted from the newest image ever run, so two small steps back cannot add up"
+on relay-a rm /etc/ptbk-relay/allow-downgrade
+point_to relay-a back-1
+expect_current relay-a back-1
+echo "high-water mark: $(status_of relay-a high-water)"
+# 25 days before the running back-1, which a guard counting from the running image would let through.
+point_to relay-a back-2
+journal_has relay-a "refused: $REPOSITORY@${digest[back-2]} was built" || fail "the high-water mark did not refuse"
+expect_current relay-a back-1
+point_to relay-a good-2
+expect_current relay-a good-2
+
+step "downgrade guard: a rebuilt host, which knows no newest image, holds PTBK_DEPLOY_MIN_CREATED"
+on relay-b rm -f /var/lib/ptbk-relay-deploy/high-water /var/lib/ptbk-relay-deploy/previous-image
+# shellcheck disable=SC2016 # runs on the relay, whose date (unlike macOS's) takes -d
+on relay-b bash -c 'sed -i "s|^PTBK_DEPLOY_MIN_CREATED=.*|PTBK_DEPLOY_MIN_CREATED=$(date -u -d "-50 days" +%F)|" \
+    /etc/ptbk-relay/deploy.env && grep "^PTBK_DEPLOY_MIN_CREATED=" /etc/ptbk-relay/deploy.env'
+point_to relay-b old
+journal_has relay-b "refused: $REPOSITORY@${digest[old]} was built" || fail "the floor did not refuse"
+expect_current relay-b good-2
+# good-1 is 40 days old: above the floor, and with no high-water mark nothing else holds it back.
+point_to relay-b good-1
+expect_current relay-b good-1
+
+step "an outage is not a refusal: the run fails, nothing is remembered, the next run deploys"
+on relay-a systemctl stop ptbk-relay-deploy.timer
+# Waits for a run the timer may have started; the tag still names what runs, so it does nothing.
+on relay-a systemctl start ptbk-relay-deploy.service
+runner skopeo copy --quiet --all --preserve-digests "docker://$REPOSITORY@${digest[back-1]}" \
+    "docker://$REPOSITORY:deploy-relay-a.$RELAY_DOMAIN"
+docker network disconnect "$run" "$run-registry"
+if on relay-a systemctl start ptbk-relay-deploy.service 2>/dev/null; then fail "the run passed without the registry"; fi
+journal_has relay-a "cannot read $REPOSITORY:deploy-relay-a.$RELAY_DOMAIN, trying again next time" ||
+    fail "the registry outage was not reported"
+docker network connect --alias "$REGISTRY" "$run" "$run-registry"
+on relay-a mv /etc/ptbk-relay/test-trusted-root.json /etc/ptbk-relay/test-trusted-root.json.away
+if on relay-a systemctl start ptbk-relay-deploy.service 2>/dev/null; then fail "the run passed without Sigstore"; fi
+journal_has relay-a "could not verify $REPOSITORY@${digest[back-1]}, trying again next time" ||
+    fail "the Sigstore outage was not reported"
+[[ -z $(status_of relay-a refused) ]] || fail "relay-a remembered an outage as a refusal"
+expect_current relay-a good-2
+on relay-a mv /etc/ptbk-relay/test-trusted-root.json.away /etc/ptbk-relay/test-trusted-root.json
+on relay-a systemctl start ptbk-relay-deploy.service
+expect_current relay-a back-1
+on relay-a systemctl start ptbk-relay-deploy.timer
 
 printf '\nThe deploy test passed.\n'

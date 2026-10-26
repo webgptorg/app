@@ -234,6 +234,7 @@ func runPush(args []string) error {
 	archive := fs.String("archive", "", "image archive from docker save")
 	ref := fs.String("ref", "", "where to push it (registry/repository:tag)")
 	ageDays := fs.Int("age-days", 0, "backdate the image's build time by this many days")
+	noCreated := fs.Bool("no-created", false, "clear the image's build time")
 	_ = fs.Parse(args)
 	tag, err := name.NewTag(*ref)
 	if err != nil {
@@ -242,6 +243,12 @@ func runPush(args []string) error {
 	img, err := tarball.ImageFromPath(*archive, nil)
 	if err != nil {
 		return err
+	}
+	if *noCreated {
+		img, err = mutate.CreatedAt(img, v1.Time{})
+		if err != nil {
+			return err
+		}
 	}
 	if *ageDays > 0 {
 		img, err = mutate.CreatedAt(img, v1.Time{Time: time.Now().AddDate(0, 0, -*ageDays)})
