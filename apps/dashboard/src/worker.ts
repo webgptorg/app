@@ -7,6 +7,7 @@ import { createOpsMonitor } from './app/ops-monitor';
 import { runScheduled } from './app/scheduled';
 
 export { HourlyRateLimiter } from './adapters/rate-limit/hourly-rate-limiter-object';
+export { WebRiskListsObject as WebRiskLists } from './adapters/abuse/web-risk-lists-object';
 
 // Lives as long as the isolate, so the fake outbox and in-memory limits outlast a request. They are only wired when
 // the config selects the fake and memory adapters, which it allows in dev alone.

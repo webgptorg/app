@@ -4,8 +4,8 @@ import type { EngineId, Hostname } from '@ptbk/protocol';
 export const ABUSE_FEED_BATCH = 500;
 
 /**
- * A phishing or malware list (I-05). Which providers back it is the team's choice (plan, "Still needed"); each one is an
- * adapter of this port, and none is wired until one is chosen.
+ * A phishing or malware list (I-05). Google Web Risk backs it (decided 2026-10-26; I-08's `createWebRiskFeed`); another
+ * provider would be another adapter of this port.
  */
 export interface AbuseFeed {
     /** Stable and dashed, e.g. `web-risk`; it names the feed in logs. */

@@ -19,7 +19,7 @@ export const JOB_TIMEOUT_MS = 50_000;
 export interface AbuseJobDeps {
     readonly ctWatch: CtWatchDeps;
     readonly publicFace: PublicFaceJobDeps;
-    /** Null until a feed provider is chosen and its adapter wired. */
+    /** Google Web Risk (I-08); null without `WEB_RISK_API_KEY`. */
     readonly abuseFeeds: AbuseFeedJobDeps | null;
 }
 

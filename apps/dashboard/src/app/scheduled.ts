@@ -1,9 +1,12 @@
 import { createCertSpotterSource } from '../adapters/abuse/certspotter-source';
 import { createCrtShSource } from '../adapters/abuse/crtsh-source';
+import { createDurableObjectWebRiskStore } from '../adapters/abuse/durable-object-web-risk-store';
+import { createWebRiskApi } from '../adapters/abuse/web-risk-api';
+import { createWebRiskFeed } from '../adapters/abuse/web-risk-feed';
 import { createFetchPublicFaceFetcher } from '../adapters/abuse/fetch-public-face-fetcher';
 import { createDatabase } from '../adapters/db/client';
 import { createD1CtStore } from '../adapters/db/d1-ct-store';
-import { createD1PublicFaceStore } from '../adapters/db/d1-public-face-store';
+import { createD1ActiveEngineDirectory, createD1PublicFaceStore } from '../adapters/db/d1-public-face-store';
 import { createFetchRelayProber } from '../adapters/monitoring/fetch-relay-prober';
 import { createAnalyticsEngineQuery } from '../adapters/monitoring/analytics-engine-query';
 import { createDurableObjectMonitorStore } from '../adapters/monitoring/durable-object-monitor-store';
@@ -65,6 +68,10 @@ function monitoringDeps(
 const CT_SOURCE_TIMEOUT_MS = 20_000;
 const PUBLIC_FACE_TIMEOUT_MS = 8_000;
 const PUBLIC_FACE_CONCURRENCY = 6;
+/** Per batch of 500 hostnames; the first also brings the threat lists up to date, a few megabytes on a reset. */
+const ABUSE_FEED_TIMEOUT_MS = 30_000;
+/** Lookups are local and cost no subrequest per engine, so one run covers every engine up to this. */
+const ABUSE_FEED_MAX_ENGINES = 10_000;
 
 function abuseDeps(env: Env, config: DashboardConfig, shared: { readonly logger: Logger }): AbuseJobDeps | null {
     if (config.monitoring === null) return null;
@@ -107,8 +114,30 @@ function abuseDeps(env: Env, config: DashboardConfig, shared: { readonly logger:
             clock: systemClock,
             logger: shared.logger,
         },
-        // No feed provider is chosen yet (plan, "Still needed"); its adapter goes here with a `createD1ActiveEngineDirectory`.
-        abuseFeeds: null,
+        abuseFeeds:
+            settings.webRiskApiKey === null
+                ? null
+                : {
+                      feeds: [
+                          createWebRiskFeed({
+                              api: createWebRiskApi({
+                                  fetch: fetchFn,
+                                  apiKey: settings.webRiskApiKey,
+                                  userAgent,
+                                  nowMs: () => systemClock.nowMs(),
+                              }),
+                              store: createDurableObjectWebRiskStore(env.WEB_RISK_LISTS),
+                              clock: systemClock,
+                              logger: shared.logger,
+                          }),
+                      ],
+                      engines: createD1ActiveEngineDirectory(db),
+                      monitor,
+                      maxEngines: ABUSE_FEED_MAX_ENGINES,
+                      timeoutMs: ABUSE_FEED_TIMEOUT_MS,
+                      clock: systemClock,
+                      logger: shared.logger,
+                  },
     };
 }
 
@@ -150,6 +179,8 @@ export async function runScheduled(
     const email = emailSender(env, config, dev, metrics);
     if (strict && config.monitoring === null) refuse('MONITORING is not set');
     if (strict && email === null) refuse('the email binding is missing');
+    // Not a refusal: the abuse feed waits on a Google Cloud key (apply.md), and the other jobs must not wait with it.
+    if (strict && config.abuseMonitoring.webRiskApiKey === null) logger.warn('abuse-feed.unconfigured');
     const opsEmail = config.monitoring?.opsEmail;
     const alerts =
         email === null || opsEmail === undefined

@@ -60,7 +60,7 @@ describe('parseConfig', () => {
             stripeSecretKey: null,
             stripeWebhookSecret: null,
             monitoring: null,
-            abuseMonitoring: { ...DEFAULT_ABUSE_MONITORING, certSpotterApiKey: null },
+            abuseMonitoring: { ...DEFAULT_ABUSE_MONITORING, certSpotterApiKey: null, webRiskApiKey: null },
         });
         expect(plans.plans.map((plan) => plan.id)).toEqual(['starter', 'scale']);
         expect(Object.isFrozen(parseConfig({ ...bindings, ...devVars }))).toBe(true);
@@ -376,6 +376,7 @@ describe('parseConfig', () => {
                     publicFace: { fingerprints: [fingerprint] },
                 },
                 CERTSPOTTER_API_KEY: 'k_123456789',
+                WEB_RISK_API_KEY: `AIza${'a1_-'.repeat(8)}abc`,
             }).abuseMonitoring;
             expect(config).toEqual({
                 ctSources: ['certspotter'],
@@ -383,6 +384,7 @@ describe('parseConfig', () => {
                 issuanceSpike: { limit: 5, days: 3 },
                 publicFace: { fingerprints: [fingerprint], perRun: 30 },
                 certSpotterApiKey: 'k_123456789',
+                webRiskApiKey: `AIza${'a1_-'.repeat(8)}abc`,
             });
             expect(
                 parseConfig({ ...bindings, ...devVars, ABUSE_MONITORING: { publicFace: { perRun: 50 } } })
@@ -401,6 +403,12 @@ describe('parseConfig', () => {
                 'ABUSE_MONITORING.feeds',
             ]);
             expect(failedPaths({ ...bindings, ...devVars, CERTSPOTTER_API_KEY: 'k' })).toEqual(['CERTSPOTTER_API_KEY']);
+            expect(failedPaths({ ...bindings, ...devVars, WEB_RISK_API_KEY: `AIza${'x'.repeat(34)}` })).toEqual([
+                'WEB_RISK_API_KEY',
+            ]);
+            expect(failedPaths({ ...bindings, ...devVars, WEB_RISK_API_KEY: `sk_${'x'.repeat(36)}` })).toEqual([
+                'WEB_RISK_API_KEY',
+            ]);
         });
     });
 });

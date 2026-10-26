@@ -152,6 +152,9 @@ const abuseMonitoringSchema = z.strictObject({
 /** Cert Spotter answers without a key, within an hourly allowance; a key lifts it. */
 const certSpotterKeySchema = z.string().regex(/^[A-Za-z0-9_-]{8,128}$/);
 
+/** A Google Cloud API key, restricted to the Web Risk API (docs/plan/apply.md). */
+const webRiskKeySchema = z.string().regex(/^AIza[A-Za-z0-9_-]{35}$/);
+
 export interface AbuseMonitoringConfig {
     readonly ctSources: readonly CtSourceName[];
     readonly allowedIssuers: readonly string[];
@@ -159,6 +162,8 @@ export interface AbuseMonitoringConfig {
     readonly publicFace: { readonly fingerprints: readonly string[]; readonly perRun: number };
     /** Secret, optional. */
     readonly certSpotterApiKey: string | null;
+    /** Secret; without it the `abuse-feeds` job is not registered (I-08). */
+    readonly webRiskApiKey: string | null;
 }
 
 /**
@@ -167,7 +172,7 @@ export interface AbuseMonitoringConfig {
  * engine is burning through it (a renewal loop or key churn); the public-face check knows only the mock engine's
  * sign-in page until the engine team publishes a marker, and 30 engines per 15-minute run cover 2,880 a day.
  */
-export const DEFAULT_ABUSE_MONITORING: Omit<AbuseMonitoringConfig, 'certSpotterApiKey'> = {
+export const DEFAULT_ABUSE_MONITORING: Omit<AbuseMonitoringConfig, 'certSpotterApiKey' | 'webRiskApiKey'> = {
     ctSources: CT_SOURCES,
     allowedIssuers: ["Let's Encrypt"],
     issuanceSpike: { limit: 3, days: 7 },
@@ -208,6 +213,7 @@ const varsSchema = z
         ANALYTICS_API_TOKEN: analyticsTokenSchema.optional(),
         ABUSE_MONITORING: abuseMonitoringSchema.optional(),
         CERTSPOTTER_API_KEY: certSpotterKeySchema.optional(),
+        WEB_RISK_API_KEY: webRiskKeySchema.optional(),
     })
     .superRefine((vars, ctx) => {
         if (vars.ADAPTERS.billing === 'stripe') {
@@ -358,6 +364,7 @@ function abuseMonitoringConfig(parsed: z.infer<typeof varsSchema>): AbuseMonitor
             perRun: vars.publicFace?.perRun ?? defaults.publicFace.perRun,
         }),
         certSpotterApiKey: parsed.CERTSPOTTER_API_KEY ?? null,
+        webRiskApiKey: parsed.WEB_RISK_API_KEY ?? null,
     });
 }
 
