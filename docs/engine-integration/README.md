@@ -24,32 +24,46 @@ flowchart LR
 
 The engine dials out to every relay in its list and keeps one tunnel open to each. A browser opens TLS to the engine's hostname, the relay reads only the SNI and pipes the encrypted bytes into the tunnel, and the engine ends TLS itself. The engine registers with the dashboard once, sends a signed heartbeat every minute, and downloads, verifies and serves the UI bundle. Nothing in this picture lets us read or change engine content.
 
+## Building the engine with a coding agent
+
+Three files turn this guide into a kit that a coding agent can execute end to end:
+
+- [AGENT_BRIEF.md](AGENT_BRIEF.md): the prompt to paste into the agent. Context, the security rules it must not break, the loop "implement a phase, run the checks, fix until green", and when it is done.
+- [implementation-plan.md](implementation-plan.md): the build plan, phase by phase, each with what to read, what to build, the checks that prove it and the commands that run them, mapped onto the engine's codebase.
+- [testing-against-the-platform.md](testing-against-the-platform.md): how to test the real engine against our side without our credentials, with a troubleshooting table.
+
+The topic files below stay normative; the kit orders them and points into them. The operator's installation guide, `installation.md`, is forthcoming (task E-05).
+
 ## Reading order
 
-| #   | File                                                         | Covers (spec, Interfaces)                                         |
-| --- | ------------------------------------------------------------ | ----------------------------------------------------------------- |
-| 1   | [cryptography.md](cryptography.md)                           | Encodings and verification rules every signature uses             |
-| 2   | [identity-and-registration.md](identity-and-registration.md) | Engine key, engine ID, registration (1), configuration (6)        |
-| 3   | [tunnel-client.md](tunnel-client.md)                         | Tunnel protocol (3), custom hostnames, ACME through the relay (2) |
-| 4   | [heartbeat.md](heartbeat.md)                                 | Signed heartbeat (4)                                              |
-| 5   | [ui-loader.md](ui-loader.md)                                 | Release log and UI bundle (5)                                     |
-| 6   | [engine-api.md](engine-api.md)                               | The HTTP API the UI uses                                          |
-| 7   | [gateway.md](gateway.md)                                     | What the API assumes from the open gateway                        |
-| 8   | [conformance.md](conformance.md)                             | Running the conformance suite against an engine                   |
-| 9   | [mock-engine.md](mock-engine.md)                             | The mock engine as reference implementation                       |
-| 10  | [checklist.md](checklist.md)                                 | Every requirement in one table, for your tracker                  |
+| #   | File                                                               | Covers (spec, Interfaces)                                         |
+| --- | ------------------------------------------------------------------ | ----------------------------------------------------------------- |
+| 1   | [cryptography.md](cryptography.md)                                 | Encodings and verification rules every signature uses             |
+| 2   | [identity-and-registration.md](identity-and-registration.md)       | Engine key, engine ID, registration (1), configuration (6)        |
+| 3   | [tunnel-client.md](tunnel-client.md)                               | Tunnel protocol (3), custom hostnames, ACME through the relay (2) |
+| 4   | [heartbeat.md](heartbeat.md)                                       | Signed heartbeat (4)                                              |
+| 5   | [ui-loader.md](ui-loader.md)                                       | Release log and UI bundle (5)                                     |
+| 6   | [engine-api.md](engine-api.md)                                     | The HTTP API the UI uses                                          |
+| 7   | [gateway.md](gateway.md)                                           | What the API assumes from the open gateway                        |
+| 8   | [conformance.md](conformance.md)                                   | Running the conformance suite against an engine                   |
+| 9   | [mock-engine.md](mock-engine.md)                                   | The mock engine as reference implementation                       |
+| 10  | [checklist.md](checklist.md)                                       | Every requirement in one table, for your tracker                  |
+| 11  | [implementation-plan.md](implementation-plan.md)                   | The build plan, in phases                                         |
+| 12  | [testing-against-the-platform.md](testing-against-the-platform.md) | Testing the engine against our stack                              |
+| 13  | [AGENT_BRIEF.md](AGENT_BRIEF.md)                                   | The prompt for a coding agent                                     |
 
 Interface 2 (the relay's registry lookup) is between the relay and the dashboard. The engine never calls it, but it decides which hostnames the relay routes, so [tunnel-client.md](tunnel-client.md#custom-hostnames) explains what the engine must do for it.
 
 ## Contract packages
 
-| Package             | What it defines                                                                                                    | Version                                                                                                                       |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
-| `@ptbk/protocol`    | Engine ↔ relay and engine ↔ dashboard wire formats: identity, signatures, tunnel, registration, heartbeat, release | Each message carries `v: 1`; the tunnel negotiates from `TUNNEL_PROTOCOL_VERSIONS` (`[1]`)                                    |
-| `@ptbk/engine-api`  | The engine HTTP API the UI consumes, its route table and OpenAPI document                                          | `ENGINE_API_VERSION` in [constants.ts](../../packages/engine-api/src/constants.ts) (currently `1.9.0`), paths under `/api/v1` |
-| `@ptbk/conformance` | The suite any engine must pass to replace the mock engine                                                          | No checks yet (task C-05); see [conformance.md](conformance.md)                                                               |
+| Package               | What it defines                                                                                                                     | Version                                                                                                                                                                                                                       |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@ptbk/protocol`      | Engine ↔ relay and engine ↔ dashboard wire formats: identity, signatures, tunnel, registration, heartbeat, release                  | Each message carries `v: 1`; the tunnel negotiates from `TUNNEL_PROTOCOL_VERSIONS` (`[1]`)                                                                                                                                    |
+| `@ptbk/engine-api`    | The engine HTTP API the UI consumes, its route table and OpenAPI document                                                           | `ENGINE_API_VERSION` in [constants.ts](../../packages/engine-api/src/constants.ts) (currently `1.9.0`), paths under `/api/v1`                                                                                                 |
+| `@ptbk/conformance`   | The suite any engine must pass to replace the mock engine                                                                           | Suite `engine-api` implemented (C-05, M-07); `tunnel` and `ui-loader` check IDs registered as `skip`; `registration`, `heartbeat`, `tunnel` and `ui-loader` suites pending C-08 to C-10. See [conformance.md](conformance.md) |
+| `@ptbk/release-tools` | Node-only release tooling the UI loader uses: the Sigstore provenance verifier, the pinned `trusted_root.json` and the ustar reader | Not versioned yet; see [ui-loader.md](ui-loader.md#reference-implementation)                                                                                                                                                  |
 
-All three are MIT, use Web APIs only and import nothing private. They live in this repository until they move to the public repository or npm with provenance (task E-02); the engine then depends on the published version. Until then, read them here: [protocol](../../packages/protocol/README.md), [engine-api](../../packages/engine-api/README.md), [conformance](../../packages/conformance/README.md).
+All four are MIT and import nothing private; the first three use Web APIs only. They live in this repository until they move to the public repository or npm with provenance (task E-02); the engine then depends on the published version. Until then, read them here, [protocol](../../packages/protocol/README.md), [engine-api](../../packages/engine-api/README.md), [conformance](../../packages/conformance/README.md) and [release-tools](../../packages/release-tools/README.md), and depend on them by path as [implementation-plan.md](implementation-plan.md#phase-0-setup-and-contracts) shows.
 
 Golden vectors, which an implementation in any language must reproduce:
 
@@ -84,17 +98,17 @@ Golden vectors, which an implementation in any language must reproduce:
 
 ## Status of the reference implementation
 
-The mock engine implements the engine side of every contract, one task at a time. On `main` today: identity, tunnel client, TLS inside the tunnel, the engine API with a gateway stand-in, registration and heartbeat, and the UI loader with the security headers. Sections whose mock engine task is not merged say `Reference implementation: pending M-0x`; whoever merges that task updates the section and its checklist rows.
+The mock engine implements the engine side of every contract, one task at a time. On `main` today: identity, tunnel client, TLS inside the tunnel, ACME TLS-ALPN-01 through the relay, the engine API with a gateway stand-in, registration and heartbeat, the UI loader with the security headers, and the capabilities. Every mock engine task has merged. The one gap is custom hostname claims, which the mock does not sign ([tunnel-client.md](tunnel-client.md#reference-implementation)).
 
-| Task | What the mock engine adds                          | Status      |
-| ---- | -------------------------------------------------- | ----------- |
-| M-01 | Identity, tunnel client, proxy, reconnect          | merged      |
-| M-02 | TLS and HTTP inside the tunnel, dev CA             | merged      |
-| M-03 | ACME TLS-ALPN-01 through the relay                 | not started |
-| M-04 | Engine API, gateway stand-in, faults               | merged      |
-| M-05 | UI loader and security headers                     | merged      |
-| M-06 | Registration and heartbeat client                  | merged      |
-| M-07 | Capabilities (runs, files, triggers, integrations) | merged      |
+| Task | What the mock engine adds                          | Status |
+| ---- | -------------------------------------------------- | ------ |
+| M-01 | Identity, tunnel client, proxy, reconnect          | merged |
+| M-02 | TLS and HTTP inside the tunnel, dev CA             | merged |
+| M-03 | ACME TLS-ALPN-01 through the relay                 | merged |
+| M-04 | Engine API, gateway stand-in, faults               | merged |
+| M-05 | UI loader and security headers                     | merged |
+| M-06 | Registration and heartbeat client                  | merged |
+| M-07 | Capabilities (runs, files, triggers, integrations) | merged |
 
 ## Open points
 
@@ -137,8 +151,16 @@ These are not decided yet. Do not build against a guess: ask, or wait for the de
 **Engine design points**
 
 5. **Conformance sessions (C-05).** How the conformance suite gets a session on a passkey-only engine, including members with chosen permissions while v0 has no member features: a test-only bootstrap behind a flag, scoped API tokens, or WebAuthn virtual authenticators. See [conformance.md](conformance.md#sessions-on-a-real-engine).
-6. **ACME client.** The production ACME client is your choice. `acme-client@5.4.0`, which the mock engine's Pebble spike will use (M-03), has been unmaintained since 2024.
+6. **ACME client.** The production ACME client is your choice. `acme-client@5.4.0`, which the mock engine's Pebble spike uses (M-03), has been unmaintained since 2024; it sits behind one port, `CertificateIssuer`, so any client fits.
 7. **Audit checkpoints.** The payload, cadence and publication of engine-signed audit checkpoints (`ptbk-audit-checkpoint-v1`, not yet in `SIGNING_CONTEXT`). C-04 adds a `checkpoint` field to `GET /audit/verify` in a later change. See [engine-api.md](engine-api.md#audit).
 8. **Who builds the engine side, and when.** An open decision for the engine team. This guide's review gate depends on it.
+
+**Integration points** (raised while writing the [implementation kit](#building-the-engine-with-a-coding-agent))
+
+9. **Consuming the contracts before E-02.** The packages are private, carry no version and export TypeScript source, so they cannot be installed from a registry. The interim is a path dependency on a pinned checkout ([implementation-plan.md](implementation-plan.md#phase-0-setup-and-contracts)). Whether the engine's work may be pushed publicly before the contracts are public is a decision for the maintainers.
+10. **Engine settings beyond Interface 6.** Interface 6 names no variable for the engine domain, the dashboard URL, the link code, the release store or the ACME directory. Our harnesses use the mock engine's names, and C-08 fixes the conformance harness's launch contract ([testing-against-the-platform.md](testing-against-the-platform.md#engine-settings-the-harness-uses)); whether they become part of the interface is open.
+11. **Test releases for a real engine.** Decided in C-10 (pending its merge): a conformance build, enabled by a compile-time constant that release builds turn off, may read `PTBK_CONFORMANCE_TRUST_FILE`; production builds refuse to start when it is set. The local stacks' releases still carry test attestations that only the mock accepts, so the UI part of the stacks waits for E-03 ([testing-against-the-platform.md](testing-against-the-platform.md#b-the-local-dev-stack)).
+12. **`@ptbk/release-tools`.** The engine should use its Sigstore adapter and pinned trust root rather than write its own, but E-02 does not list it among the packages that move public.
+13. **The reference implementation stays private.** ADR 0002 keeps the mock engine and the e2e stack in this repository, so the links from this guide to them stop working when the guide moves public. E-02 decides whether they become public too, or the links become prose.
 
 **Review.** This guide waits for review by the engine team contact, or by a maintainer until one is named. Questions from that review are answered in the guide or added here.

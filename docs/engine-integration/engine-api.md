@@ -13,7 +13,7 @@ Spec: [Engine security baseline](../spec/zero-trust-spec.md#engine-security-base
 
 ## Route groups
 
-88 operations today. Every group must be served; capability groups only if the engine advertises the capability.
+92 operations today. Every group must be served; capability groups only if the engine advertises the capability.
 
 | Group                  | Paths                                                                                                                         | Ops | Source                                                                        |
 | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------- | --- | ----------------------------------------------------------------------------- |
@@ -142,7 +142,7 @@ All from `@ptbk/engine-api`, entry [index.ts](../../packages/engine-api/src/inde
 
 ## Conformance
 
-C-05's v1 suite covers this API: authentication (every route without credentials gives 401 problem+json), schemas, input strictness, pagination, secrets (`engine-api.secrets.never-returned`: a canary value never appears in any response, plain, base64 or hex), agents, chat streaming with `Last-Event-ID`, audit (`actor.memberId` and the hash chain), permissions (403 `forbidden` with `requiredPermission` and a `denied` audit entry for every mutating route), the security panel and cross-member access. Check IDs other than the secrets one are assigned by C-05; [checklist.md](checklist.md) lists the areas until then.
+C-05's v1 suite covers this API: authentication (every route without credentials gives 401 problem+json), schemas, input strictness, pagination, secrets (`engine-api.secrets.never-returned`: a canary value never appears in any response, plain, base64 or hex), agents, chat streaming with `Last-Event-ID`, audit (`actor.memberId` and the hash chain), permissions (403 `forbidden` with `requiredPermission` and a `denied` audit entry for every mutating route), the security panel and cross-member access. Every check ID is in [checklist.md](checklist.md), and the [package README](../../packages/conformance/README.md) says what each one does.
 
 ## Reference implementation
 

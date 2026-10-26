@@ -122,6 +122,7 @@ bun run plan --check  # validates statuses and dependencies (part of bun run che
 | [I-07](tasks/I-07-health-checked-relay-dns.md)           | Health-checked relay DNS                                                         | I    | M4        |
 | [E-02](tasks/E-02-publish-contracts.md)                  | Move the contracts public and consume published versions                         | E    | M5        |
 | [E-03](tasks/E-03-real-engine-swap.md)                   | Run conformance and e2e against the real engine                                  | E    | M5        |
+| [E-04](tasks/E-04-engine-agent-kit.md)                   | Engine implementation kit for coding agents                                      | E    | M5        |
 
 ## Parallel waves
 
@@ -139,6 +140,7 @@ Tasks in the same wave have no dependencies on each other and can run at the sam
 | 8    | D-06, D-08, I-03, I-04, X-04                                                 |
 | 9    | I-05, I-07, X-05                                                             |
 | 10   | E-03, I-06, X-06                                                             |
+| 11   | E-04                                                                         |
 
 C-01 and R-01 both live in `packages/protocol` and touch its `package.json` and `src/index.ts`; whoever merges second rebases (AGENTS.md, step 7). Wave 1 starts four agents at once; wave 4 is the widest with thirteen.
 

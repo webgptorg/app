@@ -109,7 +109,7 @@ Golden vector: the `registration` case in [`signed-message-vectors.json`](../../
 
 ## Conformance
 
-No registration suite exists yet. C-05 registers its suites as acting relay or dashboard later; until then the checklist rows for this page have no check ID. The registration golden vector and `checkRegistrationResponse` are the reference.
+The `registration` suite, in which the conformance CLI starts the engine and acts as the dashboard, is pending (task C-08); until it merges, the checklist rows for this page have no check ID. The registration golden vector and `checkRegistrationResponse` are the reference, and the local dev stack shows a registration against the real dashboard ([testing-against-the-platform.md](testing-against-the-platform.md)).
 
 ## Reference implementation
 
