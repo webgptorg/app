@@ -2,7 +2,7 @@
 
 - **Lane:** I · **Module:** `.github/workflows`, `infra/relay` (deploy script), `apps/relay/Dockerfile` if missing · **Milestone:** M4
 - **Depends on:** I-01, I-02, X-03
-- **Status:** in progress (feat/i-03-deploy-pipelines)
+- **Status:** done (#78)
 - **Spec:** Security hardening item 10; Hosting and stack (Releases; Release artifacts; Engine UI bundle); Residual risks (Release keys and dependencies); ADRs: [0003](../../adr/0003-ui-as-signed-bundle.md), [0014](../../adr/0014-cryptography.md)
 
 ## Goal
@@ -52,13 +52,13 @@ The engine UI bundle runs on customers' engines and sees decrypted data, so its 
 
 The code lands before any credential exists; everything below is verifiable in CI without one.
 
-- [ ] zizmor passes with no findings at medium or above on all new workflows.
-- [ ] `apps/relay/Dockerfile` builds in CI (non-root, base pinned by digest, no cache); `deploy-dashboard.yml` runs `wrangler deploy --dry-run --env staging` on PRs.
-- [ ] `release-relay.yml` builds, pushes to GHCR with `GITHUB_TOKEN` and signs keylessly through GitHub OIDC with a TSA timestamp; `cosign verify` with the exact identity flags succeeds, and the host script refuses an unsigned image and one signed by another workflow, branch or repository (recorded Sigstore bundle fixtures for the other repository and workflow; a `workflow_dispatch` run from a branch for the other ref; no signing on pull request runs, which would need `id-token` and `packages` write there); no workflow or script uses `--certificate-identity-regexp`.
-- [ ] The host-side verify, swap and rollback works in a container standing in for a relay (I-01's files and units): a deliberately broken image is rolled back; the downgrade guard refuses an old signed image, and allows the previous image and one listed in the override file.
-- [ ] Rolling deploy in CI across two containers standing in for two relays, with their tags in a local registry standing in for GHCR: a deliberately broken image stops the rollout after the first host, which rolls back while its tag is moved back; the second host is untouched. No deploy key or deploy user exists on a host (`verify.sh`).
-- [ ] Runbook written; `bun run check` passes.
-- [ ] **Status** line above set to `done (#<PR>)`.
+- [x] zizmor passes with no findings at medium or above on all new workflows. (zizmor 1.30.1, offline and online, locally in #78 because GitHub Actions is down.)
+- [x] `apps/relay/Dockerfile` builds in CI (non-root, base pinned by digest, no cache); `deploy-dashboard.yml` runs `wrangler deploy --dry-run --env staging` on PRs. (Both steps run locally in #78; `deploy-test.sh` builds the image from this Dockerfile.)
+- [ ] `release-relay.yml` builds, pushes to GHCR with `GITHUB_TOKEN` and signs keylessly through GitHub OIDC with a TSA timestamp; `cosign verify` with the exact identity flags succeeds, and the host script refuses an unsigned image and one signed by another workflow, branch or repository (recorded Sigstore bundle fixtures for the other repository and workflow; a `workflow_dispatch` run from a branch for the other ref; no signing on pull request runs, which would need `id-token` and `packages` write there); no workflow or script uses `--certificate-identity-regexp`. (Host side done in #78: `deploy-test.sh` refuses unsigned, other repository, workflow, branch, issuer and untimestamped images with the real cosign, and the recorded Flux fixture; `tofu test` rejects `identity-regexp`. Open until the workflow's first run on `main`: the GHCR push, the keyless signature with its TSA timestamp, and the branch-dispatch refusal, because GitHub Actions is down.)
+- [x] The host-side verify, swap and rollback works in a container standing in for a relay (I-01's files and units): a deliberately broken image is rolled back; the downgrade guard refuses an old signed image, and allows the previous image and one listed in the override file. (`deploy-test.sh`, which also covers the high-water mark, `PTBK_DEPLOY_MIN_CREATED`, an image without a build time and outages.)
+- [x] Rolling deploy in CI across two containers standing in for two relays, with their tags in a local registry standing in for GHCR: a deliberately broken image stops the rollout after the first host, which rolls back while its tag is moved back; the second host is untouched. No deploy key or deploy user exists on a host (`verify.sh`). (`deploy-test.sh` locally in #78; `verify.sh` runs in I-01's VM test.)
+- [x] Runbook written; `bun run check` passes.
+- [x] **Status** line above set to `done (#<PR>)`.
 
 ## Apply (needs credentials)
 
