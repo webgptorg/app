@@ -99,7 +99,7 @@ Golden vectors: [`release/vectors.json`](../../packages/protocol/src/release/vec
 
 ## Release mirror layout v1
 
-Proposed 2026-10-26, pending the engine team's review before the E-02 freeze. It is what the UI release workflow publishes (X-03), what the mock engine reads and what the conformance suite's fake store serves, below `PTBK_UI_RELEASE_URL` (an `https://` URL whose path ends in `/`):
+Adopted as proposed (2026-10-26), pending the engine team's review before the E-02 freeze. It is what the UI release workflow publishes (X-03), what the mock engine reads and what the conformance suite's fake store serves, below `PTBK_UI_RELEASE_URL` (an `https://` URL whose path ends in `/`):
 
 | Path                            | Content                                                                                                                           |
 | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
@@ -124,6 +124,13 @@ The mock engine accepts the same file, refused under `NODE_ENV=production` like 
 ## Conformance
 
 The `ui-loader` suite (C-10) runs every check through the conformance harness, which starts your conformance build; [`packages/conformance/README.md`](../../packages/conformance/README.md#ui-loader-suite) describes each one. In short: a valid release installs and is shown in the panel; release-key signatures get exactly the strict Ed25519 verdict for every case class of `ed25519-vectors.json`; the signature threshold, DSSE PAE and strict payload; exact provenance identity and a log entry; the delay from trusted time, persisted across restarts; archive hash, manifest file list, unsafe archive entries and the `engineApi` range; no downgrade; revocation freshness, rollback across restarts, revoked candidates and a revoked active bundle; store failures keep the current bundle; the update policy; only listed files served, with `ENGINE_UI_CSP` and the full header set. Every check ID is in the [checklist](checklist.md#ui-loader-interface-5).
+
+## Open points (decided 2026-10-26)
+
+- **The build in `GET /engine`.** The next additive engine API version adds `build: "conformance"` to `GET /engine`, so a client can see that it talks to a conformance build. Until then the startup log is the only sign.
+- **Mirror layout.** [Release mirror layout v1](#release-mirror-layout-v1) is adopted as proposed, pending the engine team's review.
+- **Slow engines.** Each `ui-loader` check has its own timeout. An engine that needs longer per check (a slow unpack, a slow first start) raises it with `--timeout-ms`.
+- **Revoked active bundle.** The engine withdraws a revoked active bundle only once it accepts a revocation list naming it, and it accepts a list only while checking a candidate release that verifies. So with no verifiable candidate in the store, a revoked bundle keeps being served until one appears. This is accepted for v1. The alternative, verifying the revocation list on its own at every check, is not part of v1.
 
 ## Reference implementation
 
