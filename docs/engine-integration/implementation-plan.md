@@ -44,7 +44,7 @@ The engine is `apps/agents-server` in `webgptorg/promptbook`: a Next.js app rout
    export PLATFORM_DIR="$(cd ../ptbk-platform && pwd)"
    ```
 
-2. Until the contracts are published (task E-02), depend on them by path from the package that holds the new code. npm links the directories; their own dependencies (`zod`, `@noble/curves`, `@sigstore/*`) resolve from the platform checkout's `node_modules`, which is why `bun install` must have run there.
+2. Until the contracts are published (task E-02), depend on them by path from the package that holds the new code. npm only links the directories and does not install their dependencies (their `catalog:` and `workspace:` specifiers are Bun's, which npm does not read); `zod`, `@noble/curves`, `@sigstore/*` and `@ptbk/protocol` then resolve from the platform checkout's `node_modules`, which is why `bun install` must have run there. We checked this with npm 11 and Node 24.
 
    ```sh
    npm install --save "file:$PLATFORM_DIR/packages/protocol" "file:$PLATFORM_DIR/packages/engine-api"
@@ -133,7 +133,7 @@ The engine is `apps/agents-server` in `webgptorg/promptbook`: a Next.js app rout
 
 **Reference:** [build-heartbeat.ts](../../apps/mock-engine/src/domain/heartbeat/build-heartbeat.ts), [heartbeat-loop.ts](../../apps/mock-engine/src/domain/heartbeat/heartbeat-loop.ts), [fs-seq-store.ts](../../apps/mock-engine/src/adapters/fs-seq-store.ts), [os-system-stats.ts](../../apps/mock-engine/src/adapters/os-system-stats.ts).
 
-**Pitfalls:** never re-serialise the body after signing; the digest goes into the signing input as 32 raw bytes, not hex; the heartbeat goes straight to the dashboard, never through a relay; the body is numbers only, so no agent names or versions of anything but the engine.
+**Pitfalls:** our stacks' dashboard expects a beat every 15 s, so keep the 60 s interval as the default and add a development setting to change it (phase 9); never re-serialise the body after signing; the digest goes into the signing input as 32 raw bytes, not hex; the heartbeat goes straight to the dashboard, never through a relay; the body is numbers only, so no agent names or versions of anything but the engine.
 
 ## Phase 4: tunnel client
 
