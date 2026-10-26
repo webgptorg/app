@@ -205,6 +205,7 @@ export type {
     ProvenanceVerification,
     ProvenanceVerifier,
 } from './release/provenance';
+export { CONFORMANCE_TRUST_FILE_ENV, ConformanceTrustFile } from './release/conformance-trust';
 export { createFakeProvenanceVerifier } from './release/fake-provenance-verifier';
 export type { FakeAttestation } from './release/fake-provenance-verifier';
 export { compareEngineVersions } from './release/version';

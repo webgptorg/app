@@ -153,7 +153,11 @@ function configuredUiLoader(config: MockEngineConfig, deps: MockEngineDeps, runt
         clock: deps.clock,
         logger: deps.logger,
         onActive: (bundle) => {
-            runtime.setUi({ version: bundle.version, bundleSha256: bundle.sha256, releaseLogIndex: bundle.logIndex });
+            runtime.setUi(
+                bundle === undefined
+                    ? null
+                    : { version: bundle.version, bundleSha256: bundle.sha256, releaseLogIndex: bundle.logIndex },
+            );
         },
         onChecked: (outcome, atMs) => {
             runtime.setUiUpdateCheck(uiUpdateCheckOf(outcome, atMs));

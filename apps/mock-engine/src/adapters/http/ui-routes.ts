@@ -17,7 +17,10 @@ const UiQuery = z
     .refine((query) => Object.keys(query).length <= MAX_QUERY_PARAMETERS, 'too many query parameters');
 const UiHeaders = z.strictObject({ accept: z.string().max(4096).optional() });
 
-/** Open engine code, never from a bundle: what a signed-in visitor sees before the first bundle installed. */
+/**
+ * Open engine code, never from a bundle: what a signed-in visitor sees while no bundle is active, before the first
+ * install or after a revocation withdrew every installed one.
+ */
 function noBundlePage(): Response {
     const html = `<!doctype html>
 <html lang="en">
@@ -28,7 +31,7 @@ function noBundlePage(): Response {
 </head>
 <body>
 <h1>Promptbook engine</h1>
-<p>The app is not installed yet: no signed UI release has been verified. The engine keeps checking.</p>
+<p>The app is unavailable: no verified UI release is installed. The engine keeps checking for one.</p>
 </body>
 </html>
 `;

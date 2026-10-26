@@ -568,10 +568,13 @@ describe('parseIdentityConfig', () => {
             expect(config.ui).toEqual({
                 releaseUrl: 'https://releases.example.test/ptbk/',
                 updatePolicy: { kind: 'auto' },
-                trustPolicyFile: '/etc/ptbk/trust-policy.json',
-                trustedRootFile: null,
+                trust: {
+                    kind: 'files',
+                    trustPolicyFile: '/etc/ptbk/trust-policy.json',
+                    trustedRootFile: null,
+                    fakeProvenance: false,
+                },
                 checkIntervalS: 3600,
-                fakeProvenance: false,
             });
             expect(Object.isFrozen(config.ui)).toBe(true);
         });
@@ -588,13 +591,13 @@ describe('parseIdentityConfig', () => {
             ).toMatchObject({
                 updatePolicy: { kind: 'pinned', version: '0.0.0-dryrun.1' },
                 checkIntervalS: 60,
-                fakeProvenance: true,
+                trust: { fakeProvenance: true },
             });
             expect(parseMockEngineConfig({ ...UI, PTBK_UPDATE_POLICY: 'manual' }).ui?.updatePolicy).toEqual({
                 kind: 'manual',
             });
             expect(parseMockEngineConfig({ ...UI, MOCK_UI_TRUSTED_ROOT_FILE: '/etc/root.json' }).ui).toMatchObject({
-                trustedRootFile: '/etc/root.json',
+                trust: { trustedRootFile: '/etc/root.json' },
             });
         });
 
@@ -648,7 +651,53 @@ describe('parseIdentityConfig', () => {
             expect(problemsOf({ ...UI, NODE_ENV: 'production', MOCK_UI_FAKE_PROVENANCE: 'enabled' })).toEqual([
                 'MOCK_UI_FAKE_PROVENANCE: must not be enabled in production',
             ]);
-            expect(parseMockEngineConfig({ ...UI, NODE_ENV: 'production' }).ui?.fakeProvenance).toBe(false);
+            expect(parseMockEngineConfig({ ...UI, NODE_ENV: 'production' }).ui?.trust).toMatchObject({
+                fakeProvenance: false,
+            });
+        });
+
+        describe('PTBK_CONFORMANCE_TRUST_FILE', () => {
+            const CONFORMANCE = {
+                ...BASE,
+                PTBK_UI_RELEASE_URL: 'https://releases.example.test/ptbk/',
+                PTBK_CONFORMANCE_TRUST_FILE: '/run/conformance/trust.json',
+            } as const;
+
+            it('replaces the trust policy and trusted root files', () => {
+                const config = parseMockEngineConfig(CONFORMANCE);
+                expect(config.ui?.trust).toEqual({ kind: 'conformance', file: '/run/conformance/trust.json' });
+                expect(Object.isFrozen(config.ui?.trust)).toBe(true);
+            });
+
+            it('excludes every other trust setting', () => {
+                expect(
+                    problemsOf({
+                        ...CONFORMANCE,
+                        MOCK_UI_TRUST_POLICY_FILE: '/p.json',
+                        MOCK_UI_TRUSTED_ROOT_FILE: '/r.json',
+                        MOCK_UI_FAKE_PROVENANCE: 'disabled',
+                    }),
+                ).toEqual([
+                    'MOCK_UI_TRUST_POLICY_FILE: cannot be set with PTBK_CONFORMANCE_TRUST_FILE',
+                    'MOCK_UI_TRUSTED_ROOT_FILE: cannot be set with PTBK_CONFORMANCE_TRUST_FILE',
+                    'MOCK_UI_FAKE_PROVENANCE: cannot be set with PTBK_CONFORMANCE_TRUST_FILE',
+                ]);
+            });
+
+            it('needs a release URL', () => {
+                expect(problemsOf({ ...BASE, PTBK_CONFORMANCE_TRUST_FILE: '/t.json' })).toEqual([
+                    'PTBK_CONFORMANCE_TRUST_FILE: needs PTBK_UI_RELEASE_URL',
+                ]);
+            });
+
+            it('is refused in production, with or without a release URL', () => {
+                expect(problemsOf({ ...CONFORMANCE, NODE_ENV: 'production' })).toEqual([
+                    'PTBK_CONFORMANCE_TRUST_FILE: must not be set in production',
+                ]);
+                expect(
+                    problemsOf({ ...BASE, NODE_ENV: 'production', PTBK_CONFORMANCE_TRUST_FILE: '/t.json' }),
+                ).toContain('PTBK_CONFORMANCE_TRUST_FILE: must not be set in production');
+            });
         });
     });
 });

@@ -9,10 +9,14 @@ import type {
     TrustPolicy,
 } from '@ptbk/protocol';
 import {
+    DsseEnvelope,
     RELEASE_PAYLOAD_TYPE,
+    REVOCATION_PAYLOAD_TYPE,
     SignedRelease,
     UiBundleManifest,
+    compareEngineVersions,
     dssePayload,
+    parseRevocationList,
     satisfiesEngineApiRange,
     verifyArtifact,
     verifyManifestFiles,
@@ -39,6 +43,8 @@ export type UiUpdateOutcome =
           readonly version: EngineVersion;
           readonly reason: UiRefusalReason;
           readonly revocationReason?: RevocationsUnverifiableReason;
+          /** With `delay-not-elapsed`: when the release becomes eligible, from `verifyRelease`. */
+          readonly eligibleAt?: Date;
       }
     | { readonly kind: 'unavailable' };
 
@@ -47,7 +53,7 @@ export type UiUpdateOutcome =
  * so the panel shows exactly what the loader decided.
  */
 export function uiUpdateCheckOf(outcome: UiUpdateOutcome, atMs: number): UiUpdateCheck {
-    const at = new Date(atMs).toISOString().replace(/\.\d{3}Z$/, 'Z');
+    const at = wholeSeconds(atMs, 'floor');
     if (outcome.kind === 'unavailable') {
         return UiUpdateCheck.parse({ at, outcome: 'unavailable', version: null, reason: null, revocationReason: null });
     }
@@ -59,7 +65,13 @@ export function uiUpdateCheckOf(outcome: UiUpdateOutcome, atMs: number): UiUpdat
         version: outcome.version,
         reason: refused?.reason ?? null,
         revocationReason,
+        // Rounded up, so the panel never shows a time before the release is actually eligible.
+        eligibleAt: refused?.eligibleAt === undefined ? null : wholeSeconds(refused.eligibleAt.getTime(), 'ceil'),
     });
+}
+
+function wholeSeconds(ms: number, round: 'floor' | 'ceil'): string {
+    return new Date(Math[round](ms / 1000) * 1000).toISOString().replace(/\.000Z$/, 'Z');
 }
 
 export interface UiUpdateDeps {
@@ -142,7 +154,10 @@ type Verified = Extract<ReleaseVerification, { readonly kind: 'ok' }>;
 /**
  * One update check (ADR 0003; spec, Interfaces 5): fetch the release and the revocation list, decide with C-06's
  * `verifyRelease` alone, then download the `ui` artifact, check its hash, unpack, check every file against the manifest
- * and the manifest's engine API range, and switch atomically. Every refusal leaves the active bundle as it was.
+ * and the manifest's engine API range, and switch atomically. Every refusal leaves the active bundle as it was, with
+ * one exception: once a revocation list is accepted that names the active bundle, it stops being served at once (the
+ * previous bundle comes back unless it is revoked too), and the check reports `revoked` for it unless it goes on to
+ * install a newer release.
  */
 export async function checkForUiUpdate(deps: UiUpdateDeps): Promise<UiUpdateOutcome> {
     const { logger } = deps;
@@ -156,7 +171,7 @@ export async function checkForUiUpdate(deps: UiUpdateDeps): Promise<UiUpdateOutc
 }
 
 async function check(deps: UiUpdateDeps): Promise<UiUpdateOutcome> {
-    const { source, store, state, signal, logger } = deps;
+    const { source, store, state, signal } = deps;
     const version =
         deps.policy.kind === 'pinned' ? deps.policy.version : await fetching('latest', () => source.latest(signal));
     const release = await fetching('release', () => source.release(version, signal));
@@ -165,7 +180,6 @@ async function check(deps: UiUpdateDeps): Promise<UiUpdateOutcome> {
     const now = new Date(deps.clock.nowMs());
     const key = await payloadKey(release);
     const firstSeenAt = key === null ? now : await state.firstSeenAt(key, now);
-    const active = store.active();
     // verifyRelease decides on the provenance but does not return its log index, which the security panel shows.
     const verified: { logIndex: number | null } = { logIndex: null };
     const provenance: ProvenanceVerifier = {
@@ -175,49 +189,103 @@ async function check(deps: UiUpdateDeps): Promise<UiUpdateOutcome> {
             return result;
         },
     };
-    const verdict = await verifyRelease(
-        {
-            release,
-            revocations,
-            lastAcceptedRevocationIssuedAt: await state.lastAcceptedRevocationIssuedAt(),
-            policy: deps.trust,
-            mode: deps.policy.kind === 'auto' ? 'auto' : 'manual',
-            installedVersion: active?.version ?? null,
-            firstSeenAt,
-            signal,
-        },
-        { provenance, clock: { now: () => new Date(deps.clock.nowMs()) } },
-    );
-    if ('revocationsIssuedAt' in verdict) await state.acceptRevocations(verdict.revocationsIssuedAt);
+    const decide = async (): Promise<ReleaseVerification> =>
+        verifyRelease(
+            {
+                release,
+                revocations,
+                lastAcceptedRevocationIssuedAt: await state.lastAcceptedRevocationIssuedAt(),
+                policy: deps.trust,
+                mode: deps.policy.kind === 'auto' ? 'auto' : 'manual',
+                installedVersion: store.active()?.version ?? null,
+                firstSeenAt,
+                signal,
+            },
+            { provenance, clock: { now: () => new Date(deps.clock.nowMs()) } },
+        );
+    let verdict = await decide();
+    let revokedActive: EngineVersion | null = null;
+    if ('revocationsIssuedAt' in verdict) {
+        await state.acceptRevocations(verdict.revocationsIssuedAt);
+        revokedActive = await withdrawRevoked(deps, revocations);
+        // Withdrawing the active bundle changed what counts as newer; nothing else in the verdict depends on it.
+        if (revokedActive !== null && verdict.kind === 'not-newer') verdict = await decide();
+    }
+    const outcome = await act(deps, version, verdict, verified.logIndex);
+    if (revokedActive === null || outcome.kind === 'installed') return outcome;
+    return { kind: 'refused', version: revokedActive, reason: 'revoked' };
+}
 
-    const refuse = (reason: UiRefusalReason, revocationReason?: RevocationsUnverifiableReason): UiUpdateOutcome => {
+/**
+ * Withdraws the installed bundles that an accepted revocation list names and returns the active version it withdrew,
+ * or `null`. Only called once `verifyRelease` accepted the list, so its payload is read only after it verified.
+ */
+async function withdrawRevoked(deps: UiUpdateDeps, revocations: unknown): Promise<EngineVersion | null> {
+    const { store, logger } = deps;
+    const envelope = DsseEnvelope.safeParse(revocations);
+    const list =
+        envelope.success && envelope.data.payloadType === REVOCATION_PAYLOAD_TYPE
+            ? parseRevocationList(dssePayload(envelope.data))
+            : undefined;
+    if (list === undefined) throw new Error('verifyRelease accepted a revocation list that does not parse');
+    // SemVer precedence, the rule verifyRelease matches revoked versions by.
+    const isRevoked = (version: EngineVersion): boolean =>
+        list.revoked.some((entry) => compareEngineVersions(entry.version, version) === 0);
+    const active = store.active();
+    const previous = store.previous();
+    const activeRevoked = active !== undefined && isRevoked(active.version);
+    const previousRevoked = previous !== undefined && isRevoked(previous.version);
+    if (!activeRevoked && !previousRevoked) return null;
+    const after = await store.withdraw(isRevoked);
+    if (previousRevoked) logger.warn('ui.revoked-previous', { version: previous.version });
+    if (!activeRevoked) return null;
+    logger.error('ui.revoked-active', {
+        version: active.version,
+        ...(after === undefined ? {} : { restored: after.version }),
+    });
+    return active.version;
+}
+
+/** What the verdict means for this engine: up to date, a refusal, or an install of the verified release. */
+async function act(
+    deps: UiUpdateDeps,
+    version: EngineVersion,
+    verdict: ReleaseVerification,
+    logIndex: number | null,
+): Promise<UiUpdateOutcome> {
+    const { logger } = deps;
+    const refuse = (
+        reason: UiRefusalReason,
+        details: Pick<Extract<UiUpdateOutcome, { kind: 'refused' }>, 'revocationReason' | 'eligibleAt'> = {},
+    ): UiUpdateOutcome => {
         logger.warn('ui.refused', {
             version,
             reason,
-            ...(revocationReason === undefined ? {} : { revocationReason }),
+            ...(details.revocationReason === undefined ? {} : { revocationReason: details.revocationReason }),
         });
-        return { kind: 'refused', version, reason, ...(revocationReason === undefined ? {} : { revocationReason }) };
+        return { kind: 'refused', version, reason, ...details };
     };
     switch (verdict.kind) {
         case 'ok':
             break;
         case 'revocations-unverifiable':
             logger.error('ui.revocations-unverifiable', { version, reason: verdict.reason });
-            return refuse('revocations-unverifiable', verdict.reason);
+            return refuse('revocations-unverifiable', { revocationReason: verdict.reason });
         case 'not-newer':
-            if (isActive(active, verdict.entry.version, uiArtifact(verdict.entry.artifacts)?.sha256)) {
+            if (isActive(deps.store.active(), verdict.entry.version, uiArtifact(verdict.entry.artifacts)?.sha256)) {
                 return { kind: 'up-to-date', version: verdict.entry.version };
             }
             return refuse('not-newer');
+        case 'delay-not-elapsed':
+            return refuse('delay-not-elapsed', { eligibleAt: verdict.eligibleAt });
         case 'invalid-entry':
         case 'signature-threshold-not-met':
         case 'not-in-log':
         case 'revoked':
-        case 'delay-not-elapsed':
             return refuse(verdict.kind);
     }
-    if (verified.logIndex === null) throw new Error('verifyRelease accepted a release without verified provenance');
-    return install(deps, verdict, verified.logIndex, refuse);
+    if (logIndex === null) throw new Error('verifyRelease accepted a release without verified provenance');
+    return install(deps, verdict, logIndex, refuse);
 }
 
 function uiArtifact(artifacts: readonly Artifact[]): Artifact | undefined {

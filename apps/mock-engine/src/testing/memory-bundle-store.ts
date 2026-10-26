@@ -1,7 +1,7 @@
 import { readUiArchive } from '@ptbk/release-tools';
 
 import type { BundleStore, InstalledBundle, StagedBundle } from '../domain/ui/bundle-store';
-import { bundleId } from '../domain/ui/bundle-store';
+import { bundleId, withdrawn } from '../domain/ui/bundle-store';
 
 /** In memory, with the same archive reader and limits as the file store; for tests and development. */
 export function createMemoryBundleStore(): BundleStore & { stagedCount(): number } {
@@ -42,6 +42,16 @@ export function createMemoryBundleStore(): BundleStore & { stagedCount(): number
         discard(stagingId) {
             staged.delete(stagingId);
             return Promise.resolve();
+        },
+        withdraw(isRevoked) {
+            const next = withdrawn({ active, previous }, isRevoked);
+            for (const bundle of [active, previous]) {
+                if (bundle !== undefined && bundle !== next.active && bundle !== next.previous) {
+                    installed.delete(bundle.id);
+                }
+            }
+            ({ active, previous } = next);
+            return Promise.resolve(active);
         },
         read(bundle, path) {
             const listed = bundle.manifest.files.some((file) => file.path === path);

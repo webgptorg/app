@@ -25,8 +25,11 @@ export interface UiLoaderOptions {
     readonly deps: UiLoaderDeps;
     readonly clock: Clock;
     readonly logger: Logger;
-    /** Called with the active bundle at start and after every install, for the security panel. */
-    readonly onActive: (bundle: InstalledBundle) => void;
+    /**
+     * Called with the active bundle at start and whenever a check changed it, for the security panel: `undefined` once
+     * a revocation withdrew every installed bundle.
+     */
+    readonly onActive: (bundle: InstalledBundle | undefined) => void;
     /** Called after every check with its outcome and when it ended, for the security panel. */
     readonly onChecked?: (outcome: UiUpdateOutcome, atMs: number) => void;
 }
@@ -56,6 +59,7 @@ export function createUiLoader(options: UiLoaderOptions): UiLoader {
         intervalMs: options.checkIntervalS * 1000,
         automatic: policy.kind !== 'manual',
         check: async (signal) => {
+            const before = deps.store.active();
             const outcome = await checkForUiUpdate({
                 ...deps,
                 policy,
@@ -65,7 +69,7 @@ export function createUiLoader(options: UiLoaderOptions): UiLoader {
                 signal,
             });
             const active = deps.store.active();
-            if (outcome.kind === 'installed' && active !== undefined) options.onActive(active);
+            if (active !== before) options.onActive(active);
             options.onChecked?.(outcome, clock.nowMs());
             return outcome;
         },

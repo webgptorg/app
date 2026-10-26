@@ -223,6 +223,66 @@ describe('openFsBundleStore', () => {
         });
     });
 
+    it('withdraws a revoked active bundle for the previous one, durably, and deletes it', async () => {
+        const store = await openFsBundleStore({ dataDir, logger: createMemoryLogger() });
+        const first = await install(store, '1.0.0');
+        const second = await install(store, '1.1.0', [...TEST_BUNDLE_FILES, { path: 'x.txt', bytes: text('x') }]);
+        expect(await store.withdraw((version) => version === '1.1.0')).toEqual(first);
+        expect(store.active()).toEqual(first);
+        expect(store.previous()).toBeUndefined();
+        expect(await store.read(second, 'x.txt')).toBeUndefined();
+        expect(await entries()).toEqual([ACTIVE_FILE, first.id].sort());
+        const reopened = await openFsBundleStore({ dataDir, logger: createMemoryLogger() });
+        expect(reopened.active()).toEqual(first);
+        expect(reopened.previous()).toBeUndefined();
+    });
+
+    it('keeps no bundle once the active and the previous one are revoked, also after a restart', async () => {
+        const store = await openFsBundleStore({ dataDir, logger: createMemoryLogger() });
+        await install(store, '1.0.0');
+        await install(store, '1.1.0', [...TEST_BUNDLE_FILES, { path: 'x.txt', bytes: text('x') }]);
+        expect(await store.withdraw(() => true)).toBeUndefined();
+        expect(store.active()).toBeUndefined();
+        expect(store.previous()).toBeUndefined();
+        expect(await entries()).toEqual([ACTIVE_FILE]);
+        const logger = createMemoryLogger();
+        const reopened = await openFsBundleStore({ dataDir, logger });
+        expect(reopened.active()).toBeUndefined();
+        expect(logger.entries).toEqual([]);
+        const third = await install(reopened, '1.2.0');
+        expect(reopened.active()).toEqual(third);
+        expect(reopened.previous()).toBeUndefined();
+    });
+
+    it('drops only a revoked previous bundle, and changes nothing when nothing installed is revoked', async () => {
+        const store = await openFsBundleStore({ dataDir, logger: createMemoryLogger() });
+        const first = await install(store, '1.0.0');
+        const second = await install(store, '1.1.0', [...TEST_BUNDLE_FILES, { path: 'x.txt', bytes: text('x') }]);
+        const before = await stat(join(uiDir(), ACTIVE_FILE));
+        expect(await store.withdraw(() => false)).toEqual(second);
+        expect((await stat(join(uiDir(), ACTIVE_FILE))).mtimeMs).toBe(before.mtimeMs);
+        expect(await entries()).toEqual([ACTIVE_FILE, first.id, second.id].sort());
+        expect(await store.withdraw((version) => version === '1.0.0')).toEqual(second);
+        expect(store.previous()).toBeUndefined();
+        expect(await entries()).toEqual([ACTIVE_FILE, second.id].sort());
+    });
+
+    it('refuses a stored previous bundle without an active one', async () => {
+        const store = await openFsBundleStore({ dataDir, logger: createMemoryLogger() });
+        const bundle = await install(store, '1.0.0');
+        await rm(join(uiDir(), ACTIVE_FILE));
+        await writeFile(join(uiDir(), ACTIVE_FILE), JSON.stringify({ v: 1, active: null, previous: bundle }), {
+            mode: 0o600,
+        });
+        const logger = createMemoryLogger();
+        expect((await openFsBundleStore({ dataDir, logger })).active()).toBeUndefined();
+        expect(logger.entries).toContainEqual({
+            level: 'error',
+            event: 'ui.store-unreadable',
+            fields: { reason: 'invalid' },
+        });
+    });
+
     it('refuses a UI directory others can read', async () => {
         await mkdir(uiDir(), { mode: 0o755 });
         await chmod(uiDir(), 0o755);

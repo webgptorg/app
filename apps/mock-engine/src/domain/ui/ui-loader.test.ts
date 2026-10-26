@@ -46,7 +46,7 @@ async function setup(updatePolicy: UpdatePolicy) {
         });
     }
     const store = createMemoryBundleStore();
-    const seen: InstalledBundle[] = [];
+    const seen: (InstalledBundle | undefined)[] = [];
     const checks: { readonly kind: string; readonly atMs: number }[] = [];
     const deps = {
         source,
@@ -65,7 +65,7 @@ async function setup(updatePolicy: UpdatePolicy) {
             onActive: (bundle) => seen.push(bundle),
             onChecked: (outcome, atMs) => checks.push({ kind: outcome.kind, atMs }),
         });
-    return { clock, store, seen, checks, loader };
+    return { clock, source, store, seen, checks, loader };
 }
 
 describe('createUiLoader', () => {
@@ -73,15 +73,38 @@ describe('createUiLoader', () => {
         const world = await setup({ kind: 'pinned', version: EngineVersion.parse('1.0.0') });
         const loader = world.loader();
         expect(await loader.checkNow()).toMatchObject({ kind: 'installed', version: '1.0.0' });
-        expect(world.seen.map((bundle) => bundle.version)).toEqual(['1.0.0']);
+        expect(world.seen.map((bundle) => bundle?.version)).toEqual(['1.0.0']);
         expect(await loader.checkNow()).toMatchObject({ kind: 'up-to-date' });
         expect(world.seen).toHaveLength(1);
         world.loader();
-        expect(world.seen.map((bundle) => bundle.version)).toEqual(['1.0.0', '1.0.0']);
+        expect(world.seen.map((bundle) => bundle?.version)).toEqual(['1.0.0', '1.0.0']);
         expect(world.checks).toEqual([
             { kind: 'installed', atMs: NOW },
             { kind: 'up-to-date', atMs: NOW },
         ]);
+    });
+
+    it('reports the bundle a revocation fell back to, and no bundle once every one is revoked', async () => {
+        const world = await setup({ kind: 'pinned', version: EngineVersion.parse('1.0.0') });
+        const loader = world.loader();
+        await loader.checkNow();
+        loader.pin(EngineVersion.parse('1.1.0'));
+        await loader.checkNow();
+        const revoke = async (...versions: string[]) => {
+            world.source.setRevocations(
+                await signTestRevocations(keys, {
+                    issuedAt: new Date(NOW),
+                    expiresAt: new Date(NOW + 24 * HOUR),
+                    revoked: versions.map((version) => ({ version, reason: 'compromised' })),
+                }),
+            );
+        };
+        await revoke('1.1.0');
+        expect(await loader.checkNow()).toEqual({ kind: 'refused', version: '1.1.0', reason: 'revoked' });
+        await revoke('1.0.0', '1.1.0');
+        await loader.checkNow();
+        expect(world.seen.map((bundle) => bundle?.version)).toEqual(['1.0.0', '1.1.0', '1.0.0', undefined]);
+        expect(world.store.active()).toBeUndefined();
     });
 
     it('re-pins only under pinned', async () => {

@@ -8,7 +8,7 @@ import { z } from 'zod';
 
 import type { Logger } from '../../domain/logger';
 import type { BundleStore, InstalledBundle } from '../../domain/ui/bundle-store';
-import { bundleId } from '../../domain/ui/bundle-store';
+import { bundleId, withdrawn } from '../../domain/ui/bundle-store';
 import { currentUid, ensurePrivateDirectory, lstatOrNull, privacyProblem, replacePrivateFile } from '../private-files';
 import { makeReadOnly, removeTree, unpackBundle } from './bundle-unpacker';
 import { UI_DIR, UPDATE_STATE_FILE } from './fs-update-state-store';
@@ -24,7 +24,10 @@ const StoredBundle = z.strictObject({
     logIndex: z.int().min(0),
     manifest: UiBundleManifest,
 });
-const StoredActive = z.strictObject({ v: z.literal(1), active: StoredBundle, previous: StoredBundle.nullable() });
+/** `active: null` once every installed bundle was revoked; a previous bundle is only ever kept beside an active one. */
+const StoredActive = z
+    .strictObject({ v: z.literal(1), active: StoredBundle.nullable(), previous: StoredBundle.nullable() })
+    .refine((stored) => stored.active !== null || stored.previous === null, 'a previous bundle needs an active one');
 
 export class BundleStoreError extends Error {
     constructor(message: string) {
@@ -59,8 +62,8 @@ export async function openFsBundleStore(options: FsBundleStoreOptions): Promise<
     if (active === undefined) [active, previous] = [previous, undefined];
     await removeAllBut(root, [active, previous]);
 
-    async function save(next: InstalledBundle, before: InstalledBundle | undefined): Promise<void> {
-        const stored: z.input<typeof StoredActive> = { v: 1, active: next, previous: before ?? null };
+    async function save(next: InstalledBundle | undefined, before: InstalledBundle | undefined): Promise<void> {
+        const stored: z.input<typeof StoredActive> = { v: 1, active: next ?? null, previous: before ?? null };
         await replacePrivateFile(activePath, `${JSON.stringify(StoredActive.parse(stored))}\n`);
     }
 
@@ -99,6 +102,15 @@ export async function openFsBundleStore(options: FsBundleStoreOptions): Promise<
             return installed;
         },
         discard: (stagingId) => removeTree(join(root, stagingId)),
+        async withdraw(isRevoked) {
+            const next = withdrawn({ active, previous }, isRevoked);
+            if (next.active === active && next.previous === previous) return active;
+            // active.json first: a crash before the directories go leaves them unlisted, and the next open deletes them.
+            await save(next.active, next.previous);
+            ({ active, previous } = next);
+            await removeAllBut(root, [active, previous]);
+            return active;
+        },
         async read(bundle, path) {
             if (!bundle.manifest.files.some((file) => file.path === path)) return undefined;
             try {
@@ -128,7 +140,9 @@ async function loadActive(
     }
     try {
         const parsed = StoredActive.safeParse(JSON.parse(await readFile(path, 'utf8')));
-        if (parsed.success) return { active: parsed.data.active, previous: parsed.data.previous ?? undefined };
+        if (parsed.success) {
+            return { active: parsed.data.active ?? undefined, previous: parsed.data.previous ?? undefined };
+        }
     } catch {
         // Unparseable JSON is the same as a schema mismatch.
     }

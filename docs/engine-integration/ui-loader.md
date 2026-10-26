@@ -4,7 +4,7 @@ The app UI is our closed, static bundle. The engine never loads it from us at pa
 
 Spec: [Interfaces (draft)](../spec/zero-trust-spec.md#interfaces-draft) 5, [Residual risks](../spec/zero-trust-spec.md#residual-risks-certificates-and-engine-updates) (2. Engine updates), [Security hardening](../spec/zero-trust-spec.md#security-hardening) 9 and 10. ADRs: [0003](../adr/0003-ui-as-signed-bundle.md), [0014](../adr/0014-cryptography.md). Contract: [`src/release/`](../../packages/protocol/src/release/) in `@ptbk/protocol`.
 
-Three points that shape the loader are still open: where releases are fetched from, which release and signing identity carry the UI, and when the first revocation list is published. Read the release log items in the [open points](README.md#open-points) before building the fetcher.
+Two points that shape the loader are still open: which release and signing identity carry the UI, and when the first revocation list is published. Where releases are fetched from is proposed as the [release mirror layout v1](#release-mirror-layout-v1), pending your review before the E-02 freeze. Read the release log items in the [open points](README.md#open-points) before building the fetcher.
 
 ## Flow
 
@@ -34,7 +34,8 @@ sequenceDiagram
 
 **Fetch**
 
-- Download the release record (`SignedRelease`: a DSSE envelope over the `ReleaseEntry` bytes plus the Sigstore bundle in `provenance`) and the current revocation list (a DSSE envelope over a `RevocationList`) from the release store or a configured mirror. Enterprise and offline installs mirror both. Every request has a timeout and a size cap.
+- Download the release record (`SignedRelease`: a DSSE envelope over the `ReleaseEntry` bytes plus the Sigstore bundle in `provenance`) and the current revocation list (a DSSE envelope over a `RevocationList`) from the release store or a configured mirror (`PTBK_UI_RELEASE_URL`), in the [release mirror layout v1](#release-mirror-layout-v1). Enterprise and offline installs mirror both. Every request has a timeout and a size cap.
+- Check for an update at startup, then periodically. The conformance suite triggers checks by restarting the engine.
 - Pass the raw JSON to `verifyRelease`; it parses strictly itself, and only after a trusted signature over the PAE verifies.
 
 **Verify with `verifyRelease`**
@@ -76,7 +77,8 @@ The engine supplies the `ProvenanceVerifier` port. Its adapter must:
 - Serve only files listed in the manifest, with `index.html` (`UI_BUNDLE_ENTRY`) as the entry and SPA fallback, behind the gateway session. The fallback must never shadow `ENGINE_RESERVED_PATHS` (`/api/`, `/auth/`, `/setup`, `/.well-known/`).
 - Send `ENGINE_UI_CSP` from `@ptbk/engine-api` as the Content-Security-Policy, byte for byte. Never read the manifest's `csp`, which is informational: the engine's headers are engine code. See [gateway.md](gateway.md#security-headers) for the full header set.
 - Switch to the new bundle atomically, keep the previous one, and on any failure keep serving the previous bundle. If no bundle has ever installed, serve a plain engine page.
-- Show the UI version, its bundle SHA-256 and its release log index in the security panel (`GET /security` → `ui`).
+- **A revoked active bundle stops being served immediately** (decided 2026-10-26). When an accepted, fresh revocation list names the active bundle's version, fall back to the previously accepted bundle if that one is not revoked, and otherwise serve the plain engine page saying the UI is unavailable. Persist the switch, so a restart does not bring the revoked bundle back, and report it in `lastUpdateCheck` as `refused` with reason `revoked` and the revoked version, unless the same check installs a newer release. Never keep a revoked bundle as the previous one.
+- Show the UI version, its bundle SHA-256 and its release log index in the security panel (`GET /security` → `ui`), and the last update check in `ui.lastUpdateCheck`: when it ran, its outcome, the version checked, the refusal and revocation reasons, and, since API 1.10.0, `eligibleAt` when the reason is `delay-not-elapsed`.
 
 ## Contract exports
 
@@ -95,15 +97,33 @@ The engine supplies the `ProvenanceVerifier` port. Its adapter must:
 
 Golden vectors: [`release/vectors.json`](../../packages/protocol/src/release/vectors.json) has fixed release, maintainer and outsider keys with their key IDs, a regular and a security release, a revocation list, payloads with duplicate keys that must be `invalid-entry`, and a signature over the raw payload that must not verify.
 
+## Release mirror layout v1
+
+Proposed 2026-10-26, pending the engine team's review before the E-02 freeze. It is what the UI release workflow publishes (X-03), what the mock engine reads and what the conformance suite's fake store serves, below `PTBK_UI_RELEASE_URL` (an `https://` URL whose path ends in `/`):
+
+| Path                            | Content                                                                                                                           |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `ui/latest.json`                | `{ "version": "<semver>" }`, the version `auto` and `manual` check. Unsigned: only a hint, whatever it names still has to verify. |
+| `release-log/ui-<version>.json` | The `SignedRelease` of that version.                                                                                              |
+| `release-log/revocations.json`  | The current revocation list's DSSE envelope; a 404 means no list (`missing`).                                                     |
+| `ui/<version>/<artifact name>`  | An artifact the entry names, URL-encoded. Find the UI one by `kind: 'ui'`, never by name.                                         |
+
+The UI archive is a ustar `tar.zst` (any conforming zstd frame, including stored blocks) whose first entry is the `UiBundleManifest` as `manifest.json`. The suite exports the layout as `MIRROR_LAYOUT_V1`.
+
+## Testing the loader: conformance build
+
+The conformance suite tests the loader black-box, with releases it signs on the fly: test release and maintainer keys, and Sigstore bundles minted under an ephemeral trusted root (Fulcio-style certificate with the exact claims, embedded SCT, Rekor entry with signed entry timestamp and inclusion proof, RFC 3161 timestamps). A production engine must never take a trust policy or a trusted root from its environment, because whoever controls the environment or a mirror would then choose the code on the engine's origin. So the test trust comes in through a separate build (decided 2026-10-26):
+
+1. **Conformance build.** Build the engine with a compile-time constant (for example `PTBK_CONFORMANCE_BUILD`, replaced at bundle time) that release builds set to `false`, so the code path is not in them at all. Only that build reads `PTBK_CONFORMANCE_TRUST_FILE`: JSON `{ "v": 1, "trustPolicy": <TrustPolicy>, "trustedRoot": <Sigstore trusted_root.json> }`, parsed strictly with `ConformanceTrustFile` from `@ptbk/protocol`. It replaces the pinned trust policy and the pinned trusted root, and nothing else: your real `@sigstore/verify` adapter, fetcher, state, unpacker and server run unchanged, which is what the suite tests.
+2. **Production builds refuse it.** A production build that sees `PTBK_CONFORMANCE_TRUST_FILE` set refuses to start, with an error naming the variable. It never ignores it silently.
+3. **Never released.** Your release workflow asserts that the constant is off in everything it publishes. The conformance build announces itself in its startup log (and in `GET /engine` once the contract has a field for it).
+4. **What the suite sets per start:** `PTBK_UI_RELEASE_URL` (its fake store, HTTPS on a `*.localhost` name under the harness's test CA), `PTBK_UPDATE_POLICY`, `PTBK_PINNED_VERSION` and `PTBK_CONFORMANCE_TRUST_FILE`; the harness sets `PTBK_DATA_DIR` and keeps it across restarts. It reads `GET /security` with an owner session and fetches the served bundle on the engine's origin.
+
+The mock engine accepts the same file, refused under `NODE_ENV=production` like its other development switches.
+
 ## Conformance
 
-Planned in C-05, registered as `skip` (`not-implemented`) until the UI loader suite exists:
-
-- `ui-loader.signature.strict-ed25519`: releases signed with the `ed25519-vectors.json` cases get exactly the recorded accept or reject.
-- `ui-loader.dsse.pae-only`: a signature over the raw payload, a changed payload byte or a wrong payload type is refused.
-- `ui-loader.provenance.exact-identity`: a wrong repository, commit, ref or runner is refused.
-- `ui-loader.delay.trusted-time`: a backdated `publishedAt` does not shorten the delay.
-- `ui-loader.revocations.expired-keeps-current`: an expired revocation list keeps the current version.
+The `ui-loader` suite (C-10) runs every check through the conformance harness, which starts your conformance build; [`packages/conformance/README.md`](../../packages/conformance/README.md#ui-loader-suite) describes each one. In short: a valid release installs and is shown in the panel; release-key signatures get exactly the strict Ed25519 verdict for every case class of `ed25519-vectors.json`; the signature threshold, DSSE PAE and strict payload; exact provenance identity and a log entry; the delay from trusted time, persisted across restarts; archive hash, manifest file list, unsafe archive entries and the `engineApi` range; no downgrade; revocation freshness, rollback across restarts, revoked candidates and a revoked active bundle; store failures keep the current bundle; the update policy; only listed files served, with `ENGINE_UI_CSP` and the full header set. Every check ID is in the [checklist](checklist.md#ui-loader-interface-5).
 
 ## Reference implementation
 
@@ -113,7 +133,7 @@ Merged (M-05), in `apps/mock-engine` and the shared [`@ptbk/release-tools`](../.
 - **Ports and state**: [release-source.ts](../../apps/mock-engine/src/domain/ui/release-source.ts), [bundle-store.ts](../../apps/mock-engine/src/domain/ui/bundle-store.ts), [update-state-store.ts](../../apps/mock-engine/src/domain/ui/update-state-store.ts); the schedule (startup, every `MOCK_UI_CHECK_INTERVAL_S`, one check at a time) in [ui-updater.ts](../../apps/mock-engine/src/domain/ui/ui-updater.ts) and [ui-loader.ts](../../apps/mock-engine/src/domain/ui/ui-loader.ts).
 - **Persisted state**: [fs-update-state-store.ts](../../apps/mock-engine/src/adapters/ui/fs-update-state-store.ts) writes `PTBK_DATA_DIR/ui/update-state.json` (0600, temporary file, `fsync`, rename) and parses it strictly; a lost or unreadable file starts empty, which restarts delays and is logged as `ui.update-state-lost` at error level because it also resets rollback protection.
 - **Unpack and switch**: [bundle-unpacker.ts](../../apps/mock-engine/src/adapters/ui/bundle-unpacker.ts) on the ustar reader in [`@ptbk/release-tools`](../../packages/release-tools/src/tar.ts) (no links, devices, absolute paths, `..` or duplicates; at most 10,000 entries and 200 MB); [fs-bundle-store.ts](../../apps/mock-engine/src/adapters/ui/fs-bundle-store.ts) unpacks into `ui/staging-<random>/`, reads the files back for the checks, renames to `ui/<version>-<sha256 prefix>/`, makes it read-only and replaces `ui/active.json` atomically. It keeps one previous bundle, deletes the rest and re-checks every file against its manifest at startup.
-- **Release store**: [http-release-source.ts](../../apps/mock-engine/src/adapters/ui/http-release-source.ts), with a timeout and a size cap on every request, through the same proxy-aware HTTPS client as registration. The layout it reads is the mock's, not a contract: `ui/latest.json` (`{ "version" }`, an unsigned hint), `release-log/ui-<version>.json`, `release-log/revocations.json` and `ui/<version>/<artifact>`.
-- **Provenance**: the Sigstore verifier in [`@ptbk/release-tools`](../../packages/release-tools/src/sigstore-provenance-verifier.ts), shared with the UI release scripts, against the pinned `trusted_root.json` in the same package; [ui-loader-deps.ts](../../apps/mock-engine/src/app/ui-loader-deps.ts) wires it. `MOCK_UI_FAKE_PROVENANCE=enabled` swaps in C-06's fake verifier over test attestations ([test-provenance.ts](../../apps/mock-engine/src/adapters/ui/test-provenance.ts)) for tests and the e2e stack, and is refused under `NODE_ENV=production`.
+- **Release store**: [http-release-source.ts](../../apps/mock-engine/src/adapters/ui/http-release-source.ts), with a timeout and a size cap on every request, through the same proxy-aware HTTPS client as registration. It reads the [release mirror layout v1](#release-mirror-layout-v1).
+- **Provenance**: the Sigstore verifier in [`@ptbk/release-tools`](../../packages/release-tools/src/sigstore-provenance-verifier.ts), shared with the UI release scripts, against the pinned `trusted_root.json` in the same package; [ui-loader-deps.ts](../../apps/mock-engine/src/app/ui-loader-deps.ts) wires it. `MOCK_UI_FAKE_PROVENANCE=enabled` swaps in C-06's fake verifier over test attestations ([test-provenance.ts](../../apps/mock-engine/src/adapters/ui/test-provenance.ts)) for tests and the e2e stack, and is refused under `NODE_ENV=production`. `PTBK_CONFORMANCE_TRUST_FILE` keeps the real verifier and swaps only the trust policy and the trusted root, as a [conformance build](#testing-the-loader-conformance-build) does.
 - **Serving**: [static-route.ts](../../apps/mock-engine/src/domain/ui/static-route.ts) maps a request to a listed file or the SPA fallback (only `GET` or `HEAD` with `Accept: text/html`, never under `/assets/`). The engine's own paths (`ENGINE_RESERVED_PATHS`, the API prefix, and the mock's `/__spike/` and `/__mock/`) are refused before the manifest is consulted, so a bundle never occupies them; a manifest that lists a file there is refused at install as a manifest mismatch, because C-06's path grammar alone allows `api/…`, `auth/…`, `setup` and `__mock/…`. content-hashed assets are `Cache-Control: public, max-age=31536000, immutable`, everything else `no-cache`. [ui-routes.ts](../../apps/mock-engine/src/adapters/http/ui-routes.ts) serves the active bundle behind the gateway session and a plain 503 engine page before the first install. The headers come from [security-headers.ts](../../apps/mock-engine/src/domain/http/security-headers.ts) on every response ([gateway.md](gateway.md#security-headers)).
 - **Security panel**: the active bundle's version, archive SHA-256 and Rekor log index appear as `GET /security` → `ui`.
