@@ -2,7 +2,7 @@
 
 - **Lane:** Contracts · **Module:** `packages/conformance` (plus the conformance CI job, `apps/mock-engine` fixes if a check finds a mock bug) · **Milestone:** M5
 - **Depends on:** C-05, M-06
-- **Status:** in progress (feat/c-08-platform-harness)
+- **Status:** done (#101)
 - **Spec:** Interfaces (draft) 1, 4 and 6; Pairing and identity; What our platform can and cannot do (Heartbeat); Build plan (Mock engine first, real engine last); ADRs: [0004](../../adr/0004-mock-engine-and-conformance.md), [0014](../../adr/0014-cryptography.md)
 
 ## Goal
@@ -135,8 +135,8 @@ A suite that is not about registration (tunnel, UI loader) calls `startRegistere
 - [x] Coverage of `node/` is at least 90% lines and branches (it verifies signatures).
 - [x] Every new check ID is in checklist.md (`bun run check` enforces it); conformance.md, identity-and-registration.md and the README describe the launch contract and harness mode.
 - [x] The conformance CI job runs the harness against the mock engine.
-- [ ] `bun run check` passes.
-- [ ] **Status** line above set to `done (#<PR>)`.
+- [x] `bun run check` passes (fast policy for #101: conformance and mock-engine lint, typecheck and tests, plus the conformance job replay).
+- [x] **Status** line above set to `done (#<PR>)`.
 
 ## Risks and open points
 

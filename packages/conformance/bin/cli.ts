@@ -134,7 +134,7 @@ async function run(argv: readonly string[], io: CliIo): Promise<number> {
         if (values['base-url'] !== undefined) throw new UsageError('give either --base-url or --engine-cmd');
         const suites = pick(suiteIds, PLATFORM_SUITES, (id) =>
             ALL_SUITES.some((suite) => suite.id === id)
-                ? `${id} runs against --base-url; the harness cannot reach the engine API yet`
+                ? `${id} runs against --base-url; with --engine-cmd the platform suites reach the engine API through their fake relay where they need it`
                 : `unknown suite ${id}`,
         );
         const intervalS =
