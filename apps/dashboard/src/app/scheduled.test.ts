@@ -175,6 +175,39 @@ describe('runScheduled', () => {
         expect(fetch).not.toHaveBeenCalled();
     });
 
+    it('registers the Web Risk feed with its key, and warns outside dev while the key is missing (I-08)', async () => {
+        vi.stubGlobal(
+            'fetch',
+            vi.fn(() => Promise.reject(new TypeError('offline'))),
+        );
+        const lines: string[] = [];
+        const capture = (line: unknown) => {
+            lines.push(String(line));
+        };
+        const errors = vi.spyOn(console, 'error').mockImplementation(capture);
+        const warnings = vi.spyOn(console, 'warn').mockImplementation(capture);
+        try {
+            const keyed = {
+                ...monitoredVars,
+                WEB_RISK_API_KEY: `AIza${'w'.repeat(35)}`,
+                DB: binding({}),
+                OPS_MONITOR: opsMonitor(),
+            } as unknown as Env;
+            await runScheduled({ cron: '*/15 * * * *', scheduledTime: 0 }, keyed, ctx, createDevAdapters());
+            const env = { ...staging(), DB: binding({}) } as unknown as Env;
+            await runScheduled({ cron: '*/15 * * * *', scheduledTime: 0 }, env, ctx, createDevAdapters());
+        } finally {
+            errors.mockRestore();
+            warnings.mockRestore();
+        }
+        const entries = lines.map((line) => JSON.parse(line) as { event: string; job?: string });
+        expect(entries.filter((entry) => entry.event === 'cron.job-failed').map((entry) => entry.job)).toContain(
+            'abuse-feeds',
+        );
+        expect(entries.filter((entry) => entry.event === 'abuse-feed.unconfigured')).toHaveLength(1);
+        expect(lines.join('\n')).not.toContain('AIza');
+    });
+
     it('rethrows what is not a configuration error', async () => {
         await expect(runScheduled(controller, null as unknown as Env, ctx, createDevAdapters())).rejects.toThrow(
             TypeError,

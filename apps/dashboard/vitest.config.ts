@@ -32,6 +32,7 @@ export default defineConfig(async () => {
                     'src/adapters/rate-limit/hourly-rate-limiter-object.ts',
                     'src/adapters/status/engine-status-object.ts',
                     'src/adapters/monitoring/ops-monitor-object.ts',
+                    'src/adapters/abuse/web-risk-lists-object.ts',
                 ],
                 thresholds: {
                     lines: 90,

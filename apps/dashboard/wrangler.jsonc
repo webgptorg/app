@@ -57,18 +57,21 @@
         },
     },
     // Hourly rate limits (D-02): the Workers Rate Limiting binding only has 10 s and 60 s periods. One EngineStatus
-    // per engine (D-05): heartbeats, offline detection and alerts. Its storage is the object's own, not D1's.
+    // per engine (D-05): heartbeats, offline detection and alerts. Its storage is the object's own, not D1's. One
+    // WebRiskLists (I-08): Google Web Risk's threat lists, megabytes of hash prefixes, for the abuse feed.
     "durable_objects": {
         "bindings": [
             { "name": "HOURLY_RATE_LIMITER", "class_name": "HourlyRateLimiter" },
             { "name": "ENGINE_STATUS", "class_name": "EngineStatus" },
             { "name": "OPS_MONITOR", "class_name": "OpsMonitor" },
+            { "name": "WEB_RISK_LISTS", "class_name": "WebRiskLists" },
         ],
     },
     "migrations": [
         { "tag": "v1", "new_sqlite_classes": ["HourlyRateLimiter"] },
         { "tag": "v2", "new_sqlite_classes": ["EngineStatus"] },
         { "tag": "v3", "new_sqlite_classes": ["OpsMonitor"] },
+        { "tag": "v4", "new_sqlite_classes": ["WebRiskLists"] },
     ],
     // The relay monitor every minute (I-04), the abuse jobs every 15 minutes (I-05); src/app/scheduled-jobs.ts lists the
     // jobs, and a test keeps the two in step. Locally nothing fires on its own: the e2e monitoring overlay triggers it.
@@ -134,12 +137,14 @@
                     { "name": "HOURLY_RATE_LIMITER", "class_name": "HourlyRateLimiter" },
                     { "name": "ENGINE_STATUS", "class_name": "EngineStatus" },
                     { "name": "OPS_MONITOR", "class_name": "OpsMonitor" },
+                    { "name": "WEB_RISK_LISTS", "class_name": "WebRiskLists" },
                 ],
             },
             "migrations": [
                 { "tag": "v1", "new_sqlite_classes": ["HourlyRateLimiter"] },
                 { "tag": "v2", "new_sqlite_classes": ["EngineStatus"] },
                 { "tag": "v3", "new_sqlite_classes": ["OpsMonitor"] },
+                { "tag": "v4", "new_sqlite_classes": ["WebRiskLists"] },
             ],
             "ratelimits": [
                 { "name": "RATE_LIMIT_OPTIONS", "namespace_id": "2001", "simple": { "limit": 30, "period": 60 } },
@@ -205,12 +210,14 @@
                     { "name": "HOURLY_RATE_LIMITER", "class_name": "HourlyRateLimiter" },
                     { "name": "ENGINE_STATUS", "class_name": "EngineStatus" },
                     { "name": "OPS_MONITOR", "class_name": "OpsMonitor" },
+                    { "name": "WEB_RISK_LISTS", "class_name": "WebRiskLists" },
                 ],
             },
             "migrations": [
                 { "tag": "v1", "new_sqlite_classes": ["HourlyRateLimiter"] },
                 { "tag": "v2", "new_sqlite_classes": ["EngineStatus"] },
                 { "tag": "v3", "new_sqlite_classes": ["OpsMonitor"] },
+                { "tag": "v4", "new_sqlite_classes": ["WebRiskLists"] },
             ],
             "ratelimits": [
                 { "name": "RATE_LIMIT_OPTIONS", "namespace_id": "3001", "simple": { "limit": 30, "period": 60 } },

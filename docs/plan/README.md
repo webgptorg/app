@@ -130,6 +130,7 @@ bun run plan --check  # validates statuses and dependencies (part of bun run che
 | [I-05](tasks/I-05-abuse-controls.md)                     | Abuse controls and monitoring jobs                                                           | I    | M4        |
 | [I-06](tasks/I-06-security-review.md)                    | Internal security review gate                                                                | I    | M4        |
 | [I-07](tasks/I-07-health-checked-relay-dns.md)           | Health-checked relay DNS                                                                     | I    | M4        |
+| [I-08](tasks/I-08-web-risk-abuse-feed.md)                | Google Web Risk abuse feed                                                                   | I    | M4        |
 | [C-08](tasks/C-08-platform-harness.md)                   | Platform harness, registration and heartbeat conformance suites                              | C    | M5        |
 | [C-09](tasks/C-09-tunnel-conformance.md)                 | Tunnel conformance suite: a fake relay the engine dials                                      | C    | M5        |
 | [C-10](tasks/C-10-ui-loader-conformance.md)              | UI loader conformance suite: fake release store, test Sigstore, black-box checks             | C    | M5        |
@@ -184,7 +185,7 @@ C-01 and R-01 both live in `packages/protocol` and touch its `package.json` and 
 - Organizations, members and roles are modelled from day one ([ADR 0006](../adr/0006-organizations-and-roles.md)).
 - Relay DNS failover (I-07, decided 2026-10-23 by the orchestrator, delegated by Seb): the engine wildcard is a Cloudflare DNS-only load balancer with health checks, managed in `infra/cloudflare`, not a checker holding an engine-zone token. Its subscription is a paid add-on (see apply.md); an environment with a single relay (staging for now) uses plain wildcard records instead (`relay_dns_mode`).
 - Onboarding (2026-10-26, E-05; [onboarding.md](../design/onboarding.md#decisions)): a dashboard link code inside the install command, `connect --link` for a running engine (CLI only in v0); Docker first (signed multi-arch image, verifying installer, Compose file), npm for local development only; account first promoted, engine first documented; a trial with a card on file before the install command; no engine contract change beyond C-11; the engine image carries its release's UI bundle (installer approves the first bundle by hand until then); MIT token stylesheet and reference gateway pages (M-08).
-- Abuse feed (2026-10-26, Seb): Google Web Risk, the commercial Safe Browsing API, backs I-05's `AbuseFeed` port; Search Console and Safe Browsing email alerts stay manual setup steps ([abuse-takedown.md](../runbooks/abuse-takedown.md#monitoring-setup-manual-at-apply)).
+- Abuse feed (2026-10-26, Seb): Google Web Risk, the commercial Safe Browsing API, backs I-05's `AbuseFeed` port, through its Update API ([I-08](tasks/I-08-web-risk-abuse-feed.md#design-decision-update-api-not-chunked-lookup)); Search Console and Safe Browsing email alerts stay manual setup steps ([abuse-takedown.md](../runbooks/abuse-takedown.md#monitoring-setup-manual-at-apply)).
 
 **Still needed** (each blocks specific tasks, not the start):
 

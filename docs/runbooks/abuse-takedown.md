@@ -111,7 +111,7 @@ The 2-year case retention is our working rule until the privacy policy (legal, o
 Done once per engine domain, with I-05's Apply ([apply.md](../plan/apply.md)):
 
 - **Search Console:** add the engine domain as a domain property, verified by its TXT record through `extra_records` in `infra/cloudflare`; add `abuse@` as a user with email notifications on. Security issues (Safe Browsing's verdicts for the domain) then reach the abuse inbox.
-- **Abuse feed:** Google Web Risk (decided 2026-10-26, plan, Decisions). Its API key goes into the dashboard as a Worker secret and backs the `abuse-feeds` job's `AbuseFeed` port.
+- **Abuse feed:** Google Web Risk (decided 2026-10-26, plan, Decisions; I-08). Create the key as in [apply.md](../plan/apply.md) and set it with `wrangler secret put WEB_RISK_API_KEY --env <env>`; the next 15-minute run turns the `abuse-feeds` job on. Check its runs in the Cron Trigger log: `web-risk.diff-failed` means Google did not answer a list update (the feed keeps answering from its lists for 2 h past the due diff), `web-risk.list-mismatch` a list being reset, `abuse-feed.failed` with `WebRiskError` a run without a verdict, and `abuse-feed.unconfigured` a missing key. An `abuse-feed-listed` alert is triaged like any report; Google's terms forbid redistributing Web Risk's answers, so the case records them and messages to the owner do not quote them.
 - **CT watch:** runs without credentials; the optional `CERTSPOTTER_API_KEY` secret lifts Cert Spotter's hourly allowance.
 
 ## Public Suffix List
