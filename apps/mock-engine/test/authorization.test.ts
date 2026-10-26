@@ -66,6 +66,8 @@ function validBody(route: RouteDefinition): unknown {
             };
         case 'connectCalendar':
             return { provider: 'google' };
+        case 'testAgentDraft':
+            return { book: 'Matrix', messages: [{ role: 'user', content: 'hello' }] };
         default:
             return undefined;
     }

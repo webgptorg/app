@@ -3,14 +3,24 @@ import type { CapabilityRef } from '@ptbk/engine-api';
 import type { FileUploadPolicies } from '@ptbk/engine-api/in-memory';
 import { z } from 'zod';
 
-/** The C-07 capabilities by name, each at the version this mock serves. */
-export const MockCapabilityName = z.enum(['runs', 'files', 'triggers', 'integrations']);
+/** The capabilities by their IDs, each at the version this mock serves. */
+const MOCK_CAPABILITIES = {
+    runs: KNOWN_CAPABILITIES.runs,
+    files: KNOWN_CAPABILITIES.files,
+    triggers: KNOWN_CAPABILITIES.triggers,
+    integrations: KNOWN_CAPABILITIES.integrations,
+    'test-chat': KNOWN_CAPABILITIES.testChat,
+} as const satisfies Readonly<Record<string, CapabilityRef>>;
+
+export const MockCapabilityName = z.enum(
+    Object.keys(MOCK_CAPABILITIES) as [keyof typeof MOCK_CAPABILITIES, ...(keyof typeof MOCK_CAPABILITIES)[]],
+);
 export type MockCapabilityName = z.infer<typeof MockCapabilityName>;
 
 export const ALL_CAPABILITY_NAMES: readonly MockCapabilityName[] = MockCapabilityName.options;
 
 export function capabilitiesFor(names: readonly MockCapabilityName[]): readonly CapabilityRef[] {
-    return [...new Set(names)].map((name) => KNOWN_CAPABILITIES[name]);
+    return [...new Set(names)].map((name) => MOCK_CAPABILITIES[name]);
 }
 
 /** `MOCK_CAPABILITIES`: comma-separated names, or `none`. Problems name the entry, never its value. */

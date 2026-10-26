@@ -1,9 +1,10 @@
-import type { RouteDefinition } from '@ptbk/engine-api';
+import type { EngineApiRouteId, RouteDefinition } from '@ptbk/engine-api';
 import { ENGINE_API_PREFIX, ENGINE_API_ROUTE_LIST, MAX_FILE_BYTES } from '@ptbk/engine-api';
 import { serveEngineApiRoute } from '@ptbk/engine-api/http';
 import type { InMemoryEngineCore } from '@ptbk/engine-api/in-memory';
 import { z } from 'zod';
 
+import type { RateLimitRule } from '../../domain/rate-limit/rate-limiter';
 import type { HttpRoute, RouteBody } from './route';
 import { defineHttpRoute } from './route';
 
@@ -29,6 +30,11 @@ function bodyOf(route: RouteDefinition): RouteBody | null {
     }
 }
 
+/** Routes that cost more than a lookup get their own, tighter budget; everything else shares `engine-api-ip`. */
+const RATE_LIMIT_BY_ROUTE: Partial<Record<EngineApiRouteId, RateLimitRule>> = {
+    testAgentDraft: 'engine-api-test-chat-ip',
+};
+
 function isStream(route: RouteDefinition): boolean {
     return Object.values(route.responses).some((response) => response.kind === 'sse');
 }
@@ -47,7 +53,7 @@ export function createEngineApiRoutes(deps: { readonly core: () => InMemoryEngin
             auth: 'session',
             validation: 'engine-api',
             permission: route.permission,
-            rateLimit: 'engine-api-ip',
+            rateLimit: RATE_LIMIT_BY_ROUTE[route.id as EngineApiRouteId] ?? 'engine-api-ip',
             params: route.params ?? null,
             query: route.query ?? NO_QUERY,
             headers: isStream(route) ? SSE_HEADERS : null,
