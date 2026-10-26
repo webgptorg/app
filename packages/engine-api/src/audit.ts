@@ -32,6 +32,7 @@ export const AUDIT_ACTIONS = [
     'agent.source.update',
     'agent.start',
     'agent.stop',
+    'agent.test-chat.start',
     'folder.create',
     'folder.rename',
     'folder.delete',

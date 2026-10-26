@@ -26,6 +26,7 @@ export * from './capabilities/runs';
 export * from './capabilities/files';
 export * from './capabilities/triggers';
 export * from './capabilities/integrations';
+export * from './capabilities/test-chat';
 export { stripUnknownFields, toTolerant } from './tolerant';
 
 export { createEngineApiClient, EngineApiContractError } from './client';

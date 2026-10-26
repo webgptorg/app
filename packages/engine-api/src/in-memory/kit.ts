@@ -46,7 +46,8 @@ export interface ScriptedReply {
 export interface ReplyScriptInput {
     readonly agent: Agent;
     readonly content: string;
-    readonly chatId: ChatId;
+    /** `null` for a test conversation (`test-chat@1`), which belongs to no chat; `agent` then carries the draft's name and profile. */
+    readonly chatId: ChatId | null;
     /** How many messages the chat held before this exchange, so a script can vary per turn deterministically. */
     readonly messageIndex: number;
 }

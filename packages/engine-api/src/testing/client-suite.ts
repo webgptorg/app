@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
 import type { EngineApiClient, EngineApiResponse } from '../client';
-import { MAX_CHAT_PREVIEW_LENGTH, MAX_FILE_BYTES } from '../constants';
+import {
+    MAX_BOOK_SOURCE_LENGTH,
+    MAX_CHAT_PREVIEW_LENGTH,
+    MAX_FILE_BYTES,
+    MAX_TEST_CHAT_MESSAGES,
+    MAX_TEST_CHAT_TRANSCRIPT_LENGTH,
+} from '../constants';
 import {
     AgentId,
     ChatId,
@@ -513,6 +519,147 @@ export function engineApiClientSuite(makeEngine: MakeEngine): void {
         expect(ok(await client.audit.verify(signal())).status).toBe('intact');
     });
 
+    describe('test chat (test-chat@1)', () => {
+        const seed = { agents: [{ id: 'agent-a', source: 'Ada' }] };
+        const agentId = AgentId.parse('agent-a');
+        const turn = (content: string) => ({ role: 'user' as const, content });
+
+        it('streams a reply to the unsaved book and stores nothing', async () => {
+            const client = make({
+                clock: steppingClock(),
+                seed,
+                replyScript: ({ agent, chatId, messageIndex }) => ({
+                    chunks: [`${agent.name} `, `${String(chatId)} `, String(messageIndex)],
+                }),
+            });
+            const items = await collect(
+                ok(
+                    await client.testChat.stream(
+                        agentId,
+                        {
+                            book: 'Draft Ada\nPERSONA Tries new things',
+                            messages: [turn('hi'), { role: 'agent', content: 'hello' }, turn('again')],
+                        },
+                        signal(),
+                    ),
+                ),
+            );
+            expect(items.map(({ id, event }) => [id, event.type])).toEqual([
+                ['1', 'delta'],
+                ['2', 'delta'],
+                ['3', 'delta'],
+                ['3', 'completed'],
+            ]);
+            expect(items.at(-1)?.event).toEqual({ type: 'completed', content: 'Draft Ada null 2' });
+            expect(ok(await client.agents.getSource(agentId, signal())).source).toBe('Ada');
+            expect(ok(await client.chats.listAll({}, signal())).items).toEqual([]);
+            expect(ok(await client.agents.listRevisions(agentId, {}, signal())).items).toHaveLength(1);
+        });
+
+        it('ends a failed reply with reply-failed', async () => {
+            const client = make({
+                clock: steppingClock(),
+                seed,
+                replyScript: () => ({ chunks: ['par'], outcome: 'failed' }),
+            });
+            const items = await collect(
+                ok(await client.testChat.stream(agentId, { book: 'Ada', messages: [turn('hi')] }, signal())),
+            );
+            expect(items.at(-1)?.event).toMatchObject({ type: 'failed', problem: { code: 'reply-failed' } });
+        });
+
+        it('audits the start of a test conversation once, not every turn', async () => {
+            const client = make({ clock: steppingClock(), seed });
+            await collect(ok(await client.testChat.stream(agentId, { book: 'Ada', messages: [turn('hi')] }, signal())));
+            const later = { book: 'Ada', messages: [turn('hi'), { role: 'agent' as const, content: 'yo' }, turn('x')] };
+            await collect(ok(await client.testChat.stream(agentId, later, signal())));
+            const entries = ok(await client.audit.list({}, signal())).items;
+            expect(entries.map(({ action, outcome }) => [action, outcome])).toEqual([
+                ['agent.test-chat.start', 'success'],
+            ]);
+            expect(entries[0]).toMatchObject({ target: { kind: 'agent', id: 'agent-a', name: 'Ada' } });
+        });
+
+        it('refuses an invalid book with its diagnostics before anything streams', async () => {
+            const client = make({ clock: steppingClock(), seed });
+            const refused = problem(
+                await client.testChat.stream(agentId, { book: ' ', messages: [turn('hi')] }, signal()),
+            );
+            expect(refused).toMatchObject({ status: 422, code: 'invalid-book' });
+            expect(refused.diagnostics?.[0]).toMatchObject({ severity: 'error', code: 'empty-book' });
+        });
+
+        it('refuses an oversized draft, too many turns and a transcript that does not end with the member', async () => {
+            const client = make({ clock: steppingClock(), seed });
+            const tooLong = problem(
+                await client.testChat.stream(
+                    agentId,
+                    { book: 'a'.repeat(MAX_BOOK_SOURCE_LENGTH + 1), messages: [turn('hi')] },
+                    signal(),
+                ),
+            );
+            expect(tooLong.code === 'payload-too-large' || tooLong.errors?.[0]?.path === 'body.book').toBe(true);
+            const many = Array.from({ length: MAX_TEST_CHAT_MESSAGES + 1 }, () => turn('hi'));
+            expect(
+                problem(await client.testChat.stream(agentId, { book: 'Ada', messages: many }, signal())).errors?.[0]
+                    ?.path,
+            ).toBe('body.messages');
+            const transcript = Array.from({ length: 5 }, () => turn('x'.repeat(MAX_TEST_CHAT_TRANSCRIPT_LENGTH / 4)));
+            expect(
+                problem(await client.testChat.stream(agentId, { book: 'Ada', messages: transcript }, signal()))
+                    .errors?.[0]?.path,
+            ).toBe('body.messages');
+            const agentLast = [turn('hi'), { role: 'agent' as const, content: 'yo' }];
+            expect(
+                problem(await client.testChat.stream(agentId, { book: 'Ada', messages: agentLast }, signal())).code,
+            ).toBe('validation-failed');
+            expect(
+                problem(
+                    await client.testChat.stream(
+                        agentId,
+                        { book: 'Ada', messages: [], extra: true } as never,
+                        signal(),
+                    ),
+                ).code,
+            ).toBe('validation-failed');
+        });
+
+        it('answers 403 without agents.write and audits the denial', async () => {
+            const client = make({
+                clock: steppingClock(),
+                seed,
+                member: {
+                    id: 'member-limited',
+                    role: 'member',
+                    permissions: PERMISSIONS.filter((p) => p !== 'agents.write'),
+                },
+            });
+            const denied = problem(
+                await client.testChat.stream(agentId, { book: 'Ada', messages: [turn('hi')] }, signal()),
+            );
+            expect(denied).toMatchObject({ status: 403, code: 'forbidden', requiredPermission: 'agents.write' });
+            const [entry] = ok(await client.audit.list({ outcome: 'denied' }, signal())).items;
+            expect(entry).toMatchObject({ action: 'agent.test-chat.start', outcome: 'denied' });
+        });
+
+        it('answers 404 for an unknown agent and 409 for a deleted one', async () => {
+            const client = make({ clock: steppingClock(), seed });
+            const body = { book: 'Ada', messages: [turn('hi')] };
+            expect(problem(await client.testChat.stream(AgentId.parse('missing'), body, signal())).code).toBe(
+                'not-found',
+            );
+            ok(await client.agents.delete(agentId, signal()));
+            expect(problem(await client.testChat.stream(agentId, body, signal())).code).toBe('agent-deleted');
+        });
+
+        it('answers capability-not-supported when the engine does not advertise test-chat@1', async () => {
+            const client = make({ clock: steppingClock(), seed, capabilities: [] });
+            expect(
+                problem(await client.testChat.stream(agentId, { book: 'Ada', messages: [turn('hi')] }, signal())),
+            ).toMatchObject({ status: 404, code: 'capability-not-supported' });
+        });
+    });
+
     describe('own credentials under /me', () => {
         const at = '2026-10-19T08:00:00Z';
         const later = '2026-10-19T20:00:00Z';
@@ -775,7 +922,7 @@ export function engineApiClientSuite(makeEngine: MakeEngine): void {
             return all;
         }
 
-        it('advertises all four capabilities by default and lists every chat across agents', async () => {
+        it('advertises every capability by default and lists every chat across agents', async () => {
             const { client } = engine();
             const info = ok(await client.engine.get(signal()));
             expect(info.capabilities).toEqual([
@@ -783,6 +930,7 @@ export function engineApiClientSuite(makeEngine: MakeEngine): void {
                 { id: 'files', version: 1 },
                 { id: 'triggers', version: 1 },
                 { id: 'integrations', version: 1 },
+                { id: 'test-chat', version: 1 },
             ]);
             expect(info.engineId).toMatch(/^[a-z2-7]{26}$/);
             const first = ok(await client.chats.create(AgentId.parse('agent-a'), { title: 'Alpha' }, signal()));

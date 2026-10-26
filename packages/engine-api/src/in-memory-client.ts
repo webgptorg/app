@@ -749,7 +749,7 @@ export function createInMemoryEngineCore(options: InMemoryEngineCoreOptions = {}
                 replyScript: options.replyScript ?? DEFAULT_REPLY_SCRIPT,
                 signal,
             });
-            if (audited) {
+            if (audited && (result.kind === 'problem' || (audited.successWhen?.(parsed.request.body) ?? true))) {
                 if (result.kind === 'ok') {
                     const target = auditTarget(state, audited, parsed.request.params, result.data);
                     const named = target && { ...target, name: target.name ?? targetBefore?.name ?? null };
@@ -929,6 +929,13 @@ interface AuditRule {
     readonly kind: NonNullable<AuditEntry['target']>['kind'] | null;
     /** Path parameter naming the target, or `undefined` when the target is the created resource. */
     readonly param?: string;
+    /** Limits which successes are audited; refusals and failures always are. */
+    readonly successWhen?: (body: unknown) => boolean;
+}
+
+/** A test conversation is audited once, when it starts, not per turn: its first request carries one message. */
+function startsTestChat(body: unknown): boolean {
+    return (body as { readonly messages?: readonly unknown[] } | undefined)?.messages?.length === 1;
 }
 
 const AUDITED: Partial<Record<EngineApiRouteId, AuditRule>> = {
@@ -976,6 +983,7 @@ const AUDITED: Partial<Record<EngineApiRouteId, AuditRule>> = {
     enableIntegration: { action: 'integration.enable', kind: 'integration', param: 'integrationId' },
     disableIntegration: { action: 'integration.disable', kind: 'integration', param: 'integrationId' },
     deleteIntegration: { action: 'integration.delete', kind: 'integration', param: 'integrationId' },
+    testAgentDraft: { action: 'agent.test-chat.start', kind: 'agent', param: 'agentId', successWhen: startsTestChat },
 };
 
 function auditTarget(state: InMemoryState, rule: AuditRule, params: unknown, created: unknown): AuditTarget | null {

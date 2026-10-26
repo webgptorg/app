@@ -17,6 +17,8 @@ export const KNOWN_CAPABILITIES = {
     files: { id: 'files', version: 1 },
     triggers: { id: 'triggers', version: 1 },
     integrations: { id: 'integrations', version: 1 },
+    /** Test conversations against an unsaved book; an engine without it simply has no live test chat in the editor. */
+    testChat: { id: 'test-chat', version: 1 },
 } as const satisfies Readonly<Record<string, CapabilityRef>>;
 
 export type KnownCapability = (typeof KNOWN_CAPABILITIES)[keyof typeof KNOWN_CAPABILITIES];
