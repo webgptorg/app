@@ -2,7 +2,7 @@
 
 - **Lane:** Contracts · **Module:** `packages/conformance` (plus minimal changes in `packages/engine-api` and `apps/mock-engine`) · **Milestone:** M5
 - **Depends on:** C-05, C-08, C-09, M-05
-- **Status:** in progress (feat/c-10-ui-loader-conformance)
+- **Status:** done (#86)
 - **Spec:** Architecture (UI delivery); Interfaces (draft) 5 and 6; Residual risks (2. Engine updates); Security hardening 5, 9 and 10; ADRs: [0003](../../adr/0003-ui-as-signed-bundle.md), [0004](../../adr/0004-mock-engine-and-conformance.md), [0014](../../adr/0014-cryptography.md)
 
 ## Goal
@@ -102,14 +102,14 @@ The five IDs C-05 registered keep their names; the rest are new. Every refusal c
 
 ## Acceptance criteria
 
-- [ ] Every check above passes against the mock engine through the platform harness, as a package test (so in `bun run check` and CI).
-- [ ] Each check fails against at least one deliberately broken fake loader (package tests).
-- [ ] Minted Sigstore bundles verify with `@sigstore/verify` 4.1.2 and the reference verifier in `@ptbk/release-tools`; the negative knobs are refused.
-- [ ] Coverage ≥ 90% lines and branches for `packages/conformance` (signature and verification code included).
-- [ ] Mock: `PTBK_CONFORMANCE_TRUST_FILE` works and is refused under `NODE_ENV=production`; a revoked active bundle falls back or stops being served; `eligibleAt` is reported.
-- [ ] Every check ID appears in [checklist.md](../../engine-integration/checklist.md); [ui-loader.md](../../engine-integration/ui-loader.md) states the conformance build rules and the mirror layout v1.
-- [ ] `bun run check` passes.
-- [ ] **Status** line above set to `done (#<PR>)`.
+- [x] Every check above passes against the mock engine through the platform harness, as a package test (so in `bun run check` and CI).
+- [x] Each check fails against at least one deliberately broken fake loader (package tests).
+- [x] Minted Sigstore bundles verify with `@sigstore/verify` 4.1.2 and the reference verifier in `@ptbk/release-tools`; the negative knobs are refused.
+- [x] Coverage ≥ 90% lines and branches for `packages/conformance` (signature and verification code included).
+- [x] Mock: `PTBK_CONFORMANCE_TRUST_FILE` works and is refused under `NODE_ENV=production`; a revoked active bundle falls back or stops being served; `eligibleAt` is reported.
+- [x] Every check ID appears in [checklist.md](../../engine-integration/checklist.md); [ui-loader.md](../../engine-integration/ui-loader.md) states the conformance build rules and the mirror layout v1.
+- [x] Lint, typecheck and tests with coverage pass for the touched modules, and the CI platform step passes for `ui-loader` (fast check policy, 2026-10-26).
+- [x] **Status** line above set to `done (#<PR>)`.
 
 ## Risks and open points
 
