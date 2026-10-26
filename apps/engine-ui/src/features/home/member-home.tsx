@@ -6,6 +6,7 @@ import { useEngineApi } from '../../app/engine-api-context';
 import { Link } from '../../app/link';
 import { useAllows } from '../../app/registry/use-visible-features';
 import { m } from '../../paraglide/messages';
+import { chatName } from '../chat/chat-source';
 import { runTitle } from '../runs/run-format';
 import { RunStatusBadge } from '../runs/run-status';
 import { useCurrentMember } from '../session/use-current-member';
@@ -101,7 +102,7 @@ function RecentChats() {
                                     params={{ agentId: chat.agentId, chatId: chat.id }}
                                     className="min-w-0 truncate"
                                 >
-                                    {chat.title.trim() === '' ? m.chat_untitled() : chat.title}
+                                    {chatName(chat)}
                                 </Link>
                                 <RelativeTime
                                     value={new Date(chat.updatedAt)}

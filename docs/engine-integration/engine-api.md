@@ -64,7 +64,8 @@ The engine must:
 ### Chats
 
 - `Chat` ([chats.ts](../../packages/engine-api/src/chats.ts)) carries a summary so the UI lists chats without fetching their messages: `source` (what started it, with the same values as a run's source: `web` for the engine UI and public agent pages, `api`, `email`, `schedule`, `member`, `goal`, `webhook`), `createdBy` (`null` when no member started it: a public visitor, an API client or the engine itself), `messageCount` (every message, including a reply still streaming), `lastMessageAt` and `preview` (the first user message as plain text, whitespace collapsed, cut to `MAX_CHAT_PREVIEW_LENGTH`; `null` until there is one). Keep them current whenever a message is added.
-- Both chat lists list every chat the member can see, whoever started it, and take a `source` filter. The client reads a `source` it does not know as `unknown`, so adding a source later is additive.
+- Both chat lists list every chat the member can see, whoever started it, and take a `source` filter.
+- Only the member who started a chat writes in it: `POST /chats/{chatId}/messages` and `POST …/cancel` in a chat another member started answer 403 `forbidden` with `requiredPermission: chats.write` and a `denied` audit entry, whatever the member's role. Members may still read each other's chats when they hold `chats.read`; the UI shows such a chat read-only. A chat no member started (`createdBy: null`) is your policy. The client reads a `source` it does not know as `unknown`, so adding a source later is additive.
 
 ### Secrets are write-only
 

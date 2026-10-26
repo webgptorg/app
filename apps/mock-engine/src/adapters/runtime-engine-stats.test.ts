@@ -20,12 +20,15 @@ async function runtime() {
 }
 
 describe('createRuntimeEngineStats', () => {
-    it('counts agents and active members from the engine state', async () => {
+    it('counts agents that are not deleted and active members from the engine state', async () => {
         const engine = await runtime();
         const snapshot = engine.controller().inspect();
         const stats = createRuntimeEngineStats(engine);
+        const live = snapshot.agents.filter((agent) => agent.deletedAt === null).length;
+        // The seed keeps one agent in the trash; billing and the agent list leave it out, so the heartbeat does too.
+        expect(live).toBe(snapshot.counts.agents - 1);
         expect(stats.counts()).toEqual({
-            agents: snapshot.counts.agents,
+            agents: live,
             members: snapshot.members.filter((member) => member.status === 'active').length,
         });
         expect(stats.counts().agents).toBeGreaterThan(0);

@@ -98,6 +98,8 @@ bun run plan --check  # validates statuses and dependencies (part of bun run che
 | [U-10](tasks/U-10-files-and-knowledge.md)                | Files and knowledge                                                                          | U    | M2        |
 | [U-11](tasks/U-11-triggers-and-schedules.md)             | Triggers and schedules                                                                       | U    | M2        |
 | [U-12](tasks/U-12-integrations-and-tools.md)             | Integrations and tools                                                                       | U    | M2        |
+| [U-13](tasks/U-13-ux-findings.md)                        | Fix the UX findings from the screenshot pass                                                 | U    | M2        |
+| [U-14](tasks/U-14-book-editor-test-chat.md)              | Book editor live test chat                                                                   | U    | M2        |
 | [X-03](tasks/X-03-ui-bundle-release.md)                  | UI bundle build, manifest, signing and publishing                                            | X    | M2        |
 | [M-05](tasks/M-05-ui-loader.md)                          | UI loader in the mock engine (reference implementation)                                      | M    | M2        |
 | [X-04](tasks/X-04-e2e-ui-flows.md)                       | E2E UI flows through relay and loader, CSP violations fail                                   | X    | M2        |
@@ -146,12 +148,12 @@ Tasks in the same wave have no dependencies on each other and can run at the sam
 | 3    | E-01, M-01, R-02, U-02, X-03                                                 |
 | 4    | D-09, M-02, M-06, R-03, U-03, U-05, U-06, U-07, U-08, U-09, U-10, U-11, U-12 |
 | 5    | D-07, M-04, R-04, U-04                                                       |
-| 6    | C-05, D-03, R-05, R-06, X-01                                                 |
+| 6    | C-05, D-03, R-05, R-06, U-14, X-01                                           |
 | 7    | C-08, C-09, D-04, D-05, E-02, I-01, M-03, M-05, M-07, X-02                   |
 | 8    | D-06, D-08, I-03, I-04, R-07, X-04                                           |
 | 9    | E-05, I-05, I-07, X-05                                                       |
 | 10   | C-11, E-03, I-06, X-06                                                       |
-| 11   | E-04, M-08, X-08                                                             |
+| 11   | E-04, M-08, U-13, X-08                                                       |
 | 12   | D-10, D-11, D-12                                                             |
 | 13   | X-07                                                                         |
 

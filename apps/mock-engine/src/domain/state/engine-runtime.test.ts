@@ -156,8 +156,13 @@ describe('engine runtime', () => {
     it('reports the served certificate in the security panel, across a reset', async () => {
         const { runtime, client } = await start();
         const certificate = { certificateSha256: 'd'.repeat(64), notAfter: '2026-10-27T08:00:00Z' };
+        const defaultHostname = async () => ok(await client().security.get(signal())).hostnames[0];
+        expect(await defaultHostname()).toMatchObject({ kind: 'default', certificateStatus: null });
+        runtime.setTlsCertificate({ ...certificate, notAfter: '2026-10-01T08:00:00Z' });
+        expect(await defaultHostname()).toMatchObject({ certificateStatus: 'expired' });
         runtime.setTlsCertificate(certificate);
         expect(ok(await client().security.get(signal())).tls).toMatchObject(certificate);
+        expect(await defaultHostname()).toMatchObject({ kind: 'default', certificateStatus: 'valid' });
         await runtime.reset({ seed: 3, scenario: 'empty' });
         expect(ok(await client().security.get(signal())).tls).toMatchObject(certificate);
     });

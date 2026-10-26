@@ -38,7 +38,7 @@ test('the owner sees the control center with the counts the engine reports', asy
 test('a member sees their own home, without the control center', async ({ page, signIn, appUrl }) => {
     await signIn({ kind: 'member', role: 'member' });
     await page.goto(appUrl('/'));
-    await expect(page.getByRole('region', { name: 'Your agents' })).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Agents you can use' })).toBeVisible();
     await expect(page.getByRole('region', { name: 'Recent chats' })).toBeVisible();
     await expect(page.getByRole('region', { name: 'Activity' })).toHaveCount(0);
     await expect(page.getByText('Running now', { exact: true })).toHaveCount(0);

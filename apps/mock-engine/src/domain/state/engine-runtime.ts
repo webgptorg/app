@@ -211,6 +211,12 @@ export async function createEngineRuntime(options: EngineRuntimeOptions): Promis
         return { core, simulation };
     }
 
+    /** Only the default hostname's certificate is tracked (`setTlsCertificate`); custom ones stay unreported. */
+    function defaultCertificateStatus(): 'valid' | 'expired' | null {
+        if (sticky.tls === null) return null;
+        return Date.parse(sticky.tls.notAfter) > clock.nowMs() ? 'valid' : 'expired';
+    }
+
     function applySecurity(core: InMemoryEngineCore): void {
         // Until a bundle is active the core's placeholder bundle stays, but a refused or failed check still shows.
         const overview = core.controller.updateSecurity({});
@@ -221,10 +227,11 @@ export async function createEngineRuntime(options: EngineRuntimeOptions): Promis
             lastHeartbeat: sticky.heartbeat.lastHeartbeat,
             clockSkew: sticky.heartbeat.clockSkew,
             relays: [...sticky.relays].map(([hostname, relay]) => ({ hostname, ...relay })),
-            hostnames: sticky.hostnames.map((hostname, index) => ({
-                hostname,
-                kind: index === 0 ? ('default' as const) : ('custom' as const),
-            })),
+            hostnames: sticky.hostnames.map((hostname, index) =>
+                index === 0
+                    ? { hostname, kind: 'default' as const, certificateStatus: defaultCertificateStatus() }
+                    : { hostname, kind: 'custom' as const },
+            ),
         });
     }
 

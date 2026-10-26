@@ -78,6 +78,15 @@ function AgentScope({ agentId }: { readonly agentId: AgentId }) {
     const { can } = usePermissions();
     const agent = useQuery({ ...agentDetailQueryOptions(useEngineApi(), agentId), enabled: can('agents.read') });
     if (agent.data === undefined) return <CodeText value={agentId} />;
+    // A deleted agent's page answers 404, so name it instead of linking; the secret stays until someone removes it.
+    if (agent.data.deletedAt !== null) {
+        return (
+            <span className="inline-flex flex-wrap items-center gap-2">
+                <span>{agent.data.name}</span>
+                <Badge>{m.secrets_scope_agent_deleted()}</Badge>
+            </span>
+        );
+    }
     return (
         <Link to="/agents/$agentId" params={{ agentId }}>
             {agent.data.name}

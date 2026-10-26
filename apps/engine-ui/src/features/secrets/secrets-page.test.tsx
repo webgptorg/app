@@ -53,6 +53,12 @@ function secretsEngine(options: { count?: number; permissions?: readonly Permiss
     return { client: { ...engine.client, secrets }, spies };
 }
 
+function rowOf(cell: HTMLElement): HTMLElement {
+    const row = cell.closest('tr');
+    if (row === null) throw new Error('not in a table row');
+    return row;
+}
+
 /** Everything the app keeps: rendered DOM (text, attributes, input values), both TanStack caches, and the toasts. */
 function expectNowhere(app: RenderedApp, value: string) {
     expect(documentText()).not.toContain(value);
@@ -104,6 +110,26 @@ describe('secrets: create', { timeout: TIMEOUT_MS }, () => {
         });
         expect(screen.queryByRole('dialog', { name: 'New secret' })).toBeNull();
         expectNowhere(app, CANARY);
+    });
+
+    it('marks a secret whose agent is deleted and does not link to the agent', async () => {
+        const engine = createSecurityEngine({
+            seed: {
+                agents: [
+                    { id: 'agent-ada', source: 'Ada' },
+                    { id: 'agent-gone', source: 'Incident Responder', deletedAt: '2026-09-10T00:00:00Z' },
+                ],
+                secrets: [{ ...secret(3), scope: { kind: 'agent', agentId: 'agent-gone' } }, secret(6)],
+            },
+        });
+        renderWithProviders({ path: '/secrets', engineApi: engine.client });
+        const gone = within(rowOf(await screen.findByText('SECRET_003')));
+        expect(await gone.findByText('Incident Responder')).toBeDefined();
+        expect(gone.getByText('Deleted')).toBeDefined();
+        expect(gone.queryByRole('link', { name: 'Incident Responder' })).toBeNull();
+        const live = within(rowOf(screen.getByText('SECRET_006')));
+        expect(await live.findByRole('link', { name: 'Ada' })).toBeDefined();
+        expect(live.queryByText('Deleted')).toBeNull();
     });
 
     it('scopes a secret to one agent', async () => {
