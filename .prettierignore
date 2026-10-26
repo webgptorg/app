@@ -18,3 +18,5 @@ e2e/test-results/
 e2e/docker/seccomp_profile.json
 # OpenTofu working directories (infra/.gitignore), left by tofu init and infra/relay/scripts/check.sh.
 **/.terraform/
+# Vendored unchanged from @simplewebauthn/browser (M-08); a test pins its hash.
+packages/gateway-pages/pages/simplewebauthn-browser.umd.min.js

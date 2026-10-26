@@ -98,6 +98,10 @@ const domainPatterns = [
     { group: ['node:*', 'cloudflare:*'], message: domainPurity },
     { group: ['**/adapters/**', '**/app/**'], message: domainPurity },
 ];
+const gatewayPagesImports = {
+    group: ['@ptbk/*', '**/apps/**'],
+    message: 'The gateway pages are MIT and move public with the contracts (ADR 0002): they import nothing private.',
+};
 /** ADR 0014: release provenance is verified on `@sigstore/verify` directly, with exact identity matching. */
 const sigstoreVerifyBan = {
     group: ['sigstore', 'sigstore/*'],
@@ -124,6 +128,8 @@ export default tseslint.config(
             'e2e/test-results/**',
             // Deliberately broken inputs for the token-boundary test.
             'packages/ui/test/fixtures/**',
+            // Vendored byte for byte from @simplewebauthn/browser; a test pins its hash.
+            'packages/gateway-pages/pages/simplewebauthn-browser.umd.min.js',
         ],
     },
     js.configs.recommended,
@@ -194,6 +200,33 @@ export default tseslint.config(
     {
         files: ['apps/mock-engine/src/domain/**/*.ts'],
         rules: restrictImports(...domainPatterns, sigstoreVerifyBan),
+    },
+    {
+        files: ['packages/gateway-pages/src/**/*.ts'],
+        ignores: ['**/*.test.ts', 'packages/gateway-pages/src/testing/**'],
+        rules: restrictImports(platformImports, gatewayPagesImports),
+    },
+    {
+        files: ['packages/gateway-pages/src/**/*.test.ts', 'packages/gateway-pages/src/testing/**/*.ts'],
+        rules: restrictImports(gatewayPagesImports),
+    },
+    {
+        // Served by the engine under ENGINE_UI_CSP and Trusted Types, to be copied as they are.
+        files: ['packages/gateway-pages/pages/**/*.js'],
+        languageOptions: { globals: globals.browser, sourceType: 'module' },
+        rules: {
+            ...restrictImports(gatewayPagesImports),
+            'no-restricted-syntax': [
+                'error',
+                ...engineUiDomBans,
+                { selector: "MemberExpression[property.name='style']", message: "`style-src 'self'`: use a class." },
+                {
+                    selector:
+                        'CallExpression[callee.name=/^set(Timeout|Interval)$/][arguments.0.type=/^(Literal|TemplateLiteral|BinaryExpression)$/]',
+                    message: dynamicCodeBan,
+                },
+            ],
+        },
     },
     {
         files: ['packages/ui/src/**/*.{ts,tsx}'],

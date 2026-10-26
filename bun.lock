@@ -203,6 +203,14 @@
         "@seriousme/openapi-schema-validator": "2.11.0",
       },
     },
+    "packages/gateway-pages": {
+      "name": "@ptbk/gateway-pages",
+      "devDependencies": {
+        "@simplewebauthn/browser": "catalog:",
+        "eslint": "catalog:",
+        "jsdom": "catalog:",
+      },
+    },
     "packages/protocol": {
       "name": "@ptbk/protocol",
       "dependencies": {
@@ -796,6 +804,8 @@
     "@ptbk/engine-api": ["@ptbk/engine-api@workspace:packages/engine-api"],
 
     "@ptbk/engine-ui": ["@ptbk/engine-ui@workspace:apps/engine-ui"],
+
+    "@ptbk/gateway-pages": ["@ptbk/gateway-pages@workspace:packages/gateway-pages"],
 
     "@ptbk/mock-engine": ["@ptbk/mock-engine@workspace:apps/mock-engine"],
 
