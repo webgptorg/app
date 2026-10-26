@@ -73,7 +73,7 @@ describe('the suite against an in-process engine', () => {
         );
         expect(Object.values(results).some((outcome) => outcome.startsWith('fail'))).toBe(false);
         const capabilityChecks = Object.entries(results).filter(([id]) =>
-            /^engine-api\.(runs|files|triggers|integrations)\./.test(id),
+            /^engine-api\.(runs|files|triggers|integrations|test-chat)\./.test(id),
         );
         expect(capabilityChecks.length).toBeGreaterThan(10);
         for (const [id, outcome] of capabilityChecks) expect(outcome, id).toBe('skip: capability-not-advertised');
@@ -85,6 +85,7 @@ describe('the suite against an in-process engine', () => {
         expect(results['engine-api.files.download-attachment']).toBe('skip: capability-not-advertised');
         expect(results['engine-api.triggers.paging']).toBe('skip: capability-not-advertised');
         expect(results['engine-api.integrations.paging']).toBe('skip: capability-not-advertised');
+        expect(results['engine-api.test-chat.draft-reply']).toBe('skip: capability-not-advertised');
         expect(results['engine-api.capabilities.unadvertised-404']).toBe('pass');
         expect(Object.values(results).some((outcome) => outcome.startsWith('fail'))).toBe(false);
     });

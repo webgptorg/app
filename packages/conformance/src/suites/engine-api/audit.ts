@@ -27,6 +27,8 @@ export const AUDIT_EXPECTATIONS: Partial<
     deleteAgent: { action: 'agent.delete', kind: 'agent', param: 'agentId' },
     restoreAgent: { action: 'agent.restore', kind: 'agent', param: 'agentId' },
     updateAgentSource: { action: 'agent.source.update', kind: 'agent', param: 'agentId' },
+    // Audited when a test conversation starts and whenever one is refused; never per turn.
+    testAgentDraft: { action: 'agent.test-chat.start', kind: 'agent', param: 'agentId' },
     createFolder: { action: 'folder.create', kind: 'folder', param: 'created' },
     renameFolder: { action: 'folder.rename', kind: 'folder', param: 'folderId' },
     deleteFolder: { action: 'folder.delete', kind: 'folder', param: 'folderId' },

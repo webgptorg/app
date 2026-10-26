@@ -73,6 +73,8 @@ const BODIES: Partial<Record<EngineApiRouteId, BodyBuilder>> = {
             name: world.name('integration'),
             url: 'https://mcp.conformance.invalid/',
         }),
+    testAgentDraft: (world) =>
+        Promise.resolve({ book: validBook(world.name('draft')), messages: [{ role: 'user', content: CHAT_MESSAGE }] }),
     updateIntegration: async (world) => {
         const params = await world.paramsFor(R.getIntegration);
         if (params === null) return null;
