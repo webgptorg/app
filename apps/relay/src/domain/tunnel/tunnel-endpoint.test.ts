@@ -32,6 +32,7 @@ const LIMITS: TunnelEndpointLimits = {
     maxPending: 1000,
     maxPendingPerIp: 10,
     maxTunnelsPerIp: 50,
+    handshakesPerIpPerMin: 60,
     registryMissesPerS: 20,
     session: { framesPerS: 1000, minWindowIncrementBytes: 1024 },
 };

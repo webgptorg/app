@@ -155,6 +155,7 @@ const common = {
     RELAY_MAX_PENDING_HANDSHAKES: integer(1, MAX_CONNECTION_LIMIT).default(1000),
     RELAY_MAX_PENDING_HANDSHAKES_PER_IP: integer(1, MAX_CONNECTION_LIMIT).default(10),
     RELAY_MAX_TUNNELS_PER_IP: integer(1, MAX_CONNECTION_LIMIT).default(50),
+    RELAY_TUNNEL_HANDSHAKES_PER_IP_PER_MIN: integer(1, MAX_CONNECTION_LIMIT).default(60),
     RELAY_REGISTRY_MISSES_PER_S: integer(1, MAX_CONNECTION_LIMIT).default(20),
     RELAY_TUNNEL_FRAMES_PER_S: integer(1, MAX_CONNECTION_LIMIT).default(20_000),
     RELAY_TUNNEL_MIN_WINDOW_INCREMENT_BYTES: integer(1, MAX_FRAME_PAYLOAD_BYTES).default(1024),
@@ -278,6 +279,8 @@ export interface RelayConfig {
         readonly maxPendingHandshakes: number;
         readonly maxPendingHandshakesPerIp: number;
         readonly maxTunnelsPerIp: number;
+        /** Handshakes started per client IP (IPv6 per /64) and minute, also the burst. */
+        readonly handshakesPerIpPerMin: number;
         /** Handshakes per second, relay-wide, whose engine is not in the registry cache. */
         readonly registryMissesPerS: number;
         /** Frames from one engine per second, of any kind. */
@@ -386,6 +389,7 @@ export function parseRelayConfig(env: Readonly<Record<string, string | undefined
             maxPendingHandshakes: parsed.RELAY_MAX_PENDING_HANDSHAKES,
             maxPendingHandshakesPerIp: parsed.RELAY_MAX_PENDING_HANDSHAKES_PER_IP,
             maxTunnelsPerIp: parsed.RELAY_MAX_TUNNELS_PER_IP,
+            handshakesPerIpPerMin: parsed.RELAY_TUNNEL_HANDSHAKES_PER_IP_PER_MIN,
             registryMissesPerS: parsed.RELAY_REGISTRY_MISSES_PER_S,
             framesPerS: parsed.RELAY_TUNNEL_FRAMES_PER_S,
             minWindowIncrementBytes: parsed.RELAY_TUNNEL_MIN_WINDOW_INCREMENT_BYTES,

@@ -83,6 +83,7 @@ describe('createOwnTlsServer', () => {
                 maxPending: 100,
                 maxPendingPerIp: 100,
                 maxTunnelsPerIp: 10,
+                handshakesPerIpPerMin: 1000,
                 registryMissesPerS: 20,
                 session: TEST_SESSION_LIMITS,
             },
@@ -305,6 +306,7 @@ describe('createOwnTlsServer limits and shutdown', () => {
             limits: {
                 handshakeTimeoutMs: 10_000,
                 maxTunnelsPerIp: 10,
+                handshakesPerIpPerMin: 1000,
                 registryMissesPerS: 20,
                 session: TEST_SESSION_LIMITS,
                 ...limits,
@@ -427,6 +429,7 @@ describe('createOwnTlsServer certificate and listener', () => {
                     maxPending: 10,
                     maxPendingPerIp: 10,
                     maxTunnelsPerIp: 10,
+                    handshakesPerIpPerMin: 1000,
                     registryMissesPerS: 20,
                     session: TEST_SESSION_LIMITS,
                 },
