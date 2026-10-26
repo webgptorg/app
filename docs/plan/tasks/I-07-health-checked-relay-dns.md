@@ -2,7 +2,7 @@
 
 - **Lane:** I · **Module:** `infra/cloudflare`, `apps/dashboard` (health check job), `e2e/` · **Milestone:** M4
 - **Depends on:** I-01, I-02, I-04
-- **Status:** in progress (feat/i-07-relay-dns-failover)
+- **Status:** done (#82)
 - **Spec:** Relay and tunnel (failover); Operations (Availability and failure modes); Hosting and stack (Engine DNS, Monitoring jobs)
 
 ## Goal
@@ -27,11 +27,11 @@ X-02 measured (2026-10-21) that a relay which hangs while its kernel still accep
 
 ## Acceptance criteria
 
-- [ ] X-02's known-limit test (`e2e/tests/network/relay-failover.spec.ts` › "a hung relay that still accepts TCP is not failed over by the browser (known limit, I-07)") is turned into a passing failover test: with relay-a paused and listed first, a fresh browser loads the engine through relay-b in under 15 s, counted from the moment the relay hung.
-- [ ] Unit tests for the checker: consecutive failure and success thresholds, never removing the last healthy relay, alert on every change.
-- [ ] The engine domain's relay records carry the short TTL, set in infra code.
-- [ ] `bun run check` passes.
-- [ ] **Status** line above set to `done (#<PR>)`.
+- [x] X-02's known-limit test (`e2e/tests/network/relay-failover.spec.ts` › "a hung relay that still accepts TCP is not failed over by the browser (known limit, I-07)") is turned into a passing failover test: with relay-a paused and listed first, a fresh browser loads the engine through relay-b in under 15 s, counted from the moment the relay hung.
+- [x] Unit tests for the checker: consecutive failure and success thresholds, never removing the last healthy relay, alert on every change.
+- [x] The engine domain's relay records carry the short TTL, set in infra code.
+- [x] `bun run check` passes.
+- [x] **Status** line above set to `done (#<PR>)`.
 
 ## Apply (needs credentials)
 
