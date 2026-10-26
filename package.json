@@ -14,7 +14,7 @@
       "e2e"
     ],
     "catalog": {
-      "@axe-core/playwright": "4.13.0",
+      "@axe-core/playwright": "4.14.0",
       "@inlang/paraglide-js": "2.27.0",
       "@inlang/plugin-message-format": "4.5.4",
       "@noble/curves": "2.4.0",
