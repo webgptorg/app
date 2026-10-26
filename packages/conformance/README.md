@@ -7,7 +7,8 @@ MIT, moves to the public repo with the other contracts ([ADR 0002](../../docs/ad
 ## What it checks
 
 - **`engine-api`** (v1): the HTTP API engine-ui depends on (C-04, C-07), reached through the engine gateway as a browser would. Every response it reads is judged strictly: a success must parse with its route's strict schema (no undeclared fields), and every 4xx and 5xx must be `application/problem+json` with a known `code` and the status that code always has. A violation in any check fails that check.
-- **`tunnel`** and **`ui-loader`**: their check IDs are registered now and always report `skip` (`not-implemented`), so engine teams can track the cryptographic requirements of [ADR 0014](../../docs/adr/0014-cryptography.md) before those suites exist. Heartbeat and registration suites come later.
+- **`registration`** and **`heartbeat`** (C-08, in progress): the harness starts the engine itself and acts as the dashboard ([below](#starting-the-engine)).
+- **`tunnel`** and **`ui-loader`**: their check IDs are registered now and always report `skip` (`not-implemented`), so engine teams can track the cryptographic requirements of [ADR 0014](../../docs/adr/0014-cryptography.md) before those suites exist.
 
 Check IDs are stable: engine teams track results by them, so renaming one is a breaking change. Every ID is listed in the engine integration guide's [checklist](../../docs/engine-integration/checklist.md).
 
@@ -22,6 +23,7 @@ The bundle is one file that runs on Node 24 with no `node_modules`; `bin` in `pa
 
 ```
 Usage: ptbk-conformance --base-url <https://engine> [options]
+       ptbk-conformance --engine-cmd <shell command> [options]
 
 Credentials (one of):
   --target-module <file>      A module exporting createConformanceTarget({ baseUrl, fetch }) → ConformanceTarget
@@ -29,8 +31,16 @@ Credentials (one of):
   PTBK_CONFORMANCE_OWNER_COOKIE=<name=value>
                               An owner session cookie; checks that need members then skip
 
+Starting the engine (the harness plays the dashboard and the rest of the platform):
+  --engine-cmd <command>      Starts the engine under test (run by /bin/sh), once per check and scenario
+  --engine-cwd <dir>          Its working directory (default: the current one)
+  --heartbeat-interval-s <n>  The interval the engine was told to use (default 60; anything else skips the cadence check)
+  --mock-control              The engine is the mock engine: sessions from its dev-only control listener
+
 Options:
-  --suite <id>                Run only this suite (repeatable): engine-api, tunnel, ui-loader
+  --suite <id>                Run only these suites (repeatable or comma-separated)
+                              against --base-url: engine-api, tunnel, ui-loader
+                              with --engine-cmd: registration
   --filter <text>             Run only checks whose ID contains this text (repeatable)
   --report json|junit         Report format (default json)
   --out <file>                Write the report here instead of stdout
@@ -41,6 +51,27 @@ Options:
 ```
 
 The exit code is 0 only when no check failed, 1 when one did, and 2 for a usage error. Progress goes to stderr, one line per check. For an engine whose certificate comes from a development CA, pass the CA to Node with `NODE_EXTRA_CA_CERTS=<ca.pem>`.
+
+## Starting the engine
+
+`--engine-cmd` switches the CLI to the platform harness (`node/`, also exported as `@ptbk/conformance/node`). The harness starts the engine with the [launch contract](../../docs/engine-integration/identity-and-registration.md#launch-contract) and plays the platform around it. Every check gets a fresh engine, a fresh `PTBK_DATA_DIR` and its own fake servers on loopback, and everything is torn down after the check. When a check fails, the report carries the end of the engine's output (`engineOutput` in JSON, `<system-out>` in JUnit).
+
+```sh
+node packages/conformance/dist/ptbk-conformance.js \
+  --engine-cmd "MOCK_SCENARIO=empty MOCK_HEARTBEAT_INTERVAL_S=2 node apps/mock-engine/dist/main.mjs" \
+  --heartbeat-interval-s 2 --suite registration,heartbeat
+```
+
+The run's CA reaches the engine as `NODE_EXTRA_CA_CERTS`. It is ECDSA P-256, valid for a day, name-constrained to `localhost`, and its key never leaves the harness's memory. The command runs under `/bin/sh -c` in its own process group, and stopping sends SIGTERM to the group, then SIGKILL after 10 s. An exiting harness kills every group it started.
+
+**Writing a platform suite** (C-09 tunnel, C-10 UI loader). A `PlatformCheck` is a `ConformanceCheck` whose context is a `PlatformCheckContext` ([platform.ts](node/harness/platform.ts)):
+
+- `ctx.engine({ env })` returns an `EngineProcess`, not started yet, with a fresh empty data directory. Pass launch-contract variables such as `PTBK_RELAYS` in `env`. `start()`, `stop()`, `restart(patch)` (same data directory; `null` removes a variable), `waitForExit(ms)`, `running`, `exits` and `logs()` drive it.
+- `startRegisteredEngine(ctx, { relays, env })` ([dashboard.ts](node/fakes/dashboard.ts)) starts a fake dashboard and an engine with a link code. It resolves once the engine has registered and sent its first accepted heartbeat, with `identity` (engine ID and public key). `restart(patch)` resolves at the next accepted heartbeat, which is the ready signal after a restart.
+- `ctx.ca.issue(hostnames)` issues certificates the engine trusts. `createTestCa(name)` from [test-ca.ts](node/pki/test-ca.ts) makes an untrusted CA. `listenLoopback()` serves on 127.0.0.1 and ::1 with one port.
+- `ctx.use(server)` closes a fake server after the check; `ctx.tempDir(label)` creates a private directory.
+- `ctx.engineTarget(engine, { baseUrl, fetch })` gives a `ConformanceTarget` for an engine's API once a relay routes it, or `null` when the run has no session source. With `--mock-control`, each mock engine gets its own control listener, whose port stays the same across restarts.
+- `timeoutMs(expectations)` raises a check's timeout, for checks that wait for heartbeats.
 
 ## Credentials: write a target
 
@@ -144,6 +175,7 @@ Rerunning with the report's `seed` reproduces the names and values a run used.
 | `engine-api.me.others-credentials-404`           | Another member's or an unknown session or passkey ID under `/me` is 404, never 403, and nothing is revoked                                                                                     |
 | `engine-api.cross-member.private-resources`      | A second member with the same permissions gets 403 or 404 on another's private agent; skips unless the target reports such resources                                                           |
 | `engine-api.gateway.cross-site-refused`          | A state-changing request with `Sec-Fetch-Site: cross-site` is 403 even with a valid session; skips with `gateway: false`                                                                       |
+| `registration.request.signature-verifies`        | The registration request is a strict `RegisterEngineRequest` within the size cap, with the given link code and `mode: tunnel`, and `verifyRegistration` accepts it                             |
 | `tunnel.negotiation.downgrade-refused`           | Not implemented yet (skip)                                                                                                                                                                     |
 | `tunnel.auth.list-encoding`                      | Not implemented yet (skip)                                                                                                                                                                     |
 | `tunnel.auth.version-signed`                     | Not implemented yet (skip)                                                                                                                                                                     |
@@ -165,4 +197,4 @@ The `conformance` CI job starts a relay and the mock engine on loopback (with `*
 
 ## Development
 
-`bun run --filter @ptbk/conformance test` builds the bundle and runs the self-test: the whole suite against an in-process engine built on `@ptbk/engine-api/in-memory` (which must pass every check), against deliberately broken variants of it (each must fail its matching check), and the bundled CLI against an engine over HTTP.
+`bun run --filter @ptbk/conformance test` builds the bundle and the mock engine, and runs the self-test: the whole suite against an in-process engine built on `@ptbk/engine-api/in-memory` (which must pass every check), against deliberately broken variants of it (each must fail its matching check), and the bundled CLI against an engine over HTTP. The platform suites run against the mock engine and against [fake-engine.ts](node/testing/fake-engine.ts), a second, independent implementation in plain `node:crypto` whose `FAKE_ENGINE_DEFECTS` break one rule at a time; each check must fail for its defect.

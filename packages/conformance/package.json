@@ -5,7 +5,8 @@
   "type": "module",
   "description": "Conformance suite any engine must pass to replace the mock engine (MIT; moves to the public repo, ADR 0002)",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./node": "./node/index.ts"
   },
   "bin": {
     "ptbk-conformance": "./dist/ptbk-conformance.js"
@@ -13,8 +14,8 @@
   "sideEffects": false,
   "scripts": {
     "build": "bun build bin/ptbk-conformance.ts --target=node --outfile dist/ptbk-conformance.js",
-    "typecheck": "tsc --noEmit -p . && tsc --noEmit -p bin",
-    "test": "bun run build && vitest run --coverage"
+    "typecheck": "tsc --noEmit -p . && tsc --noEmit -p node && tsc --noEmit -p bin",
+    "test": "bun run build && bun run --filter @ptbk/mock-engine build && vitest run --coverage"
   },
   "dependencies": {
     "@ptbk/engine-api": "workspace:*",

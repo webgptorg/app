@@ -32,7 +32,7 @@ const CONFIG: MockEngineConfig = {
     certificateSource: { kind: 'dev-ca' },
     logLevel: 'info',
     ...DEFAULT_MOCK_SETTINGS,
-    dashboard: { url: 'https://app.ptbk.test', linkCode: null, heartbeatIntervalS: 60, relaysOverride: false },
+    dashboard: { url: 'https://app.ptbk.test', linkCode: null, heartbeatIntervalS: 60 },
 };
 
 describe('parseRegisterCommand', () => {

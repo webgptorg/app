@@ -42,8 +42,8 @@ export interface MockEngineConfig {
     /** `PTBK_DATA_DIR`: holds `engine-key.pem`; must be private to the engine's user. */
     readonly dataDir: string;
     /**
-     * `PTBK_RELAYS`, in configured order, unique by relay ID; empty when unset. The relays from the registration
-     * replace it unless `dashboard.relaysOverride`.
+     * `PTBK_RELAYS`, in configured order, unique by relay ID; empty when unset. When set, it replaces the relays from
+     * the registration: an operator-trusted override (launch contract), safe because relays never see plaintext.
      */
     readonly relays: readonly RelayTarget[];
     readonly engineDomain: Hostname;
@@ -113,8 +113,6 @@ export interface DashboardConfig {
     readonly linkCode: OneTimeSecret<LinkCode> | null;
     /** `MOCK_HEARTBEAT_INTERVAL_S`, default 60. */
     readonly heartbeatIntervalS: number;
-    /** `MOCK_RELAYS_OVERRIDE=enabled`: dial `PTBK_RELAYS` instead of the registration's relays (development only). */
-    readonly relaysOverride: boolean;
 }
 
 export interface IdentityConfig {
@@ -401,7 +399,6 @@ const envSchema = z.strictObject({
             .pipe(z.int().max(3600)),
         'must be a whole number of seconds from 1 to 3600',
     ).default(DEFAULT_HEARTBEAT_INTERVAL_S),
-    MOCK_RELAYS_OVERRIDE: toggle.default('disabled'),
     MOCK_STATS: value(z.enum(['os', 'scenario']), 'must be os or scenario').default('os'),
     PTBK_UI_RELEASE_URL: parsed(parseReleaseUrl).optional(),
     PTBK_UPDATE_POLICY: value(z.enum(['auto', 'manual', 'pinned']), 'must be auto, manual or pinned').default('auto'),
@@ -552,7 +549,6 @@ export function parseMockEngineConfig(env: Env): MockEngineConfig {
                       url: parsedEnv.PTBK_DASHBOARD_URL,
                       linkCode: parsedEnv.PTBK_LINK_CODE === undefined ? null : oneTimeSecret(parsedEnv.PTBK_LINK_CODE),
                       heartbeatIntervalS: parsedEnv.MOCK_HEARTBEAT_INTERVAL_S,
-                      relaysOverride: parsedEnv.MOCK_RELAYS_OVERRIDE === 'enabled',
                   }),
         stats: parsedEnv.MOCK_STATS,
         ui: uiConfig(parsedEnv),
@@ -635,9 +631,6 @@ function dashboardProblems(settings: Readonly<Record<string, string>>): string[]
     if (!linked && !relays) problems.push('PTBK_RELAYS: is required without PTBK_DASHBOARD_URL');
     if (!linked && settings['PTBK_LINK_CODE'] !== undefined) {
         problems.push('PTBK_LINK_CODE: needs PTBK_DASHBOARD_URL');
-    }
-    if (settings['MOCK_RELAYS_OVERRIDE'] === 'enabled' && !relays) {
-        problems.push('MOCK_RELAYS_OVERRIDE: needs PTBK_RELAYS');
     }
     return problems;
 }

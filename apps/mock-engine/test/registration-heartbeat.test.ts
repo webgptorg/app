@@ -63,11 +63,11 @@ function linked(
 ): MockEngineConfig {
     return {
         ...BASE,
+        relays: [],
         dashboard: {
             url: DASHBOARD_URL,
             linkCode: linkCode === null ? null : oneTimeSecret(linkCode),
             heartbeatIntervalS: 60,
-            relaysOverride: false,
             ...patch,
         },
     };
@@ -195,9 +195,9 @@ describe('registration and heartbeat at startup', () => {
         ]);
     });
 
-    it('keeps PTBK_RELAYS with MOCK_RELAYS_OVERRIDE', async () => {
+    it('dials PTBK_RELAYS instead of the registration relays when it is set', async () => {
         const w = world();
-        const { dialer } = await start(w, linked(w.dashboard.issueLinkCode('org-a'), { relaysOverride: true }));
+        const { dialer } = await start(w, { ...linked(w.dashboard.issueLinkCode('org-a')), relays: BASE.relays });
         expect(dialer.dials.map((dial) => dial.target.url)).toEqual(['wss://relay-dev.ptbk.test:8443/v1/tunnel']);
     });
 

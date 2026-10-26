@@ -165,6 +165,11 @@ jobs:
           NODE_EXTRA_CA_CERTS="$STACK/engine/dev-ca/ca-cert.pem" node packages/conformance/dist/ptbk-conformance.js \
             --base-url "https://$hostname:8443" --mock-control-url http://127.0.0.1:4480 --engine-public-key="$key" \
             --seed 1 --report junit --out conformance-report.xml
+      - name: Run the platform suites against mock engines the harness starts
+        run: |
+          node packages/conformance/dist/ptbk-conformance.js \
+            --engine-cmd "MOCK_SCENARIO=empty MOCK_HEARTBEAT_INTERVAL_S=2 exec node $GITHUB_WORKSPACE/apps/mock-engine/dist/main.mjs" \
+            --heartbeat-interval-s 2 --mock-control --seed 1 --report junit --out conformance-platform-report.xml
       - name: Show the stack's logs
         if: failure()
         run: tail -n 200 "$RUNNER_TEMP/conformance/relay.log" "$RUNNER_TEMP/conformance/mock-engine.log"
@@ -173,7 +178,9 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: conformance-report
-          path: conformance-report.xml
+          path: |
+            conformance-report.xml
+            conformance-platform-report.xml
           retention-days: 7
           if-no-files-found: ignore
 
