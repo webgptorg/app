@@ -5,7 +5,7 @@ import { Findings, fail } from '../../../src/check';
 import type { RelayConnection } from '../../fake-relay/fake-relay';
 import { awaitAuth, sendChallenge } from '../handshake';
 import type { TunnelCheckContext, TunnelCheckRun } from './support';
-import { collect, delay, readyTunnel } from './support';
+import { closeWithin, collect, delay, readyTunnel } from './support';
 
 /** Standard WebSocket close code after a `rate-limited` reject (C-02); not a `TUNNEL_CLOSE_CODE`. */
 const WS_TRY_AGAIN_LATER = 1013;
@@ -128,29 +128,36 @@ const FAILURES: readonly ((
     (ctx, connection, findings) => reject(ctx, connection, 'rate-limited', WS_TRY_AGAIN_LATER, findings),
 ];
 
+/**
+ * The engine's own delays: from the moment a failed attempt's connection closed to the next TCP connection. The
+ * relay's handshake work is not in them, so a slow or busy machine only lengthens what a correct engine shows, and a
+ * tight loop stays near zero.
+ */
 export const backoff: TunnelCheckRun = async (ctx) => {
     const { runtime } = ctx;
     const findings = new Findings();
-    const attempts: number[] = [];
+    const delays: number[] = [];
     await runtime.manual(runtime.primary, ctx.signal, async (next) => {
-        for (const failAttempt of FAILURES) {
+        let closedAt: number | null = null;
+        for (const failAttempt of [...FAILURES, null]) {
             const connection = await next(runtime.timing.reconnectMs);
             if (connection === null)
-                fail(`the engine stopped reconnecting after ${String(attempts.length)} failed attempts`);
-            attempts.push(connection.openedAt);
+                fail(`the engine stopped reconnecting after ${String(delays.length + 1)} failed attempts`);
+            if (closedAt !== null) delays.push(Math.max(0, Math.round(connection.connectedAt - closedAt)));
+            if (failAttempt === null) {
+                await runtime.adopt(connection, ctx.signal);
+                return;
+            }
             await failAttempt(ctx, connection, findings);
+            if ((await closeWithin(connection, runtime.timing.closeMs)).kind === 'open') connection.terminate();
+            closedAt = (await connection.closed).at;
         }
-        const last = await next(runtime.timing.reconnectMs);
-        if (last === null) fail(`the engine stopped reconnecting after ${String(attempts.length)} failed attempts`);
-        attempts.push(last.openedAt);
-        await runtime.adopt(last, ctx.signal);
     });
-    const intervals = attempts.slice(1).map((at, index) => Math.round(at - (attempts[index] ?? at)));
-    const spread = intervals.reduce((sum, interval) => sum + interval, 0);
+    const spread = delays.reduce((sum, delay) => sum + delay, 0);
     if (spread < runtime.timing.minBackoffSpreadMs) {
         findings.add(
-            `${String(intervals.length)} reconnects after failed attempts came within ${String(spread)} ms ` +
-                `(${intervals.join(', ')} ms): no backoff`,
+            `after ${String(delays.length)} failed attempts the engine waited ${String(spread)} ms in all ` +
+                `(${delays.join(', ')} ms) before reconnecting: no backoff`,
         );
     }
     return findings.outcome();

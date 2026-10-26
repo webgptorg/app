@@ -49,7 +49,7 @@ export interface TunnelTiming {
     readonly quietMs: number;
     /** A ping must arrive this soon after `ready`. */
     readonly pingMs: number;
-    /** Five consecutive failed attempts must spread over at least this much time (no tight reconnect loop). */
+    /** After five consecutive failed attempts, the engine's own reconnect delays must add up to this (no tight loop). */
     readonly minBackoffSpreadMs: number;
     /** For one request through a stream: TLS handshake and HTTP answer. */
     readonly requestMs: number;

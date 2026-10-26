@@ -178,7 +178,7 @@ What your engine must support to be tested, all of it production behaviour:
 What the suite measures, and its tolerances:
 
 - Timeouts are the contract's plus a margin: `auth` within `AUTH_TIMEOUT_MS`, back within 5 s of `SHUTTING_DOWN`, within 30 s of any other close, within 15 s of a relay restart, and a ping within `PING_INTERVAL_MS` + 10 s of `ready` (only the first interval is measured, to keep the run short).
-- Backoff: one reconnect may come at once under full jitter, so five consecutive failed attempts are judged together. They must spread over at least 1 s. After `REPLACED`, at most one reconnect in 10 s.
+- Backoff: one reconnect may come at once under full jitter, so five consecutive failed attempts are judged together: the engine's own delays, from each closed connection to its next TCP connection, must add up to at least 1 s. The relay's handshake work is not counted, so a busy machine only makes a correct engine look slower. After `REPLACED`, at most one reconnect in 10 s.
 - Flow control is tested with HTTP/1.1 requests sent one after another on one connection, as a browser sends them, never pipelined.
 - A missing-feature downgrade is tried only when the engine offers features; v1 has none.
 

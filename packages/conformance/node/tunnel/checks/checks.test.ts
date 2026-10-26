@@ -26,7 +26,7 @@ const TIMING: TunnelTiming = {
     replacedObserveMs: 1_500,
     quietMs: 200,
     pingMs: 800,
-    minBackoffSpreadMs: 100,
+    minBackoffSpreadMs: 300,
     requestMs: 3_000,
 };
 
@@ -46,8 +46,11 @@ async function runCheck(
         engineDomain: ENGINE_DOMAIN,
         defects,
         pingIntervalMs: 300,
-        backoffBaseMs: 50,
-        backoffCapMs: 400,
+        // Fast everywhere, except where backoff is what is measured: there, a correct engine falls under the 300 ms
+        // threshold with a probability of about 4 × 10⁻⁵, and a tight loop stays far below it even on a busy machine.
+        ...(id === 'tunnel.reconnect.backoff'
+            ? { backoffBaseMs: 300, backoffCapMs: 1_500 }
+            : { backoffBaseMs: 50, backoffCapMs: 400 }),
         ...(offer === undefined ? {} : { offer }),
     });
     runtime.attach(engine);

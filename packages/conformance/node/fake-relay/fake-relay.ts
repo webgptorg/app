@@ -54,7 +54,10 @@ function toBytes(data: RawData): Bytes {
 /** One engine WebSocket on the relay, before and after `ready`. */
 export class RelayConnection {
     readonly relayId: RelayId;
+    /** When the WebSocket opened. */
     readonly openedAt = now();
+    /** When its TCP connection was accepted: what the engine controls, before TLS and the upgrade. */
+    readonly connectedAt: number;
     /** Subprotocols the engine offered in `Sec-WebSocket-Protocol`. */
     readonly offeredProtocols: readonly string[];
     /** `Sec-WebSocket-Extensions` as sent, or null. */
@@ -67,9 +70,10 @@ export class RelayConnection {
     #sink: ((event: ConnectionEvent) => void) | null = null;
     #closedAt: ConnectionClosed | null = null;
 
-    constructor(ws: WebSocket, relayId: RelayId, request: IncomingMessage) {
+    constructor(ws: WebSocket, relayId: RelayId, request: IncomingMessage, connectedAt: number) {
         this.#ws = ws;
         this.relayId = relayId;
+        this.connectedAt = connectedAt;
         this.offeredProtocols = (request.headers['sec-websocket-protocol'] ?? '')
             .split(',')
             .map((part) => part.trim())
@@ -165,6 +169,10 @@ export async function startFakeRelay(options: FakeRelayOptions): Promise<FakeRel
         options.relayIds.map((id) => [id, { clientHellos: 0, upgrades: 0, strayRequests: 0 }]),
     );
     const sockets = new Set<Socket>();
+    // The TLS socket shares its peer address with the TCP socket it wraps, which links the two without private API.
+    const acceptedAt = new Map<string, number>();
+    const peerOf = (socket: { remoteAddress?: string | undefined; remotePort?: number | undefined }): string =>
+        `${socket.remoteAddress ?? ''}:${String(socket.remotePort ?? 0)}`;
     const connections = new Set<RelayConnection>();
     let accepting = true;
     let handler: (connection: RelayConnection) => void = (connection) => {
@@ -223,7 +231,12 @@ export async function startFakeRelay(options: FakeRelayOptions): Promise<FakeRel
                 return;
             }
             sockets.add(socket);
-            socket.once('close', () => sockets.delete(socket));
+            const peer = peerOf(socket);
+            acceptedAt.set(peer, now());
+            socket.once('close', () => {
+                sockets.delete(socket);
+                acceptedAt.delete(peer);
+            });
         });
         server.on('tlsClientError', () => undefined);
         server.on('request', (request: IncomingMessage, response: ServerResponse) => {
@@ -241,7 +254,12 @@ export async function startFakeRelay(options: FakeRelayOptions): Promise<FakeRel
             }
             counterOf(name).upgrades++;
             wss.handleUpgrade(request, socket, head, (ws) => {
-                const connection = new RelayConnection(ws, name as RelayId, request);
+                const connection = new RelayConnection(
+                    ws,
+                    name as RelayId,
+                    request,
+                    acceptedAt.get(peerOf(request.socket)) ?? now(),
+                );
                 connections.add(connection);
                 void connection.closed.then(() => connections.delete(connection));
                 handler(connection);

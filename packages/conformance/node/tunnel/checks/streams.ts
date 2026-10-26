@@ -15,6 +15,8 @@ const CONCURRENT_STREAMS = 24;
 const WINDOWS_OF_TRAFFIC = 2.5;
 /** Below the 8 KiB a header line may take on common servers. */
 const PADDING_BYTES = 4_000;
+/** Credit under this (plus two answers) counts as used up: no answer fits, and a TLS record may be held back. */
+const STALL_MARGIN_BYTES = 16 * 1024;
 /** Answers of 64 bytes would fill the window this many times over; more means the window was ignored. */
 const MAX_SEQUENTIAL = Math.ceil((2 * INITIAL_WINDOW_BYTES) / 64);
 
@@ -126,22 +128,36 @@ interface Stalled {
 
 /**
  * Sends requests one after another on one connection, as a browser would (no pipelining), without granting credit,
- * until an answer stops arriving: the engine is then out of credit, with that answer half sent. Fails when the
- * engine keeps answering far past its window, which only an engine ignoring the window can.
+ * until the engine is out of credit with an answer half sent. An answer that is merely slow while credit is left is
+ * waited for (up to `requestMs`), so a busy machine never passes for a stall. Stops early when the engine overruns.
  */
 async function stallAtWindow(ctx: TunnelCheckContext, tunnel: RelayTunnel, connected: Connected): Promise<Stalled> {
     const { timing } = ctx.runtime;
-    const reader = new ResponseReader(connected.socket);
+    const { socket, stream } = connected;
+    const reader = new ResponseReader(socket);
     const request = engineRequest(ctx, tunnel);
+    let largest = 0;
     for (let answered = 0; answered < MAX_SEQUENTIAL; answered++) {
-        connected.socket.write(request);
-        const read = await reader.next(timing.quietMs * 2);
-        if (read.kind === 'failed') {
+        const before = stream.receivedBytes;
+        const started = performance.now();
+        socket.write(request);
+        for (;;) {
+            const read = await reader.next(timing.quietMs * 2);
+            if (read.kind === 'ok') break;
             if (!read.timedOut) fail(`GET /api/v1/engine through the stream: ${read.reason}`);
-            await quiet(connected.stream, timing.quietMs, timing.requestMs, ctx.signal);
-            return { reader, answered };
+            const creditLeft = stream.grantedBytes - stream.receivedBytes;
+            if (creditLeft < 2 * largest + STALL_MARGIN_BYTES) {
+                await quiet(stream, timing.quietMs, timing.requestMs, ctx.signal);
+                return { reader, answered };
+            }
+            if (performance.now() - started > timing.requestMs) {
+                fail(
+                    `an answer took over ${String(timing.requestMs)} ms with ${String(creditLeft)} bytes of credit left`,
+                );
+            }
         }
-        if (connected.stream.overrunBytes > 0) return { reader, answered };
+        largest = Math.max(largest, stream.receivedBytes - before);
+        if (stream.overrunBytes > 0) return { reader, answered };
     }
     return { reader, answered: MAX_SEQUENTIAL };
 }
