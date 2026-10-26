@@ -2,7 +2,7 @@
 
 - **Lane:** I · **Module:** `infra/relay` · **Milestone:** M4
 - **Depends on:** R-04, R-06 (R-05 supplies only the sizing value; see Scope)
-- **Status:** in progress (fix/i-01-local-ci)
+- **Status:** done (#77)
 - **Spec:** Relay and tunnel (Hosting; No single point of failure; Fairness and DoS); Hosting and stack; Operations; Metadata we still see; Legal and GDPR (sub-processors)
 
 ## Goal
@@ -54,7 +54,7 @@ The relay needs raw TCP on 443 and long-lived connections, so it runs on plain V
 - [x] `RELAY_REGISTRY_TOKEN_FILE` is supported and tested.
 - [x] Production hosts are defined in code (two locations); staging and production differ only in sizes, counts and allowlists.
 - [x] `bun run check` passes.
-- [ ] **Status** line above set to `done (#<PR>)`.
+- [x] **Status** line above set to `done (#<PR>)`.
 
 ## Apply (needs credentials)
 
@@ -71,4 +71,4 @@ Tracked in [apply.md](../apply.md). Needs a Hetzner project and `HCLOUD_TOKEN` p
 - SSH access model: IP allowlist versus a bastion or WireGuard; decide in the ADR with the team.
 - Relay hostname domain (under the engine domain or a separate infra domain) is decided in I-02.
 - Instance size depends on R-05 results; 1,000 idle tunnels per small VPS is a target to confirm. Only the `server_type` default changes with it. The default is `cx23`: Hetzner no longer sells `cx22`, and `cx23` is the same 2 vCPU, 4 GB class.
-- **Open (blocks the relay certificate, so Apply):** Debian 13's `lego` (4.9.1) is built without the `cloudflare` DNS provider (`unrecognized DNS provider: cloudflare`, seen in the VM test), so `ptbk-relay-cert.service` cannot issue the certificate as ADR 0011 describes. Choosing the replacement (an upstream lego release pinned by checksum, or Debian's lego with its `exec` provider and a small Cloudflare script) changes ADR 0011 and needs a human decision; until then the Status stays in progress.
+- The relay certificate needs lego's Cloudflare DNS provider, which Debian 13's lego (4.9.1) lacks: hosts install the upstream release pinned by SHA-256 instead (Seb, 2026-10-23; ADR 0011). It gets no Debian security updates, so its pin is bumped by hand until Renovate runs.

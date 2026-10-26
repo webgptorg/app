@@ -50,8 +50,17 @@ only_local_nameservers() {
 }
 runs_as_relay_user() { awk '/^Uid:/ { exit !($2 == 10001 && $3 == 10001 && $4 == 10001) }' "/proc/$1/status"; }
 holds_no_capabilities() { awk '/^Cap(Inh|Prm|Eff|Amb):/ && $2 !~ /^0+$/ { bad = 1 } END { exit bad }' "/proc/$1/status"; }
+# Right after boot unbound validates the whole chain from the root on the first query, which can outlast dig's
+# timeout on a slow link; later attempts answer from the cache.
 dnssec_authenticates() {
-    dig @127.0.0.1 +dnssec +time=5 +tries=2 isc.org SOA | grep -E 'flags:[a-z ]* ad[ ;]' >/dev/null
+    local attempt
+    for attempt in 1 2 3; do
+        if dig @127.0.0.1 +dnssec +time=5 +tries=2 isc.org SOA | grep -E 'flags:[a-z ]* ad[ ;]' >/dev/null; then
+            return 0
+        fi
+        ((attempt < 3)) && sleep 5
+    done
+    return 1
 }
 dnssec_refuses_bogus() {
     dig @127.0.0.1 +time=5 +tries=2 dnssec-failed.org A | grep 'status: SERVFAIL' >/dev/null
