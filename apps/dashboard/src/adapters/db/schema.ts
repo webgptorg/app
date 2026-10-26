@@ -323,3 +323,27 @@ export const publicFaceChecks = sqliteTable(
         index('public_face_checks_checked_at_idx').on(t.checkedAt),
     ],
 );
+
+// Relay presence (R-07): when each relay last reported, and the engines it then held a ready tunnel for. Every report
+// replaces the relay's rows; a relay silent past the expiry is deleted with its rows. No history, no addresses.
+export const relayPresenceReports = sqliteTable('relay_presence_reports', {
+    relayId: text('relay_id').primaryKey(),
+    reportedAt: integer('reported_at').notNull(),
+});
+
+// No reference to `engines`: a relay only holds tunnels for engines the registry served it, and a row for an engine
+// removed since is replaced by the relay's next report.
+export const relayPresence = sqliteTable(
+    'relay_presence',
+    {
+        relayId: text('relay_id')
+            .notNull()
+            .references(() => relayPresenceReports.relayId, { onDelete: 'cascade' }),
+        engineId: text('engine_id').notNull(),
+    },
+    (t) => [
+        primaryKey({ columns: [t.relayId, t.engineId] }),
+        // The engine list counts relays per engine.
+        index('relay_presence_engine_id_idx').on(t.engineId),
+    ],
+);

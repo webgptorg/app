@@ -18,6 +18,7 @@ import {
     createD1LinkCodeStore,
     createD1PlatformEngineStore,
 } from '../adapters/db/d1-registration-store';
+import { createD1RelayPresenceStore } from '../adapters/db/d1-relay-presence-store';
 import { createD1RegistryReader, createD1RelayTokenStore } from '../adapters/db/d1-registry-store';
 import { createD1HeartbeatEngineReader } from '../adapters/db/d1-status-store';
 import { createMemoryRateLimiter } from '../adapters/rate-limit/memory-rate-limiter';
@@ -122,6 +123,7 @@ function rateLimiter(env: Env, config: DashboardConfig, dev: DevAdapters) {
                 publicRead: env.RATE_LIMIT_PUBLIC_READ,
                 webhook: env.RATE_LIMIT_WEBHOOK,
                 registry: env.RATE_LIMIT_REGISTRY,
+                presence: env.RATE_LIMIT_PRESENCE,
                 heartbeat: env.RATE_LIMIT_HEARTBEAT,
                 hourly: env.HOURLY_RATE_LIMITER,
                 rules: rateLimitRules(config),
@@ -186,6 +188,7 @@ export function createDashboard(
         dns: createDohDnsResolver({ fetch: (input, init) => fetch(input, init) }),
         heartbeatEngines: createD1HeartbeatEngineReader(db),
         engineStatus: createDurableObjectEngineStatus(env.ENGINE_STATUS),
+        relayPresence: createD1RelayPresenceStore(db),
         relyingParty: createSimpleWebAuthnRelyingParty({ origin: config.dashboardOrigin, rpName: RP_NAME }),
         rateLimiter: rateLimiter(env, config, dev),
         links: authLinks(config.dashboardOrigin),

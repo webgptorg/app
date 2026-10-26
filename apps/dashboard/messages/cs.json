@@ -197,6 +197,7 @@
   "engine_field_id": "ID enginu",
   "engine_field_last_seen": "Naposledy viděn",
   "engine_field_mode": "Připojení",
+  "engine_field_reachability": "Dostupnost",
   "engine_field_registered_version": "Verze při připojení",
   "engine_field_status": "Stav",
   "engine_fingerprint_body": "Bezpečnostní stránka samotného enginu ukazuje stejný vzor a kód. Než adrese uvěříte, porovnejte je: pokud se liší, nejste na tomto enginu.",
@@ -274,9 +275,22 @@
   "engines_new_title": "Připojit engine",
   "engines_new_upgrade": "Přejít na fakturaci",
   "engines_not_allowed": "Vaše role v této organizaci nemůže vidět její enginy.",
+  "engines_not_reachable": "Nedostupný: žádné spojení s relayem",
   "engines_not_reported": "Nehlášeno",
   "engines_open": "Otevřít",
   "engines_open_new_tab": "engine {shortId} v nové kartě",
+  "engines_reachable": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Dostupný přes {count} relay",
+        "countPlural=few": "Dostupný přes {count} relaye",
+        "countPlural=many": "Dostupný přes {count} relaye",
+        "countPlural=other": "Dostupný přes {count} relayů"
+      }
+    }
+  ],
   "engines_status_never_seen": "Čeká na první signál",
   "engines_status_offline": "Offline",
   "engines_status_online": "Online",

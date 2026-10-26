@@ -12,6 +12,7 @@ import type { LinkCodeStore } from '../domain/registration/link-code-store';
 import type { EngineHostnameStore } from '../domain/registry/engine-hostname-store';
 import type { RegistryReader } from '../domain/registry/registry-reader';
 import type { RelayTokenStore } from '../domain/registry/relay-token-store';
+import type { RelayPresenceStore } from '../domain/presence/relay-presence-store';
 import type { EngineStatusDirectory } from '../domain/status/engine-status-directory';
 import type { HeartbeatEngineReader } from '../domain/status/heartbeat-engine-reader';
 import type { Clock } from '../domain/ports/clock';
@@ -61,6 +62,8 @@ export interface DashboardDeps {
     readonly heartbeatEngines: HeartbeatEngineReader;
     /** One status object per engine: heartbeats, offline detection, alerts. */
     readonly engineStatus: EngineStatusDirectory;
+    /** Which relays hold a ready tunnel for which engines, as the relays report it (R-07). */
+    readonly relayPresence: RelayPresenceStore;
     /** The fake outbox behind `email` when `config.adapters.email` is `fake` (dev only), else null. */
     readonly devOutbox: FakeEmailSender | null;
 }

@@ -67,6 +67,7 @@ function productionBindings() {
             RATE_LIMIT_PUBLIC_READ: binding,
             RATE_LIMIT_WEBHOOK: binding,
             RATE_LIMIT_REGISTRY: binding,
+            RATE_LIMIT_PRESENCE: binding,
             RATE_LIMIT_HEARTBEAT: binding,
             ENGINE_STATUS: runtime({ idFromName: (name: string) => ({ name }), get: () => ({}) }),
             HOURLY_RATE_LIMITER: runtime({

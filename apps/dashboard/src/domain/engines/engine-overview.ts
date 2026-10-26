@@ -1,7 +1,10 @@
 import { MAX_REGISTRY_HOSTNAMES, type EngineId, type Hostname } from '@ptbk/protocol';
 
+import type { Clock } from '../ports/clock';
 import type { Logger } from '../ports/logger';
 import type { Timer } from '../ports/timer';
+import { readReachableRelays } from '../presence/relay-presence';
+import type { RelayPresenceStore } from '../presence/relay-presence-store';
 import type { EngineRecord } from '../registration/engine-store';
 import type { EngineHostnameStore } from '../registry/engine-hostname-store';
 import type { EngineStatusSnapshot } from '../status/engine-status';
@@ -17,6 +20,8 @@ export const STATUS_READ_TIMEOUT_MS = 2000;
 export interface EngineOverviewDeps {
     readonly engineStatus: Pick<EngineStatusDirectory, 'getStatus'>;
     readonly engineHostnames: EngineHostnameStore;
+    readonly relayPresence: Pick<RelayPresenceStore, 'reachableRelays'>;
+    readonly clock: Clock;
     readonly timer: Timer;
     readonly logger: Logger;
 }
@@ -28,6 +33,8 @@ export interface EngineOverview {
     /** Null when the status object did not answer: the engine then shows `unknown`, not an error. */
     readonly snapshot: EngineStatusSnapshot | null;
     readonly customHostnames: readonly Hostname[];
+    /** Relays with a ready tunnel for it (R-07); null when no relay report is live, so nothing is known. */
+    readonly reachableRelays: number | null;
 }
 
 async function readStatus(deps: EngineOverviewDeps, engineId: EngineId): Promise<EngineStatusSnapshot | null> {
@@ -50,8 +57,10 @@ async function readStatus(deps: EngineOverviewDeps, engineId: EngineId): Promise
     }
 }
 
-/** One engine's overview; the caller read the engine through the organization-scoped store. */
-export async function readEngineOverview(deps: EngineOverviewDeps, engine: EngineRecord): Promise<EngineOverview> {
+async function overviewWithout(
+    deps: EngineOverviewDeps,
+    engine: EngineRecord,
+): Promise<Omit<EngineOverview, 'reachableRelays'>> {
     const [snapshot, claims] = await Promise.all([
         readStatus(deps, engine.engineId),
         deps.engineHostnames.activeCustomHostnames(engine.engineId),
@@ -64,13 +73,32 @@ export async function readEngineOverview(deps: EngineOverviewDeps, engine: Engin
     };
 }
 
+/** One engine's overview; the caller read the engine through the organization-scoped store. */
+export async function readEngineOverview(deps: EngineOverviewDeps, engine: EngineRecord): Promise<EngineOverview> {
+    const [overview, reachable] = await Promise.all([
+        overviewWithout(deps, engine),
+        readReachableRelays(deps, [engine.engineId]),
+    ]);
+    return { ...overview, reachableRelays: reachable?.get(engine.engineId) ?? null };
+}
+
 /**
  * Overviews of engines the caller already read through the organization-scoped store, so no status object is ever
- * asked about an engine the actor may not see.
+ * asked about an engine the actor may not see. Presence is one query for the whole list, beside the status reads.
  */
-export function readEngineOverviews(
+export async function readEngineOverviews(
     deps: EngineOverviewDeps,
     engines: readonly EngineRecord[],
 ): Promise<readonly EngineOverview[]> {
-    return mapConcurrently(engines, STATUS_READ_CONCURRENCY, (engine) => readEngineOverview(deps, engine));
+    const [overviews, reachable] = await Promise.all([
+        mapConcurrently(engines, STATUS_READ_CONCURRENCY, (engine) => overviewWithout(deps, engine)),
+        readReachableRelays(
+            deps,
+            engines.map((engine) => engine.engineId),
+        ),
+    ]);
+    return overviews.map((overview) => ({
+        ...overview,
+        reachableRelays: reachable?.get(overview.engine.engineId) ?? null,
+    }));
 }

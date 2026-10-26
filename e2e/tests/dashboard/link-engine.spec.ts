@@ -23,6 +23,8 @@ const ONLINE_WITHIN_MS = 60_000;
 // The first test leaves the engine ID in each relay's negative registry cache (30 s), and the engine backs off up to
 // 10 s between tunnel attempts it loses to that.
 const ROUTED_WITHIN_MS = 90_000;
+// Once both tunnels are ready, each relay reports them within its 5-second window (R-07).
+const REACHABLE_WITHIN_MS = 30_000;
 
 async function stackEnginePublicKey(): Promise<Uint8Array<ArrayBuffer>> {
     const report = JSON.parse(await readFile(join(MOUNTS.public, PUBLIC_FILES.engineIdentity), 'utf8')) as {
@@ -134,6 +136,17 @@ test('sign up with a passkey, link the engine, see it online, open it through a 
             { timeout: ROUTED_WITHIN_MS, intervals: [1_000, 2_000] },
         )
         .toBe(true);
+
+    await expect
+        .poll(
+            async () =>
+                (await dashboard.reloadEngineRows())
+                    .filter({ hasText: engineHost })
+                    .getByText('Reachable through 2 relays', { exact: true })
+                    .count(),
+            { timeout: REACHABLE_WITHIN_MS, intervals: [1_000, 2_000] },
+        )
+        .toBe(1);
 
     const open = row.getByRole('link', { name: /^Open engine/ });
     await expect(open).toHaveAttribute('href', `https://${engineHost}/`);

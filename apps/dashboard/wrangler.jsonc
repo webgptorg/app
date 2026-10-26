@@ -83,6 +83,7 @@
         { "name": "RATE_LIMIT_WEBHOOK", "namespace_id": "1004", "simple": { "limit": 600, "period": 60 } },
         { "name": "RATE_LIMIT_REGISTRY", "namespace_id": "1005", "simple": { "limit": 600, "period": 60 } },
         { "name": "RATE_LIMIT_HEARTBEAT", "namespace_id": "1006", "simple": { "limit": 600, "period": 60 } },
+        { "name": "RATE_LIMIT_PRESENCE", "namespace_id": "1007", "simple": { "limit": 30, "period": 60 } },
     ],
     "env": {
         "staging": {
@@ -155,6 +156,7 @@
                     "namespace_id": "2006",
                     "simple": { "limit": 600, "period": 60 },
                 },
+                { "name": "RATE_LIMIT_PRESENCE", "namespace_id": "2007", "simple": { "limit": 30, "period": 60 } },
             ],
         },
         "production": {
@@ -225,6 +227,7 @@
                     "namespace_id": "3006",
                     "simple": { "limit": 600, "period": 60 },
                 },
+                { "name": "RATE_LIMIT_PRESENCE", "namespace_id": "3007", "simple": { "limit": 30, "period": 60 } },
             ],
         },
     },

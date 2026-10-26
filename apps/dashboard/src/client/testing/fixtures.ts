@@ -98,6 +98,8 @@ export function engineView(overrides: Partial<EngineView> = {}): EngineView {
             agents: 3,
             members: 2,
         },
+        // No relay presence by default, as before R-07: the reachability line stays hidden.
+        reachableRelays: null,
         ...overrides,
     };
 }

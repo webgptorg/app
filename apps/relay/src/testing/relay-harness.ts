@@ -3,6 +3,7 @@ import { RelayId as RelayIdSchema } from '@ptbk/protocol';
 
 import type { FakeClock } from '../adapters/fake-clock';
 import { createHttpEngineRegistry } from '../adapters/http-engine-registry';
+import { createHttpPresenceSink } from '../adapters/http-presence-sink';
 import type { InMemoryDnsResolver } from '../adapters/in-memory-dns-resolver';
 import type { InMemoryRegistry } from '../adapters/in-memory-registry';
 import type { MemoryLogger } from '../adapters/memory-logger';
@@ -19,6 +20,7 @@ import type { ConnectOptions, TestEngineClient } from './engine-client';
 import { connectEngine } from './engine-client';
 import type { TestEngine } from './engines';
 import { ENGINE_DOMAIN } from './engines';
+import type { FakeDashboard } from './fake-dashboard';
 import { TEST_RELAY_TOKEN, startFakeDashboard } from './fake-dashboard';
 import type { FakeRandom } from './fake-random';
 import { createFakeRandom } from './fake-random';
@@ -40,6 +42,8 @@ export interface RelayHarness {
     /** The resolver behind the cached DNS resolver. */
     readonly dns: InMemoryDnsResolver;
     readonly random: FakeRandom;
+    /** With `viaDashboard`: the fake dashboard the registry reads and presence reports go to. */
+    readonly dashboard: FakeDashboard | null;
     connect(engine: TestEngine, options?: Partial<ConnectOptions>): TestEngineClient;
     close(): Promise<void>;
 }
@@ -58,7 +62,7 @@ export interface HarnessOptions {
     readonly livenessClock?: Clock;
     /**
      * Reads the registry as deployed (D-04): the HTTP adapter against a fake dashboard that answers from `registry`,
-     * instead of reading `registry` directly.
+     * instead of reading `registry` directly. Presence reports then go to the same fake dashboard.
      */
     readonly viaDashboard?: boolean;
     /**
@@ -131,13 +135,30 @@ export async function startHarness(options: HarnessOptions = {}): Promise<RelayH
         maxStaleMs: config.registry.maxStaleMs,
         timeoutMs: config.dns.timeoutMs,
     });
-    const listener = await startRelayListener(config, { registry: cachedRegistry, dns: cachedDns }, certificate, {
-        logger,
-        clock,
-        livenessClock: options.livenessClock ?? systemClock,
-        random,
-        metrics,
-    });
+    const presence =
+        dashboard === null
+            ? null
+            : createHttpPresenceSink({
+                  fetch: (input, init) => fetch(input, init),
+                  clock,
+                  config: {
+                      url: dashboard.url,
+                      token: { reveal: () => TEST_RELAY_TOKEN },
+                      timeoutMs: config.registry.timeoutMs,
+                  },
+              });
+    const listener = await startRelayListener(
+        config,
+        { registry: cachedRegistry, dns: cachedDns, presence },
+        certificate,
+        {
+            logger,
+            clock,
+            livenessClock: options.livenessClock ?? systemClock,
+            random,
+            metrics,
+        },
+    );
     const clients: TestEngineClient[] = [];
     return {
         config,
@@ -149,6 +170,7 @@ export async function startHarness(options: HarnessOptions = {}): Promise<RelayH
         registry,
         dns,
         random,
+        dashboard,
         connect(engine, overrides = {}) {
             const client = connectEngine({
                 port: listener.port,

@@ -57,6 +57,13 @@
       "when": 1792760503275,
       "tag": "0007_abuse_monitoring",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1793026469076,
+      "tag": "0008_relay_presence",
+      "breakpoints": true
     }
   ]
 }

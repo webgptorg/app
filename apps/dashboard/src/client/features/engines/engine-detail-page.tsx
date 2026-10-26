@@ -11,6 +11,7 @@ import { Link } from '../../core/link';
 import { AbuseContactLink } from '../abuse/abuse-contact';
 import { useSession } from '../session/use-session';
 import { EngineOpenLink } from './engine-open-link';
+import { EngineReachability, hasReachability } from './engine-reachability';
 import { EngineStatusBadge } from './engine-status-badge';
 import { cpuLoadLabel, modeLabel, shortEngineId, updateStateLabel, uptimeLabel } from './engine-labels';
 import { LastSeen, useNowFor } from './engine-values';
@@ -114,6 +115,9 @@ function EngineDetail(props: { readonly engine: EngineView; readonly canRevoke: 
                 <Fields
                     fields={[
                         [m.engine_field_status(), <EngineStatusBadge engine={engine} />],
+                        ...(hasReachability(engine)
+                            ? [[m.engine_field_reachability(), <EngineReachability engine={engine} />] as const]
+                            : []),
                         [
                             m.engine_field_id(),
                             <CodeText
