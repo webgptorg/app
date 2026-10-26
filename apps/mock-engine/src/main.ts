@@ -24,8 +24,11 @@ import {
     parseConformanceSessionCommand,
     runConformanceSessionCommand,
 } from './app/conformance-session-command';
+import type { ConnectCommand } from './app/connect-command';
+import { ConnectUsageError, parseConnectCommand, parseRegisterCommand, runConnectCommand } from './app/connect-command';
 import { RegistrationFailedError } from './app/establish-registration';
-import { RegisterUsageError, isRegistered, parseRegisterCommand, runRegisterCommand } from './app/register-command';
+import { EXIT_CODE } from './app/exit-codes';
+import { FAILED } from './app/operator-lines';
 import type { DashboardDeps, MockEngine } from './app/start-mock-engine';
 import { startMockEngine } from './app/start-mock-engine';
 import { UiLoaderSetupError, createUiLoaderDeps } from './app/ui-loader-deps';
@@ -49,7 +52,7 @@ function problemOf(error: unknown): string {
         error instanceof RegistrationStoreError ||
         error instanceof StoredRegistrationError ||
         error instanceof SeqStoreError ||
-        error instanceof RegisterUsageError ||
+        error instanceof ConnectUsageError ||
         error instanceof UiLoaderSetupError ||
         error instanceof BundleStoreError ||
         error instanceof UpdateStateStoreError
@@ -117,25 +120,48 @@ function parseConfig(): MockEngineConfig {
     return config;
 }
 
-/** `mock-engine register --link <code>`: prints the outcome as JSON, exits 0 only when registered. */
-async function register(args: readonly string[]): Promise<void> {
-    const logger = createJsonLogger({
-        level: 'info',
-        clock: systemClock,
-        write: (line) => process.stderr.write(`${line}\n`),
-    });
+function stdoutLine(line: string): void {
+    process.stdout.write(`${line}\n`);
+}
+
+function stderrLine(line: string): void {
+    process.stderr.write(`${line}\n`);
+}
+
+/**
+ * `mock-engine connect --link <code> [--json]` (and `register --link <code>`, the same with `--json`): creates the key
+ * if needed and registers, then exits with the outcome's class. The human lines carry no secret; with `--json` they go
+ * to stderr and stdout holds only the report.
+ */
+async function connect(parse: (args: readonly string[]) => ConnectCommand, args: readonly string[]): Promise<void> {
+    // The log stream goes to stderr here, so stdout carries only what the operator or a script reads.
+    const logger = createJsonLogger({ level: 'warn', clock: systemClock, write: stderrLine });
+    let command: ConnectCommand;
     try {
-        const command = parseRegisterCommand(args);
-        const config = parseConfig();
-        const identityStore = createFsIdentityStore(config.dataDir);
-        const deps = dashboardDeps(config, await loadTrustedRoots(config.extraCaFile));
-        if (deps === undefined) throw new ConfigError(['PTBK_DASHBOARD_URL: is required to register']);
-        const report = await runRegisterCommand(command, config, { ...deps, identityStore, logger });
-        process.stdout.write(`${JSON.stringify(report)}\n`);
-        if (!isRegistered(report)) process.exitCode = 1;
+        command = parse(args);
     } catch (error) {
-        logger.error('register.failed', { problem: problemOf(error) });
-        process.exitCode = 1;
+        stderrLine(problemOf(error));
+        process.exitCode = EXIT_CODE.usage;
+        return;
+    }
+    try {
+        const config = parseConfig();
+        const deps = dashboardDeps(config, await loadTrustedRoots(config.extraCaFile));
+        if (deps === undefined) throw new ConfigError(['PTBK_DASHBOARD_URL: is required to connect']);
+        const result = await runConnectCommand(command, config, {
+            ...deps,
+            identityStore: createFsIdentityStore(config.dataDir),
+            logger,
+            clock: systemClock,
+            random: createCryptoRandom(),
+            say: command.json ? stderrLine : stdoutLine,
+            signal: new AbortController().signal,
+        });
+        if (command.json) stdoutLine(JSON.stringify(result.report));
+        process.exitCode = result.exitCode;
+    } catch (error) {
+        stderrLine(`${FAILED} ${problemOf(error)}`);
+        process.exitCode = EXIT_CODE.failed;
     }
 }
 
@@ -173,6 +199,10 @@ async function start(): Promise<{ readonly engine: MockEngine; readonly logger: 
         return { engine, logger };
     } catch (error) {
         logger.error('engine.start-failed', { problem: problemOf(error) });
+        if (error instanceof RegistrationFailedError) {
+            if (error.sentence !== null && process.stdout.isTTY) stdoutLine(`${FAILED} ${error.sentence}`);
+            process.exitCode = error.exitCode;
+        }
         return null;
     }
 }
@@ -220,12 +250,14 @@ async function conformanceSession(args: readonly string[]): Promise<void> {
 }
 
 const [verb, ...args] = process.argv.slice(2);
-if (verb === 'register') {
-    await register(args);
+if (verb === 'connect') {
+    await connect(parseConnectCommand, args);
+} else if (verb === 'register') {
+    await connect(parseRegisterCommand, args);
 } else if (verb === 'conformance-session') {
     await conformanceSession(args);
 } else {
     const started = await start();
-    if (started === null) process.exitCode = 1;
+    if (started === null) process.exitCode ??= EXIT_CODE.failed;
     else serve(started.engine, started.logger);
 }

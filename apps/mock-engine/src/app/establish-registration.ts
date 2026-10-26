@@ -1,18 +1,33 @@
 import type { EngineVersion, Hostname } from '@ptbk/protocol';
 
+import type { Clock } from '../domain/clock';
 import type { DashboardApi } from '../domain/dashboard/dashboard-api';
 import type { EngineIdentity } from '../domain/identity/engine-identity';
 import type { Logger } from '../domain/logger';
+import type { Random } from '../domain/random';
 import type { RegistrationOutcome } from '../domain/registration/register';
-import { loadRegistration, registerEngine } from '../domain/registration/register';
+import { loadRegistration } from '../domain/registration/register';
+import type { RegistrationRetry } from '../domain/registration/register-with-retry';
+import { registerWithRetry } from '../domain/registration/register-with-retry';
 import type { Registration, RegistrationStore } from '../domain/registration/registration';
 import type { DashboardConfig } from './config';
+import type { ExitCode } from './exit-codes';
+import { EXIT_CODE } from './exit-codes';
+import { registrationExitCode, registrationSentence } from './registration-messages';
 
-/** Startup cannot continue without a registration. The message names the outcome, never the link code. */
+/**
+ * Startup cannot continue without a registration. The message names the outcome, never the link code; `sentence` is
+ * the operator's next step and `exitCode` the class, as for `connect`.
+ */
 export class RegistrationFailedError extends Error {
-    constructor(message: string) {
+    readonly exitCode: ExitCode;
+    readonly sentence: string | null;
+
+    constructor(message: string, exitCode: ExitCode = EXIT_CODE.failed, sentence: string | null = null) {
         super(message);
         this.name = 'RegistrationFailedError';
+        this.exitCode = exitCode;
+        this.sentence = sentence;
     }
 }
 
@@ -24,7 +39,10 @@ export interface EstablishRegistrationDeps {
     readonly api: DashboardApi;
     readonly store: RegistrationStore;
     readonly logger: Logger;
+    readonly clock: Clock;
+    readonly random: Random;
     readonly signal: AbortSignal;
+    readonly onRetry?: (retry: RegistrationRetry) => void;
 }
 
 /** The registration, or why there is none, in words safe to print. */
@@ -32,10 +50,10 @@ export function describeOutcome(outcome: RegistrationOutcome): string {
     switch (outcome.kind) {
         case 'registered':
         case 'already-registered':
-        case 'unavailable':
             return outcome.kind;
         case 'rejected':
         case 'refused-response':
+        case 'unavailable':
             return `${outcome.kind}: ${outcome.reason}`;
     }
 }
@@ -51,10 +69,13 @@ function registrationOf(outcome: RegistrationOutcome, logger: Logger): Registrat
             return outcome.registration;
         case 'rejected':
         case 'refused-response':
-            logger.error(`registration.${outcome.kind}`, { reason: outcome.reason });
-            throw new RegistrationFailedError(`registration ${describeOutcome(outcome)}`);
         case 'unavailable':
-            throw new RegistrationFailedError('registration unavailable: the dashboard did not answer');
+            logger.error(`registration.${outcome.kind}`, { reason: outcome.reason });
+            throw new RegistrationFailedError(
+                `registration ${describeOutcome(outcome)}`,
+                registrationExitCode(outcome),
+                registrationSentence(outcome),
+            );
     }
 }
 
@@ -68,18 +89,21 @@ export async function establishRegistration(deps: EstablishRegistrationDeps): Pr
     if (linkCode === null) {
         const registration = await loadRegistration({ ...stored, engineDomain: deps.engineDomain });
         if (registration === null) {
-            throw new RegistrationFailedError('not registered: set PTBK_LINK_CODE or run the register command');
+            throw new RegistrationFailedError('not registered: set PTBK_LINK_CODE or run the connect command');
         }
         return registrationOf({ kind: 'already-registered', registration }, deps.logger);
     }
-    const outcome = await registerEngine({
+    const outcome = await registerWithRetry({
         ...stored,
         engineDomain: deps.engineDomain,
         api: deps.api,
         engineVersion: deps.engineVersion,
         linkCode,
         logger: deps.logger,
+        clock: deps.clock,
+        random: deps.random,
         signal: deps.signal,
+        ...(deps.onRetry === undefined ? {} : { onRetry: deps.onRetry }),
     });
     return registrationOf(outcome, deps.logger);
 }

@@ -83,7 +83,7 @@ export interface FakeDashboardOptions {
 }
 
 const PROBLEM_STATUS: Readonly<Record<RegistrationErrorCode, number>> = {
-    'invalid-link-code': 400,
+    'invalid-link-code': 401,
     'bad-signature': 401,
     'engine-exists': 409,
     'engine-suspended': 403,

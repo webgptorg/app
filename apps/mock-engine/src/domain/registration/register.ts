@@ -10,12 +10,21 @@ import type { Registration, RegistrationStore } from './registration';
 export type RegistrationOutcome =
     | { readonly kind: 'registered'; readonly registration: Registration }
     | { readonly kind: 'already-registered'; readonly registration: Registration }
-    | { readonly kind: 'rejected'; readonly reason: RegistrationErrorCode }
+    | { readonly kind: 'rejected'; readonly reason: RegistrationRejection }
     | {
           readonly kind: 'refused-response';
           readonly reason: 'engine-id-mismatch' | 'hostname-mismatch' | 'invalid';
       }
-    | { readonly kind: 'unavailable' };
+    | { readonly kind: 'unavailable'; readonly reason: UnavailableReason };
+
+/**
+ * Why the dashboard gave no usable answer; all of them are worth retrying while the link code can still be valid.
+ * `unknown-code` is a problem code newer than this build: it may be a refusal, but retrying it costs nothing.
+ */
+export type UnavailableReason = 'no-answer' | 'error-status' | 'rate-limited' | 'unknown-code';
+
+/** The codes that refuse this registration for good; `rate-limited` only asks to come back later. */
+export type RegistrationRejection = Exclude<RegistrationErrorCode, 'rate-limited'>;
 
 /** A stored registration this engine cannot use. Messages name the mismatch, never stored values. */
 export class StoredRegistrationError extends Error {
@@ -41,9 +50,11 @@ export interface RegisterEngineDeps extends StoredRegistrationDeps {
     readonly signal: AbortSignal;
 }
 
-const REJECTIONS: ReadonlySet<string> = new Set(Object.values(REGISTRATION_ERROR_CODE));
+const REJECTIONS: ReadonlySet<string> = new Set(
+    Object.values(REGISTRATION_ERROR_CODE).filter((code) => code !== REGISTRATION_ERROR_CODE.rateLimited),
+);
 
-function isRejection(code: string): code is RegistrationErrorCode {
+function isRejection(code: string): code is RegistrationRejection {
     return REJECTIONS.has(code);
 }
 
@@ -90,14 +101,17 @@ export async function registerEngine(deps: RegisterEngineDeps): Promise<Registra
     switch (call.kind) {
         case 'unavailable':
             deps.logger.warn('registration.unavailable', call.status === null ? {} : { status: call.status });
-            return { kind: 'unavailable' };
+            return { kind: 'unavailable', reason: call.status === null ? 'no-answer' : 'error-status' };
         case 'invalid-response':
             return { kind: 'refused-response', reason: 'invalid' };
         case 'problem':
             if (isRejection(call.problem.code)) return { kind: 'rejected', reason: call.problem.code };
             // A code newer than this build still tells the operator what to do; it carries no content.
             deps.logger.warn('registration.unavailable', { status: call.status, code: call.problem.code });
-            return { kind: 'unavailable' };
+            return {
+                kind: 'unavailable',
+                reason: call.problem.code === REGISTRATION_ERROR_CODE.rateLimited ? 'rate-limited' : 'unknown-code',
+            };
         case 'ok': {
             const check = await checkRegistrationResponse(call.response, deps.identity.publicKey, deps.engineDomain);
             if (check.kind !== 'ok') return { kind: 'refused-response', reason: check.kind };

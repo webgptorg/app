@@ -188,6 +188,8 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
                   api: dashboard.deps.api,
                   store: dashboard.deps.registrations,
                   logger,
+                  clock: deps.clock,
+                  random: deps.random,
                   signal: new AbortController().signal,
               });
     const relays = relaysToDial(config, registration);
