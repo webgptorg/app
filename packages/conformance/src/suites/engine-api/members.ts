@@ -159,4 +159,41 @@ export const MEMBER_CHECKS: readonly ConformanceCheck[] = [
             return findings.outcome();
         },
     },
+    {
+        id: 'engine-api.cross-member.chat-writes',
+        suite: SUITE,
+        title: 'A member who may write in chats gets 403 or 404 sending or cancelling in a chat another member started',
+        async run(ctx) {
+            const world = await createWorld(ctx);
+            const second = await sessionFor(
+                ctx,
+                { kind: 'member', permissions: ['agents.read', 'chats.read', 'chats.write'] },
+                'members with chosen permissions',
+            );
+            const { id: chatId } = await world.chat();
+            const { replyMessageId } = await world.reply();
+            const before = (await world.owner.ok(R.getChat, { params: { chatId } })).messageCount;
+            const findings = new Findings();
+            const probes = [
+                [R.sendChatMessage, { params: { chatId }, body: { content: 'conformance: not your chat' } }],
+                [R.cancelChatReply, { params: { chatId, messageId: replyMessageId } }],
+            ] as const;
+            for (const [route, request] of probes) {
+                await attempt(findings, async () => {
+                    const result = await second.call(route, request);
+                    if (result.kind === 'ok') {
+                        findings.add(`${describe(route)}: the second member got ${String(result.status)}`);
+                    } else if (result.problem.code !== 'forbidden' && result.problem.code !== 'not-found') {
+                        findings.add(
+                            `${describe(route)}: the second member got ${result.problem.code}, not 403 or 404`,
+                        );
+                    }
+                });
+            }
+            const after = (await world.owner.ok(R.getChat, { params: { chatId } })).messageCount;
+            if (after !== before)
+                findings.add('POST /chats/{chatId}/messages: the refused message was added to the chat');
+            return findings.outcome();
+        },
+    },
 ];

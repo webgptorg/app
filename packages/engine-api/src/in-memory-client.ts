@@ -314,6 +314,8 @@ export interface InMemoryEngineSnapshot {
             number
         >
     >;
+    /** Soft-deleted agents included, with their `deletedAt`. */
+    readonly agents: readonly Agent[];
     readonly members: readonly Member[];
     readonly passkeys: readonly Passkey[];
     /** As stored: `current` is always `false` here, since no request is making them current. */
@@ -692,6 +694,7 @@ export function createInMemoryEngineCore(options: InMemoryEngineCoreOptions = {}
                 activity: state.activity.length,
                 auditEntries: state.audit.length,
             },
+            agents: [...state.agents.values()].map((record) => record.agent),
             members: [...state.members.values()],
             passkeys: [...state.passkeys.values()],
             sessions: [...state.sessions.values()].map((session) => ({ ...session, current: false })),
@@ -723,6 +726,9 @@ export function createInMemoryEngineCore(options: InMemoryEngineCoreOptions = {}
                 if (decision.kind === 'deny') {
                     return deny(createProblem('forbidden', { requiredPermission: route.permission }));
                 }
+            }
+            if (route.permission === 'chats.write' && writesInAnotherMembersChat(state, request.params, actor)) {
+                return deny(createProblem('forbidden', { requiredPermission: route.permission }));
             }
             if (route.stepUp && !actor.stepUpFresh) return deny(createProblem('step-up-required'));
             const parsed = parseRequest(route, request);
@@ -775,6 +781,21 @@ const PARAM_RESOURCES: Readonly<Record<string, ResourceKind>> = {
     triggerId: 'trigger',
     integrationId: 'integration',
 };
+
+/**
+ * A contract rule, not engine policy, so no authorizer can lift it: only the member who started a chat writes in it,
+ * so nobody puts words into another member's conversation with an agent. A chat no member started is left to the
+ * engine's policy, and an unknown chat answers the route's own 404.
+ */
+function writesInAnotherMembersChat(
+    state: InMemoryState,
+    params: EngineApiTransportRequest['params'],
+    actor: Actor,
+): boolean {
+    const chatId = params?.['chatId'];
+    const chat = typeof chatId === 'string' ? state.chats.get(chatId) : undefined;
+    return chat !== undefined && chat.createdBy !== null && chat.createdBy !== actor.memberId;
+}
 
 /** The resource named by the route's last path parameter, before the input is parsed (so a bad ID stays a 400). */
 function resourceOf(

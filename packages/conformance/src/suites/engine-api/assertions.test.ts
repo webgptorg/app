@@ -761,6 +761,15 @@ const FAILS: readonly Case[] = [
         },
     ],
     [
+        "a refusal to write in another member's chat that is a conflict",
+        'engine-api.cross-member.chat-writes',
+        {
+            tamper: replace(on('POST', /^\/chats\/[^/]+\/messages$/), (_, response) =>
+                response.status === 403 ? problem('agent-deleted', 409) : response,
+            ),
+        },
+    ],
+    [
         'a cross-site refusal that is not 403',
         'engine-api.gateway.cross-site-refused',
         {

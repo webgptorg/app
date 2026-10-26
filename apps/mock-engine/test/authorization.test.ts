@@ -279,6 +279,24 @@ describe('ownership', () => {
         expect((await call(harness, cookie, ENGINE_API_ROUTES.createChat, { agentId: other.id })).status).toBe(201);
     });
 
+    it('lets a member read but not write in a chat another member started', async () => {
+        const memberId = memberOf('member');
+        const cookie = harness.signIn({ memberId });
+        const owner = harness.signIn({ memberId: memberOf('owner') });
+        const agent = (await agents()).find((candidate) => candidate.deletedAt === null);
+        if (agent === undefined) throw new Error('no agent');
+        const started = await call(harness, owner, ENGINE_API_ROUTES.createChat, { agentId: agent.id });
+        const chatId = String(started.body?.['id']);
+        expect((await call(harness, cookie, ENGINE_API_ROUTES.getChat, { chatId })).status).toBe(200);
+        const sent = await call(harness, cookie, ENGINE_API_ROUTES.sendChatMessage, { chatId });
+        expect(sent).toMatchObject({ status: 403, body: { code: 'forbidden', requiredPermission: 'chats.write' } });
+        const own = await call(harness, cookie, ENGINE_API_ROUTES.createChat, { agentId: agent.id });
+        const ownChatId = String(own.body?.['id']);
+        expect((await call(harness, cookie, ENGINE_API_ROUTES.sendChatMessage, { chatId: ownChatId })).status).toBe(
+            202,
+        );
+    });
+
     it("lets an admin change anyone's agent", async () => {
         const adminId = memberOf('admin');
         const cookie = harness.signIn({ memberId: adminId });

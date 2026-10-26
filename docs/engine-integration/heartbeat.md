@@ -33,7 +33,7 @@ sequenceDiagram
 - Keep the body within `HEARTBEAT_MAX_BODY_BYTES` (4 KiB).
 - Make `seq` strictly increasing across restarts. Send `max(lastSeq + 1, Date.now())` and persist it durably (write a temporary file, `fsync`, rename) **before** sending, so a crash never reuses a value; gaps are fine. An engine that loses its state but keeps its key is then not locked out.
 - Set `ts` to the current UTC time (RFC 3339 with `Z`). The dashboard refuses a heartbeat more than `HEARTBEAT_MAX_SKEW_MS` (2 minutes) away from its own clock.
-- Send only what the schema allows: `version` (SemVer), `uptimeS`, `diskPct` and `ramPct` rounded to tens, `cpuLoad` (`CpuLoad`: `low`, `medium`, `high`), `update` (`UpdateState`: `none`, `available`, `pending`, `installing`), and the counts `agents` and `members` (0 to `MAX_HEARTBEAT_COUNT`).
+- Send only what the schema allows: `version` (SemVer), `uptimeS`, `diskPct` and `ramPct` rounded to tens, `cpuLoad` (`CpuLoad`: `low`, `medium`, `high`), `update` (`UpdateState`: `none`, `available`, `pending`, `installing`), and the counts `agents` and `members` (0 to `MAX_HEARTBEAT_COUNT`). Count agents that are not deleted (soft-deleted agents in the trash are left out, as in `GET /agents` by default) and members whose status is `active`.
 - Round percentages with `buildHeartbeat`'s rule: to the nearest ten, halves up (`Math.round(value / 10) * 10`). A value outside 0–100 is a bug and throws.
 - Show the last heartbeat body **verbatim** in the security panel: `GET /security` returns it as `lastHeartbeat.body`, the exact bytes sent, as text, with `sentAt` ([engine-api.md](engine-api.md)). The owner can see everything we learn.
 

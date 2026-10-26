@@ -336,6 +336,45 @@ describe('in-memory core: authorizer', () => {
     });
 });
 
+describe('in-memory core: chat writes', () => {
+    const CHATTER: readonly Permission[] = ['agents.read', 'chats.read', 'chats.write'];
+
+    it('lets only the member who started a chat write in it, whatever the authorizer allows', async () => {
+        const { owner, clientFor } = team({ authorizer: { can: () => ({ kind: 'allow' }) } });
+        const ada = clientFor(actor('member-ada', 'session-ada', CHATTER));
+        const agent = ok(await owner.agents.create({ source: 'Grace' }, signal()));
+        const ownerChat = ok(await owner.chats.create(agent.id, { title: 'Owner only' }, signal()));
+        const sent = ok(await owner.chats.sendMessage(ownerChat.id, { content: 'private' }, signal()));
+
+        expect(ok(await ada.chats.get(ownerChat.id, signal())).id).toBe(ownerChat.id);
+        expect(problemOf(await ada.chats.sendMessage(ownerChat.id, { content: 'hijack' }, signal()))).toEqual(
+            expect.objectContaining({ status: 403, code: 'forbidden', requiredPermission: 'chats.write' }),
+        );
+        expect(problemOf(await ada.chats.cancelReply(ownerChat.id, sent.replyMessageId, signal()))).toEqual(
+            expect.objectContaining({ status: 403, code: 'forbidden', requiredPermission: 'chats.write' }),
+        );
+        expect(ok(await owner.chats.get(ownerChat.id, signal())).messageCount).toBe(2);
+
+        const adaChat = ok(await ada.chats.create(agent.id, { title: 'Ada' }, signal()));
+        ok(await ada.chats.sendMessage(adaChat.id, { content: 'mine' }, signal()));
+        expect(problemOf(await owner.chats.sendMessage(adaChat.id, { content: 'owner' }, signal())).code).toBe(
+            'forbidden',
+        );
+        expect(problemOf(await ada.chats.sendMessage('chat-unknown' as never, { content: 'x' }, signal())).code).toBe(
+            'not-found',
+        );
+
+        const denied = ok(await owner.audit.list({ outcome: 'denied' }, signal())).items;
+        expect(denied.map(({ action, actor: who }) => [action, who])).toEqual(
+            expect.arrayContaining([
+                ['chat.message.send', { kind: 'member', memberId: 'member-ada' }],
+                ['chat.reply.cancel', { kind: 'member', memberId: 'member-ada' }],
+                ['chat.message.send', { kind: 'member', memberId: 'member-owner' }],
+            ]),
+        );
+    });
+});
+
 describe('in-memory core: bounded event buffer', () => {
     function withEvents(count: number) {
         const { owner, core } = team({ eventBufferSize: 3 });

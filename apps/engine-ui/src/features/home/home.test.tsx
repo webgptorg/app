@@ -272,7 +272,7 @@ describe('home: member', { timeout: TIMEOUT_MS }, () => {
         for (const item of within(mine).getAllByRole('listitem')) {
             expect(item.textContent).toMatch(/Running|Queued|Cancelling/);
         }
-        expect(await screen.findByRole('region', { name: 'Your agents' })).toBeDefined();
+        expect(await screen.findByRole('region', { name: 'Agents you can use' })).toBeDefined();
         expect(await screen.findByRole('link', { name: 'Billing review' })).toBeDefined();
         expect(screen.queryByRole('region', { name: 'Activity' })).toBeNull();
         expect(screen.queryByText('Running now')).toBeNull();
@@ -288,13 +288,13 @@ describe('home: member', { timeout: TIMEOUT_MS }, () => {
 
         expect(await screen.findByText('Nothing of yours is running or queued.')).toBeDefined();
         expect(await screen.findByText('No chats yet.')).toBeDefined();
-        const agents = await screen.findByRole('region', { name: 'Your agents' });
+        const agents = await screen.findByRole('region', { name: 'Agents you can use' });
         expect(await within(agents).findByText('No agents yet')).toBeDefined();
         expect(within(agents).queryByRole('link', { name: 'New agent' })).toBeNull();
         expect(screen.queryByRole('link', { name: 'New agent' })).toBeNull();
     });
 
-    it('names an untitled chat and a run whose agent the engine no longer knows', async () => {
+    it('names an untitled chat by its first message, or as untitled, and a run whose agent the engine no longer knows', async () => {
         const engine = createHomeEngine({
             permissions: ['agents.read', 'chats.read', 'runs.read'],
             seed: { agents: [...(runsSeed().agents ?? []), { id: 'agent-solo', source: 'Solo' }] },
@@ -310,14 +310,21 @@ describe('home: member', { timeout: TIMEOUT_MS }, () => {
             return chats.kind === 'ok'
                 ? {
                       ...chats,
-                      data: { ...chats.data, items: chats.data.items.map((chat) => ({ ...chat, title: ' ' })) },
+                      data: {
+                          ...chats.data,
+                          items: chats.data.items.flatMap((chat) => [
+                              { ...chat, title: ' ', preview: 'Plan the launch' },
+                              { ...chat, id: `${chat.id}-untitled` as never, title: ' ', preview: null },
+                          ]),
+                      },
                   }
                 : chats;
         });
         renderWithProviders({ path: '/', engineApi: engine.client });
 
         const recent = await screen.findByRole('region', { name: 'Recent chats' });
-        expect(await within(recent).findByRole('link', { name: 'Untitled chat' })).toBeDefined();
+        expect(await within(recent).findByRole('link', { name: 'Plan the launch' })).toBeDefined();
+        expect(within(recent).getByRole('link', { name: 'Untitled chat' })).toBeDefined();
         const solo = await screen.findByRole('link', { name: 'Solo' });
         expect(solo.parentElement?.textContent).toBe('Solo');
         const mine = await screen.findByRole('region', { name: 'Your running work' });
@@ -330,7 +337,7 @@ describe('home: member', { timeout: TIMEOUT_MS }, () => {
         const engine = createHomeEngine({ permissions: allBut('security.read', 'runs.read') });
         renderWithProviders({ path: '/', engineApi: engine.client });
 
-        expect(await screen.findByRole('region', { name: 'Your agents' })).toBeDefined();
+        expect(await screen.findByRole('region', { name: 'Agents you can use' })).toBeDefined();
         expect(screen.queryByRole('region', { name: 'Your running work' })).toBeNull();
         expect(engine.spies.runs).not.toHaveBeenCalled();
     });
