@@ -47,6 +47,7 @@ const ANONYMOUS_LIMITS = {
     'POST /v1/engines/:engineId/heartbeat': ['heartbeat-ip', 'heartbeat-engine'],
     'POST /v1/engines/register': ['registration-ip', null],
     'POST /webhooks/stripe': ['webhook-ip', null],
+    'PUT /internal/v1/relays/presence': ['presence-relay', null],
 };
 
 describe('route table', () => {
