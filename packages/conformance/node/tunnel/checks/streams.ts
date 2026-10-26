@@ -5,8 +5,7 @@ import { CLOSE_CODE, FrameType, INITIAL_WINDOW_BYTES } from '@ptbk/protocol';
 
 import { Findings, PASS, fail } from '../../../src/check';
 import type { RelayStream, RelayTunnel } from '../../fake-relay/relay-tunnel';
-import { readResponses, requestBytes } from '../http1';
-import type { ResponsesRead } from '../http1';
+import { ResponseReader, requestBytes } from '../http1';
 import { certificateProblem, engineAnswerProblem, engineHostname, getEngine } from '../through-stream';
 import type { TunnelCheckContext, TunnelCheckRun } from './support';
 import { delay, ownerSession, readyTunnel, tlsToEngine } from './support';
@@ -14,10 +13,10 @@ import { delay, ownerSession, readyTunnel, tlsToEngine } from './support';
 const CONCURRENT_STREAMS = 24;
 /** How far past the initial window the flow-control checks push, so at least one grant is needed. */
 const WINDOWS_OF_TRAFFIC = 2.5;
-const PADDING_BYTES = 2_000;
-const BATCH_REQUESTS = 40;
-/** Deep pipelining is not what these checks are about; servers may cap it. */
-const MAX_PIPELINED = 400;
+/** Below the 8 KiB a header line may take on common servers. */
+const PADDING_BYTES = 4_000;
+/** Answers of 64 bytes would fill the window this many times over; more means the window was ignored. */
+const MAX_SEQUENTIAL = Math.ceil((2 * INITIAL_WINDOW_BYTES) / 64);
 
 interface Connected {
     readonly socket: tls.TLSSocket;
@@ -119,40 +118,32 @@ export const concurrentStreams: TunnelCheckRun = async (ctx) => {
     return PASS;
 };
 
-/** DATA bytes one `GET /engine` costs on the wire, measured on `socket`. */
-async function responseCost(
-    ctx: TunnelCheckContext,
-    tunnel: RelayTunnel,
-    { socket, stream }: Connected,
-): Promise<number> {
-    const before = stream.receivedBytes;
-    const reading = readResponses(socket, 1, ctx.runtime.timing.requestMs);
-    socket.write(engineRequest(ctx, tunnel));
-    const read = await reading;
-    if (read.kind === 'failed') fail(`GET /api/v1/engine through the stream: ${read.reason}`);
-    return Math.max(1, stream.receivedBytes - before);
-}
-
-function pipelineCount(cost: number): number {
-    return Math.min(MAX_PIPELINED, Math.ceil((WINDOWS_OF_TRAFFIC * INITIAL_WINDOW_BYTES) / cost) + 1);
+interface Stalled {
+    readonly reader: ResponseReader;
+    /** Answers that arrived before the engine ran out of credit. */
+    readonly answered: number;
 }
 
 /**
- * Pipelines enough requests that their answers exceed the window several times, without granting credit. Leaves the
- * engine stalled at its credit and returns the pending reader.
+ * Sends requests one after another on one connection, as a browser would (no pipelining), without granting credit,
+ * until an answer stops arriving: the engine is then out of credit, with that answer half sent. Fails when the
+ * engine keeps answering far past its window, which only an engine ignoring the window can.
  */
-async function stallAtWindow(
-    ctx: TunnelCheckContext,
-    tunnel: RelayTunnel,
-    connected: Connected,
-): Promise<{ readonly count: number; readonly reading: Promise<ResponsesRead> }> {
+async function stallAtWindow(ctx: TunnelCheckContext, tunnel: RelayTunnel, connected: Connected): Promise<Stalled> {
     const { timing } = ctx.runtime;
-    const count = pipelineCount(await responseCost(ctx, tunnel, connected));
-    const reading = readResponses(connected.socket, count, timing.requestMs * 4);
+    const reader = new ResponseReader(connected.socket);
     const request = engineRequest(ctx, tunnel);
-    connected.socket.write(Buffer.concat(Array.from({ length: count }, () => request)));
-    await quiet(connected.stream, timing.quietMs, timing.requestMs, ctx.signal);
-    return { count, reading };
+    for (let answered = 0; answered < MAX_SEQUENTIAL; answered++) {
+        connected.socket.write(request);
+        const read = await reader.next(timing.quietMs * 2);
+        if (read.kind === 'failed') {
+            if (!read.timedOut) fail(`GET /api/v1/engine through the stream: ${read.reason}`);
+            await quiet(connected.stream, timing.quietMs, timing.requestMs, ctx.signal);
+            return { reader, answered };
+        }
+        if (connected.stream.overrunBytes > 0) return { reader, answered };
+    }
+    return { reader, answered: MAX_SEQUENTIAL };
 }
 
 export const sendWindow: TunnelCheckRun = async (ctx) => {
@@ -161,16 +152,14 @@ export const sendWindow: TunnelCheckRun = async (ctx) => {
     const { socket, stream } = connected;
     const findings = new Findings();
     try {
-        const { count, reading } = await stallAtWindow(ctx, tunnel, connected);
+        const { reader } = await stallAtWindow(ctx, tunnel, connected);
         if (stream.overrunBytes > 0) {
             findings.add(`the engine sent ${String(stream.overrunBytes)} DATA bytes beyond the credit it had`);
-        }
-        stream.grant(64 * INITIAL_WINDOW_BYTES);
-        const read = await reading;
-        if (read.kind === 'failed') {
-            findings.add(
-                `after WINDOW, ${String(read.responses.length)} of ${String(count)} answers arrived: ${read.reason}`,
-            );
+        } else {
+            stream.grant(INITIAL_WINDOW_BYTES);
+            const read = await reader.next(ctx.runtime.timing.requestMs);
+            if (read.kind === 'failed')
+                findings.add(`after WINDOW, the half-sent answer did not complete: ${read.reason}`);
         }
     } finally {
         socket.destroy();
@@ -183,18 +172,16 @@ export const grantsCredit: TunnelCheckRun = async (ctx) => {
     const tunnel = await readyTunnel(ctx);
     const { socket, stream } = await tlsOrFail(ctx, tunnel);
     try {
+        const reader = new ResponseReader(socket);
         const request = engineRequest(ctx, tunnel, { 'X-Conformance-Padding': 'p'.repeat(PADDING_BYTES) });
-        // Batches, each answered before the next, keep pipelining shallow; together they exceed the initial window,
-        // so they only get through if the engine grants credit as it reads.
-        const batches = Math.ceil((WINDOWS_OF_TRAFFIC * INITIAL_WINDOW_BYTES) / (request.length * BATCH_REQUESTS));
-        for (let batch = 0; batch < batches; batch++) {
-            const reading = readResponses(socket, BATCH_REQUESTS, ctx.runtime.timing.requestMs);
-            socket.write(Buffer.concat(Array.from({ length: BATCH_REQUESTS }, () => request)));
-            const read = await reading;
+        // Together more than the initial window: they only get through if the engine grants credit as it reads.
+        const count = Math.ceil((WINDOWS_OF_TRAFFIC * INITIAL_WINDOW_BYTES) / request.length);
+        for (let sent = 0; sent < count; sent++) {
+            socket.write(request);
+            const read = await reader.next(ctx.runtime.timing.requestMs);
             if (read.kind === 'failed') {
-                const sent = (batch * BATCH_REQUESTS + read.responses.length) * request.length;
                 fail(
-                    `after ${String(sent)} bytes, the next answers did not come (${read.reason}); ` +
+                    `after ${String(sent * request.length)} bytes, the next answer did not come (${read.reason}); ` +
                         `${String(stream.sendCredit())} bytes of credit were left`,
                 );
             }
@@ -212,9 +199,9 @@ export const closeHandling: TunnelCheckRun = async (ctx) => {
 
     const ending = await tlsOrFail(ctx, tunnel);
     try {
-        const reading = readResponses(ending.socket, 1, timing.requestMs);
+        const reader = new ResponseReader(ending.socket);
         ending.socket.write(engineRequest(ctx, tunnel, { Connection: 'close' }));
-        const read = await reading;
+        const read = await reader.next(timing.requestMs);
         if (read.kind === 'failed') findings.add(`GET with Connection: close: ${read.reason}`);
         const closed = await Promise.race([
             ending.stream.engineClosed,

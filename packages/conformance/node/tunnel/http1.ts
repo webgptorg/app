@@ -74,53 +74,91 @@ function parseResponse(buffer: Buffer): Parse {
     return { kind: 'response', response: { status, headers, body }, used: bodyStart + length };
 }
 
+export type ResponseRead =
+    | { readonly kind: 'ok'; readonly response: HttpResponse }
+    | { readonly kind: 'failed'; readonly reason: string; readonly timedOut: boolean };
+
 /**
- * Reads `count` HTTP/1.1 responses from `socket` (pipelined requests answer in order). Supports `Content-Length` and
- * chunked bodies, which is all an engine API answer uses; responses must not rely on the connection closing.
+ * HTTP/1.1 responses from `socket`, one `next()` at a time, keeping partial bytes between calls: a response the engine
+ * could only half send (out of credit) completes on a later call. `Content-Length` and chunked bodies, which is all an
+ * engine API answer uses.
  */
-export function readResponses(socket: Duplex, count: number, timeoutMs: number): Promise<ResponsesRead> {
-    return new Promise((resolve) => {
-        const responses: HttpResponse[] = [];
-        let buffer = Buffer.alloc(0);
-        const finish = (result: ResponsesRead): void => {
-            clearTimeout(timer);
-            socket.off('data', onData);
-            socket.off('end', onEnd);
-            socket.off('close', onEnd);
-            socket.off('error', onError);
-            resolve(result);
+export class ResponseReader {
+    readonly #socket: Duplex;
+    #buffer = Buffer.alloc(0);
+    #ended: string | null = null;
+    #wake: (() => void) | null = null;
+
+    constructor(socket: Duplex) {
+        this.#socket = socket;
+        socket.on('data', (chunk: Buffer) => {
+            this.#buffer = Buffer.concat([this.#buffer, chunk]);
+            this.#wake?.();
+        });
+        const end = (reason: string): void => {
+            this.#ended ??= reason;
+            this.#wake?.();
         };
-        const onData = (chunk: Buffer): void => {
-            buffer = Buffer.concat([buffer, chunk]);
+        socket.once('end', () => {
+            end('the connection ended before the response was complete');
+        });
+        socket.once('close', () => {
+            end('the connection closed before the response was complete');
+        });
+        socket.once('error', (error: Error) => {
+            end(`connection error (${error.name})`);
+        });
+    }
+
+    async next(timeoutMs: number): Promise<ResponseRead> {
+        const deadline = performance.now() + timeoutMs;
+        for (;;) {
+            let parsed: Parse;
             try {
-                for (;;) {
-                    const parsed = parseResponse(buffer);
-                    if (parsed.kind === 'more') return;
-                    responses.push(parsed.response);
-                    buffer = buffer.subarray(parsed.used);
-                    if (responses.length === count) {
-                        finish({ kind: 'ok', responses });
-                        return;
-                    }
-                }
+                parsed = parseResponse(this.#buffer);
             } catch (error) {
-                finish({ kind: 'failed', reason: (error as Error).message, responses });
+                return { kind: 'failed', reason: (error as Error).message, timedOut: false };
             }
-        };
-        const onEnd = (): void => {
-            finish({ kind: 'failed', reason: 'the connection ended before every response arrived', responses });
-        };
-        const onError = (error: Error): void => {
-            finish({ kind: 'failed', reason: `connection error (${error.name})`, responses });
-        };
-        const timer = setTimeout(() => {
-            finish({ kind: 'failed', reason: `no complete response within ${String(timeoutMs)} ms`, responses });
-        }, timeoutMs);
-        socket.on('data', onData);
-        socket.once('end', onEnd);
-        socket.once('close', onEnd);
-        socket.once('error', onError);
-    });
+            if (parsed.kind === 'response') {
+                this.#buffer = this.#buffer.subarray(parsed.used);
+                return { kind: 'ok', response: parsed.response };
+            }
+            if (this.#ended !== null) return { kind: 'failed', reason: this.#ended, timedOut: false };
+            const left = deadline - performance.now();
+            if (left <= 0)
+                return {
+                    kind: 'failed',
+                    reason: `no complete response within ${String(timeoutMs)} ms`,
+                    timedOut: true,
+                };
+            await new Promise<void>((resolve) => {
+                const timer = setTimeout(resolve, left);
+                this.#wake = () => {
+                    clearTimeout(timer);
+                    resolve();
+                };
+            });
+            this.#wake = null;
+        }
+    }
+
+    /** Stops listening; for a socket handed on to something else. */
+    detach(): void {
+        this.#socket.removeAllListeners('data');
+    }
+}
+
+/** Reads `count` responses in a row; used where the requests went out one after another. */
+export async function readResponses(socket: Duplex, count: number, timeoutMs: number): Promise<ResponsesRead> {
+    const reader = new ResponseReader(socket);
+    const responses: HttpResponse[] = [];
+    const deadline = performance.now() + timeoutMs;
+    while (responses.length < count) {
+        const read = await reader.next(Math.max(1, deadline - performance.now()));
+        if (read.kind === 'failed') return { kind: 'failed', reason: read.reason, responses };
+        responses.push(read.response);
+    }
+    return { kind: 'ok', responses };
 }
 
 export interface RequestOptions {

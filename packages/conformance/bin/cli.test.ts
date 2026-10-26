@@ -256,8 +256,8 @@ describe('runCli', () => {
 
     it('runs whole suites without a filter', async () => {
         const streams = io();
-        expect(await runCli(['--base-url', 'https://engine.test', '--suite', 'tunnel'], streams)).toBe(0);
-        expect(streams.err.join('')).toContain('0 passed, 0 failed, 3 skipped');
+        expect(await runCli(['--base-url', 'https://engine.test', '--suite', 'ui-loader'], streams)).toBe(0);
+        expect(streams.err.join('')).toMatch(/0 passed, 0 failed, [1-9]\d* skipped/);
     });
 
     it('signs in through the mock control listener', async () => {

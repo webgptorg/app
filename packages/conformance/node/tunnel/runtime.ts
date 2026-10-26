@@ -133,13 +133,16 @@ export class TunnelRuntime {
         for (const connection of this.#early.splice(0)) void this.#accept(connection);
     }
 
+    /** Restarts the engine; resolves with when it went down, to wait for tunnels newer than that. */
     async restartEngine(
         envPatch: Readonly<Record<string, string | null>> | undefined,
         signal: AbortSignal,
-    ): Promise<void> {
+    ): Promise<number> {
         for (const relayId of this.relayIds) this.#modes.set(relayId, { kind: 'auto' });
+        const restartedAt = performance.now();
         await this.engine.restart(envPatch);
         signal.throwIfAborted();
+        return restartedAt;
     }
 
     /** Open, ready tunnels to `relayId`, oldest first. */
@@ -188,11 +191,11 @@ export class TunnelRuntime {
         });
     }
 
-    /** Waits for every relay to have a ready tunnel; returns the relays that did not get one in time. */
-    async waitAllReady(timeoutMs: number, signal: AbortSignal): Promise<RelayId[]> {
+    /** Waits for every relay to have a ready tunnel (newer than `after`); returns the relays that did not in time. */
+    async waitAllReady(timeoutMs: number, signal: AbortSignal, after = -1): Promise<RelayId[]> {
         const results = await Promise.all(
             this.relayIds.map(async (relayId) =>
-                (await this.waitReady(relayId, timeoutMs, signal)) === null ? relayId : null,
+                (await this.waitReady(relayId, timeoutMs, signal, after)) === null ? relayId : null,
             ),
         );
         return results.filter((relayId): relayId is RelayId => relayId !== null);

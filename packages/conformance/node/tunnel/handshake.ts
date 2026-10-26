@@ -87,24 +87,17 @@ export function honestReady(challenge: TunnelChallenge, auth: TunnelAuth, engine
 }
 
 export type AuthVerdict =
-    | { readonly kind: 'verified' }
-    /** The suite does not know the engine's key; only the shape of `auth` was checked. */
-    | { readonly kind: 'unverified' }
-    | { readonly kind: 'wrong-engine-id' }
-    | { readonly kind: 'bad-signature' };
+    { readonly kind: 'verified' } | { readonly kind: 'wrong-engine-id' } | { readonly kind: 'bad-signature' };
 
-export async function judgeAuth(
-    engineKey: Bytes | null,
-    challenge: TunnelChallenge,
-    auth: TunnelAuth,
-): Promise<AuthVerdict> {
-    if (engineKey === null) return { kind: 'unverified' };
+/** What R-03 decides: the engine ID must be the key's, and the signature must verify against the challenge sent. */
+export async function judgeAuth(engineKey: Bytes, challenge: TunnelChallenge, auth: TunnelAuth): Promise<AuthVerdict> {
     if ((await deriveEngineId(engineKey)) !== auth.engineId) return { kind: 'wrong-engine-id' };
     return verifyTunnelAuth(engineKey, challenge, auth) ? { kind: 'verified' } : { kind: 'bad-signature' };
 }
 
 export interface AcceptOptions {
-    readonly engineKey: Bytes | null;
+    /** The key from the engine's registration. */
+    readonly engineKey: Bytes;
     readonly engineDomain: Hostname;
     readonly authTimeoutMs: number;
     readonly signal: AbortSignal;
@@ -132,7 +125,7 @@ export async function acceptConnection(connection: RelayConnection, options: Acc
             break;
     }
     const verdict = await judgeAuth(options.engineKey, challenge, answer.auth);
-    if (verdict.kind === 'wrong-engine-id' || verdict.kind === 'bad-signature') {
+    if (verdict.kind !== 'verified') {
         connection.sendJson({ v: 1, type: 'reject', reason: 'auth-failed' });
         connection.close(TUNNEL_CLOSE_CODE.AUTH_FAILED);
         return { kind: 'failed', reason: verdict.kind };

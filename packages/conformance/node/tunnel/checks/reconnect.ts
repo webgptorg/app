@@ -179,14 +179,14 @@ export const replacedNoLoop: TunnelCheckRun = async (ctx) => {
         },
         { keepTunnels: true, awaitReady: false },
     );
-    await runtime.restartEngine(undefined, ctx.signal);
+    const restartedAt = await runtime.restartEngine(undefined, ctx.signal);
     const findings = new Findings();
     if (reconnects > 1) {
         findings.add(
             `the engine reconnected ${String(reconnects)} times within ${String(runtime.timing.replacedObserveMs)} ms of REPLACED`,
         );
     }
-    const missing = await runtime.waitAllReady(runtime.timing.reconnectMs, ctx.signal);
+    const missing = await runtime.waitAllReady(runtime.timing.reconnectMs, ctx.signal, restartedAt);
     if (missing.length > 0) findings.add(`after a restart, no ready tunnel to ${missing.join(', ')}`);
     return findings.outcome();
 };

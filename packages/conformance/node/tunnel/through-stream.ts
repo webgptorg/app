@@ -7,7 +7,7 @@ import type { Hostname } from '@ptbk/protocol';
 
 import type { SessionCredential } from '../../src/target';
 import type { OpenStreamOptions, RelayStream, RelayTunnel } from '../fake-relay/relay-tunnel';
-import { readResponses, requestBytes } from './http1';
+import { ResponseReader, requestBytes } from './http1';
 import type { HttpResponse } from './http1';
 
 export interface EngineTlsOptions {
@@ -25,7 +25,6 @@ export type EngineTls =
           readonly stream: RelayStream;
           readonly socket: tls.TLSSocket;
           readonly protocol: string | null;
-          readonly alpn: string | false | null;
           readonly certificate: X509Certificate | null;
       }
     | { readonly kind: 'failed'; readonly stream: RelayStream; readonly reason: string };
@@ -67,7 +66,6 @@ export function connectThroughTunnel(tunnel: RelayTunnel, options: EngineTlsOpti
                 stream,
                 socket,
                 protocol: socket.getProtocol(),
-                alpn: socket.alpnProtocol,
                 certificate: raw ?? null,
             });
         };
@@ -116,12 +114,8 @@ export async function getEngine(
     socket.write(
         requestBytes({ host: hostname, path: `${ENGINE_API_PREFIX}/engine`, headers: credentialHeaders(credential) }),
     );
-    const read = await readResponses(socket, 1, timeoutMs);
-    const [response] = read.responses;
-    if (read.kind === 'failed' || response === undefined) {
-        return { kind: 'failed', reason: read.kind === 'failed' ? read.reason : 'no response' };
-    }
-    return { kind: 'ok', response };
+    const read = await new ResponseReader(socket).next(timeoutMs);
+    return read.kind === 'ok' ? read : { kind: 'failed', reason: read.reason };
 }
 
 /**

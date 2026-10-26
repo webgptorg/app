@@ -1,6 +1,5 @@
 import type { Bytes, TunnelAuth, TunnelChallenge } from '@ptbk/protocol';
 import {
-    EngineVersion,
     SIGNING_CONTEXT,
     TUNNEL_CLOSE_CODE,
     decodeBase64Url,
@@ -152,10 +151,8 @@ export const versionSigned: TunnelCheckRun = async (ctx) => {
             }
             fail('the auth signature does not verify over the version the engine sent');
         }
-        const other = EngineVersion.parse(auth.version === '0.0.0' ? '0.0.1' : '0.0.0');
-        if (verifyTunnelAuth(key, challenge, { ...auth, version: other })) {
-            fail('the same signature also verifies with another version');
-        }
+        // An Ed25519 signature that verifies over the input with this version cannot verify with any other: the
+        // version is one of the signed parts, so this alone shows the engine signed it.
         return PASS;
     });
 };

@@ -49,13 +49,13 @@ export function createTunnelFetch(options: TunnelFetchOptions): typeof fetch {
         if (body !== undefined) headers['content-length'] = String(body.length);
 
         return new Promise<Response>((resolve, reject) => {
+            // No agent: with `createConnection` and no agent, Node uses exactly this socket for the request.
             const outgoing = http.request({
                 createConnection: () => socket,
                 method: request.method,
                 path: `${url.pathname}${url.search}`,
                 headers,
                 setHost: false,
-                agent: false,
             });
             const abort = (): void => {
                 outgoing.destroy(request.signal.reason instanceof Error ? request.signal.reason : new Error('aborted'));
@@ -74,8 +74,9 @@ export function createTunnelFetch(options: TunnelFetchOptions): typeof fetch {
                 });
                 const responseHeaders = new Headers();
                 const raw = incoming.rawHeaders;
-                for (let index = 0; index + 1 < raw.length; index += 2) {
-                    responseHeaders.append(raw[index] ?? '', raw[index + 1] ?? '');
+                // `rawHeaders` alternates names and values, so every even index has a value after it.
+                for (let index = 0; index < raw.length; index += 2) {
+                    responseHeaders.append(raw[index] as string, raw[index + 1] as string);
                 }
                 const status = incoming.statusCode ?? 502;
                 const stream = NULL_BODY_STATUSES.has(status)

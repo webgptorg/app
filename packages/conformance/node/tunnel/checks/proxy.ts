@@ -20,9 +20,13 @@ export const proxyConnect: TunnelCheckRun = async (ctx) => {
         credentials: { username: PROXY_USER, password: PROXY_PASSWORD },
     });
     const findings = new Findings();
+    let directSince: number;
     try {
-        await runtime.restartEngine({ HTTPS_PROXY: proxy.url, NO_PROXY: direct ?? null }, ctx.signal);
-        const missing = await runtime.waitAllReady(runtime.timing.reconnectMs, ctx.signal);
+        const proxiedSince = await runtime.restartEngine(
+            { HTTPS_PROXY: proxy.url, NO_PROXY: direct ?? null },
+            ctx.signal,
+        );
+        const missing = await runtime.waitAllReady(runtime.timing.reconnectMs, ctx.signal, proxiedSince);
         if (missing.length > 0) findings.add(`with HTTPS_PROXY set, no ready tunnel to ${missing.join(', ')}`);
         const through = (relayId: string): boolean =>
             proxy.requests.some((request) => request.target === `${relayId}:${String(port)}` && request.status === 200);
@@ -51,10 +55,10 @@ export const proxyConnect: TunnelCheckRun = async (ctx) => {
         }
         if (runtime.engine.logs().includes(PROXY_PASSWORD)) findings.add('the engine logged the proxy password');
     } finally {
-        await runtime.restartEngine({ HTTPS_PROXY: null, NO_PROXY: null }, ctx.signal).catch(() => undefined);
+        directSince = await runtime.restartEngine({ HTTPS_PROXY: null, NO_PROXY: null }, ctx.signal).catch(() => 0);
         await proxy.close();
     }
-    const missing = await runtime.waitAllReady(runtime.timing.reconnectMs, ctx.signal);
+    const missing = await runtime.waitAllReady(runtime.timing.reconnectMs, ctx.signal, directSince);
     if (missing.length > 0) findings.add(`without the proxy again, no ready tunnel to ${missing.join(', ')}`);
     return findings.outcome();
 };

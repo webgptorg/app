@@ -1,7 +1,7 @@
 import type { Bytes, RelayId } from '@ptbk/protocol';
 
 import type { CheckOutcome } from '../../../src/check';
-import { fail, skip } from '../../../src/check';
+import { fail } from '../../../src/check';
 import type { SessionCredential } from '../../../src/target';
 import { TIMED_OUT } from '../../fake-relay/event-queue';
 import type { ConnectionEvent, RelayConnection } from '../../fake-relay/fake-relay';
@@ -21,10 +21,6 @@ export type TunnelCheckRun = (ctx: TunnelCheckContext) => Promise<CheckOutcome>;
 
 export function engineKey(ctx: TunnelCheckContext): Bytes {
     return ctx.runtime.engine.enginePublicKey;
-}
-
-export function needsRelays(ctx: TunnelCheckContext, count: number): void {
-    if (ctx.runtime.relayIds.length < count) skip(`needs at least ${String(count)} relays in the engine's list`);
 }
 
 export async function readyTunnel(

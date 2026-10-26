@@ -10,13 +10,13 @@ import {
 
 import { Findings, fail } from '../../../src/check';
 import type { RelayTunnel } from '../../fake-relay/relay-tunnel';
-import { readResponses, requestBytes } from '../http1';
+import { ResponseReader, requestBytes } from '../http1';
 import { engineAnswerProblem, engineHostname, getEngine } from '../through-stream';
 import type { TunnelCheckContext, TunnelCheckRun } from './support';
 import { closeWithin, engineAlive, readyTunnel, tlsToEngine } from './support';
 
-/** At about 1.5 KiB per answer, enough to fill one window. */
-const PIPELINED = 200;
+/** Some traffic on a fresh tunnel, on top of what the earlier checks of the run sent. */
+const REQUESTS = 20;
 
 function header(typeByte: number, streamId: number, payload: Uint8Array = new Uint8Array(0)): Uint8Array {
     const bytes = new Uint8Array(FRAME_HEADER_BYTES + payload.length);
@@ -116,19 +116,23 @@ export const validFromEngine: TunnelCheckRun = async (ctx) => {
     if (connected.kind === 'failed') fail(`TLS through a stream to the default hostname: ${connected.reason}`);
     const findings = new Findings();
     try {
-        // Enough answers to fill the window, so the engine writes as much as it can per frame.
         const request = requestBytes({
             host: engineHostname(tunnel, ctx.runtime.engineDomain),
             path: `${ENGINE_API_PREFIX}/engine`,
         });
-        const reading = readResponses(connected.socket, PIPELINED, ctx.runtime.timing.requestMs * 4);
-        connected.socket.write(Buffer.concat(Array.from({ length: PIPELINED }, () => request)));
-        const read = await reading;
-        if (read.kind === 'failed') findings.add(`${String(PIPELINED)} pipelined requests: ${read.reason}`);
+        const reader = new ResponseReader(connected.socket);
+        for (let sent = 0; sent < REQUESTS; sent++) {
+            connected.socket.write(request);
+            const read = await reader.next(ctx.runtime.timing.requestMs);
+            if (read.kind === 'failed') {
+                findings.add(`request ${String(sent + 1)} on one connection: ${read.reason}`);
+                break;
+            }
+        }
     } finally {
         connected.socket.destroy();
     }
-    // Every tunnel of the run so far, so a frame the engine got wrong in any earlier check counts too.
+    // Every tunnel of this check so far, the reconnected ones included.
     const seen = new Set<string>();
     let largest = 0;
     for (const each of ctx.runtime.allTunnels) {

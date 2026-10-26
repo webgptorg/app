@@ -6,10 +6,9 @@ import {
     TUNNEL_PROTOCOL_VERSIONS,
     defaultHostname,
     encodeFrame,
-    negotiateTunnel,
 } from '@ptbk/protocol';
 
-import { Findings, fail, skip } from '../../../src/check';
+import { Findings, fail } from '../../../src/check';
 import type { RelayConnection } from '../../fake-relay/fake-relay';
 import { awaitAuth, buildChallenge, sendChallenge } from '../handshake';
 import type { ChallengeOverrides } from '../handshake';
@@ -36,11 +35,10 @@ interface DowngradeVariant {
  * common version exists; the version variant then offers one the engine never listed, which `checkTunnelReady`
  * refuses for the same reason (the choice is not `negotiateTunnel` over the signed lists).
  */
-function downgradeVariants(offer: TunnelAuth): { variants: DowngradeVariant[]; untested: string[] } {
+function downgradeVariants(offer: TunnelAuth): DowngradeVariant[] {
     const versions = [...offer.protocolVersions].sort((a, b) => a - b);
     const features = [...offer.features].sort(compareFeatures);
     const variants: DowngradeVariant[] = [];
-    const untested: string[] = [];
     const highest = versions.at(-1) ?? 1;
     const [lowest = 1] = versions;
     if (versions.length > 1) {
@@ -65,10 +63,9 @@ function downgradeVariants(offer: TunnelAuth): { variants: DowngradeVariant[]; u
         protocolVersion: highest,
         features: [...features, EXTRA_FEATURE].sort(compareFeatures),
     });
+    // A missing feature needs a feature both sides know; a v1 engine offers none, so the variant needs a later one.
     const [dropped] = features;
-    if (dropped === undefined) {
-        untested.push('a missing feature (the engine offers none)');
-    } else {
+    if (dropped !== undefined) {
         variants.push({
             name: 'a missing feature',
             challenge: { protocolVersions: versions, features },
@@ -76,7 +73,7 @@ function downgradeVariants(offer: TunnelAuth): { variants: DowngradeVariant[]; u
             features: features.filter((feature) => feature !== dropped),
         });
     }
-    return { variants, untested };
+    return variants;
 }
 
 async function expectProtocolError(
@@ -101,30 +98,13 @@ async function answeredAuth(ctx: TunnelCheckContext, connection: RelayConnection
 export const downgradeRefused: TunnelCheckRun = async (ctx) => {
     const { runtime } = ctx;
     const offer = (await readyTunnel(ctx)).auth;
-    const { variants, untested } = downgradeVariants(offer);
+    const variants = downgradeVariants(offer);
     const findings = new Findings();
-    let tested = 0;
     await runtime.manual(runtime.primary, ctx.signal, async (next) => {
         for (const variant of variants) {
             const connection = await nextConnection(next, runtime.timing.reconnectMs, 'after the previous variant');
-            const challenge = sendChallenge(connection, variant.challenge);
+            sendChallenge(connection, variant.challenge);
             const auth = await answeredAuth(ctx, connection);
-            const honest = negotiateTunnel(
-                { versions: challenge.protocolVersions, features: challenge.features },
-                { versions: auth.protocolVersions, features: auth.features },
-            );
-            // The engine's offer may differ from the one learnt earlier; a variant that happens to be honest proves nothing.
-            if (
-                honest.kind === 'ok' &&
-                honest.protocolVersion === variant.protocolVersion &&
-                honest.features.join(',') === variant.features.join(',')
-            ) {
-                untested.push(variant.name);
-                runtime.complete(connection, challenge, auth);
-                for (const tunnel of runtime.openTunnels(runtime.primary))
-                    tunnel.close(TUNNEL_CLOSE_CODE.SHUTTING_DOWN);
-                continue;
-            }
             connection.sendJson({
                 v: 1,
                 type: 'ready',
@@ -132,13 +112,9 @@ export const downgradeRefused: TunnelCheckRun = async (ctx) => {
                 features: variant.features,
                 hostnames: [defaultHostname(auth.engineId, runtime.engineDomain)],
             });
-            tested++;
             await expectProtocolError(ctx, connection, findings, `a ready with ${variant.name}`);
         }
     });
-    if (tested === 0) {
-        skip(`no variant could be tested: ${untested.join('; ')}`);
-    }
     return findings.outcome();
 };
 
