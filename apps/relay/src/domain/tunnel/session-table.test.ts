@@ -131,4 +131,27 @@ describe('createSessionTable', () => {
         table.remove(a);
         expect(table.countByIp('2001:db8:1:2::1')).toBe(1);
     });
+
+    it('tells its listener when a tunnel is added, replaced or removed, and not for a stale or repeated call', () => {
+        let changes = 0;
+        const watched = createSessionTable<FakeSession>({
+            logger,
+            onChange: () => {
+                changes++;
+            },
+        });
+        const a = session(engineA);
+        const next = session(engineA);
+        watched.register(a, [defaultA]);
+        watched.register(a, [defaultA]);
+        expect(changes).toBe(1);
+        watched.updateHostnames(a, [defaultA, shared]);
+        expect(changes).toBe(1);
+        watched.register(next, [defaultA]);
+        expect(changes).toBe(2);
+        watched.remove(a);
+        expect(changes).toBe(2);
+        watched.remove(next);
+        expect(changes).toBe(3);
+    });
 });

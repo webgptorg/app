@@ -17,6 +17,8 @@ import { createMemoryBudget } from '../domain/limits/memory-budget';
 import type { Logger } from '../domain/logger';
 import type { TunnelTerminationReason } from '../domain/metrics/reason-counters';
 import { TUNNEL_TERMINATION_REASONS, createReasonCounters } from '../domain/metrics/reason-counters';
+import type { PresenceReporter, PresenceSink } from '../domain/presence/presence-reporter';
+import { createPresenceReporter } from '../domain/presence/presence-reporter';
 import type { Random } from '../domain/random';
 import { createRevalidator } from '../domain/tunnel/revalidation';
 import type { SessionTable } from '../domain/tunnel/session-table';
@@ -24,6 +26,7 @@ import { createSessionTable } from '../domain/tunnel/session-table';
 import { createTunnelEndpoint } from '../domain/tunnel/tunnel-endpoint';
 import type { TunnelSession } from '../domain/tunnel/tunnel-session';
 import { createHttpEngineRegistry } from '../adapters/http-engine-registry';
+import { createHttpPresenceSink } from '../adapters/http-presence-sink';
 import { createMetricsEndpoint } from '../adapters/metrics-endpoint';
 import { createNodeDnsResolver } from '../adapters/node-dns-resolver';
 import { createOwnTlsServer } from '../adapters/own-tls-server';
@@ -55,6 +58,8 @@ export interface RelayServices {
     readonly registry: CachedRegistry;
     /** Cached at the registry's pace, for `routableHostnames`. */
     readonly dns: DnsResolver;
+    /** Where tunnel presence goes (R-07): the dashboard with the http registry, nowhere with the static one. */
+    readonly presence: PresenceSink | null;
     /** Re-reads the registry source where it can (the static file on SIGHUP). */
     reload(): Promise<void>;
 }
@@ -159,7 +164,19 @@ export async function createRelayServices(
         maxStaleMs: config.registry.maxStaleMs,
         timeoutMs: config.dns.timeoutMs,
     });
-    return { registry, dns, reload: () => origin.reload() };
+    const presence =
+        config.registry.kind === 'http'
+            ? createHttpPresenceSink({
+                  fetch: (input, init) => fetch(input, init),
+                  clock,
+                  config: {
+                      url: config.registry.url,
+                      token: config.registry.token,
+                      timeoutMs: config.registry.timeoutMs,
+                  },
+              })
+            : null;
+    return { registry, dns, presence, reload: () => origin.reload() };
 }
 
 const PEM_BEGIN = '-----BEGIN ';
@@ -219,13 +236,19 @@ export async function readRelayTls(config: RelayConfig): Promise<RelayTls> {
  */
 export async function startRelayListener(
     config: RelayConfig,
-    services: Pick<RelayServices, 'registry' | 'dns'>,
+    services: Pick<RelayServices, 'registry' | 'dns'> & Partial<Pick<RelayServices, 'presence'>>,
     tls: RelayTls,
     deps: RelayDeps,
 ): Promise<RelayListener> {
     const { logger, clock, livenessClock, random, metrics } = deps;
     const { registry, dns } = services;
-    const table = createSessionTable<TunnelSession>({ logger });
+    let presence: PresenceReporter | null = null;
+    const table = createSessionTable<TunnelSession>({
+        logger,
+        onChange: () => {
+            presence?.changed();
+        },
+    });
     const memory = createMemoryBudget(config.memoryBudgetBytes);
     const terminations = createReasonCounters(TUNNEL_TERMINATION_REASONS);
     const endpoint = createTunnelEndpoint({
@@ -327,6 +350,16 @@ export async function startRelayListener(
         logger,
     });
     revalidator.start();
+    const sink = services.presence ?? null;
+    if (sink !== null) {
+        presence = createPresenceReporter({
+            clock,
+            sink,
+            logger,
+            engineIds: () => table.sessions().map((session) => session.engineId),
+        });
+        presence.start();
+    }
     return {
         port,
         sessions: table,
@@ -341,6 +374,7 @@ export async function startRelayListener(
         },
         async close() {
             revalidator.stop();
+            presence?.stop();
             processStats.stop();
             // The TCP server waits for every connection, the tunnels too, so both close together.
             await Promise.all([browser.close(), server.close()]);

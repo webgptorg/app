@@ -289,6 +289,8 @@ describe('startRelay', () => {
             await services.reload();
             // The second lookup was a fresh cache hit.
             expect(dashboard.requests()).toBe(1);
+            await expect(services.presence?.report([engine.engineId], signal)).resolves.toEqual({ kind: 'accepted' });
+            expect(dashboard.presence.map((request) => request.authorization)).toEqual([`Bearer ${TEST_RELAY_TOKEN}`]);
             expect(logger.entries.find((entry) => entry.event === 'relay.started')?.fields['registry']).toBe('http');
             await relay.close();
         } finally {
@@ -329,6 +331,7 @@ describe('createRelayServices', () => {
             // Still within the TTL: the cache answers, not the file.
             await expect(services.registry.lookup(engine.engineId, signal)).resolves.toMatchObject({ kind: 'found' });
             await expect(services.dns.resolveCname(engine.defaultHostname, AbortSignal.abort())).rejects.toThrow();
+            expect(services.presence).toBeNull();
         } finally {
             await rm(dir, { recursive: true });
         }

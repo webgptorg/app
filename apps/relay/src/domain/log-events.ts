@@ -21,6 +21,8 @@ export const LOG_EVENTS = {
     'registry.stale': ['engineId', 'reason', 'ageS'],
     'registry.unavailable': ['engineId', 'reason'],
     'dns.stale': ['reason', 'ageS'],
+    'presence.report-failed': ['status'],
+    'presence.truncated': ['engines', 'cap'],
     'hostname.claim-invalid': ['engineId', 'dropped'],
     'hostname.dns-mismatch': ['engineId', 'dropped'],
     'hostname.conflict': ['engineId', 'otherEngineId'],

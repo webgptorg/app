@@ -27,8 +27,14 @@ export interface SessionTable<S extends TableSession> {
     countByIp(ip: string): number;
 }
 
-export function createSessionTable<S extends TableSession>(deps: { readonly logger: Logger }): SessionTable<S> {
-    const { logger } = deps;
+export interface SessionTableDeps {
+    readonly logger: Logger;
+    /** After an engine's tunnel is added, replaced or removed (R-07's presence reports). */
+    readonly onChange?: () => void;
+}
+
+export function createSessionTable<S extends TableSession>(deps: SessionTableDeps): SessionTable<S> {
+    const { logger, onChange = () => undefined } = deps;
     const byEngine = new Map<EngineId, S>();
     const hostnamesBySession = new Map<S, readonly Hostname[]>();
     const claimants = new Map<Hostname, Set<S>>();
@@ -83,6 +89,7 @@ export function createSessionTable<S extends TableSession>(deps: { readonly logg
             byEngine.set(session.engineId, session);
             countIp(session.remoteIp, 1);
             index(session, [...new Set(hostnames)]);
+            onChange();
         },
         updateHostnames(session, hostnames) {
             if (byEngine.get(session.engineId) !== session) return;
@@ -99,7 +106,9 @@ export function createSessionTable<S extends TableSession>(deps: { readonly logg
         },
         hostnamesOf: (session) => hostnamesBySession.get(session) ?? [],
         remove(session) {
-            if (byEngine.get(session.engineId) === session) drop(session);
+            if (byEngine.get(session.engineId) !== session) return;
+            drop(session);
+            onChange();
         },
         sessions: () => [...byEngine.values()],
         countByIp: (ip) => perIp.get(ipLimitKey(ip)) ?? 0,
