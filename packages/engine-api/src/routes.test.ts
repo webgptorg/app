@@ -71,6 +71,7 @@ const CAPABILITY_BY_PATH = [
     ['/files', KNOWN_CAPABILITIES.files],
     ['/triggers', KNOWN_CAPABILITIES.triggers],
     ['/integrations', KNOWN_CAPABILITIES.integrations],
+    ['/agents/{agentId}/test-chat', KNOWN_CAPABILITIES.testChat],
 ] as const;
 
 function expectedCapability(route: RouteDefinition) {
@@ -152,7 +153,11 @@ describe('ENGINE_API_ROUTES', () => {
 describe('capability routes', () => {
     it('covers every capability', () => {
         const covered = new Set(capabilityRoutes.map((route) => route.capability?.id));
-        expect([...covered].sort()).toEqual(Object.keys(KNOWN_CAPABILITIES).sort());
+        expect([...covered].sort()).toEqual(
+            Object.values(KNOWN_CAPABILITIES)
+                .map(({ id }) => id)
+                .sort(),
+        );
     });
 
     it('declares its capability and a permission on every route of a capability', () => {

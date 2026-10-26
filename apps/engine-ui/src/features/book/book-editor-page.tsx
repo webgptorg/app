@@ -1,4 +1,5 @@
-import type { AgentId, AgentSource, Revision, RevisionSummary } from '@ptbk/engine-api';
+import { KNOWN_CAPABILITIES } from '@ptbk/engine-api';
+import type { AgentId, AgentSource, Diagnostic, Revision, RevisionSummary } from '@ptbk/engine-api';
 import { Banner, Button, Dialog, ErrorState, Skeleton } from '@ptbk/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Save } from 'lucide-react';
@@ -6,13 +7,17 @@ import { useCallback, useRef, useState } from 'react';
 
 import { classifyApiError, unwrap } from '../../app/api-errors';
 import type { ApiFailure } from '../../app/api-errors';
+import { cx } from '../../app/cx';
 import { useEngineApi } from '../../app/engine-api-context';
 import { useStepUpAwareMutation } from '../../app/mutations';
+import { useAllows } from '../../app/registry/use-visible-features';
 import { m } from '../../paraglide/messages';
 import { useAgentIdParam } from '../agents/agent-detail-route';
 import { agentKeys } from '../agents/agents-keys';
 import { usePermissions } from '../session/use-permissions';
 import { BookHistory } from './book-history';
+import { BookViewSwitch } from './book-view-switch';
+import type { BookView } from './book-view-switch';
 import { bookKeys } from './book-keys';
 import { agentSourceQueryOptions } from './book-queries';
 import { BookEditor } from './editor/book-editor';
@@ -20,6 +25,8 @@ import type { BookEditorHandle } from './editor/book-editor';
 import { BookViewer } from './editor/book-viewer';
 import { ProblemsList } from './problems-list';
 import { RevisionDialog } from './revision-dialog';
+import { draftAgentName } from './test-chat/draft-agent-name';
+import { TestChatPanel } from './test-chat/test-chat-panel';
 import { UnsavedChangesGuard } from './unsaved-changes-guard';
 import { useBookValidation } from './use-book-validation';
 
@@ -78,6 +85,8 @@ function BookWorkspace({ agentId, initial }: WorkspaceProps) {
     const [openRevision, setOpenRevision] = useState<RevisionSummary | null>(null);
     const dirty = draft !== base.source;
     const validation = useBookValidation(draft, canWrite);
+    const testable = useAllows({ capability: KNOWN_CAPABILITIES.testChat, permission: 'agents.write' });
+    const [view, setView] = useState<BookView>('book');
 
     const adopt = (saved: AgentSource) => {
         setBase(saved);
@@ -146,6 +155,22 @@ function BookWorkspace({ agentId, initial }: WorkspaceProps) {
         setDraft(source);
     }, []);
 
+    const showInvalidBook = useCallback(
+        (diagnostics: readonly Diagnostic[]) => {
+            validation.show(diagnostics);
+        },
+        [validation],
+    );
+
+    const showProblems = () => {
+        setView('book');
+        const first = validation.diagnostics.find(({ severity }) => severity === 'error') ?? validation.diagnostics[0];
+        // The editor is displayed again only after this render.
+        requestAnimationFrame(() => {
+            if (first) editor.current?.focusRange(first.range);
+        });
+    };
+
     return (
         <div className="flex min-w-0 flex-col gap-6">
             <UnsavedChangesGuard when={dirty} />
@@ -193,24 +218,49 @@ function BookWorkspace({ agentId, initial }: WorkspaceProps) {
                     {m.book_conflict_body()}
                 </Banner>
             )}
-            <BookEditor
-                ref={editor}
-                initialSource={initial.source}
-                onChange={onChange}
-                diagnostics={validation.diagnostics}
-                label={m.book_editor_label()}
-                readOnly={!canWrite}
-                onSave={() => void saveDraft()}
-            />
-            {canWrite ? (
-                <ProblemsList
-                    diagnostics={validation.diagnostics}
-                    checking={validation.checking}
-                    failed={validation.failed}
-                    onSelect={(diagnostic) => editor.current?.focusRange(diagnostic.range)}
-                />
-            ) : null}
-            <BookHistory agentId={agentId} currentRevisionId={base.revisionId} onOpen={setOpenRevision} />
+            {testable ? <BookViewSwitch view={view} onChange={setView} className="xl:hidden" /> : null}
+            <div
+                className={
+                    testable
+                        ? 'grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(20rem,26rem)] xl:items-start'
+                        : 'contents'
+                }
+            >
+                {/* Hidden rather than unmounted, so switching views keeps the editor's state and the conversation. */}
+                <div className={cx('flex min-w-0 flex-col gap-6', testable && view === 'test' && 'max-xl:hidden')}>
+                    <BookEditor
+                        ref={editor}
+                        initialSource={initial.source}
+                        onChange={onChange}
+                        diagnostics={validation.diagnostics}
+                        label={m.book_editor_label()}
+                        readOnly={!canWrite}
+                        onSave={() => void saveDraft()}
+                    />
+                    {canWrite ? (
+                        <ProblemsList
+                            diagnostics={validation.diagnostics}
+                            checking={validation.checking}
+                            failed={validation.failed}
+                            onSelect={(diagnostic) => editor.current?.focusRange(diagnostic.range)}
+                        />
+                    ) : null}
+                    <BookHistory agentId={agentId} currentRevisionId={base.revisionId} onOpen={setOpenRevision} />
+                </div>
+                {testable ? (
+                    <TestChatPanel
+                        agentId={agentId}
+                        book={draft}
+                        agentName={draftAgentName(draft) ?? m.book_test_unnamed()}
+                        onInvalidBook={showInvalidBook}
+                        onShowProblems={showProblems}
+                        className={cx(
+                            'h-[70dvh] min-h-96 xl:sticky xl:top-4 xl:h-[calc(100dvh-10rem)]',
+                            view === 'book' && 'max-xl:hidden',
+                        )}
+                    />
+                ) : null}
+            </div>
             {openRevision === null ? null : (
                 <RevisionDialog
                     agentId={agentId}

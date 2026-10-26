@@ -5,6 +5,7 @@ import { ACTIVITY_ROUTES } from './capabilities/activity';
 import { FILE_ROUTES } from './capabilities/files';
 import { INTEGRATION_ROUTES } from './capabilities/integrations';
 import { RUN_ROUTES } from './capabilities/runs';
+import { TEST_CHAT_ROUTES } from './capabilities/test-chat';
 import { TRIGGER_ROUTES } from './capabilities/triggers';
 import { CHAT_ROUTES } from './chats';
 import { ENGINE_ROUTES } from './engine';
@@ -41,6 +42,7 @@ export const ENGINE_API_ROUTES = {
     ...FILE_ROUTES,
     ...TRIGGER_ROUTES,
     ...INTEGRATION_ROUTES,
+    ...TEST_CHAT_ROUTES,
 } as const satisfies Readonly<Record<string, RouteDefinition>>;
 
 export type EngineApiRouteId = keyof typeof ENGINE_API_ROUTES;

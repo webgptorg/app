@@ -109,6 +109,18 @@ describe('capabilities through the mock HTTP server (contract)', () => {
 
         await okFrom('listActivity', owner.activity.list({ kind: 'run.', limit: 20 }, signal()));
 
+        const draftReply = await okFrom(
+            'testAgentDraft',
+            owner.testChat.stream(
+                agent.id,
+                { book: 'Contract draft', messages: [{ role: 'user', content: 'hi' }] },
+                signal(),
+            ),
+        );
+        let draftEnd = '';
+        for await (const { event } of draftReply) draftEnd = event.type === 'completed' ? event.content : event.type;
+        expect(draftEnd).toContain('Contract draft');
+
         const capabilityRoutes = ENGINE_API_ROUTE_LIST.filter((route) => route.capability !== undefined).map(
             ({ id }) => id,
         );

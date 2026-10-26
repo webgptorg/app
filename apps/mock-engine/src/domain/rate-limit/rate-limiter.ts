@@ -8,6 +8,8 @@ export const RATE_LIMITS = {
     'spike-bulk-ip': { limit: 60, windowMs: 60_000 },
     /** The engine API: a busy UI makes a few requests a second per member, plus streams. */
     'engine-api-ip': { limit: 1_200, windowMs: 60_000 },
+    /** Draft test replies (`test-chat@1`): each one is a model call, and a person types far slower than this. */
+    'engine-api-test-chat-ip': { limit: 60, windowMs: 60_000 },
     /** UI bundle files: a cold page load fetches a few dozen, cached ones none. */
     'ui-ip': { limit: 1_200, windowMs: 60_000 },
     /** Gateway pages and forms: sign-in, sign-out, step-up. */

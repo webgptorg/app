@@ -593,3 +593,32 @@ describe('in-memory core: controller levers', () => {
         expect(problemOf(result).code).toBe('capability-not-supported');
     });
 });
+
+describe('in-memory core: test chat', () => {
+    it('paces a test reply and stops generating once the reader aborts', async () => {
+        const paced = steppedSleep();
+        const { owner } = team({
+            sleep: paced.sleep,
+            replyScript: () => ({ chunks: [{ text: 'a', delayMs: 10 }, { text: 'b', delayMs: 20 }, 'c'] }),
+        });
+        const agent = ok(await owner.agents.create({ source: 'Ada' }, signal()));
+        const controller = new AbortController();
+        const items = ok(
+            await owner.testChat.stream(
+                agent.id,
+                { book: 'Ada', messages: [{ role: 'user', content: 'hi' }] },
+                controller.signal,
+            ),
+        );
+        const iterator = items[Symbol.asyncIterator]();
+        const first = next(iterator);
+        await paced.step();
+        expect((await first).event).toEqual({ type: 'delta', seq: 1, text: 'a' });
+        const second = iterator.next();
+        while (paced.pending().length === 0) await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(paced.pending()).toEqual([20]);
+        controller.abort();
+        expect((await second).done).toBe(true);
+        expect(paced.pending()).toEqual([]);
+    });
+});

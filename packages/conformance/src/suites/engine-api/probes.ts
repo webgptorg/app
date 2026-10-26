@@ -26,6 +26,15 @@ const agent: Probe = async (owner, request) => {
     const params = { agentId: param(request, 'agentId') };
     return [await owner.ok(R.getAgent, { params }), await owner.ok(R.getAgentSource, { params })];
 };
+/** A test run stores nothing: the saved book, its revisions and the agent's chats stay as they were. */
+const testRun: Probe = async (owner, request) => {
+    const params = { agentId: param(request, 'agentId') };
+    return [
+        await owner.ok(R.getAgentSource, { params }),
+        (await owner.ok(R.listAgentRevisions, { params, query: { limit: 100 } })).items,
+        (await owner.ok(R.listAgentChats, { params, query: { limit: 100 } })).items,
+    ];
+};
 const folders: Probe = (owner) => all(owner, R.listFolders);
 const chatMessages: Probe = async (owner, request) =>
     (await owner.ok(R.listChatMessages, { params: { chatId: param(request, 'chatId') }, query: { limit: 100 } })).items;
@@ -60,6 +69,7 @@ const PROBES: Partial<Record<EngineApiRouteId, Probe>> = {
     deleteAgent: agent,
     restoreAgent: agent,
     updateAgentSource: agent,
+    testAgentDraft: testRun,
     createFolder: folders,
     renameFolder: folders,
     deleteFolder: folders,

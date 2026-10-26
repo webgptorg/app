@@ -19,6 +19,7 @@ import { RUN_CHECKS } from './runs';
 import { SCHEMA_CHECKS } from './schemas';
 import { SECRET_CHECKS } from './secrets';
 import { SUITE } from './support';
+import { TEST_CHAT_CHECKS } from './test-chat';
 import { TRIGGER_CHECKS } from './triggers';
 
 /** v1: the engine API that engine-ui depends on (C-04, C-07), checked through the gateway as a browser would. */
@@ -37,6 +38,7 @@ export const ENGINE_API_SUITE: ConformanceSuite = {
         ...FILE_CHECKS,
         ...TRIGGER_CHECKS,
         ...INTEGRATION_CHECKS,
+        ...TEST_CHAT_CHECKS,
         ...ACTIVITY_CHECKS,
         ...AUDIT_CHECKS,
         ...PERMISSION_CHECKS,

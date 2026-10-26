@@ -3,7 +3,7 @@
   "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
   "info": {
     "title": "Promptbook engine API",
-    "version": "1.10.0",
+    "version": "1.11.0",
     "license": {
       "name": "MIT",
       "identifier": "MIT"
@@ -11254,6 +11254,237 @@
           }
         }
       }
+    },
+    "/agents/{agentId}/test-chat": {
+      "post": {
+        "operationId": "testAgentDraft",
+        "summary": "Stream the agent's reply to a test conversation run against an unsaved book, storing nothing",
+        "description": "The reply comes from the book in the body, not the saved one. The engine stores nothing: no chat, message, revision, run or activity, and closing the stream stops the reply. A book with an error diagnostic is refused before anything streams.",
+        "tags": ["agents"],
+        "x-required-permission": "agents.write",
+        "x-capability": {
+          "id": "test-chat",
+          "version": 1,
+          "label": "test-chat@1"
+        },
+        "parameters": [
+          {
+            "name": "agentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/AgentId"
+            }
+          },
+          {
+            "name": "Last-Event-ID",
+            "in": "header",
+            "required": false,
+            "description": "Resume after this SSE id.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "book": {
+                    "type": "string",
+                    "maxLength": 524288
+                  },
+                  "messages": {
+                    "minItems": 1,
+                    "maxItems": 50,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "role": {
+                          "type": "string",
+                          "enum": ["user", "agent"]
+                        },
+                        "content": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 65536
+                        }
+                      },
+                      "required": ["role", "content"],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": ["book", "messages"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Server-sent events; each event's `type` is also its SSE `event` field, and `data` is the event as JSON.",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "const": "delta"
+                        },
+                        "seq": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 9007199254740991
+                        },
+                        "text": {
+                          "type": "string"
+                        }
+                      },
+                      "required": ["type", "seq", "text"],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "const": "completed"
+                        },
+                        "content": {
+                          "type": "string"
+                        }
+                      },
+                      "required": ["type", "content"],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "const": "failed"
+                        },
+                        "problem": {
+                          "$ref": "#/components/schemas/ProblemDetails"
+                        }
+                      },
+                      "required": ["type", "problem"],
+                      "additionalProperties": false
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Problem: `validation-failed`.",
+            "x-problem-codes": ["validation-failed"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem: `unauthenticated`.",
+            "x-problem-codes": ["unauthenticated"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem: `forbidden`.",
+            "x-problem-codes": ["forbidden"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem: `capability-not-supported`, `not-found`.",
+            "x-problem-codes": ["capability-not-supported", "not-found"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Problem: `agent-deleted`.",
+            "x-problem-codes": ["agent-deleted"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Problem: `invalid-book`.",
+            "x-problem-codes": ["invalid-book"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Problem: `rate-limited`.",
+            "x-problem-codes": ["rate-limited"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Problem: `internal-error`.",
+            "x-problem-codes": ["internal-error"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Problem: `unavailable`.",
+            "x-problem-codes": ["unavailable"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -12820,6 +13051,7 @@
           "agent.source.update",
           "agent.start",
           "agent.stop",
+          "agent.test-chat.start",
           "folder.create",
           "folder.rename",
           "folder.delete",

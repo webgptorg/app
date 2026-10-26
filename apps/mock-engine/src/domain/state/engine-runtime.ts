@@ -174,7 +174,8 @@ export async function createEngineRuntime(options: EngineRuntimeOptions): Promis
         const replyScript: ReplyScript = ({ agent, content, chatId, messageIndex }) => ({
             chunks: generateReply({
                 seed: seedValue,
-                chatId,
+                // A test conversation has no chat; keyed by agent, the same transcript replays the same reply.
+                chatId: chatId ?? `test-chat:${agent.id}`,
                 messageIndex,
                 agentName: agent.name,
                 content,

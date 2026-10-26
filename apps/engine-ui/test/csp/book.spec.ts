@@ -74,6 +74,42 @@ test.describe('the book editor under the engine CSP', () => {
     });
 });
 
+test.describe("the book editor's test chat under the engine CSP", () => {
+    test('streams a reply to the unsaved book, keeps it inert and fits a phone as a tab', async ({ page, visit }) => {
+        const consoleErrors = recordConsoleErrors(page);
+        const report = await visit(`/agents/${BOOK_AGENT_ID}/book`);
+        const panel = page.getByTestId('book-test-chat');
+        await expect(panel.getByText('Test · not saved')).toBeVisible();
+        expectCleanPage(report);
+
+        await appendLine(page, 'RULE Answer in one line');
+        const composer = panel.getByRole('textbox', { name: 'Message' });
+        await composer.fill('Show me everything');
+        await composer.press('Enter');
+        await expect(panel.locator('[aria-live="polite"][aria-atomic="true"]')).toHaveText('Grace replied');
+        const history = panel.getByRole('region', { name: 'Test messages' });
+        await expect(history.getByText('Image: x')).toBeVisible();
+        expect(await history.locator('img, script, iframe, object, embed, [src], [srcset]').count()).toBe(0);
+        await expect(page.getByText('Unsaved changes')).toBeVisible();
+
+        const viewport = page.viewportSize();
+        await page.setViewportSize({ width: 360, height: 740 });
+        await expect(panel).toBeHidden();
+        await page.getByRole('button', { name: 'Test', exact: true }).click();
+        await expect(history.getByText('Image: x')).toBeVisible();
+        await expect(page.getByTestId('book-editor')).toBeHidden();
+        const overflow = await page.evaluate(
+            () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        );
+        expect(overflow, 'horizontal overflow at 360 px').toBeLessThanOrEqual(0);
+        await page.getByRole('button', { name: 'Book', exact: true }).click();
+        await expect(page.getByTestId('book-editor')).toBeVisible();
+        if (viewport !== null) await page.setViewportSize(viewport);
+
+        expect(await violations(page, consoleErrors)).toEqual([]);
+    });
+});
+
 test.describe('the create-agent wizard under the engine CSP', () => {
     test('the brief and book steps meet the UX checks and show highlighting and diagnostics', async ({
         page,

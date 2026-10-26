@@ -73,7 +73,7 @@ Wire contracts between engine, relay and dashboard: registration, registry looku
 
 ### `packages/engine-api`
 
-The engine HTTP API that engine-ui consumes and every engine implements. Beyond the core (agents, chats, members, secrets, security, audit), the engine advertises versioned capabilities (`runs@1`, `files@1`, `triggers@1`, `integrations@1`), each a separate contract module, and the UI shows a feature only when its capability is advertised ([ADR 0016](adr/0016-engine-capabilities.md)). Contents: zod schemas, the `EngineApiClient` interface and a `fetch` implementation, and the generated OpenAPI document. Web APIs only.
+The engine HTTP API that engine-ui consumes and every engine implements. Beyond the core (agents, chats, members, secrets, security, audit), the engine advertises versioned capabilities (`runs@1`, `files@1`, `triggers@1`, `integrations@1`, `test-chat@1`), each a separate contract module, and the UI shows a feature only when its capability is advertised ([ADR 0016](adr/0016-engine-capabilities.md)). Contents: zod schemas, the `EngineApiClient` interface and a `fetch` implementation, and the generated OpenAPI document. Web APIs only.
 
 ### `packages/ui`
 

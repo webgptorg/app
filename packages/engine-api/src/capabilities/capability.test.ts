@@ -62,6 +62,7 @@ describe('supports', () => {
             'files@1',
             'triggers@1',
             'integrations@1',
+            'test-chat@1',
         ]);
     });
 });

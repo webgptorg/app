@@ -19,9 +19,15 @@ export interface SessionCookie {
 }
 
 export type EngineScenario = 'empty' | 'small-team' | 'large-fleet';
-export type EngineCapabilityName = 'runs' | 'files' | 'triggers' | 'integrations';
+export type EngineCapabilityName = 'runs' | 'files' | 'triggers' | 'integrations' | 'test-chat';
 
-export const ALL_CAPABILITIES: readonly EngineCapabilityName[] = ['runs', 'files', 'triggers', 'integrations'];
+export const ALL_CAPABILITIES: readonly EngineCapabilityName[] = [
+    'runs',
+    'files',
+    'triggers',
+    'integrations',
+    'test-chat',
+];
 
 export interface ResetOptions {
     readonly scenario: EngineScenario;

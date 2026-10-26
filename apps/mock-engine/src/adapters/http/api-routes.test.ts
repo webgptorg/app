@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import type { ApiHarness } from '../../testing/api-harness';
 import { HARNESS_ORIGIN, createApiHarness } from '../../testing/api-harness';
+import { RATE_LIMITS } from '../../domain/rate-limit/rate-limiter';
 import { createEngineApiRoutes } from './api-routes';
 
 let harness: ApiHarness | undefined;
@@ -30,7 +31,12 @@ describe('engine API routes', () => {
     it('are declared from the route table, one per operation', () => {
         const core = createInMemoryEngineCore();
         const routes = createEngineApiRoutes({ core: () => core });
-        expect(routes.every((route) => route.auth === 'session' && route.rateLimit === 'engine-api-ip')).toBe(true);
+        const testChat = `${ENGINE_API_PREFIX}/agents/{agentId}/test-chat`;
+        expect(routes.every((route) => route.auth === 'session')).toBe(true);
+        expect(
+            routes.filter((route) => route.path !== testChat).every((route) => route.rateLimit === 'engine-api-ip'),
+        ).toBe(true);
+        expect(routes.find((route) => route.path === testChat)?.rateLimit).toBe('engine-api-test-chat-ip');
         const stream = routes.find((route) => route.path === `${ENGINE_API_PREFIX}/events`);
         expect(stream?.headers?.safeParse({ 'last-event-id': '12' }).success).toBe(true);
         expect(stream?.headers?.safeParse({ 'last-event-id': 'x'.repeat(65) }).success).toBe(false);
@@ -87,5 +93,31 @@ describe('engine API routes', () => {
         abort.abort();
         await reader?.cancel().catch(() => undefined);
         expect(running.recorder.violations).toEqual([]);
+    });
+
+    it('limits draft test replies per client on their own budget, apart from the rest of the API', async () => {
+        const { fetch } = await owner();
+        const agent = (await (
+            await fetch(url('/agents'), {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ source: 'Ada' }),
+            })
+        ).json()) as { id: string };
+        const testOnce = async () => {
+            const response = await fetch(url(`/agents/${agent.id}/test-chat`), {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ book: 'Ada', messages: [{ role: 'user', content: 'hi' }] }),
+            });
+            await response.body?.cancel();
+            return response.status;
+        };
+        const statuses = [];
+        for (let index = 0; index <= RATE_LIMITS['engine-api-test-chat-ip'].limit; index++)
+            statuses.push(await testOnce());
+        expect(statuses.slice(0, -1).every((status) => status === 200)).toBe(true);
+        expect(statuses.at(-1)).toBe(429);
+        expect((await fetch(url('/agents'))).status).toBe(200);
     });
 });

@@ -18,6 +18,8 @@ import type {
     EngineApiResponse,
     EngineApiStreamItem,
     ReplyStreamEvent,
+    TestChatBody,
+    TestChatEvent,
 } from '@ptbk/engine-api';
 import { createInMemoryEngineApiClient } from '@ptbk/engine-api/in-memory';
 import type { InMemoryMember } from '@ptbk/engine-api/in-memory';
@@ -655,6 +657,7 @@ const SECURITY_OVERVIEW = {
 } as const;
 
 const STREAM = /^\/chats\/([\w-]+)\/messages\/([\w-]+)\/stream$/;
+const TEST_CHAT = /^\/agents\/([\w-]+)\/test-chat$/;
 const CONTENT = /^\/files\/([\w-]+)\/content$/;
 
 /** The file the drawer checks: a real PNG, previewed from the content route. */
@@ -728,20 +731,45 @@ async function serveContent(engineApi: EngineApiClient, route: Route, match: Reg
 }
 
 /** The whole reply as one SSE body: the in-memory reply generates as it is read, so reading it ends it. */
-async function replyStream(engineApi: EngineApiClient, match: RegExpExecArray, signal: AbortSignal): Promise<string> {
-    const response = await engineApi.chats.streamReply(chatId(match), messageId(match), {}, signal);
-    if (response.kind === 'problem') return '';
-    const events: string[] = [];
-    for await (const item of response.data as AsyncIterable<EngineApiStreamItem<ReplyStreamEvent>>) {
-        events.push(
+function encodeStream<Event extends { readonly type: string }>(items: readonly EngineApiStreamItem<Event>[]): string {
+    return items
+        .map((item) =>
             encodeSseMessage({
                 event: item.event.type,
                 ...(item.id === null ? {} : { id: item.id }),
                 data: JSON.stringify(item.event),
             }),
-        );
+        )
+        .join('');
+}
+
+async function collect<Event>(items: AsyncIterable<EngineApiStreamItem<Event>>): Promise<EngineApiStreamItem<Event>[]> {
+    const collected: EngineApiStreamItem<Event>[] = [];
+    for await (const item of items) collected.push(item);
+    return collected;
+}
+
+async function replyStream(engineApi: EngineApiClient, match: RegExpExecArray, signal: AbortSignal): Promise<string> {
+    const response = await engineApi.chats.streamReply(chatId(match), messageId(match), {}, signal);
+    if (response.kind === 'problem') return '';
+    return encodeStream(await collect(response.data as AsyncIterable<EngineApiStreamItem<ReplyStreamEvent>>));
+}
+
+/** The test chat's whole reply in one response: the page still reads it as a stream of deltas. */
+async function serveTestChat(
+    engineApi: EngineApiClient,
+    route: Route,
+    agentId: string,
+    body: TestChatBody,
+    signal: AbortSignal,
+): Promise<void> {
+    const response = await engineApi.testChat.stream(AgentId.parse(agentId), body, signal);
+    if (response.kind === 'problem') {
+        await fulfil(route, response, response.problem.status);
+        return;
     }
-    return events.join('');
+    const items = await collect(response.data as AsyncIterable<EngineApiStreamItem<TestChatEvent>>);
+    await route.fulfill({ status: 200, contentType: 'text/event-stream', body: encodeStream(items) });
 }
 
 /**
@@ -851,6 +879,11 @@ export async function routeFakeEngineApi(
                 contentType: 'text/event-stream',
                 body: await replyStream(engineApi, stream, signal),
             });
+            return;
+        }
+        const testChat = TEST_CHAT.exec(path);
+        if (request.method() === 'POST' && testChat !== null) {
+            await serveTestChat(engineApi, route, testChat[1] ?? '', request.postDataJSON() as TestChatBody, signal);
             return;
         }
         for (const [method, pattern, status, call] of ROUTES) {

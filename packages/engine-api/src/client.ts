@@ -245,6 +245,14 @@ export interface EngineApiClient {
         cancel(runId: Param<'cancelRun', 'runId'>, signal: AbortSignal): Result<'cancelRun'>;
         retry(runId: Param<'retryRun', 'runId'>, signal: AbortSignal): Result<'retryRun'>;
     };
+    /** `test-chat@1`: a reply to an unsaved book, which the engine does not store. Abort the signal to stop it. */
+    readonly testChat: {
+        stream(
+            agentId: Param<'testAgentDraft', 'agentId'>,
+            body: Body<'testAgentDraft'>,
+            signal: AbortSignal,
+        ): Result<'testAgentDraft'>;
+    };
     /** `triggers@1`. */
     readonly triggers: {
         list(query: Query<'listTriggers'>, signal: AbortSignal): Result<'listTriggers'>;
@@ -424,6 +432,9 @@ export function createEngineApiClient(transport: EngineApiTransport): EngineApiC
             get: (runId, signal) => call(R.getRun, { params: { runId } }, signal),
             cancel: (runId, signal) => call(R.cancelRun, { params: { runId } }, signal),
             retry: (runId, signal) => call(R.retryRun, { params: { runId } }, signal),
+        },
+        testChat: {
+            stream: (agentId, body, signal) => call(R.testAgentDraft, { params: { agentId }, body }, signal),
         },
         triggers: {
             list: (query, signal) => call(R.listTriggers, { query }, signal),

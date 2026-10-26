@@ -33,6 +33,7 @@ import {
 import type { HandlerContext, HandlerResult, Handlers } from './kit';
 import { cancelReply, startReply, streamReply } from './replies';
 import { advanceRun, queueRun, RUN_HANDLERS } from './runs';
+import { TEST_CHAT_HANDLERS } from './test-chat';
 import { TRIGGER_HANDLERS } from './triggers';
 import type { InMemoryState } from './state';
 
@@ -642,6 +643,7 @@ export const HANDLERS: Handlers = {
     ...FILE_HANDLERS,
     ...TRIGGER_HANDLERS,
     ...INTEGRATION_HANDLERS,
+    ...TEST_CHAT_HANDLERS,
 };
 
 function saveAgent(ctx: HandlerContext, agent: Agent): HandlerResult<Agent> {
