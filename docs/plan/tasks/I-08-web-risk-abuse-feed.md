@@ -2,7 +2,7 @@
 
 - **Lane:** I · **Module:** `apps/dashboard` · **Milestone:** M4
 - **Depends on:** I-05
-- **Status:** in progress (feat/i-08-web-risk-adapter)
+- **Status:** done (#112)
 - **Spec:** Abuse on our domains; Hosting and stack (Monitoring jobs); Metadata we still see
 
 ## Goal
