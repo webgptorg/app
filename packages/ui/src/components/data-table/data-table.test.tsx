@@ -9,7 +9,7 @@ import { renderUi } from '../../testing/render';
 import { createDataTableColumnHelper } from './columns';
 import { dataTableGallery } from './data-table.gallery';
 import type { DataTableColumnDef } from './columns';
-import { columnLabel, DataTable } from './data-table';
+import { columnLabel, COLUMN_MENU_MIN_ROWS, DataTable, hasOtherPages, wantsColumnMenu } from './data-table';
 import type { DataTableProps } from './data-table';
 import type { RowSelectionState } from './columns';
 import { NARROW_QUERY, useNarrow } from './use-narrow';
@@ -54,6 +54,14 @@ const AGENTS: readonly Agent[] = [
     { id: 'grace', name: 'Grace', status: 'paused', runs: 3 },
     { id: 'ada', name: 'Ada', status: 'active', runs: 12 },
     { id: 'linus', name: 'Linus', status: 'active', runs: 7 },
+];
+
+// Long enough to earn the column menu without paging.
+const MANY_AGENTS: readonly Agent[] = [
+    ...AGENTS,
+    { id: 'barbara', name: 'Barbara', status: 'active', runs: 1 },
+    { id: 'edsger', name: 'Edsger', status: 'paused', runs: 0 },
+    { id: 'margaret', name: 'Margaret', status: 'active', runs: 9 },
 ];
 
 type Props = Partial<DataTableProps<Agent>>;
@@ -158,7 +166,11 @@ describe('DataTable in server-side mode', () => {
         const storage = memoryStorage();
         const onColumnVisibilityChange = vi.fn();
         const { user, unmount } = renderUi(
-            table({ visibilityStorage: { storage, key: 'agents.columns' }, onColumnVisibilityChange }),
+            table({
+                data: MANY_AGENTS,
+                visibilityStorage: { storage, key: 'agents.columns' },
+                onColumnVisibilityChange,
+            }),
         );
         await user.click(screen.getByRole('button', { name: 'Columns' }));
         const menu = screen.getByRole('menu', { name: 'Columns' });
@@ -172,8 +184,10 @@ describe('DataTable in server-side mode', () => {
         expect(readColumnVisibility(storage, 'agents.columns')).toEqual({ runs: false });
 
         unmount();
-        renderUi(table({ visibilityStorage: { storage, key: 'agents.columns' } }));
+        renderUi(table({ data: AGENTS, visibilityStorage: { storage, key: 'agents.columns' } }));
         expect(screen.queryByRole('columnheader', { name: /Runs/ })).toBeNull();
+        // A short list keeps the menu while a column is hidden, so the reader can bring it back.
+        expect(screen.getByRole('button', { name: 'Columns' })).toBeDefined();
         expect(screen.getByRole('columnheader', { name: /Name/ })).toBeDefined();
     });
 
@@ -296,6 +310,28 @@ describe('DataTable in server-side mode', () => {
         expect(screen.getByRole('button', { name: 'Previous page' }).hasAttribute('disabled')).toBe(true);
         rerender(table({ page: { previousCursor: null, nextCursor: 'cursor-2' }, onPageChange, fetching: true }));
         expect(screen.getByRole('button', { name: 'Next page' }).hasAttribute('disabled')).toBe(true);
+    });
+
+    it('shows no paging on a single page', () => {
+        const { rerender } = renderUi(
+            table({ page: { previousCursor: null, nextCursor: null, total: 3 }, onPageChange: vi.fn() }),
+        );
+        expect(screen.queryByRole('navigation', { name: 'Pagination' })).toBeNull();
+        expect(screen.queryByText('3 items')).toBeNull();
+        rerender(table({ page: { previousCursor: 'cursor-1', nextCursor: null }, onPageChange: vi.fn() }));
+        expect(screen.getByRole('navigation', { name: 'Pagination' })).toBeDefined();
+    });
+
+    it('offers the column menu only on long, paged, filtered or narrowed lists', () => {
+        const { rerender } = renderUi(table({ data: AGENTS.slice(0, 2), columnFilters: [] }));
+        expect(screen.queryByRole('button', { name: 'Columns' })).toBeNull();
+        rerender(
+            table({ data: AGENTS, page: { previousCursor: null, nextCursor: 'cursor-2' }, onPageChange: vi.fn() }),
+        );
+        expect(screen.getByRole('button', { name: 'Columns' })).toBeDefined();
+        // A search outside the table narrows the rows: the menu stays instead of blinking away.
+        rerender(table({ data: AGENTS.slice(0, 1) }));
+        expect(screen.getByRole('button', { name: 'Columns' })).toBeDefined();
     });
 
     it('reports the intent to change page on hover and focus, for prefetching', async () => {
@@ -548,6 +584,32 @@ describe('DataTable in client-side mode', () => {
         expect(bodyRowNames()).toEqual(['Linus']);
         await user.type(screen.getByRole('searchbox', { name: 'Name' }), 'zz');
         expect(screen.getByText('No results match your filters')).toBeDefined();
+    });
+});
+
+describe('DataTable controls', () => {
+    const short = {
+        hideableColumns: 3,
+        hiddenColumns: 0,
+        rows: COLUMN_MENU_MIN_ROWS - 1,
+        paged: false,
+        filtered: false,
+    };
+
+    it('want a column menu only when a column can hide and the list is long, paged, filtered or narrowed', () => {
+        expect(wantsColumnMenu(short)).toBe(false);
+        expect(wantsColumnMenu({ ...short, rows: COLUMN_MENU_MIN_ROWS })).toBe(true);
+        expect(wantsColumnMenu({ ...short, paged: true })).toBe(true);
+        expect(wantsColumnMenu({ ...short, filtered: true })).toBe(true);
+        expect(wantsColumnMenu({ ...short, hiddenColumns: 1 })).toBe(true);
+        expect(wantsColumnMenu({ ...short, hideableColumns: 0, rows: 500, paged: true })).toBe(false);
+    });
+
+    it('page only when another page exists', () => {
+        expect(hasOtherPages(undefined)).toBe(false);
+        expect(hasOtherPages({ previousCursor: null, nextCursor: null })).toBe(false);
+        expect(hasOtherPages({ previousCursor: 'a', nextCursor: null })).toBe(true);
+        expect(hasOtherPages({ previousCursor: null, nextCursor: 'b' })).toBe(true);
     });
 });
 

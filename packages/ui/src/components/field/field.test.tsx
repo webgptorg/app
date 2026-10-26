@@ -47,4 +47,14 @@ describe('Field', () => {
         );
         expect(screen.getByRole('textbox', { name: 'Title' }).hasAttribute('aria-invalid')).toBe(false);
     });
+
+    it('can keep its label for assistive technology only', () => {
+        renderUi(
+            <Field label="Message" labelHidden>
+                {(control) => <Input {...control} />}
+            </Field>,
+        );
+        expect(screen.getByRole('textbox', { name: 'Message' })).toBeDefined();
+        expect(screen.getByText('Message').className).toContain('sr-only');
+    });
 });
