@@ -91,6 +91,44 @@ run "records_dns_only_in_their_zones" {
   }
 }
 
+run "no_psl_record_before_the_psl_pull_request" {
+  command = plan
+
+  assert {
+    condition     = length([for record in cloudflare_dns_record.this : record if startswith(record.name, "_psl.")]) == 0
+    error_message = "_psl is published only once the PSL pull request exists."
+  }
+}
+
+run "psl_record_names_the_psl_pull_request" {
+  command = plan
+
+  variables {
+    psl_pull_request = "https://github.com/publicsuffix/list/pull/2345"
+  }
+
+  assert {
+    condition = (
+      cloudflare_dns_record.this["engine-psl"].name == "_psl.engines.example"
+      && cloudflare_dns_record.this["engine-psl"].type == "TXT"
+      && cloudflare_dns_record.this["engine-psl"].content == "\"https://github.com/publicsuffix/list/pull/2345\""
+      && cloudflare_dns_record.this["engine-psl"].zone_id == "11111111111111111111111111111111"
+      && cloudflare_dns_record.this["engine-psl"].proxied == false
+    )
+    error_message = "_psl.<engine domain> is a DNS-only TXT record in the engine zone holding the PSL pull request URL."
+  }
+}
+
+run "rejects_a_psl_value_that_is_not_a_psl_pull_request" {
+  command = plan
+
+  variables {
+    psl_pull_request = "https://github.com/someone/list/pull/2345"
+  }
+
+  expect_failures = [var.psl_pull_request]
+}
+
 run "relays_under_the_engine_domain_use_the_engine_zone" {
   command = plan
 
@@ -183,13 +221,14 @@ run "rejects_placeholders" {
     engine_domain    = "<staging-engine-domain>"
     security_contact = "<security-contact>"
     ops_email        = "<ops-email>"
+    psl_pull_request = "<psl-pull-request>"
     relay_dns_mode   = "records"
     relays = {
       relay-fsn = { ipv4 = "<relay-fsn-ipv4>", ipv6 = "<relay-fsn-ipv6>", in_rotation = true }
     }
   }
 
-  expect_failures = [var.account_id, var.engine_domain, var.security_contact, var.ops_email, var.relays]
+  expect_failures = [var.account_id, var.engine_domain, var.security_contact, var.ops_email, var.psl_pull_request, var.relays]
 }
 
 run "rejects_an_empty_wildcard" {

@@ -50,6 +50,12 @@ locals {
     }
   }
 
+  # The Public Suffix List maintainers check that _psl.<domain> names the pull request that adds it, on that request
+  # and on every later change to the entry, so the record stays for as long as the entry does.
+  engine_psl_records = var.psl_pull_request == null ? {} : {
+    "engine-psl" = { zone = "engine", name = "_psl.${var.engine_domain}", type = "TXT", content = "\"${var.psl_pull_request}\"" }
+  }
+
   dmarc = join("; ", compact([
     "v=DMARC1",
     "p=${var.dmarc_policy}",
@@ -71,6 +77,7 @@ locals {
       local.relay_records,
       local.engine_caa_records,
       local.engine_no_mail_records,
+      local.engine_psl_records,
       local.email_records,
       local.extra_records,
     ) :

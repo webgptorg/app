@@ -2,7 +2,7 @@
 
 - **Lane:** I · **Module:** `apps/dashboard`, `apps/relay`, `infra/cloudflare`, `docs/runbooks` · **Milestone:** M4
 - **Depends on:** R-04, D-04, D-07, D-09, I-02, I-04
-- **Status:** in progress (code merged in #81 and #94; the takedown runbook and the `_psl` TXT record remain)
+- **Status:** done (#110)
 - **Spec:** Abuse on our domains (all items); Relay and tunnel (Fairness and DoS on a shared relay); Interfaces (draft) 2 (`suspended`); Hosting and stack (Monitoring jobs; CT monitor; Known hard problems, Let's Encrypt rate limits); Metadata we still see
 
 ## Goal
@@ -24,7 +24,7 @@ Anyone can modify the open-source engine and serve anything on `<engineId>.<engi
   - **CT watch**: every 15 minutes query crt.sh and Cert Spotter for the engine domain; alert on a wildcard certificate, a non-Let's Encrypt issuer, a hostname that is not a registered engine hostname, or an unusual issuance count for one engine. Two sources, so one being down only degrades. (Engines run their own per-key CT check; this one is ours.)
   - **Public-face check**: visit each active engine hostname anonymously, without cookies or redirects followed off-host, and compare the response with the known engine sign-in page fingerprint; record `match`, `mismatch` or `unreachable`; alert on `mismatch`; never auto-suspend. Spread engines across runs to stay within Workers subrequest limits; each engine at least daily.
   - **Abuse feeds**: an `AbuseFeed` port with adapters for the providers the team picks (see open points); alert when an engine hostname appears.
-- **PSL**: add the `_psl` TXT record through I-02's code, open the pull request to `publicsuffix/list`, record its URL in the runbook; request a Let's Encrypt rate-limit increase for the engine domain.
+- **PSL**: add the `_psl` TXT record through I-02's code, open the pull request to `publicsuffix/list`, record its URL in the runbook (`psl_pull_request` in `infra/cloudflare` publishes the record once the pull request exists); request a Let's Encrypt rate-limit increase for the engine domain.
 
 ## Out of scope
 
@@ -48,15 +48,15 @@ Anyone can modify the open-source engine and serve anything on `<engineId>.<engi
 
 ## Apply (needs credentials)
 
-Tracked in [apply.md](../apply.md). Needs the engine domain, the `abuse@` mailbox and the abuse-feed vendor (plan's "Still needed" table).
+Tracked in [apply.md](../apply.md). Needs the engine domain, the `abuse@` mailbox and the Google Web Risk key (plan's "Still needed" table).
 
 - `/abuse` page live on staging in both languages.
 - PSL pull request (`_psl` TXT record and the PR) opened and its URL recorded; Let's Encrypt rate-limit request filed.
-- Abuse-feed key (and the optional Cert Spotter key) set as Worker secrets; Search Console and Safe Browsing alerts set up per the runbook.
+- Google Web Risk key (and the optional Cert Spotter key) set as Worker secrets; Search Console and Safe Browsing alerts set up per the runbook.
 
 ## Risks and open points
 
 - **Engine domain name** is undecided; the PSL request and production CT watch wait on it.
 - The engine sign-in page fingerprint must come from the engine team (a stable marker per engine version); use the mock engine's page until then.
-- Abuse feed providers: Google Safe Browsing's API is for non-commercial use (Web Risk is the commercial one), PhishTank's API registration has been unreliable, Netcraft is a commercial service. Team to choose; Search Console and Safe Browsing email alerts for the domain are manual setup steps listed in the runbook.
+- Abuse feed providers: Google Safe Browsing's API is for non-commercial use (Web Risk is the commercial one), PhishTank's API registration has been unreliable, Netcraft is a commercial service. Decided 2026-10-26 (Seb): Google Web Risk (plan, Decisions); its `AbuseFeed` adapter is not written yet. Search Console and Safe Browsing email alerts for the domain are manual setup steps listed in the runbook.
 - Public agents on the default engine domain (spec open question) change how noisy the public-face check is.
