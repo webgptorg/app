@@ -125,15 +125,12 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
-  # The engine API conformance suite (C-05) against the mock engine behind a real relay, over TLS, as a browser would
-  # reach it. `*.localhost` names resolve to loopback (systemd-resolved), so no DNS or hosts file is touched.
+  # Every conformance suite against mock engines the harness starts: it plays the dashboard, the relays and the release
+  # store on loopback and reaches the engine API through its fake relay, over TLS, as a browser would. `*.localhost`
+  # names resolve to loopback (systemd-resolved), so no DNS or hosts file is touched.
   conformance:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
-    env:
-      ENGINE_DOMAIN: engine.localhost
-      # Not RELAY_*: the relay refuses environment names it does not know.
-      CONFORMANCE_RELAY: relay.localhost
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -146,60 +143,21 @@ jobs:
         with:
           node-version-file: .nvmrc
       - run: bun install --frozen-lockfile
-      - name: Build the relay, the mock engine and the conformance CLI
+      - name: Build the mock engine and the conformance CLI
         run: |
-          bun run --filter @ptbk/relay build
           bun run --filter @ptbk/mock-engine build
           bun run --filter @ptbk/conformance build
-      - name: Start a relay and the mock engine (seed 1)
-        run: |
-          STACK="$RUNNER_TEMP/conformance"
-          install -d -m 700 "$STACK" "$STACK/engine"
-          cd "$STACK"
-          # A throwaway CA for the relay's own TLS listener; the mock engine trusts it for the tunnel.
-          openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -days 1 -subj /CN=conformance-relay-ca \
-            -addext basicConstraints=critical,CA:TRUE -addext keyUsage=critical,keyCertSign \
-            -keyout relay-ca.key -out relay-ca.pem
-          openssl req -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -subj "/CN=$CONFORMANCE_RELAY" -keyout relay.key -out relay.csr
-          printf 'subjectAltName=DNS:%s\nextendedKeyUsage=serverAuth\n' "$CONFORMANCE_RELAY" > relay.ext
-          openssl x509 -req -in relay.csr -CA relay-ca.pem -CAkey relay-ca.key -CAcreateserial -days 1 -extfile relay.ext -out relay.pem
-          (cd "$GITHUB_WORKSPACE/apps/mock-engine" && PTBK_DATA_DIR="$STACK/engine" PTBK_ENGINE_DOMAIN="$ENGINE_DOMAIN" bun run --silent identity) > identity.json
-          node -e 'const i = require("./identity.json"); require("fs").writeFileSync("registry.json", JSON.stringify({ v: 1, engines: [{ engineId: i.engineId, enginePublicKey: i.enginePublicKey, hostnames: [i.hostname], claims: [], status: "active" }] }))'
-          RELAY_HOSTNAME="$CONFORMANCE_RELAY" RELAY_LISTEN_HOST=127.0.0.1 RELAY_LISTEN_PORT=8443 RELAY_ENGINE_DOMAIN="$ENGINE_DOMAIN" \
-            RELAY_TLS_CERT_FILE=relay.pem RELAY_TLS_KEY_FILE=relay.key RELAY_REGISTRY_KIND=static RELAY_REGISTRY_FILE=registry.json \
-            nohup node "$GITHUB_WORKSPACE/apps/relay/dist/main.mjs" > relay.log 2>&1 &
-          PTBK_DATA_DIR="$STACK/engine" PTBK_ENGINE_DOMAIN="$ENGINE_DOMAIN" PTBK_RELAYS="wss://$CONFORMANCE_RELAY:8443" \
-            MOCK_EXTRA_CA_FILE=relay-ca.pem MOCK_SEED=1 MOCK_SCENARIO=small-team MOCK_CONTROL=enabled MOCK_CONTROL_PORT=4480 \
-            nohup node "$GITHUB_WORKSPACE/apps/mock-engine/dist/main.mjs" > mock-engine.log 2>&1 &
-          hostname=$(node -p 'require("./identity.json").hostname')
-          for _ in $(seq 60); do
-            status=$(curl -s -o /dev/null -w '%{http_code}' --cacert engine/dev-ca/ca-cert.pem "https://$hostname:8443/api/v1/engine" || true)
-            if [ "$status" = 401 ]; then exit 0; fi
-            sleep 1
-          done
-          echo "the mock engine did not answer through the relay" >&2
-          exit 1
-      - name: Run the conformance suite
-        run: |
-          STACK="$RUNNER_TEMP/conformance"
-          hostname=$(node -p "require('$STACK/identity.json').hostname")
-          key=$(node -p "require('$STACK/identity.json').enginePublicKey")
-          NODE_EXTRA_CA_CERTS="$STACK/engine/dev-ca/ca-cert.pem" node packages/conformance/dist/ptbk-conformance.js \
-            --base-url "https://$hostname:8443" --mock-control-url http://127.0.0.1:4480 --engine-public-key="$key" \
-            --seed 1 --report junit --out conformance-report.xml
-      - name: Run the platform suites against mock engines the harness starts
+      # A seeded team, so the engine API checks that need existing data (an infected file, an ended trigger) have it.
+      - name: Run every suite against mock engines the harness starts
         run: |
           node packages/conformance/dist/ptbk-conformance.js \
-            --engine-cmd "MOCK_SCENARIO=empty MOCK_HEARTBEAT_INTERVAL_S=2 exec node $GITHUB_WORKSPACE/apps/mock-engine/dist/main.mjs" \
-            --heartbeat-interval-s 2 --mock-control --seed 1 --report junit --out conformance-platform-report.xml
+            --engine-cmd "MOCK_SCENARIO=small-team MOCK_SEED=1 MOCK_HEARTBEAT_INTERVAL_S=2 exec node $GITHUB_WORKSPACE/apps/mock-engine/dist/main.mjs" \
+            --heartbeat-interval-s 2 --mock-control --seed 1 --report junit --out conformance-report.xml
       - name: Check the production heartbeat cadence (60 s) of a mock engine the harness starts
         run: |
           node packages/conformance/dist/ptbk-conformance.js \
             --engine-cmd "MOCK_SCENARIO=empty exec node $GITHUB_WORKSPACE/apps/mock-engine/dist/main.mjs" \
             --filter heartbeat.cadence.interval --seed 1 --report junit --out conformance-cadence-report.xml
-      - name: Show the stack's logs
-        if: failure()
-        run: tail -n 200 "$RUNNER_TEMP/conformance/relay.log" "$RUNNER_TEMP/conformance/mock-engine.log"
       - name: Upload the JUnit report
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -207,7 +165,6 @@ jobs:
           name: conformance-report
           path: |
             conformance-report.xml
-            conformance-platform-report.xml
             conformance-cadence-report.xml
           retention-days: 7
           if-no-files-found: ignore

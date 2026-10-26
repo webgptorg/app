@@ -1,4 +1,5 @@
 import type { PlatformSuite } from './harness/platform';
+import { ENGINE_API_PLATFORM_SUITE } from './suites/engine-api';
 import { HEARTBEAT_SUITE } from './suites/heartbeat';
 import { REGISTRATION_SUITE } from './suites/registration';
 import { TUNNEL_SUITE } from './suites/tunnel';
@@ -56,10 +57,16 @@ export { CONTRACT_TIMING } from './tunnel/runtime';
 export { SessionCommandError, createSessionCommandTargetFactory, parseSessionOutput } from './targets/session-command';
 export type { EngineEndpoints, EngineRoute, UiLoaderPlatformSuiteOptions } from './suites/ui-loader';
 export { createUiLoaderPlatformSuite } from './suites/ui-loader';
-export { HEARTBEAT_SUITE, REGISTRATION_SUITE, TUNNEL_SUITE, UI_LOADER_PLATFORM_SUITE };
+export type { EngineApiPlatformSuiteOptions } from './suites/engine-api';
+export { createEngineApiPlatformSuite } from './suites/engine-api';
+export { ENGINE_API_PLATFORM_SUITE, HEARTBEAT_SUITE, REGISTRATION_SUITE, TUNNEL_SUITE, UI_LOADER_PLATFORM_SUITE };
 
-/** Every suite that starts the engine itself and acts as the platform around it, in the order they run. */
+/**
+ * Every suite that starts the engine itself and acts as the platform around it, in the order they run: the engine API
+ * against one engine behind the harness's relay, then the suites that act as the platform's peers.
+ */
 export const PLATFORM_SUITES: readonly PlatformSuite[] = [
+    ENGINE_API_PLATFORM_SUITE,
     REGISTRATION_SUITE,
     HEARTBEAT_SUITE,
     TUNNEL_SUITE,

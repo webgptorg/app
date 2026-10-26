@@ -20,7 +20,7 @@ With `--engine-cmd` the CLI refuses `--suite engine-api` (exit 2): the engine AP
 - **Runner**: the version probe runs before a suite's first selected check, so a run that selects no `engine-api` check starts no shared engine; an after-suite hook for the teardown.
 - **CLI**: `--suite engine-api` with `--engine-cmd`; `--no-gateway` applies to it. `--engine-public-key`, `--target-module` and `--mock-control-url` are refused with `--engine-cmd` (the harness knows the key and gets sessions from `--mock-control` or `--engine-session-cmd`). `--base-url` mode is unchanged.
 - **Tests**: a CLI test for the combined command; self-test runs of the combined suites against the mock engine with `--mock-control` and with `--engine-session-cmd`; harness tests for suite fixtures (shared once, torn down after the suite, a failed open, engine output on failure). Package coverage stays at or above 90% for lines and branches.
-- **CI**: the conformance job runs the platform and engine API suites in one step. The engine API step behind the real relay stays as an integration check of the relay with the mock.
+- **CI**: the conformance job runs every suite in one step against mock engines the harness starts (`MOCK_SCENARIO=small-team`, so the checks that need existing data have it), plus the 60 s cadence check. The `--base-url` step behind a real relay goes: the fake relay reaches the API over the same TLS-in-a-tunnel path, the relay has its own tests and e2e, and the CLI's `--base-url` mode keeps its unit tests.
 - **Docs**: the four guides above give one command plus the dev stack check as the definition of done; the conformance README describes the engine API suite in harness runs.
 
 ## Out of scope
@@ -37,7 +37,7 @@ With `--engine-cmd` the CLI refuses `--suite engine-api` (exit 2): the engine AP
 
 ## Acceptance criteria
 
-- [ ] `--engine-cmd … --mock-control --suite engine-api,registration,heartbeat,tunnel,ui-loader` passes against the mock engine (CLI test and CI).
+- [ ] `--engine-cmd … --mock-control --suite engine-api,registration,heartbeat,tunnel,ui-loader` passes against the mock engine (CLI test and the CI step).
 - [ ] The engine API suite passes through the harness against the mock with `--mock-control` and with `--engine-session-cmd`; `--no-gateway` skips the gateway check.
 - [ ] `--base-url` mode behaves as before; its tests are unchanged.
 - [ ] The package's coverage stays at or above 90% for lines and branches.
@@ -48,3 +48,4 @@ With `--engine-cmd` the CLI refuses `--suite engine-api` (exit 2): the engine AP
 ## Risks and open points
 
 - A full run at the default 60 s heartbeat cadence takes longer than one with a development interval; the CI job keeps the short interval for everything but the cadence check.
+- `engine-api.cross-member.private-resources` skips in harness runs: which resources stay private to one member is engine policy that only a target module names (`memberPrivateResources`). The guide now lists it as an allowed skip. A launch-contract way to declare it would let the harness run it too.

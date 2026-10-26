@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import type { Hostname } from '@ptbk/protocol';
 import { Hostname as HostnameSchema } from '@ptbk/protocol';
 
-import type { CheckOutcome, CheckResult, ConformanceReport } from '../../src/index';
+import type { BaseCheckContext, CheckOutcome, CheckResult, ConformanceReport } from '../../src/index';
 import { runChecks } from '../../src/index';
 import { createTestCa } from '../pki/test-ca';
 import type { EngineCommand, EngineProcess } from './engine-process';
@@ -51,7 +51,8 @@ const TEARDOWN_TIMEOUT_MS = 30_000;
 
 /**
  * Runs platform suites: for each check a fresh scope with its own engines, fake servers and directories, all torn
- * down when the check ends, whatever its outcome. One ephemeral CA serves the whole run.
+ * down when the check ends, whatever its outcome. A suite fixture gets a scope of its own that lasts until the
+ * suite's last check. One ephemeral CA serves the whole run.
  */
 export async function runPlatformConformance(options: RunPlatformOptions): Promise<ConformanceReport> {
     const heartbeatIntervalMs = options.expectations?.heartbeatIntervalMs ?? DEFAULT_HEARTBEAT_INTERVAL_MS;
@@ -69,6 +70,105 @@ export async function runPlatformConformance(options: RunPlatformOptions): Promi
     await writeFile(caFile, ca.certPem, { mode: 0o600 });
     let checkIndex = 0;
     let dirIndex = 0;
+    const suiteFixtures = new Map<string, SuiteFixture>();
+
+    const openScope = (base: BaseCheckContext, dirName: string): HarnessScope => {
+        const scopeDir = join(runDir, dirName);
+        const engines: EngineProcess[] = [];
+        const fixtures: Closable[] = [];
+        const tempDir = async (label: string): Promise<string> => {
+            await mkdir(scopeDir, { recursive: true, mode: 0o700 });
+            const dir = join(scopeDir, `${String(++dirIndex)}-${label.replace(/[^a-z0-9-]/gi, '_')}`);
+            await mkdir(dir, { mode: 0o700 });
+            return dir;
+        };
+        const context: PlatformCheckContext = {
+            ...base,
+            ca,
+            engineDomain: HARNESS_ENGINE_DOMAIN,
+            expectations,
+            tempDir,
+            async engine(engineOptions = {}) {
+                const dataDir = engineOptions.dataDir ?? join(await tempDir('engine'), 'data');
+                const engineSpecific = (await options.targets?.engineEnv()) ?? {};
+                const engine = createEngineProcess({
+                    command: options.command,
+                    dataDir,
+                    ...(options.stopGraceMs === undefined ? {} : { stopGraceMs: options.stopGraceMs }),
+                    env: engineEnvironment(options.parentEnv ?? process.env, engineSpecific, {
+                        PTBK_DATA_DIR: dataDir,
+                        PTBK_MODE: 'tunnel',
+                        PTBK_ENGINE_DOMAIN: HARNESS_ENGINE_DOMAIN,
+                        NODE_EXTRA_CA_CERTS: caFile,
+                        ...engineOptions.env,
+                    }),
+                });
+                engines.push(engine);
+                return engine;
+            },
+            use(fixture) {
+                fixtures.push(fixture);
+                return fixture;
+            },
+            suiteFixture<T>(suite: string, open: (scope: PlatformCheckContext) => Promise<T>) {
+                // One fixture per suite, whatever later callers pass as `open`, so its type is the first caller's.
+                return suiteFixtureFor(base, suite, open).value as Promise<T>;
+            },
+            engineTarget: (engine, endpoint) => options.targets?.target(engine, endpoint) ?? null,
+            engineCertificateAuthority: (engine) =>
+                options.targets?.certificateAuthority?.(engine) ?? Promise.resolve(null),
+        };
+        return {
+            context,
+            engines,
+            stopEngines: () => Promise.all(engines.map((engine) => engine.stop())).then(() => undefined),
+            async close() {
+                for (const fixture of fixtures.reverse()) await bounded(fixture.close());
+                await removeTree(scopeDir);
+            },
+        };
+    };
+
+    const suiteFixtureFor = (base: BaseCheckContext, suite: string, open: SuiteFixtureOpen): SuiteFixture => {
+        const existing = suiteFixtures.get(suite);
+        if (existing !== undefined) return existing;
+        const cleanups: ((signal: AbortSignal) => Promise<unknown>)[] = [];
+        // The run's signal, not the asking check's: the fixture outlives that check, and its timeout.
+        const scope = openScope(
+            {
+                random: base.random,
+                runId: base.runId,
+                signal: options.signal,
+                resources: { defer: (cleanup) => cleanups.push(cleanup) },
+            },
+            `suite-${suite.replace(/[^a-z0-9-]/gi, '_')}`,
+        );
+        const fixture: SuiteFixture = {
+            scope,
+            value: Promise.resolve().then(() => open(scope.context)),
+            async close() {
+                for (const cleanup of cleanups.reverse()) {
+                    await bounded(
+                        Promise.resolve()
+                            .then(() => cleanup(AbortSignal.timeout(TEARDOWN_TIMEOUT_MS)))
+                            .then(() => undefined),
+                    );
+                }
+                await scope.stopEngines();
+                await scope.close();
+            },
+        };
+        suiteFixtures.set(suite, fixture);
+        return fixture;
+    };
+
+    const closeSuiteFixture = async (suite: string): Promise<void> => {
+        const fixture = suiteFixtures.get(suite);
+        if (fixture === undefined) return;
+        suiteFixtures.delete(suite);
+        await fixture.value.catch(() => undefined);
+        await fixture.close();
+    };
 
     try {
         return await runChecks<PlatformCheckContext>({
@@ -80,63 +180,59 @@ export async function runPlatformConformance(options: RunPlatformOptions): Promi
             ...(options.onResult === undefined ? {} : { onResult: options.onResult }),
             ...(options.filter === undefined ? {} : { filter: options.filter }),
             timeoutFor: (check) => (check as PlatformCheck).timeoutMs?.(expectations) ?? 0,
+            afterSuite: (suite) => closeSuiteFixture(suite.id),
             scope: (base) => {
-                const checkDir = join(runDir, `check-${String(++checkIndex)}`);
-                const engines: EngineProcess[] = [];
-                const fixtures: Closable[] = [];
-                const tempDir = async (label: string): Promise<string> => {
-                    await mkdir(checkDir, { recursive: true, mode: 0o700 });
-                    const dir = join(checkDir, `${String(++dirIndex)}-${label.replace(/[^a-z0-9-]/gi, '_')}`);
-                    await mkdir(dir, { mode: 0o700 });
-                    return dir;
-                };
+                const scope = openScope(base, `check-${String(++checkIndex)}`);
+                const shared = new Set<SuiteFixture>();
                 const context: PlatformCheckContext = {
-                    ...base,
-                    ca,
-                    engineDomain: HARNESS_ENGINE_DOMAIN,
-                    expectations,
-                    tempDir,
-                    async engine(engineOptions = {}) {
-                        const dataDir = engineOptions.dataDir ?? join(await tempDir('engine'), 'data');
-                        const engineSpecific = (await options.targets?.engineEnv()) ?? {};
-                        const engine = createEngineProcess({
-                            command: options.command,
-                            dataDir,
-                            ...(options.stopGraceMs === undefined ? {} : { stopGraceMs: options.stopGraceMs }),
-                            env: engineEnvironment(options.parentEnv ?? process.env, engineSpecific, {
-                                PTBK_DATA_DIR: dataDir,
-                                PTBK_MODE: 'tunnel',
-                                PTBK_ENGINE_DOMAIN: HARNESS_ENGINE_DOMAIN,
-                                NODE_EXTRA_CA_CERTS: caFile,
-                                ...engineOptions.env,
-                            }),
-                        });
-                        engines.push(engine);
-                        return engine;
+                    ...scope.context,
+                    suiteFixture<T>(suite: string, open: (scope: PlatformCheckContext) => Promise<T>) {
+                        const fixture = suiteFixtureFor(base, suite, open);
+                        shared.add(fixture);
+                        return fixture.value as Promise<T>;
                     },
-                    use(fixture) {
-                        fixtures.push(fixture);
-                        return fixture;
-                    },
-                    engineTarget: (engine, endpoint) => options.targets?.target(engine, endpoint) ?? null,
-                    engineCertificateAuthority: (engine) =>
-                        options.targets?.certificateAuthority?.(engine) ?? Promise.resolve(null),
                 };
                 return {
                     context,
                     async finish(outcome: CheckOutcome) {
-                        await Promise.all(engines.map((engine) => engine.stop()));
-                        const engineOutput = outcome.kind === 'fail' ? outputOf(engines) : undefined;
-                        for (const fixture of fixtures.reverse()) await bounded(fixture.close());
-                        await removeTree(checkDir);
+                        await scope.stopEngines();
+                        const engineOutput =
+                            outcome.kind === 'fail'
+                                ? outputOf([
+                                      ...scope.engines.map((engine) => ({ engine, label: '' })),
+                                      ...[...shared].flatMap((fixture) =>
+                                          fixture.scope.engines.map((engine) => ({
+                                              engine,
+                                              label: ', shared by the suite',
+                                          })),
+                                      ),
+                                  ])
+                                : undefined;
+                        await scope.close();
                         return engineOutput === undefined ? {} : { engineOutput };
                     },
                 };
             },
         });
     } finally {
+        for (const suite of [...suiteFixtures.keys()]) await closeSuiteFixture(suite);
         await removeTree(runDir);
     }
+}
+
+type SuiteFixtureOpen = (scope: PlatformCheckContext) => Promise<unknown>;
+
+interface HarnessScope {
+    readonly context: PlatformCheckContext;
+    readonly engines: readonly EngineProcess[];
+    stopEngines(): Promise<void>;
+    /** Closes the scope's fixtures, newest first, and removes its directories. */
+    close(): Promise<void>;
+}
+
+interface SuiteFixture extends Closable {
+    readonly scope: HarnessScope;
+    readonly value: Promise<unknown>;
 }
 
 /**
@@ -153,14 +249,14 @@ async function removeTree(path: string): Promise<void> {
     await rm(path, { recursive: true, force: true });
 }
 
-function outputOf(engines: readonly EngineProcess[]): string | undefined {
+function outputOf(engines: readonly { readonly engine: EngineProcess; readonly label: string }[]): string | undefined {
     if (engines.length === 0) return undefined;
     return engines
-        .map((engine, index) => {
+        .map(({ engine, label }, index) => {
             const exits = engine.exits.map((exit) => exit.signal ?? String(exit.code)).join(', ');
             const logs = engine.logs();
             const tail = logs.length > OUTPUT_TAIL_CHARS ? `…${logs.slice(-OUTPUT_TAIL_CHARS)}` : logs;
-            return `--- engine ${String(index + 1)}: ${String(engine.starts)} starts, exits: ${exits || 'none'} ---\n${tail}`;
+            return `--- engine ${String(index + 1)}${label}: ${String(engine.starts)} starts, exits: ${exits || 'none'} ---\n${tail}`;
         })
         .join('\n');
 }

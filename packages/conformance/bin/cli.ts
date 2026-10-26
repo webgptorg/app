@@ -5,7 +5,9 @@ import { parseArgs } from 'node:util';
 
 import {
     DEFAULT_HEARTBEAT_INTERVAL_MS,
+    ENGINE_API_PLATFORM_SUITE,
     PLATFORM_SUITES,
+    createEngineApiPlatformSuite,
     createMockEngineTargetFactory,
     createSessionCommandTargetFactory,
     runPlatformConformance,
@@ -23,18 +25,21 @@ import {
 export const USAGE = `Usage: ptbk-conformance --base-url <https://engine> [options]
        ptbk-conformance --engine-cmd <shell command> [options]
 
-Credentials (one of):
+Credentials against --base-url (one of):
   --target-module <file>      A module exporting createConformanceTarget({ baseUrl, fetch }) → ConformanceTarget
   --mock-control-url <url>    The mock engine's control listener (development only)
   PTBK_CONFORMANCE_OWNER_COOKIE=<name=value>
                               An owner session cookie; checks that need members then skip
+  --engine-public-key <key>   The engine's Ed25519 public key (base64url), to check its engine ID
 
-Starting the engine (the harness plays the dashboard and the rest of the platform):
-  --engine-cmd <command>      Starts the engine under test (run by /bin/sh), once per check and scenario
+Starting the engine (the harness plays the dashboard, the relays and the release store):
+  --engine-cmd <command>      Starts the engine under test (run by /bin/sh): one engine for the engine-api suite,
+                              one or more per check of the other suites
   --engine-cwd <dir>          Its working directory (default: the current one)
   --heartbeat-interval-s <n>  The interval the engine was told to use (default 60; anything else skips the cadence check)
   --engine-session-cmd <cmd>  The engine's conformance-session command, run with --subject owner|member
-                              [--permissions a,b]; it prints {"cookie"}, {"bearer"} or null as JSON
+                              [--permissions a,b]; it prints {"cookie"}, {"bearer"} or null as JSON. Without it
+                              or --mock-control, the engine API checks that need a session skip
   --engine-ca-file <file>     The CA the engine's own certificates chain to under test ({dataDir} for its data
                               directory); with --engine-session-cmd
   --mock-control              The engine is the mock engine: sessions from its dev-only control listener
@@ -46,7 +51,6 @@ Options:
   --filter <text>             Run only checks whose ID contains this text (repeatable)
   --report json|junit         Report format (default json)
   --out <file>                Write the report here instead of stdout
-  --engine-public-key <key>   The engine's Ed25519 public key (base64url), to check its engine ID
   --no-gateway                The API runs without the engine gateway; gateway checks skip
   --seed <n>                  Repeat a run's test data (the report records the seed)
   --timeout-ms <n>            Per check (default 120000)
@@ -132,11 +136,18 @@ async function run(argv: readonly string[], io: CliIo): Promise<number> {
     const engineCmd = values['engine-cmd'];
     if (typeof engineCmd === 'string') {
         if (values['base-url'] !== undefined) throw new UsageError('give either --base-url or --engine-cmd');
-        const suites = pick(suiteIds, PLATFORM_SUITES, (id) =>
-            ALL_SUITES.some((suite) => suite.id === id)
-                ? `${id} runs against --base-url; with --engine-cmd the platform suites reach the engine API through their fake relay where they need it`
-                : `unknown suite ${id}`,
+        for (const flag of ['target-module', 'mock-control-url', 'engine-public-key'] as const) {
+            if (values[flag] !== undefined) {
+                throw new UsageError(
+                    `--${flag} is for --base-url; with --engine-cmd the harness knows the engine's key and gets sessions from --engine-session-cmd or --mock-control`,
+                );
+            }
+        }
+        const engineApi = values['no-gateway'] === true ? createEngineApiPlatformSuite({ gateway: false }) : null;
+        const available = PLATFORM_SUITES.map((suite) =>
+            engineApi !== null && suite === ENGINE_API_PLATFORM_SUITE ? engineApi : suite,
         );
+        const suites = pick(suiteIds, available, (id) => `unknown suite ${id}`);
         const intervalS =
             values['heartbeat-interval-s'] === undefined
                 ? DEFAULT_HEARTBEAT_INTERVAL_MS / 1000

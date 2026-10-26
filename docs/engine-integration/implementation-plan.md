@@ -210,21 +210,22 @@ The engine is `apps/agents-server` in `webgptorg/promptbook`: a Next.js app rout
 - Start with the core groups (me, engine, agents, chats with SSE replies, secrets, security, audit, events, settings, API tokens, passkeys, sessions, folders, members, activity). Answer `draft` routes with 404 `not-found` if you have no behaviour for them.
 - Then the capabilities you choose to ship (`runs@1`, `files@1`, `triggers@1`, `integrations@1`), each advertised in `GET /engine` only when all its routes work; every route of an unadvertised one answers 404 `capability-not-supported`.
 - The audit hash chain covering every field, `target.name` and `details` included, and `GET /audit/verify`.
-- A conformance target module that runs your `conformance-session` command (phase 6); [testing-against-the-platform.md](testing-against-the-platform.md#against-a-running-engine-the-engine-api-suite) has one.
+- Optional: a conformance target module that runs your `conformance-session` command (phase 6), for runs against an engine you started yourself; [testing-against-the-platform.md](testing-against-the-platform.md#against-a-running-engine-the-engine-api-suite-on-its-own) has one.
 
-**Prove:** the full `engine-api` suite against the running engine. It takes `--base-url`, not `--engine-cmd` (the CLI refuses that combination), so start your conformance build where the suite can reach it on its own hostname: through the local stack's relay ([testing-against-the-platform.md](testing-against-the-platform.md#against-a-running-engine-the-engine-api-suite)), or on a local listener while you build.
+**Prove:** the full `engine-api` suite. The harness starts your conformance build, registers it and reaches its API through its fake relay, so nothing else needs to run, only registration, heartbeat and the tunnel client from the earlier phases:
 
 ```sh
-NODE_EXTRA_CA_CERTS=<CA that issued the engine's certificate> \
 node "$PLATFORM_DIR/packages/conformance/dist/ptbk-conformance.js" \
-  --base-url "https://<engineId>.<engine domain>:<port>" \
-  --target-module ./conformance-target.mjs \
-  --engine-public-key "<enginePublicKey>" \
-  --suite engine-api --report junit --out conformance-report.xml
+  --engine-cmd "<start command of your conformance build>" --engine-cwd "<directory to run it in>" \
+  --engine-session-cmd "<your engine> conformance-session" \
+  --engine-ca-file "{dataDir}/<path of its development CA certificate>" \
+  --suite engine-api --report junit --out engine-api-report.xml
 ```
 
+While you build the gateway, `--no-gateway` skips the gateway check. To iterate against an engine you run yourself, on a local listener or through the local stack's relay, the suite also takes `--base-url` with a target module ([testing-against-the-platform.md](testing-against-the-platform.md#against-a-running-engine-the-engine-api-suite-on-its-own)).
+
 - Use `--filter <text>` while you work on one group, and the full suite before you move on. `--seed <n>` repeats a run.
-- Every check in the [checklist](checklist.md)'s Engine API and route group tables passes. The only allowed skips are `capability-not-advertised` and checks your target cannot serve yet, each listed in your report.
+- Every check in the [checklist](checklist.md)'s Engine API and route group tables passes. The only allowed skips are `capability-not-advertised`, `engine-api.cross-member.private-resources` in a harness run (only a target module can name that policy) and checks your target cannot serve yet, each listed in your report.
 - Checklist: ENG-60 to ENG-87.
 
 **Reference:** the mock serves this API with no hand-written route: [api-routes.ts](../../apps/mock-engine/src/adapters/http/api-routes.ts) on [`@ptbk/engine-api/http`](../../packages/engine-api/src/http.ts). The behavioural reference for every route is the in-memory engine, [in-memory/handlers.ts](../../packages/engine-api/src/in-memory/handlers.ts); its paging, audit chain and permission check are in the same folder. The role policy guess is [policy.ts](../../apps/mock-engine/src/domain/authorization/policy.ts).
@@ -269,18 +270,18 @@ node "$PLATFORM_DIR/packages/conformance/dist/ptbk-conformance.js" \
 
 **Prove:**
 
-- The two conformance runs from [AGENT_BRIEF.md](AGENT_BRIEF.md#when-you-are-done), with no failure: the platform suites, which start your conformance build themselves,
+- The conformance run from [AGENT_BRIEF.md](AGENT_BRIEF.md#when-you-are-done), with no failure: every suite, in one command that starts your conformance build itself,
 
   ```sh
   node "$PLATFORM_DIR/packages/conformance/dist/ptbk-conformance.js" \
     --engine-cmd "<start command of your conformance build>" --engine-cwd "<directory to run it in>" \
     --engine-session-cmd "<your engine> conformance-session" \
     --engine-ca-file "{dataDir}/<path of its development CA certificate>" \
-    --suite registration,heartbeat,tunnel,ui-loader \
-    --report junit --out platform-report.xml
+    --suite engine-api,registration,heartbeat,tunnel,ui-loader \
+    --report junit --out conformance-report.xml
   ```
 
-  and the `engine-api` suite against the running engine (phase 7). Run the platform command once without any heartbeat interval override, so `heartbeat.cadence.interval` proves the production 60 s.
+  Run it without any heartbeat interval override, so `heartbeat.cadence.interval` proves the production 60 s.
 
 - The local stack with your engine in place of the mock: link with a link code, online in the dashboard, open through the relay, sign in with a passkey, no CSP violation in the browser console. Serving the UI there, and chatting with an agent in it, waits for E-03, which re-signs the stack's UI releases for a conformance build.
 - _Pending E-03:_ the full e2e suite with `ENGINE_IMPL=real`: spike network tests (NAT, 443 only, `CONNECT` and TLS-inspecting proxies, relay restart and failover, packet capture), ACME through the relay, the UI flows under the strict CSP, and the dashboard flow.
