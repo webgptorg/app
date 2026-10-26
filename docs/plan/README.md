@@ -182,6 +182,7 @@ C-01 and R-01 both live in `packages/protocol` and touch its `package.json` and 
 | Stripe test-mode account (product, price, customer portal settings)                                                                                                                                                                                                                              | D-07 manual check                                  | Seb         |
 | Abuse-feed vendor (Google Web Risk, Netcraft or other)                                                                                                                                                                                                                                           | I-05 apply                                         | Team        |
 | `ops@`, `abuse@` and `security@` mailboxes                                                                                                                                                                                                                                                       | I-02, I-04, I-05 apply                             | Seb         |
+| Confirm the Cloudflare load balancer (paid add-on) and its cost before the production Apply                                                                                                                                                                                                      | I-07 production apply                              | Seb         |
 
 ## How to work a task
 
