@@ -58,7 +58,7 @@ variable "relays" {
     ipv6        = string
     in_rotation = bool
   }))
-  description = "Relays by host label (relay-fsn becomes relay-fsn.<relay_domain>). in_rotation = false takes a relay out of the engine wildcard's load balancer pools but keeps its own hostname."
+  description = "Relays by host label (relay-fsn becomes relay-fsn.<relay_domain>). in_rotation = false takes a relay out of the engine wildcard (its records or the load balancer's pools) but keeps its own hostname."
 
   validation {
     condition     = alltrue([for name, _ in var.relays : can(regex("^[a-z0-9]([a-z0-9-]*[a-z0-9])?$", name))])
@@ -92,11 +92,34 @@ variable "security_contact" {
 
 variable "ops_email" {
   type        = string
-  description = "Ops mailbox (I-04's alerts) that Cloudflare notifies when a relay leaves or rejoins the engine wildcard."
+  description = "Ops mailbox (I-04's alerts) that Cloudflare notifies when a relay leaves or rejoins the engine wildcard. Required with relay_dns_mode = \"load_balancer\"."
+  default     = null
 
   validation {
-    condition     = can(regex(local.email_pattern, var.ops_email))
+    condition     = var.ops_email == null || can(regex(local.email_pattern, coalesce(var.ops_email, "-")))
     error_message = "ops_email must be an email address; replace the <...> placeholder."
+  }
+}
+
+variable "relay_dns_mode" {
+  type        = string
+  description = "How the engine wildcard lists relays: \"load_balancer\" (health-checked, Load Balancing add-on) or \"records\" (plain A and AAAA records). README, Relay DNS."
+  default     = "load_balancer"
+
+  validation {
+    condition     = contains(["records", "load_balancer"], var.relay_dns_mode)
+    error_message = "relay_dns_mode must be records or load_balancer."
+  }
+
+  # With one relay the fallback pool always lists it: a load balancer would cost money and drop nothing.
+  validation {
+    condition     = var.relay_dns_mode != "load_balancer" || length(var.relays) >= 2
+    error_message = "relay_dns_mode = \"load_balancer\" needs at least two relays; use \"records\" for a single relay."
+  }
+
+  validation {
+    condition     = var.relay_dns_mode != "load_balancer" || var.ops_email != null
+    error_message = "relay_dns_mode = \"load_balancer\" needs ops_email for the relay health notifications."
   }
 }
 

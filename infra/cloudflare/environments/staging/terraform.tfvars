@@ -16,8 +16,9 @@ dmarc_policy         = "none"
 
 security_contact = "<security-contact>"
 
-# I-04's ops mailbox; Cloudflare emails it when a relay leaves or rejoins the engine wildcard (I-07).
-ops_email = "<staging-ops-email>"
+# Plain wildcard records while staging has one relay: a load balancer could never drop it (README, Relay DNS). With a
+# second relay, switch to "load_balancer" and set ops_email (I-04's ops mailbox) for its health notifications.
+relay_dns_mode = "records"
 
 # One staging host (I-01); addresses come from its outputs.
 relays = {
