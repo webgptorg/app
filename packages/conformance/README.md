@@ -9,7 +9,7 @@ MIT, moves to the public repo with the other contracts ([ADR 0002](../../docs/ad
 - **`engine-api`** (v1): the HTTP API engine-ui depends on (C-04, C-07), reached through the engine gateway as a browser would. Every response it reads is judged strictly: a success must parse with its route's strict schema (no undeclared fields), and every 4xx and 5xx must be `application/problem+json` with a known `code` and the status that code always has. A violation in any check fails that check.
 - **`registration`** and **`heartbeat`** (C-08): the harness starts the engine itself and acts as the dashboard ([below](#starting-the-engine)).
 - **`tunnel`** (C-09, starts the engine): acts as the relays the engine dials, from a fake relay on loopback whose names the engine gets in `PTBK_RELAYS`. It checks the handshake (signatures, negotiation, refusals), TLS ended by the engine inside a stream, framing and flow control, reconnects and backoff, liveness and the proxy. See [tunnel-client.md](../../docs/engine-integration/tunnel-client.md#conformance).
-- **`ui-loader`** (C-10): the engine's UI loader, black-box. It needs the Node harness, which runs a [conformance build](../../docs/engine-integration/ui-loader.md#testing-the-loader-conformance-build) of the engine against a fake release store; see [UI loader suite](#ui-loader-suite). Without the harness its checks skip with `needs-engine-harness`.
+- **`ui-loader`** (C-10, starts the engine): the engine's UI loader, black-box. The harness runs a [conformance build](../../docs/engine-integration/ui-loader.md#testing-the-loader-conformance-build) of the engine against a fake release store, restarts it per scenario and reaches its API through C-09's fake relay; see [UI loader suite](#ui-loader-suite).
 
 Check IDs are stable: engine teams track results by them, so renaming one is a breaking change. Every ID is listed in the engine integration guide's [checklist](../../docs/engine-integration/checklist.md).
 
@@ -44,8 +44,8 @@ Starting the engine (the harness plays the dashboard and the rest of the platfor
 
 Options:
   --suite <id>                Run only these suites (repeatable or comma-separated)
-                              against --base-url: engine-api, ui-loader
-                              with --engine-cmd: registration, heartbeat, tunnel
+                              against --base-url: engine-api
+                              with --engine-cmd: registration, heartbeat, tunnel, ui-loader
   --filter <text>             Run only checks whose ID contains this text (repeatable)
   --report json|junit         Report format (default json)
   --out <file>                Write the report here instead of stdout
@@ -264,7 +264,7 @@ The contract fixes the action names (`AUDIT_ACTIONS`); the suite expects each mu
 
 ## UI loader suite
 
-The suite drives the engine through a lab: a fake release store in the [mirror layout v1](../../docs/engine-integration/ui-loader.md#release-mirror-layout-v1) over HTTPS, and the engine restarted with `PTBK_UPDATE_POLICY`, `PTBK_PINNED_VERSION` and a `PTBK_CONFORMANCE_TRUST_FILE` for each scenario (the update check at startup is the trigger). Each run generates its release keys and an ephemeral test Sigstore (`src/suites/ui-loader/sigstore/`), so every release is signed on the fly and verified by the engine's real Sigstore adapter. It reads `GET /security` → `ui` with an owner session and fetches what the engine serves. Each refusal check also asserts that the previous bundle is still active and served. Versions within a run only increase (`1.0.<n>`).
+The suite drives the engine through a lab (`node/suites/ui-loader/platform-lab.ts`), one per check: a registered engine from the harness, reached through an `EngineEndpoints` route (the relay), and a fake release store in the [mirror layout v1](../../docs/engine-integration/ui-loader.md#release-mirror-layout-v1) over HTTPS, and the engine restarted with `PTBK_UPDATE_POLICY`, `PTBK_PINNED_VERSION` and a `PTBK_CONFORMANCE_TRUST_FILE` for each scenario (the update check at startup is the trigger). Each run generates its release keys and an ephemeral test Sigstore (`src/suites/ui-loader/sigstore/`), so every release is signed on the fly and verified by the engine's real Sigstore adapter. It reads `GET /security` → `ui` with an owner session and fetches what the engine serves. Each refusal check also asserts that the previous bundle is still active and served. Versions within a run only increase (`1.0.<n>`).
 
 The package tests run every check against an in-process fake loader built on `verifyRelease`, once correct and once per deliberate defect (`src/testing/ui-loader/fake-ui-lab.ts`), so each check is shown to pass and to fail.
 

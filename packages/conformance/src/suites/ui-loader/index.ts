@@ -44,9 +44,9 @@ export const UI_LOADER_CHECKS: readonly UiLoaderCheck[] = [
 ];
 
 /**
- * The engine's UI loader, checked black-box: the suite runs the engine in a lab (`@ptbk/conformance/node`), serves it
- * releases from a fake store and reads what it serves and reports. Without a lab every check skips, so the portable
- * CLI still lists the IDs.
+ * The engine's UI loader, checked black-box: the suite runs the engine in a lab, serves it releases from a fake store
+ * and reads what it serves and reports. The platform suite (`node/suites/ui-loader`) gives each check a lab of its
+ * own; this factory runs every check on one lab, as the in-process self-test does. Without a lab every check skips.
  */
 export function createUiLoaderSuite(lab: UiLoaderLab | null): ConformanceSuite {
     const benches = new Map<string, Promise<Bench>>();

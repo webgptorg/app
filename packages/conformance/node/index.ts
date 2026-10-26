@@ -2,6 +2,7 @@ import type { PlatformSuite } from './harness/platform';
 import { HEARTBEAT_SUITE } from './suites/heartbeat';
 import { REGISTRATION_SUITE } from './suites/registration';
 import { TUNNEL_SUITE } from './suites/tunnel';
+import { UI_LOADER_PLATFORM_SUITE } from './suites/ui-loader';
 
 export type { EngineCommand, EngineExit, EngineProcess } from './harness/engine-process';
 export { liveEngineGroups } from './harness/engine-process';
@@ -53,7 +54,14 @@ export { startTunnelRelay } from './tunnel/tunnel-relay';
 export type { TunnelTiming } from './tunnel/runtime';
 export { CONTRACT_TIMING } from './tunnel/runtime';
 export { SessionCommandError, createSessionCommandTargetFactory, parseSessionOutput } from './targets/session-command';
-export { HEARTBEAT_SUITE, REGISTRATION_SUITE, TUNNEL_SUITE };
+export type { EngineEndpoints, EngineRoute, UiLoaderPlatformSuiteOptions } from './suites/ui-loader';
+export { createUiLoaderPlatformSuite } from './suites/ui-loader';
+export { HEARTBEAT_SUITE, REGISTRATION_SUITE, TUNNEL_SUITE, UI_LOADER_PLATFORM_SUITE };
 
 /** Every suite that starts the engine itself and acts as the platform around it, in the order they run. */
-export const PLATFORM_SUITES: readonly PlatformSuite[] = [REGISTRATION_SUITE, HEARTBEAT_SUITE, TUNNEL_SUITE];
+export const PLATFORM_SUITES: readonly PlatformSuite[] = [
+    REGISTRATION_SUITE,
+    HEARTBEAT_SUITE,
+    TUNNEL_SUITE,
+    UI_LOADER_PLATFORM_SUITE,
+];
