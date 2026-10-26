@@ -8,7 +8,8 @@ MIT, moves to the public repo with the other contracts ([ADR 0002](../../docs/ad
 
 - **`engine-api`** (v1): the HTTP API engine-ui depends on (C-04, C-07), reached through the engine gateway as a browser would. Every response it reads is judged strictly: a success must parse with its route's strict schema (no undeclared fields), and every 4xx and 5xx must be `application/problem+json` with a known `code` and the status that code always has. A violation in any check fails that check.
 - **`registration`** and **`heartbeat`** (C-08, in progress): the harness starts the engine itself and acts as the dashboard ([below](#starting-the-engine)).
-- **`tunnel`** and **`ui-loader`**: their check IDs are registered now and always report `skip` (`not-implemented`), so engine teams can track the cryptographic requirements of [ADR 0014](../../docs/adr/0014-cryptography.md) before those suites exist.
+- **`tunnel`** (C-09, starts the engine): acts as the relays the engine dials, from a fake relay on loopback whose names the engine gets in `PTBK_RELAYS`. It checks the handshake (signatures, negotiation, refusals), TLS ended by the engine inside a stream, framing and flow control, reconnects and backoff, liveness and the proxy. See [tunnel-client.md](../../docs/engine-integration/tunnel-client.md#conformance).
+- **`ui-loader`**: its check IDs are registered now and always report `skip` (`not-implemented`), so engine teams can track the cryptographic requirements of [ADR 0014](../../docs/adr/0014-cryptography.md) before the suite exists.
 
 Check IDs are stable: engine teams track results by them, so renaming one is a breaking change. Every ID is listed in the engine integration guide's [checklist](../../docs/engine-integration/checklist.md).
 
@@ -39,8 +40,8 @@ Starting the engine (the harness plays the dashboard and the rest of the platfor
 
 Options:
   --suite <id>                Run only these suites (repeatable or comma-separated)
-                              against --base-url: engine-api, tunnel, ui-loader
-                              with --engine-cmd: registration
+                              against --base-url: engine-api, ui-loader
+                              with --engine-cmd: registration, tunnel
   --filter <text>             Run only checks whose ID contains this text (repeatable)
   --report json|junit         Report format (default json)
   --out <file>                Write the report here instead of stdout
@@ -72,6 +73,7 @@ The run's CA reaches the engine as `NODE_EXTRA_CA_CERTS`. It is ECDSA P-256, val
 - `ctx.use(server)` closes a fake server after the check; `ctx.tempDir(label)` creates a private directory.
 - `ctx.engineTarget(engine, { baseUrl, fetch })` gives a `ConformanceTarget` for an engine's API once a relay routes it, or `null` when the run has no session source. With `--mock-control`, each mock engine gets its own control listener, whose port stays the same across restarts.
 - `timeoutMs(expectations)` raises a check's timeout, for checks that wait for heartbeats.
+- **Reaching the engine API through a relay** ([tunnel-relay.ts](node/tunnel/tunnel-relay.ts)): `startTunnelRelay(ctx)` starts a fake relay and gives the `env` (`PTBK_RELAYS`) to start the engine with; once it registered, `endpointFor(registered)` returns `{ baseUrl, fetch }` for `ctx.engineTarget`. The `fetch` opens a tunnel stream per request and runs TLS to the engine inside it, with SNI = `<engineId>.<engine domain>`, as a browser behind the relay would. It verifies the engine's certificate chain against `ctx.engineCertificateAuthority(engine)` (from the target factory's `certificateAuthority`; the mock's is its dev CA), and only its name and dates when there is none.
 
 ## Credentials: write a target
 
@@ -176,9 +178,34 @@ Rerunning with the report's `seed` reproduces the names and values a run used.
 | `engine-api.cross-member.private-resources`      | A second member with the same permissions gets 403 or 404 on another's private agent; skips unless the target reports such resources                                                           |
 | `engine-api.gateway.cross-site-refused`          | A state-changing request with `Sec-Fetch-Site: cross-site` is 403 even with a valid session; skips with `gateway: false`                                                                       |
 | `registration.request.signature-verifies`        | The registration request is a strict `RegisterEngineRequest` within the size cap, with the given link code and `mode: tunnel`, and `verifyRegistration` accepts it                             |
-| `tunnel.negotiation.downgrade-refused`           | Not implemented yet (skip)                                                                                                                                                                     |
-| `tunnel.auth.list-encoding`                      | Not implemented yet (skip)                                                                                                                                                                     |
-| `tunnel.auth.version-signed`                     | Not implemented yet (skip)                                                                                                                                                                     |
+| `tunnel.dial.websocket-upgrade`                  | The engine upgrades to a WebSocket on TUNNEL_PATH with the ptbk-tunnel subprotocol                                                                                                             |
+| `tunnel.dial.every-relay`                        | Exactly one ready tunnel to every relay in the list; a relay that stalls holds up no other                                                                                                     |
+| `tunnel.auth.signature-verifies`                 | auth is strict, names the engine's own ID and verifies with verifyTunnelAuth, in time                                                                                                          |
+| `tunnel.auth.fresh-nonce`                        | Each connection's auth signs that connection's nonce and verifies against no other challenge                                                                                                   |
+| `tunnel.auth.version-signed`                     | The auth signature verifies only over the version the engine sent                                                                                                                              |
+| `tunnel.auth.list-encoding`                      | Unsorted version and feature lists in challenge still get an auth that C-02's verifyTunnelAuth accepts                                                                                         |
+| `tunnel.stream.tls-through-tunnel`               | TLS 1.3 through a stream with the default hostname as SNI, then GET /api/v1/engine answers                                                                                                     |
+| `tunnel.stream.unknown-sni-refused`              | A ClientHello for an unknown hostname or without SNI gets no certificate                                                                                                                       |
+| `tunnel.stream.concurrent`                       | Many streams at once on one tunnel each complete TLS and an HTTP request                                                                                                                       |
+| `tunnel.flow.send-window`                        | The engine never sends DATA beyond its credit and finishes once WINDOW grants more                                                                                                             |
+| `tunnel.flow.grants-credit`                      | The engine grants WINDOW credit as it reads, so more than the initial window can reach it                                                                                                      |
+| `tunnel.stream.close-handling`                   | The engine sends CLOSE when its side ends, and never sends on a stream the relay closed                                                                                                        |
+| `tunnel.frames.ignorable-ignored`                | Frames with the ignorable flag and an unknown code are dropped; the tunnel and its streams carry on                                                                                            |
+| `tunnel.frames.valid-from-engine`                | Every frame the engine sends is a v1 frame with at most MAX_FRAME_PAYLOAD_BYTES of payload                                                                                                     |
+| `tunnel.liveness.ping`                           | A WebSocket ping at least every PING_INTERVAL_MS on a ready tunnel                                                                                                                             |
+| `tunnel.auth.wrong-relay-refused`                | A challenge naming another relay gets no auth                                                                                                                                                  |
+| `tunnel.negotiation.downgrade-refused`           | A ready with a lower version, a missing or an extra feature makes the engine close with PROTOCOL_ERROR                                                                                         |
+| `tunnel.handshake.invalid-message-refused`       | An invalid challenge, a frame before ready or a text message after it closes with PROTOCOL_ERROR                                                                                               |
+| `tunnel.frames.unknown-type-refused`             | An unknown frame code without the ignorable flag, or a v1 code with it, closes with PROTOCOL_ERROR                                                                                             |
+| `tunnel.frames.malformed-refused`                | A malformed frame closes the tunnel with PROTOCOL_ERROR; the engine survives and reconnects                                                                                                    |
+| `tunnel.frames.stream-id-rules`                  | A duplicate OPEN, a reused stream ID or a frame for a stream never opened closes with PROTOCOL_ERROR                                                                                           |
+| `tunnel.dial.relay-certificate-verified`         | A relay certificate for another name, from an untrusted CA or expired gets no WebSocket upgrade                                                                                                |
+| `tunnel.reconnect.after-close`                   | After SHUTTING_DOWN the engine is back soon; after any other close or a lost connection it reconnects                                                                                          |
+| `tunnel.reconnect.relay-restart`                 | After a relay restart the tunnel is back within 10 s (plus a margin)                                                                                                                           |
+| `tunnel.reconnect.after-reject`                  | Every reject reason, with its close code (1013 for rate-limited), is followed by a reconnect                                                                                                   |
+| `tunnel.reconnect.backoff`                       | Consecutive failed attempts back off: no tight reconnect loop                                                                                                                                  |
+| `tunnel.reconnect.replaced-no-loop`              | After REPLACED the engine does not reconnect in a loop                                                                                                                                         |
+| `tunnel.proxy.connect`                           | HTTPS_PROXY tunnels through CONNECT with the relay certificate still verified; NO_PROXY bypasses it                                                                                            |
 | `ui-loader.signature.strict-ed25519`             | Not implemented yet (skip)                                                                                                                                                                     |
 | `ui-loader.dsse.pae-only`                        | Not implemented yet (skip)                                                                                                                                                                     |
 | `ui-loader.provenance.exact-identity`            | Not implemented yet (skip)                                                                                                                                                                     |
