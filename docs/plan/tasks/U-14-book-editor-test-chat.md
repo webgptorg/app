@@ -2,7 +2,7 @@
 
 - **Lane:** U · **Module:** `apps/engine-ui` · **Milestone:** M2
 - **Depends on:** U-04, U-05
-- **Status:** todo
+- **Status:** in progress (feat/u-14-book-test-chat)
 - **Spec:** ADRs: [0013](../../adr/0013-book-editor.md), [0015](../../adr/0015-ui-architecture-and-design-system.md)
 
 ## Goal
