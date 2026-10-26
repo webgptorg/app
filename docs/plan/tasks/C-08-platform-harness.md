@@ -140,8 +140,8 @@ A suite that is not about registration (tunnel, UI loader) calls `startRegistere
 
 ## Risks and open points
 
-- **Trust for a non-Node engine.** `NODE_EXTRA_CA_CERTS` is Node's. The engine is TypeScript on Node, so it applies. An engine on another runtime would need an equivalent additive root setting, for example a `PTBK_EXTRA_CA_FILE` that is added to the defaults and never replaces them. Proposed only if needed, not added now.
-- **Heartbeat interval.** A test-only interval setting is not part of the contract: the cadence check runs at the real 60 s and skips when the expectation is overridden. The other checks can use an engine's own development setting through `--heartbeat-interval-s` to run faster.
-- **Registration failure behaviour.** The guide says "tell the owner, do not retry". This task makes it testable: the output names the `code`, and a retryable failure waits at least 5 s and backs off. Exiting is allowed but not required.
-- **Engine API through the harness**: done with C-09's relay for the mock (dev CA from its data directory). A real engine needs its conformance build's CA (`--engine-ca-file`) or, in production mode, a fake ACME CA; the latter is not built.
+- **Trust for a non-Node engine.** `NODE_EXTRA_CA_CERTS` is Node's, and the engine is TypeScript on Node. Decided 2026-10-26: no non-Node trust variable for now.
+- **Heartbeat interval.** Decided 2026-10-26: the cadence check runs at the real 60 s, and the contract has no interval setting. The check skips when the run overrides the interval, which only speeds up the other checks through an engine's own development setting.
+- **Registration failure behaviour.** This task makes "tell the owner, do not retry" testable: the output names the `code`, and a retryable failure waits at least 5 s and backs off. It is to confirm in the engine-team review (guide open points). The missing `REGISTRATION_ERROR_CODE` values (`not-entitled`, `rate-limited`) are task C-11.
+- **Engine API through the harness**: works through C-09's relay. Decided 2026-10-26: the conformance build serves its API certificate from a development CA whose certificate file is in the data directory (the mock's `<dataDir>/dev-ca/ca-cert.pem` pattern), passed as `--engine-ca-file "{dataDir}/…"`.
 - **Watch windows.** A check that must see nothing happen (no retry loop, no heartbeat) watches for 8 s by default. That catches a tight loop, not a slow one, and it is why a retrying engine must wait at least 5 s before its first retry.

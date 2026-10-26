@@ -65,9 +65,9 @@ Errors are RFC 9457 problem+json (`ProblemDetails`, read with `TolerantProblemDe
 | `engine-suspended`  | 403    | The engine is suspended or revoked by its owner                            | Tell the owner; do not retry      |
 | `engine-limit`      | 403    | The account has no room for another engine                                 | Tell the owner                    |
 
-The dashboard (D-03) also answers 403 `not-entitled` (the account's plan does not include engines; the code stays unused), 429 `rate-limited` (20 registration attempts per hour and address), 400 `invalid-request` (the body fails the strict schema) and 413 `too-large` (over `REGISTER_REQUEST_MAX_BYTES`). `not-entitled` and `rate-limited` are not in `REGISTRATION_ERROR_CODE` yet ([open points](README.md#open-points)); treat `not-entitled` like `engine-limit` and `rate-limited` as retryable later.
+The dashboard (D-03) also answers 403 `not-entitled` (the account's plan does not include engines; the code stays unused), 429 `rate-limited` (20 registration attempts per hour and address), 400 `invalid-request` (the body fails the strict schema) and 413 `too-large` (over `REGISTER_REQUEST_MAX_BYTES`). `not-entitled` and `rate-limited` are not in `REGISTRATION_ERROR_CODE` yet (task C-11, [open points](README.md#open-points)); treat `not-entitled` like `engine-limit` and `rate-limited` as retryable later.
 
-Whatever the answer, the engine must:
+Whatever the answer, the engine must (to confirm in the engine-team review, [open points](README.md#open-points)):
 
 - name the problem `code` in its output (log or console), so its operator can tell what to do;
 - never retry in a loop: no retry at all after `invalid-link-code`, `bad-signature`, `engine-exists`, `engine-suspended`, `engine-limit` or `not-entitled`. After `rate-limited`, a 5xx or no answer, wait at least 5 s before the first retry and back off exponentially. Exiting instead is allowed;
@@ -136,7 +136,12 @@ The engine API checks need sessions: the owner, and members holding exactly the 
 - It prints one JSON value on stdout and exits 0: `{"cookie":"<name>=<value>"}`, `{"bearer":"<token>"}`, or `null` when that subject cannot be had. The checks that need it then skip.
 - It exists only in the conformance build, behind the same build-time gate as `PTBK_CONFORMANCE_TRUST_FILE` ([ui-loader.md](ui-loader.md)). A production build refuses to run it. It is never an HTTP endpoint.
 
-The harness runs it with `ptbk-conformance --engine-session-cmd "<engine> conformance-session"`, so no hand-written target module is needed. Its checks reach the engine API through the fake relay, so they also need the CA the engine's own certificates chain to under test: pass it with `--engine-ca-file <file>`, where `{dataDir}` stands for the engine's data directory (e.g. a development CA the conformance build creates there). Without it the engine's certificate is checked only for its name and dates. The mock engine implements the same command over its dev-only control listener (`MOCK_CONTROL=enabled`).
+The harness runs it with `ptbk-conformance --engine-session-cmd "<engine> conformance-session"`, so no hand-written target module is needed. Its checks reach the engine API through the fake relay, so they also need the CA the engine's own certificates chain to. The conformance build therefore also must, decided 2026-10-26:
+
+- serve its API certificate from a development CA it creates in `PTBK_DATA_DIR`, with the CA certificate in a file there, as the mock engine does at `<PTBK_DATA_DIR>/dev-ca/ca-cert.pem`. A production build never does this;
+- document that file's path, which the harness takes as `--engine-ca-file "{dataDir}/<path>"` (`{dataDir}` stands for the engine's data directory).
+
+Without `--engine-ca-file` the harness checks the engine's certificate only for its name and dates. The mock engine implements the same command over its dev-only control listener (`MOCK_CONTROL=enabled`).
 
 ## Contract exports
 
