@@ -152,8 +152,9 @@ function renderNode(node: RootContent | Nodes, context: Context, key: number): R
         }
         case 'listItem':
             if (node.checked === null || node.checked === undefined) {
+                // A flex `li` loses its marker: it stays a list item and spaces its blocks with margins instead.
                 return (
-                    <li key={key} className="flex flex-col gap-2">
+                    <li key={key} className="ps-1 [&>*+*]:mt-2">
                         {children(node, context)}
                     </li>
                 );

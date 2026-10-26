@@ -12,6 +12,7 @@ import { useDebouncedSearch } from '../../app/debounced-search';
 import { useEngineApi } from '../../app/engine-api-context';
 import { Link } from '../../app/link';
 import { isInvalidCursor } from '../../app/list-errors';
+import { SoftBreaks } from '../../app/soft-breaks';
 import { m } from '../../paraglide/messages';
 import { usePermissions } from '../session/use-permissions';
 import { Page } from '../shell/page';
@@ -92,9 +93,9 @@ export function FilesPage() {
                 to="/files"
                 search={{ ...search, file: file.id }}
                 variant="standalone"
-                className="line-clamp-2 max-w-md font-medium break-all"
+                className="line-clamp-2 max-w-md font-medium break-words"
             >
-                {file.name}
+                <SoftBreaks text={file.name} after="_" />
             </Link>
         ),
         [search],

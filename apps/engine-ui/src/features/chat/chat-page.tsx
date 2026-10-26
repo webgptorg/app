@@ -33,28 +33,29 @@ export function ChatPage() {
     const ownChat = chat.createdBy === me.memberId;
     const canWrite = ownChat && can('chats.write');
 
+    // The agent frame gives this page the rest of the screen, so the composer is in view without scrolling.
     return (
-        <section aria-labelledby="chat-title" className="flex min-w-0 flex-col gap-4">
-            <div className="flex min-w-0 flex-col gap-2">
-                <Link
-                    to="/agents/$agentId/chat"
-                    params={{ agentId }}
-                    variant="standalone"
-                    className="inline-flex items-center gap-1 self-start text-sm"
-                >
-                    <ArrowLeft aria-hidden className="size-4" />
-                    {m.chat_back()}
-                </Link>
-                <h2 id="chat-title" className="text-xl font-semibold break-words">
-                    {chatName(chat)}
-                </h2>
-                <div className="flex flex-wrap items-center gap-2 text-sm text-text-muted">
+        <section aria-labelledby="chat-title" className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
+            <div className="flex min-w-0 flex-col gap-1">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-text-muted">
+                    <Link
+                        to="/agents/$agentId/chat"
+                        params={{ agentId }}
+                        variant="standalone"
+                        className="inline-flex items-center gap-1"
+                    >
+                        <ArrowLeft aria-hidden className="size-4" />
+                        {m.chat_back()}
+                    </Link>
                     <Badge>{sourceLabel(chat.source)}</Badge>
                     <ChatStarter chat={chat} />
                 </div>
+                <h2 id="chat-title" className="line-clamp-2 text-lg font-semibold break-words">
+                    {chatName(chat)}
+                </h2>
             </div>
             {ownChat ? null : <Banner tone="info">{m.chat_read_only()}</Banner>}
-            <ChatPanel chat={chat} agentName={agent.name} canWrite={canWrite} />
+            <ChatPanel chat={chat} agentName={agent.name} canWrite={canWrite} fill />
         </section>
     );
 }

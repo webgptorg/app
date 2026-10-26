@@ -208,7 +208,7 @@ test.describe('overlays in a real browser', () => {
         expectCleanPage(await visit('/settings'));
         const open = page.getByRole('button', { name: 'Open navigation' });
         await open.click();
-        const drawer = page.getByRole('dialog', { name: 'Main' });
+        const drawer = page.getByRole('dialog', { name: 'Menu' });
         await expect(drawer.getByRole('link', { name: 'Members' })).toBeVisible();
         await page.keyboard.press('Escape');
         await expect(drawer).toHaveCount(0);

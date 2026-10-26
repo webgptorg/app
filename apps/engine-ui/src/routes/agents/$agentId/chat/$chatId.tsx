@@ -5,6 +5,7 @@ import { ChatPage } from '../../../../features/chat/chat-page';
 import { ChatNotFound, ChatPending } from '../../../../features/chat/chat-route-states';
 
 export const Route = createFileRoute('/agents/$agentId/chat/$chatId')({
+    staticData: { fillViewport: true },
     loader: ({ context, params }) => loadChat(context, params.agentId, params.chatId),
     component: ChatPage,
     pendingComponent: ChatPending,

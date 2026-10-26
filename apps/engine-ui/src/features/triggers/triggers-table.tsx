@@ -11,6 +11,7 @@ import { useCursorPages } from '../../app/cursor-pages';
 import { useEngineApi } from '../../app/engine-api-context';
 import { Link } from '../../app/link';
 import { isInvalidCursor } from '../../app/list-errors';
+import { SoftBreaks } from '../../app/soft-breaks';
 import { m } from '../../paraglide/messages';
 import { agentListQueryOptions } from '../agents/agents-queries';
 import { usePermissions } from '../session/use-permissions';
@@ -97,7 +98,12 @@ function useTriggerColumns(showAgent: boolean, manage: boolean): DataTableColumn
                 header: m.triggers_column_summary(),
                 enableSorting: false,
                 meta: { priority: 6 },
-                cell: ({ getValue }) => <span className="break-words">{getValue()}</span>,
+                // An inbound address is one long token: it may wrap after its @ and dots, never mid-name.
+                cell: ({ row }) => (
+                    <span className="break-words">
+                        <SoftBreaks text={summary(row.original)} after="@." />
+                    </span>
+                ),
             }),
             column.accessor('nextFireAt', {
                 header: m.triggers_column_next(),

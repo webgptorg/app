@@ -3,6 +3,7 @@ import { EmptyState, ErrorState } from '@ptbk/ui';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef } from 'react';
 
+import { cx } from '../../app/cx';
 import { useEngineApi } from '../../app/engine-api-context';
 import { m } from '../../paraglide/messages';
 import { useCurrentMember } from '../session/use-current-member';
@@ -23,13 +24,15 @@ export interface ChatPanelProps {
     readonly agentName: string;
     /** The member may write here: `chats.write`, and the chat is their own. */
     readonly canWrite: boolean;
+    /** Take the rest of a parent flex column's height instead of a share of the screen. */
+    readonly fill?: boolean;
 }
 
 /**
  * A chat's history, its composer and the reply in progress. Reusable wherever a chat is shown (the agent's Chat tab,
  * U-04's test step); it reads and writes only through the engine API client and the query cache.
  */
-export function ChatPanel({ chat, agentName, canWrite }: ChatPanelProps) {
+export function ChatPanel({ chat, agentName, canWrite, fill = false }: ChatPanelProps) {
     const engineApi = useEngineApi();
     const me = useCurrentMember();
     const history = useInfiniteQuery(chatMessagesQueryOptions(engineApi, chat.id));
@@ -122,7 +125,7 @@ export function ChatPanel({ chat, agentName, canWrite }: ChatPanelProps) {
     }
 
     return (
-        <div ref={panelRef} className="flex h-[70dvh] min-h-96 flex-col gap-3">
+        <div ref={panelRef} className={cx('flex flex-col gap-3', fill ? 'min-h-0 flex-1' : 'h-[70dvh] min-h-96')}>
             {body}
             <div aria-live="polite" aria-atomic="true" className="sr-only">
                 {announcement}
@@ -130,6 +133,7 @@ export function ChatPanel({ chat, agentName, canWrite }: ChatPanelProps) {
             {canWrite ? (
                 <Composer
                     label={m.chat_composer_label()}
+                    labelHidden
                     placeholder={m.chat_composer_placeholder({ name: agentName })}
                     busy={active}
                     {...(session.state.phase === 'streaming'

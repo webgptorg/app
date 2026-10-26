@@ -15,7 +15,13 @@ describe('CodeText', () => {
             );
             const code = container.querySelector('code');
             expect(code?.textContent).toBe('ABCDEFGHIJ');
-            expect([...(code?.children ?? [])].map((part) => part.textContent)).toEqual(['ABCD', 'EFGH', 'IJ']);
+            expect([...(code?.querySelectorAll(':scope > span') ?? [])].map((part) => part.textContent)).toEqual([
+                'ABCD',
+                'EFGH',
+                'IJ',
+            ]);
+            // Lines may break between groups only, never inside one that fits.
+            expect(code?.querySelectorAll(':scope > wbr')).toHaveLength(2);
             await user.tab();
             expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Copy fingerprint' }));
             await expectNoAxeViolations(container);

@@ -115,6 +115,8 @@ export interface DataTableProps<TData extends RowData> {
 }
 
 const DEFAULT_VIRTUALIZE_ABOVE = 100;
+/** A list this short is read at a glance; hiding its columns only adds a control nobody needs. */
+export const COLUMN_MENU_MIN_ROWS = 6;
 const DEFAULT_ROW_HEIGHT = 48;
 const NO_SORTING: SortingState = [];
 const NO_FILTERS: ColumnFiltersState = [];
@@ -145,6 +147,28 @@ export function columnLabel<TData extends RowData>(column: TableColumn<TData>): 
 
 function hasActiveFilter(filters: ColumnFiltersState): boolean {
     return filters.some(({ value }) => value !== undefined && value !== '' && value !== null);
+}
+
+/** Paging controls only mean something when there is another page to go to. */
+export function hasOtherPages(page: DataTablePage | undefined): page is DataTablePage {
+    return page !== undefined && (page.previousCursor !== null || page.nextCursor !== null);
+}
+
+export interface ColumnMenuInput {
+    readonly hideableColumns: number;
+    readonly hiddenColumns: number;
+    readonly rows: number;
+    readonly paged: boolean;
+    readonly filtered: boolean;
+}
+
+/**
+ * The column menu earns its place on a long or paged list. It also stays while a column is hidden, so the reader can
+ * bring it back, and while a filter narrows the list, so it does not blink away as results shrink.
+ */
+export function wantsColumnMenu({ hideableColumns, hiddenColumns, rows, paged, filtered }: ColumnMenuInput): boolean {
+    if (hideableColumns === 0) return false;
+    return hiddenColumns > 0 || paged || filtered || rows >= COLUMN_MENU_MIN_ROWS;
 }
 
 /**
@@ -250,6 +274,18 @@ export function DataTable<TData extends RowData>(props: DataTableProps<TData>) {
         return filter === undefined ? [] : [{ column, filter }];
     });
     const hideableColumns = table.getAllLeafColumns().filter((column) => column.getCanHide());
+    const paged = hasOtherPages(page);
+    const columnMenuWanted = wantsColumnMenu({
+        hideableColumns: hideableColumns.length,
+        hiddenColumns: hideableColumns.filter((column) => !column.getIsVisible()).length,
+        rows: rows.length,
+        paged,
+        filtered: hasActiveFilter(columnFilters),
+    });
+    // Once shown it stays: a server-side filter or search outside the table can shrink the rows at any time.
+    const [columnMenuShown, setColumnMenuShown] = useState(columnMenuWanted);
+    if (columnMenuWanted && !columnMenuShown) setColumnMenuShown(true);
+    const showColumnMenu = hideableColumns.length > 0 && !narrow && (columnMenuWanted || columnMenuShown);
     const extraColumns = (selection === undefined ? 0 : 1) + (expansion === undefined ? 0 : 1) + (rowActions ? 1 : 0);
     const columnCount = visibleColumns.length + extraColumns;
     const selectedCount = Object.values(rowSelection ?? {}).filter(Boolean).length;
@@ -289,7 +325,7 @@ export function DataTable<TData extends RowData>(props: DataTableProps<TData>) {
 
     return (
         <div className="flex min-w-0 flex-col gap-3">
-            {filterColumns.length > 0 || hideableColumns.length > 0 || selection !== undefined ? (
+            {filterColumns.length > 0 || showColumnMenu || selection !== undefined ? (
                 <div className="flex flex-wrap items-end gap-3">
                     {filterColumns.map(({ column, filter }) => (
                         <ColumnFilterControl key={column.id} column={column} filter={filter} />
@@ -299,7 +335,7 @@ export function DataTable<TData extends RowData>(props: DataTableProps<TData>) {
                             {selectedCount > 0 ? messages.selectedCount({ count: selectedCount }) : null}
                         </p>
                     )}
-                    {hideableColumns.length > 0 && !narrow ? (
+                    {showColumnMenu ? (
                         <div className="ms-auto">
                             <ColumnVisibilityMenu columns={hideableColumns} />
                         </div>
@@ -461,7 +497,7 @@ export function DataTable<TData extends RowData>(props: DataTableProps<TData>) {
                 </div>
             )}
 
-            {page === undefined || onPageChange === undefined ? null : (
+            {!paged || onPageChange === undefined ? null : (
                 <Pagination
                     hasPrevious={page.previousCursor !== null}
                     hasNext={page.nextCursor !== null}

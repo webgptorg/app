@@ -36,18 +36,17 @@ export function FireTime({ at, zone, countdown = false, empty }: FireTimeProps) 
     const browserZone = useBrowserTimeZone();
     if (at === null) return <span className="text-text-muted">{empty ?? m.trigger_value_none()}</span>;
     const date = new Date(at);
-    const local = formatInZone(date, browserZone, locale.locale);
-    const text =
-        zone === undefined || zone === browserZone
-            ? local
-            : m.trigger_time_other_zone({
-                  time: local,
-                  zoneTime: formatInZone(date, zone, locale.locale),
-                  timeZone: zone,
-              });
+    // The schedule's own zone goes on a line of its own when space is short, never mid-time.
     return (
         <span className="inline-flex flex-wrap gap-x-2">
-            <time dateTime={at}>{text}</time>
+            <time dateTime={at}>{formatInZone(date, browserZone, locale.locale)}</time>
+            {/* Read and copied as one line; the flex layout drops the space. */}
+            {zone === undefined || zone === browserZone ? null : ' '}
+            {zone === undefined || zone === browserZone ? null : (
+                <span className="text-text-muted">
+                    {m.trigger_time_zone({ zoneTime: formatInZone(date, zone, locale.locale), timeZone: zone })}
+                </span>
+            )}
             {countdown ? <Countdown at={date} /> : null}
         </span>
     );

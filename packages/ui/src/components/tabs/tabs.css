@@ -4,4 +4,5 @@
     --tabs-text-hover: var(--color-text);
     --tabs-text-selected: var(--color-text);
     --tabs-indicator: var(--color-accent);
+    --tabs-fade: 2rem;
 }

@@ -14,12 +14,14 @@ export function runTitle(run: Pick<ReadRun, 'progress' | 'preview' | 'source'>):
     return m.run_untitled({ source: sourceLabel(run.source) });
 }
 
-/** "45 s", "3 min 05 s", "2 h 07 min"; whole seconds. */
+/** "45 s", "3 min 5 s", "2 h 7 min", "25 d 10 h"; whole seconds, two units at most. */
 export function formatDuration(ms: number, formatNumber: (value: number) => string): string {
     const total = Math.max(0, Math.floor(ms / 1000));
-    const hours = Math.floor(total / 3600);
+    const days = Math.floor(total / 86_400);
+    const hours = Math.floor((total % 86_400) / 3600);
     const minutes = Math.floor((total % 3600) / 60);
     const seconds = total % 60;
+    if (days > 0) return m.duration_days_hours({ days: formatNumber(days), hours: formatNumber(hours) });
     if (hours > 0) return m.duration_hours_minutes({ hours: formatNumber(hours), minutes: formatNumber(minutes) });
     if (minutes > 0) {
         return m.duration_minutes_seconds({ minutes: formatNumber(minutes), seconds: formatNumber(seconds) });

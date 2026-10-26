@@ -49,4 +49,8 @@ declare module '@tanstack/react-router' {
     interface Register {
         router: AppRouter;
     }
+    interface StaticDataRouteOption {
+        /** The screen fits the viewport instead of scrolling the page (a chat, whose composer must stay in view). */
+        readonly fillViewport?: boolean;
+    }
 }

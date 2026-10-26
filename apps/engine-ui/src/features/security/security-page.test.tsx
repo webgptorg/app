@@ -148,7 +148,8 @@ describe('security panel: sections', { timeout: TIMEOUT_MS }, () => {
         const body = await screen.findByTestId('heartbeat-body');
         expect(body.tagName).toBe('PRE');
         expect(body.textContent).toBe(RAW_HEARTBEAT);
-        expect(body.children).toHaveLength(0);
+        // Only line-break opportunities between fields: no markup of the payload's own.
+        expect([...body.children].every((child) => child.tagName === 'WBR')).toBe(true);
     });
 
     it('warns when the served UI version differs from the one compiled into the page', async () => {

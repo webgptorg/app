@@ -10,7 +10,7 @@ Sign-in and setup are not here: they belong to the open engine gateway, and this
 
 The bundle runs under `ENGINE_UI_CSP` from `@ptbk/engine-api`, verbatim: no inline scripts or styles, no `eval`, no external origins, Trusted Types with the single policy name `ptbk-html`. What follows from it:
 
-- `index.html` holds one module script and one stylesheet link, nothing inline. Assets are never inlined as `data:` URLs (`assetsInlineLimit: 0`), and the modulepreload polyfill (an inline script) is off.
+- `index.html` holds one module script, one stylesheet link and the icon link (a hashed SVG in the bundle, so the manifest signs it), nothing inline. Assets are never inlined as `data:` URLs (`assetsInlineLimit: 0`), and the modulepreload polyfill (an inline script) is off.
 - No top-level await in the entry: it turns off Rolldown's merging of common chunks into the entry, which keeps `src/app/zod-jitless.ts` running before any zod schema is built (zod's `new Function` probe is a Trusted Types violation).
 - React's `style` prop is fine (CSSOM); libraries that append `<style>` or set `style` attributes as strings are not. TanStack devtools inject styles, so they load only on the dev server.
 - The book editor (CodeMirror 6) mounts in a shadow root, where `style-mod` adopts its rules as a constructable stylesheet; in the document it would append `<style>` elements ([ADR 0013](../../docs/adr/0013-book-editor.md)). Its stylesheet is adopted the same way, and its CSS draws small SVG backgrounds as `data:` images, which `img-src` allows and the dist test exempts in exactly that shape.

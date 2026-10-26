@@ -14,6 +14,8 @@ export interface FieldControlProps {
 
 export interface FieldProps {
     readonly label: ReactNode;
+    /** Keeps the label for assistive technology only, where the control explains itself (a chat's message box). */
+    readonly labelHidden?: boolean;
     readonly hint?: ReactNode;
     /** Shown under the control and linked to it; also marks the control `aria-invalid`. */
     readonly error?: ReactNode;
@@ -25,7 +27,16 @@ export interface FieldProps {
 }
 
 /** Label, hint and error around one control. The control gets its wiring from the render function's argument. */
-export function Field({ label, hint, error, required = false, id, className, children }: FieldProps) {
+export function Field({
+    label,
+    labelHidden = false,
+    hint,
+    error,
+    required = false,
+    id,
+    className,
+    children,
+}: FieldProps) {
     const messages = useUiMessages();
     const generatedId = useId();
     const controlId = id ?? generatedId;
@@ -36,7 +47,10 @@ export function Field({ label, hint, error, required = false, id, className, chi
     const describedBy = cx(hasHint && hintId, hasError && errorId) || undefined;
     return (
         <div className={cx('flex flex-col gap-1.5', className)}>
-            <label htmlFor={controlId} className="text-sm font-medium text-(--field-label)">
+            <label
+                htmlFor={controlId}
+                className={cx('text-sm font-medium text-(--field-label)', labelHidden && 'sr-only')}
+            >
                 {label}
                 {required ? (
                     <>

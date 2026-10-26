@@ -2,6 +2,7 @@ import type { ReadSecurityOverview } from '@ptbk/engine-api';
 import { Banner, CodeText, CopyButton, EmptyState, Skeleton, useLocale } from '@ptbk/ui';
 import type { UseQueryResult } from '@tanstack/react-query';
 
+import { SoftBreaks } from '../../app/soft-breaks';
 import { m } from '../../paraglide/messages';
 import { Facts } from './facts';
 import { SectionCard } from './section-card';
@@ -86,13 +87,14 @@ export function HeartbeatSection({ query }: { readonly query: UseQueryResult<Rea
                                     </span>
                                     <CopyButton value={lastHeartbeat.body} label={m.security_copy_heartbeat()} />
                                 </div>
-                                {/* The exact bytes sent, as text: never parsed and re-serialised. */}
+                                {/* The exact bytes sent, as text: never parsed and re-serialised. Lines may wrap after a
+                                    comma, between fields, and only a single over-long value breaks inside itself. */}
                                 <pre
                                     aria-labelledby="heartbeat-body-label"
                                     data-testid="heartbeat-body"
-                                    className="rounded-control bg-(--code-text-bg) p-3 font-mono text-xs whitespace-pre-wrap break-all text-(--code-text-text)"
+                                    className="rounded-control bg-(--code-text-bg) p-3 font-mono text-xs whitespace-pre-wrap break-words text-(--code-text-text)"
                                 >
-                                    {lastHeartbeat.body}
+                                    <SoftBreaks text={lastHeartbeat.body} after="," />
                                 </pre>
                             </div>
                         </>

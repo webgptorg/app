@@ -1,7 +1,15 @@
-import { Fragment, useId } from 'react';
+import { Fragment, useId, useRef } from 'react';
 import type { KeyboardEvent, ReactNode } from 'react';
 
 import { cx } from '../../internal/cx';
+import { useScrollEdges } from './scroll-edges';
+
+/** A fade where the list hides tabs, so a phone shows there is more to scroll to. */
+const FADE_CLASSES = {
+    left: '[mask-image:linear-gradient(to_left,#000_calc(100%-var(--tabs-fade)),transparent)]',
+    right: '[mask-image:linear-gradient(to_right,#000_calc(100%-var(--tabs-fade)),transparent)]',
+    both: '[mask-image:linear-gradient(to_right,transparent,#000_var(--tabs-fade),#000_calc(100%-var(--tabs-fade)),transparent)]',
+} as const;
 
 export interface TabDefinition {
     readonly id: string;
@@ -37,15 +45,28 @@ export interface TabsProps {
      * and, with `automatic` activation, call `onSelect`.
      */
     readonly renderTab?: (tab: TabDefinition, props: TabTriggerProps) => ReactNode;
+    /** Fill the parent flex column's height and give the panel the rest, e.g. for a chat that must fit the screen. */
+    readonly fill?: boolean;
 }
 
 /** The ARIA tabs pattern: one tab stop for the list, arrows, Home and End between tabs, only the selected panel rendered. */
-export function Tabs({ label, selectedId, onSelect, tabs, activation = 'automatic', renderTab }: TabsProps) {
+export function Tabs({
+    label,
+    selectedId,
+    onSelect,
+    tabs,
+    activation = 'automatic',
+    renderTab,
+    fill = false,
+}: TabsProps) {
     const baseId = useId();
     const enabled = tabs.filter((tab) => tab.disabled !== true);
     const selected = tabs.find((tab) => tab.id === selectedId) ?? enabled[0];
     const tabId = (id: string) => `${baseId}-tab-${id}`;
     const panelId = (id: string) => `${baseId}-panel-${id}`;
+    const listRef = useRef<HTMLDivElement>(null);
+    const edges = useScrollEdges(listRef, '[aria-selected="true"]', selected?.id ?? '');
+    const fade = edges.left && edges.right ? 'both' : edges.left ? 'left' : edges.right ? 'right' : null;
 
     const onKeyDown = (event: KeyboardEvent<HTMLElement>, id: string) => {
         // A button activates on Space natively; a link only on Enter.
@@ -83,11 +104,15 @@ export function Tabs({ label, selectedId, onSelect, tabs, activation = 'automati
     };
 
     return (
-        <div className="flex flex-col gap-4">
+        <div className={cx('flex flex-col gap-4', fill && 'min-h-0 flex-1')}>
             <div
+                ref={listRef}
                 role="tablist"
                 aria-label={label}
-                className="flex gap-1 overflow-x-auto border-b border-(--tabs-border)"
+                className={cx(
+                    'flex shrink-0 gap-1 overflow-x-auto border-b border-(--tabs-border) [scrollbar-width:thin]',
+                    fade !== null && FADE_CLASSES[fade],
+                )}
             >
                 {tabs.map((tab) => {
                     const isSelected = tab.id === selected?.id;
@@ -127,7 +152,13 @@ export function Tabs({ label, selectedId, onSelect, tabs, activation = 'automati
                 })}
             </div>
             {selected === undefined ? null : (
-                <div role="tabpanel" id={panelId(selected.id)} aria-labelledby={tabId(selected.id)} tabIndex={0}>
+                <div
+                    role="tabpanel"
+                    id={panelId(selected.id)}
+                    aria-labelledby={tabId(selected.id)}
+                    tabIndex={0}
+                    className={cx(fill && 'flex min-h-0 flex-1 flex-col')}
+                >
                     {selected.panel}
                 </div>
             )}

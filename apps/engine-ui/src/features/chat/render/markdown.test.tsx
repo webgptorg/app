@@ -85,6 +85,15 @@ describe('Markdown', () => {
         expect(container.querySelectorAll('ul')[1]?.querySelectorAll('li > p')).toHaveLength(0);
     });
 
+    it('keeps list markers: a plain list item is never a flex box, which would drop its bullet', () => {
+        const { container } = renderMarkdown('- a\n- b\n\n1. c');
+        const items = [...container.querySelectorAll('li')];
+        expect(items).toHaveLength(3);
+        for (const item of items) expect(item.className.split(' ')).not.toContain('flex');
+        expect(container.querySelector('ul')?.className).toContain('list-disc');
+        expect(container.querySelector('ol')?.className).toContain('list-decimal');
+    });
+
     it('renders references, footnotes and front matter as text, never as links or images', () => {
         const { container } = renderMarkdown(
             [
