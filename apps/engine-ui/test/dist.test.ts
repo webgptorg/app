@@ -91,9 +91,12 @@ describe('dist/', () => {
         expect(body.trim()).toBe('');
 
         const links = [...html.matchAll(/<link\b([^>]*)>/gi)].map(([, linkAttributes = '']) => linkAttributes);
-        expect(links).toHaveLength(1);
-        expect(links[0]).toMatch(/\brel="stylesheet"/);
-        expect(links[0]).toMatch(/\bhref="\/assets\/[^"]+\.css"/);
+        expect(links).toHaveLength(2);
+        const stylesheet = links.find((link) => /\brel="stylesheet"/.test(link));
+        expect(stylesheet).toMatch(/\bhref="\/assets\/[^"]+\.css"/);
+        // The icon is a hashed file of the bundle, so the manifest signs it and browsers stop asking for /favicon.ico.
+        const icon = links.find((link) => /\brel="icon"/.test(link));
+        expect(icon).toMatch(/\bhref="\/assets\/favicon-[\w-]{8}\.svg"/);
 
         expect(html).not.toMatch(/<style\b/i);
         expect(html).not.toMatch(/\sstyle=/i);

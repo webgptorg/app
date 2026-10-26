@@ -4,7 +4,7 @@ import { Badge, Banner, Card, CodeText, EmptyState, ErrorState, Skeleton, useLoc
 import type { BadgeTone } from '@ptbk/ui';
 import { useQuery } from '@tanstack/react-query';
 import { getRouteApi } from '@tanstack/react-router';
-import { CircleCheck, Circle } from 'lucide-react';
+import { ArrowLeft, CircleCheck, Circle } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 import { classifyApiError } from '../../app/api-errors';
@@ -58,7 +58,16 @@ function RunDetail({ run }: { readonly run: ReadRunDetail }) {
     const narrow = useMediaQuery(NARROW_QUERY);
     const actions = <RunActions run={run} />;
     return (
-        <Page title={runTitle(run)} {...(narrow ? {} : { actions })}>
+        <Page
+            title={runTitle(run)}
+            back={
+                <Link to="/runs" variant="standalone" className="inline-flex items-center gap-1 text-sm">
+                    <ArrowLeft aria-hidden className="size-4" />
+                    {m.run_back_to_runs()}
+                </Link>
+            }
+            {...(narrow ? {} : { actions })}
+        >
             <RunHeader run={run} />
             {run.error === null ? null : (
                 <Banner tone="danger" title={m.run_error_title({ code: run.error.code })}>

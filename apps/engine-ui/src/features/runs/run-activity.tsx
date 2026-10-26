@@ -3,7 +3,7 @@ import { useLocale } from '@ptbk/ui';
 
 import { Link } from '../../app/link';
 import { m } from '../../paraglide/messages';
-import { sourceLabel } from '../chat/chat-source';
+import type { ChatSourceLabel } from '../chat/chat-source';
 import { formatDuration } from './run-format';
 
 type RunActivity = Extract<Activity, { readonly kind: `run.${string}` }>;
@@ -12,21 +12,46 @@ function isRunActivity(activity: Activity): activity is RunActivity {
     return activity.kind.startsWith('run.');
 }
 
-/** One line per `run.*` kind (v1); details such as the error summary are agent text and stay text. */
+/** The run as the subject of a sentence, named by what started it: "A scheduled run", "A run from a chat". */
+export function runOrigin(source: ChatSourceLabel): string {
+    switch (source) {
+        case 'web':
+            return m.run_origin_web();
+        case 'api':
+            return m.run_origin_api();
+        case 'email':
+            return m.run_origin_email();
+        case 'schedule':
+            return m.run_origin_schedule();
+        case 'member':
+            return m.run_origin_member();
+        case 'goal':
+            return m.run_origin_goal();
+        case 'webhook':
+            return m.run_origin_webhook();
+        case 'unknown':
+            return m.run_origin_unknown();
+    }
+}
+
+/**
+ * One line per `run.*` kind (v1); the card names the agent above it. Details such as the error summary are agent text
+ * and stay text.
+ */
 export function runActivitySummary(activity: Activity): string {
     if (!isRunActivity(activity)) return activity.kind;
-    const source = sourceLabel(activity.source);
+    const run = runOrigin(activity.source);
     switch (activity.kind) {
         case 'run.queued':
-            return m.run_activity_queued({ source });
+            return m.run_activity_queued({ run });
         case 'run.started':
-            return m.run_activity_started({ source });
+            return m.run_activity_started({ run });
         case 'run.completed':
-            return m.run_activity_completed({ source });
+            return m.run_activity_completed({ run });
         case 'run.failed':
-            return m.run_activity_failed({ source });
+            return m.run_activity_failed({ run });
         case 'run.cancelled':
-            return m.run_activity_cancelled({ source });
+            return m.run_activity_cancelled({ run });
     }
 }
 

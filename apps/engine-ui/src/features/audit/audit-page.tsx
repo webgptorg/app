@@ -10,6 +10,7 @@ import { useCursorPages } from '../../app/cursor-pages';
 import { useDebouncedSearch } from '../../app/debounced-search';
 import { useEngineApi } from '../../app/engine-api-context';
 import { isInvalidCursor } from '../../app/list-errors';
+import { SoftBreaks } from '../../app/soft-breaks';
 import { m } from '../../paraglide/messages';
 import { memberListQueryOptions } from '../members/members-queries';
 import { usePermissions } from '../session/use-permissions';
@@ -86,7 +87,7 @@ function Target({ target }: { readonly target: ReadAuditEntry['target'] }) {
             <span className="text-xs text-text-muted">{auditTargetKindLabel(target.kind)}</span>
             <span className="break-words">{target.name ?? target.id}</span>
             {target.name === null || target.name === undefined ? null : (
-                <span className="font-mono text-xs break-all text-text-muted">{target.id}</span>
+                <span className="font-mono text-xs break-words text-text-muted">{target.id}</span>
             )}
         </span>
     );
@@ -145,7 +146,10 @@ function useAuditColumns(names: ReadonlyMap<string, string>): DataTableColumnDef
                     row.original.client === null ? (
                         <span className="text-text-muted">{m.audit_not_recorded()}</span>
                     ) : (
-                        <span className="font-mono text-xs break-all">{row.original.client.ip}</span>
+                        // An IPv4 address never wraps; a long IPv6 one only between its groups.
+                        <span className="font-mono text-xs">
+                            <SoftBreaks text={row.original.client.ip} after=":" />
+                        </span>
                     ),
             }),
             column.accessor((entry) => entry.client?.userAgent ?? '', {
@@ -157,7 +161,7 @@ function useAuditColumns(names: ReadonlyMap<string, string>): DataTableColumnDef
                     row.original.client === null ? (
                         <span className="text-text-muted">{m.audit_not_recorded()}</span>
                     ) : (
-                        <span className="line-clamp-2 text-xs break-all" title={row.original.client.userAgent}>
+                        <span className="line-clamp-2 text-xs break-words" title={row.original.client.userAgent}>
                             {row.original.client.userAgent}
                         </span>
                     ),

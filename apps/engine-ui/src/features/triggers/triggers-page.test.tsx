@@ -159,9 +159,9 @@ describe('triggers list', { timeout: TIMEOUT_MS }, () => {
         expect(within(morning).getByText('Schedule')).toBeDefined();
         expect(within(morning).getByText('Every weekday at 08:00, Europe/Prague')).toBeDefined();
         // The reader is in UTC; the schedule plans in Prague, so both are shown.
-        expect(
-            within(morning).getByText(/^Oct 2, 2026, 6:00\sAM \(Oct 2, 2026, 8:00\sAM, Europe\/Prague\)$/),
-        ).toBeDefined();
+        expect(within(morning).getByText(/^Oct 2, 2026, 6:00\sAM$/)).toBeDefined();
+        expect(within(morning).getByText(/^\(Oct 2, 2026, 8:00\sAM, Europe\/Prague\)$/)).toBeDefined();
+        expect(morning.textContent).toMatch(/Oct 2, 2026, 6:00\sAM \(Oct 2, 2026, 8:00\sAM, Europe\/Prague\)/);
 
         const inbox = rowOf('Support inbox');
         expect(within(inbox).getByText('Email')).toBeDefined();

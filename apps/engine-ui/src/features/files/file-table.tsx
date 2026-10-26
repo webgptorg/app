@@ -12,6 +12,7 @@ import type {
 import type { ReactNode } from 'react';
 import { useMemo } from 'react';
 
+import { SoftBreaks } from '../../app/soft-breaks';
 import { m } from '../../paraglide/messages';
 import { AgentCreator } from '../agents/agent-creator';
 import { PurposeBadge, purposeFilterOptions, ScanBadge, scanFilterOptions } from './file-labels';
@@ -89,15 +90,19 @@ function useFileColumns({ global, nameCell }: ColumnOptions): DataTableColumnDef
                 header: m.files_column_size(),
                 sortDescFirst: true,
                 meta: { priority: 4 },
-                cell: ({ row }) => <span>{formatBytes(formatters, row.original.sizeBytes)}</span>,
+                cell: ({ row }) => (
+                    <span className="whitespace-nowrap tabular-nums">
+                        {formatBytes(formatters, row.original.sizeBytes)}
+                    </span>
+                ),
             }),
             column.accessor('contentType', {
                 header: m.files_column_type(),
                 enableSorting: false,
                 meta: { priority: 6 },
                 cell: ({ row }) => (
-                    <span className="line-clamp-1 max-w-48 text-sm break-all text-text-muted">
-                        {row.original.contentType}
+                    <span className="text-sm text-text-muted">
+                        <SoftBreaks text={row.original.contentType} after="/+" />
                     </span>
                 ),
             }),

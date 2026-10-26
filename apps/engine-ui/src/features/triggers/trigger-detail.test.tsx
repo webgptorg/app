@@ -52,9 +52,9 @@ describe('trigger detail', { timeout: TIMEOUT_MS }, () => {
     it('shows next and last fire in the reader’s zone with the schedule’s zone beside it, and ticks', async () => {
         const { ticker } = await renderTrigger(TRIGGER_IDS.weekday);
         const next = fact('Next fire');
-        expect(
-            within(next).getByText(/^Oct 2, 2026, 6:00\sAM \(Oct 2, 2026, 8:00\sAM, Europe\/Prague\)$/),
-        ).toBeDefined();
+        expect(within(next).getByText(/^Oct 2, 2026, 6:00\sAM$/)).toBeDefined();
+        expect(within(next).getByText(/^\(Oct 2, 2026, 8:00\sAM, Europe\/Prague\)$/)).toBeDefined();
+        expect(next.textContent).toMatch(/Oct 2, 2026, 6:00\sAM \(Oct 2, 2026, 8:00\sAM, Europe\/Prague\)/);
         expect(within(next).getByText('in 18 hours')).toBeDefined();
         ticker.advance(17.5 * 3_600_000);
         expect(within(next).getByText('in 30 minutes')).toBeDefined();

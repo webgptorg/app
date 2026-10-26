@@ -11,14 +11,22 @@ import { TRUST_PANEL_HASH } from '../security/trust-panel-hash';
  * The trust mark in the shell, derived from the engine ID only. It opens the security page's trust panel and moves
  * focus there; the same mark appears in the dashboard's engine list, so users can compare the two.
  */
-export function ShellTrustMark({ showCode = false }: { readonly showCode?: boolean }) {
+export function ShellTrustMark({
+    showCode = false,
+    onNavigate,
+}: {
+    readonly showCode?: boolean;
+    /** E.g. closes the drawer the mark sits in. */
+    readonly onNavigate?: () => void;
+}) {
     const { data: engine } = useSuspenseQuery(engineInfoQueryOptions(useEngineApi()));
     return (
         <Link
             to="/security"
             hash={TRUST_PANEL_HASH}
             variant="standalone"
-            className="inline-flex items-center gap-2 rounded-control p-1 no-underline hover:bg-hover"
+            className="inline-flex items-center gap-2 self-start rounded-control p-1 no-underline hover:bg-hover"
+            onClick={onNavigate}
         >
             <span className="sr-only">{m.trust_mark_open()}</span>
             <TrustMark engineId={engine.engineId} state="verified" size="sm" showCode={showCode} />

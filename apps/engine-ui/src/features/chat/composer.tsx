@@ -1,13 +1,15 @@
 import { MAX_MESSAGE_LENGTH } from '@ptbk/engine-api';
 import { Button, Field, Textarea } from '@ptbk/ui';
 import { SendHorizontal, Square } from 'lucide-react';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import type { KeyboardEvent, Ref } from 'react';
 
 import { m } from '../../paraglide/messages';
 
 export interface ComposerProps {
     readonly label: string;
+    /** In a conversation the box explains itself; the label stays for assistive technology. */
+    readonly labelHidden?: boolean;
     readonly placeholder: string;
     /** A reply is under way: the text cannot change or be sent. */
     readonly busy: boolean;
@@ -23,7 +25,17 @@ export interface ComposerProps {
  * Enter sends, Shift+Enter adds a line, Esc stops a reply. While a reply streams the box is read-only rather than
  * disabled, so focus stays in it and Esc still reaches the panel.
  */
-export function Composer({ label, placeholder, busy, stop, onSend, onStop, textareaRef }: ComposerProps) {
+export function Composer({
+    label,
+    labelHidden = false,
+    placeholder,
+    busy,
+    stop,
+    onSend,
+    onStop,
+    textareaRef,
+}: ComposerProps) {
+    const hintId = useId();
     const [text, setText] = useState('');
     const [sending, setSending] = useState(false);
     const locked = busy || sending;
@@ -53,12 +65,13 @@ export function Composer({ label, placeholder, busy, stop, onSend, onStop, texta
                 void submit();
             }}
         >
-            <Field label={label} hint={m.chat_composer_hint()}>
+            <Field label={label} labelHidden={labelHidden}>
                 {(control) => (
                     <Textarea
                         {...control}
+                        aria-describedby={hintId}
                         {...(textareaRef === undefined ? {} : { ref: textareaRef })}
-                        rows={3}
+                        rows={2}
                         value={text}
                         placeholder={placeholder}
                         maxLength={MAX_MESSAGE_LENGTH}
@@ -72,14 +85,18 @@ export function Composer({ label, placeholder, busy, stop, onSend, onStop, texta
                     />
                 )}
             </Field>
-            <div className="flex justify-end">
+            {/* The hint shares the button's row so the composer stays short enough for a phone's first screen. */}
+            <div className="flex items-center justify-between gap-3">
+                <p id={hintId} className="sr-only text-xs text-text-muted sm:not-sr-only">
+                    {m.chat_composer_hint()}
+                </p>
                 {stop !== undefined && onStop !== undefined ? (
-                    <Button type="button" loading={stop === 'stopping'} onClick={onStop}>
+                    <Button type="button" loading={stop === 'stopping'} onClick={onStop} className="ms-auto">
                         <Square aria-hidden className="size-4" />
                         {m.chat_stop()}
                     </Button>
                 ) : (
-                    <Button type="submit" variant="primary" disabled={!canSend} loading={sending}>
+                    <Button type="submit" variant="primary" disabled={!canSend} loading={sending} className="ms-auto">
                         <SendHorizontal aria-hidden className="size-4" />
                         {m.chat_send()}
                     </Button>

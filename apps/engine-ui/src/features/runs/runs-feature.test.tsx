@@ -178,22 +178,22 @@ describe('run activity renderers', { timeout: TIMEOUT_MS }, () => {
             features: [...FEATURES, feed],
         });
         const list = await screen.findByRole('list', { name: 'Feed' });
-        expect(within(list).getByText('A run from Email was queued')).toBeDefined();
-        expect(within(list).getByText('A run from Email started')).toBeDefined();
-        expect(within(list).getByText('A run from Email completed')).toBeDefined();
+        expect(within(list).getByText('A run from an email was queued')).toBeDefined();
+        expect(within(list).getByText('A run from an email started')).toBeDefined();
+        expect(within(list).getByText('A run from an email completed')).toBeDefined();
         expect(within(list).getByText('Took 1 min 5 s. Cost $0.0042.')).toBeDefined();
-        expect(within(list).getByText('A run from Email failed')).toBeDefined();
+        expect(within(list).getByText('A run from an email failed')).toBeDefined();
         expect(within(list).getByText('Too many requests')).toBeDefined();
-        expect(within(list).getByText('A run from Email was cancelled')).toBeDefined();
+        expect(within(list).getByText('A run from an email was cancelled')).toBeDefined();
         for (const link of within(list).getAllByRole('link', { name: 'Open run' })) {
             expect(link.getAttribute('href')).toBe(`/runs/${RUN_IDS.completed}`);
         }
         expect(ACTIVITIES.map((activity) => renderer.summary(activity))).toEqual([
-            'A run from Email was queued',
-            'A run from Email started',
-            'A run from Email completed',
-            'A run from Email failed',
-            'A run from Email was cancelled',
+            'A run from an email was queued',
+            'A run from an email started',
+            'A run from an email completed',
+            'A run from an email failed',
+            'A run from an email was cancelled',
         ]);
     });
 });

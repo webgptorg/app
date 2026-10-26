@@ -35,7 +35,15 @@ export function AppShell() {
                 <WideSidebar onOpenPalette={palette.openPalette} />
             )}
             <CommandPaletteHost state={palette} />
-            <main id={MAIN_ID} tabIndex={-1} className="min-w-0 flex-1 px-4 py-6 outline-none md:px-8 md:py-8">
+            {/* `--main-fill-height`: the viewport minus the narrow top bar and this padding, for screens that fit it. */}
+            <main
+                id={MAIN_ID}
+                tabIndex={-1}
+                className={cx(
+                    'min-w-0 flex-1 px-4 py-6 outline-none md:px-8 md:py-8',
+                    '[--main-fill-height:calc(100dvh-6.5rem)] md:[--main-fill-height:calc(100dvh-4rem)]',
+                )}
+            >
                 <div className="mx-auto w-full max-w-6xl">
                     <Outlet />
                 </div>
@@ -104,18 +112,23 @@ function NarrowShell({ onOpenPalette }: { readonly onOpenPalette: () => void }) 
                 </div>
                 <LiveIndicator compact />
                 <PaletteButton onOpen={onOpenPalette} compact />
-                <ShellTrustMark />
             </header>
             <Drawer
                 open={open}
                 onClose={() => {
                     setOpen(false);
                 }}
-                title={m.nav_main()}
+                title={m.nav_drawer_title()}
                 side="start"
             >
+                {/* The engine switcher in the top bar already carries the mark; the link to the trust panel lives here. */}
                 <div className="flex flex-col gap-4">
                     <SidebarNav
+                        onNavigate={() => {
+                            setOpen(false);
+                        }}
+                    />
+                    <ShellTrustMark
                         onNavigate={() => {
                             setOpen(false);
                         }}

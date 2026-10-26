@@ -205,12 +205,12 @@ describe('app shell', () => {
         const open = await screen.findByRole('button', { name: 'Open navigation' });
         expect(screen.queryByRole('navigation', { name: 'Main' })).toBeNull();
         await user.click(open);
-        const drawer = await screen.findByRole('dialog', { name: 'Main' });
+        const drawer = await screen.findByRole('dialog', { name: 'Menu' });
         expect(within(drawer).getByRole('link', { name: 'Settings' })).toBeDefined();
 
         await user.keyboard('{Escape}');
         await waitFor(() => {
-            expect(screen.queryByRole('dialog', { name: 'Main' })).toBeNull();
+            expect(screen.queryByRole('dialog', { name: 'Menu' })).toBeNull();
         });
         expect(document.activeElement).toBe(open);
         await expectNoAxeViolations(container);
@@ -290,19 +290,34 @@ describe('app shell', () => {
         expect(location.assign).not.toHaveBeenCalled();
     });
 
+    it('keeps one trust mark in the narrow top bar and links to the trust panel from the drawer', async () => {
+        const media = createFakeMatchMedia({ [NARROW_QUERY]: true });
+        const { user, router } = renderWithProviders({ path: '/settings', media });
+        await user.click(await screen.findByRole('button', { name: 'Open navigation' }));
+        expect(screen.getAllByRole('link', { name: /Engine security/ })).toHaveLength(1);
+        const drawer = await screen.findByRole('dialog', { name: 'Menu' });
+        await user.click(within(drawer).getByRole('link', { name: /Engine security/ }));
+        await waitFor(() => {
+            expect(router.state.location.pathname).toBe('/security');
+        });
+        await waitFor(() => {
+            expect(screen.queryByRole('dialog', { name: 'Menu' })).toBeNull();
+        });
+    });
+
     it('closes the navigation drawer once a link is followed', async () => {
         const media = createFakeMatchMedia({ [NARROW_QUERY]: true });
         const { user, router } = renderWithProviders({ path: '/settings', media });
         await user.click(await screen.findByRole('button', { name: 'Open navigation' }));
         await user.click(
-            within(await screen.findByRole('dialog', { name: 'Main' })).getByRole('link', { name: 'Agents' }),
+            within(await screen.findByRole('dialog', { name: 'Menu' })).getByRole('link', { name: 'Agents' }),
         );
 
         await waitFor(() => {
             expect(router.state.location.pathname).toBe('/agents');
         });
         await waitFor(() => {
-            expect(screen.queryByRole('dialog', { name: 'Main' })).toBeNull();
+            expect(screen.queryByRole('dialog', { name: 'Menu' })).toBeNull();
         });
     });
 });

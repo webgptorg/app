@@ -41,7 +41,9 @@ describe('run detail', { timeout: TIMEOUT_MS }, () => {
     it('renders every section of a completed run with project changes', async () => {
         await renderRun(RUN_IDS.completed);
         expect(screen.getByRole('heading', { level: 1, name: 'Review the billing pull request' })).toBeDefined();
-        expect(screen.getByText('Completed')).toBeDefined();
+        const status = screen.getByText('Status').closest('div');
+        expect(status === null ? null : within(status).getByText('Completed')).not.toBeNull();
+        expect(screen.getByRole('link', { name: 'Back to runs' }).getAttribute('href')).toBe('/runs');
         expect(screen.getByRole('link', { name: 'Web, in a chat' }).getAttribute('href')).toBe(
             '/agents/agent-ada/chat/chat-ada',
         );
@@ -54,7 +56,7 @@ describe('run detail', { timeout: TIMEOUT_MS }, () => {
 
         const tools = section('Tool calls');
         expect(within(tools).getByText('github.get_pull_request')).toBeDefined();
-        expect(within(tools).getByText('Complete')).toBeDefined();
+        expect(within(tools).getByText('Completed')).toBeDefined();
         expect(within(tools).getByText('1 s')).toBeDefined();
 
         const usage = section('Usage and cost');
