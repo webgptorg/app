@@ -2,7 +2,7 @@
 
 - **Lane:** Engine integration · **Module:** `docs/engine-integration/` · **Milestone:** M5
 - **Depends on:** E-01, C-05, X-06
-- **Status:** in progress (docs/e-04-engine-agent-kit)
+- **Status:** done (#115)
 - **Spec:** Interfaces (draft) 1–6, Build plan; ADRs: [0002](../../adr/0002-public-private-split.md), [0004](../../adr/0004-mock-engine-and-conformance.md), [0014](../../adr/0014-cryptography.md)
 
 ## Goal
@@ -44,7 +44,7 @@ The folder moves public with the contracts (E-02), so the same rules as E-01 app
 - [x] `testing-against-the-platform.md` covers the conformance CLI, the local dev stack and E-03, with a troubleshooting table; parts that have not merged are marked pending with their task ID.
 - [x] The guide's link and private-content checks pass.
 - [x] `bun run check` passes.
-- [ ] **Status** line above set to `done (#<PR>)`.
+- [x] **Status** line above set to `done (#<PR>)`.
 
 ## Risks and open points
 
