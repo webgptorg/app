@@ -1,5 +1,5 @@
 import { screen, waitFor } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { apiRoutes } from '../../../shared/api/routes';
 import { expectNoAxeViolations } from '../../testing/axe';
@@ -16,6 +16,26 @@ function signInScript(api: ScriptedApi) {
 }
 
 describe('sign-in', () => {
+    it.each(['/signin', '/signup', '/engines'])(
+        'takes the 401 from GET /api/session on %s as signed out, logging nothing',
+        async (path) => {
+            const logged = [vi.spyOn(console, 'error'), vi.spyOn(console, 'warn')];
+            try {
+                const app = renderApp({ path, script: signInScript });
+                expect(await screen.findByRole('heading', { level: 1 })).toBeTruthy();
+                expect(app.api.callsTo(apiRoutes.getSession).length).toBeGreaterThan(0);
+                expect(screen.queryByText('Something went wrong')).toBeNull();
+                for (const spy of logged) {
+                    expect(spy).not.toHaveBeenCalled();
+                }
+            } finally {
+                for (const spy of logged) {
+                    spy.mockRestore();
+                }
+            }
+        },
+    );
+
     it('sends a signed-out visit to /account to sign-in and back after the passkey', async () => {
         const app = renderApp({ path: '/account', script: signInScript });
         expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeTruthy();

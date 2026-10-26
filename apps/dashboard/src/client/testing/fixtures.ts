@@ -113,6 +113,7 @@ export function billingView(overrides: Partial<BillingView> = {}): BillingView {
         currentPeriodEnd: null,
         cancelAtPeriodEnd: false,
         planId: 'none',
+        planName: null,
         hasBillingAccount: false,
         canSubscribe: true,
         entitlements: {
@@ -125,6 +126,8 @@ export function billingView(overrides: Partial<BillingView> = {}): BillingView {
         plans: [
             {
                 id: 'standard',
+                name: { en: 'Standard', cs: 'Standard' },
+                price: { amount: '29', currency: 'EUR', interval: 'month' },
                 features: ['engines.create'],
                 quotas: [
                     { quota: 'engines.max', limit: null },

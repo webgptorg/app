@@ -1,14 +1,16 @@
 import type { Hono } from 'hono';
 
 import type { BillingService } from '../../domain/billing/billing-service';
-import type { Plan } from '../../domain/billing/plan-catalogue';
+import type { PaidPlan } from '../../domain/billing/plan-catalogue';
 import { QUOTAS } from '../../shared/billing';
 import { apiRoutes, type PlanView } from '../../shared/api/routes';
 import type { RouteBinder } from './bind-route';
 
-function planView(plan: Plan): PlanView {
+function planView(plan: PaidPlan): PlanView {
     return {
         id: plan.id,
+        name: plan.name,
+        price: plan.price,
         features: [...plan.features],
         quotas: QUOTAS.map((quota) => ({ quota, limit: plan.quotas[quota] })),
     };
@@ -35,6 +37,7 @@ export function bindBillingRoutes(
                 currentPeriodEnd: overview.currentPeriodEnd,
                 cancelAtPeriodEnd: overview.cancelAtPeriodEnd,
                 planId: overview.plan.id,
+                planName: overview.plan.name,
                 hasBillingAccount: overview.hasBillingAccount,
                 canSubscribe: overview.canSubscribe,
                 entitlements: { features: [...overview.features], quotas: [...overview.quotas] },

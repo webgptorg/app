@@ -17,6 +17,7 @@ const PORTAL_URL = 'https://billing.stripe.com/p/session/test_example';
 const ACTIVE = billingView({
     status: 'active',
     planId: 'standard',
+    planName: { en: 'Standard', cs: 'Standard' },
     currentPeriodEnd: NOW + 30 * DAY,
     hasBillingAccount: true,
     canSubscribe: false,
@@ -44,7 +45,8 @@ describe('billing page', () => {
         const app = renderApp({ path: '/billing', session: OWNER, script: withBilling(ACTIVE) });
         expect(await screen.findByRole('heading', { name: 'Billing', level: 1 })).toBeTruthy();
         expect(await screen.findByText('Active')).toBeTruthy();
-        expect(screen.getByText('standard')).toBeTruthy();
+        expect(screen.getByText('Standard')).toBeTruthy();
+        expect(screen.queryByText('standard')).toBeNull();
         expect(screen.getByText(/^Renews on /)).toBeTruthy();
         const list = within(screen.getByRole('region', { name: 'Included in your plan' }));
         expect(list.getByText('Link new engines')).toBeTruthy();
@@ -60,15 +62,53 @@ describe('billing page', () => {
     it('offers the catalogue plans to an org without a subscription', async () => {
         const app = renderApp({ path: '/billing', session: OWNER, script: withBilling() });
         expect(await screen.findByText('No subscription')).toBeTruthy();
+        expect(screen.getByText('None')).toBeTruthy();
         const current = within(screen.getByRole('region', { name: 'Included in your plan' }));
         expect(current.getByText('Not included')).toBeTruthy();
         expect(current.getAllByText('0')).toHaveLength(2);
-        const plan = within(screen.getByLabelText('Plan standard includes'));
+        expect(screen.getByRole('heading', { name: 'Standard', level: 3 })).toBeTruthy();
+        expect(screen.getByText('€29.00 per month')).toBeTruthy();
+        expect(screen.queryByText('standard')).toBeNull();
+        expect(screen.queryByText('none')).toBeNull();
+        const plan = within(screen.getByLabelText('Plan Standard includes'));
         expect(plan.getByText('Included')).toBeTruthy();
         expect(plan.getByText('Unlimited')).toBeTruthy();
         expect(screen.queryByRole('button', { name: 'Manage billing' })).toBeNull();
-        expect(screen.getByRole('button', { name: 'Subscribe to standard' })).toBeTruthy();
+        expect(screen.getByRole('button', { name: 'Subscribe to Standard' })).toBeTruthy();
         await expectNoAxeViolations(app.container);
+    });
+
+    it('shows a yearly price, and says where to see a price the catalogue does not state', async () => {
+        const features = ['engines.create'] as const;
+        const quotas = [{ quota: 'engines.max', limit: null }] as const;
+        renderApp({
+            path: '/billing',
+            session: OWNER,
+            script: withBilling(
+                billingView({
+                    plans: [
+                        {
+                            id: 'yearly',
+                            name: { en: 'Yearly', cs: 'Roční' },
+                            price: { amount: '1200', currency: 'CZK', interval: 'year' },
+                            features: [...features],
+                            quotas: [...quotas],
+                        },
+                        {
+                            id: 'custom',
+                            name: { en: 'Custom', cs: 'Na míru' },
+                            price: null,
+                            features: [...features],
+                            quotas: [...quotas],
+                        },
+                    ],
+                }),
+            ),
+        });
+        expect(await screen.findByText('CZK 1,200.00 per year')).toBeTruthy();
+        expect(screen.getByRole('heading', { name: 'Custom', level: 3 })).toBeTruthy();
+        expect(screen.getByText('Price shown on Stripe before you pay')).toBeTruthy();
+        expect(screen.getByRole('button', { name: 'Subscribe to Custom' })).toBeTruthy();
     });
 
     it('starts Checkout for the chosen plan and leaves for the URL it returns', async () => {
@@ -80,7 +120,7 @@ describe('billing page', () => {
                 api.on(apiRoutes.billingCheckout, ok({ url: CHECKOUT_URL }));
             },
         });
-        await app.user.click(await screen.findByRole('button', { name: 'Subscribe to standard' }));
+        await app.user.click(await screen.findByRole('button', { name: 'Subscribe to Standard' }));
         await waitFor(() => {
             expect(app.navigations).toEqual([CHECKOUT_URL]);
         });
@@ -113,7 +153,7 @@ describe('billing page', () => {
                 api.on(apiRoutes.billingCheckout, ok({ url }));
             },
         });
-        await app.user.click(await screen.findByRole('button', { name: 'Subscribe to standard' }));
+        await app.user.click(await screen.findByRole('button', { name: 'Subscribe to Standard' }));
         await waitFor(() => {
             expect(app.navigations).toEqual([url]);
         });
@@ -142,7 +182,7 @@ describe('billing page', () => {
                 api.on(apiRoutes.billingCheckout, problem(400, 'unknown-plan'));
             },
         });
-        await app.user.click(await screen.findByRole('button', { name: 'Subscribe to standard' }));
+        await app.user.click(await screen.findByRole('button', { name: 'Subscribe to Standard' }));
         expect(
             await notifications().findByText('That plan is no longer offered. The list was refreshed.'),
         ).toBeTruthy();
@@ -161,13 +201,13 @@ describe('billing page', () => {
                 api.on(apiRoutes.billingCheckout, problem(409, 'already-subscribed'));
             },
         });
-        const subscribe = await screen.findByRole('button', { name: 'Subscribe to standard' });
+        const subscribe = await screen.findByRole('button', { name: 'Subscribe to Standard' });
         // Subscribed meanwhile, e.g. in another tab: the refetch after the failure shows it.
         app.api.on(apiRoutes.getBilling, ok(ACTIVE));
         await app.user.click(subscribe);
         expect(await notifications().findByText(/already has a subscription/)).toBeTruthy();
         expect(await screen.findByText('Active')).toBeTruthy();
-        expect(screen.queryByRole('button', { name: 'Subscribe to standard' })).toBeNull();
+        expect(screen.queryByRole('button', { name: 'Subscribe to Standard' })).toBeNull();
     });
 
     it('shows no billing actions without billing.manage', async () => {

@@ -6,7 +6,7 @@ import { billingState, isOpenSubscription } from './billing-state';
 import type { BillingEvent, BillingProvider, WebhookVerification } from './billing-provider';
 import type { BillingStore, ProblemOrganizationRecord, SubscriptionRecord } from './billing-store';
 import { resolvePlan } from './entitlements';
-import type { Plan, PlanCatalogue } from './plan-catalogue';
+import type { PaidPlan, Plan, PlanCatalogue } from './plan-catalogue';
 
 /** Stripe retries a failed delivery for up to three days; a month of event IDs covers every retry with margin. */
 export const EVENT_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
@@ -37,7 +37,7 @@ export interface BillingOverview {
     readonly canSubscribe: boolean;
     readonly features: readonly Feature[];
     readonly quotas: readonly QuotaUsage[];
-    readonly plans: readonly Plan[];
+    readonly plans: readonly PaidPlan[];
 }
 
 export type CheckoutOutcome =

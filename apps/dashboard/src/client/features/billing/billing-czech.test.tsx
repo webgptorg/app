@@ -23,7 +23,10 @@ describe('billing for a Czech browser', () => {
         });
         expect(await screen.findByRole('heading', { name: 'Fakturace', level: 1 })).toBeTruthy();
         expect(await screen.findByText('Bez předplatného')).toBeTruthy();
-        expect(screen.getByRole('button', { name: 'Předplatit tarif standard' })).toBeTruthy();
+        expect(screen.getByText('Žádný')).toBeTruthy();
+        expect(screen.getByRole('heading', { name: 'Standard', level: 3 })).toBeTruthy();
+        expect(screen.getByText(/^29,00\s€ měsíčně$/)).toBeTruthy();
+        expect(screen.getByRole('button', { name: 'Předplatit tarif Standard' })).toBeTruthy();
         expect(screen.getByRole('link', { name: 'Fakturace' })).toBeTruthy();
     });
 });
