@@ -49,7 +49,7 @@ The link code ties the engine to the account for routing and billing only. It gr
 
 ## Install paths
 
-The engine must offer the first path. The second is the same thing written out, for people who manage their own Compose files. The third links an engine that already runs. The build plan names the signed Docker image as the main channel; direct mode and bare Node installs are not offered in onboarding.
+Docker comes first: a signed multi-architecture image, a verifying installer and a published Compose file. The engine must offer the first path. The second is the same thing written out, for people who manage their own Compose files. The third links an engine that already runs. Other distribution forms may come later and will be added here; until then, direct mode and bare Node or npm installs are for local development only and are not offered in onboarding.
 
 ### 1. The installer (recommended)
 
@@ -117,6 +117,10 @@ promptbook-engine connect --link <link code>
 ```
 
 It must create the engine key if there is none, register, switch to `tunnel` mode, bind its app server to localhost and print the same progress as a fresh install. Data, agents and members stay. Passkeys are bound to the hostname, so passkeys made for a previous address do not work on the new one: when an owner already exists, `connect` must print a link that adds a passkey to that owner (same rules as the setup link) instead of a link that creates a new owner.
+
+In v0, connecting is a command on the host only, not a form in the engine UI: shell access is the trust level that changing the engine's address needs. The dashboard shows this exact command with the link code filled in.
+
+**Installing before you have an account** works too: without a link code the engine starts in `local` mode, listens on 127.0.0.1 only, and should print that it is not linked and how to link it ("create an account at app.ptbk.io and run `promptbook-engine connect --link <code>`"). Until then the owner reaches it through `ssh -L`.
 
 ## Configuration
 
@@ -239,7 +243,7 @@ The owner's first passkey is registered with a one-time setup secret (spec, Pair
 6. After the first passkey is registered, mark setup complete, reject every setup secret, and audit the event with the client IP from the tunnel.
 7. Rate-limit `/setup` per client IP and answer a wrong and an expired secret the same way.
 
-The setup page is open engine code served by the gateway ([gateway.md](gateway.md)), under `ENGINE_UI_CSP`, with no inline script or style. It should show the engine ID, the address and the fingerprint before the passkey prompt, so a careful owner can compare them with the terminal. Its states:
+The setup page is open engine code served by the gateway ([gateway.md](gateway.md)), under `ENGINE_UI_CSP`, with no inline script or style. Portable MIT reference pages and a stylesheet with the platform's design tokens are published for it to copy (see [Open points](#open-points), point 6). It should show the engine ID, the address and the fingerprint before the passkey prompt, so a careful owner can compare them with the terminal. Its states:
 
 | State                            | Says                                                                                                |
 | -------------------------------- | --------------------------------------------------------------------------------------------------- |
@@ -267,6 +271,16 @@ Behaviour is normative where the spec or this guide depends on it; names and fla
 | `import <archive>`         | Load an export from a predecessor deployment ([below](#moving-an-existing-deployment)). Should                                                                                                             |
 
 Commands that change who can sign in (`owner --reset`, `reset --identity`, `login --local`) run on the host only. There is no API or UI route to them: shell access to the server is the trust level they need.
+
+## The first UI bundle
+
+A fresh engine has no previous UI bundle, and the update delay counts from the time the engine first saw a release ([ui-loader.md](ui-loader.md)), so a new engine that downloaded its UI on first start would wait 72 hours. Decided:
+
+- The engine image must carry its own release's UI bundle (the spec makes the UI an artifact of the engine release). On first start the engine verifies that bundle with `verifyRelease` like any other, counting the delay from the release's trusted log time (the verified Rekor or TSA timestamp), not from the moment the engine first saw it: for the bundle its own image carries, it persists that trusted time as the bundle's `firstSeenAt`. It serves the bundle at once when the delay has passed.
+- The installer must pin only releases whose delay has already passed, measured the same way, so a release that was published minutes ago cannot be installed through a fresh install either.
+- **Until UI bundles ship inside engine releases** (they are published separately for now, see [README.md](README.md#open-points), point 3), running the installer counts as the owner approving the first UI bundle by hand: the installer passes `mode: 'manual'` for that one bundle. Every other check (signatures, release log, revocation list) still applies, and later bundles follow the update policy.
+
+This needs the engine team and the holders of the release keys to agree on how the engine release carries the UI bundle.
 
 ## Upgrades
 
@@ -307,9 +321,10 @@ Things the new engine does differently, so operators are not surprised: no admin
 
 ## Open points
 
-1. **Fingerprint derivation.** The dashboard and the engine UI show a fingerprint derived from the engine ID (`ptbk-fingerprint-v1`). For the terminal and the setup page to show the same code, its derivation and vectors must move into `@ptbk/protocol`.
-2. **Registration codes.** `not-entitled` and `rate-limited` are answered by the dashboard but not yet in `REGISTRATION_ERROR_CODE` ([README.md](README.md#open-points), point 4).
-3. **The first UI bundle.** A fresh engine has no previous bundle, and the update delay counts from the time the engine first saw a release, so a new engine could wait 72 hours for its first UI. How a fresh install gets a UI at once without weakening the delay is open.
+1. **Fingerprint derivation.** The dashboard and the engine UI show a fingerprint derived from the engine ID (`ptbk-fingerprint-v1`). Its derivation and vectors are moving into `@ptbk/protocol` so the terminal and the setup page can show the same code; until then the engine may omit it.
+2. **Registration codes.** `not-entitled` and `rate-limited` are answered by the dashboard but not yet in `REGISTRATION_ERROR_CODE` ([README.md](README.md#open-points), point 4); they are being added.
+3. **The first UI bundle inside the engine release.** How the engine's release carries the UI bundle and which signing identity covers it ([The first UI bundle](#the-first-ui-bundle)); for the engine team and the release key holders.
 4. **Installer location and image name.** The installer URL, the image name and its registry are the engine team's choice; the dashboard's install command is configuration and follows them.
-5. **Setup page look.** The gateway pages are open engine code. Whether they reuse a small open stylesheet with the platform's design tokens is open.
-6. **Reference implementation.** The mock engine does not yet implement the setup link, `/setup`, `owner --reset`, `connect` or `status`; it signs in with a development-only member picker. Until it does, this section has no reference code.
+5. **Outbound defaults of today's engine.** The predecessor reports errors and traces to a default error-reporting service and syncs default agents with a central server every few minutes. In the new engine both must be off unless the owner turns them on, and listed on the Security page ([Networking](#networking)); for the engine team.
+6. **Setup and sign-in pages.** A small MIT stylesheet with the platform's design tokens and portable, CSP-safe reference pages for `/setup` and sign-in will be published with the contracts; the engine team may copy them and owns what it ships.
+7. **Reference implementation.** The mock engine does not yet implement the setup link, `/setup`, `owner --reset`, `connect` or `status`; it signs in with a development-only member picker. Until it does, this guide's onboarding sections have no reference code.

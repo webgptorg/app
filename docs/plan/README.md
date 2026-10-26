@@ -63,69 +63,76 @@ bun run plan --next   # tasks that are todo and fully unblocked
 bun run plan --check  # validates statuses and dependencies (part of bun run check)
 ```
 
-| ID                                                       | Task                                                                             | Lane | Milestone |
-| -------------------------------------------------------- | -------------------------------------------------------------------------------- | ---- | --------- |
-| [C-01](tasks/C-01-protocol-primitives.md)                | Protocol primitives: branded IDs, base64url, Ed25519, engine ID, hostname claims | C    | M1        |
-| [C-02](tasks/C-02-tunnel-protocol.md)                    | Tunnel handshake schemas and binary frame codec                                  | C    | M1        |
-| [C-03](tasks/C-03-registration-registry-heartbeat.md)    | Registration, registry lookup and heartbeat contracts                            | C    | M1        |
-| [R-01](tasks/R-01-sni-parser.md)                         | SNI parser for the TLS ClientHello                                               | R    | M1        |
-| [R-02](tasks/R-02-relay-skeleton.md)                     | Relay skeleton: config, ports, static registry adapter                           | R    | M1        |
-| [R-03](tasks/R-03-tunnel-endpoint.md)                    | Tunnel endpoint: WSS, challenge-response, sessions                               | R    | M1        |
-| [R-04](tasks/R-04-browser-listener.md)                   | Browser listener: SNI routing, stream piping, flow control, limits               | R    | M1        |
-| [M-01](tasks/M-01-mock-engine-tunnel-client.md)          | Mock engine skeleton and tunnel client (N relays, proxy, reconnect)              | M    | M1        |
-| [M-02](tasks/M-02-mock-engine-tls-server.md)             | TLS and HTTP server inside the tunnel, dev CA, spike endpoints                   | M    | M1        |
-| [X-01](tasks/X-01-e2e-harness.md)                        | E2E harness: compose stack, Playwright, first browser test                       | X    | M1        |
-| [M-03](tasks/M-03-acme-tls-alpn.md)                      | ACME TLS-ALPN-01 through the relay against Pebble                                | M    | M1        |
-| [X-02](tasks/X-02-spike-network-tests.md)                | Spike network tests: NAT, 443-only, proxies, failover, packet capture            | X    | M1        |
-| [R-05](tasks/R-05-relay-load-test.md)                    | Relay load and throughput test                                                   | R    | M1        |
-| [R-06](tasks/R-06-relay-hardening.md)                    | Relay hardening: admission, memory, hostile engines, crash containment           | R    | M4        |
-| [C-04](tasks/C-04-engine-api-contract.md)                | Engine API contract v1 and typed client                                          | C    | M2        |
-| [C-06](tasks/C-06-release-log.md)                        | Release log entry and verification (engine and UI artifacts)                     | C    | M2        |
-| [M-04](tasks/M-04-mock-engine-api.md)                    | Mock engine API: seeded data, scenarios, fault injection, streaming              | M    | M2        |
-| [C-05](tasks/C-05-conformance-suite.md)                  | Conformance suite v1, run against the mock engine                                | C    | M2        |
-| [C-07](tasks/C-07-engine-capabilities.md)                | Engine capabilities: runs, files, triggers, integrations, activity               | C    | M2        |
-| [M-07](tasks/M-07-mock-engine-capabilities.md)           | Mock engine capabilities: runs, files, triggers, integrations, live simulation   | M    | M2        |
-| [U-01](tasks/U-01-engine-ui-scaffold.md)                 | Engine UI scaffold under the engine's CSP                                        | U    | M2        |
-| [U-02](tasks/U-02-design-system-shell.md)                | Shared UI package, design system, app shell, i18n                                | U    | M2        |
-| [U-03](tasks/U-03-agents.md)                             | Agents: list, detail, control                                                    | U    | M2        |
-| [U-04](tasks/U-04-create-edit-agent.md)                  | Create and edit agent: wizard and book editor                                    | U    | M2        |
-| [U-05](tasks/U-05-chat.md)                               | Chat with streaming                                                              | U    | M2        |
-| [U-06](tasks/U-06-security-settings.md)                  | Security panel, settings, members, secrets                                       | U    | M2        |
-| [U-07](tasks/U-07-audit-log.md)                          | Audit log view                                                                   | U    | M2        |
-| [U-08](tasks/U-08-home-and-activity.md)                  | Home, activity feed and command palette                                          | U    | M2        |
-| [U-09](tasks/U-09-runs.md)                               | Runs: timeline, run detail, cancel and retry                                     | U    | M2        |
-| [U-10](tasks/U-10-files-and-knowledge.md)                | Files and knowledge                                                              | U    | M2        |
-| [U-11](tasks/U-11-triggers-and-schedules.md)             | Triggers and schedules                                                           | U    | M2        |
-| [U-12](tasks/U-12-integrations-and-tools.md)             | Integrations and tools                                                           | U    | M2        |
-| [X-03](tasks/X-03-ui-bundle-release.md)                  | UI bundle build, manifest, signing and publishing                                | X    | M2        |
-| [M-05](tasks/M-05-ui-loader.md)                          | UI loader in the mock engine (reference implementation)                          | M    | M2        |
-| [X-04](tasks/X-04-e2e-ui-flows.md)                       | E2E UI flows through relay and loader, CSP violations fail                       | X    | M2        |
-| [E-01](tasks/E-01-engine-integration-guide.md)           | Engine integration guide for the engine team                                     | E    | M2        |
-| [D-01](tasks/D-01-dashboard-scaffold.md)                 | Dashboard scaffold: Vite SPA and Hono API on Workers, D1, environments           | D    | M3        |
-| [D-02](tasks/D-02-accounts-passkeys.md)                  | Accounts, passkeys, sessions (API)                                               | D    | M3        |
-| [D-03](tasks/D-03-engine-registration.md)                | Link codes and engine registration API                                           | D    | M3        |
-| [D-04](tasks/D-04-registry-api.md)                       | Registry API for relays and the relay's HTTP registry adapter                    | D    | M3        |
-| [D-05](tasks/D-05-heartbeat-status.md)                   | Heartbeat ingest, Durable Object per engine, offline alerts                      | D    | M3        |
-| [D-06](tasks/D-06-engine-list-ui.md)                     | Engine list and status UI                                                        | D    | M3        |
-| [D-07](tasks/D-07-billing.md)                            | Billing with Stripe and entitlements                                             | D    | M3        |
-| [D-08](tasks/D-08-custom-domains.md)                     | Enterprise custom domains (manual admin flow)                                    | D    | M3        |
-| [D-09](tasks/D-09-auth-account-screens.md)               | Sign-up, sign-in, recovery and account screens                                   | D    | M3        |
-| [M-06](tasks/M-06-mock-engine-registration-heartbeat.md) | Mock engine registration and heartbeat client                                    | M    | M3        |
-| [X-05](tasks/X-05-e2e-dashboard-flow.md)                 | E2E: sign up, link engine, see it online, open it                                | X    | M3        |
-| [X-06](tasks/X-06-local-dev-stack.md)                    | Local dev stack for humans: the whole product on one machine                     | X    | M3        |
-| [X-08](tasks/X-08-dev-stack-address-space.md)            | The dev stack and e2e side by side                                               | X    | M3        |
-| [I-01](tasks/I-01-relay-hosts.md)                        | Relay hosts: provisioning and hardening                                          | I    | M4        |
-| [I-02](tasks/I-02-dns-cloudflare.md)                     | DNS and Cloudflare environments                                                  | I    | M4        |
-| [I-03](tasks/I-03-deploy-pipelines.md)                   | Deploy and release pipelines                                                     | I    | M4        |
-| [I-04](tasks/I-04-observability.md)                      | Monitoring without content                                                       | I    | M4        |
-| [I-05](tasks/I-05-abuse-controls.md)                     | Abuse controls and monitoring jobs                                               | I    | M4        |
-| [I-06](tasks/I-06-security-review.md)                    | Internal security review gate                                                    | I    | M4        |
-| [I-07](tasks/I-07-health-checked-relay-dns.md)           | Health-checked relay DNS                                                         | I    | M4        |
-| [C-08](tasks/C-08-platform-harness.md)                   | Platform harness, registration and heartbeat conformance suites                  | C    | M5        |
-| [E-02](tasks/E-02-publish-contracts.md)                  | Move the contracts public and consume published versions                         | E    | M5        |
-| [E-03](tasks/E-03-real-engine-swap.md)                   | Run conformance and e2e against the real engine                                  | E    | M5        |
-| [E-04](tasks/E-04-engine-agent-kit.md)                   | Engine implementation kit for coding agents                                      | E    | M5        |
-| [E-05](tasks/E-05-onboarding.md)                         | Onboarding: product spec and engine install guide                                | E    | M3        |
+| ID                                                       | Task                                                                                         | Lane | Milestone |
+| -------------------------------------------------------- | -------------------------------------------------------------------------------------------- | ---- | --------- |
+| [C-01](tasks/C-01-protocol-primitives.md)                | Protocol primitives: branded IDs, base64url, Ed25519, engine ID, hostname claims             | C    | M1        |
+| [C-02](tasks/C-02-tunnel-protocol.md)                    | Tunnel handshake schemas and binary frame codec                                              | C    | M1        |
+| [C-03](tasks/C-03-registration-registry-heartbeat.md)    | Registration, registry lookup and heartbeat contracts                                        | C    | M1        |
+| [R-01](tasks/R-01-sni-parser.md)                         | SNI parser for the TLS ClientHello                                                           | R    | M1        |
+| [R-02](tasks/R-02-relay-skeleton.md)                     | Relay skeleton: config, ports, static registry adapter                                       | R    | M1        |
+| [R-03](tasks/R-03-tunnel-endpoint.md)                    | Tunnel endpoint: WSS, challenge-response, sessions                                           | R    | M1        |
+| [R-04](tasks/R-04-browser-listener.md)                   | Browser listener: SNI routing, stream piping, flow control, limits                           | R    | M1        |
+| [M-01](tasks/M-01-mock-engine-tunnel-client.md)          | Mock engine skeleton and tunnel client (N relays, proxy, reconnect)                          | M    | M1        |
+| [M-02](tasks/M-02-mock-engine-tls-server.md)             | TLS and HTTP server inside the tunnel, dev CA, spike endpoints                               | M    | M1        |
+| [X-01](tasks/X-01-e2e-harness.md)                        | E2E harness: compose stack, Playwright, first browser test                                   | X    | M1        |
+| [M-03](tasks/M-03-acme-tls-alpn.md)                      | ACME TLS-ALPN-01 through the relay against Pebble                                            | M    | M1        |
+| [X-02](tasks/X-02-spike-network-tests.md)                | Spike network tests: NAT, 443-only, proxies, failover, packet capture                        | X    | M1        |
+| [R-05](tasks/R-05-relay-load-test.md)                    | Relay load and throughput test                                                               | R    | M1        |
+| [R-06](tasks/R-06-relay-hardening.md)                    | Relay hardening: admission, memory, hostile engines, crash containment                       | R    | M4        |
+| [C-04](tasks/C-04-engine-api-contract.md)                | Engine API contract v1 and typed client                                                      | C    | M2        |
+| [C-06](tasks/C-06-release-log.md)                        | Release log entry and verification (engine and UI artifacts)                                 | C    | M2        |
+| [M-04](tasks/M-04-mock-engine-api.md)                    | Mock engine API: seeded data, scenarios, fault injection, streaming                          | M    | M2        |
+| [C-05](tasks/C-05-conformance-suite.md)                  | Conformance suite v1, run against the mock engine                                            | C    | M2        |
+| [C-07](tasks/C-07-engine-capabilities.md)                | Engine capabilities: runs, files, triggers, integrations, activity                           | C    | M2        |
+| [C-11](tasks/C-11-onboarding-contract-additions.md)      | Onboarding contract additions: registration codes, engine fingerprint                        | C    | M3        |
+| [M-07](tasks/M-07-mock-engine-capabilities.md)           | Mock engine capabilities: runs, files, triggers, integrations, live simulation               | M    | M2        |
+| [U-01](tasks/U-01-engine-ui-scaffold.md)                 | Engine UI scaffold under the engine's CSP                                                    | U    | M2        |
+| [U-02](tasks/U-02-design-system-shell.md)                | Shared UI package, design system, app shell, i18n                                            | U    | M2        |
+| [U-03](tasks/U-03-agents.md)                             | Agents: list, detail, control                                                                | U    | M2        |
+| [U-04](tasks/U-04-create-edit-agent.md)                  | Create and edit agent: wizard and book editor                                                | U    | M2        |
+| [U-05](tasks/U-05-chat.md)                               | Chat with streaming                                                                          | U    | M2        |
+| [U-06](tasks/U-06-security-settings.md)                  | Security panel, settings, members, secrets                                                   | U    | M2        |
+| [U-07](tasks/U-07-audit-log.md)                          | Audit log view                                                                               | U    | M2        |
+| [U-08](tasks/U-08-home-and-activity.md)                  | Home, activity feed and command palette                                                      | U    | M2        |
+| [U-09](tasks/U-09-runs.md)                               | Runs: timeline, run detail, cancel and retry                                                 | U    | M2        |
+| [U-10](tasks/U-10-files-and-knowledge.md)                | Files and knowledge                                                                          | U    | M2        |
+| [U-11](tasks/U-11-triggers-and-schedules.md)             | Triggers and schedules                                                                       | U    | M2        |
+| [U-12](tasks/U-12-integrations-and-tools.md)             | Integrations and tools                                                                       | U    | M2        |
+| [X-03](tasks/X-03-ui-bundle-release.md)                  | UI bundle build, manifest, signing and publishing                                            | X    | M2        |
+| [M-05](tasks/M-05-ui-loader.md)                          | UI loader in the mock engine (reference implementation)                                      | M    | M2        |
+| [X-04](tasks/X-04-e2e-ui-flows.md)                       | E2E UI flows through relay and loader, CSP violations fail                                   | X    | M2        |
+| [E-01](tasks/E-01-engine-integration-guide.md)           | Engine integration guide for the engine team                                                 | E    | M2        |
+| [D-01](tasks/D-01-dashboard-scaffold.md)                 | Dashboard scaffold: Vite SPA and Hono API on Workers, D1, environments                       | D    | M3        |
+| [D-02](tasks/D-02-accounts-passkeys.md)                  | Accounts, passkeys, sessions (API)                                                           | D    | M3        |
+| [D-03](tasks/D-03-engine-registration.md)                | Link codes and engine registration API                                                       | D    | M3        |
+| [D-04](tasks/D-04-registry-api.md)                       | Registry API for relays and the relay's HTTP registry adapter                                | D    | M3        |
+| [D-05](tasks/D-05-heartbeat-status.md)                   | Heartbeat ingest, Durable Object per engine, offline alerts                                  | D    | M3        |
+| [D-06](tasks/D-06-engine-list-ui.md)                     | Engine list and status UI                                                                    | D    | M3        |
+| [D-07](tasks/D-07-billing.md)                            | Billing with Stripe and entitlements                                                         | D    | M3        |
+| [D-08](tasks/D-08-custom-domains.md)                     | Enterprise custom domains (manual admin flow)                                                | D    | M3        |
+| [D-09](tasks/D-09-auth-account-screens.md)               | Sign-up, sign-in, recovery and account screens                                               | D    | M3        |
+| [D-10](tasks/D-10-live-link-progress.md)                 | Link flow: trial with a card, live link progress, ready state                                | D    | M3        |
+| [D-11](tasks/D-11-install-command-tabs.md)               | Install command tabs from configuration                                                      | D    | M3        |
+| [D-12](tasks/D-12-engine-online-emails.md)               | "Engine online" and "back online" emails, offline hint                                       | D    | M3        |
+| [R-07](tasks/R-07-tunnel-presence.md)                    | Relay tunnel presence for the dashboard                                                      | R    | M3        |
+| [M-06](tasks/M-06-mock-engine-registration-heartbeat.md) | Mock engine registration and heartbeat client                                                | M    | M3        |
+| [M-08](tasks/M-08-mock-engine-onboarding.md)             | Mock engine onboarding: setup secret, setup page, operator commands, reference gateway pages | M    | M3        |
+| [X-05](tasks/X-05-e2e-dashboard-flow.md)                 | E2E: sign up, link engine, see it online, open it                                            | X    | M3        |
+| [X-06](tasks/X-06-local-dev-stack.md)                    | Local dev stack for humans: the whole product on one machine                                 | X    | M3        |
+| [X-07](tasks/X-07-e2e-onboarding.md)                     | E2E: onboarding from install command to owner passkey                                        | X    | M3        |
+| [X-08](tasks/X-08-dev-stack-address-space.md)            | The dev stack and e2e side by side                                                           | X    | M3        |
+| [I-01](tasks/I-01-relay-hosts.md)                        | Relay hosts: provisioning and hardening                                                      | I    | M4        |
+| [I-02](tasks/I-02-dns-cloudflare.md)                     | DNS and Cloudflare environments                                                              | I    | M4        |
+| [I-03](tasks/I-03-deploy-pipelines.md)                   | Deploy and release pipelines                                                                 | I    | M4        |
+| [I-04](tasks/I-04-observability.md)                      | Monitoring without content                                                                   | I    | M4        |
+| [I-05](tasks/I-05-abuse-controls.md)                     | Abuse controls and monitoring jobs                                                           | I    | M4        |
+| [I-06](tasks/I-06-security-review.md)                    | Internal security review gate                                                                | I    | M4        |
+| [I-07](tasks/I-07-health-checked-relay-dns.md)           | Health-checked relay DNS                                                                     | I    | M4        |
+| [C-08](tasks/C-08-platform-harness.md)                   | Platform harness, registration and heartbeat conformance suites                              | C    | M5        |
+| [E-02](tasks/E-02-publish-contracts.md)                  | Move the contracts public and consume published versions                                     | E    | M5        |
+| [E-03](tasks/E-03-real-engine-swap.md)                   | Run conformance and e2e against the real engine                                              | E    | M5        |
+| [E-04](tasks/E-04-engine-agent-kit.md)                   | Engine implementation kit for coding agents                                                  | E    | M5        |
+| [E-05](tasks/E-05-onboarding.md)                         | Onboarding: product spec and engine install guide                                            | E    | M3        |
 
 ## Parallel waves
 
@@ -140,10 +147,12 @@ Tasks in the same wave have no dependencies on each other and can run at the sam
 | 5    | D-07, M-04, R-04, U-04                                                       |
 | 6    | C-05, D-03, R-05, R-06, X-01                                                 |
 | 7    | C-08, D-04, D-05, E-02, I-01, M-03, M-05, M-07, X-02                         |
-| 8    | D-06, D-08, I-03, I-04, X-04                                                 |
+| 8    | D-06, D-08, I-03, I-04, R-07, X-04                                           |
 | 9    | E-05, I-05, I-07, X-05                                                       |
-| 10   | E-03, I-06, X-06                                                             |
-| 11   | E-04, X-08                                                                   |
+| 10   | C-11, E-03, I-06, X-06                                                       |
+| 11   | E-04, M-08, X-08                                                             |
+| 12   | D-10, D-11, D-12                                                             |
+| 13   | X-07                                                                         |
 
 C-01 and R-01 both live in `packages/protocol` and touch its `package.json` and `src/index.ts`; whoever merges second rebases (AGENTS.md, step 7). Wave 1 starts four agents at once; wave 4 is the widest with thirteen.
 
@@ -170,6 +179,7 @@ C-01 and R-01 both live in `packages/protocol` and touch its `package.json` and 
 - Engine registration is signed by the engine key; regular releases need both the CI's keyless signature and a human-held release key; our own npm scope is exempt from the 7-day release age.
 - Organizations, members and roles are modelled from day one ([ADR 0006](../adr/0006-organizations-and-roles.md)).
 - Relay DNS failover (I-07, decided 2026-10-23 by the orchestrator, delegated by Seb): the engine wildcard is a Cloudflare DNS-only load balancer with health checks, managed in `infra/cloudflare`, not a checker holding an engine-zone token. Its subscription is a paid add-on (see apply.md); an environment with a single relay (staging for now) uses plain wildcard records instead (`relay_dns_mode`).
+- Onboarding (2026-10-26, E-05; [onboarding.md](../design/onboarding.md#decisions)): a dashboard link code inside the install command, `connect --link` for a running engine (CLI only in v0); Docker first (signed multi-arch image, verifying installer, Compose file), npm for local development only; account first promoted, engine first documented; a trial with a card on file before the install command; no engine contract change beyond C-11; the engine image carries its release's UI bundle (installer approves the first bundle by hand until then); MIT token stylesheet and reference gateway pages (M-08).
 
 **Still needed** (each blocks specific tasks, not the start):
 

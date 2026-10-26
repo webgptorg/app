@@ -21,8 +21,8 @@ The engine is built by an external maintainer in `webgptorg/promptbook`. Today i
 
 - `docs/design/onboarding.md`: principles, surfaces and who builds them, what each side can observe, journeys end to end (new person and new engine; existing predecessor operator and a running engine; another engine; Enterprise custom domain; members), every failure and edge case with copy per surface and the way out, what we deliberately cannot do, time-to-value targets, the gaps between this spec and `main` as proposed follow-up tasks, and the decisions a human must take.
 - `docs/engine-integration/installation.md`: requirements, install paths (installer, Compose, linking a running engine), configuration, data directory, networking and proxies, the first-start output contract, the setup link and setup page, operator commands, upgrades, moving an existing deployment, troubleshooting, open points.
-- `docs/engine-integration/README.md` reading order and a `checklist.md` section (ENG-100 to ENG-109) for the new requirements.
-- After the human's decisions: briefs for the follow-up tasks they accept.
+- `docs/engine-integration/README.md` reading order and a `checklist.md` section (ENG-100 to ENG-110) for the new requirements.
+- The decisions taken on 2026-10-26, recorded in both documents and the plan, and briefs for every follow-up: C-11, M-08, D-10, D-11, D-12, R-07, X-07.
 
 ## Out of scope
 
@@ -40,8 +40,8 @@ The engine is built by an external maintainer in `webgptorg/promptbook`. Today i
 ## Acceptance criteria
 
 - [x] Both documents exist, cover every journey and edge case listed in Scope, and mark each dashboard behaviour as built or as a gap with a task ID.
-- [ ] The human's decisions are recorded in both documents and in this brief; open points are either decided or listed with an owner.
-- [ ] Follow-up briefs exist for every follow-up the human accepted, added to the plan table, with `bun run plan --check` passing and waves regenerated.
+- [x] The human's decisions are recorded in both documents and in the plan; open points are either decided or listed with an owner.
+- [x] Follow-up briefs exist for every follow-up (C-11, M-08, D-10, D-11, D-12, R-07, X-07), added to the plan table, with `bun run plan --check` passing and waves regenerated.
 - [x] The guide's link and private-content checks pass over `docs/engine-integration/` (`bun run engine-guide`).
 - [ ] `bun run check` passes.
 - [ ] **Status** line above set to `done (#<PR>)`.
@@ -50,4 +50,4 @@ The engine is built by an external maintainer in `webgptorg/promptbook`. Today i
 
 - The engine maintainer has not reviewed the engine side yet; command names, the installer's location and the image name are his choice.
 - C-08 (the conformance runner's engine launch contract, referred to by E-04) has no brief yet; `installation.md`'s configuration table is the proposal it should start engines with.
-- A fresh engine's first UI bundle and the 72-hour delay interact (see the decisions); this needs the engine team and the release key holders.
+- How the engine release carries the UI bundle (decision 7) needs the engine team and the release key holders.

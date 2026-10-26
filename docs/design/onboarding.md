@@ -23,7 +23,7 @@ Copy in quotes is the English source text; Czech follows through i18n. Where the
 | Engine gateway pages: `/setup`, sign-in, step-up   | Engine team        | Open                          | Owner's first passkey, later sign-ins                                                                     |
 | Engine UI first run, `<engineId>.<engine domain>/` | Us (signed bundle) | Private, served by the engine | Welcome, first LLM provider, first agent, invite members                                                  |
 
-The gateway pages are engine code by design: anonymous visitors only ever reach open code ([spec, Architecture](../spec/zero-trust-spec.md#architecture)). We specify their behaviour and copy here; their look should match the design system without loading our bundle (see [decisions](#decisions-needed)).
+The gateway pages are engine code by design: anonymous visitors only ever reach open code ([spec, Architecture](../spec/zero-trust-spec.md#architecture)). We specify their behaviour and copy here. So that the first screen an owner sees matches our UI, we publish a small MIT stylesheet with the design tokens, and the mock engine's `/setup` and sign-in pages are portable, CSP-safe MIT reference pages the engine team may copy ([M-08](../plan/tasks/M-08-mock-engine-onboarding.md)). The engine team owns and reviews whatever it ships.
 
 ## What each side can observe
 
@@ -78,24 +78,23 @@ sequenceDiagram
 
 ### Step 2. Billing gate (dashboard, built in D-07, order to change)
 
-Engines need a paid, verified account ([spec, Abuse on our domains](../spec/zero-trust-spec.md#abuse-on-our-domains), item 4). Today a new account has no plan, and the person finds out only after clicking "Create link code" (toast plus "Your plan does not include engines" / "Subscribe to a plan to link an engine." with "Go to billing").
+Engines need a paid, verified account ([spec, Abuse on our domains](../spec/zero-trust-spec.md#abuse-on-our-domains), item 4). Decided: a **trial with a card on file** comes before the install command. Today a new account has no plan, and the person finds out only after clicking "Create link code" (toast plus "Your plan does not include engines" / "Subscribe to a plan to link an engine." with "Go to billing").
 
-Target behaviour (gap, D-10):
+Target behaviour (gap, [D-10](../plan/tasks/D-10-live-link-progress.md)):
 
-- `/engines/new` checks entitlements on load. Without `engines.create`, the page shows the plan step first: "Choose a plan to link your engine" with the plans inline and "Subscribe", not an error after a click.
-- After Stripe Checkout returns (`/billing?checkout=success`), the person lands back on `/engines/new`, not on `/billing`, with "Thank you, your subscription is starting." and the link step ready.
+- `/engines/new` checks entitlements on load. Without `engines.create`, the page shows the plan step first: "Choose a plan to link your engine" with the plans inline and "Start your {n}-day trial" (the card is collected by Stripe Checkout; nothing is charged until the trial ends), not an error after a click.
+- A trial is offered once per organization. A `trialing` subscription already grants its plan (D-07), so the install command appears as soon as Checkout returns.
+- Checkout returns to `/engines/new`, not to `/billing`, with "Thank you, your trial has started." and the link step ready.
 - At the engine limit: "Your plan's engine limit is reached" / "Upgrade your plan or remove an engine to link another one." stays as is.
-
-Whether a card-on-file trial replaces "subscribe first" is a [decision](#decisions-needed).
 
 ### Step 3. Install command (dashboard, built in D-03, to extend)
 
 Built: "Link an engine", intro copy, "Create link code", then the "Install command" card with "Copy it now: the link code is shown only once.", a copy button and "Expires in m:ss". At zero: "The link code expired" / "Create a new one to link your engine."
 
-Target (gaps, D-10 and D-11):
+Target (gaps, [D-10](../plan/tasks/D-10-live-link-progress.md) and [D-11](../plan/tasks/D-11-install-command-tabs.md)):
 
 - The link code is created on page load once the person is entitled, so the command is there without an extra click. Leaving and coming back creates a new code; old ones simply expire (at most 5 active per organization).
-- Tabs for the install paths, the first selected: **Linux server with Docker** (the one-line installer), **Docker Compose** (a `compose.yaml` snippet plus three commands), **Already running Promptbook** (`promptbook-engine connect --link <code>` for a new engine started without a code, and the move from the predecessor, Journey 2). Each tab shows one copyable block with the same link code. Exact commands are in [installation.md](../engine-integration/installation.md#install-paths).
+- Tabs for the install paths, the first selected: **Linux server with Docker** (the one-line installer), **Docker Compose** (a `compose.yaml` snippet plus three commands), **Already running Promptbook** (the exact `promptbook-engine connect --link <code>` one-liner for an engine started without a code, and the move from the predecessor, Journey 2). Each tab shows one copyable block with the same link code, so every path is one paste. Docker is the first and only distribution in v0; other forms may get a tab later. Exact commands are in [installation.md](../engine-integration/installation.md#install-paths).
 - Under the command, one line: "Run it on the machine that will host your engine. It needs outbound HTTPS (port 443) and nothing inbound." and a link "Requirements and proxies" to the public install guide.
 - The intro's "expires after 30 minutes" comes from the configured lifetime, not a hard-coded number.
 - Below the card, the live progress panel (step 4) starts in its first state.
@@ -154,6 +153,7 @@ This link makes whoever opens it the owner. It works once, until 14:32 (30 minut
 Do not paste it into chats or tickets. A new link: promptbook-engine setup-link
 ```
 
+- The engine UI comes with the engine: the image carries its own release's UI bundle, so "Engine UI verified" needs no download and no 72-hour wait ([installation.md, The first UI bundle](../engine-integration/installation.md#the-first-ui-bundle)).
 - Target: from paste to the setup link in **under 2 minutes** with the image download, **under 30 seconds** once the image is present. The certificate is the slowest step after the download; while it runs, the line reads "… Getting a certificate (usually under 30 s)".
 - The setup link is printed only when the address is reachable with a valid certificate and the gateway serves `/setup`. A link that opens onto a certificate error teaches people to click through warnings.
 - The QR code is for opening the link on a phone that holds the person's passkeys. It is the same URL; the fragment never leaves the browser.
@@ -225,7 +225,11 @@ promptbook-engine connect --link <code>
 
 It creates the engine key if none exists, registers, switches to `tunnel` mode, binds to localhost, and prints the same steps as Journey 1. Data stays. Passkeys are bound to the hostname, so passkeys from the old address do not work on the new one: the CLI prints a link that adds a passkey to the existing owner instead of creating a new owner. The dashboard's live progress is the same as in Journey 1, and row 5 ("Waiting for the owner") is skipped because the heartbeat already reports members.
 
-Whether this can also start from inside the engine UI is a [decision](#decisions-needed).
+Decided: in v0 this starts from the CLI only, because shell access is the trust level that changing an engine's address needs. The dashboard's "Already running Promptbook" tab shows the exact one-liner with a copy button, so it is still one paste. A "Connect to Promptbook" form in the engine UI comes in v1, designed together with the passkey handover to the new hostname.
+
+### 2c. Engine first (works, not promoted)
+
+Someone may install the engine before having an account: without a link code it starts in `local` mode, listens on 127.0.0.1 only and prints "Not linked. To reach this engine from anywhere, create an account at app.ptbk.io and run `promptbook-engine connect --link <code>`." The owner can use it through `ssh -L` in the meantime. Linking later is Journey 2b. The dashboard and the marketing pages promote account first; the install guide documents this path.
 
 ## Journey 3: another engine for an existing account
 
@@ -321,29 +325,29 @@ Measured in X-07 against the local stack with the mock engine, and on staging ag
 
 ## Gaps and follow-up tasks
 
-What exists today against this spec, with proposed task IDs. None is built by E-05.
+What exists today against this spec, as briefs. They run in this order: C-11, then M-08, then D-10, D-11 and D-12; R-07 runs alongside; X-07 closes the flow.
 
-| ID   | Lane        | Scope                                                                                                                                                                                                                                                        |
-| ---- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| D-10 | Dashboard   | Live link progress on `/engines/new`: link-code ID and status endpoint, polling, states 1–6, `?link=<id>` resume, entitlement-first plan step, return from Checkout to the link page, TTL copy from config, "Owner not set up" badge                         |
-| D-11 | Dashboard   | Install command tabs (installer, Compose, existing engine) from configuration, with the real commands once the engine team publishes them                                                                                                                    |
-| D-12 | Dashboard   | "Your engine is online" (first heartbeat) and "back online" emails, offline page hint                                                                                                                                                                        |
-| R-07 | Relay       | Report tunnel presence per engine (count of ready tunnels, no addresses) to the dashboard, so it can show "Reachable"; retention as in the spec's metadata table                                                                                             |
-| C-11 | Contracts   | Additive: `not-entitled` and `rate-limited` in `REGISTRATION_ERROR_CODE`; move the engine fingerprint derivation (`ptbk-fingerprint-v1`, code only, with its vectors) from `packages/ui` to `@ptbk/protocol` so the open engine can print and show it        |
-| M-08 | Mock engine | Reference onboarding: the setup secret, a `/setup` page with WebAuthn, `setup-link`, `owner --reset`, `connect --link`, `status`, the first-start output contract on a TTY, retry instead of exit on `unavailable`, `not-entitled` and `rate-limited` mapped |
-| X-07 | E2E         | Onboarding e2e on the local stack: dashboard live progress through every state, the setup link from the mock's terminal output, owner passkey with a virtual authenticator, the targets above measured                                                       |
+| ID                                                          | Lane        | Scope                                                                                                                                                                                                                                                                                                 |
+| ----------------------------------------------------------- | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [C-11](../plan/tasks/C-11-onboarding-contract-additions.md) | Contracts   | Additive only: `not-entitled` and `rate-limited` in `REGISTRATION_ERROR_CODE`; the engine fingerprint derivation (`ptbk-fingerprint-v1`) moves from `packages/ui` to `@ptbk/protocol`, so the open engine can print and show it                                                                       |
+| [M-08](../plan/tasks/M-08-mock-engine-onboarding.md)        | Mock engine | Setup secret, `/setup` with WebAuthn, `connect`, `setup-link`, `owner --reset`, `status`, the first-start output contract, `members` meaning; MIT reference gateway pages and token stylesheet; registration fixes (401 in the fake dashboard, `not-entitled`, `rate-limited`, retry instead of exit) |
+| [D-10](../plan/tasks/D-10-live-link-progress.md)            | Dashboard   | Trial with a card (once per organization), entitlement-first plan step, return from Checkout to the link page; live link progress with link-code status, states 1–6, `?link=<id>` resume, TTL copy from config, "Owner not set up" state                                                              |
+| [D-11](../plan/tasks/D-11-install-command-tabs.md)          | Dashboard   | Install command tabs (installer, Compose, already running) from configuration                                                                                                                                                                                                                         |
+| [D-12](../plan/tasks/D-12-engine-online-emails.md)          | Dashboard   | "Your engine is online" and "back online" emails, offline page hint                                                                                                                                                                                                                                   |
+| [R-07](../plan/tasks/R-07-tunnel-presence.md)               | Relay       | Relays report which engines have a ready tunnel; the dashboard shows "Reachable" or "Not reachable"                                                                                                                                                                                                   |
+| [X-07](../plan/tasks/X-07-e2e-onboarding.md)                | E2E         | Journey 1 end to end on the compose stack, with the negative paths and the targets measured                                                                                                                                                                                                           |
 
-C-08 to C-10 are the conformance tasks E-04 refers to (C-08, the conformance runner's engine launch contract, has no brief yet; it should start engines with the variables in [installation.md](../engine-integration/installation.md#configuration)), so the contract change is C-11.
+Engine-side work is listed in [installation.md](../engine-integration/installation.md) and [checklist.md](../engine-integration/checklist.md) (ENG-100 to ENG-110); C-08, the conformance runner's engine launch contract (referred to by E-04, no brief yet), should start engines with the variables in installation.md's configuration table.
 
-## Decisions needed
+## Decisions
 
-Open questions for a human, kept here until answered; the PR lists them with options and a recommendation.
+Taken 2026-10-26. Seb decided 1, 2, 5 and 7, and delegated 3, 4, 6 and 8 with one priority: "secure as well as seamless and very intuitive".
 
-1. Link direction: dashboard link code in the command (built), an engine-shown code entered in the dashboard, or both.
-2. Engine distribution: signed Docker image with an installer (spec), plus a published Compose file, plus or minus an npm path.
-3. Whether an existing engine can be connected from inside the engine UI, or only from its CLI.
-4. Account first (built) or engine first (install without a code, link later).
-5. Billing gate: subscribe before the install command (built), or a card-on-file trial.
-6. Whether onboarding gets a contract change (heartbeat fields for tunnel and certificate state) or stays on existing signals plus relay reports (R-07).
-7. How a fresh engine gets its first UI bundle without waiting out the 72-hour delay.
-8. Who builds the open gateway pages' look: the engine team from this spec, or an open page kit from us.
+1. **Link flow:** a link code from the dashboard inside the install command; `connect --link <code>` for an engine that already runs. An engine-shown code approved in the dashboard (a device flow) is revisited after v0: it needs a new engine-facing endpoint, and it lets someone talk a person into approving a stranger's engine into their account.
+2. **Distribution:** Docker first: a signed multi-architecture image, a verifying installer and a published Compose file. Other forms may come later; the guide stays open to them without specifying them. npm only for local development.
+3. **Connecting a running engine:** from the CLI only in v0, shown in the dashboard as an exact one-liner with a copy button. A connect form in the engine UI comes in v1, with the passkey handover to the new hostname designed then.
+4. **Account first** is promoted; engine first (local mode, `connect` later) works and is documented, not promoted (Journey 2c).
+5. **Billing gate:** a trial with a card on file before the install command (D-10).
+6. **No engine contract change** beyond C-11's additive pieces. Progress comes from the registration, the heartbeat (`members` is 0 until the owner's first passkey, normative in installation.md) and the relays' presence reports (R-07).
+7. **First UI bundle:** the engine image carries its own release's UI bundle, with the delay counted from the release's trusted log time, and the installer pins only releases already past their delay. Until UI bundles ship inside engine releases, running the installer counts as the owner approving the first bundle by hand. This needs the engine team and the release key holders.
+8. **Gateway pages:** we publish a small MIT stylesheet with the design tokens; the mock engine's `/setup` and sign-in pages are portable, CSP-safe MIT reference pages the engine team may copy (M-08). The engine team owns and reviews what it ships.
