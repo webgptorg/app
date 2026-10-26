@@ -1,6 +1,5 @@
 import type { ConformanceSuite } from './check';
 import { ENGINE_API_SUITE } from './suites/engine-api';
-import { TUNNEL_CHECKS, TUNNEL_SUITE } from './suites/tunnel';
 import { UI_LOADER_SUITE } from './suites/ui-loader';
 
 export type {
@@ -20,8 +19,7 @@ export { summarize, writeJsonReport, writeJunitReport } from './report';
 export { createSeededRandom } from './random';
 export type { MockEngineTargetOptions } from './targets/mock-engine';
 export { createMockEngineTarget } from './targets/mock-engine';
-export type { TunnelCheckSpec } from './suites/tunnel';
-export { ENGINE_API_SUITE, TUNNEL_CHECKS, TUNNEL_SUITE, UI_LOADER_SUITE };
+export { ENGINE_API_SUITE, UI_LOADER_SUITE };
 
 /** Every suite, in the order they run. Suites that act as relay or dashboard are registered with skipped checks. */
-export const ALL_SUITES: readonly ConformanceSuite[] = [ENGINE_API_SUITE, TUNNEL_SUITE, UI_LOADER_SUITE];
+export const ALL_SUITES: readonly ConformanceSuite[] = [ENGINE_API_SUITE, UI_LOADER_SUITE];

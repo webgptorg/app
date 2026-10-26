@@ -1,6 +1,6 @@
 import type { Bytes, RelayId } from '@ptbk/protocol';
 
-import type { CheckContext, CheckOutcome } from '../../../src/check';
+import type { CheckOutcome } from '../../../src/check';
 import { fail, skip } from '../../../src/check';
 import type { SessionCredential } from '../../../src/target';
 import { TIMED_OUT } from '../../fake-relay/event-queue';
@@ -12,16 +12,15 @@ import { connectThroughTunnel, engineHostname } from '../through-stream';
 
 export interface TunnelCheckContext {
     readonly runtime: TunnelRuntime;
-    readonly check: CheckContext;
     readonly signal: AbortSignal;
+    /** An owner session for the engine API, when the run can get one (the mock: its control listener). */
+    readonly session: () => Promise<SessionCredential | null>;
 }
 
 export type TunnelCheckRun = (ctx: TunnelCheckContext) => Promise<CheckOutcome>;
 
 export function engineKey(ctx: TunnelCheckContext): Bytes {
-    const key = ctx.runtime.engine.enginePublicKey;
-    if (key === null) skip('the harness does not know the engine public key');
-    return key;
+    return ctx.runtime.engine.enginePublicKey;
 }
 
 export function needsRelays(ctx: TunnelCheckContext, count: number): void {
@@ -79,21 +78,21 @@ export async function collect(
 
 export async function ownerSession(ctx: TunnelCheckContext): Promise<SessionCredential | null> {
     try {
-        return await ctx.check.target.session({ kind: 'owner' });
+        return await ctx.session();
     } catch {
         return null;
     }
 }
 
 /** TLS through a new stream of `tunnel` to the engine's default hostname. */
-export function tlsToEngine(
+export async function tlsToEngine(
     ctx: TunnelCheckContext,
     tunnel: RelayTunnel,
     options: Partial<Parameters<typeof connectThroughTunnel>[1]> = {},
 ): Promise<EngineTls> {
     return connectThroughTunnel(tunnel, {
-        servername: engineHostname(tunnel, ctx.runtime.engine.engineDomain),
-        certificateAuthorityPem: ctx.runtime.engine.certificateAuthorityPem ?? null,
+        servername: engineHostname(tunnel, ctx.runtime.engineDomain),
+        certificateAuthorityPem: await ctx.runtime.engine.certificateAuthority(),
         timeoutMs: ctx.runtime.timing.requestMs,
         ...options,
     });
@@ -115,5 +114,5 @@ export function delay(ms: number, signal: AbortSignal): Promise<void> {
 
 /** The engine must have survived what the suite did to it, when the harness can tell. */
 export function engineAlive(ctx: TunnelCheckContext): string | null {
-    return ctx.runtime.engine.running?.() === false ? 'the engine process exited' : null;
+    return !ctx.runtime.engine.running() ? 'the engine process exited' : null;
 }

@@ -32,7 +32,7 @@ async function tlsOrFail(ctx: TunnelCheckContext, tunnel: RelayTunnel, autoGrant
 
 function engineRequest(ctx: TunnelCheckContext, tunnel: RelayTunnel, extra: Record<string, string> = {}): Buffer {
     return requestBytes({
-        host: engineHostname(tunnel, ctx.runtime.engine.engineDomain),
+        host: engineHostname(tunnel, ctx.runtime.engineDomain),
         path: `${ENGINE_API_PREFIX}/engine`,
         headers: extra,
     });
@@ -51,7 +51,7 @@ async function quiet(stream: RelayStream, quietMs: number, maxMs: number, signal
 
 export const tlsThroughTunnel: TunnelCheckRun = async (ctx) => {
     const tunnel = await readyTunnel(ctx);
-    const hostname = engineHostname(tunnel, ctx.runtime.engine.engineDomain);
+    const hostname = engineHostname(tunnel, ctx.runtime.engineDomain);
     const result = await tlsToEngine(ctx, tunnel);
     if (result.kind === 'failed') fail(`TLS through a stream with SNI ${hostname}: ${result.reason}`);
     const findings = new Findings();
@@ -77,7 +77,7 @@ export const tlsThroughTunnel: TunnelCheckRun = async (ctx) => {
 export const unknownSniRefused: TunnelCheckRun = async (ctx) => {
     const tunnel = await readyTunnel(ctx);
     const findings = new Findings();
-    const unknown = `conformance-unknown.${ctx.runtime.engine.engineDomain}`;
+    const unknown = `conformance-unknown.${ctx.runtime.engineDomain}`;
     for (const [what, servername] of [
         [`SNI ${unknown}`, unknown],
         ['no SNI', null],
@@ -95,7 +95,7 @@ export const unknownSniRefused: TunnelCheckRun = async (ctx) => {
 
 export const concurrentStreams: TunnelCheckRun = async (ctx) => {
     const tunnel = await readyTunnel(ctx);
-    const hostname = engineHostname(tunnel, ctx.runtime.engine.engineDomain);
+    const hostname = engineHostname(tunnel, ctx.runtime.engineDomain);
     const credential = await ownerSession(ctx);
     const outcomes = await Promise.all(
         Array.from({ length: CONCURRENT_STREAMS }, async () => {
@@ -244,23 +244,26 @@ export const closeHandling: TunnelCheckRun = async (ctx) => {
     return findings.outcome();
 };
 
+/**
+ * Only the first interval: a second one would double the wait (25 s more) for little; an engine that pings once on
+ * a timer pings again on it.
+ */
 export const ping: TunnelCheckRun = async (ctx) => {
-    const { runtime } = ctx;
-    const { pingMs } = runtime.timing;
-    for (;;) {
-        const tunnels = runtime.relayIds.flatMap((relayId) => runtime.openTunnels(relayId));
-        const oldest = tunnels.sort((a, b) => a.readyAt - b.readyAt)[0] ?? (await readyTunnel(ctx));
-        const age = performance.now() - oldest.readyAt;
-        if (age < pingMs) {
-            await Promise.race([oldest.closed, delay(pingMs - age, ctx.signal)]);
-            if (!oldest.isOpen()) continue;
-        }
-        const pings = oldest.connection.pings.filter((at) => at >= oldest.connection.openedAt);
-        const marks = [oldest.readyAt, ...pings.filter((at) => at > oldest.readyAt), performance.now()];
-        const gaps = marks.slice(1).map((at, index) => at - (marks[index] ?? at));
-        const longest = Math.max(...gaps);
-        if (pings.length === 0) fail(`no WebSocket ping in ${String(Math.round(age))} ms on a ready tunnel`);
-        if (longest > pingMs) fail(`${String(Math.round(longest))} ms passed without a WebSocket ping`);
-        return PASS;
+    const { pingMs } = ctx.runtime.timing;
+    const tunnel = await readyTunnel(ctx);
+    const deadline = tunnel.readyAt + pingMs;
+    // Pings before `ready` count from the WebSocket's opening; what matters is the first one after `ready`.
+    const first = (): number | undefined => tunnel.connection.pings.find((at) => at > tunnel.readyAt);
+    while (first() === undefined && performance.now() < deadline && tunnel.isOpen()) {
+        await delay(Math.min(250, Math.max(1, deadline - performance.now())), ctx.signal);
     }
+    const at = first();
+    if (at === undefined || at > deadline) {
+        fail(
+            tunnel.isOpen()
+                ? `no WebSocket ping within ${String(pingMs)} ms of ready`
+                : 'the tunnel closed while the suite waited for a ping',
+        );
+    }
+    return PASS;
 };

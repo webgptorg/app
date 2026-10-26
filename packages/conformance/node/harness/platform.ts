@@ -45,6 +45,11 @@ export interface EngineTargetFactory {
     engineEnv(): Promise<Readonly<Record<string, string>>>;
     /** A target for that engine. `session()` asks the engine each time, so it works again after a restart. */
     target(engine: EngineProcess, endpoint: EngineApiEndpoint): ConformanceTarget;
+    /**
+     * The CA (PEM) the engine's own TLS certificates chain to in a conformance run, if the factory knows it (the
+     * mock: its dev CA). Without it, checks that reach the engine through a relay verify only name and dates.
+     */
+    certificateAuthority?(engine: EngineProcess): Promise<string | null>;
 }
 
 /** Everything a platform check gets. Resources it obtains through it are released after the check, newest first. */
@@ -62,6 +67,8 @@ export interface PlatformCheckContext extends BaseCheckContext {
     use<T extends Closable>(fixture: T): T;
     /** The engine API of an engine, or null when the run has no way to get sessions for it. */
     engineTarget(engine: EngineProcess, endpoint: EngineApiEndpoint): ConformanceTarget | null;
+    /** The trust anchor of the engine's own certificates, from the target factory; null when unknown. */
+    engineCertificateAuthority(engine: EngineProcess): Promise<string | null>;
 }
 
 export interface PlatformCheck extends ConformanceCheck<PlatformCheckContext> {

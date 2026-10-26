@@ -1,7 +1,6 @@
-import { once } from 'node:events';
-import type { IncomingMessage } from 'node:http';
+import type { IncomingMessage, ServerResponse } from 'node:http';
 import * as https from 'node:https';
-import type { AddressInfo, Socket } from 'node:net';
+import type { Socket } from 'node:net';
 import type { Duplex } from 'node:stream';
 import * as tls from 'node:tls';
 
@@ -10,6 +9,7 @@ import { TUNNEL_PATH, TUNNEL_SUBPROTOCOL } from '@ptbk/protocol';
 import type { RawData, WebSocket } from 'ws';
 import { WebSocketServer } from 'ws';
 
+import { listenLoopback } from '../harness/loopback';
 import type { TestCa } from '../pki/test-ca';
 import { createTestCa } from '../pki/test-ca';
 import { EventQueue } from './event-queue';
@@ -135,13 +135,10 @@ export interface FakeRelayOptions {
     readonly relayIds: readonly RelayId[];
     /** The CA the engine trusts for relay certificates (the harness's). */
     readonly trustedCa: TestCa;
-    readonly host?: string;
-    /** 0 (default) picks a free port. */
-    readonly port?: number;
 }
 
 export interface FakeRelay {
-    /** The address it listens on; relay hostnames must resolve to it. */
+    /** An address it listens on (also on ::1 where the host has IPv6); relay hostnames resolve to loopback. */
     readonly host: string;
     readonly port: number;
     readonly relayIds: readonly RelayId[];
@@ -199,69 +196,70 @@ export async function startFakeRelay(options: FakeRelayOptions): Promise<FakeRel
 
     for (const relayId of options.relayIds) contexts.set(relayId, contextFor(relayId, 'valid'));
 
-    const server = https.createServer({
-        // TLS 1.2 is the relay's own minimum (ADR 0014); the engine may negotiate 1.3.
-        minVersion: 'TLSv1.2',
-        SNICallback(servername, callback) {
-            const relayId = servername.toLowerCase();
-            const context = contexts.get(relayId);
-            if (context === undefined) {
-                callback(new Error('unknown relay hostname'));
-                return;
-            }
-            counterOf(relayId).clientHellos++;
-            callback(null, context);
-        },
-    });
-    server.on('connection', (socket: Socket) => {
-        if (!accepting) {
-            socket.destroy();
-            return;
-        }
-        sockets.add(socket);
-        socket.once('close', () => sockets.delete(socket));
-    });
-    server.on('secureConnection', (socket: tls.TLSSocket) => {
-        const name = typeof socket.servername === 'string' ? socket.servername.toLowerCase() : '';
-        if (relayIds.has(name)) counterOf(name).secured++;
-    });
-    server.on('tlsClientError', () => undefined);
-    server.on('request', (request: IncomingMessage, response) => {
-        const name = servernameOf(request.socket);
-        if (relayIds.has(name)) counterOf(name).strayRequests++;
-        response.writeHead(404).end();
-    });
-
     const wss = new WebSocketServer({
         noServer: true,
         maxPayload: MAX_MESSAGE_BYTES,
         perMessageDeflate: false,
         handleProtocols: (protocols) => (protocols.has(TUNNEL_SUBPROTOCOL) ? TUNNEL_SUBPROTOCOL : false),
     });
-    server.on('upgrade', (request: IncomingMessage, socket: Duplex, head: Buffer) => {
-        const name = servernameOf(request.socket);
-        const path = new URL(request.url ?? '/', 'https://relay.invalid').pathname;
-        if (!relayIds.has(name) || path !== TUNNEL_PATH) {
-            if (relayIds.has(name)) counterOf(name).strayRequests++;
-            socket.end('HTTP/1.1 404 Not Found\r\nConnection: close\r\nContent-Length: 0\r\n\r\n');
-            return;
-        }
-        counterOf(name).upgrades++;
-        wss.handleUpgrade(request, socket, head, (ws) => {
-            const connection = new RelayConnection(ws, name as RelayId, request);
-            connections.add(connection);
-            void connection.closed.then(() => connections.delete(connection));
-            handler(connection);
-        });
-    });
 
-    const host = options.host ?? '127.0.0.1';
-    server.listen(options.port ?? 0, host);
-    await once(server, 'listening');
-    const { port } = server.address() as AddressInfo;
+    // One server per loopback address family: an engine may resolve a `*.localhost` relay to either.
+    const makeServer = (): https.Server => {
+        const server = https.createServer({
+            // TLS 1.2 is the relay's own minimum (ADR 0014); the engine may negotiate 1.3.
+            minVersion: 'TLSv1.2',
+            SNICallback(servername, callback) {
+                const relayId = servername.toLowerCase();
+                const context = contexts.get(relayId);
+                if (context === undefined) {
+                    callback(new Error('unknown relay hostname'));
+                    return;
+                }
+                counterOf(relayId).clientHellos++;
+                callback(null, context);
+            },
+        });
+        server.on('connection', (socket: Socket) => {
+            if (!accepting) {
+                socket.destroy();
+                return;
+            }
+            sockets.add(socket);
+            socket.once('close', () => sockets.delete(socket));
+        });
+        server.on('secureConnection', (socket: tls.TLSSocket) => {
+            const name = servernameOf(socket);
+            if (relayIds.has(name)) counterOf(name).secured++;
+        });
+        server.on('tlsClientError', () => undefined);
+        server.on('request', (request: IncomingMessage, response: ServerResponse) => {
+            const name = servernameOf(request.socket);
+            if (relayIds.has(name)) counterOf(name).strayRequests++;
+            response.writeHead(404).end();
+        });
+        server.on('upgrade', (request: IncomingMessage, socket: Duplex, head: Buffer) => {
+            const name = servernameOf(request.socket);
+            const path = new URL(request.url ?? '/', 'https://relay.invalid').pathname;
+            if (!relayIds.has(name) || path !== TUNNEL_PATH) {
+                if (relayIds.has(name)) counterOf(name).strayRequests++;
+                socket.end('HTTP/1.1 404 Not Found\r\nConnection: close\r\nContent-Length: 0\r\n\r\n');
+                return;
+            }
+            counterOf(name).upgrades++;
+            wss.handleUpgrade(request, socket, head, (ws) => {
+                const connection = new RelayConnection(ws, name as RelayId, request);
+                connections.add(connection);
+                void connection.closed.then(() => connections.delete(connection));
+                handler(connection);
+            });
+        });
+        return server;
+    };
+    const listener = await listenLoopback(makeServer);
+    const { port } = listener;
 
     return {
-        host,
+        host: '127.0.0.1',
         port,
         relayIds: options.relayIds,
         url: (relayId) => `wss://${relayId}:${String(port)}${TUNNEL_PATH}`,
@@ -282,8 +280,7 @@ export async function startFakeRelay(options: FakeRelayOptions): Promise<FakeRel
             for (const connection of connections) connection.terminate();
             for (const socket of sockets) socket.destroy();
             wss.close();
-            server.close();
-            await once(server, 'close').catch(() => undefined);
+            await listener.close();
         },
     };
 }

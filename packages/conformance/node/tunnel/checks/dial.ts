@@ -53,7 +53,6 @@ export const relayCertificateVerified: TunnelCheckRun = async (ctx) => {
     const { runtime } = ctx;
     const relayId = runtime.primary;
     await readyTunnel(ctx);
-    await runtime.calm(ctx.signal);
     const findings = new Findings();
     try {
         for (const mode of BAD_CERTIFICATES) {
@@ -72,7 +71,6 @@ export const relayCertificateVerified: TunnelCheckRun = async (ctx) => {
             if (after.upgrades > before.upgrades || after.strayRequests > before.strayRequests) {
                 findings.add(`the engine sent HTTP to ${relayId} although it presented a ${mode} certificate`);
             }
-            runtime.disrupted(after.clientHellos - before.clientHellos);
         }
     } finally {
         runtime.relay.setCertificate(relayId, 'valid');

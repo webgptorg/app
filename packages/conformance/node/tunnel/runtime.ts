@@ -7,24 +7,23 @@ import { RelayTunnel } from '../fake-relay/relay-tunnel';
 import { acceptConnection, honestReady } from './handshake';
 
 /**
- * The engine under test, as the tunnel suite sees it. The platform harness (C-08) provides it for a spawned engine;
- * tests provide one for in-process fakes.
+ * The engine under test, as the tunnel suite sees it: built from the harness's `RegisteredEngine` (C-08), or by tests
+ * for in-process fakes.
  */
 export interface TunnelEngine {
-    readonly engineDomain: Hostname;
-    /** Raw 32-byte Ed25519 key; null skips the checks that verify signatures. */
-    readonly enginePublicKey: Bytes | null;
+    /** Raw 32-byte Ed25519 key, from the engine's registration. */
+    readonly enginePublicKey: Bytes;
     /**
      * Starts the engine again with fresh in-memory state (backoff counters, a relay link stopped by `REPLACED`), with
-     * `envPatch` merged over its environment (`null` removes a variable). Absent: checks that need it skip.
+     * `envPatch` merged over its environment (`null` removes a variable).
      */
-    restart?(envPatch?: Readonly<Record<string, string | null>>): Promise<void>;
-    /** False once the engine process exited; absent when the harness cannot tell. */
-    running?(): boolean;
-    /** What the engine logged so far, when the harness captures it; checked for leaked proxy credentials. */
-    logs?(): string;
-    /** The engine's own TLS trust anchor (PEM), when it serves certificates from a CA the suite can know. */
-    readonly certificateAuthorityPem?: string | null;
+    readonly restart: (envPatch?: Readonly<Record<string, string | null>>) => Promise<void>;
+    /** False once the engine process exited. */
+    readonly running: () => boolean;
+    /** What the engine wrote so far; checked for leaked proxy credentials. */
+    readonly logs: () => string;
+    /** The engine's own TLS trust anchor (PEM), when its target factory knows one; null checks name and dates only. */
+    readonly certificateAuthority: () => Promise<string | null>;
 }
 
 /**
@@ -54,8 +53,6 @@ export interface TunnelTiming {
     readonly minBackoffSpreadMs: number;
     /** For one request through a stream: TLS handshake and HTTP answer. */
     readonly requestMs: number;
-    /** How many failed or broken tunnels the suite causes before it asks for a fresh engine (when it can). */
-    readonly disruptionBudget: number;
 }
 
 export const CONTRACT_TIMING: TunnelTiming = Object.freeze({
@@ -70,7 +67,6 @@ export const CONTRACT_TIMING: TunnelTiming = Object.freeze({
     pingMs: PING_INTERVAL_MS + 10_000,
     minBackoffSpreadMs: 1_000,
     requestMs: 15_000,
-    disruptionBudget: 3,
 });
 
 type RelayMode = { readonly kind: 'auto' } | { readonly kind: 'manual'; readonly queue: EventQueue<RelayConnection> };
@@ -81,20 +77,26 @@ type RelayMode = { readonly kind: 'auto' } | { readonly kind: 'manual'; readonly
  */
 export class TunnelRuntime {
     readonly relay: FakeRelay;
-    readonly engine: TunnelEngine;
+    readonly engineDomain: Hostname;
     readonly timing: TunnelTiming;
     /** Every connection the engine opened, per relay, in order: when it came and how it ended. */
     readonly attempts = new Map<RelayId, number[]>();
     readonly allTunnels: RelayTunnel[] = [];
     readonly #modes = new Map<RelayId, RelayMode>();
     readonly #tunnels = new Map<RelayId, RelayTunnel[]>();
-    readonly #readyWaiters = new Set<{ relayId: RelayId; after: number; resolve: (tunnel: RelayTunnel) => void }>();
+    readonly #readyWaiters = new Set<{
+        relayId: RelayId | null;
+        after: number;
+        resolve: (tunnel: RelayTunnel) => void;
+    }>();
     readonly #adopted = new Set<RelayConnection>();
-    #disruptions = 0;
+    /** Connections that came before the engine's key was known; answered once it is. */
+    readonly #early: RelayConnection[] = [];
+    #engine: TunnelEngine | null = null;
 
-    constructor(relay: FakeRelay, engine: TunnelEngine, timing: TunnelTiming) {
+    constructor(relay: FakeRelay, engineDomain: Hostname, timing: TunnelTiming) {
         this.relay = relay;
-        this.engine = engine;
+        this.engineDomain = engineDomain;
         this.timing = timing;
         for (const relayId of relay.relayIds) {
             this.#modes.set(relayId, { kind: 'auto' });
@@ -117,25 +119,26 @@ export class TunnelRuntime {
         return first;
     }
 
-    /** Counts a tunnel the suite made fail, so a later check can ask for a fresh engine before relying on timing. */
-    disrupted(count = 1): void {
-        this.#disruptions += count;
+    get engine(): TunnelEngine {
+        if (this.#engine === null) throw new Error('no engine attached yet');
+        return this.#engine;
     }
 
-    /** Restarts the engine when the suite made it back off too often, so timing-sensitive checks start from zero. */
-    async calm(signal: AbortSignal): Promise<void> {
-        if (this.#disruptions < this.timing.disruptionBudget || this.engine.restart === undefined) return;
-        await this.restartEngine(undefined, signal);
+    /**
+     * The engine's key is known once it registered, which may be after it dialled: connections that came earlier wait
+     * for their challenge until now (the engine allows several seconds for it).
+     */
+    attach(engine: TunnelEngine): void {
+        this.#engine = engine;
+        for (const connection of this.#early.splice(0)) void this.#accept(connection);
     }
 
     async restartEngine(
         envPatch: Readonly<Record<string, string | null>> | undefined,
         signal: AbortSignal,
     ): Promise<void> {
-        if (this.engine.restart === undefined) throw new Error('the engine cannot be restarted');
         for (const relayId of this.relayIds) this.#modes.set(relayId, { kind: 'auto' });
         await this.engine.restart(envPatch);
-        this.#disruptions = 0;
         signal.throwIfAborted();
     }
 
@@ -144,9 +147,19 @@ export class TunnelRuntime {
         return (this.#tunnels.get(relayId) ?? []).filter((tunnel) => tunnel.isOpen());
     }
 
-    /** A ready tunnel to `relayId` that became ready after `after` (default: any open one). */
-    async waitReady(relayId: RelayId, timeoutMs: number, signal: AbortSignal, after = -1): Promise<RelayTunnel | null> {
-        const existing = this.openTunnels(relayId).find((tunnel) => tunnel.readyAt > after);
+    /**
+     * A ready tunnel to `relayId` (null: to any relay) that became ready after `after` (default: any open one), or
+     * null after `timeoutMs`.
+     */
+    async waitReady(
+        relayId: RelayId | null,
+        timeoutMs: number,
+        signal: AbortSignal,
+        after = -1,
+    ): Promise<RelayTunnel | null> {
+        const candidates =
+            relayId === null ? this.relayIds.flatMap((id) => this.openTunnels(id)) : this.openTunnels(relayId);
+        const existing = candidates.find((tunnel) => tunnel.readyAt > after);
         if (existing !== undefined) return existing;
         return new Promise((resolve, reject) => {
             const waiter = {
@@ -229,14 +242,11 @@ export class TunnelRuntime {
         this.#adopted.add(connection);
         const accepted = await acceptConnection(connection, {
             engineKey: this.engine.enginePublicKey,
-            engineDomain: this.engine.engineDomain,
+            engineDomain: this.engineDomain,
             authTimeoutMs: this.timing.authMs,
             signal,
         });
-        if (accepted.kind === 'failed') {
-            this.disrupted();
-            return null;
-        }
+        if (accepted.kind === 'failed') return null;
         this.#keep(accepted.tunnel);
         return accepted.tunnel;
     }
@@ -244,11 +254,10 @@ export class TunnelRuntime {
     /** Answers an `auth` a check already received with an honest `ready`, and keeps the tunnel. */
     complete(connection: RelayConnection, challenge: TunnelChallenge, auth: TunnelAuth): RelayTunnel | null {
         this.#adopted.add(connection);
-        const ready = honestReady(challenge, auth, this.engine.engineDomain);
+        const ready = honestReady(challenge, auth, this.engineDomain);
         if (ready === null) {
             connection.sendJson({ v: 1, type: 'reject', reason: 'unsupported-version' });
             connection.close(TUNNEL_CLOSE_CODE.PROTOCOL_ERROR);
-            this.disrupted();
             return null;
         }
         const tunnel = new RelayTunnel(connection, { challenge, auth, ready });
@@ -265,7 +274,9 @@ export class TunnelRuntime {
         // Every tunnel of the run stays reachable for checks that judge the engine's framing across the run.
         this.allTunnels.push(tunnel);
         for (const waiter of [...this.#readyWaiters]) {
-            if (waiter.relayId === relayId && tunnel.readyAt > waiter.after) waiter.resolve(tunnel);
+            if ((waiter.relayId === null || waiter.relayId === relayId) && tunnel.readyAt > waiter.after) {
+                waiter.resolve(tunnel);
+            }
         }
     }
 
@@ -276,20 +287,17 @@ export class TunnelRuntime {
             mode.queue.push(connection);
             return;
         }
-        void this.#accept(connection);
+        if (this.#engine === null) this.#early.push(connection);
+        else void this.#accept(connection);
     }
 
     async #accept(connection: RelayConnection): Promise<void> {
         const accepted = await acceptConnection(connection, {
             engineKey: this.engine.enginePublicKey,
-            engineDomain: this.engine.engineDomain,
+            engineDomain: this.engineDomain,
             authTimeoutMs: this.timing.authMs,
             signal: AbortSignal.timeout(this.timing.authMs + 1_000),
         }).catch(() => ({ kind: 'failed' as const, reason: 'aborted' }));
-        if (accepted.kind === 'failed') {
-            this.disrupted();
-            return;
-        }
-        this.#keep(accepted.tunnel);
+        if (accepted.kind === 'ready') this.#keep(accepted.tunnel);
     }
 }

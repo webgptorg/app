@@ -1,5 +1,6 @@
 import type { PlatformSuite } from './harness/platform';
 import { REGISTRATION_SUITE } from './suites/registration';
+import { TUNNEL_SUITE } from './suites/tunnel';
 
 export type { EngineCommand, EngineExit, EngineProcess } from './harness/engine-process';
 export { liveEngineGroups } from './harness/engine-process';
@@ -44,7 +45,13 @@ export {
     waitWhileRunning,
 } from './fakes/dashboard';
 export { createMockEngineTargetFactory } from './targets/mock-engine';
-export { REGISTRATION_SUITE };
+export type { TunnelCheckSpec, TunnelSuiteOptions } from './suites/tunnel';
+export { TUNNEL_CHECKS, createTunnelSuite } from './suites/tunnel';
+export type { TunnelRelay, TunnelRelayOptions } from './tunnel/tunnel-relay';
+export { startTunnelRelay } from './tunnel/tunnel-relay';
+export type { TunnelTiming } from './tunnel/runtime';
+export { CONTRACT_TIMING } from './tunnel/runtime';
+export { REGISTRATION_SUITE, TUNNEL_SUITE };
 
 /** Every suite that starts the engine itself and acts as the platform around it, in the order they run. */
-export const PLATFORM_SUITES: readonly PlatformSuite[] = [REGISTRATION_SUITE];
+export const PLATFORM_SUITES: readonly PlatformSuite[] = [REGISTRATION_SUITE, TUNNEL_SUITE];

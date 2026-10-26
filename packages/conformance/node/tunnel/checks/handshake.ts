@@ -86,7 +86,6 @@ async function expectProtocolError(
     what: string,
 ): Promise<void> {
     const closed = await closeWithin(connection, ctx.runtime.timing.closeMs);
-    ctx.runtime.disrupted();
     if (closed.kind === 'open') findings.add(`${what}: the engine kept the tunnel open`);
     else if (closed.code !== TUNNEL_CLOSE_CODE.PROTOCOL_ERROR) {
         findings.add(`${what}: the engine closed with ${String(closed.code)}, not PROTOCOL_ERROR`);
@@ -131,7 +130,7 @@ export const downgradeRefused: TunnelCheckRun = async (ctx) => {
                 type: 'ready',
                 protocolVersion: variant.protocolVersion,
                 features: variant.features,
-                hostnames: [defaultHostname(auth.engineId, runtime.engine.engineDomain)],
+                hostnames: [defaultHostname(auth.engineId, runtime.engineDomain)],
             });
             tested++;
             await expectProtocolError(ctx, connection, findings, `a ready with ${variant.name}`);
@@ -154,7 +153,6 @@ export const invalidMessageRefused: TunnelCheckRun = async (ctx) => {
         unknownField.sendJson({ ...buildChallenge(unknownField), conformance: true });
         const events = await collect(unknownField, runtime.timing.closeMs, ctx.signal);
         const closed = events.find((event) => event.kind === 'closed');
-        runtime.disrupted();
         if (events.some((event) => event.kind === 'text'))
             findings.add('a challenge with an unknown field got an answer');
         if (closed === undefined) findings.add('a challenge with an unknown field: the engine kept the tunnel open');
@@ -168,7 +166,7 @@ export const invalidMessageRefused: TunnelCheckRun = async (ctx) => {
             type: 'ready',
             protocolVersion: TUNNEL_PROTOCOL_VERSIONS[0],
             features: [],
-            hostnames: [`conformance.${runtime.engine.engineDomain}`],
+            hostnames: [`conformance.${runtime.engineDomain}`],
         });
         await expectProtocolError(ctx, readyFirst, findings, 'a ready before any challenge');
 

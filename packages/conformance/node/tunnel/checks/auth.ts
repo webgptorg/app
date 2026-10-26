@@ -196,7 +196,6 @@ export const wrongRelayRefused: TunnelCheckRun = async (ctx) => {
         const connection = await nextConnection(next, runtime.timing.reconnectMs, 'for a new challenge');
         sendChallenge(connection, { relayId: claimed });
         const events = await collect(connection, runtime.timing.observeMs + runtime.timing.closeMs, ctx.signal);
-        runtime.disrupted();
         if (events.some((event) => event.kind === 'text')) fail('the engine answered a challenge naming another relay');
         if (!events.some((event) => event.kind === 'closed')) {
             fail('the engine neither answered nor closed after a challenge naming another relay');

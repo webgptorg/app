@@ -1,7 +1,7 @@
 import type { TunnelRejectReason } from '@ptbk/protocol';
 import { TUNNEL_CLOSE_CODE } from '@ptbk/protocol';
 
-import { Findings, fail, skip } from '../../../src/check';
+import { Findings, fail } from '../../../src/check';
 import type { RelayConnection } from '../../fake-relay/fake-relay';
 import { awaitAuth, sendChallenge } from '../handshake';
 import type { TunnelCheckContext, TunnelCheckRun } from './support';
@@ -44,12 +44,10 @@ async function reject(
     connection.close(code);
     const after = await collect(connection, ctx.runtime.timing.closeMs, ctx.signal);
     if (after.some((event) => event.kind !== 'closed')) findings.add(`after a ${reason} reject the engine sent more`);
-    ctx.runtime.disrupted();
 }
 
 export const afterClose: TunnelCheckRun = async (ctx) => {
     const { runtime } = ctx;
-    await runtime.calm(ctx.signal);
     const findings = new Findings();
     for (const { name, code } of AFTER_READY_CLOSES) {
         const tunnel = await readyTunnel(ctx);
@@ -59,7 +57,6 @@ export const afterClose: TunnelCheckRun = async (ctx) => {
         const limit =
             code === TUNNEL_CLOSE_CODE.SHUTTING_DOWN ? runtime.timing.shuttingDownMs : runtime.timing.reconnectMs;
         const back = await runtime.waitReady(runtime.primary, limit, ctx.signal, closedAt);
-        if (code !== TUNNEL_CLOSE_CODE.SHUTTING_DOWN) runtime.disrupted();
         if (back === null) findings.add(`after ${name}, no ready tunnel within ${String(limit)} ms`);
     }
     return findings.outcome();
@@ -67,7 +64,6 @@ export const afterClose: TunnelCheckRun = async (ctx) => {
 
 export const relayRestart: TunnelCheckRun = async (ctx) => {
     const { runtime } = ctx;
-    await runtime.calm(ctx.signal);
     const missing = await runtime.waitAllReady(runtime.timing.reconnectMs, ctx.signal);
     if (missing.length > 0) fail(`no ready tunnel to ${missing.join(', ')} before the restart`);
     const downAt = performance.now();
@@ -78,7 +74,6 @@ export const relayRestart: TunnelCheckRun = async (ctx) => {
     } finally {
         runtime.relay.setAccepting(true);
     }
-    runtime.disrupted();
     const findings = new Findings();
     const backs = await Promise.all(
         runtime.relayIds.map(async (relayId) => ({
@@ -96,7 +91,6 @@ export const relayRestart: TunnelCheckRun = async (ctx) => {
 
 export const afterReject: TunnelCheckRun = async (ctx) => {
     const { runtime } = ctx;
-    await runtime.calm(ctx.signal);
     const findings = new Findings();
     await runtime.manual(runtime.primary, ctx.signal, async (next) => {
         let connection = await next(runtime.timing.reconnectMs);
@@ -136,7 +130,6 @@ const FAILURES: readonly ((
 
 export const backoff: TunnelCheckRun = async (ctx) => {
     const { runtime } = ctx;
-    await runtime.calm(ctx.signal);
     const findings = new Findings();
     const attempts: number[] = [];
     await runtime.manual(runtime.primary, ctx.signal, async (next) => {
@@ -146,7 +139,6 @@ export const backoff: TunnelCheckRun = async (ctx) => {
                 fail(`the engine stopped reconnecting after ${String(attempts.length)} failed attempts`);
             attempts.push(connection.openedAt);
             await failAttempt(ctx, connection, findings);
-            runtime.disrupted();
         }
         const last = await next(runtime.timing.reconnectMs);
         if (last === null) fail(`the engine stopped reconnecting after ${String(attempts.length)} failed attempts`);
@@ -166,9 +158,6 @@ export const backoff: TunnelCheckRun = async (ctx) => {
 
 export const replacedNoLoop: TunnelCheckRun = async (ctx) => {
     const { runtime } = ctx;
-    if (runtime.engine.restart === undefined) {
-        skip('the engine would stay without a tunnel to this relay afterwards; needs a harness that can restart it');
-    }
     const tunnel = await readyTunnel(ctx);
     let reconnects = 0;
     await runtime.manual(

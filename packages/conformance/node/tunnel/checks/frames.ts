@@ -57,7 +57,6 @@ async function expectEachClosesTunnel(
     variants: readonly BreakingVariant[],
 ): Promise<Findings> {
     const { runtime } = ctx;
-    await runtime.calm(ctx.signal);
     const findings = new Findings();
     for (const variant of variants) {
         const tunnel = await readyTunnel(ctx);
@@ -73,7 +72,6 @@ async function expectEachClosesTunnel(
         ) {
             findings.add(`${variant.name}: the engine closed with ${String(closed.code)}, not PROTOCOL_ERROR`);
         }
-        runtime.disrupted();
         const back = await runtime.waitReady(runtime.primary, runtime.timing.reconnectMs, ctx.signal, sentAt);
         if (back === null) {
             findings.add(
@@ -89,7 +87,7 @@ async function expectEachClosesTunnel(
 
 export const ignorableIgnored: TunnelCheckRun = async (ctx) => {
     const tunnel = await readyTunnel(ctx);
-    const hostname = engineHostname(tunnel, ctx.runtime.engine.engineDomain);
+    const hostname = engineHostname(tunnel, ctx.runtime.engineDomain);
     const connected = await tlsToEngine(ctx, tunnel);
     if (connected.kind === 'failed') fail(`TLS through a stream to the default hostname: ${connected.reason}`);
     const findings = new Findings();
@@ -120,7 +118,7 @@ export const validFromEngine: TunnelCheckRun = async (ctx) => {
     try {
         // Enough answers to fill the window, so the engine writes as much as it can per frame.
         const request = requestBytes({
-            host: engineHostname(tunnel, ctx.runtime.engine.engineDomain),
+            host: engineHostname(tunnel, ctx.runtime.engineDomain),
             path: `${ENGINE_API_PREFIX}/engine`,
         });
         const reading = readResponses(connected.socket, PIPELINED, ctx.runtime.timing.requestMs * 4);

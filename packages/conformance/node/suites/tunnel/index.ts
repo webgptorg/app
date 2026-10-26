@@ -1,17 +1,25 @@
-import type { ConformanceCheck, ConformanceSuite } from '../../check';
+import { fail } from '../../../src/index';
+import { startRegisteredEngine } from '../../fakes/dashboard';
+import type { PlatformCheck, PlatformSuite } from '../../harness/platform';
+import { TUNNEL_CHECK_RUNS } from '../../tunnel/checks';
+import type { TunnelTiming } from '../../tunnel/runtime';
+import { CONTRACT_TIMING } from '../../tunnel/runtime';
+import { startTunnelRelay } from '../../tunnel/tunnel-relay';
 
 export const TUNNEL_SUITE_ID = 'tunnel';
+const SUITE = TUNNEL_SUITE_ID;
 
-/** One tunnel check as engine teams track it; the Node-only suite (`@ptbk/conformance/node`) implements each one. */
+/** Relays per check: the scripted one, one that must keep its tunnel meanwhile, and one more to prove "every". */
+const RELAYS_PER_CHECK = 3;
+
+/** One tunnel check as engine teams track it. */
 export interface TunnelCheckSpec {
     readonly id: string;
     readonly suite: typeof TUNNEL_SUITE_ID;
     readonly title: string;
 }
 
-const SUITE = TUNNEL_SUITE_ID;
-
-/** In the order they run: the ones that leave the engine's tunnels untouched first, those that break them last. */
+/** In a stable order; each check gets its own relay and engine, so the order changes no outcome. */
 export const TUNNEL_CHECKS: readonly TunnelCheckSpec[] = [
     {
         id: 'tunnel.dial.websocket-upgrade',
@@ -155,14 +163,43 @@ export const TUNNEL_CHECKS: readonly TunnelCheckSpec[] = [
     },
 ];
 
+export interface TunnelSuiteOptions {
+    /** The contract's timing by default; the self-test never shortens it for a real engine. */
+    readonly timing?: TunnelTiming;
+}
+
 /**
- * The portable registration: acting as a relay needs a TLS server and a spawned engine, so every check skips here.
- * `createTunnelSuite` in `@ptbk/conformance/node` runs them for real.
+ * Acting as the relays the engine dials (tunnel-client.md). Every check starts a fake relay serving three relay
+ * hostnames, an engine registered with the fake dashboard whose `PTBK_RELAYS` names them, and waits until every relay
+ * has a ready tunnel before it scripts anything.
  */
-export const TUNNEL_SUITE: ConformanceSuite = {
-    id: SUITE,
-    checks: TUNNEL_CHECKS.map((spec): ConformanceCheck => ({
-        ...spec,
-        run: () => Promise.resolve({ kind: 'skip', reason: 'needs-node-harness' }),
-    })),
-};
+export function createTunnelSuite(options: TunnelSuiteOptions = {}): PlatformSuite {
+    const timing = options.timing ?? CONTRACT_TIMING;
+    return {
+        id: SUITE,
+        checks: TUNNEL_CHECKS.map((spec): PlatformCheck => {
+            const run = TUNNEL_CHECK_RUNS[spec.id];
+            if (run === undefined) throw new Error(`no implementation for ${spec.id}`);
+            return {
+                ...spec,
+                // Waits like the ping interval, a run of backoffs or a restart under a proxy take a while.
+                timeoutMs: (expectations) => expectations.startTimeoutMs + 4 * timing.reconnectMs + timing.pingMs,
+                async run(ctx) {
+                    const relay = await startTunnelRelay(ctx, { relays: RELAYS_PER_CHECK, timing });
+                    const registered = await startRegisteredEngine(ctx, { env: relay.env });
+                    const endpoint = await relay.endpointFor(registered);
+                    const missing = await relay.runtime.waitAllReady(timing.reconnectMs, ctx.signal);
+                    if (missing.length > 0) fail(`no ready tunnel to ${missing.join(', ')} after the engine started`);
+                    const target = ctx.engineTarget(registered.engine, endpoint);
+                    return run({
+                        runtime: relay.runtime,
+                        signal: ctx.signal,
+                        session: () => (target === null ? Promise.resolve(null) : target.session({ kind: 'owner' })),
+                    });
+                },
+            };
+        }),
+    };
+}
+
+export const TUNNEL_SUITE: PlatformSuite = createTunnelSuite();

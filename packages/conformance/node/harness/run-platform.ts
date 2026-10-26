@@ -115,6 +115,8 @@ export async function runPlatformConformance(options: RunPlatformOptions): Promi
                         return fixture;
                     },
                     engineTarget: (engine, endpoint) => options.targets?.target(engine, endpoint) ?? null,
+                    engineCertificateAuthority: (engine) =>
+                        options.targets?.certificateAuthority?.(engine) ?? Promise.resolve(null),
                 };
                 return {
                     context,

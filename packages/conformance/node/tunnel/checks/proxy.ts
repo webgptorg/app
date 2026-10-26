@@ -1,6 +1,6 @@
 import { TUNNEL_CLOSE_CODE } from '@ptbk/protocol';
 
-import { Findings, fail, skip } from '../../../src/check';
+import { Findings, fail } from '../../../src/check';
 import { startConnectProxy } from '../../fake-relay/connect-proxy';
 import type { TunnelCheckRun } from './support';
 import { delay } from './support';
@@ -11,7 +11,6 @@ const PROXY_PASSWORD = 'conformance-proxy-password';
 
 export const proxyConnect: TunnelCheckRun = async (ctx) => {
     const { runtime } = ctx;
-    if (runtime.engine.restart === undefined) skip('needs a harness that can restart the engine with HTTPS_PROXY');
     const { port } = runtime.relay;
     const [proxied, direct] = runtime.relayIds;
     if (proxied === undefined) fail('no relay');
@@ -47,12 +46,10 @@ export const proxyConnect: TunnelCheckRun = async (ctx) => {
                     'through the proxy, the engine upgraded although the relay certificate names another host',
                 );
             }
-            runtime.disrupted();
         } finally {
             runtime.relay.setCertificate(proxied, 'valid');
         }
-        if (runtime.engine.logs?.().includes(PROXY_PASSWORD) === true)
-            findings.add('the engine logged the proxy password');
+        if (runtime.engine.logs().includes(PROXY_PASSWORD)) findings.add('the engine logged the proxy password');
     } finally {
         await runtime.restartEngine({ HTTPS_PROXY: null, NO_PROXY: null }, ctx.signal).catch(() => undefined);
         await proxy.close();
