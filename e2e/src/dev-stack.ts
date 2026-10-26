@@ -1,10 +1,10 @@
 // `bun run dev:stack`, `dev:link`, `dev:trust` and `dev:untrust` (X-06): the e2e stack as a person runs it on their
 // own machine. Same images and service definitions as the e2e dashboard scenario, plus compose.dev.yaml; state lives
 // in the project's named volumes and the dev CA in .dev/pki/, both kept across `down`. Only node: imports.
-import { mkdir, readFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { connect } from 'node:net';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 
 import type { DevCaFacts } from './dev-trust.ts';
 import {
@@ -23,17 +23,23 @@ import {
     DEV_CA_CERT_FILE,
     DEV_CA_DOMAINS,
     DEV_CHROMIUM_PROFILE,
+    DEV_COREDNS_DIR,
     DEV_DASHBOARD_ORIGIN,
     DEV_ENGINE_SERVICE,
     DEV_ON_DEMAND_PROFILE,
     DEV_PKI_DIR,
     DEV_PORTS,
+    DEV_STACK_NET,
     DEV_STACK_USAGE,
+    DEV_SUBNET,
+    STACK_NET_VARIABLE,
     chromiumLaunchLine,
     devTarget,
+    moveStackAddresses,
     nonLoopbackPorts,
     parseDevStackArgs,
     parseLinkCode,
+    staleNetwork,
 } from './dev-stack-config.ts';
 
 const WAIT_TIMEOUT_S = 300;
@@ -47,6 +53,7 @@ function say(line: string): void {
 
 interface DevContext {
     readonly repoRoot: string;
+    readonly e2eDir: string;
     readonly target: ComposeTarget;
 }
 
@@ -106,6 +113,40 @@ async function ensureDevCa(context: DevContext): Promise<DevCaFacts> {
         say('the dev CA was replaced (it neared expiry); run `bun run dev:trust` again');
     }
     return after;
+}
+
+/**
+ * coredns/ onto the dev stack's addresses, in .dev/coredns/. Files are rewritten in place and only when they changed,
+ * so a running resolver's bind mount never points at a removed directory.
+ */
+async function renderStackDns(context: DevContext): Promise<void> {
+    const source = join(context.e2eDir, 'coredns');
+    const target = join(context.repoRoot, DEV_COREDNS_DIR);
+    const wanted = new Set<string>();
+    for (const entry of await readdir(source, { recursive: true, withFileTypes: true })) {
+        if (!entry.isFile()) continue;
+        const name = relative(source, join(entry.parentPath, entry.name));
+        wanted.add(name);
+        const text = moveStackAddresses(await readFile(join(source, name), 'utf8'), DEV_STACK_NET);
+        const current = await readFile(join(target, name), 'utf8').catch(() => null);
+        if (current === text) continue;
+        await mkdir(dirname(join(target, name)), { recursive: true });
+        await writeFile(join(target, name), text, 'utf8');
+    }
+    for (const entry of await readdir(target, { recursive: true, withFileTypes: true })) {
+        const name = relative(target, join(entry.parentPath, entry.name));
+        if (entry.isFile() && !wanted.has(name)) await rm(join(target, name));
+    }
+}
+
+/** The project's stack network is absent before the first `up` and after `down`: nothing to check then. */
+async function assertNetworkCurrent(target: ComposeTarget): Promise<void> {
+    const { code, stdout } = await dockerCapture(
+        ['network', 'inspect', `${target.project}_stack`, '--format', '{{range .IPAM.Config}}{{.Subnet}} {{end}}'],
+        'ignore',
+    );
+    const stale = code === 0 ? staleNetwork(stdout, DEV_SUBNET) : null;
+    if (stale !== null) throw new Error(stale);
 }
 
 async function composeConfig(target: ComposeTarget): Promise<unknown> {
@@ -175,6 +216,7 @@ async function up(context: DevContext, noSystem: boolean): Promise<void> {
     const { target } = context;
     const relayPort = noSystem ? DEV_PORTS.noSystemRelay : DEV_PORTS.relay;
     process.env['PTBK_DEV_RELAY_PORT'] = String(relayPort);
+    await assertNetworkCurrent(target);
     const exposed = nonLoopbackPorts(await composeConfig(target));
     if (exposed.length > 0) throw new Error(`refusing to publish beyond 127.0.0.1: ${exposed.join(', ')}`);
     if (!(await stackRunning(target, 'relay-a-net')) && (await portInUse(relayPort))) {
@@ -184,6 +226,7 @@ async function up(context: DevContext, noSystem: boolean): Promise<void> {
     }
     await must(withOnDemand(target, 'build'));
     const ca = await ensureDevCa(context);
+    await renderStackDns(context);
     const code = await docker(
         composeArgs(target, 'up', '--detach', '--no-build', '--wait', '--wait-timeout', String(WAIT_TIMEOUT_S)),
     );
@@ -298,8 +341,9 @@ function onlyFlags(args: readonly string[], allowed: readonly string[]): boolean
 
 /** Entry from cli.ts: `dev …`, `link <code>`, `trust [--dry-run]`, `untrust [--dry-run | --check]`. */
 export async function devMain(command: string, args: readonly string[], e2eDir: string): Promise<number> {
+    process.env[STACK_NET_VARIABLE] = DEV_STACK_NET;
     try {
-        return await dispatch(command, args, { repoRoot: join(e2eDir, '..'), target: devTarget(e2eDir) });
+        return await dispatch(command, args, { repoRoot: join(e2eDir, '..'), e2eDir, target: devTarget(e2eDir) });
     } catch (error) {
         process.stderr.write(`dev:stack: ${error instanceof Error ? error.message : 'failed'}\n`);
         return 1;

@@ -21,7 +21,8 @@ I-07 (#82) changes how CoreDNS serves the engine domain (zone files in `coredns/
 
 - The stack network's prefix becomes a compose variable, `PTBK_STACK_NET`, defaulting to the e2e value `10.89.231`, in every file the dev stack layers (`compose.yaml`, `compose.dashboard.yaml`): the subnet, its dynamic range, every `ipv4_address`, every `dns:` entry and every address in an environment variable or healthcheck. e2e sets nothing and runs exactly as before.
 - `dev:stack` sets `PTBK_STACK_NET=10.89.241` for every compose call.
-- The stack's CoreDNS config for the dev stack is rendered, not hand-kept: `dev:stack up` writes `coredns/` (the Corefile and any zone files, not `Corefile.host`) into `.dev/coredns/` (git-ignored) with the e2e prefix swapped for the dev one, and `compose.dev.yaml` mounts that directory over the resolver's `/etc/coredns`.
+- The stack's CoreDNS config for the dev stack is rendered, not hand-kept: `dev:stack up` writes `coredns/` (the Corefile and any zone files) into `.dev/coredns/` (git-ignored) with the e2e prefix swapped for the dev one, and `compose.dev.yaml` mounts that directory over the resolver's `/etc/coredns`.
+- The dev dashboard keeps the production heartbeat timing (offline after 3 missed 60 s heartbeats plus 15 s) instead of e2e's 15 s one, so an engine on the production cadence, such as the real engine, stays online without a dev-only setting. The mock engine keeps beating every 15 s.
 - A unit test proves that no address the dev stack's compose config or rendered DNS config uses lies in any e2e network (`10.89.231.0/24` and the nat scenarios' engine LAN `10.89.232.0/24`), and that the e2e config is unchanged by the variable.
 - `dev:stack up` against a `ptbk-dev` stack still on the old subnet says to run `bun run dev:stack down` first instead of failing obscurely.
 - docs/development.md: the dev stack's address space, and the troubleshooting line telling people to stop the dev stack before e2e removed.
@@ -44,6 +45,7 @@ I-07 (#82) changes how CoreDNS serves the engine domain (zone files in `coredns/
 - [ ] An e2e scenario passes while a dev stack runs on the same Docker host (recorded in the PR).
 - [ ] The e2e compose config with no variable set is identical to before (recorded in the PR).
 - [ ] `bun run dev:trust --dry-run` on a trusted machine still has nothing to do.
+- [ ] A test fails if the dev overlay sets its own heartbeat timing again.
 - [ ] docs/development.md updated.
 - [ ] `bun run check` passes.
 - [ ] **Status** line above set to `done (#<PR>)`.

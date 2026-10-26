@@ -45,6 +45,12 @@ describe('compose.dev.yaml and Corefile.host', () => {
         );
     });
 
+    it('keep the dashboard’s production heartbeat timing, so an engine beating every 60 s stays online', () => {
+        const vars = /DASHBOARD_VARS: >-\n((?:\s{8}.+\n)+)/.exec(devOverlay)?.[1];
+        expect(vars).toBeDefined();
+        expect(Object.keys(JSON.parse(vars ?? '') as object)).not.toContain('HEARTBEAT');
+    });
+
     it('answer 127.0.0.1 to the host for the dashboard and every engine, nothing else', () => {
         expect(hostCorefile).toContain('127.0.0.1 app.ptbk.test');
         expect(hostCorefile).toContain('answer "{{ .Name }} 5 IN A 127.0.0.1"');

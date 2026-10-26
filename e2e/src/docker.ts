@@ -48,9 +48,10 @@ export function docker(
     });
 }
 
-/** Exit code and stdout of a docker command whose stderr goes to the terminal. */
+/** Exit code and stdout of a docker command whose stderr goes to the terminal, unless ignored. */
 export async function dockerCapture(
     args: readonly string[],
+    stderr: 'inherit' | 'ignore' = 'inherit',
 ): Promise<{ readonly code: number; readonly stdout: string }> {
     const chunks: Buffer[] = [];
     const sink = new Writable({
@@ -59,7 +60,7 @@ export async function dockerCapture(
             callback();
         },
     });
-    const code = await docker(args, sink);
+    const code = await docker(args, sink, stderr);
     return { code, stdout: Buffer.concat(chunks).toString('utf8') };
 }
 

@@ -83,7 +83,7 @@ Each of them takes `E2E_SCENARIO` (default `spike`), so `E2E_SCENARIO=nat bun ru
 
 Results land in `e2e/test-results/<scenario>/` (ignored by git): `report/index.html` (open it with `bunx playwright show-report e2e/test-results/nat/report`), traces and screenshots of failed tests in `artifacts/` (`bunx playwright show-trace <trace.zip>`), and, when anything failed, every service's log in `compose.log`. A failed packet-capture test also attaches relay-a's capture: only that test's traffic on port 443, ciphertext only, since nothing in the stack writes a TLS key log. CI uploads the same folder as the `e2e-results` artifact on failure. Logs carry no keys or content, by the relay's and mock engine's own rules.
 
-Each checkout gets its own compose project (`ptbk-e2e-<directory>`, or `E2E_PROJECT`), so worktrees never drive each other's containers. The subnet is fixed, so only one stack runs per Docker host at a time: a second `e2e:up` fails on the overlapping network instead of taking over the first.
+Each checkout gets its own compose project (`ptbk-e2e-<directory>`, or `E2E_PROJECT`), so worktrees never drive each other's containers. The subnet is fixed, so only one e2e stack runs per Docker host at a time: a second `e2e:up` fails on the overlapping network instead of taking over the first. The [local dev stack](#local-stack) has a network of its own and runs next to it.
 
 ### Scenarios
 
@@ -192,7 +192,7 @@ Then open `https://app.ptbk.test:8444/`, sign up (the link is on `https://app.pt
 bun run dev:link <code>  # registers the stack's mock engine with that code and starts it
 ```
 
-The engine turns online after its first heartbeat (every 15 s; the list refreshes every minute, or reload). "Open" goes to `https://<engineId>.engine.test/` through relay-a; sign in there by picking a member (the mock engine's dev login, `MOCK_DEV_LOGIN`), with the `small-team` data seeded. The engine UI runs under the engine's own CSP with Trusted Types, as everywhere.
+The engine turns online after its first heartbeat (the mock engine sends one every 15 s; the list refreshes every minute, or reload). The dashboard keeps its production timing (an engine is offline after 3 missed 60 s heartbeats plus 15 s), so an engine on the production 60 s cadence, such as the real one, stays online without a dev setting; stopping the engine shows it offline after about 3 minutes. "Open" goes to `https://<engineId>.engine.test/` through relay-a; sign in there by picking a member (the mock engine's dev login, `MOCK_DEV_LOGIN`), with the `small-team` data seeded. The engine UI runs under the engine's own CSP with Trusted Types, as everywhere.
 
 | Command                               | What it does                                                                                                    |
 | ------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
@@ -206,7 +206,7 @@ The engine turns online after its first heartbeat (every 15 s; the list refreshe
 
 The fake billing state is in memory, so after `down` and `up` the account is unsubscribed again: repeat the Checkout before linking another engine. Nothing else is lost.
 
-What the stack publishes, all on 127.0.0.1 and nothing beyond (`dev:stack up` refuses a merged config that would): relay-a on 443, the dashboard on 8444, and a CoreDNS on 1053 that answers 127.0.0.1 for `app.ptbk.test` and every `*.engine.test` name. The mock engine's control listener is not published. The dashboard's origin is `https://app.ptbk.test:8444` inside the stack too, so emailed links, the WebAuthn origin and the relays' registry URL are one and the same. The dev and e2e stacks share the subnet `10.89.231.0/24`, so only one of them runs at a time: `bun run dev:stack down` before `bun run --filter @ptbk/e2e e2e`.
+What the stack publishes, all on 127.0.0.1 and nothing beyond (`dev:stack up` refuses a merged config that would): relay-a on 443, the dashboard on 8444, and a CoreDNS on 1053 that answers 127.0.0.1 for `app.ptbk.test` and every `*.engine.test` name. The mock engine's control listener is not published. The dashboard's origin is `https://app.ptbk.test:8444` inside the stack too, so emailed links, the WebAuthn origin and the relays' registry URL are one and the same. The stack network is `10.89.241.0/24`, apart from e2e's `10.89.231.0/24` and `10.89.232.0/24`, so the dev stack and an e2e run share a Docker host (X-08): the compose files take the network's first three octets from `PTBK_STACK_NET` (e2e's by default, which `e2e` always uses), `dev:stack` sets it, and `dev:stack up` renders `e2e/coredns/` onto those addresses into `.dev/coredns/` for the stack's own resolver. Project names, volumes, images and container names differ by project already, and e2e publishes no host port. A dev stack created before X-08 is still on e2e's subnet: `up` says so, and `bun run dev:stack down` then `up` moves it, with the account, passkeys and linked engine kept. Trust and the host resolver are unchanged.
 
 ### The dev CA and trusting it
 
@@ -240,7 +240,6 @@ bun run --filter @ptbk/e2e dev:smoke                      # E2E_DEV_BROWSER_CHAN
 - **A certificate error, or passkeys refused.** WebAuthn needs a trusted certificate: run `bun run dev:trust` and restart the browser; check that `bun run dev:trust --dry-run` has nothing left to do. A CA replaced after a year has to be trusted again.
 - **`dev:link` says the engine was already linked.** The engine keeps its registration across `down` and `up`; the code was not used. `bun run dev:stack reset` starts over with a new engine.
 - **The engine stays offline.** `bun run dev:stack logs mock-engine relay-a dashboard`. Leaf certificates and relay registry keys last 7 days and are renewed on every `up`, so a stack that ran for a week needs `down` and `up`.
-- **The e2e suite fails with an overlapping network.** The dev stack is running: `bun run dev:stack down` first.
 
 ## Parallel work
 

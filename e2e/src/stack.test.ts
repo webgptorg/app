@@ -3,6 +3,7 @@ import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
+import { interpolate } from './compose-env.ts';
 import { ON_DEMAND_PROFILE } from './scenarios.ts';
 
 import {
@@ -37,9 +38,12 @@ import {
 } from './stack.ts';
 
 const E2E_DIR = join(import.meta.dirname, '..');
-const compose = readFileSync(join(E2E_DIR, 'compose.yaml'), 'utf8');
+// As e2e runs them: every variable at its default, PTBK_STACK_NET included.
+const compose = interpolate(readFileSync(join(E2E_DIR, 'compose.yaml'), 'utf8'));
 const corefile = readFileSync(join(E2E_DIR, 'coredns', 'Corefile'), 'utf8');
-const overlay = (name: string): string => readFileSync(join(E2E_DIR, `compose.${name}.yaml`), 'utf8');
+const overlay = (name: string): string => interpolate(readFileSync(join(E2E_DIR, `compose.${name}.yaml`), 'utf8'));
+const dnsServers = (text: string): readonly string[] =>
+    [...text.matchAll(/dns: \['?([\d.]+)'?\]/g)].map((match) => match[1] ?? '');
 const OVERLAYS = [
     'nat',
     'capture',
@@ -68,7 +72,8 @@ describe('the topology in compose.yaml and the Corefile', () => {
     it('agrees on the subnet, the resolver and the domains', () => {
         expect(compose).toContain(`subnet: ${SUBNET}`);
         expect(compose).toContain(`ipv4_address: ${DNS_IP}`);
-        expect(compose.match(/dns: \[([\d.]+)\]/g)?.every((line) => line === `dns: [${DNS_IP}]`)).toBe(true);
+        expect(dnsServers(compose).length).toBeGreaterThan(0);
+        expect(dnsServers(compose).every((server) => server === DNS_IP)).toBe(true);
         expect(compose).toContain(`PTBK_ENGINE_DOMAIN: ${ENGINE_DOMAIN}`);
         expect(compose).toContain(`MOCK_DEV_CA_DOMAINS: ${OUR_DOMAIN}`);
         expect(corefile).toContain(`${OUR_DOMAIN}:53 {`);
@@ -101,11 +106,7 @@ describe('the topology in compose.yaml and the Corefile', () => {
             expect(text).toContain(`HTTPS_PROXY: http://${proxy.lanIp}:${String(port)}`);
         }
         for (const name of OVERLAYS) {
-            expect(
-                overlay(name)
-                    .match(/dns: \[([\d.]+)\]/g)
-                    ?.every((line) => line === `dns: [${DNS_IP}]`) ?? true,
-            ).toBe(true);
+            expect(dnsServers(overlay(name)).every((server) => server === DNS_IP)).toBe(true);
         }
     });
 

@@ -3,9 +3,15 @@
 # volumes, kept across `down` and `up` (only `dev:stack reset` drops them); the dev CA is the persistent one in
 # .dev/pki/ that the host trusts; and the dashboard, relay-a and a resolver for the host are published on 127.0.0.1
 # only. The mock engine's control listener stays unpublished. Ports are repeated in src/dev-stack.ts; src/dev-stack.test.ts
-# fails if they drift apart.
+# fails if they drift apart. `dev:stack` sets PTBK_STACK_NET (X-08), so the stack network and every fixed address sit
+# apart from any e2e stack's.
 
 services:
+  # coredns/ with the e2e addresses moved onto the dev stack's, rendered into .dev/coredns/ by every `dev:stack up`.
+  dns:
+    volumes: !override
+      - ../.dev/coredns:/etc/coredns:ro
+
   # `dev:stack up` creates the CA in .dev/pki/dev-ca/ first (the mock engine's own `dev-ca`, run as the host user).
   init:
     environment:
@@ -26,13 +32,14 @@ services:
 
   # The origin carries the published port, so the WebAuthn origin, emailed links and the URLs the relays and the
   # engine use inside the stack are one and the same. Link codes keep their default 30 minutes: a person copies them.
+  # Heartbeat timing keeps the production defaults (offline after 3 missed 60 s beats plus 15 s), so an engine on the
+  # production cadence stays online; the mock engine's 15 s from compose.dashboard.yaml fits them too.
   dashboard:
     environment:
       DASHBOARD_ORIGIN: https://app.ptbk.test:8444
       DASHBOARD_VARS: >-
         {"ENGINE_DOMAIN": "engine.test",
-        "RELAYS": [{"relayId": "relay-a.ptbk.test", "region": "local-a"}, {"relayId": "relay-b.ptbk.test", "region": "local-b"}],
-        "HEARTBEAT": {"intervalS": 15, "missedLimit": 2, "graceS": 5, "perEngineLimit": 5}}
+        "RELAYS": [{"relayId": "relay-a.ptbk.test", "region": "local-a"}, {"relayId": "relay-b.ptbk.test", "region": "local-b"}]}
     ports:
       - 127.0.0.1:8444:8444
     healthcheck:

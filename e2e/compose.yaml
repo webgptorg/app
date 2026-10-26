@@ -3,6 +3,10 @@
 # same network. Scenarios add services through compose.<scenario>.yaml
 # overlays. Addresses are repeated from src/stack.ts; src/stack.test.ts fails if they drift apart.
 #
+# The stack network's first three octets are PTBK_STACK_NET, which e2e leaves at its default; the dev stack moves it
+# (X-08, src/dev-stack-config.ts) so both run side by side on one Docker host. Only this file and
+# compose.dashboard.yaml take it: the dev stack layers nothing else.
+#
 # Private keys never share a volume with anything that does not own them: `engine` (engine key and dev CA key) is
 # mounted only by the mock engine, each relay's key only by that relay, and `public` (certificates, the engine's
 # public identity, the registry) is read-only for every consumer.
@@ -48,7 +52,7 @@ services:
       - ./coredns/Corefile:/etc/coredns/Corefile:ro
     networks:
       stack:
-        ipv4_address: 10.89.231.53
+        ipv4_address: ${PTBK_STACK_NET:-10.89.231}.53
 
   # Each relay's address and network namespace belong to a holder that does nothing else, so the relay process can
   # die while its address stays: a killed relay refuses connections (a reset) instead of vanishing, which is what a
@@ -60,19 +64,19 @@ services:
     user: '65534:65534'
     cap_drop: [ALL]
     read_only: true
-    dns: [10.89.231.53]
+    dns: ['${PTBK_STACK_NET:-10.89.231}.53']
     # 443 as the relays' non-root node user.
     sysctls:
       net.ipv4.ip_unprivileged_port_start: '0'
     networks:
       stack:
-        ipv4_address: 10.89.231.11
+        ipv4_address: ${PTBK_STACK_NET:-10.89.231}.11
 
   relay-b-net:
     <<: *relay-net
     networks:
       stack:
-        ipv4_address: 10.89.231.12
+        ipv4_address: ${PTBK_STACK_NET:-10.89.231}.12
 
   relay-a: &relay
     build:
@@ -94,7 +98,7 @@ services:
       RELAY_TLS_KEY_FILE: /relay-key/key.pem
       RELAY_REGISTRY_KIND: static
       RELAY_REGISTRY_FILE: /pki/registry.json
-      RELAY_DNS_SERVERS: 10.89.231.53
+      RELAY_DNS_SERVERS: ${PTBK_STACK_NET:-10.89.231}.53
     volumes:
       - public:/pki:ro
       - relay-a-key:/relay-key:ro
@@ -174,13 +178,13 @@ services:
       - release-store-key:/release-store-key:ro
     read_only: true
     cap_drop: [ALL]
-    dns: [10.89.231.53]
+    dns: ['${PTBK_STACK_NET:-10.89.231}.53']
     # 443 as the non-root node user.
     sysctls:
       net.ipv4.ip_unprivileged_port_start: '0'
     networks:
       stack:
-        ipv4_address: 10.89.231.30
+        ipv4_address: ${PTBK_STACK_NET:-10.89.231}.30
 
   mock-engine:
     build:
@@ -218,12 +222,12 @@ services:
     volumes:
       - public:/pki:ro
       - engine:/engine
-    dns: [10.89.231.53]
+    dns: ['${PTBK_STACK_NET:-10.89.231}.53']
     networks:
       stack:
         # Fixed, so Playwright reaches the control listener (src/stack.ts, MOCK_ENGINE_CONTROL). The nat overlay
         # moves the engine behind its gateway, where only the spike scenario's tests are not looking for it.
-        ipv4_address: 10.89.231.31
+        ipv4_address: ${PTBK_STACK_NET:-10.89.231}.31
 
   # Healthy once every relay has a ready tunnel and routes the engine hostname to it, checked from the browser's side
   # of the network rather than from the engine, whose way out differs per scenario (gateway, proxy).
@@ -239,7 +243,7 @@ services:
         condition: service_started
     volumes:
       - public:/pki:ro
-    dns: [10.89.231.53]
+    dns: ['${PTBK_STACK_NET:-10.89.231}.53']
     healthcheck:
       <<: *probe
       test:
@@ -254,9 +258,9 @@ services:
           '--path',
           '/__spike/whoami',
           '--address',
-          '10.89.231.11',
+          '${PTBK_STACK_NET:-10.89.231}.11',
           '--address',
-          '10.89.231.12',
+          '${PTBK_STACK_NET:-10.89.231}.12',
         ]
     networks:
       - stack
@@ -284,7 +288,7 @@ services:
     volumes:
       - public:/pki:ro
       - /var/run/docker.sock:/var/run/docker.sock
-    dns: [10.89.231.53]
+    dns: ['${PTBK_STACK_NET:-10.89.231}.53']
     init: true
     # Chromium needs more shared memory than Docker's 64 MB default.
     shm_size: 1gb
@@ -295,9 +299,9 @@ networks:
   stack:
     ipam:
       config:
-        - subnet: 10.89.231.0/24
+        - subnet: ${PTBK_STACK_NET:-10.89.231}.0/24
           # Dynamic addresses stay in the upper half, clear of the fixed ones above.
-          ip_range: 10.89.231.128/25
+          ip_range: ${PTBK_STACK_NET:-10.89.231}.128/25
 
 volumes:
   public:

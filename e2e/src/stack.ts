@@ -7,8 +7,10 @@
 export const OUR_DOMAIN = 'ptbk.test';
 export const ENGINE_DOMAIN = 'engine.test';
 
-export const SUBNET = '10.89.231.0/24';
-export const DNS_IP = '10.89.231.53';
+/** The stack network's first three octets: the default of compose's `PTBK_STACK_NET`, which e2e always runs on. */
+export const STACK_NET = '10.89.231';
+export const SUBNET = `${STACK_NET}.0/24`;
+export const DNS_IP = `${STACK_NET}.53`;
 
 export interface RelayNode {
     /** The compose service name. */
