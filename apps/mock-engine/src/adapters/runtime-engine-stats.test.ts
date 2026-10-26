@@ -4,8 +4,9 @@ import { createTestRuntime } from '../testing/test-runtime';
 import { createFakeClock } from '../testing/fake-clock';
 import { createRuntimeEngineStats } from './runtime-engine-stats';
 
-async function runtime() {
+async function runtime(passkeys: 'seeded' | 'none' = 'seeded') {
     return await createTestRuntime({
+        passkeys,
         seed: 42,
         scenario: 'small-team',
         epoch: new Date('2026-10-01T00:00:00Z'),
@@ -29,12 +30,26 @@ describe('createRuntimeEngineStats', () => {
         expect(live).toBe(snapshot.counts.agents - 1);
         expect(stats.counts()).toEqual({
             agents: live,
-            members: snapshot.members.filter((member) => member.status === 'active').length,
+            members: snapshot.members.filter(
+                (member) =>
+                    member.status === 'active' && snapshot.passkeys.some(({ memberId }) => memberId === member.id),
+            ).length,
         });
         expect(stats.counts().agents).toBeGreaterThan(0);
     });
 
-    it('leaves out members who are not active', async () => {
+    it('reports 0 members while the owner has yet to create a passkey (MOCK_PASSKEYS=none)', async () => {
+        const engine = await runtime('none');
+        const snapshot = engine.controller().inspect();
+        expect(snapshot.members.length).toBeGreaterThan(1);
+        expect(snapshot.passkeys).toEqual([]);
+        expect(snapshot.sessions).toEqual([]);
+        expect(createRuntimeEngineStats(engine).counts().members).toBe(0);
+        await engine.reset({ seed: 2, scenario: 'empty' });
+        expect(createRuntimeEngineStats(engine).counts().members).toBe(0);
+    });
+
+    it('counts only active members who hold a passkey', async () => {
         const engine = await runtime();
         const stats = createRuntimeEngineStats(engine);
         const before = stats.counts().members;
@@ -54,7 +69,8 @@ describe('createRuntimeEngineStats', () => {
             createdAt: '2026-10-20T08:00:00Z',
             lastSeenAt: null,
         });
-        expect(stats.counts().members).toBe(before + 1);
+        // Neither can sign in yet: one is only invited, the other has no passkey.
+        expect(stats.counts().members).toBe(before);
     });
 
     it('reads the current core after a reset', async () => {

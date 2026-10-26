@@ -15,6 +15,7 @@ export const DEFAULT_MOCK_SETTINGS: Pick<
     | 'capabilities'
     | 'simulation'
     | 'devLogin'
+    | 'passkeys'
     | 'control'
     | 'dashboard'
     | 'stats'
@@ -27,6 +28,7 @@ export const DEFAULT_MOCK_SETTINGS: Pick<
     capabilities: ALL_CAPABILITY_NAMES,
     simulation: { mode: 'paused' as const, speed: 1 },
     devLogin: false,
+    passkeys: 'seeded',
     control: null,
     dashboard: null,
     stats: 'os',

@@ -81,17 +81,15 @@ function registrationOf(outcome: RegistrationOutcome, logger: Logger): Registrat
 
 /**
  * Startup with `PTBK_DASHBOARD_URL`: register with `PTBK_LINK_CODE` (which an existing registration makes
- * unnecessary), else load the stored registration. The link code is taken from the config here and nowhere else.
+ * unnecessary), else load the stored registration; `null` when there is neither, and the engine waits for `connect`.
+ * The link code is taken from the config here and nowhere else.
  */
-export async function establishRegistration(deps: EstablishRegistrationDeps): Promise<Registration> {
+export async function establishRegistration(deps: EstablishRegistrationDeps): Promise<Registration | null> {
     const linkCode = deps.dashboard.linkCode?.take() ?? null;
     const stored = { store: deps.store, identity: deps.identity, dashboardUrl: deps.dashboard.url };
     if (linkCode === null) {
         const registration = await loadRegistration({ ...stored, engineDomain: deps.engineDomain });
-        if (registration === null) {
-            throw new RegistrationFailedError('not registered: set PTBK_LINK_CODE or run the connect command');
-        }
-        return registrationOf({ kind: 'already-registered', registration }, deps.logger);
+        return registration === null ? null : registrationOf({ kind: 'already-registered', registration }, deps.logger);
     }
     const outcome = await registerWithRetry({
         ...stored,

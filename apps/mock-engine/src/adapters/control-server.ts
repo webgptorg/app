@@ -1,12 +1,5 @@
-import type { Server } from 'node:http';
-import { createServer } from 'node:http';
-import type { AddressInfo } from 'node:net';
-
-import type { HttpBindings } from '@hono/node-server';
-import { getRequestListener } from '@hono/node-server';
 import { AgentId, Permission, Role, TriggerId } from '@ptbk/engine-api';
 import { EngineVersion } from '@ptbk/protocol';
-import { Hono } from 'hono';
 import { z } from 'zod';
 
 import type { FaultPlan } from '../domain/faults/fault-plan';
@@ -22,10 +15,10 @@ import { MockCapabilityName, capabilitiesFor } from '../domain/state/capabilitie
 import { Scenario } from '../domain/state/scenarios';
 import type { InstalledBundle } from '../domain/ui/bundle-store';
 import type { UiLoader } from '../domain/ui/ui-loader';
-import { applySecurityHeaders } from './http/http-app';
 import type { HttpRoute } from './http/route';
 import { defineHttpRoute } from './http/route';
-import { bySpecificity, honoPath, problemResponse, rateLimited, runHttpRoute } from './http/route-handler';
+import { startPlainHttpServer } from './http/plain-http-server';
+import { problemResponse } from './http/route-handler';
 
 const NO_QUERY = z.strictObject({});
 const BODY_MAX_BYTES = 16 * 1024;
@@ -268,7 +261,8 @@ export function createControlRoutes(deps: ControlDeps): readonly HttpRoute[] {
             method: 'GET',
             path: '/__mock/heartbeat',
             body: null,
-            handle: () => Response.json(deps.heartbeat?.() ?? { lastHeartbeat: null, clockSkew: null }),
+            handle: () =>
+                Response.json(deps.heartbeat?.() ?? { lastHeartbeat: null, clockSkew: null, lastAnswer: null }),
         }),
         control({
             method: 'GET',
@@ -359,46 +353,14 @@ export async function startControlServer(
     deps: ControlDeps & { readonly host: string; readonly port: number },
 ): Promise<ControlServer> {
     const routes = createControlRoutes(deps);
-    const app = new Hono<{ Bindings: HttpBindings }>();
-    app.use(async (c, next) => {
-        await next();
-        applySecurityHeaders(c.res.headers);
-    });
-    for (const route of [...routes].sort(bySpecificity)) {
-        app.on(route.method, honoPath(route.path), async (c) => {
-            const clientIp = c.env.incoming.socket.remoteAddress ?? '127.0.0.1';
-            const limited = rateLimited(route, deps.rateLimiter, clientIp);
-            if (limited !== null) return problemResponse(limited);
-            return runHttpRoute(route, { request: c.req.raw, params: {}, connection: null, clientIp, actor: null });
-        });
-    }
-    app.notFound(() => problemResponse({ code: 'not-found' }));
-    app.onError((error) => {
-        deps.logger.error('control.error', { problem: error.name });
-        return problemResponse({ code: 'internal-error' });
-    });
-    const listener = getRequestListener(app.fetch, { overrideGlobalObjects: false });
-    const server: Server = createServer((request, response) => {
-        listener(request, response).catch(() => response.destroy());
-    });
-    await new Promise<void>((resolve, reject) => {
-        server.once('error', reject);
-        server.listen(deps.port, deps.host, () => {
-            server.off('error', reject);
-            resolve();
-        });
-    });
-    const { port } = server.address() as AddressInfo;
-    deps.logger.info('control.listening', { host: deps.host, port });
-    return {
-        port,
+    const server = await startPlainHttpServer({
         routes,
-        close: () =>
-            new Promise((resolve) => {
-                server.closeAllConnections();
-                server.close(() => {
-                    resolve();
-                });
-            }),
-    };
+        rateLimiter: deps.rateLimiter,
+        logger: deps.logger,
+        errorEvent: 'control.error',
+        listen: { host: deps.host, port: deps.port },
+    });
+    const port = server.port ?? deps.port;
+    deps.logger.info('control.listening', { host: deps.host, port });
+    return { port, routes, close: () => server.close() };
 }

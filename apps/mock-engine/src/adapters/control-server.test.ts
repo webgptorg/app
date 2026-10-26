@@ -85,6 +85,7 @@ describe('control server', () => {
                 signature: 'ed25519=sig',
             },
             clockSkew: { seconds: -300, measuredAt: Timestamp.parse('2026-10-01T00:00:00Z') },
+            lastAnswer: { kind: 'refused', status: 401 },
         };
         const linked = await start({ heartbeat: () => status });
         const response = await fetch(`http://127.0.0.1:${String(linked.server.port)}/__mock/heartbeat`);
@@ -92,7 +93,7 @@ describe('control server', () => {
         expect(await response.json()).toEqual(status);
         const devMode = await start();
         const empty = await fetch(`http://127.0.0.1:${String(devMode.server.port)}/__mock/heartbeat`);
-        expect(await empty.json()).toEqual({ lastHeartbeat: null, clockSkew: null });
+        expect(await empty.json()).toEqual({ lastHeartbeat: null, clockSkew: null, lastAnswer: null });
     });
 
     it('creates a synthetic member of the asked role when the scenario has none, numbering each one', async () => {

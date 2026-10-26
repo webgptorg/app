@@ -231,6 +231,8 @@ The dashboard's onboarding view shows progress from the registration and the hea
 - The engine should send its first heartbeat right after registration and the first tunnel, without waiting for the certificate or the UI bundle, so the dashboard can show "online" while the rest finishes.
 - `members` must count members who can sign in (at least one registered passkey). It is 0 until the owner's first passkey exists, which is how the dashboard says "waiting for the owner's passkey" without learning anything else. After `owner --reset` it is 0 again until the new passkey.
 
+Reference implementation (M-08): the mock engine narrates these steps in [startup-progress.ts](../../apps/mock-engine/src/app/startup-progress.ts) (log events always, human lines only when stdout is a terminal), sends its first beat when the first tunnel is ready ([start-mock-engine.ts](../../apps/mock-engine/src/app/start-mock-engine.ts)) and counts `members` in [owner.ts](../../apps/mock-engine/src/domain/onboarding/owner.ts). `status` and `connect` reach the running engine over a 0600 Unix socket in the data directory ([operator-socket.ts](../../apps/mock-engine/src/adapters/operator-socket.ts)), which also stops a second engine from starting on the same data directory.
+
 ## The setup link
 
 The owner's first passkey is registered with a one-time setup secret (spec, Pairing and identity). The engine must:

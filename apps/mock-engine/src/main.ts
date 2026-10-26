@@ -12,6 +12,8 @@ import { RegistrationStoreError, createFsRegistrationStore } from './adapters/fs
 import { SeqStoreError, createFsSeqStore } from './adapters/fs-seq-store';
 import { createHttpsFetch } from './adapters/https-fetch';
 import { createJsonLogger } from './adapters/json-logger';
+import { OperatorAnswerError, createOperatorClient } from './adapters/operator-client';
+import { OperatorSocketError, startOperatorSocket } from './adapters/operator-socket';
 import { createOsSystemStats } from './adapters/os-system-stats';
 import { systemClock } from './adapters/system-clock';
 import { BundleStoreError } from './adapters/ui/fs-bundle-store';
@@ -29,6 +31,7 @@ import { ConnectUsageError, parseConnectCommand, parseRegisterCommand, runConnec
 import { RegistrationFailedError } from './app/establish-registration';
 import { EXIT_CODE } from './app/exit-codes';
 import { FAILED } from './app/operator-lines';
+import { StatusUsageError, parseStatusCommand, runStatusCommand } from './app/status-command';
 import type { DashboardDeps, MockEngine } from './app/start-mock-engine';
 import { startMockEngine } from './app/start-mock-engine';
 import { UiLoaderSetupError, createUiLoaderDeps } from './app/ui-loader-deps';
@@ -53,6 +56,9 @@ function problemOf(error: unknown): string {
         error instanceof StoredRegistrationError ||
         error instanceof SeqStoreError ||
         error instanceof ConnectUsageError ||
+        error instanceof StatusUsageError ||
+        error instanceof OperatorSocketError ||
+        error instanceof OperatorAnswerError ||
         error instanceof UiLoaderSetupError ||
         error instanceof BundleStoreError ||
         error instanceof UpdateStateStoreError
@@ -156,6 +162,7 @@ async function connect(parse: (args: readonly string[]) => ConnectCommand, args:
             random: createCryptoRandom(),
             say: command.json ? stderrLine : stdoutLine,
             signal: new AbortController().signal,
+            joinRunning: () => createOperatorClient(config.dataDir).link(),
         });
         if (command.json) stdoutLine(JSON.stringify(result.report));
         process.exitCode = result.exitCode;
@@ -175,6 +182,9 @@ async function start(): Promise<{ readonly engine: MockEngine; readonly logger: 
         const tls = await certificates(config, challenges, logger);
         const engine = await startMockEngine(config, {
             logger,
+            // Human progress only on a terminal: a service's stdout is a log stream that gets shipped and read by others.
+            say: process.stdout.isTTY ? stdoutLine : null,
+            operatorChannel: (api) => startOperatorSocket({ dataDir: config.dataDir, api, clock: systemClock, logger }),
             clock: systemClock,
             random: createCryptoRandom(),
             identityStore: createFsIdentityStore(config.dataDir),
@@ -249,8 +259,27 @@ async function conformanceSession(args: readonly string[]): Promise<void> {
     }
 }
 
+/** `mock-engine status [--json]`: what the running engine reports about itself; nothing in it is secret. */
+async function status(args: readonly string[]): Promise<void> {
+    try {
+        const command = parseStatusCommand(args);
+        const config = parseConfig();
+        const client = createOperatorClient(config.dataDir);
+        process.exitCode = await runStatusCommand(command, {
+            status: () => client.status(),
+            out: stdoutLine,
+            err: stderrLine,
+        });
+    } catch (error) {
+        stderrLine(problemOf(error));
+        process.exitCode = error instanceof StatusUsageError ? EXIT_CODE.usage : EXIT_CODE.failed;
+    }
+}
+
 const [verb, ...args] = process.argv.slice(2);
-if (verb === 'connect') {
+if (verb === 'status') {
+    await status(args);
+} else if (verb === 'connect') {
     await connect(parseConnectCommand, args);
 } else if (verb === 'register') {
     await connect(parseRegisterCommand, args);
