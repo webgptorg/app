@@ -62,7 +62,7 @@
     "@ptbk/protocol": "workspace:*",
     "@ptbk/release-tools": "workspace:*",
     "@tailwindcss/vite": "catalog:",
-    "@tanstack/react-query-devtools": "5.104.2",
+    "@tanstack/react-query-devtools": "5.104.4",
     "@tanstack/react-router-devtools": "1.167.2",
     "@tanstack/router-cli": "catalog:",
     "@tanstack/router-plugin": "catalog:",
