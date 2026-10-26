@@ -261,6 +261,62 @@ describe('engine page', () => {
     });
 });
 
+describe('reachability', () => {
+    const id = (value: string) => value as EngineView['engineId'];
+    const NOT_REACHABLE = 'Not reachable: no relay connection';
+
+    it('shows in the list how many relays reach each online engine, and nothing without presence data', async () => {
+        renderApp({
+            path: '/engines',
+            session: OWNER,
+            script: engines(
+                engineView({ reachableRelays: 2 }),
+                engineView({ engineId: id(OTHER_ID), reachableRelays: 1 }),
+                engineView({ engineId: id('a2b3c4d5e6f7g2h3i4j5k6l7m2'), reachableRelays: 0 }),
+                engineView({ engineId: id('b2c3d4e5f6g7h2i3j4k5l6m7n2'), reachableRelays: null }),
+                engineView({
+                    engineId: id('c2d3e4f5g6h7i2j3k4l5m6n7o2'),
+                    status: 'offline',
+                    reachableRelays: 0,
+                }),
+            ),
+        });
+        const table = await screen.findByRole('table');
+        expect(await within(table).findByText('Reachable through 2 relays')).toBeTruthy();
+        expect(within(table).getByText('Reachable through 1 relay')).toBeTruthy();
+        // Only the online engine that no relay reports; never the offline one, nor the one without data.
+        expect(within(table).getAllByText(NOT_REACHABLE)).toHaveLength(1);
+        expect(within(table).getAllByText(/^Reachable through/)).toHaveLength(2);
+    });
+
+    it('shows on the engine page whether relays reach it', async () => {
+        const app = renderApp({
+            path: `/engines/${ENGINE_ID}`,
+            session: OWNER,
+            script: engine(engineView({ reachableRelays: 0 })),
+        });
+        expect(await screen.findByText(NOT_REACHABLE)).toBeTruthy();
+        expect(screen.getByText('Reachability')).toBeTruthy();
+        await expectNoAxeViolations(app.container);
+    });
+
+    it('names the relay count on the engine page', async () => {
+        renderApp({
+            path: `/engines/${ENGINE_ID}`,
+            session: OWNER,
+            script: engine(engineView({ reachableRelays: 2 })),
+        });
+        expect(await screen.findByText('Reachable through 2 relays')).toBeTruthy();
+    });
+
+    it('leaves the engine page without a reachability line while relays report nothing', async () => {
+        renderApp({ path: `/engines/${ENGINE_ID}`, session: OWNER, script: engine(engineView()) });
+        expect(await screen.findByText('Through Promptbook relays')).toBeTruthy();
+        expect(screen.queryByText('Reachability')).toBeNull();
+        expect(screen.queryByText(/^Reachable through|^Not reachable/)).toBeNull();
+    });
+});
+
 describe('fingerprint', () => {
     const engineIds = vectors.vectors.map((vector) => vector.engineId);
 

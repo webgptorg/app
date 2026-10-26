@@ -13,6 +13,7 @@ import { createMemoryAuthStore } from '../../testing/memory-auth-store';
 import { createMemoryCustomHostnameStore } from '../../testing/memory-custom-hostname-store';
 import { createMemoryRegistrationStores } from '../../testing/memory-registration-store';
 import { createMemoryEngineHostnameStore, createMemoryRelayTokenStore } from '../../testing/memory-registry-stores';
+import { createMemoryRelayPresenceStore } from '../../testing/memory-relay-presence-store';
 import { createTestBilling } from '../../testing/test-billing';
 import { DEV_RATE_LIMIT_HMAC_KEY, parseConfig } from '../config';
 import { authLinks } from '../deps';
@@ -83,6 +84,7 @@ function app(options: {
             getStatus: () => Promise.resolve({ state: 'never-seen' }),
             reset: () => Promise.resolve(),
         },
+        relayPresence: createMemoryRelayPresenceStore(),
         assets: { fetch: assets } as unknown as Fetcher,
         viteDevServer: options.viteDevServer,
     });

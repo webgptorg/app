@@ -22,8 +22,8 @@ describe('engines in Czech', () => {
             path: '/engines',
             session: OWNER,
             script: (api) => {
-                api.on(apiRoutes.listEngines, ok({ engines: [engineView()] }));
-                api.on(apiRoutes.getEngine, ok({ engine: engineView() }));
+                api.on(apiRoutes.listEngines, ok({ engines: [engineView({ reachableRelays: 2 })] }));
+                api.on(apiRoutes.getEngine, ok({ engine: engineView({ reachableRelays: 0 }) }));
             },
         });
         expect(await screen.findByRole('heading', { name: 'Vaše enginy' })).toBeTruthy();
@@ -33,6 +33,7 @@ describe('engines in Czech', () => {
             expect(within(table).getByRole('columnheader', { name: header })).toBeTruthy();
         }
         expect(within(table).getByText('Je k dispozici aktualizace')).toBeTruthy();
+        expect(within(table).getByText('Dostupný přes 2 relaye')).toBeTruthy();
         expect(
             within(table).getByRole('link', { name: `Otevřít engine ${ENGINE_ID.slice(0, 8)} v nové kartě` }),
         ).toBeTruthy();
@@ -41,6 +42,8 @@ describe('engines in Czech', () => {
         expect(await screen.findByRole('heading', { name: 'Poslední signál' })).toBeTruthy();
         expect(screen.getByText(/Bezpečnostní stránka samotného enginu/)).toBeTruthy();
         expect(screen.getByText('Přes relaye Promptbooku')).toBeTruthy();
+        expect(screen.getByText('Dostupnost')).toBeTruthy();
+        expect(screen.getByText('Nedostupný: žádné spojení s relayem')).toBeTruthy();
 
         await app.user.click(screen.getByRole('button', { name: 'Odvolat engine' }));
         const dialog = await screen.findByRole('dialog', { name: `Odvolat engine ${ENGINE_ID.slice(0, 8)}?` });

@@ -29,15 +29,15 @@ The gateway pages are engine code by design: anonymous visitors only ever reach 
 
 The dashboard's live view is built only from signals it already receives or that relays already hold as routing metadata. None of them is engine content.
 
-| Signal                             | Source today                                                    | Dashboard shows                                     | Status                                       |
-| ---------------------------------- | --------------------------------------------------------------- | --------------------------------------------------- | -------------------------------------------- |
-| Link code issued, expiry           | Dashboard (D-03)                                                | Install command and countdown                       | Built                                        |
-| Link code consumed, engine ID      | Registration `POST /v1/engines/register` (D-03)                 | "Engine linked", engine ID, fingerprint             | Gap: no live view (D-10)                     |
-| Engine running, version, counts    | Signed heartbeat every 60 s (D-05)                              | "Online", version                                   | Built in the list, not live on the link page |
-| Owner set up                       | Heartbeat `members` ≥ 1 (0 until the owner's first passkey)     | "Owner set up" or "Waiting for the owner's passkey" | Gap (D-10)                                   |
-| Reachable through a relay          | Relays know their tunnels; the dashboard does not hear about it | "Reachable through 2 relays"                        | Gap (R-07)                                   |
-| Certificate issued                 | Public Certificate Transparency logs                            | Not shown in v0                                     | Later                                        |
-| Setup link, setup secret, passkeys | Engine only                                                     | Never. The dashboard says where to look instead     | By design                                    |
+| Signal                             | Source today                                                | Dashboard shows                                     | Status                                       |
+| ---------------------------------- | ----------------------------------------------------------- | --------------------------------------------------- | -------------------------------------------- |
+| Link code issued, expiry           | Dashboard (D-03)                                            | Install command and countdown                       | Built                                        |
+| Link code consumed, engine ID      | Registration `POST /v1/engines/register` (D-03)             | "Engine linked", engine ID, fingerprint             | Gap: no live view (D-10)                     |
+| Engine running, version, counts    | Signed heartbeat every 60 s (D-05)                          | "Online", version                                   | Built in the list, not live on the link page |
+| Owner set up                       | Heartbeat `members` ≥ 1 (0 until the owner's first passkey) | "Owner set up" or "Waiting for the owner's passkey" | Gap (D-10)                                   |
+| Reachable through a relay          | Relays report their ready tunnels every 60 s (R-07)         | "Reachable through 2 relays"                        | Built in the list, not live on the link page |
+| Certificate issued                 | Public Certificate Transparency logs                        | Not shown in v0                                     | Later                                        |
+| Setup link, setup secret, passkeys | Engine only                                                 | Never. The dashboard says where to look instead     | By design                                    |
 
 The engine sees everything about itself and narrates it in the terminal ([installation.md, first-start output](../engine-integration/installation.md#first-start-output)).
 
@@ -284,7 +284,7 @@ Each row: what the person sees on each surface, and the way out. Engine-side wor
 
 - **Never came online after linking:** row 2 stays, then the hint in step 4. The list shows "Waiting for first heartbeat" (built).
 - **Went offline later:** the list shows "Offline" after 195 seconds without a heartbeat (built), and one email "Your engine {hostname} is offline" per outage (built). Gap D-12: an "is back online" email closing the incident, and the engine page shows "Last seen {time}. If the server is up, run `promptbook-engine status` on it."
-- **Online but not reachable:** heartbeats arrive (they go straight to the dashboard) while no tunnel is up. Without R-07 the dashboard shows Online and the engine cannot be opened; with R-07 it shows "Online, not reachable: no relay connection" and links to the proxy troubleshooting.
+- **Online but not reachable:** heartbeats arrive (they go straight to the dashboard) while no tunnel is up. The list and the engine page show Online with "Not reachable: no relay connection" (R-07); the link to the proxy troubleshooting is D-10's.
 
 ### Setup and owner
 

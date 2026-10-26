@@ -103,10 +103,11 @@ describe('route table', () => {
         ]);
     });
 
-    it('takes a relay key on exactly the registry read, limited per relay', () => {
+    it('takes a relay key on exactly the registry read and the presence report, limited per relay', () => {
         const relayRoutes = harness.routes.filter((route) => route.auth === 'relay-token');
         expect(relayRoutes.map((route) => `${route.method} ${route.path} ${String(route.rateLimit)}`)).toEqual([
             'GET /internal/v1/engines/:engineId registry-relay',
+            'PUT /internal/v1/relays/presence presence-relay',
         ]);
     });
 

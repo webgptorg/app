@@ -39,6 +39,7 @@ export const RULE_ADAPTERS = {
     'public-read-ip': 'binding',
     'webhook-ip': 'binding',
     'registry-relay': 'binding',
+    'presence-relay': 'binding',
     'heartbeat-ip': 'binding',
     'heartbeat-engine': 'durable-object',
 } as const satisfies Readonly<Record<RateLimitRuleName, 'binding' | 'durable-object'>>;
@@ -57,6 +58,7 @@ export function createWorkersRateLimiter(deps: {
     readonly publicRead: RateLimitBinding;
     readonly webhook: RateLimitBinding;
     readonly registry: RateLimitBinding;
+    readonly presence: RateLimitBinding;
     readonly heartbeat: RateLimitBinding;
     readonly hourly: WindowCounterNamespace;
     readonly rules: RateLimitRules;
@@ -70,6 +72,7 @@ export function createWorkersRateLimiter(deps: {
                 'public-read-ip': deps.publicRead,
                 'webhook-ip': deps.webhook,
                 'registry-relay': deps.registry,
+                'presence-relay': deps.presence,
                 'heartbeat-ip': deps.heartbeat,
             }),
             'durable-object': createDurableObjectRateLimiter({

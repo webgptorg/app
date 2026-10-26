@@ -146,6 +146,7 @@ export function describeEngineListFlows(
                     createdAt: harness.clock.nowMs() - 1000,
                     lastSeenAt: null,
                     heartbeat: null,
+                    reachableRelays: null,
                 });
                 expect((await list(b.browser)).map((engine) => engine.engineId)).toEqual([foreign.engineId]);
                 expect(JSON.stringify(await list(b.browser))).not.toContain(a.orgId);

@@ -197,6 +197,7 @@
   "engine_field_id": "Engine ID",
   "engine_field_last_seen": "Last seen",
   "engine_field_mode": "Connection",
+  "engine_field_reachability": "Reachability",
   "engine_field_registered_version": "Version at linking",
   "engine_field_status": "Status",
   "engine_fingerprint_body": "The engine's own security page shows the same pattern and code. Compare them before you trust the address: if they differ, you are not on this engine.",
@@ -274,9 +275,20 @@
   "engines_new_title": "Link an engine",
   "engines_new_upgrade": "Go to billing",
   "engines_not_allowed": "Your role in this organization cannot see its engines.",
+  "engines_not_reachable": "Not reachable: no relay connection",
   "engines_not_reported": "Not reported",
   "engines_open": "Open",
   "engines_open_new_tab": "engine {shortId}, in a new tab",
+  "engines_reachable": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Reachable through {count} relay",
+        "countPlural=other": "Reachable through {count} relays"
+      }
+    }
+  ],
   "engines_status_never_seen": "Waiting for first heartbeat",
   "engines_status_offline": "Offline",
   "engines_status_online": "Online",

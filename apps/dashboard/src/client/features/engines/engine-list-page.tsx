@@ -21,6 +21,7 @@ import { enginesQuery } from '../../api/queries';
 import { ButtonLink, Link } from '../../core/link';
 import { useSession } from '../session/use-session';
 import { EngineOpenLink } from './engine-open-link';
+import { EngineReachability } from './engine-reachability';
 import { EngineStatusBadge } from './engine-status-badge';
 import { cpuLoadLabel, shortEngineId, updateStateLabel } from './engine-labels';
 import { LastSeen, NotReported, useNowFor } from './engine-values';
@@ -60,7 +61,12 @@ function engineColumns(formatters: Formatters, now: Date): DataTableColumnDef<En
         }),
         columns.accessor('status', {
             header: m.engines_column_status(),
-            cell: ({ row }) => <EngineStatusBadge engine={row.original} />,
+            cell: ({ row }) => (
+                <span className="flex flex-col items-start gap-1">
+                    <EngineStatusBadge engine={row.original} />
+                    <EngineReachability engine={row.original} />
+                </span>
+            ),
             meta: { priority: 1 },
         }),
         columns.display({

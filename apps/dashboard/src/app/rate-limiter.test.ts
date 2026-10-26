@@ -40,6 +40,7 @@ describe('production rate limiter selection', () => {
             publicRead: binding('public-read'),
             webhook: binding('webhook'),
             registry: binding('registry'),
+            presence: binding('presence'),
             heartbeat: binding('heartbeat'),
             hourly: {
                 idFromName: () => ({}) as DurableObjectId,

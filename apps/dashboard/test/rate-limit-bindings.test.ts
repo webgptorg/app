@@ -15,6 +15,7 @@ const BINDINGS = {
     RATE_LIMIT_PUBLIC_READ: 'public-read-ip',
     RATE_LIMIT_WEBHOOK: 'webhook-ip',
     RATE_LIMIT_REGISTRY: 'registry-relay',
+    RATE_LIMIT_PRESENCE: 'presence-relay',
     RATE_LIMIT_HEARTBEAT: 'heartbeat-ip',
 } as const;
 

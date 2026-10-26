@@ -42,6 +42,8 @@ import { createMemoryRegistrationStores } from './memory-registration-store';
 import { createFakeDnsResolver, type FakeDnsResolver } from './fake-dns-resolver';
 import { createMemoryCustomHostnameStore, type MemoryCustomHostnameStore } from './memory-custom-hostname-store';
 import { createMemoryRegistryReader, createMemoryRelayTokenStore } from './memory-registry-stores';
+import { createMemoryRelayPresenceStore } from './memory-relay-presence-store';
+import type { RelayPresenceStore } from '../domain/presence/relay-presence-store';
 import { createTestBilling } from './test-billing';
 import {
     createMemoryDashboardMetrics,
@@ -93,6 +95,7 @@ export interface AuthHarness {
     readonly dns: FakeDnsResolver;
     /** The engines' status objects, in process, with their alarms fired by hand. */
     readonly engineStatuses: MemoryEngineStatuses;
+    readonly relayPresence: RelayPresenceStore;
     /** Sends `body` exactly as given, for routes whose signature covers the raw bytes. */
     post(
         path: string,
@@ -152,6 +155,10 @@ export function createAuthHarness(options: {
     readonly wrapEngineStatus?: (statuses: EngineStatusDirectory) => EngineStatusDirectory;
     /** Defaults to `DASHBOARD_POLICY`; a test narrows a rule to act as a role v0 does not have yet. */
     readonly policy?: PolicyTable<DashboardAction>;
+    /** Defaults to an in-memory store. */
+    readonly relayPresence?: RelayPresenceStore;
+    /** The `RELAYS` var's relay IDs; one relay by default. */
+    readonly relays?: readonly string[];
 }): AuthHarness {
     const clock = createFakeClock(START_MS);
     const timer = createManualTimer();
@@ -162,7 +169,7 @@ export function createAuthHarness(options: {
         ENVIRONMENT: 'dev',
         DASHBOARD_ORIGIN: ORIGIN,
         ENGINE_DOMAIN: 'engines.ptbk.test',
-        RELAYS: [{ relayId: 'relay-1.ptbk.test', region: 'eu-central' }],
+        RELAYS: (options.relays ?? ['relay-1.ptbk.test']).map((relayId) => ({ relayId, region: 'eu-central' })),
         INSTALL_COMMAND: 'bun run dev:link {linkCode}',
         ADAPTERS: { email: options.email ?? 'fake', billing: 'fake', rateLimit: 'memory' },
         EMAIL_FROM: 'no-reply@ptbk.test',
@@ -199,6 +206,7 @@ export function createAuthHarness(options: {
         engineLink: (engineId) => `${ORIGIN}/engines/${engineId}`,
     });
     const metrics = createMemoryDashboardMetrics(clock);
+    const relayPresence = options.relayPresence ?? createMemoryRelayPresenceStore();
     const deps: DashboardDeps = {
         config,
         clock,
@@ -225,6 +233,7 @@ export function createAuthHarness(options: {
         dns,
         heartbeatEngines: options.heartbeatEngines ?? createMemoryHeartbeatEngineReader(registration.engines),
         engineStatus: options.wrapEngineStatus?.(engineStatuses) ?? engineStatuses,
+        relayPresence,
     };
     const { app: http, routes } = createHttpApp({
         ...deps,
@@ -262,6 +271,7 @@ export function createAuthHarness(options: {
         engineHostnames,
         dns,
         engineStatuses,
+        relayPresence,
         settle,
         async post(path, body, headers = {}, postOptions = {}) {
             const response = await http.request(

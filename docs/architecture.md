@@ -10,7 +10,7 @@ flowchart LR
     R -- "WSS tunnel, opened by the engine" --> E[Engine<br/>public repo]
     B -- "sign-up, engine list" --> D[Dashboard<br/>apps/dashboard<br/>app.ptbk.io]
     E -- "register, heartbeat" --> D
-    R -- "registry lookup" --> D
+    R -- "registry lookup, tunnel presence" --> D
     S[(Release store<br/>R2)] -- "signed UI bundle, on update" --> E
 ```
 
@@ -57,7 +57,7 @@ Owns the server side of the tunnel protocol (spec, Interfaces 3). Caches registr
 
 app.ptbk.io. One Cloudflare Worker serving a Vite SPA (TanStack Router, Query and Table, `@ptbk/ui`) and a Hono API ([ADR 0007](adr/0007-frontend-stack.md), [ADR 0008](adr/0008-hono-for-http-apis.md)). D1 via Drizzle with generated, guarded migrations ([ADR 0009](adr/0009-drizzle-and-migrations.md)) for accounts, organizations and the engine registry, a Durable Object per engine for status and offline alarms, Stripe for billing, Cron Triggers for monitoring jobs (CT watch, abuse feeds, public-face check).
 
-Owns engine registration (Interfaces 1), the relay registry lookup (2, internal) and heartbeat ingest (4). Stores accounts, engine IDs, public keys, hostnames and their signed claims, heartbeat metadata and billing state. Nothing else.
+Owns engine registration (Interfaces 1), the relay registry lookup (2, internal), heartbeat ingest (4) and the relays' tunnel presence reports (internal, R-07: which engines each relay holds a ready tunnel for, kept 3 minutes, so "online" and "reachable" can differ). Stores accounts, engine IDs, public keys, hostnames and their signed claims, heartbeat metadata, tunnel presence and billing state. Nothing else.
 
 ### `apps/engine-ui`
 

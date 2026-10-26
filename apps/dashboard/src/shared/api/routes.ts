@@ -6,6 +6,7 @@ import {
     Hostname,
     LinkCode,
     MAX_REGISTRY_HOSTNAMES,
+    MAX_RELAYS,
     RegistrationMode,
     Timestamp,
     UpdateState,
@@ -213,6 +214,11 @@ export const engineViewSchema = z.strictObject({
     lastSeenAt: timestampSchema.nullable(),
     /** Null before the first heartbeat, after the 30-day retention purge, and when the status could not be read. */
     heartbeat: heartbeatViewSchema.nullable(),
+    /**
+     * Relays that currently hold a ready tunnel for it, as they report it (R-07). Null when no relay has reported in
+     * the last 3 minutes, or presence could not be read: then nothing is known about reachability.
+     */
+    reachableRelays: z.int().min(0).max(MAX_RELAYS).nullable(),
 });
 export type EngineView = z.infer<typeof engineViewSchema>;
 

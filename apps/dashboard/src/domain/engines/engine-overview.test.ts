@@ -2,8 +2,13 @@ import { ed25519SignatureFromBytes, Hostname, type EngineId } from '@ptbk/protoc
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { createManualTimer, type ManualTimer } from '../../testing/manual-timer';
+import {
+    createMemoryRelayPresenceStore,
+    type MemoryRelayPresenceStore,
+} from '../../testing/memory-relay-presence-store';
 import { createMemoryEngineHostnameStore, type MemoryEngineHostnameStore } from '../../testing/memory-registry-stores';
 import { createTestEngine, engineRecord } from '../../testing/test-engine';
+import { createRegistryTestDeps, REGISTRY_START_MS } from '../../testing/test-registry';
 import { orgIdSchema } from '../ids';
 import type { LogFields, Logger } from '../ports/logger';
 import type { EngineRecord } from '../registration/engine-store';
@@ -17,6 +22,8 @@ import {
 
 const ORG = orgIdSchema.parse('aaaaaaaaaaaaaaaaaaaaaaaaaa');
 const NEVER_SEEN: EngineStatusSnapshot = { state: 'never-seen' };
+const NOW = REGISTRY_START_MS;
+const { clock } = createRegistryTestDeps();
 
 type Behaviour = 'answer' | 'stall' | 'fail';
 
@@ -43,6 +50,7 @@ describe('engine overviews', () => {
     let timer: ManualTimer;
     let logged: LogEntry[];
     let hostnames: MemoryEngineHostnameStore;
+    let presence: MemoryRelayPresenceStore;
     let behaviour: Map<EngineId, Behaviour>;
     let asked: EngineId[];
     let inFlight: number;
@@ -54,6 +62,7 @@ describe('engine overviews', () => {
         timer = createManualTimer();
         logged = [];
         hostnames = createMemoryEngineHostnameStore();
+        presence = createMemoryRelayPresenceStore();
         behaviour = new Map();
         asked = [];
         inFlight = 0;
@@ -63,6 +72,8 @@ describe('engine overviews', () => {
             timer,
             logger: recordingLogger(logged),
             engineHostnames: hostnames,
+            relayPresence: presence,
+            clock,
             engineStatus: {
                 getStatus(engineId) {
                     asked.push(engineId);
@@ -152,5 +163,27 @@ describe('engine overviews', () => {
             customHostnames: ['agents.customer.test', 'b.customer.test'],
         });
         expect(asked).toEqual([engine.engineId]);
+    });
+
+    it('reads presence once for the whole list: a count per engine, 0 for one no relay reported', async () => {
+        const [reported, unreported] = await engines(2);
+        if (reported === undefined || unreported === undefined) throw new Error('two engines');
+        await presence.replace('relay-a.ptbk.test', [reported.engineId], NOW, NOW - 180_000);
+        await presence.replace('relay-b.ptbk.test', [reported.engineId], NOW, NOW - 180_000);
+        let reads = 0;
+        const reachableRelays = presence.reachableRelays.bind(presence);
+        deps = { ...deps, relayPresence: { reachableRelays: (...args) => (reads++, reachableRelays(...args)) } };
+        const reading = readEngineOverviews(deps, [reported, unreported]);
+        await settleAll();
+        expect((await reading).map((overview) => overview.reachableRelays)).toEqual([2, 0]);
+        expect(reads).toBe(1);
+    });
+
+    it('leaves reachability unknown while no relay report is live', async () => {
+        const [engine] = await engines(1);
+        if (engine === undefined) throw new Error('one engine');
+        const reading = readEngineOverview(deps, engine);
+        await settleAll();
+        expect((await reading).reachableRelays).toBeNull();
     });
 });

@@ -28,6 +28,7 @@ function engineView(overview: EngineOverview): EngineView {
             seen === null || seen.payload === null || seen.lastSeq === null
                 ? null
                 : { seq: seen.lastSeq, ...seen.payload },
+        reachableRelays: overview.reachableRelays,
     };
 }
 
@@ -49,6 +50,7 @@ export function bindEngineRoutes(
         | 'engines'
         | 'engineStatus'
         | 'engineHostnames'
+        | 'relayPresence'
     > & {
         readonly policy: EngineCreationPolicy;
         readonly routes: RouteBinder;
