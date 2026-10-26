@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { ConformanceReport } from './index';
 import { ALL_SUITES, ENGINE_API_SUITE, runConformance } from './index';
 import type { Defect, FakeEngineOptions } from './testing/fake-engine';
+import { TUNNEL_CHECKS } from './suites/tunnel';
 import { DEFECTS, createFakeEngine } from './testing/fake-engine';
 
 async function run(options: FakeEngineOptions = {}, only?: string): Promise<ConformanceReport> {
@@ -59,9 +60,8 @@ describe('the suite against an in-process engine', () => {
             // The fake advertises every capability, so no route can be checked for capability-not-supported.
             'engine-api.capabilities.unadvertised-404':
                 'skip: the engine advertises every capability this contract defines',
-            'tunnel.negotiation.downgrade-refused': 'skip: not-implemented',
-            'tunnel.auth.list-encoding': 'skip: not-implemented',
-            'tunnel.auth.version-signed': 'skip: not-implemented',
+            // The tunnel suite runs from @ptbk/conformance/node (node/tunnel/*.test.ts); here it is registered only.
+            ...Object.fromEntries(TUNNEL_CHECKS.map(({ id }) => [id, 'skip: needs-node-harness'])),
             'ui-loader.signature.strict-ed25519': 'skip: not-implemented',
             'ui-loader.dsse.pae-only': 'skip: not-implemented',
             'ui-loader.provenance.exact-identity': 'skip: not-implemented',
