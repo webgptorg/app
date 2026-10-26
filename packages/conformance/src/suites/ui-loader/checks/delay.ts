@@ -1,6 +1,6 @@
 import { RELEASE_DELAYS } from '@ptbk/protocol';
 
-import type { CheckContext } from '../../../check';
+import type { BaseCheckContext } from '../../../check';
 import { Findings } from '../../../check';
 import type { Bench, Observation } from '../bench';
 import { describeCheck, sleep } from '../bench';
@@ -20,7 +20,7 @@ interface Delayed {
 /** Publishes a newer valid release, names it in `latest.json` and restarts under `auto`. */
 async function underAuto(
     bench: Bench,
-    ctx: CheckContext,
+    ctx: BaseCheckContext,
     delayed: Delayed,
 ): Promise<Observation & { version: string }> {
     await bench.baseline(ctx);

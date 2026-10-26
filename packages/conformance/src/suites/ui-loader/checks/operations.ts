@@ -1,6 +1,6 @@
 import { ENGINE_RESERVED_PATHS } from '@ptbk/engine-api';
 
-import type { CheckContext } from '../../../check';
+import type { BaseCheckContext } from '../../../check';
 import { Findings } from '../../../check';
 import type { Bench } from '../bench';
 import { SECURITY_HEADERS, describeCheck, sleep } from '../bench';
@@ -42,7 +42,7 @@ export const unavailableKeepsCurrent: UiLoaderCheck = {
     },
 };
 
-async function startUnder(bench: Bench, ctx: CheckContext, policy: 'manual'): Promise<void> {
+async function startUnder(bench: Bench, ctx: BaseCheckContext, policy: 'manual'): Promise<void> {
     await bench.start(ctx, bench.settings({ policy }));
 }
 

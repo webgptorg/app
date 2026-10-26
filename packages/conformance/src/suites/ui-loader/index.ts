@@ -1,4 +1,4 @@
-import type { CheckContext, ConformanceSuite } from '../../check';
+import type { BaseCheckContext, ConformanceSuite } from '../../check';
 import { Bench } from './bench';
 import { engineApiRange, filesEnforced, hashMismatch, rollbackNotNewer, unsafeEntries } from './checks/bundle';
 import type { UiLoaderCheck } from './checks/common';
@@ -53,7 +53,7 @@ export function createUiLoaderSuite(lab: UiLoaderLab | null): ConformanceSuite {
     const bench =
         lab === null
             ? null
-            : (ctx: CheckContext): Promise<Bench> => {
+            : (ctx: BaseCheckContext): Promise<Bench> => {
                   let opened = benches.get(ctx.runId);
                   if (opened === undefined) {
                       opened = Bench.open(lab);

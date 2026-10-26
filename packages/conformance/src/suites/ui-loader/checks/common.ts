@@ -1,19 +1,19 @@
 import type { UiRefusalReason, UiRevocationReason } from '@ptbk/engine-api';
 import type { TrustPolicy } from '@ptbk/protocol';
 
-import type { CheckContext, CheckOutcome, ConformanceCheck } from '../../../check';
+import type { BaseCheckContext, CheckOutcome, ConformanceCheck } from '../../../check';
 import { Findings } from '../../../check';
 import type { Bench, Observation, PublishOptions, Published } from '../bench';
 import { describeCheck } from '../bench';
 
 export const SUITE = 'ui-loader';
 
-export type BenchProvider = (ctx: CheckContext) => Promise<Bench>;
+export type BenchProvider = (ctx: BaseCheckContext) => Promise<Bench>;
 
 export interface UiLoaderCheck {
     readonly id: string;
     readonly title: string;
-    run(bench: Bench, ctx: CheckContext): Promise<CheckOutcome>;
+    run(bench: Bench, ctx: BaseCheckContext): Promise<CheckOutcome>;
 }
 
 export function toConformanceCheck(check: UiLoaderCheck, bench: BenchProvider | null): ConformanceCheck {
@@ -46,7 +46,7 @@ export interface RefusalCase {
 /** Whether the engine still serves `expected` and its panel says so, after `observation`. */
 export async function expectStillActive(
     bench: Bench,
-    ctx: CheckContext,
+    ctx: BaseCheckContext,
     findings: Findings,
     label: string,
     expected: Published,
@@ -67,7 +67,7 @@ export async function expectStillActive(
  */
 export async function expectRefusal(
     bench: Bench,
-    ctx: CheckContext,
+    ctx: BaseCheckContext,
     findings: Findings,
     refusal: RefusalCase,
 ): Promise<Observation> {
@@ -94,7 +94,11 @@ export async function expectRefusal(
     return seen;
 }
 
-export async function refusals(bench: Bench, ctx: CheckContext, cases: readonly RefusalCase[]): Promise<CheckOutcome> {
+export async function refusals(
+    bench: Bench,
+    ctx: BaseCheckContext,
+    cases: readonly RefusalCase[],
+): Promise<CheckOutcome> {
     const findings = new Findings();
     for (const refusal of cases) await expectRefusal(bench, ctx, findings, refusal);
     return findings.outcome();

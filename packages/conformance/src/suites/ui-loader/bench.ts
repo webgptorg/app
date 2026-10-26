@@ -3,7 +3,7 @@ import { ENGINE_API_ROUTES, ENGINE_UI_CSP } from '@ptbk/engine-api';
 import type { TrustPolicy } from '@ptbk/protocol';
 import { REVOCATION_MAX_VALIDITY_MS } from '@ptbk/protocol';
 
-import type { CheckContext } from '../../check';
+import type { BaseCheckContext } from '../../check';
 import { CheckFailure, fail, skip } from '../../check';
 import type { ConformanceTarget, SessionCredential } from '../../target';
 import { EngineApi } from '../engine-api/api';
@@ -118,7 +118,7 @@ export class Bench {
     }
 
     /** (Re)starts the engine; the first start of a run is always on a fresh data directory. */
-    async start(ctx: CheckContext, settings: EngineSettings, fresh = false): Promise<number> {
+    async start(ctx: BaseCheckContext, settings: EngineSettings, fresh = false): Promise<number> {
         const startedAt = Date.now();
         const target = await this.lab.start(settings, { fresh: fresh || !this.#started, signal: ctx.signal });
         if (fresh || !this.#started) {
@@ -137,7 +137,7 @@ export class Bench {
         return this.#target;
     }
 
-    async security(ctx: CheckContext): Promise<SecurityOverview> {
+    async security(ctx: BaseCheckContext): Promise<SecurityOverview> {
         const api = new EngineApi({ target: this.target(), signal: ctx.signal }, this.#owner);
         return api.ok(ENGINE_API_ROUTES.getSecurityOverview);
     }
@@ -146,7 +146,7 @@ export class Bench {
      * Waits for the update check the engine runs at startup: the store saw the record (or `latest.json`) fetched
      * after the start, and the panel reports a check that ended no earlier than that.
      */
-    async awaitCheck(ctx: CheckContext, startedAt: number, fetched: string): Promise<Observation> {
+    async awaitCheck(ctx: BaseCheckContext, startedAt: number, fetched: string): Promise<Observation> {
         const deadline = Date.now() + CHECK_WAIT_MS;
         for (;;) {
             const request = this.lab.store
@@ -169,19 +169,19 @@ export class Bench {
     }
 
     /** Restarts pinned to `version` and returns its startup check. */
-    async pinned(ctx: CheckContext, version: string, policy?: TrustPolicy): Promise<Observation> {
+    async pinned(ctx: BaseCheckContext, version: string, policy?: TrustPolicy): Promise<Observation> {
         const startedAt = await this.start(ctx, this.settings({ policy: 'pinned', version }, policy));
         return this.awaitCheck(ctx, startedAt, MIRROR_LAYOUT_V1.release(version));
     }
 
     /** Restarts under `auto` and returns the check of what `latest.json` names. */
-    async auto(ctx: CheckContext): Promise<Observation> {
+    async auto(ctx: BaseCheckContext): Promise<Observation> {
         const startedAt = await this.start(ctx, this.settings({ policy: 'auto' }));
         return this.awaitCheck(ctx, startedAt, MIRROR_LAYOUT_V1.latest);
     }
 
     /** A valid release, installed; the baseline every refusal is measured against. */
-    async install(ctx: CheckContext, options: PublishOptions = {}): Promise<Published> {
+    async install(ctx: BaseCheckContext, options: PublishOptions = {}): Promise<Published> {
         await this.revocations();
         const published = await this.publish(this.nextVersion(), options);
         const seen = await this.pinned(ctx, published.version);
@@ -195,12 +195,12 @@ export class Bench {
         return published;
     }
 
-    async baseline(ctx: CheckContext): Promise<Published> {
+    async baseline(ctx: BaseCheckContext): Promise<Published> {
         return this.active ?? this.install(ctx);
     }
 
     /** A request on the engine's origin as a signed-in browser navigates or loads a subresource. */
-    async get(ctx: CheckContext, path: string, accept = '*/*'): Promise<Served> {
+    async get(ctx: BaseCheckContext, path: string, accept = '*/*'): Promise<Served> {
         const target = this.target();
         const headers: Record<string, string> = { Accept: accept, 'Sec-Fetch-Site': 'same-origin' };
         if (this.#owner !== null && 'cookie' in this.#owner) headers['Cookie'] = this.#owner.cookie;
@@ -214,7 +214,7 @@ export class Bench {
     }
 
     /** Which installed version the engine's entry page is, by its marker; `null` when it serves no bundle. */
-    async servedVersion(ctx: CheckContext): Promise<string | null> {
+    async servedVersion(ctx: BaseCheckContext): Promise<string | null> {
         const served = await this.get(ctx, '/', 'text/html');
         const match = /<meta name="ptbk-conformance-ui" content="([^"]+)">/.exec(
             new TextDecoder().decode(served.bytes),
