@@ -36,7 +36,7 @@ describe('gateway routes', () => {
             (route) => route.method === 'GET' && route.path === SIGN_IN_PATH,
         );
         if (signIn?.transport !== 'http') throw new Error('no sign-in page');
-        const response = await signIn.handle({} as never);
+        const response = await signIn.handle({ query: {} } as never);
         expect(await response.text()).toContain('<meta name="referrer" content="same-origin">');
     });
 });

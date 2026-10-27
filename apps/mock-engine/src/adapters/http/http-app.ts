@@ -18,7 +18,7 @@ import type { RateLimiter } from '../../domain/rate-limit/rate-limiter';
 import type { SecureConnection } from '../tls-stream-server';
 import type { Faults } from './fault-middleware';
 import { withFaults } from './fault-middleware';
-import { authenticate, isSameOriginMutation } from './gateway-middleware';
+import { authenticate, isSameOriginMutation, requestTarget } from './gateway-middleware';
 import type { HttpRoute, Route, WebSocketRoute } from './route';
 import type { Problem } from './route-handler';
 import {
@@ -148,6 +148,7 @@ export function createHttpApp(deps: HttpAppDeps): HttpApp {
                 const outcome = authenticate(deps.sessions, {
                     method: c.req.method,
                     path: c.req.path,
+                    target: requestTarget(c.req.url),
                     hostname: connection.hostname,
                     header: (name) => c.req.header(name),
                     clientIp: connection.clientIp,

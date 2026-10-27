@@ -100,6 +100,25 @@ describe('anonymous requests', () => {
         expectBaseline(response);
     });
 
+    it('keep the path and query they asked for as next, unless it is not a safe path, without logging it', async () => {
+        const { harness: engine } = await start();
+        const locationOf = async (path: string) => {
+            const response = await engine.fetch(null)(`${HARNESS_ORIGIN}${path}`, { redirect: 'manual' });
+            expect(response.status, path).toBe(303);
+            return response.headers.get('location');
+        };
+        expect(await locationOf('/agents/agent-deep-link?tab=chat#reply')).toBe(
+            `${SIGN_IN_PATH}?next=%2Fagents%2Fagent-deep-link%3Ftab%3Dchat`,
+        );
+        expect(await locationOf('/')).toBe(SIGN_IN_PATH);
+        expect(await locationOf('//evil.example/agent-deep-link')).toBe(SIGN_IN_PATH);
+        expect(await locationOf('/x/%2e%2e/setup')).toBe(SIGN_IN_PATH);
+        const apiCall = await engine.fetch(null)(api('/agents?tab=chat'), { redirect: 'manual' });
+        expect(apiCall.status).toBe(401);
+        expect(apiCall.headers.get('location')).toBeNull();
+        expect(engine.logger.text()).not.toContain('agent-deep-link');
+    });
+
     it('have an unknown or malformed cookie cleared', async () => {
         const { harness: engine } = await start();
         for (const cookie of [`${SESSION_COOKIE_NAME}=${'a'.repeat(22)}`, `${SESSION_COOKIE_NAME}=short`]) {
@@ -269,6 +288,28 @@ describe('dev login', () => {
         );
         const cookie = setCookie.split(';')[0] ?? '';
         expect(await (await engine.fetch(cookie)(api('/me'))).json()).toMatchObject({ memberId: owner.id });
+    });
+
+    it('signs in to the page the member asked for, and only to a safe one', async () => {
+        const { harness: engine } = await start();
+        const anonymous = engine.fetch(null);
+        const next = '/agents/a?tab=chat&q=%22';
+        const page = await anonymous(`${HARNESS_ORIGIN}${SIGN_IN_PATH}?${new URLSearchParams({ next }).toString()}`);
+        expect(page.status).toBe(200);
+        expect(await page.text()).toContain('<input type="hidden" name="next" value="/agents/a?tab=chat&#38;q=%22">');
+        const hostile = await anonymous(`${HARNESS_ORIGIN}${SIGN_IN_PATH}?next=%2F%2Fevil.example`);
+        expect(await hostile.text()).not.toContain('name="next"');
+        const signIn = (body: Record<string, string>) =>
+            anonymous(`${HARNESS_ORIGIN}${SIGN_IN_PATH}`, {
+                method: 'POST',
+                headers: { 'content-type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({ memberId: engine.ownerId(), ...body }).toString(),
+                redirect: 'manual',
+            });
+        expect((await signIn({ next })).headers.get('location')).toBe(next);
+        for (const unsafe of ['//evil.example', 'https://evil.example/', '/auth/sign-in', '/setup']) {
+            expect((await signIn({ next: unsafe })).headers.get('location'), unsafe).toBe('/');
+        }
     });
 
     it('refuses an unknown member', async () => {
