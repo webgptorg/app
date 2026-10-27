@@ -62,6 +62,8 @@ export const queryKeys = {
     adminBilling: ['admin', 'billing'] as const,
     engines: ['engines'] as const,
     engine: (engineId: string) => ['engines', engineId] as const,
+    linkEligibility: ['link-eligibility'] as const,
+    linkCode: (linkCodeId: string) => ['link-codes', linkCodeId] as const,
     devEmails: ['dev', 'emails'] as const,
     abuseContact: ['abuse-contact'] as const,
     installGuide: ['install-guide'] as const,
@@ -198,5 +200,22 @@ export function engineQuery(client: ApiClient, engineId: string) {
         refetchInterval: ENGINE_REFETCH_MS,
         refetchIntervalInBackground: false,
         refetchOnWindowFocus: true,
+    });
+}
+
+/** Whether `/engines/new` may offer a link code, and the code lifetime for its intro (D-10). */
+export function linkEligibilityQuery(client: ApiClient) {
+    return queryOptions({
+        queryKey: queryKeys.linkEligibility,
+        queryFn: async ({ signal }) => dataOrThrow(await client.call(apiRoutes.linkEligibility, {}, signal)),
+    });
+}
+
+/** One link code's state, by its ID; never the code itself. */
+export function linkCodeQuery(client: ApiClient, linkCodeId: string) {
+    return queryOptions({
+        queryKey: queryKeys.linkCode(linkCodeId),
+        queryFn: async ({ signal }) =>
+            dataOrThrow(await client.call(apiRoutes.getLinkCode, { params: { linkCodeId } }, signal)),
     });
 }

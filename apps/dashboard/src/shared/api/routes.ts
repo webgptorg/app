@@ -171,6 +171,8 @@ export const linkEligibilityViewSchema = z.strictObject({
     eligibility: z.enum(['allowed', 'not-entitled', 'engine-limit']),
     /** The configured link-code lifetime, for the page's intro. */
     linkCodeTtlS: z.int().min(1).max(86_400),
+    /** The public install guide, for the progress panel's troubleshooting links, after a reload too. */
+    installGuideUrl: z.url({ protocol: /^https$/ }).max(512),
 });
 export type LinkEligibilityView = z.infer<typeof linkEligibilityViewSchema>;
 

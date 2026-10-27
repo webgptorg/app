@@ -97,7 +97,14 @@ export function bindEngineRoutes(
         const decision = await deps.policy.checkEligibility(session.actor.orgId, request.signal);
         const eligibility: LinkEligibilityView['eligibility'] =
             decision.kind === 'allowed' ? 'allowed' : decision.reason;
-        return { kind: 'ok', body: { eligibility, linkCodeTtlS: Math.round(deps.config.linkCodeTtlMs / 1000) } };
+        return {
+            kind: 'ok',
+            body: {
+                eligibility,
+                linkCodeTtlS: Math.round(deps.config.linkCodeTtlMs / 1000),
+                installGuideUrl: deps.config.installGuideUrl,
+            },
+        };
     });
 
     bind(router, mount, apiRoutes.getLinkCode, async ({ input, session }) => {

@@ -74,6 +74,8 @@
                     "stripePriceId": "price_devstandard",
                     "features": ["engines.create"],
                     "quotas": { "engines.max": null, "custom-domains.max": 0 },
+                    // The fake Checkout grants it as Stripe would (D-10); staging and production set theirs with pricing.
+                    "trialDays": 14,
                 },
             ],
         },

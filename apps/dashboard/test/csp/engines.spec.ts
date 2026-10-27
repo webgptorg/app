@@ -17,7 +17,8 @@ import { expect, expectNoBrowserErrors, outboxLink, test, uniqueEmail } from './
 
 const ENGINE_DOMAIN = 'engines.ptbk.test';
 
-// The built app with the dev config: the `none` plan cannot link engines, the fake Checkout's `standard` plan can.
+// The built app with the dev config: the `none` plan cannot link engines, the fake Checkout's `standard` plan (with its
+// trial) can.
 test('link an engine, see it online, open its page and revoke it, under the production CSP', async ({
     page,
     authenticators,
@@ -35,19 +36,18 @@ test('link an engine, see it online, open its page and revoke it, under the prod
 
     await page.getByRole('link', { name: 'Link an engine' }).click();
     await expect(page.getByRole('heading', { name: 'Link an engine', level: 1 })).toBeVisible();
-    await page.getByRole('button', { name: 'Create link code' }).click();
-    await expect(page.getByRole('link', { name: 'Go to billing' })).toBeVisible();
-    await checkScreen('/engines/new not entitled');
+    await expect(page.getByRole('heading', { name: 'Choose a plan to link your engine' })).toBeVisible();
+    await checkScreen('/engines/new plan step');
 
-    await page.getByRole('link', { name: 'Go to billing' }).click();
-    await page.getByRole('button', { name: 'Subscribe to Standard' }).click();
-    await expect(page).toHaveURL(/\/billing\?checkout=success$/);
-
-    await page.goto('/engines/new');
-    await page.getByRole('button', { name: 'Create link code' }).click();
+    // The fake Checkout starts the dev plan's trial and comes back here, where the code is issued without a click.
+    await page.getByRole('button', { name: 'Start your 14-day trial of Standard' }).click();
+    await expect(page.getByText('Thank you, your trial has started.')).toBeVisible();
     const command = page.getByText(/^bun run dev:link [a-z2-7]{26}$/);
     await expect(command).toBeVisible();
+    await expect(page).toHaveURL(/\/engines\/new\?.*link=[a-z2-7]{26}/);
     await expect(page.getByText(/^Expires in \d+:\d\d$/)).toBeVisible();
+    const progress = page.getByRole('region', { name: 'Link progress' });
+    await expect(progress).toHaveAttribute('data-link-state', 'waiting');
     await checkScreen('/engines/new install command');
     for (const tab of ['Docker Compose', 'Already running Promptbook']) {
         await page.getByRole('tab', { name: tab }).click();
@@ -56,7 +56,7 @@ test('link an engine, see it online, open its page and revoke it, under the prod
     }
     await page.getByRole('tab', { name: 'Linux server with Docker' }).click();
 
-    // The engine side, as M-06 does it: register with the code, then one signed heartbeat.
+    // The engine side, as M-06 does it: register with the code, then signed heartbeats.
     const linkCode = LinkCode.parse((await command.textContent())?.split(' ').at(-1));
     const signer = await createWebCryptoSigner(await generateEd25519KeyPair({ extractable: false }));
     const engineId = await deriveEngineId(signer.publicKey());
@@ -66,27 +66,48 @@ test('link an engine, see it online, open its page and revoke it, under the prod
         mode: 'tunnel',
     });
     expect((await page.request.post(REGISTER_PATH, { data: registration })).status()).toBe(200);
-    const heartbeat = buildHeartbeat({
-        engineId,
-        seq: Date.now(),
-        ts: Timestamp.parse(new Date().toISOString()),
-        version: EngineVersion.parse('1.0.0'),
-        uptimeS: 60,
-        diskPct: 40,
-        ramPct: 60,
-        cpuLoad: 'low',
-        update: 'none',
-        agents: 1,
-        members: 1,
-    });
-    const beat = await page.request.post(heartbeatPath(engineId), {
-        data: Buffer.from(heartbeat),
-        headers: {
-            'Content-Type': 'application/json',
-            [HEARTBEAT_SIGNATURE_HEADER]: await signHeartbeat(signer, heartbeat),
-        },
-    });
-    expect(beat.status()).toBe(204);
+    await expect(progress).toHaveAttribute('data-link-state', 'linked');
+    await expect(command).toHaveCount(0);
+    await expect(progress.getByText(`${engineId}.${ENGINE_DOMAIN}`)).toBeVisible();
+    await checkScreen('/engines/new linked');
+
+    let seq = Date.now();
+    async function beat(members: number): Promise<void> {
+        const heartbeat = buildHeartbeat({
+            engineId,
+            seq: seq++,
+            ts: Timestamp.parse(new Date().toISOString()),
+            version: EngineVersion.parse('1.0.0'),
+            uptimeS: 60,
+            diskPct: 40,
+            ramPct: 60,
+            cpuLoad: 'low',
+            update: 'none',
+            agents: 1,
+            members,
+        });
+        const response = await page.request.post(heartbeatPath(engineId), {
+            data: Buffer.from(heartbeat),
+            headers: {
+                'Content-Type': 'application/json',
+                [HEARTBEAT_SIGNATURE_HEADER]: await signHeartbeat(signer, heartbeat),
+            },
+        });
+        expect(response.status()).toBe(204);
+    }
+
+    // Until the owner's first passkey the engine counts no member (M-08).
+    await beat(0);
+    await expect(progress).toHaveAttribute('data-link-state', 'owner-pending');
+    await expect(progress.getByText('Engine online, version 1.0.0.', { exact: true }).first()).toBeVisible();
+    await checkScreen('/engines/new owner pending');
+
+    await beat(1);
+    await expect(progress).toHaveAttribute('data-link-state', 'ready');
+    const ready = progress.getByRole('link', { name: /^Open engine/ });
+    await expect(ready).toHaveAttribute('href', `https://${engineId}.${ENGINE_DOMAIN}/`);
+    await expect(ready).toHaveAttribute('rel', 'noopener noreferrer');
+    await checkScreen('/engines/new ready');
 
     await page.goto('/engines');
     await expect(page.getByText('Online')).toBeVisible();

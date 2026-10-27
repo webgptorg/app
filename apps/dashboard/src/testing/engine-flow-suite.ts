@@ -242,6 +242,7 @@ export function describeEngineFlows(
                 expect(await eligibility(unsubscribed.browser)).toEqual({
                     eligibility: 'not-entitled',
                     linkCodeTtlS: 1800,
+                    installGuideUrl: TEST_INSTALL_VARS.INSTALL_GUIDE_URL,
                 });
                 const { browser } = await owner();
                 expect((await eligibility(browser)).eligibility).toBe('allowed');

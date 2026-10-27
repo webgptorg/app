@@ -56,9 +56,16 @@ describe('engines in Czech', () => {
         const app = renderApp({
             path: '/engines/new',
             session: OWNER,
-            script: (api) => api.on(apiRoutes.createLinkCode, ok(linkCodeView())),
+            script: (api) => {
+                const view = linkCodeView();
+                api.on(
+                    apiRoutes.linkEligibility,
+                    ok({ eligibility: 'allowed', linkCodeTtlS: 1800, installGuideUrl: view.installGuideUrl }),
+                );
+                api.on(apiRoutes.createLinkCode, ok(view));
+                api.on(apiRoutes.getLinkCode, ok({ status: 'pending', expiresAt: view.expiresAt }));
+            },
         });
-        await app.user.click(await screen.findByRole('button', { name: 'Vytvořit připojovací kód' }));
         const list = await screen.findByRole('tablist', { name: 'Způsob instalace' });
         expect(
             within(list)
