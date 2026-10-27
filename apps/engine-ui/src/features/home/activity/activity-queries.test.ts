@@ -20,6 +20,7 @@ describe('the activity feed query', () => {
                 queryKey: ['activity', 'feed', area],
                 meta: undefined,
                 client: queryClient,
+                // eslint-disable-next-line @typescript-eslint/no-deprecated -- still required by the context type
                 direction: 'forward',
             });
 
