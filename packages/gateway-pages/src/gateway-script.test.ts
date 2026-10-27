@@ -27,7 +27,7 @@ interface Request {
 function fakeEngine(routes: Record<string, Route | Route[]>) {
     const requests: Request[] = [];
     const fetch = vi.fn((path: string, init: RequestInit) => {
-        requests.push({ path, init, body: JSON.parse(init.body as string) });
+        requests.push({ path, init, body: init.body === undefined ? undefined : JSON.parse(init.body as string) });
         const configured = routes[path];
         const route = Array.isArray(configured) ? (configured.shift() ?? configured.at(-1)) : configured;
         if (route === undefined) return Promise.reject(new Error(`unexpected ${path}`));
@@ -289,9 +289,11 @@ describe('setup page', () => {
 
 describe('sign-in page', () => {
     const ready = { status: 200, body: { options: OPTIONS } };
+    const signedOut = { status: 401, body: { code: 'unauthenticated' } };
 
     it('signs in and goes to the next page', async () => {
         const requests = fakeEngine({
+            '/api/v1/me': signedOut,
             '/auth/sign-in/options': ready,
             '/auth/sign-in/verify': { status: 200, body: { next: '/agents/1' } },
         });
@@ -302,6 +304,7 @@ describe('sign-in page', () => {
         await expectState('done');
         expect(webauthn.startAuthentication).toHaveBeenCalledWith({ optionsJSON: OPTIONS });
         expect(requests.map(({ path, body }) => [path, body])).toEqual([
+            ['/api/v1/me', undefined],
             ['/auth/sign-in/options', {}],
             ['/auth/sign-in/verify', { response: CREDENTIAL, next: '/agents/1' }],
         ]);
@@ -311,6 +314,7 @@ describe('sign-in page', () => {
 
     it('drops an unsafe next and lets the engine choose', async () => {
         const requests = fakeEngine({
+            '/api/v1/me': signedOut,
             '/auth/sign-in/options': ready,
             '/auth/sign-in/verify': { status: 200, body: { next: 'https://evil.example/' } },
         });
@@ -319,7 +323,7 @@ describe('sign-in page', () => {
         await expectState('ready');
         click('confirm');
         await expectState('done');
-        expect(requests[1]?.body).toEqual({ response: CREDENTIAL });
+        expect(requests[2]?.body).toEqual({ response: CREDENTIAL });
         expect(nextLinks()).toEqual(['/']);
     });
 
@@ -338,7 +342,7 @@ describe('sign-in page', () => {
         [{ status: 503 }, 'error'],
         ['network-error', 'offline'],
     ] as const)('maps a verify answer %j to %s', async (reply, state) => {
-        fakeEngine({ '/auth/sign-in/options': ready, '/auth/sign-in/verify': reply });
+        fakeEngine({ '/api/v1/me': signedOut, '/auth/sign-in/options': ready, '/auth/sign-in/verify': reply });
         fakeWebAuthn();
         await open('sign-in.html', '/auth/sign-in', { owner: 'set' });
         await expectState('ready');
@@ -350,14 +354,72 @@ describe('sign-in page', () => {
         [{ status: 429 }, 'rate-limited'],
         ['network-error', 'offline'],
     ] as const)('maps an options answer %j to %s', async (reply, state) => {
-        fakeEngine({ '/auth/sign-in/options': reply });
+        fakeEngine({ '/api/v1/me': signedOut, '/auth/sign-in/options': reply });
         fakeWebAuthn();
         await open('sign-in.html', '/auth/sign-in', { owner: 'set' });
         await expectState(state);
     });
 
+    it('goes on without a passkey when a same-origin request finds a session', async () => {
+        const requests = fakeEngine({ '/api/v1/me': { status: 200, body: { memberId: 'm1' } } });
+        const webauthn = fakeWebAuthn();
+        await open('sign-in.html', '/auth/sign-in?next=%2Fagents%2F1', { owner: 'set' });
+        await expectState('done');
+        expect(nextLinks()).toEqual(['/agents/1']);
+        expect(requests.map(({ path, init }) => [path, init.method, init.credentials, init.redirect])).toEqual([
+            ['/api/v1/me', undefined, 'same-origin', 'error'],
+        ]);
+        expect(webauthn.startAuthentication).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        '//evil.example/',
+        '/\\evil.example/',
+        'https://evil.example/',
+        'javascript:alert(1)',
+        '/\t/evil.example',
+        '/auth/step-up?returnTo=%2F',
+        '/setup',
+    ])('resumes a session at the engine root, not at the unsafe next %s', async (next) => {
+        fakeEngine({ '/api/v1/me': { status: 200 } });
+        fakeWebAuthn();
+        await open('sign-in.html', `/auth/sign-in?${new URLSearchParams({ next }).toString()}`, { owner: 'set' });
+        await expectState('done');
+        expect(nextLinks()).toEqual(['/']);
+    });
+
+    it('says it is checking the session instead of offering the passkey first', async () => {
+        let answer: (response: Response) => void = () => undefined;
+        vi.stubGlobal(
+            'fetch',
+            vi.fn((path: string) =>
+                path === '/api/v1/me'
+                    ? new Promise<Response>((resolve) => {
+                          answer = resolve;
+                      })
+                    : Promise.resolve(Response.json({ options: OPTIONS })),
+            ),
+        );
+        fakeWebAuthn();
+        await open('sign-in.html', '/auth/sign-in', { owner: 'set' });
+        await expectState('checking');
+        answer(new Response('{}', { status: 401 }));
+        await expectState('ready');
+    });
+
+    it.each([signedOut, 'network-error', { status: 503 }] as const)(
+        'offers the passkey when the session check answers %j',
+        async (reply) => {
+            const requests = fakeEngine({ '/api/v1/me': reply, '/auth/sign-in/options': ready });
+            fakeWebAuthn();
+            await open('sign-in.html', '/auth/sign-in', { owner: 'set' });
+            await expectState('ready');
+            expect(requests.map(({ path }) => path)).toEqual(['/api/v1/me', '/auth/sign-in/options']);
+        },
+    );
+
     it('lets a member try another passkey after a cancelled prompt', async () => {
-        fakeEngine({ '/auth/sign-in/options': ready });
+        fakeEngine({ '/api/v1/me': signedOut, '/auth/sign-in/options': ready });
         fakeWebAuthn({ authenticate: new DOMException('closed', 'NotAllowedError'), supported: true });
         await open('sign-in.html', '/auth/sign-in', { owner: 'set' });
         await expectState('ready');
@@ -368,7 +430,7 @@ describe('sign-in page', () => {
     });
 
     it('says when the browser cannot use passkeys', async () => {
-        fakeEngine({ '/auth/sign-in/options': ready });
+        fakeEngine({ '/api/v1/me': signedOut, '/auth/sign-in/options': ready });
         fakeWebAuthn({ supported: false });
         await open('sign-in.html', '/auth/sign-in', { owner: 'set' });
         await expectState('ready');

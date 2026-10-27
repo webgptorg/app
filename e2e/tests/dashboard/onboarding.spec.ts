@@ -1,4 +1,4 @@
-import type { BrowserContext, CDPSession, Page, TestInfo } from '@playwright/test';
+import type { BrowserContext, Page, TestInfo } from '@playwright/test';
 
 import type { OneOffContainer } from '../../src/compose.ts';
 import type { SetupLink } from '../../src/dashboard-outputs.ts';
@@ -73,16 +73,10 @@ async function recordLinkStates(context: BrowserContext): Promise<readonly strin
     return states;
 }
 
-interface Authenticator {
-    readonly cdp: CDPSession;
-    readonly authenticatorId: string;
-}
-
-/** A virtual authenticator for one page: CDP's WebAuthn domain is per target, so a new tab needs its own. */
-async function addPasskeyAuthenticator(page: Page): Promise<Authenticator> {
+async function addPasskeyAuthenticator(page: Page): Promise<void> {
     const cdp = await page.context().newCDPSession(page);
     await cdp.send('WebAuthn.enable');
-    const { authenticatorId } = await cdp.send('WebAuthn.addVirtualAuthenticator', {
+    await cdp.send('WebAuthn.addVirtualAuthenticator', {
         options: {
             protocol: 'ctap2',
             transport: 'internal',
@@ -92,16 +86,6 @@ async function addPasskeyAuthenticator(page: Page): Promise<Authenticator> {
             automaticPresenceSimulation: true,
         },
     });
-    return { cdp, authenticatorId };
-}
-
-/** The same passkeys in another tab's authenticator, as a platform authenticator offers them in every tab. */
-async function sharePasskeys(from: Authenticator, to: Authenticator): Promise<void> {
-    const { credentials } = await from.cdp.send('WebAuthn.getCredentials', { authenticatorId: from.authenticatorId });
-    expect(credentials).toHaveLength(1);
-    for (const credential of credentials) {
-        await to.cdp.send('WebAuthn.addCredential', { authenticatorId: to.authenticatorId, credential });
-    }
 }
 
 /** Until the engine answers on its operator socket: `connect` hands the registration to the running engine there. */
@@ -216,7 +200,7 @@ test('Journey 1: sign up, start the trial, link a fresh engine, become its owner
 
     const enginePage = await context.newPage();
     // The engine is another relying party, in another tab.
-    const engineAuthenticator = await addPasskeyAuthenticator(enginePage);
+    await addPasskeyAuthenticator(enginePage);
     await test.step('the setup link makes the person the owner with a passkey', async () => {
         await enginePage.goto(setupLink.url);
         await expect(enginePage.getByRole('heading', { name: 'Set up your engine' })).toBeVisible();
@@ -235,7 +219,7 @@ test('Journey 1: sign up, start the trial, link a fresh engine, become its owner
     await expect(row('owner')).toHaveAttribute('data-step-state', 'done');
     expect(distinctInOrder(linkStates)).toEqual(['waiting', 'linked', 'owner-pending', 'ready']);
 
-    await test.step('"Open engine" opens the engine at its hostname, signed in', async () => {
+    await test.step('"Open engine" opens the engine at its hostname, signed in, with no passkey prompt', async () => {
         const ready = page.locator('[data-link-ready]');
         await expect(ready.getByRole('link', { name: 'Back to engines' })).toBeVisible();
         const open = ready.getByRole('link', { name: /^Open engine/ });
@@ -243,12 +227,8 @@ test('Journey 1: sign up, start the trial, link a fresh engine, become its owner
         const [appPage] = await Promise.all([context.waitForEvent('page'), open.click()]);
         await appPage.waitForLoadState('load');
         expect(new URL(appPage.url()).hostname).toBe(identity.hostname);
-        // TODO(X-07): the SameSite=Strict session is not sent on the dashboard's cross-site link, so the engine asks
-        // for the passkey again; the brief expects the engine to open signed in.
-        await expect(appPage).toHaveURL(/\/auth\/sign-in$/);
-        await sharePasskeys(engineAuthenticator, await addPasskeyAuthenticator(appPage));
-        await appPage.locator('button[data-action="confirm"]').click();
-        await expect(appPage).not.toHaveURL(/\/(auth|setup)\b/);
+        // The cross-site link leaves the SameSite=Strict cookie behind; the sign-in page finds the session itself.
+        await expect(appPage).toHaveURL(`https://${identity.hostname}/`);
         await expect(appPage.getByRole('heading', { level: 1 })).toBeVisible();
         expect(await meStatus(appPage)).toBe(200);
         await appPage.close();

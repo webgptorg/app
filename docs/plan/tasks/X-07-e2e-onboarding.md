@@ -32,6 +32,7 @@ X-05 proves linking with the dev login; it skips the owner setup because the moc
 ## Design notes
 
 - Reuse X-05's compose overlay and helpers; the mock runs without `MOCK_DEV_LOGIN` in this test.
+- Decision (Seb, 2026-10-27): the engine session cookie stays `SameSite=Strict`, so "Open engine", a cross-site link, reaches the engine without it and the gateway sends the owner to sign in. The reference sign-in page (`packages/gateway-pages`) first asks `GET /api/v1/me` from the same origin, which carries the cookie, and on 200 goes on with `location.replace` to the safe `next` or `/`; [gateway.md](../../engine-integration/gateway.md#sessions) asks the engine team to do the same. The test asserts "Open engine" lands signed in with no passkey prompt.
 
 ## Acceptance criteria
 

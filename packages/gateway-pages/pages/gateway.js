@@ -8,6 +8,7 @@ import { isSafeNextPath } from './next-path.js';
 const SETUP_SECRET = /^[A-Za-z0-9_-]{22}$/;
 const FINGERPRINT_CELLS = /^[01]{25}$/;
 const REQUEST_TIMEOUT_MS = 15_000;
+const ME_PATH = '/api/v1/me';
 const CANCELLED = new Set(['NotAllowedError', 'AbortError']);
 const UNSUPPORTED = new Set(['NotSupportedError', 'SecurityError']);
 
@@ -69,6 +70,21 @@ async function post(path, body) {
     const parsed = await response.json().catch(() => null);
     const code = isObject(parsed) && typeof parsed.code === 'string' ? parsed.code : null;
     return { status: response.status, code, body: response.ok && isObject(parsed) ? parsed : null };
+}
+
+/** Whether this browser already holds a session: a same-origin request carries the `SameSite=Strict` cookie. */
+async function hasSession() {
+    try {
+        const response = await fetch(ME_PATH, {
+            credentials: 'same-origin',
+            cache: 'no-store',
+            redirect: 'error',
+            signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        });
+        return response.status === 200;
+    } catch {
+        return false;
+    }
 }
 
 function ceremonyState(error) {
@@ -145,7 +161,7 @@ function setupPage(webauthn) {
     return { create, retry: prepare };
 }
 
-function assertionPage(webauthn, { base, nextParameter, problem }) {
+function assertionPage(webauthn, { base, nextParameter, problem, resumeSession = false }) {
     const requested = new URLSearchParams(location.search).get(nextParameter);
     const next = requested !== null && isSafeNextPath(requested) ? requested : null;
     if (next !== null) {
@@ -190,7 +206,24 @@ function assertionPage(webauthn, { base, nextParameter, problem }) {
         location.assign(target);
     }
 
-    void prepare();
+    /*
+     * A cross-site link, such as the dashboard's "Open engine", arrives without the Strict cookie, so the gateway sends
+     * a signed-in member here. The page's own request carries it: with a session, go on without a passkey prompt.
+     * `replace`, so Back does not return to this page and bounce forward again.
+     */
+    async function resume() {
+        show('checking');
+        if (!(await hasSession())) {
+            await prepare();
+            return;
+        }
+        const target = next ?? '/';
+        pointLinksAt('[data-next-link]', target);
+        show('done');
+        location.replace(target);
+    }
+
+    void (resumeSession ? resume() : prepare());
     return { confirm, retry: prepare };
 }
 
@@ -218,7 +251,12 @@ function start() {
     else if (page === 'sign-in') {
         if (document.body.dataset.owner === 'none') show('no-owner');
         else
-            actions = assertionPage(webauthn, { base: '/auth/sign-in', nextParameter: 'next', problem: signInProblem });
+            actions = assertionPage(webauthn, {
+                base: '/auth/sign-in',
+                nextParameter: 'next',
+                problem: signInProblem,
+                resumeSession: true,
+            });
     } else if (page === 'step-up') {
         // The engine UI sends members here with `returnTo` (STEP_UP_PATH), and to sign-in with `next`.
         actions = assertionPage(webauthn, { base: '/auth/step-up', nextParameter: 'returnTo', problem: stepUpProblem });
