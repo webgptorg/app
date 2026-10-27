@@ -5,15 +5,16 @@ import type { Locator, TestInfo } from '@playwright/test';
 import type { OneOffContainer } from './compose.ts';
 import { expect, test as base } from './fixtures.ts';
 import { fetchText } from './probe.ts';
-import type { RegisterReport } from './dashboard-outputs.ts';
-import { emailedLink, parseRegisterReport } from './dashboard-outputs.ts';
+import type { OutboxEmail, RegisterReport } from './dashboard-outputs.ts';
+import { emailedLink, outboxEmails, parseRegisterReport } from './dashboard-outputs.ts';
 import { DASHBOARD_ORIGIN, ENGINE_DOMAIN, MOUNTS } from './stack.ts';
 
 export { expect };
 export { isEngineUrl, uniqueEmail } from './dashboard-outputs.ts';
 
 const ENGINE_SERVICE = 'mock-engine';
-const ENGINE_COMMAND = ['node', '--enable-source-maps', '/app/main.mjs'] as const;
+/** The mock engine's CLI inside its container, for the operator commands a test runs there. */
+export const ENGINE_CLI = ['node', '--enable-source-maps', '/app/main.mjs'] as const;
 /** Inside the one-off container's own filesystem, so the key is new for every engine and goes away with it. */
 const FRESH_DATA_DIR = '/tmp/engine';
 const OUTBOX_TIMEOUT_MS = 5_000;
@@ -32,6 +33,11 @@ export interface MockEngines {
     start(linkCode: string, options?: StartOptions): Promise<OneOffContainer>;
     /** The mock engine's `register --link` with a fresh key: registers and exits, reporting the outcome. */
     register(linkCode: string): Promise<RegisterReport>;
+    /**
+     * A fresh engine as an operator first starts it: a new key, no link code and no owner (M-08's first start), so it
+     * waits in local mode until `connect --link` runs inside it.
+     */
+    startUnlinked(): Promise<OneOffContainer>;
 }
 
 export interface LinkCodeView {
@@ -53,6 +59,8 @@ export interface DashboardSteps {
     signIn(): Promise<void>;
     /** The engine list's rows once it has loaded, fetched anew (the list refreshes itself only every 60 s). */
     reloadEngineRows(): Promise<Locator>;
+    /** Everything the dev outbox holds for `email`, oldest first. */
+    emails(email: string): Promise<readonly OutboxEmail[]>;
 }
 
 interface DashboardFixtures {
@@ -93,16 +101,17 @@ export const test = base.extend<DashboardFixtures>({
     ],
 
     dashboard: async ({ page, caCertificatePem }, use) => {
+        const fetchOutbox = (email: string): Promise<string> =>
+            fetchText(
+                `${DASHBOARD_ORIGIN}/api/__dev/emails?to=${encodeURIComponent(email)}`,
+                caCertificatePem,
+                OUTBOX_TIMEOUT_MS,
+            );
         const outboxLink = async (email: string, template: string): Promise<string> => {
             let link: string | undefined;
             await expect
                 .poll(async () => {
-                    const outbox = await fetchText(
-                        `${DASHBOARD_ORIGIN}/api/__dev/emails?to=${encodeURIComponent(email)}`,
-                        caCertificatePem,
-                        OUTBOX_TIMEOUT_MS,
-                    );
-                    link = emailedLink(outbox, template);
+                    link = emailedLink(await fetchOutbox(email), template);
                     return link;
                 })
                 .toBeDefined();
@@ -146,6 +155,9 @@ export const test = base.extend<DashboardFixtures>({
                 await page.getByRole('button', { name: 'Sign in with a passkey' }).click();
                 await expect(engineList).toBeVisible();
             },
+            async emails(email) {
+                return outboxEmails(await fetchOutbox(email));
+            },
             async reloadEngineRows() {
                 await page.goto(`${DASHBOARD_ORIGIN}/engines`);
                 const rows = page.getByRole('row').filter({ hasText: `.${ENGINE_DOMAIN}` });
@@ -174,11 +186,18 @@ export const test = base.extend<DashboardFixtures>({
             async register(linkCode) {
                 const container = await compose.run(ENGINE_SERVICE, {
                     env: { PTBK_DATA_DIR: FRESH_DATA_DIR },
-                    command: [...ENGINE_COMMAND, 'register', '--link', linkCode],
+                    command: [...ENGINE_CLI, 'register', '--link', linkCode],
                 });
                 containers.push(container);
                 await container.wait();
                 return parseRegisterReport(await container.logs('stdout'));
+            },
+            async startUnlinked() {
+                const container = await compose.run(ENGINE_SERVICE, {
+                    env: { PTBK_DATA_DIR: FRESH_DATA_DIR, MOCK_PASSKEYS: 'none' },
+                });
+                containers.push(container);
+                return container;
             },
         });
         await attachLogs(testInfo, containers);
