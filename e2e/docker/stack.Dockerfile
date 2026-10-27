@@ -27,6 +27,7 @@ COPY tsconfig.base.json ./
 COPY packages/protocol packages/protocol
 COPY packages/engine-api packages/engine-api
 COPY packages/release-tools packages/release-tools
+COPY packages/gateway-pages packages/gateway-pages
 COPY apps/relay apps/relay
 COPY apps/mock-engine apps/mock-engine
 RUN bun run --filter @ptbk/relay build && bun run --filter @ptbk/mock-engine build

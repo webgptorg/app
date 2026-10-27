@@ -119,6 +119,11 @@ async function startStack(): Promise<Stack> {
     };
 }
 
+/** The engine API's answer to the page's own cookie, from inside the page: only Chromium resolves the engine's name. */
+function meStatus(page: Page): Promise<number> {
+    return page.evaluate(async () => (await fetch('/api/v1/me', { credentials: 'same-origin' })).status);
+}
+
 /** Every CSP and Trusted Types refusal the page meets, as Chromium reports it on the console. */
 function watchPolicy(page: Page): string[] {
     const violations: string[] = [];
@@ -184,9 +189,9 @@ test('the owner sets up a passkey through /setup#<secret>, then signs in with it
     expect(new URL(page.url()).hash).toBe('');
     await expect(page.getByText(engine.identity.engineId, { exact: true })).toBeVisible();
     await page.locator('button[data-action="create"]').click();
-    await expect(page.getByRole('heading', { name: 'You are the owner.' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'You are the owner' })).toBeVisible();
     expect(engine.operator.status().ownerSetUp).toBe(true);
-    expect((await page.request.get(`${origin}/api/v1/me`)).status()).toBe(200);
+    expect(await meStatus(page)).toBe(200);
 
     // The link is dead now, whoever opens it.
     const reused = await context.newPage();
@@ -195,11 +200,11 @@ test('the owner sets up a passkey through /setup#<secret>, then signs in with it
     await reused.close();
 
     await context.clearCookies();
-    expect((await page.request.get(`${origin}/api/v1/me`)).status()).toBe(401);
+    expect(await meStatus(page)).toBe(401);
     await page.goto(`${origin}/auth/sign-in?next=%2Fagents`);
     await page.locator('button[data-action="confirm"]').click();
     await page.waitForURL(`${origin}/agents`);
-    expect((await page.request.get(`${origin}/api/v1/me`)).status()).toBe(200);
+    expect(await meStatus(page)).toBe(200);
 
     expect(violations).toEqual([]);
     // A full onboarding run: registration, tunnel, setup link, passkey, sign-in. Nothing secret reached the log.

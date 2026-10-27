@@ -2,7 +2,7 @@
 
 - **Lane:** Mock engine · **Module:** `apps/mock-engine`, new `packages/gateway-pages` (see Context) · **Milestone:** M3
 - **Depends on:** C-11, M-04, M-05, M-06
-- **Status:** in progress (feat/m-08-setup-page)
+- **Status:** done (#119)
 - **Spec:** Pairing and identity (First setup, Devices, members and recovery); Operations (Break-glass local login); Security hardening 1; Interfaces (draft) 1 and 4; ADRs: [0004](../../adr/0004-mock-engine-and-conformance.md), [0014](../../adr/0014-cryptography.md); design: [onboarding.md](../../design/onboarding.md); guide: [installation.md](../../engine-integration/installation.md), [gateway.md](../../engine-integration/gateway.md)
 
 ## Goal

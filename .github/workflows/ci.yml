@@ -76,6 +76,28 @@ jobs:
         run: bunx --no-install playwright install --with-deps chromium
       - run: bun run --filter @ptbk/dashboard test:csp
 
+  # The owner's setup and passkey sign-in on the mock engine's reference gateway pages, in Chromium with a virtual
+  # authenticator, through an in-process relay under the engine's CSP (M-08).
+  mock-engine-browser:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: package.json
+          no-cache: true
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - run: bun install --frozen-lockfile
+      - name: Install Chromium
+        working-directory: apps/mock-engine
+        run: bunx --no-install playwright install --with-deps chromium
+      - run: bun run --filter @ptbk/mock-engine test:browser
+
   # Browsers through both relays to the mock engine in Docker Compose (X-01). Separate from `check`, which never needs
   # Docker. Every image is built from scratch on each run: no actions/cache, no Buildx cache.
   e2e:
