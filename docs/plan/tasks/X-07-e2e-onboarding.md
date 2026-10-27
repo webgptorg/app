@@ -2,7 +2,7 @@
 
 - **Lane:** X · **Module:** `e2e/` · **Milestone:** M3
 - **Depends on:** D-10, D-11, D-12, R-07, M-08, X-05, X-06
-- **Status:** in progress (test/x-07-e2e-onboarding)
+- **Status:** done (#125)
 - **Spec:** Pairing and identity (First setup); One address for users; What our platform can and cannot do; design: [onboarding.md](../../design/onboarding.md) (Journey 1, Time-to-value targets, Failures and edge cases)
 
 ## Goal
