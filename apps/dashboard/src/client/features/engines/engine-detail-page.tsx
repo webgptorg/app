@@ -1,5 +1,5 @@
 import { deriveEngineFingerprint } from '@ptbk/protocol';
-import { Banner, Card, CodeText, EmptyState, ErrorState, Skeleton, TrustMark, useLocale } from '@ptbk/ui';
+import { Banner, Card, CodeText, EmptyState, ErrorState, ExternalLink, Skeleton, TrustMark, useLocale } from '@ptbk/ui';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, SearchX } from 'lucide-react';
 import type { ReactNode } from 'react';
@@ -7,10 +7,11 @@ import type { ReactNode } from 'react';
 import { m } from '../../../paraglide/messages';
 import type { EngineView, HeartbeatView } from '../../../shared/api/routes';
 import { useApiClient } from '../../api/api-client-context';
-import { engineQuery, problemCode } from '../../api/queries';
+import { engineQuery, installGuideQuery, problemCode } from '../../api/queries';
 import { Link } from '../../core/link';
 import { AbuseContactLink } from '../abuse/abuse-contact';
 import { useSession } from '../session/use-session';
+import { ENGINE_STATUS_COMMAND, TROUBLESHOOTING_ANCHOR } from './engine-guide';
 import { EngineOpenLink } from './engine-open-link';
 import { EngineReachability, hasReachability } from './engine-reachability';
 import { EngineStatusBadge } from './engine-status-badge';
@@ -67,6 +68,29 @@ function HeartbeatFields(props: { readonly heartbeat: HeartbeatView }) {
     );
 }
 
+/**
+ * The dashboard cannot reach into an engine, so for an offline one it can only say what the operator can check. The
+ * guide link appears once its configured URL has loaded; the hint stands without it.
+ */
+function OfflineHint(props: { readonly lastSeenAt: number }) {
+    const formatters = useLocale();
+    const guide = useQuery(installGuideQuery(useApiClient()));
+    const time = formatters.formatDateTime(new Date(props.lastSeenAt));
+    return (
+        <Banner tone="info">
+            <span className="flex flex-col items-start gap-2">
+                <span>{m.engine_offline_hint({ time })}</span>
+                <CodeText value={ENGINE_STATUS_COMMAND} copyable copyLabel={m.engine_offline_copy()} />
+                {guide.data === undefined ? null : (
+                    <ExternalLink href={`${guide.data}#${TROUBLESHOOTING_ANCHOR}`}>
+                        {m.engine_offline_troubleshooting()}
+                    </ExternalLink>
+                )}
+            </span>
+        </Banner>
+    );
+}
+
 function StatusNotice(props: { readonly engine: EngineView }) {
     const { engine } = props;
     if (engine.suspendedBy === 'owner') {
@@ -85,7 +109,13 @@ function StatusNotice(props: { readonly engine: EngineView }) {
             </Banner>
         );
     }
-    return engine.status === 'unknown' ? <Banner tone="info">{m.engine_status_unknown_body()}</Banner> : null;
+    if (engine.status === 'unknown') {
+        return <Banner tone="info">{m.engine_status_unknown_body()}</Banner>;
+    }
+    // Offline means a heartbeat was seen, and its time outlives the retention purge.
+    return engine.status === 'offline' && engine.lastSeenAt !== null ? (
+        <OfflineHint lastSeenAt={engine.lastSeenAt} />
+    ) : null;
 }
 
 function EngineDetail(props: { readonly engine: EngineView; readonly canRevoke: boolean }) {

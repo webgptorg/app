@@ -119,7 +119,7 @@ Rules:
 - The page remains valid after a reload by keeping the link-code ID (not the code) in the URL, `/engines/new?link=<id>`, so a person who closes the tab can come back to the progress. The command itself is not shown again.
 - If the person leaves, the engine list shows the same states as badges: "Waiting for first heartbeat" (built), "Online", and the new "Owner not set up" (gap D-10).
 
-An optional email "Your engine is online" goes out at the first heartbeat when the person is not on the page (gap D-12), so somebody who walked away during the image download gets the nudge. It contains no setup link, only "Finish setup on the engine's terminal".
+An email "Your engine {hostname} is online" goes out at the first heartbeat (built, D-12), so somebody who walked away during the image download gets the nudge. It contains no setup link, only "Finish setup on the engine's terminal". It is skipped when that heartbeat already counts a member (an engine with an owner before linking, Journey 2b), and it also reaches someone who is still on the page, since the dashboard does not track presence.
 
 ### Step 5. The terminal (engine installer, engine team)
 
@@ -281,7 +281,7 @@ Each row: what the person sees on each surface, and the way out. Engine-side wor
 ### Engine offline
 
 - **Never came online after linking:** row 2 stays, then the hint in step 4. The list shows "Waiting for first heartbeat" (built).
-- **Went offline later:** the list shows "Offline" after 195 seconds without a heartbeat (built), and one email "Your engine {hostname} is offline" per outage (built). Gap D-12: an "is back online" email closing the incident, and the engine page shows "Last seen {time}. If the server is up, run `promptbook-engine status` on it."
+- **Went offline later:** the list shows "Offline" after 195 seconds without a heartbeat (built), and one email "Your engine {hostname} is offline" per outage (built). The first heartbeat after that email sends "Your engine {hostname} is back online", with since when and for how long it was offline (built, D-12). The engine page of an offline engine shows "Last seen {time}. If the server is up, run this on it:", `promptbook-engine status` to copy, and a link to the guide's [troubleshooting](../engine-integration/installation.md#troubleshooting) (built, D-12).
 - **Online but not reachable:** heartbeats arrive (they go straight to the dashboard) while no tunnel is up. The list and the engine page show Online with "Not reachable: no relay connection" (R-07); the link to the proxy troubleshooting is D-10's.
 
 ### Setup and owner

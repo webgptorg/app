@@ -77,4 +77,17 @@ describe('engines in Czech', () => {
         }
         expect(screen.getByRole('link', { name: /^Přesun existujícího nasazení/ })).toBeTruthy();
     });
+
+    it('explains an offline engine in Czech', async () => {
+        renderApp({
+            path: `/engines/${ENGINE_ID}`,
+            session: OWNER,
+            script: (api) => {
+                api.on(apiRoutes.getEngine, ok({ engine: engineView({ status: 'offline' }) }));
+                api.on(apiRoutes.getInstallGuide, ok({ url: 'https://docs.ptbk.test/engine/installation' }));
+            },
+        });
+        expect(await screen.findByText(/^Naposledy viděn .+\. Pokud server běží, spusťte na něm:$/)).toBeTruthy();
+        expect(await screen.findByRole('link', { name: /Řešení potíží v návodu k instalaci/ })).toBeTruthy();
+    });
 });

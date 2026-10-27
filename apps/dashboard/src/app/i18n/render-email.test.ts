@@ -28,7 +28,25 @@ const MESSAGES: readonly Omit<EmailMessage, 'locale'>[] = [
         lastSeenAt: RECOVERED_AT,
         link: 'https://app.ptbk.test/engines/abcdefghijklmnopqrstuvwxyz',
     },
+    {
+        template: 'engine-online',
+        to: 'a@example.test',
+        engineId: 'abcdefghijklmnopqrstuvwxyz',
+        hostname: 'abcdefghijklmnopqrstuvwxyz.engines.ptbk.test',
+        link: 'https://app.ptbk.test/engines/abcdefghijklmnopqrstuvwxyz',
+    },
+    {
+        template: 'engine-back-online',
+        to: 'a@example.test',
+        engineId: 'abcdefghijklmnopqrstuvwxyz',
+        hostname: 'abcdefghijklmnopqrstuvwxyz.engines.ptbk.test',
+        lastSeenAt: RECOVERED_AT,
+        backOnlineAt: RECOVERED_AT + (2 * 24 + 3) * 3600_000 + 59 * 60_000,
+        link: 'https://app.ptbk.test/engines/abcdefghijklmnopqrstuvwxyz',
+    },
 ] as EmailMessage[];
+const ONLINE = MESSAGES[5] as Extract<EmailMessage, { template: 'engine-online' }>;
+const BACK_ONLINE = MESSAGES[6] as Extract<EmailMessage, { template: 'engine-back-online' }>;
 
 describe('renderEmail', () => {
     it.each(
@@ -64,6 +82,48 @@ describe('renderEmail', () => {
         expect(text).toContain('abcdefghijklmnopqrstuvwxyz.engines.ptbk.test');
         expect(text).toContain('abcdefghijklmnopqrstuvwxyz\n');
         expect(text).toContain(locale === 'en' ? 'October 19, 2026 at 2:30' : '19. října 2026 v 14:30');
+    });
+
+    it.each([
+        ['en', 'Your engine abcdefghijklmnopqrstuvwxyz.engines.ptbk.test is online', 'only the engine can make you'],
+        ['cs', 'Váš engine abcdefghijklmnopqrstuvwxyz.engines.ptbk.test je online', 'jen engine sám'],
+    ] as const)(
+        'sends the first-online email in %s pointing to the terminal, never with a setup link',
+        (locale, subject, why) => {
+            const { subject: rendered, text } = renderEmail({ ...ONLINE, locale });
+            expect(rendered).toBe(subject);
+            expect(text).toContain(why);
+            expect(text).toContain('abcdefghijklmnopqrstuvwxyz\n');
+            expect(text.match(/https:\/\/\S+/g)).toEqual([ONLINE.link]);
+        },
+    );
+
+    it.each([
+        ['en', 'is back online', 'October 19, 2026 at 2:30', 'October 21, 2026 at 6:29', '2 days, 3 hours'],
+        ['cs', 'je zase online', '19. října 2026 v 14:30', '21. října 2026 v 18:29', '2 dny a 3 hodiny'],
+    ] as const)(
+        'says in %s since when the engine is back and how long it was offline',
+        (locale, subject, from, back, duration) => {
+            const { subject: rendered, text: raw } = renderEmail({ ...BACK_ONLINE, locale });
+            // ICU puts no-break spaces into some units and times.
+            const text = raw.replace(/\s/g, ' ');
+            expect(rendered).toContain(subject);
+            expect(rendered).toContain(BACK_ONLINE.hostname);
+            expect(text).toContain(from);
+            expect(text).toContain(back);
+            expect(text).toContain(duration);
+        },
+    );
+
+    it.each([
+        [3 * 60_000, '3 minutes'],
+        [30_000, '1 minute'],
+        [3600_000, '1 hour'],
+        [(5 * 60 + 7) * 60_000, '5 hours, 7 minutes'],
+        [2 * 24 * 3600_000 + 59 * 60_000, '2 days'],
+    ])('rounds an outage of %i ms down to "%s"', (offlineMs, duration) => {
+        const { text } = renderEmail({ ...BACK_ONLINE, locale: 'en', backOnlineAt: RECOVERED_AT + offlineMs });
+        expect(text.replace(/\s/g, ' ')).toContain(`offline for ${duration}.`);
     });
 
     it('renders an ops alert in English with its rule, subject, time and numbers only', () => {

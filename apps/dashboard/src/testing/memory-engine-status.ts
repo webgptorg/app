@@ -90,7 +90,7 @@ const ALERTED_ROLES: ReadonlySet<string> = new Set(['owner']);
 /** The D1 adapter's rule over the in-memory accounts: the organization's owners with a verified email. */
 export function createMemoryAlertRecipients(state: MemoryAuthState): AlertRecipients {
     return {
-        forEngineOffline(orgId) {
+        forEngineStatus(orgId) {
             const recipients = state.memberships
                 .filter((membership) => membership.orgId === orgId && ALERTED_ROLES.has(membership.role))
                 .flatMap((membership) => {

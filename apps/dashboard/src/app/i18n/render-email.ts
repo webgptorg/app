@@ -7,6 +7,32 @@ function formatUtc(ms: number, locale: EmailMessage['locale']): string {
     return new Intl.DateTimeFormat(locale, { dateStyle: 'long', timeStyle: 'short', timeZone: 'UTC' }).format(ms);
 }
 
+const MINUTE_MS = 60_000;
+const HOUR_MS = 60 * MINUTE_MS;
+const DAY_MS = 24 * HOUR_MS;
+
+/** "2 days, 3 hours" or "5 minutes": the two largest units, rounded down, zeros left out, and at least a minute. */
+function formatDuration(ms: number, locale: EmailMessage['locale']): string {
+    const days = Math.floor(ms / DAY_MS);
+    const hours = Math.floor((ms % DAY_MS) / HOUR_MS);
+    const minutes = Math.floor((ms % HOUR_MS) / MINUTE_MS);
+    const largest: readonly (readonly [number, 'day' | 'hour' | 'minute'])[] =
+        days > 0
+            ? [
+                  [days, 'day'],
+                  [hours, 'hour'],
+              ]
+            : [
+                  [hours, 'hour'],
+                  [minutes, 'minute'],
+              ];
+    const nonZero = largest.filter(([value]) => value > 0);
+    const parts = (nonZero.length === 0 ? [[1, 'minute'] as const] : nonZero).map(([value, unit]) =>
+        new Intl.NumberFormat(locale, { style: 'unit', unit, unitDisplay: 'long' }).format(value),
+    );
+    return new Intl.ListFormat(locale, { style: 'long', type: 'unit' }).format(parts);
+}
+
 /** Plain text only: no HTML means nothing in an email can be markup, and links stay visible for what they are. */
 export function renderEmail(message: EmailMessage): RenderedEmail {
     const options = { locale: message.locale };
@@ -49,6 +75,29 @@ export function renderEmail(message: EmailMessage): RenderedEmail {
                         engineId: message.engineId,
                         hostname: message.hostname,
                         lastSeenAt: formatUtc(message.lastSeenAt, message.locale),
+                        link: message.link,
+                    },
+                    options,
+                ),
+            };
+        case 'engine-online':
+            return {
+                subject: m.email_engine_online_subject({ hostname: message.hostname }, options),
+                text: m.email_engine_online_body(
+                    { engineId: message.engineId, hostname: message.hostname, link: message.link },
+                    options,
+                ),
+            };
+        case 'engine-back-online':
+            return {
+                subject: m.email_engine_back_online_subject({ hostname: message.hostname }, options),
+                text: m.email_engine_back_online_body(
+                    {
+                        engineId: message.engineId,
+                        hostname: message.hostname,
+                        lastSeenAt: formatUtc(message.lastSeenAt, message.locale),
+                        backOnlineAt: formatUtc(message.backOnlineAt, message.locale),
+                        duration: formatDuration(message.backOnlineAt - message.lastSeenAt, message.locale),
                         link: message.link,
                     },
                     options,

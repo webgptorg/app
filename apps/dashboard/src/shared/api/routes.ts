@@ -732,6 +732,17 @@ export const apiRoutes = {
         output: z.strictObject({ engines: z.array(engineViewSchema) }),
         errorCodes: [],
     }),
+    /** D-12: the configured install guide, for the engine page's troubleshooting link; the same URL D-11 offers. */
+    getInstallGuide: defineRoute({
+        method: 'GET',
+        path: '/api/install-guide',
+        auth: 'session',
+        permission: 'engine.read',
+        rateLimit: null,
+        input: NO_INPUT,
+        output: z.strictObject({ url: z.url({ protocol: /^https$/ }).max(512) }),
+        errorCodes: [],
+    }),
     /** An engine of another organization is `not-found`, like one that does not exist. */
     getEngine: defineRoute({
         method: 'GET',

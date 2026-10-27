@@ -43,11 +43,11 @@ export function describeStatusStoreContract(name: string, makeFixture: () => Sta
             await fixture.addMember(org.orgId, coOwner, 'owner');
             await fixture.addMember(org.orgId, unverified, 'owner');
             await fixture.addMember(org.orgId, viewer, 'viewer');
-            expect(await fixture.recipients.forEngineOffline(org.orgId, signal)).toEqual([
+            expect(await fixture.recipients.forEngineStatus(org.orgId, signal)).toEqual([
                 { email: coOwner.email, locale: 'en' },
                 { email: org.user.email, locale: 'cs' },
             ]);
-            expect(await fixture.recipients.forEngineOffline(other.orgId, signal)).toEqual([
+            expect(await fixture.recipients.forEngineStatus(other.orgId, signal)).toEqual([
                 { email: other.user.email, locale: 'cs' },
             ]);
         });

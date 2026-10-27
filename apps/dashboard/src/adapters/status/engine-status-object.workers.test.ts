@@ -220,6 +220,40 @@ describe('EngineStatus Durable Object behind POST /v1/engines/:engineId/heartbea
         });
     });
 
+    it('emails the owner that a new engine is online from the alarm the first heartbeat sets', async () => {
+        const seeded = await registeredEngine();
+        const first = await signedHeartbeat(seeded.engine, 1, NOW, { members: 0 });
+        expect((await post(seeded.engine.engineId, first)).status).toBe(204);
+        expect(await emailsTo(seeded.owner)).toEqual([]);
+        await runInDurableObject(stub(seeded.engine.engineId), async (_, state) => {
+            expect(await state.storage.getAlarm()).toBe(NOW);
+        });
+
+        expect(await runDurableObjectAlarm(stub(seeded.engine.engineId))).toBe(true);
+        const emails = await emailsTo(seeded.owner);
+        expect(emails).toMatchObject([{ template: 'engine-online', locale: 'cs' }]);
+        expect(emails[0]?.text.endsWith(`/engines/${seeded.engine.engineId}`)).toBe(true);
+        expect(await emailsTo(seeded.unverified)).toEqual([]);
+        await runInDurableObject(stub(seeded.engine.engineId), async (_, state) => {
+            expect(await state.storage.getAlarm()).toBe(NOW + OFFLINE_AFTER_MS);
+        });
+    });
+
+    it('emails the owner that an engine is back after the outage its offline email reported', async () => {
+        const seeded = await registeredEngine();
+        expect((await post(seeded.engine.engineId, await signedHeartbeat(seeded.engine, 1, NOW))).status).toBe(204);
+        vi.setSystemTime(NOW + OFFLINE_AFTER_MS);
+        await runDurableObjectAlarm(stub(seeded.engine.engineId));
+        const backAt = NOW + 3600_000;
+        vi.setSystemTime(backAt);
+        expect((await post(seeded.engine.engineId, await signedHeartbeat(seeded.engine, 2, backAt))).status).toBe(204);
+        expect(await runDurableObjectAlarm(stub(seeded.engine.engineId))).toBe(true);
+        expect((await emailsTo(seeded.owner)).map((email) => email.template)).toEqual([
+            'engine-offline',
+            'engine-back-online',
+        ]);
+    });
+
     it('forgets the engine on reset', async () => {
         expect((await post(engine.engineId, await signedHeartbeat(engine, 1, NOW))).status).toBe(204);
         await stub(engine.engineId).reset();
