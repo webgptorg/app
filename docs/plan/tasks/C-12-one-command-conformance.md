@@ -2,7 +2,7 @@
 
 - **Lane:** Contracts · **Module:** `packages/conformance` (plus the conformance CI job and the engine integration guide) · **Milestone:** M5
 - **Depends on:** C-08, C-09, C-10
-- **Status:** in progress (feat/c-12-one-command-conformance)
+- **Status:** done (#118)
 - **Spec:** Interfaces (draft) 2 and 3; Build plan (Mock engine first, real engine last); ADRs: [0004](../../adr/0004-mock-engine-and-conformance.md)
 
 ## Goal
@@ -37,13 +37,13 @@ With `--engine-cmd` the CLI refuses `--suite engine-api` (exit 2): the engine AP
 
 ## Acceptance criteria
 
-- [ ] `--engine-cmd … --mock-control --suite engine-api,registration,heartbeat,tunnel,ui-loader` passes against the mock engine (CLI test and the CI step).
-- [ ] The engine API suite passes through the harness against the mock with `--mock-control` and with `--engine-session-cmd`; `--no-gateway` skips the gateway check.
-- [ ] `--base-url` mode behaves as before; its tests are unchanged.
-- [ ] The package's coverage stays at or above 90% for lines and branches.
-- [ ] The exact documented command passes with the mock as the engine under test at the default heartbeat cadence; the PR shows its summary line.
-- [ ] `bun run check` passes.
-- [ ] **Status** line above set to `done (#<PR>)`.
+- [x] `--engine-cmd … --mock-control --suite engine-api,registration,heartbeat,tunnel,ui-loader` passes against the mock engine (CLI test and the CI step).
+- [x] The engine API suite passes through the harness against the mock with `--mock-control` and with `--engine-session-cmd`; `--no-gateway` skips the gateway check.
+- [x] `--base-url` mode behaves as before; its tests are unchanged.
+- [x] The package's coverage stays at or above 90% for lines and branches.
+- [x] The exact documented command passes with the mock as the engine under test at the default heartbeat cadence; the PR shows its summary line.
+- [x] `bun run check` passes (fast policy for #118: conformance lint, typecheck and tests with coverage, the CI step replayed, prettier, `plan --check`, `engine-guide`).
+- [x] **Status** line above set to `done (#<PR>)`.
 
 ## Risks and open points
 
