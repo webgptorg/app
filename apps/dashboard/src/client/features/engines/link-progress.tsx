@@ -8,10 +8,11 @@ import type { ReactNode } from 'react';
 import { m } from '../../../paraglide/messages';
 import type { EngineView, LinkCodeStatusView } from '../../../shared/api/routes';
 import { useApiClient } from '../../api/api-client-context';
-import { engineQuery, linkCodeQuery, problemCode } from '../../api/queries';
+import { engineQuery, problemCode } from '../../api/queries';
 import { useBrowser } from '../../core/browser';
 import { ButtonLink } from '../../core/link';
 import { EngineOpenLink } from './engine-open-link';
+import { linkCodeQuery } from './link-queries';
 import { shortEngineId } from './engine-labels';
 
 /** onboarding.md, step 4: the page asks every 3 seconds while it is visible, and stops at ready or expiry. */

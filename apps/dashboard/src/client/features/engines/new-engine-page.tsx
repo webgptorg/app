@@ -7,13 +7,14 @@ import { m } from '../../../paraglide/messages';
 import { apiRoutes, type LinkCodeView } from '../../../shared/api/routes';
 import type { InstallPathLabelKey } from '../../../shared/install-paths';
 import { useApiClient } from '../../api/api-client-context';
-import { billingQuery, dataOrThrow, linkCodeQuery, linkEligibilityQuery, problemCode } from '../../api/queries';
+import { billingQuery, dataOrThrow, problemCode } from '../../api/queries';
 import { useBrowser } from '../../core/browser';
 import { Link } from '../../core/link';
 import { useAppMutation } from '../../core/mutations';
 import { PlanOfferList } from '../billing/plan-offers';
 import { useSession } from '../session/use-session';
 import { LINK_POLL_MS, LinkProgress } from './link-progress';
+import { linkCodeQuery, linkEligibilityQuery } from './link-queries';
 
 const LINK_PERMISSION = 'engine.link';
 const BILLING_PERMISSION = 'billing.manage';
@@ -36,6 +37,17 @@ export interface NewEngineSearch {
     /** A link code's ID (not the code): the page shows that code's progress, after a reload too. */
     readonly link?: string;
     readonly checkout?: CheckoutReturn;
+}
+
+const LINK_CODE_ID = /^[a-z2-7]{26}$/;
+
+/** `link` is a link code's ID from issuance; `checkout` is set by the Checkout return URLs. Anything else is dropped. */
+export function parseNewEngineSearch(search: Readonly<Record<string, unknown>>): NewEngineSearch {
+    const { link, checkout } = search;
+    return {
+        ...(typeof link === 'string' && LINK_CODE_ID.test(link) ? { link } : {}),
+        ...(checkout === 'success' || checkout === 'cancel' ? { checkout } : {}),
+    };
 }
 
 type UpgradeReason = 'not-entitled' | 'engine-limit';
