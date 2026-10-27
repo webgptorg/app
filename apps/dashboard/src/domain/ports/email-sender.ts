@@ -26,6 +26,23 @@ export type EmailMessage =
           readonly link: string;
       })
     | (Envelope & {
+          /** Never the setup link: only the engine can make someone its owner, so only its terminal shows that link. */
+          readonly template: 'engine-online';
+          readonly engineId: string;
+          readonly hostname: string;
+          readonly link: string;
+      })
+    | (Envelope & {
+          readonly template: 'engine-back-online';
+          readonly engineId: string;
+          readonly hostname: string;
+          /** The last heartbeat before the outage. */
+          readonly lastSeenAt: number;
+          /** The first heartbeat after it. */
+          readonly backOnlineAt: number;
+          readonly link: string;
+      })
+    | (Envelope & {
           /**
            * I-04: to the ops address, numbers and names of our own relays and jobs; I-05's abuse rules go to the abuse
            * inbox with an engine ID or a certificate's issuance key as the subject. Never engine content.

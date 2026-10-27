@@ -10,7 +10,7 @@ const DAY_MS = 24 * 60 * 60 * SECOND_MS;
 /** Spec retention: thirty days after the last heartbeat only the state and the time it was last seen remain. */
 export const PAYLOAD_RETENTION_MS = 30 * DAY_MS;
 
-/** Delays before each retry of a failed offline alert; its length is how many retries there are. */
+/** Delays before each retry of a failed status email; its length is how many retries there are. */
 export const ALERT_RETRY_DELAYS_MS = [60 * SECOND_MS, 5 * 60 * SECOND_MS, 15 * 60 * SECOND_MS] as const;
 
 export interface HeartbeatTiming {
@@ -50,17 +50,37 @@ export type AlertRecipient = z.infer<typeof alertRecipientSchema>;
  * The offline alert of the current outage. `pending` keeps whom a failed attempt still owes the email (`null`: the
  * recipients could not be resolved), so a retry never mails anyone twice. `none` arms the next outage.
  */
+const delivery = {
+    attempt: z.int().min(0).max(ALERT_RETRY_DELAYS_MS.length),
+    recipients: z.array(alertRecipientSchema).max(1000).nullable(),
+};
+
 const outageAlertSchema = z.discriminatedUnion('kind', [
     z.strictObject({ kind: z.literal('none') }),
-    z.strictObject({
-        kind: z.literal('pending'),
-        attempt: z.int().min(0).max(ALERT_RETRY_DELAYS_MS.length),
-        recipients: z.array(alertRecipientSchema).max(1000).nullable(),
-    }),
+    z.strictObject({ kind: z.literal('pending'), ...delivery }),
     z.strictObject({ kind: z.literal('sent') }),
     z.strictObject({ kind: z.literal('failed') }),
 ]);
 export type OutageAlert = z.infer<typeof outageAlertSchema>;
+
+/**
+ * The good news still owed, sent from the alarm at `dueAt` with the offline alert's recipients and retries: `online`
+ * once per engine, `back-online` once per outage whose offline email went out. A new outage drops it as stale.
+ */
+const noticeSchema = z.discriminatedUnion('kind', [
+    z.strictObject({ kind: z.literal('none') }),
+    z.strictObject({ kind: z.literal('online'), dueAt: count, ...delivery }),
+    z.strictObject({
+        kind: z.literal('back-online'),
+        dueAt: count,
+        /** The last heartbeat before the outage. */
+        lastSeenAt: count,
+        backOnlineAt: count,
+        ...delivery,
+    }),
+]);
+export type StatusNotice = z.infer<typeof noticeSchema>;
+export type OwedNotice = Exclude<StatusNotice, { readonly kind: 'none' }>;
 
 const trackedSchema = z.strictObject({
     kind: z.literal('tracked'),
@@ -72,6 +92,8 @@ const trackedSchema = z.strictObject({
     payload: heartbeatPayloadSchema,
     offlineSince: count.nullable(),
     alert: outageAlertSchema,
+    // Statuses stored before D-12 have no notice and owe none.
+    notice: noticeSchema.default({ kind: 'none' }),
 });
 
 /** After the retention purge: nothing about the engine but that it is offline and when it was last seen. */
@@ -115,8 +137,29 @@ export function lastSeqOf(stored: StoredEngineStatus | null): number | null {
     return stored?.kind === 'tracked' ? stored.lastSeq : null;
 }
 
-/** An accepted heartbeat: online, and whatever outage came before is over, so the next one alerts again. */
+/**
+ * What an accepted heartbeat owes. An engine that counts a member on its very first heartbeat had an owner before it
+ * was linked, who needs no reminder to finish setup. A purged engine was offline for thirty days, so its outage was
+ * alerted, even though the purge kept no record of it.
+ */
+function noticeAfter(stored: StoredEngineStatus | null, heartbeat: Heartbeat, receivedAt: number): StatusNotice {
+    const owed = { dueAt: receivedAt, attempt: 0, recipients: null };
+    if (stored === null) {
+        return heartbeat.members === 0 ? { kind: 'online', ...owed } : { kind: 'none' };
+    }
+    const alerted = stored.kind === 'purged' || (stored.state === 'offline' && stored.alert.kind === 'sent');
+    if (alerted) {
+        return { kind: 'back-online', lastSeenAt: stored.lastSeenAt, backOnlineAt: receivedAt, ...owed };
+    }
+    return stored.notice;
+}
+
+/**
+ * An accepted heartbeat: online, and whatever outage came before is over, so the next one alerts again. A notice still
+ * owed stays owed, on its own schedule.
+ */
 export function acceptHeartbeat(input: {
+    readonly stored: StoredEngineStatus | null;
     readonly orgId: TrackedEngineStatus['orgId'];
     readonly heartbeat: Heartbeat;
     readonly receivedAt: number;
@@ -143,7 +186,17 @@ export function acceptHeartbeat(input: {
         },
         offlineSince: null,
         alert: { kind: 'none' },
+        notice: noticeAfter(input.stored, heartbeat, input.receivedAt),
     };
+}
+
+/** When a settled status's alarm fires next: the notice it owes, or else going offline or the retention purge. */
+export function nextAlarmAt(status: TrackedEngineStatus, timing: HeartbeatTiming): number {
+    const watchAt =
+        status.state === 'online'
+            ? status.lastSeenAt + offlineAfterMs(timing)
+            : status.lastSeenAt + PAYLOAD_RETENTION_MS;
+    return status.notice.kind === 'none' ? watchAt : Math.min(watchAt, status.notice.dueAt);
 }
 
 export type AlarmStep =
@@ -156,6 +209,8 @@ export type AlarmStep =
           readonly kind: 'alert';
           readonly status: TrackedEngineStatus & { readonly alert: { readonly kind: 'pending' } };
       }
+    /** Send the notice `status` owes; nothing is stored before, since a notice is already stored when it is owed. */
+    | { readonly kind: 'notice'; readonly status: TrackedEngineStatus & { readonly notice: OwedNotice } }
     | { readonly kind: 'purge'; readonly engineId: EngineId; readonly status: StoredEngineStatus };
 
 /** What the engine's alarm does at `now`. */
@@ -167,11 +222,7 @@ export function onAlarm(stored: StoredEngineStatus | null, now: number, timing: 
     if (alert.kind === 'pending') {
         return { kind: 'alert', status: { ...stored, alert } };
     }
-    if (stored.state === 'online') {
-        const offlineAt = stored.lastSeenAt + offlineAfterMs(timing);
-        if (now < offlineAt) {
-            return { kind: 'wait', at: offlineAt };
-        }
+    if (stored.state === 'online' && now >= stored.lastSeenAt + offlineAfterMs(timing)) {
         return {
             kind: 'alert',
             status: {
@@ -179,12 +230,16 @@ export function onAlarm(stored: StoredEngineStatus | null, now: number, timing: 
                 state: 'offline',
                 offlineSince: now,
                 alert: { kind: 'pending', attempt: 0, recipients: null },
+                notice: { kind: 'none' },
             },
         };
     }
-    const purgeAt = stored.lastSeenAt + PAYLOAD_RETENTION_MS;
-    if (now < purgeAt) {
-        return { kind: 'wait', at: purgeAt };
+    const notice = stored.notice;
+    if (notice.kind !== 'none' && now >= notice.dueAt) {
+        return { kind: 'notice', status: { ...stored, notice } };
+    }
+    if (stored.state === 'online' || now < stored.lastSeenAt + PAYLOAD_RETENTION_MS) {
+        return { kind: 'wait', at: nextAlarmAt(stored, timing) };
     }
     return {
         kind: 'purge',
@@ -199,6 +254,27 @@ export type AlertAttempt =
     | { readonly kind: 'partly-failed'; readonly failed: readonly AlertRecipient[] }
     /** The recipients could not be resolved; nobody was sent anything. */
     | { readonly kind: 'unresolved' };
+
+/** Where a notice attempt leaves the status: settled once delivered or out of retries, else owed again later. */
+export function afterNoticeAttempt(
+    status: TrackedEngineStatus & { readonly notice: OwedNotice },
+    attempt: AlertAttempt,
+    now: number,
+    timing: HeartbeatTiming,
+): { readonly status: TrackedEngineStatus; readonly alarmAt: number } {
+    const delay = ALERT_RETRY_DELAYS_MS[status.notice.attempt];
+    const notice: StatusNotice =
+        attempt.kind === 'delivered' || delay === undefined
+            ? { kind: 'none' }
+            : {
+                  ...status.notice,
+                  dueAt: now + delay,
+                  attempt: status.notice.attempt + 1,
+                  recipients: attempt.kind === 'unresolved' ? null : [...attempt.failed],
+              };
+    const settled = { ...status, notice };
+    return { status: settled, alarmAt: nextAlarmAt(settled, timing) };
+}
 
 /** Where an alert attempt leaves the outage, and when the alarm fires next (a retry, or the retention purge). */
 export function afterAlertAttempt(

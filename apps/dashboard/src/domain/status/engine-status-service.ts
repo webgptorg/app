@@ -7,7 +7,7 @@ import {
 } from '@ptbk/protocol';
 
 import type { Clock } from '../ports/clock';
-import type { EmailSender } from '../ports/email-sender';
+import type { EmailMessage, EmailSender } from '../ports/email-sender';
 import type { Logger } from '../ports/logger';
 import type { AlertRecipients } from './alert-recipients';
 import type { RecordHeartbeatInput } from './engine-status-directory';
@@ -15,14 +15,16 @@ import type { EngineStatusStorage } from './engine-status-storage';
 import {
     acceptHeartbeat,
     afterAlertAttempt,
+    afterNoticeAttempt,
     lastSeqOf,
-    offlineAfterMs,
+    nextAlarmAt,
     onAlarm,
     snapshotOf,
     type AlertAttempt,
     type AlertRecipient,
     type EngineStatusSnapshot,
     type HeartbeatTiming,
+    type OwedNotice,
     type TrackedEngineStatus,
 } from './engine-status';
 
@@ -50,37 +52,56 @@ export interface EngineStatusService {
 }
 
 export function createEngineStatusService(deps: EngineStatusServiceDeps): EngineStatusService {
-    async function sendAlert(
+    /** One email to each recipient: the ones owed from a failed attempt, or else everyone the organization alerts. */
+    async function deliver(
         status: TrackedEngineStatus,
         owed: readonly AlertRecipient[] | null,
+        compose: (recipient: AlertRecipient) => EmailMessage,
     ): Promise<AlertAttempt> {
         let recipients: readonly AlertRecipient[];
         try {
             recipients =
-                owed ?? (await deps.recipients.forEngineOffline(status.orgId, AbortSignal.timeout(SEND_TIMEOUT_MS)));
+                owed ?? (await deps.recipients.forEngineStatus(status.orgId, AbortSignal.timeout(SEND_TIMEOUT_MS)));
         } catch {
             return { kind: 'unresolved' };
         }
         const failed: AlertRecipient[] = [];
         for (const recipient of recipients) {
             try {
-                await deps.email.send(
-                    {
-                        template: 'engine-offline',
-                        to: recipient.email,
-                        locale: recipient.locale,
-                        engineId: status.engineId,
-                        hostname: deps.engineHostname(status.engineId),
-                        lastSeenAt: status.lastSeenAt,
-                        link: deps.engineLink(status.engineId),
-                    },
-                    AbortSignal.timeout(SEND_TIMEOUT_MS),
-                );
+                await deps.email.send(compose(recipient), AbortSignal.timeout(SEND_TIMEOUT_MS));
             } catch {
                 failed.push(recipient);
             }
         }
         return failed.length === 0 ? { kind: 'delivered' } : { kind: 'partly-failed', failed };
+    }
+
+    function engineFields(status: TrackedEngineStatus, recipient: AlertRecipient) {
+        return {
+            to: recipient.email,
+            locale: recipient.locale,
+            engineId: status.engineId,
+            hostname: deps.engineHostname(status.engineId),
+            link: deps.engineLink(status.engineId),
+        };
+    }
+
+    function noticeMessage(
+        status: TrackedEngineStatus & { readonly notice: OwedNotice },
+        recipient: AlertRecipient,
+    ): EmailMessage {
+        const { notice } = status;
+        switch (notice.kind) {
+            case 'online':
+                return { template: 'engine-online', ...engineFields(status, recipient) };
+            case 'back-online':
+                return {
+                    template: 'engine-back-online',
+                    ...engineFields(status, recipient),
+                    lastSeenAt: notice.lastSeenAt,
+                    backOnlineAt: notice.backOnlineAt,
+                };
+        }
     }
 
     return {
@@ -95,14 +116,15 @@ export function createEngineStatusService(deps: EngineStatusServiceDeps): Engine
                 now: Timestamp.parse(new Date(input.receivedAt).toISOString()),
             });
             if (verification.kind === 'accepted') {
-                await deps.storage.save(
-                    acceptHeartbeat({
-                        orgId: input.orgId,
-                        heartbeat: verification.heartbeat,
-                        receivedAt: input.receivedAt,
-                    }),
-                );
-                await deps.storage.setAlarm(input.receivedAt + offlineAfterMs(deps.timing));
+                const status = acceptHeartbeat({
+                    stored,
+                    orgId: input.orgId,
+                    heartbeat: verification.heartbeat,
+                    receivedAt: input.receivedAt,
+                });
+                await deps.storage.save(status);
+                // A notice now owed fires the alarm at once, so the heartbeat's answer never waits on email.
+                await deps.storage.setAlarm(nextAlarmAt(status, deps.timing));
             }
             return verification;
         },
@@ -135,7 +157,12 @@ export function createEngineStatusService(deps: EngineStatusServiceDeps): Engine
                     }
                     // Stored first: if sending crashes the object, the retried alarm finds the outage already marked.
                     await deps.storage.save(step.status);
-                    const attempt = await sendAlert(step.status, step.status.alert.recipients);
+                    const { status } = step;
+                    const attempt = await deliver(status, status.alert.recipients, (recipient) => ({
+                        template: 'engine-offline',
+                        ...engineFields(status, recipient),
+                        lastSeenAt: status.lastSeenAt,
+                    }));
                     const next = afterAlertAttempt(step.status, attempt, now);
                     await deps.storage.save(next.status);
                     await deps.storage.setAlarm(next.alarmAt);
@@ -145,6 +172,26 @@ export function createEngineStatusService(deps: EngineStatusServiceDeps): Engine
                             outcome: attempt.kind,
                             attempt: step.status.alert.attempt,
                             final: next.status.alert.kind === 'failed',
+                        });
+                    }
+                    return;
+                }
+                case 'notice': {
+                    const { notice } = step.status;
+                    const { status } = step;
+                    const attempt = await deliver(status, notice.recipients, (recipient) =>
+                        noticeMessage(status, recipient),
+                    );
+                    const next = afterNoticeAttempt(step.status, attempt, now, deps.timing);
+                    await deps.storage.save(next.status);
+                    await deps.storage.setAlarm(next.alarmAt);
+                    if (attempt.kind !== 'delivered') {
+                        deps.logger.warn('engine-status.notice-failed', {
+                            engineId: step.status.engineId,
+                            notice: notice.kind,
+                            outcome: attempt.kind,
+                            attempt: notice.attempt,
+                            final: next.status.notice.kind === 'none',
                         });
                     }
                     return;

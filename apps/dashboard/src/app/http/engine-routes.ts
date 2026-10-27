@@ -127,6 +127,10 @@ export function bindEngineRoutes(
         return { kind: 'ok', body: { engines: overviews.map(engineView) } };
     });
 
+    bind(router, mount, apiRoutes.getInstallGuide, () =>
+        Promise.resolve({ kind: 'ok', body: { url: deps.config.installGuideUrl } }),
+    );
+
     bind(router, mount, apiRoutes.getEngine, async ({ input, session }) => {
         const engine = await deps.engines.findInOrg(session.actor.orgId, input.params.engineId);
         if (engine === null) {

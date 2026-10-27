@@ -5,7 +5,12 @@ import { createTestEngine, type TestEngine } from '../../testing/test-engine';
 import { signedHeartbeat } from '../../testing/test-heartbeat';
 import { createStatusTestDeps, STATUS_START_MS as START } from '../../testing/test-status';
 import type { OrgId } from '../ids';
-import { ALERT_RETRY_DELAYS_MS, PAYLOAD_RETENTION_MS, type AlertRecipient } from './engine-status';
+import {
+    ALERT_RETRY_DELAYS_MS,
+    PAYLOAD_RETENTION_MS,
+    storedEngineStatusSchema,
+    type AlertRecipient,
+} from './engine-status';
 import { createEngineStatusService } from './engine-status-service';
 
 const OFFLINE_AFTER_MS = (3 * 60 + 15) * 1000;
@@ -24,8 +29,8 @@ describe('engine status service', () => {
     function setup(options: Parameters<typeof createStatusTestDeps>[0] = {}) {
         const t = createStatusTestDeps({ recipients: new Map([[orgId, [OWNER]]]), ...options });
         const service = createEngineStatusService(t.deps);
-        const beat = async (seq: number, atMs = t.clock.nowMs()) => {
-            const { body, signature } = await signedHeartbeat(engine, seq, atMs);
+        const beat = async (seq: number, atMs = t.clock.nowMs(), overrides: { members?: number } = {}) => {
+            const { body, signature } = await signedHeartbeat(engine, seq, atMs, overrides);
             return service.recordHeartbeat({
                 engineId: engine.engineId,
                 orgId,
@@ -44,7 +49,10 @@ describe('engine status service', () => {
             t.clock.set(Math.max(at, t.clock.nowMs()));
             await service.alarm();
         };
-        return { ...t, service, beat, fireAlarm };
+        /** A heartbeat of an engine nobody has set up yet (M-08: `members` counts members with a passkey). */
+        const newEngineBeat = (seq: number) => beat(seq, t.clock.nowMs(), { members: 0 });
+        const sentOf = (template: string) => t.email.outbox.sent.filter((message) => message.template === template);
+        return { ...t, service, beat, newEngineBeat, sentOf, fireAlarm };
     }
 
     it('accepts a heartbeat, stores its numbers and arms the offline alarm', async () => {
@@ -145,11 +153,12 @@ describe('engine status service', () => {
         const status = await t.service.getStatus();
         expect(status).toMatchObject({ state: 'online', lastSeenAt: backAt });
         expect(status).not.toHaveProperty('offlineSince');
-        expect(t.storage.alarmAt()).toBe(backAt + OFFLINE_AFTER_MS);
 
         await t.fireAlarm();
-        expect(t.email.outbox.sent).toHaveLength(2);
-        expect(t.email.outbox.sent[1]).toMatchObject({ lastSeenAt: backAt });
+        expect(t.storage.alarmAt()).toBe(backAt + OFFLINE_AFTER_MS);
+        await t.fireAlarm();
+        expect(t.sentOf('engine-offline')).toHaveLength(2);
+        expect(t.sentOf('engine-offline')[1]).toMatchObject({ lastSeenAt: backAt });
     });
 
     it('purges the payload thirty days after the last heartbeat, keeping only the state and when it was seen', async () => {
@@ -244,6 +253,216 @@ describe('engine status service', () => {
         expect(t.email.attempts).toEqual([]);
         expect((await t.service.getStatus()).state).toBe('offline');
         expect(t.storage.alarmAt()).toBe(START + PAYLOAD_RETENTION_MS);
+    });
+
+    describe('first online', () => {
+        it('emails the owner once when a new engine sends its first heartbeat, from the alarm', async () => {
+            const t = setup();
+            expect((await t.newEngineBeat(1)).kind).toBe('accepted');
+            expect(t.email.attempts).toEqual([]);
+            expect(t.storage.alarmAt()).toBe(START);
+
+            await t.fireAlarm();
+            expect(t.email.outbox.sent).toEqual([
+                {
+                    template: 'engine-online',
+                    to: OWNER.email,
+                    locale: 'cs',
+                    engineId: engine.engineId,
+                    hostname: `${engine.engineId}.engines.ptbk.test`,
+                    link: `https://app.ptbk.test/engines/${engine.engineId}`,
+                },
+            ]);
+            expect(t.storage.alarmAt()).toBe(START + OFFLINE_AFTER_MS);
+
+            t.clock.advance(60_000);
+            await t.newEngineBeat(2);
+            expect(t.storage.alarmAt()).toBe(START + 60_000 + OFFLINE_AFTER_MS);
+            await t.fireAlarm();
+            t.clock.advance(60 * 60_000);
+            await t.newEngineBeat(3);
+            await t.fireAlarm();
+            expect(t.email.outbox.sent.map((message) => message.template)).toEqual([
+                'engine-online',
+                'engine-offline',
+                'engine-back-online',
+            ]);
+        });
+
+        it('sends none when the first heartbeat already counts a member, nor when a later one counts none', async () => {
+            const t = setup();
+            await t.beat(1);
+            expect(t.storage.alarmAt()).toBe(START + OFFLINE_AFTER_MS);
+            t.clock.advance(60_000);
+            await t.newEngineBeat(2);
+            expect(t.storage.alarmAt()).toBe(START + 60_000 + OFFLINE_AFTER_MS);
+            expect(t.email.attempts).toEqual([]);
+        });
+
+        it('retries a failed send with the alert backoff, which later heartbeats do not postpone', async () => {
+            const t = setup({ recipients: new Map([[orgId, [OWNER, CO_OWNER]]]) });
+            t.email.failing.add(OWNER.email);
+            await t.newEngineBeat(1);
+            await t.fireAlarm();
+            expect(t.storage.alarmAt()).toBe(START + ALERT_RETRY_DELAYS_MS[0]);
+            expect(t.logger.entries).toContainEqual({
+                level: 'warn',
+                event: 'engine-status.notice-failed',
+                fields: {
+                    engineId: engine.engineId,
+                    notice: 'online',
+                    outcome: 'partly-failed',
+                    attempt: 0,
+                    final: false,
+                },
+            });
+
+            t.clock.advance(30_000);
+            await t.newEngineBeat(2);
+            expect(t.storage.alarmAt()).toBe(START + ALERT_RETRY_DELAYS_MS[0]);
+            await t.service.alarm();
+            expect(t.storage.alarmAt()).toBe(START + ALERT_RETRY_DELAYS_MS[0]);
+            expect(t.email.attempts).toHaveLength(2);
+            t.email.failing.clear();
+            await t.fireAlarm();
+            expect(t.email.attempts.map((message) => message.to)).toEqual([OWNER.email, CO_OWNER.email, OWNER.email]);
+            expect(t.sentOf('engine-online').map((message) => message.to)).toEqual([CO_OWNER.email, OWNER.email]);
+            expect(t.storage.alarmAt()).toBe(START + 30_000 + OFFLINE_AFTER_MS);
+        });
+
+        it('resolves the recipients again on retry, and gives up after three retries', async () => {
+            let unavailable = true;
+            const t = setup({ recipientsFail: () => unavailable });
+            await t.newEngineBeat(1);
+            await t.fireAlarm();
+            expect(t.logger.entries.at(-1)).toMatchObject({ fields: { outcome: 'unresolved', attempt: 0 } });
+            unavailable = false;
+            t.email.failing.add(OWNER.email);
+            for (let seq = 2; seq <= ALERT_RETRY_DELAYS_MS.length + 1; seq++) {
+                const stored = t.storage.stored();
+                if (stored?.kind !== 'tracked' || stored.notice.kind === 'none') {
+                    throw new Error('no notice owed');
+                }
+                // A heartbeat right at each retry keeps the engine online through the longer delays.
+                t.clock.set(stored.notice.dueAt);
+                await t.newEngineBeat(seq);
+                await t.fireAlarm();
+            }
+            expect(t.email.attempts).toHaveLength(ALERT_RETRY_DELAYS_MS.length);
+            expect(t.logger.entries.at(-1)).toMatchObject({ fields: { attempt: 3, final: true } });
+            expect(t.storage.stored()).toMatchObject({ notice: { kind: 'none' } });
+            expect(t.storage.alarmAt()).toBe(t.clock.nowMs() + OFFLINE_AFTER_MS);
+        });
+
+        it('drops a notice still owed when the engine goes offline, and alerts that instead', async () => {
+            const t = setup();
+            t.email.failing.add(OWNER.email);
+            await t.newEngineBeat(1);
+            await t.fireAlarm();
+            await t.fireAlarm();
+            expect(t.storage.alarmAt()).toBe(START + OFFLINE_AFTER_MS);
+            t.email.failing.clear();
+            await t.fireAlarm();
+            expect(t.email.outbox.sent.map((message) => message.template)).toEqual(['engine-offline']);
+            expect(t.storage.alarmAt()).toBe(START + PAYLOAD_RETENTION_MS);
+        });
+    });
+
+    describe('back online', () => {
+        it('emails once on the first heartbeat after an outage that sent an offline email', async () => {
+            const t = setup();
+            await t.beat(1);
+            await t.fireAlarm();
+            expect(t.sentOf('engine-offline')).toHaveLength(1);
+
+            t.clock.advance(2 * 3600_000);
+            const backAt = t.clock.nowMs();
+            await t.beat(2);
+            expect(t.storage.alarmAt()).toBe(backAt);
+            await t.fireAlarm();
+            expect(t.sentOf('engine-back-online')).toEqual([
+                {
+                    template: 'engine-back-online',
+                    to: OWNER.email,
+                    locale: 'cs',
+                    engineId: engine.engineId,
+                    hostname: `${engine.engineId}.engines.ptbk.test`,
+                    lastSeenAt: START,
+                    backOnlineAt: backAt,
+                    link: `https://app.ptbk.test/engines/${engine.engineId}`,
+                },
+            ]);
+            expect(t.storage.alarmAt()).toBe(backAt + OFFLINE_AFTER_MS);
+
+            t.clock.advance(60_000);
+            await t.beat(3);
+            await t.fireAlarm();
+            expect(t.sentOf('engine-back-online')).toHaveLength(1);
+            expect(t.sentOf('engine-online')).toEqual([]);
+        });
+
+        it('sends none after a gap shorter than the offline threshold', async () => {
+            const t = setup();
+            await t.beat(1);
+            t.clock.advance(OFFLINE_AFTER_MS - 1);
+            await t.service.alarm();
+            await t.beat(2);
+            expect(t.storage.alarmAt()).toBe(START + OFFLINE_AFTER_MS - 1 + OFFLINE_AFTER_MS);
+            await t.service.alarm();
+            expect(t.email.attempts).toEqual([]);
+        });
+
+        it('sends none when the outage never got its offline email out', async () => {
+            const t = setup();
+            t.email.failing.add(OWNER.email);
+            await t.beat(1);
+            await t.fireAlarm();
+            t.email.failing.clear();
+            t.clock.advance(30_000);
+            await t.beat(2);
+            expect(t.storage.alarmAt()).toBe(t.clock.nowMs() + OFFLINE_AFTER_MS);
+            expect(t.email.outbox.sent).toEqual([]);
+        });
+
+        it('emails when an engine returns after the retention purge, from the time it was last seen', async () => {
+            const t = setup();
+            await t.beat(1);
+            await t.fireAlarm();
+            await t.fireAlarm();
+            expect(t.storage.stored()).toMatchObject({ kind: 'purged' });
+            t.clock.advance(3600_000);
+            await t.beat(2);
+            await t.fireAlarm();
+            expect(t.sentOf('engine-back-online')).toEqual([
+                expect.objectContaining({ lastSeenAt: START, backOnlineAt: START + PAYLOAD_RETENTION_MS + 3600_000 }),
+            ]);
+        });
+    });
+
+    it('reads a status stored before notices existed as owing none', () => {
+        const legacy = {
+            kind: 'tracked',
+            engineId: engine.engineId,
+            orgId,
+            state: 'online',
+            lastSeenAt: START,
+            lastSeq: 1,
+            payload: {
+                ts: new Date(START).toISOString(),
+                receivedAt: START,
+                version: '1.4.2',
+                uptimeS: 1,
+                diskPct: 1,
+                ramPct: 1,
+                cpuLoad: 'low',
+                update: 'none',
+                agents: 0,
+                members: 0,
+            },
+            offlineSince: null,
+            alert: { kind: 'none' },
+        };
+        expect(storedEngineStatusSchema.parse(legacy)).toMatchObject({ notice: { kind: 'none' } });
     });
 
     it('does nothing on an alarm for an engine it has never seen', async () => {

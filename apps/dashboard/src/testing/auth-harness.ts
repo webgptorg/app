@@ -201,7 +201,7 @@ export function createAuthHarness(options: {
         clock,
         logger,
         timing: config.heartbeat,
-        recipients: options.alertRecipients ?? { forEngineOffline: () => Promise.resolve([]) },
+        recipients: options.alertRecipients ?? { forEngineStatus: () => Promise.resolve([]) },
         email: outbox,
         engineHostname: (engineId) => defaultHostname(engineId, config.engineDomain),
         engineLink: (engineId) => `${ORIGIN}/engines/${engineId}`,

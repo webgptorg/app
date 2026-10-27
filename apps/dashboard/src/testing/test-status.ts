@@ -65,7 +65,7 @@ export function createStatusTestDeps(
             logger,
             timing: DEFAULT_TIMING,
             recipients: {
-                forEngineOffline: (orgId) =>
+                forEngineStatus: (orgId) =>
                     options.recipientsFail?.() === true
                         ? Promise.reject(new Error('database unavailable'))
                         : Promise.resolve(options.recipients?.get(orgId) ?? []),

@@ -96,6 +96,14 @@ export function describeEngineFlows(
             expect(await storedLinkCodeValues(harness)).toEqual([]);
         });
 
+        it('tells a signed-in owner where the install guide is, and nobody without a session', async () => {
+            const { browser } = await owner();
+            const answer = await browser.request('GET', '/api/install-guide');
+            expect([answer.status, answer.body]).toEqual([200, { url: TEST_INSTALL_VARS.INSTALL_GUIDE_URL }]);
+            const anonymous = await harness.browser().request('GET', '/api/install-guide');
+            expect([anonymous.status, problemCode(anonymous)]).toEqual([401, 'unauthorized']);
+        });
+
         it('issues a code inside the install command and registers an engine with it', async () => {
             const { browser } = await owner();
             const view = issued(await browser.request('POST', LINK_CODES));

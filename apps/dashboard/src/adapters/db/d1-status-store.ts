@@ -34,7 +34,7 @@ export function createD1HeartbeatEngineReader(db: Database): HeartbeatEngineRead
 /** The organization's owners with a verified email, in their saved locale. */
 export function createD1AlertRecipients(db: Database): AlertRecipients {
     return {
-        async forEngineOffline(orgId: OrgId) {
+        async forEngineStatus(orgId: OrgId) {
             const rows = await db
                 .select({ email: users.email, locale: users.locale })
                 .from(memberships)

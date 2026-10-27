@@ -2,7 +2,7 @@
 
 - **Lane:** D · **Module:** `apps/dashboard` · **Milestone:** M3
 - **Depends on:** D-05, M-08
-- **Status:** in progress (feat/d-12-engine-online-emails)
+- **Status:** done (#124)
 - **Spec:** Operations (Engine offline; Notifications without us); What our platform can and cannot do; design: [onboarding.md](../../design/onboarding.md) (Journey 1 step 4, Engine offline)
 
 ## Goal

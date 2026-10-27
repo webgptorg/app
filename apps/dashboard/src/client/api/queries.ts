@@ -64,6 +64,7 @@ export const queryKeys = {
     engine: (engineId: string) => ['engines', engineId] as const,
     devEmails: ['dev', 'emails'] as const,
     abuseContact: ['abuse-contact'] as const,
+    installGuide: ['install-guide'] as const,
     adminEngine: (engineId: string) => ['admin', 'engines', engineId] as const,
 };
 
@@ -103,6 +104,15 @@ export function abuseContactQuery(client: ApiClient) {
     return queryOptions({
         queryKey: queryKeys.abuseContact,
         queryFn: async ({ signal }) => dataOrThrow(await client.call(apiRoutes.getAbuseContact, {}, signal)).email,
+        staleTime: Infinity,
+    });
+}
+
+/** The public install guide (D-11's `INSTALL_GUIDE_URL`); configuration, so it does not change while the page is open. */
+export function installGuideQuery(client: ApiClient) {
+    return queryOptions({
+        queryKey: queryKeys.installGuide,
+        queryFn: async ({ signal }) => dataOrThrow(await client.call(apiRoutes.getInstallGuide, {}, signal)).url,
         staleTime: Infinity,
     });
 }

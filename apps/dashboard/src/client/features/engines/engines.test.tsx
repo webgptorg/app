@@ -7,7 +7,15 @@ import { apiRoutes, type EngineView } from '../../../shared/api/routes';
 import { createApiClient } from '../../api/api-client';
 import { ENGINE_REFETCH_MS, engineQuery, enginesQuery } from '../../api/queries';
 import { expectNoAxeViolations } from '../../testing/axe';
-import { AUTHENTICATION_OPTIONS, ENGINE_DOMAIN, ENGINE_ID, engineView, NOW, session } from '../../testing/fixtures';
+import {
+    AUTHENTICATION_OPTIONS,
+    ENGINE_DOMAIN,
+    ENGINE_ID,
+    engineView,
+    INSTALL_GUIDE_URL,
+    NOW,
+    session,
+} from '../../testing/fixtures';
 import { renderApp } from '../../testing/render-app';
 import { createScriptedApi, ok, problem } from '../../testing/scripted-api';
 
@@ -266,6 +274,50 @@ describe('engine page', () => {
         expect(await screen.findByText(/You revoked this engine/)).toBeTruthy();
         expect(screen.queryByRole('link', { name: OPEN_NAME })).toBeNull();
         expect(screen.queryByRole('button', { name: 'Revoke engine' })).toBeNull();
+    });
+
+    it('tells the owner of an offline engine when it was last seen, what to run on the server, and where to read on', async () => {
+        renderApp({
+            path: `/engines/${ENGINE_ID}`,
+            session: OWNER,
+            script: (api) => {
+                engine(engineView({ status: 'offline', lastSeenAt: NOW - 2 * 3600_000 }))(api);
+                api.on(apiRoutes.getInstallGuide, ok({ url: INSTALL_GUIDE_URL }));
+            },
+        });
+        expect(await screen.findByText(/^Last seen .+\. If the server is up, run this on it:$/)).toBeTruthy();
+        expect(screen.getByText('promptbook-engine status')).toBeTruthy();
+        expect(screen.getByRole('button', { name: 'Copy command' })).toBeTruthy();
+        const guide = await screen.findByRole('link', { name: /Troubleshooting in the install guide/ });
+        expect(guide.getAttribute('href')).toBe(`${INSTALL_GUIDE_URL}#troubleshooting`);
+        expect(guide.getAttribute('rel')).toBe('noopener noreferrer');
+    });
+
+    it('keeps the offline hint without the guide link while the guide cannot be loaded', async () => {
+        renderApp({
+            path: `/engines/${ENGINE_ID}`,
+            session: OWNER,
+            script: (api) => {
+                engine(engineView({ status: 'offline' }))(api);
+                api.on(apiRoutes.getInstallGuide, problem(500, 'internal'));
+            },
+        });
+        expect(await screen.findByText('promptbook-engine status')).toBeTruthy();
+        expect(screen.queryByRole('link', { name: /Troubleshooting/ })).toBeNull();
+    });
+
+    it('shows no offline hint for an engine that is online or has never been seen', async () => {
+        const app = renderApp({ path: `/engines/${ENGINE_ID}`, session: OWNER, script: engine(engineView()) });
+        expect(await screen.findByRole('heading', { name: 'Last heartbeat' })).toBeTruthy();
+        expect(screen.queryByText(/If the server is up/)).toBeNull();
+        app.unmount();
+        renderApp({
+            path: `/engines/${ENGINE_ID}`,
+            session: OWNER,
+            script: engine(engineView({ status: 'never-seen', lastSeenAt: null, heartbeat: null })),
+        });
+        expect(await screen.findByRole('heading', { name: 'Last heartbeat' })).toBeTruthy();
+        expect(screen.queryByText(/If the server is up/)).toBeNull();
     });
 
     it('offers revocation only with engine.revoke', async () => {
