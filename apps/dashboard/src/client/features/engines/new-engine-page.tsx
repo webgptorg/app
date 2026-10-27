@@ -1,8 +1,9 @@
-import { Banner, Button, Card, CodeText } from '@ptbk/ui';
+import { Banner, Button, Card, CopyButton, ExternalLink, Tabs } from '@ptbk/ui';
 import { useEffect, useState } from 'react';
 
 import { m } from '../../../paraglide/messages';
 import { apiRoutes, type LinkCodeView } from '../../../shared/api/routes';
+import type { InstallPathLabelKey } from '../../../shared/install-paths';
 import { useApiClient } from '../../api/api-client-context';
 import { dataOrThrow, problemCode } from '../../api/queries';
 import { useBrowser } from '../../core/browser';
@@ -12,6 +13,15 @@ import { useSession } from '../session/use-session';
 
 const LINK_PERMISSION = 'engine.link';
 const SECOND_MS = 1000;
+const MOVING_ANCHOR = 'moving-an-existing-deployment';
+
+const INSTALL_PATH_LABELS: Record<InstallPathLabelKey, () => string> = {
+    'docker-server': () => m.engines_new_tab_docker_server(),
+    'docker-compose': () => m.engines_new_tab_docker_compose(),
+    'already-running': () => m.engines_new_tab_already_running(),
+};
+
+type InstallCommandView = LinkCodeView['installCommands'][number];
 
 type UpgradeReason = 'not-entitled' | 'engine-limit';
 
@@ -66,6 +76,36 @@ function UpgradeBanner(props: { readonly reason: UpgradeReason }) {
     );
 }
 
+function guideLink(guideUrl: string, anchor: string): string {
+    return `${guideUrl}#${anchor}`;
+}
+
+/** Text only: a command is never parsed as markup, and the copy is the exact configured string. */
+function InstallPathPanel(props: { readonly path: InstallCommandView; readonly guideUrl: string }) {
+    const { path, guideUrl } = props;
+    return (
+        <div className="flex flex-col gap-3">
+            {path.id === 'compose' ? <p className="text-sm">{m.engines_new_compose_hint()}</p> : null}
+            <div className="flex items-start gap-1">
+                <pre className="min-w-0 flex-1 rounded-control bg-(--code-text-bg) p-3 font-mono text-sm wrap-anywhere whitespace-pre-wrap text-(--code-text-text)">
+                    <code>{path.command}</code>
+                </pre>
+                <CopyButton value={path.command} label={m.engines_new_copy()} />
+            </div>
+            <p className="text-sm">
+                {m.engines_new_requirements()}{' '}
+                <ExternalLink href={guideLink(guideUrl, path.docsAnchor)}>{m.engines_new_docs()}</ExternalLink>
+            </p>
+            {path.id === 'connect' ? (
+                <p className="text-sm">
+                    {m.engines_new_move()}{' '}
+                    <ExternalLink href={guideLink(guideUrl, MOVING_ANCHOR)}>{m.engines_new_move_docs()}</ExternalLink>
+                </p>
+            ) : null}
+        </div>
+    );
+}
+
 /** Shown once: the code lives only in this component's state and is never fetched again. */
 function InstallCommand(props: {
     readonly view: LinkCodeView;
@@ -73,6 +113,8 @@ function InstallCommand(props: {
     readonly renewing: boolean;
 }) {
     const remaining = useRemainingMs(props.view.expiresAt);
+    const paths = props.view.installCommands;
+    const [selectedId, setSelectedId] = useState<string>(paths[0]?.id ?? '');
     if (remaining === 0) {
         return (
             <Banner tone="warning" title={m.engines_new_expired_title()}>
@@ -87,7 +129,16 @@ function InstallCommand(props: {
         <Card title={m.engines_new_command_title()}>
             <div className="flex flex-col gap-3">
                 <p className="text-sm">{m.engines_new_command_body()}</p>
-                <CodeText value={props.view.installCommand} copyable copyLabel={m.engines_new_copy()} />
+                <Tabs
+                    label={m.engines_new_tabs_label()}
+                    selectedId={selectedId}
+                    onSelect={setSelectedId}
+                    tabs={paths.map((path) => ({
+                        id: path.id,
+                        label: INSTALL_PATH_LABELS[path.labelKey](),
+                        panel: <InstallPathPanel path={path} guideUrl={props.view.installGuideUrl} />,
+                    }))}
+                />
                 <p className="text-sm text-text-muted" aria-live="off">
                     {m.engines_new_expires_in({ time: minutesAndSeconds(remaining) })}
                 </p>

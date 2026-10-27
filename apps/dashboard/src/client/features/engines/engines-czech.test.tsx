@@ -2,7 +2,7 @@ import { screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { apiRoutes } from '../../../shared/api/routes';
-import { ENGINE_ID, engineView, session } from '../../testing/fixtures';
+import { ENGINE_ID, engineView, linkCodeView, session } from '../../testing/fixtures';
 import { renderApp } from '../../testing/render-app';
 import { ok } from '../../testing/scripted-api';
 
@@ -50,5 +50,31 @@ describe('engines in Czech', () => {
         expect(within(dialog).getByText(/nové ID enginu a novou adresu/)).toBeTruthy();
         expect(within(dialog).getByRole('button', { name: 'Trvale odvolat' })).toBeTruthy();
         expect(document.body.textContent).not.toMatch(/engines_|engine_[a-z]/);
+    });
+
+    it('offers the install tabs without missing texts', async () => {
+        const app = renderApp({
+            path: '/engines/new',
+            session: OWNER,
+            script: (api) => api.on(apiRoutes.createLinkCode, ok(linkCodeView())),
+        });
+        await app.user.click(await screen.findByRole('button', { name: 'Vytvořit připojovací kód' }));
+        const list = await screen.findByRole('tablist', { name: 'Způsob instalace' });
+        expect(
+            within(list)
+                .getAllByRole('tab')
+                .map((tab) => tab.textContent),
+        ).toEqual(['Linuxový server s Dockerem', 'Docker Compose', 'Promptbook už mám spuštěný']);
+        expect(screen.getByRole('link', { name: /^Požadavky a proxy/ })).toBeTruthy();
+        for (const name of ['Docker Compose', 'Promptbook už mám spuštěný']) {
+            await app.user.click(within(list).getByRole('tab', { name }));
+            expect(
+                within(screen.getByRole('tabpanel', { name })).getByRole('button', {
+                    name: 'Kopírovat instalační příkaz',
+                }),
+            ).toBeTruthy();
+            expect(document.body.textContent).not.toMatch(/engines_/);
+        }
+        expect(screen.getByRole('link', { name: /^Přesun existujícího nasazení/ })).toBeTruthy();
     });
 });

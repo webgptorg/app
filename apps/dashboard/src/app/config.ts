@@ -9,6 +9,13 @@ import { LINK_CODE_TTL_MS } from '../domain/registration/issue-link-code';
 import type { HeartbeatTiming } from '../domain/status/engine-status';
 import { DEFAULT_THRESHOLDS, thresholdsSchema, type AlertThresholds } from '../domain/monitoring/alert-rules';
 import { environmentSchema, type Environment } from '../shared/environment';
+import {
+    docsAnchorSchema,
+    installPathIdSchema,
+    installPathLabelKeySchema,
+    type InstallPathId,
+    type InstallPathLabelKey,
+} from '../shared/install-paths';
 
 export type { Environment };
 
@@ -23,13 +30,39 @@ const relaySchema = z.strictObject({
 export const LINK_CODE_PLACEHOLDER = '{linkCode}';
 
 /**
- * What `/engines/new` shows, with {@link LINK_CODE_PLACEHOLDER} exactly once. In dev it starts X-06's local mock engine;
- * the real command comes from the engine team (E-01).
+ * A command `/engines/new` shows, with {@link LINK_CODE_PLACEHOLDER} exactly once; it may span lines. In dev they run
+ * X-06's local mock engine; the real ones come from the engine team.
  */
 const installCommandSchema = z
     .string()
     .max(512)
     .refine((value) => value.split(LINK_CODE_PLACEHOLDER).length === 2, `must contain ${LINK_CODE_PLACEHOLDER} once`);
+
+/** The tabs of `/engines/new`, in order, each path at most once. */
+const installCommandsSchema = z
+    .array(
+        z.strictObject({
+            id: installPathIdSchema,
+            labelKey: installPathLabelKeySchema,
+            template: installCommandSchema,
+            docsAnchor: docsAnchorSchema,
+        }),
+    )
+    .min(1)
+    .refine((paths) => new Set(paths.map((path) => path.id)).size === paths.length, 'duplicate id');
+
+/** D-03's single `INSTALL_COMMAND`, still read for one release, becomes the installer tab. */
+const LEGACY_INSTALL_PATH: Omit<InstallCommandConfig, 'template'> = {
+    id: 'installer',
+    labelKey: 'docker-server',
+    docsAnchor: '1-the-installer-recommended',
+};
+
+/** Anchors are appended to it, so it carries none of its own. */
+const installGuideUrlSchema = z
+    .url({ protocol: /^https$/ })
+    .max(384)
+    .refine((value) => new URL(value).hash === '' && !value.endsWith('#'), 'must not have a fragment');
 
 const adaptersSchema = z.strictObject({
     email: z.enum(['cloudflare', 'fake']),
@@ -197,7 +230,10 @@ const varsSchema = z
                 (relays) => new Set(relays.map((relay) => relay.relayId)).size === relays.length,
                 'duplicate relayId',
             ),
-        INSTALL_COMMAND: installCommandSchema,
+        INSTALL_COMMANDS: installCommandsSchema.optional(),
+        /** D-03's single command; read only without `INSTALL_COMMANDS`, for one release. */
+        INSTALL_COMMAND: installCommandSchema.optional(),
+        INSTALL_GUIDE_URL: installGuideUrlSchema,
         ADAPTERS: adaptersSchema,
         EMAIL_FROM: z.email().max(254),
         ABUSE_EMAIL: z.email().max(254),
@@ -216,6 +252,12 @@ const varsSchema = z
         WEB_RISK_API_KEY: webRiskKeySchema.optional(),
     })
     .superRefine((vars, ctx) => {
+        if (vars.INSTALL_COMMANDS === undefined && vars.INSTALL_COMMAND === undefined) {
+            ctx.addIssue({ code: 'custom', path: ['INSTALL_COMMANDS'], message: 'required' });
+        }
+        if (vars.INSTALL_COMMANDS !== undefined && vars.INSTALL_COMMAND !== undefined) {
+            ctx.addIssue({ code: 'custom', path: ['INSTALL_COMMAND'], message: 'replaced by INSTALL_COMMANDS' });
+        }
         if (vars.ADAPTERS.billing === 'stripe') {
             for (const name of ['STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET'] as const) {
                 if (vars[name] === undefined) {
@@ -272,6 +314,13 @@ const varsSchema = z
     });
 
 export type AdapterSelection = z.infer<typeof adaptersSchema>;
+
+export interface InstallCommandConfig {
+    readonly id: InstallPathId;
+    readonly labelKey: InstallPathLabelKey;
+    readonly template: string;
+    readonly docsAnchor: string;
+}
 export type RelayConfig = z.infer<typeof relaySchema>;
 
 export interface DashboardConfig {
@@ -279,8 +328,10 @@ export interface DashboardConfig {
     readonly dashboardOrigin: string;
     readonly engineDomain: Hostname;
     readonly relays: readonly Readonly<RelayConfig>[];
-    /** Contains {@link LINK_CODE_PLACEHOLDER} exactly once. */
-    readonly installCommand: string;
+    /** The tabs of `/engines/new`, in order; each template contains {@link LINK_CODE_PLACEHOLDER} exactly once. */
+    readonly installCommands: readonly InstallCommandConfig[];
+    /** The public install guide, without a fragment. */
+    readonly installGuideUrl: string;
     readonly adapters: Readonly<AdapterSelection>;
     /** The sender address for the `send_email` binding. */
     readonly emailFrom: string;
@@ -368,6 +419,11 @@ function abuseMonitoringConfig(parsed: z.infer<typeof varsSchema>): AbuseMonitor
     });
 }
 
+function installCommandsConfig(parsed: z.infer<typeof varsSchema>): readonly InstallCommandConfig[] {
+    const paths = parsed.INSTALL_COMMANDS ?? [{ ...LEGACY_INSTALL_PATH, template: parsed.INSTALL_COMMAND ?? '' }];
+    return Object.freeze(paths.map((path) => Object.freeze({ ...path })));
+}
+
 /** Parses Workers bindings once, in the composition root; nothing else reads `env`. Throws {@link ConfigError}. */
 export function parseConfig(env: object): DashboardConfig {
     const entries: readonly [string, unknown][] = Object.entries(env);
@@ -388,7 +444,8 @@ export function parseConfig(env: object): DashboardConfig {
         dashboardOrigin: parsed.DASHBOARD_ORIGIN,
         engineDomain: parsed.ENGINE_DOMAIN,
         relays: Object.freeze(parsed.RELAYS.map((relay) => Object.freeze({ ...relay }))),
-        installCommand: parsed.INSTALL_COMMAND,
+        installCommands: installCommandsConfig(parsed),
+        installGuideUrl: parsed.INSTALL_GUIDE_URL,
         adapters: Object.freeze({ ...parsed.ADAPTERS }),
         emailFrom: parsed.EMAIL_FROM,
         abuseEmail: parsed.ABUSE_EMAIL,

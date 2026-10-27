@@ -8,6 +8,7 @@ import { createSimpleWebAuthnRelyingParty } from '../../adapters/webauthn/simple
 import { createAuthorizer } from '../../domain/authz/authorizer';
 import { DASHBOARD_POLICY } from '../../domain/authz/policy';
 import { syntheticStripeKey, syntheticWebhookSecret, TEST_PLANS } from '../../testing/billing-fixtures';
+import { TEST_INSTALL_VARS } from '../../testing/install-fixtures';
 import { createFakeDnsResolver } from '../../testing/fake-dns-resolver';
 import { createMemoryAuthStore } from '../../testing/memory-auth-store';
 import { createMemoryCustomHostnameStore } from '../../testing/memory-custom-hostname-store';
@@ -32,7 +33,7 @@ function app(options: {
         DASHBOARD_ORIGIN: 'https://app.ptbk.test',
         ENGINE_DOMAIN: 'engines.ptbk.test',
         RELAYS: [{ relayId: 'relay-1.ptbk.test', region: 'eu-central' }],
-        INSTALL_COMMAND: 'bun run dev:link {linkCode}',
+        ...TEST_INSTALL_VARS,
         ADAPTERS:
             options.environment === 'dev'
                 ? { email: 'fake', billing: 'fake', rateLimit: 'memory' }

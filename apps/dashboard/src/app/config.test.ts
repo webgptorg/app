@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { syntheticStripeKey, syntheticWebhookSecret, TEST_PLANS } from '../testing/billing-fixtures';
+import { TEST_INSTALL_VARS } from '../testing/install-fixtures';
 import { DEFAULT_THRESHOLDS } from '../domain/monitoring/alert-rules';
 import { ConfigError, DEFAULT_ABUSE_MONITORING, DEV_RATE_LIMIT_HMAC_KEY, parseConfig, relayName } from './config';
 
@@ -9,7 +10,7 @@ const devVars = {
     DASHBOARD_ORIGIN: 'https://app.ptbk.test',
     ENGINE_DOMAIN: 'engines.ptbk.test',
     RELAYS: [{ relayId: 'relay-1.ptbk.test', region: 'eu-central' }],
-    INSTALL_COMMAND: 'bun run dev:link {linkCode}',
+    ...TEST_INSTALL_VARS,
     ADAPTERS: { email: 'fake', billing: 'fake', rateLimit: 'memory' },
     EMAIL_FROM: 'no-reply@ptbk.test',
     ABUSE_EMAIL: 'abuse@ptbk.test',
@@ -50,7 +51,8 @@ describe('parseConfig', () => {
             dashboardOrigin: 'https://app.ptbk.test',
             engineDomain: 'engines.ptbk.test',
             relays: [{ relayId: 'relay-1.ptbk.test', region: 'eu-central' }],
-            installCommand: 'bun run dev:link {linkCode}',
+            installCommands: TEST_INSTALL_VARS.INSTALL_COMMANDS,
+            installGuideUrl: 'https://docs.ptbk.test/engine/installation',
             adapters: { email: 'fake', billing: 'fake', rateLimit: 'memory' },
             emailFrom: 'no-reply@ptbk.test',
             abuseEmail: 'abuse@ptbk.test',
@@ -67,6 +69,8 @@ describe('parseConfig', () => {
         expect(Object.isFrozen(config.relays[0])).toBe(true);
         expect(Object.isFrozen(config.adapters)).toBe(true);
         expect(Object.isFrozen(config.heartbeat)).toBe(true);
+        expect(Object.isFrozen(config.installCommands)).toBe(true);
+        expect(Object.isFrozen(config.installCommands[0])).toBe(true);
     });
 
     it('takes the heartbeat timing from HEARTBEAT, filling in the defaults', () => {
@@ -109,7 +113,8 @@ describe('parseConfig', () => {
         'DASHBOARD_ORIGIN',
         'ENGINE_DOMAIN',
         'RELAYS',
-        'INSTALL_COMMAND',
+        'INSTALL_COMMANDS',
+        'INSTALL_GUIDE_URL',
         'ADAPTERS',
         'EMAIL_FROM',
         'ABUSE_EMAIL',
@@ -233,9 +238,53 @@ describe('parseConfig', () => {
         );
     });
 
-    it('needs the link code placeholder exactly once in the install command', () => {
-        for (const command of ['bun run dev:link', 'link {linkCode} {linkCode}', '']) {
-            expect(failedPaths({ ...bindings, ...devVars, INSTALL_COMMAND: command })).toEqual(['INSTALL_COMMAND']);
+    it('needs the link code placeholder exactly once in every install command', () => {
+        const [installer, compose, connect] = TEST_INSTALL_VARS.INSTALL_COMMANDS;
+        for (const template of ['bun run dev:link', 'link {linkCode} {linkCode}', '', 'link {linkCode}\n{linkCode}']) {
+            expect(
+                failedPaths({
+                    ...bindings,
+                    ...devVars,
+                    INSTALL_COMMANDS: [installer, { ...compose, template }, connect],
+                }),
+            ).toEqual(['INSTALL_COMMANDS.1.template']);
+        }
+    });
+
+    it('refuses an empty tab list, an unknown or repeated path and a malformed tab', () => {
+        const [installer, compose] = TEST_INSTALL_VARS.INSTALL_COMMANDS;
+        const withTabs = (tabs: readonly object[]) => failedPaths({ ...bindings, ...devVars, INSTALL_COMMANDS: tabs });
+        expect(withTabs([])).toEqual(['INSTALL_COMMANDS']);
+        expect(withTabs([installer, { ...compose, id: 'npm' }])).toEqual(['INSTALL_COMMANDS.1.id']);
+        expect(withTabs([installer, { ...compose, id: 'installer' }])).toEqual(['INSTALL_COMMANDS']);
+        expect(withTabs([{ ...installer, labelKey: 'engines_new_title' }])).toEqual(['INSTALL_COMMANDS.0.labelKey']);
+        expect(withTabs([{ ...installer, docsAnchor: '#Install' }])).toEqual(['INSTALL_COMMANDS.0.docsAnchor']);
+        expect(withTabs([{ ...installer, html: '<b>' }])).toEqual(['INSTALL_COMMANDS.0.html']);
+    });
+
+    it('still reads the single INSTALL_COMMAND as the installer tab, but not next to INSTALL_COMMANDS', () => {
+        const legacy = Object.fromEntries(
+            Object.entries({ ...devVars, INSTALL_COMMAND: 'bun run dev:link {linkCode}' }).filter(
+                ([key]) => key !== 'INSTALL_COMMANDS',
+            ),
+        );
+        expect(parseConfig({ ...bindings, ...legacy }).installCommands).toEqual([
+            {
+                id: 'installer',
+                labelKey: 'docker-server',
+                template: 'bun run dev:link {linkCode}',
+                docsAnchor: '1-the-installer-recommended',
+            },
+        ]);
+        expect(failedPaths({ ...bindings, ...legacy, INSTALL_COMMAND: 'link' })).toEqual(['INSTALL_COMMAND']);
+        expect(failedPaths({ ...bindings, ...devVars, INSTALL_COMMAND: 'link {linkCode}' })).toEqual([
+            'INSTALL_COMMAND',
+        ]);
+    });
+
+    it('needs an https install guide without a fragment', () => {
+        for (const url of ['http://docs.ptbk.test/install', 'https://docs.ptbk.test/install#top', 'docs', '']) {
+            expect(failedPaths({ ...bindings, ...devVars, INSTALL_GUIDE_URL: url })).toEqual(['INSTALL_GUIDE_URL']);
         }
     });
 

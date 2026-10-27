@@ -89,13 +89,11 @@ Target behaviour (gap, [D-10](../plan/tasks/D-10-live-link-progress.md)):
 
 ### Step 3. Install command (dashboard, built in D-03, to extend)
 
-Built: "Link an engine", intro copy, "Create link code", then the "Install command" card with "Copy it now: the link code is shown only once.", a copy button and "Expires in m:ss". At zero: "The link code expired" / "Create a new one to link your engine."
+Built: "Link an engine", intro copy, "Create link code", then the "Install command" card with "Copy it now: the link code is shown only once.", a copy button and "Expires in m:ss". At zero: "The link code expired" / "Create a new one to link your engine." The card holds the install paths as tabs ([D-11](../plan/tasks/D-11-install-command-tabs.md)), the first selected: **Linux server with Docker** (the one-line installer), **Docker Compose** (three commands, after the `compose.yaml` from the guide), **Already running Promptbook** (the exact `promptbook-engine connect --link <code>` one-liner, plus the move from the predecessor, Journey 2a). Each tab shows one copyable block with the same link code, so every path is one paste, and under it: "Run it on the machine that will host your engine. It needs outbound HTTPS (port 443) and nothing inbound." with "Requirements and proxies", a link to the tab's heading in the public install guide. The commands, their order and the guide's address are configuration (`INSTALL_COMMANDS`, `INSTALL_GUIDE_URL`); exact commands are in [installation.md](../engine-integration/installation.md#install-paths). Docker is the first and only distribution in v0; other forms may get a tab later.
 
-Target (gaps, [D-10](../plan/tasks/D-10-live-link-progress.md) and [D-11](../plan/tasks/D-11-install-command-tabs.md)):
+Target (gaps, [D-10](../plan/tasks/D-10-live-link-progress.md)):
 
 - The link code is created on page load once the person is entitled, so the command is there without an extra click. Leaving and coming back creates a new code; old ones simply expire (at most 5 active per organization).
-- Tabs for the install paths, the first selected: **Linux server with Docker** (the one-line installer), **Docker Compose** (a `compose.yaml` snippet plus three commands), **Already running Promptbook** (the exact `promptbook-engine connect --link <code>` one-liner for an engine started without a code, and the move from the predecessor, Journey 2). Each tab shows one copyable block with the same link code, so every path is one paste. Docker is the first and only distribution in v0; other forms may get a tab later. Exact commands are in [installation.md](../engine-integration/installation.md#install-paths).
-- Under the command, one line: "Run it on the machine that will host your engine. It needs outbound HTTPS (port 443) and nothing inbound." and a link "Requirements and proxies" to the public install guide.
 - The intro's "expires after 30 minutes" comes from the configured lifetime, not a hard-coded number.
 - Below the card, the live progress panel (step 4) starts in its first state.
 

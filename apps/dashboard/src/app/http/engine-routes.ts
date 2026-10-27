@@ -72,7 +72,13 @@ export function bindEngineRoutes(
                 body: {
                     linkCodeId: outcome.linkCodeId,
                     linkCode: outcome.linkCode,
-                    installCommand: deps.config.installCommand.replace(LINK_CODE_PLACEHOLDER, () => outcome.linkCode),
+                    installCommands: deps.config.installCommands.map((path) => ({
+                        id: path.id,
+                        labelKey: path.labelKey,
+                        command: path.template.replace(LINK_CODE_PLACEHOLDER, () => outcome.linkCode),
+                        docsAnchor: path.docsAnchor,
+                    })),
+                    installGuideUrl: deps.config.installGuideUrl,
                     expiresAt: outcome.expiresAt,
                 },
             };

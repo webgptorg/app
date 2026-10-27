@@ -31,6 +31,7 @@ import type { EngineStatusDirectory } from '../domain/status/engine-status-direc
 import type { HeartbeatEngineReader } from '../domain/status/heartbeat-engine-reader';
 import type { RouteContract } from '../shared/api/contract';
 import { syntheticWebhookSecret, TEST_PLANS } from './billing-fixtures';
+import { TEST_INSTALL_VARS } from './install-fixtures';
 import { createSoftwareAuthenticator, type SoftwareAuthenticator } from './software-authenticator';
 import { stripeSignatureHeader } from './stripe-signature';
 import {
@@ -170,7 +171,7 @@ export function createAuthHarness(options: {
         DASHBOARD_ORIGIN: ORIGIN,
         ENGINE_DOMAIN: 'engines.ptbk.test',
         RELAYS: (options.relays ?? ['relay-1.ptbk.test']).map((relayId) => ({ relayId, region: 'eu-central' })),
-        INSTALL_COMMAND: 'bun run dev:link {linkCode}',
+        ...TEST_INSTALL_VARS,
         ADAPTERS: { email: options.email ?? 'fake', billing: 'fake', rateLimit: 'memory' },
         EMAIL_FROM: 'no-reply@ptbk.test',
         ABUSE_EMAIL: 'abuse@ptbk.test',

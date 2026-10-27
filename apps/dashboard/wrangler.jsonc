@@ -27,8 +27,30 @@
         "DASHBOARD_ORIGIN": "http://localhost:5173",
         "ENGINE_DOMAIN": "engines.ptbk.test",
         "RELAYS": [{ "relayId": "relay.ptbk.test", "region": "local" }],
-        // Shown on /engines/new with the link code; X-06's `dev:link` starts the local mock engine with it.
-        "INSTALL_COMMAND": "bun run dev:link {linkCode}",
+        // The tabs of /engines/new, each with {linkCode} once. X-06's `dev:link` starts the local mock engine; the
+        // last tab runs M-08's `connect` in the stack's engine container; Compose is installation.md's three commands.
+        "INSTALL_COMMANDS": [
+            {
+                "id": "installer",
+                "labelKey": "docker-server",
+                "template": "bun run dev:link {linkCode}",
+                "docsAnchor": "1-the-installer-recommended",
+            },
+            {
+                "id": "compose",
+                "labelKey": "docker-compose",
+                "template": "docker compose run --rm engine promptbook-engine connect --link {linkCode}\ndocker compose up -d\ndocker compose exec engine promptbook-engine setup-link",
+                "docsAnchor": "2-docker-compose",
+            },
+            {
+                "id": "connect",
+                "labelKey": "already-running",
+                "template": "docker compose -p ptbk-dev exec mock-engine node /app/main.mjs connect --link {linkCode}",
+                "docsAnchor": "3-link-an-engine-that-already-runs",
+            },
+        ],
+        // Where each tab's "Requirements and proxies" link points, with the tab's docsAnchor.
+        "INSTALL_GUIDE_URL": "https://github.com/webgptorg/app/blob/main/docs/engine-integration/installation.md",
         "ADAPTERS": { "email": "fake", "billing": "fake", "rateLimit": "memory" },
         "EMAIL_FROM": "no-reply@ptbk.test",
         // The public abuse contact (I-05): /abuse, security.txt, suspended engines' pages, and abuse alerts.
@@ -106,8 +128,28 @@
                 "DASHBOARD_ORIGIN": "https://app.staging.<placeholder>",
                 "ENGINE_DOMAIN": "<staging-engine-domain>",
                 "RELAYS": [{ "relayId": "relay-1.staging.<placeholder>", "region": "eu-central" }],
-                // Placeholder until the engine team defines the install command (E-01).
-                "INSTALL_COMMAND": "<engine-install-command> {linkCode}",
+                // Placeholders until the engine team publishes the installer, its hash and the image (apply.md).
+                "INSTALL_COMMANDS": [
+                    {
+                        "id": "installer",
+                        "labelKey": "docker-server",
+                        "template": "curl -fsSLo promptbook-install.sh <installer-url> \\\n  && echo \"<installer-sha256>  promptbook-install.sh\" | sha256sum -c - \\\n  && sudo sh promptbook-install.sh --link {linkCode}",
+                        "docsAnchor": "1-the-installer-recommended",
+                    },
+                    {
+                        "id": "compose",
+                        "labelKey": "docker-compose",
+                        "template": "docker compose run --rm engine promptbook-engine connect --link {linkCode}\ndocker compose up -d\ndocker compose exec engine promptbook-engine setup-link",
+                        "docsAnchor": "2-docker-compose",
+                    },
+                    {
+                        "id": "connect",
+                        "labelKey": "already-running",
+                        "template": "promptbook-engine connect --link {linkCode}",
+                        "docsAnchor": "3-link-an-engine-that-already-runs",
+                    },
+                ],
+                "INSTALL_GUIDE_URL": "<public-install-guide-url>",
                 "ADAPTERS": { "email": "cloudflare", "billing": "stripe", "rateLimit": "workers" },
                 "EMAIL_FROM": "no-reply@<staging-sending-domain>",
                 "ABUSE_EMAIL": "abuse@<staging-abuse-domain>",
@@ -181,8 +223,28 @@
                 "DASHBOARD_ORIGIN": "https://app.ptbk.io",
                 "ENGINE_DOMAIN": "<engine-domain>",
                 "RELAYS": [{ "relayId": "relay-1.<engine-domain>", "region": "eu-central" }],
-                // Placeholder until the engine team defines the install command (E-01).
-                "INSTALL_COMMAND": "<engine-install-command> {linkCode}",
+                // Placeholders until the engine team publishes the installer, its hash and the image (apply.md).
+                "INSTALL_COMMANDS": [
+                    {
+                        "id": "installer",
+                        "labelKey": "docker-server",
+                        "template": "curl -fsSLo promptbook-install.sh <installer-url> \\\n  && echo \"<installer-sha256>  promptbook-install.sh\" | sha256sum -c - \\\n  && sudo sh promptbook-install.sh --link {linkCode}",
+                        "docsAnchor": "1-the-installer-recommended",
+                    },
+                    {
+                        "id": "compose",
+                        "labelKey": "docker-compose",
+                        "template": "docker compose run --rm engine promptbook-engine connect --link {linkCode}\ndocker compose up -d\ndocker compose exec engine promptbook-engine setup-link",
+                        "docsAnchor": "2-docker-compose",
+                    },
+                    {
+                        "id": "connect",
+                        "labelKey": "already-running",
+                        "template": "promptbook-engine connect --link {linkCode}",
+                        "docsAnchor": "3-link-an-engine-that-already-runs",
+                    },
+                ],
+                "INSTALL_GUIDE_URL": "<public-install-guide-url>",
                 "ADAPTERS": { "email": "cloudflare", "billing": "stripe", "rateLimit": "workers" },
                 "EMAIL_FROM": "no-reply@<production-sending-domain>",
                 "ABUSE_EMAIL": "abuse@<production-abuse-domain>",

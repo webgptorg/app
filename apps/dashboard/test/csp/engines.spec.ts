@@ -49,6 +49,12 @@ test('link an engine, see it online, open its page and revoke it, under the prod
     await expect(command).toBeVisible();
     await expect(page.getByText(/^Expires in \d+:\d\d$/)).toBeVisible();
     await checkScreen('/engines/new install command');
+    for (const tab of ['Docker Compose', 'Already running Promptbook']) {
+        await page.getByRole('tab', { name: tab }).click();
+        await expect(page.getByRole('tabpanel', { name: tab }).locator('pre code')).toContainText(/[a-z2-7]{26}/);
+        await checkScreen(`/engines/new ${tab} tab`);
+    }
+    await page.getByRole('tab', { name: 'Linux server with Docker' }).click();
 
     // The engine side, as M-06 does it: register with the code, then one signed heartbeat.
     const linkCode = LinkCode.parse((await command.textContent())?.split(' ').at(-1));
