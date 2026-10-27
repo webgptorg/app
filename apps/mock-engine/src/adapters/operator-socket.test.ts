@@ -53,6 +53,8 @@ function api(overrides: Partial<OperatorApi> = {}): OperatorApi {
     return {
         status: () => STATUS,
         link: () => Promise.resolve<LinkAnswer>({ outcome: 'linked', relays: 2 }),
+        setupLink: () => Promise.resolve({ outcome: 'owner-exists' }),
+        resetOwner: () => Promise.resolve({ passkeys: 0, sessions: 0 }),
         ...overrides,
     };
 }

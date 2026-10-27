@@ -42,6 +42,10 @@ apps/engine-ui/release/*
 apps/dashboard/playwright-report/
 apps/dashboard/test-results/
 
+# mock engine browser test output (test:browser).
+apps/mock-engine/playwright-report/
+apps/mock-engine/test-results/
+
 # e2e results: Playwright report, traces and service logs (X-01).
 e2e/test-results/
 

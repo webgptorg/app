@@ -8,6 +8,16 @@ import type { ControlServer, FaultSettings } from '../adapters/control-server';
 import { createFaultSettings, startControlServer } from '../adapters/control-server';
 import { createEngineApiRoutes } from '../adapters/http/api-routes';
 import { createGatewayRoutes } from '../adapters/http/dev-login';
+import type { GatewayPageFiles } from '../adapters/http/gateway-page-files';
+import type { PasskeyRouteDeps } from '../adapters/http/passkey-routes';
+import { SETUP_PATH, createPasskeyRoutes } from '../adapters/http/passkey-routes';
+import { createSimpleWebAuthnCeremonies } from '../adapters/simplewebauthn-ceremonies';
+import type { PasskeyCeremonies } from '../domain/gateway/passkey-ceremonies';
+import { createChallenges } from '../domain/gateway/passkey-ceremonies';
+import type { PasskeyStore } from '../domain/gateway/passkey-gateway';
+import { createInMemoryPasskeyStore, createPasskeyGateway } from '../domain/gateway/passkey-gateway';
+import type { SetupSecretStore } from '../domain/onboarding/setup-secret';
+import { createInMemorySetupSecretStore, createSetupSecrets } from '../domain/onboarding/setup-secret';
 import type { Faults } from '../adapters/http/fault-middleware';
 import type { HttpApp } from '../adapters/http/http-app';
 import { createHttpApp } from '../adapters/http/http-app';
@@ -67,7 +77,7 @@ import { engineStatus } from './engine-status';
 import { establishRegistration } from './establish-registration';
 import type { Say } from './operator-lines';
 import { WAITING } from './operator-lines';
-import { retrySentence } from './registration-messages';
+import { ENGINE_COMMAND, retrySentence } from './registration-messages';
 import type { StartupProgress } from './startup-progress';
 import { createStartupProgress } from './startup-progress';
 
@@ -99,8 +109,20 @@ export interface MockEngineDeps {
     readonly ui?: UiLoaderDeps | undefined;
     /** The operator's terminal, when the engine runs in one; never given when stdout is a log stream. */
     readonly say?: Say | null;
+    /**
+     * The owner's setup: the stores, WebAuthn and the reference pages. Without it the secret and passkeys live in memory
+     * and no `/setup` is served, so `setup-link` waits for it (tests that need neither).
+     */
+    readonly onboarding?: OnboardingDeps;
     /** Serves the operator API to the host's commands (the Unix socket); none in tests that drive `operator` directly. */
     readonly operatorChannel?: (api: OperatorApi) => Promise<{ close(): Promise<void> }>;
+}
+
+export interface OnboardingDeps {
+    readonly setupSecrets: SetupSecretStore;
+    readonly passkeys: PasskeyStore;
+    readonly ceremonies?: PasskeyCeremonies;
+    readonly pages: GatewayPageFiles;
 }
 
 export interface DashboardDeps {
@@ -263,8 +285,36 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
                   },
               });
     const sessions = createSessionStore({ engine: () => runtime.controller(), clock: deps.clock, random: deps.random });
+    const ownerSetUpNow = (): boolean => hasOwner(runtime.controller().inspect());
+    // Assigned below; the owner changes only through requests and commands that come after startup.
+    let onboardingChanged = (): void => undefined;
+    const onboarding = deps.onboarding;
+    const setupSecrets = createSetupSecrets({
+        store: onboarding?.setupSecrets ?? createInMemorySetupSecretStore(),
+        random: deps.random,
+        clock: deps.clock,
+        hasOwner: ownerSetUpNow,
+    });
+    const passkeyGateway = createPasskeyGateway({
+        engine: () => runtime.controller(),
+        sessions,
+        secrets: setupSecrets,
+        passkeys: onboarding?.passkeys ?? createInMemoryPasskeyStore(),
+        ceremonies: onboarding?.ceremonies ?? createSimpleWebAuthnCeremonies(),
+        challenges: createChallenges({ random: deps.random, clock: deps.clock }),
+        random: deps.random,
+        clock: deps.clock,
+        logger,
+        onOwnerChanged: () => {
+            onboardingChanged();
+        },
+    });
+    await passkeyGateway.restore();
     runtime.onReset(() => {
         sessions.clear();
+        passkeyGateway.restore().catch((error: unknown) => {
+            logger.error('passkeys.restore-failed', { problem: error instanceof Error ? error.name : 'unknown' });
+        });
     });
     const ui = configuredUiLoader(config, deps, runtime, progress);
     const server =
@@ -281,6 +331,16 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
                   devLogin: config.devLogin,
                   canary: spikeCanary(deps.random),
                   bundles: ui?.store ?? NO_BUNDLES,
+                  ...(onboarding === undefined
+                      ? {}
+                      : {
+                            passkeys: {
+                                gateway: passkeyGateway,
+                                files: onboarding.pages,
+                                ownerSetUp: ownerSetUpNow,
+                                command: ENGINE_COMMAND,
+                            },
+                        }),
                   clock: deps.clock,
                   logger,
               });
@@ -290,9 +350,9 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
         addressGaps({
             relaysReady: links.filter((link) => link.state().kind === 'ready').length,
             certificateValid: certificateNotAfter !== null && Date.parse(certificateNotAfter) > deps.clock.nowMs(),
+            setupPageServed: server !== null && onboarding !== undefined,
         });
-    const ownerSetUpNow = (): boolean => hasOwner(runtime.controller().inspect());
-    const onboardingChanged = (): void => {
+    onboardingChanged = (): void => {
         progress.onboarding({ addressGaps: addressGapsNow(), ownerSetUp: ownerSetUpNow() });
     };
     deps.certificates?.addHostnames([hostname]);
@@ -435,6 +495,20 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
             });
             return linking;
         },
+        async setupLink() {
+            const missing = addressGapsNow();
+            if (missing.length > 0) return { outcome: 'not-ready', missing };
+            const issued = await setupSecrets.issue();
+            if (issued.kind === 'owner-exists') return { outcome: 'owner-exists' };
+            // Never logged: the link makes whoever opens it first the owner, and log streams get shipped.
+            logger.info('setup-link.issued', { expiresAt: new Date(issued.expiresAtMs).toISOString() });
+            return {
+                outcome: 'created',
+                url: `https://${hostname}${SETUP_PATH}#${issued.secret.reveal()}`,
+                expiresAt: new Date(issued.expiresAtMs).toISOString().replace(/\.\d{3}Z$/, 'Z'),
+            };
+        },
+        resetOwner: () => passkeyGateway.resetOwner(),
     };
     let operatorChannel: { close(): Promise<void> } | null = null;
     try {
@@ -539,6 +613,8 @@ function spikeCanary(random: Random): string {
     return Buffer.from(random.bytes(SPIKE_CANARY_BYTES)).toString('hex');
 }
 
+export type PasskeyPages = Omit<PasskeyRouteDeps, 'engineId' | 'devLogin'>;
+
 /** Everything served inside the tunnel: spike pages, the gateway's pages, the engine API and the app (UI bundle). */
 export function createInTunnelRoutes(deps: {
     readonly engineId: EngineIdentity['engineId'];
@@ -549,6 +625,8 @@ export function createInTunnelRoutes(deps: {
     readonly canary: string;
     /** Without it, the app's routes answer 503 (no UI loader). */
     readonly bundles?: Pick<BundleStore, 'active' | 'read'>;
+    /** `/setup`, the passkey sign-in and step-up pages and their WebAuthn endpoints; without it only the dev login. */
+    readonly passkeys?: PasskeyPages;
 }): readonly Route[] {
     return [
         ...createSpikeRoutes({ engineId: deps.engineId, clock: deps.clock, canary: deps.canary }),
@@ -556,7 +634,11 @@ export function createInTunnelRoutes(deps: {
             sessions: deps.sessions,
             members: () => deps.core().controller.inspect().members,
             devLogin: deps.devLogin,
+            passkeyPages: deps.passkeys !== undefined,
         }),
+        ...(deps.passkeys === undefined
+            ? []
+            : createPasskeyRoutes({ ...deps.passkeys, engineId: deps.engineId, devLogin: deps.devLogin })),
         ...createEngineApiRoutes({ core: deps.core }),
         ...createUiRoutes({ store: deps.bundles ?? NO_BUNDLES }),
     ];
@@ -583,6 +665,7 @@ export interface EngineServerDeps {
     readonly canary: string;
     /** The UI bundles the app's routes serve; without it they answer 503. */
     readonly bundles?: Pick<BundleStore, 'active' | 'read'>;
+    readonly passkeys?: PasskeyPages;
     readonly clock: Clock;
     readonly logger: Logger;
     readonly rateLimiter?: RateLimiter;

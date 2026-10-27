@@ -12,6 +12,7 @@
 !packages/conformance/
 !packages/ui/
 !packages/release-tools/
+!packages/gateway-pages/
 !apps/relay/
 !apps/mock-engine/
 !apps/engine-ui/

@@ -27,7 +27,18 @@ import type { MockCapabilityName } from '../domain/state/capabilities';
 import type { Scenario } from '../domain/state/scenarios';
 import type { BundleStore } from '../domain/ui/bundle-store';
 import type { UiLoader } from '../domain/ui/ui-loader';
+import { loadGatewayPageFiles } from '../adapters/http/gateway-page-files';
+import { ENGINE_COMMAND } from '../app/registration-messages';
+import type { PasskeyCeremonies } from '../domain/gateway/passkey-ceremonies';
+import { createChallenges } from '../domain/gateway/passkey-ceremonies';
+import type { PasskeyGateway, PasskeyStore } from '../domain/gateway/passkey-gateway';
+import { createInMemoryPasskeyStore, createPasskeyGateway } from '../domain/gateway/passkey-gateway';
+import { hasOwner } from '../domain/onboarding/owner';
+import type { SetupSecrets } from '../domain/onboarding/setup-secret';
+import { createInMemorySetupSecretStore, createSetupSecrets } from '../domain/onboarding/setup-secret';
 import type { ContractRecorder } from './contract-recorder';
+import type { FakeCeremonies } from './fake-passkey-ceremonies';
+import { createFakeCeremonies } from './fake-passkey-ceremonies';
 import { createContractRecorder } from './contract-recorder';
 import {
     HARNESS_CANARY,
@@ -63,6 +74,21 @@ export interface ApiHarnessOptions {
     readonly simulation?: { readonly mode: SimulationMode; readonly speed: number };
     /** The epoch seeded data lies before, and where a paused simulation's time starts. */
     readonly epoch?: Date;
+    /** Serve `/setup` and the passkey pages, with in-memory stores and a fake WebAuthn unless given a real one. */
+    readonly onboarding?: { readonly ceremonies?: PasskeyCeremonies };
+    /** `MOCK_PASSKEYS`; `none` by default with onboarding, so the setup link works. */
+    readonly passkeys?: 'seeded' | 'none';
+}
+
+/** The onboarding side of the harness, for tests that drive the setup link and passkeys. */
+export interface HarnessOnboarding {
+    readonly secrets: SetupSecrets;
+    readonly gateway: PasskeyGateway;
+    readonly passkeys: PasskeyStore;
+    /** The fake WebAuthn, unless the test gave a real one. */
+    readonly ceremonies: FakeCeremonies;
+    /** A fresh setup secret, as `setup-link` would print it. */
+    issue(): Promise<string>;
 }
 
 export interface ApiHarness {
@@ -72,6 +98,8 @@ export interface ApiHarness {
     readonly faults: FaultSettings;
     readonly recorder: ContractRecorder;
     readonly logger: MemoryLogger;
+    /** Present with the `onboarding` option. */
+    readonly onboarding: HarnessOnboarding | null;
     core(): InMemoryEngineCore;
     /** A session through the gateway's own store, as `/__mock/sessions` creates one; returns the `Cookie` value. */
     signIn(
@@ -89,6 +117,49 @@ export interface ApiHarness {
     /** Starts the control listener on a loopback port. */
     startControl(): Promise<ControlServer>;
     close(): Promise<void>;
+}
+
+async function harnessOnboarding(
+    options: NonNullable<ApiHarnessOptions['onboarding']>,
+    deps: {
+        readonly core: () => InMemoryEngineCore;
+        readonly sessions: SessionStore;
+        readonly clock: Clock;
+        readonly random: Random;
+        readonly logger: MemoryLogger;
+    },
+): Promise<HarnessOnboarding> {
+    const fake = createFakeCeremonies();
+    const secrets = createSetupSecrets({
+        store: createInMemorySetupSecretStore(),
+        random: deps.random,
+        clock: deps.clock,
+        hasOwner: () => hasOwner(deps.core().controller.inspect()),
+    });
+    const passkeys = createInMemoryPasskeyStore();
+    const gateway = createPasskeyGateway({
+        engine: () => deps.core().controller,
+        sessions: deps.sessions,
+        secrets,
+        passkeys,
+        ceremonies: options.ceremonies ?? fake,
+        challenges: createChallenges({ random: deps.random, clock: deps.clock }),
+        random: deps.random,
+        clock: deps.clock,
+        logger: deps.logger,
+    });
+    await gateway.restore();
+    return {
+        secrets,
+        gateway,
+        passkeys,
+        ceremonies: fake,
+        async issue() {
+            const issued = await secrets.issue();
+            if (issued.kind !== 'issued') throw new Error(`no setup secret: ${issued.kind}`);
+            return issued.secret.reveal();
+        },
+    };
 }
 
 const systemClock: Clock = {
@@ -124,6 +195,7 @@ export async function createApiHarness(options: ApiHarnessOptions = {}): Promise
                   clock,
                   capabilities: capabilitiesFor(options.capabilities ?? ALL_CAPABILITY_NAMES),
                   simulation: options.simulation ?? { mode: 'paused', speed: 1 },
+                  passkeys: options.passkeys ?? (options.onboarding === undefined ? 'seeded' : 'none'),
                   faults: () => faults.plan(),
                   onSimulationError: (error) => {
                       logger.error('simulation.error', { problem: error instanceof Error ? error.message : 'unknown' });
@@ -139,6 +211,16 @@ export async function createApiHarness(options: ApiHarnessOptions = {}): Promise
     runtime?.onReset(() => {
         sessions.clear();
     });
+    const onboarding =
+        options.onboarding === undefined
+            ? null
+            : await harnessOnboarding(options.onboarding, {
+                  core,
+                  sessions,
+                  clock,
+                  random: options.random ?? createCryptoRandom(),
+                  logger,
+              });
     const ca = createDevCa([HARNESS_DOMAIN], clock);
     const certificates = createDevCaCertificateSource({ ca, clock, logger });
     certificates.addHostnames([HARNESS_HOSTNAME]);
@@ -155,6 +237,16 @@ export async function createApiHarness(options: ApiHarnessOptions = {}): Promise
         logger,
         ...(options.rateLimiter === undefined ? {} : { rateLimiter: options.rateLimiter }),
         ...(options.bundles === undefined ? {} : { bundles: options.bundles }),
+        ...(onboarding === null
+            ? {}
+            : {
+                  passkeys: {
+                      gateway: onboarding.gateway,
+                      files: await loadGatewayPageFiles(),
+                      ownerSetUp: () => hasOwner(core().controller.inspect()),
+                      command: ENGINE_COMMAND,
+                  },
+              }),
     });
     const recorder = createContractRecorder();
     const sockets = new Set<TLSSocket>();
@@ -189,6 +281,7 @@ export async function createApiHarness(options: ApiHarnessOptions = {}): Promise
         faults,
         recorder,
         logger,
+        onboarding,
         core,
         signIn(request) {
             const { token } = sessions.signIn({

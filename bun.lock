@@ -135,14 +135,17 @@
         "@faker-js/faker": "10.6.0",
         "@hono/node-server": "1.19.17",
         "@ptbk/engine-api": "workspace:*",
+        "@ptbk/gateway-pages": "workspace:*",
         "@ptbk/protocol": "workspace:*",
         "@ptbk/release-tools": "workspace:*",
+        "@simplewebauthn/server": "catalog:",
         "acme-client": "5.4.0",
         "hono": "catalog:",
         "ws": "catalog:",
         "zod": "catalog:",
       },
       "devDependencies": {
+        "@playwright/test": "catalog:",
         "@types/ws": "catalog:",
         "eslint": "catalog:",
         "tsdown": "catalog:",
@@ -201,6 +204,14 @@
       },
       "devDependencies": {
         "@seriousme/openapi-schema-validator": "2.11.0",
+      },
+    },
+    "packages/gateway-pages": {
+      "name": "@ptbk/gateway-pages",
+      "devDependencies": {
+        "@simplewebauthn/browser": "catalog:",
+        "eslint": "catalog:",
+        "jsdom": "catalog:",
       },
     },
     "packages/protocol": {
@@ -796,6 +807,8 @@
     "@ptbk/engine-api": ["@ptbk/engine-api@workspace:packages/engine-api"],
 
     "@ptbk/engine-ui": ["@ptbk/engine-ui@workspace:apps/engine-ui"],
+
+    "@ptbk/gateway-pages": ["@ptbk/gateway-pages@workspace:packages/gateway-pages"],
 
     "@ptbk/mock-engine": ["@ptbk/mock-engine@workspace:apps/mock-engine"],
 

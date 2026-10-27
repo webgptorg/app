@@ -68,8 +68,8 @@ export function clientInfo(request: Pick<GatewayRequest, 'clientIp' | 'header'>)
 }
 
 /**
- * Resolves the session cookie to the engine's actor. Without a valid session, API requests get 401 problem+json and
- * everything else (a document) is sent to the sign-in page; a stale cookie is cleared either way.
+ * Resolves the session cookie to the engine's actor. Without a valid session, API requests and other state-changing
+ * requests get 401 problem+json, and documents are sent to the sign-in page; a stale cookie is cleared either way.
  */
 export function authenticate(sessions: SessionStore, request: GatewayRequest): GatewayOutcome {
     const token = sessionToken(request.header('cookie'));
@@ -81,7 +81,9 @@ export function authenticate(sessions: SessionStore, request: GatewayRequest): G
     if (request.header('cookie')?.includes(`${SESSION_COOKIE_NAME}=`) === true) {
         headers.set('Set-Cookie', clearedSessionCookie());
     }
-    if (request.path === ENGINE_API_PREFIX || request.path.startsWith(`${ENGINE_API_PREFIX}/`)) {
+    // Only a document navigation can follow a redirect to the sign-in page; an API call or a gateway form's POST gets 401.
+    const isApi = request.path === ENGINE_API_PREFIX || request.path.startsWith(`${ENGINE_API_PREFIX}/`);
+    if (isApi || !SAFE_METHODS.has(request.method)) {
         headers.set('Content-Type', 'application/problem+json');
         return {
             kind: 'refused',

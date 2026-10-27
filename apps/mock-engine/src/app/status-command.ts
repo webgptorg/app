@@ -22,6 +22,7 @@ export function parseStatusCommand(args: readonly string[]): { readonly json: bo
 const GAP_WORDS: Readonly<Record<OperatorStatus['addressGaps'][number], string>> = {
     relay: 'a relay connection',
     certificate: 'a certificate',
+    'setup-page': 'the setup page',
 };
 
 function minute(iso: string): string {

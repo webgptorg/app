@@ -9,12 +9,20 @@ export interface OperatorApi {
     status(): OperatorStatus;
     /** Picks up a registration that `connect` just stored, and brings an unlinked engine online. */
     link(): Promise<LinkAnswer>;
+    /**
+     * A fresh setup link, replacing the previous one, once the address works and while there is no owner. The answer
+     * carries the secret: it goes to the operator's terminal and nowhere else.
+     */
+    setupLink(): Promise<SetupLinkAnswer>;
+    /** Revokes every passkey and session; data stays. */
+    resetOwner(): Promise<ResetAnswer>;
 }
 
 const Hostname = z.string().min(1).max(253);
 const Iso = z.iso.datetime({ offset: false });
 
 export const RelayState = z.enum(['connected', 'connecting', 'disconnected']);
+const AddressGapSchema = z.enum(['relay', 'certificate', 'setup-page']);
 
 export const OperatorStatus = z.strictObject({
     engineId: z.string().min(1).max(64),
@@ -38,7 +46,7 @@ export const OperatorStatus = z.strictObject({
         })
         .nullable(),
     /** What the address still lacks; empty once a browser can reach the engine. */
-    addressGaps: z.array(z.enum(['relay', 'certificate'])).max(2),
+    addressGaps: z.array(AddressGapSchema).max(3),
 });
 export type OperatorStatus = z.infer<typeof OperatorStatus>;
 
@@ -49,3 +57,17 @@ export const LinkAnswer = z.discriminatedUnion('outcome', [
     z.strictObject({ outcome: z.literal('not-registered') }),
 ]);
 export type LinkAnswer = z.infer<typeof LinkAnswer>;
+
+export const SetupLinkAnswer = z.discriminatedUnion('outcome', [
+    z.strictObject({
+        outcome: z.literal('created'),
+        url: z.url({ protocol: /^https$/ }).max(512),
+        expiresAt: Iso,
+    }),
+    z.strictObject({ outcome: z.literal('owner-exists') }),
+    z.strictObject({ outcome: z.literal('not-ready'), missing: z.array(AddressGapSchema).min(1).max(3) }),
+]);
+export type SetupLinkAnswer = z.infer<typeof SetupLinkAnswer>;
+
+export const ResetAnswer = z.strictObject({ passkeys: z.int().min(0), sessions: z.int().min(0) });
+export type ResetAnswer = z.infer<typeof ResetAnswer>;

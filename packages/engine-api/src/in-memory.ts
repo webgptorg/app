@@ -12,6 +12,7 @@ export type {
     AuthorizationResource,
     Authorizer,
     Clock,
+    InMemoryAuditInput,
     InMemoryEngine,
     InMemoryEngineApiOptions,
     InMemoryEngineController,

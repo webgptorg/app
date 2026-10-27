@@ -15,7 +15,10 @@ import { z } from 'zod';
 
 import { createInTunnelRoutes } from '../../app/start-mock-engine';
 import { NO_FAULTS } from '../../domain/faults/fault-plan';
+import { createChallenges } from '../../domain/gateway/passkey-ceremonies';
+import { createInMemoryPasskeyStore, createPasskeyGateway } from '../../domain/gateway/passkey-gateway';
 import { createSessionStore } from '../../domain/gateway/sessions';
+import { createInMemorySetupSecretStore, createSetupSecrets } from '../../domain/onboarding/setup-secret';
 import { engineSecurityHeaders } from '../../domain/http/security-headers';
 import type { RateLimiter } from '../../domain/rate-limit/rate-limiter';
 import { isRateLimitRule } from '../../domain/rate-limit/rate-limiter';
@@ -23,6 +26,7 @@ import type { EngineHarness, HarnessResponse } from '../../testing/engine-harnes
 import { HARNESS_CANARY, HARNESS_ENGINE_ID, HARNESS_HOSTNAME, createEngineHarness } from '../../testing/engine-harness';
 import { createTestRuntime } from '../../testing/test-runtime';
 import { createFakeClock } from '../../testing/fake-clock';
+import { createFakeCeremonies } from '../../testing/fake-passkey-ceremonies';
 import { createMemoryLogger } from '../../testing/memory-logger';
 import { createSeededRandom } from '../../testing/seeded-random';
 import { createControlRoutes, createFaultSettings } from '../control-server';
@@ -85,6 +89,9 @@ const SELF_SCOPED_SESSION_ROUTES = [
     `POST ${SIGN_OUT_PATH}`,
     `GET ${STEP_UP_PATH}`,
     `POST ${STEP_UP_PATH}`,
+    // The step-up ceremony is for the session's own member, with its own passkeys.
+    `POST ${STEP_UP_PATH}/options`,
+    `POST ${STEP_UP_PATH}/verify`,
     // The app: the same signed bundle for every member; what they may do is the engine API's to decide.
     'GET /',
     'GET /{path+}',
@@ -107,13 +114,36 @@ const key = (route: Route): string => `${route.transport} ${route.method} ${rout
 function inTunnelRoutes(devLogin: boolean): readonly Route[] {
     const core = createInMemoryEngineCore({ capabilities: [] });
     const clock = createFakeClock();
+    const random = createSeededRandom(1);
+    const sessions = createSessionStore({ engine: () => core.controller, clock, random });
     return createInTunnelRoutes({
         engineId: HARNESS_ENGINE_ID,
         clock,
         core: () => core,
-        sessions: createSessionStore({ engine: () => core.controller, clock, random: createSeededRandom(1) }),
+        sessions,
         devLogin,
         canary: HARNESS_CANARY,
+        passkeys: {
+            gateway: createPasskeyGateway({
+                engine: () => core.controller,
+                sessions,
+                secrets: createSetupSecrets({
+                    store: createInMemorySetupSecretStore(),
+                    random,
+                    clock,
+                    hasOwner: () => false,
+                }),
+                passkeys: createInMemoryPasskeyStore(),
+                ceremonies: createFakeCeremonies(),
+                challenges: createChallenges({ random, clock }),
+                random,
+                clock,
+                logger: createMemoryLogger(),
+            }),
+            files: { pages: { 'setup.html': '', 'sign-in.html': '', 'step-up.html': '' }, assets: new Map() },
+            ownerSetUp: () => false,
+            command: 'mock-engine',
+        },
     });
 }
 
@@ -183,6 +213,13 @@ describe.each([
             ...SPIKE_ROUTES,
             `http GET ${SIGN_IN_PATH}`,
             ...(devLogin ? [`http POST ${SIGN_IN_PATH}`] : []),
+            // Onboarding (M-08): the setup page and its assets, the setup secret's ceremony, usernameless sign-in.
+            'http GET /setup',
+            'http GET /auth/assets/{name}',
+            'http POST /setup/options',
+            'http POST /setup/verify',
+            `http POST ${SIGN_IN_PATH}/options`,
+            `http POST ${SIGN_IN_PATH}/verify`,
         ];
         expect(
             routes
@@ -201,7 +238,7 @@ describe.each([
             else expect(route.permission, key(route)).not.toBeNull();
         }
         const stepUp = routes.filter((route) => route.path === STEP_UP_PATH).map((route) => route.method);
-        expect(stepUp.sort()).toEqual(devLogin ? ['GET', 'POST'] : []);
+        expect(stepUp.sort()).toEqual(devLogin ? ['GET', 'POST'] : ['GET']);
     });
 
     it('serves exactly the engine API route table under the API prefix', () => {
@@ -223,11 +260,11 @@ describe.each([
         }
     });
 
-    it('keeps everything else off the reserved paths, except the gateway under /auth/', () => {
+    it('keeps everything else off the reserved paths, except the gateway under /auth/ and /setup', () => {
         for (const route of routes) {
             const reserved = ENGINE_RESERVED_PATHS.find((prefix) => route.path.startsWith(prefix));
             if (reserved === undefined) continue;
-            expect(['/api/', '/auth/'], key(route)).toContain(reserved);
+            expect(['/api/', '/auth/', '/setup'], key(route)).toContain(reserved);
         }
     });
 

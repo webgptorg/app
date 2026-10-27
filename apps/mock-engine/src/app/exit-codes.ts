@@ -16,6 +16,10 @@ export const EXIT_CODE = Object.freeze({
     unreachable: 6,
     /** The dashboard's answer did not match this engine, or it refused our signature. */
     answerRefused: 7,
+    /** `setup-link`: the engine already has an owner; only `owner --reset` reopens setup. */
+    ownerExists: 8,
+    /** `setup-link --no-wait`, or a wait that ran out: the address does not work yet. */
+    notReady: 9,
 } as const);
 
 export type ExitCode = (typeof EXIT_CODE)[keyof typeof EXIT_CODE];
