@@ -2,7 +2,7 @@
 
 - **Lane:** D · **Module:** `apps/dashboard` · **Milestone:** M3
 - **Depends on:** D-03, D-05, D-06, D-07, M-08
-- **Status:** todo
+- **Status:** in progress (feat/d-10-live-link-progress)
 - **Spec:** Pairing and identity (First setup); Abuse on our domains (item 4); What our platform can and cannot do; ADRs: [0006](../../adr/0006-organizations-and-roles.md), [0007](../../adr/0007-frontend-stack.md), [0017](../../adr/0017-billing-entitlements.md); design: [onboarding.md](../../design/onboarding.md) (Journey 1, steps 2 to 4)
 
 ## Goal
