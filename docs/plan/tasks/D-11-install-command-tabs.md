@@ -2,7 +2,7 @@
 
 - **Lane:** D · **Module:** `apps/dashboard` · **Milestone:** M3
 - **Depends on:** D-03, M-08
-- **Status:** todo
+- **Status:** done (#122)
 - **Spec:** Pairing and identity (First setup); Moving existing deployments; Build plan (Distribution); design: [onboarding.md](../../design/onboarding.md) (Journey 1 step 3, Journey 2); guide: [installation.md](../../engine-integration/installation.md#install-paths)
 
 ## Goal

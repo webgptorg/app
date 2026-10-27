@@ -12,6 +12,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { orgIdSchema } from '../domain/ids';
 import type { LinkCodeView, LinkEligibilityView, SessionView } from '../shared/api/routes';
+import { TEST_INSTALL_VARS } from './install-fixtures';
 import type { AuthHarness, TestBrowser, TestResponse } from './auth-harness';
 import { problemCode, signUp } from './auth-flows';
 import { createTestEngine, TEST_ENGINE_DOMAIN, type TestEngine } from './test-engine';
@@ -99,7 +100,16 @@ export function describeEngineFlows(
             const { browser } = await owner();
             const view = issued(await browser.request('POST', LINK_CODES));
             expect(LinkCode.parse(view.linkCode)).toBe(view.linkCode);
-            expect(view.installCommand).toBe(`bun run dev:link ${view.linkCode}`);
+            expect(view.installCommands.map((path) => [path.id, path.labelKey, path.docsAnchor])).toEqual(
+                TEST_INSTALL_VARS.INSTALL_COMMANDS.map((path) => [path.id, path.labelKey, path.docsAnchor]),
+            );
+            expect(view.installCommands.map((path) => path.command)).toEqual(
+                TEST_INSTALL_VARS.INSTALL_COMMANDS.map((path) => path.template.replace('{linkCode}', view.linkCode)),
+            );
+            for (const { command } of view.installCommands) {
+                expect(command.split(view.linkCode)).toHaveLength(2);
+            }
+            expect(view.installGuideUrl).toBe(TEST_INSTALL_VARS.INSTALL_GUIDE_URL);
             expect(view.expiresAt).toBe(harness.clock.nowMs() + 30 * 60_000);
             const engine = await createTestEngine();
             await expectRegistered(await register(await engine.register(LinkCode.parse(view.linkCode))), engine);

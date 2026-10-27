@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { syntheticStripeKey, syntheticWebhookSecret, TEST_PLANS } from '../testing/billing-fixtures';
+import { TEST_INSTALL_VARS } from '../testing/install-fixtures';
 import { stripeEvent, stripeSignatureHeader } from '../testing/stripe-signature';
 import { DEV_RATE_LIMIT_HMAC_KEY } from './config';
 import { createDashboard } from './create-dashboard';
@@ -11,7 +12,7 @@ const vars = {
     DASHBOARD_ORIGIN: 'http://localhost:5173',
     ENGINE_DOMAIN: 'engines.ptbk.test',
     RELAYS: [{ relayId: 'relay.ptbk.test', region: 'local' }],
-    INSTALL_COMMAND: 'bun run dev:link {linkCode}',
+    ...TEST_INSTALL_VARS,
     ADAPTERS: { email: 'fake', billing: 'fake', rateLimit: 'memory' },
     EMAIL_FROM: 'no-reply@ptbk.test',
     ABUSE_EMAIL: 'abuse@ptbk.test',

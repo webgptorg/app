@@ -2,6 +2,7 @@ import type {
     AdminEngineView,
     BillingView,
     EngineView,
+    LinkCodeView,
     PasskeyView,
     ProblemOrganization,
     SessionSummary,
@@ -100,6 +101,40 @@ export function engineView(overrides: Partial<EngineView> = {}): EngineView {
         },
         // No relay presence by default, as before R-07: the reachability line stays hidden.
         reachableRelays: null,
+        ...overrides,
+    };
+}
+
+export const LINK_CODE = 'abcdefghijklmnopqrstuvwxya';
+export const INSTALL_GUIDE_URL = 'https://docs.ptbk.test/engine/installation';
+
+/** A freshly issued code with the three dev tabs, as the API fills them in. */
+export function linkCodeView(overrides: Partial<LinkCodeView> = {}): LinkCodeView {
+    return {
+        linkCodeId: 'lllllllllllllllllllllllllq',
+        linkCode: LINK_CODE as LinkCodeView['linkCode'],
+        installCommands: [
+            {
+                id: 'installer',
+                labelKey: 'docker-server',
+                command: `bun run dev:link ${LINK_CODE}`,
+                docsAnchor: '1-the-installer-recommended',
+            },
+            {
+                id: 'compose',
+                labelKey: 'docker-compose',
+                command: `docker compose run --rm engine promptbook-engine connect --link ${LINK_CODE}\ndocker compose up -d`,
+                docsAnchor: '2-docker-compose',
+            },
+            {
+                id: 'connect',
+                labelKey: 'already-running',
+                command: `promptbook-engine connect --link ${LINK_CODE}`,
+                docsAnchor: '3-link-an-engine-that-already-runs',
+            },
+        ],
+        installGuideUrl: INSTALL_GUIDE_URL,
+        expiresAt: NOW + 30 * 60_000,
         ...overrides,
     };
 }

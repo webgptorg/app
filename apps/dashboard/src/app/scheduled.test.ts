@@ -4,6 +4,7 @@ import type { MonitorState } from '../domain/monitoring/alert-rules';
 import { createMonitorService } from '../domain/monitoring/monitor-store';
 import { DEFAULT_THRESHOLDS } from '../domain/monitoring/alert-rules';
 import { TEST_PLANS, syntheticStripeKey, syntheticWebhookSecret } from '../testing/billing-fixtures';
+import { TEST_INSTALL_VARS } from '../testing/install-fixtures';
 import { ConfigError, DEV_RATE_LIMIT_HMAC_KEY } from './config';
 import { createDevAdapters } from './dev-adapters';
 import { runScheduled, ScheduledConfigError } from './scheduled';
@@ -14,7 +15,7 @@ const monitoredVars = {
     DASHBOARD_ORIGIN: 'https://app.ptbk.test',
     ENGINE_DOMAIN: 'engines.ptbk.test',
     RELAYS: [{ relayId: 'relay-1.ptbk.test', region: 'local' }],
-    INSTALL_COMMAND: 'bun run dev:link {linkCode}',
+    ...TEST_INSTALL_VARS,
     ADAPTERS: { email: 'fake', billing: 'fake', rateLimit: 'memory' },
     EMAIL_FROM: 'no-reply@ptbk.test',
     ABUSE_EMAIL: 'abuse@ptbk.test',

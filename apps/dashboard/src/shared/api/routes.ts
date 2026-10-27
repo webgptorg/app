@@ -24,6 +24,7 @@ import {
     quotaSchema,
 } from '../billing';
 import { environmentSchema } from '../environment';
+import { docsAnchorSchema, installPathIdSchema, installPathLabelKeySchema } from '../install-paths';
 import { defineRoute, NO_INPUT } from './contract';
 import {
     authenticationOptionsSchema,
@@ -147,8 +148,20 @@ export const linkCodeViewSchema = z.strictObject({
     /** Not a secret and grants nothing: the link page polls the code's state by it, and keeps it in its URL. */
     linkCodeId: idSchema,
     linkCode: LinkCode,
-    /** The configured install command with the code filled in. */
-    installCommand: z.string().max(1024),
+    /** One per configured install path, in tab order, each with the code filled in once; may span lines. */
+    installCommands: z
+        .array(
+            z.strictObject({
+                id: installPathIdSchema,
+                labelKey: installPathLabelKeySchema,
+                command: z.string().max(1024),
+                docsAnchor: docsAnchorSchema,
+            }),
+        )
+        .min(1)
+        .max(installPathIdSchema.options.length),
+    /** The public install guide; each path's `docsAnchor` is a heading in it. */
+    installGuideUrl: z.url({ protocol: /^https$/ }).max(512),
     expiresAt: timestampSchema,
 });
 export type LinkCodeView = z.infer<typeof linkCodeViewSchema>;
