@@ -181,7 +181,7 @@ The engine is `apps/agents-server` in `webgptorg/promptbook`: a Next.js app rout
 
 **Build:**
 
-- The gateway as the only listener behind the TLS server: Fetch Metadata and `Origin` checks on state-changing requests before anything else runs, session resolution, anonymous access limited to the sign-in page, the WebAuthn endpoints, `/setup` and public agents, 401 problem+json `unauthenticated` for anonymous API calls, the sign-in page for anonymous documents.
+- The gateway as the only listener behind the TLS server: Fetch Metadata and `Origin` checks on state-changing requests before anything else runs, session resolution, anonymous access limited to the sign-in page, the WebAuthn endpoints, `/setup` and public agents, 401 problem+json `unauthenticated` for anonymous API calls, a redirect to the sign-in page for anonymous documents that keeps the requested path as `next`.
 - Passkeys only: WebAuthn registration and assertion on the engine's own hostname (the spec suggests SimpleWebAuthn; the platform pins `@simplewebauthn/*` versions you may align with).
 - First setup: a 128-bit setup secret, single use, valid 30 minutes, printed only in the engine's terminal as `https://<hostname>/setup#<secret>`; the `/setup` page reads it from the fragment and registers the owner's passkey; the secret is refused from then on. An owner reset command that revokes every passkey and prints a fresh setup link.
 - Server-side sessions: 128-bit IDs, `__Host-` cookie with `Secure`, `HttpOnly`, `SameSite=Strict`, `Path=/`, a new ID on every sign-in, idle and absolute timeouts, revocation within one request, a session API ID separate from the cookie, the passkey that signed each session in.
@@ -192,9 +192,9 @@ The engine is `apps/agents-server` in `webgptorg/promptbook`: a Next.js app rout
 
 **Prove:**
 
-- `engine-api.auth.unauthenticated-401`, `engine-api.gateway.cross-site-refused`, `engine-api.me.own-sessions`, `engine-api.me.own-passkeys`, `engine-api.me.others-credentials-404` (commands in phase 7).
+- `engine-api.auth.unauthenticated-401`, `engine-api.gateway.cross-site-refused`, `engine-api.gateway.sign-in-keeps-next`, `engine-api.me.own-sessions`, `engine-api.me.own-passkeys`, `engine-api.me.others-credentials-404` (commands in phase 7).
 - Unit tests: a revoked session fails on the next request; the setup secret works once and not after 30 minutes; a cross-site `POST` gets 403 before any handler runs; every response carries every header, errors included.
-- Checklist: ENG-90 to ENG-93, ENG-99.
+- Checklist: ENG-90 to ENG-94, ENG-99.
 
 **Reference:** the headers in [security-headers.ts](../../apps/mock-engine/src/domain/http/security-headers.ts) and how [http-app.ts](../../apps/mock-engine/src/adapters/http/http-app.ts) applies them after every handler and error; the Fetch Metadata and session logic in [gateway-middleware.ts](../../apps/mock-engine/src/adapters/http/gateway-middleware.ts) and [sessions.ts](../../apps/mock-engine/src/domain/gateway/sessions.ts). The mock's sign-in is a dev-only member picker ([dev-login.ts](../../apps/mock-engine/src/adapters/http/dev-login.ts)): never port it.
 

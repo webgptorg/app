@@ -31,6 +31,7 @@ import { createTestCa } from '../../src/testing/test-pki';
 const ENGINE_DOMAIN = Hostname.parse('engines.ptbk.test');
 const RELAY = RelayId.parse('relay-a.ptbk.test');
 const OTHER_SITE = 'https://dashboard.example';
+const DEEP_LINK = '/agents/agent-deep-link?tab=chat&q=a%26b';
 
 interface Stack {
     readonly engine: MockEngine;
@@ -210,7 +211,7 @@ test('the owner sets up a passkey through /setup#<secret>, then signs in with it
     await arrival.route(`${OTHER_SITE}/**`, (route) =>
         route.fulfill({
             contentType: 'text/html',
-            body: `<a id="root" href="${origin}/">Open engine</a><a id="hostile" href="${origin}/auth/sign-in?next=%2F%2Fevil.example">Hostile</a>`,
+            body: `<a id="root" href="${origin}/">Open engine</a><a id="deep" href="${origin}${DEEP_LINK}#reply">Open agent</a><a id="hostile" href="${origin}/auth/sign-in?next=%2F%2Fevil.example">Hostile</a>`,
         }),
     );
     await arrival.goto(`${OTHER_SITE}/`);
@@ -218,6 +219,10 @@ test('the owner sets up a passkey through /setup#<secret>, then signs in with it
     await arrival.waitForURL(`${origin}/`);
     expect(arrivalPaths).toEqual(expect.arrayContaining(['/auth/sign-in', '/api/v1/me']));
     expect(await meStatus(arrival)).toBe(200);
+    // A deep link takes the same way round and still lands on its path and query; the server never sees the fragment.
+    await arrival.goto(`${OTHER_SITE}/`);
+    await arrival.click('#deep');
+    await arrival.waitForURL(`${origin}${DEEP_LINK}`);
     await arrival.goto(`${OTHER_SITE}/`);
     await arrival.click('#hostile');
     await arrival.waitForURL(`${origin}/`);
@@ -229,15 +234,19 @@ test('the owner sets up a passkey through /setup#<secret>, then signs in with it
 
     await context.clearCookies();
     expect(await meStatus(page)).toBe(401);
-    await page.goto(`${origin}/auth/sign-in?next=%2Fagents`);
+    // Signed out, a deep link is sent to sign in and, after the passkey, on to where it pointed.
+    await page.goto(`${origin}${DEEP_LINK}`);
+    await page.waitForURL(`${origin}/auth/sign-in?${new URLSearchParams({ next: DEEP_LINK }).toString()}`);
     await page.locator('button[data-action="confirm"]').click();
-    await page.waitForURL(`${origin}/agents`);
+    await page.waitForURL(`${origin}${DEEP_LINK}`);
     expect(await meStatus(page)).toBe(200);
 
     expect(violations).toEqual([]);
     // A full onboarding run: registration, tunnel, setup link, passkey, sign-in. Nothing secret reached the log.
     const logs = stack.logger.text();
-    for (const secretText of [secret, stack.linkCode, 'PRIVATE KEY']) expect(logs).not.toContain(secretText);
+    for (const secretText of [secret, stack.linkCode, 'PRIVATE KEY', 'agent-deep-link']) {
+        expect(logs).not.toContain(secretText);
+    }
     expect(stack.logger.entries.map(({ event }) => event)).toEqual(
         expect.arrayContaining(['engine.identity', 'owner.none', 'engine.ready', 'setup-link.issued', 'owner.set-up']),
     );

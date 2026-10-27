@@ -1,6 +1,7 @@
 import type { ClientInfo } from '@ptbk/engine-api';
 import { ENGINE_API_PREFIX, MAX_USER_AGENT_LENGTH, SIGN_IN_PATH, createProblem } from '@ptbk/engine-api';
 import type { Actor } from '@ptbk/engine-api/in-memory';
+import { isSafeNextPath } from '@ptbk/gateway-pages';
 
 import type { SessionStore } from '../../domain/gateway/sessions';
 import { SESSION_ABSOLUTE_TIMEOUT_MS, SESSION_COOKIE_NAME } from '../../domain/gateway/sessions';
@@ -14,6 +15,8 @@ const TOKEN_PATTERN = /^[A-Za-z0-9_-]{22}$/;
 export interface GatewayRequest {
     readonly method: string;
     readonly path: string;
+    /** Path and query as the request carried them, still percent-encoded: where to return after sign-in. */
+    readonly target: string;
     /** The SNI the TLS certificate was chosen for. */
     readonly hostname: string;
     readonly header: (name: string) => string | undefined;
@@ -28,7 +31,7 @@ export type GatewayOutcome =
  * origin (`Origin` equal to `https://` plus a `Host` naming the SNI hostname) with Fetch Metadata saying so
  * (`Sec-Fetch-Site` `same-origin`, or `none` for a user's own navigation). There is no CORS, so nothing else may pass.
  */
-export function isSameOriginMutation(request: Omit<GatewayRequest, 'clientIp' | 'path'>): boolean {
+export function isSameOriginMutation(request: Omit<GatewayRequest, 'clientIp' | 'path' | 'target'>): boolean {
     if (SAFE_METHODS.has(request.method)) return true;
     const host = request.header('host')?.toLowerCase();
     const origin = request.header('origin')?.toLowerCase();
@@ -67,6 +70,21 @@ export function clientInfo(request: Pick<GatewayRequest, 'clientIp' | 'header'>)
     };
 }
 
+/** Path and query of a request URL; the fragment never reaches the server. */
+export function requestTarget(url: string): string {
+    const { pathname, search } = new URL(url);
+    return `${pathname}${search}`;
+}
+
+/**
+ * Where an anonymous document goes: sign-in, with the path and query it asked for as `next` so the member lands there
+ * afterwards. The same rule as the sign-in page's, so `next` never leaves the origin or points back into the gateway.
+ */
+export function signInLocation(target: string): string {
+    if (target === '/' || !isSafeNextPath(target)) return SIGN_IN_PATH;
+    return `${SIGN_IN_PATH}?${new URLSearchParams({ next: target }).toString()}`;
+}
+
 /**
  * Resolves the session cookie to the engine's actor. Without a valid session, API requests and other state-changing
  * requests get 401 problem+json, and documents are sent to the sign-in page; a stale cookie is cleared either way.
@@ -90,6 +108,6 @@ export function authenticate(sessions: SessionStore, request: GatewayRequest): G
             response: new Response(JSON.stringify(createProblem('unauthenticated')), { status: 401, headers }),
         };
     }
-    headers.set('Location', SIGN_IN_PATH);
+    headers.set('Location', signInLocation(request.target));
     return { kind: 'refused', response: new Response(null, { status: 303, headers }) };
 }

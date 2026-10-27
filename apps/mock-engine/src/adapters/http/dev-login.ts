@@ -1,5 +1,6 @@
 import type { Member } from '@ptbk/engine-api';
 import { MemberId, SIGN_IN_PATH, SIGN_OUT_PATH, STEP_UP_PATH } from '@ptbk/engine-api';
+import { isSafeNextPath } from '@ptbk/gateway-pages';
 import { z } from 'zod';
 
 import type { SessionStore } from '../../domain/gateway/sessions';
@@ -19,7 +20,9 @@ export interface GatewayRouteDeps {
 }
 
 const NO_QUERY = z.strictObject({});
-const FORM_MAX_BYTES = 1024;
+const NEXT = z.string().max(2048);
+/** Room for a `next` of 2048 characters, percent-encoded. */
+const FORM_MAX_BYTES = 8 * 1024;
 const ROLE_ORDER = ['owner', 'admin', 'member', 'viewer'] as const;
 
 function escapeHtml(text: string): string {
@@ -56,7 +59,11 @@ function redirect(location: string, cookie?: string): Response {
     return new Response(null, { status: 303, headers });
 }
 
-function signInPage(members: readonly Member[]): Response {
+const safeNext = (next: string | undefined): string | null =>
+    next !== undefined && isSafeNextPath(next) ? next : null;
+
+function signInPage(members: readonly Member[], next: string | null): Response {
+    const nextInput = next === null ? '' : `\n<input type="hidden" name="next" value="${escapeHtml(next)}">`;
     const active = members
         .filter(({ status }) => status === 'active')
         .sort(
@@ -66,7 +73,7 @@ function signInPage(members: readonly Member[]): Response {
     const items = active
         .map(
             (member) => `<li><form method="post" action="${SIGN_IN_PATH}">
-<input type="hidden" name="memberId" value="${escapeHtml(member.id)}">
+<input type="hidden" name="memberId" value="${escapeHtml(member.id)}">${nextInput}
 <button type="submit">${escapeHtml(member.displayName)}</button> <span>${escapeHtml(member.role)}</span>
 </form></li>`,
         )
@@ -110,12 +117,12 @@ export function createGatewayRoutes(deps: GatewayRouteDeps): readonly Route[] {
             permission: null,
             rateLimit: 'gateway-ip',
             params: null,
-            query: NO_QUERY,
+            query: z.strictObject({ next: NEXT.optional() }),
             headers: null,
             body: null,
-            handle: () =>
+            handle: ({ query }) =>
                 deps.devLogin
-                    ? signInPage(deps.members())
+                    ? signInPage(deps.members(), safeNext(query.next))
                     : page(
                           'Sign in',
                           '<p>Development sign-in is disabled. Sessions come from the control listener.</p>',
@@ -134,7 +141,11 @@ export function createGatewayRoutes(deps: GatewayRouteDeps): readonly Route[] {
             params: null,
             query: NO_QUERY,
             headers: z.strictObject({ 'user-agent': z.string().max(4096).optional() }),
-            body: { kind: 'form', schema: z.strictObject({ memberId: MemberId }), maxBytes: FORM_MAX_BYTES },
+            body: {
+                kind: 'form',
+                schema: z.strictObject({ memberId: MemberId, next: NEXT.optional() }),
+                maxBytes: FORM_MAX_BYTES,
+            },
             handle: ({ body, headers, clientIp }) => {
                 const member = deps.members().find(({ id, status }) => id === body.memberId && status === 'active');
                 if (member === undefined) {
@@ -148,7 +159,7 @@ export function createGatewayRoutes(deps: GatewayRouteDeps): readonly Route[] {
                     permissions: null,
                     client: clientInfo({ clientIp, header: (name) => (headers as Record<string, string>)[name] }),
                 });
-                return redirect('/', sessionCookie(signedIn.token));
+                return redirect(safeNext(body.next) ?? '/', sessionCookie(signedIn.token));
             },
         }),
         defineHttpRoute({

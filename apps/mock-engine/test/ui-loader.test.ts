@@ -208,10 +208,14 @@ describe('UI routes', () => {
         const engine = await start();
         await engine.publish('1.0.0');
         await engine.loader.checkNow();
-        for (const path of ['/', '/assets/index-BxD3f9_a.js', '/agents/1']) {
+        for (const [path, location] of [
+            ['/', SIGN_IN_PATH],
+            ['/assets/index-BxD3f9_a.js', `${SIGN_IN_PATH}?next=%2Fassets%2Findex-BxD3f9_a.js`],
+            ['/agents/1', `${SIGN_IN_PATH}?next=%2Fagents%2F1`],
+        ] as const) {
             const response = await get(engine, path, null);
             expect(response.status, path).toBe(303);
-            expect(response.headers.get('location')).toBe(SIGN_IN_PATH);
+            expect(response.headers.get('location')).toBe(location);
         }
         expect((await get(engine, `${ENGINE_API_PREFIX}/me`, null, 'application/json')).status).toBe(401);
     });

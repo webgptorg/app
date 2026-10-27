@@ -1,9 +1,16 @@
-import { MAX_USER_AGENT_LENGTH } from '@ptbk/engine-api';
+import { MAX_USER_AGENT_LENGTH, SIGN_IN_PATH } from '@ptbk/engine-api';
 import { describe, expect, it } from 'vitest';
 
 import type { SessionStore } from '../../domain/gateway/sessions';
 import { SESSION_COOKIE_NAME } from '../../domain/gateway/sessions';
-import { authenticate, clientInfo, isSameOriginMutation, sessionCookie, sessionToken } from './gateway-middleware';
+import {
+    authenticate,
+    clientInfo,
+    isSameOriginMutation,
+    requestTarget,
+    sessionCookie,
+    sessionToken,
+} from './gateway-middleware';
 
 const TOKEN = 'A'.repeat(21) + '_';
 const HOST = 'engine.example.test';
@@ -74,11 +81,19 @@ describe('clientInfo', () => {
     });
 });
 
+describe('requestTarget', () => {
+    it('keeps the path and query as sent, and never a fragment', () => {
+        expect(requestTarget(`https://${HOST}/agents/a%20b?tab=chat&q=%2F#reply`)).toBe('/agents/a%20b?tab=chat&q=%2F');
+        expect(requestTarget(`https://${HOST}/`)).toBe('/');
+    });
+});
+
 describe('authenticate', () => {
     const refusing = { authenticate: () => ({ kind: 'invalid' as const }) } as unknown as SessionStore;
-    const request = (path: string, cookie?: string) => ({
-        method: 'GET',
+    const request = (path: string, cookie?: string, target = path, method = 'GET') => ({
+        method,
         path,
+        target,
         hostname: HOST,
         clientIp: '192.0.2.1',
         header: (name: string) => (name === 'cookie' ? cookie : undefined),
@@ -99,5 +114,67 @@ describe('authenticate', () => {
         const outcome = authenticate(refusing, request('/api/v1/me', `${SESSION_COOKIE_NAME}=${TOKEN}`));
         if (outcome.kind !== 'refused') throw new Error('expected a refusal');
         expect(outcome.response.headers.get('set-cookie')).toContain('Max-Age=0');
+    });
+
+    function location(target: string, method = 'GET'): string | null {
+        const outcome = authenticate(refusing, request(target.split('?')[0] ?? target, undefined, target, method));
+        if (outcome.kind !== 'refused') throw new Error('expected a refusal');
+        expect(outcome.response.status).toBe(303);
+        return outcome.response.headers.get('location');
+    }
+
+    const nextOf = (target: string): string | null => {
+        const url = new URL(location(target) ?? '', `https://${HOST}`);
+        expect(url.pathname).toBe(SIGN_IN_PATH);
+        return url.searchParams.get('next');
+    };
+
+    it('sends a document to sign in with its path and query as an encoded next', () => {
+        expect(location('/agents/abc?tab=chat&q=a%26b')).toBe(
+            `${SIGN_IN_PATH}?next=%2Fagents%2Fabc%3Ftab%3Dchat%26q%3Da%2526b`,
+        );
+        expect(nextOf('/agents/abc?tab=chat&q=a%26b')).toBe('/agents/abc?tab=chat&q=a%26b');
+        expect(nextOf('/chats/%2F/a%20b')).toBe('/chats/%2F/a%20b');
+        expect(location('/agents/abc', 'HEAD')).toBe(`${SIGN_IN_PATH}?next=%2Fagents%2Fabc`);
+    });
+
+    it('sends the root and engine-owned paths to sign in without a next', () => {
+        for (const target of [
+            '/',
+            `${SIGN_IN_PATH}?next=%2Fagents`,
+            '/auth/step-up?returnTo=%2Fagents',
+            '/auth',
+            '/setup',
+            '/.well-known/security.txt',
+            '/agents/../auth/sign-in',
+            '/x/%2e%2e/setup',
+        ]) {
+            expect(location(target), target).toBe(SIGN_IN_PATH);
+        }
+    });
+
+    it.each([
+        ['protocol-relative', '//evil.example/x'],
+        ['backslash', '/\\evil.example'],
+        ['a control character', '/a\tb'],
+        ['too long', `/${'a'.repeat(2040)}?q=${'b'.repeat(10)}`],
+        ['not a path', 'agents'],
+        ['an absolute URL', 'https://evil.example/'],
+    ])('sends a %s target to sign in without a next', (_name, target) => {
+        expect(location(target)).toBe(SIGN_IN_PATH);
+    });
+
+    it('keeps answering the API and state-changing requests with 401, whatever the path', async () => {
+        for (const [path, method] of [
+            ['/api/v1/agents', 'GET'],
+            ['/api/v1', 'GET'],
+            ['/agents/abc', 'POST'],
+        ] as const) {
+            const outcome = authenticate(refusing, request(path, undefined, `${path}?tab=chat`, method));
+            if (outcome.kind !== 'refused') throw new Error('expected a refusal');
+            expect(outcome.response.status).toBe(401);
+            expect(outcome.response.headers.get('location')).toBeNull();
+            expect(await outcome.response.json()).toMatchObject({ code: 'unauthenticated' });
+        }
     });
 });

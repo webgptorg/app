@@ -16,7 +16,7 @@ sequenceDiagram
     G->>G: resolve the __Host- session cookie
     alt no valid session
         G-->>B: API path: 401 problem+json unauthenticated
-        G-->>B: document: the sign-in page
+        G-->>B: document: redirect to sign-in with next
     else session
         G->>A: request with the member, session and client IP
         A-->>G: response (may be 401 step-up-required)
@@ -38,7 +38,8 @@ sequenceDiagram
 ### Anonymous access
 
 - Anonymous visitors reach only the sign-in page, the WebAuthn endpoints, the setup-secret page and agents the owner marked public (with rate limits). Everything else needs a session. An anonymous scan of an engine reaches nothing else.
-- An anonymous engine API call answers 401 `application/problem+json` with code `unauthenticated` and no resource data. An anonymous document request gets the sign-in page (or a redirect to it).
+- An anonymous engine API call answers 401 `application/problem+json` with code `unauthenticated` and no resource data.
+- An anonymous document request (a top-level `GET` outside the engine API) gets a redirect to `SIGN_IN_PATH` that carries the requested path and query, as received and URL-encoded, in `next`, so the sign-in page returns there; `/agents/abc?tab=chat` goes to `/auth/sign-in?next=%2Fagents%2Fabc%3Ftab%3Dchat`. Only a value `isSafeNextPath` accepts goes into `next`: never another origin, `ENGINE_RESERVED_PATHS` or `/` itself, which go to `SIGN_IN_PATH` without `next`. The fragment never reaches the server, so it is lost. Never log the path: it can hold IDs. API calls keep their 401. Checked by `engine-api.gateway.sign-in-keeps-next`.
 - Webhooks for integrations pass only on allowlisted paths with their own signature check.
 
 ### Cross-site protection
@@ -81,6 +82,6 @@ C-05 v1 checks that every route answers 401 problem+json without credentials and
 ## Reference implementation
 
 - **Headers on every in-tunnel response: merged (M-05).** [security-headers.ts](../../apps/mock-engine/src/domain/http/security-headers.ts) is the set above; [http-app.ts](../../apps/mock-engine/src/adapters/http/http-app.ts) applies it after every handler, error and refused WebSocket upgrade, so no route or bundle can change it, and adds `Cache-Control: no-store` unless a route chose its own caching (the UI's files).
-- **Sessions, CSRF and anonymous answers: merged (M-04).** [gateway-middleware.ts](../../apps/mock-engine/src/adapters/http/gateway-middleware.ts) and [sessions.ts](../../apps/mock-engine/src/domain/gateway/sessions.ts): the `__Host-ptbk_session` cookie, separate 128-bit token and session ID, idle and absolute timeouts, Fetch Metadata and `Origin` checks, 401 for anonymous API calls and other state-changing requests, and the sign-in page for documents.
+- **Sessions, CSRF and anonymous answers: merged (M-04).** [gateway-middleware.ts](../../apps/mock-engine/src/adapters/http/gateway-middleware.ts) and [sessions.ts](../../apps/mock-engine/src/domain/gateway/sessions.ts): the `__Host-ptbk_session` cookie, separate 128-bit token and session ID, idle and absolute timeouts, Fetch Metadata and `Origin` checks, 401 for anonymous API calls and other state-changing requests, and a redirect to sign-in for documents that keeps the requested path as `next`.
 - **Passkeys: merged (M-08).** `/setup` registers the owner's first passkey with the setup secret; `SIGN_IN_PATH` signs in usernameless (discoverable credentials, user verification required); `STEP_UP_PATH` asks the session's own passkeys for a fresh assertion. The relying party is the hostname the browser reached. Each ceremony's challenge is single use, five minutes, and bound to its purpose (and, for step-up, to the session). Passkey revocations through the API apply at once. Sign-in, step-up and registration are audited with the client IP. The pages are the MIT reference pages from [`packages/gateway-pages`](../../packages/gateway-pages/README.md): [passkey-routes.ts](../../apps/mock-engine/src/adapters/http/passkey-routes.ts), [passkey-gateway.ts](../../apps/mock-engine/src/domain/gateway/passkey-gateway.ts), [simplewebauthn-ceremonies.ts](../../apps/mock-engine/src/adapters/simplewebauthn-ceremonies.ts). A Chromium test with a virtual authenticator covers setup and sign-in under `ENGINE_UI_CSP` ([onboarding.spec.ts](../../apps/mock-engine/test/browser/onboarding.spec.ts)).
 - **Dev login: a stand-in for tests.** With `MOCK_DEV_LOGIN=enabled`, `SIGN_IN_PATH` and `STEP_UP_PATH` stay the dev member picker and step-up form ([dev-login.ts](../../apps/mock-engine/src/adapters/http/dev-login.ts)); the passkey endpoints and `/setup` remain. It must never ship.

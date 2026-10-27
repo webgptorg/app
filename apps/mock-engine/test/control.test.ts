@@ -402,7 +402,7 @@ describe('control routes through the tunnel', () => {
             // A GET falls through to the app's routes, where the gateway sends an anonymous visitor to sign in.
             if (method === 'GET') {
                 expect(response.status, `${method} ${path}`).toBe(303);
-                expect(response.headers.get('location'), path).toBe(SIGN_IN_PATH);
+                expect(new URL(response.headers.get('location') ?? '', 'https://x').pathname, path).toBe(SIGN_IN_PATH);
                 continue;
             }
             expect(response.status, `${method} ${path}`).toBe(404);
