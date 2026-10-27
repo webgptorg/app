@@ -27,6 +27,7 @@ export function createTestContext(): PlatformCheckContext & { closeAll(): Promis
             fixtures.push(fixture);
             return fixture;
         },
+        suiteFixture: () => Promise.reject(new Error('no suite fixtures in unit tests')),
         engineTarget: () => null,
         engineCertificateAuthority: () => Promise.resolve(null),
         async closeAll() {

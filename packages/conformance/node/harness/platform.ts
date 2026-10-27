@@ -73,6 +73,13 @@ export interface PlatformCheckContext extends BaseCheckContext {
     engine(options?: EngineOptions): Promise<EngineProcess>;
     /** Registers a fake server or other fixture for teardown and returns it. */
     use<T extends Closable>(fixture: T): T;
+    /**
+     * A fixture the checks of one suite share, such as one engine for the whole `engine-api` suite. The first check
+     * that asks opens it, in a scope of its own: engines, fixtures and directories it obtains last until the suite's
+     * last check ended, and its signal is the run's, not that check's. Later checks get the same promise, so a failed
+     * open fails each of them at once. A failed check's report also carries the output of the fixture's engines.
+     */
+    suiteFixture<T>(suite: string, open: (scope: PlatformCheckContext) => Promise<T>): Promise<T>;
     /** The engine API of an engine, or null when the run has no way to get sessions for it. */
     engineTarget(engine: EngineProcess, endpoint: EngineApiEndpoint): ConformanceTarget | null;
     /** The trust anchor of the engine's own certificates, from the target factory; null when unknown. */

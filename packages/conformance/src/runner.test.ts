@@ -77,7 +77,8 @@ describe('runConformance', () => {
         const report = await runConformance({
             ...options,
             suites: [
-                { id: 'none', checks: [] },
+                // Never asked: the suite runs no check.
+                { id: 'none', checks: [], engineVersion: () => Promise.resolve('0.0.0') },
                 {
                     ...suite(
                         check('t.a.one', () => Promise.resolve({ kind: 'pass' })),
@@ -85,7 +86,10 @@ describe('runConformance', () => {
                     ),
                     engineVersion: () => Promise.resolve('1.2.3'),
                 },
-                { ...suite(), engineVersion: () => Promise.reject(new Error('never asked')) },
+                {
+                    ...suite(check('t.b.unselected', () => fail('not selected'))),
+                    engineVersion: () => Promise.reject(new Error('never asked')),
+                },
             ],
             filter: ({ id }) => id === 't.a.two',
             onResult: ({ id }) => seen.push(id),
@@ -98,7 +102,12 @@ describe('runConformance', () => {
     it('treats a failing version probe as unknown', async () => {
         const report = await runConformance({
             ...options,
-            suites: [{ ...suite(), engineVersion: () => Promise.reject(new Error('down')) }],
+            suites: [
+                {
+                    ...suite(check('t.a.x', () => Promise.resolve({ kind: 'pass' }))),
+                    engineVersion: () => Promise.reject(new Error('down')),
+                },
+            ],
         });
         expect(report.engineVersion).toBeNull();
         expect(

@@ -59,6 +59,8 @@ export interface RunChecksOptions<Context extends BaseCheckContext> extends RunO
     readonly scope: (base: BaseCheckContext, check: ConformanceCheck<Context> | null) => CheckScope<Context>;
     /** A longer timeout for checks that must wait, e.g. for several heartbeat intervals. */
     readonly timeoutFor?: (check: ConformanceCheck<Context>) => number;
+    /** After a suite's last selected check, e.g. to tear down what its checks shared. */
+    readonly afterSuite?: (suite: ConformanceSuite<Context>) => Promise<void>;
 }
 
 const CLEANUP_TIMEOUT_MS = 30_000;
@@ -73,7 +75,8 @@ export async function runConformance(options: RunConformanceOptions): Promise<Co
 
 /**
  * The runner for any kind of check: one at a time, each with its own timeout and context, cleanup always run. The
- * first suite that can name the engine's version does so for the report.
+ * first suite that can name the engine's version does so for the report, asked just before its first selected check,
+ * so a suite that runs no check starts nothing to answer it.
  */
 export async function runChecks<Context extends BaseCheckContext>(
     options: RunChecksOptions<Context>,
@@ -86,20 +89,20 @@ export async function runChecks<Context extends BaseCheckContext>(
     const base = { random, runId };
 
     let engineVersion: string | null = null;
-    for (const suite of options.suites) {
-        if (engineVersion !== null || suite.engineVersion === undefined) continue;
-        const describe = suite.engineVersion.bind(suite);
-        const probe = await runBounded(options.timeoutMs, options, base, null, (ctx: Context) =>
-            describe(ctx).catch(() => null),
-        );
-        await probe.finish({ kind: 'pass' });
-        engineVersion = probe.value ?? null;
-    }
-
     const results: CheckResult[] = [];
     for (const suite of options.suites) {
-        for (const check of suite.checks) {
-            if (options.filter && !options.filter(check)) continue;
+        const checks = suite.checks.filter((check) => options.filter?.(check) ?? true);
+        if (checks.length === 0) continue;
+        options.signal.throwIfAborted();
+        if (engineVersion === null && suite.engineVersion !== undefined) {
+            const describe = suite.engineVersion.bind(suite);
+            const probe = await runBounded(options.timeoutMs, options, base, null, (ctx: Context) =>
+                describe(ctx).catch(() => null),
+            );
+            await probe.finish({ kind: 'pass' });
+            engineVersion = probe.value ?? null;
+        }
+        for (const check of checks) {
             options.signal.throwIfAborted();
             const started = now().getTime();
             const timeoutMs = Math.max(options.timeoutMs, options.timeoutFor?.(check) ?? 0);
@@ -124,6 +127,7 @@ export async function runChecks<Context extends BaseCheckContext>(
             results.push(result);
             options.onResult?.(result);
         }
+        await options.afterSuite?.(suite);
     }
     return { startedAt, finishedAt: now().toISOString(), engineVersion, seed, runId, results };
 }

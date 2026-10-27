@@ -4,7 +4,7 @@ Three ways to test the real engine against our side, from the fastest to the mos
 
 | Way                                                           | What it proves                                                                     | Needs                   | Status                                                       |
 | ------------------------------------------------------------- | ---------------------------------------------------------------------------------- | ----------------------- | ------------------------------------------------------------ |
-| [(a) The conformance CLI](#a-the-conformance-cli)             | Each contract on its own, check by check, with a report                            | Node 24                 | Every suite works                                            |
+| [(a) The conformance CLI](#a-the-conformance-cli)             | Each contract on its own, check by check, with a report                            | Node 24                 | Every suite works, in one command                            |
 | [(b) The local dev stack](#b-the-local-dev-stack)             | The engine with our real dashboard and relays, clicked through in your own browser | Docker or OrbStack, Bun | Works for registration, heartbeat and tunnel; the UI pending |
 | [(c) The full end-to-end suite](#c-the-full-end-to-end-suite) | Everything, including NAT, proxies, failover, ACME and the UI flows under the CSP  | Docker or OrbStack, Bun | Pending E-03                                                 |
 
@@ -19,9 +19,36 @@ node "$PLATFORM_DIR/packages/conformance/dist/ptbk-conformance.js" --help
 
 [conformance.md](conformance.md) describes the flags and the report, and the [package README](../../packages/conformance/README.md) what every check does to the engine. The exit code is 0 only when no check failed.
 
-### Against a running engine: the engine API suite
+### One command: every suite
 
-This suite takes `--base-url`: start your conformance build so that its gateway answers on its own hostname, then point the suite at it. The local dev stack gives you that without writing anything: link the engine as in [(b)](#b-the-local-dev-stack), and it answers at `https://<engineId>.engine.test/` through relay-a on 127.0.0.1:443.
+The [package README](../../packages/conformance/README.md#starting-the-engine) and [conformance.md](conformance.md#an-engine-the-harness-starts) are authoritative for the flags; this is the short version.
+
+With `--engine-cmd`, the CLI starts the engine itself, in a fresh data directory, and plays every peer the engine talks to on loopback, so it can send what a real peer never would. This one command runs every suite, the engine API included:
+
+```sh
+node "$PLATFORM_DIR/packages/conformance/dist/ptbk-conformance.js" \
+  --engine-cmd "<start command of your conformance build>" --engine-cwd "<directory to run it in>" \
+  --engine-session-cmd "<your engine> conformance-session" \
+  --engine-ca-file "{dataDir}/<path of its development CA certificate>" \
+  --suite engine-api,registration,heartbeat,tunnel,ui-loader \
+  --report junit --out conformance-report.xml
+```
+
+- `--engine-session-cmd` gives the checks that use the engine API (the whole `engine-api` suite, `heartbeat.stale-ts.skew-shown`, every `ui-loader` check) owner and member sessions from your [`conformance-session` command](identity-and-registration.md#conformance-sessions). `--engine-ca-file` names the CA your conformance build's certificates chain to, with `{dataDir}` standing for the data directory the harness gave it; without it, the engine's certificate is checked only for its name and dates.
+- `--suite` is repeatable or takes a comma-separated list; without it, every suite runs, in the order above.
+- `--heartbeat-interval-s <n>` tells the harness your engine was started with a shorter development interval (put that setting in `--engine-cmd`). The other heartbeat checks then run faster and `heartbeat.cadence.interval` skips, so run once without it.
+- `--no-gateway` skips the gateway check, for an engine that serves its API without the gateway in front of it while you build.
+
+- **`engine-api`.** The CLI starts one engine for the whole suite, registers it with its fake dashboard and reaches the engine's own origin through its fake relay, as a browser would through ours: TLS ended by the engine inside a tunnel stream, `Origin` and `Sec-Fetch-Site` set. The harness knows the engine's public key from the registration, so `engine-api.engine.id-matches-key` runs. The checks create and delete their own resources on that engine. `engine-api.cross-member.private-resources` skips in this mode, because which resources stay private to one member is engine policy that only a target module can name (below).
+- **`registration` and `heartbeat`.** The CLI acts as the dashboard API with real link code semantics, scripted error answers and a request log. It checks the signed request, the engine ID, the data directory and key file modes (and that loose modes refuse to start), that the link code and key never reach the output or the disk, the tolerant and the refused responses, one check per problem code, and the heartbeat's signature, body, `seq` across restarts, 60 s cadence and reaction to errors.
+- **`tunnel`.** The CLI acts as a relay: it sends unsorted version and feature lists, a challenge for another relay, a downgraded `ready`, every close code and invalid frames, and checks what the engine signs, sends and does next.
+- **`ui-loader`.** The CLI acts as the release store, serving the release mirror layout v1: releases signed with each `ed25519-vectors.json` case, payloads changed after signing, wrong provenance identities, backdated `publishedAt`, unsafe archives, and expired, rolled-back or revoking lists. It restarts the engine with `PTBK_UPDATE_POLICY=pinned` and `PTBK_PINNED_VERSION`, and reads what `GET /security` reports and which files the engine serves. It runs against the engine's **conformance build**, the only build allowed to read `PTBK_CONFORMANCE_TRUST_FILE`, because the suite's releases are signed under an ephemeral Sigstore trust root ([ui-loader.md](ui-loader.md#testing-the-loader-conformance-build)).
+
+**The launch contract.** The harness removes `HTTPS_PROXY`, `NO_PROXY` and every inherited `PTBK_*` variable from the engine's environment and sets its own (the [harness table](#engine-settings-the-harness-uses)). Development settings of your own go into the command itself (`env MY_SETTING=1 node dist/server.mjs`). The engine must create `PTBK_DATA_DIR` itself, log to stdout or stderr, exit non-zero when it refuses to start, and exit within 10 s of SIGTERM. A failed check's report carries the end of the engine's output.
+
+### Against a running engine: the engine API suite on its own
+
+The command above runs the engine API suite too. To iterate on the API against an engine you run yourself, for example inside the local dev stack, the same suite also takes `--base-url`: start your conformance build so that its gateway answers on its own hostname, then point the suite at it. The local dev stack gives you that without writing anything: link the engine as in [(b)](#b-the-local-dev-stack), and it answers at `https://<engineId>.engine.test/` through relay-a on 127.0.0.1:443.
 
 ```sh
 docker cp "my-engine:/data/<path of its development CA certificate>" ./engine-ca.pem
@@ -58,34 +85,9 @@ export async function createConformanceTarget({ baseUrl, fetch }) {
 ```
 
 - **Hostname.** `GET /engine` must report the hostname the request came in on, so use the engine's own hostname, not `localhost`. Names under `.localhost` resolve to loopback on most systems (our CI relies on it), so an engine domain of `engine.localhost` needs no DNS; where they do not, add the name to `/etc/hosts`. Before the tunnel works, the gateway can answer on a local port under such a name while you build the API.
-- **Sessions.** The target module gives the suite an owner session and members with chosen permissions. They come from the `conformance-session` command that only the engine's conformance build has; with `--engine-cmd` the harness runs it itself through `--engine-session-cmd`. For a first run, set `PTBK_CONFORMANCE_OWNER_COOKIE=<name>=<value>` to a session cookie you copied from a browser, **instead of** `--target-module` (the CLI refuses both at once): the owner checks run and member checks skip.
+- **Sessions.** The target module gives the suite an owner session and members with chosen permissions. They come from the `conformance-session` command that only the engine's conformance build has; with `--engine-cmd` the harness runs it itself through `--engine-session-cmd`. A target module can also report `memberPrivateResources`, so `engine-api.cross-member.private-resources` runs. For a first run, set `PTBK_CONFORMANCE_OWNER_COOKIE=<name>=<value>` to a session cookie you copied from a browser, **instead of** `--target-module` (the CLI refuses both at once): the owner checks run and member checks skip.
 - **Iterating.** `--filter <text>` runs only the checks whose ID contains the text; `--seed <n>` repeats a run's names and values; `--timeout-ms <n>` raises the per-check timeout for a slow engine.
 - **What it leaves behind.** Every resource it creates is named `conformance-<runId>-…` and removed after each check, except chats, which the API cannot delete. Run it against a test engine.
-
-### With `--engine-cmd`: registration, heartbeat, tunnel and UI loader
-
-The [package README](../../packages/conformance/README.md#starting-the-engine) and [conformance.md](conformance.md#an-engine-the-harness-starts) are authoritative for the flags; this is the short version.
-
-With `--engine-cmd`, the CLI starts the engine itself, in a fresh data directory, and plays every peer the engine talks to on loopback, so it can send what a real peer never would:
-
-```sh
-node "$PLATFORM_DIR/packages/conformance/dist/ptbk-conformance.js" \
-  --engine-cmd "<start command of your conformance build>" --engine-cwd "<directory to run it in>" \
-  --engine-session-cmd "<your engine> conformance-session" \
-  --engine-ca-file "{dataDir}/<path of its development CA certificate>" \
-  --suite registration,heartbeat,tunnel,ui-loader \
-  --report junit --out platform-report.xml
-```
-
-- `--engine-session-cmd` gives the checks that read the engine API (`heartbeat.stale-ts.skew-shown`, every `ui-loader` check) owner sessions from your [`conformance-session` command](identity-and-registration.md#conformance-sessions). `--engine-ca-file` names the CA your conformance build's certificates chain to, with `{dataDir}` standing for the data directory the harness gave it; without it, the engine's certificate is checked only for its name and dates.
-- `--suite` is repeatable or takes a comma-separated list; without it, every platform suite runs. `engine-api` is not one of them: it runs against `--base-url` (above).
-- `--heartbeat-interval-s <n>` tells the harness your engine was started with a shorter development interval (put that setting in `--engine-cmd`). The other heartbeat checks then run faster and `heartbeat.cadence.interval` skips, so run once without it.
-
-- **`registration` and `heartbeat`.** The CLI acts as the dashboard API with real link code semantics, scripted error answers and a request log. It checks the signed request, the engine ID, the data directory and key file modes (and that loose modes refuse to start), that the link code and key never reach the output or the disk, the tolerant and the refused responses, one check per problem code, and the heartbeat's signature, body, `seq` across restarts, 60 s cadence and reaction to errors.
-- **`tunnel`.** The CLI acts as a relay: it sends unsorted version and feature lists, a challenge for another relay, a downgraded `ready`, every close code and invalid frames, and checks what the engine signs, sends and does next.
-- **`ui-loader`.** The CLI acts as the release store, serving the release mirror layout v1: releases signed with each `ed25519-vectors.json` case, payloads changed after signing, wrong provenance identities, backdated `publishedAt`, unsafe archives, and expired, rolled-back or revoking lists. It restarts the engine with `PTBK_UPDATE_POLICY=pinned` and `PTBK_PINNED_VERSION`, and reads what `GET /security` reports and which files the engine serves. It runs against the engine's **conformance build**, the only build allowed to read `PTBK_CONFORMANCE_TRUST_FILE`, because the suite's releases are signed under an ephemeral Sigstore trust root ([ui-loader.md](ui-loader.md#testing-the-loader-conformance-build)).
-
-**The launch contract.** The harness removes `HTTPS_PROXY`, `NO_PROXY` and every inherited `PTBK_*` variable from the engine's environment and sets its own (the [harness table](#engine-settings-the-harness-uses)). Development settings of your own go into the command itself (`env MY_SETTING=1 node dist/server.mjs`). The engine must create `PTBK_DATA_DIR` itself, log to stdout or stderr, exit non-zero when it refuses to start, and exit within 10 s of SIGTERM. A failed check's report carries the end of the engine's output.
 
 ## (b) The local dev stack
 

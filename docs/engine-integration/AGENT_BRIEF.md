@@ -65,26 +65,25 @@ Never skip, weaken or filter out a check to get green. A check may report `skip`
 
 The engine is done when all of these hold. Run them on a **conformance build** of the engine (the build that ships `conformance-session` and may read `PTBK_CONFORMANCE_TRUST_FILE`; a release build refuses both).
 
-1. **The platform suites pass**, in one command that starts the engine itself and plays the dashboard, the relays and the release store:
+1. **Every conformance suite passes**, in one command that starts the engine itself and plays the dashboard, the relays and the release store, and reaches the engine API through its relay:
 
    ```sh
    node "<PLATFORM_DIR>/packages/conformance/dist/ptbk-conformance.js" \
      --engine-cmd "<start command of your conformance build>" --engine-cwd "<ENGINE_DIR>/<package>" \
      --engine-session-cmd "<your engine> conformance-session" \
      --engine-ca-file "{dataDir}/<path of its development CA certificate>" \
-     --suite registration,heartbeat,tunnel,ui-loader \
-     --report junit --out platform-report.xml
+     --suite engine-api,registration,heartbeat,tunnel,ui-loader \
+     --report junit --out conformance-report.xml
    ```
 
    Run it without any heartbeat interval override, so `heartbeat.cadence.interval` proves the production 60 s. It exits 0 only when no check failed.
 
-2. **The `engine-api` suite passes** against the running engine. The CLI runs it only against a URL (`--base-url`), never with `--engine-cmd`, so it is a second command: `testing-against-the-platform.md`, section "Against a running engine", has it with the target module that calls your `conformance-session` command.
-3. **The local dev stack works** with your engine in place of the mock (`testing-against-the-platform.md`, section "(b) The local dev stack"). Link it with a link code, see it online in the dashboard, open it through the relay and sign in with a passkey, with no CSP violation in the browser console. The UI part of this check waits for the platform's task E-03, which re-signs the stack's UI releases for a conformance build.
-4. **No skips except these:** `capability-not-advertised` for capabilities you chose not to ship.
-5. **Every `ENG-xx` row** in `checklist.md` is implemented, or is marked in the plan as not required yet.
-6. **The engine repository's tests and lint pass**, and the changes are documented the way its own instructions require.
+2. **The local dev stack works** with your engine in place of the mock (`testing-against-the-platform.md`, section "(b) The local dev stack"). Link it with a link code, see it online in the dashboard, open it through the relay and sign in with a passkey, with no CSP violation in the browser console. The UI part of this check waits for the platform's task E-03, which re-signs the stack's UI releases for a conformance build.
+3. **No skips except these:** `capability-not-advertised` for capabilities you chose not to ship, and `engine-api.cross-member.private-resources`, which needs a target module (`testing-against-the-platform.md`, section "Against a running engine").
+4. **Every `ENG-xx` row** in `checklist.md` is implemented, or is marked in the plan as not required yet.
+5. **The engine repository's tests and lint pass**, and the changes are documented the way its own instructions require.
 
-Then write a short report for the maintainer: what you built, where it lives, the two conformance summaries (`passed`, `failed`, `skipped`), the dev stack result, and every open question or contract proposal from the next section.
+Then write a short report for the maintainer: what you built, where it lives, the conformance summary (`passed`, `failed`, `skipped`), the dev stack result, and every open question or contract proposal from the next section.
 
 ## When a contract looks wrong
 

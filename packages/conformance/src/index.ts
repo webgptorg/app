@@ -37,6 +37,6 @@ export { ENGINE_API_SUITE };
 
 /**
  * Every suite that runs against an engine at a base URL, in the order they run. Suites that start the engine (`tunnel`,
- * `registration`, `ui-loader`) are platform suites (`node/`).
+ * `registration`, `ui-loader`) are platform suites (`node/`), which also run these against an engine they start.
  */
 export const ALL_SUITES: readonly ConformanceSuite[] = [ENGINE_API_SUITE];

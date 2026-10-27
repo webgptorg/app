@@ -4,11 +4,11 @@ import type { CheckResult } from '../../src/index';
 import { writeJunitReport } from '../../src/index';
 import { REGISTRATION_SUITE } from '../index';
 import { SELF_TEST_HEARTBEAT_INTERVAL_S, fakeEngineCommand } from '../testing/engines';
-import type { EngineCommand } from './engine-process';
+import type { EngineCommand, EngineProcess } from './engine-process';
 import { liveEngineGroups } from './engine-process';
 import { runPlatformConformance } from './run-platform';
 import { startRegisteredEngine } from '../fakes/dashboard';
-import type { PlatformSuite } from './platform';
+import type { PlatformCheckContext, PlatformSuite } from './platform';
 import { chmod, mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -226,5 +226,127 @@ describe('the run directory', () => {
         } finally {
             await rm(root, { recursive: true, force: true });
         }
+    });
+});
+
+describe('suite fixtures', () => {
+    const SHARED_ENGINE: EngineCommand = {
+        command: 'echo shared-engine-says-hello; exec sleep 600',
+        cwd: process.cwd(),
+    };
+
+    /** Two checks sharing one engine, then a suite that looks at it after the first suite ended. */
+    function sharedEngineSuites(open: (ctx: PlatformCheckContext) => Promise<EngineProcess>) {
+        let after: EngineProcess | null = null;
+        const share = (ctx: PlatformCheckContext) => ctx.suiteFixture('shared', open);
+        const suites: PlatformSuite[] = [
+            {
+                id: 'shared',
+                checks: [
+                    {
+                        id: 'shared.engine.first',
+                        suite: 'shared',
+                        title: 'Opens the fixture',
+                        async run(ctx) {
+                            return (await share(ctx)).running ? { kind: 'pass' } : { kind: 'fail', detail: 'not up' };
+                        },
+                    },
+                    {
+                        id: 'shared.engine.second',
+                        suite: 'shared',
+                        title: 'Gets the same engine and fails, so its report carries that engine',
+                        async run(ctx) {
+                            after = await share(ctx);
+                            return { kind: 'fail', detail: after.running ? 'on purpose' : 'not up' };
+                        },
+                    },
+                ],
+            },
+            {
+                id: 'later',
+                checks: [
+                    {
+                        id: 'later.engine.stopped',
+                        suite: 'later',
+                        title: 'The shared engine stopped after its suite',
+                        run: () =>
+                            Promise.resolve(
+                                after?.running === false ? { kind: 'pass' } : { kind: 'fail', detail: 'still up' },
+                            ),
+                    },
+                ],
+            },
+        ];
+        return suites;
+    }
+
+    it('share one engine across a suite, stop it after the suite and report its output', async () => {
+        let opened = 0;
+        const cleanups: string[] = [];
+        const report = await runPlatformConformance({
+            command: SHARED_ENGINE,
+            suites: sharedEngineSuites(async (ctx) => {
+                opened++;
+                ctx.resources.defer(() => Promise.resolve(cleanups.push('deferred')));
+                ctx.resources.defer(() => Promise.reject(new Error('cleanup broke')));
+                const engine = await ctx.engine();
+                await engine.start();
+                while (!engine.logs().includes('hello')) await new Promise((resolve) => setTimeout(resolve, 10));
+                return engine;
+            }),
+            timeoutMs: 5000,
+            stopGraceMs: 200,
+            signal: new AbortController().signal,
+        });
+        expect(opened).toBe(1);
+        expect(cleanups).toEqual(['deferred']);
+        expect(report.results.map((result) => [result.id, result.outcome.kind])).toEqual([
+            ['shared.engine.first', 'pass'],
+            ['shared.engine.second', 'fail'],
+            ['later.engine.stopped', 'pass'],
+        ]);
+        expect(report.results[1]?.outcome).toEqual({ kind: 'fail', detail: 'on purpose' });
+        expect(report.results[1]?.engineOutput).toContain(
+            '--- engine 1, shared by the suite: 1 starts, exits: none ---',
+        );
+        expect(report.results[1]?.engineOutput).toContain('shared-engine-says-hello');
+    });
+
+    it('fail every check that asks when the fixture cannot be opened, opening it once', async () => {
+        let opened = 0;
+        const report = await runPlatformConformance({
+            command: SHARED_ENGINE,
+            suites: sharedEngineSuites(() => {
+                opened++;
+                throw new Error('no engine today');
+            }),
+            timeoutMs: 5000,
+            signal: new AbortController().signal,
+        });
+        expect(opened).toBe(1);
+        expect(report.results.slice(0, 2).map((result) => result.outcome)).toEqual([
+            { kind: 'fail', detail: 'unexpected Error: no engine today' },
+            { kind: 'fail', detail: 'unexpected Error: no engine today' },
+        ]);
+    });
+
+    it('are torn down when the run is cancelled', async () => {
+        const controller = new AbortController();
+        let engine: EngineProcess | null = null;
+        await expect(
+            runPlatformConformance({
+                command: SHARED_ENGINE,
+                suites: sharedEngineSuites(async (ctx) => {
+                    engine = await ctx.engine();
+                    await engine.start();
+                    controller.abort();
+                    return engine;
+                }),
+                timeoutMs: 5000,
+                stopGraceMs: 200,
+                signal: controller.signal,
+            }),
+        ).rejects.toThrow();
+        expect((engine as EngineProcess | null)?.running).toBe(false);
     });
 });

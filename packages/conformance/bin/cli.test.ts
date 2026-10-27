@@ -14,11 +14,25 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { SessionSubject } from '../src/index';
 import type { FakeEngine, FakeEngineOptions } from '../src/testing/fake-engine';
 import { createFakeEngine } from '../src/testing/fake-engine';
-import { SELF_TEST_HEARTBEAT_INTERVAL_S, fakeEngineCommand } from '../node/testing/engines';
+import { freeLoopbackPort } from '../node/harness/loopback';
+import { SELF_TEST_HEARTBEAT_INTERVAL_S, fakeEngineCommand, mockEngineCommand } from '../node/testing/engines';
 import type { CliIo } from './cli';
 import { USAGE, runCli } from './cli';
 
 const BUNDLE = fileURLToPath(new URL('../dist/ptbk-conformance.js', import.meta.url));
+
+/** A fixed control port for the mock's conformance-session command; engines the harness starts run one at a time. */
+const MOCK_CONTROL_ENV = `MOCK_CONTROL=enabled MOCK_CONTROL_HOST=127.0.0.1 MOCK_CONTROL_PORT=${String(await freeLoopbackPort())}`;
+
+/** Fast checks, one per suite; `engine-api.engine.id-matches-key` passes only if the harness names the key. */
+const ONE_CHECK_PER_SUITE = [
+    'engine-api.engine.id-matches-key',
+    'registration.request.signature-verifies',
+    'heartbeat.signature.verifies',
+    'tunnel.dial.websocket-upgrade',
+    'ui-loader.install.pinned-valid',
+];
+const GATEWAY_CHECK = 'engine-api.gateway.cross-site-refused';
 const run = promisify(execFile);
 
 /** Serves a fake engine on plain HTTP, plus `/__session` so a separate process can sign in. */
@@ -154,7 +168,9 @@ describe('runCli', () => {
             'give one of',
         ],
         [['--base-url', 'https://engine.test', '--suite', 'registration'], 'registration starts the engine itself'],
-        [['--engine-cmd', 'true', '--suite', 'engine-api'], 'engine-api runs against --base-url'],
+        [['--engine-cmd', 'true', '--target-module', 'x.mjs'], '--target-module is for --base-url'],
+        [['--engine-cmd', 'true', '--mock-control-url', 'http://x'], '--mock-control-url is for --base-url'],
+        [['--engine-cmd', 'true', '--engine-public-key', 'k'], '--engine-public-key is for --base-url'],
         [['--engine-cmd', 'true', '--suite', 'nope'], 'unknown suite nope'],
         [['--base-url', 'https://engine.test', '--suite', 'tunnel'], 'tunnel starts the engine itself'],
         [['--base-url', 'https://engine.test', '--suite', 'ui-loader'], 'ui-loader starts the engine itself'],
@@ -263,6 +279,49 @@ describe('runCli', () => {
         expect(streams.err.join('')).toContain('pass  registration.request.signature-verifies');
         expect(streams.out.join('')).toContain('<testsuite name="registration"');
     });
+
+    it.each([
+        ['its control listener', mockEngineCommand().command, ['--mock-control']],
+        [
+            'its conformance-session command, without the gateway',
+            `${MOCK_CONTROL_ENV} ${mockEngineCommand().command}`,
+            [
+                '--engine-session-cmd',
+                `${MOCK_CONTROL_ENV} ${mockEngineCommand().command} conformance-session`,
+                '--engine-ca-file',
+                '{dataDir}/dev-ca/ca-cert.pem',
+                '--no-gateway',
+            ],
+        ],
+    ])(
+        'runs every suite, engine-api included, against mock engines it starts, with sessions from %s',
+        async (_name, engineCmd, extra) => {
+            const streams = io({ env: { PATH: process.env['PATH'] ?? '/usr/bin:/bin' } });
+            const argv = [
+                '--engine-cmd',
+                engineCmd,
+                ...extra,
+                '--heartbeat-interval-s',
+                String(SELF_TEST_HEARTBEAT_INTERVAL_S),
+                '--suite',
+                'engine-api,registration,heartbeat,tunnel,ui-loader',
+                ...[...ONE_CHECK_PER_SUITE, GATEWAY_CHECK].flatMap((id) => ['--filter', id]),
+                '--out',
+                join(directory, 'combined.json'),
+            ];
+            expect(await runCli(argv, streams), streams.err.join('')).toBe(0);
+            const report = JSON.parse(await readFile(join(directory, 'combined.json'), 'utf8')) as {
+                engineVersion: string | null;
+                results: { id: string; outcome: { kind: string } }[];
+            };
+            expect(report.engineVersion).toMatch(/^\d+\.\d+\.\d+/);
+            expect(Object.fromEntries(report.results.map(({ id, outcome }) => [id, outcome.kind]))).toEqual({
+                ...Object.fromEntries(ONE_CHECK_PER_SUITE.map((id) => [id, 'pass'])),
+                [GATEWAY_CHECK]: extra.includes('--no-gateway') ? 'skip' : 'pass',
+            });
+        },
+        120_000,
+    );
 
     it('signs in through the mock control listener', async () => {
         const engine = await createFakeEngine();
