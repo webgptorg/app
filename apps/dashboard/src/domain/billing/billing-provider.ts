@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import type { BillingStatus } from '../../shared/billing';
+import type { BillingStatus, CheckoutReturnPage } from '../../shared/billing';
 import type { OrgId } from '../ids';
 
 /** A subscription as the provider holds it now, already mapped to our vocabulary by the adapter. */
@@ -43,8 +43,15 @@ export interface BillingProvider {
         input: { readonly orgId: OrgId; readonly email: string },
         signal: AbortSignal,
     ): Promise<{ readonly customerId: string }>;
+    /** `trialDays` null: no trial. Checkout returns the browser to `returnTo`'s page only, never to a given URL. */
     createCheckoutSession(
-        input: { readonly orgId: OrgId; readonly customerId: string; readonly priceId: string },
+        input: {
+            readonly orgId: OrgId;
+            readonly customerId: string;
+            readonly priceId: string;
+            readonly trialDays: number | null;
+            readonly returnTo: CheckoutReturnPage;
+        },
         signal: AbortSignal,
     ): Promise<{ readonly url: string }>;
     createPortalSession(input: { readonly customerId: string }, signal: AbortSignal): Promise<{ readonly url: string }>;

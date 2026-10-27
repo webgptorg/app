@@ -3,9 +3,11 @@ import type { Hono } from 'hono';
 import { readEngineOverview, readEngineOverviews, type EngineOverview } from '../../domain/engines/engine-overview';
 import { revokeEngine } from '../../domain/engines/revoke-engine';
 import type { EngineCreationPolicy } from '../../domain/registration/engine-creation-policy';
+import { linkCodeIdSchema } from '../../domain/ids';
 import { issueLinkCode } from '../../domain/registration/issue-link-code';
+import { readLinkCodeStatus } from '../../domain/registration/read-link-code-status';
 import { OWNER_REVOKED } from '../../domain/registration/engine-store';
-import { apiRoutes, type EngineView } from '../../shared/api/routes';
+import { apiRoutes, type EngineView, type LinkEligibilityView } from '../../shared/api/routes';
 import { LINK_CODE_PLACEHOLDER } from '../config';
 import type { DashboardDeps } from '../deps';
 import type { RouteBinder } from './bind-route';
@@ -68,6 +70,7 @@ export function bindEngineRoutes(
             return {
                 kind: 'ok',
                 body: {
+                    linkCodeId: outcome.linkCodeId,
                     linkCode: outcome.linkCode,
                     installCommand: deps.config.installCommand.replace(LINK_CODE_PLACEHOLDER, () => outcome.linkCode),
                     expiresAt: outcome.expiresAt,
@@ -80,6 +83,35 @@ export function bindEngineRoutes(
                 return { kind: 'problem', status: 403, code: outcome.reason };
             case 'rate-limited':
                 return { kind: 'problem', status: 429, code: 'rate-limited' };
+        }
+    });
+
+    // Before `getEngine`, whose `:engineId` would otherwise claim the path.
+    bind(router, mount, apiRoutes.linkEligibility, async ({ request, session }) => {
+        const decision = await deps.policy.checkEligibility(session.actor.orgId, request.signal);
+        const eligibility: LinkEligibilityView['eligibility'] =
+            decision.kind === 'allowed' ? 'allowed' : decision.reason;
+        return { kind: 'ok', body: { eligibility, linkCodeTtlS: Math.round(deps.config.linkCodeTtlMs / 1000) } };
+    });
+
+    bind(router, mount, apiRoutes.getLinkCode, async ({ input, session }) => {
+        const status = await readLinkCodeStatus(
+            deps,
+            session.actor.orgId,
+            linkCodeIdSchema.parse(input.params.linkCodeId),
+        );
+        switch (status.kind) {
+            case 'not-found':
+                return { kind: 'problem', status: 404, code: 'not-found' };
+            case 'pending':
+                return { kind: 'ok', body: { status: 'pending' as const, expiresAt: status.expiresAt } };
+            case 'expired':
+                return { kind: 'ok', body: { status: 'expired' as const } };
+            case 'linked':
+                return {
+                    kind: 'ok',
+                    body: { status: 'linked' as const, engineId: status.engineId, hostname: status.hostname },
+                };
         }
     });
 

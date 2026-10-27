@@ -42,6 +42,7 @@ export const TEST_PLANS = {
             stripePriceId: TEST_PRICE_IDS.scale,
             features: ['engines.create'],
             quotas: { 'engines.max': null, 'custom-domains.max': 5 },
+            trialDays: 14,
         },
     ],
 } as const;

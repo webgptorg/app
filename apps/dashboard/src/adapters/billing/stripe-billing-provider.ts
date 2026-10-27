@@ -3,6 +3,7 @@ import { z } from 'zod';
 
 import { billingStatusFromStripe } from '../../domain/billing/billing-state';
 import type { BillingProvider, ProviderSubscription, WebhookVerification } from '../../domain/billing/billing-provider';
+import { CHECKOUT_RETURN_PATHS } from '../../shared/billing';
 
 /** Per Stripe API call; there is one retry on network errors, with Stripe's idempotency keys. */
 const REQUEST_TIMEOUT_MS = 10_000;
@@ -119,7 +120,8 @@ export function createStripeBillingProvider(deps: {
             return { customerId: customer.id };
         },
 
-        async createCheckoutSession({ orgId, customerId, priceId }, signal) {
+        async createCheckoutSession({ orgId, customerId, priceId, trialDays, returnTo }, signal) {
+            const returnUrl = `${dashboardOrigin}${CHECKOUT_RETURN_PATHS[returnTo]}`;
             const session = await untilAborted(signal, () =>
                 api.checkout.sessions.create({
                     mode: 'subscription',
@@ -127,9 +129,15 @@ export function createStripeBillingProvider(deps: {
                     client_reference_id: orgId,
                     // Quantity stays 1 until the pricing model (per engine, seat or agent) is decided.
                     line_items: [{ price: priceId, quantity: 1 }],
-                    subscription_data: { metadata: { org_id: orgId } },
-                    success_url: `${dashboardOrigin}/billing?checkout=success`,
-                    cancel_url: `${dashboardOrigin}/billing?checkout=cancel`,
+                    subscription_data: {
+                        metadata: { org_id: orgId },
+                        ...(trialDays === null ? {} : { trial_period_days: trialDays }),
+                    },
+                    // A trial still takes the card: engines need a paid, verified account (spec, Abuse on our
+                    // domains, item 4), and the subscription goes on without a gap when the trial ends.
+                    ...(trialDays === null ? {} : { payment_method_collection: 'always' as const }),
+                    success_url: `${returnUrl}?checkout=success`,
+                    cancel_url: `${returnUrl}?checkout=cancel`,
                 }),
             );
             if (session.url === null) {

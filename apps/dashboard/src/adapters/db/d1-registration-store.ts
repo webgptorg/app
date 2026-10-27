@@ -80,6 +80,21 @@ export function createD1LinkCodeStore(db: Database): LinkCodeStore {
             return row?.total ?? 0;
         },
 
+        async findState(orgId, id, now) {
+            const row = await db
+                .select({ expiresAt: linkCodes.expiresAt, engineId: linkCodes.engineId })
+                .from(linkCodes)
+                .where(and(eq(linkCodes.id, id), eq(linkCodes.orgId, orgId)))
+                .get();
+            if (row === undefined) {
+                return null;
+            }
+            if (row.engineId !== null) {
+                return { kind: 'linked', engineId: EngineId.parse(row.engineId) };
+            }
+            return now < row.expiresAt ? { kind: 'pending', expiresAt: row.expiresAt } : { kind: 'expired' };
+        },
+
         async findRedeemable(codeHash, now) {
             const row = await db
                 .select({ orgId: linkCodes.orgId })

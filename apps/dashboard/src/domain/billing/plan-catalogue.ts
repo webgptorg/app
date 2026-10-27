@@ -26,6 +26,8 @@ export interface Plan {
     readonly features: readonly Feature[];
     /** `null` is unlimited. */
     readonly quotas: Readonly<Record<Quota, number | null>>;
+    /** Days of free trial Checkout grants an organization's first subscription; null for none (and for `none`). */
+    readonly trialDays: number | null;
 }
 
 /** A plan Checkout can sell. */
@@ -64,6 +66,7 @@ const paidPlanSchema = z.strictObject({
     stripePriceId: z.string().regex(/^price_[A-Za-z0-9]{1,64}$/),
     features: featuresSchema,
     quotas: quotasSchema,
+    trialDays: z.int().min(1).max(30).optional(),
 });
 
 /** The JSON shape of the `BILLING_PLANS` var. */
@@ -99,9 +102,14 @@ export function createPlanCatalogue(parsed: z.output<typeof planCatalogueSchema>
         price: null,
         stripeProductId: null,
         stripePriceId: null,
+        trialDays: null,
         ...parsed.none,
     });
-    const plans = Object.freeze(parsed.plans.map(({ price, ...plan }) => freeze({ ...plan, price: price ?? null })));
+    const plans = Object.freeze(
+        parsed.plans.map(({ price, trialDays, ...plan }) =>
+            freeze({ ...plan, price: price ?? null, trialDays: trialDays ?? null }),
+        ),
+    );
     return Object.freeze({
         none,
         plans,

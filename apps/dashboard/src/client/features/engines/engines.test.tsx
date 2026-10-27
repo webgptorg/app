@@ -115,6 +115,24 @@ describe('engine list', () => {
         await expectNoAxeViolations(app.container);
     });
 
+    it('labels an online engine without an owner, still with its reachability', async () => {
+        const base = engineView();
+        renderApp({
+            path: '/engines',
+            session: OWNER,
+            script: engines(
+                engineView({
+                    status: 'owner-pending',
+                    heartbeat: base.heartbeat === null ? null : { ...base.heartbeat, members: 0 },
+                    reachableRelays: 2,
+                }),
+            ),
+        });
+        expect(await screen.findByText('Owner not set up')).toBeTruthy();
+        expect(screen.queryByText('Online')).toBeNull();
+        expect(screen.getByText('Reachable through 2 relays')).toBeTruthy();
+    });
+
     it('renders an engine whose status could not be read as unknown, not as an error', async () => {
         renderApp({
             path: '/engines',

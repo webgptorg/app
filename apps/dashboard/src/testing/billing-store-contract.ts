@@ -138,6 +138,29 @@ export function describeBillingStoreContract(name: string, makeFixture: () => Bi
                 },
             );
 
+            it('records the first trial of an organization once, and only for a trialing subscription', async () => {
+                const orgA = await fixture.addOrg();
+                const orgB = await fixture.addOrg();
+                await store.recordEvent(event(), subscriptionRecord(orgA, { status: 'active' }));
+                expect(await store.findTrialStartedAt(orgA)).toBeNull();
+                const trial = subscriptionRecord(orgA, { status: 'trialing', updatedAt: NOW + 10 });
+                await store.recordEvent(event(), trial);
+                expect(await store.findTrialStartedAt(orgA)).toBe(NOW + 10);
+                await store.recordEvent(event(), { ...trial, status: 'active', updatedAt: NOW + 20 });
+                await store.recordEvent(event(), subscriptionRecord(orgA, { status: 'trialing', updatedAt: NOW + 30 }));
+                expect(await store.findTrialStartedAt(orgA)).toBe(NOW + 10);
+                expect(await store.findTrialStartedAt(orgB)).toBeNull();
+            });
+
+            it('remembers a trial even when a late event cannot replace the stored subscription', async () => {
+                const orgId = await fixture.addOrg();
+                const current = subscriptionRecord(orgId, { status: 'active', updatedAt: NOW + 10 });
+                await store.recordEvent(event(), current);
+                await store.recordEvent(event(), { ...current, status: 'trialing', updatedAt: NOW + 5 });
+                expect(await store.findSubscription(orgId)).toEqual(current);
+                expect(await store.findTrialStartedAt(orgId)).toBe(NOW + 5);
+            });
+
             it('prunes only events received before the cut-off', async () => {
                 const old = event(NOW - 1);
                 const boundary = event(NOW);

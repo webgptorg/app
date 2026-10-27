@@ -49,7 +49,7 @@ const ALLOWLIST: Readonly<Record<string, readonly string[]>> = {
     ],
     // One-time link codes: the code only as SHA-256, who issued it for which organization, a 30-minute lifetime, and
     // the engine that redeemed it.
-    link_codes: ['code_hash', 'org_id', 'created_by_user_id', 'created_at', 'expires_at', 'used_at', 'engine_id'],
+    link_codes: ['code_hash', 'org_id', 'created_by_user_id', 'created_at', 'expires_at', 'used_at', 'engine_id', 'id'],
     memberships: ['org_id', 'user_id', 'role', 'created_at'],
     // Relay presence (R-07): which engine IDs each relay last reported a ready tunnel for, and when it reported. No
     // addresses, no connect times, no history: each report replaces the relay's rows.
@@ -57,7 +57,7 @@ const ALLOWLIST: Readonly<Record<string, readonly string[]>> = {
     relay_presence_reports: ['relay_id', 'reported_at'],
     // Relay keys: the token only as SHA-256, which relay it belongs to, its lifetime and last use (D-04).
     relay_tokens: ['id', 'relay_id', 'token_hash', 'created_at', 'expires_at', 'last_used_at', 'revoked_at'],
-    organizations: ['id', 'kind', 'name', 'created_at'],
+    organizations: ['id', 'kind', 'name', 'created_at', 'trial_started_at'],
     // Dashboard passkeys: public keys and counters only; private keys never leave the authenticator.
     passkeys: [
         'credential_id',

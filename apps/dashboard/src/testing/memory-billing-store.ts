@@ -13,6 +13,7 @@ export interface MemoryBillingState {
     readonly customers: Map<string, { readonly customerId: string; readonly createdAt: number }>;
     readonly subscriptions: Map<string, SubscriptionRecord>;
     readonly events: Map<string, ProviderEventRecord>;
+    readonly trialStartedAt: Map<string, number>;
 }
 
 function isProblem(status: string): status is ProblemOrganizationRecord['status'] {
@@ -26,7 +27,12 @@ function isProblem(status: string): status is ProblemOrganizationRecord['status'
 export function createMemoryBillingStore(deps: {
     readonly org: (orgId: OrgId) => OrganizationRecord | undefined;
 }): BillingStore & { readonly state: MemoryBillingState } {
-    const state: MemoryBillingState = { customers: new Map(), subscriptions: new Map(), events: new Map() };
+    const state: MemoryBillingState = {
+        customers: new Map(),
+        subscriptions: new Map(),
+        events: new Map(),
+        trialStartedAt: new Map(),
+    };
     const missingOrg = (orgId: OrgId) =>
         deps.org(orgId) === undefined ? Promise.reject(new Error('FOREIGN KEY constraint failed')) : null;
     return {
@@ -52,6 +58,7 @@ export function createMemoryBillingStore(deps: {
             return Promise.resolve(entry === undefined ? null : (entry[0] as OrgId));
         },
         findSubscription: (orgId) => Promise.resolve(state.subscriptions.get(orgId) ?? null),
+        findTrialStartedAt: (orgId) => Promise.resolve(state.trialStartedAt.get(orgId) ?? null),
         hasEvent: (eventId) => Promise.resolve(state.events.has(eventId)),
         recordEvent(event, subscription) {
             if (subscription !== null) {
@@ -61,6 +68,9 @@ export function createMemoryBillingStore(deps: {
                 }
                 if (shouldReplace(state.subscriptions.get(subscription.orgId) ?? null, subscription)) {
                     state.subscriptions.set(subscription.orgId, subscription);
+                }
+                if (subscription.status === 'trialing' && !state.trialStartedAt.has(subscription.orgId)) {
+                    state.trialStartedAt.set(subscription.orgId, subscription.updatedAt);
                 }
             }
             if (!state.events.has(event.eventId)) {

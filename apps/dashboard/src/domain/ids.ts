@@ -19,6 +19,13 @@ export type RelayTokenId = z.infer<typeof relayTokenIdSchema>;
 export const orgAuditEntryIdSchema = z.string().regex(ID_PATTERN).brand<'OrgAuditEntryId'>();
 export type OrgAuditEntryId = z.infer<typeof orgAuditEntryIdSchema>;
 
+/**
+ * A `link_codes` row, never the code: what `/engines/new?link=` carries. It grants nothing; it only names a code of the
+ * actor's own organization for the status endpoint.
+ */
+export const linkCodeIdSchema = z.string().regex(ID_PATTERN).brand<'LinkCodeId'>();
+export type LinkCodeId = z.infer<typeof linkCodeIdSchema>;
+
 /** 128 random bits as 26 characters of lowercase RFC 4648 base32 without padding. */
 function randomId(random: Random): string {
     let bits = 0;
@@ -45,6 +52,10 @@ export function newUserId(random: Random): UserId {
 
 export function newRelayTokenId(random: Random): RelayTokenId {
     return relayTokenIdSchema.parse(randomId(random));
+}
+
+export function newLinkCodeId(random: Random): LinkCodeId {
+    return linkCodeIdSchema.parse(randomId(random));
 }
 
 /** An `admin_audit_log` row. */

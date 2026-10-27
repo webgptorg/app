@@ -49,8 +49,8 @@ describe('BillingService', () => {
         return subscription.id;
     }
 
-    const checkout = (planId: string, org = orgId) =>
-        test.billing.checkout({ orgId: org, email: 'owner@example.test', planId }, signal);
+    const checkout = (planId: string, org = orgId, returnTo: 'billing' | 'engines-new' = 'billing') =>
+        test.billing.checkout({ orgId: org, email: 'owner@example.test', planId, returnTo }, signal);
 
     it('describes an organization without billing: the none plan, and Checkout offered', async () => {
         expect(await test.billing.overview(orgId)).toEqual({
@@ -60,6 +60,7 @@ describe('BillingService', () => {
             plan: catalogue.none,
             hasBillingAccount: false,
             canSubscribe: true,
+            trialAvailable: true,
             features: [],
             quotas: [
                 { quota: 'engines.max', limit: 0, used: null },
@@ -76,7 +77,9 @@ describe('BillingService', () => {
         });
         const [customerId, customer] = [...test.provider.customers][0] ?? [];
         expect(customer).toEqual({ orgId, email: 'owner@example.test' });
-        expect(test.provider.checkouts).toEqual([{ orgId, customerId, priceId: TEST_PRICE_IDS.starter }]);
+        expect(test.provider.checkouts).toEqual([
+            { orgId, customerId, priceId: TEST_PRICE_IDS.starter, trialDays: null },
+        ]);
         const overview = await test.billing.overview(orgId);
         expect(overview).toMatchObject({
             status: 'active',
@@ -125,6 +128,43 @@ describe('BillingService', () => {
         expect((await test.billing.overview(orgId)).canSubscribe).toBe(true);
         expect(await checkout('scale')).toMatchObject({ kind: 'ok' });
         expect((await test.billing.overview(orgId)).plan.id).toBe('scale');
+    });
+
+    describe('trials', () => {
+        it('starts a plan’s trial for an organization that never had one, returning to the link page', async () => {
+            expect(await checkout('scale', orgId, 'engines-new')).toEqual({
+                kind: 'ok',
+                url: 'https://app.ptbk.test/engines/new?checkout=success',
+            });
+            expect(test.provider.checkouts.map((entry) => entry.trialDays)).toEqual([14]);
+            const overview = await test.billing.overview(orgId);
+            expect(overview).toMatchObject({
+                status: 'trialing',
+                currentPeriodEnd: START + 14 * 86_400_000,
+                features: ['engines.create'],
+                trialAvailable: false,
+            });
+            expect(await test.store.findTrialStartedAt(orgId)).toBe(START);
+        });
+
+        it('offers no second trial once the first ended', async () => {
+            await checkout('scale');
+            const subscriptionId = stripeChanges('canceled');
+            now += 1;
+            await test.billing.handleEvent(
+                { id: 'evt_trial_over', type: 'customer.subscription.deleted', subscriptionId },
+                signal,
+            );
+            expect(await checkout('scale')).toMatchObject({ kind: 'ok' });
+            expect(test.provider.checkouts.map((entry) => entry.trialDays)).toEqual([14, null]);
+            expect((await test.billing.overview(orgId)).status).toBe('active');
+        });
+
+        it('gives no trial on a plan without one, and keeps the trial for later', async () => {
+            await checkout('starter');
+            expect(test.provider.checkouts.map((entry) => entry.trialDays)).toEqual([null]);
+            expect((await test.billing.overview(orgId)).trialAvailable).toBe(true);
+        });
     });
 
     describe('events', () => {

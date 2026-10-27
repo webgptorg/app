@@ -48,3 +48,17 @@ export type BillingStatus = z.infer<typeof billingStatusSchema>;
 /** The states a platform admin follows up on by hand; nothing is suspended automatically. */
 export const PROBLEM_STATUSES = ['past_due', 'unpaid', 'canceled'] as const satisfies readonly BillingStatus[];
 export const problemStatusSchema = z.enum(PROBLEM_STATUSES);
+
+/**
+ * Where Checkout sends the browser back: `/billing`, or `/engines/new` when the plan step there started it (D-10). An
+ * allowlist, so no request can name a return URL of its own.
+ */
+export const CHECKOUT_RETURN_PAGES = ['billing', 'engines-new'] as const;
+export const checkoutReturnPageSchema = z.enum(CHECKOUT_RETURN_PAGES);
+export type CheckoutReturnPage = z.infer<typeof checkoutReturnPageSchema>;
+
+/** The page's path, without the `?checkout=` the provider adds. */
+export const CHECKOUT_RETURN_PATHS: Readonly<Record<CheckoutReturnPage, string>> = {
+    billing: '/billing',
+    'engines-new': '/engines/new',
+};

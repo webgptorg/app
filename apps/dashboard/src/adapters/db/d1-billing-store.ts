@@ -1,4 +1,4 @@
-import { desc, eq, inArray, lt, notInArray, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, lt, notInArray, sql } from 'drizzle-orm';
 
 import { OPEN_STATUSES, isOpenSubscription } from '../../domain/billing/billing-state';
 import type { BillingStore, SubscriptionRecord } from '../../domain/billing/billing-store';
@@ -67,6 +67,15 @@ export function createD1BillingStore(db: Database): BillingStore {
             return row === undefined ? null : toSubscription(row);
         },
 
+        async findTrialStartedAt(orgId) {
+            const row = await db
+                .select({ trialStartedAt: organizations.trialStartedAt })
+                .from(organizations)
+                .where(eq(organizations.id, orgId))
+                .get();
+            return row?.trialStartedAt ?? null;
+        },
+
         async hasEvent(eventId) {
             const row = await db
                 .select({ eventId: stripeEvents.eventId })
@@ -91,16 +100,25 @@ export function createD1BillingStore(db: Database): BillingStore {
                 cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
                 updatedAt: subscription.updatedAt,
             };
+            const upsert = db
+                .insert(subscriptions)
+                .values({ orgId: subscription.orgId, ...values })
+                .onConflictDoUpdate({
+                    target: subscriptions.orgId,
+                    set: values,
+                    setWhere: replacementCondition(subscription),
+                });
+            if (subscription.status !== 'trialing') {
+                await db.batch([insertEvent, upsert]);
+                return;
+            }
             await db.batch([
                 insertEvent,
+                upsert,
                 db
-                    .insert(subscriptions)
-                    .values({ orgId: subscription.orgId, ...values })
-                    .onConflictDoUpdate({
-                        target: subscriptions.orgId,
-                        set: values,
-                        setWhere: replacementCondition(subscription),
-                    }),
+                    .update(organizations)
+                    .set({ trialStartedAt: subscription.updatedAt })
+                    .where(and(eq(organizations.id, subscription.orgId), isNull(organizations.trialStartedAt))),
             ]);
         },
 

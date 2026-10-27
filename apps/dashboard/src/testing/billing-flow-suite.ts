@@ -194,6 +194,73 @@ export function describeBillingFlows(
             });
         });
 
+        describe('trials (D-10)', () => {
+            it('starts a trial from the link page, which may then issue link codes, and offers no second one', async () => {
+                const browser = harness.browser();
+                await signUp(harness, browser);
+                const before = await billingOf(browser);
+                expect(before.trialAvailable).toBe(true);
+                expect(before.plans.map(({ id, trialDays }) => ({ id, trialDays }))).toEqual([
+                    { id: 'starter', trialDays: null },
+                    { id: 'scale', trialDays: 14 },
+                ]);
+                const checkout = await browser.request('POST', '/api/billing/checkout', {
+                    planId: 'scale',
+                    returnTo: 'engines-new',
+                });
+                expect(checkout.body).toEqual({ url: `${ORIGIN}/engines/new?checkout=success` });
+                expect(harness.billingProvider.checkouts.map((entry) => entry.trialDays)).toEqual([14]);
+                const trialing = await billingOf(browser);
+                expect(trialing).toMatchObject({ status: 'trialing', planId: 'scale', trialAvailable: false });
+                expect(trialing.currentPeriodEnd).toBe(harness.clock.nowMs() + 14 * 24 * 60 * MINUTE);
+                expect((await browser.request('POST', '/api/engines/link-codes')).status).toBe(200);
+
+                const subscription = [...harness.billingProvider.subscriptions.values()].at(-1);
+                stripeChanges(subscription?.id ?? '', 'canceled');
+                harness.clock.advance(MINUTE);
+                expect(
+                    (
+                        await harness.webhook(
+                            subscriptionEvent('evt_trialover', 'customer.subscription.deleted', subscription?.id ?? ''),
+                        )
+                    ).status,
+                ).toBe(200);
+                expect((await browser.request('POST', '/api/billing/checkout', { planId: 'scale' })).status).toBe(200);
+                expect(harness.billingProvider.checkouts.map((entry) => entry.trialDays)).toEqual([14, null]);
+                expect(await billingOf(browser)).toMatchObject({ status: 'active', trialAvailable: false });
+            });
+
+            it('records the trial from a signed customer.subscription webhook', async () => {
+                const { browser, orgId, subscriptionId } = await subscribedOwner();
+                expect(await harness.billingStore.findTrialStartedAt(orgId)).toBeNull();
+                stripeChanges(subscriptionId, 'trialing');
+                harness.clock.advance(MINUTE);
+                const response = await harness.webhook(
+                    subscriptionEvent('evt_trialing', 'customer.subscription.updated', subscriptionId),
+                );
+                expect(response.status).toBe(200);
+                expect(await harness.billingStore.findTrialStartedAt(orgId)).toBe(harness.clock.nowMs());
+                expect(await billingOf(browser)).toMatchObject({ status: 'trialing', trialAvailable: false });
+            });
+
+            it('returns only to an allowlisted page, never to a given URL', async () => {
+                const browser = harness.browser();
+                await signUp(harness, browser);
+                for (const returnTo of ['https://evil.example/', '/engines/new', 'dashboard']) {
+                    const response = await browser.request('POST', '/api/billing/checkout', {
+                        planId: 'starter',
+                        returnTo,
+                    });
+                    expect([response.status, problemCode(response)]).toEqual([400, 'invalid-request']);
+                }
+                const billing = await browser.request('POST', '/api/billing/checkout', {
+                    planId: 'starter',
+                    returnTo: 'billing',
+                });
+                expect(billing.body).toEqual({ url: `${ORIGIN}/billing?checkout=success` });
+            });
+        });
+
         describe('webhooks', () => {
             it('updates the state on a valid signature, keeping the plan while past due', async () => {
                 const { browser, orgId, subscriptionId } = await subscribedOwner();
