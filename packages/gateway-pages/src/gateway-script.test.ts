@@ -312,6 +312,22 @@ describe('sign-in page', () => {
         expect(nextLinks()).toEqual(['/agents/1']);
     });
 
+    it('passes a deep next with its query unchanged through a passkey sign-in', async () => {
+        const next = '/agents/1?tab=chat&q=a%26b';
+        const requests = fakeEngine({
+            '/api/v1/me': signedOut,
+            '/auth/sign-in/options': ready,
+            '/auth/sign-in/verify': { status: 200, body: { next } },
+        });
+        fakeWebAuthn();
+        await open('sign-in.html', `/auth/sign-in?${new URLSearchParams({ next }).toString()}`, { owner: 'set' });
+        await expectState('ready');
+        click('confirm');
+        await expectState('done');
+        expect(requests[2]?.body).toEqual({ response: CREDENTIAL, next });
+        expect(nextLinks()).toEqual([next]);
+    });
+
     it('drops an unsafe next and lets the engine choose', async () => {
         const requests = fakeEngine({
             '/api/v1/me': signedOut,

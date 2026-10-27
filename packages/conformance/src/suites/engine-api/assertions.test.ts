@@ -38,6 +38,14 @@ function editJson(match: Match, edit: (data: any, request: Request) => unknown):
     };
 }
 
+/** A page request outside the engine API whose path starts with `prefix`. */
+const page =
+    (prefix: string): Match =>
+    (request) =>
+        request.method === 'GET' && new URL(request.url).pathname.startsWith(prefix);
+
+const redirectTo = (location: string) => new Response(null, { status: 303, headers: { location } });
+
 function replace(match: Match, make: (request: Request, response: Response) => Response | Promise<Response>): Tamper {
     return (request, response) => (match(request) ? make(request, response) : response);
 }
@@ -814,6 +822,26 @@ const FAILS: readonly Case[] = [
             ),
         },
     ],
+    [
+        'a sign-in redirect that drops the path',
+        'engine-api.gateway.sign-in-keeps-next',
+        { tamper: replace(page('/conformance/'), () => redirectTo('/auth/sign-in')) },
+    ],
+    [
+        'a sign-in redirect that keeps an off-origin next',
+        'engine-api.gateway.sign-in-keeps-next',
+        { tamper: replace(page('//'), () => redirectTo('/auth/sign-in?next=%2F%2Fconformance.invalid')) },
+    ],
+    [
+        'the sign-in page served in place',
+        'engine-api.gateway.sign-in-keeps-next',
+        { tamper: replace(page('/conformance/'), () => new Response('<!doctype html>', { status: 200 })) },
+    ],
+    [
+        'a redirect to another origin',
+        'engine-api.gateway.sign-in-keeps-next',
+        { tamper: replace(page('/conformance/'), () => redirectTo('https://evil.example/auth/sign-in')) },
+    ],
 ];
 
 const SKIPS: readonly Case[] = [
@@ -827,6 +855,12 @@ const SKIPS: readonly Case[] = [
     [
         'an engine without a gateway',
         'engine-api.gateway.cross-site-refused',
+        {},
+        (target) => ({ ...target, gateway: false }),
+    ],
+    [
+        'an engine without a gateway in front of its pages',
+        'engine-api.gateway.sign-in-keeps-next',
         {},
         (target) => ({ ...target, gateway: false }),
     ],

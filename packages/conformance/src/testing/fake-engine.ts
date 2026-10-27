@@ -1,4 +1,10 @@
-import { ENGINE_API_PREFIX, OWNER_PERMISSIONS, createProblem } from '@ptbk/engine-api';
+import {
+    ENGINE_API_PREFIX,
+    ENGINE_RESERVED_PATHS,
+    OWNER_PERMISSIONS,
+    SIGN_IN_PATH,
+    createProblem,
+} from '@ptbk/engine-api';
 import type { CapabilityRef, Permission } from '@ptbk/engine-api';
 import { createEngineApiHttpHandler } from '@ptbk/engine-api/http';
 import { createDemoSeed, createInMemoryEngineCore } from '@ptbk/engine-api/in-memory';
@@ -190,7 +196,9 @@ export async function createFakeEngine(options: FakeEngineOptions = {}): Promise
     const defect = createDefect(options.defect, actors, core);
     const answer = async (request: Request): Promise<Response> => {
         const url = new URL(request.url);
-        if (!url.pathname.startsWith(`${ENGINE_API_PREFIX}/`)) return problem('not-found');
+        if (!url.pathname.startsWith(`${ENGINE_API_PREFIX}/`)) {
+            return request.method === 'GET' ? signInRedirect(url) : problem('not-found');
+        }
         if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method)) {
             const site = request.headers.get('sec-fetch-site');
             if (request.headers.get('origin') !== baseUrl.origin || (site !== 'same-origin' && site !== 'none')) {
@@ -229,6 +237,17 @@ export async function createFakeEngine(options: FakeEngineOptions = {}): Promise
             session: (subject) => Promise.resolve({ cookie: `${COOKIE}=${signIn(subject)}` }),
         },
     };
+}
+
+/** The fake has no UI, so every page needs a sign-in; a cruder `next` rule than the gateway's, enough for the checks. */
+function signInRedirect(url: URL): Response {
+    const target = `${url.pathname}${url.search}`;
+    const safe =
+        !target.startsWith('//') &&
+        !target.includes('\\') &&
+        !ENGINE_RESERVED_PATHS.some((prefix) => `${url.pathname}/`.startsWith(prefix));
+    const location = safe ? `${SIGN_IN_PATH}?${new URLSearchParams({ next: target }).toString()}` : SIGN_IN_PATH;
+    return new Response(null, { status: 303, headers: { location } });
 }
 
 function problem(code: 'not-found' | 'forbidden' | 'unauthenticated'): Response {
