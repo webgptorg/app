@@ -75,6 +75,10 @@ export interface ExecResult {
     readonly stderr: string;
 }
 
+export interface ExecOptions {
+    readonly user?: string;
+}
+
 export interface ContainerInspection {
     /** `NAME=value` as the container was created with them. */
     readonly env: readonly string[];
@@ -105,6 +109,8 @@ export interface OneOffContainer {
     wait(): Promise<number>;
     /** Its output since it started: stdout only, or stdout and stderr interleaved. */
     logs(streams?: 'stdout' | 'all'): Promise<string>;
+    /** Like `ComposeControl.exec`; the command's output is its own, never part of `logs`. */
+    exec(command: readonly string[], options?: ExecOptions): Promise<ExecResult>;
     /** SIGTERM, then SIGKILL after 10 s. */
     stop(): Promise<void>;
     /** Gone, with its anonymous volumes; already gone is fine. */
@@ -126,7 +132,7 @@ export interface ComposeControl {
     logs(service: string): Promise<string>;
     health(service: string): Promise<ContainerHealth>;
     /** `docker compose exec`, without a TTY or stdin; `user` defaults to the container's own. */
-    exec(service: string, command: readonly string[], options?: { readonly user?: string }): Promise<ExecResult>;
+    exec(service: string, command: readonly string[], options?: ExecOptions): Promise<ExecResult>;
     /** The parts of `docker inspect` the key scan reads. */
     inspect(service: string): Promise<ContainerInspection>;
     /** The container's root filesystem as a tar stream, without its mounts (`docker export`). */
@@ -363,6 +369,31 @@ export function createComposeControl(
         return response.body;
     }
 
+    async function execIn(
+        id: string,
+        what: string,
+        command: readonly string[],
+        options: ExecOptions,
+    ): Promise<ExecResult> {
+        const created = await transport('POST', `/containers/${id}/exec`, {
+            AttachStdout: true,
+            AttachStderr: true,
+            Cmd: command,
+            ...(options.user === undefined ? {} : { User: options.user }),
+        });
+        expectStatus(created, what, [201]);
+        const execId = (parseJson(created, what) as { Id?: unknown } | null)?.Id;
+        if (typeof execId !== 'string') throw new DockerApiError(`${what}: no exec ID`);
+        const started = await transport('POST', `/exec/${execId}/start`, { Detach: false, Tty: false });
+        expectStatus(started, what, [200]);
+        const output = demuxDockerStreams(started.body);
+        const inspected = await transport('GET', `/exec/${execId}/json`);
+        expectStatus(inspected, what, [200]);
+        const exitCode = (parseJson(inspected, what) as { ExitCode?: unknown } | null)?.ExitCode;
+        if (typeof exitCode !== 'number') throw new DockerApiError(`${what}: no exit code`);
+        return { exitCode, ...output };
+    }
+
     const networkName = (network: string): string => `${project}_${network}`;
 
     function oneOff(id: string, name: string): OneOffContainer {
@@ -384,6 +415,9 @@ export function createComposeControl(
                 );
                 expectStatus(response, `logs ${name}`, [200]);
                 return demuxDockerLogs(response.body);
+            },
+            exec(command, options = {}) {
+                return execIn(id, `exec in ${name}`, command, options);
             },
             async stop() {
                 expectStatus(
@@ -426,25 +460,7 @@ export function createComposeControl(
             return status === 'healthy' || status === 'unhealthy' || status === 'starting' ? status : 'none';
         },
         async exec(service, command, options = {}) {
-            const id = await containerOf(service);
-            const what = `exec in ${service}`;
-            const created = await transport('POST', `/containers/${id}/exec`, {
-                AttachStdout: true,
-                AttachStderr: true,
-                Cmd: command,
-                ...(options.user === undefined ? {} : { User: options.user }),
-            });
-            expectStatus(created, what, [201]);
-            const execId = (parseJson(created, what) as { Id?: unknown } | null)?.Id;
-            if (typeof execId !== 'string') throw new DockerApiError(`${what}: no exec ID`);
-            const started = await transport('POST', `/exec/${execId}/start`, { Detach: false, Tty: false });
-            expectStatus(started, what, [200]);
-            const output = demuxDockerStreams(started.body);
-            const inspected = await transport('GET', `/exec/${execId}/json`);
-            expectStatus(inspected, what, [200]);
-            const exitCode = (parseJson(inspected, what) as { ExitCode?: unknown } | null)?.ExitCode;
-            if (typeof exitCode !== 'number') throw new DockerApiError(`${what}: no exit code`);
-            return { exitCode, ...output };
+            return execIn(await containerOf(service), `exec in ${service}`, command, options);
         },
         async inspect(service) {
             return parseInspection(await inspectRaw(service));

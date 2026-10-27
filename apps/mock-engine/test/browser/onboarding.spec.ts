@@ -30,6 +30,7 @@ import { createTestCa } from '../../src/testing/test-pki';
 
 const ENGINE_DOMAIN = Hostname.parse('engines.ptbk.test');
 const RELAY = RelayId.parse('relay-a.ptbk.test');
+const OTHER_SITE = 'https://dashboard.example';
 
 interface Stack {
     readonly engine: MockEngine;
@@ -198,6 +199,33 @@ test('the owner sets up a passkey through /setup#<secret>, then signs in with it
     await reused.goto(`${origin}/setup#${secret}`);
     await expect(reused.getByRole('heading', { name: 'This engine already has an owner' })).toBeVisible();
     await reused.close();
+
+    // A link from another site, like the dashboard's "Open engine": the Strict cookie stays behind, so the gateway
+    // sends the owner to sign in, where the page's own request finds the session and goes on without a prompt.
+    const arrival = await context.newPage();
+    const arrivalViolations = watchPolicy(arrival);
+    const arrivalPaths: string[] = [];
+    arrival.on('request', (request) => arrivalPaths.push(new URL(request.url()).pathname));
+    // Another site, answered by Playwright: the links are what the dashboard's "Open engine" is.
+    await arrival.route(`${OTHER_SITE}/**`, (route) =>
+        route.fulfill({
+            contentType: 'text/html',
+            body: `<a id="root" href="${origin}/">Open engine</a><a id="hostile" href="${origin}/auth/sign-in?next=%2F%2Fevil.example">Hostile</a>`,
+        }),
+    );
+    await arrival.goto(`${OTHER_SITE}/`);
+    await arrival.click('#root');
+    await arrival.waitForURL(`${origin}/`);
+    expect(arrivalPaths).toEqual(expect.arrayContaining(['/auth/sign-in', '/api/v1/me']));
+    expect(await meStatus(arrival)).toBe(200);
+    await arrival.goto(`${OTHER_SITE}/`);
+    await arrival.click('#hostile');
+    await arrival.waitForURL(`${origin}/`);
+    // `replace`: Back leaves the engine instead of returning to sign-in, which would forward again.
+    await arrival.goBack();
+    expect(arrival.url()).not.toContain('/auth/sign-in');
+    expect(arrivalViolations).toEqual([]);
+    await arrival.close();
 
     await context.clearCookies();
     expect(await meStatus(page)).toBe(401);
