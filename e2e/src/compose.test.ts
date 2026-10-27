@@ -213,6 +213,9 @@ describe('run', () => {
             if (url.pathname === '/containers/one/logs') {
                 return Promise.resolve({ status: 200, body: frame(1, '{"outcome":"rejected"}\n') });
             }
+            if (url.pathname === '/containers/one/exec') return Promise.resolve(json(201, { Id: 'e2' }));
+            if (url.pathname === '/exec/e2/start') return Promise.resolve({ status: 200, body: frame(1, 'link\n') });
+            if (url.pathname === '/exec/e2/json') return Promise.resolve(json(200, { ExitCode: 0 }));
             return Promise.resolve({ status: 204, body: Buffer.alloc(0) });
         };
         return { calls, transport };
@@ -271,6 +274,22 @@ describe('run', () => {
             'DELETE /containers/one?force=true&v=true',
         ]);
         expect((calls[2]?.body as { Env: string[] }).Env).toContain('A=1');
+    });
+
+    it('runs a command in the one-off container, not in the service container', async () => {
+        const { calls, transport } = daemon();
+        const container = await createComposeControl(transport, 'p').run('mock-engine');
+        expect(await container.exec(['node', '/app/main.mjs', 'setup-link', '--json'])).toEqual({
+            exitCode: 0,
+            stdout: 'link\n',
+            stderr: '',
+        });
+        expect(calls.find((call) => call.path === '/containers/one/exec')?.body).toEqual({
+            AttachStdout: true,
+            AttachStderr: true,
+            Cmd: ['node', '/app/main.mjs', 'setup-link', '--json'],
+        });
+        expect(calls.some((call) => call.path === '/containers/tpl/exec')).toBe(false);
     });
 
     it('removes a container that failed to start', async () => {

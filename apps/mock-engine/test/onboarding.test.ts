@@ -243,6 +243,24 @@ describe('signing in and stepping up with the passkey', () => {
         expect(await codeOf(unknown)).toBe('passkey-not-recognised');
     });
 
+    it('serves a sign-in page that first asks /me, which answers the session a cross-site link left behind', async () => {
+        const { engine, ownerCookie } = await owned();
+        const page = await (
+            await engine.fetch(null)(`${HARNESS_ORIGIN}${SIGN_IN_PATH}?next=%2F%2Fevil.example`)
+        ).text();
+        expect(page).toContain('<section data-state="checking" hidden>');
+        expect(page).not.toContain('evil.example');
+        const script = await (await engine.fetch(null)(`${HARNESS_ORIGIN}/auth/assets/gateway.js`)).text();
+        expect(script).toContain("const ME_PATH = '/api/v1/me';");
+        // The cookie the browser held back on the cross-site navigation goes with the page's own same-origin request.
+        const me = (cookie: string | null) =>
+            engine.fetch(cookie)(`${HARNESS_ORIGIN}/api/v1/me`, { headers: { 'sec-fetch-site': 'same-origin' } });
+        expect((await me(ownerCookie)).status).toBe(200);
+        const anonymous = await me(null);
+        expect(anonymous.status).toBe(401);
+        expect(await codeOf(anonymous)).toBe('unauthenticated');
+    });
+
     it('confirms a step-up with a fresh assertion for the session', async () => {
         const { engine, clock, ownerCookie } = await owned();
         clock.advance(10 * 60_000);
