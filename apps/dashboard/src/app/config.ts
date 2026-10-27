@@ -62,7 +62,7 @@ const LEGACY_INSTALL_PATH: Omit<InstallCommandConfig, 'template'> = {
 const installGuideUrlSchema = z
     .url({ protocol: /^https$/ })
     .max(384)
-    .refine((value) => new URL(value).hash === '' && !value.endsWith('#'), 'must not have a fragment');
+    .refine((value) => !value.includes('#'), 'must not have a fragment');
 
 const adaptersSchema = z.strictObject({
     email: z.enum(['cloudflare', 'fake']),
@@ -420,8 +420,9 @@ function abuseMonitoringConfig(parsed: z.infer<typeof varsSchema>): AbuseMonitor
 }
 
 function installCommandsConfig(parsed: z.infer<typeof varsSchema>): readonly InstallCommandConfig[] {
-    const paths = parsed.INSTALL_COMMANDS ?? [{ ...LEGACY_INSTALL_PATH, template: parsed.INSTALL_COMMAND ?? '' }];
-    return Object.freeze(paths.map((path) => Object.freeze({ ...path })));
+    const legacy =
+        parsed.INSTALL_COMMAND === undefined ? [] : [{ ...LEGACY_INSTALL_PATH, template: parsed.INSTALL_COMMAND }];
+    return Object.freeze((parsed.INSTALL_COMMANDS ?? legacy).map((path) => Object.freeze({ ...path })));
 }
 
 /** Parses Workers bindings once, in the composition root; nothing else reads `env`. Throws {@link ConfigError}. */
