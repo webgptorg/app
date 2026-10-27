@@ -1,4 +1,4 @@
-import { QUOTAS, type BillingStatus, type Feature, type Quota } from '../../shared/billing';
+import { QUOTAS, type BillingStatus, type CheckoutReturnPage, type Feature, type Quota } from '../../shared/billing';
 import type { OrgId } from '../ids';
 import type { Clock } from '../ports/clock';
 import type { Logger } from '../ports/logger';
@@ -35,6 +35,8 @@ export interface BillingOverview {
     readonly plan: Plan;
     readonly hasBillingAccount: boolean;
     readonly canSubscribe: boolean;
+    /** The organization never had a trial, so a plan with `trialDays` starts with one. */
+    readonly trialAvailable: boolean;
     readonly features: readonly Feature[];
     readonly quotas: readonly QuotaUsage[];
     readonly plans: readonly PaidPlan[];
@@ -49,8 +51,14 @@ export type EventOutcome = 'processed' | 'duplicate' | 'ignored';
 
 export interface BillingService {
     overview(orgId: OrgId): Promise<BillingOverview>;
+    /** The plan's trial applies only to an organization that never had one (once per organization, D-10). */
     checkout(
-        input: { readonly orgId: OrgId; readonly email: string; readonly planId: string },
+        input: {
+            readonly orgId: OrgId;
+            readonly email: string;
+            readonly planId: string;
+            readonly returnTo: CheckoutReturnPage;
+        },
         signal: AbortSignal,
     ): Promise<CheckoutOutcome>;
     portal(
@@ -112,9 +120,10 @@ export function createBillingService(deps: BillingDeps): BillingService {
 
     return {
         async overview(orgId) {
-            const [customerId, subscription] = await Promise.all([
+            const [customerId, subscription, trialStartedAt] = await Promise.all([
                 store.findCustomer(orgId),
                 store.findSubscription(orgId),
+                store.findTrialStartedAt(orgId),
             ]);
             const state = billingState(subscription);
             const plan = resolvePlan(catalogue, subscription);
@@ -126,13 +135,14 @@ export function createBillingService(deps: BillingDeps): BillingService {
                 plan,
                 hasBillingAccount: customerId !== null,
                 canSubscribe: !isOpenSubscription(status),
+                trialAvailable: trialStartedAt === null,
                 features: plan.features,
                 quotas: QUOTAS.map((quota) => ({ quota, limit: plan.quotas[quota], used: null })),
                 plans: catalogue.plans,
             };
         },
 
-        async checkout({ orgId, email, planId }, signal) {
+        async checkout({ orgId, email, planId, returnTo }, signal) {
             const plan = catalogue.byId(planId);
             if (plan === null) {
                 return { kind: 'unknown-plan' };
@@ -142,8 +152,9 @@ export function createBillingService(deps: BillingDeps): BillingService {
                 return { kind: 'already-subscribed' };
             }
             const customerId = await ensureCustomer(orgId, email, signal);
+            const trialDays = (await store.findTrialStartedAt(orgId)) === null ? plan.trialDays : null;
             const { url } = await provider.createCheckoutSession(
-                { orgId, customerId, priceId: plan.stripePriceId },
+                { orgId, customerId, priceId: plan.stripePriceId, trialDays, returnTo },
                 signal,
             );
             return { kind: 'ok', url };

@@ -12,6 +12,7 @@ const CODE = 'abcdefghijklmnopqrstuvwxya';
 
 function linkCode(overrides: Partial<LinkCodeView> = {}): LinkCodeView {
     return {
+        linkCodeId: 'lllllllllllllllllllllllllq',
         linkCode: CODE as LinkCodeView['linkCode'],
         installCommand: `bun run dev:link ${CODE}`,
         expiresAt: NOW + 30 * 60_000,

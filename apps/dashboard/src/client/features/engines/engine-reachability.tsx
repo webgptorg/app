@@ -5,7 +5,7 @@ import type { EngineView } from '../../../shared/api/routes';
 
 /** Whether there is anything to say: heartbeats prove an engine online, only the relays' reports prove it reachable. */
 export function hasReachability(engine: Pick<EngineView, 'status' | 'reachableRelays'>): boolean {
-    return engine.status === 'online' && engine.reachableRelays !== null;
+    return (engine.status === 'online' || engine.status === 'owner-pending') && engine.reachableRelays !== null;
 }
 
 /**

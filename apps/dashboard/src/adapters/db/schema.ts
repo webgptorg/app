@@ -11,6 +11,8 @@ export const organizations = sqliteTable(
         kind: text('kind', { enum: ['personal', 'team'] }).notNull(),
         name: text('name'),
         createdAt: integer('created_at').notNull(),
+        // When the organization's first trial began (D-10), from the webhook; a trial is offered only while it is null.
+        trialStartedAt: integer('trial_started_at'),
     },
     (t) => [check('organizations_kind_check', sql`${t.kind} in ('personal', 'team')`)],
 );
@@ -176,6 +178,9 @@ export const linkCodes = sqliteTable(
     {
         // SHA-256 of the link code; the code itself is shown once and never stored.
         codeHash: text('code_hash').primaryKey(),
+        // Random, not derived from the code: what the link page polls the code's state by (D-10). Null only for codes
+        // issued before it existed, which expired within 30 minutes of the migration.
+        id: text('id').unique(),
         orgId: text('org_id')
             .notNull()
             .references(() => organizations.id),

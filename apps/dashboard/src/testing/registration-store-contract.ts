@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { cryptoRandom } from '../adapters/crypto-random';
 import { toBase64Url } from '../domain/auth/secrets';
-import { newOrgAuditEntryId, newUserId, type OrgId } from '../domain/ids';
+import { newLinkCodeId, newOrgAuditEntryId, newUserId, type OrgId } from '../domain/ids';
 import type { AdminAuditEntry } from '../domain/auth/records';
 import type { PlatformEngineStore } from '../domain/engines/platform-engine-store';
 import { newAdminAuditEntryId } from '../domain/ids';
@@ -46,6 +46,7 @@ function adminAudit(action: string, engineId: string, at: number): AdminAuditEnt
 
 function codeRecord(orgId: OrgId, overrides: Partial<LinkCodeRecord> = {}): LinkCodeRecord {
     return {
+        id: newLinkCodeId(cryptoRandom),
         codeHash: toBase64Url(cryptoRandom.bytes(32)),
         orgId,
         createdByUserId: newUserId(cryptoRandom),
@@ -94,6 +95,32 @@ export function describeRegistrationStoreContract(name: string, makeFixture: () 
             const code = codeRecord(orgA);
             await fixture.linkCodes.insert(code);
             await expect(fixture.linkCodes.insert(codeRecord(orgB, { codeHash: code.codeHash }))).rejects.toThrow();
+        });
+
+        it('refuses a second code with the same ID', async () => {
+            const code = codeRecord(orgA);
+            await fixture.linkCodes.insert(code);
+            await expect(fixture.linkCodes.insert(codeRecord(orgA, { id: code.id }))).rejects.toThrow();
+        });
+
+        it('tells the organization whether its code is pending, expired or linked, and nobody else', async () => {
+            const code = codeRecord(orgA);
+            await fixture.linkCodes.insert(code);
+            expect(await fixture.linkCodes.findState(orgA, code.id, NOW)).toEqual({
+                kind: 'pending',
+                expiresAt: NOW + TTL,
+            });
+            expect(await fixture.linkCodes.findState(orgA, code.id, NOW + TTL)).toEqual({ kind: 'expired' });
+            expect(await fixture.linkCodes.findState(orgB, code.id, NOW)).toBeNull();
+            expect(await fixture.linkCodes.findState(orgA, newLinkCodeId(cryptoRandom), NOW)).toBeNull();
+        });
+
+        it('keeps a redeemed code linked after it would have expired', async () => {
+            const { code } = await created();
+            const linked = { kind: 'linked', engineId: engine.engineId };
+            expect(await fixture.linkCodes.findState(orgA, code.id, NOW + 2)).toEqual(linked);
+            expect(await fixture.linkCodes.findState(orgA, code.id, NOW + TTL * 10)).toEqual(linked);
+            expect(await fixture.linkCodes.findState(orgB, code.id, NOW + 2)).toBeNull();
         });
 
         it('counts active and recently issued codes per organization only', async () => {

@@ -13,6 +13,7 @@ function planView(plan: PaidPlan): PlanView {
         price: plan.price,
         features: [...plan.features],
         quotas: QUOTAS.map((quota) => ({ quota, limit: plan.quotas[quota] })),
+        trialDays: plan.trialDays,
     };
 }
 
@@ -40,6 +41,7 @@ export function bindBillingRoutes(
                 planName: overview.plan.name,
                 hasBillingAccount: overview.hasBillingAccount,
                 canSubscribe: overview.canSubscribe,
+                trialAvailable: overview.trialAvailable,
                 entitlements: { features: [...overview.features], quotas: [...overview.quotas] },
                 plans: overview.plans.map(planView),
             },
@@ -48,7 +50,12 @@ export function bindBillingRoutes(
 
     bind(router, mount, apiRoutes.billingCheckout, async ({ input, request, session }) => {
         const outcome = await billing.checkout(
-            { orgId: session.actor.orgId, email: session.user.email, planId: input.body.planId },
+            {
+                orgId: session.actor.orgId,
+                email: session.user.email,
+                planId: input.body.planId,
+                returnTo: input.body.returnTo ?? 'billing',
+            },
             request.signal,
         );
         switch (outcome.kind) {

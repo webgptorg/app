@@ -136,6 +136,7 @@ export function billingView(overrides: Partial<BillingView> = {}): BillingView {
         planName: null,
         hasBillingAccount: false,
         canSubscribe: true,
+        trialAvailable: true,
         entitlements: {
             features: [],
             quotas: [
@@ -153,6 +154,7 @@ export function billingView(overrides: Partial<BillingView> = {}): BillingView {
                     { quota: 'engines.max', limit: null },
                     { quota: 'custom-domains.max', limit: 0 },
                 ],
+                trialDays: null,
             },
         ],
         ...overrides,

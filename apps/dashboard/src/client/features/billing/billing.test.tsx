@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
-import { apiRoutes } from '../../../shared/api/routes';
+import { apiRoutes, type BillingView } from '../../../shared/api/routes';
 import { expectNoAxeViolations } from '../../testing/axe';
 import { billingView, NOW, session } from '../../testing/fixtures';
 import { APP_ORIGIN, renderApp } from '../../testing/render-app';
@@ -93,6 +93,7 @@ describe('billing page', () => {
                             price: { amount: '1200', currency: 'CZK', interval: 'year' },
                             features: [...features],
                             quotas: [...quotas],
+                            trialDays: null,
                         },
                         {
                             id: 'custom',
@@ -100,6 +101,7 @@ describe('billing page', () => {
                             price: null,
                             features: [...features],
                             quotas: [...quotas],
+                            trialDays: null,
                         },
                     ],
                 }),
@@ -124,7 +126,42 @@ describe('billing page', () => {
         await waitFor(() => {
             expect(app.navigations).toEqual([CHECKOUT_URL]);
         });
-        expect(app.api.callsTo(apiRoutes.billingCheckout)).toEqual([{ body: { planId: 'standard' } }]);
+        expect(app.api.callsTo(apiRoutes.billingCheckout)).toEqual([
+            { body: { planId: 'standard', returnTo: 'billing' } },
+        ]);
+    });
+
+    it('offers a plan’s trial while the organization never had one', async () => {
+        const plan = { ...billingView().plans[0], trialDays: 14 } as BillingView['plans'][number];
+        const app = renderApp({
+            path: '/billing',
+            session: OWNER,
+            script: (api) => {
+                withBilling(billingView({ plans: [plan] }))(api);
+                api.on(apiRoutes.billingCheckout, ok({ url: CHECKOUT_URL }));
+            },
+        });
+        const start = await screen.findByRole('button', { name: 'Start your 14-day trial of Standard' });
+        expect(start.textContent).toBe('Start your 14-day trial');
+        expect(
+            screen.getByText('Stripe asks for your card, and nothing is charged until the trial ends.'),
+        ).toBeTruthy();
+        await expectNoAxeViolations(app.container);
+        await app.user.click(start);
+        await waitFor(() => {
+            expect(app.navigations).toEqual([CHECKOUT_URL]);
+        });
+    });
+
+    it('offers no second trial', async () => {
+        const plan = { ...billingView().plans[0], trialDays: 14 } as BillingView['plans'][number];
+        renderApp({
+            path: '/billing',
+            session: OWNER,
+            script: withBilling(billingView({ plans: [plan], trialAvailable: false })),
+        });
+        expect(await screen.findByRole('button', { name: 'Subscribe to Standard' })).toBeTruthy();
+        expect(screen.queryByText(/nothing is charged until the trial ends/)).toBeNull();
     });
 
     it('opens the billing portal', async () => {

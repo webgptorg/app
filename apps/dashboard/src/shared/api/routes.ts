@@ -15,6 +15,7 @@ import { z } from 'zod';
 
 import {
     billingStatusSchema,
+    checkoutReturnPageSchema,
     featureSchema,
     planIdSchema,
     planNameSchema,
@@ -100,6 +101,8 @@ const planViewSchema = z.strictObject({
     features: z.array(featureSchema),
     /** `limit: null` is unlimited. */
     quotas: z.array(z.strictObject({ quota: quotaSchema, limit: quotaLimitSchema })),
+    /** Days of free trial; Checkout grants them only while the organization's `trialAvailable` holds. */
+    trialDays: z.int().min(1).max(30).nullable(),
 });
 export type PlanView = z.infer<typeof planViewSchema>;
 
@@ -116,6 +119,8 @@ export const billingViewSchema = z.strictObject({
     hasBillingAccount: z.boolean(),
     /** No live subscription: Checkout may start one. */
     canSubscribe: z.boolean(),
+    /** The organization never had a trial: a plan with `trialDays` starts with one (once per organization). */
+    trialAvailable: z.boolean(),
     entitlements: z.strictObject({
         features: z.array(featureSchema),
         /** `used` is null where the dashboard does not count usage yet. */
@@ -139,12 +144,30 @@ export type ProblemOrganization = z.infer<typeof problemOrganizationSchema>;
 
 /** Shown once, at issuance; no endpoint returns the code again (the dashboard keeps only its SHA-256). */
 export const linkCodeViewSchema = z.strictObject({
+    /** Not a secret and grants nothing: the link page polls the code's state by it, and keeps it in its URL. */
+    linkCodeId: idSchema,
     linkCode: LinkCode,
     /** The configured install command with the code filled in. */
     installCommand: z.string().max(1024),
     expiresAt: timestampSchema,
 });
 export type LinkCodeView = z.infer<typeof linkCodeViewSchema>;
+
+/** Whether `/engines/new` may offer a link code: the plan step and the engine-limit banner come before any code. */
+export const linkEligibilityViewSchema = z.strictObject({
+    eligibility: z.enum(['allowed', 'not-entitled', 'engine-limit']),
+    /** The configured link-code lifetime, for the page's intro. */
+    linkCodeTtlS: z.int().min(1).max(86_400),
+});
+export type LinkEligibilityView = z.infer<typeof linkEligibilityViewSchema>;
+
+/** A link code's state; never the code or its hash. A used code stays `linked`, even past its expiry. */
+export const linkCodeStatusViewSchema = z.discriminatedUnion('status', [
+    z.strictObject({ status: z.literal('pending'), expiresAt: timestampSchema }),
+    z.strictObject({ status: z.literal('expired') }),
+    z.strictObject({ status: z.literal('linked'), engineId: EngineId, hostname: Hostname }),
+]);
+export type LinkCodeStatusView = z.infer<typeof linkCodeStatusViewSchema>;
 
 /** What C-03's registry entry carries besides the default hostname; the server refuses more. */
 const MAX_CUSTOM_HOSTNAMES = MAX_REGISTRY_HOSTNAMES - 1;
@@ -172,8 +195,18 @@ export type CnameLookupView = z.infer<typeof cnameLookupViewSchema>;
 const adminEngineParams = z.strictObject({ engineId: EngineId });
 const adminHostnameParams = z.strictObject({ engineId: EngineId, hostname: Hostname });
 
-/** `unknown`: the engine's status object did not answer in time; the rest of the list is unaffected. */
-export const engineDisplayStatusSchema = z.enum(['suspended', 'never-seen', 'online', 'offline', 'unknown']);
+/**
+ * `unknown`: the engine's status object did not answer in time; the rest of the list is unaffected. `owner-pending`: online,
+ * but its heartbeat counts no member yet, so nobody has set up the owner's passkey on the engine.
+ */
+export const engineDisplayStatusSchema = z.enum([
+    'suspended',
+    'never-seen',
+    'owner-pending',
+    'online',
+    'offline',
+    'unknown',
+]);
 export type EngineDisplayStatusView = z.infer<typeof engineDisplayStatusSchema>;
 
 const countSchema = z.int().min(0);
@@ -248,7 +281,7 @@ const suspensionInput = {
     maxBodyBytes: 4096,
 } as const;
 
-/** Where the SPA sends the browser, top level: Stripe Checkout or the portal, or back to `/billing` with the fake. */
+/** Where the SPA sends the browser, top level: Stripe Checkout or the portal, or back to our own page with the fake. */
 const redirectSchema = z.strictObject({ url: z.url({ protocol: /^https?$/ }).max(2048) });
 
 const ceremonyErrors = ['challenge-invalid', 'webauthn-failed'] as const;
@@ -514,7 +547,12 @@ export const apiRoutes = {
         auth: 'session',
         permission: 'billing.manage',
         rateLimit: null,
-        input: { ...NO_INPUT, body: z.strictObject({ planId: planIdSchema }), maxBodyBytes: SMALL_BODY_BYTES },
+        input: {
+            ...NO_INPUT,
+            // `returnTo` names a page from an allowlist, never a URL; `/billing` when absent.
+            body: z.strictObject({ planId: planIdSchema, returnTo: checkoutReturnPageSchema.optional() }),
+            maxBodyBytes: SMALL_BODY_BYTES,
+        },
         output: redirectSchema,
         errorCodes: ['unknown-plan', 'already-subscribed'],
     }),
@@ -646,6 +684,28 @@ export const apiRoutes = {
         output: linkCodeViewSchema,
         // `rate-limited` (429) is common: at most 5 active codes and 10 per hour per organization.
         errorCodes: ['not-entitled', 'engine-limit'],
+    }),
+    /** Entitlements only; the link-code rate limits answer at issuance. */
+    linkEligibility: defineRoute({
+        method: 'GET',
+        path: '/api/engines/link-eligibility',
+        auth: 'session',
+        permission: 'engine.link',
+        rateLimit: null,
+        input: NO_INPUT,
+        output: linkEligibilityViewSchema,
+        errorCodes: [],
+    }),
+    /** A code of another organization is `not-found`, like one that does not exist. */
+    getLinkCode: defineRoute({
+        method: 'GET',
+        path: '/api/engines/link-codes/:linkCodeId',
+        auth: 'session',
+        permission: 'engine.link',
+        rateLimit: null,
+        input: { ...NO_INPUT, params: z.strictObject({ linkCodeId: idSchema }) },
+        output: linkCodeStatusViewSchema,
+        errorCodes: [],
     }),
 
     /** The active organization's engines, oldest first, with live status (D-06). */

@@ -1,7 +1,7 @@
 import { generateLinkCode, type LinkCode } from '@ptbk/protocol';
 
 import { sha256Hex } from '../auth/secrets';
-import type { OrgId, UserId } from '../ids';
+import { newLinkCodeId, type LinkCodeId, type OrgId, type UserId } from '../ids';
 import type { Clock } from '../ports/clock';
 import type { Random } from '../ports/random';
 import type { EngineCreationPolicy, EntitlementDenial } from './engine-creation-policy';
@@ -19,7 +19,12 @@ export interface IssueLinkCodeDeps {
 }
 
 export type IssueLinkCodeOutcome =
-    | { readonly kind: 'issued'; readonly linkCode: LinkCode; readonly expiresAt: number }
+    | {
+          readonly kind: 'issued';
+          readonly linkCodeId: LinkCodeId;
+          readonly linkCode: LinkCode;
+          readonly expiresAt: number;
+      }
     | { readonly kind: 'denied'; readonly reason: EntitlementDenial | 'rate-limited' };
 
 /** The plaintext code exists only in this answer; the store keeps its SHA-256. */
@@ -36,12 +41,14 @@ export async function issueLinkCode(
     const linkCode = generateLinkCode({ bytes: (length) => new Uint8Array(deps.random.bytes(length)) });
     const now = deps.clock.nowMs();
     const expiresAt = now + deps.linkCodeTtlMs;
+    const linkCodeId = newLinkCodeId(deps.random);
     await deps.linkCodes.insert({
+        id: linkCodeId,
         codeHash: await sha256Hex(linkCode),
         orgId: issuer.orgId,
         createdByUserId: issuer.userId,
         createdAt: now,
         expiresAt,
     });
-    return { kind: 'issued', linkCode, expiresAt };
+    return { kind: 'issued', linkCodeId, linkCode, expiresAt };
 }

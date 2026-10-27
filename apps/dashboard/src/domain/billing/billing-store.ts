@@ -41,10 +41,13 @@ export interface BillingStore {
     /** Webhooks only: which organization a provider customer belongs to. */
     findOrgByCustomer(customerId: string): Promise<OrgId | null>;
     findSubscription(orgId: OrgId): Promise<SubscriptionRecord | null>;
+    /** When the organization's first trial began; null while it never had one, so Checkout may still offer it. */
+    findTrialStartedAt(orgId: OrgId): Promise<number | null>;
     hasEvent(eventId: string): Promise<boolean>;
     /**
      * Atomically records a handled event and, when given, stores the subscription under {@link shouldReplace}: the
      * same subscription only by a fetch at least as new, and another one only if it is open or the stored one is over.
+     * A `trialing` subscription also sets the organization's trial start, once: later trials never move it.
      */
     recordEvent(event: ProviderEventRecord, subscription: SubscriptionRecord | null): Promise<void>;
     /** Forgets events received before `before`; Stripe stops retrying an event after three days. */

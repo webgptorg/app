@@ -104,7 +104,10 @@ describe('Stripe billing provider', () => {
         const { provider, calls } = fakeStripe();
         const orgId = testOrgId();
         expect(
-            await provider.createCheckoutSession({ orgId, customerId: 'cus_1', priceId: 'price_1' }, signal),
+            await provider.createCheckoutSession(
+                { orgId, customerId: 'cus_1', priceId: 'price_1', trialDays: null, returnTo: 'billing' },
+                signal,
+            ),
         ).toEqual({
             url: 'https://checkout.stripe.com/c/pay/cs_1',
         });
@@ -121,10 +124,34 @@ describe('Stripe billing provider', () => {
         ]);
     });
 
+    it('starts a trial that still collects the card, returning to the link page', async () => {
+        const { provider, calls } = fakeStripe();
+        const orgId = testOrgId();
+        await provider.createCheckoutSession(
+            { orgId, customerId: 'cus_1', priceId: 'price_1', trialDays: 14, returnTo: 'engines-new' },
+            signal,
+        );
+        expect(calls.checkouts).toEqual([
+            {
+                mode: 'subscription',
+                customer: 'cus_1',
+                client_reference_id: orgId,
+                line_items: [{ price: 'price_1', quantity: 1 }],
+                subscription_data: { metadata: { org_id: orgId }, trial_period_days: 14 },
+                payment_method_collection: 'always',
+                success_url: `${ORIGIN}/engines/new?checkout=success`,
+                cancel_url: `${ORIGIN}/engines/new?checkout=cancel`,
+            },
+        ]);
+    });
+
     it('fails loudly on a Checkout session without a URL', async () => {
         const { provider } = fakeStripe({ checkoutUrl: null });
         await expect(
-            provider.createCheckoutSession({ orgId: testOrgId(), customerId: 'cus_1', priceId: 'price_1' }, signal),
+            provider.createCheckoutSession(
+                { orgId: testOrgId(), customerId: 'cus_1', priceId: 'price_1', trialDays: null, returnTo: 'billing' },
+                signal,
+            ),
         ).rejects.toThrow('without a URL');
     });
 

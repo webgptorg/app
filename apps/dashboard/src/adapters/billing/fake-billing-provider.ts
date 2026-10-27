@@ -7,14 +7,21 @@ import type {
 import type { OrgId } from '../../domain/ids';
 import type { Clock } from '../../domain/ports/clock';
 import type { Random } from '../../domain/ports/random';
+import { CHECKOUT_RETURN_PATHS } from '../../shared/billing';
 
-const PERIOD_MS = 30 * 24 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+const PERIOD_MS = 30 * DAY_MS;
 
 /** What the fake "Stripe" holds; lives as long as the isolate in dev, per test otherwise. */
 export interface FakeBillingState {
     readonly customers: Map<string, { readonly orgId: OrgId; readonly email: string }>;
     readonly subscriptions: Map<string, ProviderSubscription>;
-    readonly checkouts: { readonly orgId: OrgId; readonly customerId: string; readonly priceId: string }[];
+    readonly checkouts: {
+        readonly orgId: OrgId;
+        readonly customerId: string;
+        readonly priceId: string;
+        readonly trialDays: number | null;
+    }[];
     readonly portals: { readonly customerId: string }[];
 }
 
@@ -28,8 +35,9 @@ function fakeId(prefix: string, random: Random): string {
 
 /**
  * The in-memory billing provider for dev and the e2e stack (D-01's config refuses it elsewhere). Checkout completes at
- * once: the subscription becomes `active` here and a `checkout.session.completed` event goes through `deliver`, the
- * same handler a verified Stripe webhook reaches. Nothing touches the network.
+ * once: the subscription becomes `active` here, or `trialing` until the trial's end when Checkout grants one, and a
+ * `checkout.session.completed` event goes through `deliver`, the same handler a verified Stripe webhook reaches.
+ * Nothing touches the network.
  */
 export function createFakeBillingProvider(deps: {
     readonly state: FakeBillingState;
@@ -47,15 +55,15 @@ export function createFakeBillingProvider(deps: {
             return Promise.resolve({ customerId });
         },
 
-        async createCheckoutSession({ orgId, customerId, priceId }, signal) {
-            state.checkouts.push({ orgId, customerId, priceId });
+        async createCheckoutSession({ orgId, customerId, priceId, trialDays, returnTo }, signal) {
+            state.checkouts.push({ orgId, customerId, priceId, trialDays });
             const subscription: ProviderSubscription = {
                 id: fakeId('sub', random),
                 customerId,
-                status: 'active',
+                status: trialDays === null ? 'active' : 'trialing',
                 priceId,
                 quantity: 1,
-                currentPeriodEnd: clock.nowMs() + PERIOD_MS,
+                currentPeriodEnd: clock.nowMs() + (trialDays === null ? PERIOD_MS : trialDays * DAY_MS),
                 cancelAtPeriodEnd: false,
             };
             state.subscriptions.set(subscription.id, subscription);
@@ -63,7 +71,7 @@ export function createFakeBillingProvider(deps: {
                 { id: fakeId('evt', random), type: 'checkout.session.completed', subscriptionId: subscription.id },
                 signal,
             );
-            return { url: `${dashboardOrigin}/billing?checkout=success` };
+            return { url: `${dashboardOrigin}${CHECKOUT_RETURN_PATHS[returnTo]}?checkout=success` };
         },
 
         createPortalSession({ customerId }) {

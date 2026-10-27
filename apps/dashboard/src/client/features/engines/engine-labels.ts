@@ -19,6 +19,8 @@ export function engineStatusLabel(engine: Pick<EngineView, 'status' | 'suspended
             return m.engines_status_offline();
         case 'never-seen':
             return m.engines_status_never_seen();
+        case 'owner-pending':
+            return m.engines_status_owner_pending();
         case 'unknown':
             return m.engines_status_unknown();
         case 'suspended':
@@ -35,6 +37,7 @@ export function engineStatusTone(status: EngineView['status']): BadgeTone {
         case 'suspended':
             return 'danger';
         case 'never-seen':
+        case 'owner-pending':
             return 'info';
         case 'unknown':
             return 'neutral';

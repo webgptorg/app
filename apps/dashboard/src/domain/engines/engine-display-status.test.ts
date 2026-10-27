@@ -33,6 +33,18 @@ describe('deriveEngineDisplayStatus', () => {
         expect(deriveEngineDisplayStatus({ status: 'active' }, snapshot)).toBe(expected);
     });
 
+    it('shows an online engine without members as waiting for its owner', () => {
+        const ownerPending: EngineStatusSnapshot = { ...online, payload: { ...SEEN.payload, members: 0 } };
+        expect(deriveEngineDisplayStatus({ status: 'active' }, ownerPending)).toBe('owner-pending');
+        expect(deriveEngineDisplayStatus({ status: 'suspended' }, ownerPending)).toBe('suspended');
+    });
+
+    it('keeps an offline engine without members offline, and an online one without numbers online', () => {
+        const ownerless: EngineStatusSnapshot = { ...offline, payload: { ...SEEN.payload, members: 0 } };
+        expect(deriveEngineDisplayStatus({ status: 'active' }, ownerless)).toBe('offline');
+        expect(deriveEngineDisplayStatus({ status: 'active' }, { ...online, payload: null })).toBe('online');
+    });
+
     it('shows unknown when the status object did not answer', () => {
         expect(deriveEngineDisplayStatus({ status: 'active' }, null)).toBe('unknown');
     });

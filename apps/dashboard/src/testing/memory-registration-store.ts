@@ -68,12 +68,27 @@ export function createMemoryRegistrationStores(deps: {
             if (state.linkCodes.has(record.codeHash)) {
                 return Promise.reject(new Error('UNIQUE constraint failed: link_codes.code_hash'));
             }
+            if (codes().some((code) => code.id === record.id)) {
+                return Promise.reject(new Error('UNIQUE constraint failed: link_codes.id'));
+            }
             state.linkCodes.set(record.codeHash, { ...record, usedAt: null, engineId: null });
             return Promise.resolve();
         },
         countActive: (orgId, now) => Promise.resolve(codes().filter((code) => redeemable(code, orgId, now)).length),
         countIssuedSince: (orgId, since) =>
             Promise.resolve(codes().filter((code) => code.orgId === orgId && code.createdAt > since).length),
+        findState(orgId, id, now) {
+            const code = codes().find((candidate) => candidate.id === id && candidate.orgId === orgId);
+            if (code === undefined) {
+                return Promise.resolve(null);
+            }
+            if (code.engineId !== null) {
+                return Promise.resolve({ kind: 'linked', engineId: code.engineId });
+            }
+            return Promise.resolve(
+                now < code.expiresAt ? { kind: 'pending', expiresAt: code.expiresAt } : { kind: 'expired' },
+            );
+        },
         findRedeemable(codeHash, now) {
             const code = state.linkCodes.get(codeHash);
             return Promise.resolve(redeemable(code, null, now) ? code.orgId : null);

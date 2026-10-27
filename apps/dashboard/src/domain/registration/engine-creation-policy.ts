@@ -18,6 +18,11 @@ export type EngineCreationDecision<Reason extends string> =
  * (ADR 0017); this enforces only the link-code rate limits itself.
  */
 export interface EngineCreationPolicy {
+    /**
+     * Whether the link page should offer a code at all, or the plan step or the limit banner first (D-10). The
+     * link-code limits are left to issuance, which answers them on its own.
+     */
+    checkEligibility(orgId: OrgId, signal: AbortSignal): Promise<EngineCreationDecision<EntitlementDenial>>;
     /** Before a link code is issued, so the SPA shows the upgrade path before an install command. */
     checkLinkCode(
         orgId: OrgId,
@@ -67,6 +72,7 @@ export function createEngineCreationPolicy(deps: {
             }
             return ALLOWED;
         },
+        checkEligibility: checkEntitlements,
         checkRegistration: checkEntitlements,
     };
 }

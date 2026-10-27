@@ -1,5 +1,5 @@
 import { Badge } from '@ptbk/ui';
-import { CircleCheck, CircleDashed, CircleHelp, CircleOff, CircleSlash } from 'lucide-react';
+import { CircleCheck, CircleDashed, CircleHelp, CircleOff, CircleSlash, CircleUser } from 'lucide-react';
 
 import type { EngineView } from '../../../shared/api/routes';
 import { engineStatusLabel, engineStatusTone } from './engine-labels';
@@ -8,6 +8,7 @@ const ICONS = {
     online: CircleCheck,
     offline: CircleOff,
     'never-seen': CircleDashed,
+    'owner-pending': CircleUser,
     unknown: CircleHelp,
     suspended: CircleSlash,
 } as const;

@@ -11,12 +11,14 @@ import {
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { orgIdSchema } from '../domain/ids';
-import type { LinkCodeView, SessionView } from '../shared/api/routes';
+import type { LinkCodeView, LinkEligibilityView, SessionView } from '../shared/api/routes';
 import type { AuthHarness, TestBrowser, TestResponse } from './auth-harness';
 import { problemCode, signUp } from './auth-flows';
 import { createTestEngine, TEST_ENGINE_DOMAIN, type TestEngine } from './test-engine';
 
 const LINK_CODES = '/api/engines/link-codes';
+const LINK_ELIGIBILITY = '/api/engines/link-eligibility';
+const OTHER_ID = 'aaaaaaaaaaaaaaaaaaaaaaaaaa';
 
 async function orgOf(browser: TestBrowser) {
     const response = await browser.request('GET', '/api/session');
@@ -204,6 +206,87 @@ export function describeEngineFlows(
             }
             const limited = await browser.request('POST', LINK_CODES);
             expect([limited.status, problemCode(limited)]).toEqual([429, 'rate-limited']);
+        });
+
+        describe('link page (D-10)', () => {
+            async function eligibility(browser: TestBrowser): Promise<LinkEligibilityView> {
+                const response = await browser.request('GET', LINK_ELIGIBILITY);
+                expect(response.status).toBe(200);
+                return response.body as LinkEligibilityView;
+            }
+
+            async function status(browser: TestBrowser, linkCodeId: string): Promise<TestResponse> {
+                return browser.request('GET', `${LINK_CODES}/${linkCodeId}`);
+            }
+
+            it('says before any code whether the organization may link, with the code lifetime', async () => {
+                const unsubscribed = await owner({ subscribed: false });
+                expect(await eligibility(unsubscribed.browser)).toEqual({
+                    eligibility: 'not-entitled',
+                    linkCodeTtlS: 1800,
+                });
+                const { browser } = await owner();
+                expect((await eligibility(browser)).eligibility).toBe('allowed');
+                for (let i = 0; i < 2; i++) {
+                    const engine = await createTestEngine();
+                    await expectRegistered(await register(await engine.register(await linkCode(browser))), engine);
+                }
+                expect((await eligibility(browser)).eligibility).toBe('engine-limit');
+                const busy = await owner();
+                for (let i = 0; i < 5; i++) {
+                    await linkCode(busy.browser);
+                }
+                // The rate limit is issuance's answer, not the plan step's.
+                expect((await eligibility(busy.browser)).eligibility).toBe('allowed');
+            });
+
+            it('follows a code from pending to expired, or to linked with the engine, without the code', async () => {
+                const { browser } = await owner();
+                const view = issued(await browser.request('POST', LINK_CODES));
+                expect(view.linkCodeId).toMatch(/^[a-z2-7]{26}$/);
+                const pending = await status(browser, view.linkCodeId);
+                expect([pending.status, pending.headers.get('Cache-Control')]).toEqual([200, 'no-store']);
+                expect(pending.body).toEqual({ status: 'pending', expiresAt: view.expiresAt });
+
+                const engine = await createTestEngine();
+                const request = await engine.register(LinkCode.parse(view.linkCode));
+                await expectRegistered(await register(request), engine);
+                const linked = await status(browser, view.linkCodeId);
+                expect(linked.body).toEqual({
+                    status: 'linked',
+                    engineId: engine.engineId,
+                    hostname: `${engine.engineId}.${TEST_ENGINE_DOMAIN}`,
+                });
+                // An engine whose answer was lost retries with the spent code and is refused; the page still sees it.
+                expectProblem(await register(request), 401, 'invalid-link-code');
+                harness.clock.advance(31 * 60_000);
+                expect((await status(browser, view.linkCodeId)).body).toMatchObject({ status: 'linked' });
+
+                const unused = issued(await browser.request('POST', LINK_CODES));
+                harness.clock.advance(31 * 60_000);
+                expect((await status(browser, unused.linkCodeId)).body).toEqual({ status: 'expired' });
+                for (const body of [pending.body, linked.body]) {
+                    expect(JSON.stringify(body)).not.toContain(view.linkCode);
+                }
+            });
+
+            it('answers 404 for another organization’s code and an unknown one, and 401 without a session', async () => {
+                const a = await owner();
+                const b = await owner();
+                const view = issued(await a.browser.request('POST', LINK_CODES));
+                for (const response of [await status(b.browser, view.linkCodeId), await status(a.browser, OTHER_ID)]) {
+                    expect([response.status, problemCode(response)]).toEqual([404, 'not-found']);
+                }
+                const malformed = await status(a.browser, 'not-an-id');
+                expect(malformed.status).toBe(400);
+                const anonymous = harness.browser();
+                for (const response of [
+                    await status(anonymous, view.linkCodeId),
+                    await anonymous.request('GET', LINK_ELIGIBILITY),
+                ]) {
+                    expect([response.status, problemCode(response)]).toEqual([401, 'unauthorized']);
+                }
+            });
         });
     });
 }

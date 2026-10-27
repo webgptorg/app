@@ -21,6 +21,7 @@ describe('plan catalogue', () => {
             stripePriceId: null,
             features: [],
             quotas: { 'engines.max': 0, 'custom-domains.max': 0 },
+            trialDays: null,
         });
         expect(catalogue.plans.map((plan) => plan.id)).toEqual(['starter', 'scale']);
         expect(catalogue.byId('scale')?.quotas['engines.max']).toBeNull();
@@ -34,6 +35,17 @@ describe('plan catalogue', () => {
         expect(Object.isFrozen(catalogue.byId('starter')?.price)).toBe(true);
         expect(Object.isFrozen(catalogue.byId('starter')?.name)).toBe(true);
         expect(catalogue.byId('scale')).toMatchObject({ name: { en: 'Scale', cs: 'Růst' }, price: null });
+        expect(catalogue.byId('starter')?.trialDays).toBeNull();
+        expect(catalogue.byId('scale')?.trialDays).toBe(14);
+    });
+
+    it('accepts a trial of 1 to 30 whole days', () => {
+        for (const trialDays of [1, 14, 30]) {
+            expect(issues({ ...TEST_PLANS, plans: [{ ...starter, trialDays }] })).toEqual([]);
+        }
+        for (const trialDays of [0, 31, 7.5, '14', null]) {
+            expect(issues({ ...TEST_PLANS, plans: [{ ...starter, trialDays }] })).toEqual(['plans.0.trialDays']);
+        }
     });
 
     it('requires a name in every locale and checks a stated price', () => {

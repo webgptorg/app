@@ -28,6 +28,7 @@ describe('issueLinkCode', () => {
         const stored = [...t.stores.state.linkCodes.values()];
         expect(stored).toEqual([
             {
+                id: outcome.linkCodeId,
                 codeHash: await sha256Hex(outcome.linkCode),
                 orgId: t.orgId,
                 createdByUserId: expect.any(String) as string,
@@ -38,6 +39,8 @@ describe('issueLinkCode', () => {
             },
         ]);
         expect(JSON.stringify(stored)).not.toContain(outcome.linkCode);
+        expect(outcome.linkCodeId).toMatch(/^[a-z2-7]{26}$/);
+        expect(outcome.linkCode).not.toContain(outcome.linkCodeId);
     });
 
     it('gives the code the configured lifetime', async () => {
