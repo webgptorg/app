@@ -828,6 +828,15 @@ const FAILS: readonly Case[] = [
         { tamper: replace(page('/conformance/'), () => redirectTo('/auth/sign-in')) },
     ],
     [
+        'a sign-in redirect that loses the query',
+        'engine-api.gateway.sign-in-keeps-next',
+        {
+            tamper: replace(page('/conformance/'), (request) =>
+                redirectTo(`/auth/sign-in?next=${encodeURIComponent(new URL(request.url).pathname)}`),
+            ),
+        },
+    ],
+    [
         'a sign-in redirect that keeps an off-origin next',
         'engine-api.gateway.sign-in-keeps-next',
         { tamper: replace(page('//'), () => redirectTo('/auth/sign-in?next=%2F%2Fconformance.invalid')) },
