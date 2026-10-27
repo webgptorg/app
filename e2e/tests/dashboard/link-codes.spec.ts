@@ -22,8 +22,9 @@ test('an expired link code is refused at registration', async ({ page, dashboard
     await dashboard.subscribe();
     const { linkCode } = await dashboard.createLinkCode();
 
-    // The page counts down from the dashboard's expiry (LINK_CODE_TTL_S), so its banner says when the code is gone.
-    await expect(page.getByText('The link code expired')).toBeVisible({
+    // The page counts down from the dashboard's expiry (LINK_CODE_TTL_S), so its banner says when the code is gone. The
+    // link progress repeats it, on screen and in its live region (D-10).
+    await expect(page.getByText('The link code expired').first()).toBeVisible({
         timeout: (DASHBOARD_TIMING.linkCodeTtlS + 10) * 1000,
     });
     expect(await mockEngines.register(linkCode)).toEqual({ outcome: 'rejected', reason: 'invalid-link-code' });
