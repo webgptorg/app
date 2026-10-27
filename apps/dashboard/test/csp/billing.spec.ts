@@ -20,10 +20,12 @@ test('subscribe through the fake Checkout and open the portal under the producti
     await expect(page.getByRole('heading', { name: 'Billing', level: 1 })).toBeVisible();
     await checkScreen('/billing');
 
-    await page.getByRole('button', { name: 'Subscribe to Standard' }).click();
+    // The dev plan has a trial (D-10), so the fake Checkout starts one.
+    await page.getByRole('button', { name: 'Start your 14-day trial of Standard' }).click();
     await expect(page).toHaveURL(/\/billing\?checkout=success$/);
     await expect(page.getByText('Thank you, your subscription is starting')).toBeVisible();
-    await expect(page.getByText('Active', { exact: true })).toBeVisible();
+    await expect(page.getByText('Trial', { exact: true })).toBeVisible();
+    await expect(page.getByText(/^Trial ends on /)).toBeVisible();
     await checkScreen('/billing subscribed');
 
     await page.getByRole('button', { name: 'Manage billing' }).click();

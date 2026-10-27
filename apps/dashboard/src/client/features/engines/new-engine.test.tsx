@@ -1,14 +1,96 @@
-import { screen, waitFor, within } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { act, screen, waitFor, within } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { apiRoutes } from '../../../shared/api/routes';
+import { apiRoutes, type EngineView, type LinkCodeStatusView } from '../../../shared/api/routes';
 import { expectNoAxeViolations } from '../../testing/axe';
-import { INSTALL_GUIDE_URL, LINK_CODE as CODE, linkCodeView as linkCode, NOW, session } from '../../testing/fixtures';
+import {
+    billingView,
+    ENGINE_DOMAIN,
+    ENGINE_ID,
+    engineView,
+    INSTALL_GUIDE_URL,
+    LINK_CODE as CODE,
+    linkCodeView as linkCode,
+    NOW,
+    session,
+} from '../../testing/fixtures';
 import { renderApp } from '../../testing/render-app';
+import type { ScriptedApi } from '../../testing/scripted-api';
 import { ok, problem } from '../../testing/scripted-api';
+import { LINK_POLL_MS, NO_HEARTBEAT_HINT_MS, WAITING_HINT_MS } from './link-progress';
 
 const OWNER = session({ permissions: ['org.read', 'billing.read', 'billing.manage', 'engine.link', 'engine.read'] });
+const LINK_ID = 'lllllllllllllllllllllllllq';
+const OTHER_LINK_ID = 'mmmmmmmmmmmmmmmmmmmmmmmmmq';
+const HOSTNAME = `${ENGINE_ID}.${ENGINE_DOMAIN}`;
 const TAB_NAMES = ['Linux server with Docker', 'Docker Compose', 'Already running Promptbook'];
+const CHECKOUT_URL = 'https://checkout.stripe.com/c/pay/cs_test_example';
+
+const WAITING_TEXT = 'Waiting for your engine to link. Run the command above; this page updates by itself.';
+const OWNER_TEXT =
+    'Finish setup on the engine: your terminal shows a setup link and a QR code. Only the engine can make you its owner, so we cannot show that link here.';
+
+const PENDING: LinkCodeStatusView = { status: 'pending', expiresAt: NOW + 30 * 60_000 };
+const LINKED: LinkCodeStatusView = {
+    status: 'linked',
+    engineId: ENGINE_ID as EngineView['engineId'],
+    hostname: HOSTNAME as EngineView['hostname'],
+};
+
+const READY = engineView();
+const NO_HEARTBEAT = engineView({ status: 'never-seen', lastSeenAt: null, heartbeat: null });
+const OWNER_PENDING = engineView({
+    status: 'owner-pending',
+    heartbeat: READY.heartbeat === null ? null : { ...READY.heartbeat, members: 0 },
+});
+
+function eligible(eligibility: 'allowed' | 'not-entitled' | 'engine-limit' = 'allowed', linkCodeTtlS = 1800) {
+    return (api: ScriptedApi) =>
+        api.on(apiRoutes.linkEligibility, ok({ eligibility, linkCodeTtlS, installGuideUrl: INSTALL_GUIDE_URL }));
+}
+
+function scriptProgress(api: ScriptedApi, codes: readonly LinkCodeStatusView[], engines: readonly EngineView[]) {
+    const lastCode = codes.at(-1);
+    if (lastCode !== undefined) {
+        api.once(apiRoutes.getLinkCode, ...codes.slice(0, -1).map((code) => ok(code)));
+        api.on(apiRoutes.getLinkCode, ok(lastCode));
+    }
+    const lastEngine = engines.at(-1);
+    if (lastEngine !== undefined) {
+        api.once(apiRoutes.getEngine, ...engines.slice(0, -1).map((engine) => ok({ engine })));
+        api.on(apiRoutes.getEngine, ok({ engine: lastEngine }));
+    }
+}
+
+/** Eligible, a code issued on load, and the given states of that code and its engine, in order. */
+function linking(codes: readonly LinkCodeStatusView[], engines: readonly EngineView[] = []) {
+    return (api: ScriptedApi) => {
+        eligible()(api);
+        api.on(apiRoutes.createLinkCode, ok(linkCode()));
+        scriptProgress(api, codes, engines);
+    };
+}
+
+function progress(): HTMLElement {
+    return screen.getByRole('region', { name: 'Link progress' });
+}
+
+function useFakeClock() {
+    vi.useFakeTimers({
+        shouldAdvanceTime: true,
+        toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'],
+    });
+    vi.setSystemTime(NOW);
+    return { advance: (ms: number) => vi.advanceTimersByTime(ms) };
+}
+
+async function elapse(ms: number): Promise<void> {
+    await act(() => vi.advanceTimersByTimeAsync(ms));
+}
+
+afterEach(() => {
+    vi.useRealTimers();
+});
 
 describe('new engine page', () => {
     it('sends a signed-out visitor to sign in first', async () => {
@@ -18,175 +100,484 @@ describe('new engine page', () => {
     });
 
     it('is reachable from the empty engine list', async () => {
-        const app = renderApp({ path: '/', session: OWNER });
+        const app = renderApp({ path: '/', session: OWNER, script: eligible('engine-limit') });
         await app.user.click(await screen.findByRole('link', { name: 'Link an engine' }));
         expect(await screen.findByRole('heading', { name: 'Link an engine', level: 1 })).toBeTruthy();
         expect(app.history.location.pathname).toBe('/engines/new');
     });
 
-    it('shows the install command once, with a copy button and the time left', async () => {
-        const app = renderApp({
-            path: '/engines/new',
-            session: OWNER,
-            script: (api) => api.on(apiRoutes.createLinkCode, ok(linkCode())),
+    describe('plan step', () => {
+        it('shows the plans before any command, and Checkout returns to this page', async () => {
+            const [standard] = billingView().plans;
+            if (standard === undefined) throw new Error('a plan');
+            const app = renderApp({
+                path: '/engines/new',
+                session: OWNER,
+                script: (api) => {
+                    eligible('not-entitled')(api);
+                    api.on(apiRoutes.getBilling, ok(billingView({ plans: [{ ...standard, trialDays: 14 }] })));
+                    api.on(apiRoutes.billingCheckout, ok({ url: CHECKOUT_URL }));
+                },
+            });
+            expect(await screen.findByRole('heading', { name: 'Choose a plan to link your engine' })).toBeTruthy();
+            const start = await screen.findByRole('button', { name: 'Start your 14-day trial of Standard' });
+            expect(start.textContent).toBe('Start your 14-day trial');
+            expect(screen.queryByText(/bun run dev:link/)).toBeNull();
+            expect(app.api.callsTo(apiRoutes.createLinkCode)).toEqual([]);
+            await expectNoAxeViolations(app.container);
+            await app.user.click(start);
+            await waitFor(() => {
+                expect(app.navigations).toEqual([CHECKOUT_URL]);
+            });
+            expect(app.api.callsTo(apiRoutes.billingCheckout)).toEqual([
+                { body: { planId: 'standard', returnTo: 'engines-new' } },
+            ]);
         });
-        await app.user.click(await screen.findByRole('button', { name: 'Create link code' }));
-        expect(await screen.findByText(CODE, { exact: false })).toBeTruthy();
-        expect(screen.getByRole('button', { name: 'Copy install command' })).toBeTruthy();
-        expect(screen.getByText('Expires in 30:00')).toBeTruthy();
-        expect(screen.queryByRole('button', { name: 'Create link code' })).toBeNull();
-        expect(app.api.callsTo(apiRoutes.createLinkCode)).toHaveLength(1);
-        await expectNoAxeViolations(app.container);
+
+        it('says Checkout was cancelled and offers the plans again', async () => {
+            renderApp({
+                path: '/engines/new?checkout=cancel',
+                session: OWNER,
+                script: (api) => {
+                    eligible('not-entitled')(api);
+                    api.on(apiRoutes.getBilling, ok(billingView()));
+                },
+            });
+            expect(await screen.findByText('Checkout was cancelled. Nothing was charged.')).toBeTruthy();
+            expect(await screen.findByRole('button', { name: 'Subscribe to Standard' })).toBeTruthy();
+        });
+
+        it('sends someone who cannot manage billing to billing instead', async () => {
+            renderApp({
+                path: '/engines/new',
+                session: session({ permissions: ['org.read', 'engine.link', 'engine.read'] }),
+                script: eligible('not-entitled'),
+            });
+            expect(await screen.findByText('Your plan does not include engines')).toBeTruthy();
+            expect(screen.getByRole('link', { name: 'Go to billing' })).toBeTruthy();
+        });
+
+        it('shows the engine limit instead of a command', async () => {
+            const app = renderApp({ path: '/engines/new', session: OWNER, script: eligible('engine-limit') });
+            expect(await screen.findByText("Your plan's engine limit is reached")).toBeTruthy();
+            expect(screen.getByRole('link', { name: 'Go to billing' })).toBeTruthy();
+            expect(app.api.callsTo(apiRoutes.createLinkCode)).toEqual([]);
+        });
+
+        it('waits on the return from Checkout until the plan arrives, then issues the code', async () => {
+            const fake = useFakeClock();
+            const app = renderApp({
+                path: '/engines/new?checkout=success',
+                session: OWNER,
+                fakeTimers: fake,
+                script: (api) => {
+                    api.once(
+                        apiRoutes.linkEligibility,
+                        ok({ eligibility: 'not-entitled', linkCodeTtlS: 1800, installGuideUrl: INSTALL_GUIDE_URL }),
+                    );
+                    eligible()(api);
+                    api.on(apiRoutes.getBilling, ok(billingView({ status: 'trialing' })));
+                    api.on(apiRoutes.createLinkCode, ok(linkCode()));
+                    scriptProgress(api, [PENDING], []);
+                },
+            });
+            expect(await screen.findByText('Thank you, your trial has started.')).toBeTruthy();
+            expect(screen.getByText('It can take a moment until the new plan shows here.')).toBeTruthy();
+            expect(screen.queryByRole('heading', { name: 'Choose a plan to link your engine' })).toBeNull();
+            expect(app.api.callsTo(apiRoutes.createLinkCode)).toEqual([]);
+            await elapse(LINK_POLL_MS);
+            expect(await screen.findByText(`bun run dev:link ${CODE}`)).toBeTruthy();
+            expect(screen.getByText('Thank you, your trial has started.')).toBeTruthy();
+            expect(app.api.callsTo(apiRoutes.createLinkCode)).toHaveLength(1);
+        });
     });
 
-    it('offers the install paths as tabs in the configured order, the first selected', async () => {
-        const app = renderApp({
-            path: '/engines/new',
-            session: OWNER,
-            script: (api) => api.on(apiRoutes.createLinkCode, ok(linkCode())),
-        });
-        await app.user.click(await screen.findByRole('button', { name: 'Create link code' }));
-        const list = await screen.findByRole('tablist', { name: 'How to install' });
-        const tabs = within(list).getAllByRole('tab');
-        expect(tabs.map((tab) => tab.textContent)).toEqual(TAB_NAMES);
-        expect(tabs.map((tab) => tab.getAttribute('aria-selected'))).toEqual(['true', 'false', 'false']);
-        const panel = screen.getByRole('tabpanel', { name: 'Linux server with Docker' });
-        expect(within(panel).getByText(`bun run dev:link ${CODE}`)).toBeTruthy();
-        expect(within(panel).getByText(/It needs outbound HTTPS \(port 443\) and nothing inbound\./)).toBeTruthy();
-        expect(
-            within(panel)
-                .getByRole('link', { name: /^Requirements and proxies/ })
-                .getAttribute('href'),
-        ).toBe(`${INSTALL_GUIDE_URL}#1-the-installer-recommended`);
-        expect(within(panel).queryByText(/Moving from an existing Promptbook server/)).toBeNull();
-
-        await app.user.click(within(list).getByRole('tab', { name: 'Already running Promptbook' }));
-        const connect = screen.getByRole('tabpanel', { name: 'Already running Promptbook' });
-        expect(within(connect).getByText(`promptbook-engine connect --link ${CODE}`)).toBeTruthy();
-        expect(within(connect).getByText(/Moving from an existing Promptbook server\?/)).toBeTruthy();
-        expect(
-            within(connect)
-                .getByRole('link', { name: /^Moving an existing deployment/ })
-                .getAttribute('href'),
-        ).toBe(`${INSTALL_GUIDE_URL}#moving-an-existing-deployment`);
-        expect(app.api.callsTo(apiRoutes.createLinkCode)).toHaveLength(1);
-        await expectNoAxeViolations(app.container);
-    });
-
-    it('switches tabs with the keyboard and keeps a multi-line command intact', async () => {
-        const app = renderApp({
-            path: '/engines/new',
-            session: OWNER,
-            script: (api) => api.on(apiRoutes.createLinkCode, ok(linkCode())),
-        });
-        await app.user.click(await screen.findByRole('button', { name: 'Create link code' }));
-        const first = await screen.findByRole('tab', { name: 'Linux server with Docker' });
-        first.focus();
-        await app.user.keyboard('{ArrowRight}');
-        const compose = screen.getByRole('tab', { name: 'Docker Compose' });
-        expect(document.activeElement).toBe(compose);
-        expect(compose.getAttribute('aria-selected')).toBe('true');
-        const code = screen.getByRole('tabpanel', { name: 'Docker Compose' }).querySelector('pre code');
-        expect(code?.textContent).toBe(linkCode().installCommands[1]?.command);
-        expect(code?.textContent).toContain('\n');
-        await app.user.keyboard('{End}');
-        expect(screen.getByRole('tab', { name: 'Already running Promptbook' }).getAttribute('aria-selected')).toBe(
-            'true',
-        );
-        await app.user.keyboard('{Home}');
-        expect(first.getAttribute('aria-selected')).toBe('true');
-        await app.user.keyboard('{ArrowLeft}');
-        expect(screen.getByRole('tab', { name: 'Already running Promptbook' }).getAttribute('aria-selected')).toBe(
-            'true',
-        );
-    });
-
-    it('copies the command of the selected tab', async () => {
-        const app = renderApp({
-            path: '/engines/new',
-            session: OWNER,
-            script: (api) => api.on(apiRoutes.createLinkCode, ok(linkCode())),
-        });
-        // After renderApp: user-event installs its own clipboard stub in setup().
-        const writeText = vi.fn(() => Promise.resolve());
-        Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
-        try {
-            await app.user.click(await screen.findByRole('button', { name: 'Create link code' }));
-            for (const [index, name] of TAB_NAMES.entries()) {
-                await app.user.click(await screen.findByRole('tab', { name }));
-                await app.user.click(
-                    within(screen.getByRole('tabpanel', { name })).getByRole('button', {
-                        name: 'Copy install command',
-                    }),
-                );
-                expect(writeText).toHaveBeenLastCalledWith(linkCode().installCommands[index]?.command);
-            }
-            expect(writeText).toHaveBeenCalledTimes(3);
-        } finally {
-            Reflect.deleteProperty(navigator, 'clipboard');
-        }
-    });
-
-    it('shows a single configured path without anything the other tabs add', async () => {
-        const [installer] = linkCode().installCommands;
-        const app = renderApp({
-            path: '/engines/new',
-            session: OWNER,
-            script: (api) =>
-                api.on(apiRoutes.createLinkCode, ok(linkCode({ installCommands: installer ? [installer] : [] }))),
-        });
-        await app.user.click(await screen.findByRole('button', { name: 'Create link code' }));
-        expect((await screen.findAllByRole('tab')).map((tab) => tab.textContent)).toEqual([TAB_NAMES[0]]);
-        expect(screen.queryByText(/Put the Compose file/)).toBeNull();
-        expect(app.container.textContent).not.toMatch(/engines_new_/);
-    });
-
-    it.each([
-        ['not-entitled', 'Your plan does not include engines'],
-        ['engine-limit', "Your plan's engine limit is reached"],
-    ])('shows the upgrade path for %s instead of an install command', async (code, title) => {
-        const app = renderApp({
-            path: '/engines/new',
-            session: OWNER,
-            script: (api) => api.on(apiRoutes.createLinkCode, problem(403, code)),
-        });
-        await app.user.click(await screen.findByRole('button', { name: 'Create link code' }));
-        expect(await screen.findByRole('link', { name: 'Go to billing' })).toBeTruthy();
-        expect(screen.getAllByText(title).length).toBeGreaterThan(0);
-        expect(screen.queryByText(CODE, { exact: false })).toBeNull();
-        await expectNoAxeViolations(app.container);
-    });
-
-    it('reports the link-code rate limit without an upgrade path', async () => {
-        const app = renderApp({
-            path: '/engines/new',
-            session: OWNER,
-            script: (api) => api.on(apiRoutes.createLinkCode, problem(429, 'rate-limited')),
-        });
-        await app.user.click(await screen.findByRole('button', { name: 'Create link code' }));
-        expect(await screen.findByText('Too many attempts. Wait a minute and try again.')).toBeTruthy();
-        expect(screen.queryByRole('link', { name: 'Go to billing' })).toBeNull();
-    });
-
-    it('offers a new code once the shown one has expired', async () => {
-        const app = renderApp({
-            path: '/engines/new',
-            session: OWNER,
-            script: (api) => api.once(apiRoutes.createLinkCode, ok(linkCode({ expiresAt: NOW })), ok(linkCode())),
-        });
-        await app.user.click(await screen.findByRole('button', { name: 'Create link code' }));
-        expect(await screen.findByText('The link code expired')).toBeTruthy();
-        expect(screen.queryByText(CODE, { exact: false })).toBeNull();
-        await app.user.click(screen.getByRole('button', { name: 'Create a new link code' }));
-        await waitFor(() => {
+    describe('install command', () => {
+        it('issues the code on load, once, and keeps only its ID in the URL', async () => {
+            const app = renderApp({ path: '/engines/new', session: OWNER, script: linking([PENDING]) });
+            expect(await screen.findByText(`bun run dev:link ${CODE}`)).toBeTruthy();
+            expect(screen.getByRole('button', { name: 'Copy install command' })).toBeTruthy();
             expect(screen.getByText('Expires in 30:00')).toBeTruthy();
+            expect(
+                screen.getByText(/works once and expires after 30 minutes\. It grants nothing inside the engine\./),
+            ).toBeTruthy();
+            await waitFor(() => {
+                expect(app.history.location.search).toBe(`?link=${LINK_ID}`);
+            });
+            expect(app.history.location.href).not.toContain(CODE);
+            expect(await within(progress()).findByText(WAITING_TEXT, { selector: 'li p' })).toBeTruthy();
+            expect(app.api.callsTo(apiRoutes.createLinkCode)).toHaveLength(1);
+            expect(app.api.callsTo(apiRoutes.getLinkCode)[0]).toEqual({ params: { linkCodeId: LINK_ID } });
+            await expectNoAxeViolations(app.container);
         });
-        expect(app.api.callsTo(apiRoutes.createLinkCode)).toHaveLength(2);
+
+        it('offers the install paths as tabs in the configured order, the first selected', async () => {
+            const app = renderApp({
+                path: '/engines/new',
+                session: OWNER,
+                script: linking([PENDING]),
+            });
+            const list = await screen.findByRole('tablist', { name: 'How to install' });
+            const tabs = within(list).getAllByRole('tab');
+            expect(tabs.map((tab) => tab.textContent)).toEqual(TAB_NAMES);
+            expect(tabs.map((tab) => tab.getAttribute('aria-selected'))).toEqual(['true', 'false', 'false']);
+            const panel = screen.getByRole('tabpanel', { name: 'Linux server with Docker' });
+            expect(within(panel).getByText(`bun run dev:link ${CODE}`)).toBeTruthy();
+            expect(within(panel).getByText(/It needs outbound HTTPS \(port 443\) and nothing inbound\./)).toBeTruthy();
+            expect(
+                within(panel)
+                    .getByRole('link', { name: /^Requirements and proxies/ })
+                    .getAttribute('href'),
+            ).toBe(`${INSTALL_GUIDE_URL}#1-the-installer-recommended`);
+            expect(within(panel).queryByText(/Moving from an existing Promptbook server/)).toBeNull();
+
+            await app.user.click(within(list).getByRole('tab', { name: 'Already running Promptbook' }));
+            const connect = screen.getByRole('tabpanel', { name: 'Already running Promptbook' });
+            expect(within(connect).getByText(`promptbook-engine connect --link ${CODE}`)).toBeTruthy();
+            expect(within(connect).getByText(/Moving from an existing Promptbook server\?/)).toBeTruthy();
+            expect(
+                within(connect)
+                    .getByRole('link', { name: /^Moving an existing deployment/ })
+                    .getAttribute('href'),
+            ).toBe(`${INSTALL_GUIDE_URL}#moving-an-existing-deployment`);
+            expect(app.api.callsTo(apiRoutes.createLinkCode)).toHaveLength(1);
+            await expectNoAxeViolations(app.container);
+        });
+
+        it('switches tabs with the keyboard and keeps a multi-line command intact', async () => {
+            const app = renderApp({
+                path: '/engines/new',
+                session: OWNER,
+                script: linking([PENDING]),
+            });
+            const first = await screen.findByRole('tab', { name: 'Linux server with Docker' });
+            first.focus();
+            await app.user.keyboard('{ArrowRight}');
+            const compose = screen.getByRole('tab', { name: 'Docker Compose' });
+            expect(document.activeElement).toBe(compose);
+            expect(compose.getAttribute('aria-selected')).toBe('true');
+            const code = screen.getByRole('tabpanel', { name: 'Docker Compose' }).querySelector('pre code');
+            expect(code?.textContent).toBe(linkCode().installCommands[1]?.command);
+            expect(code?.textContent).toContain('\n');
+            await app.user.keyboard('{End}');
+            expect(screen.getByRole('tab', { name: 'Already running Promptbook' }).getAttribute('aria-selected')).toBe(
+                'true',
+            );
+            await app.user.keyboard('{Home}');
+            expect(first.getAttribute('aria-selected')).toBe('true');
+            await app.user.keyboard('{ArrowLeft}');
+            expect(screen.getByRole('tab', { name: 'Already running Promptbook' }).getAttribute('aria-selected')).toBe(
+                'true',
+            );
+        });
+
+        it('copies the command of the selected tab', async () => {
+            const app = renderApp({
+                path: '/engines/new',
+                session: OWNER,
+                script: linking([PENDING]),
+            });
+            // After renderApp: user-event installs its own clipboard stub in setup().
+            const writeText = vi.fn(() => Promise.resolve());
+            Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+            try {
+                for (const [index, name] of TAB_NAMES.entries()) {
+                    await app.user.click(await screen.findByRole('tab', { name }));
+                    await app.user.click(
+                        within(screen.getByRole('tabpanel', { name })).getByRole('button', {
+                            name: 'Copy install command',
+                        }),
+                    );
+                    expect(writeText).toHaveBeenLastCalledWith(linkCode().installCommands[index]?.command);
+                }
+                expect(writeText).toHaveBeenCalledTimes(3);
+            } finally {
+                Reflect.deleteProperty(navigator, 'clipboard');
+            }
+        });
+
+        it('shows a single configured path without anything the other tabs add', async () => {
+            const [installer] = linkCode().installCommands;
+            const app = renderApp({
+                path: '/engines/new',
+                session: OWNER,
+                script: (api) => {
+                    linking([PENDING])(api);
+                    api.on(apiRoutes.createLinkCode, ok(linkCode({ installCommands: installer ? [installer] : [] })));
+                },
+            });
+            expect((await screen.findAllByRole('tab')).map((tab) => tab.textContent)).toEqual([TAB_NAMES[0]]);
+            expect(screen.queryByText(/Put the Compose file/)).toBeNull();
+            expect(app.container.textContent).not.toMatch(/engines_new_/);
+        });
+
+        it('takes the intro’s code lifetime from configuration', async () => {
+            renderApp({
+                path: '/engines/new',
+                session: OWNER,
+                script: (api) => {
+                    api.on(
+                        apiRoutes.linkEligibility,
+                        ok({ eligibility: 'engine-limit', linkCodeTtlS: 30, installGuideUrl: INSTALL_GUIDE_URL }),
+                    );
+                },
+            });
+            expect(await screen.findByText(/works once and expires after 30 seconds\./)).toBeTruthy();
+        });
+
+        it('reports the link-code rate limit and offers to try again', async () => {
+            const app = renderApp({
+                path: '/engines/new',
+                session: OWNER,
+                script: (api) => {
+                    eligible()(api);
+                    api.once(apiRoutes.createLinkCode, problem(429, 'rate-limited'));
+                    api.on(apiRoutes.createLinkCode, ok(linkCode()));
+                    scriptProgress(api, [PENDING], []);
+                },
+            });
+            expect(await screen.findByText('Too many attempts. Wait a minute and try again.')).toBeTruthy();
+            expect(screen.queryByRole('link', { name: 'Go to billing' })).toBeNull();
+            await app.user.click(await screen.findByRole('button', { name: 'Create link code' }));
+            expect(await screen.findByText(`bun run dev:link ${CODE}`)).toBeTruthy();
+        });
+
+        it('shows the upgrade path when issuance is refused after all', async () => {
+            renderApp({
+                path: '/engines/new',
+                session: OWNER,
+                script: (api) => {
+                    eligible()(api);
+                    api.on(apiRoutes.createLinkCode, problem(403, 'engine-limit'));
+                },
+            });
+            expect(await screen.findByRole('link', { name: 'Go to billing' })).toBeTruthy();
+            expect(screen.queryByText(CODE, { exact: false })).toBeNull();
+        });
+
+        it('offers a new code once the shown one has expired', async () => {
+            const app = renderApp({
+                path: '/engines/new',
+                session: OWNER,
+                script: (api) => {
+                    eligible()(api);
+                    api.once(apiRoutes.createLinkCode, ok(linkCode({ expiresAt: NOW })));
+                    api.on(apiRoutes.createLinkCode, ok(linkCode({ linkCodeId: OTHER_LINK_ID })));
+                    scriptProgress(api, [PENDING], []);
+                },
+            });
+            expect(await screen.findByText('The link code expired')).toBeTruthy();
+            expect(screen.queryByText(CODE, { exact: false })).toBeNull();
+            await app.user.click(screen.getByRole('button', { name: 'Create a new link code' }));
+            await waitFor(() => {
+                expect(screen.getByText('Expires in 30:00')).toBeTruthy();
+            });
+            expect(app.api.callsTo(apiRoutes.createLinkCode)).toHaveLength(2);
+            await waitFor(() => {
+                expect(app.history.location.search).toBe(`?link=${OTHER_LINK_ID}`);
+            });
+        });
+
+        it('explains that only owners link engines', async () => {
+            const app = renderApp({ path: '/engines/new', session: session({ permissions: ['org.read'] }) });
+            expect(await screen.findByText('Only owners of this organization can link engines.')).toBeTruthy();
+            expect(app.api.callsTo(apiRoutes.linkEligibility)).toEqual([]);
+            expect(app.api.callsTo(apiRoutes.createLinkCode)).toEqual([]);
+        });
     });
 
-    it('explains that only owners link engines', async () => {
-        renderApp({ path: '/engines/new', session: session({ permissions: ['org.read'] }) });
-        expect(await screen.findByText('Only owners of this organization can link engines.')).toBeTruthy();
-        expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Create link code' }).disabled).toBe(true);
+    describe('live checklist', () => {
+        it('follows the engine from waiting to ready, polling every 3 seconds, and stops there', async () => {
+            const fake = useFakeClock();
+            const app = renderApp({
+                path: '/engines/new',
+                session: OWNER,
+                fakeTimers: fake,
+                script: linking([PENDING, LINKED], [NO_HEARTBEAT, OWNER_PENDING, READY]),
+            });
+            expect(await screen.findByText(WAITING_TEXT, { selector: 'li p' })).toBeTruthy();
+            expect(progress().dataset['linkState']).toBe('waiting');
+
+            await elapse(LINK_POLL_MS);
+            expect(await screen.findByText('Engine linked.', { selector: 'p.font-medium' })).toBeTruthy();
+            expect(progress().dataset['linkState']).toBe('linked');
+            expect(screen.queryByText(`bun run dev:link ${CODE}`)).toBeNull();
+            expect(screen.queryByText(/^Expires in/)).toBeNull();
+            expect(screen.getByText(ENGINE_ID.slice(0, 8))).toBeTruthy();
+            expect(screen.getByRole('button', { name: `Copy engine ID ${ENGINE_ID.slice(0, 8)}` })).toBeTruthy();
+            expect(screen.getByText(HOSTNAME)).toBeTruthy();
+            expect(
+                screen.getByText(
+                    'Your terminal shows the same fingerprint. Compare them: if they differ, this is not your engine.',
+                ),
+            ).toBeTruthy();
+            expect(await screen.findByText("Waiting for the engine's first heartbeat.")).toBeTruthy();
+            await expectNoAxeViolations(app.container);
+
+            await elapse(LINK_POLL_MS);
+            expect(await screen.findByText('Engine online, version 1.4.2.', { selector: 'li p' })).toBeTruthy();
+            expect(progress().dataset['linkState']).toBe('owner-pending');
+            expect(screen.getByText(OWNER_TEXT)).toBeTruthy();
+            expect(screen.getByText('After you create the passkey, this page notices within a minute.')).toBeTruthy();
+            expect(screen.queryByRole('link', { name: /^Open engine/ })).toBeNull();
+
+            await elapse(LINK_POLL_MS);
+            expect(await screen.findByText('Your engine is ready.', { selector: 'p.font-medium' })).toBeTruthy();
+            expect(progress().dataset['linkState']).toBe('ready');
+            expect(screen.getByText('Owner set up.')).toBeTruthy();
+            const open = screen.getByRole('link', { name: `Open engine ${ENGINE_ID.slice(0, 8)}, in a new tab` });
+            expect(open.getAttribute('href')).toBe(`https://${HOSTNAME}/`);
+            expect(open.getAttribute('target')).toBe('_blank');
+            expect(open.getAttribute('rel')).toBe('noopener noreferrer');
+            expect(open.getAttribute('referrerpolicy')).toBe('no-referrer');
+            expect(screen.getByRole('link', { name: 'Back to engines' }).getAttribute('href')).toBe('/engines');
+            await expectNoAxeViolations(app.container);
+
+            const calls = app.api.calls.length;
+            await elapse(10 * LINK_POLL_MS);
+            expect(app.api.calls.length).toBe(calls);
+            expect(app.api.callsTo(apiRoutes.getEngine)[0]).toEqual({ params: { engineId: ENGINE_ID } });
+        });
+
+        it('ticks the rows in their order, whichever arrives first, and says how many relays reach it', async () => {
+            renderApp({
+                path: '/engines/new',
+                session: OWNER,
+                script: linking([LINKED], [{ ...OWNER_PENDING, reachableRelays: 2 }]),
+            });
+            const rows = await waitFor(() => {
+                const found = [...progress().querySelectorAll<HTMLElement>('[data-step]')];
+                expect(found.map((row) => row.dataset['step'])).toEqual(['linked', 'online', 'reachable', 'owner']);
+                return found;
+            });
+            expect(rows.map((row) => row.dataset['stepState'])).toEqual(['done', 'done', 'done', 'current']);
+            expect(screen.getByText('Reachable through 2 relays')).toBeTruthy();
+        });
+
+        it('says when an online engine is not reachable, with the proxy troubleshooting link', async () => {
+            renderApp({
+                path: '/engines/new',
+                session: OWNER,
+                script: linking([LINKED], [{ ...OWNER_PENDING, reachableRelays: 0 }]),
+            });
+            expect(await screen.findByText('Not reachable: no relay connection')).toBeTruthy();
+            const link = screen.getByRole('link', { name: /Troubleshoot proxies and outbound connections/ });
+            expect(link.getAttribute('href')).toBe(`${INSTALL_GUIDE_URL}#troubleshooting`);
+            expect(document.querySelector('[data-step="reachable"]')?.getAttribute('data-step-state')).toBe('current');
+        });
+
+        it('hides the reachability row while no relay reports', async () => {
+            renderApp({ path: '/engines/new', session: OWNER, script: linking([LINKED], [OWNER_PENDING]) });
+            expect(await screen.findByText(OWNER_TEXT)).toBeTruthy();
+            expect(document.querySelector('[data-step="reachable"]')).toBeNull();
+        });
+
+        it('points to the troubleshooting guide after 2 minutes of waiting', async () => {
+            const fake = useFakeClock();
+            renderApp({ path: '/engines/new', session: OWNER, fakeTimers: fake, script: linking([PENDING]) });
+            expect(await screen.findByText(WAITING_TEXT, { selector: 'li p' })).toBeTruthy();
+            await elapse(WAITING_HINT_MS - 2000);
+            expect(screen.queryByText(/^Nothing yet\?/)).toBeNull();
+            await elapse(2000);
+            expect(
+                await screen.findByText('Nothing yet? The engine reports problems in the terminal. Common causes:'),
+            ).toBeTruthy();
+            for (const name of ['No outbound HTTPS', 'A proxy in the way', 'An expired code']) {
+                expect(screen.getByRole('link', { name: new RegExp(name) }).getAttribute('href')).toMatch(
+                    /#troubleshooting$/,
+                );
+            }
+        });
+
+        it('says so after 3 minutes linked without a heartbeat', async () => {
+            const fake = useFakeClock();
+            renderApp({
+                path: '/engines/new',
+                session: OWNER,
+                fakeTimers: fake,
+                script: linking([LINKED], [NO_HEARTBEAT]),
+            });
+            expect(await screen.findByText("Waiting for the engine's first heartbeat.")).toBeTruthy();
+            await elapse(NO_HEARTBEAT_HINT_MS - 2000);
+            expect(screen.queryByText(/^Linked, but no heartbeat yet/)).toBeNull();
+            await elapse(2000);
+            expect(
+                await screen.findByText(
+                    'Linked, but no heartbeat yet. The engine may still be downloading or starting. If the terminal shows an error, it says what to do.',
+                ),
+            ).toBeTruthy();
+        });
+
+        it('announces state changes only, politely', async () => {
+            renderApp({ path: '/engines/new', session: OWNER, script: linking([LINKED], [OWNER_PENDING]) });
+            await screen.findByText(OWNER_TEXT);
+            const live = progress().querySelectorAll('[aria-live="polite"]');
+            expect(live).toHaveLength(1);
+            expect(live[0]?.textContent).toBe('Engine online, version 1.4.2.');
+            expect(document.querySelectorAll('[aria-live="polite"] [data-step]')).toHaveLength(0);
+        });
+
+        it('stops at expiry and offers a new code', async () => {
+            const fake = useFakeClock();
+            const app = renderApp({
+                path: `/engines/new?link=${LINK_ID}`,
+                session: OWNER,
+                fakeTimers: fake,
+                script: (api) => {
+                    eligible()(api);
+                    scriptProgress(api, [PENDING, { status: 'expired' }], []);
+                },
+            });
+            expect(
+                await screen.findByText(/^Waiting for your engine to link with the command you copied/),
+            ).toBeTruthy();
+            await elapse(LINK_POLL_MS);
+            expect(await screen.findByText('The link code expired', { selector: 'p.font-semibold' })).toBeTruthy();
+            expect(progress().dataset['linkState']).toBe('expired');
+            const calls = app.api.callsTo(apiRoutes.getLinkCode).length;
+            await elapse(5 * LINK_POLL_MS);
+            expect(app.api.callsTo(apiRoutes.getLinkCode)).toHaveLength(calls);
+        });
+
+        it('resumes after a reload from the link ID, without the command and without a new code', async () => {
+            const app = renderApp({
+                path: `/engines/new?link=${LINK_ID}`,
+                session: OWNER,
+                script: (api) => {
+                    eligible()(api);
+                    scriptProgress(api, [LINKED], [OWNER_PENDING]);
+                },
+            });
+            expect(await screen.findByText(OWNER_TEXT)).toBeTruthy();
+            expect(screen.getByText('Engine linked.', { selector: 'p.font-medium' })).toBeTruthy();
+            expect(screen.queryByRole('heading', { name: 'Install command' })).toBeNull();
+            expect(app.api.callsTo(apiRoutes.createLinkCode)).toEqual([]);
+            expect(app.api.callsTo(apiRoutes.getLinkCode)).toEqual([{ params: { linkCodeId: LINK_ID } }]);
+        });
+
+        it('says when the link ID in the URL is not the organization’s', async () => {
+            const app = renderApp({
+                path: `/engines/new?link=${LINK_ID}`,
+                session: OWNER,
+                script: (api) => {
+                    eligible()(api);
+                    api.on(apiRoutes.getLinkCode, problem(404, 'not-found'));
+                    api.on(apiRoutes.createLinkCode, ok(linkCode({ linkCodeId: OTHER_LINK_ID })));
+                },
+            });
+            expect(await screen.findByText('This link code is not known here')).toBeTruthy();
+            await app.user.click(screen.getByRole('button', { name: 'Create a new link code' }));
+            expect(await screen.findByText(`bun run dev:link ${CODE}`)).toBeTruthy();
+        });
+
+        it('drops a link parameter that is not a link-code ID', async () => {
+            const app = renderApp({
+                path: '/engines/new?link=NOT-A-LINK-ID',
+                session: OWNER,
+                script: linking([PENDING]),
+            });
+            expect(await screen.findByText(`bun run dev:link ${CODE}`)).toBeTruthy();
+            expect(app.api.callsTo(apiRoutes.getLinkCode)[0]).toEqual({ params: { linkCodeId: LINK_ID } });
+        });
     });
 });

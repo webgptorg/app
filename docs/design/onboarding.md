@@ -32,9 +32,9 @@ The dashboard's live view is built only from signals it already receives or that
 | Signal                             | Source today                                                | Dashboard shows                                     | Status                                       |
 | ---------------------------------- | ----------------------------------------------------------- | --------------------------------------------------- | -------------------------------------------- |
 | Link code issued, expiry           | Dashboard (D-03)                                            | Install command and countdown                       | Built                                        |
-| Link code consumed, engine ID      | Registration `POST /v1/engines/register` (D-03)             | "Engine linked", engine ID, fingerprint             | Gap: no live view (D-10)                     |
+| Link code consumed, engine ID      | Registration `POST /v1/engines/register` (D-03)             | "Engine linked", engine ID, fingerprint             | Built (D-10)                                 |
 | Engine running, version, counts    | Signed heartbeat every 60 s (D-05)                          | "Online", version                                   | Built in the list, not live on the link page |
-| Owner set up                       | Heartbeat `members` ≥ 1 (0 until the owner's first passkey) | "Owner set up" or "Waiting for the owner's passkey" | Gap (D-10)                                   |
+| Owner set up                       | Heartbeat `members` ≥ 1 (0 until the owner's first passkey) | "Owner set up" or "Waiting for the owner's passkey" | Built (D-10)                                 |
 | Reachable through a relay          | Relays report their ready tunnels every 60 s (R-07)         | "Reachable through 2 relays"                        | Built in the list, not live on the link page |
 | Certificate issued                 | Public Certificate Transparency logs                        | Not shown in v0                                     | Later                                        |
 | Setup link, setup secret, passkeys | Engine only                                                 | Never. The dashboard says where to look instead     | By design                                    |
@@ -80,7 +80,7 @@ sequenceDiagram
 
 Engines need a paid, verified account ([spec, Abuse on our domains](../spec/zero-trust-spec.md#abuse-on-our-domains), item 4). Decided: a **trial with a card on file** comes before the install command. Today a new account has no plan, and the person finds out only after clicking "Create link code" (toast plus "Your plan does not include engines" / "Subscribe to a plan to link an engine." with "Go to billing").
 
-Target behaviour (gap, [D-10](../plan/tasks/D-10-live-link-progress.md)):
+Built in [D-10](../plan/tasks/D-10-live-link-progress.md):
 
 - `/engines/new` checks entitlements on load. Without `engines.create`, the page shows the plan step first: "Choose a plan to link your engine" with the plans inline and "Start your {n}-day trial" (the card is collected by Stripe Checkout; nothing is charged until the trial ends), not an error after a click.
 - A trial is offered once per organization. A `trialing` subscription already grants its plan (D-07), so the install command appears as soon as Checkout returns.
@@ -89,15 +89,15 @@ Target behaviour (gap, [D-10](../plan/tasks/D-10-live-link-progress.md)):
 
 ### Step 3. Install command (dashboard, built in D-03, to extend)
 
-Built: "Link an engine", intro copy, "Create link code", then the "Install command" card with "Copy it now: the link code is shown only once.", a copy button and "Expires in m:ss". At zero: "The link code expired" / "Create a new one to link your engine." The card holds the install paths as tabs ([D-11](../plan/tasks/D-11-install-command-tabs.md)), the first selected: **Linux server with Docker** (the one-line installer), **Docker Compose** (three commands, after the `compose.yaml` from the guide), **Already running Promptbook** (the exact `promptbook-engine connect --link <code>` one-liner, plus the move from the predecessor, Journey 2a). Each tab shows one copyable block with the same link code, so every path is one paste, and under it: "Run it on the machine that will host your engine. It needs outbound HTTPS (port 443) and nothing inbound." with "Requirements and proxies", a link to the tab's heading in the public install guide. The commands, their order and the guide's address are configuration (`INSTALL_COMMANDS`, `INSTALL_GUIDE_URL`); exact commands are in [installation.md](../engine-integration/installation.md#install-paths). Docker is the first and only distribution in v0; other forms may get a tab later.
+Built: "Link an engine", the intro copy with the configured code lifetime, the code issued on load once the organization is entitled (D-10; "Create link code" stays only as the retry after a refused issuance), then the "Install command" card with "Copy it now: the link code is shown only once.", a copy button and "Expires in m:ss". At zero: "The link code expired" / "Create a new one to link your engine." The card holds the install paths as tabs ([D-11](../plan/tasks/D-11-install-command-tabs.md)), the first selected: **Linux server with Docker** (the one-line installer), **Docker Compose** (three commands, after the `compose.yaml` from the guide), **Already running Promptbook** (the exact `promptbook-engine connect --link <code>` one-liner, plus the move from the predecessor, Journey 2a). Each tab shows one copyable block with the same link code, so every path is one paste, and under it: "Run it on the machine that will host your engine. It needs outbound HTTPS (port 443) and nothing inbound." with "Requirements and proxies", a link to the tab's heading in the public install guide. The commands, their order and the guide's address are configuration (`INSTALL_COMMANDS`, `INSTALL_GUIDE_URL`); exact commands are in [installation.md](../engine-integration/installation.md#install-paths). Docker is the first and only distribution in v0; other forms may get a tab later.
 
-Target (gaps, [D-10](../plan/tasks/D-10-live-link-progress.md)):
+Also built in [D-10](../plan/tasks/D-10-live-link-progress.md):
 
 - The link code is created on page load once the person is entitled, so the command is there without an extra click. Leaving and coming back creates a new code; old ones simply expire (at most 5 active per organization).
 - The intro's "expires after 30 minutes" comes from the configured lifetime, not a hard-coded number.
 - Below the card, the live progress panel (step 4) starts in its first state.
 
-### Step 4. Live link progress (dashboard, gap D-10)
+### Step 4. Live link progress (dashboard, built in D-10)
 
 The page polls a link-code status endpoint (by a link-code ID returned at issuance, never the code) every 3 seconds while visible and shows a vertical checklist. Each row is text first, with an icon that is never the only signal ([ui.md, Accessibility](ui.md#accessibility)), and the region is an `aria-live="polite"` region announcing only state changes.
 
@@ -117,7 +117,7 @@ Rules:
 - After 3 minutes in row 2 without row 3: "Linked, but no heartbeat yet. The engine may still be downloading or starting. If the terminal shows an error, it says what to do."
 - The countdown stops at row 2; the code is used.
 - The page remains valid after a reload by keeping the link-code ID (not the code) in the URL, `/engines/new?link=<id>`, so a person who closes the tab can come back to the progress. The command itself is not shown again.
-- If the person leaves, the engine list shows the same states as badges: "Waiting for first heartbeat" (built), "Online", and the new "Owner not set up" (gap D-10).
+- If the person leaves, the engine list shows the same states as badges: "Waiting for first heartbeat" (built), "Online", and "Owner not set up" (D-10).
 
 An email "Your engine {hostname} is online" goes out at the first heartbeat (built, D-12), so somebody who walked away during the image download gets the nudge. It contains no setup link, only "Finish setup on the engine's terminal". It is skipped when that heartbeat already counts a member (an engine with an owner before linking, Journey 2b), and it also reaches someone who is still on the page, since the dashboard does not track presence.
 

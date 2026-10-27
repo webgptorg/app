@@ -26,6 +26,11 @@ export interface RenderAppOptions {
     readonly storage?: PreferenceStorage;
     /** Replaces the scripted API, e.g. with the real client over a fake `fetch`. */
     readonly apiClient?: ApiClient;
+    /**
+     * Fake timers: the app's clock reads `Date.now()` instead of the fixed `NOW`, and user events advance the timers,
+     * for screens that change with time. The test installs them (`vi.useFakeTimers({ shouldAdvanceTime: true })`).
+     */
+    readonly fakeTimers?: { readonly advance: (ms: number) => unknown };
 }
 
 export interface RenderedApp extends RenderResult {
@@ -52,7 +57,10 @@ export function renderApp(options: RenderAppOptions = {}): RenderedApp {
     const passkeys = createFakePasskeys();
     const storage = options.storage ?? createMemoryStorage();
     const history = createMemoryHistory({ initialEntries: [options.path ?? '/'] });
-    const user = userEvent.setup();
+    const user =
+        options.fakeTimers === undefined
+            ? userEvent.setup()
+            : userEvent.setup({ advanceTimers: options.fakeTimers.advance });
     const navigations: string[] = [];
     const result = render(
         <App
@@ -61,7 +69,7 @@ export function renderApp(options: RenderAppOptions = {}): RenderedApp {
                 storage,
                 matchMedia: (query) => window.matchMedia(query),
                 passkeys,
-                now: () => NOW,
+                now: options.fakeTimers === undefined ? () => NOW : () => Date.now(),
                 origin: APP_ORIGIN,
                 navigate: (url) => {
                     navigations.push(url);

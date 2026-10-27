@@ -111,11 +111,10 @@ test('sign up from the dev mailbox, subscribe, link with dev:link, open the engi
     await expect(page.getByRole('heading', { name: 'Your engines' })).toBeVisible();
 
     await page.getByRole('link', { name: 'Billing' }).click();
-    await page.getByRole('button', { name: 'Subscribe to Standard' }).click();
+    await page.getByRole('button', { name: 'Start your 14-day trial of Standard' }).click();
     await expect(page).toHaveURL(/\/billing\?checkout=success$/);
 
     await page.goto(`${DEV_DASHBOARD_ORIGIN}/engines/new`);
-    await page.getByRole('button', { name: 'Create link code' }).click();
     const command = page.getByText(/^bun run dev:link /);
     await expect(command).toBeVisible();
     const code = INSTALL_COMMAND.exec((await command.textContent()) ?? '')?.[1];
