@@ -29,7 +29,7 @@ test('the actions taken in the UI are audited and the filters find them', async 
     await createSecret(page, secretName, `audit-${crypto.randomUUID()}`);
 
     await page.goto(appUrl('/audit'));
-    await expect(page.getByText('Hash chain intact')).toBeVisible();
+    await expect(page.getByRole('button', { name: /^Chain verified / })).toBeVisible();
     const table = page.getByRole('table');
 
     await page.getByRole('combobox', { name: 'Action' }).selectOption('secret.create');
@@ -40,6 +40,7 @@ test('the actions taken in the UI are audited and the filters find them', async 
 
     await page.getByRole('button', { name: 'Clear filters' }).click();
     await expect(page).toHaveURL((url) => !url.searchParams.has('action'));
+    await page.getByRole('button', { name: 'More filters' }).click();
     await page.getByRole('combobox', { name: 'Target type' }).selectOption('agent');
     await page.getByRole('textbox', { name: 'Target ID' }).fill(agent.id);
     await expect(page).toHaveURL(

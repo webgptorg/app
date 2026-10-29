@@ -165,7 +165,7 @@ test.describe('the built bundle under the engine CSP', () => {
         visit,
     }) => {
         const report = await visit('/audit');
-        await expect(page.getByText('Hash chain intact')).toBeVisible();
+        await expect(page.getByRole('button', { name: /^Chain verified / })).toBeVisible();
         const table = page.getByRole('table');
         await expect(table.getByText(HOSTILE_TARGET_NAME, { exact: true })).toBeVisible();
         expect(await table.locator('img, script, iframe, object, embed').count()).toBe(0);
