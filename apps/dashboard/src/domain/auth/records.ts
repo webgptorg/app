@@ -44,6 +44,8 @@ export interface PasskeyRecord {
     readonly counter: number;
     readonly transports: readonly AuthenticatorTransport[];
     readonly backedUp: boolean;
+    /** Lowercase; null when the authenticator sent none or the all-zero one. */
+    readonly aaguid: string | null;
     readonly addedVia: PasskeyAddedVia;
     readonly createdAt: number;
     readonly lastUsedAt: number | null;

@@ -45,6 +45,7 @@ describe('auth flows when state changes underneath', () => {
             counter: 0,
             transports: [],
             backedUp: false,
+            aaguid: null,
             addedVia: 'account',
             createdAt: 0,
             lastUsedAt: null,

@@ -83,6 +83,7 @@ function toPasskey(row: typeof passkeys.$inferSelect): PasskeyRecord {
         counter: row.counter,
         transports: transportsSchema.parse(JSON.parse(row.transports ?? '[]')),
         backedUp: row.backedUp,
+        aaguid: row.aaguid,
         addedVia: row.addedVia,
         createdAt: row.createdAt,
         lastUsedAt: row.lastUsedAt,

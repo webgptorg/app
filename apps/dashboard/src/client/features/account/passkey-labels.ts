@@ -1,19 +1,17 @@
 import { m } from '../../../paraglide/messages';
 import type { PasskeyView } from '../../../shared/api/routes';
 
-const NAME_SUFFIX_LENGTH = 6;
+/** The provider's name when the dashboard knows its AAGUID, otherwise just "Passkey". */
+export function passkeyName(passkey: PasskeyView): string {
+    return passkey.provider ?? m.passkey_name();
+}
 
 /**
- * The API stores no passkey name (D-02), so a passkey is named by the end of its credential ID: stable, distinct
- * between passkeys, and what nobody can tell apart otherwise. It is public data, not a secret.
+ * The name with its creation date, for labels that must tell two passkeys of the same provider apart (the remove
+ * button, the confirmation).
  */
-export function passkeyName(passkey: PasskeyView): string {
-    return m.passkey_name({
-        suffix: passkey.credentialId
-            .replace(/[^A-Za-z0-9]/g, '')
-            .slice(-NAME_SUFFIX_LENGTH)
-            .toUpperCase(),
-    });
+export function passkeyLabel(passkey: PasskeyView, formatDate: (date: Date) => string): string {
+    return m.passkey_label({ name: passkeyName(passkey), date: formatDate(new Date(passkey.createdAt)) });
 }
 
 /** Where the passkey lives: a synced passkey manager (backed up) or this one authenticator. */

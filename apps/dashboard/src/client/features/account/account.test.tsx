@@ -20,6 +20,7 @@ const SECOND = passkey({
     addedVia: 'account',
     backedUp: false,
     lastUsedAt: null,
+    provider: null,
     counterRegressedAt: NOW - 1000,
 });
 
@@ -59,7 +60,12 @@ describe('account page', () => {
         expect(within(sessions).getByText('Another browser')).toBeTruthy();
         expect(screen.queryByText('Your account was recently recovered')).toBeNull();
 
-        const remove = within(passkeyTable()).getByRole('button', { name: /^Remove Passkey / });
+        expect(within(passkeyTable()).getByText('Google Password Manager')).toBeTruthy();
+        expect(within(passkeyTable()).getByText(/^Created /)).toBeTruthy();
+        expect(within(passkeyTable()).getByText(/^Last used/)).toBeTruthy();
+        const remove = within(passkeyTable()).getByRole('button', {
+            name: /^Remove Google Password Manager \(created .+\)$/,
+        });
         expect(remove.getAttribute('aria-disabled')).toBe('true');
         await app.user.click(remove);
         expect(screen.queryByRole('dialog', { name: 'Remove this passkey?' })).toBeNull();
@@ -74,7 +80,8 @@ describe('account page', () => {
         expect(await notifications().findByText('Passkey added')).toBeTruthy();
         expect(await within(passkeyTable()).findByText('From your account')).toBeTruthy();
         expect(within(passkeyTable()).getByText('On one device')).toBeTruthy();
-        expect(within(passkeyTable()).getByText('Never')).toBeTruthy();
+        expect(within(passkeyTable()).getByText('Passkey')).toBeTruthy();
+        expect(within(passkeyTable()).getByText(/Never used/)).toBeTruthy();
         expect(within(passkeyTable()).getByText('Possible copy, check it')).toBeTruthy();
     });
 
@@ -131,7 +138,10 @@ describe('account page', () => {
     it('signs out everywhere after confirmation and goes to sign-in', async () => {
         const app = renderApp({ path: '/account', session: session(), script: accountScript() });
         await screen.findByRole('table', { name: 'Sessions' });
-        await app.user.click(screen.getByRole('button', { name: 'Sign out everywhere' }));
+        const signOutEverywhere = screen.getByRole('button', { name: 'Sign out everywhere' });
+        // A rare, disruptive action stays quieter than "Add a passkey"; only its confirmation is a filled red button.
+        expect(signOutEverywhere.className).toContain('danger-ghost');
+        await app.user.click(signOutEverywhere);
         const dialog = await screen.findByRole('dialog', { name: 'Sign out everywhere?' });
         await app.user.click(within(dialog).getByRole('button', { name: 'Sign out everywhere' }));
         expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeTruthy();

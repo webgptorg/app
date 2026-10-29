@@ -4,7 +4,8 @@ import { cx } from '../../internal/cx';
 import { mergeTooltipHandlers, useTooltip } from '../tooltip/tooltip';
 import { Spinner } from '../spinner/spinner';
 
-export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
+/** `danger-ghost` is for a destructive action that is not the point of the screen; its confirm step uses `danger`. */
+export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'danger-ghost';
 export type ButtonSize = 'sm' | 'md';
 
 export interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'disabled'> {
@@ -31,6 +32,8 @@ const VARIANT_CLASSES: Readonly<Record<ButtonVariant, string>> = {
         'border border-(--button-secondary-border) bg-(--button-secondary-bg) text-(--button-secondary-text) hover:enabled:not-aria-disabled:bg-(--button-secondary-bg-hover)',
     ghost: 'bg-transparent text-(--button-ghost-text) hover:enabled:not-aria-disabled:bg-(--button-ghost-bg-hover)',
     danger: 'bg-(--button-danger-bg) text-(--button-danger-text) hover:enabled:not-aria-disabled:bg-(--button-danger-bg-hover)',
+    'danger-ghost':
+        'bg-transparent text-(--button-danger-ghost-text) hover:enabled:not-aria-disabled:bg-(--button-danger-ghost-bg-hover)',
 };
 
 /**
@@ -43,6 +46,7 @@ const DISABLED_CLASSES: Readonly<Record<ButtonVariant, string>> = {
     secondary:
         'disabled:border-(--button-disabled-border) disabled:bg-(--button-disabled-bg) aria-disabled:border-(--button-disabled-border) aria-disabled:bg-(--button-disabled-bg)',
     ghost: '',
+    'danger-ghost': '',
     danger: 'disabled:border disabled:border-(--button-disabled-border) disabled:bg-(--button-disabled-bg) aria-disabled:border aria-disabled:border-(--button-disabled-border) aria-disabled:bg-(--button-disabled-bg)',
 };
 

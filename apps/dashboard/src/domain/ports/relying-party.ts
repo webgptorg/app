@@ -18,6 +18,8 @@ export interface VerifiedCredential {
     readonly counter: number;
     readonly transports: readonly AuthenticatorTransport[];
     readonly backedUp: boolean;
+    /** The authenticator model, normalized: lowercase, null for none or the all-zero one. */
+    readonly aaguid: string | null;
 }
 
 /**

@@ -15,4 +15,6 @@
     --button-disabled-bg: var(--color-sunken);
     --button-disabled-text: var(--color-text-muted);
     --button-disabled-border: var(--color-divider);
+    --button-danger-ghost-text: var(--color-danger);
+    --button-danger-ghost-bg-hover: var(--color-danger-soft);
 }

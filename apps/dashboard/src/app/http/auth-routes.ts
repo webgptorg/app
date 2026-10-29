@@ -4,6 +4,7 @@ import { createAccountFlows, type ActiveSession } from '../../domain/auth/accoun
 import type { AuthDeps } from '../../domain/auth/auth-deps';
 import type { IssuedSession } from '../../domain/auth/ceremony';
 import { emailAddressSchema } from '../../domain/auth/email-address';
+import { passkeyProviderName } from '../../domain/auth/passkey-providers';
 import type { PasskeyRecord } from '../../domain/auth/records';
 import { createRecoveryFlow } from '../../domain/auth/recovery';
 import { createSignInFlow } from '../../domain/auth/signin';
@@ -64,6 +65,7 @@ function passkeyView(passkey: PasskeyRecord) {
         createdAt: passkey.createdAt,
         lastUsedAt: passkey.lastUsedAt,
         backedUp: passkey.backedUp,
+        provider: passkeyProviderName(passkey.aaguid),
         counterRegressedAt: passkey.counterRegressedAt,
     };
 }

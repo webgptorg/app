@@ -48,6 +48,7 @@ function passkey(userId: UserId, createdAt = NOW): PasskeyRecord {
         counter: 0,
         transports: ['internal', 'hybrid'],
         backedUp: true,
+        aaguid: 'ea9b8d66-4d01-1d21-3ce4-b6b48cb575d4',
         addedVia: 'signup',
         createdAt,
         lastUsedAt: null,

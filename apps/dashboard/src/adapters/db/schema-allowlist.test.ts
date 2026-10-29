@@ -60,7 +60,8 @@ const ALLOWLIST: Readonly<Record<string, readonly string[]>> = {
     // Relay keys: the token only as SHA-256, which relay it belongs to, its lifetime and last use (D-04).
     relay_tokens: ['id', 'relay_id', 'token_hash', 'created_at', 'expires_at', 'last_used_at', 'revoked_at'],
     organizations: ['id', 'kind', 'name', 'created_at', 'trial_started_at'],
-    // Dashboard passkeys: public keys and counters only; private keys never leave the authenticator.
+    // Dashboard passkeys: public keys and counters only; private keys never leave the authenticator. The AAGUID is the
+    // authenticator model (e.g. "Google Password Manager"), shared by every passkey of that model, not a device ID.
     passkeys: [
         'credential_id',
         'user_id',
@@ -72,6 +73,7 @@ const ALLOWLIST: Readonly<Record<string, readonly string[]>> = {
         'created_at',
         'last_used_at',
         'counter_regressed_at',
+        'aaguid',
     ],
     // Webhook idempotency: Stripe event IDs and types, never payloads; pruned after 30 days.
     stripe_events: ['event_id', 'type', 'received_at'],

@@ -55,6 +55,8 @@ export const passkeys = sqliteTable(
         counter: integer('counter').notNull(),
         transports: text('transports'),
         backedUp: integer('backed_up', { mode: 'boolean' }).notNull(),
+        // Names the passkey's provider in the account page; null when the authenticator withholds it.
+        aaguid: text('aaguid'),
         addedVia: text('added_via', { enum: ['signup', 'account', 'recovery'] }).notNull(),
         createdAt: integer('created_at').notNull(),
         lastUsedAt: integer('last_used_at'),

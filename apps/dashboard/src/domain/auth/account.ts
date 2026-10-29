@@ -135,6 +135,7 @@ export function createAccountFlows(deps: AuthDeps) {
                 counter: credential.counter,
                 transports: credential.transports,
                 backedUp: credential.backedUp,
+                aaguid: credential.aaguid,
                 addedVia: 'account',
                 createdAt: deps.clock.nowMs(),
                 lastUsedAt: null,
