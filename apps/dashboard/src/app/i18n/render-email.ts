@@ -3,8 +3,20 @@ import { ALERT_RUNBOOKS, alertRoute } from '../../domain/monitoring/alert-routes
 import type { EmailMessage } from '../../domain/ports/email-sender';
 import { m } from '../../paraglide/messages';
 
+/**
+ * "October 19, 2026 at 2:30 PM UTC": the dashboard knows no recipient's time zone, so every time is UTC and says so in
+ * the recipient's own words. `dateStyle` cannot be combined with `timeZoneName`, hence the separate fields.
+ */
 function formatUtc(ms: number, locale: EmailMessage['locale']): string {
-    return new Intl.DateTimeFormat(locale, { dateStyle: 'long', timeStyle: 'short', timeZone: 'UTC' }).format(ms);
+    return new Intl.DateTimeFormat(locale, {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        timeZone: 'UTC',
+        timeZoneName: 'short',
+    }).format(ms);
 }
 
 const MINUTE_MS = 60_000;
