@@ -20,6 +20,7 @@ export function createUiMessages(): UiMessages {
         technicalDetails: () => m.ui_technical_details(),
         copyFailed: () => m.ui_copy_failed(),
         opensInNewTab: () => m.ui_opens_in_new_tab(),
+        justNow: () => m.ui_just_now(),
         skipToContent: () => m.ui_skip_to_content(),
         required: () => m.ui_required(),
         showMore: () => m.ui_show_more(),

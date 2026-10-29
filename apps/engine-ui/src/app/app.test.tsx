@@ -48,13 +48,14 @@ describe('engine-ui app', () => {
         expect(await screen.findByRole('heading', { level: 1, name: 'Ada' })).toBeDefined();
     });
 
-    it('says "not allowed" for a 403 instead of failing', async () => {
+    it('says "no access" for a 403 instead of failing, as for a missing permission', async () => {
         const engineApi = createTestEngineApi();
         const agents = { ...engineApi.agents };
         vi.spyOn(agents, 'list').mockImplementation(() => problemResponse('forbidden'));
         const { container } = renderWithProviders({ path: '/agents', engineApi: { ...engineApi, agents } });
 
-        expect(await screen.findByRole('heading', { level: 1, name: 'Not allowed' })).toBeDefined();
+        expect(await screen.findByRole('heading', { level: 1, name: 'No access' })).toBeDefined();
+        expect(screen.getByText(/Ask an owner or admin/)).toBeDefined();
         expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
         await expectNoAxeViolations(container);
     });
@@ -77,11 +78,11 @@ describe('engine-ui app', () => {
         expect(location.assign).toHaveBeenCalledWith(`${STEP_UP_PATH}?returnTo=%2Fagents%3Fsort%3Dname`);
     });
 
-    it('renders the not-found state with a way back to the start', async () => {
+    it('renders the not-found state with a way back Home', async () => {
         const { container } = renderWithProviders({ path: '/nowhere' });
 
         expect(await screen.findByRole('heading', { level: 1, name: 'Not found' })).toBeDefined();
-        expect(screen.getByRole('link', { name: 'Go to the start' }).getAttribute('href')).toBe('/');
+        expect(screen.getByRole('link', { name: 'Go to Home' }).getAttribute('href')).toBe('/');
         await expectNoAxeViolations(container);
     });
 

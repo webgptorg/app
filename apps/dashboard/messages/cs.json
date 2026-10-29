@@ -544,6 +544,7 @@
   "ui_no_results": "Vašim filtrům nic neodpovídá",
   "ui_notifications": "Oznámení",
   "ui_opens_in_new_tab": "(otevře se na nové kartě)",
+  "ui_just_now": "právě teď",
   "ui_pagination": "Stránkování",
   "ui_previous_page": "Předchozí stránka",
   "ui_remove_filter": "Odebrat {label}",

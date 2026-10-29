@@ -109,6 +109,7 @@ describe('useStepUpAwareMutation', () => {
         const { user } = setUp({ mutationFn: async () => unwrap(await problemResponse('forbidden')) });
         await user.click(await screen.findByRole('button', { name: 'Add' }));
         expect(await screen.findByText('Not allowed')).toBeDefined();
+        expect(screen.getByText(/An owner or admin can change that/)).toBeDefined();
     });
 
     it('asks for a step-up instead of reporting an error, and hands over to the gateway', async () => {

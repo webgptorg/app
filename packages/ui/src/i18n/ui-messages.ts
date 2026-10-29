@@ -21,6 +21,8 @@ export interface UiMessages {
     readonly copyValue: (params: { readonly label: string }) => string;
     readonly technicalDetails: () => string;
     readonly opensInNewTab: () => string;
+    /** A moment ago; `Intl.RelativeTimeFormat` only has "now", which reads oddly after a verb ("Joined now"). */
+    readonly justNow: () => string;
     readonly skipToContent: () => string;
     readonly required: () => string;
     readonly showMore: () => string;

@@ -65,10 +65,14 @@ export function useStepUpAwareMutation<Data, Variables = void, Snapshot = undefi
                 stepUp.request();
                 return;
             }
-            const title = isForbidden(failure)
-                ? m.error_forbidden_title()
-                : (options.errorMessage?.(failure, variables) ?? m.error_mutation_failed());
-            toast.show({ tone: 'danger', title });
+            if (isForbidden(failure)) {
+                toast.show({ tone: 'danger', title: m.error_forbidden_title(), description: m.error_forbidden_body() });
+                return;
+            }
+            toast.show({
+                tone: 'danger',
+                title: options.errorMessage?.(failure, variables) ?? m.error_mutation_failed(),
+            });
         },
         onSuccess: (data, variables) => {
             const message = options.successMessage?.(data, variables);

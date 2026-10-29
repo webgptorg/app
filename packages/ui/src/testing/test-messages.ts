@@ -17,6 +17,7 @@ export const TEST_MESSAGES: UiMessages = {
     technicalDetails: () => 'Technical details',
     copyFailed: () => 'Could not copy',
     opensInNewTab: () => '(opens in a new tab)',
+    justNow: () => 'just now',
     skipToContent: () => 'Skip to content',
     required: () => 'required',
     showMore: () => 'Show more',
