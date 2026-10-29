@@ -3,13 +3,6 @@ import type { BadgeTone } from '@ptbk/ui';
 import { m } from '../../../paraglide/messages';
 import type { EngineView, HeartbeatView } from '../../../shared/api/routes';
 
-const SHORT_ID_LENGTH = 8;
-
-/** The first characters of the engine ID: what the list shows and what the revoke dialog asks to be typed. */
-export function shortEngineId(engineId: string): string {
-    return engineId.slice(0, SHORT_ID_LENGTH);
-}
-
 /** Every status in words, so colour is never the only carrier (D-06 brief, accessibility). */
 export function engineStatusLabel(engine: Pick<EngineView, 'status' | 'suspendedBy'>): string {
     switch (engine.status) {

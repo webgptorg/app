@@ -112,7 +112,9 @@ export function createMemoryHeartbeatEngineReader(
     return {
         async findEngine(engineId) {
             const engine = await engines.findForRegistration(engineId);
-            return engine === null ? null : { orgId: engine.orgId, publicKey: engine.publicKey, status: engine.status };
+            return engine === null
+                ? null
+                : { orgId: engine.orgId, publicKey: engine.publicKey, status: engine.status, label: engine.label };
         },
     };
 }

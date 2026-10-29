@@ -253,6 +253,7 @@ export function describeHeartbeatFlows(name: string, makeFixture: () => Heartbea
                     template: 'engine-offline',
                     to: czech.email,
                     locale: 'cs',
+                    label: `${engine.engineId.slice(0, 8)}…`,
                     engineId: engine.engineId,
                     hostname: `${engine.engineId}.engines.ptbk.test`,
                     lastSeenAt,

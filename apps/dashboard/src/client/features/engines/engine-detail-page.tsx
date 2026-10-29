@@ -15,7 +15,9 @@ import { ENGINE_STATUS_COMMAND, TROUBLESHOOTING_ANCHOR } from './engine-guide';
 import { EngineOpenLink } from './engine-open-link';
 import { EngineReachability, hasReachability } from './engine-reachability';
 import { EngineStatusBadge } from './engine-status-badge';
-import { cpuLoadLabel, modeLabel, shortEngineId, updateStateLabel, uptimeLabel } from './engine-labels';
+import { engineLabel, shortEngineId } from '../../../shared/engine-label';
+import { cpuLoadLabel, modeLabel, updateStateLabel, uptimeLabel } from './engine-labels';
+import { canRename, RenameEngineButton } from './engine-name';
 import { LastSeen, useNowFor } from './engine-values';
 import { RevokeEngineCard } from './revoke-engine';
 
@@ -118,17 +120,23 @@ function StatusNotice(props: { readonly engine: EngineView }) {
     ) : null;
 }
 
-function EngineDetail(props: { readonly engine: EngineView; readonly canRevoke: boolean }) {
+function EngineDetail(props: {
+    readonly engine: EngineView;
+    readonly canRevoke: boolean;
+    readonly canRename: boolean;
+}) {
     const { engine } = props;
     const formatters = useLocale();
     const now = useNowFor(engine);
+    const name = engineLabel(engine);
     return (
         <>
             <div className="flex flex-wrap items-center gap-3">
-                <h1 className="font-display text-2xl font-semibold">
-                    {m.engine_title({ shortId: shortEngineId(engine.engineId) })}
+                <h1 className={`${engine.label === null ? 'font-mono' : 'font-display'} text-2xl font-semibold`}>
+                    {name}
                 </h1>
                 <EngineStatusBadge engine={engine} />
+                {props.canRename ? <RenameEngineButton engine={engine} /> : null}
             </div>
             <StatusNotice engine={engine} />
             <Card title={m.engine_fingerprint_title()}>
@@ -137,7 +145,7 @@ function EngineDetail(props: { readonly engine: EngineView; readonly canRevoke: 
                         fingerprint={deriveEngineFingerprint(engine.engineId)}
                         state="verified"
                         size="lg"
-                        label={m.engines_fingerprint_label({ shortId: shortEngineId(engine.engineId) })}
+                        label={m.engines_fingerprint_label({ name })}
                     />
                     <p className="text-sm">{m.engine_fingerprint_body()}</p>
                 </div>
@@ -162,7 +170,7 @@ function EngineDetail(props: { readonly engine: EngineView; readonly canRevoke: 
                             <span className="flex flex-wrap items-center gap-2">
                                 <CodeText value={engine.hostname} copyable copyLabel={m.engines_copy_hostname()} />
                                 {engine.status === 'suspended' ? null : (
-                                    <EngineOpenLink engineId={engine.engineId} hostname={engine.hostname} />
+                                    <EngineOpenLink name={name} hostname={engine.hostname} />
                                 )}
                             </span>,
                         ],
@@ -233,7 +241,13 @@ export function EngineDetailPage(props: { readonly engineId: string | null }) {
     } else if (props.engineId === null || problemCode(engine.error) === 'not-found') {
         content = <NotFound />;
     } else if (engine.data !== undefined) {
-        content = <EngineDetail engine={engine.data} canRevoke={permissions.includes(REVOKE_PERMISSION)} />;
+        content = (
+            <EngineDetail
+                engine={engine.data}
+                canRevoke={permissions.includes(REVOKE_PERMISSION)}
+                canRename={canRename(permissions)}
+            />
+        );
     } else if (engine.isError) {
         content = (
             <>

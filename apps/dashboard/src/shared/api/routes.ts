@@ -23,6 +23,7 @@ import {
     problemStatusSchema,
     quotaSchema,
 } from '../billing';
+import { engineLabelSchema } from '../engine-label';
 import { environmentSchema } from '../environment';
 import { docsAnchorSchema, installPathIdSchema, installPathLabelKeySchema } from '../install-paths';
 import { defineRoute, NO_INPUT } from './contract';
@@ -247,6 +248,8 @@ export type HeartbeatView = z.infer<typeof heartbeatViewSchema>;
 /** Registry data and heartbeat numbers only; nothing from inside the engine (AGENTS.md rule 2). */
 export const engineViewSchema = z.strictObject({
     engineId: EngineId,
+    /** The owner's own name for it, typed in the dashboard (account metadata); null until they give one. */
+    label: engineLabelSchema.nullable(),
     /** `<engineId>.<engine domain>`, as stored at registration: the only address the SPA links to. */
     hostname: Hostname,
     /** Active custom hostnames (D-08); shown, never linked or loaded. */
@@ -767,6 +770,22 @@ export const apiRoutes = {
         permission: 'engine.revoke',
         rateLimit: null,
         input: { ...NO_INPUT, params: engineParams },
+        output: z.strictObject({ engine: engineViewSchema }),
+        errorCodes: [],
+    }),
+    /** Sets the owner's label, or clears it with `null`; the same label again changes nothing and logs nothing. */
+    renameEngine: defineRoute({
+        method: 'POST',
+        path: '/api/engines/:engineId/label',
+        auth: 'session',
+        permission: 'engine.rename',
+        rateLimit: null,
+        input: {
+            ...NO_INPUT,
+            params: engineParams,
+            body: z.strictObject({ label: engineLabelSchema.nullable() }),
+            maxBodyBytes: SMALL_BODY_BYTES,
+        },
         output: z.strictObject({ engine: engineViewSchema }),
         errorCodes: [],
     }),

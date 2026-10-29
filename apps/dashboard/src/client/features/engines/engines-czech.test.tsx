@@ -35,7 +35,7 @@ describe('engines in Czech', () => {
         expect(within(table).getByText('Je k dispozici aktualizace')).toBeTruthy();
         expect(within(table).getByText('Dostupný přes 2 relaye')).toBeTruthy();
         expect(
-            within(table).getByRole('link', { name: `Otevřít engine ${ENGINE_ID.slice(0, 8)} v nové kartě` }),
+            within(table).getByRole('link', { name: `Otevřít engine ${ENGINE_ID.slice(0, 8)}… v nové kartě` }),
         ).toBeTruthy();
 
         await app.user.click(screen.getByRole('link', { name: `${ENGINE_ID.slice(0, 8)}…` }));
@@ -46,7 +46,7 @@ describe('engines in Czech', () => {
         expect(screen.getByText('Nedostupný: žádné spojení s relayem')).toBeTruthy();
 
         await app.user.click(screen.getByRole('button', { name: 'Odvolat engine' }));
-        const dialog = await screen.findByRole('dialog', { name: `Odvolat engine ${ENGINE_ID.slice(0, 8)}?` });
+        const dialog = await screen.findByRole('dialog', { name: `Odvolat engine ${ENGINE_ID.slice(0, 8)}…?` });
         expect(within(dialog).getByText(/nové ID enginu a novou adresu/)).toBeTruthy();
         expect(within(dialog).getByRole('button', { name: 'Trvale odvolat' })).toBeTruthy();
         expect(document.body.textContent).not.toMatch(/engines_|engine_[a-z]/);

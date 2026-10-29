@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
+import { engineLabelSchema } from '../../shared/engine-label';
 import { testOrgId } from '../../testing/billing-fixtures';
 import { createTestEngine, type TestEngine } from '../../testing/test-engine';
 import { signedHeartbeat } from '../../testing/test-heartbeat';
@@ -103,7 +104,7 @@ describe('engine status service', () => {
     });
 
     it('goes offline after 3 missed intervals plus grace, and emails the owner once in their locale', async () => {
-        const t = setup();
+        const t = setup({ engineLabel: engineLabelSchema.parse('Production') });
         await t.beat(1);
         t.clock.set(START + OFFLINE_AFTER_MS - 1);
         await t.service.alarm();
@@ -122,6 +123,7 @@ describe('engine status service', () => {
                 template: 'engine-offline',
                 to: OWNER.email,
                 locale: 'cs',
+                label: 'Production',
                 engineId: engine.engineId,
                 hostname: `${engine.engineId}.engines.ptbk.test`,
                 lastSeenAt: START,
@@ -269,6 +271,7 @@ describe('engine status service', () => {
                     template: 'engine-online',
                     to: OWNER.email,
                     locale: 'cs',
+                    label: `${engine.engineId.slice(0, 8)}…`,
                     engineId: engine.engineId,
                     hostname: `${engine.engineId}.engines.ptbk.test`,
                     link: `https://app.ptbk.test/engines/${engine.engineId}`,
@@ -386,6 +389,7 @@ describe('engine status service', () => {
                     template: 'engine-back-online',
                     to: OWNER.email,
                     locale: 'cs',
+                    label: `${engine.engineId.slice(0, 8)}…`,
                     engineId: engine.engineId,
                     hostname: `${engine.engineId}.engines.ptbk.test`,
                     lastSeenAt: START,

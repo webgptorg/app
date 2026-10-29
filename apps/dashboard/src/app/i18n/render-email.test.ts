@@ -23,6 +23,7 @@ const MESSAGES: readonly Omit<EmailMessage, 'locale'>[] = [
     {
         template: 'engine-offline',
         to: 'a@example.test',
+        label: 'Production',
         engineId: 'abcdefghijklmnopqrstuvwxyz',
         hostname: 'abcdefghijklmnopqrstuvwxyz.engines.ptbk.test',
         lastSeenAt: RECOVERED_AT,
@@ -31,6 +32,7 @@ const MESSAGES: readonly Omit<EmailMessage, 'locale'>[] = [
     {
         template: 'engine-online',
         to: 'a@example.test',
+        label: 'abcdefgh…',
         engineId: 'abcdefghijklmnopqrstuvwxyz',
         hostname: 'abcdefghijklmnopqrstuvwxyz.engines.ptbk.test',
         link: 'https://app.ptbk.test/engines/abcdefghijklmnopqrstuvwxyz',
@@ -38,6 +40,7 @@ const MESSAGES: readonly Omit<EmailMessage, 'locale'>[] = [
     {
         template: 'engine-back-online',
         to: 'a@example.test',
+        label: 'Kancelář Brno',
         engineId: 'abcdefghijklmnopqrstuvwxyz',
         hostname: 'abcdefghijklmnopqrstuvwxyz.engines.ptbk.test',
         lastSeenAt: RECOVERED_AT,
@@ -94,23 +97,26 @@ describe('renderEmail', () => {
         expect(text).not.toContain('(UTC)');
     });
 
-    it.each(['en', 'cs'] as const)('names the engine, its hostname and when it was last seen in %s', (locale) => {
-        const { subject, text } = renderEmail({ ...MESSAGES[4], locale } as EmailMessage);
-        expect(subject).toContain('abcdefghijklmnopqrstuvwxyz.engines.ptbk.test');
-        expect(text).toContain('abcdefghijklmnopqrstuvwxyz.engines.ptbk.test');
-        expect(text).toContain('abcdefghijklmnopqrstuvwxyz\n');
-        expect(text.replace(/\s/g, ' ')).toContain(
-            locale === 'en' ? 'October 19, 2026 at 2:30 PM UTC' : '19. října 2026 v 14:30 UTC',
-        );
-    });
+    it.each([
+        ['en', 'Your engine Production is offline'],
+        ['cs', 'Váš engine Production je offline'],
+    ] as const)(
+        'names the engine by its label, then its address and when it was last seen in %s',
+        (locale, subject) => {
+            const { subject: rendered, text } = renderEmail({ ...MESSAGES[4], locale } as EmailMessage);
+            expect(rendered).toBe(subject);
+            expect(text).toContain('Production\n');
+            expect(text).toContain('abcdefghijklmnopqrstuvwxyz.engines.ptbk.test');
+            expect(text).toContain('abcdefghijklmnopqrstuvwxyz\n');
+            expect(text.replace(/\s/g, ' ')).toContain(
+                locale === 'en' ? 'October 19, 2026 at 2:30 PM UTC' : '19. října 2026 v 14:30 UTC',
+            );
+        },
+    );
 
     it.each([
-        [
-            'en',
-            'Your engine abcdefghijklmnopqrstuvwxyz.engines.ptbk.test is online',
-            "setup link in the engine's terminal",
-        ],
-        ['cs', 'Váš engine abcdefghijklmnopqrstuvwxyz.engines.ptbk.test je online', 'v terminálu enginu'],
+        ['en', 'Your engine abcdefgh… is online', "setup link in the engine's terminal"],
+        ['cs', 'Váš engine abcdefgh… je online', 'v terminálu enginu'],
     ] as const)(
         'sends the first-online email in %s pointing to the terminal, never with a setup link',
         (locale, subject, where) => {
@@ -138,7 +144,8 @@ describe('renderEmail', () => {
             // ICU puts no-break spaces into some units and times.
             const text = raw.replace(/\s/g, ' ');
             expect(rendered).toContain(subject);
-            expect(rendered).toContain(BACK_ONLINE.hostname);
+            expect(rendered).toContain(BACK_ONLINE.label);
+            expect(text).toContain(BACK_ONLINE.hostname);
             expect(text).toContain(from);
             expect(text).toContain(back);
             expect(text).toContain(duration);

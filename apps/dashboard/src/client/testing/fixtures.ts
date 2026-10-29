@@ -78,6 +78,7 @@ export function engineView(overrides: Partial<EngineView> = {}): EngineView {
     const engineId = (overrides.engineId ?? ENGINE_ID) as EngineView['engineId'];
     return {
         engineId,
+        label: null,
         hostname: `${engineId}.${ENGINE_DOMAIN}` as EngineView['hostname'],
         customHostnames: [],
         mode: 'tunnel',

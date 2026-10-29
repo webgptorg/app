@@ -10,11 +10,12 @@ import type { EngineView } from '../../../shared/api/routes';
 import { useApiClient } from '../../api/api-client-context';
 import { enginesQuery } from '../../api/queries';
 import { ButtonLink, Link } from '../../core/link';
+import { engineLabel } from '../../../shared/engine-label';
 import { useSession } from '../session/use-session';
 import { EngineOpenLink } from './engine-open-link';
 import { EngineReachability } from './engine-reachability';
 import { EngineStatusBadge } from './engine-status-badge';
-import { shortEngineId, updateStateLabel } from './engine-labels';
+import { updateStateLabel } from './engine-labels';
 import { LastSeen, useNowFor } from './engine-values';
 
 const READ_PERMISSION = 'engine.read';
@@ -39,7 +40,7 @@ function Address(props: { readonly engine: EngineView }) {
                 </code>
                 <CopyButton value={engine.hostname} label={m.engines_copy_hostname()} />
                 {engine.status === 'suspended' ? null : (
-                    <EngineOpenLink engineId={engine.engineId} hostname={engine.hostname} />
+                    <EngineOpenLink name={engineLabel(engine)} hostname={engine.hostname} />
                 )}
             </span>
             {engine.customHostnames.map((hostname) => (
@@ -66,10 +67,14 @@ function engineColumns(now: Date): DataTableColumnDef<EngineView>[] {
                         state="verified"
                         size="sm"
                         showCode={false}
-                        label={m.engines_fingerprint_label({ shortId: shortEngineId(row.original.engineId) })}
+                        label={m.engines_fingerprint_label({ name: engineLabel(row.original) })}
                     />
-                    <Link to="/engines/$engineId" params={{ engineId: row.original.engineId }} className="font-mono">
-                        {`${shortEngineId(row.original.engineId)}…`}
+                    <Link
+                        to="/engines/$engineId"
+                        params={{ engineId: row.original.engineId }}
+                        className={row.original.label === null ? 'font-mono' : undefined}
+                    >
+                        {engineLabel(row.original)}
                     </Link>
                 </span>
             ),
@@ -166,7 +171,7 @@ export function EngineListPage() {
                 columns={tableColumns}
                 data={engines.data ?? NO_ENGINES}
                 getRowId={(engine) => engine.engineId}
-                getRowLabel={(engine) => shortEngineId(engine.engineId)}
+                getRowLabel={engineLabel}
                 loading={engines.isPending}
                 virtualizeAbove={ENGINE_PAGE_ROWS}
                 skeletonRows={2}

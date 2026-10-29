@@ -210,6 +210,10 @@ export const engines = sqliteTable(
         statusReason: text('status_reason'),
         createdAt: integer('created_at').notNull(),
         updatedAt: integer('updated_at').notNull(),
+        // The owner's own name for the engine (D-06): account metadata typed in the dashboard, never sent to or read
+        // from the engine. Its length and characters are checked by `engineLabelSchema`; a CHECK here would rebuild
+        // the table.
+        label: text('label'),
     },
     (t) => [
         check('engines_status_check', sql`${t.status} in ('active', 'suspended')`),

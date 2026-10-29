@@ -52,7 +52,9 @@ describe('the link page in Czech', () => {
         expect(screen.getByText(/funguje jednou a za 30 minut vyprší/)).toBeTruthy();
         expect(screen.getByText('Engine je online, verze 1.4.2.')).toBeTruthy();
         expect(screen.getByText('Dostupný přes 2 relaye')).toBeTruthy();
-        expect(screen.getByRole('link', { name: `Otevřít engine ${ENGINE_ID.slice(0, 8)} v nové kartě` })).toBeTruthy();
+        expect(
+            screen.getByRole('link', { name: `Otevřít engine ${ENGINE_ID.slice(0, 8)}… v nové kartě` }),
+        ).toBeTruthy();
         expect(document.body.textContent).not.toMatch(/engines_|link_progress_|billing_/);
     });
 

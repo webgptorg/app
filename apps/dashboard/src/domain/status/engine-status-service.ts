@@ -6,13 +6,14 @@ import {
     type HeartbeatVerification,
 } from '@ptbk/protocol';
 
+import { engineLabel } from '../../shared/engine-label';
 import type { Clock } from '../ports/clock';
 import type { EmailMessage, EmailSender } from '../ports/email-sender';
 import type { Logger } from '../ports/logger';
 import type { AlertRecipients } from './alert-recipients';
 import type { RecordHeartbeatInput } from './engine-status-directory';
 import type { EngineStatusStorage } from './engine-status-storage';
-import type { HeartbeatEngineReader } from './heartbeat-engine-reader';
+import type { HeartbeatEngine, HeartbeatEngineReader } from './heartbeat-engine-reader';
 import {
     acceptHeartbeat,
     afterAlertAttempt,
@@ -66,11 +67,13 @@ export function createEngineStatusService(deps: EngineStatusServiceDeps): Engine
     async function deliver(
         status: TrackedEngineStatus,
         owed: readonly AlertRecipient[] | null,
-        compose: (recipient: AlertRecipient) => EmailMessage,
+        compose: (recipient: AlertRecipient, engine: HeartbeatEngine) => EmailMessage,
     ): Promise<AlertAttempt> {
         let recipients: readonly AlertRecipient[];
+        let engine: HeartbeatEngine | null;
         try {
-            if ((await deps.heartbeatEngines.findEngine(status.engineId))?.status !== 'active') {
+            engine = await deps.heartbeatEngines.findEngine(status.engineId);
+            if (engine?.status !== 'active') {
                 return { kind: 'engine-inactive' };
             }
             recipients =
@@ -81,7 +84,7 @@ export function createEngineStatusService(deps: EngineStatusServiceDeps): Engine
         const failed: AlertRecipient[] = [];
         for (const recipient of recipients) {
             try {
-                await deps.email.send(compose(recipient), AbortSignal.timeout(SEND_TIMEOUT_MS));
+                await deps.email.send(compose(recipient, engine), AbortSignal.timeout(SEND_TIMEOUT_MS));
             } catch {
                 failed.push(recipient);
             }
@@ -89,10 +92,11 @@ export function createEngineStatusService(deps: EngineStatusServiceDeps): Engine
         return failed.length === 0 ? { kind: 'delivered' } : { kind: 'partly-failed', failed };
     }
 
-    function engineFields(status: TrackedEngineStatus, recipient: AlertRecipient) {
+    function engineFields(status: TrackedEngineStatus, recipient: AlertRecipient, engine: HeartbeatEngine) {
         return {
             to: recipient.email,
             locale: recipient.locale,
+            label: engineLabel({ engineId: status.engineId, label: engine.label }),
             engineId: status.engineId,
             hostname: deps.engineHostname(status.engineId),
             link: deps.engineLink(status.engineId),
@@ -102,15 +106,16 @@ export function createEngineStatusService(deps: EngineStatusServiceDeps): Engine
     function noticeMessage(
         status: TrackedEngineStatus & { readonly notice: OwedNotice },
         recipient: AlertRecipient,
+        engine: HeartbeatEngine,
     ): EmailMessage {
         const { notice } = status;
         switch (notice.kind) {
             case 'online':
-                return { template: 'engine-online', ...engineFields(status, recipient) };
+                return { template: 'engine-online', ...engineFields(status, recipient, engine) };
             case 'back-online':
                 return {
                     template: 'engine-back-online',
-                    ...engineFields(status, recipient),
+                    ...engineFields(status, recipient, engine),
                     lastSeenAt: notice.lastSeenAt,
                     backOnlineAt: notice.backOnlineAt,
                 };
@@ -178,9 +183,9 @@ export function createEngineStatusService(deps: EngineStatusServiceDeps): Engine
                     // Stored first: if sending crashes the object, the retried alarm finds the outage already marked.
                     await deps.storage.save(step.status);
                     const { status } = step;
-                    const attempt = await deliver(status, status.alert.recipients, (recipient) => ({
+                    const attempt = await deliver(status, status.alert.recipients, (recipient, engine) => ({
                         template: 'engine-offline',
-                        ...engineFields(status, recipient),
+                        ...engineFields(status, recipient, engine),
                         lastSeenAt: status.lastSeenAt,
                     }));
                     const next = afterAlertAttempt(step.status, attempt, now);
@@ -198,8 +203,8 @@ export function createEngineStatusService(deps: EngineStatusServiceDeps): Engine
                 case 'notice': {
                     const { notice } = step.status;
                     const { status } = step;
-                    const attempt = await deliver(status, notice.recipients, (recipient) =>
-                        noticeMessage(status, recipient),
+                    const attempt = await deliver(status, notice.recipients, (recipient, engine) =>
+                        noticeMessage(status, recipient, engine),
                     );
                     const next = afterNoticeAttempt(step.status, attempt, now, deps.timing);
                     await settle(next);

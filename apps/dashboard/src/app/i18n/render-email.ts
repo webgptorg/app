@@ -81,9 +81,10 @@ export function renderEmail(message: EmailMessage): RenderedEmail {
             };
         case 'engine-offline':
             return {
-                subject: m.email_engine_offline_subject({ hostname: message.hostname }, options),
+                subject: m.email_engine_offline_subject({ label: message.label }, options),
                 text: m.email_engine_offline_body(
                     {
+                        label: message.label,
                         engineId: message.engineId,
                         hostname: message.hostname,
                         lastSeenAt: formatUtc(message.lastSeenAt, message.locale),
@@ -94,17 +95,23 @@ export function renderEmail(message: EmailMessage): RenderedEmail {
             };
         case 'engine-online':
             return {
-                subject: m.email_engine_online_subject({ hostname: message.hostname }, options),
+                subject: m.email_engine_online_subject({ label: message.label }, options),
                 text: m.email_engine_online_body(
-                    { engineId: message.engineId, hostname: message.hostname, link: message.link },
+                    {
+                        label: message.label,
+                        engineId: message.engineId,
+                        hostname: message.hostname,
+                        link: message.link,
+                    },
                     options,
                 ),
             };
         case 'engine-back-online':
             return {
-                subject: m.email_engine_back_online_subject({ hostname: message.hostname }, options),
+                subject: m.email_engine_back_online_subject({ label: message.label }, options),
                 text: m.email_engine_back_online_body(
                     {
+                        label: message.label,
                         engineId: message.engineId,
                         hostname: message.hostname,
                         lastSeenAt: formatUtc(message.lastSeenAt, message.locale),
