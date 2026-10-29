@@ -85,7 +85,7 @@ export function presetOf(expression: string): PresetFields | undefined {
     if (match === null) return undefined;
     const [, minute = '', hour = '', days = ''] = match;
     const atTime = `${hour.padStart(2, '0')}:${minute.padStart(2, '0')}`;
-    const weekday = days === '*' || days === '1-5' ? '1' : days;
+    const weekday = WEEKDAYS.find((day) => day === days) ?? '1';
     const recurrence: PresetKind = days === '*' ? 'daily' : days === '1-5' ? 'weekdays' : 'weekly';
     return presetCron(recurrence, atTime, weekday) === normalized ? { recurrence, atTime, weekday } : undefined;
 }
