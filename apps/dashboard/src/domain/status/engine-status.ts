@@ -142,10 +142,10 @@ export function lastSeqOf(stored: StoredEngineStatus | null): number | null {
  * was linked, who needs no reminder to finish setup. A purged engine was offline for thirty days, so its outage was
  * alerted, even though the purge kept no record of it.
  */
-function noticeAfter(stored: StoredEngineStatus | null, heartbeat: Heartbeat, receivedAt: number): StatusNotice {
+function noticeAfter(stored: StoredEngineStatus | null, members: number, receivedAt: number): StatusNotice {
     const owed = { dueAt: receivedAt, attempt: 0, recipients: null };
     if (stored === null) {
-        return heartbeat.members === 0 ? { kind: 'online', ...owed } : { kind: 'none' };
+        return members === 0 ? { kind: 'online', ...owed } : { kind: 'none' };
     }
     const alerted = stored.kind === 'purged' || (stored.state === 'offline' && stored.alert.kind === 'sent');
     if (alerted) {
@@ -186,8 +186,23 @@ export function acceptHeartbeat(input: {
         },
         offlineSince: null,
         alert: { kind: 'none' },
-        notice: noticeAfter(input.stored, heartbeat, input.receivedAt),
+        notice: noticeAfter(input.stored, heartbeat.members, input.receivedAt),
     };
+}
+
+/**
+ * What the alarm stores after a send when heartbeats were accepted meanwhile: the object takes other calls while it
+ * awaits D1 or the email binding, so `current` may be newer than the status the attempt settled. The heartbeats win,
+ * owing the notice they would have owed had they come after the attempt; overwriting them would roll `lastSeq` back.
+ */
+export function withHeartbeatsSince(
+    settled: TrackedEngineStatus,
+    current: StoredEngineStatus | null,
+): TrackedEngineStatus {
+    if (current?.kind !== 'tracked' || current.lastSeq <= settled.lastSeq) {
+        return settled;
+    }
+    return { ...current, notice: noticeAfter(settled, current.payload.members, current.lastSeenAt) };
 }
 
 /** When a settled status's alarm fires next: the notice it owes, or else going offline or the retention purge. */

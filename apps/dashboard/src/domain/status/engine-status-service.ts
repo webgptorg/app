@@ -26,6 +26,7 @@ import {
     type HeartbeatTiming,
     type OwedNotice,
     type TrackedEngineStatus,
+    withHeartbeatsSince,
 } from './engine-status';
 
 const SEND_TIMEOUT_MS = 10_000;
@@ -43,7 +44,10 @@ export interface EngineStatusServiceDeps {
     readonly engineLink: (engineId: EngineId) => string;
 }
 
-/** What one engine's Durable Object does; every call for one engine runs alone, so `seq` checks cannot race. */
+/**
+ * What one engine's Durable Object does. Calls for one engine interleave only while the alarm sends email, so the alarm
+ * reloads the status before storing what the send settled.
+ */
 export interface EngineStatusService {
     recordHeartbeat(input: RecordHeartbeatInput): Promise<HeartbeatVerification>;
     getStatus(): Promise<EngineStatusSnapshot>;
@@ -102,6 +106,13 @@ export function createEngineStatusService(deps: EngineStatusServiceDeps): Engine
                     backOnlineAt: notice.backOnlineAt,
                 };
         }
+    }
+
+    /** Stores what an attempt settled, unless heartbeats accepted during the send moved the status on. */
+    async function settle(next: { readonly status: TrackedEngineStatus; readonly alarmAt: number }): Promise<void> {
+        const status = withHeartbeatsSince(next.status, await deps.storage.load());
+        await deps.storage.save(status);
+        await deps.storage.setAlarm(status === next.status ? next.alarmAt : nextAlarmAt(status, deps.timing));
     }
 
     return {
@@ -164,8 +175,7 @@ export function createEngineStatusService(deps: EngineStatusServiceDeps): Engine
                         lastSeenAt: status.lastSeenAt,
                     }));
                     const next = afterAlertAttempt(step.status, attempt, now);
-                    await deps.storage.save(next.status);
-                    await deps.storage.setAlarm(next.alarmAt);
+                    await settle(next);
                     if (attempt.kind !== 'delivered') {
                         deps.logger.warn('engine-status.alert-failed', {
                             engineId,
@@ -183,8 +193,7 @@ export function createEngineStatusService(deps: EngineStatusServiceDeps): Engine
                         noticeMessage(status, recipient),
                     );
                     const next = afterNoticeAttempt(step.status, attempt, now, deps.timing);
-                    await deps.storage.save(next.status);
-                    await deps.storage.setAlarm(next.alarmAt);
+                    await settle(next);
                     if (attempt.kind !== 'delivered') {
                         deps.logger.warn('engine-status.notice-failed', {
                             engineId: step.status.engineId,
