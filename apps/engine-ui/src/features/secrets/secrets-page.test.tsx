@@ -334,11 +334,43 @@ describe('secrets: list', { timeout: TIMEOUT_MS }, () => {
         expect(screen.getByText('SECRET_005')).toBeDefined();
     });
 
-    it('shows the empty state with a way to add the first secret', async () => {
+    it('shows only the empty state and one way to add the first secret', async () => {
         const engine = secretsEngine({ count: 0 });
         renderWithProviders({ path: '/secrets', engineApi: engine.client });
-        expect(await screen.findByText('No secrets yet')).toBeDefined();
-        expect(screen.getAllByRole('button', { name: 'New secret' }).length).toBeGreaterThan(0);
+        expect(await screen.findByRole('heading', { name: 'No secrets yet' })).toBeDefined();
+        expect(screen.getAllByRole('button', { name: 'New secret' })).toHaveLength(1);
+        expect(screen.queryByRole('searchbox')).toBeNull();
+        expect(screen.queryByRole('combobox')).toBeNull();
+        expect(screen.queryByRole('table')).toBeNull();
+    });
+
+    it('keeps search and filters when a filter finds nothing', async () => {
+        const engine = secretsEngine();
+        renderWithProviders({ path: '/secrets?q=NOTHING_LIKE_THIS', engineApi: engine.client });
+        expect(await screen.findByText('No matching secrets')).toBeDefined();
+        expect(screen.getByRole('searchbox', { name: 'Search secrets' })).toBeDefined();
+        expect(screen.getByRole('combobox', { name: /State/ })).toBeDefined();
+        expect(screen.getAllByRole('button', { name: 'New secret' })).toHaveLength(1);
+    });
+
+    it('says a value was never replaced until it is', async () => {
+        const engine = createSecurityEngine({
+            seed: {
+                secrets: [
+                    { ...secret(1), lastUsedAt: '2026-09-02T00:00:00Z' },
+                    { ...secret(2), lastUsedAt: '2026-09-02T00:00:00Z', valueUpdatedAt: '2026-09-03T00:00:00Z' },
+                ],
+            },
+        });
+        renderWithProviders({ path: '/secrets', engineApi: engine.client });
+        const column = (await screen.findAllByRole('columnheader')).findIndex((header) =>
+            header.textContent.includes('Value replaced'),
+        );
+        const replacedCell = (name: string) => rowOf(screen.getByText(name)).querySelectorAll('td')[column];
+        await screen.findByText('SECRET_002');
+        expect(replacedCell('SECRET_001')?.textContent).toBe('Never');
+        expect(replacedCell('SECRET_002')?.textContent).not.toBe('Never');
+        expect(replacedCell('SECRET_002')?.querySelector('time')).not.toBeNull();
     });
 
     it('shows an error with retry when the list fails', async () => {
