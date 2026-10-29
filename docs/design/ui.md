@@ -31,8 +31,8 @@ Engine UI (<engineId>.<engine domain>)
 ├── Triggers        email, schedules, webhooks (capability triggers@1)
 ├── Integrations    tools, MCP servers, connectors (capability integrations@1)
 ├── Members         (members.read)
-├── Security        trust panel, relays, certificate, UI bundle, heartbeat, outbound destinations
-└── Settings        engine, update policy, language, theme
+├── Security        what you verify and who gets in: trust panel, verification checklist, passkeys, sessions
+└── Settings        what you change: update policy, language, theme
 ```
 
 The agent detail tabs and the main sections come from the feature registry, so a capability the engine does not advertise simply does not appear.
@@ -56,7 +56,8 @@ The agent detail tabs and the main sections come from the feature registry, so a
 - **Files:** knowledge per agent and files produced by agents, scan status, versions where available.
 - **Triggers:** inbound email addresses, schedules (once, interval, cron with next/last fire), webhooks later; fire history linked to runs; pause and resume.
 - **Integrations:** what each agent may use (MCP servers, calendar, repositories…), status and scopes, the secrets they reference by name, recent activity.
-- **Security:** the trust panel: engine identity and fingerprint, relays and tunnel state, TLS certificate and CT status, UI bundle version and hash, exact last heartbeat payload, outbound destinations, update policy; sessions and passkeys (own, and others' with permission).
+- **Security:** what you verify and who gets in, for every member. The trust panel (engine identity and fingerprint), then a short checklist that opens into the details: UI bundle version and hash, TLS certificate and CT status, relays and tunnel state, hostnames, outbound destinations, exact last heartbeat payload (all with `security.read`); then access: sessions and passkeys (own, and others' with permission) and a pointer to the audit log.
+- **Settings:** what you change: the update policy (with `security.read`, editable with `settings.manage`), language and theme.
 
 ## Trust mark
 
