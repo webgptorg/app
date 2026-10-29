@@ -87,7 +87,7 @@ The engine must never compare signature bytes, only verify them. Safari, for exa
 
 ## Conformance
 
-Planned in C-05: `ui-loader.signature.strict-ed25519` (releases signed with the `ed25519-vectors.json` cases get exactly the recorded accept or reject) and `ui-loader.dsse.pae-only` (a signature over the raw payload, a changed payload byte or a wrong payload type is refused). The tunnel checks in [tunnel-client.md](tunnel-client.md#conformance) exercise `signingInput` through the handshake. Until the suite exists, run the vector files directly.
+The ui-loader suite (C-10) checks both: `ui-loader.signature.strict-ed25519` (releases signed with the `ed25519-vectors.json` cases get exactly the recorded accept or reject) and `ui-loader.dsse.pae-only` (a signature over the raw payload, a changed payload byte or a wrong payload type is refused). The tunnel checks in [tunnel-client.md](tunnel-client.md#conformance) exercise `signingInput` through the handshake. The vector files can also be run directly, without an engine.
 
 ## Reference implementation
 
