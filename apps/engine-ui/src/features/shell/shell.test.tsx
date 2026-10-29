@@ -36,10 +36,11 @@ describe('app shell', () => {
         const { container } = renderWithProviders({ path: '/settings' });
 
         const nav = await screen.findByRole('navigation', { name: 'Main' });
+        expect(within(nav).queryAllByRole('heading')).toEqual([]);
         expect(
             within(nav)
-                .getAllByRole('heading')
-                .map((heading) => heading.textContent),
+                .getAllByRole('list')
+                .map((list) => document.getElementById(list.getAttribute('aria-labelledby') ?? '')?.textContent),
         ).toEqual(['Work', 'Resources', 'Administration']);
         expect(await sidebarLinks()).toEqual([
             'Home',
@@ -152,7 +153,38 @@ describe('app shell', () => {
         renderWithProviders({ path: '/settings', storage: first.storage });
         expect(await screen.findByRole('button', { name: 'Expand sidebar' })).toBeDefined();
         const nav = screen.getByRole('navigation', { name: 'Main' });
-        expect(within(nav).getByRole('link', { name: 'Settings' }).getAttribute('title')).toBe('Settings');
+        expect(within(nav).getByRole('link', { name: 'Settings' })).toBeDefined();
+    });
+
+    it("shows a collapsed link's name beside it on keyboard focus and on hover, and hides it on Esc", async () => {
+        const { user } = renderWithProviders({ path: '/settings' });
+        await user.click(await screen.findByRole('button', { name: 'Collapse sidebar' }));
+        const nav = screen.getByRole('navigation', { name: 'Main' });
+        const label = nav.querySelector<HTMLElement>('[popover]');
+        if (label === null) throw new Error('no collapsed label');
+        expect(label.getAttribute('aria-hidden')).toBe('true');
+
+        within(nav).getByRole('link', { name: 'Agents' }).focus();
+        await waitFor(() => {
+            expect(label.dataset['fakePopoverOpen'] === 'true').toBe(true);
+        });
+        expect(label.textContent).toBe('Agents');
+        await user.keyboard('{Escape}');
+        await waitFor(() => {
+            expect(label.dataset['fakePopoverOpen'] === 'true').toBe(false);
+        });
+
+        await user.hover(within(nav).getByRole('link', { name: 'Runs' }));
+        await waitFor(() => {
+            expect(label.textContent).toBe('Runs');
+        });
+        await user.unhover(within(nav).getByRole('link', { name: 'Runs' }));
+        await waitFor(() => {
+            expect(label.dataset['fakePopoverOpen'] === 'true').toBe(false);
+        });
+
+        await user.click(screen.getByRole('button', { name: 'Expand sidebar' }));
+        expect(nav.querySelector('[popover]')).toBeNull();
     });
 
     it('shows the live indicator with a text label while work is active, and nothing at zero', async () => {
@@ -265,17 +297,56 @@ describe('app shell', () => {
         expect(screen.queryByRole('menuitem', { name: 'Add engine' })).toBeNull();
     });
 
-    it('shows the trust mark with the engine fingerprint, linking to the security page', async () => {
+    it('verifies the engine from the switcher: the fingerprint code, then the trust panel', async () => {
         const { user, router } = renderWithProviders({ path: '/settings', permissions: ALL_PERMISSIONS });
         const engine = await createTestEngineApi().engine.get(AbortSignal.timeout(1000));
         if (engine.kind !== 'ok' || engine.data.engineId === null) throw new Error('the test engine has no ID');
         const { formatted } = deriveEngineFingerprint(engine.data.engineId);
 
-        const link = await screen.findByRole('link', { name: new RegExp(`Engine security.*${formatted}`) });
-        await user.click(link);
+        expect(screen.queryByRole('link', { name: /Engine security/ })).toBeNull();
+        await user.click(await screen.findByRole('button', { name: /Test engine/ }));
+        const verify = screen.getByRole('menuitem', { name: /Verify this engine/ });
+        expect(verify.textContent).toContain(`Engine fingerprint ${formatted}`);
+        expect(document.activeElement).toBe(verify);
+        await user.click(verify);
         await waitFor(() => {
             expect(router.state.location.pathname).toBe('/security');
         });
+        expect(router.state.location.hash).toBe('trust');
+    });
+
+    it('offers no verify item to a member who may not see Security', async () => {
+        const { user } = renderWithProviders({ path: '/settings', permissions: ['agents.read'] });
+        await user.click(await screen.findByRole('button', { name: /Test engine/ }));
+        expect(screen.getByRole('menuitemradio', { name: /Test engine/ })).toBeDefined();
+        expect(screen.queryByRole('menuitem', { name: /Verify this engine/ })).toBeNull();
+    });
+
+    it('opens Settings and Security from the account menu without repeating the name and role', async () => {
+        const { user, router } = renderWithProviders({ path: '/members', permissions: ALL_PERMISSIONS });
+        await user.click(await screen.findByRole('button', { name: /Owner/ }));
+        const menu = screen.getByRole('menu', { name: 'Account menu' });
+        expect(within(menu).queryByText(/Owner/)).toBeNull();
+        await user.click(within(menu).getByRole('menuitem', { name: 'Security' }));
+        await waitFor(() => {
+            expect(router.state.location.pathname).toBe('/security');
+        });
+
+        await user.click(screen.getByRole('button', { name: /Owner/ }));
+        await user.click(screen.getByRole('menuitem', { name: 'Settings' }));
+        await waitFor(() => {
+            expect(router.state.location.pathname).toBe('/settings');
+        });
+    });
+
+    it('names the member in the account menu when the sidebar shows icons only, and hides Security without access', async () => {
+        const { user } = renderWithProviders({ path: '/settings', permissions: [] });
+        await user.click(await screen.findByRole('button', { name: 'Collapse sidebar' }));
+        await user.click(screen.getByRole('button', { name: 'Account menu: Owner' }));
+        const menu = screen.getByRole('menu', { name: 'Account menu' });
+        expect(within(menu).getByText('Owner')).toBeDefined();
+        expect(within(menu).getByRole('menuitem', { name: 'Settings' })).toBeDefined();
+        expect(within(menu).queryByRole('menuitem', { name: 'Security' })).toBeNull();
     });
 
     it('keeps the live indicator readable when the sidebar shows icons only', async () => {
@@ -306,15 +377,17 @@ describe('app shell', () => {
         expect(location.assign).not.toHaveBeenCalled();
     });
 
-    it('keeps one trust mark in the narrow top bar and links to the trust panel from the drawer', async () => {
+    it('keeps the trust mark in the narrow top bar only, and closes the drawer when the account menu navigates', async () => {
         const media = createFakeMatchMedia({ [NARROW_QUERY]: true });
-        const { user, router } = renderWithProviders({ path: '/settings', media });
+        const { user, router } = renderWithProviders({ path: '/members', media });
         await user.click(await screen.findByRole('button', { name: 'Open navigation' }));
-        expect(screen.getAllByRole('link', { name: /Engine security/ })).toHaveLength(1);
         const drawer = await screen.findByRole('dialog', { name: 'Menu' });
-        await user.click(within(drawer).getByRole('link', { name: /Engine security/ }));
+        expect(within(drawer).queryByRole('button', { name: /Test engine/ })).toBeNull();
+
+        await user.click(within(drawer).getByRole('button', { name: /Owner/ }));
+        await user.click(screen.getByRole('menuitem', { name: 'Settings' }));
         await waitFor(() => {
-            expect(router.state.location.pathname).toBe('/security');
+            expect(router.state.location.pathname).toBe('/settings');
         });
         await waitFor(() => {
             expect(screen.queryByRole('dialog', { name: 'Menu' })).toBeNull();

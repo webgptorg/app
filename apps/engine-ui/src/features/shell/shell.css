@@ -10,3 +10,16 @@
         transform: scale(0.8);
     }
 }
+
+/* The sidebar nav fades where more items are scrolled out of view (see `NavScroller`). */
+[data-nav-scroller='start'] {
+    mask-image: linear-gradient(to bottom, transparent, #000 1.5rem);
+}
+
+[data-nav-scroller='end'] {
+    mask-image: linear-gradient(to bottom, #000 calc(100% - 1.5rem), transparent);
+}
+
+[data-nav-scroller='both'] {
+    mask-image: linear-gradient(to bottom, transparent, #000 1.5rem, #000 calc(100% - 1.5rem), transparent);
+}

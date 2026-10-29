@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 
+import { cx } from '../../app/cx';
 import { useVisibleFeatures } from '../../app/registry/use-visible-features';
 import { m } from '../../paraglide/messages';
 
@@ -25,9 +26,16 @@ function CountProbe({
 
 /**
  * A quiet, breathing dot with a text label while any registered feature reports active work (runs, U-09); nothing at
- * zero. The status region stays mounted so screen readers hear it appear.
+ * zero, not even height. The status region stays mounted so screen readers hear it appear.
  */
-export function LiveIndicator({ compact = false }: { readonly compact?: boolean }) {
+export function LiveIndicator({
+    compact = false,
+    className,
+}: {
+    readonly compact?: boolean;
+    /** Spacing around the label while it shows, so an idle indicator takes no room. */
+    readonly className?: string;
+}) {
     const sources = useVisibleFeatures().flatMap((feature) =>
         feature.liveIndicator === undefined
             ? []
@@ -40,13 +48,13 @@ export function LiveIndicator({ compact = false }: { readonly compact?: boolean 
     const total = sources.reduce((sum, source) => sum + (counts.get(source.id) ?? 0), 0);
     const label = m.live_active({ count: total });
     return (
-        <div role="status" className="min-h-6">
+        <div role="status">
             {sources.map((source) => (
                 <CountProbe key={source.id} source={source} onCount={onCount} />
             ))}
             {total > 0 ? (
                 <span
-                    className="inline-flex items-center gap-2 text-sm text-text-muted"
+                    className={cx('inline-flex min-h-6 items-center gap-2 text-sm text-text-muted', className)}
                     title={compact ? label : undefined}
                 >
                     <span

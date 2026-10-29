@@ -214,4 +214,25 @@ describe('Menu', () => {
         expect(menu.style.left).toBe('140px');
         Object.defineProperty(document.documentElement, 'clientWidth', { configurable: true, value: 0 });
     });
+
+    it('matches the trigger width when asked, and lines up an end-aligned menu with the wider box', async () => {
+        const { user } = renderMenu(ITEMS, { align: 'end', matchTriggerWidth: true });
+        const trigger = screen.getByRole('button', { name: 'Actions' });
+        const menu = screen.getByRole('menu', { hidden: true });
+        vi.spyOn(trigger, 'getBoundingClientRect').mockReturnValue(new DOMRect(40, 20, 240, 40));
+        vi.spyOn(menu, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 192, 120));
+        Object.defineProperty(document.documentElement, 'clientWidth', { configurable: true, value: 1280 });
+        await user.click(trigger);
+        expect(menu.style.minWidth).toBe('240px');
+        expect(menu.style.left).toBe('40px');
+        Object.defineProperty(document.documentElement, 'clientWidth', { configurable: true, value: 0 });
+    });
+
+    it('sizes to its content by default', async () => {
+        const { user } = renderMenu(ITEMS);
+        const trigger = screen.getByRole('button', { name: 'Actions' });
+        vi.spyOn(trigger, 'getBoundingClientRect').mockReturnValue(new DOMRect(40, 20, 240, 40));
+        await user.click(trigger);
+        expect(screen.getByRole('menu').style.minWidth).toBe('');
+    });
 });

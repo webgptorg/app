@@ -42,7 +42,7 @@ The agent detail tabs and the main sections come from the feature registry, so a
 - **Sidebar** with the engine switcher at the top, sections grouped (work: Home, Agents, Chats, Runs; resources: Files, Triggers, Integrations; admin: Members, Security, Settings). Collapses to icons; becomes a drawer on mobile.
 - **Engine switcher, Stripe-style:** the engine's name and trust mark top-left open a menu. The full list of your engines lives in the dashboard (the engine UI may only talk to its own engine), so the menu shows the current engine plus "All engines" and "Add engine", which open the dashboard's switcher; picking an engine there navigates to its own hostname (its own origin and sign-in; synced passkeys make it quick).
 - **Command palette (⌘K):** jump to any agent, chat, run or setting; actions like "New agent", "Stop run".
-- **Trust mark** in the shell (see below), user menu (language, theme, sign out), and a quiet live indicator when runs are active.
+- **Trust mark** (see below) in the engine switcher only; its menu opens with "Verify this engine" (the fingerprint code, then the trust panel). User menu (Settings, Security, language, theme, sign out), and a quiet live indicator when runs are active.
 
 ## Key screens
 

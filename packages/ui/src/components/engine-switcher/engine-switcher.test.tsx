@@ -1,5 +1,5 @@
 import { screen, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { expectNoAxeViolations } from '../../testing/axe';
 import { renderUi } from '../../testing/render';
@@ -124,5 +124,23 @@ describe('EngineSwitcher', () => {
         const trigger = screen.getByRole('button', { name: 'Switch engine: Acme engine' });
         expect(within(trigger).queryByText('Acme engine')).toBeNull();
         await expectNoAxeViolations(container);
+    });
+
+    it('puts leading actions above the current engine and runs them', async () => {
+        const verify = vi.fn();
+        const { user } = renderUi(
+            <EngineSwitcher
+                {...ENGINE_UI}
+                leadingItems={[
+                    { kind: 'item', id: 'verify', label: 'Verify this engine', description: 'ABCD', onSelect: verify },
+                ]}
+            />,
+        );
+        await user.click(screen.getByRole('button', { name: /Acme engine/ }));
+        const menu = screen.getByRole('menu', { name: 'Switch engine' });
+        const verifyItem = within(menu).getByRole('menuitem', { name: /Verify this engine/ });
+        expect(document.activeElement).toBe(verifyItem);
+        await user.click(verifyItem);
+        expect(verify).toHaveBeenCalledOnce();
     });
 });

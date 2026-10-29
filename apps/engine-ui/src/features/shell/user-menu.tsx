@@ -1,26 +1,63 @@
 import { Menu, Monogram, useToast } from '@ptbk/ui';
 import type { MenuEntry } from '@ptbk/ui';
 import { THEME_PREFERENCES } from '@ptbk/ui';
-import { LogOut } from 'lucide-react';
+import { useNavigate } from '@tanstack/react-router';
+import { LogOut, Settings, ShieldCheck } from 'lucide-react';
 
 import { useBrowser } from '../../app/browser-context';
 import { useAppLocale } from '../../app/locale';
+import { useVisibleFeatures } from '../../app/registry/use-visible-features';
 import { useThemePreference } from '../../app/theme';
 import { m } from '../../paraglide/messages';
+import { securityFeature } from '../security/security-feature';
 import { localeLabel, themeLabel } from '../settings/preference-labels';
 import { useCurrentMember } from '../session/use-current-member';
 import { roleLabel } from './role-label';
 import { signOut } from './sign-out';
 
-/** The member's name and role label, language, theme and sign-out. */
-export function UserMenu({ compact = false }: { readonly compact?: boolean }) {
+/**
+ * The account menu: the member's own places (Settings, Security), language, theme and sign-out. The trigger already
+ * shows the name and role, so the menu repeats the name only when the trigger is an icon.
+ */
+export function UserMenu({
+    compact = false,
+    onNavigate,
+}: {
+    readonly compact?: boolean;
+    /** Called after a place is opened, e.g. to close the drawer the menu sits in. */
+    readonly onNavigate?: () => void;
+}) {
     const member = useCurrentMember();
     const { locale, locales, changeLocale } = useAppLocale();
     const { preference, setPreference } = useThemePreference();
     const browser = useBrowser();
     const toast = useToast();
+    const navigate = useNavigate();
+    const showSecurity = useVisibleFeatures().some((feature) => feature.id === securityFeature.id);
+    const go = (to: '/settings' | '/security') => () => {
+        onNavigate?.();
+        void navigate({ to });
+    };
     const items: MenuEntry[] = [
-        { kind: 'heading', id: 'member', label: `${member.displayName} · ${roleLabel(member.roleLabel)}` },
+        ...(compact ? [{ kind: 'heading' as const, id: 'member', label: member.displayName }] : []),
+        {
+            kind: 'item',
+            id: 'settings',
+            label: m.nav_settings(),
+            icon: <Settings aria-hidden />,
+            onSelect: go('/settings'),
+        },
+        ...(showSecurity
+            ? [
+                  {
+                      kind: 'item' as const,
+                      id: 'security',
+                      label: m.nav_security(),
+                      icon: <ShieldCheck aria-hidden />,
+                      onSelect: go('/security'),
+                  },
+              ]
+            : []),
         { kind: 'separator', id: 'language-separator' },
         { kind: 'heading', id: 'language', label: m.language_label() },
         ...locales.map((option): MenuEntry => ({
@@ -61,6 +98,7 @@ export function UserMenu({ compact = false }: { readonly compact?: boolean }) {
             label={m.user_menu()}
             align="start"
             items={items}
+            matchTriggerWidth={!compact}
             trigger={(props) => (
                 <button
                     {...props}

@@ -96,9 +96,10 @@ describe('security panel: trust panel', { timeout: TIMEOUT_MS }, () => {
         expect(container.querySelector('.trust-mark-sealing')).toBeNull();
     });
 
-    it("opens from the shell's trust mark and moves focus to the trust panel heading", async () => {
+    it("opens from the engine switcher's verify item and moves focus to the trust panel heading", async () => {
         const { user, router } = renderSecurity({}, '/settings');
-        await user.click(await screen.findByRole('link', { name: /Engine security/ }));
+        await user.click(await screen.findByRole('button', { name: /Switch engine|Test engine/ }));
+        await user.click(screen.getByRole('menuitem', { name: /Verify this engine/ }));
         await waitFor(() => {
             expect(router.state.location.pathname).toBe('/security');
         });

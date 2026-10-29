@@ -8,8 +8,8 @@ import { cx } from '../../app/cx';
 import { m } from '../../paraglide/messages';
 import { FeatureEventSync } from './feature-event-sync';
 import { ShellEngineSwitcher } from './shell-engine-switcher';
-import { ShellTrustMark } from './shell-trust-mark';
 import { LiveIndicator } from './live-indicator';
+import { NavScroller } from './nav-scroller';
 import { persistSidebarCollapsed, readSidebarCollapsed } from './sidebar-preference';
 import { SidebarNav } from './sidebar-nav';
 import { NARROW_QUERY, useMediaQuery } from './use-media-query';
@@ -19,8 +19,9 @@ import { UserMenu } from './user-menu';
 const MAIN_ID = 'main-content';
 
 /**
- * The authenticated frame around every route: the sidebar (engine switcher, navigation from the feature registry,
- * live indicator, trust mark, user menu), which collapses to icons on wide screens and becomes a drawer below 768 px.
+ * The authenticated frame around every route: the sidebar (engine switcher with the trust mark, navigation from the
+ * feature registry, live indicator, user menu), which collapses to icons on wide screens and becomes a drawer below
+ * 768 px.
  */
 export function AppShell() {
     const narrow = useMediaQuery(NARROW_QUERY);
@@ -64,7 +65,7 @@ function WideSidebar({ onOpenPalette }: { readonly onOpenPalette: () => void }) 
     return (
         <aside
             className={cx(
-                'sticky top-0 flex h-dvh shrink-0 flex-col gap-4 border-e border-divider bg-raised p-3',
+                'sticky top-0 flex h-dvh shrink-0 flex-col gap-3 border-e border-divider bg-raised p-3',
                 'motion-safe:transition-[width] motion-safe:duration-(--motion-enter) motion-safe:ease-enter',
                 collapsed ? 'w-18' : 'w-64',
             )}
@@ -73,21 +74,24 @@ function WideSidebar({ onOpenPalette }: { readonly onOpenPalette: () => void }) 
             <div className={cx(collapsed && 'flex justify-center')}>
                 <PaletteButton onOpen={onOpenPalette} compact={collapsed} />
             </div>
-            <div className="min-h-0 flex-1 overflow-y-auto">
+            <NavScroller>
                 <SidebarNav collapsed={collapsed} />
-            </div>
-            <div className={cx('flex flex-col gap-2', collapsed && 'items-center')}>
-                <LiveIndicator compact={collapsed} />
-                <ShellTrustMark />
-                <UserMenu compact={collapsed} />
-                <IconButton
-                    variant="ghost"
-                    size="sm"
-                    label={collapsed ? m.sidebar_expand() : m.sidebar_collapse()}
-                    aria-expanded={!collapsed}
-                    icon={collapsed ? <PanelLeftOpen aria-hidden /> : <PanelLeftClose aria-hidden />}
-                    onClick={toggle}
-                />
+            </NavScroller>
+            <div className={cx('flex flex-col', collapsed && 'items-center')}>
+                <LiveIndicator compact={collapsed} className={cx('mb-2', !collapsed && 'px-2')} />
+                <div className={cx('flex gap-1', collapsed ? 'flex-col items-center' : 'items-center')}>
+                    <div className={cx(!collapsed && 'min-w-0 flex-1')}>
+                        <UserMenu compact={collapsed} />
+                    </div>
+                    <IconButton
+                        variant="ghost"
+                        size="sm"
+                        label={collapsed ? m.sidebar_expand() : m.sidebar_collapse()}
+                        aria-expanded={!collapsed}
+                        icon={collapsed ? <PanelLeftOpen aria-hidden /> : <PanelLeftClose aria-hidden />}
+                        onClick={toggle}
+                    />
+                </div>
             </div>
         </aside>
     );
@@ -121,19 +125,17 @@ function NarrowShell({ onOpenPalette }: { readonly onOpenPalette: () => void }) 
                 title={m.nav_drawer_title()}
                 side="start"
             >
-                {/* The engine switcher in the top bar already carries the mark; the link to the trust panel lives here. */}
                 <div className="flex flex-col gap-4">
                     <SidebarNav
                         onNavigate={() => {
                             setOpen(false);
                         }}
                     />
-                    <ShellTrustMark
+                    <UserMenu
                         onNavigate={() => {
                             setOpen(false);
                         }}
                     />
-                    <UserMenu />
                 </div>
             </Drawer>
         </>

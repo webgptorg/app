@@ -111,7 +111,7 @@
   "sidebar_collapse": "Collapse sidebar",
   "sidebar_expand": "Expand sidebar",
   "sidebar_open": "Open navigation",
-  "trust_mark_open": "Engine security",
+  "engine_verify": "Verify this engine",
   "user_menu": "Account menu",
   "role_owner": "Owner",
   "role_admin": "Admin",
