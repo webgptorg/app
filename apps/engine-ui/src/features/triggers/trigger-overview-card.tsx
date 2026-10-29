@@ -1,12 +1,17 @@
-import type { AgentId } from '@ptbk/engine-api';
+import type { AgentId, TriggerStats } from '@ptbk/engine-api';
 import { Card, ErrorState, Skeleton } from '@ptbk/ui';
+import { Fragment } from 'react';
+import type { ReactNode } from 'react';
 
 import { Link } from '../../app/link';
 import { m } from '../../paraglide/messages';
-import { FireTime } from './trigger-time';
+import { RelativeFireTime } from './trigger-time';
 import { useTriggerStats } from './triggers-queries';
 
-/** The agent overview's card: how many triggers run, when the next one fires, and what is paused or failed. */
+/**
+ * The agent overview's card, as one sentence: "1 active · next run in 6 days · 1 paused". A failed trigger links to
+ * the filtered tab, where it can be resumed.
+ */
 export function TriggerOverviewCard({ agentId }: { readonly agentId: AgentId }) {
     const stats = useTriggerStats(agentId);
     return (
@@ -19,9 +24,8 @@ export function TriggerOverviewCard({ agentId }: { readonly agentId: AgentId }) 
             }
         >
             {stats.isPending ? (
-                <div aria-busy="true" aria-label={m.triggers_card_title()} className="flex flex-col gap-2">
-                    <Skeleton shape="text" className="h-6 w-full" />
-                    <Skeleton shape="text" className="h-6 w-2/3" />
+                <div aria-busy="true" aria-label={m.triggers_card_title()}>
+                    <Skeleton shape="text" className="h-5 w-2/3" />
                 </div>
             ) : stats.isError ? (
                 <ErrorState
@@ -32,27 +36,42 @@ export function TriggerOverviewCard({ agentId }: { readonly agentId: AgentId }) 
                     retrying={stats.isFetching}
                 />
             ) : (
-                <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                    <dt className="text-text-muted">{m.triggers_card_active()}</dt>
-                    <dd>{stats.data.active}</dd>
-                    <dt className="text-text-muted">{m.triggers_card_next()}</dt>
-                    <dd>
-                        <FireTime at={stats.data.nextFireAt} countdown />
-                    </dd>
-                    <dt className="text-text-muted">{m.triggers_card_paused()}</dt>
-                    <dd>{stats.data.paused}</dd>
-                    <dt className="text-text-muted">{m.triggers_card_failed()}</dt>
-                    <dd>
-                        {stats.data.failed === 0 ? (
-                            0
-                        ) : (
-                            <Link to="/agents/$agentId/triggers" params={{ agentId }} search={{ lifecycle: 'failed' }}>
-                                {stats.data.failed}
-                            </Link>
-                        )}
-                    </dd>
-                </dl>
+                <TriggerStatsLine agentId={agentId} stats={stats.data} />
             )}
         </Card>
+    );
+}
+
+function TriggerStatsLine({ agentId, stats }: { readonly agentId: AgentId; readonly stats: TriggerStats }) {
+    if (stats.active + stats.paused + stats.failed === 0) {
+        return <p className="text-sm text-text-muted">{m.triggers_card_none()}</p>;
+    }
+    const parts: ReactNode[] = [<span key="active">{m.triggers_card_active_count({ count: stats.active })}</span>];
+    if (stats.nextFireAt !== null) {
+        parts.push(
+            <span key="next">
+                {m.triggers_card_next_run()} <RelativeFireTime at={stats.nextFireAt} empty={m.trigger_value_none()} />
+            </span>,
+        );
+    }
+    if (stats.paused > 0) {
+        parts.push(<span key="paused">{m.triggers_card_paused_count({ count: stats.paused })}</span>);
+    }
+    if (stats.failed > 0) {
+        parts.push(
+            <Link key="failed" to="/agents/$agentId/triggers" params={{ agentId }} search={{ lifecycle: 'failed' }}>
+                {m.triggers_card_failed_count({ count: stats.failed })}
+            </Link>,
+        );
+    }
+    return (
+        <p className="text-sm">
+            {parts.map((part, index) => (
+                <Fragment key={index}>
+                    {index === 0 ? null : <span className="text-text-muted"> · </span>}
+                    {part}
+                </Fragment>
+            ))}
+        </p>
     );
 }

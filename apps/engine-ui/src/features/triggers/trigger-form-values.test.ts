@@ -9,6 +9,8 @@ import {
     formValuesOf,
     instantOfLocalInput,
     localInputOf,
+    presetCron,
+    presetOf,
     previewScheduleOf,
     TriggerFormValues,
     updateBodyOf,
@@ -104,7 +106,13 @@ describe('the trigger form schema', () => {
         expect(issues(valid({ recurrence: 'interval', everyAmount: '400', everyUnit: 'days' }))).toEqual({
             everyAmount: m.trigger_form_interval_invalid(),
         });
-        expect(issues(valid({ expression: 'every monday' }))).toEqual({ expression: m.trigger_form_cron_invalid() });
+        expect(issues(valid({ recurrence: 'cron', expression: 'every monday' }))).toEqual({
+            expression: m.trigger_form_cron_invalid(),
+        });
+        expect(issues(valid({ recurrence: 'daily', atTime: '' }))).toEqual({ atTime: m.trigger_form_time_required() });
+        expect(issues(valid({ recurrence: 'weekly', atTime: '24:00' }))).toEqual({
+            atTime: m.trigger_form_time_required(),
+        });
         expect(issues(valid({ maxRunCount: '0' }))).toEqual({ maxRunCount: m.trigger_form_max_runs_invalid() });
     });
 
@@ -132,14 +140,14 @@ describe('form values from a trigger', () => {
     it('reads a cron schedule in its own zone, with its range', () => {
         const values = formValuesOf(
             schedule(
-                { kind: 'cron', expression: '0 9 * * 1', timeZone: 'America/New_York' },
+                { kind: 'cron', expression: '*/15 9-17 * * 1-5', timeZone: 'America/New_York' },
                 { endsAt: '2026-12-01T14:00:00.000Z', maxRunCount: 10 },
             ),
             'Europe/Prague',
         );
         expect(values).toMatchObject({
             recurrence: 'cron',
-            expression: '0 9 * * 1',
+            expression: '*/15 9-17 * * 1-5',
             timeZone: 'America/New_York',
             startsAt: '2026-10-01T04:00',
             endsAt: '2026-12-01T09:00',
@@ -165,9 +173,73 @@ describe('form values from a trigger', () => {
         });
     });
 
+    it('opens a cron the form would write as its preset, keeping the zone', () => {
+        const cron = (expression: string) =>
+            formValuesOf(schedule({ kind: 'cron', expression, timeZone: 'America/New_York' }), 'Europe/Prague');
+        expect(cron('0 9 * * 1')).toMatchObject({
+            recurrence: 'weekly',
+            atTime: '09:00',
+            weekday: '1',
+            timeZone: 'America/New_York',
+        });
+        expect(cron(' 30  7 * * 1-5 ')).toMatchObject({ recurrence: 'weekdays', atTime: '07:30' });
+        expect(cron('5 18 * * *')).toMatchObject({ recurrence: 'daily', atTime: '18:05' });
+        expect(cron('0 * * * *')).toMatchObject({ recurrence: 'hourly' });
+    });
+
     it('keeps the shared fields of a recurrence this client does not know', () => {
         const values = formValuesOf(schedule({ kind: 'lunar', phase: 'full' }), 'UTC');
-        expect(values).toMatchObject({ recurrence: 'cron', message: 'Write the weekly report' });
+        expect(values).toMatchObject({ message: 'Write the weekly report' });
+    });
+});
+
+describe('schedule presets', () => {
+    it('write the cron each preset stands for, minute first', () => {
+        expect(presetCron('hourly', '', '1')).toBe('0 * * * *');
+        expect(presetCron('daily', '07:05', '1')).toBe('5 7 * * *');
+        expect(presetCron('weekdays', '09:00', '1')).toBe('0 9 * * 1-5');
+        expect(presetCron('weekly', '23:59', '0')).toBe('59 23 * * 0');
+        expect(presetCron('daily', '7:05', '1')).toBeUndefined();
+        expect(presetCron('weekly', '', '3')).toBeUndefined();
+    });
+
+    it('read back every cron they write, and nothing else', () => {
+        for (const atTime of ['00:00', '09:30', '23:59']) {
+            for (const recurrence of ['daily', 'weekdays', 'weekly'] as const) {
+                const expression = presetCron(recurrence, atTime, '3');
+                expect(presetOf(expression ?? '')).toEqual({
+                    recurrence,
+                    atTime,
+                    weekday: recurrence === 'weekly' ? '3' : '1',
+                });
+            }
+        }
+        for (const custom of [
+            '0 9 * * 1,2,3,4,5',
+            '00 09 * * 1-5',
+            '0 9 * * 7',
+            '15 * * * *',
+            '0 9 1 * *',
+            '0 9 * 1 *',
+            '0 24 * * *',
+            '60 9 * * *',
+            '*/15 * * * *',
+            'every monday',
+        ]) {
+            expect(presetOf(custom)).toBeUndefined();
+        }
+    });
+
+    it('send a preset as the cron in its zone', () => {
+        expect(createBodyOf(valid())).toMatchObject({
+            recurrence: { kind: 'cron', expression: '0 9 * * 1-5', timeZone: 'Europe/Prague' },
+        });
+        expect(updateBodyOf(valid({ recurrence: 'weekly', atTime: '08:15', weekday: '5' }))).toMatchObject({
+            recurrence: { kind: 'cron', expression: '15 8 * * 5', timeZone: 'Europe/Prague' },
+        });
+        expect(createBodyOf(valid({ recurrence: 'hourly', atTime: '' }))).toMatchObject({
+            recurrence: { kind: 'cron', expression: '0 * * * *' },
+        });
     });
 });
 
@@ -206,7 +278,7 @@ describe('request bodies', () => {
             maxRunCount: null,
             message: 'Write the weekly report',
         });
-        expect(createBodyOf(valid({ expression: ' 0 9 * * 1-5 ' }))).toMatchObject({
+        expect(createBodyOf(valid({ recurrence: 'cron', expression: ' 0 9 * * 1-5 ' }))).toMatchObject({
             recurrence: { kind: 'cron', expression: '0 9 * * 1-5', timeZone: 'Europe/Prague' },
         });
     });
@@ -215,7 +287,8 @@ describe('request bodies', () => {
 describe('the schedule preview', () => {
     it('has nothing to show for an email trigger or a schedule its own fields cannot describe', () => {
         expect(previewScheduleOf(valid({ kind: 'email' }), NOW)).toBeNull();
-        expect(previewScheduleOf(valid({ expression: 'nonsense' }), NOW)).toBeNull();
+        expect(previewScheduleOf(valid({ recurrence: 'cron', expression: 'nonsense' }), NOW)).toBeNull();
+        expect(previewScheduleOf(valid({ recurrence: 'daily', atTime: '' }), NOW)).toBeNull();
     });
 
     it('waits for no name or message, starts now without a start, and reads a one-off as an instant', () => {
@@ -248,8 +321,14 @@ describe('the schedule preview', () => {
 
 describe('server field paths', () => {
     it('maps the engine’s body paths onto form fields and keeps any other path', () => {
-        expect(formFieldOf('body.recurrence.expression')).toBe('expression');
-        expect(formFieldOf('body.recurrence.everySeconds')).toBe('everyAmount');
-        expect(formFieldOf('body.somethingNew')).toBe('body.somethingNew');
+        expect(formFieldOf('body.recurrence.expression', 'cron')).toBe('expression');
+        expect(formFieldOf('body.recurrence.everySeconds', 'interval')).toBe('everyAmount');
+        expect(formFieldOf('body.somethingNew', 'cron')).toBe('body.somethingNew');
+    });
+
+    it('puts an expression error of a preset on the field the member sees', () => {
+        expect(formFieldOf('body.recurrence.expression', 'weekly')).toBe('atTime');
+        expect(formFieldOf('body.recurrence.expression', 'hourly')).toBe('recurrence');
+        expect(formFieldOf('body.recurrence.timeZone', 'daily')).toBe('timeZone');
     });
 });

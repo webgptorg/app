@@ -1,4 +1,4 @@
-import type { ReadTrigger } from '@ptbk/engine-api';
+import type { AgentId, ReadTrigger } from '@ptbk/engine-api';
 import { applyServerErrors, Banner, Form, FormField, FormSubmit, Input, Select, Textarea, useZodForm } from '@ptbk/ui';
 import type { ServerFieldError } from '@ptbk/ui';
 import { useQuery } from '@tanstack/react-query';
@@ -11,7 +11,8 @@ import { useAppLocale } from '../../app/locale';
 import { useNow } from '../../app/ticker';
 import { m } from '../../paraglide/messages';
 import { agentListQueryOptions } from '../agents/agents-queries';
-import { describeRecurrence } from './schedule/describe';
+import { UnsavedChangesGuard } from '../book/unsaved-changes-guard';
+import { describeRecurrence, weekdayName } from './schedule/describe';
 import { previewFires } from './schedule/next-fires';
 import {
     createBodyOf,
@@ -19,22 +20,49 @@ import {
     formFieldOf,
     formValuesOf,
     INTERVAL_UNITS,
+    isCronLike,
+    isPreset,
+    presetCron,
     previewScheduleOf,
+    RECURRENCE_KINDS,
     TriggerFormValues,
     updateBodyOf,
+    WEEKDAYS,
 } from './trigger-form-values';
-import type { IntervalUnit } from './trigger-form-values';
+import type { IntervalUnit, RecurrenceKind } from './trigger-form-values';
 import { FireTime, useBrowserTimeZone } from './trigger-time';
 import { useTriggerMutations } from './use-trigger-mutations';
 
 /** The agent picker lists the first page of agents by name; the engine pages beyond that. */
 const AGENT_PICKER_LIMIT = 100;
 const PREVIEW_COUNT = 5;
+/** Monday first, as both languages write a week. */
+const WEEK_ORDER = [...WEEKDAYS.slice(1), WEEKDAYS[0]];
+const CRON_EXAMPLE = '0 8 * * 1-5';
 
 /** Every IANA zone the browser knows, with the given ones kept even if it does not list them (`UTC` in some). */
 function timeZones(keep: readonly string[]): readonly string[] {
     const known = typeof Intl.supportedValuesOf === 'function' ? Intl.supportedValuesOf('timeZone') : [];
     return [...new Set([...keep, ...known])].sort((a, b) => a.localeCompare(b));
+}
+
+function recurrenceLabel(recurrence: RecurrenceKind): string {
+    switch (recurrence) {
+        case 'hourly':
+            return m.trigger_form_recurrence_hourly();
+        case 'daily':
+            return m.trigger_form_recurrence_daily();
+        case 'weekdays':
+            return m.trigger_form_recurrence_weekdays();
+        case 'weekly':
+            return m.trigger_form_recurrence_weekly();
+        case 'once':
+            return m.trigger_form_recurrence_once();
+        case 'interval':
+            return m.trigger_form_recurrence_interval();
+        case 'cron':
+            return m.trigger_form_recurrence_cron();
+    }
 }
 
 function unitLabel(unit: IntervalUnit): string {
@@ -52,7 +80,9 @@ export interface TriggerFormProps {
     /** Editing this trigger; creating a new one without it. */
     readonly trigger?: ReadTrigger;
     /** Preselects the agent on a new trigger (from an agent's tab). */
-    readonly agentId?: string;
+    readonly agentId?: AgentId;
+    /** The trigger was opened from its agent's tab; leaving the form keeps that way back. */
+    readonly fromAgent?: boolean;
 }
 
 /**
@@ -60,7 +90,7 @@ export interface TriggerFormProps {
  * fires is an estimate and never blocks. The engine's 422 `invalid-schedule` (and 400 `validation-failed`) lands on
  * the field it names, anything it cannot place in a banner above the form.
  */
-export function TriggerForm({ trigger, agentId }: TriggerFormProps) {
+export function TriggerForm({ trigger, agentId, fromAgent = false }: TriggerFormProps) {
     const engineApi = useEngineApi();
     const browserZone = useBrowserTimeZone();
     const { create, update } = useTriggerMutations();
@@ -82,13 +112,16 @@ export function TriggerForm({ trigger, agentId }: TriggerFormProps) {
         onSubmit: async (values, current) => {
             setUnplaced([]);
             try {
-                if (trigger === undefined) await create.mutateAsync(createBodyOf(values));
-                else await update.mutateAsync({ id: trigger.id, body: updateBodyOf(values) });
+                if (trigger === undefined) {
+                    await create.mutateAsync({ body: createBodyOf(values), fromAgent: agentId !== undefined });
+                } else {
+                    await update.mutateAsync({ id: trigger.id, body: updateBodyOf(values), fromAgent });
+                }
             } catch (error) {
                 const failure = classifyApiError(error);
                 if (failure.kind !== 'problem') return;
                 const errors: ServerFieldError[] = (failure.problem.errors ?? []).map((entry) => ({
-                    path: formFieldOf(entry.path),
+                    path: formFieldOf(entry.path, values.recurrence),
                     message: entry.message,
                 }));
                 const left = applyServerErrors(current, errors).map((entry) => entry.message);
@@ -102,17 +135,29 @@ export function TriggerForm({ trigger, agentId }: TriggerFormProps) {
 
     const agentItems = agents.data?.items ?? [];
     const cancel = editing ? (
-        <ButtonLink to="/triggers/$triggerId" params={{ triggerId: trigger.id }} variant="ghost">
+        <ButtonLink
+            to="/triggers/$triggerId"
+            params={{ triggerId: trigger.id }}
+            search={fromAgent ? { from: 'agent' } : {}}
+            variant="ghost"
+        >
+            {m.trigger_form_cancel()}
+        </ButtonLink>
+    ) : agentId === undefined ? (
+        <ButtonLink to="/triggers" variant="ghost">
             {m.trigger_form_cancel()}
         </ButtonLink>
     ) : (
-        <ButtonLink to="/triggers" variant="ghost">
+        <ButtonLink to="/agents/$agentId/triggers" params={{ agentId }} variant="ghost">
             {m.trigger_form_cancel()}
         </ButtonLink>
     );
 
     return (
         <Form form={form} className="flex max-w-2xl flex-col gap-4">
+            <form.Subscribe selector={(state) => state.values}>
+                {(values) => <UnsavedChangesGuard when={hasChanges(values, defaults)} />}
+            </form.Subscribe>
             {unplaced.length === 0 ? null : (
                 <Banner tone="danger" title={m.trigger_form_refused()}>
                     {/* The engine's own words about what it refused: text only. */}
@@ -171,23 +216,72 @@ export function TriggerForm({ trigger, agentId }: TriggerFormProps) {
     );
 }
 
+/** Changed back to what it was is not a change: leaving then loses nothing. */
+function hasChanges(values: TriggerFormValues, defaults: TriggerFormValues): boolean {
+    return (Object.keys(defaults) as (keyof TriggerFormValues)[]).some((key) => values[key] !== defaults[key]);
+}
+
 type TriggerZodForm = ReturnType<typeof useZodForm<typeof TriggerFormValues>>;
 
+function TimeField({ form }: { readonly form: TriggerZodForm }) {
+    return (
+        <FormField form={form} name="atTime" label={m.trigger_form_time()} required>
+            {(control) => <Input {...control.text} type="time" />}
+        </FormField>
+    );
+}
+
 function ScheduleFields({ form, zones }: { readonly form: TriggerZodForm; readonly zones: readonly string[] }) {
+    const { locale } = useAppLocale();
     return (
         <>
             <FormField form={form} name="recurrence" label={m.trigger_form_recurrence()}>
                 {(control) => (
-                    <Select {...control.text}>
-                        <option value="once">{m.trigger_form_recurrence_once()}</option>
-                        <option value="interval">{m.trigger_form_recurrence_interval()}</option>
-                        <option value="cron">{m.trigger_form_recurrence_cron()}</option>
+                    <Select
+                        {...control.text}
+                        onChange={(event) => {
+                            // Custom starts from the preset it replaces, so a small tweak needs no cron from scratch.
+                            const { recurrence, atTime, weekday } = form.state.values;
+                            const cron = isPreset(recurrence) ? presetCron(recurrence, atTime, weekday) : undefined;
+                            if (event.target.value === 'cron' && cron !== undefined) {
+                                form.setFieldValue('expression', cron);
+                            }
+                            control.text.onChange(event);
+                        }}
+                    >
+                        {RECURRENCE_KINDS.map((recurrence) => (
+                            <option key={recurrence} value={recurrence}>
+                                {recurrenceLabel(recurrence)}
+                            </option>
+                        ))}
                     </Select>
                 )}
             </FormField>
             <form.Subscribe selector={(state) => state.values.recurrence}>
                 {(recurrence) => {
                     switch (recurrence) {
+                        case 'hourly':
+                            return null;
+                        case 'daily':
+                        case 'weekdays':
+                            return <TimeField form={form} />;
+                        case 'weekly':
+                            return (
+                                <div className="grid gap-4 sm:grid-cols-2">
+                                    <FormField form={form} name="weekday" label={m.trigger_form_weekday()}>
+                                        {(control) => (
+                                            <Select {...control.text}>
+                                                {WEEK_ORDER.map((day) => (
+                                                    <option key={day} value={day}>
+                                                        {weekdayName(Number(day), locale)}
+                                                    </option>
+                                                ))}
+                                            </Select>
+                                        )}
+                                    </FormField>
+                                    <TimeField form={form} />
+                                </div>
+                            );
                         case 'once':
                             return (
                                 <FormField form={form} name="onceAt" label={m.trigger_form_at()} required>
@@ -221,7 +315,12 @@ function ScheduleFields({ form, zones }: { readonly form: TriggerZodForm; readon
                                     form={form}
                                     name="expression"
                                     label={m.trigger_form_cron()}
-                                    hint={m.trigger_form_cron_hint()}
+                                    hint={
+                                        <>
+                                            {m.trigger_form_cron_hint()}{' '}
+                                            <code className="font-mono whitespace-nowrap">{CRON_EXAMPLE}</code>
+                                        </>
+                                    }
                                     required
                                 >
                                     {(control) => (
@@ -298,7 +397,7 @@ function SchedulePreview({ values }: { readonly values: TriggerFormValues }) {
     const browserZone = useBrowserTimeZone();
     const schedule = previewScheduleOf(values, now);
     const fires = schedule === null ? [] : previewFires(schedule, now, PREVIEW_COUNT);
-    const zone = values.recurrence === 'cron' ? values.timeZone : undefined;
+    const zone = isCronLike(values.recurrence) ? values.timeZone : undefined;
     return (
         <section aria-labelledby="trigger-preview-title" className="flex flex-col gap-2 rounded-md bg-sunken p-4">
             <h2 id="trigger-preview-title" className="text-sm font-medium">

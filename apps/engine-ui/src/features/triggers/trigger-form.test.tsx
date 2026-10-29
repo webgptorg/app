@@ -2,6 +2,7 @@ import { createProblem } from '@ptbk/engine-api';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
+import { m } from '../../paraglide/messages';
 import { expectNoAxeViolations } from '../../testing/axe';
 import { createManualTicker } from '../../testing/manual-ticker';
 import { renderWithProviders } from '../../testing/render-with-providers';
@@ -34,7 +35,7 @@ const errorOf = (control: HTMLElement) => {
         .map((each) => document.getElementById(each)?.textContent ?? '')
         .join(' ');
 };
-const preview = () => screen.getByRole('region', { name: 'Next fires' });
+const preview = () => screen.getByRole('region', { name: 'Next runs' });
 
 async function fillSchedule(app: Awaited<ReturnType<typeof renderForm>>, expression: string, timeZone: string) {
     await app.user.selectOptions(field(/^Agent/), 'agent-iris');
@@ -49,6 +50,7 @@ async function fillSchedule(app: Awaited<ReturnType<typeof renderForm>>, express
 describe('trigger form', { timeout: TIMEOUT_MS }, () => {
     it('blocks a submit with invalid local input and names what is wrong on each field', async () => {
         const app = await renderForm();
+        await app.user.selectOptions(field(/^Repeats/), 'cron');
         await app.user.clear(field(/^Cron expression/));
         await app.user.type(field(/^Cron expression/), '0 8 * * MON');
         await app.user.click(screen.getByRole('button', { name: 'Create trigger' }));
@@ -181,7 +183,7 @@ describe('trigger form', { timeout: TIMEOUT_MS }, () => {
             );
         });
         expect(await screen.findByRole('heading', { level: 1, name: 'Weekly digest' })).toBeDefined();
-        expect(screen.getByText('Weekly digest was created.')).toBeDefined();
+        expect(screen.getByText('Weekly digest created.')).toBeDefined();
         expect(screen.getByText('Every 2 hours')).toBeDefined();
     });
 
@@ -189,7 +191,7 @@ describe('trigger form', { timeout: TIMEOUT_MS }, () => {
         const app = await renderForm();
         await app.user.selectOptions(field(/^Kind/), 'email');
         expect(screen.queryByLabelText(/^Message/)).toBeNull();
-        expect(screen.queryByRole('region', { name: 'Next fires' })).toBeNull();
+        expect(screen.queryByRole('region', { name: 'Next runs' })).toBeNull();
         await app.user.selectOptions(field(/^Agent/), 'agent-ada');
         await app.user.type(field(/^Name/), 'Orders inbox');
         await app.user.click(screen.getByRole('button', { name: 'Create trigger' }));
@@ -203,15 +205,16 @@ describe('trigger form', { timeout: TIMEOUT_MS }, () => {
         expect(within(card).getByRole('button', { name: 'Copy address' })).toBeDefined();
     });
 
-    it('edits a schedule with its own zone and values filled in', async () => {
+    it('edits a schedule with its own zone and values filled in, a cron it would write as its preset', async () => {
         const app = await renderForm(`/triggers/${TRIGGER_IDS.weekday}/edit`);
         expect(field(/^Name/)).toHaveProperty('value', 'Morning report');
-        expect(field(/^Cron expression/)).toHaveProperty('value', '0 8 * * 1-5');
+        expect(field(/^Repeats/)).toHaveProperty('value', 'weekdays');
+        expect(field(/^Time$/)).toHaveProperty('value', '08:00');
+        expect(screen.queryByLabelText(/^Cron expression/)).toBeNull();
         expect(field(/^Time zone/)).toHaveProperty('value', 'Europe/Prague');
         expect(field(/^Agent/)).toHaveProperty('disabled', true);
         expect(screen.queryByLabelText(/^Kind/)).toBeNull();
-        await app.user.clear(field(/^Cron expression/));
-        await app.user.type(field(/^Cron expression/), '0 9 * * 1-5');
+        fireEvent.change(field(/^Time$/), { target: { value: '09:00' } });
         await app.user.click(screen.getByRole('button', { name: 'Save' }));
         await waitFor(() => {
             expect(app.engine.spies.update).toHaveBeenCalledWith(
@@ -225,6 +228,115 @@ describe('trigger form', { timeout: TIMEOUT_MS }, () => {
         });
         expect(await screen.findByText('Every weekday at 09:00, Europe/Prague')).toBeDefined();
         expect(app.router.state.location.pathname).toBe(`/triggers/${TRIGGER_IDS.weekday}`);
+    });
+
+    it('starts on every weekday at 09:00 and offers the presets before once, interval and custom cron', async () => {
+        await renderForm();
+        expect(field(/^Repeats/)).toHaveProperty('value', 'weekdays');
+        expect(field(/^Time$/)).toHaveProperty('value', '09:00');
+        expect(
+            within(field(/^Repeats/))
+                .getAllByRole('option')
+                .map((option) => option.textContent),
+        ).toEqual([
+            'Every hour',
+            'Every day',
+            'Every weekday (Monday to Friday)',
+            'Every week',
+            'Once',
+            'At a fixed interval',
+            'Custom (cron)',
+        ]);
+    });
+
+    it('creates a weekly schedule from a day and a time, previewed in words with its zone', async () => {
+        const app = await renderForm('/triggers/new', createTriggersEngine(), { now: '2026-10-01T12:00:00Z' });
+        await app.user.selectOptions(field(/^Agent/), 'agent-iris');
+        await app.user.type(field(/^Name/), 'Friday wrap-up');
+        await app.user.selectOptions(field(/^Repeats/), 'weekly');
+        await app.user.selectOptions(field(/^Day/), 'Friday');
+        fireEvent.change(field(/^Time$/), { target: { value: '16:30' } });
+        await app.user.selectOptions(field(/^Time zone/), 'Europe/Prague');
+        await app.user.type(field(/^Message/), 'Sum up the week.');
+        expect(within(preview()).getByText('Every Friday at 16:30, Europe/Prague')).toBeDefined();
+        await app.user.click(screen.getByRole('button', { name: 'Create trigger' }));
+        await waitFor(() => {
+            expect(app.engine.spies.create).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    recurrence: { kind: 'cron', expression: '30 16 * * 5', timeZone: 'Europe/Prague' },
+                }),
+                expect.anything(),
+            );
+        });
+    });
+
+    it('starts a custom cron from the preset it replaces', async () => {
+        const app = await renderForm();
+        await app.user.selectOptions(field(/^Repeats/), 'daily');
+        fireEvent.change(field(/^Time$/), { target: { value: '07:45' } });
+        await app.user.selectOptions(field(/^Repeats/), 'cron');
+        expect(field(/^Cron expression/)).toHaveProperty('value', '45 7 * * *');
+    });
+
+    it('refuses a preset without a time, on the time field', async () => {
+        const app = await renderForm();
+        await app.user.selectOptions(field(/^Repeats/), 'daily');
+        fireEvent.change(field(/^Time$/), { target: { value: '' } });
+        await app.user.click(screen.getByRole('button', { name: 'Create trigger' }));
+        await waitFor(() => {
+            expect(errorOf(field(/^Time$/))).toContain('Enter a time.');
+        });
+        expect(within(preview()).getByText('Fill in the schedule to see when it runs.')).toBeDefined();
+        expect(app.engine.spies.create).not.toHaveBeenCalled();
+    });
+
+    it('opens a cron no preset writes as custom, keeping it as typed', async () => {
+        const engine = createTriggersEngine();
+        const app = await renderForm(`/triggers/${TRIGGER_IDS.weekday}/edit`, engine);
+        await app.user.selectOptions(field(/^Repeats/), 'cron');
+        expect(field(/^Cron expression/)).toHaveProperty('value', '0 8 * * 1-5');
+        await app.user.clear(field(/^Cron expression/));
+        await app.user.type(field(/^Cron expression/), '*/30 8-17 * * 1-5');
+        await app.user.click(screen.getByRole('button', { name: 'Save' }));
+        expect(await screen.findByRole('heading', { level: 1, name: 'Morning report' })).toBeDefined();
+
+        await app.router.navigate({ to: '/triggers/$triggerId/edit', params: { triggerId: TRIGGER_IDS.weekday } });
+        await waitFor(() => {
+            expect(field(/^Repeats/)).toHaveProperty('value', 'cron');
+        });
+        expect(field(/^Cron expression/)).toHaveProperty('value', '*/30 8-17 * * 1-5');
+    });
+
+    it('asks before Cancel throws away a change, and stays when asked to', async () => {
+        const app = await renderForm(`/triggers/${TRIGGER_IDS.weekday}/edit`);
+        await app.user.type(field(/^Name/), ' (draft)');
+        await app.user.click(screen.getByRole('link', { name: 'Cancel' }));
+        const dialog = await screen.findByRole('dialog', { name: m.unsaved_title() });
+        await app.user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+        expect(app.router.state.location.pathname).toBe(`/triggers/${TRIGGER_IDS.weekday}/edit`);
+        expect(field(/^Name/)).toHaveProperty('value', 'Morning report (draft)');
+
+        await app.user.click(screen.getByRole('link', { name: 'Cancel' }));
+        await app.user.click(
+            within(await screen.findByRole('dialog', { name: m.unsaved_title() })).getByRole('button', {
+                name: m.unsaved_leave(),
+            }),
+        );
+        await waitFor(() => {
+            expect(app.router.state.location.pathname).toBe(`/triggers/${TRIGGER_IDS.weekday}`);
+        });
+        expect(app.engine.spies.update).not.toHaveBeenCalled();
+    });
+
+    it('leaves without asking when nothing changed, or a change was undone', async () => {
+        const app = await renderForm(`/triggers/${TRIGGER_IDS.weekday}/edit`);
+        await app.user.type(field(/^Name/), 'x');
+        await app.user.type(field(/^Name/), '{Backspace}');
+        await app.user.click(screen.getByRole('link', { name: 'Back to Morning report' }));
+        await waitFor(() => {
+            expect(app.router.state.location.pathname).toBe(`/triggers/${TRIGGER_IDS.weekday}`);
+        });
+        expect(screen.queryByRole('dialog')).toBeNull();
     });
 
     it('has no axe violations', async () => {

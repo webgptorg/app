@@ -9,7 +9,7 @@ import { defineFeature } from '../../app/registry/feature';
 import { visibleFeatures } from '../../app/registry/visibility';
 import { renderWithProviders } from '../../testing/render-with-providers';
 import { TEST_NOW } from '../../testing/test-engine-api';
-import { createTriggersEngine, TRIGGER_IDS } from '../../testing/triggers-engine';
+import { createTriggersEngine, TRIGGER_IDS, triggersSeed } from '../../testing/triggers-engine';
 import type { TriggersEngine } from '../../testing/triggers-engine';
 import { TriggerSearch } from './trigger-search';
 import { triggersFeature } from './triggers-feature';
@@ -132,7 +132,7 @@ describe('trigger activity renderers', { timeout: TIMEOUT_MS }, () => {
     it('renders every v1 trigger kind with links to the trigger and, for a fire, its run', async () => {
         renderInApp(createTriggersEngine(), feed);
         const list = await screen.findByRole('list', { name: 'Feed' }, { timeout: APP_READY_MS });
-        expect(within(list).getByText('<b>Morning</b> report fired')).toBeDefined();
+        expect(within(list).getByText('<b>Morning</b> report started a run')).toBeDefined();
         expect(within(list).getByText('<b>Morning</b> report failed')).toBeDefined();
         expect(within(list).getByText('Nothing ran.')).toBeDefined();
         expect(within(list).getByText('<b>Morning</b> report was paused')).toBeDefined();
@@ -147,7 +147,7 @@ describe('trigger activity renderers', { timeout: TIMEOUT_MS }, () => {
                 .map((link) => link.getAttribute('href')),
         ).toEqual(['/runs/run-morning']);
         expect(ACTIVITIES.map((activity) => renderer.summary(activity))).toEqual([
-            '<b>Morning</b> report fired',
+            '<b>Morning</b> report started a run',
             '<b>Morning</b> report failed',
             '<b>Morning</b> report was paused',
             '<b>Morning</b> report was resumed',
@@ -178,21 +178,31 @@ describe('failed triggers attention', { timeout: TIMEOUT_MS }, () => {
 });
 
 describe('agent overview card', { timeout: TIMEOUT_MS }, () => {
-    it('shows the agent’s active triggers with the next fire, and its paused and failed ones', async () => {
+    it('sums up the agent’s triggers in one line: active, next run, and a link to the failed ones', async () => {
         renderWithProviders({ path: '/agents/agent-iris', engineApi: createTriggersEngine().client });
         const card = await screen.findByRole('region', { name: 'Triggers' });
-        const value = (label: string) => within(card).getByText(label).nextElementSibling as HTMLElement;
         await waitFor(() => {
-            expect(value('Active').textContent).toBe('1');
+            expect(within(card).getByText('1 active')).toBeDefined();
         });
-        expect(value('Next fire').textContent).toMatch(/^Oct 2, 2026, 6:00\sAM/);
-        expect(value('Paused').textContent).toBe('0');
-        expect(within(value('Failed')).getByRole('link', { name: '1' }).getAttribute('href')).toBe(
+        const next = within(card).getByText('in 18 hours');
+        expect(next.getAttribute('dateTime')).toBe('2026-10-02T06:00:00.000Z');
+        expect(within(card).queryByText(/paused/)).toBeNull();
+        expect(within(card).getByRole('link', { name: '1 failed' }).getAttribute('href')).toBe(
             '/agents/agent-iris/triggers?lifecycle=failed',
         );
         expect(within(card).getByRole('link', { name: 'All triggers' }).getAttribute('href')).toBe(
             '/agents/agent-iris/triggers',
         );
+    });
+
+    it('says so when the agent has no triggers', async () => {
+        const seed = triggersSeed();
+        const engine = createTriggersEngine({
+            seed: { ...seed, agents: [...(seed.agents ?? []), { id: 'agent-grace', source: 'Grace\nPERSONA Idle' }] },
+        });
+        renderWithProviders({ path: '/agents/agent-grace', engineApi: engine.client });
+        const card = await screen.findByRole('region', { name: 'Triggers' });
+        expect(await within(card).findByText('No triggers yet.')).toBeDefined();
     });
 });
 

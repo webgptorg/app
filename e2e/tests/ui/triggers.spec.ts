@@ -44,11 +44,11 @@ test('a cron schedule fires as engine time passes, links its run, and pauses and
     await page.getByLabel(/^Time zone/).selectOption('UTC');
     await page.getByLabel(/^Message/).fill('Send the digest.');
     await page.getByRole('button', { name: 'Create trigger' }).click();
-    await expect(page.getByText(`${name} was created.`)).toBeVisible();
+    await expect(page.getByText(`${name} created.`)).toBeVisible();
     await expect(page.getByRole('heading', { level: 1, name })).toBeVisible();
     const triggerId = required(/\/triggers\/([^/?#]+)$/.exec(page.url())?.[1], 'trigger ID');
 
-    const history = page.getByRole('table', { name: 'Fire history' });
+    const history = page.getByRole('table', { name: 'History' });
     await advanceTime(PAST_NEXT_FIRE_MS);
     await expect(history.getByRole('link', { name: 'Open run' }).first()).toBeVisible();
     const fired = (await fires(page, triggerId)).length;
@@ -57,12 +57,12 @@ test('a cron schedule fires as engine time passes, links its run, and pauses and
     await expect(history.getByRole('link', { name: 'Open run' }).first()).toHaveAttribute('href', `/runs/${firstRun}`);
 
     await page.getByRole('button', { name: `Pause ${name}` }).click();
-    await expect(page.getByText(`${name} is paused.`)).toBeVisible();
+    await expect(page.getByText(`${name} paused.`)).toBeVisible();
     await advanceTime(PAST_NEXT_FIRE_MS);
     expect(await fires(page, triggerId)).toHaveLength(fired);
 
     await page.getByRole('button', { name: `Resume ${name}` }).click();
-    await expect(page.getByText(`${name} is running again.`)).toBeVisible();
+    await expect(page.getByText(`${name} resumed.`)).toBeVisible();
     await advanceTime(PAST_NEXT_FIRE_MS);
     await expect.poll(async () => (await fires(page, triggerId)).length).toBeGreaterThan(fired);
 

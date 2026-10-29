@@ -1,4 +1,4 @@
-import { useLocale } from '@ptbk/ui';
+import { useLocale, VisuallyHidden } from '@ptbk/ui';
 
 import { useBrowser } from '../../app/browser-context';
 import { useNow } from '../../app/ticker';
@@ -56,4 +56,33 @@ function Countdown({ at }: { readonly at: Date }) {
     const locale = useLocale();
     const now = useNow();
     return <span className="text-text-muted">{locale.formatRelativeTime(at, new Date(now))}</span>;
+}
+
+/**
+ * A fire time for a scannable list: "in 6 days" or "yesterday", live, with the exact time (and the schedule's own zone)
+ * as a tooltip. Nothing reads as a quiet dash, with `empty` for screen readers.
+ */
+export function RelativeFireTime({ at, zone, empty }: Pick<FireTimeProps, 'at' | 'zone'> & { readonly empty: string }) {
+    const locale = useLocale();
+    const browserZone = useBrowserTimeZone();
+    const now = useNow();
+    if (at === null) {
+        return (
+            <span className="text-text-muted">
+                <span aria-hidden>—</span>
+                <VisuallyHidden>{empty}</VisuallyHidden>
+            </span>
+        );
+    }
+    const date = new Date(at);
+    const exact = formatInZone(date, browserZone, locale.locale);
+    const title =
+        zone === undefined || zone === browserZone
+            ? exact
+            : `${exact} ${m.trigger_time_zone({ zoneTime: formatInZone(date, zone, locale.locale), timeZone: zone })}`;
+    return (
+        <time dateTime={at} title={title} className="whitespace-nowrap">
+            {locale.formatRelativeTime(date, new Date(now))}
+        </time>
+    );
 }

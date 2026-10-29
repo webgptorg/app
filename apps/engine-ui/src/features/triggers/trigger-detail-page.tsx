@@ -14,6 +14,7 @@ import { usePermissions } from '../session/use-permissions';
 import { Page } from '../shell/page';
 import { NARROW_QUERY, useMediaQuery } from '../shell/use-media-query';
 import { DeleteTriggerDialog } from './delete-trigger-dialog';
+import { TriggerListBackLink } from './trigger-back-link';
 import { describeRecurrence } from './schedule/describe';
 import { endedReasonLabel, triggerKindLabel, TriggerLifecycleBadge } from './trigger-labels';
 import { TriggerFiresTable } from './trigger-fires-table';
@@ -21,6 +22,7 @@ import { triggerZone } from './trigger-summary';
 import { FireTime, formatInZone, useBrowserTimeZone } from './trigger-time';
 import { TriggerToggle } from './trigger-toggle';
 import { useTrigger } from './triggers-queries';
+import { canEdit } from './use-trigger-mutations';
 
 const route = getRouteApi('/triggers/$triggerId/');
 
@@ -55,18 +57,26 @@ function LoadedTrigger({ triggerId }: { readonly triggerId: TriggerId }) {
     return <TriggerDetail trigger={trigger.data} />;
 }
 
-function TriggerActions({ trigger, onDelete }: { readonly trigger: ReadTrigger; readonly onDelete: () => void }) {
+function TriggerActions({
+    trigger,
+    fromAgent,
+    onDelete,
+}: {
+    readonly trigger: ReadTrigger;
+    readonly fromAgent: boolean;
+    readonly onDelete: () => void;
+}) {
     const { can } = usePermissions();
     if (!can('triggers.manage')) return null;
-    // A recurrence a newer engine invented cannot be shown in the form, and saving would replace it.
-    const editable =
-        (trigger.kind === 'email' || (trigger.kind === 'schedule' && trigger.config.recurrence.kind !== 'unknown')) &&
-        trigger.lifecycle !== 'ended';
     return (
         <div className="flex flex-wrap gap-2">
             <TriggerToggle trigger={trigger} size="md" />
-            {editable ? (
-                <ButtonLink to="/triggers/$triggerId/edit" params={{ triggerId: trigger.id }}>
+            {canEdit(trigger) ? (
+                <ButtonLink
+                    to="/triggers/$triggerId/edit"
+                    params={{ triggerId: trigger.id }}
+                    search={fromAgent ? { from: 'agent' } : {}}
+                >
                     <Pencil aria-hidden className="size-4" />
                     {m.trigger_edit()}
                 </ButtonLink>
@@ -90,10 +100,12 @@ function TriggerActions({ trigger, onDelete }: { readonly trigger: ReadTrigger; 
 function TriggerDetail({ trigger }: { readonly trigger: ReadTrigger }) {
     const narrow = useMediaQuery(NARROW_QUERY);
     const navigate = useNavigate();
+    const fromAgent = route.useSearch().from === 'agent';
     const [deleting, setDeleting] = useState(false);
     const actions = (
         <TriggerActions
             trigger={trigger}
+            fromAgent={fromAgent}
             onDelete={() => {
                 setDeleting(true);
             }}
@@ -101,7 +113,11 @@ function TriggerDetail({ trigger }: { readonly trigger: ReadTrigger }) {
     );
     const zone = triggerZone(trigger);
     return (
-        <Page title={trigger.name} {...(narrow ? {} : { actions })}>
+        <Page
+            title={trigger.name}
+            back={<TriggerListBackLink agentId={fromAgent ? trigger.agentId : undefined} />}
+            {...(narrow ? {} : { actions })}
+        >
             <TriggerFacts trigger={trigger} />
             {trigger.lifecycle === 'failed' ? (
                 <Banner tone="danger" title={m.trigger_failed_title()}>
@@ -122,7 +138,9 @@ function TriggerDetail({ trigger }: { readonly trigger: ReadTrigger }) {
                         setDeleting(false);
                     }}
                     onDeleted={() => {
-                        void navigate({ to: '/triggers' });
+                        void (fromAgent
+                            ? navigate({ to: '/agents/$agentId/triggers', params: { agentId: trigger.agentId } })
+                            : navigate({ to: '/triggers' }));
                     }}
                 />
             ) : null}

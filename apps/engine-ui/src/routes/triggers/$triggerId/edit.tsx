@@ -1,12 +1,14 @@
 import { TriggerId } from '@ptbk/engine-api';
 import { createFileRoute } from '@tanstack/react-router';
 
+import { TriggerOrigin } from '../../../features/triggers/trigger-search';
 import { requireFeature } from '../../../app/registry/require-feature';
 import { requirePermission } from '../../../features/session/require-permission';
 import { EditTriggerPage } from '../../../features/triggers/trigger-form-pages';
 import { triggerQueryOptions } from '../../../features/triggers/triggers-queries';
 
 export const Route = createFileRoute('/triggers/$triggerId/edit')({
+    validateSearch: TriggerOrigin,
     beforeLoad: async (options) => {
         await requireFeature('triggers')(options);
         await requirePermission('triggers.manage')(options);

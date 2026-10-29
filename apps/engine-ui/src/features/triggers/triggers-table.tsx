@@ -1,9 +1,10 @@
 import { TRIGGER_KINDS, TRIGGER_LIFECYCLES } from '@ptbk/engine-api';
 import type { AgentId, ReadTrigger } from '@ptbk/engine-api';
-import { Button, createDataTableColumnHelper, DataTable, Field, Select } from '@ptbk/ui';
+import { Button, createDataTableColumnHelper, DataTable, Field, Select, VisuallyHidden } from '@ptbk/ui';
 import type { DataTableColumnDef, MenuEntry } from '@ptbk/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Trash2 } from 'lucide-react';
+import { useNavigate } from '@tanstack/react-router';
+import { Pause, Pencil, Play, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
 import { useBrowser } from '../../app/browser-context';
@@ -20,16 +21,17 @@ import { knownKindLabel, lifecycleLabel, triggerKindLabel, TriggerLifecycleBadge
 import { hasTriggerFilters, triggerListParams } from './trigger-search';
 import type { TriggerSearch } from './trigger-search';
 import { triggerZone, useTriggerSummary } from './trigger-summary';
-import { FireTime } from './trigger-time';
+import { RelativeFireTime } from './trigger-time';
 import { TriggerToggle } from './trigger-toggle';
 import { triggerListQueryOptions, useTriggers } from './triggers-queries';
+import { canEdit, canPause, canResume, useTriggerMutations } from './use-trigger-mutations';
 
 const NO_TRIGGERS: readonly ReadTrigger[] = [];
 // The first page of agents fills the agent filter; a trigger of another agent still shows, by its own name.
 const AGENT_FILTER_LIMIT = 100;
 export const TRIGGER_COLUMNS_STORAGE_KEY = 'ptbk.triggers.columns';
 
-function useTriggerColumns(showAgent: boolean, manage: boolean): DataTableColumnDef<ReadTrigger>[] {
+function useTriggerColumns(showAgent: boolean, manage: boolean, fromAgent: boolean): DataTableColumnDef<ReadTrigger>[] {
     const summary = useTriggerSummary();
     return useMemo(() => {
         const column = createDataTableColumnHelper<ReadTrigger>();
@@ -40,12 +42,16 @@ function useTriggerColumns(showAgent: boolean, manage: boolean): DataTableColumn
                 enableSorting: false,
                 enableHiding: false,
                 meta: { priority: 0 },
+                // One line in the table, so the row stays one line; a long name ends in an ellipsis with the full name on
+                // hover. A card has the width to wrap it.
                 cell: ({ row }) => (
                     <Link
                         to="/triggers/$triggerId"
                         params={{ triggerId: row.original.id }}
+                        search={fromAgent ? { from: 'agent' } : {}}
                         variant="standalone"
-                        className="break-words"
+                        title={row.original.name}
+                        className="inline-block max-w-full break-words md:max-w-72 md:truncate md:align-bottom"
                     >
                         {row.original.name}
                     </Link>
@@ -64,9 +70,10 @@ function useTriggerColumns(showAgent: boolean, manage: boolean): DataTableColumn
             columns.push(
                 column.display({
                     id: 'control',
-                    header: m.triggers_column_control(),
+                    // The buttons name themselves; a visible header would only add a word to scan past.
+                    header: () => <VisuallyHidden>{m.triggers_column_toggle()}</VisuallyHidden>,
                     enableHiding: false,
-                    meta: { priority: 2 },
+                    meta: { priority: 2, label: m.triggers_column_toggle() },
                     cell: ({ row }) => <TriggerToggle trigger={row.original} />,
                 }),
             );
@@ -109,14 +116,20 @@ function useTriggerColumns(showAgent: boolean, manage: boolean): DataTableColumn
                 header: m.triggers_column_next(),
                 enableSorting: false,
                 meta: { priority: 3 },
-                cell: ({ row }) => <FireTime at={row.original.nextFireAt} zone={triggerZone(row.original)} />,
+                cell: ({ row }) => (
+                    <RelativeFireTime
+                        at={row.original.nextFireAt}
+                        zone={triggerZone(row.original)}
+                        empty={m.trigger_value_none()}
+                    />
+                ),
             }),
             column.accessor('lastFiredAt', {
                 header: m.triggers_column_last(),
                 enableSorting: false,
                 meta: { priority: 7 },
                 cell: ({ row }) => (
-                    <FireTime
+                    <RelativeFireTime
                         at={row.original.lastFiredAt}
                         zone={triggerZone(row.original)}
                         empty={m.trigger_never_fired()}
@@ -125,7 +138,7 @@ function useTriggerColumns(showAgent: boolean, manage: boolean): DataTableColumn
             }),
         );
         return columns;
-    }, [showAgent, manage, summary]);
+    }, [showAgent, manage, fromAgent, summary]);
 }
 
 export interface TriggersTableProps {
@@ -146,8 +159,10 @@ export function TriggersTable({ search, onSearchChange, agentId }: TriggersTable
     const params = triggerListParams(search, agentId);
     const list = useTriggers(params);
     const scope = agentId === undefined ? 'global' : 'agent';
-    const columns = useTriggerColumns(scope === 'global', manage);
+    const columns = useTriggerColumns(scope === 'global', manage, scope === 'agent');
     const [deleting, setDeleting] = useState<ReadTrigger | null>(null);
+    const navigate = useNavigate();
+    const { pause, resume } = useTriggerMutations();
     const paging = useCursorPages(search.cursor, list.data?.nextCursor ?? null, (cursor) => {
         onSearchChange({ cursor });
     });
@@ -163,21 +178,61 @@ export function TriggersTable({ search, onSearchChange, agentId }: TriggersTable
     const clear = () => {
         filter({ kind: undefined, lifecycle: undefined, agentId: undefined });
     };
-    const rowActions = (trigger: ReadTrigger): readonly MenuEntry[] =>
-        manage
-            ? [
-                  {
-                      kind: 'item',
-                      id: 'delete',
-                      label: m.trigger_delete(),
-                      icon: <Trash2 aria-hidden />,
-                      tone: 'danger',
-                      onSelect: () => {
-                          setDeleting(trigger);
-                      },
-                  },
-              ]
-            : [];
+    const rowActions = (trigger: ReadTrigger): readonly MenuEntry[] => {
+        if (!manage) return [];
+        const target = { id: trigger.id, name: trigger.name };
+        const entries: MenuEntry[] = [];
+        if (canEdit(trigger)) {
+            entries.push({
+                kind: 'item',
+                id: 'edit',
+                label: m.trigger_edit(),
+                icon: <Pencil aria-hidden />,
+                onSelect: () => {
+                    void navigate({
+                        to: '/triggers/$triggerId/edit',
+                        params: { triggerId: trigger.id },
+                        search: scope === 'agent' ? { from: 'agent' } : {},
+                    });
+                },
+            });
+        }
+        if (canPause(trigger)) {
+            entries.push({
+                kind: 'item',
+                id: 'pause',
+                label: m.trigger_pause(),
+                icon: <Pause aria-hidden />,
+                onSelect: () => {
+                    pause.mutate(target);
+                },
+            });
+        } else if (canResume(trigger)) {
+            entries.push({
+                kind: 'item',
+                id: 'resume',
+                label: m.trigger_resume(),
+                icon: <Play aria-hidden />,
+                onSelect: () => {
+                    resume.mutate(target);
+                },
+            });
+        }
+        entries.push(
+            { kind: 'separator', id: 'danger' },
+            {
+                kind: 'item',
+                id: 'delete',
+                label: m.trigger_delete(),
+                icon: <Trash2 aria-hidden />,
+                tone: 'danger',
+                onSelect: () => {
+                    setDeleting(trigger);
+                },
+            },
+        );
+        return entries;
+    };
 
     return (
         <div className="flex flex-col gap-4">

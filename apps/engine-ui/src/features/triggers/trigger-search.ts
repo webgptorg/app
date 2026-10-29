@@ -19,6 +19,10 @@ export const TriggerSearch = z.object({
 });
 export type TriggerSearch = z.output<typeof TriggerSearch>;
 
+/** Where a trigger was opened from, so its pages lead back there: an agent's tab, or (absent) the global list. */
+export const TriggerOrigin = z.object({ from: z.literal('agent').optional().catch(undefined) });
+export type TriggerOrigin = z.output<typeof TriggerOrigin>;
+
 export function hasTriggerFilters(search: TriggerSearch, scope: 'global' | 'agent'): boolean {
     return (
         search.kind !== undefined ||

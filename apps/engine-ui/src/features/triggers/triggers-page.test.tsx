@@ -158,14 +158,16 @@ describe('triggers list', { timeout: TIMEOUT_MS }, () => {
         expect(within(morning).getByRole('link', { name: 'Iris' }).getAttribute('href')).toBe('/agents/agent-iris');
         expect(within(morning).getByText('Schedule')).toBeDefined();
         expect(within(morning).getByText('Every weekday at 08:00, Europe/Prague')).toBeDefined();
-        // The reader is in UTC; the schedule plans in Prague, so both are shown.
-        expect(within(morning).getByText(/^Oct 2, 2026, 6:00\sAM$/)).toBeDefined();
-        expect(within(morning).getByText(/^\(Oct 2, 2026, 8:00\sAM, Europe\/Prague\)$/)).toBeDefined();
-        expect(morning.textContent).toMatch(/Oct 2, 2026, 6:00\sAM \(Oct 2, 2026, 8:00\sAM, Europe\/Prague\)/);
+        // Relative in the list; the exact time in the reader's zone (UTC) and the schedule's (Prague) on hover.
+        const next = within(morning).getByText('in 18 hours');
+        expect(next.getAttribute('dateTime')).toBe('2026-10-02T06:00:00.000Z');
+        expect(next.getAttribute('title')).toMatch(/^Oct 2, 2026, 6:00\sAM \(Oct 2, 2026, 8:00\sAM, Europe\/Prague\)$/);
 
         const inbox = rowOf('Support inbox');
         expect(within(inbox).getByText('Email')).toBeDefined();
         expect(within(inbox).getByText('trigger-inbox@engine.localhost')).toBeDefined();
+        // A quiet dash, named for screen readers.
+        expect(within(inbox).getByText('—')).toBeDefined();
         expect(within(inbox).getByText('Not scheduled')).toBeDefined();
         expect(within(rowOf('Every quarter hour')).getByText('Paused')).toBeDefined();
         expect(within(rowOf('Every quarter hour')).getByText('Every 15 minutes')).toBeDefined();
@@ -242,6 +244,46 @@ describe('triggers list', { timeout: TIMEOUT_MS }, () => {
     });
 });
 
+describe('row menu', { timeout: TIMEOUT_MS }, () => {
+    const menuItems = async (user: Awaited<ReturnType<typeof renderTriggers>>['user'], name: string) => {
+        await user.click(within(rowOf(name)).getByRole('button', { name: `Actions for ${name}` }));
+        const menu = screen.getByRole('menu', { name: `Actions for ${name}` });
+        return within(menu)
+            .getAllByRole('menuitem')
+            .map((item) => item.textContent);
+    };
+
+    it('offers edit, pause or resume, and delete last', async () => {
+        const { user } = await renderTriggers();
+        await within(table()).findByText('Morning report');
+        expect(await menuItems(user, 'Morning report')).toEqual(['Edit', 'Pause', 'Delete']);
+        await user.keyboard('{Escape}');
+        expect(await menuItems(user, 'Every quarter hour')).toEqual(['Edit', 'Resume', 'Delete']);
+        await user.keyboard('{Escape}');
+        // Ended is final: nothing to edit, pause or resume.
+        expect(await menuItems(user, 'Launch reminder')).toEqual(['Delete']);
+    });
+
+    it('opens the form from the menu, and pauses from it', async () => {
+        const { user, router } = await renderTriggers();
+        await within(table()).findByText('Morning report');
+        await user.click(within(rowOf('Morning report')).getByRole('button', { name: 'Actions for Morning report' }));
+        await user.click(screen.getByRole('menuitem', { name: 'Pause' }));
+        expect(await screen.findByText('Morning report paused.')).toBeDefined();
+        await user.click(within(rowOf('Morning report')).getByRole('button', { name: 'Actions for Morning report' }));
+        await user.click(screen.getByRole('menuitem', { name: 'Edit' }));
+        await waitFor(() => {
+            expect(router.state.location.pathname).toBe(`/triggers/${TRIGGER_IDS.weekday}/edit`);
+        });
+    });
+
+    it('opens a trigger from an agent’s tab so its page leads back there', async () => {
+        await renderTriggers('/agents/agent-iris/triggers');
+        const link = await within(table()).findByRole('link', { name: 'Morning report' });
+        expect(link.getAttribute('href')).toBe(`/triggers/${TRIGGER_IDS.weekday}?from=agent`);
+    });
+});
+
 describe('pause and resume', { timeout: TIMEOUT_MS }, () => {
     it('pauses at once, then keeps what the engine confirms', async () => {
         const engine = createTriggersEngine();
@@ -259,7 +301,7 @@ describe('pause and resume', { timeout: TIMEOUT_MS }, () => {
         expect(within(rowOf('Morning report')).getByRole('button', { name: 'Resume Morning report' })).toBeDefined();
 
         pending.release(undefined);
-        expect(await screen.findByText('Morning report is paused.')).toBeDefined();
+        expect(await screen.findByText('Morning report paused.')).toBeDefined();
         expect(engine.controller.getTrigger(TRIGGER_IDS.weekday)?.lifecycle).toBe('paused');
         expect(within(rowOf('Morning report')).getByText('Paused')).toBeDefined();
     });
@@ -270,7 +312,7 @@ describe('pause and resume', { timeout: TIMEOUT_MS }, () => {
             within(rowOf('Every quarter hour')).getByRole('button', { name: 'Resume Every quarter hour' }),
         );
         expect(within(rowOf('Every quarter hour')).getByText('Active')).toBeDefined();
-        expect(await screen.findByText('Every quarter hour is running again.')).toBeDefined();
+        expect(await screen.findByText('Every quarter hour resumed.')).toBeDefined();
         expect(engine.controller.getTrigger(TRIGGER_IDS.paused)?.lifecycle).toBe('active');
     });
 
@@ -346,7 +388,7 @@ describe('triggers access', { timeout: TIMEOUT_MS }, () => {
         expect(screen.queryByRole('link', { name: 'New trigger' })).toBeNull();
         expect(screen.queryByRole('button', { name: /^(Pause|Resume) / })).toBeNull();
         expect(screen.queryByRole('button', { name: /^Actions for/ })).toBeNull();
-        expect(within(table()).queryByRole('columnheader', { name: 'Control' })).toBeNull();
+        expect(within(table()).queryByRole('columnheader', { name: 'Pause or resume' })).toBeNull();
 
         renderWithProviders({
             path: '/triggers/new',
