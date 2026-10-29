@@ -14,7 +14,7 @@ import { chatListQueryOptions } from './chat-queries';
 import { chatName } from './chat-source';
 
 const ROW = cx(
-    'flex min-w-0 rounded-control px-3 text-sm text-text no-underline hover:bg-hover',
+    'flex min-w-0 rounded-control px-3 text-sm text-text no-underline hover:bg-hover hover:no-underline',
     'motion-safe:transition-colors motion-safe:duration-(--motion-state)',
     'aria-[current=page]:bg-selected aria-[current=page]:text-accent-text',
 );
