@@ -1,5 +1,5 @@
 import type { Agent, AgentId, ChatId } from '@ptbk/engine-api';
-import { Button, Dialog, useZodForm } from '@ptbk/ui';
+import { Button, Dialog, useToast, useZodForm } from '@ptbk/ui';
 import type { ServerFieldError } from '@ptbk/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { getRouteApi, useNavigate } from '@tanstack/react-router';
@@ -18,7 +18,6 @@ import { Page } from '../shell/page';
 import { BookStep } from './book-step';
 import { bookTemplate } from './book-template';
 import { BriefSchema, BriefStep } from './brief-step';
-import { DoneStep } from './done-step';
 import { KnowledgeStep } from './knowledge-step';
 import { TestStep } from './test-step';
 import { CREATED_STEPS } from './wizard-search';
@@ -40,14 +39,14 @@ function reachableStep(step: WizardStep, agentId: AgentId | undefined, hasDraft:
     return step === 'book' && !hasDraft ? 'brief' : step;
 }
 
-interface CancelDialogProps {
+interface FinishLaterDialogProps {
     readonly agentId: AgentId;
     readonly agentName: string;
     readonly onClose: () => void;
 }
 
-/** Leaving after the agent exists: keep it, or delete it again. */
-function CancelDialog({ agentId, agentName, onClose }: CancelDialogProps) {
+/** Leaving after the agent exists: it is saved already, so the choice is to come back to it or delete it again. */
+function FinishLaterDialog({ agentId, agentName, onClose }: FinishLaterDialogProps) {
     const engineApi = useEngineApi();
     const navigate = useNavigate();
     const { can } = usePermissions();
@@ -64,20 +63,12 @@ function CancelDialog({ agentId, agentName, onClose }: CancelDialogProps) {
             open
             size="sm"
             onClose={onClose}
-            title={m.wizard_cancel_title()}
-            description={m.wizard_cancel_body({ name: agentName })}
+            title={m.wizard_finish_later_title()}
+            description={m.wizard_finish_later_body({ name: agentName })}
             footer={
                 <>
                     <Button variant="ghost" onClick={onClose}>
-                        {m.wizard_cancel_stay()}
-                    </Button>
-                    <Button
-                        variant="secondary"
-                        onClick={() => {
-                            void navigate({ to: '/agents/$agentId', params: { agentId } });
-                        }}
-                    >
-                        {m.wizard_cancel_keep()}
+                        {m.wizard_cancel()}
                     </Button>
                     {can('agents.delete') ? (
                         <Button
@@ -87,16 +78,24 @@ function CancelDialog({ agentId, agentName, onClose }: CancelDialogProps) {
                                 if (!remove.isPending) remove.mutate();
                             }}
                         >
-                            {m.wizard_cancel_delete()}
+                            {m.wizard_finish_later_delete({ name: agentName })}
                         </Button>
                     ) : null}
+                    <Button
+                        variant="primary"
+                        onClick={() => {
+                            void navigate({ to: '/agents/$agentId', params: { agentId } });
+                        }}
+                    >
+                        {m.wizard_finish_later_open()}
+                    </Button>
                 </>
             }
         />
     );
 }
 
-interface CreatedStepsProps {
+interface CreatedWizardProps {
     readonly agentId: AgentId;
     readonly step: WizardStep;
     readonly chatId: ChatId | undefined;
@@ -104,17 +103,18 @@ interface CreatedStepsProps {
     readonly goTo: (step: WizardStep, extra?: { readonly chat?: ChatId }) => void;
 }
 
-/** Knowledge, test chat and done: the steps after the agent exists. */
-function CreatedSteps({ agentId, step, chatId, headingRef, goTo }: CreatedStepsProps) {
+/** Knowledge and the test chat: the steps after the agent exists, under its name rather than "New agent". */
+function CreatedWizard({ agentId, step, chatId, headingRef, goTo }: CreatedWizardProps) {
     const agentName = useQuery(agentDetailQueryOptions(useEngineApi(), agentId)).data?.name ?? '';
-    const [cancelling, setCancelling] = useState(false);
-    const cancel = () => {
-        setCancelling(true);
+    const navigate = useNavigate();
+    const toast = useToast();
+    const [finishingLater, setFinishingLater] = useState(false);
+    const finishLater = () => {
+        setFinishingLater(true);
     };
 
-    let content;
-    if (step === 'test') {
-        content = (
+    const content =
+        step === 'test' ? (
             <TestStep
                 agentId={agentId}
                 agentName={agentName}
@@ -123,44 +123,44 @@ function CreatedSteps({ agentId, step, chatId, headingRef, goTo }: CreatedStepsP
                 onChatCreated={(chat) => {
                     goTo('test', { chat });
                 }}
-                onNext={() => {
-                    goTo('done');
+                onBack={() => {
+                    goTo('knowledge');
                 }}
-                onCancel={cancel}
+                onFinish={() => {
+                    toast.show({ tone: 'success', title: m.wizard_finished({ name: agentName }) });
+                    void navigate({ to: '/agents/$agentId', params: { agentId } });
+                }}
+                onFinishLater={finishLater}
             />
-        );
-    } else if (step === 'done') {
-        content = <DoneStep agentId={agentId} agentName={agentName} headingRef={headingRef} />;
-    } else {
-        content = (
+        ) : (
             <KnowledgeStep
                 agentId={agentId}
                 headingRef={headingRef}
                 onNext={() => {
                     goTo('test');
                 }}
-                onCancel={cancel}
+                onFinishLater={finishLater}
             />
         );
-    }
     return (
-        <>
+        <Page title={agentName === '' ? m.agents_new() : m.wizard_title_created({ name: agentName })}>
+            <WizardStepper current={step} />
             {content}
-            {cancelling ? (
-                <CancelDialog
+            {finishingLater ? (
+                <FinishLaterDialog
                     agentId={agentId}
                     agentName={agentName}
                     onClose={() => {
-                        setCancelling(false);
+                        setFinishingLater(false);
                     }}
                 />
             ) : null}
-        </>
+        </Page>
     );
 }
 
 /**
- * The create-agent wizard: brief, book, knowledge, test chat, done. The step is in the URL; the brief and the book
+ * The create-agent wizard: brief, book, knowledge, test chat. The step is in the URL; the brief and the book
  * draft live only in this component until the book step creates the agent, after which the URL carries its ID.
  */
 export function AgentWizardPage() {
@@ -205,12 +205,12 @@ export function AgentWizardPage() {
         headingRef.current?.focus();
     }, [step]);
 
-    let content;
     if (agentId !== undefined) {
-        content = (
-            <CreatedSteps agentId={agentId} step={step} chatId={search.chat} headingRef={headingRef} goTo={goTo} />
-        );
-    } else if (step === 'book' && bookDraft !== null) {
+        return <CreatedWizard agentId={agentId} step={step} chatId={search.chat} headingRef={headingRef} goTo={goTo} />;
+    }
+
+    let content;
+    if (step === 'book' && bookDraft !== null) {
         content = (
             <BookStep
                 draft={bookDraft}
@@ -246,9 +246,7 @@ export function AgentWizardPage() {
     return (
         <Page title={m.agents_new()}>
             <briefForm.Subscribe selector={(state) => state.isDirty}>
-                {(briefDirty) => (
-                    <UnsavedChangesGuard when={agentId === undefined && (briefDirty || bookDraft !== null)} />
-                )}
+                {(briefDirty) => <UnsavedChangesGuard when={briefDirty || bookDraft !== null} />}
             </briefForm.Subscribe>
             <WizardStepper current={step} />
             {content}

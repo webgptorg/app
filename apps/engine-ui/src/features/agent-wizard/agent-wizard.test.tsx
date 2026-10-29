@@ -47,12 +47,14 @@ function setup({ path = '/agents/new', permissions, capabilities, agents = {} }:
         ...engine.client,
         agents: { ...real, ...agents },
         files: { ...engine.client.files },
+        chats: { ...engine.client.chats },
     };
     const spies = {
         upload: vi.spyOn(client.files, 'upload'),
         create: vi.spyOn(client.agents, 'create'),
         validate: vi.spyOn(client.agents, 'validate'),
         delete: vi.spyOn(client.agents, 'delete'),
+        createChat: vi.spyOn(client.chats, 'create'),
     };
     const app = renderWithProviders({ path, engineApi: client });
     return { ...app, real, spies };
@@ -76,6 +78,17 @@ async function createAgent(app: App) {
     await fillBrief(app);
     await app.user.click(screen.getByRole('button', { name: 'Create agent' }));
     await stepHeading('Add knowledge');
+}
+
+/** Engines without throwaway test chats: the test step falls back to a kept chat. */
+const NO_TEST_CHAT: readonly CapabilityRef[] = [];
+
+async function expectFinishedOnOverview(app: App, agentId: string) {
+    await app.user.click(screen.getByRole('button', { name: 'Finish' }));
+    expect(await screen.findByText('Iris is ready', {}, WAIT)).toBeDefined();
+    await waitFor(() => {
+        expect(app.router.state.location.pathname).toBe(`/agents/${agentId}`);
+    });
 }
 
 describe('the create-agent wizard', { timeout: TIMEOUT_MS }, () => {
@@ -105,6 +118,10 @@ describe('the create-agent wizard', { timeout: TIMEOUT_MS }, () => {
         expect(bookText()).toBe(bookTemplate({ name: 'Iris', description: 'Writes the weekly report' }));
         const current = screen.getByRole('list', { name: 'Steps' }).querySelector('[aria-current="step"]');
         expect(current?.textContent).toMatch(/Book$/);
+        expect(screen.getAllByRole('listitem').filter((item) => item.closest('ol[aria-label="Steps"]'))).toHaveLength(
+            4,
+        );
+        expect(screen.getByText('Step 2 of 4 · Book')).toBeDefined();
 
         await app.user.click(screen.getByRole('button', { name: 'Back' }));
         expect(document.activeElement).toBe(await stepHeading('Describe your agent'));
@@ -249,21 +266,24 @@ describe('the create-agent wizard', { timeout: TIMEOUT_MS }, () => {
         });
     });
 
-    it('offers to delete the created agent when cancelled after creation', async () => {
+    it('offers to finish later or delete the created agent, under its own name', async () => {
         const app = setup();
         await createAgent(app);
         const agentId = search(app)['agent'];
+        expect(screen.getByRole('heading', { level: 1, name: 'Set up Iris' })).toBeDefined();
+        expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull();
 
-        await app.user.click(screen.getByRole('button', { name: 'Cancel' }));
-        const dialog = await screen.findByRole('dialog', { name: 'Keep the agent you created?' });
-        expect(within(dialog).getByText(/Iris already exists/)).toBeDefined();
-        await app.user.click(within(dialog).getByRole('button', { name: 'Stay' }));
+        await app.user.click(screen.getByRole('button', { name: 'Finish later' }));
+        const dialog = await screen.findByRole('dialog', { name: 'Finish later?' });
+        expect(within(dialog).getByText(/Iris is saved as it is/)).toBeDefined();
+        await app.user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
         expect(screen.queryByRole('dialog')).toBeNull();
+        expect(app.spies.delete).not.toHaveBeenCalled();
 
-        await app.user.click(screen.getByRole('button', { name: 'Cancel' }));
+        await app.user.click(screen.getByRole('button', { name: 'Finish later' }));
         await app.user.click(
-            within(await screen.findByRole('dialog', { name: 'Keep the agent you created?' })).getByRole('button', {
-                name: 'Delete agent',
+            within(await screen.findByRole('dialog', { name: 'Finish later?' })).getByRole('button', {
+                name: 'Delete Iris',
             }),
         );
         expect(await screen.findByText('Iris deleted', {}, WAIT)).toBeDefined();
@@ -273,18 +293,19 @@ describe('the create-agent wizard', { timeout: TIMEOUT_MS }, () => {
         });
     });
 
-    it('keeps the created agent when the member chooses so, and hides delete without agents.delete', async () => {
+    it('goes to the created agent when finishing later, and hides delete without agents.delete', async () => {
         const app = setup({ permissions: PERMISSIONS.filter((permission) => permission !== 'agents.delete') });
         await createAgent(app);
         const agentId = String(search(app)['agent']);
 
-        await app.user.click(screen.getByRole('button', { name: 'Cancel' }));
-        const dialog = await screen.findByRole('dialog', { name: 'Keep the agent you created?' });
-        expect(within(dialog).queryByRole('button', { name: 'Delete agent' })).toBeNull();
-        await app.user.click(within(dialog).getByRole('button', { name: 'Keep agent' }));
+        await app.user.click(screen.getByRole('button', { name: 'Finish later' }));
+        const dialog = await screen.findByRole('dialog', { name: 'Finish later?' });
+        expect(within(dialog).queryByRole('button', { name: 'Delete Iris' })).toBeNull();
+        await app.user.click(within(dialog).getByRole('button', { name: 'Go to agent' }));
         await waitFor(() => {
             expect(app.router.state.location.pathname).toBe(`/agents/${agentId}`);
         });
+        expect(screen.queryByText('Iris is ready')).toBeNull();
     });
 
     it('uploads knowledge to the new agent with progress, refuses an over-limit file and reports a failure', async () => {
@@ -304,6 +325,7 @@ describe('the create-agent wizard', { timeout: TIMEOUT_MS }, () => {
                 }),
         );
 
+        expect(screen.getByRole('button', { name: 'Skip' })).toBeDefined();
         await app.user.upload(input, new File(['# Guide'], 'guide.md'));
         const list = await screen.findByRole('list', { name: 'Uploads' });
         await waitFor(() => {
@@ -326,30 +348,55 @@ describe('the create-agent wizard', { timeout: TIMEOUT_MS }, () => {
         expect(await within(list).findByText('Uploaded', {}, WAIT)).toBeDefined();
         const files = await app.engineApi.files.list({ agentId: agentId as never }, AbortSignal.timeout(1_000));
         expect(files.kind === 'ok' && files.data.items.map((file) => file.name)).toEqual(['prices.md']);
+        expect(await screen.findByRole('button', { name: 'Next' }, WAIT)).toBeDefined();
+        expect(screen.queryByRole('button', { name: 'Skip' })).toBeNull();
         await expectNoAxeViolations(document.body);
     });
 
-    it('says when knowledge cannot be added here, tests the agent in a chat and links onwards', async () => {
-        const app = setup({ capabilities: [] });
+    it('tests the new agent in a throwaway chat that creates no chat, and finishes on its overview', async () => {
+        const app = setup();
+        await createAgent(app);
+        const agentId = String(search(app)['agent']);
+        await app.user.click(screen.getByRole('button', { name: 'Skip' }));
+
+        expect(document.activeElement).toBe(await stepHeading('Try it out'));
+        const panel = await screen.findByTestId('book-test-chat', {}, WAIT);
+        expect(within(panel).getByText(/These messages are not kept/)).toBeDefined();
+        await app.user.type(within(panel).getByRole('textbox', { name: 'Message' }), 'Hello{Enter}');
+        await waitFor(() => {
+            expect(panel.querySelector('[aria-live="polite"][aria-atomic="true"]')?.textContent).toBe('Iris replied');
+        }, WAIT);
+        expect(app.spies.createChat).not.toHaveBeenCalled();
+        expect(search(app)['chat']).toBeUndefined();
+
+        await app.user.click(screen.getByRole('button', { name: 'Back' }));
+        await stepHeading('Add knowledge');
+        await app.user.click(screen.getByRole('button', { name: 'Skip' }));
+        await stepHeading('Try it out');
+        await expectFinishedOnOverview(app, agentId);
+        const chats = await app.engineApi.chats.list(agentId as never, {}, AbortSignal.timeout(1_000));
+        expect(chats.kind === 'ok' && chats.data.items).toEqual([]);
+    });
+
+    it('falls back to a kept chat without throwaway test chats, and says when knowledge cannot be added', async () => {
+        const app = setup({ capabilities: NO_TEST_CHAT });
         await createAgent(app);
         const agentId = String(search(app)['agent']);
         expect(screen.getByText(/Knowledge files are not available here/)).toBeDefined();
         await app.user.click(screen.getByRole('button', { name: 'Next' }));
 
         expect(document.activeElement).toBe(await stepHeading('Try it out'));
+        expect(screen.getByText(/The chat is kept with its other chats/)).toBeDefined();
+        expect(screen.queryByTestId('book-test-chat')).toBeNull();
         await app.user.click(screen.getByRole('button', { name: 'Start a test chat' }));
         expect(await screen.findByRole('textbox', { name: 'Message' }, WAIT)).toBeDefined();
         expect(search(app)['chat']).toBeDefined();
-        await app.user.click(screen.getByRole('button', { name: 'Next' }));
-
-        await stepHeading('Your agent is ready');
-        expect(screen.getByRole('link', { name: 'Open agent' }).getAttribute('href')).toBe(`/agents/${agentId}`);
-        expect(screen.getByRole('link', { name: 'Chat' }).getAttribute('href')).toBe(`/agents/${agentId}/chat`);
-        expect(screen.getByRole('link', { name: 'Edit book' }).getAttribute('href')).toBe(`/agents/${agentId}/book`);
+        expect(app.spies.createChat).toHaveBeenCalledOnce();
+        await expectFinishedOnOverview(app, agentId);
     });
 
-    it('offers a retry when the test chat cannot be loaded', async () => {
-        const app = setup();
+    it('offers a retry when the kept test chat cannot be loaded', async () => {
+        const app = setup({ capabilities: NO_TEST_CHAT });
         await createAgent(app);
         await app.user.click(screen.getByRole('button', { name: 'Next' }));
         await stepHeading('Try it out');
@@ -364,22 +411,35 @@ describe('the create-agent wizard', { timeout: TIMEOUT_MS }, () => {
         expect(await screen.findByRole('textbox', { name: 'Message' }, WAIT)).toBeDefined();
     });
 
-    it('explains the test step to a member who may not use chats, and links only where they may go', async () => {
+    it('offers a retry when the book to test cannot be loaded', async () => {
+        const app = setup();
+        await createAgent(app);
+        const getSource = vi
+            .spyOn(app.engineApi.agents, 'getSource')
+            .mockResolvedValue({ kind: 'problem', problem: createProblem('internal-error') });
+        await app.user.click(screen.getByRole('button', { name: 'Skip' }));
+        await stepHeading('Try it out');
+
+        expect(await screen.findByText('The test chat could not be loaded.', {}, WAIT)).toBeDefined();
+        getSource.mockRestore();
+        await app.user.click(screen.getByRole('button', { name: 'Try again' }));
+        expect(await screen.findByTestId('book-test-chat', {}, WAIT)).toBeDefined();
+    });
+
+    it('explains the kept test chat to a member who may not use chats, and can still finish', async () => {
         const app = setup({
+            capabilities: NO_TEST_CHAT,
             permissions: PERMISSIONS.filter(
                 (permission) => permission !== 'chats.write' && permission !== 'chats.read',
             ),
         });
         await createAgent(app);
+        const agentId = String(search(app)['agent']);
         await app.user.click(screen.getByRole('button', { name: 'Next' }));
         await stepHeading('Try it out');
         expect(screen.getByText('Your role does not allow starting chats. You can continue.')).toBeDefined();
         expect(screen.queryByRole('button', { name: 'Start a test chat' })).toBeNull();
-
-        await app.user.click(screen.getByRole('button', { name: 'Next' }));
-        await stepHeading('Your agent is ready');
-        expect(screen.queryByRole('link', { name: 'Chat' })).toBeNull();
-        expect(screen.getByRole('link', { name: 'Edit book' })).toBeDefined();
+        await expectFinishedOnOverview(app, agentId);
     });
 
     it('has no axe violations on the brief and book steps', async () => {
