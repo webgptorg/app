@@ -47,4 +47,6 @@ export const TEST_MESSAGES: UiMessages = {
     engineOnline: () => 'Online',
     engineOffline: () => 'Offline',
     engineUnknown: () => 'Status unknown',
+    language: () => 'Language',
+    languageCurrent: ({ language }) => `Language: ${language}`,
 };

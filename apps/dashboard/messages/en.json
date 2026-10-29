@@ -500,6 +500,8 @@
   "ui_error_title": "Something went wrong",
   "ui_expand_row": "Expand {label}",
   "ui_form_invalid": "Check the highlighted fields",
+  "ui_language": "Language",
+  "ui_language_current": "Language: {language}",
   "ui_loading": "Loading",
   "ui_next_page": "Next page",
   "ui_no_data": "Nothing here yet",

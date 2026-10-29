@@ -28,6 +28,7 @@ import { menuGallery } from './components/menu/menu.gallery';
 import { tabsGallery } from './components/tabs/tabs.gallery';
 import { toasterGallery } from './components/toaster/toaster.gallery';
 import { engineSwitcherGallery } from './components/engine-switcher/engine-switcher.gallery';
+import { languageSwitchGallery } from './components/language-switch/language-switch.gallery';
 import { dataTableGallery } from './components/data-table/data-table.gallery';
 import { buttonGallery } from './components/button/button.gallery';
 import { spinnerGallery } from './components/spinner/spinner.gallery';
@@ -60,6 +61,7 @@ export const GALLERY_ENTRIES: readonly GalleryEntry[] = [
     formsGallery,
     iconButtonGallery,
     inputGallery,
+    languageSwitchGallery,
     menuGallery,
     paginationGallery,
     relativeTimeGallery,

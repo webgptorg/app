@@ -1,0 +1,5 @@
+:root {
+    --language-switch-text: var(--color-text);
+    --language-switch-muted: var(--color-text-muted);
+    --language-switch-bg-hover: var(--color-hover);
+}

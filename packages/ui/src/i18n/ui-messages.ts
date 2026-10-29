@@ -56,4 +56,7 @@ export interface UiMessages {
     readonly engineOnline: () => string;
     readonly engineOffline: () => string;
     readonly engineUnknown: () => string;
+
+    readonly language: () => string;
+    readonly languageCurrent: (params: { readonly language: string }) => string;
 }

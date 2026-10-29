@@ -81,6 +81,8 @@
   "ui_engine_online": "Online",
   "ui_engine_offline": "Offline",
   "ui_engine_unknown": "Stav neznámý",
+  "ui_language": "Jazyk",
+  "ui_language_current": "Jazyk: {language}",
   "not_found_body": "Tato stránka na tomto enginu neexistuje, nebo se přesunula.",
   "error_body": "Stránku se nepodařilo načíst. Vaše data jsou v bezpečí, zkuste to za chvíli znovu.",
   "error_forbidden_title": "Nepovoleno",
