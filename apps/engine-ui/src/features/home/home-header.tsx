@@ -4,6 +4,7 @@ import { ButtonLink } from '../../app/link';
 import { m } from '../../paraglide/messages';
 import { useCurrentMember } from '../session/use-current-member';
 import { usePermissions } from '../session/use-permissions';
+import { useDocumentTitle } from '../shell/document-title';
 
 export type DayPart = 'morning' | 'afternoon' | 'evening';
 
@@ -29,6 +30,7 @@ export function greeting(name: string, part: DayPart): string {
 export function HomeHeader({ now }: { readonly now: Date }) {
     const { displayName } = useCurrentMember();
     const { can } = usePermissions();
+    useDocumentTitle(m.nav_home());
     return (
         <header className="flex flex-wrap items-center justify-between gap-3">
             <h1 id="page-title" className="font-display text-2xl font-semibold break-words md:text-3xl">

@@ -47,6 +47,10 @@ describe('integration detail', { timeout: TIMEOUT_MS }, () => {
     it('shows an MCP server’s URL as a safe link, its scopes, tools as text and its secrets by name', async () => {
         await renderDetail(INTEGRATION_IDS.docs);
         expect(screen.getByRole('heading', { level: 1, name: 'Docs search' })).toBeDefined();
+        expect(screen.getByRole('link', { name: 'Back to integrations' }).getAttribute('href')).toBe('/integrations');
+        await waitFor(() => {
+            expect(document.title).toBe('Docs search · Integrations · Test engine');
+        });
         const settings = region('Settings');
         expect(within(settings).getByText('MCP server')).toBeDefined();
         const url = within(settings).getByRole('link', { name: /https:\/\/mcp\.example\.com\/sse/ });

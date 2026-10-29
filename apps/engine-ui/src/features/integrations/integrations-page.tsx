@@ -20,8 +20,7 @@ export function IntegrationsPage() {
         [navigate],
     );
     return (
-        <Page title={m.integrations_title()} actions={<AddIntegrationActions />}>
-            <p className="text-sm text-text-muted">{m.integrations_intro()}</p>
+        <Page title={m.integrations_title()} description={m.integrations_intro()} actions={<AddIntegrationActions />}>
             <IntegrationsTable search={search} onSearchChange={onSearchChange} />
         </Page>
     );

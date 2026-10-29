@@ -57,6 +57,22 @@ describe('app shell', () => {
         await expectNoAxeViolations(container);
     });
 
+    it('names the browser tab after the page and the engine, and renames it on navigation', async () => {
+        const { user } = renderWithProviders({ path: '/settings' });
+        await waitFor(() => {
+            expect(document.title).toBe('Settings · Test engine');
+        });
+        const nav = await screen.findByRole('navigation', { name: 'Main' });
+        await user.click(within(nav).getByRole('link', { name: 'Members' }));
+        await waitFor(() => {
+            expect(document.title).toBe('Members · Test engine');
+        });
+        await user.click(within(nav).getByRole('link', { name: 'Home' }));
+        await waitFor(() => {
+            expect(document.title).toBe('Home · Test engine');
+        });
+    });
+
     it('shows only Home and Settings to a member without permissions, and "no access" on guarded routes', async () => {
         renderWithProviders({ path: '/members', permissions: [] });
 

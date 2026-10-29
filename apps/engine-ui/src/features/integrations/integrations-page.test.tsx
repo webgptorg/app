@@ -34,6 +34,9 @@ describe('integrations list', { timeout: TIMEOUT_MS }, () => {
     it('lists every integration newest first and pages through the rest on the engine', async () => {
         const { user, engine, router } = await renderIntegrations();
         await within(table()).findByText('Docs search');
+        const page = screen.getByRole('region', { name: 'Integrations' });
+        const description = document.getElementById(page.getAttribute('aria-describedby') ?? '');
+        expect(description?.textContent).toMatch(/\S/);
         expect(rowNames().slice(0, 4)).toEqual(['Docs search', 'Billing repository', 'Ada’s calendar', 'Review bot']);
         expect(rowNames()).toHaveLength(50);
         expect(lastListQuery(engine)).toEqual({ limit: 50 });
