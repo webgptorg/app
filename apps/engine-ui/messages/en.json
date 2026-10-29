@@ -284,9 +284,8 @@
   "passkeys_revoked": "Passkey {name} revoked",
   "passkeys_revoke_failed": "Passkey {name} could not be revoked.",
   "passkeys_last_one": "{name} is the last passkey, so it cannot be revoked.",
-  "settings_security": "Sign-in",
-  "settings_passkeys_hint": "Review the passkeys that can sign in to your account on this engine.",
-  "settings_passkeys_link": "Manage passkeys",
+  "security_access_passkeys_hint": "Review the passkeys that sign you in to this engine.",
+  "security_access_passkeys_link": "Manage passkeys",
   "secrets_write_only": "Secret values are write-only: once saved, nobody can read them back here, not even you. You can replace, revoke or delete a secret.",
   "secrets_search_label": "Search secrets",
   "secrets_new": "New secret",
@@ -352,6 +351,60 @@
   "security_trust_no_fingerprint": "This engine does not report its ID, so there is no fingerprint to compare.",
   "security_trust_mismatch": "The served UI is not the version this page was built as",
   "security_trust_unverified": "The engine's security data could not be loaded",
+  "security_hostname": "Hostname",
+  "security_checks_title": "Verification",
+  "security_check_engine": "Version {version} · {update}",
+  "security_check_ui_ok": "Version {version}, signed and verified by the engine",
+  "security_check_tls_ok": "Valid until {date}; no foreign certificates in CT logs",
+  "security_check_tls_unchecked": "Valid until {date}; not checked in CT logs yet",
+  "security_check_relays": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{connected} of {count} relay connected",
+        "countPlural=other": "{connected} of {count} relays connected"
+      }
+    }
+  ],
+  "security_check_hostnames_default": "{hostname}, no custom domains",
+  "security_check_hostnames_custom": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{hostname} and {count} custom domain",
+        "countPlural=other": "{hostname} and {count} custom domains"
+      }
+    }
+  ],
+  "security_check_outbound": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} destination reported",
+        "countPlural=other": "{count} destinations reported"
+      }
+    }
+  ],
+  "security_check_heartbeat_sent": "Sent",
+  "security_access_title": "Access",
+  "security_access_passkeys": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "You have {count} passkey",
+        "countPlural=other": "You have {count} passkeys"
+      }
+    }
+  ],
+  "security_access_audit": "Every authenticated action, in a log that cannot be edited.",
+  "security_access_audit_open": "Open the audit log",
+  "passkeys_back": "Back to security",
+  "settings_updates": "Updates",
+  "security_policy_version_hint": "This engine runs {version} now.",
   "security_engine_id": "Engine ID",
   "security_default_hostname": "Default hostname",
   "security_copy_engine_id": "Copy engine ID",
@@ -436,7 +489,6 @@
   "security_ct_failed_title": "The last CT check failed",
   "security_ct_failed_body": "The engine could not reach the Certificate Transparency logs. It tries again on its own.",
   "security_relays_title": "Relays and tunnel",
-  "security_relays_empty": "No relays",
   "security_relays_empty_body": "This engine is reached directly, not through a relay.",
   "security_relay_connected": "Connected",
   "security_relay_connecting": "Connecting",
@@ -456,7 +508,6 @@
   "security_claim_registered": "signed claim registered",
   "security_claim_missing": "signed claim not registered",
   "security_claim_unknown": "claim not reported",
-  "security_custom_domains_empty": "No custom domains",
   "security_custom_domains_empty_body": "The engine is reachable at its default hostname only.",
   "security_outbound_title": "Outbound destinations",
   "security_outbound_hint": "Every destination the engine reports contacting.",

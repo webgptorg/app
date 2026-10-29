@@ -12,7 +12,7 @@ import { expect, test } from '../../src/ui-fixtures.ts';
 
 const WITHHELD: readonly Permission[] = ['agents.delete', 'secrets.read', 'secrets.manage', 'audit.read'];
 
-/** The sidebar entries engine-ui gates by permission (its feature registry); Home and Settings are everyone's. */
+/** The sidebar entries engine-ui gates by permission (its feature registry); Home, Security and Settings are everyone's. */
 const NAV_PERMISSIONS: Readonly<Record<string, Permission>> = {
     Agents: 'agents.read',
     Runs: 'runs.read',
@@ -20,7 +20,6 @@ const NAV_PERMISSIONS: Readonly<Record<string, Permission>> = {
     Triggers: 'triggers.read',
     Integrations: 'integrations.read',
     Members: 'members.read',
-    Security: 'security.read',
     Secrets: 'secrets.read',
     'Audit log': 'audit.read',
 };
@@ -79,6 +78,7 @@ for (const role of ['admin', 'member', 'viewer'] as const satisfies readonly Rol
         const me = await apiGet<{ role: Role; permissions: readonly Permission[] }>(page, '/me');
         expect(me.role).toBe(role);
         await expect(navLink(page, 'Home')).toBeVisible();
+        await expect(navLink(page, 'Security')).toBeVisible();
         for (const [label, permission] of Object.entries(NAV_PERMISSIONS)) {
             await expect(navLink(page, label), `${label} for a ${role}`).toHaveCount(
                 me.permissions.includes(permission) ? 1 : 0,

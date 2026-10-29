@@ -60,7 +60,8 @@ function renderSecurity(options: Parameters<typeof createSecurityEngine>[0] = {}
     return { ...renderWithProviders({ path, engineApi: engine.client }), engine };
 }
 
-const card = (name: string) => screen.getByRole('heading', { name }).closest('section') as HTMLElement;
+/** A checklist row by its title: the summary line and the details under it. */
+const row = (title: string) => screen.getByRole('region', { name: title });
 
 afterEach(() => {
     setMedia('(prefers-reduced-motion: reduce)', false);
@@ -108,39 +109,50 @@ describe('security panel: trust panel', { timeout: TIMEOUT_MS }, () => {
     });
 });
 
-describe('security panel: sections', { timeout: TIMEOUT_MS }, () => {
-    it('renders every section from the in-memory engine and passes axe', async () => {
+describe('security panel: checklist', { timeout: TIMEOUT_MS }, () => {
+    it('sums up every claim in one line, with the reported values in its details, and passes axe', async () => {
         const { container } = renderSecurity();
         await screen.findByText('relay-a.ptbk.io');
-        for (const title of [
-            'Engine',
-            'Update policy',
-            'UI bundle',
-            'Certificate and Certificate Transparency',
-            'Relays and tunnel',
-            'Hostnames',
-            'Outbound destinations',
-            'Last heartbeat',
-        ]) {
-            expect(screen.getByRole('heading', { name: title }), title).toBeDefined();
-        }
-        const engine = card('Engine');
-        expect(within(engine).getByText('1.4.0')).toBeDefined();
+        expect(row('Engine').textContent).toContain('Version 1.4.0 · Update waiting to install');
+        expect(row('UI bundle').textContent).toContain('Version 1.0.0, signed and verified by the engine');
+        expect(row('Certificate and Certificate Transparency').textContent).toContain(
+            'Valid until Dec 1, 2026; no foreign certificates in CT logs',
+        );
+        expect(row('Relays and tunnel').textContent).toContain('1 of 2 relays connected');
+        expect(row('Hostnames').textContent).toContain('memoryengine234567abcdefgh.ptbk.io and 1 custom domain');
+        expect(row('Outbound destinations').textContent).toContain('2 destinations reported');
+        expect(row('Last heartbeat').textContent).toMatch(/Sent/);
+
+        const engine = row('Engine');
         expect(within(engine).getByText('123456')).toBeDefined();
         expect(
             within(engine)
-                .getByRole('link', { name: /Look it up in Rekor/ })
+                .getByRole('link', { name: /Look it up in Rekor/, hidden: true })
                 .getAttribute('href'),
         ).toBe('https://search.sigstore.dev/?logIndex=123456');
-        expect(within(engine).getByText('Update waiting to install')).toBeDefined();
         expect(within(engine).getByText('1.5.0')).toBeDefined();
-        const bundle = card('UI bundle');
-        expect(bundle.textContent).toContain(SHA);
-        expect(within(bundle).queryByText('The UI version does not match')).toBeNull();
-        expect(card('Hostnames').textContent).toContain('signed claim registered');
-        expect(card('Outbound destinations').textContent).toContain('https://app.ptbk.io');
-        expect(card('Last heartbeat').textContent).toContain(SIGNATURE);
+        expect(row('UI bundle').textContent).toContain(SHA);
+        expect(row('Hostnames').textContent).toContain('signed claim registered');
+        expect(row('Outbound destinations').textContent).toContain('https://app.ptbk.io');
+        expect(row('Last heartbeat').textContent).toContain(SIGNATURE);
         await expectNoAxeViolations(container);
+    });
+
+    it('keeps healthy rows closed and opens the ones that need a look', async () => {
+        renderSecurity();
+        await screen.findByText('relay-a.ptbk.io');
+        const open = (title: string) => (row(title).querySelector('details') as HTMLDetailsElement).open;
+        expect(open('UI bundle')).toBe(false);
+        expect(open('Certificate and Certificate Transparency')).toBe(false);
+        expect(open('Relays and tunnel')).toBe(true);
+    });
+
+    it('opens a row on click', async () => {
+        const { user } = renderSecurity();
+        await screen.findByText('relay-a.ptbk.io');
+        const details = row('UI bundle').querySelector('details') as HTMLDetailsElement;
+        await user.click(screen.getByText('UI bundle', { selector: 'summary span' }));
+        expect(details.open).toBe(true);
     });
 
     it('shows the last heartbeat byte for byte, as sent', async () => {
@@ -154,7 +166,8 @@ describe('security panel: sections', { timeout: TIMEOUT_MS }, () => {
 
     it('warns when the served UI version differs from the one compiled into the page', async () => {
         renderSecurity({ seed: { security: { ...FULL_OVERVIEW, ui: { ...FULL_OVERVIEW.ui, version: '0.9.0' } } } });
-        expect(await screen.findByText('The UI version does not match')).toBeDefined();
+        expect((await screen.findAllByText('The UI version does not match')).length).toBeGreaterThan(0);
+        expect((row('UI bundle').querySelector('details') as HTMLDetailsElement).open).toBe(true);
         expect(screen.getByRole('img', { name: /not the version this page was built as/ })).toBeDefined();
     });
 
@@ -171,11 +184,33 @@ describe('security panel: sections', { timeout: TIMEOUT_MS }, () => {
                 },
             },
         });
-        const banner = await screen.findByText('A certificate this engine did not request exists for its hostname');
-        const region = banner.closest('[role="alert"], [role="status"], div') as HTMLElement;
-        expect(region.textContent).toContain('99'.repeat(32));
-        expect(region.textContent).toContain('Issuer: CN=<b>Other</b> CA');
+        await screen.findByText('relay-a.ptbk.io');
+        const certificate = row('Certificate and Certificate Transparency');
+        expect((certificate.querySelector('details') as HTMLDetailsElement).open).toBe(true);
+        expect(certificate.querySelector('summary')?.textContent).toContain(
+            'A certificate this engine did not request exists for its hostname',
+        );
+        expect(certificate.textContent).toContain('99'.repeat(32));
+        expect(certificate.textContent).toContain('Issuer: CN=<b>Other</b> CA');
         expect(document.querySelector('b')).toBeNull();
+    });
+
+    it('flags a failed CT check without alarm', async () => {
+        renderSecurity({
+            seed: {
+                security: {
+                    ...FULL_OVERVIEW,
+                    tls: {
+                        ...FULL_OVERVIEW.tls,
+                        lastCtCheck: { at: AT, result: 'failed', unexpectedCertificates: [] },
+                    },
+                },
+            },
+        });
+        await screen.findByText('relay-a.ptbk.io');
+        expect(row('Certificate and Certificate Transparency').querySelector('summary')?.textContent).toContain(
+            'The last CT check failed',
+        );
     });
 
     it('says a relay is disconnected in words, not only by colour', async () => {
@@ -204,13 +239,15 @@ describe('security panel: sections', { timeout: TIMEOUT_MS }, () => {
                 },
             },
         });
-        expect(await screen.findByText('The engine refused a UI release')).toBeDefined();
+        expect((await screen.findAllByText('The engine refused a UI release')).length).toBeGreaterThan(0);
         expect(screen.getByText('Reason: the revocation list could not be verified')).toBeDefined();
         expect(screen.getByText('Revocation list: older than one already accepted')).toBeDefined();
-        expect(card('Last heartbeat').textContent).toContain("The engine's clock is 300 s behind the dashboard's");
+        const heartbeat = row('Last heartbeat');
+        expect(heartbeat.querySelector('summary')?.textContent).toContain("The engine's clock is off");
+        expect(heartbeat.textContent).toContain("The engine's clock is 300 s behind the dashboard's");
     });
 
-    it('shows its empty states', async () => {
+    it('says what is missing in one line instead of empty boxes', async () => {
         renderSecurity({
             seed: {
                 security: {
@@ -223,67 +260,78 @@ describe('security panel: sections', { timeout: TIMEOUT_MS }, () => {
                 },
             },
         });
-        expect(await screen.findByText('No relays')).toBeDefined();
-        expect(screen.getByText('No custom domains')).toBeDefined();
-        expect(screen.getByText('No outbound destinations')).toBeDefined();
-        expect(screen.getByText('No heartbeat sent yet')).toBeDefined();
-        expect(screen.getByText('Not checked yet')).toBeDefined();
+        await screen.findAllByText('This engine is reached directly, not through a relay.');
+        expect(row('Hostnames').textContent).toContain('memoryengine234567abcdefgh.ptbk.io, no custom domains');
+        expect(row('Outbound destinations').querySelector('summary')?.textContent).toContain(
+            'No outbound destinations',
+        );
+        expect(row('Last heartbeat').querySelector('summary')?.textContent).toContain('No heartbeat sent yet');
+        expect(row('Certificate and Certificate Transparency').textContent).toContain('not checked in CT logs yet');
+        expect(screen.queryByRole('heading', { name: 'No relays' })).toBeNull();
     });
 
-    it('keeps the trust panel when the overview fails, with a retry in each section', async () => {
+    it('keeps the trust panel when the overview fails, with one retry', async () => {
         const engine = createSecurityEngine({ seed: { security: FULL_OVERVIEW } });
         const get = vi.spyOn(engine.client.security, 'get').mockImplementation(() => problemResponse('internal-error'));
         const { user } = renderWithProviders({ path: '/security', engineApi: engine.client });
-        const retries = await screen.findAllByRole('button', { name: 'Try again' }, { timeout: 10_000 });
-        expect(retries.length).toBeGreaterThanOrEqual(8);
+        const retry = await screen.findByRole('button', { name: 'Try again' }, { timeout: 10_000 });
         expect(screen.getByRole('heading', { name: /Private engine/ })).toBeDefined();
         expect(screen.getByText('memoryengine234567abcdefgh')).toBeDefined();
 
         get.mockRestore();
-        const [first] = retries;
-        if (first !== undefined) await user.click(first);
+        await user.click(retry);
         expect(await screen.findByText('relay-a.ptbk.io')).toBeDefined();
     });
 });
 
-describe('security panel: update policy', { timeout: TIMEOUT_MS }, () => {
-    it('changes the policy and reports it', async () => {
-        const { user } = renderSecurity();
-        const policy = await screen.findByRole('combobox', { name: 'Policy' });
-        await user.selectOptions(policy, 'pinned');
-        await user.type(screen.getByRole('textbox', { name: /^Version/ }), 'nope');
-        await user.click(screen.getByRole('button', { name: 'Save policy' }));
-        expect(await screen.findByText('Enter a version such as 1.4.0.')).toBeDefined();
+describe('security panel: access', { timeout: TIMEOUT_MS }, () => {
+    it('shows every member their passkeys and the engine identity, without the reported claims', async () => {
+        const { user, router, container } = renderSecurity({
+            permissions: OWNER_PERMISSIONS.filter((permission) => permission !== 'security.read'),
+        });
+        expect(await screen.findByRole('heading', { name: /Private engine/ })).toBeDefined();
+        expect(screen.getByText('memoryengine234567abcdefgh')).toBeDefined();
+        expect(screen.getByText('engine.localhost')).toBeDefined();
+        expect(screen.queryByRole('heading', { name: 'Verification' })).toBeNull();
+        expect(screen.getByRole('heading', { name: 'Access' })).toBeDefined();
+        await expectNoAxeViolations(container);
 
-        await user.clear(screen.getByRole('textbox', { name: /^Version/ }));
-        await user.type(screen.getByRole('textbox', { name: /^Version/ }), '1.4.0');
-        await user.click(screen.getByRole('button', { name: 'Save policy' }));
-        expect(await screen.findByText('Update policy set to Pinned to 1.4.0')).toBeDefined();
-        expect(screen.getByText(/recorded in the audit log/)).toBeDefined();
+        await user.click(screen.getByRole('link', { name: 'Manage passkeys' }));
+        await waitFor(() => {
+            expect(router.state.location.pathname).toBe('/security/passkeys');
+        });
+        await user.click(await screen.findByRole('link', { name: 'Back to security' }));
+        await waitFor(() => {
+            expect(router.state.location.pathname).toBe('/security');
+        });
     });
 
-    it('asks for a fresh passkey when the engine wants step-up, and changes nothing', async () => {
-        const { user, engine } = renderSecurity({ stepUp: 'required' });
-        await user.selectOptions(await screen.findByRole('combobox', { name: 'Policy' }), 'manual');
-        await user.click(screen.getByRole('button', { name: 'Save policy' }));
-        expect(await screen.findByRole('dialog', { name: 'Confirm it is you' })).toBeDefined();
-        const overview = await engine.client.security.get(AbortSignal.timeout(1000));
-        expect(overview.kind === 'ok' && overview.data.update.policy).toBe('auto');
+    it('never asks for the overview without security.read', async () => {
+        const engine = createSecurityEngine({
+            seed: { security: FULL_OVERVIEW },
+            permissions: OWNER_PERMISSIONS.filter((permission) => permission !== 'security.read'),
+        });
+        const get = vi.spyOn(engine.client.security, 'get');
+        renderWithProviders({ path: '/security', engineApi: engine.client });
+        await screen.findByRole('heading', { name: 'Access' });
+        expect(get).not.toHaveBeenCalled();
     });
 
-    it('reports a refused change', async () => {
-        const { user, engine } = renderSecurity();
-        vi.spyOn(engine.client.settings, 'setUpdatePolicy').mockImplementation(() => problemResponse('internal-error'));
-        await user.selectOptions(await screen.findByRole('combobox', { name: 'Policy' }), 'manual');
-        await user.click(screen.getByRole('button', { name: 'Save policy' }));
-        expect(await screen.findByText('The update policy could not be changed.')).toBeDefined();
+    it('points to the audit log only for members who may read it', async () => {
+        renderSecurity();
+        expect(await screen.findByRole('link', { name: 'Open the audit log' })).toBeDefined();
     });
 
-    it('is read-only without settings.manage', async () => {
-        renderSecurity({ permissions: OWNER_PERMISSIONS.filter((permission) => permission !== 'settings.manage') });
-        const section = await waitFor(() => card('Update policy'));
-        await within(section).findByText('Automatic');
-        expect(within(section).queryByRole('combobox')).toBeNull();
-        expect(within(section).queryByRole('button')).toBeNull();
+    it('hides the audit log pointer without audit.read', async () => {
+        renderSecurity({ permissions: OWNER_PERMISSIONS.filter((permission) => permission !== 'audit.read') });
+        await screen.findByRole('heading', { name: 'Access' });
+        expect(screen.queryByRole('link', { name: 'Open the audit log' })).toBeNull();
+    });
+
+    it('sends old passkey links to the new place', async () => {
+        const { router } = renderSecurity({}, '/settings/passkeys');
+        await waitFor(() => {
+            expect(router.state.location.pathname).toBe('/security/passkeys');
+        });
     });
 });

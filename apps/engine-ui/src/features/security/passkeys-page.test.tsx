@@ -78,7 +78,7 @@ const rowOf = (container: HTMLElement, name: string) => within(container).getByT
 
 describe('passkeys', { timeout: TIMEOUT_MS }, () => {
     it("lists the member's passkeys with their kind, marks the current one, and passes axe", async () => {
-        const { container } = renderWithProviders({ path: '/settings/passkeys', engineApi: passkeysEngine().client });
+        const { container } = renderWithProviders({ path: '/security/passkeys', engineApi: passkeysEngine().client });
         await screen.findAllByText('MacBook');
         expect(rowOf(mine(), 'MacBook').textContent).toContain('Built into a device, synced');
         expect(rowOf(mine(), 'MacBook').textContent).toContain('Signed in with this one');
@@ -90,7 +90,7 @@ describe('passkeys', { timeout: TIMEOUT_MS }, () => {
     it('revokes after confirmation, and reports it', async () => {
         const engine = passkeysEngine();
         const revoke = vi.spyOn(engine.client.me, 'revokePasskey');
-        const { user } = renderWithProviders({ path: '/settings/passkeys', engineApi: engine.client });
+        const { user } = renderWithProviders({ path: '/security/passkeys', engineApi: engine.client });
         await screen.findAllByText('YubiKey');
         await user.click(within(rowOf(mine(), 'YubiKey')).getByRole('button', { name: /Revoke/ }));
         const dialog = screen.getByRole('dialog', { name: 'Revoke YubiKey?' });
@@ -105,7 +105,7 @@ describe('passkeys', { timeout: TIMEOUT_MS }, () => {
     });
 
     it('warns that revoking the passkey of this session signs you out', async () => {
-        const { user } = renderWithProviders({ path: '/settings/passkeys', engineApi: passkeysEngine().client });
+        const { user } = renderWithProviders({ path: '/security/passkeys', engineApi: passkeysEngine().client });
         await screen.findAllByText('MacBook');
         await waitFor(() => {
             expect(rowOf(mine(), 'MacBook').textContent).toContain('Signed in with this one');
@@ -118,7 +118,7 @@ describe('passkeys', { timeout: TIMEOUT_MS }, () => {
 
     it('asks for a fresh passkey when the engine wants step-up', async () => {
         const { user } = renderWithProviders({
-            path: '/settings/passkeys',
+            path: '/security/passkeys',
             engineApi: passkeysEngine({ stepUp: 'required' }).client,
         });
         await screen.findAllByText('YubiKey');
@@ -133,7 +133,7 @@ describe('passkeys', { timeout: TIMEOUT_MS }, () => {
     it('explains that the last passkey cannot be revoked', async () => {
         const engine = passkeysEngine();
         vi.spyOn(engine.client.me, 'revokePasskey').mockImplementation(() => problemResponse('last-passkey'));
-        const { user } = renderWithProviders({ path: '/settings/passkeys', engineApi: engine.client });
+        const { user } = renderWithProviders({ path: '/security/passkeys', engineApi: engine.client });
         await screen.findAllByText('YubiKey');
         await user.click(within(rowOf(mine(), 'YubiKey')).getByRole('button', { name: /Revoke/ }));
         await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Revoke' }));
@@ -143,7 +143,7 @@ describe('passkeys', { timeout: TIMEOUT_MS }, () => {
     it("shows and revokes every member's passkeys with members.manage", async () => {
         const engine = passkeysEngine();
         const revoke = vi.spyOn(engine.client.passkeys, 'revoke');
-        const { user } = renderWithProviders({ path: '/settings/passkeys', engineApi: engine.client });
+        const { user } = renderWithProviders({ path: '/security/passkeys', engineApi: engine.client });
         const everyone = (await screen.findByRole('heading', { name: "All members' passkeys" })).closest(
             'section',
         ) as HTMLElement;
@@ -160,7 +160,7 @@ describe('passkeys', { timeout: TIMEOUT_MS }, () => {
 
     it("shows only the member's own passkeys without members.manage", async () => {
         const permissions = OWNER_PERMISSIONS.filter((permission) => permission !== 'members.manage');
-        renderWithProviders({ path: '/settings/passkeys', engineApi: passkeysEngine({ permissions }).client });
+        renderWithProviders({ path: '/security/passkeys', engineApi: passkeysEngine({ permissions }).client });
         await screen.findAllByText('MacBook');
         expect(screen.queryByRole('heading', { name: "All members' passkeys" })).toBeNull();
     });
@@ -172,7 +172,7 @@ describe('passkeys', { timeout: TIMEOUT_MS }, () => {
         });
         await user.click(await screen.findByRole('link', { name: 'Manage passkeys' }));
         await waitFor(() => {
-            expect(router.state.location.pathname).toBe('/settings/passkeys');
+            expect(router.state.location.pathname).toBe('/security/passkeys');
         });
         expect(await screen.findAllByText('MacBook')).not.toHaveLength(0);
     });
@@ -182,7 +182,7 @@ describe('passkeys', { timeout: TIMEOUT_MS }, () => {
         const list = vi
             .spyOn(engine.client.me, 'listPasskeys')
             .mockImplementation(() => problemResponse('internal-error'));
-        const { user } = renderWithProviders({ path: '/settings/passkeys', engineApi: engine.client });
+        const { user } = renderWithProviders({ path: '/security/passkeys', engineApi: engine.client });
         const retry = await within(await waitFor(() => mine())).findByRole(
             'button',
             { name: 'Try again' },

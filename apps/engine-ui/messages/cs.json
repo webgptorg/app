@@ -288,9 +288,8 @@
   "passkeys_revoked": "Klíč {name} byl odvolán",
   "passkeys_revoke_failed": "Klíč {name} se nepodařilo odvolat.",
   "passkeys_last_one": "{name} je poslední přístupový klíč, proto jej nelze odvolat.",
-  "settings_security": "Přihlašování",
-  "settings_passkeys_hint": "Zkontrolujte přístupové klíče, kterými se lze přihlásit k vašemu účtu na tomto enginu.",
-  "settings_passkeys_link": "Spravovat přístupové klíče",
+  "security_access_passkeys_hint": "Zkontrolujte přístupové klíče, kterými se přihlašujete k tomuto enginu.",
+  "security_access_passkeys_link": "Spravovat přístupové klíče",
   "secrets_write_only": "Hodnoty tajných údajů lze jen zapsat: po uložení je tu už nikdo nepřečte, ani vy. Tajný údaj můžete nahradit, odvolat nebo smazat.",
   "secrets_search_label": "Hledat tajné údaje",
   "secrets_new": "Nový tajný údaj",
@@ -356,6 +355,68 @@
   "security_trust_no_fingerprint": "Tento engine nehlásí své ID, takže není co porovnat.",
   "security_trust_mismatch": "Podávané UI není verze, ze které je tato stránka sestavena",
   "security_trust_unverified": "Bezpečnostní údaje enginu se nepodařilo načíst",
+  "security_hostname": "Adresa",
+  "security_checks_title": "Ověření",
+  "security_check_engine": "Verze {version} · {update}",
+  "security_check_ui_ok": "Verze {version}, podepsaná a ověřená enginem",
+  "security_check_tls_ok": "Platný do {date}; v CT logech žádné cizí certifikáty",
+  "security_check_tls_unchecked": "Platný do {date}; v CT logech zatím nezkontrolován",
+  "security_check_relays": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Připojeno {connected} z {count} relaye",
+        "countPlural=few": "Připojeno {connected} z {count} relayů",
+        "countPlural=many": "Připojeno {connected} z {count} relayů",
+        "countPlural=other": "Připojeno {connected} z {count} relayů"
+      }
+    }
+  ],
+  "security_check_hostnames_default": "{hostname}, bez vlastních domén",
+  "security_check_hostnames_custom": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{hostname} a {count} vlastní doména",
+        "countPlural=few": "{hostname} a {count} vlastní domény",
+        "countPlural=many": "{hostname} a {count} vlastní domény",
+        "countPlural=other": "{hostname} a {count} vlastních domén"
+      }
+    }
+  ],
+  "security_check_outbound": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} hlášený cíl",
+        "countPlural=few": "{count} hlášené cíle",
+        "countPlural=many": "{count} hlášeného cíle",
+        "countPlural=other": "{count} hlášených cílů"
+      }
+    }
+  ],
+  "security_check_heartbeat_sent": "Odeslán",
+  "security_access_title": "Přístup",
+  "security_access_passkeys": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Máte {count} přístupový klíč",
+        "countPlural=few": "Máte {count} přístupové klíče",
+        "countPlural=many": "Máte {count} přístupového klíče",
+        "countPlural=other": "Máte {count} přístupových klíčů"
+      }
+    }
+  ],
+  "security_access_audit": "Každá ověřená akce, v záznamu, který nejde upravit.",
+  "security_access_audit_open": "Otevřít auditní záznam",
+  "passkeys_back": "Zpět na zabezpečení",
+  "settings_updates": "Aktualizace",
+  "security_policy_version_hint": "Engine teď běží na verzi {version}.",
   "security_engine_id": "ID enginu",
   "security_default_hostname": "Výchozí adresa",
   "security_copy_engine_id": "Kopírovat ID enginu",
@@ -440,7 +501,6 @@
   "security_ct_failed_title": "Poslední kontrola CT selhala",
   "security_ct_failed_body": "Engine se nedostal k logům Certificate Transparency. Zkusí to znovu sám.",
   "security_relays_title": "Relaye a tunel",
-  "security_relays_empty": "Žádné relaye",
   "security_relays_empty_body": "K tomuto enginu se přistupuje přímo, ne přes relay.",
   "security_relay_connected": "Připojeno",
   "security_relay_connecting": "Připojuje se",
@@ -460,7 +520,6 @@
   "security_claim_registered": "podepsaný nárok registrován",
   "security_claim_missing": "podepsaný nárok neregistrován",
   "security_claim_unknown": "nárok nehlášen",
-  "security_custom_domains_empty": "Žádné vlastní domény",
   "security_custom_domains_empty_body": "Engine je dostupný jen na své výchozí adrese.",
   "security_outbound_title": "Odchozí spojení",
   "security_outbound_hint": "Všechna místa, se kterými engine podle svého hlášení komunikuje.",

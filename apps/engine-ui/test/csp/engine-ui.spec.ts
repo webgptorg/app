@@ -152,7 +152,9 @@ test.describe('the built bundle under the engine CSP', () => {
         const report = await visit('/security');
 
         await expect(page.getByRole('heading', { name: /your data stays on your server/ })).toBeVisible();
-        await expect(page.getByText('A certificate this engine did not request exists for its hostname')).toBeVisible();
+        await expect(
+            page.getByText('A certificate this engine did not request exists for its hostname').first(),
+        ).toBeVisible();
         await expect(page.getByTestId('heartbeat-body')).toHaveText(RAW_HEARTBEAT, { useInnerText: false });
         await expect(page.getByText('The UI version does not match')).toHaveCount(0);
         expectCleanPage(report);

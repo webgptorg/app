@@ -2,11 +2,12 @@ import type { MemberId, PasskeyId, ReadPasskey } from '@ptbk/engine-api';
 import { Badge, Button, CodeText, ConfirmDialog, EmptyState, RelativeTime } from '@ptbk/ui';
 import { useQuery } from '@tanstack/react-query';
 import type { UseQueryResult } from '@tanstack/react-query';
-import { KeyRound } from 'lucide-react';
+import { ArrowLeft, KeyRound } from 'lucide-react';
 import { useState } from 'react';
 
 import { unwrap } from '../../app/api-errors';
 import { useEngineApi } from '../../app/engine-api-context';
+import { Link } from '../../app/link';
 import { isPageLevelFailure } from '../../app/list-errors';
 import { useStepUpAwareMutation } from '../../app/mutations';
 import { m } from '../../paraglide/messages';
@@ -174,7 +175,15 @@ export function PasskeysPage() {
     };
 
     return (
-        <Page title={m.passkeys_title()}>
+        <Page
+            title={m.passkeys_title()}
+            back={
+                <Link to="/security" variant="standalone" className="inline-flex items-center gap-1 text-sm">
+                    <ArrowLeft aria-hidden className="size-4" />
+                    {m.passkeys_back()}
+                </Link>
+            }
+        >
             <p className="text-sm text-text-muted">{m.passkeys_intro()}</p>
             <PasskeyList
                 query={mine}
