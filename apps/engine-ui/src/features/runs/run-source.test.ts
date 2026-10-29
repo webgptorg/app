@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { getLocale, overwriteGetLocale } from '../../paraglide/runtime';
 
 const baseGetLocale = getLocale;
-import { runOrigin } from './run-activity';
+import { runOrigin } from './run-source';
 
 const SOURCES = ['web', 'api', 'email', 'schedule', 'member', 'goal', 'webhook', 'unknown'] as const;
 

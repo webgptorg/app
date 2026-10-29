@@ -12,9 +12,9 @@ import { Link } from '../../app/link';
 import { isInvalidCursor } from '../../app/list-errors';
 import { m } from '../../paraglide/messages';
 import { agentListQueryOptions } from '../agents/agents-queries';
-import { sourceLabel } from '../chat/chat-source';
 import { useRunRowActions } from './run-actions';
 import { RunCost, RunDuration, runTitle } from './run-format';
+import { runSourceLabel } from './run-source';
 import { hasRunFilters, runListParams, selectedStatuses } from './run-search';
 import type { RunSearch } from './run-search';
 import { RunStatusBadge, runStatusLabel } from './run-status';
@@ -25,7 +25,14 @@ const NO_RUNS: readonly ReadRun[] = [];
 const AGENT_FILTER_LIMIT = 100;
 export const RUN_COLUMNS_STORAGE_KEY = 'ptbk.runs.columns';
 
-function useRunColumns(showAgent: boolean): DataTableColumnDef<ReadRun>[] {
+interface RunColumnOptions {
+    /** The global list; on an agent's tab the agent column is redundant and links return to the tab. */
+    readonly acrossAgents: boolean;
+    /** Off when no run on the page reports a cost, so a column of dashes does not take the room. */
+    readonly cost: boolean;
+}
+
+function useRunColumns({ acrossAgents, cost }: RunColumnOptions): DataTableColumnDef<ReadRun>[] {
     return useMemo(() => {
         const column = createDataTableColumnHelper<ReadRun>();
         const columns: DataTableColumnDef<ReadRun>[] = [
@@ -46,18 +53,24 @@ function useRunColumns(showAgent: boolean): DataTableColumnDef<ReadRun>[] {
                 enableHiding: false,
                 meta: { priority: 1 },
                 cell: ({ row }) => (
-                    <Link
-                        to="/runs/$runId"
-                        params={{ runId: row.original.id }}
-                        variant="standalone"
-                        className="line-clamp-2 break-words"
-                    >
-                        {runTitle(row.original)}
-                    </Link>
+                    <span className="flex flex-col items-start gap-0.5">
+                        <Link
+                            to="/runs/$runId"
+                            params={{ runId: row.original.id }}
+                            {...(acrossAgents ? {} : { search: { from: 'agent' } })}
+                            variant="standalone"
+                            className="line-clamp-2 break-words"
+                        >
+                            {runTitle(row.original)}
+                        </Link>
+                        {row.original.retryOf === null ? null : (
+                            <span className="text-xs text-text-muted">{m.run_fact_retry_of_link()}</span>
+                        )}
+                    </span>
                 ),
             }),
         ];
-        if (showAgent) {
+        if (acrossAgents) {
             columns.push(
                 column.accessor((run) => run.agentName ?? run.agentId, {
                     id: 'agent',
@@ -77,7 +90,7 @@ function useRunColumns(showAgent: boolean): DataTableColumnDef<ReadRun>[] {
                 header: m.runs_column_source(),
                 enableSorting: false,
                 meta: { priority: 4 },
-                cell: ({ row }) => sourceLabel(row.original.source),
+                cell: ({ row }) => runSourceLabel(row.original.source),
             }),
             column.accessor('queuedAt', {
                 header: m.runs_column_queued(),
@@ -94,16 +107,20 @@ function useRunColumns(showAgent: boolean): DataTableColumnDef<ReadRun>[] {
                 meta: { priority: 5 },
                 cell: ({ row }) => <RunDuration run={row.original} />,
             }),
-            column.accessor((run) => run.usage?.cost?.amount ?? null, {
-                id: 'cost',
-                header: m.runs_column_cost(),
-                enableSorting: false,
-                meta: { priority: 6 },
-                cell: ({ row }) => <RunCost cost={row.original.usage?.cost} />,
-            }),
         );
+        if (cost) {
+            columns.push(
+                column.accessor((run) => run.usage?.cost?.amount ?? null, {
+                    id: 'cost',
+                    header: m.runs_column_cost(),
+                    enableSorting: false,
+                    meta: { priority: 6 },
+                    cell: ({ row }) => <RunCost cost={row.original.usage?.cost} />,
+                }),
+            );
+        }
         return columns;
-    }, [showAgent]);
+    }, [acrossAgents, cost]);
 }
 
 export interface RunsTableProps {
@@ -122,7 +139,11 @@ export function RunsTable({ search, onSearchChange, agentId }: RunsTableProps) {
     const params = runListParams(search, agentId);
     const list = useRunList(params);
     const scope = agentId === undefined ? 'global' : 'agent';
-    const columns = useRunColumns(scope === 'global');
+    const items = list.data?.items ?? NO_RUNS;
+    const columns = useRunColumns({
+        acrossAgents: scope === 'global',
+        cost: items.some((run) => run.usage?.cost !== null && run.usage?.cost !== undefined),
+    });
     const rowActions = useRunRowActions();
     const paging = useCursorPages(search.cursor, list.data?.nextCursor ?? null, (cursor) => {
         onSearchChange({ cursor });
@@ -147,7 +168,7 @@ export function RunsTable({ search, onSearchChange, agentId }: RunsTableProps) {
             <DataTable
                 caption={m.runs_title()}
                 columns={columns}
-                data={list.data?.items ?? NO_RUNS}
+                data={items}
                 getRowId={(run) => run.id}
                 getRowLabel={(run) => runTitle(run)}
                 visibilityStorage={{ storage, key: RUN_COLUMNS_STORAGE_KEY }}
@@ -232,7 +253,7 @@ function RunFilters({ search, scope, onChange, onClear, filtered }: RunFiltersPr
                             <option value="">{m.runs_filter_all_sources()}</option>
                             {RUN_SOURCES.map((source) => (
                                 <option key={source} value={source}>
-                                    {sourceLabel(source)}
+                                    {runSourceLabel(source)}
                                 </option>
                             ))}
                         </Select>

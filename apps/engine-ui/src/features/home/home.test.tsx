@@ -275,7 +275,7 @@ describe('home: member', { timeout: TIMEOUT_MS }, () => {
             expect.anything(),
         );
         for (const item of within(mine).getAllByRole('listitem')) {
-            expect(item.textContent).toMatch(/Running|Queued|Cancelling/);
+            expect(item.textContent).toMatch(/Running|Queued|Stopping/);
         }
         expect(await screen.findByRole('region', { name: 'Agents you can use' })).toBeDefined();
         expect(await screen.findByRole('link', { name: 'Billing review' })).toBeDefined();

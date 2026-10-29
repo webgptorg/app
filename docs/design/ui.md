@@ -85,6 +85,11 @@ Short, meaningful, interruptible: new activity slides in, completed runs settle,
 
 English and Czech from day one. Plain, warm, specific ("Lead bot is drafting replies to 3 emails"), no jargon in member-facing screens; precise terms in Security.
 
+- **Toasts** echo the verb in the past tense: `<Name> <verb>.` ("Weekly report paused.", 'Run "Daily digest" stopped.'). A failure says what could not happen ('"Weekly report" could not be paused.'). The tone follows the outcome: a check that finds a problem is a warning, never a success.
+- **Runs are stopped**, never cancelled: the button, the status ("Stopping…", "Stopped") and the toast use the same verb as the agent's Stop.
+- **Values nobody reported** are a muted dash with "Not reported" for screen readers, never "Unknown", which reads like an error.
+- **Names, not IDs**: link a trigger, file or run by its name; IDs and hashes go behind a details disclosure.
+
 ## Accessibility
 
 WCAG 2.2 AA: keyboard everywhere, visible focus, labels, contrast in both themes, live regions for streaming and activity, no information by colour alone.

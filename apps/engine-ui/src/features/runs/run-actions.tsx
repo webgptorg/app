@@ -21,10 +21,9 @@ export function useRunRowActions(): (run: ActionRun) => readonly MenuEntry[] {
         if (canCancel(run)) {
             entries.push({
                 kind: 'item',
-                id: 'cancel',
-                label: m.run_cancel(),
+                id: 'stop',
+                label: m.run_stop(),
                 icon: <CircleStop aria-hidden />,
-                tone: 'danger',
                 onSelect: () => {
                     cancel.mutate(target);
                 },
@@ -45,27 +44,29 @@ export function useRunRowActions(): (run: ActionRun) => readonly MenuEntry[] {
     };
 }
 
-/** Cancel (one step, no dialog) and retry for the detail page; nothing without `runs.control`. */
-export function RunActions({ run }: { readonly run: ActionRun }) {
+/**
+ * Stop (one step, no dialog: stopping keeps the work so far) and retry for the detail page; nothing without
+ * `runs.control`. `retried` hides Retry once the run has a retry, which the page links instead.
+ */
+export function RunActions({ run, retried = false }: { readonly run: ActionRun; readonly retried?: boolean }) {
     const { can } = usePermissions();
     const { cancel, retry } = useRunMutations();
     if (!can('runs.control')) return null;
     const target = { id: run.id, title: runTitle(run) };
-    const showCancel = canCancel(run);
-    const showRetry = canRetry(run);
-    if (!showCancel && !showRetry) return null;
+    const showStop = canCancel(run);
+    const showRetry = canRetry(run) && !retried;
+    if (!showStop && !showRetry) return null;
     return (
         <div className="flex flex-wrap gap-2">
-            {showCancel ? (
+            {showStop ? (
                 <Button
-                    variant="danger"
                     loading={cancel.isPending}
                     onClick={() => {
                         cancel.mutate(target);
                     }}
                 >
                     <CircleStop aria-hidden className="size-4" />
-                    {m.run_cancel()}
+                    {m.run_stop()}
                 </Button>
             ) : null}
             {showRetry ? (

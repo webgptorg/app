@@ -1,7 +1,7 @@
 import type { ReadRun } from '@ptbk/engine-api';
 import { Badge } from '@ptbk/ui';
 import type { BadgeTone } from '@ptbk/ui';
-import { Ban, CircleAlert, CircleCheck, CircleHelp, Hourglass, Play } from 'lucide-react';
+import { CircleAlert, CircleCheck, CircleHelp, CircleStop, Hourglass, Play } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 
@@ -28,7 +28,7 @@ function lookOf(status: RunStatusValue): StatusLook {
         case 'failed':
             return { label: m.run_status_failed(), tone: 'danger', icon: <CircleAlert /> };
         case 'cancelled':
-            return { label: m.run_status_cancelled(), tone: 'neutral', icon: <Ban /> };
+            return { label: m.run_status_cancelled(), tone: 'neutral', icon: <CircleStop /> };
         case 'unknown':
             return { label: m.run_status_unknown(), tone: 'neutral', icon: <CircleHelp /> };
     }
@@ -58,7 +58,7 @@ export function RunStatusBadge({
         if (previous.current !== status && TERMINAL.has(status) && !TERMINAL.has(previous.current)) setSettling(true);
         previous.current = status;
     }, [status]);
-    const label = cancelling && !TERMINAL.has(status) ? m.run_cancelling() : look.label;
+    const stopping = cancelling && !TERMINAL.has(status);
     // The badge text never fades (it must keep its contrast); a decorative dot beside it carries the breathing.
     return (
         <span
@@ -70,15 +70,21 @@ export function RunStatusBadge({
                 setSettling(false);
             }}
         >
-            {status === 'running' && !cancelling ? (
+            {status === 'running' && !stopping ? (
                 <span
                     aria-hidden="true"
                     className="size-2 shrink-0 rounded-pill bg-live motion-safe:animate-[ptbk-breathe_var(--motion-live)_var(--ease-standard)_infinite]"
                 />
             ) : null}
-            <Badge tone={cancelling && !TERMINAL.has(status) ? 'warning' : look.tone} icon={look.icon}>
-                {label}
-            </Badge>
+            {stopping ? (
+                <Badge tone="warning" icon={<CircleStop />}>
+                    {m.run_stopping()}
+                </Badge>
+            ) : (
+                <Badge tone={look.tone} icon={look.icon}>
+                    {look.label}
+                </Badge>
+            )}
         </span>
     );
 }

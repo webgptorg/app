@@ -31,8 +31,9 @@ export function canRetry(run: Pick<ReadRun, 'status'>): boolean {
 }
 
 /**
- * Cancel and retry. Cancel shows "Cancelling…" at once and rolls back with an error toast if the engine refuses; a run
- * that already finished is refetched and reported as such. Retry waits for the engine, then opens the new run.
+ * Stop (the engine's cancel) and retry. Stop shows "Stopping…" at once, confirms with a toast once the engine accepts,
+ * and rolls back with an error toast if it refuses; a run that already finished is refetched and reported as such.
+ * Retry waits for the engine, then opens the new run.
  */
 export function useRunMutations() {
     const engineApi = useEngineApi();
@@ -54,10 +55,11 @@ export function useRunMutations() {
                 restoreRun(client, snapshot);
             },
         },
+        successMessage: (_, run) => m.run_stopped({ title: run.title }),
         errorMessage: (failure, run) =>
             failure.kind === 'problem' && failure.problem.code === 'run-finished'
-                ? m.run_cancel_already_finished({ title: run.title })
-                : m.run_cancel_failed({ title: run.title }),
+                ? m.run_stop_already_finished({ title: run.title })
+                : m.run_stop_failed({ title: run.title }),
         onSuccess: (run) => {
             updateCachedRun(queryClient, run.id, (cached) => ({ ...cached, ...run }));
         },

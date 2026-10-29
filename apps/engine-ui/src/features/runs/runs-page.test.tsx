@@ -58,7 +58,7 @@ describe('runs timeline', { timeout: TIMEOUT_MS }, () => {
         });
         expect(lastListQuery(engine)).toMatchObject({ status: 'queued,failed' });
 
-        await user.selectOptions(screen.getByRole('combobox', { name: 'Started by' }), 'schedule');
+        await user.selectOptions(screen.getByRole('combobox', { name: 'Source' }), 'schedule');
         await waitFor(() => {
             expect(rowTitles()).toEqual(['Write the weekly report']);
         });
@@ -111,11 +111,14 @@ describe('runs timeline', { timeout: TIMEOUT_MS }, () => {
         expect(rowTitles()).toEqual([
             'Summarise open pull requests',
             'Review the billing pull request',
-            'Run from Webhook',
+            'A run from a webhook',
         ]);
         expect(lastListQuery(engine)).toEqual({ limit: 50, agentId: 'agent-ada' });
         expect(within(table()).queryByRole('columnheader', { name: 'Agent' })).toBeNull();
         expect(screen.queryByRole('combobox', { name: 'Agent' })).toBeNull();
+        expect(within(table()).getByRole('link', { name: 'Summarise open pull requests' }).getAttribute('href')).toBe(
+            `/runs/${RUN_IDS.running}?from=agent`,
+        );
     });
 
     it('ignores an agentId in the search on an agent’s tab', async () => {
@@ -136,8 +139,32 @@ describe('runs timeline', { timeout: TIMEOUT_MS }, () => {
         const completed = within(table()).getByText('Review the billing pull request').closest('tr') as HTMLElement;
         expect(within(completed).getByText('$1,234.50')).toBeDefined();
         expect(within(completed).getByText('11 min 0 s')).toBeDefined();
-        const cancelled = within(table()).getByText('Run from Webhook').closest('tr') as HTMLElement;
-        expect(within(cancelled).getByText('Cancelled')).toBeDefined();
+        const cancelled = within(table()).getByText('A run from a webhook').closest('tr') as HTMLElement;
+        expect(within(cancelled).getByText('Stopped')).toBeDefined();
+        expect(within(cancelled).getByText('1 min 0 s')).toBeDefined();
+        const queued = within(table()).getByText('Refund for order 1042').closest('tr') as HTMLElement;
+        expect(within(queued).getAllByText('Not reported').length).toBeGreaterThan(0);
+        expect(within(queued).queryByText('Unknown')).toBeNull();
+        expect(
+            within(table()).getByRole('link', { name: 'Review the billing pull request' }).getAttribute('href'),
+        ).toBe(`/runs/${RUN_IDS.completed}`);
+    });
+
+    it('marks a retry and hides the cost column when no run on the page has a cost', async () => {
+        const { engine } = await renderRuns('/agents/agent-iris/runs');
+        await within(table()).findByText('Write the weekly report');
+        expect(within(table()).queryByRole('columnheader', { name: 'Cost' })).toBeNull();
+        expect(within(table()).queryByText('Retry of a failed run')).toBeNull();
+        await engine.client.runs.retry(RUN_IDS.failed, AbortSignal.timeout(1000));
+        expect(await within(table()).findByText('Retry of a failed run')).toBeDefined();
+    });
+
+    it('calls a chat run’s source "Chat", not "Web"', async () => {
+        await renderRuns();
+        const row = (await within(table()).findByText('Review the billing pull request')).closest('tr') as HTMLElement;
+        expect(within(row).getByText('Chat')).toBeDefined();
+        expect(within(row).queryByText('Web')).toBeNull();
+        expect(within(table()).getByRole('columnheader', { name: 'Cost' })).toBeDefined();
     });
 
     it('says there are no runs yet, globally and on an agent’s tab', async () => {
@@ -194,13 +221,13 @@ describe('runs access', { timeout: TIMEOUT_MS }, () => {
         expect(within(nav).queryByRole('link', { name: 'Runs' })).toBeNull();
     });
 
-    it('offers no cancel or retry in the row menu without runs.control', async () => {
+    it('offers no stop or retry in the row menu without runs.control', async () => {
         await renderRuns('/runs', createRunsEngine({ permissions: allBut('runs.control') }));
         await within(table()).findByText('Refund for order 1042');
         expect(screen.queryByRole('button', { name: /^Actions for/ })).toBeNull();
     });
 
-    it('offers cancel for queued and running runs and retry only for failed ones, by keyboard', async () => {
+    it('offers stop for queued and running runs and retry only for failed ones, by keyboard', async () => {
         const { user, engine } = await renderRuns();
         await within(table()).findByText('Refund for order 1042');
         const menuItems = async (title: string) => {
@@ -214,11 +241,11 @@ describe('runs access', { timeout: TIMEOUT_MS }, () => {
             await user.keyboard('{Escape}');
             return items;
         };
-        expect(await menuItems('Refund for order 1042')).toEqual(['Cancel run']);
-        expect(await menuItems('Summarise open pull requests')).toEqual(['Cancel run']);
+        expect(await menuItems('Refund for order 1042')).toEqual(['Stop']);
+        expect(await menuItems('Summarise open pull requests')).toEqual(['Stop']);
         expect(await menuItems('Write the weekly report')).toEqual(['Retry']);
         expect(screen.queryByRole('button', { name: 'Actions for Review the billing pull request' })).toBeNull();
-        expect(screen.queryByRole('button', { name: 'Actions for Run from Webhook' })).toBeNull();
+        expect(screen.queryByRole('button', { name: 'Actions for A run from a webhook' })).toBeNull();
 
         const trigger = screen.getByRole('button', { name: 'Actions for Refund for order 1042' });
         trigger.focus();

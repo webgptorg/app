@@ -1,11 +1,13 @@
 import { PERMISSIONS } from '@ptbk/engine-api';
 import type { Permission } from '@ptbk/engine-api';
+import { createDemoSeed } from '@ptbk/engine-api/in-memory';
+import type { InMemorySeedRun } from '@ptbk/engine-api/in-memory';
 import { act, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { expectNoAxeViolations } from '../../testing/axe';
 import { renderWithProviders } from '../../testing/render-with-providers';
-import { createRunsEngine, HOSTILE, LARGE_DIFF_LINES, RUN_IDS } from '../../testing/runs-engine';
+import { createRunsEngine, HOSTILE, LARGE_DIFF_LINES, RUN_IDS, runsSeed } from '../../testing/runs-engine';
 import type { RunsEngine } from '../../testing/runs-engine';
 import { problemResponse } from '../../testing/test-engine-api';
 
@@ -19,12 +21,12 @@ async function renderRun(runId: string, engine: RunsEngine = createRunsEngine(),
         engineApi: engine.client,
         ...(locale === undefined ? {} : { locale }),
     });
-    await screen.findByRole('region', { name: locale === 'cs' ? 'Kroky' : 'Steps' });
+    await screen.findByText(locale === 'cs' ? 'Podrobnosti' : 'Details');
     return { ...app, engine };
 }
 
 const section = (name: string) => screen.getByRole('region', { name });
-const errorBanner = () => screen.getByText(/^The run failed:/).closest('[role="alert"]') as HTMLElement;
+const errorBanner = () => screen.getByText('The run timed out').closest('[role="alert"]') as HTMLElement;
 const statusFact = () => screen.getByText('Status', { selector: 'dt' }).parentElement as HTMLElement;
 
 /** No element agent text could have turned into: images, scripts, frames or links with a target. */
@@ -44,9 +46,7 @@ describe('run detail', { timeout: TIMEOUT_MS }, () => {
         const status = screen.getByText('Status').closest('div');
         expect(status === null ? null : within(status).getByText('Completed')).not.toBeNull();
         expect(screen.getByRole('link', { name: 'Back to runs' }).getAttribute('href')).toBe('/runs');
-        expect(screen.getByRole('link', { name: 'Web, in a chat' }).getAttribute('href')).toBe(
-            '/agents/agent-ada/chat/chat-ada',
-        );
+        expect(screen.getByRole('link', { name: 'Chat' }).getAttribute('href')).toBe('/agents/agent-ada/chat/chat-ada');
         expect(screen.getByRole('link', { name: 'Ada' }).getAttribute('href')).toBe('/agents/agent-ada');
         expect(screen.getByText('claude-code')).toBeDefined();
         expect(screen.getByText('claude-sonnet-4-5')).toBeDefined();
@@ -59,11 +59,11 @@ describe('run detail', { timeout: TIMEOUT_MS }, () => {
         expect(within(tools).getByText('Completed')).toBeDefined();
         expect(within(tools).getByText('1 s')).toBeDefined();
 
-        const usage = section('Usage and cost');
+        const usage = section('Token usage');
         expect(within(usage).getByText('18,200')).toBeDefined();
         expect(within(usage).getByText('2,150')).toBeDefined();
-        expect(within(usage).getByText('11 min 0 s')).toBeDefined();
-        expect(within(usage).getByText('$1,234.50')).toBeDefined();
+        expect(screen.getByText('11 min 0 s')).toBeDefined();
+        expect(screen.getByText('$1,234.50')).toBeDefined();
 
         const outputs = section('Outputs');
         expect(within(outputs).getByRole('link', { name: 'Open the reply in its chat' })).toBeDefined();
@@ -80,23 +80,97 @@ describe('run detail', { timeout: TIMEOUT_MS }, () => {
         expect(screen.queryByRole('alert')).toBeNull();
     });
 
-    it('shows a failed run’s error and offers retry, never cancel', async () => {
+    it('shows a failed run’s error in plain words with its code, and offers retry, never stop', async () => {
         await renderRun(RUN_IDS.failed);
-        expect(errorBanner().textContent).toContain('The run failed: tool-timeout');
+        expect(errorBanner().textContent).toContain('The calendar did not answer');
+        expect(errorBanner().textContent).toContain('Error code: tool-timeout');
         expect(screen.getByRole('button', { name: 'Retry' })).toBeDefined();
-        expect(screen.queryByRole('button', { name: 'Cancel run' })).toBeNull();
+        expect(screen.queryByRole('button', { name: 'Stop' })).toBeNull();
     });
 
-    it('shows "unknown" for usage the runner did not report', async () => {
-        await renderRun(RUN_IDS.failed);
-        const usage = section('Usage and cost');
-        expect(within(usage).getAllByText('Unknown')).toHaveLength(4);
+    it('titles an error code it does not know generically', async () => {
+        const seed = runsSeed();
+        const failed = seed.runs?.find((run) => run.id === RUN_IDS.failed) as InMemorySeedRun;
+        const odd: InMemorySeedRun = { ...failed, id: 'run-odd', error: { code: 'brand-new-code', summary: 'Hm.' } };
+        await renderRun('run-odd', createRunsEngine({ seed: { ...seed, runs: [...(seed.runs ?? []), odd] } }));
+        expect(screen.getByText('The run failed')).toBeDefined();
+        expect(screen.getByText('brand-new-code')).toBeDefined();
+    });
+
+    it('leaves out what the run did not report: no empty sections, no usage, no duration', async () => {
+        await renderRun(RUN_IDS.queued);
+        for (const name of ['Steps', 'Tool calls', 'Token usage', 'Outputs']) {
+            expect(screen.queryByRole('region', { name })).toBeNull();
+        }
+        expect(screen.queryByText('Duration', { selector: 'dt' })).toBeNull();
+        expect(screen.queryByText('Cost', { selector: 'dt' })).toBeNull();
+        expect(screen.getByText('Refund for order 1042', { selector: 'h1' })).toBeDefined();
+    });
+
+    it('takes a finished run’s duration from its timestamps when the engine reported none, as the list does', async () => {
+        await renderRun(RUN_IDS.cancelled);
+        const duration = screen.getByText('Duration', { selector: 'dt' }).nextElementSibling as HTMLElement;
+        expect(duration.textContent).toBe('1 min 0 s');
+        expect(screen.getByText('Stopped')).toBeDefined();
+    });
+
+    it('names the trigger that started a run, links its output files and points a retried failure at its retry', async () => {
+        const engine = createRunsEngine({ seed: createDemoSeed() });
+        const { unmount } = renderWithProviders({ path: '/runs/run-iris-weekly', engineApi: engine.client });
+        expect(await screen.findByRole('link', { name: 'Weekly report' })).toBeDefined();
+        expect(screen.getByRole('link', { name: 'Weekly report' }).getAttribute('href')).toBe(
+            '/triggers/trigger-weekly-report',
+        );
+        expect(screen.queryByText('trigger-weekly-report')).toBeNull();
+        expect(screen.getByRole('link', { name: 'report.md' }).getAttribute('href')).toBe(
+            '/files?file=file-weekly-report',
+        );
+        expect(screen.getByRole('link', { name: 'Retry of a failed run' }).getAttribute('href')).toBe(
+            '/runs/run-iris-weekly-failed',
+        );
+        unmount();
+
+        renderWithProviders({ path: '/runs/run-iris-weekly-failed', engineApi: engine.client });
+        expect(await screen.findByText('A tool failed')).toBeDefined();
+        const retry = await screen.findByRole('link', { name: 'Open the new run' });
+        expect(retry.getAttribute('href')).toBe('/runs/run-iris-weekly');
+        expect(screen.getByText(/Already retried\./)).toBeDefined();
+        expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    });
+
+    it('says a deleted trigger started the run instead of showing its ID', async () => {
+        const seed = runsSeed();
+        const failed = seed.runs?.find((run) => run.id === RUN_IDS.failed) as InMemorySeedRun;
+        const orphan: InMemorySeedRun = { ...failed, id: 'run-orphan', triggerId: 'trigger-gone' };
+        await renderRun('run-orphan', createRunsEngine({ seed: { ...seed, runs: [...(seed.runs ?? []), orphan] } }));
+        expect(await screen.findByText('Schedule · a deleted trigger')).toBeDefined();
+        expect(screen.queryByText('trigger-gone')).toBeNull();
+    });
+
+    it('names the trigger source without a lookup when the member may not read triggers', async () => {
+        const engine = createRunsEngine({ seed: createDemoSeed(), permissions: allBut('triggers.read') });
+        renderWithProviders({ path: '/runs/run-iris-weekly', engineApi: engine.client });
+        expect(await screen.findByText('Details')).toBeDefined();
+        expect(screen.getByText('Schedule', { selector: 'span' })).toBeDefined();
+        expect(screen.queryByRole('link', { name: 'Weekly report' })).toBeNull();
+    });
+
+    it('returns to the agent’s Runs tab when opened from it, and to all runs otherwise', async () => {
+        renderWithProviders({ path: `/runs/${RUN_IDS.failed}?from=agent`, engineApi: createRunsEngine().client });
+        expect((await screen.findByRole('link', { name: "Back to Iris's runs" })).getAttribute('href')).toBe(
+            '/agents/agent-iris/runs',
+        );
+    });
+
+    it('ignores an unknown origin in the URL', async () => {
+        renderWithProviders({ path: `/runs/${RUN_IDS.failed}?from=elsewhere`, engineApi: createRunsEngine().client });
+        expect((await screen.findByRole('link', { name: 'Back to runs' })).getAttribute('href')).toBe('/runs');
     });
 
     it('formats cost and numbers in Czech', async () => {
         await renderRun(RUN_IDS.completed, createRunsEngine(), 'cs');
-        const usage = section('Spotřeba a cena');
-        expect(within(usage).getByText('1 234,50 US$')).toBeDefined();
+        const usage = section('Spotřeba tokenů');
+        expect(screen.getByText('1 234,50 US$')).toBeDefined();
         expect(within(usage).getByText('18 200')).toBeDefined();
     });
 
@@ -136,13 +210,12 @@ describe('run detail', { timeout: TIMEOUT_MS }, () => {
 
     it('follows a running run from events: steps refetch once per change, the time ticks without a fetch', async () => {
         const { engine, ticker } = await renderRun(RUN_IDS.running);
-        const usage = section('Usage and cost');
-        expect(within(usage).getByText('1 min 30 s')).toBeDefined();
+        expect(screen.getByText('1 min 30 s')).toBeDefined();
         const gets = engine.spies.get.mock.calls.length;
         const lists = engine.spies.list.mock.calls.length;
 
         ticker.advance(10_000);
-        expect(within(usage).getByText('1 min 40 s')).toBeDefined();
+        expect(screen.getByText('1 min 40 s')).toBeDefined();
         expect(engine.spies.get.mock.calls.length).toBe(gets);
 
         act(() => {
@@ -193,7 +266,7 @@ describe('run detail', { timeout: TIMEOUT_MS }, () => {
 });
 
 describe('run actions', { timeout: TIMEOUT_MS }, () => {
-    it('cancels in one step: "Cancelling…" at once, then what the engine says', async () => {
+    it('stops in one step: "Stopping…" at once, then a toast once the engine accepts', async () => {
         const engine = createRunsEngine();
         let release: () => void = () => undefined;
         // Once the held call is released it goes through the spy again, which then answers as the engine.
@@ -207,26 +280,29 @@ describe('run actions', { timeout: TIMEOUT_MS }, () => {
                 }),
         );
         const { user } = await renderRun(RUN_IDS.running, engine);
-        const cancel = screen.getByRole('button', { name: 'Cancel run' });
-        cancel.focus();
+        const stop = screen.getByRole('button', { name: 'Stop' });
+        stop.focus();
         await user.keyboard('{Enter}');
-        expect(await screen.findByText('Cancelling…')).toBeDefined();
-        expect(screen.queryByRole('button', { name: 'Cancel run' })).toBeNull();
+        expect(await screen.findByText('Stopping…')).toBeDefined();
+        expect(screen.queryByRole('button', { name: 'Stop' })).toBeNull();
+        expect(screen.queryByText('Run "Summarise open pull requests" stopped.')).toBeNull();
         release();
         await waitFor(() => {
             expect(engine.controller.getRun(RUN_IDS.running)?.cancelRequestedAt).not.toBeNull();
         });
-        expect(await within(statusFact()).findByText('Cancelling…')).toBeDefined();
+        expect(await within(statusFact()).findByText('Stopping…')).toBeDefined();
+        expect(await screen.findByText('Run "Summarise open pull requests" stopped.')).toBeDefined();
     });
 
-    it('rolls back and reports a refused cancel', async () => {
+    it('rolls back and reports a refused stop, without the success toast', async () => {
         const engine = createRunsEngine();
         engine.spies.cancel.mockImplementationOnce(() => problemResponse('validation-failed'));
         const { user } = await renderRun(RUN_IDS.running, engine);
-        await user.click(screen.getByRole('button', { name: 'Cancel run' }));
-        expect(await screen.findByText('"Summarise open pull requests" could not be cancelled.')).toBeDefined();
-        expect(await screen.findByRole('button', { name: 'Cancel run' })).toBeDefined();
+        await user.click(screen.getByRole('button', { name: 'Stop' }));
+        expect(await screen.findByText('"Summarise open pull requests" could not be stopped.')).toBeDefined();
+        expect(await screen.findByRole('button', { name: 'Stop' })).toBeDefined();
         expect(screen.getByText('Running')).toBeDefined();
+        expect(screen.queryByText('Run "Summarise open pull requests" stopped.')).toBeNull();
     });
 
     it('says the run already finished when the engine answers 409 run-finished, and shows its state', async () => {
@@ -237,14 +313,14 @@ describe('run actions', { timeout: TIMEOUT_MS }, () => {
             return problemResponse('run-finished');
         });
         const { user } = await renderRun(RUN_IDS.running, engine);
-        await user.click(screen.getByRole('button', { name: 'Cancel run' }));
+        await user.click(screen.getByRole('button', { name: 'Stop' }));
         expect(
             await screen.findByText(
-                '"Summarise open pull requests" had already finished, so there was nothing to cancel.',
+                '"Summarise open pull requests" had already finished, so there was nothing to stop.',
             ),
         ).toBeDefined();
         expect(await screen.findByText('Completed')).toBeDefined();
-        expect(screen.queryByText('Cancelling…')).toBeNull();
+        expect(screen.queryByText('Stopping…')).toBeNull();
     });
 
     it('retries a failed run and opens the new one', async () => {
@@ -256,16 +332,16 @@ describe('run actions', { timeout: TIMEOUT_MS }, () => {
         expect(router.state.location.pathname).toMatch(/^\/runs\//);
         expect(await screen.findByText('Retrying "Write the weekly report" as a new run.')).toBeDefined();
         expect(await within(statusFact()).findByText('Queued')).toBeDefined();
-        expect(screen.getByRole('link', { name: 'The failed run' }).getAttribute('href')).toBe(
+        expect(screen.getByRole('link', { name: 'Retry of a failed run' }).getAttribute('href')).toBe(
             `/runs/${RUN_IDS.failed}`,
         );
         expect(engine.spies.retry).toHaveBeenCalledTimes(1);
     });
 
-    it('offers neither cancel nor retry without runs.control', async () => {
+    it('offers neither stop nor retry without runs.control', async () => {
         const engine = createRunsEngine({ permissions: allBut('runs.control') });
         await renderRun(RUN_IDS.running, engine);
-        expect(screen.queryByRole('button', { name: 'Cancel run' })).toBeNull();
+        expect(screen.queryByRole('button', { name: 'Stop' })).toBeNull();
         renderWithProviders({ path: `/runs/${RUN_IDS.failed}`, engineApi: engine.client });
         await screen.findByRole('heading', { level: 1, name: 'Write the weekly report' });
         expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();

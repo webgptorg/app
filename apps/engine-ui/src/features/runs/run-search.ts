@@ -62,3 +62,9 @@ export function runListParams(search: RunSearch, agentId?: AgentId): RunListPara
         ...(search.cursor === undefined ? {} : { cursor: search.cursor }),
     };
 }
+
+/** Where a run was opened from, so its back link returns there; anything else means the global list. */
+export const RunDetailSearch = z.object({
+    from: z.literal('agent').optional().catch(undefined),
+});
+export type RunDetailSearch = z.output<typeof RunDetailSearch>;

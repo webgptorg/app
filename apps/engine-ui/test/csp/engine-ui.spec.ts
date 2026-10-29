@@ -205,7 +205,7 @@ test.describe('the built bundle under the engine CSP', () => {
 
         const filtered = await visit('/runs?status=failed&source=schedule');
         await expect(page.getByRole('checkbox', { name: 'Failed' })).toBeChecked();
-        await expect(page.getByRole('combobox', { name: 'Started by' })).toHaveValue('schedule');
+        await expect(page.getByRole('combobox', { name: 'Source' })).toHaveValue('schedule');
         await expect(page.getByRole('table').getByRole('link', { name: 'Write the weekly report' })).toBeVisible();
         expectCleanPage(filtered);
     });
@@ -297,14 +297,14 @@ test.describe('the built bundle under the engine CSP', () => {
 
         await page.setViewportSize({ width: 360, height: 740 });
         await page.mouse.wheel(0, 400);
-        const cancel = page.getByRole('button', { name: 'Cancel run' });
-        await expect(cancel).toBeInViewport();
+        const stop = page.getByRole('button', { name: 'Stop' });
+        await expect(stop).toBeInViewport();
         expect(
             await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth),
         ).toBeLessThanOrEqual(0);
-        await cancel.focus();
+        await stop.focus();
         await page.keyboard.press('Enter');
-        await expect(page.getByText('Cancelling…').first()).toBeVisible();
+        await expect(page.getByText('Stopping…').first()).toBeVisible();
         expect(await page.evaluate(() => window.__ptbkCspViolations ?? [])).toEqual([]);
     });
 
