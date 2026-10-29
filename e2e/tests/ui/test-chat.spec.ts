@@ -48,7 +48,7 @@ test('tests the unsaved book in the test chat without saving it', async ({ page,
     await expect(history.getByText(`${DRAFT_NAME} has a few notes`, { exact: false })).toBeVisible();
 
     await panel.getByRole('button', { name: 'Reset' }).click();
-    await expect(panel.getByText('No test messages yet.')).toBeVisible();
+    await expect(panel.getByText('These messages are not kept', { exact: false })).toBeVisible();
 
     const after = await apiGet<{ readonly source: string; readonly revisionId: string }>(
         page,

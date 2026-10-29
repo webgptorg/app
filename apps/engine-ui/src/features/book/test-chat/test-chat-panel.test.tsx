@@ -88,7 +88,7 @@ describe('the book editor test chat', { timeout: TIMEOUT_MS }, () => {
         const { container } = await open();
         expect(within(panel()).getByRole('heading', { name: 'Test chat' })).toBeDefined();
         expect(within(panel()).getByText('Test · not saved')).toBeDefined();
-        expect(within(panel()).getByText('No test messages yet.')).toBeDefined();
+        expect(within(panel()).getByText(/These messages are not kept/)).toBeDefined();
         expect(screen.getByRole('group', { name: 'Show' })).toBeDefined();
         await expectNoAxeViolations(container);
     });
@@ -155,9 +155,10 @@ describe('the book editor test chat', { timeout: TIMEOUT_MS }, () => {
         await send(app, 'one');
         control.latest().push({ type: 'delta', seq: 1, text: 'Going' });
         await within(panel()).findByText('Going', {}, WAIT);
+        expect(within(panel()).queryByText(/These messages are not kept/)).toBeNull();
         await app.user.click(within(panel()).getByRole('button', { name: 'Reset' }));
         expect(control.latest().aborted()).toBe(true);
-        expect(within(panel()).getByText('No test messages yet.')).toBeDefined();
+        expect(within(panel()).getByText(/These messages are not kept/)).toBeDefined();
         expect(within(panel()).queryByText('one')).toBeNull();
     });
 
@@ -238,6 +239,8 @@ describe('the book editor test chat', { timeout: TIMEOUT_MS }, () => {
         replaceBook('Draft\nPERSONA x');
         await app.user.click(screen.getByRole('button', { name: 'Test', pressed: false }));
         expect(panel().className).not.toContain('max-xl:hidden');
+        // Sized while hidden, the composer must not have collapsed to nothing.
+        expect(composer().style.height).not.toBe('0px');
         expect(screen.getByTestId('book-editor').closest('.max-xl\\:hidden')).not.toBeNull();
         await send(app, 'hi');
         await within(panel()).findByText('Draft received: hi', {}, WAIT);

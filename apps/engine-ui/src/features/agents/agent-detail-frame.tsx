@@ -65,8 +65,8 @@ function ChatLink({
 /**
  * The agent page: identity, live status and primary actions above the tabs the registry provides. It never imports a
  * tab's code; each tab is its own route, rendered in the selected panel. A route that sets `staticData.fillViewport`
- * (a chat) gets a one-line header and the rest of the screen, so its composer is in view on a phone too. "Chat" is the
- * one primary action; the book has its own tab, so the header offers no "Edit".
+ * (a chat, the book) gets a one-line header and the rest of the screen, so its composer is in view on a phone too.
+ * "Chat" is the one primary action; the book has its own tab, so the header offers no "Edit".
  */
 export function AgentDetailFrame() {
     const agentId = useAgentIdParam();
@@ -87,7 +87,7 @@ export function AgentDetailFrame() {
     useDocumentTitle(...(selected === undefined ? [] : [selected.label()]), agent.name);
     const fill = useMatches({ select: (matches) => matches.some((match) => match.staticData.fillViewport === true) });
     // In the Chat tab, "Chat" would only lead to a fresh conversation; the recent list's "New chat" does that.
-    const chatTab = fill ? undefined : tabs.find((tab) => tab.id === AGENT_TABS.chat.id);
+    const chatTab = selected?.id === AGENT_TABS.chat.id ? undefined : tabs.find((tab) => tab.id === AGENT_TABS.chat.id);
     // On a phone the full header would take a third of every tab; the description is on Overview anyway.
     const narrow = useMediaQuery(NARROW_QUERY);
     const compact = fill || narrow;
