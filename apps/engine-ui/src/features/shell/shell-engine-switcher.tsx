@@ -30,8 +30,9 @@ export function ShellEngineSwitcher({ compact }: { readonly compact: boolean }) 
                   kind: 'item',
                   id: 'verify',
                   label: m.engine_verify(),
-                  description:
-                      fingerprint === null ? undefined : m.ui_trust_mark_fingerprint({ code: fingerprint.formatted }),
+                  ...(fingerprint === null
+                      ? {}
+                      : { description: m.ui_trust_mark_fingerprint({ code: fingerprint.formatted }) }),
                   icon: <ShieldCheck aria-hidden />,
                   onSelect: () => {
                       void navigate({ to: '/security', hash: TRUST_PANEL_HASH });
