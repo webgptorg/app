@@ -73,6 +73,7 @@ describe('attention', { timeout: TIMEOUT_MS }, () => {
             count: 2,
             to: '/integrations',
             search: { status: 'needs-attention,error' },
+            pending: false,
         });
     });
 });

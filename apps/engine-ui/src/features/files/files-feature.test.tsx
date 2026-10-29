@@ -172,7 +172,8 @@ describe('attention', { timeout: TIMEOUT_MS }, () => {
         });
         renderWithProviders({ path: '/agents/agent-ada', engineApi: engine.client, features: [...FEATURES, probe] });
         expect(await screen.findByText('attention 2')).toBeDefined();
-        expect(seen.at(-1)).toEqual({ count: 2, to: '/files', search: { scan: 'infected,failed' } });
+        expect(seen[0]).toMatchObject({ count: 0, pending: true });
+        expect(seen.at(-1)).toEqual({ count: 2, to: '/files', search: { scan: 'infected,failed' }, pending: false });
     });
 });
 
