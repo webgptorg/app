@@ -937,7 +937,6 @@
   "run_origin_unknown": "Běh",
   "run_activity_duration": "Trval {duration}.",
   "run_activity_cost": "Cena {cost}.",
-  "run_activity_open": "Otevřít běh",
   "nav_triggers": "Spouštěče",
   "agent_tab_triggers": "Spouštěče",
   "command_go_to_triggers": "Přejít na spouštěče",
@@ -1066,7 +1065,6 @@
   "trigger_activity_failed": "{name} selhal",
   "trigger_activity_paused": "{name} byl pozastaven",
   "trigger_activity_resumed": "{name} byl obnoven",
-  "trigger_activity_open": "Otevřít spouštěč",
   "trigger_activity_open_run": "Otevřít běh",
   "trigger_once": "Jednou, {when}",
   "trigger_in_zone": "{schedule}, {timeZone}",
@@ -1180,7 +1178,6 @@
   "files_activity_created": "Přidán soubor {name} ({purpose})",
   "files_activity_deleted": "Smazán soubor {name}",
   "files_activity_scan_failed": "Antivirová kontrola souboru {name} selhala",
-  "files_activity_open": "Otevřít soubor",
   "files_card_title": "Znalosti v kostce",
   "files_card_all": "Všechny soubory",
   "files_card_latest_outputs": "Nejnovější výstupy",
@@ -1376,7 +1373,6 @@
   "integration_activity_connected": "{name} je připojeno",
   "integration_activity_error": "{name} vyžaduje pozornost",
   "integration_activity_used": "{name}: použit nástroj {tool}",
-  "integration_activity_open": "Otevřít integraci",
   "integration_activity_open_run": "Otevřít běh",
   "integration_enable": "Zapnout",
   "integration_disable": "Vypnout",
@@ -1437,15 +1433,20 @@
   "home_running_now": "Právě běží",
   "home_queued": "Ve frontě",
   "home_needs_attention": "Vyžaduje pozornost",
+  "home_all_quiet": "Nic neběží a nic nevyžaduje vaši pozornost.",
+  "home_nothing_needs_attention": "Nic nevyžaduje vaši pozornost.",
   "home_recent_agents": "Nedávní agenti",
   "home_my_agents": "Agenti, které můžete používat",
   "home_all_agents": "Všichni agenti",
   "home_no_agents": "Zatím žádní agenti",
   "home_no_agents_body": "Zde se objeví agenti, které vytvoříte nebo ke kterým dostanete přístup.",
   "home_my_runs": "Vaše rozběhnutá práce",
-  "home_my_runs_empty": "Nic vašeho neběží ani nečeká ve frontě.",
   "home_recent_chats": "Nedávné chaty",
-  "home_recent_chats_empty": "Zatím žádné chaty.",
+  "home_recent_chats_empty": "Zatím žádné chaty",
+  "home_recent_chats_empty_body": "Tady se objeví vaše konverzace s agenty.",
+  "home_recent_chats_start_body": "Zeptejte se agenta na cokoli a konverzace se objeví tady.",
+  "home_chat_with": "Chat s agentem {name}",
+  "home_chat_start": "Začít chat s agentem {name}",
   "home_update_title": "Je dostupná aktualizace enginu",
   "home_update_body": "Je dostupná nová verze enginu.",
   "home_update_version": "Je dostupná verze {version}.",
@@ -1462,6 +1463,7 @@
   "activity_area_engine": "Engine",
   "activity_empty": "Zatím žádná aktivita",
   "activity_empty_body": "Co dělají vaši agenti a členové, se zde objeví hned, jak se to stane.",
+  "activity_empty_area": "Zatím tu nic takového není.",
   "activity_failed": "Aktivitu se nepodařilo načíst.",
   "activity_older_failed": "Starší aktivitu se nepodařilo načíst.",
   "activity_load_older": "Načíst starší",
@@ -1495,11 +1497,9 @@
   "member_activity_joined": "{name} se připojil(a)",
   "member_activity_role_changed": "{name}: role změněna z {from} na {to}",
   "member_activity_removed": "{name} byl(a) odebrán(a)",
-  "member_activity_open": "Otevřít členy",
   "engine_activity_update_available": "Je dostupná verze enginu {version}",
   "engine_activity_updated": "Engine byl aktualizován z {from} na {to}",
   "engine_activity_relay_disconnected": "Spojení s relayem {relay} se přerušilo",
-  "engine_activity_open": "Otevřít zabezpečení",
   "runs_attention_failed": [
     {
       "declarations": ["input count", "local countPlural = count: plural"],
@@ -1509,6 +1509,42 @@
         "countPlural=few": "{count} neúspěšné běhy",
         "countPlural=many": "{count} neúspěšného běhu",
         "countPlural=other": "{count} neúspěšných běhů"
+      }
+    }
+  ],
+  "files_attention_scan": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} soubor ke kontrole",
+        "countPlural=few": "{count} soubory ke kontrole",
+        "countPlural=many": "{count} souboru ke kontrole",
+        "countPlural=other": "{count} souborů ke kontrole"
+      }
+    }
+  ],
+  "triggers_attention_failed": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} selhaný spouštěč",
+        "countPlural=few": "{count} selhané spouštěče",
+        "countPlural=many": "{count} selhaného spouštěče",
+        "countPlural=other": "{count} selhaných spouštěčů"
+      }
+    }
+  ],
+  "integrations_attention": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} integrace potřebuje pozornost",
+        "countPlural=few": "{count} integrace potřebují pozornost",
+        "countPlural=many": "{count} integrace potřebuje pozornost",
+        "countPlural=other": "{count} integrací potřebuje pozornost"
       }
     }
   ],

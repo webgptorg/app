@@ -26,8 +26,9 @@ export function engineActivitySummary(activity: Activity): string {
 export function EngineActivityItem({ activity }: { readonly activity: Activity }) {
     return (
         <div className="flex flex-col gap-1 text-sm">
-            <p className="break-words">{engineActivitySummary(activity)}</p>
-            <Link to="/security">{m.engine_activity_open()}</Link>
+            <Link to="/security" variant="standalone" className="break-words">
+                {engineActivitySummary(activity)}
+            </Link>
         </div>
     );
 }

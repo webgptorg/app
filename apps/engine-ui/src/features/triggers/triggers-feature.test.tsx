@@ -138,7 +138,7 @@ describe('trigger activity renderers', { timeout: TIMEOUT_MS }, () => {
         expect(within(list).getByText('<b>Morning</b> report was paused')).toBeDefined();
         expect(within(list).getByText('<b>Morning</b> report was resumed')).toBeDefined();
         expect(list.querySelector('b')).toBeNull();
-        for (const link of within(list).getAllByRole('link', { name: 'Open trigger' })) {
+        for (const link of within(list).getAllByRole('link', { name: /^<b>Morning<\/b> report/ })) {
             expect(link.getAttribute('href')).toBe(`/triggers/${TRIGGER_IDS.weekday}`);
         }
         expect(
@@ -157,7 +157,7 @@ describe('trigger activity renderers', { timeout: TIMEOUT_MS }, () => {
     it('links a fire to its run only when the engine advertises runs@1', async () => {
         renderInApp(createTriggersEngine({ capabilities: WITHOUT_RUNS }), feed);
         const list = await screen.findByRole('list', { name: 'Feed' }, { timeout: APP_READY_MS });
-        expect(within(list).getAllByRole('link', { name: 'Open trigger' })).toHaveLength(4);
+        expect(within(list).getAllByRole('link', { name: /^<b>Morning<\/b> report/ })).toHaveLength(4);
         expect(within(list).queryByRole('link', { name: 'Open run' })).toBeNull();
     });
 });

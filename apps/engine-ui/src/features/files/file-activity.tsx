@@ -28,10 +28,11 @@ export function FileActivityItem({ activity }: { readonly activity: Activity }) 
     if (!isFileActivity(activity)) return null;
     return (
         <div className="flex flex-col gap-1 text-sm">
-            <p className="break-words">{fileActivitySummary(activity)}</p>
-            {activity.kind === 'file.deleted' ? null : (
-                <Link to="/files" search={{ file: activity.fileId }}>
-                    {m.files_activity_open()}
+            {activity.kind === 'file.deleted' ? (
+                <p className="break-words">{fileActivitySummary(activity)}</p>
+            ) : (
+                <Link to="/files" search={{ file: activity.fileId }} variant="standalone" className="break-words">
+                    {fileActivitySummary(activity)}
                 </Link>
             )}
         </div>

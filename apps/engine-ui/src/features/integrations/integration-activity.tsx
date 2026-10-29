@@ -32,22 +32,26 @@ export function IntegrationActivityItem({ activity }: { readonly activity: Activ
     const linkIntegration = openIntegrationId !== activity.integrationId;
     return (
         <div className="flex flex-col gap-1 text-sm">
-            <p className="break-words">{integrationActivitySummary(activity)}</p>
+            {linkIntegration ? (
+                <Link
+                    to="/integrations/$integrationId"
+                    params={{ integrationId: activity.integrationId }}
+                    variant="standalone"
+                    className="break-words"
+                >
+                    {integrationActivitySummary(activity)}
+                </Link>
+            ) : (
+                <p className="break-words">{integrationActivitySummary(activity)}</p>
+            )}
             {activity.kind === 'integration.error' && activity.statusDetail !== null ? (
                 <p className="break-words text-text-muted">{activity.statusDetail}</p>
             ) : null}
-            <div className="flex flex-wrap gap-x-4 gap-y-1 empty:hidden">
-                {linkIntegration ? (
-                    <Link to="/integrations/$integrationId" params={{ integrationId: activity.integrationId }}>
-                        {m.integration_activity_open()}
-                    </Link>
-                ) : null}
-                {activity.kind === 'integration.used' && activity.runId !== null ? (
-                    <Link to="/runs/$runId" params={{ runId: activity.runId }}>
-                        {m.integration_activity_open_run()}
-                    </Link>
-                ) : null}
-            </div>
+            {activity.kind === 'integration.used' && activity.runId !== null ? (
+                <Link to="/runs/$runId" params={{ runId: activity.runId }} className="self-start">
+                    {m.integration_activity_open_run()}
+                </Link>
+            ) : null}
         </div>
     );
 }

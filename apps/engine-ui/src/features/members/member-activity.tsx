@@ -32,8 +32,9 @@ export function memberActivitySummary(activity: Activity): string {
 export function MemberActivityItem({ activity }: { readonly activity: Activity }) {
     return (
         <div className="flex flex-col gap-1 text-sm">
-            <p className="break-words">{memberActivitySummary(activity)}</p>
-            <Link to="/members">{m.member_activity_open()}</Link>
+            <Link to="/members" variant="standalone" className="break-words">
+                {memberActivitySummary(activity)}
+            </Link>
         </div>
     );
 }

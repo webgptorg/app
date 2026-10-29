@@ -198,10 +198,53 @@ describe('home: control center', { timeout: TIMEOUT_MS }, () => {
         const recent = await screen.findByRole('region', { name: 'Recent agents' });
         expect(await within(recent).findByText('No agents yet')).toBeDefined();
         expect(within(recent).getByRole('link', { name: 'New agent' }).getAttribute('href')).toBe('/agents/new');
-        expect(await within(await feed()).findByText('No activity yet')).toBeDefined();
+        const region = await feed();
+        expect(await within(region).findByText('No activity yet')).toBeDefined();
+        expect(within(region).queryByRole('group', { name: 'Show activity of' })).toBeNull();
+        expect(await screen.findByText('Nothing is running, and nothing needs your attention.')).toBeDefined();
+        expect(screen.queryByText('Running now')).toBeNull();
+        expect(screen.queryByText('Needs attention')).toBeNull();
+    });
+
+    it('keeps the count tiles while a count is still unknown, never calling the engine quiet early', async () => {
+        const slow = defineFeature({
+            id: 'fake-slow',
+            requires: {},
+            attention: { id: 'slow', useAttention: () => ({ count: 0, to: '/audit', pending: true }) },
+        });
+        const engine = createHomeEngine({ activity: [], seed: { agents: [], runs: [], chats: [], messages: [] } });
+        renderWithProviders({ path: '/', engineApi: engine.client, features: [...FEATURES, slow] });
+
         await waitFor(() => {
             expect(countValue('Running now')).toBe('0');
         });
+        expect(countValue('Needs attention')).toBe('0');
+        expect(screen.queryByText('Nothing is running, and nothing needs your attention.')).toBeNull();
+    });
+
+    it('says only that nothing needs attention without runs@1', async () => {
+        const engine = createHomeEngine({
+            activity: [],
+            capabilities: Object.values(KNOWN_CAPABILITIES).filter(({ id }) => id !== 'runs'),
+            seed: { agents: [], runs: [], chats: [], messages: [] },
+        });
+        renderWithProviders({ path: '/', engineApi: engine.client });
+
+        expect(await screen.findByText('Nothing needs your attention.')).toBeDefined();
+        expect(screen.queryByText('Nothing is running, and nothing needs your attention.')).toBeNull();
+    });
+
+    it('names each attention count as a sentence, linking to what it counts', async () => {
+        const engine = createHomeEngine({ seed: { runs: [] } });
+        engine.spies.runStats.mockResolvedValue({
+            kind: 'ok',
+            data: { running: 0, queued: 0, failedLast24h: 2, oldestQueuedAt: null, lastFinished: null },
+        });
+        renderWithProviders({ path: '/', engineApi: engine.client });
+
+        const link = await screen.findByRole('link', { name: '2 failed runs' });
+        expect(link.getAttribute('href')).toBe('/runs?status=failed');
+        expect(countValue('Running now')).toBe('0');
     });
 
     it('keeps a failing run count to its own tile', async () => {
@@ -291,12 +334,52 @@ describe('home: member', { timeout: TIMEOUT_MS }, () => {
         });
         renderWithProviders({ path: '/', engineApi: engine.client });
 
-        expect(await screen.findByText('Nothing of yours is running or queued.')).toBeDefined();
-        expect(await screen.findByText('No chats yet.')).toBeDefined();
+        const chats = await screen.findByRole('region', { name: 'Recent chats' });
+        expect(await within(chats).findByText('No chats yet')).toBeDefined();
+        expect(within(chats).getByText('Your conversations with agents show up here.')).toBeDefined();
+        expect(within(chats).queryByRole('link')).toBeNull();
         const agents = await screen.findByRole('region', { name: 'Agents you can use' });
         expect(await within(agents).findByText('No agents yet')).toBeDefined();
         expect(within(agents).queryByRole('link', { name: 'New agent' })).toBeNull();
         expect(screen.queryByRole('link', { name: 'New agent' })).toBeNull();
+        await waitFor(() => {
+            expect(engine.spies.runs).toHaveBeenCalled();
+        });
+        expect(screen.queryByRole('region', { name: 'Your running work' })).toBeNull();
+    });
+
+    it('leads with the agents and invites a first chat with one, where the member may chat', async () => {
+        const engine = createHomeEngine({
+            permissions: ['agents.read', 'chats.read', 'chats.write'],
+            seed: { chats: [], messages: [] },
+        });
+        const { container } = renderWithProviders({ path: '/', engineApi: engine.client });
+
+        const agents = await screen.findByRole('region', { name: 'Agents you can use' });
+        const chats = await screen.findByRole('region', { name: 'Recent chats' });
+        expect(agents.compareDocumentPosition(chats) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        const start = await within(chats).findByRole('link', { name: /^Start a chat with / });
+        const first = within(agents).getAllByRole('link', { name: /^Chat with / })[0];
+        expect(start.getAttribute('href')).toBe(first?.getAttribute('href'));
+        expect(first?.getAttribute('href')).toMatch(/^\/agents\/[^/]+\/chat$/);
+        await expectNoAxeViolations(container);
+    });
+
+    it('offers no chat to a member who may only read chats', async () => {
+        const engine = createHomeEngine({
+            permissions: ['agents.read', 'chats.read'],
+            seed: { chats: [], messages: [] },
+        });
+        renderWithProviders({ path: '/', engineApi: engine.client });
+
+        const agents = await screen.findByRole('region', { name: 'Agents you can use' });
+        await waitFor(() => {
+            expect(within(agents).getAllByRole('listitem').length).toBeGreaterThan(0);
+        });
+        expect(within(agents).queryByRole('link', { name: /^Chat with / })).toBeNull();
+        const chats = await screen.findByRole('region', { name: 'Recent chats' });
+        expect(await within(chats).findByText('No chats yet')).toBeDefined();
+        expect(within(chats).queryByRole('link')).toBeNull();
     });
 
     it('names an untitled chat by its first message, or as untitled, and a run whose agent the engine no longer knows', async () => {
@@ -448,7 +531,9 @@ describe('home: activity feed', { timeout: TIMEOUT_MS }, () => {
         const engine = createHomeEngine();
         const { user, router } = renderWithProviders({ path: '/', engineApi: engine.client });
         const region = await feed();
-        const chips = within(within(region).getByRole('group', { name: 'Show activity of' })).getAllByRole('button');
+        const chips = within(await within(region).findByRole('group', { name: 'Show activity of' })).getAllByRole(
+            'button',
+        );
         expect(chips.map((chip) => chip.textContent)).toEqual([
             'All',
             'Runs',
@@ -477,6 +562,17 @@ describe('home: activity feed', { timeout: TIMEOUT_MS }, () => {
         await waitFor(() => {
             expect(router.state.location.search).toEqual({});
         });
+    });
+
+    it('keeps the filters on an area with nothing in it, so the way back stays', async () => {
+        const engine = createHomeEngine({ activity: [] });
+        const { user } = renderWithProviders({ path: '/?activity=engine', engineApi: engine.client });
+        const region = await feed();
+
+        expect(await within(region).findByText('Nothing of this kind yet.')).toBeDefined();
+        await user.click(within(region).getByRole('button', { name: 'All' }));
+        expect(await within(region).findByText('No activity yet')).toBeDefined();
+        expect(within(region).queryByRole('group', { name: 'Show activity of' })).toBeNull();
     });
 
     it('shows a member without runs.read no run cards and no run chip, even from a careless engine', async () => {

@@ -33,18 +33,20 @@ export function TriggerActivityItem({ activity }: { readonly activity: Activity 
     const error = activity.kind === 'trigger.failed' ? activity.error : null;
     return (
         <div className="flex flex-col gap-1 text-sm">
-            <p className="break-words">{triggerActivitySummary(activity)}</p>
+            <Link
+                to="/triggers/$triggerId"
+                params={{ triggerId: activity.triggerId }}
+                variant="standalone"
+                className="break-words"
+            >
+                {triggerActivitySummary(activity)}
+            </Link>
             {error === null ? null : <p className="break-words text-text-muted">{error.summary}</p>}
-            <div className="flex flex-wrap gap-x-4">
-                <Link to="/triggers/$triggerId" params={{ triggerId: activity.triggerId }}>
-                    {m.trigger_activity_open()}
+            {runId !== null && linkRuns ? (
+                <Link to="/runs/$runId" params={{ runId }} className="self-start">
+                    {m.trigger_activity_open_run()}
                 </Link>
-                {runId !== null && linkRuns ? (
-                    <Link to="/runs/$runId" params={{ runId }}>
-                        {m.trigger_activity_open_run()}
-                    </Link>
-                ) : null}
-            </div>
+            ) : null}
         </div>
     );
 }

@@ -26,7 +26,12 @@ function TriggerOverviewCard({ agentId }: { readonly agentId: AgentId }) {
 
 function useFailedTriggersAttention(): Attention {
     const stats = useTriggerStats();
-    return { count: stats.data?.failed ?? 0, to: '/triggers', search: { lifecycle: 'failed' } };
+    return {
+        count: stats.data?.failed ?? 0,
+        to: '/triggers',
+        search: { lifecycle: 'failed' },
+        pending: stats.data === undefined,
+    };
 }
 
 /**
@@ -42,7 +47,11 @@ export const triggersFeature = defineFeature({
     activityRenderers: [
         { kind: 'trigger.*', versions: [1], component: TriggerActivityItem, summary: triggerActivitySummary },
     ],
-    attention: { id: 'triggers.failed', useAttention: useFailedTriggersAttention },
+    attention: {
+        id: 'triggers.failed',
+        useAttention: useFailedTriggersAttention,
+        label: (count) => m.triggers_attention_failed({ count }),
+    },
     eventSync: { useEventSync: useTriggerEventSync },
     commands: [
         { id: 'triggers.open', label: m.command_go_to_triggers, keywords: () => [m.nav_triggers()], to: '/triggers' },

@@ -1,10 +1,10 @@
 import type { Agent, Page } from '@ptbk/engine-api';
 import { EmptyState, Skeleton } from '@ptbk/ui';
 import type { UseQueryResult } from '@tanstack/react-query';
-import { Bot, Plus } from 'lucide-react';
+import { Bot, MessageSquare, Plus } from 'lucide-react';
 
 import { ButtonLink, Link } from '../../app/link';
-import { useVisibleFeatures } from '../../app/registry/use-visible-features';
+import { useAllows, useVisibleFeatures } from '../../app/registry/use-visible-features';
 import { m } from '../../paraglide/messages';
 import { AgentAvatar } from '../agents/agent-avatar';
 import { AgentStatusBadge } from '../agents/agent-badges';
@@ -15,12 +15,15 @@ export interface AgentListWidgetProps {
     readonly title: string;
     readonly query: UseQueryResult<Page<Agent>>;
     readonly skeletonRows: number;
+    /** Offer "Chat" on each row, for members whose next step with an agent is talking to it. */
+    readonly chatAction?: boolean;
 }
 
 /** Agents with their picture, and their live state where a feature derives it (runs); empty, an invitation to create. */
-export function AgentListWidget({ title, query, skeletonRows }: AgentListWidgetProps) {
+export function AgentListWidget({ title, query, skeletonRows, chatAction = false }: AgentListWidgetProps) {
     const { can } = usePermissions();
     const liveState = useVisibleFeatures().some((feature) => feature.agentStatusProvider !== undefined);
+    const canChat = useAllows({ permission: 'chats.write' }) && chatAction;
     return (
         <HomeWidget
             title={title}
@@ -78,7 +81,22 @@ export function AgentListWidget({ title, query, skeletonRows }: AgentListWidgetP
                                         </span>
                                     )}
                                 </div>
-                                {liveState ? <AgentStatusBadge agentId={agent.id} /> : null}
+                                {liveState ? (
+                                    <span className={canChat ? 'hidden sm:contents' : 'contents'}>
+                                        <AgentStatusBadge agentId={agent.id} />
+                                    </span>
+                                ) : null}
+                                {canChat ? (
+                                    <ButtonLink
+                                        to="/agents/$agentId/chat"
+                                        params={{ agentId: agent.id }}
+                                        size="sm"
+                                        aria-label={m.home_chat_with({ name: agent.name })}
+                                    >
+                                        <MessageSquare aria-hidden className="size-4" />
+                                        {m.agent_action_chat()}
+                                    </ButtonLink>
+                                ) : null}
                             </li>
                         ))}
                     </ul>

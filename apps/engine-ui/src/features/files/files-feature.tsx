@@ -26,7 +26,7 @@ function KnowledgeOverviewCard({ agentId }: { readonly agentId: AgentId }) {
 function useScanProblemsAttention(): Attention {
     const stats = useFileStats({});
     const count = stats.data === undefined ? 0 : stats.data.byScan.infected + stats.data.byScan.failed;
-    return { count, to: '/files', search: { scan: SCAN_PROBLEMS } };
+    return { count, to: '/files', search: { scan: SCAN_PROBLEMS }, pending: stats.data === undefined };
 }
 
 /**
@@ -40,7 +40,11 @@ export const filesFeature = defineFeature({
     agentTabs: [{ ...AGENT_TABS.files, label: m.agent_tab_files, to: '/agents/$agentId/files' }],
     agentOverviewCards: [{ id: 'files.knowledge', order: 20, component: KnowledgeOverviewCard }],
     activityRenderers: [{ kind: 'file.*', versions: [1], component: FileActivityItem, summary: fileActivitySummary }],
-    attention: { id: 'files.scan-problems', useAttention: useScanProblemsAttention },
+    attention: {
+        id: 'files.scan-problems',
+        useAttention: useScanProblemsAttention,
+        label: (count) => m.files_attention_scan({ count }),
+    },
     eventSync: { useEventSync: useFileEventSync },
     commands: [
         { id: 'files.open', label: m.command_go_to_files, keywords: () => [m.nav_files()], to: '/files' },

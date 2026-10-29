@@ -185,9 +185,9 @@ describe('run activity renderers', { timeout: TIMEOUT_MS }, () => {
         expect(within(list).getByText('A run from an email failed')).toBeDefined();
         expect(within(list).getByText('Too many requests')).toBeDefined();
         expect(within(list).getByText('A run from an email was stopped')).toBeDefined();
-        for (const link of within(list).getAllByRole('link', { name: 'Open run' })) {
-            expect(link.getAttribute('href')).toBe(`/runs/${RUN_IDS.completed}`);
-        }
+        const links = within(list).getAllByRole('link', { name: /^A run from an email/ });
+        expect(links).toHaveLength(5);
+        for (const link of links) expect(link.getAttribute('href')).toBe(`/runs/${RUN_IDS.completed}`);
         expect(ACTIVITIES.map((activity) => renderer.summary(activity))).toEqual([
             'A run from an email was queued',
             'A run from an email started',
