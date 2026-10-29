@@ -1,4 +1,4 @@
-import { KNOWN_CAPABILITIES, PERMISSIONS } from '@ptbk/engine-api';
+import { KNOWN_CAPABILITIES, PERMISSIONS, RunId } from '@ptbk/engine-api';
 import type { Permission } from '@ptbk/engine-api';
 import { screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
@@ -155,7 +155,7 @@ describe('runs timeline', { timeout: TIMEOUT_MS }, () => {
         await within(table()).findByText('Write the weekly report');
         expect(within(table()).queryByRole('columnheader', { name: 'Cost' })).toBeNull();
         expect(within(table()).queryByText('Retry of a failed run')).toBeNull();
-        await engine.client.runs.retry(RUN_IDS.failed, AbortSignal.timeout(1000));
+        await engine.client.runs.retry(RunId.parse(RUN_IDS.failed), AbortSignal.timeout(1000));
         expect(await within(table()).findByText('Retry of a failed run')).toBeDefined();
     });
 
