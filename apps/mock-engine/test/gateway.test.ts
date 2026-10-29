@@ -310,6 +310,10 @@ describe('dev login', () => {
         for (const unsafe of ['//evil.example', 'https://evil.example/', '/auth/sign-in', '/setup']) {
             expect((await signIn({ next: unsafe })).headers.get('location'), unsafe).toBe('/');
         }
+        for (const unencoded of ['/Ā', '/　/evil.example']) {
+            const response = await signIn({ next: unencoded });
+            expect([response.status, response.headers.get('location')], unencoded).toEqual([303, '/']);
+        }
     });
 
     it('refuses an unknown member', async () => {
