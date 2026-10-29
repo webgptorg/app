@@ -33,12 +33,16 @@ function engine(view: EngineView) {
     return (api: ReturnType<typeof createScriptedApi>) => api.on(apiRoutes.getEngine, ok({ engine: view }));
 }
 
-/** Every attribute that names the engine domain, except the `href` of a link: what a page could load from it. */
+/**
+ * Every attribute that names the engine domain, except the `href` of a link and a `title` (a tooltip, plain text): what
+ * a page could load from it.
+ */
 function engineDomainReferences(root: Element): string[] {
     return [root, ...root.querySelectorAll('*')].flatMap((element) =>
         [...element.attributes]
             .filter((attribute) => attribute.value.includes(ENGINE_DOMAIN))
             .filter((attribute) => !(element.tagName === 'A' && attribute.name === 'href'))
+            .filter((attribute) => attribute.name !== 'title')
             .map((attribute) => `${element.tagName.toLowerCase()}[${attribute.name}]`),
     );
 }
@@ -86,7 +90,7 @@ describe('engine list', () => {
         expect(app.history.location.pathname).toBe('/engines/new');
     });
 
-    it('shows each engine’s status, fingerprint, address and heartbeat numbers', async () => {
+    it('shows each engine on one line: fingerprint, status with last seen, address and version', async () => {
         const app = renderApp({
             path: '/engines',
             session: OWNER,
@@ -109,17 +113,24 @@ describe('engine list', () => {
         expect(row.getByRole('link', { name: `${ENGINE_ID.slice(0, 8)}…` }).getAttribute('href')).toBe(
             `/engines/${ENGINE_ID}`,
         );
-        expect(row.getByRole('button', { name: `Copy engine ID ${ENGINE_ID.slice(0, 8)}` })).toBeTruthy();
-        expect(row.getByText(`${ENGINE_ID}.${ENGINE_DOMAIN}`)).toBeTruthy();
+        const address = row.getByText(`${ENGINE_ID}.${ENGINE_DOMAIN}`);
+        // One line, cut off with an ellipsis when narrow, the full address in the tooltip and the copy button.
+        expect(address.className).toContain('truncate');
+        expect(address.getAttribute('title')).toBe(`${ENGINE_ID}.${ENGINE_DOMAIN}`);
+        expect(row.getByRole('button', { name: 'Copy address' })).toBeTruthy();
         expect(row.getByText('30 seconds ago').getAttribute('datetime')).toBe(new Date(NOW - 30_000).toISOString());
         expect(row.getByText('1.4.2')).toBeTruthy();
         expect(row.getByText('Update available')).toBeTruthy();
-        expect(row.getByText('40%')).toBeTruthy();
-        expect(row.getByText('70%')).toBeTruthy();
-        expect(row.getByText('Medium')).toBeTruthy();
+        // The heartbeat's numbers are on the engine's page, not in the list.
+        for (const text of ['40%', '70%', 'Medium']) expect(row.queryByText(text)).toBeNull();
+        expect(
+            within(table)
+                .getAllByRole('columnheader')
+                .map((header) => header.textContent),
+        ).toEqual(['Engine', 'Status', 'Address', 'Version']);
         expect(within(second).getByText('Waiting for first heartbeat')).toBeTruthy();
         expect(within(second).getByText('Never')).toBeTruthy();
-        expect(within(second).getAllByText('Not reported').length).toBeGreaterThan(0);
+        expect(within(second).queryByText('Update available')).toBeNull();
         await expectNoAxeViolations(app.container);
     });
 
@@ -390,7 +401,7 @@ describe('reachability', () => {
 describe('fingerprint', () => {
     const engineIds = vectors.vectors.map((vector) => vector.engineId);
 
-    it('renders every shared vector’s code in the list, in the mark’s accessible name and as text', async () => {
+    it('renders every shared vector’s pattern in the list, with its code in the mark’s accessible name', async () => {
         renderApp({
             path: '/engines',
             session: OWNER,
@@ -401,7 +412,6 @@ describe('fingerprint', () => {
         await screen.findAllByText('Online');
         for (const vector of vectors.vectors) {
             const mark = screen.getByRole('img', { name: new RegExp(`fingerprint ${vector.formatted}$`) });
-            expect(mark.textContent).toBe(vector.formatted);
             expect(mark.querySelector('[data-fingerprint]')?.getAttribute('data-fingerprint')).toBe(vector.patternBits);
         }
     });

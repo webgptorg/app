@@ -29,7 +29,7 @@ describe('engines in Czech', () => {
         expect(await screen.findByRole('heading', { name: 'Vaše enginy' })).toBeTruthy();
         expect(await screen.findByText('Online')).toBeTruthy();
         const table = screen.getByRole('table', { name: 'Enginy této organizace' });
-        for (const header of ['Stav', 'Otisk', 'Adresa', 'Naposledy viděn', 'Aktualizace', 'Členové']) {
+        for (const header of ['Engine', 'Stav', 'Adresa', 'Verze']) {
             expect(within(table).getByRole('columnheader', { name: header })).toBeTruthy();
         }
         expect(within(table).getByText('Je k dispozici aktualizace')).toBeTruthy();

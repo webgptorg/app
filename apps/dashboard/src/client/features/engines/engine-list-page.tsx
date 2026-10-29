@@ -1,16 +1,6 @@
-import {
-    Banner,
-    Card,
-    CodeText,
-    CopyButton,
-    createDataTableColumnHelper,
-    DataTable,
-    EmptyState,
-    TrustMark,
-    useLocale,
-} from '@ptbk/ui';
+import { Banner, Card, CopyButton, createDataTableColumnHelper, DataTable, EmptyState, TrustMark } from '@ptbk/ui';
 import { deriveEngineFingerprint } from '@ptbk/protocol';
-import type { DataTableColumnDef, Formatters } from '@ptbk/ui';
+import type { DataTableColumnDef } from '@ptbk/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Plus, Server } from 'lucide-react';
 import { useMemo } from 'react';
@@ -24,8 +14,8 @@ import { useSession } from '../session/use-session';
 import { EngineOpenLink } from './engine-open-link';
 import { EngineReachability } from './engine-reachability';
 import { EngineStatusBadge } from './engine-status-badge';
-import { cpuLoadLabel, shortEngineId, updateStateLabel } from './engine-labels';
-import { LastSeen, NotReported, useNowFor } from './engine-values';
+import { shortEngineId, updateStateLabel } from './engine-labels';
+import { LastSeen, useNowFor } from './engine-values';
 
 const READ_PERMISSION = 'engine.read';
 const LINK_PERMISSION = 'engine.link';
@@ -35,27 +25,52 @@ const NO_ENGINES: readonly EngineView[] = [];
 
 const columns = createDataTableColumnHelper<EngineView>();
 
-function percent(formatters: Formatters, value: number | undefined) {
-    return value === undefined ? <NotReported /> : formatters.formatNumber(value / 100, { style: 'percent' });
+/** One line, never broken mid-label: a cut-off address keeps its full value in the tooltip and the copy button. */
+function Address(props: { readonly engine: EngineView }) {
+    const { engine } = props;
+    return (
+        <span className="flex flex-col gap-1">
+            <span className="flex items-center gap-1 whitespace-nowrap">
+                <code
+                    title={engine.hostname}
+                    className="min-w-0 truncate rounded-small bg-(--code-text-bg) px-1.5 py-0.5 font-mono text-sm text-(--code-text-text)"
+                >
+                    {engine.hostname}
+                </code>
+                <CopyButton value={engine.hostname} label={m.engines_copy_hostname()} />
+                {engine.status === 'suspended' ? null : (
+                    <EngineOpenLink engineId={engine.engineId} hostname={engine.hostname} />
+                )}
+            </span>
+            {engine.customHostnames.map((hostname) => (
+                <span key={hostname} title={hostname} className="truncate font-mono text-xs text-text-muted">
+                    {hostname}
+                </span>
+            ))}
+        </span>
+    );
 }
 
-function count(formatters: Formatters, value: number | undefined) {
-    return value === undefined ? <NotReported /> : formatters.formatNumber(value);
-}
-
-function engineColumns(formatters: Formatters, now: Date): DataTableColumnDef<EngineView>[] {
+/**
+ * What an owner scans for: which engine, whether it is up and when it last reported, where it is, and whether it needs
+ * an update. The heartbeat's numbers (agents, members, disk, memory, CPU) are on each engine's page.
+ */
+function engineColumns(now: Date): DataTableColumnDef<EngineView>[] {
     return [
         columns.accessor('engineId', {
             header: m.engines_column_engine(),
             cell: ({ row }) => (
-                <span className="inline-flex items-center gap-1">
+                <span className="inline-flex items-center gap-2 whitespace-nowrap">
+                    <TrustMark
+                        fingerprint={deriveEngineFingerprint(row.original.engineId)}
+                        state="verified"
+                        size="sm"
+                        showCode={false}
+                        label={m.engines_fingerprint_label({ shortId: shortEngineId(row.original.engineId) })}
+                    />
                     <Link to="/engines/$engineId" params={{ engineId: row.original.engineId }} className="font-mono">
                         {`${shortEngineId(row.original.engineId)}…`}
                     </Link>
-                    <CopyButton
-                        value={row.original.engineId}
-                        label={m.engines_copy_id({ engineId: shortEngineId(row.original.engineId) })}
-                    />
                 </span>
             ),
             meta: { priority: 0 },
@@ -63,107 +78,44 @@ function engineColumns(formatters: Formatters, now: Date): DataTableColumnDef<En
         columns.accessor('status', {
             header: m.engines_column_status(),
             cell: ({ row }) => (
-                <span className="flex flex-col items-start gap-1">
+                <span className="flex flex-col items-start gap-1 whitespace-nowrap">
                     <EngineStatusBadge engine={row.original} />
+                    <span className="text-xs text-text-muted">
+                        <LastSeen engine={row.original} now={now} />
+                    </span>
                     <EngineReachability engine={row.original} />
                 </span>
             ),
             meta: { priority: 1 },
         }),
-        columns.display({
-            id: 'fingerprint',
-            header: m.engines_column_fingerprint(),
-            cell: ({ row }) => (
-                <TrustMark
-                    fingerprint={deriveEngineFingerprint(row.original.engineId)}
-                    state="verified"
-                    size="sm"
-                    label={m.engines_fingerprint_label({ shortId: shortEngineId(row.original.engineId) })}
-                />
-            ),
-            meta: { label: m.engines_column_fingerprint(), priority: 2 },
-        }),
         columns.accessor('hostname', {
             header: m.engines_column_hostname(),
-            cell: ({ row }) => (
-                <span className="flex flex-col items-start gap-1">
-                    <span className="flex flex-wrap items-center gap-2">
-                        <CodeText value={row.original.hostname} copyable copyLabel={m.engines_copy_hostname()} />
-                        {row.original.status === 'suspended' ? null : (
-                            <EngineOpenLink engineId={row.original.engineId} hostname={row.original.hostname} />
-                        )}
-                    </span>
-                    {row.original.customHostnames.map((hostname) => (
-                        <span key={hostname} className="font-mono text-xs text-text-muted">
-                            {hostname}
-                        </span>
-                    ))}
-                </span>
-            ),
-            meta: { priority: 3 },
-        }),
-        columns.accessor('lastSeenAt', {
-            header: m.engines_column_last_seen(),
-            cell: ({ row }) => <LastSeen engine={row.original} now={now} />,
-            meta: { priority: 4 },
+            cell: ({ row }) => <Address engine={row.original} />,
+            meta: { priority: 2 },
         }),
         columns.display({
             id: 'version',
             header: m.engines_column_version(),
-            cell: ({ row }) => (
-                <span className="font-mono text-sm">
-                    {row.original.heartbeat?.version ?? row.original.registeredVersion}
-                </span>
-            ),
-            meta: { label: m.engines_column_version(), priority: 5 },
-        }),
-        columns.display({
-            id: 'update',
-            header: m.engines_column_update(),
             cell: ({ row }) => {
                 const update = row.original.heartbeat?.update;
-                return update === undefined ? <NotReported /> : updateStateLabel(update);
+                return (
+                    <span className="flex flex-col gap-1 whitespace-nowrap">
+                        <span className="font-mono text-sm">
+                            {row.original.heartbeat?.version ?? row.original.registeredVersion}
+                        </span>
+                        {update === undefined || update === 'none' ? null : (
+                            <span className="text-xs text-text-muted">{updateStateLabel(update)}</span>
+                        )}
+                    </span>
+                );
             },
-            meta: { label: m.engines_column_update(), priority: 6 },
-        }),
-        columns.display({
-            id: 'agents',
-            header: m.engines_column_agents(),
-            cell: ({ row }) => count(formatters, row.original.heartbeat?.agents),
-            meta: { label: m.engines_column_agents(), priority: 7 },
-        }),
-        columns.display({
-            id: 'members',
-            header: m.engines_column_members(),
-            cell: ({ row }) => count(formatters, row.original.heartbeat?.members),
-            meta: { label: m.engines_column_members(), priority: 8 },
-        }),
-        columns.display({
-            id: 'disk',
-            header: m.engines_column_disk(),
-            cell: ({ row }) => percent(formatters, row.original.heartbeat?.diskPct),
-            meta: { label: m.engines_column_disk(), priority: 9 },
-        }),
-        columns.display({
-            id: 'ram',
-            header: m.engines_column_ram(),
-            cell: ({ row }) => percent(formatters, row.original.heartbeat?.ramPct),
-            meta: { label: m.engines_column_ram(), priority: 10 },
-        }),
-        columns.display({
-            id: 'cpu',
-            header: m.engines_column_cpu(),
-            cell: ({ row }) => {
-                const load = row.original.heartbeat?.cpuLoad;
-                return load === undefined ? <NotReported /> : cpuLoadLabel(load);
-            },
-            meta: { label: m.engines_column_cpu(), priority: 11 },
+            meta: { label: m.engines_column_version(), priority: 3 },
         }),
     ];
 }
 
 /**
- * Without engines there is nothing to compare across twelve columns, so the page leads with the one next step instead
+ * Without engines there is nothing to compare across columns, so the page leads with the one next step instead
  * of an empty table.
  */
 function NoEngines(props: { readonly canLink: boolean }) {
@@ -192,13 +144,12 @@ function NoEngines(props: { readonly canLink: boolean }) {
 /** `/engines`, the signed-in landing page: registry data and heartbeat numbers, never anything from the engines. */
 export function EngineListPage() {
     const api = useApiClient();
-    const formatters = useLocale();
     const session = useSession();
     const canRead = session.activeOrg.permissions.includes(READ_PERMISSION);
     const canLink = session.activeOrg.permissions.includes(LINK_PERMISSION);
     const engines = useQuery({ ...enginesQuery(api), enabled: canRead });
     const now = useNowFor(engines.dataUpdatedAt);
-    const tableColumns = useMemo(() => engineColumns(formatters, now), [formatters, now]);
+    const tableColumns = useMemo(() => engineColumns(now), [now]);
     const hasEngines = (engines.data?.length ?? 0) > 0;
 
     function content() {
