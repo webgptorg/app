@@ -117,6 +117,37 @@ test.describe('foundations in a real browser', () => {
         else expect(transitions).toBeGreaterThan(0);
     });
 
+    test('a toast fired inside a modal dialog sits above it, takes focus and clicks, and wraps', async ({
+        page,
+        visit,
+    }) => {
+        expectCleanPage(await visit('/__gallery'));
+        const demo = page.locator('section[aria-labelledby="gallery-toaster"]');
+        await demo.getByRole('button', { name: 'Open a dialog' }).click();
+        const dialog = page.getByRole('dialog', { name: 'Revoke this passkey?' });
+        await dialog.getByRole('button', { name: 'Fail inside the dialog' }).click();
+
+        const toast = page.getByRole('region', { name: 'Notifications' }).getByRole('listitem');
+        await expect(toast).toContainText('This device is the last passkey');
+        const reachable = await toast.evaluate((item) => {
+            const box = item.getBoundingClientRect();
+            const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+            const dismiss = item.querySelector('button');
+            dismiss?.focus();
+            return {
+                onTop: hit !== null && item.contains(hit),
+                focusable: dismiss !== null && document.activeElement === dismiss,
+                inert: item.closest('[inert]') !== null || !item.closest('dialog')?.open,
+                fits: item.scrollWidth <= item.clientWidth,
+            };
+        });
+        expect(reachable).toEqual({ onTop: true, focusable: true, inert: false, fits: true });
+
+        await toast.getByRole('button', { name: 'Dismiss' }).click();
+        await expect(toast).toHaveCount(0);
+        await expect(dialog).toBeVisible();
+    });
+
     test('a different primitives palette changes the rendered gallery colours', async ({ page, visit }) => {
         const sample = () =>
             page.evaluate(() => {
