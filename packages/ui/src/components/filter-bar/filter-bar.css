@@ -1,0 +1,11 @@
+:root {
+    --filter-bar-icon: var(--color-text-muted);
+    --filter-bar-label: var(--color-text-muted);
+    --filter-bar-active-border: var(--color-accent);
+    --filter-bar-count-bg: var(--color-accent-soft);
+    --filter-bar-count-text: var(--color-accent-text);
+    --filter-bar-chip-bg: var(--color-raised);
+    --filter-bar-chip-hover: var(--color-hover);
+    --filter-bar-chip-border: var(--color-divider);
+    --filter-bar-chip-text: var(--color-text);
+}

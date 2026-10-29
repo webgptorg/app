@@ -222,6 +222,7 @@ describe('agents list states', { timeout: TIMEOUT_MS }, () => {
         expect(await screen.findByText('No agents yet')).toBeDefined();
         const cta = within(table()).getByRole('link', { name: 'New agent' });
         expect(cta.getAttribute('href')).toBe('/agents/new');
+        expect(screen.queryByRole('search', { name: 'Filters' })).toBeNull();
     });
 
     it('says when a search finds nothing, with a way back', async () => {
@@ -230,6 +231,7 @@ describe('agents list states', { timeout: TIMEOUT_MS }, () => {
             engineApi: createAgentsEngine().client,
         });
         expect(await screen.findByText('No agents match')).toBeDefined();
+        expect(screen.getByRole('search', { name: 'Filters' })).toBeDefined();
         await user.click(screen.getByRole('button', { name: 'Clear search and filters' }));
         await waitFor(() => {
             expect(router.state.location.search).toEqual({});

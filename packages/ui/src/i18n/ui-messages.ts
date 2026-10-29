@@ -45,6 +45,13 @@ export interface UiMessages {
 
     readonly formInvalid: () => string;
 
+    readonly filters: () => string;
+    readonly filtersActive: (params: { readonly count: number }) => string;
+    readonly filterSelected: (params: { readonly label: string; readonly count: number }) => string;
+    readonly clearFilters: () => string;
+    readonly removeFilter: (params: { readonly label: string }) => string;
+    readonly showResults: () => string;
+
     readonly trustMarkVerifying: () => string;
     readonly trustMarkVerified: () => string;
     readonly trustMarkFingerprint: (params: { readonly code: string }) => string;

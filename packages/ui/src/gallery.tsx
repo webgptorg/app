@@ -1,4 +1,5 @@
 import { actionMenuGallery } from './components/action-menu/action-menu.gallery';
+import { filterBarGallery } from './components/filter-bar/filter-bar.gallery';
 import { iconButtonGallery } from './components/icon-button/icon-button.gallery';
 import { fieldGallery } from './components/field/field.gallery';
 import { inputGallery } from './components/input/input.gallery';
@@ -58,6 +59,7 @@ export const GALLERY_ENTRIES: readonly GalleryEntry[] = [
     errorStateGallery,
     externalLinkGallery,
     fieldGallery,
+    filterBarGallery,
     formsGallery,
     iconButtonGallery,
     inputGallery,

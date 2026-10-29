@@ -22,7 +22,7 @@ const SURFACES = ['--color-surface', '--color-raised'];
 export const SEMANTIC_PAIRS: readonly TokenPair[] = [
     ...text('--color-text', ...SURFACES, '--color-sunken', '--color-hover', '--color-selected', '--color-accent-soft'),
     ...text('--color-text-muted', ...SURFACES, '--color-sunken'),
-    ...text('--color-accent-text', ...SURFACES, '--color-selected'),
+    ...text('--color-accent-text', ...SURFACES, '--color-selected', '--color-accent-soft'),
     ...text('--color-on-accent', '--color-accent', '--color-accent-hover'),
     ...text('--color-on-danger', '--color-danger', '--color-danger-hover'),
     ...text('--color-success', '--color-success-soft', ...SURFACES),
