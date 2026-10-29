@@ -29,7 +29,9 @@ describe('fresh conversation', { timeout: TIMEOUT_MS }, () => {
     it('opens the Chat tab on an empty conversation with the agent and the message box, without the table', async () => {
         await renderFresh();
         expect(screen.getByRole('tab', { name: 'Chat' }).getAttribute('aria-selected')).toBe('true');
-        expect(screen.getByRole('heading', { level: 2, name: 'Ada' })).toBeDefined();
+        // The agent header already names the agent; the outline still gets a heading for this view.
+        expect(screen.queryByRole('heading', { level: 2, name: 'Ada' })).toBeNull();
+        expect(screen.getByRole('heading', { level: 2, name: 'New chat' }).className).toContain('sr-only');
         expect(screen.getByText('What can Ada help you with?')).toBeDefined();
         expect(starter().getAttribute('placeholder')).toBe('Message Ada…');
         expect(screen.queryByRole('table')).toBeNull();

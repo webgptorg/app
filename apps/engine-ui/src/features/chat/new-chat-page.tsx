@@ -23,26 +23,25 @@ export function NewChatPage() {
 
     return (
         <WithRecentChats agentId={agentId}>
-            <div className="flex min-h-0 flex-1 flex-col">
+            {/* On a phone the box sits at the bottom like a messenger's; with room to spare it joins the greeting. */}
+            <div className="flex min-h-0 flex-1 flex-col gap-4 @2xl:justify-center @2xl:gap-6">
+                <h2 className="sr-only">{m.chat_new_label()}</h2>
                 <RecentChatsButton agentId={agentId} className="self-start @2xl:hidden" />
                 {/* `m-auto` rather than `justify-center`: a long greeting scrolls from its top instead of being cut off. */}
-                <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-                    <div className="m-auto flex w-full flex-col items-center gap-6 px-1 py-6">
-                        <div className="flex max-w-prose flex-col items-center gap-3 text-center">
-                            <AgentAvatar name={agent.name} profile={agent.profile} size="lg" />
-                            <h2 className="font-display text-xl font-semibold break-words">{agent.name}</h2>
-                            <p className="break-words whitespace-pre-line text-text-muted">{greeting}</p>
-                        </div>
-                        <Composer
-                            label={m.chat_new_label()}
-                            labelHidden
-                            placeholder={m.chat_composer_placeholder({ name: agent.name })}
-                            busy={false}
-                            onSend={startChat}
-                            className="w-full max-w-2xl"
-                        />
+                <div className="flex min-h-0 flex-1 flex-col overflow-y-auto @2xl:flex-initial">
+                    <div className="m-auto flex max-w-prose flex-col items-center gap-3 py-6 text-center">
+                        <AgentAvatar name={agent.name} profile={agent.profile} size="lg" />
+                        <p className="text-lg break-words whitespace-pre-line">{greeting}</p>
                     </div>
                 </div>
+                <Composer
+                    label={m.chat_new_label()}
+                    labelHidden
+                    placeholder={m.chat_composer_placeholder({ name: agent.name })}
+                    busy={false}
+                    onSend={startChat}
+                    className="mx-auto w-full max-w-2xl shrink-0"
+                />
             </div>
         </WithRecentChats>
     );

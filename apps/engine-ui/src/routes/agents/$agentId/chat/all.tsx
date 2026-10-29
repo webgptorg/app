@@ -5,7 +5,7 @@ import { chatListParams, ChatListSearch } from '../../../../features/chat/chat-l
 import { chatListQueryOptions } from '../../../../features/chat/chat-queries';
 import { ChatTablePage } from '../../../../features/chat/chat-table-page';
 
-// The static segment outranks `$chatId`: a chat whose opaque ID were literally "all" would not open here.
+// The static segment outranks `$chatId`; a chat with the ID "all" would be shadowed (engine IDs are random).
 export const Route = createFileRoute('/agents/$agentId/chat/all')({
     validateSearch: ChatListSearch,
     loaderDeps: ({ search }) => chatListParams(search),
