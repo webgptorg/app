@@ -1,8 +1,8 @@
 import type { MemberId, PasskeyId, ReadPasskey } from '@ptbk/engine-api';
-import { Badge, Button, CodeText, ConfirmDialog, EmptyState, RelativeTime } from '@ptbk/ui';
+import { Badge, CodeText, ConfirmDialog, IconButton, Menu, RelativeTime } from '@ptbk/ui';
 import { useQuery } from '@tanstack/react-query';
 import type { UseQueryResult } from '@tanstack/react-query';
-import { ArrowLeft, KeyRound } from 'lucide-react';
+import { ArrowLeft, Ellipsis } from 'lucide-react';
 import { useState } from 'react';
 
 import { unwrap } from '../../app/api-errors';
@@ -41,6 +41,18 @@ interface RevokeTarget {
     readonly current: boolean;
 }
 
+function displayName(passkey: ReadPasskey): string {
+    return passkey.name === '' ? m.passkeys_unnamed() : passkey.name;
+}
+
+/** Members whose only listed passkey is this one: the engine refuses to revoke it, so the UI never offers it. */
+function lastPasskeyIds(items: readonly ReadPasskey[], complete: boolean): ReadonlySet<PasskeyId> {
+    if (!complete) return new Set();
+    const counts = new Map<MemberId, number>();
+    for (const { memberId } of items) counts.set(memberId, (counts.get(memberId) ?? 0) + 1);
+    return new Set(items.filter(({ memberId }) => counts.get(memberId) === 1).map(({ id }) => id));
+}
+
 function authenticatorLabel(passkey: ReadPasskey): string {
     const authenticator = passkey.authenticator;
     if (authenticator === null) return m.passkeys_kind_unknown();
@@ -66,20 +78,35 @@ interface PasskeyListProps {
     readonly showOwner: boolean;
     readonly ownerOf: (passkey: ReadPasskey) => boolean;
     readonly onRevoke: (target: RevokeTarget) => void;
+    /** Passkeys listed elsewhere on the page, e.g. the viewer's own in the everyone list. */
+    readonly hide?: (passkey: ReadPasskey) => boolean;
+    readonly emptyText: string;
 }
 
-function PasskeyList({ query, title, currentPasskeyId, showOwner, ownerOf, onRevoke }: PasskeyListProps) {
+function PasskeyList({
+    query,
+    title,
+    currentPasskeyId,
+    showOwner,
+    ownerOf,
+    onRevoke,
+    hide,
+    emptyText,
+}: PasskeyListProps) {
     return (
         <SectionCard title={title} query={query} skeleton={<FactsSkeleton rows={3} />}>
-            {({ items, nextCursor }) =>
-                items.length === 0 ? (
-                    <EmptyState headingLevel={3} icon={<KeyRound />} title={m.passkeys_empty()} />
+            {({ items: listed, nextCursor }) => {
+                const lastOnes = lastPasskeyIds(listed, nextCursor === null);
+                const items = hide === undefined ? listed : listed.filter((passkey) => !hide(passkey));
+                return items.length === 0 ? (
+                    <p className="text-sm text-text-muted">{emptyText}</p>
                 ) : (
                     <div className="flex flex-col gap-3">
                         <ul className="flex flex-col divide-y divide-divider">
                             {items.map((passkey) => {
                                 const current = passkey.id === currentPasskeyId;
-                                const name = passkey.name === '' ? m.passkeys_unnamed() : passkey.name;
+                                const name = displayName(passkey);
+                                const last = lastOnes.has(passkey.id);
                                 return (
                                     <li
                                         key={passkey.id}
@@ -112,17 +139,32 @@ function PasskeyList({ query, title, currentPasskeyId, showOwner, ownerOf, onRev
                                                 )}
                                             </span>
                                         </div>
-                                        <Button
-                                            size="sm"
-                                            variant="danger"
-                                            className="self-start sm:self-center"
-                                            aria-label={m.passkeys_revoke_named({ name })}
-                                            onClick={() => {
-                                                onRevoke({ passkey, own: ownerOf(passkey), current });
-                                            }}
-                                        >
-                                            {m.passkeys_revoke()}
-                                        </Button>
+                                        <Menu
+                                            label={m.passkeys_actions({ name })}
+                                            align="end"
+                                            items={[
+                                                {
+                                                    kind: 'item',
+                                                    id: 'revoke',
+                                                    label: m.passkeys_revoke(),
+                                                    tone: 'danger',
+                                                    disabled: last,
+                                                    ...(last ? { description: m.passkeys_last_one_hint() } : {}),
+                                                    onSelect: () => {
+                                                        onRevoke({ passkey, own: ownerOf(passkey), current });
+                                                    },
+                                                },
+                                            ]}
+                                            trigger={(triggerProps) => (
+                                                <IconButton
+                                                    {...triggerProps}
+                                                    size="sm"
+                                                    label={m.passkeys_actions({ name })}
+                                                    icon={<Ellipsis aria-hidden className="size-4" />}
+                                                    className="self-end sm:self-center"
+                                                />
+                                            )}
+                                        />
                                     </li>
                                 );
                             })}
@@ -133,8 +175,8 @@ function PasskeyList({ query, title, currentPasskeyId, showOwner, ownerOf, onRev
                             </p>
                         )}
                     </div>
-                )
-            }
+                );
+            }}
         </SectionCard>
     );
 }
@@ -164,11 +206,11 @@ export function PasskeysPage() {
             );
         },
         invalidates: [securityKeys.passkeys(), securityKeys.mySessions(), memberKeys.all],
-        successMessage: (_, { passkey }) => m.passkeys_revoked({ name: passkey.name }),
+        successMessage: (_, { passkey }) => m.passkeys_revoked({ name: displayName(passkey) }),
         errorMessage: (failure, { passkey }) =>
             failure.kind === 'problem' && failure.problem.code === 'last-passkey'
-                ? m.passkeys_last_one({ name: passkey.name })
-                : m.passkeys_revoke_failed({ name: passkey.name }),
+                ? m.passkeys_last_one({ name: displayName(passkey) })
+                : m.passkeys_revoke_failed({ name: displayName(passkey) }),
     });
     const close = () => {
         setTarget(null);
@@ -191,6 +233,7 @@ export function PasskeysPage() {
                 currentPasskeyId={currentPasskeyId}
                 showOwner={false}
                 ownerOf={() => true}
+                emptyText={m.passkeys_empty()}
                 onRevoke={setTarget}
             />
             {canManageAll ? (
@@ -200,6 +243,8 @@ export function PasskeysPage() {
                     currentPasskeyId={currentPasskeyId}
                     showOwner
                     ownerOf={(passkey) => passkey.memberId === me.memberId}
+                    hide={(passkey) => passkey.memberId === me.memberId}
+                    emptyText={m.passkeys_others_empty()}
                     onRevoke={setTarget}
                 />
             ) : null}
@@ -208,7 +253,7 @@ export function PasskeysPage() {
                     open
                     onClose={close}
                     tone="danger"
-                    title={m.passkeys_revoke_title({ name: target.passkey.name })}
+                    title={m.passkeys_revoke_title({ name: displayName(target.passkey) })}
                     description={target.current ? m.passkeys_revoke_current_body() : m.passkeys_revoke_body()}
                     confirmLabel={target.current ? m.passkeys_revoke_and_sign_out() : m.passkeys_revoke()}
                     loading={revoke.isPending}
