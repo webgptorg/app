@@ -131,13 +131,13 @@ describe('signed-in shell', () => {
 
     it('switches language and theme while signed out', async () => {
         const app = renderApp({ path: '/signin' });
-        await app.user.click(await screen.findByRole('button', { name: 'Language and theme' }));
+        await app.user.click(await screen.findByRole('button', { name: 'English, language and theme' }));
         await app.user.click(screen.getByRole('menuitemradio', { name: 'Light' }));
         expect(app.storage.getItem(THEME_STORAGE_KEY)).toBe('light');
-        await app.user.click(screen.getByRole('button', { name: 'Language and theme' }));
+        await app.user.click(screen.getByRole('button', { name: 'English, language and theme' }));
         await app.user.click(screen.getByRole('menuitemradio', { name: 'Čeština' }));
         expect(await screen.findByRole('heading', { name: 'Přihlášení' })).toBeTruthy();
-        await app.user.click(screen.getByRole('button', { name: 'Jazyk a vzhled' }));
+        await app.user.click(screen.getByRole('button', { name: 'Čeština, jazyk a vzhled' }));
         await app.user.click(screen.getByRole('menuitemradio', { name: 'English' }));
         expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeTruthy();
     });
