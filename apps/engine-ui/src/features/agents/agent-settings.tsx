@@ -5,10 +5,14 @@ import { useNavigate } from '@tanstack/react-router';
 import { Trash2 } from 'lucide-react';
 
 import { useEngineApi } from '../../app/engine-api-context';
+import { Link } from '../../app/link';
+import { AGENT_TABS } from '../../app/registry/feature';
 import { m } from '../../paraglide/messages';
+import { usePermissions } from '../session/use-permissions';
 import { useAgentActions } from './agent-actions';
 import { visibilityLabel } from './agent-badges';
 import { useAgentIdParam } from './agent-detail-route';
+import { useAgentTabs } from './agent-tabs';
 import { agentDetailQueryOptions } from './agents-queries';
 
 function visibilityHint(visibility: AgentVisibility): string {
@@ -22,11 +26,16 @@ function visibilityHint(visibility: AgentVisibility): string {
     }
 }
 
-/** Visibility (`agents.write`) and delete (`agents.delete`); each section only for a member who may use it. */
+/**
+ * Visibility (`agents.write`) and delete (`agents.delete`); each section only for a member who may use it. The name
+ * and description are not editable here: they are lines of the book, so this page points there.
+ */
 export function AgentSettings() {
     const agentId = useAgentIdParam();
     const { data: agent } = useSuspenseQuery(agentDetailQueryOptions(useEngineApi(), agentId));
     const navigate = useNavigate();
+    const canEditBook = usePermissions().can('agents.write');
+    const bookTab = useAgentTabs().find((tab) => tab.id === AGENT_TABS.book.id);
     const actions = useAgentActions({
         onDeleted: () => {
             void navigate({ to: '/agents' });
@@ -35,6 +44,18 @@ export function AgentSettings() {
 
     return (
         <div className="flex flex-col gap-6">
+            {bookTab === undefined || !canEditBook ? null : (
+                <Card title={m.agent_settings_identity()}>
+                    <p className="max-w-prose text-sm text-text-muted">
+                        {m.agent_settings_identity_body({ name: agent.name })}
+                    </p>
+                    <div>
+                        <Link to={bookTab.to} params={{ agentId: agent.id } as never}>
+                            {m.agent_settings_identity_link()}
+                        </Link>
+                    </div>
+                </Card>
+            )}
             {actions.canChangeVisibility ? (
                 <Card title={m.agent_settings_visibility()}>
                     <Field
@@ -63,16 +84,16 @@ export function AgentSettings() {
             ) : null}
             {actions.canDelete ? (
                 <Card title={m.agent_settings_danger()}>
-                    <p className="max-w-prose text-sm text-text-muted">{m.agent_delete_body()}</p>
+                    <p className="max-w-prose text-sm text-text-muted">{m.agent_delete_body({ name: agent.name })}</p>
                     <div>
                         <Button
-                            variant="danger"
+                            className="text-danger"
                             onClick={() => {
                                 actions.requestDelete(agent);
                             }}
                         >
                             <Trash2 aria-hidden className="size-4" />
-                            {m.agent_action_delete()}
+                            {m.agent_delete_named({ name: agent.name })}
                         </Button>
                     </div>
                 </Card>

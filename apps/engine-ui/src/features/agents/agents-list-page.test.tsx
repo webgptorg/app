@@ -151,6 +151,16 @@ describe('agents list', { timeout: TIMEOUT_MS }, () => {
         expect(reloaded.spies.list.mock.calls[0]?.[0]).toEqual({ sort: '-name' });
     });
 
+    it('names the edit-time column "Updated", since it sorts by the last save and not by activity', async () => {
+        const { user, router } = await renderList();
+        expect(screen.queryByRole('columnheader', { name: /Last activity/ })).toBeNull();
+        const updated = screen.getByRole('columnheader', { name: /Updated/ });
+        await user.click(within(updated).getByRole('button'));
+        await waitFor(() => {
+            expect(router.state.location.search).toEqual({ sort: 'updatedAt' });
+        });
+    });
+
     it('keeps a hidden column hidden after a reload', async () => {
         const { user, storage, unmount } = await renderList();
         expect(screen.getByRole('columnheader', { name: 'Description' })).toBeDefined();
@@ -254,19 +264,17 @@ describe('agents list states', { timeout: TIMEOUT_MS }, () => {
 });
 
 describe('agents list permissions', { timeout: TIMEOUT_MS }, () => {
-    it('offers no delete or visibility change without agents.delete and agents.write', async () => {
-        const engine = createAgentsEngine({ permissions: ['agents.read', 'agents.run'] });
+    it('offers visibility but no delete with agents.write and without agents.delete', async () => {
+        const engine = createAgentsEngine({ permissions: ['agents.read', 'agents.run', 'agents.write'] });
         const { user } = await renderList('/agents', engine);
         await user.click(screen.getByRole('button', { name: 'Actions for Agent 001' }));
         const menu = screen.getByRole('menu', { name: 'Actions for Agent 001' });
-        expect(within(menu).getByRole('menuitem', { name: 'Start' })).toBeDefined();
-        expect(within(menu).queryByRole('menuitem', { name: 'Delete' })).toBeNull();
-        expect(within(menu).queryByRole('menuitem', { name: /Make (public|private)/ })).toBeNull();
-        expect(screen.queryByRole('link', { name: 'New agent' })).toBeNull();
+        expect(within(menu).getByRole('menuitem', { name: /Make (public|private)/ })).toBeDefined();
+        expect(within(menu).queryByRole('menuitem', { name: 'Delete agent' })).toBeNull();
     });
 
-    it('has neither a row menu nor "New agent" with only agents.read', async () => {
-        await renderList('/agents', createAgentsEngine({ permissions: ['agents.read'] }));
+    it('has neither a row menu nor "New agent" with only agents.read and agents.run', async () => {
+        await renderList('/agents', createAgentsEngine({ permissions: ['agents.read', 'agents.run'] }));
         expect(screen.queryByRole('button', { name: 'Actions for Agent 001' })).toBeNull();
         expect(screen.queryByRole('link', { name: 'New agent' })).toBeNull();
     });

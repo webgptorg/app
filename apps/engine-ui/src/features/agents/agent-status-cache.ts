@@ -4,7 +4,7 @@ import type { QueryClient } from '@tanstack/react-query';
 import { agentKeys } from './agents-keys';
 
 /**
- * Writes a run state into the cache unless the cached one is newer: an event and a start or stop response can arrive
+ * Writes a run state into the cache unless the cached one is newer: an event and a stop response can arrive
  * in either order, and the older must not win.
  */
 export function writeAgentStatus(queryClient: QueryClient, agentId: AgentId, status: AgentRunStatus): void {

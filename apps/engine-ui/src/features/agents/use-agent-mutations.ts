@@ -62,8 +62,8 @@ export interface AgentMutationOptions {
 }
 
 /**
- * Every change to an agent goes through here, so the draft run-control routes (C-04) are touched in one place. The
- * visibility change is optimistic; start, stop and delete wait for the engine.
+ * Every change to an agent goes through here, so the draft run-control route (C-04) is touched in one place. The
+ * visibility change is optimistic; stop and delete wait for the engine.
  */
 export function useAgentMutations(options: AgentMutationOptions = {}) {
     const engineApi = useEngineApi();
@@ -71,17 +71,6 @@ export function useAgentMutations(options: AgentMutationOptions = {}) {
     const setStatus = (agentId: AgentId, status: AgentRunStatus) => {
         writeAgentStatus(queryClient, agentId, status);
     };
-
-    const start = useStepUpAwareMutation({
-        mutationFn: async (agent: AgentTarget) =>
-            unwrap(await engineApi.agents.start(agent.id, AbortSignal.timeout(MUTATION_TIMEOUT_MS))),
-        invalidates: INVALIDATES,
-        successMessage: (_, agent) => m.agent_started({ name: agent.name }),
-        errorMessage: () => m.agent_start_failed(),
-        onSuccess: (status, agent) => {
-            setStatus(agent.id, status);
-        },
-    });
 
     const stop = useStepUpAwareMutation({
         mutationFn: async (agent: AgentTarget) =>
@@ -119,5 +108,5 @@ export function useAgentMutations(options: AgentMutationOptions = {}) {
         ...(options.onDeleted === undefined ? {} : { onSuccess: options.onDeleted }),
     });
 
-    return { start, stop, setVisibility, remove };
+    return { stop, setVisibility, remove };
 }

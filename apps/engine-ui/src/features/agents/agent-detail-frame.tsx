@@ -2,7 +2,7 @@ import type { Agent } from '@ptbk/engine-api';
 import { Button, Tabs } from '@ptbk/ui';
 import { useSuspenseQuery } from '@tanstack/react-query';
 import { Link as RouterLink, Outlet, useMatches, useMatchRoute, useNavigate } from '@tanstack/react-router';
-import { MessageSquare, Pencil, Play, Square } from 'lucide-react';
+import { MessageSquare, Square } from 'lucide-react';
 
 import { cx } from '../../app/cx';
 import { useEngineApi } from '../../app/engine-api-context';
@@ -10,63 +10,41 @@ import { ButtonLink } from '../../app/link';
 import { AGENT_TABS } from '../../app/registry/feature';
 import type { AgentTabEntry } from '../../app/registry/feature';
 import { m } from '../../paraglide/messages';
-import { usePermissions } from '../session/use-permissions';
 import { useDocumentTitle } from '../shell/document-title';
+import { NARROW_QUERY, useMediaQuery } from '../shell/use-media-query';
 import { useAgentActions } from './agent-actions';
-import type { AgentActions } from './agent-actions';
 import { AgentAvatar } from './agent-avatar';
 import { AgentStateBadge, AgentVisibilityBadge } from './agent-badges';
 import { useAgentIdParam } from './agent-detail-route';
-import { AgentLiveState } from './agent-live-state';
+import { AgentLiveState, AgentStop } from './agent-live-state';
 import { useAgentTabs } from './agent-tabs';
 import { agentDetailQueryOptions } from './agents-queries';
-
-const RUNNING_STATES: ReadonlySet<string> = new Set(['running', 'working']);
 
 /** A tab's route with this agent's ID; registry paths are typed per route, so the params are given untyped. */
 const tabParams = (agent: Agent) => ({ agentId: agent.id }) as never;
 
-function RunControl({
-    agent,
-    actions,
-    size,
-}: {
-    readonly agent: Agent;
-    readonly actions: AgentActions;
-    readonly size: 'sm' | 'md';
-}) {
+/** Shown only while there is work to stop; there is no "Start", since agents work on demand. */
+function StopControl({ agent, size }: { readonly agent: Agent; readonly size: 'sm' | 'md' }) {
     return (
-        <AgentLiveState agentId={agent.id}>
-            {(status) =>
-                status.kind === 'state' && RUNNING_STATES.has(status.state) ? (
+        <AgentStop agent={agent}>
+            {(control) =>
+                control === null || control.state === 'none' ? null : (
                     <Button
                         size={size}
-                        loading={actions.isChangingRunState}
-                        onClick={() => {
-                            actions.stop(agent);
-                        }}
+                        loading={control.isPending || control.state === 'stopping'}
+                        disabled={control.state === 'stopping'}
+                        onClick={control.stop}
                     >
                         <Square aria-hidden className="size-4" />
-                        {m.agent_action_stop()}
-                    </Button>
-                ) : (
-                    <Button
-                        size={size}
-                        loading={actions.isChangingRunState}
-                        onClick={() => {
-                            actions.start(agent);
-                        }}
-                    >
-                        <Play aria-hidden className="size-4" />
-                        {m.agent_action_start()}
+                        {control.state === 'stopping' ? m.agent_stopping() : m.agent_action_stop()}
                     </Button>
                 )
             }
-        </AgentLiveState>
+        </AgentStop>
     );
 }
 
-function TabLink({
+function ChatLink({
     agent,
     tab,
     size,
@@ -76,16 +54,10 @@ function TabLink({
     readonly size: 'sm' | 'md';
 }) {
     if (tab === undefined) return null;
-    const Icon = tab.id === AGENT_TABS.chat.id ? MessageSquare : Pencil;
     return (
-        <ButtonLink
-            to={tab.to}
-            params={tabParams(agent)}
-            variant={tab.id === AGENT_TABS.chat.id ? 'primary' : 'secondary'}
-            size={size}
-        >
-            <Icon aria-hidden className="size-4" />
-            {tab.id === AGENT_TABS.chat.id ? m.agent_action_chat() : m.agent_action_edit()}
+        <ButtonLink to={tab.to} params={tabParams(agent)} variant="primary" size={size}>
+            <MessageSquare aria-hidden className="size-4" />
+            {m.agent_action_chat()}
         </ButtonLink>
     );
 }
@@ -93,13 +65,13 @@ function TabLink({
 /**
  * The agent page: identity, live status and primary actions above the tabs the registry provides. It never imports a
  * tab's code; each tab is its own route, rendered in the selected panel. A route that sets `staticData.fillViewport`
- * (a chat) gets a one-line header and the rest of the screen, so its composer is in view on a phone too.
+ * (a chat) gets a one-line header and the rest of the screen, so its composer is in view on a phone too. "Chat" is the
+ * one primary action; the book has its own tab, so the header offers no "Edit".
  */
 export function AgentDetailFrame() {
     const agentId = useAgentIdParam();
     const { data: agent } = useSuspenseQuery(agentDetailQueryOptions(useEngineApi(), agentId));
     const navigate = useNavigate();
-    const { can } = usePermissions();
     const actions = useAgentActions({
         onDeleted: () => {
             void navigate({ to: '/agents' });
@@ -116,8 +88,10 @@ export function AgentDetailFrame() {
     const fill = useMatches({ select: (matches) => matches.some((match) => match.staticData.fillViewport === true) });
     // In the Chat tab, "Chat" would only lead to a fresh conversation; the recent list's "New chat" does that.
     const chatTab = fill ? undefined : tabs.find((tab) => tab.id === AGENT_TABS.chat.id);
-    const actionSize = fill ? 'sm' : 'md';
-    const bookTab = can('agents.write') ? tabs.find((tab) => tab.id === AGENT_TABS.book.id) : undefined;
+    // On a phone the full header would take a third of every tab; the description is on Overview anyway.
+    const narrow = useMediaQuery(NARROW_QUERY);
+    const compact = fill || narrow;
+    const actionSize = compact ? 'sm' : 'md';
 
     return (
         <section
@@ -127,24 +101,29 @@ export function AgentDetailFrame() {
                 fill ? 'h-(--main-fill-height) min-h-[30rem] gap-3 md:gap-4' : 'gap-6',
             )}
         >
-            <header className={cx('flex flex-wrap justify-between', fill ? 'items-center gap-3' : 'items-start gap-4')}>
-                <div className={cx('flex min-w-0', fill ? 'items-center gap-3' : 'items-start gap-4')}>
-                    <AgentAvatar name={agent.name} profile={agent.profile} size={fill ? 'sm' : 'lg'} />
+            <header
+                className={cx('flex flex-wrap justify-between', compact ? 'items-center gap-3' : 'items-start gap-4')}
+            >
+                <div className={cx('flex min-w-0', compact ? 'items-center gap-3' : 'items-start gap-4')}>
+                    <AgentAvatar name={agent.name} profile={agent.profile} size={compact ? 'sm' : 'lg'} />
                     <div
                         className={cx(
                             'flex min-w-0',
-                            fill ? 'flex-wrap items-center gap-x-3 gap-y-1' : 'flex-col gap-1',
+                            compact ? 'flex-wrap items-center gap-x-3 gap-y-1' : 'flex-col gap-1',
                         )}
                     >
-                        <h1 id="page-title" className={cx('font-semibold break-words', fill ? 'text-lg' : 'text-2xl')}>
+                        <h1
+                            id="page-title"
+                            className={cx('font-semibold break-words', compact ? 'text-lg' : 'text-2xl')}
+                        >
                             {agent.name}
                         </h1>
-                        {fill || agent.profile.description === '' ? null : (
+                        {compact || agent.profile.description === '' ? null : (
                             <p className="max-w-prose text-sm break-words text-text-muted">
                                 {agent.profile.description}
                             </p>
                         )}
-                        <div className={cx('flex flex-wrap items-center gap-2', !fill && 'mt-1')}>
+                        <div className={cx('flex flex-wrap items-center gap-2', !compact && 'mt-1')}>
                             <AgentLiveState agentId={agent.id}>
                                 {(status) => <AgentStateBadge status={status} />}
                             </AgentLiveState>
@@ -153,9 +132,8 @@ export function AgentDetailFrame() {
                     </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                    <TabLink agent={agent} tab={chatTab} size={actionSize} />
-                    <TabLink agent={agent} tab={bookTab} size={actionSize} />
-                    {actions.canRun ? <RunControl agent={agent} actions={actions} size={actionSize} /> : null}
+                    <StopControl agent={agent} size={actionSize} />
+                    <ChatLink agent={agent} tab={chatTab} size={actionSize} />
                 </div>
             </header>
             <Tabs
