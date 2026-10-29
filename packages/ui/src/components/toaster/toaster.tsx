@@ -1,6 +1,8 @@
 import { CircleCheck, CircleX, Info, TriangleAlert, X } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import type { RefObject } from 'react';
+import { createPortal } from 'react-dom';
 
 import { useUiMessages } from '../../i18n/ui-provider';
 import { cx } from '../../internal/cx';
@@ -23,25 +25,87 @@ const TONE_ICON_CLASSES: Readonly<Record<ToastTone, string>> = {
     danger: 'text-(--toast-danger)',
 };
 
+const OPEN_MODAL = 'dialog[data-ptbk-modal][open]';
+
 /**
  * The one live region for toasts. It is always in the document, even when empty, so screen readers announce what
  * arrives in it. Mount it once, next to the app, inside `UiProvider`.
+ *
+ * A modal `<dialog>` makes everything outside it inert, so a toast fired while one is open would sit dimmed under
+ * the backdrop, unclickable and unannounced. The viewport therefore moves into the topmost open modal and back out
+ * when it closes, and is a manual popover, so the top layer puts it above that dialog wherever it sits in the DOM.
  */
 export function Toaster() {
     const messages = useUiMessages();
     const toasts = useToastList();
-    return (
+    const viewportRef = useRef<HTMLElement>(null);
+    const host = useTopModalHost(viewportRef);
+    return createPortal(
         <section
+            ref={viewportRef}
+            popover="manual"
             aria-label={messages.notifications()}
-            className="pointer-events-none fixed inset-x-4 bottom-4 z-50 flex justify-end sm:start-auto sm:w-96"
+            className={cx(
+                'pointer-events-none fixed inset-x-4 top-auto bottom-4 m-0 h-auto w-auto overflow-visible',
+                'border-0 bg-transparent p-0 sm:start-auto sm:w-96',
+            )}
         >
             <ol aria-live="polite" aria-relevant="additions text" className="flex w-full flex-col gap-2">
                 {toasts.map((toast) => (
                     <ToastItem key={toast.id} toast={toast} />
                 ))}
             </ol>
-        </section>
+        </section>,
+        host,
     );
+}
+
+/**
+ * A container that always sits in the topmost open modal dialog, or in `<body>` when none is open, keeping the
+ * viewport in it shown as a popover. Moving a popover in the DOM hides it, so every move shows it again, which also
+ * raises it above the dialog that just opened.
+ */
+function useTopModalHost(viewportRef: RefObject<HTMLElement | null>): HTMLElement {
+    const [host] = useState(() => document.createElement('div'));
+    useLayoutEffect(() => {
+        const modals = [...document.querySelectorAll<HTMLDialogElement>(OPEN_MODAL)];
+        const place = () => {
+            const target = modals.at(-1) ?? document.body;
+            if (host.parentNode !== target) target.append(host);
+            viewportRef.current?.togglePopover(true);
+        };
+        const observer = new MutationObserver((records) => {
+            let changed = !host.isConnected;
+            for (const record of records) {
+                const dialog = record.target;
+                if (record.type !== 'attributes' || !(dialog instanceof HTMLDialogElement)) continue;
+                if (!dialog.hasAttribute('data-ptbk-modal')) continue;
+                const index = modals.indexOf(dialog);
+                if (index !== -1) modals.splice(index, 1);
+                if (dialog.matches(OPEN_MODAL)) modals.push(dialog);
+                changed = true;
+            }
+            for (let index = modals.length - 1; index >= 0; index -= 1) {
+                if (modals[index]?.isConnected !== true) {
+                    modals.splice(index, 1);
+                    changed = true;
+                }
+            }
+            if (changed) place();
+        });
+        observer.observe(document.body, {
+            subtree: true,
+            childList: true,
+            attributes: true,
+            attributeFilter: ['open'],
+        });
+        place();
+        return () => {
+            observer.disconnect();
+            host.remove();
+        };
+    }, [host, viewportRef]);
+    return host;
 }
 
 function ToastItem({ toast }: { readonly toast: ToastRecord }) {
@@ -97,9 +161,9 @@ function ToastItem({ toast }: { readonly toast: ToastRecord }) {
                 )}
             </span>
             <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                <p className="text-sm font-medium">{toast.title}</p>
+                <p className="text-sm font-medium wrap-anywhere">{toast.title}</p>
                 {toast.description === undefined ? null : (
-                    <p className="text-sm text-(--toast-muted)">{toast.description}</p>
+                    <p className="text-sm wrap-anywhere text-(--toast-muted)">{toast.description}</p>
                 )}
             </div>
             <IconButton
