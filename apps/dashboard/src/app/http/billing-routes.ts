@@ -2,6 +2,7 @@ import type { Hono } from 'hono';
 
 import type { BillingService } from '../../domain/billing/billing-service';
 import type { PaidPlan } from '../../domain/billing/plan-catalogue';
+import type { EngineStore } from '../../domain/registration/engine-store';
 import { QUOTAS } from '../../shared/billing';
 import { apiRoutes, type PlanView } from '../../shared/api/routes';
 import type { RouteBinder } from './bind-route';
@@ -24,13 +25,23 @@ function planView(plan: PaidPlan): PlanView {
 export function bindBillingRoutes(
     router: Hono,
     mount: string,
-    deps: { readonly billing: BillingService; readonly routes: RouteBinder },
+    deps: {
+        readonly billing: BillingService;
+        readonly engines: Pick<EngineStore, 'countActive'>;
+        readonly routes: RouteBinder;
+    },
 ): void {
-    const { billing } = deps;
+    const { billing, engines } = deps;
     const bind = deps.routes.bind.bind(deps.routes);
 
     bind(router, mount, apiRoutes.getBilling, async ({ session }) => {
-        const overview = await billing.overview(session.actor.orgId);
+        const [overview, activeEngines] = await Promise.all([
+            billing.overview(session.actor.orgId),
+            engines.countActive(session.actor.orgId),
+        ]);
+        const quotas = overview.quotas.map((usage) =>
+            usage.quota === 'engines.max' ? { ...usage, used: activeEngines } : usage,
+        );
         return {
             kind: 'ok',
             body: {
@@ -42,7 +53,7 @@ export function bindBillingRoutes(
                 hasBillingAccount: overview.hasBillingAccount,
                 canSubscribe: overview.canSubscribe,
                 trialAvailable: overview.trialAvailable,
-                entitlements: { features: [...overview.features], quotas: [...overview.quotas] },
+                entitlements: { features: [...overview.features], quotas },
                 plans: overview.plans.map(planView),
             },
         };

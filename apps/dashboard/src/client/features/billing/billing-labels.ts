@@ -33,8 +33,14 @@ export const QUOTA_LABELS: Readonly<Record<Quota, () => string>> = {
     'custom-domains.max': () => m.billing_quota_custom_domains_max(),
 };
 
-/** A quota's value: "Unlimited", the limit, or how much of it is used when the dashboard counts usage. */
+/**
+ * A quota's value: "Not included" for a limit of 0 that nothing uses, else "Unlimited", the limit, or how much of it is
+ * used where the dashboard counts usage. A 0 limit with usage (after a downgrade) still shows the count.
+ */
 export function quotaValue(limit: number | null, used: number | null): string {
+    if (limit === 0 && (used === null || used === 0)) {
+        return m.billing_feature_not_included();
+    }
     if (used === null) {
         return limit === null ? m.billing_quota_unlimited() : String(limit);
     }

@@ -11,7 +11,7 @@ import {
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { orgIdSchema } from '../domain/ids';
-import type { LinkCodeView, LinkEligibilityView, SessionView } from '../shared/api/routes';
+import type { BillingView, LinkCodeView, LinkEligibilityView, SessionView } from '../shared/api/routes';
 import { TEST_INSTALL_VARS } from './install-fixtures';
 import type { AuthHarness, TestBrowser, TestResponse } from './auth-harness';
 import { problemCode, signUp } from './auth-flows';
@@ -162,6 +162,25 @@ export function describeEngineFlows(
             // The code stayed unused, so org A can still link another engine with it.
             const other = await createTestEngine();
             await expectRegistered(await register(await other.register(foreign)), other);
+        });
+
+        it('counts the organization’s own active engines against engines.max in the billing view', async () => {
+            const engineUsage = async (browser: TestBrowser) => {
+                const response = await browser.request('GET', '/api/billing');
+                expect(response.status).toBe(200);
+                return (response.body as BillingView).entitlements.quotas.find(({ quota }) => quota === 'engines.max');
+            };
+            const a = await owner();
+            const b = await owner();
+            expect(await engineUsage(b.browser)).toEqual({ quota: 'engines.max', limit: 2, used: 0 });
+            const first = await createTestEngine();
+            const second = await createTestEngine();
+            await expectRegistered(await register(await first.register(await linkCode(b.browser))), first);
+            await expectRegistered(await register(await second.register(await linkCode(b.browser))), second);
+            expect(await engineUsage(b.browser)).toEqual({ quota: 'engines.max', limit: 2, used: 2 });
+            expect(await engineUsage(a.browser)).toEqual({ quota: 'engines.max', limit: 2, used: 0 });
+            await revoke(harness, first.engineId);
+            expect((await engineUsage(b.browser))?.used).toBe(1);
         });
 
         it('re-registers the same key from the same organization idempotently', async () => {
