@@ -7,6 +7,7 @@ import {
     ConfirmDialog,
     createDataTableColumnHelper,
     DataTable,
+    EmptyState,
     Field,
     Input,
     RelativeTime,
@@ -14,7 +15,7 @@ import {
 import type { ColumnFiltersState, DataTableColumnDef, MenuEntry, SortingState } from '@ptbk/ui';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { getRouteApi } from '@tanstack/react-router';
-import { Ban, Plus, RefreshCw, Trash2 } from 'lucide-react';
+import { Ban, LockKeyhole, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 
 import { useBrowser } from '../../app/browser-context';
@@ -103,6 +104,11 @@ function ScopeCell({ scope }: { readonly scope: SecretScope }) {
     );
 }
 
+/** A value never replaced since creation reads "Never" rather than repeating the created time. */
+function valueReplacedAt(secret: SecretMetadata): string | null {
+    return secret.valueUpdatedAt === secret.createdAt ? null : secret.valueUpdatedAt;
+}
+
 function Timestamp({ value }: { readonly value: string | null }) {
     return value === null ? (
         <span className="text-text-muted">{m.secrets_never()}</span>
@@ -166,10 +172,10 @@ function useSecretColumns(): DataTableColumnDef<SecretMetadata>[] {
                 cell: ({ row }) => <Timestamp value={row.original.createdAt} />,
             }),
             column.accessor('valueUpdatedAt', {
-                header: m.secrets_column_rotated(),
+                header: m.secrets_column_value_replaced(),
                 enableSorting: false,
                 meta: { priority: 4 },
-                cell: ({ row }) => <Timestamp value={row.original.valueUpdatedAt} />,
+                cell: ({ row }) => <Timestamp value={valueReplacedAt(row.original)} />,
             }),
             column.accessor('lastUsedAt', {
                 header: m.secrets_column_last_used(),
@@ -272,81 +278,96 @@ export function SecretsPage() {
         </Button>
     ) : null;
     const filtered = search.q !== undefined || search.scope !== undefined || search.status !== undefined;
+    // Search and filters only make sense once there is something to narrow; a filtered empty result keeps them.
+    const nothingYet =
+        !filtered &&
+        search.cursor === undefined &&
+        list.isSuccess &&
+        !list.isPlaceholderData &&
+        list.data.items.length === 0;
 
     return (
-        <Page title={m.secrets_title()} actions={newSecret}>
-            <p className="text-sm text-text-muted">{m.secrets_write_only()}</p>
-            <Field label={m.secrets_search_label()} className="w-full sm:max-w-sm">
-                {(control) => (
-                    <Input
-                        {...control}
-                        type="search"
-                        value={text}
-                        autoComplete="off"
-                        maxLength={128}
-                        onChange={(event) => {
-                            setText(event.target.value);
+        <Page title={m.secrets_title()} actions={nothingYet ? null : newSecret}>
+            {nothingYet ? (
+                <EmptyState
+                    icon={<LockKeyhole />}
+                    headingLevel={2}
+                    title={m.secrets_empty_title()}
+                    description={m.secrets_empty_body()}
+                    {...(newSecret === null ? {} : { action: newSecret })}
+                />
+            ) : (
+                <>
+                    <p className="text-sm text-text-muted">{m.secrets_write_only()}</p>
+                    <Field label={m.secrets_search_label()} className="w-full sm:max-w-sm">
+                        {(control) => (
+                            <Input
+                                {...control}
+                                type="search"
+                                value={text}
+                                autoComplete="off"
+                                maxLength={128}
+                                onChange={(event) => {
+                                    setText(event.target.value);
+                                }}
+                            />
+                        )}
+                    </Field>
+                    <DataTable
+                        caption={m.secrets_title()}
+                        columns={columns}
+                        data={list.data?.items ?? NO_SECRETS}
+                        getRowId={(secret) => secret.id}
+                        getRowLabel={(secret) => secret.name}
+                        sorting={sortingOf(search.sort)}
+                        onSortingChange={(sorting) => {
+                            update({ sort: sortOf(sorting) });
                         }}
+                        columnFilters={filtersOf(search)}
+                        onColumnFiltersChange={(filters) => {
+                            update({
+                                scope: filterValue(filters, 'scope', SECRET_SCOPE_KINDS),
+                                status: filterValue(filters, 'status', SECRET_STATUSES),
+                            });
+                        }}
+                        visibilityStorage={{ storage, key: SECRET_COLUMNS_STORAGE_KEY }}
+                        page={paging.page}
+                        onPageChange={paging.onPageChange}
+                        loading={list.isPending}
+                        fetching={list.isFetching && !list.isPending}
+                        {...(list.isError && !invalidCursor
+                            ? {
+                                  error: {
+                                      message: m.secrets_load_failed(),
+                                      onRetry: () => {
+                                          void list.refetch();
+                                      },
+                                      retrying: list.isFetching,
+                                  },
+                              }
+                            : {})}
+                        empty={
+                            filtered
+                                ? {
+                                      title: m.secrets_no_results(),
+                                      description: m.secrets_no_results_hint(),
+                                      action: (
+                                          <Button
+                                              onClick={() => {
+                                                  setText('');
+                                                  update({ q: undefined, scope: undefined, status: undefined });
+                                              }}
+                                          >
+                                              {m.secrets_clear_filters()}
+                                          </Button>
+                                      ),
+                                  }
+                                : { title: m.secrets_empty_title(), description: m.secrets_empty_body() }
+                        }
+                        {...(canManage ? { rowActions } : {})}
                     />
-                )}
-            </Field>
-            <DataTable
-                caption={m.secrets_title()}
-                columns={columns}
-                data={list.data?.items ?? NO_SECRETS}
-                getRowId={(secret) => secret.id}
-                getRowLabel={(secret) => secret.name}
-                sorting={sortingOf(search.sort)}
-                onSortingChange={(sorting) => {
-                    update({ sort: sortOf(sorting) });
-                }}
-                columnFilters={filtersOf(search)}
-                onColumnFiltersChange={(filters) => {
-                    update({
-                        scope: filterValue(filters, 'scope', SECRET_SCOPE_KINDS),
-                        status: filterValue(filters, 'status', SECRET_STATUSES),
-                    });
-                }}
-                visibilityStorage={{ storage, key: SECRET_COLUMNS_STORAGE_KEY }}
-                page={paging.page}
-                onPageChange={paging.onPageChange}
-                loading={list.isPending}
-                fetching={list.isFetching && !list.isPending}
-                {...(list.isError && !invalidCursor
-                    ? {
-                          error: {
-                              message: m.secrets_load_failed(),
-                              onRetry: () => {
-                                  void list.refetch();
-                              },
-                              retrying: list.isFetching,
-                          },
-                      }
-                    : {})}
-                empty={
-                    filtered
-                        ? {
-                              title: m.secrets_no_results(),
-                              description: m.secrets_no_results_hint(),
-                              action: (
-                                  <Button
-                                      onClick={() => {
-                                          setText('');
-                                          update({ q: undefined, scope: undefined, status: undefined });
-                                      }}
-                                  >
-                                      {m.secrets_clear_filters()}
-                                  </Button>
-                              ),
-                          }
-                        : {
-                              title: m.secrets_empty_title(),
-                              description: m.secrets_empty_body(),
-                              ...(newSecret === null ? {} : { action: newSecret }),
-                          }
-                }
-                {...(canManage ? { rowActions } : {})}
-            />
+                </>
+            )}
             {pending?.kind === 'create' ? (
                 <Suspense fallback={null}>
                     <CreateSecretDialog onClose={close} mutations={mutations} />
