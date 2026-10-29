@@ -57,8 +57,10 @@ export function useModalDialog({
         const onClick = (event: MouseEvent) => {
             if (event.target === dialog) onCloseRef.current();
         };
+        // The close event is queued, so when the show effect re-runs (StrictMode's mount, a new `initialFocusRef`)
+        // the event from its close() arrives after showModal(): stale, as the dialog is open again.
         const onNativeClose = () => {
-            if (!shownRef.current) return;
+            if (!shownRef.current || dialog.open) return;
             shownRef.current = false;
             onCloseRef.current();
         };
