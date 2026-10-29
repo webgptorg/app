@@ -2,7 +2,7 @@ import { Fragment, useId, useRef } from 'react';
 import type { KeyboardEvent, ReactNode } from 'react';
 
 import { cx } from '../../internal/cx';
-import { useScrollEdges } from './scroll-edges';
+import { useScrollEdges } from '../../internal/scroll-edges';
 
 /** A fade where the list hides tabs, so a phone shows there is more to scroll to. */
 const FADE_CLASSES = {

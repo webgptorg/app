@@ -2,7 +2,7 @@ import { screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { renderUi } from '../../testing/render';
-import { revealScrollLeft, scrollEdges } from './scroll-edges';
+import { revealScrollLeft, scrollEdges } from '../../internal/scroll-edges';
 import { Tabs } from './tabs';
 
 describe('scrollEdges', () => {

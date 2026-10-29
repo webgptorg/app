@@ -83,7 +83,12 @@ export function TrustMark({ fingerprint, state, size = 'md', label, showCode = t
     const sizes = SIZE_CLASSES[size];
 
     return (
-        <span role="img" aria-label={accessibleName} className={cx('inline-flex items-center gap-2', className)}>
+        // The code is compared group by group with the engine's terminal, so it never breaks; it moves under the seal.
+        <span
+            role="img"
+            aria-label={accessibleName}
+            className={cx('inline-flex flex-wrap items-center gap-2', className)}
+        >
             <svg
                 viewBox={`0 0 ${String(VIEWBOX)} ${String(VIEWBOX)}`}
                 aria-hidden="true"
@@ -132,7 +137,12 @@ export function TrustMark({ fingerprint, state, size = 'md', label, showCode = t
                 )}
             </svg>
             {fingerprint !== null && showCode ? (
-                <span className={cx('font-mono tracking-wide text-(--trust-mark-code) tabular-nums', sizes.code)}>
+                <span
+                    className={cx(
+                        'font-mono tracking-wide whitespace-nowrap text-(--trust-mark-code) tabular-nums',
+                        sizes.code,
+                    )}
+                >
                     {fingerprint.formatted}
                 </span>
             ) : null}

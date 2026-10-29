@@ -40,10 +40,14 @@ export function revealScrollLeft(view: Span, item: Span): number | null {
 }
 
 /**
- * Tracks the hidden edges of a horizontal scroller and keeps the element `selector` matches in view whenever `key`
- * changes, e.g. the selected tab on a phone, where the list is wider than the screen.
+ * Tracks the hidden edges of a horizontal scroller and measures again whenever `key` changes. With a `selector`, it
+ * also keeps the element it matches in view, e.g. the selected tab on a phone, where the list is wider than the screen.
  */
-export function useScrollEdges(ref: RefObject<HTMLElement | null>, selector: string, key: string): ScrollEdges {
+export function useScrollEdges(
+    ref: RefObject<HTMLElement | null>,
+    selector: string | undefined,
+    key: string,
+): ScrollEdges {
     const [edges, setEdges] = useState(NO_EDGES);
     const measure = useCallback(() => {
         const element = ref.current;
@@ -60,7 +64,7 @@ export function useScrollEdges(ref: RefObject<HTMLElement | null>, selector: str
     useLayoutEffect(() => {
         const element = ref.current;
         if (element === null) return;
-        const item = element.querySelector<HTMLElement>(selector);
+        const item = selector === undefined ? null : element.querySelector<HTMLElement>(selector);
         if (item !== null) {
             const view = element.getBoundingClientRect();
             const box = item.getBoundingClientRect();
@@ -79,6 +83,8 @@ export function useScrollEdges(ref: RefObject<HTMLElement | null>, selector: str
         element.addEventListener('scroll', measure, { passive: true });
         const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(measure);
         observer?.observe(element);
+        // The content can grow wider while the box keeps its size, e.g. a table's columns once rows arrive.
+        if (element.firstElementChild !== null) observer?.observe(element.firstElementChild);
         return () => {
             element.removeEventListener('scroll', measure);
             observer?.disconnect();

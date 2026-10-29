@@ -26,7 +26,9 @@ describe('TrustMark', () => {
         expect(mark.getAttribute('aria-label')).toBe(
             `Private engine verified, Engine fingerprint ${fingerprint.formatted}`,
         );
-        expect(screen.getByText(fingerprint.formatted)).toBeDefined();
+        // One comparable unit: the code never breaks after a hyphen; the mark wraps it under the seal instead.
+        expect(screen.getByText(fingerprint.formatted).className).toContain('whitespace-nowrap');
+        expect(mark.className).toContain('flex-wrap');
         expect(mark.querySelector('[data-fingerprint]')?.getAttribute('data-fingerprint')).toBe(
             fingerprint.patternBits,
         );

@@ -55,6 +55,11 @@ export interface DataTableColumnMeta {
     readonly priority?: number;
     /** Leave the column off narrow-screen cards (e.g. a long description already in the title). */
     readonly hideOnCard?: boolean;
+    /**
+     * Start hidden, on cards too, until the reader turns the column on in the column menu (which a hidden column
+     * keeps shown). Ignored when the app controls `columnVisibility` or the column cannot hide.
+     */
+    readonly defaultHidden?: boolean;
     readonly filter?: DataTableColumnFilter;
 }
 
