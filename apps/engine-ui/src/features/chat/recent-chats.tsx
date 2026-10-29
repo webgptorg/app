@@ -1,20 +1,20 @@
 import type { AgentId } from '@ptbk/engine-api';
 import { Button, Drawer, RelativeTime, Skeleton } from '@ptbk/ui';
 import { useQuery } from '@tanstack/react-query';
+import { Link } from '@tanstack/react-router';
 import { List, MessagesSquare, SquarePen } from 'lucide-react';
 import { useState } from 'react';
 import type { ReactNode } from 'react';
 
 import { cx } from '../../app/cx';
 import { useEngineApi } from '../../app/engine-api-context';
-import { Link } from '../../app/link';
 import { m } from '../../paraglide/messages';
 import { usePermissions } from '../session/use-permissions';
 import { chatListQueryOptions } from './chat-queries';
 import { chatName } from './chat-source';
 
 const ROW = cx(
-    'flex min-w-0 rounded-control px-3 text-sm text-text no-underline hover:bg-hover hover:no-underline',
+    'flex min-w-0 rounded-control px-3 text-sm text-text hover:bg-hover',
     'motion-safe:transition-colors motion-safe:duration-(--motion-state)',
     'aria-[current=page]:bg-selected aria-[current=page]:text-accent-text',
 );
@@ -70,7 +70,6 @@ export function RecentChats({ agentId, onNavigate }: RecentChatsProps) {
                             to="/agents/$agentId/chat/$chatId"
                             params={{ agentId, chatId: chat.id }}
                             activeOptions={{ exact: true }}
-                            variant="standalone"
                             onClick={onNavigate}
                             className={cx(ROW, 'flex-col py-1.5')}
                         >
@@ -93,7 +92,6 @@ export function RecentChats({ agentId, onNavigate }: RecentChatsProps) {
                     to="/agents/$agentId/chat"
                     params={{ agentId }}
                     activeOptions={{ exact: true }}
-                    variant="standalone"
                     onClick={onNavigate}
                     className={cx(ROW, 'min-h-10 items-center gap-2 font-medium')}
                 >
@@ -110,7 +108,6 @@ export function RecentChats({ agentId, onNavigate }: RecentChatsProps) {
             <Link
                 to="/agents/$agentId/chat/all"
                 params={{ agentId }}
-                variant="standalone"
                 onClick={onNavigate}
                 className={cx(ROW, 'min-h-10 items-center gap-2 font-medium')}
             >
