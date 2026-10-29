@@ -124,22 +124,24 @@ describe('signed-in shell', () => {
         expect(app.history.location.pathname).toBe('/engines');
     });
 
-    it('switches language and theme from the user menu', async () => {
+    it('switches the language from the header without a reload, and the theme from the user menu', async () => {
         const app = renderApp({ path: '/', session: session() });
-        await app.user.click(await screen.findByRole('button', { name: 'Account menu for ada@example.test' }));
-        await app.user.click(screen.getByRole('menuitemradio', { name: 'Dark' }));
-        expect(document.documentElement.classList.contains('dark')).toBe(true);
-        expect(app.storage.getItem(THEME_STORAGE_KEY)).toBe('dark');
-
-        await app.user.click(screen.getByRole('button', { name: 'Account menu for ada@example.test' }));
+        await app.user.click(await screen.findByRole('button', { name: 'Language: English' }));
         await app.user.click(screen.getByRole('menuitemradio', { name: 'Čeština' }));
         expect(await screen.findByRole('heading', { name: 'Vaše enginy' })).toBeTruthy();
         expect(document.documentElement.lang).toBe('cs');
         expect(document.cookie).toContain('ptbk_locale=cs');
+        expect(app.navigations).toEqual([]);
+
+        await app.user.click(screen.getByRole('button', { name: 'Nabídka účtu ada@example.test' }));
+        expect(screen.queryByRole('menuitemradio', { name: 'English' })).toBeNull();
+        await app.user.click(screen.getByRole('menuitemradio', { name: 'Tmavý' }));
+        expect(document.documentElement.classList.contains('dark')).toBe(true);
+        expect(app.storage.getItem(THEME_STORAGE_KEY)).toBe('dark');
 
         await app.user.click(screen.getByRole('button', { name: 'Nabídka účtu ada@example.test' }));
         await app.user.click(screen.getByRole('menuitemradio', { name: 'Podle systému' }));
-        await app.user.click(screen.getByRole('button', { name: 'Nabídka účtu ada@example.test' }));
+        await app.user.click(screen.getByRole('button', { name: 'Jazyk: Čeština' }));
         await app.user.click(screen.getByRole('menuitemradio', { name: 'English' }));
         expect(await screen.findByRole('heading', { name: 'Your engines' })).toBeTruthy();
         expect(document.documentElement.classList.contains('dark')).toBe(false);

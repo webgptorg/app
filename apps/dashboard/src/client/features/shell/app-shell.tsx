@@ -10,6 +10,7 @@ import { useApiClient } from '../../api/api-client-context';
 import { Link } from '../../core/link';
 import { SessionProvider } from '../session/use-session';
 import { EnvironmentBadge } from './environment-badge';
+import { HeaderLanguageSwitch } from './language-switch';
 import { visibleNavEntries } from './navigation';
 import { OrgSwitcher } from './org-switcher';
 import { UserMenu } from './user-menu';
@@ -52,7 +53,10 @@ export function AppFrame({ session, children }: { readonly session: SessionView;
                             <OrgSwitcher />
                             <EnvironmentBadge />
                         </div>
-                        <UserMenu />
+                        <div className="flex shrink-0 items-center gap-1">
+                            <HeaderLanguageSwitch />
+                            <UserMenu />
+                        </div>
                         <nav aria-label={m.nav_main()} className="w-full">
                             <ul className="-mx-2 flex flex-wrap gap-1">
                                 {visibleNavEntries(session).map((entry) => (

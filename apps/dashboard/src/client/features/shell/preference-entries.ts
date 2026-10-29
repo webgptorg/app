@@ -1,4 +1,5 @@
 import { THEME_PREFERENCES } from '@ptbk/ui';
+import type { LanguageOption } from '@ptbk/ui';
 import type { MenuEntry, ThemePreference } from '@ptbk/ui';
 
 import { m } from '../../../paraglide/messages';
@@ -27,10 +28,32 @@ export function themeLabel(preference: ThemePreference): string {
     }
 }
 
-/** Language and theme choices, shared by the signed-in user menu and the signed-out preferences menu. */
+/** The app's languages for `LanguageSwitch`, each in its own name. */
+export function languageOptions(locales: readonly Locale[]): LanguageOption<Locale>[] {
+    return locales.map((code) => ({ code, name: localeLabel(code) }));
+}
+
+/** Theme choices; the signed-in header has its own language switch, so the user menu shows only these. */
+export function useThemeEntries(): MenuEntry[] {
+    const { preference, setPreference } = useThemePreference();
+    return [
+        { kind: 'heading', id: 'theme', label: m.theme_label() },
+        ...THEME_PREFERENCES.map((option): MenuEntry => ({
+            kind: 'item',
+            id: `theme-${option}`,
+            label: themeLabel(option),
+            checked: option === preference,
+            onSelect: () => {
+                setPreference(option);
+            },
+        })),
+    ];
+}
+
+/** Language and theme choices, for the signed-out preferences menu. */
 export function usePreferenceEntries(): MenuEntry[] {
     const { locale, locales, changeLocale } = useLocale();
-    const { preference, setPreference } = useThemePreference();
+    const themeEntries = useThemeEntries();
     return [
         { kind: 'heading', id: 'language', label: m.language_label() },
         ...locales.map((option): MenuEntry => ({
@@ -43,15 +66,6 @@ export function usePreferenceEntries(): MenuEntry[] {
             },
         })),
         { kind: 'separator', id: 'theme-separator' },
-        { kind: 'heading', id: 'theme', label: m.theme_label() },
-        ...THEME_PREFERENCES.map((option): MenuEntry => ({
-            kind: 'item',
-            id: `theme-${option}`,
-            label: themeLabel(option),
-            checked: option === preference,
-            onSelect: () => {
-                setPreference(option);
-            },
-        })),
+        ...themeEntries,
     ];
 }

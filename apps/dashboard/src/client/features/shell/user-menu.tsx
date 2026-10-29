@@ -5,9 +5,9 @@ import { LogOut } from 'lucide-react';
 import { m } from '../../../paraglide/messages';
 import { useSignOut } from '../session/end-session';
 import { useSession } from '../session/use-session';
-import { usePreferenceEntries } from './preference-entries';
+import { useThemeEntries } from './preference-entries';
 
-/** The signed-in person's email, language, theme and sign-out. */
+/** The signed-in person's email, theme and sign-out; the language has its own control in the header. */
 export function UserMenu() {
     const session = useSession();
     const signOut = useSignOut();
@@ -15,7 +15,7 @@ export function UserMenu() {
     const items: MenuEntry[] = [
         { kind: 'heading', id: 'account', label: session.user.email },
         { kind: 'separator', id: 'preferences-separator' },
-        ...usePreferenceEntries(),
+        ...useThemeEntries(),
         { kind: 'separator', id: 'sign-out-separator' },
         {
             kind: 'item',
