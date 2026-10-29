@@ -140,7 +140,7 @@ export function InviteDialog({ roles, mutations, onClose }: InviteDialogProps) {
                     </Button>
                 }
             >
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                <div className="flex items-end gap-2">
                     <Field label={m.invites_link_label()} className="min-w-0 flex-1">
                         {(control) => (
                             <Input
@@ -156,7 +156,7 @@ export function InviteDialog({ roles, mutations, onClose }: InviteDialogProps) {
                             />
                         )}
                     </Field>
-                    <CopyButton value={created.url} label={m.invites_copy()} />
+                    <CopyButton value={created.url} label={m.invites_copy()} variant="secondary" size="md" />
                 </div>
             </Dialog>
         );
