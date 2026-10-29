@@ -205,7 +205,11 @@ export function SecretsPage() {
     const [pending, setPending] = useState<Pending | null>(null);
     const close = () => {
         setPending(null);
+        if (search.dialog !== undefined) {
+            void navigate({ search: (previous) => ({ ...previous, dialog: undefined }), replace: true });
+        }
     };
+    const creating = pending?.kind === 'create' || (search.dialog === 'new' && canManage);
     const list = useQuery({
         ...secretListQueryOptions(useEngineApi(), secretListParams(search)),
         placeholderData: keepPreviousData,
@@ -368,7 +372,7 @@ export function SecretsPage() {
                     />
                 </>
             )}
-            {pending?.kind === 'create' ? (
+            {creating ? (
                 <Suspense fallback={null}>
                     <CreateSecretDialog onClose={close} mutations={mutations} />
                 </Suspense>

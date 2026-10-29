@@ -28,8 +28,9 @@ export interface CommandPaletteProps<Item extends CommandPaletteItem = CommandPa
     readonly onClose: () => void;
     /** The dialog's accessible name. */
     readonly title: string;
-    /** The search box's accessible name and placeholder. */
+    /** The search box's accessible name, and its placeholder unless `placeholder` gives a shorter one. */
     readonly label: string;
+    readonly placeholder?: string;
     readonly query: string;
     readonly onQueryChange: (query: string) => void;
     /** Empty groups are left out. */
@@ -44,6 +45,13 @@ export interface CommandPaletteProps<Item extends CommandPaletteItem = CommandPa
     readonly emptyText: string;
     /** How many options are listed, for screen readers, e.g. "3 results". */
     readonly resultsText: (count: number) => string;
+    /** Keys and what they do, e.g. `{ keys: '↵', label: 'Open' }`, shown under the results where there is a keyboard. */
+    readonly keyHints?: readonly CommandPaletteKeyHint[];
+}
+
+export interface CommandPaletteKeyHint {
+    readonly keys: string;
+    readonly label: string;
 }
 
 /**
@@ -57,6 +65,7 @@ export function CommandPalette<Item extends CommandPaletteItem>({
     onClose,
     title,
     label,
+    placeholder = label,
     query,
     onQueryChange,
     groups,
@@ -65,6 +74,7 @@ export function CommandPalette<Item extends CommandPaletteItem>({
     loading = false,
     emptyText,
     resultsText,
+    keyHints = [],
 }: CommandPaletteProps<Item>) {
     const inputRef = useRef<HTMLInputElement>(null);
     const dialogRef = useModalDialog({ open, onClose, initialFocusRef: inputRef });
@@ -135,7 +145,7 @@ export function CommandPalette<Item extends CommandPaletteItem>({
                             type="text"
                             role="combobox"
                             aria-label={label}
-                            placeholder={label}
+                            placeholder={placeholder}
                             aria-expanded="true"
                             aria-controls={listboxId}
                             aria-autocomplete="list"
@@ -227,8 +237,22 @@ export function CommandPalette<Item extends CommandPaletteItem>({
                         })}
                     </div>
                     {items.length === 0 && !loading ? (
-                        <p className="px-4 pb-6 text-center text-sm text-(--command-palette-muted)">{emptyText}</p>
+                        <p className="px-4 py-8 text-center text-sm text-(--command-palette-muted)">{emptyText}</p>
                     ) : null}
+                    {keyHints.length === 0 ? null : (
+                        // The combobox already tells assistive technology how it works; this is for sighted keyboard users.
+                        <div
+                            aria-hidden="true"
+                            className="flex flex-wrap gap-x-4 gap-y-1 border-t border-(--command-palette-border) px-4 py-2 text-xs text-(--command-palette-muted) pointer-coarse:hidden"
+                        >
+                            {keyHints.map((hint) => (
+                                <span key={hint.keys} className="inline-flex items-center gap-1.5">
+                                    <kbd className="font-mono">{hint.keys}</kbd>
+                                    {hint.label}
+                                </span>
+                            ))}
+                        </div>
+                    )}
                     <p role="status" className="sr-only">
                         {loading ? '' : resultsText(items.length)}
                     </p>

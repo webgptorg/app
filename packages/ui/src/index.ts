@@ -94,6 +94,7 @@ export { CommandPalette } from './components/command-palette/command-palette';
 export type {
     CommandPaletteGroup,
     CommandPaletteItem,
+    CommandPaletteKeyHint,
     CommandPaletteProps,
 } from './components/command-palette/command-palette';
 export { Menu } from './components/menu/menu';

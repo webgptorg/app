@@ -29,11 +29,13 @@ function Harness({
     onSelect = () => undefined,
     onActiveChange,
     loading = false,
+    hints = false,
 }: {
     groups?: readonly CommandPaletteGroup[];
     onSelect?: (item: CommandPaletteItem) => void;
     onActiveChange?: (item: CommandPaletteItem) => void;
     loading?: boolean;
+    hints?: boolean;
 }) {
     const [open, setOpen] = useState(false);
     const [query, setQuery] = useState('');
@@ -65,6 +67,15 @@ function Harness({
                 loading={loading}
                 emptyText="Nothing matches"
                 resultsText={(count) => `${String(count)} results`}
+                {...(hints
+                    ? {
+                          placeholder: 'Jump to…',
+                          keyHints: [
+                              { keys: '↵', label: 'Open' },
+                              { keys: 'Esc', label: 'Close' },
+                          ],
+                      }
+                    : {})}
             />
         </>
     );
@@ -118,6 +129,26 @@ describe('CommandPalette', () => {
 
         await user.keyboard('{Enter}');
         expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ id: 'agent-ada' }));
+    });
+
+    it('takes a shorter placeholder than its name and shows key hints out of the accessibility tree', async () => {
+        const { container, user } = renderUi(<Harness hints />);
+        await user.click(screen.getByRole('button', { name: 'Search' }));
+
+        expect(box().getAttribute('placeholder')).toBe('Jump to…');
+        const hints = container.ownerDocument.querySelector('[aria-hidden="true"] kbd')?.parentElement?.parentElement;
+        expect(hints?.textContent).toBe('↵OpenEscClose');
+        expect(hints?.getAttribute('aria-hidden')).toBe('true');
+        expect(box().getAttribute('placeholder')).not.toBe(box().getAttribute('aria-label'));
+        await expectNoAxeViolations(container);
+    });
+
+    it('uses its name as the placeholder and shows no hints unless given', async () => {
+        const { user } = renderUi(<Harness />);
+        await user.click(screen.getByRole('button', { name: 'Search' }));
+
+        expect(box().getAttribute('placeholder')).toBe('Search or jump to');
+        expect(document.querySelector('kbd')).toBeNull();
     });
 
     it('renders untrusted labels as text', async () => {
