@@ -35,7 +35,7 @@ function StopControl({ agent, size }: { readonly agent: Agent; readonly size: 's
                         disabled={control.state === 'stopping'}
                         onClick={control.stop}
                     >
-                        <Square aria-hidden className="size-4" />
+                        {control.state === 'stopping' ? null : <Square aria-hidden className="size-4" />}
                         {control.state === 'stopping' ? m.agent_stopping() : m.agent_action_stop()}
                     </Button>
                 )
