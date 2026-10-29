@@ -390,10 +390,34 @@ describe('chat layout', { timeout: TIMEOUT_MS }, () => {
         expect(within(header).queryByRole('link', { name: 'Chat' })).toBeNull();
         expect(screen.getByRole('tabpanel').className).toContain('flex-1');
         const composer = screen.getByRole('textbox', { name: 'Message' });
-        expect(composer.getAttribute('rows')).toBe('2');
+        expect(composer.getAttribute('rows')).toBe('1');
         expect(document.getElementById(composer.getAttribute('aria-describedby') ?? '')?.textContent).toBe(
             'Enter sends, Shift+Enter adds a line, Esc stops a reply.',
         );
+    });
+});
+
+describe('chat authors', { timeout: TIMEOUT_MS }, () => {
+    const authorsShown = async () => {
+        const history = await screen.findByRole('region', { name: 'Messages' });
+        await within(history).findByText('Question 1');
+        return [...history.querySelectorAll('article > header')].map((header) => !header.classList.contains('sr-only'));
+    };
+
+    it('names who wrote each turn, except the member’s own words, which only screen readers hear', async () => {
+        const own = seededConversation(CHAT_ID, 4, OWNER_ID);
+        const jana = seededConversation('chat-jana', 3, SECOND_MEMBER_ID);
+        const engine = createChatEngine({
+            chats: [own.chat, jana.chat],
+            messages: [...own.messages, ...jana.messages],
+        });
+
+        const mine = renderWithProviders({ path: chatPath(), engineApi: engine.client });
+        expect(await authorsShown()).toEqual([false, true, false, true]);
+        mine.unmount();
+
+        renderWithProviders({ path: chatPath('chat-jana'), engineApi: engine.client });
+        expect(await authorsShown()).toEqual([true, true, true]);
     });
 });
 

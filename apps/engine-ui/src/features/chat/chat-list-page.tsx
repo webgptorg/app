@@ -1,6 +1,6 @@
 import { ChatSource } from '@ptbk/engine-api';
 import type { ReadChat } from '@ptbk/engine-api';
-import { Badge, Card, createDataTableColumnHelper, DataTable, RelativeTime, useLocale, useToast } from '@ptbk/ui';
+import { Badge, createDataTableColumnHelper, DataTable, RelativeTime, useLocale, useToast } from '@ptbk/ui';
 import type { ColumnFiltersState, DataTableColumnDef } from '@ptbk/ui';
 import { keepPreviousData, useQuery, useSuspenseQuery } from '@tanstack/react-query';
 import { getRouteApi } from '@tanstack/react-router';
@@ -155,14 +155,13 @@ export function ChatListPage() {
     return (
         <div className="flex min-w-0 flex-col gap-6">
             {can('chats.write') ? (
-                <Card>
-                    <Composer
-                        label={m.chat_new_label()}
-                        placeholder={m.chat_composer_placeholder({ name: agent.name })}
-                        busy={false}
-                        onSend={startChat}
-                    />
-                </Card>
+                <Composer
+                    label={m.chat_new_label()}
+                    placeholder={m.chat_composer_placeholder({ name: agent.name })}
+                    busy={false}
+                    onSend={startChat}
+                    className="w-full max-w-3xl"
+                />
             ) : null}
             <DataTable
                 caption={m.chat_list_label({ name: agent.name })}
