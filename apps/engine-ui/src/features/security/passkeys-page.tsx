@@ -14,6 +14,7 @@ import { memberDetailQueryOptions } from '../members/members-queries';
 import { useCurrentMember } from '../session/use-current-member';
 import { usePermissions } from '../session/use-permissions';
 import { BackLink, Page } from '../shell/page';
+import { useResumedStepUp } from '../step-up/step-up';
 import { FactsSkeleton } from './facts';
 import { SectionCard } from './section-card';
 import { securityKeys } from './security-keys';
@@ -37,6 +38,14 @@ interface RevokeTarget {
     /** Mine go through `/me/passkeys`, which needs no permission; others' through the admin route. */
     readonly own: boolean;
     readonly current: boolean;
+}
+
+const REVOKE_ACTION = 'security.revoke-passkey';
+
+function parseRevoke(data: unknown): { readonly passkeyId: string } | undefined {
+    if (typeof data !== 'object' || data === null) return undefined;
+    const { passkeyId } = data as Record<string, unknown>;
+    return typeof passkeyId === 'string' && passkeyId.length <= 256 ? { passkeyId } : undefined;
 }
 
 function displayName(passkey: ReadPasskey): string {
@@ -203,8 +212,30 @@ export function PasskeysPage() {
             failure.kind === 'problem' && failure.problem.code === 'last-passkey'
                 ? m.passkeys_last_one({ name: displayName(passkey) })
                 : m.passkeys_revoke_failed({ name: displayName(passkey) }),
+        resumeAs: { action: REVOKE_ACTION, data: ({ passkey }) => ({ passkeyId: passkey.id }) },
     });
+    // Back from the step-up: the same confirmation again, for one more click, once the passkey is listed.
+    const resumed = useResumedStepUp(REVOKE_ACTION, parseRevoke);
+    const [resumeDismissed, setResumeDismissed] = useState(false);
+    const resumedPasskey =
+        resumed === undefined || resumeDismissed || sessions.isPending
+            ? undefined
+            : [...(mine.data?.items ?? []), ...(all.data?.items ?? [])].find(({ id }) => id === resumed.passkeyId);
+    const shown: RevokeTarget | null =
+        target ??
+        (resumedPasskey === undefined
+            ? null
+            : {
+                  passkey: resumedPasskey,
+                  own: resumedPasskey.memberId === me.memberId,
+                  current: resumedPasskey.id === currentPasskeyId,
+              });
+    const choose = (next: RevokeTarget) => {
+        setResumeDismissed(true);
+        setTarget(next);
+    };
     const close = () => {
+        setResumeDismissed(true);
         setTarget(null);
     };
 
@@ -221,7 +252,7 @@ export function PasskeysPage() {
                 showOwner={false}
                 ownerOf={() => true}
                 emptyText={m.passkeys_empty()}
-                onRevoke={setTarget}
+                onRevoke={choose}
             />
             {canManageAll ? (
                 <PasskeyList
@@ -232,20 +263,20 @@ export function PasskeysPage() {
                     ownerOf={(passkey) => passkey.memberId === me.memberId}
                     hide={(passkey) => passkey.memberId === me.memberId}
                     emptyText={m.passkeys_others_empty()}
-                    onRevoke={setTarget}
+                    onRevoke={choose}
                 />
             ) : null}
-            {target === null ? null : (
+            {shown === null ? null : (
                 <ConfirmDialog
                     open
                     onClose={close}
                     tone="danger"
-                    title={m.passkeys_revoke_title({ name: displayName(target.passkey) })}
-                    description={target.current ? m.passkeys_revoke_current_body() : m.passkeys_revoke_body()}
-                    confirmLabel={target.current ? m.passkeys_revoke_and_sign_out() : m.passkeys_revoke()}
+                    title={m.passkeys_revoke_title({ name: displayName(shown.passkey) })}
+                    description={shown.current ? m.passkeys_revoke_current_body() : m.passkeys_revoke_body()}
+                    confirmLabel={shown.current ? m.passkeys_revoke_and_sign_out() : m.passkeys_revoke()}
                     loading={revoke.isPending}
                     onConfirm={() => {
-                        revoke.mutate(target, { onSuccess: close });
+                        revoke.mutate(shown, { onSuccess: close });
                     }}
                 />
             )}

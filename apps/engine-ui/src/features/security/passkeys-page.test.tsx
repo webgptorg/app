@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { expectNoAxeViolations } from '../../testing/axe';
 import { renderWithProviders } from '../../testing/render-with-providers';
+import { createMemoryStorage } from '../../testing/memory-storage';
 import { createSecurityEngine, OWNER_ID } from '../../testing/security-engine';
 import { problemResponse } from '../../testing/test-engine-api';
 
@@ -147,6 +148,30 @@ describe('passkeys', { timeout: TIMEOUT_MS }, () => {
         );
         expect(await screen.findByRole('dialog', { name: 'Confirm it is you' })).toBeDefined();
         expect(within(mine()).getByText('YubiKey')).toBeDefined();
+    });
+
+    it('asks again for the same passkey after the passkey check, without revoking it on load', async () => {
+        const storage = createMemoryStorage();
+        const engine = passkeysEngine({ stepUp: 'required' });
+        const first = renderWithProviders({ path: '/security/passkeys', engineApi: engine.client, storage });
+        await screen.findAllByText('YubiKey');
+        await chooseRevoke(first.user, rowOf(mine(), 'YubiKey'));
+        await first.user.click(
+            within(screen.getByRole('dialog', { name: 'Revoke the passkey “YubiKey”?' })).getByRole('button', {
+                name: 'Revoke',
+            }),
+        );
+        await first.user.click(
+            within(await screen.findByRole('dialog', { name: 'Confirm it is you' })).getByRole('button', {
+                name: 'Continue with passkey',
+            }),
+        );
+        first.unmount();
+
+        const revoke = vi.spyOn(engine.client.me, 'revokePasskey');
+        renderWithProviders({ path: '/security/passkeys', engineApi: engine.client, storage });
+        expect(await screen.findByRole('dialog', { name: 'Revoke the passkey “YubiKey”?' })).toBeDefined();
+        expect(revoke).not.toHaveBeenCalled();
     });
 
     it("never offers to revoke a member's last passkey, and says why", async () => {

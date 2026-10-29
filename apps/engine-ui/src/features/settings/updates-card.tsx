@@ -1,6 +1,6 @@
 import { SemVer, UPDATE_POLICIES } from '@ptbk/engine-api';
 import type { ReadSecurityOverview, UpdatePolicy } from '@ptbk/engine-api';
-import { Button, CodeText, Field, Input, Select, useLocale } from '@ptbk/ui';
+import { Banner, Button, CodeText, Field, Input, Select, useLocale } from '@ptbk/ui';
 import type { UseQueryResult } from '@tanstack/react-query';
 import { useState } from 'react';
 import type { SyntheticEvent } from 'react';
@@ -14,6 +14,7 @@ import { SectionCard } from '../security/section-card';
 import { securityKeys } from '../security/security-keys';
 import { updateStatusLabel } from '../security/security-labels';
 import { usePermissions } from '../session/use-permissions';
+import { useResumedStepUp } from '../step-up/step-up';
 
 type PolicyName = UpdatePolicy['policy'];
 
@@ -37,19 +38,38 @@ function policyText(policy: PolicyName, pinnedVersion: string | null): string {
         : POLICY_LABEL[policy]();
 }
 
+const POLICY_ACTION = 'settings.update-policy';
+
+interface PolicyChange {
+    readonly policy: PolicyName;
+    readonly pinnedVersion: string;
+}
+
+function parsePolicyChange(data: unknown): PolicyChange | undefined {
+    if (typeof data !== 'object' || data === null) return undefined;
+    const { policy, pinnedVersion } = data as Record<string, unknown>;
+    const name = UPDATE_POLICIES.find((option) => option === policy);
+    if (name === undefined || typeof pinnedVersion !== 'string' || pinnedVersion.length > 256) return undefined;
+    return { policy: name, pinnedVersion };
+}
+
 interface PolicyFormProps {
     readonly current: ReadSecurityOverview['update'];
+    /** The change the member asked for before confirming it was them; shown again, never saved without a click. */
+    readonly resumed: PolicyChange | undefined;
     /** What a new pin starts from: pinning usually means "stay where you are". */
     readonly runningVersion: string;
 }
 
-function PolicyForm({ current, runningVersion }: PolicyFormProps) {
+function PolicyForm({ current, resumed, runningVersion }: PolicyFormProps) {
     const engineApi = useEngineApi();
-    const [policy, setPolicy] = useState<PolicyName>(current.policy);
-    const [version, setVersion] = useState(current.pinnedVersion ?? runningVersion);
+    const [policy, setPolicy] = useState<PolicyName>(resumed?.policy ?? current.policy);
+    const [version, setVersion] = useState(
+        resumed?.policy === 'pinned' ? resumed.pinnedVersion : (current.pinnedVersion ?? runningVersion),
+    );
     const [versionError, setVersionError] = useState<string | undefined>(undefined);
     const save = useStepUpAwareMutation({
-        mutationFn: async (next: { readonly policy: PolicyName; readonly pinnedVersion: string }) =>
+        mutationFn: async (next: PolicyChange) =>
             unwrap(
                 await engineApi.settings.setUpdatePolicy(
                     next.policy === 'pinned'
@@ -61,6 +81,7 @@ function PolicyForm({ current, runningVersion }: PolicyFormProps) {
         invalidates: [securityKeys.overview()],
         successMessage: (saved) => m.security_policy_saved({ policy: policyText(saved.policy, saved.pinnedVersion) }),
         errorMessage: () => m.security_policy_failed(),
+        resumeAs: { action: POLICY_ACTION, data: (next) => next },
     });
     const unchanged = policy === current.policy && (policy !== 'pinned' || version === current.pinnedVersion);
 
@@ -76,6 +97,7 @@ function PolicyForm({ current, runningVersion }: PolicyFormProps) {
 
     return (
         <form noValidate onSubmit={submit} className="flex max-w-md flex-col gap-4">
+            {resumed === undefined || unchanged ? null : <Banner tone="info">{m.step_up_resumed()}</Banner>}
             <Field label={m.security_policy_label()} hint={POLICY_HINT[policy]()}>
                 {(control) => (
                     <Select
@@ -155,6 +177,7 @@ function UpdateFacts({ overview: { engine, update } }: { readonly overview: Read
  */
 export function UpdatesCard({ query }: { readonly query: UseQueryResult<ReadSecurityOverview> }) {
     const { can } = usePermissions();
+    const resumed = useResumedStepUp(POLICY_ACTION, parsePolicyChange);
     return (
         <SectionCard title={m.settings_updates()} query={query} skeleton={<FactsSkeleton rows={3} />}>
             {(overview) => {
@@ -166,8 +189,9 @@ export function UpdatesCard({ query }: { readonly query: UseQueryResult<ReadSecu
                             <div className="flex flex-col gap-3 border-t border-divider pt-5">
                                 <p className="text-sm text-text-muted">{m.security_policy_logged()}</p>
                                 <PolicyForm
-                                    key={`${update.policy}:${update.pinnedVersion ?? ''}`}
+                                    key={`${update.policy}:${update.pinnedVersion ?? ''}:${resumed === undefined ? '' : 'resumed'}`}
                                     current={update}
+                                    resumed={resumed}
                                     runningVersion={overview.engine.version}
                                 />
                             </div>
