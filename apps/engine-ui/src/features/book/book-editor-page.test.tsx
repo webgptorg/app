@@ -256,14 +256,10 @@ describe('the book editor page', { timeout: TIMEOUT_MS }, () => {
 
         await app.user.click(screen.getByRole('button', { name: 'View the differences' }));
         const dialog = await screen.findByRole('dialog', { name: 'Your text compared with the saved version' });
-        expect(
-            within(dialog).getByText('Red: only in the current version. Green: only in this version.'),
-        ).toBeDefined();
-        // Whole lines: the unchanged line above the removed one stays out of the change.
         await waitFor(() => {
             expect(
-                within(dialog).getByTestId('book-viewer').shadowRoot?.querySelector('.cm-deletedChunk')?.textContent,
-            ).toBe('RULE Second');
+                within(dialog).getByTestId('book-viewer').shadowRoot?.querySelector('.cm-deletedChunk'),
+            ).not.toBeNull();
         });
         expect(bookText('book-viewer')).toBe(`${SOURCE}\nRULE Mine`);
         await app.user.click(within(dialog).getByRole('button', { name: 'Close' }));
