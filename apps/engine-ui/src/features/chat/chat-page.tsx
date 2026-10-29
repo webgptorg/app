@@ -15,6 +15,7 @@ import { ChatPanel } from './chat-panel';
 import { chatQueryOptions } from './chat-queries';
 import { chatName, sourceLabel } from './chat-source';
 import { ChatStarter } from './chat-starter';
+import { RecentChatsButton, WithRecentChats } from './recent-chats';
 
 const route = getRouteApi('/agents/$agentId/chat/$chatId');
 
@@ -33,29 +34,33 @@ export function ChatPage() {
     const ownChat = chat.createdBy === me.memberId;
     const canWrite = ownChat && can('chats.write');
 
-    // The agent frame gives this page the rest of the screen, so the composer is in view without scrolling.
+    // The agent frame gives this page the rest of the screen, so the composer is in view without scrolling. Where the
+    // recent list has no room beside the chat, the header links to all chats and opens the list as a drawer.
     return (
-        <section aria-labelledby="chat-title" className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
-            <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
-                <Link
-                    to="/agents/$agentId/chat"
-                    params={{ agentId }}
-                    variant="standalone"
-                    className="inline-flex shrink-0 items-center gap-1 text-sm"
-                >
-                    <ArrowLeft aria-hidden className="size-4" />
-                    {m.chat_back()}
-                </Link>
-                <h2 id="chat-title" className="min-w-0 flex-1 truncate text-base font-semibold">
-                    {chatName(chat)}
-                </h2>
-                <div className="flex shrink-0 items-center gap-2 text-sm text-text-muted">
-                    <Badge>{sourceLabel(chat.source)}</Badge>
-                    <ChatStarter chat={chat} />
+        <WithRecentChats agentId={agentId}>
+            <section aria-labelledby="chat-title" className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
+                <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+                    <Link
+                        to="/agents/$agentId/chat/all"
+                        params={{ agentId }}
+                        variant="standalone"
+                        className="inline-flex shrink-0 items-center gap-1 text-sm @2xl:hidden"
+                    >
+                        <ArrowLeft aria-hidden className="size-4" />
+                        {m.chat_back()}
+                    </Link>
+                    <h2 id="chat-title" className="min-w-0 flex-1 truncate text-base font-semibold">
+                        {chatName(chat)}
+                    </h2>
+                    <div className="flex shrink-0 items-center gap-2 text-sm text-text-muted">
+                        <Badge>{sourceLabel(chat.source)}</Badge>
+                        <ChatStarter chat={chat} />
+                    </div>
+                    <RecentChatsButton agentId={agentId} className="@2xl:hidden" />
                 </div>
-            </div>
-            {ownChat ? null : <Banner tone="info">{m.chat_read_only()}</Banner>}
-            <ChatPanel chat={chat} agentName={agent.name} agentProfile={agent.profile} canWrite={canWrite} fill />
-        </section>
+                {ownChat ? null : <Banner tone="info">{m.chat_read_only()}</Banner>}
+                <ChatPanel chat={chat} agentName={agent.name} agentProfile={agent.profile} canWrite={canWrite} fill />
+            </section>
+        </WithRecentChats>
     );
 }

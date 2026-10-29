@@ -114,7 +114,7 @@ export function AgentDetailFrame() {
             .toSorted((a, b) => b.to.length - a.to.length)[0] ?? tabs[0];
     useDocumentTitle(...(selected === undefined ? [] : [selected.label()]), agent.name);
     const fill = useMatches({ select: (matches) => matches.some((match) => match.staticData.fillViewport === true) });
-    // Inside a chat, "Chat" would only lead back to the list, which the chat's own back link already does.
+    // In the Chat tab, "Chat" would only lead to a fresh conversation; the recent list's "New chat" does that.
     const chatTab = fill ? undefined : tabs.find((tab) => tab.id === AGENT_TABS.chat.id);
     const actionSize = fill ? 'sm' : 'md';
     const bookTab = can('agents.write') ? tabs.find((tab) => tab.id === AGENT_TABS.book.id) : undefined;

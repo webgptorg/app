@@ -1,6 +1,6 @@
 import { ChatSource } from '@ptbk/engine-api';
 import type { ReadChat } from '@ptbk/engine-api';
-import { Badge, createDataTableColumnHelper, DataTable, RelativeTime, useLocale, useToast } from '@ptbk/ui';
+import { Badge, createDataTableColumnHelper, DataTable, RelativeTime, useLocale } from '@ptbk/ui';
 import type { ColumnFiltersState, DataTableColumnDef } from '@ptbk/ui';
 import { keepPreviousData, useQuery, useSuspenseQuery } from '@tanstack/react-query';
 import { getRouteApi } from '@tanstack/react-router';
@@ -14,15 +14,13 @@ import { isForbidden, isStepUpRequired } from '../../app/mutations';
 import { m } from '../../paraglide/messages';
 import { useAgentIdParam } from '../agents/agent-detail-route';
 import { agentDetailQueryOptions } from '../agents/agents-queries';
-import { usePermissions } from '../session/use-permissions';
 import { chatListParams } from './chat-list-search';
 import type { ChatListSearch } from './chat-list-search';
 import { chatListQueryOptions } from './chat-queries';
 import { chatName, sourceFilterOptions, sourceLabel } from './chat-source';
 import { ChatStarter } from './chat-starter';
-import { Composer } from './composer';
 
-const route = getRouteApi('/agents/$agentId/chat/');
+const route = getRouteApi('/agents/$agentId/chat/all');
 
 export const CHAT_COLUMNS_STORAGE_KEY = 'ptbk.chats.columns';
 const NO_CHATS: readonly ReadChat[] = [];
@@ -106,14 +104,12 @@ function useChatColumns(agentId: string): DataTableColumnDef<ReadChat>[] {
  * Every chat of the agent, whoever started it (other members, public visitors, API clients), newest activity first.
  * The source filter and the cursor live in the URL, so a filtered page can be linked and survives a reload.
  */
-export function ChatListPage() {
+export function ChatTablePage() {
     const search = route.useSearch();
     const navigate = route.useNavigate();
     const engineApi = useEngineApi();
     const agentId = useAgentIdParam();
     const { data: agent } = useSuspenseQuery(agentDetailQueryOptions(engineApi, agentId));
-    const { can } = usePermissions();
-    const toast = useToast();
     const { storage } = useBrowser();
     const columns = useChatColumns(agentId);
     const list = useQuery({
@@ -130,39 +126,8 @@ export function ChatListPage() {
         if (invalidCursor) void navigate({ search: (previous) => ({ ...previous, cursor: undefined }), replace: true });
     }, [invalidCursor, navigate]);
 
-    const startChat = async (content: string): Promise<boolean> => {
-        const signal = AbortSignal.timeout(30_000);
-        try {
-            const created = await engineApi.chats.create(agentId, {}, signal);
-            if (created.kind === 'ok') {
-                const sent = await engineApi.chats.sendMessage(created.data.id, { content }, signal);
-                if (sent.kind === 'ok') {
-                    // The chat page follows the reply that is now generating.
-                    void navigate({
-                        to: '/agents/$agentId/chat/$chatId',
-                        params: { agentId, chatId: created.data.id },
-                    });
-                    return true;
-                }
-            }
-        } catch {
-            // Reported below, like a refusal.
-        }
-        toast.show({ tone: 'danger', title: m.chat_send_failed() });
-        return false;
-    };
-
     return (
         <div className="flex min-w-0 flex-col gap-6">
-            {can('chats.write') ? (
-                <Composer
-                    label={m.chat_new_label()}
-                    placeholder={m.chat_composer_placeholder({ name: agent.name })}
-                    busy={false}
-                    onSend={startChat}
-                    className="w-full max-w-3xl"
-                />
-            ) : null}
             <DataTable
                 caption={m.chat_list_label({ name: agent.name })}
                 columns={columns}
