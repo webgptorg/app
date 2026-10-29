@@ -59,8 +59,9 @@ function redirect(location: string, cookie?: string): Response {
     return new Response(null, { status: 303, headers });
 }
 
+// It goes into `Location` as is, which takes no character above ASCII; the gateway's own `next` is always encoded.
 const safeNext = (next: string | undefined): string | null =>
-    next !== undefined && isSafeNextPath(next) ? next : null;
+    next !== undefined && isSafeNextPath(next) && /^[\x20-\x7e]*$/.test(next) ? next : null;
 
 function signInPage(members: readonly Member[], next: string | null): Response {
     const nextInput = next === null ? '' : `\n<input type="hidden" name="next" value="${escapeHtml(next)}">`;
