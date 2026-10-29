@@ -465,6 +465,67 @@ describe('engine status service', () => {
         expect(storedEngineStatusSchema.parse(legacy)).toMatchObject({ notice: { kind: 'none' } });
     });
 
+    describe('a heartbeat accepted while the alarm is sending', () => {
+        /**
+         * The object takes other calls while it awaits D1 or the email binding: the alarm's sends run `during` first,
+         * on the same storage, then deliver.
+         */
+        function alarmSendingDuring(t: ReturnType<typeof setup>, during: () => Promise<unknown>) {
+            let ran = false;
+            const sending = createEngineStatusService({
+                ...t.deps,
+                email: {
+                    async send(message, signal) {
+                        if (!ran) {
+                            ran = true;
+                            await during();
+                        }
+                        await t.email.send(message, signal);
+                    },
+                },
+            });
+            return async () => {
+                const at = t.storage.takeAlarm();
+                if (at === null) {
+                    throw new Error('no alarm set');
+                }
+                t.clock.set(Math.max(at, t.clock.nowMs()));
+                await sending.alarm();
+            };
+        }
+
+        it('is kept by a notice, which still goes out once', async () => {
+            const t = setup();
+            await t.newEngineBeat(1);
+            t.clock.advance(1000);
+            const fire = alarmSendingDuring(t, () => t.beat(2));
+            await fire();
+            expect(await t.service.getStatus()).toMatchObject({ lastSeq: 2, lastSeenAt: START + 1000 });
+            expect(await t.beat(2)).toEqual({ kind: 'replayed-seq' });
+            expect(t.storage.alarmAt()).toBe(START + 1000 + OFFLINE_AFTER_MS);
+            expect(t.sentOf('engine-online')).toHaveLength(1);
+        });
+
+        it('ends the outage the offline email announces, and owes the back-online email', async () => {
+            const t = setup();
+            await t.beat(1);
+            const backAt = START + OFFLINE_AFTER_MS + 1000;
+            const fire = alarmSendingDuring(t, async () => {
+                t.clock.set(backAt);
+                await t.beat(2);
+            });
+            await fire();
+            expect(t.sentOf('engine-offline')).toHaveLength(1);
+            expect(await t.service.getStatus()).toMatchObject({ state: 'online', lastSeq: 2, lastSeenAt: backAt });
+            expect(await t.beat(2)).toEqual({ kind: 'replayed-seq' });
+            expect(t.storage.alarmAt()).toBe(backAt);
+            await t.fireAlarm();
+            expect(t.sentOf('engine-back-online')).toEqual([
+                expect.objectContaining({ lastSeenAt: START, backOnlineAt: backAt }),
+            ]);
+        });
+    });
+
     it('does nothing on an alarm for an engine it has never seen', async () => {
         const t = setup();
         await t.service.alarm();
