@@ -8,4 +8,5 @@ export const memberKeys = {
     lists: () => [...memberKeys.all, 'list'] as const,
     list: (params: MemberListParams) => [...memberKeys.lists(), params] as const,
     detail: (memberId: MemberId) => [...memberKeys.all, 'detail', memberId] as const,
+    invites: () => [...memberKeys.all, 'invites'] as const,
 };
