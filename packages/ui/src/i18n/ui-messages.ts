@@ -22,6 +22,7 @@ export interface UiMessages {
     readonly skipToContent: () => string;
     readonly required: () => string;
     readonly showMore: () => string;
+    readonly moreActions: () => string;
     readonly typeToConfirm: (params: { readonly phrase: string }) => string;
 
     readonly pagination: () => string;

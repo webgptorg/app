@@ -146,7 +146,7 @@ describe('trigger detail', { timeout: TIMEOUT_MS }, () => {
         expect(within(fact('State')).getByText('Its schedule is over')).toBeDefined();
         expect(screen.queryByRole('button', { name: /^(Pause|Resume) / })).toBeNull();
         expect(screen.queryByRole('link', { name: 'Edit' })).toBeNull();
-        expect(screen.getByRole('button', { name: 'Delete' })).toBeDefined();
+        expect(screen.getByRole('button', { name: 'More actions' })).toBeDefined();
     });
 
     it('describes a newer engine’s recurrence by its name and offers no edit that would replace it', async () => {
@@ -164,7 +164,8 @@ describe('trigger detail', { timeout: TIMEOUT_MS }, () => {
 
     it('deletes after a confirmation naming the trigger, waiting for the engine', async () => {
         const { user, engine, router } = await renderTrigger(TRIGGER_IDS.weekday);
-        await user.click(screen.getByRole('button', { name: 'Delete' }));
+        await user.click(screen.getByRole('button', { name: 'More actions' }));
+        await user.click(screen.getByRole('menuitem', { name: 'Delete' }));
         const dialog = await screen.findByRole('dialog', { name: 'Delete Morning report?' });
         expect(within(dialog).getByText(/The runs it already started are kept/)).toBeDefined();
         await user.click(within(dialog).getByRole('button', { name: 'Delete' }));
@@ -179,7 +180,8 @@ describe('trigger detail', { timeout: TIMEOUT_MS }, () => {
         const engine = createTriggersEngine();
         engine.spies.delete.mockImplementationOnce(() => problemResponse('validation-failed'));
         const { user, router } = await renderTrigger(TRIGGER_IDS.weekday, engine);
-        await user.click(screen.getByRole('button', { name: 'Delete' }));
+        await user.click(screen.getByRole('button', { name: 'More actions' }));
+        await user.click(screen.getByRole('menuitem', { name: 'Delete' }));
         const dialog = await screen.findByRole('dialog', { name: 'Delete Morning report?' });
         await user.click(within(dialog).getByRole('button', { name: 'Delete' }));
         expect(await screen.findByText('Morning report could not be deleted.')).toBeDefined();
@@ -191,7 +193,7 @@ describe('trigger detail', { timeout: TIMEOUT_MS }, () => {
         await renderTrigger(TRIGGER_IDS.weekday, createTriggersEngine({ permissions: allBut('triggers.manage') }));
         expect(screen.queryByRole('button', { name: /^(Pause|Resume) / })).toBeNull();
         expect(screen.queryByRole('link', { name: 'Edit' })).toBeNull();
-        expect(screen.queryByRole('button', { name: 'Delete' })).toBeNull();
+        expect(screen.queryByRole('button', { name: 'More actions' })).toBeNull();
     });
 
     it('shows a skeleton while loading, then the trigger', async () => {

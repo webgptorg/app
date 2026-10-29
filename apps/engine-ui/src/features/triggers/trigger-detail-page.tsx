@@ -1,6 +1,6 @@
 import { TriggerId } from '@ptbk/engine-api';
 import type { ReadTrigger } from '@ptbk/engine-api';
-import { Banner, Button, Card, CodeText, EmptyState, ErrorState, Skeleton, useLocale } from '@ptbk/ui';
+import { ActionMenu, Banner, Card, CodeText, EmptyState, ErrorState, Skeleton, useLocale } from '@ptbk/ui';
 import { getRouteApi, useNavigate } from '@tanstack/react-router';
 import { Pencil, Trash2 } from 'lucide-react';
 import { useState } from 'react';
@@ -71,10 +71,18 @@ function TriggerActions({ trigger, onDelete }: { readonly trigger: ReadTrigger; 
                     {m.trigger_edit()}
                 </ButtonLink>
             ) : null}
-            <Button variant="danger" onClick={onDelete}>
-                <Trash2 aria-hidden className="size-4" />
-                {m.trigger_delete()}
-            </Button>
+            <ActionMenu
+                items={[
+                    {
+                        kind: 'item',
+                        id: 'delete',
+                        label: m.trigger_delete(),
+                        tone: 'danger',
+                        icon: <Trash2 aria-hidden className="size-4" />,
+                        onSelect: onDelete,
+                    },
+                ]}
+            />
         </div>
     );
 }
