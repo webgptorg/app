@@ -24,9 +24,12 @@ export function UserMenu() {
             icon: <LogOut aria-hidden />,
             onSelect: () => {
                 void signOut().then((signedOut) => {
-                    if (!signedOut) {
-                        toast.show({ tone: 'danger', title: m.sign_out_failed() });
-                    }
+                    // The sign-in page looks the same as before signing in; on a shared machine, this confirms it.
+                    toast.show(
+                        signedOut
+                            ? { tone: 'success', title: m.signed_out() }
+                            : { tone: 'danger', title: m.sign_out_failed() },
+                    );
                 });
             },
         },

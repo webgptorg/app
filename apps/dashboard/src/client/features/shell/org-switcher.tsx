@@ -16,10 +16,25 @@ function orgName(org: { readonly name: string | null }): string {
 }
 
 /**
- * The organizations the person belongs to (one in v0). Switching moves the server-side session; every cached answer
+ * The active organization. With a single membership (everyone in v0) it is just a label: a menu with one checked item
+ * would promise a choice that is not there. Switching moves the server-side session; every cached answer
  * belonged to the old organization, so all of it is dropped before the engine list loads again.
  */
 export function OrgSwitcher() {
+    const session = useSession();
+    const name = orgName(session.activeOrg);
+    if (session.memberships.length < 2) {
+        return (
+            <span className="min-w-0 truncate text-sm font-medium">
+                <span className="sr-only">{m.org_switcher_for({ name })}</span>
+                <span aria-hidden="true">{name}</span>
+            </span>
+        );
+    }
+    return <OrgMenu name={name} />;
+}
+
+function OrgMenu({ name }: { readonly name: string }) {
     const api = useApiClient();
     const session = useSession();
     const queryClient = useQueryClient();
@@ -46,7 +61,6 @@ export function OrgSwitcher() {
             }
         },
     }));
-    const name = orgName(active);
     return (
         <Menu
             label={m.org_switcher()}
