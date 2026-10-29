@@ -48,6 +48,18 @@ export function linkState(code: LinkCodeStatusView, engine: EngineView | undefin
     return heartbeat.members > 0 ? 'ready' : 'owner-pending';
 }
 
+/**
+ * The link state as `LinkProgress` last fetched it, for the page around it; it only reads what that component polls
+ * and never asks on its own.
+ */
+export function useObservedLinkState(linkCodeId: string | undefined): LinkState | undefined {
+    const api = useApiClient();
+    const code = useQuery({ ...linkCodeQuery(api, linkCodeId ?? ''), enabled: false }).data;
+    const engineId = linkCodeId !== undefined && code?.status === 'linked' ? code.engineId : '';
+    const engine = useQuery({ ...engineQuery(api, engineId), enabled: false }).data;
+    return linkCodeId === undefined || code === undefined ? undefined : linkState(code, engine);
+}
+
 /** The page's clock, ticking only while a hint may still appear. */
 function useNow(active: boolean): number {
     const { now } = useBrowser();
@@ -126,6 +138,8 @@ function LinkedDetails(props: {
     readonly engineId: string;
     readonly hostname: string;
     readonly engine: EngineView | undefined;
+    /** False once the ready panel asks for the name itself. */
+    readonly askName: boolean;
 }) {
     const shortId = shortEngineId(props.engineId);
     const session = useSession();
@@ -155,7 +169,7 @@ function LinkedDetails(props: {
                     <span>{m.link_progress_compare()}</span>
                 </dd>
             </dl>
-            {props.engine === undefined || !canRename(session.activeOrg.permissions) ? null : (
+            {!props.askName || props.engine === undefined || !canRename(session.activeOrg.permissions) ? null : (
                 <div className="flex flex-col gap-2">
                     <p>{m.link_progress_name()}</p>
                     <EngineNameField engine={props.engine} />
@@ -225,6 +239,8 @@ function Checklist(props: {
     readonly state: LinkState;
     readonly troubleshootingUrl: string | null;
     readonly commandShown: boolean;
+    readonly onRenew: () => void;
+    readonly renewing: boolean;
 }) {
     const { code, engine, state } = props;
     const waitingSince = useFirstSeen(state, 'waiting');
@@ -238,6 +254,14 @@ function Checklist(props: {
                 {linked === null ? (
                     <>
                         <p>{props.commandShown ? m.link_progress_waiting() : m.link_progress_waiting_resumed()}</p>
+                        {props.commandShown ? null : (
+                            <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                                <span className="text-text-muted">{m.link_progress_lost_command()}</span>
+                                <Button variant="secondary" size="sm" loading={props.renewing} onClick={props.onRenew}>
+                                    {m.engines_new_create_again()}
+                                </Button>
+                            </div>
+                        )}
                         {waitingSince !== null && now - waitingSince >= WAITING_HINT_MS ? (
                             <TroubleshootingHint troubleshootingUrl={props.troubleshootingUrl} />
                         ) : null}
@@ -245,7 +269,12 @@ function Checklist(props: {
                 ) : (
                     <>
                         <p className="font-medium">{m.link_progress_linked()}</p>
-                        <LinkedDetails engineId={linked.engineId} hostname={linked.hostname} engine={engine} />
+                        <LinkedDetails
+                            engineId={linked.engineId}
+                            hostname={linked.hostname}
+                            engine={engine}
+                            askName={state !== 'ready'}
+                        />
                     </>
                 )}
             </Row>
@@ -270,16 +299,7 @@ function Checklist(props: {
                         step="owner"
                         state={state === 'ready' ? 'done' : state === 'owner-pending' ? 'current' : 'waiting'}
                     >
-                        {state === 'ready' ? (
-                            <p>{m.link_progress_owner_done()}</p>
-                        ) : (
-                            <>
-                                <p>{m.link_progress_owner()}</p>
-                                {state === 'owner-pending' ? (
-                                    <p className="text-text-muted">{m.link_progress_owner_delay()}</p>
-                                ) : null}
-                            </>
-                        )}
+                        {state === 'ready' ? <p>{m.link_progress_owner_done()}</p> : <p>{m.link_progress_owner()}</p>}
                     </Row>
                 </>
             )}
@@ -335,47 +355,94 @@ export function LinkProgress(props: {
         return <Skeleton className="h-16 w-full" />;
     }
     const state = linkState(code.data, engine.data);
+    const checklist = (
+        <Checklist
+            code={code.data}
+            engine={engine.data}
+            state={state}
+            troubleshootingUrl={props.troubleshootingUrl}
+            commandShown={props.commandShown}
+            onRenew={props.onRenew}
+            renewing={props.renewing}
+        />
+    );
+    const ready = state === 'ready' ? linked : null;
     return (
-        <section aria-labelledby="link-progress-title" data-link-state={state} className="flex flex-col gap-4">
-            <h2 id="link-progress-title" className="font-display text-lg font-semibold">
-                {m.link_progress_title()}
-            </h2>
+        <section
+            aria-labelledby={ready === null ? 'link-progress-title' : 'link-ready-title'}
+            data-link-state={state}
+            className="flex flex-col gap-4"
+        >
             <p className="sr-only" aria-live="polite">
                 {announcement(state, engine.data)}
             </p>
-            {state === 'expired' ? (
-                <Banner tone="warning" title={m.engines_new_expired_title()}>
-                    <p>{m.engines_new_expired_body()}</p>
-                    <Button variant="secondary" loading={props.renewing} onClick={props.onRenew}>
-                        {m.engines_new_create_again()}
-                    </Button>
-                </Banner>
+            {ready === null ? (
+                <>
+                    <h2 id="link-progress-title" className="font-display text-lg font-semibold">
+                        {m.link_progress_title()}
+                    </h2>
+                    {state === 'expired' ? (
+                        <Banner tone="warning" title={m.engines_new_expired_title()}>
+                            <p>{m.engines_new_expired_body()}</p>
+                            <Button variant="secondary" loading={props.renewing} onClick={props.onRenew}>
+                                {m.engines_new_create_again()}
+                            </Button>
+                        </Banner>
+                    ) : (
+                        checklist
+                    )}
+                </>
             ) : (
-                <Checklist
-                    code={code.data}
-                    engine={engine.data}
-                    state={state}
-                    troubleshootingUrl={props.troubleshootingUrl}
-                    commandShown={props.commandShown}
-                />
+                <>
+                    <ReadyPanel engineId={ready.engineId} hostname={ready.hostname} engine={engine.data} />
+                    <details className="text-sm">
+                        <summary className="cursor-pointer text-text-muted">{m.link_progress_details()}</summary>
+                        <div className="pt-4">{checklist}</div>
+                    </details>
+                </>
             )}
-            {state === 'ready' && linked !== null ? (
-                <div className="flex flex-col gap-3" data-link-ready>
-                    <p className="font-medium">{m.link_progress_ready()}</p>
-                    <div className="flex flex-wrap gap-3">
-                        <EngineOpenLink
-                            name={engineLabel({ engineId: linked.engineId, label: engine.data?.label ?? null })}
-                            hostname={linked.hostname}
-                            variant="primary"
-                            size="md"
-                            prominent
-                        />
-                        <ButtonLink to="/engines" variant="secondary">
-                            {m.link_progress_back()}
-                        </ButtonLink>
-                    </div>
-                </div>
-            ) : null}
         </section>
+    );
+}
+
+/** The end of onboarding: one moment, one primary action, and the name if the owner has not given one yet. */
+function ReadyPanel(props: {
+    readonly engineId: string;
+    readonly hostname: string;
+    readonly engine: EngineView | undefined;
+}) {
+    const session = useSession();
+    const name = engineLabel({ engineId: props.engineId, label: props.engine?.label ?? null });
+    return (
+        <div
+            className="flex flex-col items-center gap-4 rounded-(--card-radius) border border-(--card-border) bg-(--card-bg) px-6 py-8 text-center shadow-(--card-shadow)"
+            data-link-ready
+        >
+            <TrustMark
+                fingerprint={deriveEngineFingerprint(props.engineId)}
+                state="verified"
+                size="lg"
+                label={m.engines_fingerprint_label({ name })}
+            />
+            <div className="flex max-w-md flex-col gap-2">
+                <h2 id="link-ready-title" className="font-display text-2xl font-semibold">
+                    {m.link_progress_ready()}
+                </h2>
+                <p>{m.link_progress_ready_body()}</p>
+                <p className="text-sm text-text-muted">{m.link_progress_compare()}</p>
+            </div>
+            {props.engine === undefined || !canRename(session.activeOrg.permissions) ? null : (
+                <div className="flex w-full max-w-md flex-col gap-2 text-start text-sm">
+                    <p>{m.link_progress_name()}</p>
+                    <EngineNameField engine={props.engine} />
+                </div>
+            )}
+            <div className="flex flex-wrap justify-center gap-3">
+                <EngineOpenLink name={name} hostname={props.hostname} variant="primary" size="md" prominent />
+                <ButtonLink to="/engines" variant="secondary">
+                    {m.link_progress_back()}
+                </ButtonLink>
+            </div>
+        </div>
     );
 }

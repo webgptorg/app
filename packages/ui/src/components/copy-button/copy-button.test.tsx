@@ -23,6 +23,29 @@ describe('CopyButton', () => {
         await expectNoAxeViolations(container);
     });
 
+    it('can show its label, and says "Copied" in its place for the feedback time', async () => {
+        vi.useFakeTimers();
+        const copy = vi.fn(() => Promise.resolve());
+        const { container } = renderUi(
+            <CopyButton value="install --code x" label="Copy command" copy={copy} variant="secondary" showLabel />,
+        );
+        const button = screen.getByRole('button', { name: 'Copy command' });
+        expect(button.textContent).toBe('Copy command');
+        await act(async () => {
+            button.click();
+            await Promise.resolve();
+        });
+        expect(copy).toHaveBeenCalledWith('install --code x');
+        expect(button.textContent).toBe('Copied');
+        expect(screen.getByRole('status').textContent).toBe('Copied');
+        act(() => {
+            vi.advanceTimersByTime(COPY_FEEDBACK_MS);
+        });
+        expect(button.textContent).toBe('Copy command');
+        vi.useRealTimers();
+        await expectNoAxeViolations(container);
+    });
+
     it('announces a failure and resets after the feedback time', async () => {
         vi.useFakeTimers();
         const copy = vi.fn(() => Promise.reject(new Error('denied')));

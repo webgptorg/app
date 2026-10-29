@@ -10,6 +10,7 @@ export const copyButtonGallery: GalleryEntry = {
         <div className="flex items-center gap-3">
             <CopyButton value="engine-7f3a" />
             <CopyButton value="engine-7f3a" label="Copy engine ID" variant="secondary" size="md" />
+            <CopyButton value="docker run ptbk" label="Copy command" variant="secondary" showLabel />
             <CopyButton value="x" label="Copy (always fails)" copy={reject} />
         </div>
     ),

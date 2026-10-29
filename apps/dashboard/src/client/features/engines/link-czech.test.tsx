@@ -48,8 +48,8 @@ describe('the link page in Czech', () => {
                 api.on(apiRoutes.getEngine, ok({ engine: ready }));
             },
         });
-        expect(await screen.findByText('Váš engine je připraven.', { selector: 'p.font-medium' })).toBeTruthy();
-        expect(screen.getByText(/funguje jednou a za 30 minut vyprší/)).toBeTruthy();
+        expect(await screen.findByText('Váš engine je připravený', { selector: 'h2' })).toBeTruthy();
+        expect(screen.getByText('Dokončení na enginu')).toBeTruthy();
         expect(screen.getByText('Engine je online, verze 1.4.2.')).toBeTruthy();
         expect(screen.getByText('Dostupný přes 2 relaye')).toBeTruthy();
         expect(
@@ -80,7 +80,7 @@ describe('the link page in Czech', () => {
         expect(
             await screen.findByRole('button', { name: 'Začít 14denní zkušební období tarifu Standard' }),
         ).toBeTruthy();
-        expect(screen.getByText(/za 30 sekund vyprší/)).toBeTruthy();
+        expect(screen.getByText('Tarif').closest('li')?.getAttribute('aria-current')).toBe('step');
         expect(document.body.textContent).not.toMatch(/engines_|link_progress_|billing_/);
     });
 });

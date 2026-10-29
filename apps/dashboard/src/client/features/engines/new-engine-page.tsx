@@ -1,5 +1,6 @@
-import { Banner, Button, Card, CopyButton, ErrorState, ExternalLink, Skeleton, Tabs } from '@ptbk/ui';
+import { Banner, Button, Card, CopyButton, ErrorState, ExternalLink, Skeleton, Tabs, useToast } from '@ptbk/ui';
 import { useQuery } from '@tanstack/react-query';
+import { ArrowLeft } from 'lucide-react';
 import { useNavigate } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
 
@@ -13,13 +14,16 @@ import { Link } from '../../core/link';
 import { useAppMutation } from '../../core/mutations';
 import { PlanOfferList } from '../billing/plan-offers';
 import { useSession } from '../session/use-session';
-import { LINK_POLL_MS, LinkProgress } from './link-progress';
+import { TrustLink } from '../trust/trust-link';
+import { LINK_POLL_MS, LinkProgress, useObservedLinkState } from './link-progress';
+import type { LinkState } from './link-progress';
 import { linkCodeQuery, linkEligibilityQuery } from './link-queries';
+import { LinkSteps } from './link-steps';
+import type { LinkStep } from './link-steps';
 
 const LINK_PERMISSION = 'engine.link';
 const BILLING_PERMISSION = 'billing.manage';
 const SECOND_MS = 1000;
-const MINUTE_S = 60;
 const MOVING_ANCHOR = 'moving-an-existing-deployment';
 const TROUBLESHOOTING_ANCHOR = 'troubleshooting';
 
@@ -68,13 +72,6 @@ function linkCodeErrorMessage(error: unknown): string | undefined {
     }
 }
 
-/** "30 minutes", or "30 seconds" for the short lifetimes the e2e stack configures. */
-function lifetimeText(seconds: number): string {
-    return seconds % MINUTE_S === 0
-        ? m.engines_new_lifetime_minutes({ count: seconds / MINUTE_S })
-        : m.engines_new_lifetime_seconds({ count: seconds });
-}
-
 /** Ticks every second from the injected clock; the caller remounts it per code (`key`). */
 function useRemainingMs(until: number): number {
     const { now } = useBrowser();
@@ -120,13 +117,15 @@ function InstallPathPanel(props: { readonly path: InstallCommandView; readonly g
     return (
         <div className="flex flex-col gap-3">
             {path.id === 'compose' ? <p className="text-sm">{m.engines_new_compose_hint()}</p> : null}
-            <div className="flex items-start gap-1">
-                <pre className="min-w-0 flex-1 rounded-control bg-(--code-text-bg) p-3 font-mono text-sm wrap-anywhere whitespace-pre-wrap text-(--code-text-text)">
+            <div className="overflow-hidden rounded-control bg-(--code-text-bg) text-(--code-text-text)">
+                <div className="flex justify-end px-2 pt-2">
+                    <CopyButton value={path.command} label={m.engines_new_copy()} variant="secondary" showLabel />
+                </div>
+                <pre className="px-3 pt-1 pb-3 font-mono text-sm wrap-anywhere whitespace-pre-wrap">
                     <code>{path.command}</code>
                 </pre>
-                <CopyButton value={path.command} label={m.engines_new_copy()} />
             </div>
-            <p className="text-sm">
+            <p className="text-sm text-text-muted">
                 {m.engines_new_requirements()}{' '}
                 <ExternalLink href={guideLink(guideUrl, path.docsAnchor)}>{m.engines_new_docs()}</ExternalLink>
             </p>
@@ -175,7 +174,7 @@ function InstallCommand(props: {
     return (
         <Card title={m.engines_new_command_title()}>
             <div className="flex flex-col gap-3">
-                <p className="text-sm">{m.engines_new_command_body()}</p>
+                <p className="text-sm">{m.engines_new_intro()}</p>
                 <Tabs
                     label={m.engines_new_tabs_label()}
                     selectedId={selectedId}
@@ -183,11 +182,12 @@ function InstallCommand(props: {
                     tabs={paths.map((path) => ({
                         id: path.id,
                         label: INSTALL_PATH_LABELS[path.labelKey](),
-                        panel: <InstallPathPanel path={path} guideUrl={props.view.installGuideUrl} />,
+                        // Keyed, so "Copied" on one command never shows on the next tab's.
+                        panel: <InstallPathPanel key={path.id} path={path} guideUrl={props.view.installGuideUrl} />,
                     }))}
                 />
                 <p className="text-sm text-text-muted" aria-live="off">
-                    {m.engines_new_expires_in({ time: minutesAndSeconds(remaining) })}
+                    {m.engines_new_command_body({ time: minutesAndSeconds(remaining) })}
                 </p>
             </div>
         </Card>
@@ -228,35 +228,66 @@ function PlanStep(props: { readonly checkout: CheckoutReturn | undefined }) {
 }
 
 /** Back from Checkout: the subscription may reach us a moment after the browser does (the webhook). */
-function CheckoutThanks(props: { readonly entitled: boolean }) {
-    const api = useApiClient();
-    const billing = useQuery(billingQuery(api));
-    const trial = billing.data?.status === 'trialing';
+function CheckoutPending() {
     return (
-        <Banner tone="success" title={trial ? m.engines_new_trial_started() : m.billing_checkout_success_title()}>
-            {props.entitled ? null : m.billing_checkout_success_body()}
-        </Banner>
+        <div className="flex flex-col gap-3">
+            <p role="status">{m.engines_new_checkout_pending()}</p>
+            <Skeleton className="h-24 w-full" />
+        </div>
     );
+}
+
+/**
+ * The steps this visit shows. Plan appears only for an organization that had to choose one here: on arrival without a
+ * plan, or back from Checkout.
+ */
+function flowSteps(planShown: boolean): readonly LinkStep[] {
+    return planShown ? ['plan', 'install', 'connect', 'finish'] : ['install', 'connect', 'finish'];
+}
+
+function currentStep(planStep: boolean, link: LinkState | undefined): LinkStep | null {
+    if (planStep) {
+        return 'plan';
+    }
+    switch (link) {
+        case undefined:
+        case 'waiting':
+        case 'expired':
+            return 'install';
+        case 'linked':
+            return 'connect';
+        case 'owner-pending':
+            return 'finish';
+        case 'ready':
+            return null;
+    }
 }
 
 function LinkFlow(props: { readonly search: NewEngineSearch }) {
     const api = useApiClient();
+    const session = useSession();
     const navigate = useNavigate();
+    const toast = useToast();
+    // Only to say "trial" or "subscription" in the thanks after Checkout.
+    const billing = useQuery({ ...billingQuery(api), enabled: props.search.checkout === 'success' });
     const [issued, setIssued] = useState<LinkCodeView | null>(null);
     const create = useAppMutation<LinkCodeView>({
         mutationFn: async () => dataOrThrow(await api.call(apiRoutes.createLinkCode, {})),
         errorMessage: linkCodeErrorMessage,
         onSuccess: async (view) => {
             setIssued(view);
+            // Thanked once, here; the URL drops `checkout`, so a reload or a bookmark does not thank again.
+            if (props.search.checkout === 'success') {
+                toast.show({
+                    tone: 'success',
+                    title:
+                        billing.data?.status === 'trialing'
+                            ? m.engines_new_trial_started()
+                            : m.engines_new_subscription_started(),
+                });
+            }
             // Only the ID goes into the URL, so a reload shows the progress again but never the code.
-            await navigate({
-                to: '/engines/new',
-                search: {
-                    link: view.linkCodeId,
-                    ...(props.search.checkout === 'success' ? { checkout: 'success' } : {}),
-                },
-                replace: true,
-            });
+            await navigate({ to: '/engines/new', search: { link: view.linkCodeId }, replace: true });
         },
     });
     const linkCodeId = issued?.linkCodeId ?? props.search.link;
@@ -282,11 +313,25 @@ function LinkFlow(props: { readonly search: NewEngineSearch }) {
     const renew = () => {
         mutate();
     };
+    const linkState = useObservedLinkState(linkCodeId);
+    const state = eligibility.data?.eligibility;
+    const planStep = linkCodeId === undefined && state === 'not-entitled';
+    // Once shown, the plan step stays in the steps for this visit, done.
+    const [planShown, setPlanShown] = useState(backFromCheckout);
+    if (planStep && !planShown) {
+        setPlanShown(true);
+    }
+    const steps =
+        (linkCodeId === undefined && state === undefined) ||
+        state === 'engine-limit' ||
+        (state === 'not-entitled' && !session.activeOrg.permissions.includes(BILLING_PERMISSION)) ? null : (
+            <LinkSteps steps={flowSteps(planShown)} current={currentStep(planStep && !backFromCheckout, linkState)} />
+        );
 
     if (linkCodeId !== undefined) {
         return (
             <>
-                {backFromCheckout ? <CheckoutThanks entitled /> : null}
+                {steps}
                 {issued === null ? null : <InstallCommand view={issued} onRenew={renew} renewing={create.isPending} />}
                 <LinkProgress
                     key={linkCodeId}
@@ -300,10 +345,9 @@ function LinkFlow(props: { readonly search: NewEngineSearch }) {
         );
     }
     const reason = upgradeReason(create.error);
-    const state = eligibility.data?.eligibility;
     return (
         <>
-            {backFromCheckout ? <CheckoutThanks entitled={state === 'allowed'} /> : null}
+            {steps}
             {reason === null ? null : <UpgradeBanner reason={reason} />}
             {state === undefined && eligibility.isError ? (
                 <ErrorState
@@ -321,9 +365,8 @@ function LinkFlow(props: { readonly search: NewEngineSearch }) {
                     </Button>
                 </div>
             ) : null}
-            {(state === undefined && !eligibility.isError) ||
-            (eligible && !create.isError) ||
-            (state === 'not-entitled' && backFromCheckout) ? (
+            {state === 'not-entitled' && backFromCheckout ? <CheckoutPending /> : null}
+            {(state === undefined && !eligibility.isError) || (eligible && !create.isError) ? (
                 <div>
                     <span className="sr-only">{m.loading()}</span>
                     <Skeleton className="h-24 w-full" />
@@ -334,19 +377,17 @@ function LinkFlow(props: { readonly search: NewEngineSearch }) {
 }
 
 export function NewEnginePage(props: { readonly search: NewEngineSearch }) {
-    const api = useApiClient();
     const session = useSession();
     const canLink = session.activeOrg.permissions.includes(LINK_PERMISSION);
-    const lifetimeS = useQuery({ ...linkEligibilityQuery(api), enabled: false }).data?.linkCodeTtlS;
     return (
         <div className="flex flex-col gap-6">
+            <Link to="/engines" variant="standalone" className="inline-flex items-center gap-1 self-start text-sm">
+                <ArrowLeft aria-hidden className="size-4" />
+                {m.engine_back()}
+            </Link>
             <h1 className="font-display text-2xl font-semibold">{m.engines_new_title()}</h1>
-            <p>
-                {lifetimeS === undefined
-                    ? m.engines_new_intro_short()
-                    : m.engines_new_intro({ lifetime: lifetimeText(lifetimeS) })}
-            </p>
             {canLink ? <LinkFlow search={props.search} /> : <Banner tone="info">{m.engines_new_not_allowed()}</Banner>}
+            <TrustLink />
         </div>
     );
 }
