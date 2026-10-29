@@ -5,6 +5,7 @@ import { createTestEngine, type TestEngine } from '../../testing/test-engine';
 import { signedHeartbeat } from '../../testing/test-heartbeat';
 import { createStatusTestDeps, STATUS_START_MS as START } from '../../testing/test-status';
 import type { OrgId } from '../ids';
+import type { EngineStatus } from '../registration/engine-store';
 import {
     ALERT_RETRY_DELAYS_MS,
     PAYLOAD_RETENTION_MS,
@@ -436,6 +437,87 @@ describe('engine status service', () => {
             expect(t.sentOf('engine-back-online')).toEqual([
                 expect.objectContaining({ lastSeenAt: START, backOnlineAt: START + PAYLOAD_RETENTION_MS + 3600_000 }),
             ]);
+        });
+    });
+
+    describe('an engine no longer active', () => {
+        function setupEngine() {
+            let status: EngineStatus | null = 'active';
+            let unreadable = false;
+            const t = setup({
+                engineStatus: () =>
+                    unreadable ? Promise.reject(new Error('database unavailable')) : Promise.resolve(status),
+            });
+            return {
+                ...t,
+                setStatus: (next: EngineStatus | null) => (status = next),
+                setUnreadable: (next: boolean) => (unreadable = next),
+            };
+        }
+
+        it.each([
+            ['revoked or suspended', 'suspended'],
+            ['removed', null],
+        ] as const)('sends no offline alert once %s, and still purges it', async (_, status) => {
+            const t = setupEngine();
+            await t.beat(1);
+            t.setStatus(status);
+            await t.fireAlarm();
+            expect(t.email.attempts).toEqual([]);
+            expect(await t.service.getStatus()).toMatchObject({ state: 'offline', lastSeq: 1 });
+            expect(t.logger.entries.filter((entry) => entry.level === 'warn')).toEqual([]);
+            expect(t.storage.alarmAt()).toBe(START + PAYLOAD_RETENTION_MS);
+            await t.fireAlarm();
+            expect(await t.service.getStatus()).toMatchObject({ state: 'offline', lastSeq: null });
+            expect(t.storage.alarmAt()).toBeNull();
+        });
+
+        it('stops retrying a failed alert once revoked', async () => {
+            const t = setupEngine();
+            t.email.failing.add(OWNER.email);
+            await t.beat(1);
+            await t.fireAlarm();
+            expect(t.email.attempts).toHaveLength(1);
+            t.setStatus('suspended');
+            t.email.failing.clear();
+            await t.fireAlarm();
+            expect(t.email.attempts).toHaveLength(1);
+            expect(t.storage.alarmAt()).toBe(START + PAYLOAD_RETENTION_MS);
+        });
+
+        it('drops the online notice it owes once revoked, and keeps watching the engine', async () => {
+            const t = setupEngine();
+            await t.newEngineBeat(1);
+            t.setStatus('suspended');
+            await t.fireAlarm();
+            expect(t.email.attempts).toEqual([]);
+            expect(t.storage.alarmAt()).toBe(START + OFFLINE_AFTER_MS);
+            await t.fireAlarm();
+            expect(t.email.attempts).toEqual([]);
+        });
+
+        it('owes no back-online notice when a suspension is lifted after an outage it kept quiet', async () => {
+            const t = setupEngine();
+            await t.beat(1);
+            t.setStatus('suspended');
+            await t.fireAlarm();
+            t.setStatus('active');
+            t.clock.advance(60 * 60_000);
+            await t.beat(2);
+            expect(t.storage.alarmAt()).toBe(t.clock.nowMs() + OFFLINE_AFTER_MS);
+            expect(t.email.attempts).toEqual([]);
+        });
+
+        it('retries when it cannot read whether the engine is still active', async () => {
+            const t = setupEngine();
+            await t.beat(1);
+            t.setUnreadable(true);
+            await t.fireAlarm();
+            expect(t.email.attempts).toEqual([]);
+            expect(t.logger.entries.at(-1)).toMatchObject({ fields: { outcome: 'unresolved', attempt: 0 } });
+            t.setUnreadable(false);
+            await t.fireAlarm();
+            expect(t.email.outbox.sent.map((message) => message.to)).toEqual([OWNER.email]);
         });
     });
 

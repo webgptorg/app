@@ -12,6 +12,7 @@ import type { Logger } from '../ports/logger';
 import type { AlertRecipients } from './alert-recipients';
 import type { RecordHeartbeatInput } from './engine-status-directory';
 import type { EngineStatusStorage } from './engine-status-storage';
+import type { HeartbeatEngineReader } from './heartbeat-engine-reader';
 import {
     acceptHeartbeat,
     afterAlertAttempt,
@@ -37,6 +38,8 @@ export interface EngineStatusServiceDeps {
     readonly clock: Clock;
     readonly logger: Logger;
     readonly timing: HeartbeatTiming;
+    /** Read before every send, so an engine revoked or suspended since its last heartbeat is told about to nobody. */
+    readonly heartbeatEngines: HeartbeatEngineReader;
     readonly recipients: AlertRecipients;
     readonly email: EmailSender;
     readonly engineHostname: (engineId: EngineId) => string;
@@ -56,7 +59,10 @@ export interface EngineStatusService {
 }
 
 export function createEngineStatusService(deps: EngineStatusServiceDeps): EngineStatusService {
-    /** One email to each recipient: the ones owed from a failed attempt, or else everyone the organization alerts. */
+    /**
+     * One email to each recipient, the ones owed from a failed attempt or else everyone the organization alerts; none
+     * once the engine is no longer active.
+     */
     async function deliver(
         status: TrackedEngineStatus,
         owed: readonly AlertRecipient[] | null,
@@ -64,6 +70,9 @@ export function createEngineStatusService(deps: EngineStatusServiceDeps): Engine
     ): Promise<AlertAttempt> {
         let recipients: readonly AlertRecipient[];
         try {
+            if ((await deps.heartbeatEngines.findEngine(status.engineId))?.status !== 'active') {
+                return { kind: 'engine-inactive' };
+            }
             recipients =
                 owed ?? (await deps.recipients.forEngineStatus(status.orgId, AbortSignal.timeout(SEND_TIMEOUT_MS)));
         } catch {
@@ -176,7 +185,7 @@ export function createEngineStatusService(deps: EngineStatusServiceDeps): Engine
                     }));
                     const next = afterAlertAttempt(step.status, attempt, now);
                     await settle(next);
-                    if (attempt.kind !== 'delivered') {
+                    if (attempt.kind === 'partly-failed' || attempt.kind === 'unresolved') {
                         deps.logger.warn('engine-status.alert-failed', {
                             engineId,
                             outcome: attempt.kind,
@@ -194,7 +203,7 @@ export function createEngineStatusService(deps: EngineStatusServiceDeps): Engine
                     );
                     const next = afterNoticeAttempt(step.status, attempt, now, deps.timing);
                     await settle(next);
-                    if (attempt.kind !== 'delivered') {
+                    if (attempt.kind === 'partly-failed' || attempt.kind === 'unresolved') {
                         deps.logger.warn('engine-status.notice-failed', {
                             engineId: step.status.engineId,
                             notice: notice.kind,
