@@ -3,7 +3,7 @@ import type { AgentProfile } from '@ptbk/engine-api';
 import { cx } from '../../app/cx';
 import { safeImageSource } from '../../security/safe-url';
 
-const SIZE_CLASSES = { sm: 'size-8 text-sm', lg: 'size-14 text-xl' } as const;
+const SIZE_CLASSES = { xs: 'size-6 text-xs', sm: 'size-8 text-sm', lg: 'size-14 text-xl' } as const;
 
 /**
  * The agent's picture, or its initial. The profile colour is engine data (a validated `#rrggbb`), applied through
@@ -15,7 +15,7 @@ export function AgentAvatar({
     size = 'sm',
 }: {
     readonly name: string;
-    readonly profile: AgentProfile;
+    readonly profile: Pick<AgentProfile, 'avatarUrl' | 'color'>;
     readonly size?: keyof typeof SIZE_CLASSES;
 }) {
     const source = profile.avatarUrl === null ? null : safeImageSource(profile.avatarUrl);

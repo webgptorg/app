@@ -1,4 +1,4 @@
-import type { ReadChat } from '@ptbk/engine-api';
+import type { AgentProfile, ReadChat } from '@ptbk/engine-api';
 import { EmptyState, ErrorState } from '@ptbk/ui';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef } from 'react';
@@ -22,6 +22,7 @@ export const VIRTUALIZE_ABOVE = 200;
 export interface ChatPanelProps {
     readonly chat: ReadChat;
     readonly agentName: string;
+    readonly agentProfile?: Pick<AgentProfile, 'avatarUrl' | 'color'>;
     /** The member may write here: `chats.write`, and the chat is their own. */
     readonly canWrite: boolean;
     /** Take the rest of a parent flex column's height instead of a share of the screen. */
@@ -32,7 +33,7 @@ export interface ChatPanelProps {
  * A chat's history, its composer and the reply in progress. Reusable wherever a chat is shown (the agent's Chat tab,
  * U-04's test step); it reads and writes only through the engine API client and the query cache.
  */
-export function ChatPanel({ chat, agentName, canWrite, fill = false }: ChatPanelProps) {
+export function ChatPanel({ chat, agentName, agentProfile, canWrite, fill = false }: ChatPanelProps) {
     const engineApi = useEngineApi();
     const me = useCurrentMember();
     const history = useInfiniteQuery(chatMessagesQueryOptions(engineApi, chat.id));
@@ -110,6 +111,7 @@ export function ChatPanel({ chat, agentName, canWrite, fill = false }: ChatPanel
                 label={m.chat_column_messages()}
                 views={views}
                 agentName={agentName}
+                {...(agentProfile === undefined ? {} : { agentProfile })}
                 virtual={chat.messageCount > VIRTUALIZE_ABOVE}
                 hasOlder={history.hasNextPage}
                 loadingOlder={history.isFetchingNextPage}
@@ -125,7 +127,7 @@ export function ChatPanel({ chat, agentName, canWrite, fill = false }: ChatPanel
     }
 
     return (
-        <div ref={panelRef} className={cx('flex flex-col gap-3', fill ? 'min-h-0 flex-1' : 'h-[70dvh] min-h-96')}>
+        <div ref={panelRef} className={cx('flex flex-col gap-2', fill ? 'min-h-0 flex-1' : 'h-[70dvh] min-h-96')}>
             {body}
             <div aria-live="polite" aria-atomic="true" className="sr-only">
                 {announcement}
@@ -144,6 +146,7 @@ export function ChatPanel({ chat, agentName, canWrite, fill = false }: ChatPanel
                     onSend={session.send}
                     onStop={stop}
                     textareaRef={textareaRef}
+                    className="mx-auto w-full max-w-3xl"
                 />
             ) : null}
         </div>

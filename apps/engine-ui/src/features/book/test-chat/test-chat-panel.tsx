@@ -142,7 +142,7 @@ export function TestChatPanel({
             </header>
             <p className="text-sm text-text-muted">{m.book_test_intro()}</p>
             {views.length === 0 ? (
-                <div className="flex min-h-0 flex-1 items-center justify-center rounded-surface border border-divider bg-surface p-4">
+                <div className="flex min-h-0 flex-1 items-center justify-center p-4">
                     <EmptyState title={m.book_test_empty()} />
                 </div>
             ) : (
