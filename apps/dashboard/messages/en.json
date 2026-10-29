@@ -135,7 +135,7 @@
   "billing_period_renews": "Renews on {date}",
   "billing_period_trial_ends": "Trial ends on {date}",
   "billing_plan_includes": "Plan {plan} includes",
-  "billing_plan_none": "None",
+  "billing_plan_none": "No plan",
   "billing_plans_body": "Payment happens on Stripe; card details never reach Promptbook.",
   "billing_plans_empty": "No plans are available yet.",
   "billing_plans_title": "Plans",

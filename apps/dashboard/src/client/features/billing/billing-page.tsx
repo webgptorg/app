@@ -116,11 +116,13 @@ function SubscriptionCard(props: { readonly billing: BillingView; readonly canMa
                 {period === null ? null : <p className="text-sm text-text-muted">{period}</p>}
             </div>
             <PaymentProblemBanner billing={billing} />
-            <EntitlementList
-                features={billing.entitlements.features}
-                quotas={billing.entitlements.quotas}
-                label={m.billing_entitlements_title()}
-            />
+            <div className="max-w-md">
+                <EntitlementList
+                    features={billing.entitlements.features}
+                    quotas={billing.entitlements.quotas}
+                    label={m.billing_entitlements_title()}
+                />
+            </div>
         </Card>
     );
 }

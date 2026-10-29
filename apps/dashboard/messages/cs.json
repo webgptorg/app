@@ -135,7 +135,7 @@
   "billing_period_renews": "Obnoví se {date}",
   "billing_period_trial_ends": "Zkušební období končí {date}",
   "billing_plan_includes": "Tarif {plan} zahrnuje",
-  "billing_plan_none": "Žádný",
+  "billing_plan_none": "Bez tarifu",
   "billing_plans_body": "Platba probíhá u Stripe; údaje o kartě se k Promptbooku nikdy nedostanou.",
   "billing_plans_empty": "Zatím nejsou k dispozici žádné tarify.",
   "billing_plans_title": "Tarify",
