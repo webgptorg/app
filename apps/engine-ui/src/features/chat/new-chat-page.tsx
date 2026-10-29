@@ -18,30 +18,32 @@ export function NewChatPage() {
     const { data: agent } = useSuspenseQuery(agentDetailQueryOptions(useEngineApi(), agentId));
     const startChat = useStartChat(agentId);
     // Engine data, shown as text only: the book's author may write anything here.
-    const greeting = agent.profile.initialMessage ?? m.chat_greeting({ name: agent.name });
+    const initialMessage = agent.profile.initialMessage?.trim() ?? '';
+    const greeting = initialMessage === '' ? m.chat_greeting({ name: agent.name }) : initialMessage;
 
     return (
         <WithRecentChats agentId={agentId}>
-            <section aria-labelledby="new-chat-title" className="flex min-h-0 flex-1 flex-col">
+            <div className="flex min-h-0 flex-1 flex-col">
                 <RecentChatsButton agentId={agentId} className="self-start @2xl:hidden" />
-                <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-6 overflow-y-auto py-6">
-                    <div className="flex max-w-prose flex-col items-center gap-3 text-center">
-                        <AgentAvatar name={agent.name} profile={agent.profile} size="lg" />
-                        <h2 id="new-chat-title" className="font-display text-xl font-semibold break-words">
-                            {agent.name}
-                        </h2>
-                        <p className="break-words whitespace-pre-line text-text-muted">{greeting}</p>
+                {/* `m-auto` rather than `justify-center`: a long greeting scrolls from its top instead of being cut off. */}
+                <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+                    <div className="m-auto flex w-full flex-col items-center gap-6 px-1 py-6">
+                        <div className="flex max-w-prose flex-col items-center gap-3 text-center">
+                            <AgentAvatar name={agent.name} profile={agent.profile} size="lg" />
+                            <h2 className="font-display text-xl font-semibold break-words">{agent.name}</h2>
+                            <p className="break-words whitespace-pre-line text-text-muted">{greeting}</p>
+                        </div>
+                        <Composer
+                            label={m.chat_new_label()}
+                            labelHidden
+                            placeholder={m.chat_composer_placeholder({ name: agent.name })}
+                            busy={false}
+                            onSend={startChat}
+                            className="w-full max-w-2xl"
+                        />
                     </div>
-                    <Composer
-                        label={m.chat_new_label()}
-                        labelHidden
-                        placeholder={m.chat_composer_placeholder({ name: agent.name })}
-                        busy={false}
-                        onSend={startChat}
-                        className="w-full max-w-2xl"
-                    />
                 </div>
-            </section>
+            </div>
         </WithRecentChats>
     );
 }

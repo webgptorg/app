@@ -95,11 +95,25 @@ test.describe('the built bundle under the engine CSP', () => {
         expectCleanPage(settings);
     });
 
-    test(`/agents/${FAKE_AGENT_ID}/chat lists every chat and meets the UX checks`, async ({ page, visit }) => {
+    test(`/agents/${FAKE_AGENT_ID}/chat opens a fresh conversation and meets the UX checks`, async ({
+        page,
+        visit,
+    }) => {
         const report = await visit(`/agents/${FAKE_AGENT_ID}/chat`);
         await expect(page.getByRole('tab', { name: 'Chat' })).toHaveAttribute('aria-selected', 'true');
-        await expect(page.getByRole('link', { name: 'Injection demo' })).toBeVisible();
-        await expect(page.getByRole('link', { name: 'Do you ship to Brno?' })).toBeVisible();
+        await expect(page.getByRole('textbox', { name: 'New chat' })).toBeVisible();
+        const recent = page.getByRole('navigation', { name: 'Recent chats' });
+        await expect(recent.getByRole('link', { name: /Injection demo/ })).toBeVisible();
+        await expect(recent.getByRole('link', { name: /Do you ship to Brno\?/ })).toBeVisible();
+        expectCleanPage(report);
+    });
+
+    test(`/agents/${FAKE_AGENT_ID}/chat/all lists every chat and meets the UX checks`, async ({ page, visit }) => {
+        const report = await visit(`/agents/${FAKE_AGENT_ID}/chat/all`);
+        await expect(page.getByRole('tab', { name: 'Chat' })).toHaveAttribute('aria-selected', 'true');
+        const table = page.getByRole('table');
+        await expect(table.getByRole('link', { name: 'Injection demo' })).toBeVisible();
+        await expect(table.getByRole('link', { name: 'Do you ship to Brno?' })).toBeVisible();
         expectCleanPage(report);
     });
 

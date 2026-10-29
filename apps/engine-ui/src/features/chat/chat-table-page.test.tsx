@@ -5,14 +5,15 @@ import { describe, expect, it } from 'vitest';
 
 import { expectNoAxeViolations } from '../../testing/axe';
 import { OWNER_ID, SECOND_MEMBER_ID, SECOND_MEMBER_NAME } from '../../testing/agents-engine';
-import { CHAT_AGENT_ID, controlReplyStreams, createChatEngine, seededConversation } from '../../testing/chat-engine';
+import { CHAT_AGENT_ID, createChatEngine, seededConversation } from '../../testing/chat-engine';
 import type { ChatEngine, ChatEngineOptions, SeedMessage } from '../../testing/chat-engine';
 import { renderWithProviders } from '../../testing/render-with-providers';
 
 // Each test renders the whole app on the in-memory engine; a shared CI runner is several times slower than a laptop.
 const TIMEOUT_MS = 20_000;
 
-const LIST_PATH = `/agents/${CHAT_AGENT_ID}/chat`;
+const CHAT_PATH = `/agents/${CHAT_AGENT_ID}/chat`;
+const LIST_PATH = `${CHAT_PATH}/all`;
 const table = () => screen.getByRole('table', { name: 'Chats with Ada' });
 const chatLinks = () =>
     within(table())
@@ -80,7 +81,7 @@ describe('chat list', { timeout: TIMEOUT_MS }, () => {
         expect(within(row('Question 1')).getByText('Visitor')).toBeDefined();
         expect(within(row('Nightly sync')).getByText('API')).toBeDefined();
         expect(within(row('Nightly sync')).queryByRole('time')).toBeNull();
-        expect(screen.getByRole('link', { name: 'Quarterly plan' }).getAttribute('href')).toBe(`${LIST_PATH}/chat-own`);
+        expect(screen.getByRole('link', { name: 'Quarterly plan' }).getAttribute('href')).toBe(`${CHAT_PATH}/chat-own`);
     });
 
     it('writes the source filter to the URL, sends it to the engine and restores it on reload', async () => {
@@ -186,44 +187,19 @@ describe('chat list', { timeout: TIMEOUT_MS }, () => {
     });
 });
 
-describe('new chat', { timeout: TIMEOUT_MS }, () => {
-    it('starts a chat with the first message and opens it, following the reply', async () => {
-        const engine = createChatEngine(mixedChats());
-        const control = controlReplyStreams(engine);
-        const { user, router } = await renderList(LIST_PATH, engine);
-        await user.click(screen.getByRole('textbox', { name: 'New chat' }));
-        await user.keyboard('Plan my week{Enter}');
-        await waitFor(() => {
-            expect(router.state.location.pathname).toMatch(new RegExp(`^${LIST_PATH}/chat-\\d+$`));
-        });
-        expect(engine.spies.create).toHaveBeenCalledWith(CHAT_AGENT_ID, {}, expect.anything());
-        expect(await screen.findByRole('heading', { level: 2, name: 'Plan my week' })).toBeDefined();
-        await waitFor(() => {
-            expect(control.streams).toHaveLength(1);
-        });
-        expect(screen.getByText('Replying…')).toBeDefined();
-    });
-
-    it('keeps the text and says why when the chat cannot be started', async () => {
-        const engine = createChatEngine(mixedChats());
-        engine.spies.create.mockResolvedValueOnce({ kind: 'problem', problem: createProblem('agent-deleted') });
-        engine.spies.sendMessage.mockRejectedValueOnce(new TypeError('offline'));
-        const { user } = await renderList(LIST_PATH, engine);
-        const box = screen.getByRole('textbox', { name: 'New chat' });
-        await user.click(box);
-        await user.keyboard('Hello{Enter}');
-        expect(await screen.findByText('Your message was not sent')).toBeDefined();
-        expect((box as HTMLTextAreaElement).value).toBe('Hello');
-        await user.keyboard('{Enter}');
-        await waitFor(() => {
-            expect(screen.getAllByText('Your message was not sent')).toHaveLength(2);
-        });
-        expect((box as HTMLTextAreaElement).value).toBe('Hello');
-    });
-
-    it('is absent without chats.write', async () => {
-        await renderList(LIST_PATH, createChatEngine({ ...mixedChats(), permissions: ['agents.read', 'chats.read'] }));
+describe('chat table access', { timeout: TIMEOUT_MS }, () => {
+    it('is the Chat tab for members who may only read', async () => {
+        const readOnly = createChatEngine({ ...mixedChats(), permissions: ['agents.read', 'chats.read'] });
+        const app = await renderList(CHAT_PATH, readOnly);
+        expect(app.router.state.location.pathname).toBe(LIST_PATH);
         expect(screen.queryByRole('textbox', { name: 'New chat' })).toBeNull();
+        expect(screen.getByRole('tab', { name: 'Chat' }).getAttribute('aria-selected')).toBe('true');
+    });
+
+    it('sends a filtered link to the Chat tab, from before the table moved, to the table', async () => {
+        const old = await renderList(`${CHAT_PATH}?source=api`, createChatEngine(mixedChats()));
+        expect(old.router.state.location.pathname).toBe(LIST_PATH);
+        expect(old.router.state.location.search).toEqual({ source: 'api' });
     });
 
     it('is not available without chats.read', async () => {

@@ -1,7 +1,7 @@
 import type { AgentId } from '@ptbk/engine-api';
 import { Button, Drawer, RelativeTime, Skeleton } from '@ptbk/ui';
 import { useQuery } from '@tanstack/react-query';
-import { MessagesSquare, SquarePen } from 'lucide-react';
+import { List, MessagesSquare, SquarePen } from 'lucide-react';
 import { useState } from 'react';
 import type { ReactNode } from 'react';
 
@@ -112,8 +112,9 @@ export function RecentChats({ agentId, onNavigate }: RecentChatsProps) {
                 params={{ agentId }}
                 variant="standalone"
                 onClick={onNavigate}
-                className={cx(ROW, 'min-h-10 items-center font-medium')}
+                className={cx(ROW, 'min-h-10 items-center gap-2 font-medium')}
             >
+                <List aria-hidden className="size-4 shrink-0" />
                 {m.chat_back()}
             </Link>
         </nav>
@@ -155,9 +156,9 @@ export function WithRecentChats({ agentId, children }: { readonly agentId: Agent
     return (
         <div className="@container flex min-h-0 min-w-0 flex-1">
             <div className="flex min-h-0 min-w-0 flex-1 gap-6">
-                <aside className="hidden w-60 shrink-0 flex-col @2xl:flex">
+                <div className="hidden w-60 shrink-0 flex-col @2xl:flex">
                     <RecentChats agentId={agentId} />
-                </aside>
+                </div>
                 <div className="flex min-h-0 min-w-0 flex-1 flex-col">{children}</div>
             </div>
         </div>
