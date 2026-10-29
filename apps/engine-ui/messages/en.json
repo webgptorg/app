@@ -658,8 +658,30 @@
   "secrets_scope_option_agent": "One agent only",
   "audit_intro": "Every authenticated action on this engine, newest first. The log is append-only and hash-chained: nothing here can change or delete an entry.",
   "audit_refresh": "Refresh",
-  "audit_chain_intact_title": "Hash chain intact",
-  "audit_chain_intact_body": "The engine re-checked the whole chain {at}: {count} entries, none removed or edited.",
+  "audit_chain_verified": "Chain verified {time}",
+  "audit_chain_intact_details": [
+    {
+      "declarations": ["input count", "input total", "input at", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "The engine checked the whole chain at {at}: its one entry is intact.",
+        "countPlural=other": "The engine checked the whole chain at {at}: all {total} entries are intact, none removed or edited."
+      }
+    }
+  ],
+  "audit_filters_count": "Filters ({count})",
+  "audit_more_filters": "More filters",
+  "audit_more_filters_count": "More filters ({count})",
+  "audit_active_filters": "Active filters",
+  "audit_filter_remove": "Remove filter {filter}",
+  "audit_filter_target_id_hint": "The exact ID from an entry's details.",
+  "audit_target_this_engine": "This engine",
+  "audit_copy_target_id": "Copy target ID",
+  "audit_detail_fields": "Changed",
+  "audit_detail_problem": "Reason",
+  "audit_detail_required_permission": "Missing permission",
+  "audit_detail_version": "Version",
+  "audit_raw_details": "Raw JSON",
   "audit_chain_broken_title": "Hash chain broken",
   "audit_chain_broken_body": "The engine found that entry {seq} does not follow the one before it, so entries from there on may have been edited or removed. Checked {at}.",
   "audit_chain_failed": "The engine's chain check could not be loaded.",
@@ -693,8 +715,6 @@
   "audit_outcome_failed": "Failed",
   "audit_not_recorded": "Not recorded",
   "audit_entry_label": "{action} at {time}",
-  "audit_details": "Details",
-  "audit_no_details": "No details recorded.",
   "audit_sequence": "Sequence number",
   "audit_entry_hash": "Entry hash",
   "audit_previous_hash": "Previous entry hash",

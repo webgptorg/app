@@ -36,14 +36,24 @@ const NO_MEMBERS: readonly Member[] = [];
 const MEMBER_NAME_LIMIT = 100;
 
 interface EntryTimeFormat {
-    readonly absolute: Intl.DateTimeFormat;
+    /** Every detail, seconds and zone included: the expanded entry and the hover title. */
+    readonly full: Intl.DateTimeFormat;
+    /** Scannable in a row: day and minute, the year only when it is not this one. */
+    readonly short: Intl.DateTimeFormat;
+    readonly shortWithYear: Intl.DateTimeFormat;
 }
 
 function useEntryTimeFormat(): EntryTimeFormat {
     const { locale } = useLocale();
-    return useMemo(
-        () => ({
-            absolute: new Intl.DateTimeFormat(locale, {
+    return useMemo(() => {
+        const short: Intl.DateTimeFormatOptions = {
+            month: 'short',
+            day: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+        };
+        return {
+            full: new Intl.DateTimeFormat(locale, {
                 year: 'numeric',
                 month: 'short',
                 day: 'numeric',
@@ -52,18 +62,18 @@ function useEntryTimeFormat(): EntryTimeFormat {
                 second: '2-digit',
                 timeZoneName: 'short',
             }),
-        }),
-        [locale],
-    );
+            short: new Intl.DateTimeFormat(locale, short),
+            shortWithYear: new Intl.DateTimeFormat(locale, { ...short, year: 'numeric' }),
+        };
+    }, [locale]);
 }
 
-/** Local time with its zone; the relative time ("3 minutes ago") shows on hover. */
 function EntryTime({ at, format }: { readonly at: string; readonly format: EntryTimeFormat }) {
-    const locale = useLocale();
     const value = new Date(at);
+    const short = value.getFullYear() === new Date().getFullYear() ? format.short : format.shortWithYear;
     return (
-        <time dateTime={at} title={locale.formatRelativeTime(value, new Date())} className="whitespace-nowrap">
-            {format.absolute.format(value)}
+        <time dateTime={at} title={format.full.format(value)} className="whitespace-nowrap">
+            {short.format(value)}
         </time>
     );
 }
@@ -79,15 +89,37 @@ function actorName(entry: ReadAuditEntry, names: ReadonlyMap<string, string>): s
     }
 }
 
-/** Target names are whatever a member typed; React renders them as text, never as markup. */
-function Target({ target }: { readonly target: ReadAuditEntry['target'] }) {
-    if (target === null) return <span className="text-text-muted">{m.audit_not_recorded()}</span>;
+/** Settings and engine actions act on the engine itself, so an entry without a target lost nothing. */
+function isEngineAction(action: ReadAuditEntry['action']): boolean {
+    return action.startsWith('settings.') || action.startsWith('engine.') || action.startsWith('ui.');
+}
+
+/** Target names are whatever a member typed; React renders them as text, never as markup. The ID is in the details. */
+function Target({ entry }: { readonly entry: ReadAuditEntry }) {
+    const { target } = entry;
+    if (target === null) {
+        return (
+            <span className="text-text-muted">
+                {isEngineAction(entry.action) ? m.audit_target_this_engine() : m.audit_not_recorded()}
+            </span>
+        );
+    }
+    const name = target.name ?? null;
     return (
-        <span className="flex min-w-0 flex-col">
-            <span className="text-xs text-text-muted">{auditTargetKindLabel(target.kind)}</span>
-            <span className="break-words">{target.name ?? target.id}</span>
-            {target.name === null || target.name === undefined ? null : (
-                <span className="font-mono text-xs break-words text-text-muted">{target.id}</span>
+        <span className="break-words">
+            <span className="text-text-muted">{`${auditTargetKindLabel(target.kind)} `}</span>
+            {name === null ? <span className="font-mono text-xs">{target.id}</span> : <span>{name}</span>}
+        </span>
+    );
+}
+
+/** Success is the norm, so only a denied or failed entry carries a badge. */
+function Action({ entry }: { readonly entry: ReadAuditEntry }) {
+    return (
+        <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span>{auditActionLabel(entry.action)}</span>
+            {entry.outcome === 'success' ? null : (
+                <Badge tone={AUDIT_OUTCOME_TONES[entry.outcome]}>{AUDIT_OUTCOME_LABELS[entry.outcome]()}</Badge>
             )}
         </span>
     );
@@ -98,11 +130,19 @@ function useAuditColumns(names: ReadonlyMap<string, string>): DataTableColumnDef
     return useMemo(() => {
         const column = createDataTableColumnHelper<ReadAuditEntry>();
         return [
+            // On a phone card the first column is the title: what happened, then when.
+            column.accessor('action', {
+                header: m.audit_column_action(),
+                enableSorting: false,
+                enableHiding: false,
+                meta: { priority: 0 },
+                cell: ({ row }) => <Action entry={row.original} />,
+            }),
             column.accessor('at', {
                 header: m.audit_column_time(),
                 enableSorting: false,
                 enableHiding: false,
-                meta: { priority: 0 },
+                meta: { priority: 1 },
                 cell: ({ row }) => <EntryTime at={row.original.at} format={format} />,
             }),
             // The name comes from the cell, not the accessor, which TanStack Table caches per row.
@@ -113,29 +153,12 @@ function useAuditColumns(names: ReadonlyMap<string, string>): DataTableColumnDef
                 meta: { priority: 2 },
                 cell: ({ row }) => <span className="break-words">{actorName(row.original, names)}</span>,
             }),
-            column.accessor('action', {
-                header: m.audit_column_action(),
-                enableSorting: false,
-                enableHiding: false,
-                meta: { priority: 1 },
-                cell: ({ row }) => auditActionLabel(row.original.action),
-            }),
             column.accessor((entry) => entry.target?.id ?? '', {
                 id: 'target',
                 header: m.audit_column_target(),
                 enableSorting: false,
-                meta: { priority: 4 },
-                cell: ({ row }) => <Target target={row.original.target} />,
-            }),
-            column.accessor('outcome', {
-                header: m.audit_column_outcome(),
-                enableSorting: false,
                 meta: { priority: 3 },
-                cell: ({ row }) => (
-                    <Badge tone={AUDIT_OUTCOME_TONES[row.original.outcome]}>
-                        {AUDIT_OUTCOME_LABELS[row.original.outcome]()}
-                    </Badge>
-                ),
+                cell: ({ row }) => <Target entry={row.original} />,
             }),
             column.accessor((entry) => entry.client?.ip ?? '', {
                 id: 'clientIp',
@@ -217,6 +240,9 @@ export function AuditPage() {
     }, [invalidCursor, navigate]);
 
     const filtered = hasAuditFilters(search);
+    // Filters over an empty log only get in the way of the empty state that explains it.
+    const nothingLogged =
+        !filtered && search.cursor === undefined && list.data !== undefined && list.data.items.length === 0;
     const clear = () => {
         setTargetIdText('');
         update({
@@ -244,20 +270,23 @@ export function AuditPage() {
                 </Button>
             }
         >
-            <p className="text-sm text-text-muted">{m.audit_intro()}</p>
-            <AuditChainStatus />
-            <AuditFilters
-                search={search}
-                members={members}
-                onChange={(change) => {
-                    update(change);
-                }}
-                targetIdText={targetIdText}
-                onTargetIdTextChange={setTargetIdText}
-                onClear={clear}
-                filtered={filtered}
-                timeZone={localTimeZone()}
-            />
+            <div className="-mt-3 flex flex-col gap-2">
+                <p className="text-sm text-text-muted">{m.audit_intro()}</p>
+                <AuditChainStatus />
+            </div>
+            {nothingLogged ? null : (
+                <AuditFilters
+                    search={search}
+                    members={members}
+                    onChange={(change) => {
+                        update(change);
+                    }}
+                    targetIdText={targetIdText}
+                    onTargetIdTextChange={setTargetIdText}
+                    onClear={clear}
+                    timeZone={localTimeZone()}
+                />
+            )}
             <DataTable
                 caption={m.audit_title()}
                 columns={columns}
@@ -266,7 +295,7 @@ export function AuditPage() {
                 getRowLabel={(entry) =>
                     m.audit_entry_label({
                         action: auditActionLabel(entry.action),
-                        time: format.absolute.format(new Date(entry.at)),
+                        time: format.full.format(new Date(entry.at)),
                     })
                 }
                 columnVisibility={chosenVisibility ?? (compact ? COMPACT_HIDDEN : {})}
@@ -274,7 +303,7 @@ export function AuditPage() {
                 expansion={{
                     expanded,
                     onExpandedChange: setExpanded,
-                    renderExpanded: (entry) => <AuditEntryDetails entry={entry} />,
+                    renderExpanded: (entry) => <AuditEntryDetails entry={entry} time={format.full} />,
                 }}
                 page={paging.page}
                 onPageChange={paging.onPageChange}

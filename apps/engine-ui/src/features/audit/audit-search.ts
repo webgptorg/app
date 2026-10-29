@@ -26,6 +26,7 @@ export const AuditSearch = z.object({
 export type AuditSearch = z.output<typeof AuditSearch>;
 
 export const AUDIT_FILTER_KEYS = ['memberId', 'action', 'targetKind', 'targetId', 'outcome', 'from', 'to'] as const;
+export type AuditFilterKey = (typeof AUDIT_FILTER_KEYS)[number];
 
 export function hasAuditFilters(search: AuditSearch): boolean {
     return AUDIT_FILTER_KEYS.some((key) => search[key] !== undefined);
