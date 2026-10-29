@@ -99,17 +99,18 @@ Golden vectors, which an implementation in any language must reproduce:
 
 ## Status of the reference implementation
 
-The mock engine implements the engine side of every contract, one task at a time. On `main` today: identity, tunnel client, TLS inside the tunnel, ACME TLS-ALPN-01 through the relay, the engine API with a gateway stand-in, registration and heartbeat, the UI loader with the security headers, and the capabilities. Every mock engine task has merged. The one gap is custom hostname claims, which the mock does not sign ([tunnel-client.md](tunnel-client.md#reference-implementation)).
+The mock engine implements the engine side of every contract, one task at a time. On `main` today: identity, tunnel client, TLS inside the tunnel, ACME TLS-ALPN-01 through the relay, the engine API with a gateway stand-in, registration and heartbeat, the UI loader with the security headers, the capabilities, and onboarding with the setup link and passkeys. Every mock engine task has merged. The gaps are custom hostname claims, which the mock does not sign ([tunnel-client.md](tunnel-client.md#reference-implementation)), and the operator commands it leaves out, such as `login --local` and `reset --identity` ([installation.md](installation.md#open-points), point 5).
 
-| Task | What the mock engine adds                          | Status |
-| ---- | -------------------------------------------------- | ------ |
-| M-01 | Identity, tunnel client, proxy, reconnect          | merged |
-| M-02 | TLS and HTTP inside the tunnel, dev CA             | merged |
-| M-03 | ACME TLS-ALPN-01 through the relay                 | merged |
-| M-04 | Engine API, gateway stand-in, faults               | merged |
-| M-05 | UI loader and security headers                     | merged |
-| M-06 | Registration and heartbeat client                  | merged |
-| M-07 | Capabilities (runs, files, triggers, integrations) | merged |
+| Task | What the mock engine adds                                                                                                                                                                                         | Status |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| M-01 | Identity, tunnel client, proxy, reconnect                                                                                                                                                                         | merged |
+| M-02 | TLS and HTTP inside the tunnel, dev CA                                                                                                                                                                            | merged |
+| M-03 | ACME TLS-ALPN-01 through the relay                                                                                                                                                                                | merged |
+| M-04 | Engine API, gateway stand-in, faults                                                                                                                                                                              | merged |
+| M-05 | UI loader and security headers                                                                                                                                                                                    | merged |
+| M-06 | Registration and heartbeat client                                                                                                                                                                                 | merged |
+| M-07 | Capabilities (runs, files, triggers, integrations)                                                                                                                                                                | merged |
+| M-08 | Onboarding: setup secret, `/setup` with passkeys, `connect`, `status`, `setup-link`, `owner --reset`, registration retry; MIT gateway pages in [`packages/gateway-pages`](../../packages/gateway-pages/README.md) | merged |
 
 ## Open points
 
@@ -137,6 +138,9 @@ These are not decided yet. Do not build against a guess: ask, or wait for the de
      - Ownership: without `members.manage`, a member may change (write, delete or run) only agents they created.
      - CSRF: every request other than `GET`, `HEAD` and `OPTIONS` needs a same-origin `Origin` and a `Sec-Fetch-Site` of `same-origin` or `none`. Non-browser clients, such as the conformance runner, must then send both headers.
      - Sign-in counts as a fresh step-up for 5 minutes.
+     - Other members' chats: the contract lets a member holding `chats.read` read a chat another member started, read-only ([engine-api.md](engine-api.md#chats)); the mock gives `chats.read` to every role. Whether members may read each other's chats at all is engine policy.
+   - Proposed for the next additive engine API version, for your review (no contract change yet): `build: "conformance"` in `GET /engine`, so the conformance runner can tell a conformance build apart. Today only the startup log says so ([ui-loader.md](ui-loader.md#open-points-decided-2026-10-26)).
+   - The gateway's sign-in rules added with X-07 (#125, #127), in [gateway.md](gateway.md): a MUST that the redirect to sign-in keeps the requested path in `next` ([anonymous access](gateway.md#anonymous-access), `engine-api.gateway.sign-in-keeps-next`, ENG-94), and a SHOULD that the sign-in page detects an existing session through same-origin `GET /api/v1/me` and goes on to a validated `next` ([sessions](gateway.md#sessions)).
 3. **Release log (C-06).**
    - The revocation threshold is not in the spec. `DEFAULT_REVOCATION_RULE` is the proposal: the release key or any one maintainer key (stopping a release is the safe direction).
    - Who signs the revocation list, and how often it is re-signed. A list is valid for at most 30 days (`REVOCATION_MAX_VALIDITY_MS`).
