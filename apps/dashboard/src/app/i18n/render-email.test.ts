@@ -70,10 +70,28 @@ describe('renderEmail', () => {
         expect(en.subject).not.toBe(cs.subject);
     });
 
-    it('states the recovery time and the end of the cooldown in UTC', () => {
-        const { text } = renderEmail({ ...MESSAGES[3], locale: 'en' } as EmailMessage);
-        expect(text).toContain('October 19, 2026 at 2:30');
-        expect(text).toContain('October 22, 2026 at 2:30');
+    it.each(
+        MESSAGES.flatMap((message) =>
+            (['en', 'cs'] as const).map((locale) => ({ ...message, locale }) as EmailMessage),
+        ),
+    )(
+        'greets on its own line and starts the first sentence as its locale writes it: $template in $locale',
+        (message) => {
+            const { text } = renderEmail(message);
+            // Czech letters continue in lower case after the comma of the greeting; English starts a new sentence.
+            expect(text).toMatch(message.locale === 'en' ? /^Hi,\n\n[A-Z]/ : /^Dobrý den,\n\n\p{Ll}/u);
+        },
+    );
+
+    it.each([
+        ['en', 'October 19, 2026 at 2:30 PM UTC', 'October 22, 2026 at 2:30 PM UTC'],
+        ['cs', '19. října 2026 v 14:30 UTC', '22. října 2026 v 14:30 UTC'],
+    ] as const)('names the zone of the recovery time and the end of the cooldown in %s', (locale, recovered, until) => {
+        const { text: raw } = renderEmail({ ...MESSAGES[3], locale } as EmailMessage);
+        const text = raw.replace(/\s/g, ' ');
+        expect(text).toContain(recovered);
+        expect(text).toContain(until);
+        expect(text).not.toContain('(UTC)');
     });
 
     it.each(['en', 'cs'] as const)('names the engine, its hostname and when it was last seen in %s', (locale) => {
@@ -81,26 +99,38 @@ describe('renderEmail', () => {
         expect(subject).toContain('abcdefghijklmnopqrstuvwxyz.engines.ptbk.test');
         expect(text).toContain('abcdefghijklmnopqrstuvwxyz.engines.ptbk.test');
         expect(text).toContain('abcdefghijklmnopqrstuvwxyz\n');
-        expect(text).toContain(locale === 'en' ? 'October 19, 2026 at 2:30' : '19. října 2026 v 14:30');
+        expect(text.replace(/\s/g, ' ')).toContain(
+            locale === 'en' ? 'October 19, 2026 at 2:30 PM UTC' : '19. října 2026 v 14:30 UTC',
+        );
     });
 
     it.each([
-        ['en', 'Your engine abcdefghijklmnopqrstuvwxyz.engines.ptbk.test is online', 'only the engine can make you'],
-        ['cs', 'Váš engine abcdefghijklmnopqrstuvwxyz.engines.ptbk.test je online', 'jen engine sám'],
+        [
+            'en',
+            'Your engine abcdefghijklmnopqrstuvwxyz.engines.ptbk.test is online',
+            "setup link in the engine's terminal",
+        ],
+        ['cs', 'Váš engine abcdefghijklmnopqrstuvwxyz.engines.ptbk.test je online', 'v terminálu enginu'],
     ] as const)(
         'sends the first-online email in %s pointing to the terminal, never with a setup link',
-        (locale, subject, why) => {
+        (locale, subject, where) => {
             const { subject: rendered, text } = renderEmail({ ...ONLINE, locale });
             expect(rendered).toBe(subject);
-            expect(text).toContain(why);
+            expect(text).toContain(where);
             expect(text).toContain('abcdefghijklmnopqrstuvwxyz\n');
             expect(text.match(/https:\/\/\S+/g)).toEqual([ONLINE.link]);
         },
     );
 
     it.each([
-        ['en', 'is back online', 'October 19, 2026 at 2:30', 'October 21, 2026 at 6:29', '2 days, 3 hours'],
-        ['cs', 'je zase online', '19. října 2026 v 14:30', '21. října 2026 v 18:29', '2 dny a 3 hodiny'],
+        [
+            'en',
+            'is back online',
+            'October 19, 2026 at 2:30 PM UTC',
+            'October 21, 2026 at 6:29 PM UTC',
+            '2 days, 3 hours',
+        ],
+        ['cs', 'je zase online', '19. října 2026 v 14:30 UTC', '21. října 2026 v 18:29 UTC', '2 dny a 3 hodiny'],
     ] as const)(
         'says in %s since when the engine is back and how long it was offline',
         (locale, subject, from, back, duration) => {
