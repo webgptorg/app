@@ -268,7 +268,9 @@ export type AlertAttempt =
     /** Some sends failed; these recipients are still owed the email. */
     | { readonly kind: 'partly-failed'; readonly failed: readonly AlertRecipient[] }
     /** The recipients could not be resolved; nobody was sent anything. */
-    | { readonly kind: 'unresolved' };
+    | { readonly kind: 'unresolved' }
+    /** The engine was revoked, suspended or removed since: nobody is owed anything about it any more. */
+    | { readonly kind: 'engine-inactive' };
 
 /** Where a notice attempt leaves the status: settled once delivered or out of retries, else owed again later. */
 export function afterNoticeAttempt(
@@ -279,7 +281,7 @@ export function afterNoticeAttempt(
 ): { readonly status: TrackedEngineStatus; readonly alarmAt: number } {
     const delay = ALERT_RETRY_DELAYS_MS[status.notice.attempt];
     const notice: StatusNotice =
-        attempt.kind === 'delivered' || delay === undefined
+        attempt.kind === 'delivered' || attempt.kind === 'engine-inactive' || delay === undefined
             ? { kind: 'none' }
             : {
                   ...status.notice,
@@ -291,7 +293,10 @@ export function afterNoticeAttempt(
     return { status: settled, alarmAt: nextAlarmAt(settled, timing) };
 }
 
-/** Where an alert attempt leaves the outage, and when the alarm fires next (a retry, or the retention purge). */
+/**
+ * Where an alert attempt leaves the outage, and when the alarm fires next (a retry, or the retention purge). An outage
+ * of an inactive engine stays offline with no alert, so it is never alerted and owes no back-online notice.
+ */
 export function afterAlertAttempt(
     status: TrackedEngineStatus & { readonly alert: { readonly kind: 'pending'; readonly attempt: number } },
     attempt: AlertAttempt,
@@ -300,6 +305,9 @@ export function afterAlertAttempt(
     const purgeAt = status.lastSeenAt + PAYLOAD_RETENTION_MS;
     if (attempt.kind === 'delivered') {
         return { status: { ...status, alert: { kind: 'sent' } }, alarmAt: purgeAt };
+    }
+    if (attempt.kind === 'engine-inactive') {
+        return { status: { ...status, alert: { kind: 'none' } }, alarmAt: purgeAt };
     }
     const delay = ALERT_RETRY_DELAYS_MS[status.alert.attempt];
     if (delay === undefined) {

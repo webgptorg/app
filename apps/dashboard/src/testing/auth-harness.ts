@@ -197,10 +197,12 @@ export function createAuthHarness(options: {
     });
     const dns = createFakeDnsResolver();
     const customHostnames = options.customHostnames ?? engineHostnames;
+    const heartbeatEngines = options.heartbeatEngines ?? createMemoryHeartbeatEngineReader(registration.engines);
     const engineStatuses = createMemoryEngineStatuses({
         clock,
         logger,
         timing: config.heartbeat,
+        heartbeatEngines,
         recipients: options.alertRecipients ?? { forEngineStatus: () => Promise.resolve([]) },
         email: outbox,
         engineHostname: (engineId) => defaultHostname(engineId, config.engineDomain),
@@ -232,7 +234,7 @@ export function createAuthHarness(options: {
         engineHostnames: customHostnames,
         customHostnames,
         dns,
-        heartbeatEngines: options.heartbeatEngines ?? createMemoryHeartbeatEngineReader(registration.engines),
+        heartbeatEngines,
         engineStatus: options.wrapEngineStatus?.(engineStatuses) ?? engineStatuses,
         relayPresence,
     };

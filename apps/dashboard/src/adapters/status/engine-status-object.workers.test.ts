@@ -254,6 +254,22 @@ describe('EngineStatus Durable Object behind POST /v1/engines/:engineId/heartbea
         ]);
     });
 
+    it('emails nothing once the engine is revoked, reading its row in D1', async () => {
+        const seeded = await registeredEngine();
+        expect((await post(seeded.engine.engineId, await signedHeartbeat(seeded.engine, 1, NOW))).status).toBe(204);
+        await env.DB.prepare(
+            "UPDATE engines SET status = 'suspended', status_reason = 'owner-revoked' WHERE engine_id = ?",
+        )
+            .bind(seeded.engine.engineId)
+            .run();
+        vi.setSystemTime(NOW + OFFLINE_AFTER_MS);
+        expect(await runDurableObjectAlarm(stub(seeded.engine.engineId))).toBe(true);
+        expect(await emailsTo(seeded.owner)).toEqual([]);
+        await runInDurableObject(stub(seeded.engine.engineId), async (_, state) => {
+            expect(await state.storage.getAlarm()).toBe(NOW + 30 * 24 * 3600_000);
+        });
+    });
+
     it('forgets the engine on reset', async () => {
         expect((await post(engine.engineId, await signedHeartbeat(engine, 1, NOW))).status).toBe(204);
         await stub(engine.engineId).reset();

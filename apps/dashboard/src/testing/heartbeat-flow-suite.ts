@@ -9,10 +9,10 @@ import {
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { cookieName } from '../paraglide/runtime';
-import type { HeartbeatTiming } from '../domain/status/engine-status';
+import { PAYLOAD_RETENTION_MS, type HeartbeatTiming } from '../domain/status/engine-status';
 import type { LinkCodeView } from '../shared/api/routes';
 import type { AuthHarness, TestBrowser, TestResponse } from './auth-harness';
-import { signUp, uniqueEmail } from './auth-flows';
+import { requestOptions, signUp, uniqueEmail } from './auth-flows';
 import { createTestEngine, type TestEngine } from './test-engine';
 import { heartbeatJson, signedHeartbeat, signedJson, type SignedHeartbeat } from './test-heartbeat';
 
@@ -73,6 +73,13 @@ export function describeHeartbeatFlows(name: string, makeFixture: () => Heartbea
 
         function beat(engine: TestEngine, seq: number, atMs = harness.clock.nowMs()): Promise<SignedHeartbeat> {
             return signedHeartbeat(engine, seq, atMs);
+        }
+
+        async function revoke(browser: TestBrowser, engineId: EngineId): Promise<void> {
+            const options = requestOptions(await browser.request('POST', '/api/auth/step-up/options'));
+            const response = await browser.authenticator.assert(options);
+            expect((await browser.request('POST', '/api/auth/step-up/verify', { response })).status).toBe(200);
+            expect((await browser.request('POST', `/api/engines/${engineId}/revoke`)).status).toBe(200);
         }
 
         function expectProblem(response: TestResponse, status: number, code: string): void {
@@ -258,6 +265,37 @@ export function describeHeartbeatFlows(name: string, makeFixture: () => Heartbea
             await harness.engineStatuses.runAlarm(engine.engineId);
             expect(harness.outbox.sentTo(czech.email).filter((m) => m.template === 'engine-offline')).toHaveLength(1);
             expect(harness.outbox.sentTo(bystander.email).filter((m) => m.template === 'engine-offline')).toEqual([]);
+        });
+
+        it('emails nothing about an engine its owner revoked, and keeps refusing its heartbeats', async () => {
+            const { browser } = await owner();
+            const engine = await registered(browser);
+            const fresh = await registered(browser);
+            const lastSeenAt = harness.clock.nowMs();
+            expect((await send(engine.engineId, await beat(engine, 1))).status).toBe(204);
+            // A first heartbeat counting no member owes the online notice at once.
+            const unclaimed = await signedHeartbeat(fresh, 1, lastSeenAt, { members: 0 });
+            expect((await send(fresh.engineId, unclaimed)).status).toBe(204);
+
+            await revoke(browser, engine.engineId);
+            await revoke(browser, fresh.engineId);
+            expectProblem(await send(engine.engineId, await beat(engine, 2)), 403, 'engine-suspended');
+
+            expect(await harness.engineStatuses.runAlarm(fresh.engineId)).toBe(true);
+            harness.clock.set(lastSeenAt + OFFLINE_AFTER_MS);
+            for (const { engineId } of [engine, fresh]) {
+                expect(await harness.engineStatuses.runAlarm(engineId)).toBe(true);
+            }
+            harness.clock.set(lastSeenAt + PAYLOAD_RETENTION_MS);
+            for (const { engineId } of [engine, fresh]) {
+                expect(await harness.engineStatuses.runAlarm(engineId)).toBe(true);
+                expect(await harness.engineStatuses.getStatus(engineId)).toMatchObject({
+                    state: 'offline',
+                    lastSeq: null,
+                });
+                expect(await harness.engineStatuses.runAlarm(engineId)).toBe(false);
+            }
+            expect(harness.outbox.sent.filter((message) => message.template.startsWith('engine-'))).toEqual([]);
         });
     });
 }
