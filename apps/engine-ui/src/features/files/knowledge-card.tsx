@@ -10,6 +10,7 @@ import { m } from '../../paraglide/messages';
 import { purposeLabel } from './file-labels';
 import { fileListQueryOptions, fileStatsQueryOptions } from './files-queries';
 import { SCAN_PROBLEMS } from './files-search';
+import { useFileScanning } from './use-file-scanning';
 
 const LATEST_OUTPUTS = 3;
 
@@ -21,6 +22,7 @@ export function KnowledgeCard({ agentId }: { readonly agentId: AgentId }) {
     const { data: outputs } = useSuspenseQuery(
         fileListQueryOptions(engineApi, { agentId, purpose: 'output', sort: '-createdAt', limit: LATEST_OUTPUTS }),
     );
+    const scanning = useFileScanning();
     const problems = stats.byScan.infected + stats.byScan.failed;
     return (
         <Card
@@ -42,7 +44,7 @@ export function KnowledgeCard({ agentId }: { readonly agentId: AgentId }) {
                         </div>
                     ))}
                 </dl>
-                {problems === 0 ? (
+                {!scanning ? null : problems === 0 ? (
                     <p className="text-sm text-text-muted">{m.files_card_no_problems()}</p>
                 ) : (
                     <p className="flex items-center gap-2 text-sm">

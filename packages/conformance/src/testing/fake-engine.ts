@@ -1,6 +1,7 @@
 import {
     ENGINE_API_PREFIX,
     ENGINE_RESERVED_PATHS,
+    KNOWN_CAPABILITIES,
     OWNER_PERMISSIONS,
     SIGN_IN_PATH,
     createProblem,
@@ -146,7 +147,8 @@ export async function createFakeEngine(options: FakeEngineOptions = {}): Promise
             sessions: [],
             triggers: [...(demo.triggers ?? []), ended],
         },
-        ...(options.capabilities === undefined ? {} : { capabilities: options.capabilities }),
+        // Every capability, scanning included, so the suite's scan checks run against the fake too.
+        capabilities: options.capabilities ?? Object.values(KNOWN_CAPABILITIES),
         uploadPolicies: options.uploadPolicies ?? FAKE_UPLOAD_POLICIES,
         authorizer: OWNERSHIP,
     });

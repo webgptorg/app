@@ -39,7 +39,7 @@ function useDownloadCheck() {
             const response = await engineApi.files.get(fileId, AbortSignal.timeout(CHECK_TIMEOUT_MS));
             if (response.kind === 'problem') return response.problem.status === 404 ? 'gone' : 'failed';
             queryClient.setQueryData(fileKeys.detail(fileId), response.data);
-            return response.data.scan.status === 'infected' ? 'infected' : null;
+            return response.data.scan?.status === 'infected' ? 'infected' : null;
         } catch {
             return 'failed';
         }
@@ -66,7 +66,7 @@ export function FileDownload({ file, versionId, label, size = 'sm' }: FileDownlo
     const [refusal, setRefusal] = useState<Refusal | null>(null);
     const name = label ?? m.files_download_named({ name: file.name });
 
-    if (file.scan.status === 'infected') {
+    if (file.scan?.status === 'infected') {
         return (
             <span className="flex flex-col items-start gap-1">
                 <Button size={size} disabled disabledReason={m.files_download_infected()} aria-label={name}>

@@ -24,6 +24,11 @@ export const KNOWN_CAPABILITIES = {
      * owner decides whether the dashboard may remove them again. Without it, members join only by invite link.
      */
     accessRequests: { id: 'access-requests', version: 1 },
+    /**
+     * The engine scans every new file for malware. Without it `FileMetadata.scan` is `null`, a `scan` filter matches
+     * nothing, `byScan` counts zero, and the UI shows nothing about scanning.
+     */
+    fileScanning: { id: 'file-scanning', version: 1 },
 } as const satisfies Readonly<Record<string, CapabilityRef>>;
 
 export type KnownCapability = (typeof KNOWN_CAPABILITIES)[keyof typeof KNOWN_CAPABILITIES];

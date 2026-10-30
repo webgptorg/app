@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import type { ApiHarness } from '../src/testing/api-harness';
 import { HARNESS_ORIGIN, createApiHarness } from '../src/testing/api-harness';
+import { ALL_CAPABILITY_NAMES } from '../src/domain/state/capabilities';
 
 const signal = () => AbortSignal.timeout(10_000);
 const harnesses: ApiHarness[] = [];
@@ -277,16 +278,16 @@ describe('capability events', () => {
 
 describe('capability faults', () => {
     it('finds the next upload infected under scanInfectedRate, so it cannot be downloaded', async () => {
-        const { harness, owner } = await start();
+        const { harness, owner } = await start({ capabilities: ALL_CAPABILITY_NAMES });
         const clean = ok(
             await owner.files.upload({ file: new Blob(['a']), name: 'clean.txt', purpose: 'upload' }, signal()),
         );
-        expect(clean.scan.status).toBe('clean');
+        expect(clean.scan?.status).toBe('clean');
         harness.faults.set({ ...harness.faults.plan(), scanInfectedRate: 1 });
         const infected = ok(
             await owner.files.upload({ file: new Blob(['b']), name: 'infected.txt', purpose: 'upload' }, signal()),
         );
-        expect(infected.scan.status).toBe('infected');
+        expect(infected.scan?.status).toBe('infected');
         expect(await owner.files.download(infected.id, {}, signal())).toMatchObject({
             kind: 'problem',
             problem: { status: 409, code: 'file-infected' },

@@ -3,7 +3,7 @@
   "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
   "info": {
     "title": "Promptbook engine API",
-    "version": "1.12.0",
+    "version": "1.13.0",
     "license": {
       "name": "MIT",
       "identifier": "MIT"
@@ -8496,7 +8496,7 @@
       "get": {
         "operationId": "downloadFile",
         "summary": "Download a file's bytes, or one version's with `?version=`",
-        "description": "Always sent as an attachment with `X-Content-Type-Options: nosniff`. A file whose scan found malware is never served: 409 `file-infected`.",
+        "description": "Always sent as an attachment with `X-Content-Type-Options: nosniff`. On an engine with `file-scanning@1`, a file whose scan found malware is never served: 409 `file-infected`.",
         "tags": ["files"],
         "x-required-permission": "files.read",
         "x-capability": {
@@ -14402,24 +14402,31 @@
             ]
           },
           "scan": {
-            "type": "object",
-            "properties": {
-              "status": {
-                "$ref": "#/components/schemas/FileScanStatus"
-              },
-              "checkedAt": {
-                "anyOf": [
-                  {
-                    "$ref": "#/components/schemas/Timestamp"
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "$ref": "#/components/schemas/FileScanStatus"
                   },
-                  {
-                    "type": "null"
+                  "checkedAt": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/components/schemas/Timestamp"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   }
-                ]
+                },
+                "required": ["status", "checkedAt"],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
               }
-            },
-            "required": ["status", "checkedAt"],
-            "additionalProperties": false
+            ]
           },
           "versionCount": {
             "type": "integer",

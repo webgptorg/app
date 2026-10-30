@@ -1,5 +1,5 @@
 import type { ActivityItem, ActivityPageRead, EngineApiClient, EngineApiResponse } from '@ptbk/engine-api';
-import { MAX_RUN_TEXT_BYTES } from '@ptbk/engine-api';
+import { KNOWN_CAPABILITIES, MAX_RUN_TEXT_BYTES } from '@ptbk/engine-api';
 import { createInMemoryEngine } from '@ptbk/engine-api/in-memory';
 import type { InMemorySeed } from '@ptbk/engine-api/in-memory';
 import { describe, expect, it } from 'vitest';
@@ -32,6 +32,8 @@ async function core(scenario: Scenario, seed = 42) {
         seed: data,
         member: { id: ownerOf(data), role: 'owner' },
         clock: { now: () => EPOCH },
+        // With scanning, so the seeded scan results show; without it every scan reads `null`.
+        capabilities: Object.values(KNOWN_CAPABILITIES),
     });
     return { data, ...engine };
 }
@@ -307,10 +309,10 @@ describe('seedEngine: capabilities in small-team', () => {
                 agent.id,
             ).toBe(true);
         }
-        expect(files.filter(({ scan }) => scan.status === 'infected')).toHaveLength(1);
-        expect(files.filter(({ scan }) => scan.status === 'pending').length).toBeGreaterThanOrEqual(2);
-        expect(files.filter(({ scan }) => scan.status === 'failed').length).toBeGreaterThanOrEqual(2);
-        const [infected] = files.filter(({ scan }) => scan.status === 'infected');
+        expect(files.filter(({ scan }) => scan?.status === 'infected')).toHaveLength(1);
+        expect(files.filter(({ scan }) => scan?.status === 'pending').length).toBeGreaterThanOrEqual(2);
+        expect(files.filter(({ scan }) => scan?.status === 'failed').length).toBeGreaterThanOrEqual(2);
+        const [infected] = files.filter(({ scan }) => scan?.status === 'infected');
         expect(infected && (await client.files.download(infected.id, {}, signal()))).toMatchObject({
             kind: 'problem',
             problem: { code: 'file-infected' },

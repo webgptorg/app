@@ -59,14 +59,14 @@ async function start() {
 }
 
 describe('engine runtime', () => {
-    it('reports the identity, version, mode and every capability', async () => {
+    it('reports the identity, version, mode and every capability but file scanning', async () => {
         const { client } = await start();
         expect(ok(await client().engine.get(signal()))).toMatchObject({
             engineId: IDENTITY.engineId,
             hostname: IDENTITY.hostname,
             mode: 'tunnel',
             dashboardUrl: null,
-            capabilities: Object.values(KNOWN_CAPABILITIES),
+            capabilities: Object.values(KNOWN_CAPABILITIES).filter((ref) => ref !== KNOWN_CAPABILITIES.fileScanning),
         });
         expect(ok(await client().security.get(signal()))).toMatchObject({
             engine: { version: '0.4.2' },

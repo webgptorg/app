@@ -11,6 +11,7 @@ const MOCK_CAPABILITIES = {
     integrations: KNOWN_CAPABILITIES.integrations,
     'test-chat': KNOWN_CAPABILITIES.testChat,
     'access-requests': KNOWN_CAPABILITIES.accessRequests,
+    'file-scanning': KNOWN_CAPABILITIES.fileScanning,
 } as const satisfies Readonly<Record<string, CapabilityRef>>;
 
 export const MockCapabilityName = z.enum(
@@ -19,6 +20,11 @@ export const MockCapabilityName = z.enum(
 export type MockCapabilityName = z.infer<typeof MockCapabilityName>;
 
 export const ALL_CAPABILITY_NAMES: readonly MockCapabilityName[] = MockCapabilityName.options;
+
+/** What the mock advertises unless told otherwise: everything but malware scanning, which needs a scanner service. */
+export const DEFAULT_CAPABILITY_NAMES: readonly MockCapabilityName[] = ALL_CAPABILITY_NAMES.filter(
+    (name) => name !== 'file-scanning',
+);
 
 export function capabilitiesFor(names: readonly MockCapabilityName[]): readonly CapabilityRef[] {
     return [...new Set(names)].map((name) => MOCK_CAPABILITIES[name]);

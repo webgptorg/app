@@ -183,6 +183,25 @@ describe('download', { timeout: TIMEOUT_MS }, () => {
     });
 });
 
+describe('without file scanning', { timeout: TIMEOUT_MS }, () => {
+    it('shows nothing about scans, previews a PNG and downloads a file the seed had marked infected', async () => {
+        const { drawer } = await openDrawer(FILE_IDS.infected, { scanning: false });
+        expect(within(drawer).queryByText('Scan')).toBeNull();
+        expect(within(drawer).queryByText('Infected')).toBeNull();
+        expect(within(drawer).queryByText(/found this file infected/)).toBeNull();
+        expect(within(drawer).getByRole('img', { name: 'invoice.png' })).toBeDefined();
+        expect(within(drawer).getByRole('link', { name: 'Download invoice.png' })).toBeDefined();
+    });
+
+    it('keeps SVG, HTML and PDF out of the preview', async () => {
+        for (const fileId of [FILE_IDS.svg, FILE_IDS.html, FILE_IDS.pdf]) {
+            const { drawer, app } = await openDrawer(fileId, { scanning: false });
+            expect(drawer.querySelector('img, iframe, object, embed')).toBeNull();
+            app.unmount();
+        }
+    });
+});
+
 describe('delete', { timeout: TIMEOUT_MS }, () => {
     it('asks naming the file, waits for the engine, closes the drawer and confirms with a toast', async () => {
         const { drawer, app, engine } = await openDrawer(FILE_IDS.pdf);

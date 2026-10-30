@@ -30,7 +30,7 @@ function Fact({ term, children }: { readonly term: string; readonly children: Re
 }
 
 /**
- * A raster image from the content route, only for the four types `canPreviewImage` allows and a clean scan. Fixed
+ * A raster image from the content route, only for the four types `canPreviewImage` allows and never an unclean scan. Fixed
  * dimensions keep the layout still while it loads; the alt text is the file name, as text.
  */
 export function FilePreview({ file }: { readonly file: FileMetadata }) {
@@ -129,12 +129,17 @@ function Details({ file, onDeleted }: { readonly file: FileMetadata; readonly on
                 <Fact term={m.files_column_purpose()}>
                     <PurposeBadge purpose={file.purpose} />
                 </Fact>
-                <Fact term={m.files_column_scan()}>
-                    <span className="flex flex-wrap items-center gap-2">
-                        <ScanBadge status={file.scan.status} />
-                        {file.scan.checkedAt === null ? null : <RelativeTime value={new Date(file.scan.checkedAt)} />}
-                    </span>
-                </Fact>
+                {/* `null` on an engine that does not scan: no row at all, rather than a status nobody can act on. */}
+                {file.scan === null ? null : (
+                    <Fact term={m.files_column_scan()}>
+                        <span className="flex flex-wrap items-center gap-2">
+                            <ScanBadge status={file.scan.status} />
+                            {file.scan.checkedAt === null ? null : (
+                                <RelativeTime value={new Date(file.scan.checkedAt)} />
+                            )}
+                        </span>
+                    </Fact>
+                )}
                 <Fact term={m.files_column_type()}>
                     <span className="break-all">{file.contentType}</span>
                 </Fact>

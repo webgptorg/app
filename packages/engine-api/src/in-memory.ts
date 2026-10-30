@@ -2,6 +2,7 @@ export {
     createInMemoryEngine,
     createInMemoryEngineApiClient,
     createInMemoryEngineCore,
+    DEFAULT_CAPABILITIES,
     DEFAULT_EVENT_BUFFER_SIZE,
     IN_MEMORY_CLIENT_MARKER,
     PERMISSION_AUTHORIZER,

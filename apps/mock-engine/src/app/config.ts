@@ -21,7 +21,7 @@ import type { OneTimeSecret } from '../domain/secret';
 import { oneTimeSecret, secret } from '../domain/secret';
 import { MAX_SIMULATION_SPEED, MIN_SIMULATION_SPEED } from '../domain/simulation/simulation-clock';
 import type { SimulationMode } from '../domain/simulation/simulation-clock';
-import { ALL_CAPABILITY_NAMES, parseCapabilityList } from '../domain/state/capabilities';
+import { DEFAULT_CAPABILITY_NAMES, parseCapabilityList } from '../domain/state/capabilities';
 import type { MockCapabilityName } from '../domain/state/capabilities';
 import { Scenario } from '../domain/state/scenarios';
 import type { RelayTarget } from '../domain/tunnel/relay-target';
@@ -65,7 +65,7 @@ export interface MockEngineConfig {
     readonly seedEpoch: Date;
     /** `MOCK_FAULTS`, a JSON `FaultPlan`; changeable at runtime through the control listener. */
     readonly faults: FaultPlan;
-    /** `MOCK_CAPABILITIES`: what `GET /engine` advertises; every C-07 capability by default. */
+    /** `MOCK_CAPABILITIES`: what `GET /engine` advertises; every capability but `file-scanning` by default. */
     readonly capabilities: readonly MockCapabilityName[];
     /** `MOCK_SIMULATION` and `MOCK_SIMULATION_SPEED`: whether engine time runs on its own, and how fast. */
     readonly simulation: { readonly mode: SimulationMode; readonly speed: number };
@@ -560,7 +560,7 @@ export function parseMockEngineConfig(env: Env): MockEngineConfig {
         scenario: parsedEnv.MOCK_SCENARIO,
         seedEpoch: parsedEnv.MOCK_SEED_EPOCH,
         faults: parsedEnv.MOCK_FAULTS ?? NO_FAULTS,
-        capabilities: parsedEnv.MOCK_CAPABILITIES ?? ALL_CAPABILITY_NAMES,
+        capabilities: parsedEnv.MOCK_CAPABILITIES ?? DEFAULT_CAPABILITY_NAMES,
         simulation: Object.freeze({ mode: parsedEnv.MOCK_SIMULATION, speed: parsedEnv.MOCK_SIMULATION_SPEED }),
         devLogin: parsedEnv.MOCK_DEV_LOGIN === 'enabled',
         passkeys: parsedEnv.MOCK_PASSKEYS,

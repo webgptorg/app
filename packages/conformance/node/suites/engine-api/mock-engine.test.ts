@@ -30,8 +30,12 @@ function notPassed(results: readonly CheckResult[]): Record<string, string> {
 
 async function runAgainstMock(targets: EngineTargetFactory, skips: Readonly<Record<string, string>>) {
     const report = await runPlatformConformance({
-        // A seeded team, so the checks that need existing data (an infected file, an ended trigger) have it.
-        command: mockEngineCommand('MOCK_SCENARIO=small-team MOCK_SEED=1'),
+        // A seeded team, so the checks that need existing data (an infected file, an ended trigger) have it, with the
+        // optional file scanning switched on so its checks run too.
+        command: mockEngineCommand(
+            'MOCK_SCENARIO=small-team MOCK_SEED=1 ' +
+                'MOCK_CAPABILITIES=runs,files,triggers,integrations,test-chat,access-requests,file-scanning',
+        ),
         suites: [ENGINE_API_PLATFORM_SUITE],
         targets,
         timeoutMs: 60_000,

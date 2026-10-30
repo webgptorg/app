@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { KNOWN_CAPABILITIES } from '../capabilities/capability';
 import type { EngineApiClient, EngineApiResponse } from '../client';
 import {
     MAX_BOOK_SOURCE_LENGTH,
@@ -1051,6 +1052,7 @@ export function engineApiClientSuite(makeEngine: MakeEngine): void {
 
         it('pages and filters files, serves versions and never serves an infected file', async () => {
             const { client } = engine({
+                capabilities: Object.values(KNOWN_CAPABILITIES),
                 seed: {
                     ...seed,
                     files: [

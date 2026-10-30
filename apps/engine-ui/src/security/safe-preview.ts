@@ -5,10 +5,14 @@
  */
 const PREVIEWABLE_IMAGE_TYPES: ReadonlySet<string> = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
 
-/** Whether a file may be previewed as an image: one of the four raster types, and scanned clean. */
+/**
+ * Whether a file may be previewed as an image: one of the four raster types, and, on an engine that scans, scanned
+ * clean. Without a scanner (`scan: null`) the type rule alone decides, as it is what keeps the preview inert.
+ */
 export function canPreviewImage(file: {
     readonly contentType: string;
-    readonly scan: { readonly status: string };
+    readonly scan: { readonly status: string } | null;
 }): boolean {
-    return file.scan.status === 'clean' && PREVIEWABLE_IMAGE_TYPES.has(file.contentType.trim().toLowerCase());
+    const clean = file.scan === null || file.scan.status === 'clean';
+    return clean && PREVIEWABLE_IMAGE_TYPES.has(file.contentType.trim().toLowerCase());
 }
