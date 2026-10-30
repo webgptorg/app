@@ -130,7 +130,6 @@ function CreatedWizard({ agentId, step, chatId, headingRef, goTo }: CreatedWizar
                     toast.show({ tone: 'success', title: m.wizard_finished({ name: agentName }) });
                     void navigate({ to: '/agents/$agentId', params: { agentId } });
                 }}
-                onFinishLater={finishLater}
             />
         ) : (
             <KnowledgeStep

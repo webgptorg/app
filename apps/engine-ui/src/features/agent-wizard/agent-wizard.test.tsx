@@ -84,6 +84,8 @@ async function createAgent(app: App) {
 const NO_TEST_CHAT: readonly CapabilityRef[] = [];
 
 async function expectFinishedOnOverview(app: App, agentId: string) {
+    // The last step only finishes: there is nothing left to finish later.
+    expect(screen.queryByRole('button', { name: 'Finish later' })).toBeNull();
     await app.user.click(screen.getByRole('button', { name: 'Finish' }));
     expect(await screen.findByText('Iris is ready', {}, WAIT)).toBeDefined();
     await waitFor(() => {

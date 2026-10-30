@@ -33,7 +33,6 @@ export interface TestStepProps {
     readonly onChatCreated: (chatId: ChatId) => void;
     readonly onBack: () => void;
     readonly onFinish: () => void;
-    readonly onFinishLater: () => void;
 }
 
 /** A conversation the engine never stores, with the book the agent was just created with. */
@@ -96,16 +95,7 @@ function KeptTestChat({ chatId, agentName }: { readonly chatId: ChatId; readonly
  * Step 4: a test conversation with the new agent. Where the engine offers throwaway test chats (`test-chat@1`) it is
  * one, as in the book editor; otherwise it is a real chat, started explicitly and kept with the agent's chats.
  */
-export function TestStep({
-    agentId,
-    agentName,
-    chatId,
-    headingRef,
-    onChatCreated,
-    onBack,
-    onFinish,
-    onFinishLater,
-}: TestStepProps) {
+export function TestStep({ agentId, agentName, chatId, headingRef, onChatCreated, onBack, onFinish }: TestStepProps) {
     const engineApi = useEngineApi();
     const { can } = usePermissions();
     const throwaway = useAllows({ capability: KNOWN_CAPABILITIES.testChat, permission: 'agents.write' });
@@ -153,14 +143,9 @@ export function TestStep({
             headingRef={headingRef}
             actions={
                 <>
-                    <div className="flex flex-wrap gap-2">
-                        <Button variant="ghost" onClick={onBack}>
-                            {m.wizard_back()}
-                        </Button>
-                        <Button variant="ghost" onClick={onFinishLater}>
-                            {m.wizard_finish_later()}
-                        </Button>
-                    </div>
+                    <Button variant="ghost" onClick={onBack}>
+                        {m.wizard_back()}
+                    </Button>
                     <Button variant="primary" onClick={onFinish}>
                         {m.wizard_finish()}
                     </Button>
