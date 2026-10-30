@@ -252,7 +252,7 @@ test('Journey 1: sign up, start the trial, link a fresh engine, become its owner
         // Unnamed when its first heartbeat arrives, so the email names it by its short ID and gives the address below.
         expect(online?.subject).toBe(`Your engine ${identity.hostname.slice(0, 8)}… is online`);
         expect(online?.text).toContain(identity.hostname);
-        expect(online?.text).toContain("Finish setup on the engine's terminal");
+        expect(online?.text).toContain("open the setup link in the engine's terminal");
     });
 
     const engineRow = async () => (await dashboard.reloadEngineRows()).filter({ hasText: identity.hostname });
