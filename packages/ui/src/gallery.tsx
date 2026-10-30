@@ -1,6 +1,8 @@
 import { actionMenuGallery } from './components/action-menu/action-menu.gallery';
 import { filterBarGallery } from './components/filter-bar/filter-bar.gallery';
 import { tooltipGallery } from './components/tooltip/tooltip.gallery';
+import { emptyValueGallery } from './components/empty-value/empty-value.gallery';
+import { technicalDetailsGallery } from './components/technical-details/technical-details.gallery';
 import { iconButtonGallery } from './components/icon-button/icon-button.gallery';
 import { fieldGallery } from './components/field/field.gallery';
 import { inputGallery } from './components/input/input.gallery';
@@ -56,6 +58,7 @@ export const GALLERY_ENTRIES: readonly GalleryEntry[] = [
     dialogGallery,
     drawerGallery,
     emptyStateGallery,
+    emptyValueGallery,
     engineSwitcherGallery,
     errorStateGallery,
     externalLinkGallery,
@@ -75,6 +78,7 @@ export const GALLERY_ENTRIES: readonly GalleryEntry[] = [
     spinnerGallery,
     switchGallery,
     tabsGallery,
+    technicalDetailsGallery,
     textareaGallery,
     toasterGallery,
     tooltipGallery,

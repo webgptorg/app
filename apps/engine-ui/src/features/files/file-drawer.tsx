@@ -1,5 +1,5 @@
 import type { FileId, FileMetadata, FileVersion } from '@ptbk/engine-api';
-import { Button, CodeText, Drawer, ErrorState, RelativeTime, Skeleton, useLocale } from '@ptbk/ui';
+import { Button, CodeText, Drawer, ErrorState, RelativeTime, Skeleton, TechnicalDetails, useLocale } from '@ptbk/ui';
 import { Trash2 } from 'lucide-react';
 import type { ReactNode } from 'react';
 
@@ -164,10 +164,8 @@ function Details({ file, onDeleted }: { readonly file: FileMetadata; readonly on
                 <Fact term={m.files_column_created()}>
                     <RelativeTime value={new Date(file.createdAt)} />
                 </Fact>
-                <Fact term={m.files_field_sha256()}>
-                    <CodeText value={file.sha256} group={8} copyable copyLabel={m.files_copy_sha256()} />
-                </Fact>
             </dl>
+            <TechnicalDetails items={[{ label: m.files_field_sha256(), value: file.sha256 }]} />
             <section aria-labelledby="file-versions" className="flex flex-col gap-3">
                 <h3 id="file-versions" className="text-base font-semibold">
                     {m.files_versions()}

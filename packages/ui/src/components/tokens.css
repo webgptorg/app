@@ -13,6 +13,7 @@
 @import './dialog/dialog.css';
 @import './drawer/drawer.css';
 @import './empty-state/empty-state.css';
+@import './empty-value/empty-value.css';
 @import './engine-switcher/engine-switcher.css';
 @import './error-state/error-state.css';
 @import './external-link/external-link.css';
@@ -31,6 +32,7 @@
 @import './spinner/spinner.css';
 @import './switch/switch.css';
 @import './tabs/tabs.css';
+@import './technical-details/technical-details.css';
 @import './textarea/textarea.css';
 @import './toaster/toaster.css';
 @import './tooltip/tooltip.css';

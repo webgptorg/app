@@ -13,6 +13,11 @@ export interface Formatters {
     formatCurrency(amount: string, currency: string): string;
     /** "3 minutes ago", "in 2 days", "now", relative to `now`. */
     formatRelativeTime(value: Date, now: Date): string;
+    /**
+     * An elapsed time in the two largest units, rounded down: "45 s", "3 min 5 s", "2 h 7 min", "1 d 2 h". The unit
+     * symbols read the same in every supported language; only the numbers are localised.
+     */
+    formatDuration(ms: number): string;
 }
 
 const RELATIVE_UNITS: readonly (readonly [Intl.RelativeTimeFormatUnit, number])[] = [
@@ -23,6 +28,13 @@ const RELATIVE_UNITS: readonly (readonly [Intl.RelativeTimeFormatUnit, number])[
     ['hour', 3600],
     ['minute', 60],
     ['second', 1],
+];
+
+const DURATION_UNITS: readonly (readonly [string, number])[] = [
+    ['d', 86_400],
+    ['h', 3600],
+    ['min', 60],
+    ['s', 1],
 ];
 
 const cache = new Map<string, Formatters>();
@@ -61,6 +73,18 @@ export function createFormatters(locale: string): Formatters {
                 1,
             ];
             return relative.format(Math.round(seconds / size), unit);
+        },
+        formatDuration: (ms) => {
+            const total = Math.max(0, Math.floor(ms / 1000));
+            const amounts = DURATION_UNITS.map(([, size], index) => {
+                const above = DURATION_UNITS[index - 1]?.[1];
+                return Math.floor((above === undefined ? total : total % above) / size);
+            });
+            const largest = amounts.findIndex((amount) => amount > 0);
+            const first = largest === -1 ? DURATION_UNITS.length - 1 : largest;
+            return DURATION_UNITS.slice(first, first + 2)
+                .map(([symbol], offset) => `${number.format(amounts[first + offset] ?? 0)} ${symbol}`)
+                .join(' ');
         },
     };
     cache.set(locale, formatters);

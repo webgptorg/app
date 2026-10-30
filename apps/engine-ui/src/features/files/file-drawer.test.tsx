@@ -38,10 +38,11 @@ describe('file drawer', { timeout: TIMEOUT_MS }, () => {
     });
 
     it('shows metadata, the SHA-256 with copy, the scan and where the file came from', async () => {
-        const { drawer } = await openDrawer(FILE_IDS.project);
+        const { drawer, app } = await openDrawer(FILE_IDS.project);
         expect(within(drawer).getByText('src/app.ts', { selector: 'p' })).toBeDefined();
         expect(within(drawer).getByText('Output')).toBeDefined();
         expect(within(drawer).getByText('Clean')).toBeDefined();
+        await app.user.click(within(drawer).getByText('Technical details'));
         expect(within(drawer).getByRole('button', { name: 'Copy SHA-256' })).toBeDefined();
         expect(await within(drawer).findByRole('link', { name: 'Ada' })).toBeDefined();
         await expectNoAxeViolations(drawer);
