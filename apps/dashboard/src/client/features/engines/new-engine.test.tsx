@@ -621,6 +621,8 @@ describe('new engine page', () => {
                 },
             });
             expect(await screen.findByText(/so you can tell your engines apart/)).toBeTruthy();
+            // Ready: the panel asks for the name; the collapsed setup details do not ask again.
+            expect(screen.getAllByRole('textbox', { name: 'Name' })).toHaveLength(1);
             await app.user.type(screen.getByRole('textbox', { name: 'Name' }), 'Staging');
             await app.user.click(screen.getByRole('button', { name: 'Save name' }));
             expect(await screen.findByText('Name saved')).toBeTruthy();
@@ -640,7 +642,7 @@ describe('new engine page', () => {
                     scriptProgress(api, [LINKED], [READY]);
                 },
             });
-            expect(await screen.findByText('Your engine is ready.', { selector: 'p.font-medium' })).toBeTruthy();
+            expect(await screen.findByText('Your engine is ready', { selector: 'h2' })).toBeTruthy();
             expect(screen.queryByRole('textbox', { name: 'Name' })).toBeNull();
         });
 
