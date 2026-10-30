@@ -10,17 +10,15 @@ const SECTIONS = [
 ] as const;
 
 /**
- * The precise version of what the other screens only hint at, so they can stay with plain next steps (DASH-14). One
- * text for the public page and for any in-place explanation, so the two never drift apart.
+ * The precise version of what the other screens only hint at, so they can stay with plain next steps (DASH-14).
  */
-export function TrustExplanation(props: { readonly headingLevel: 2 | 3 }) {
-    const Heading = props.headingLevel === 2 ? 'h2' : 'h3';
+export function TrustExplanation() {
     return (
         <div className="flex flex-col gap-5">
             <p>{m.trust_intro()}</p>
             {SECTIONS.map((section) => (
                 <section key={section.id} className="flex flex-col gap-1" data-trust-section={section.id}>
-                    <Heading className="font-semibold">{section.title()}</Heading>
+                    <h2 className="font-semibold">{section.title()}</h2>
                     <p className="text-sm">{section.body()}</p>
                 </section>
             ))}

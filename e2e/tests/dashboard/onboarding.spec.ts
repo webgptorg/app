@@ -149,7 +149,7 @@ test('Journey 1: sign up, start the trial, link a fresh engine, become its owner
     const violations = await watchPolicy(context);
     const linkStates = await recordLinkStates(context);
     const email = uniqueEmail('onboarding');
-    const progress = page.getByRole('region', { name: 'Link progress' });
+    const progress = page.locator('section[data-link-state]');
     const row = (step: string) => progress.locator(`[data-step="${step}"]`);
 
     const landedAt = Date.now();
@@ -161,7 +161,8 @@ test('Journey 1: sign up, start the trial, link a fresh engine, become its owner
         await expect(page.getByRole('heading', { name: 'Choose a plan to link your engine' })).toBeVisible();
         await page.getByRole('button', { name: 'Start your 14-day trial of Standard' }).click();
         await expect(page.getByText('Thank you, your trial has started.')).toBeVisible();
-        await expect(page).toHaveURL(/\/engines\/new\?link=[a-z2-7]{26}&checkout=success$/);
+        // Thanked once: the address no longer carries `checkout`, so a reload does not thank again.
+        await expect(page).toHaveURL(/\/engines\/new\?link=[a-z2-7]{26}$/);
     });
 
     const installer = page.getByRole('tab', { name: 'Linux server with Docker' });
@@ -191,7 +192,7 @@ test('Journey 1: sign up, start the trial, link a fresh engine, become its owner
         await expect(row('reachable')).toContainText('Reachable through 2 relays');
         await expect(progress).toHaveAttribute('data-link-state', 'owner-pending');
         await expect(row('owner')).toHaveAttribute('data-step-state', 'current');
-        await expect(row('owner')).toContainText('your terminal shows a setup link');
+        await expect(row('owner')).toContainText('setup link your terminal shows');
     });
 
     const setupLink = parseSetupLink(await takeSetupLink(engine));
@@ -305,7 +306,7 @@ test('an expired link code: the page says so and the engine refuses it', async (
     await dashboard.subscribe();
     const { linkCode } = await dashboard.createLinkCode();
 
-    const progress = page.getByRole('region', { name: 'Link progress' });
+    const progress = page.locator('section[data-link-state]');
     await expect(progress).toHaveAttribute('data-link-state', 'expired', {
         timeout: (DASHBOARD_TIMING.linkCodeTtlS + 15) * 1000,
     });

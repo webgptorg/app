@@ -19,3 +19,18 @@ test('the public abuse page, signed out, in English and Czech, under the product
     expect(await securityTxt.text()).toContain('Contact: mailto:abuse@ptbk.test');
     expectNoBrowserErrors(browserReport());
 });
+
+test('the public trust page, signed out, reached from the sign-in footer', async ({
+    page,
+    browserReport,
+    checkScreen,
+}) => {
+    await page.goto('/signin');
+    await page
+        .getByRole('navigation', { name: 'About Promptbook' })
+        .getByRole('link', { name: 'How Promptbook protects you' })
+        .click();
+    await expect(page.getByRole('heading', { name: 'How Promptbook protects you', level: 1 })).toBeVisible();
+    await checkScreen('trust');
+    expectNoBrowserErrors(browserReport());
+});

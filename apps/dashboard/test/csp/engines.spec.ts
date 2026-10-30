@@ -45,10 +45,11 @@ test('link an engine, see it online, open its page and revoke it, under the prod
     const command = page.getByText(/^bun run dev:link [a-z2-7]{26}$/);
     await expect(command).toBeVisible();
     await expect(page).toHaveURL(/\/engines\/new\?.*link=[a-z2-7]{26}/);
-    await expect(page.getByText(/^Expires in \d+:\d\d$/)).toBeVisible();
-    const progress = page.getByRole('region', { name: 'Link progress' });
+    await expect(page.getByText(/^Copy it now: it is shown only once and expires in \d+:\d\d\.$/)).toBeVisible();
+    const progress = page.locator('section[data-link-state]');
     await expect(progress).toHaveAttribute('data-link-state', 'waiting');
     await checkScreen('/engines/new install command');
+    await expect(page.getByRole('link', { name: /^How Promptbook protects you/ })).toHaveAttribute('href', '/trust');
     for (const tab of ['Docker Compose', 'Already running Promptbook']) {
         await page.getByRole('tab', { name: tab }).click();
         await expect(page.getByRole('tabpanel', { name: tab }).locator('pre code')).toContainText(/[a-z2-7]{26}/);

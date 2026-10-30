@@ -76,7 +76,7 @@ describe('engines in Czech', () => {
             await app.user.click(within(list).getByRole('tab', { name }));
             expect(
                 within(screen.getByRole('tabpanel', { name })).getByRole('button', {
-                    name: 'Kopírovat instalační příkaz',
+                    name: 'Kopírovat příkaz',
                 }),
             ).toBeTruthy();
             expect(document.body.textContent).not.toMatch(/engines_/);
