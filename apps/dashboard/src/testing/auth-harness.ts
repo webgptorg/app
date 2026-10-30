@@ -39,7 +39,10 @@ import {
     createMemoryHeartbeatEngineReader,
     type MemoryEngineStatuses,
 } from './memory-engine-status';
-import { createMemoryRegistrationStores } from './memory-registration-store';
+import { createMemoryAuthStore, type MemoryAuthState } from './memory-auth-store';
+import { createMemoryRegistrationStores, type MemoryRegistrationState } from './memory-registration-store';
+import { createMemoryTeamStore } from './memory-team-store';
+import type { TeamStore } from '../domain/teams/team-store';
 import { createFakeDnsResolver, type FakeDnsResolver } from './fake-dns-resolver';
 import { createMemoryCustomHostnameStore, type MemoryCustomHostnameStore } from './memory-custom-hostname-store';
 import { createMemoryRegistryReader, createMemoryRelayTokenStore } from './memory-registry-stores';
@@ -158,6 +161,8 @@ export function createAuthHarness(options: {
     readonly policy?: PolicyTable<DashboardAction>;
     /** Defaults to an in-memory store. */
     readonly relayPresence?: RelayPresenceStore;
+    /** Defaults to an in-memory store over the in-memory auth and registration state. */
+    readonly teams?: TeamStore;
     /** The `RELAYS` var's relay IDs; one relay by default. */
     readonly relays?: readonly string[];
 }): AuthHarness {
@@ -191,6 +196,18 @@ export function createAuthHarness(options: {
     const registration =
         options.registration ??
         createMemoryRegistrationStores({ orgExists: () => true, adminAudit: options.store.adminAudit });
+    const teams =
+        options.teams ??
+        createMemoryTeamStore({
+            auth:
+                'state' in options.store
+                    ? (options.store as { readonly state: MemoryAuthState }).state
+                    : createMemoryAuthStore().state,
+            registration:
+                'state' in registration
+                    ? (registration as { readonly state: MemoryRegistrationState }).state
+                    : createMemoryRegistrationStores({ orgExists: () => true }).state,
+        });
     const engineHostnames = createMemoryCustomHostnameStore({
         engines: registration.engines,
         auditLog: options.store.adminAudit,
@@ -228,6 +245,7 @@ export function createAuthHarness(options: {
         entitlements: testBilling.entitlements,
         linkCodes: registration.linkCodes,
         engines: registration.engines,
+        teams,
         platformEngines: registration.platformEngines,
         relayTokens: options.relayTokens ?? createMemoryRelayTokenStore(),
         registry: options.registry ?? createMemoryRegistryReader(registration.engines),

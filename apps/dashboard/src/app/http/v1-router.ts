@@ -86,7 +86,16 @@ export const heartbeatRoute = defineRoute({
 export function createV1Router(
     deps: Pick<
         DashboardDeps,
-        'config' | 'clock' | 'logger' | 'metrics' | 'linkCodes' | 'engines' | 'heartbeatEngines' | 'engineStatus'
+        | 'config'
+        | 'clock'
+        | 'random'
+        | 'logger'
+        | 'metrics'
+        | 'linkCodes'
+        | 'engines'
+        | 'teams'
+        | 'heartbeatEngines'
+        | 'engineStatus'
     > & {
         readonly policy: EngineCreationPolicy;
         readonly routes: RouteBinder;

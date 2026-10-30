@@ -20,6 +20,7 @@ const PUBLIC_ROUTES = [
     'POST /api/auth/signup/options',
     'POST /api/auth/signup/start',
     'POST /api/auth/signup/verify',
+    'POST /api/invites/preview',
 ];
 
 const MOUNTS = ['/api', '/v1', '/internal', '/webhooks', '/.well-known'];
@@ -44,6 +45,7 @@ const ANONYMOUS_LIMITS = {
     'POST /api/auth/signup/options': ['options-ip', null],
     'POST /api/auth/signup/start': ['signup-start-ip', null],
     'POST /api/auth/signup/verify': ['verify-ip', null],
+    'POST /api/invites/preview': ['verify-ip', null],
     'POST /v1/engines/:engineId/heartbeat': ['heartbeat-ip', 'heartbeat-engine'],
     'POST /v1/engines/register': ['registration-ip', null],
     'POST /webhooks/stripe': ['webhook-ip', null],

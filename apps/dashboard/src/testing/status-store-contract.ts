@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import type { UserRecord } from '../domain/auth/records';
-import type { OrgId } from '../domain/ids';
+import type { EngineId } from '@ptbk/protocol';
+
+import type { OrgId, UserId } from '../domain/ids';
 import type { EngineRecord } from '../domain/registration/engine-store';
 import type { AlertRecipients } from '../domain/status/alert-recipients';
 import type { HeartbeatEngineReader } from '../domain/status/heartbeat-engine-reader';
@@ -17,6 +19,8 @@ export interface StatusStoreFixture {
     /** A user in `orgId` with a role the closed union may not know yet, as a later team role would be stored. */
     addMember(orgId: OrgId, user: UserRecord, role: string): Promise<void>;
     addEngine(engine: EngineRecord): Promise<void>;
+    /** A team holding the engine and these people. */
+    addTeam(orgId: OrgId, engineId: EngineId, userIds: readonly UserId[]): Promise<void>;
 }
 
 const signal = new AbortController().signal;
@@ -30,7 +34,8 @@ export function describeStatusStoreContract(name: string, makeFixture: () => Sta
             fixture = makeFixture();
         });
 
-        it('alerts the organization’s owners with a verified email, in their locale, and nobody else', async () => {
+        it('alerts the organization’s owners with a verified email, in their locale, when none is in the engine’s team', async () => {
+            const engineId = (await createTestEngine()).engineId;
             const org = testAccount(`b-owner-${crypto.randomUUID()}@example.test`);
             const other = testAccount();
             await fixture.addAccount(org);
@@ -44,12 +49,27 @@ export function describeStatusStoreContract(name: string, makeFixture: () => Sta
             await fixture.addMember(org.orgId, coOwner, 'owner');
             await fixture.addMember(org.orgId, unverified, 'owner');
             await fixture.addMember(org.orgId, viewer, 'viewer');
-            expect(await fixture.recipients.forEngineStatus(org.orgId, signal)).toEqual([
+            expect(await fixture.recipients.forEngineStatus(org.orgId, engineId, signal)).toEqual([
                 { email: coOwner.email, locale: 'en' },
                 { email: org.user.email, locale: 'cs' },
             ]);
-            expect(await fixture.recipients.forEngineStatus(other.orgId, signal)).toEqual([
+            expect(await fixture.recipients.forEngineStatus(other.orgId, engineId, signal)).toEqual([
                 { email: other.user.email, locale: 'cs' },
+            ]);
+        });
+
+        it('alerts the owners and admins in the engine’s team, not team members or owners outside it', async () => {
+            const org = testAccount();
+            await fixture.addAccount(org);
+            const admin = testAccount(`a-admin-${crypto.randomUUID()}@example.test`).user;
+            const member = testAccount().user;
+            await fixture.addMember(org.orgId, admin, 'admin');
+            await fixture.addMember(org.orgId, member, 'member');
+            const engine = await createTestEngine();
+            await fixture.addEngine(engineRecord(engine, org.orgId));
+            await fixture.addTeam(org.orgId, engine.engineId, [admin.id, member.id]);
+            expect(await fixture.recipients.forEngineStatus(org.orgId, engine.engineId, signal)).toEqual([
+                { email: admin.email, locale: 'cs' },
             ]);
         });
 

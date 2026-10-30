@@ -191,6 +191,8 @@ export const linkCodes = sqliteTable(
         expiresAt: integer('expires_at').notNull(),
         usedAt: integer('used_at'),
         engineId: text('engine_id'),
+        // The team the new engine joins (teams spec); null links a team of its own, named after the engine.
+        teamId: text('team_id'),
     },
     (t) => [index('link_codes_org_id_created_at_idx').on(t.orgId, t.createdAt)],
 );
@@ -216,12 +218,87 @@ export const engines = sqliteTable(
         // from the engine. Its length and characters are checked by `engineLabelSchema`; a CHECK here would rebuild
         // the table.
         label: text('label'),
+        // The engine's team (ADR 0018). Unique while a team has at most one engine; dropping the index allows more.
+        // Null only between registration and binding, which run back to back.
+        teamId: text('team_id').unique(),
     },
     (t) => [
         check('engines_status_check', sql`${t.status} in ('active', 'suspended')`),
         check('engines_mode_check', sql`${t.mode} in ('tunnel', 'direct')`),
         index('engines_org_id_idx').on(t.orgId),
     ],
+);
+
+// Teams (ADR 0018): people of an organization sharing an engine. Names are account metadata typed in the dashboard,
+// never sent to or read from an engine.
+
+export const teams = sqliteTable(
+    'teams',
+    {
+        id: text('id').primaryKey(),
+        orgId: text('org_id')
+            .notNull()
+            .references(() => organizations.id),
+        name: text('name').notNull(),
+        createdAt: integer('created_at').notNull(),
+        // Deleting a team keeps the row, so audit entries and revocations still name it; its engine is revoked.
+        deletedAt: integer('deleted_at'),
+    },
+    (t) => [index('teams_org_id_idx').on(t.orgId)],
+);
+
+export const teamMembers = sqliteTable(
+    'team_members',
+    {
+        teamId: text('team_id')
+            .notNull()
+            .references(() => teams.id),
+        userId: text('user_id')
+            .notNull()
+            .references(() => users.id),
+        createdAt: integer('created_at').notNull(),
+    },
+    (t) => [primaryKey({ columns: [t.teamId, t.userId] }), index('team_members_user_id_idx').on(t.userId)],
+);
+
+/** An invitation to an organization and some of its teams: single use, valid for 7 days. */
+export const invites = sqliteTable(
+    'invites',
+    {
+        id: text('id').primaryKey(),
+        // SHA-256 of the token in the emailed link; the token itself is never stored.
+        tokenHash: text('token_hash').notNull().unique(),
+        orgId: text('org_id')
+            .notNull()
+            .references(() => organizations.id),
+        email: text('email').notNull(),
+        role: text('role').notNull(),
+        // JSON array of team IDs; acceptance re-reads them and skips deleted ones.
+        teamIds: text('team_ids').notNull(),
+        invitedByUserId: text('invited_by_user_id').notNull(),
+        createdAt: integer('created_at').notNull(),
+        expiresAt: integer('expires_at').notNull(),
+        acceptedAt: integer('accepted_at'),
+        revokedAt: integer('revoked_at'),
+    },
+    (t) => [index('invites_org_id_idx').on(t.orgId)],
+);
+
+/**
+ * Removals the dashboard owes an engine (ADR 0018): queued when someone leaves a team that has an engine, later signed
+ * and delivered in the heartbeat reply, and closed by the engine's ack.
+ */
+export const memberRevocations = sqliteTable(
+    'member_revocations',
+    {
+        id: text('id').primaryKey(),
+        engineId: text('engine_id').notNull(),
+        userId: text('user_id').notNull(),
+        createdAt: integer('created_at').notNull(),
+        ackedAt: integer('acked_at'),
+        outcome: text('outcome'),
+    },
+    (t) => [index('member_revocations_engine_id_idx').on(t.engineId)],
 );
 
 // Relay keys (D-04): one row per token, so two live tokens of one relay overlap during rotation (ADR 0014).

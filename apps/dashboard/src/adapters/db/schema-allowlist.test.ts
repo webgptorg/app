@@ -48,10 +48,40 @@ const ALLOWLIST: Readonly<Record<string, readonly string[]>> = {
         'created_at',
         'updated_at',
         'label',
+        'team_id',
     ],
-    // One-time link codes: the code only as SHA-256, who issued it for which organization, a 30-minute lifetime, and
-    // the engine that redeemed it.
-    link_codes: ['code_hash', 'org_id', 'created_by_user_id', 'created_at', 'expires_at', 'used_at', 'engine_id', 'id'],
+    // One-time link codes: the code only as SHA-256, who issued it for which organization, a 30-minute lifetime, the
+    // engine that redeemed it and the team that engine joins.
+    link_codes: [
+        'code_hash',
+        'org_id',
+        'created_by_user_id',
+        'created_at',
+        'expires_at',
+        'used_at',
+        'engine_id',
+        'id',
+        'team_id',
+    ],
+    // Teams (ADR 0018): a name the organization typed, and who is in it. No engine content.
+    teams: ['id', 'org_id', 'name', 'created_at', 'deleted_at'],
+    team_members: ['team_id', 'user_id', 'created_at'],
+    // Invitations: the token only as SHA-256, the invited address, role and teams, 7-day lifetime.
+    invites: [
+        'id',
+        'token_hash',
+        'org_id',
+        'email',
+        'role',
+        'team_ids',
+        'invited_by_user_id',
+        'created_at',
+        'expires_at',
+        'accepted_at',
+        'revoked_at',
+    ],
+    // Removals owed to an engine: which engine, which dashboard user, and the engine's ack. No engine content.
+    member_revocations: ['id', 'engine_id', 'user_id', 'created_at', 'acked_at', 'outcome'],
     memberships: ['org_id', 'user_id', 'role', 'created_at'],
     // Relay presence (R-07): which engine IDs each relay last reported a ready tunnel for, and when it reported. No
     // addresses, no connect times, no history: each report replaces the relay's rows.

@@ -129,6 +129,8 @@ export function createD1LinkCodeStore(db: Database): LinkCodeStore {
                             createdAt: sql`${engine.createdAt}`.as('created_at'),
                             updatedAt: sql`${engine.updatedAt}`.as('updated_at'),
                             label: sql`${engine.label}`.as('label'),
+                            // Bound right after, by `TeamStore.bindNewEngine`, so a lost race never fails the link.
+                            teamId: sql`NULL`.as('team_id'),
                         })
                         .from(linkCodes)
                         .where(

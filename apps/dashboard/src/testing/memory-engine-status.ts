@@ -2,6 +2,7 @@ import type { EngineId } from '@ptbk/protocol';
 
 import type { EngineStore } from '../domain/registration/engine-store';
 import type { AlertRecipients } from '../domain/status/alert-recipients';
+import type { MemoryTeamState } from './memory-team-store';
 import { storedEngineStatusSchema, type StoredEngineStatus } from '../domain/status/engine-status';
 import type { EngineStatusDirectory } from '../domain/status/engine-status-directory';
 import {
@@ -84,23 +85,30 @@ export function createMemoryEngineStatuses(deps: Omit<EngineStatusServiceDeps, '
     };
 }
 
-// A set of strings, not the role union: the stores may hold roles the union does not know yet.
-const ALERTED_ROLES: ReadonlySet<string> = new Set(['owner']);
-
-/** The D1 adapter's rule over the in-memory accounts: the organization's owners with a verified email. */
-export function createMemoryAlertRecipients(state: MemoryAuthState): AlertRecipients {
+/** The D1 adapter's rule over the in-memory accounts and, when given, teams. */
+export function createMemoryAlertRecipients(
+    state: MemoryAuthState,
+    teams?: Pick<MemoryTeamState, 'members' | 'engineTeams'>,
+): AlertRecipients {
+    const recipients = (orgId: string, roles: ReadonlySet<string>, include: (userId: string) => boolean) =>
+        state.memberships
+            .filter(
+                (membership) => membership.orgId === orgId && roles.has(membership.role) && include(membership.userId),
+            )
+            .flatMap((membership) => {
+                const user = state.users.get(membership.userId);
+                return user === undefined || user.emailVerifiedAt === null
+                    ? []
+                    : [{ email: user.email, locale: user.locale }];
+            })
+            .sort((a, b) => (a.email < b.email ? -1 : 1));
     return {
-        forEngineStatus(orgId) {
-            const recipients = state.memberships
-                .filter((membership) => membership.orgId === orgId && ALERTED_ROLES.has(membership.role))
-                .flatMap((membership) => {
-                    const user = state.users.get(membership.userId);
-                    return user === undefined || user.emailVerifiedAt === null
-                        ? []
-                        : [{ email: user.email, locale: user.locale }];
-                })
-                .sort((a, b) => (a.email < b.email ? -1 : 1));
-            return Promise.resolve(recipients);
+        forEngineStatus(orgId, engineId) {
+            const teamId = teams?.engineTeams.get(engineId);
+            const inTeam = (userId: string) =>
+                teams?.members.some((member) => member.teamId === teamId && member.userId === userId) ?? false;
+            const team = recipients(orgId, new Set(['owner', 'admin']), inTeam);
+            return Promise.resolve(team.length > 0 ? team : recipients(orgId, new Set(['owner']), () => true));
         },
     };
 }

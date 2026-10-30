@@ -1,5 +1,6 @@
 import {
     defaultHostname,
+    Hostname,
     deriveEngineId,
     ed25519PublicKeyToBytes,
     EngineVersion,
@@ -42,6 +43,34 @@ describe('registerEngine', () => {
             createdAt: NOW,
         });
         expect(await t.unused(code)).toBe(false);
+    });
+
+    it('puts a new engine in a team named after its hostname, or its ID when the hostname is too long', async () => {
+        const t = setup();
+        const org = testOrgId();
+        const engine = await createTestEngine();
+        await t.register(await engine.register(await t.issue(org)));
+        const [team] = await t.teams.list(org);
+        expect(team).toMatchObject({
+            name: defaultHostname(engine.engineId, TEST_ENGINE_DOMAIN),
+            engineId: engine.engineId,
+        });
+
+        const long = setup({ engineDomain: Hostname.parse(`${'a'.repeat(40)}.engines.ptbk.test`) });
+        const other = await createTestEngine();
+        await long.register(await other.register(await long.issue(org)));
+        expect((await long.teams.list(org))[0]?.name).toBe(other.engineId);
+    });
+
+    it('gives an engine registered before teams its team when it re-links', async () => {
+        const t = setup();
+        const org = testOrgId();
+        const engine = await createTestEngine();
+        await t.register(await engine.register(await t.issue(org)));
+        t.teams.state.engineTeams.clear();
+        t.teams.state.teams.clear();
+        await t.register(await engine.register(await t.issue(org)));
+        expect((await t.teams.list(org)).map((team) => team.engineId)).toEqual([engine.engineId]);
     });
 
     it('logs the engine ID and the outcome, never the code or its hash', async () => {
