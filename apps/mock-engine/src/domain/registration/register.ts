@@ -69,7 +69,7 @@ export async function loadRegistration(deps: StoredRegistrationDeps): Promise<Re
         throw new StoredRegistrationError('the stored registration is for another dashboard than PTBK_DASHBOARD_URL');
     }
     const check = await checkRegistrationResponse(
-        { engineId: stored.engineId, hostname: stored.hostname, relays: [...stored.relays] },
+        { engineId: stored.engineId, hostname: stored.hostname },
         deps.identity.publicKey,
         deps.engineDomain,
     );

@@ -23,16 +23,47 @@ export {
     HEARTBEAT_MAX_BODY_BYTES,
     HEARTBEAT_MAX_SKEW_MS,
     HEARTBEAT_SIGNATURE_HEADER,
+    AnyHeartbeat,
+    HEARTBEAT_ACK_OUTCOMES,
+    HEARTBEAT_REPLY_MAX_BYTES,
     Heartbeat,
+    HeartbeatAck,
+    HeartbeatReply,
+    HeartbeatV2,
+    MAX_HEARTBEAT_ACKS,
     MAX_HEARTBEAT_COUNT,
+    MAX_HEARTBEAT_REVOCATIONS,
+    TolerantHeartbeatReply,
     UpdateState,
     buildHeartbeat,
+    buildHeartbeatV2,
     heartbeatPath,
     parseSignatureHeader,
     signHeartbeat,
     verifyHeartbeat,
 } from './heartbeat';
-export type { HeartbeatInput, HeartbeatVerification, SignatureHeaderParse, VerifyHeartbeatInput } from './heartbeat';
+export type {
+    HeartbeatInput,
+    HeartbeatV2Input,
+    HeartbeatVerification,
+    SignatureHeaderParse,
+    VerifyHeartbeatInput,
+} from './heartbeat';
+export {
+    ACCESS_TICKET_MAX_LIFETIME_MS,
+    ACCESS_TICKET_MAX_SKEW_MS,
+    AccessTicket,
+    DashboardIssuedId,
+    DashboardUserId,
+    MemberRevocation,
+    PROPOSED_MEMBER_ROLES,
+    SIGNED_MEMBER_MESSAGE_MAX_LENGTH,
+    signAccessTicket,
+    signMemberRevocation,
+    verifyAccessTicket,
+    verifyMemberRevocation,
+} from './member-access';
+export type { AccessTicketVerification, MemberRevocationVerification, VerifyAccessTicketInput } from './member-access';
 export { signHostnameClaim, verifyHostnameClaim } from './hostname-claim';
 export {
     ED25519_PUBLIC_KEY_BYTES,

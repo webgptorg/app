@@ -12,6 +12,7 @@ import {
     ed25519SignatureFromBytes,
     ed25519SignatureToBytes,
 } from './ids';
+import { DashboardIssuedId, SIGNED_MEMBER_MESSAGE_MAX_LENGTH } from './member-access';
 import { SIGNING_CONTEXT, signingInput } from './signing-input';
 
 export const HEARTBEAT_SIGNATURE_HEADER = 'Ptbk-Signature';
@@ -35,8 +36,7 @@ export type UpdateState = z.infer<typeof UpdateState>;
  * text. `seq` only has to increase strictly; engines send `max(lastSeq + 1, Date.now())` so one that loses its state
  * but keeps its key is not locked out.
  */
-export const Heartbeat = z.strictObject({
-    v: z.literal(1),
+const heartbeatShape = {
     engineId: EngineId,
     seq: z.int().min(0),
     ts: Timestamp,
@@ -48,8 +48,59 @@ export const Heartbeat = z.strictObject({
     update: UpdateState,
     agents: Count,
     members: Count,
-});
+};
+
+export const Heartbeat = z.strictObject({ v: z.literal(1), ...heartbeatShape });
 export type Heartbeat = z.infer<typeof Heartbeat>;
+
+export const MAX_HEARTBEAT_ACKS = 32;
+export const HEARTBEAT_ACK_OUTCOMES = [
+    'approved',
+    'declined',
+    'removed',
+    'revoked',
+    'refused-owner',
+    'refused-disabled',
+    'not-found',
+] as const;
+
+/**
+ * What became of something the dashboard issued: a ticket (`approved`, `declined`, `removed` once that member is
+ * removed on the engine) or a revocation (`revoked`, `refused-owner`, `refused-disabled`, `not-found`).
+ */
+export const HeartbeatAck = z.strictObject({ id: DashboardIssuedId, outcome: z.enum(HEARTBEAT_ACK_OUTCOMES) });
+export type HeartbeatAck = z.infer<typeof HeartbeatAck>;
+
+/**
+ * v1 plus what teams need (ADR 0018): the number of pending access requests, and acks keyed by IDs the dashboard
+ * issued, so the dashboard still learns no names or free text. An engine sends v2 only once it handles access tickets
+ * and revocations; the dashboard answers it with a `HeartbeatReply`.
+ */
+export const HeartbeatV2 = z.strictObject({
+    v: z.literal(2),
+    ...heartbeatShape,
+    accessRequests: Count,
+    acks: z.array(HeartbeatAck).max(MAX_HEARTBEAT_ACKS),
+});
+export type HeartbeatV2 = z.infer<typeof HeartbeatV2>;
+
+export const AnyHeartbeat = z.discriminatedUnion('v', [Heartbeat, HeartbeatV2]);
+export type AnyHeartbeat = z.infer<typeof AnyHeartbeat>;
+
+export const MAX_HEARTBEAT_REVOCATIONS = 32;
+export const HEARTBEAT_REPLY_MAX_BYTES = 72 * 1024;
+
+const replyShape = {
+    v: z.literal(1),
+    /** Signed `MemberRevocation`s in compact form, resent until a heartbeat acks them. */
+    revocations: z.array(z.string().max(SIGNED_MEMBER_MESSAGE_MAX_LENGTH)).max(MAX_HEARTBEAT_REVOCATIONS),
+};
+
+/** The dashboard's 200 answer to an accepted v2 heartbeat; a v1 heartbeat still gets 204 with no body. */
+export const HeartbeatReply = z.strictObject(replyShape);
+export type HeartbeatReply = z.infer<typeof HeartbeatReply>;
+/** What the engine parses the reply with: known fields validated, unknown ones stripped (ADR 0010 §3). */
+export const TolerantHeartbeatReply = z.object(replyShape);
 
 export interface HeartbeatInput extends Omit<Heartbeat, 'v' | 'diskPct' | 'ramPct'> {
     /** Any value from 0 to 100; rounded to the nearest ten, halves up. */
@@ -71,8 +122,29 @@ function roundPercent(value: number): number {
  * to send.
  */
 export function buildHeartbeat(input: HeartbeatInput): Bytes {
-    const heartbeat: Heartbeat = Heartbeat.parse({
-        v: 1,
+    const heartbeat: Heartbeat = Heartbeat.parse({ v: 1, ...heartbeatFields(input) });
+    return utf8Encode(JSON.stringify(heartbeat));
+}
+
+export interface HeartbeatV2Input extends HeartbeatInput {
+    readonly accessRequests: number;
+    readonly acks: readonly HeartbeatAck[];
+}
+
+/** As `buildHeartbeat`, for an engine that handles access tickets and revocations. */
+export function buildHeartbeatV2(input: HeartbeatV2Input): Bytes {
+    const heartbeat: HeartbeatV2 = HeartbeatV2.parse({
+        v: 2,
+        ...heartbeatFields(input),
+        accessRequests: input.accessRequests,
+        acks: input.acks,
+    });
+    return utf8Encode(JSON.stringify(heartbeat));
+}
+
+/** Only the fields the schema knows, in its order, so extra properties on the input never reach the wire. */
+function heartbeatFields(input: HeartbeatInput) {
+    return {
         engineId: input.engineId,
         seq: input.seq,
         ts: input.ts,
@@ -84,8 +156,7 @@ export function buildHeartbeat(input: HeartbeatInput): Bytes {
         update: input.update,
         agents: input.agents,
         members: input.members,
-    });
-    return utf8Encode(JSON.stringify(heartbeat));
+    };
 }
 
 async function heartbeatInput(body: Bytes): Promise<Bytes> {
@@ -122,7 +193,7 @@ export interface VerifyHeartbeatInput {
 }
 
 export type HeartbeatVerification =
-    | { readonly kind: 'accepted'; readonly heartbeat: Heartbeat }
+    | { readonly kind: 'accepted'; readonly heartbeat: AnyHeartbeat }
     | { readonly kind: 'bad-signature-header' }
     | { readonly kind: 'bad-signature' }
     | { readonly kind: 'invalid-body' }
@@ -155,13 +226,13 @@ export async function verifyHeartbeat(input: VerifyHeartbeatInput): Promise<Hear
     return { kind: 'accepted', heartbeat };
 }
 
-function parseBody(rawBody: Bytes): Heartbeat | undefined {
+function parseBody(rawBody: Bytes): AnyHeartbeat | undefined {
     let json: unknown;
     try {
         json = JSON.parse(utf8.decode(rawBody));
     } catch {
         return undefined;
     }
-    const parsed = Heartbeat.safeParse(json);
+    const parsed = AnyHeartbeat.safeParse(json);
     return parsed.success ? parsed.data : undefined;
 }

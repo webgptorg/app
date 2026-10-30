@@ -18,7 +18,13 @@ The mock engine implements the teams contracts as the reference for the engine t
   - members get their `dashboardUserId`.
 - **Heartbeat v2:** the request count and acks.
 - **Applying revocations from the reply:** disable the member, delete their passkeys and sessions, write audit; refuse the last owner and refuse when switched off.
-- The conformance suite from C-13 passes against the mock.
+- **Heartbeat v2** once the member key is pinned. With that, the `member-access` conformance suite (C-13) stops
+  skipping and must pass; add it to the platform self-test.
+- **Conformance for what needs the join page,** which C-13 left to this task because it needs a browser on the engine's
+  origin. Add these checks to `member-access`:
+  - tickets: forged, expired, replayed, for the wrong engine, over the pending cap;
+  - approve: a wrong code, missing step-up;
+  - revocations: the last owner, removals switched off.
 
 ## Acceptance criteria
 

@@ -158,6 +158,7 @@ describe('RegisterEngineResponse', () => {
         engineId: vectors.key.engineId,
         hostname: `${vectors.key.engineId}.engines.example`,
         relays: ['relay-fsn.ptbk.example', 'relay-hel.ptbk.example'],
+        memberKey: vectors.registration.request.enginePublicKey,
     };
 
     it('accepts a response with 1 to 16 relays', () => {
@@ -169,6 +170,7 @@ describe('RegisterEngineResponse', () => {
     it.each([
         ['an unknown field', { ...response, orgId: 'org_1' }],
         ['no relays', { ...response, relays: [] }],
+        ['a member key of the wrong length', { ...response, memberKey: 'AAAA' }],
         [
             '17 relays',
             { ...response, relays: Array.from({ length: 17 }, (_, index) => `r${String(index)}.ptbk.example`) },
@@ -182,6 +184,12 @@ describe('RegisterEngineResponse', () => {
         ['an uppercase engine ID', { ...response, engineId: vectors.key.engineId.toUpperCase() }],
     ])('rejects %s', (_, value) => {
         expect(RegisterEngineResponse.safeParse(value).success).toBe(false);
+    });
+
+    it('reads a dashboard without teams as having no member key', () => {
+        const withoutKey = { engineId: response.engineId, hostname: response.hostname, relays: response.relays };
+        expect(RegisterEngineResponse.parse(withoutKey)).toEqual({ ...withoutKey, memberKey: null });
+        expect(TolerantRegisterEngineResponse.parse(withoutKey).memberKey).toBeNull();
     });
 
     it('is read tolerantly by the engine: unknown fields stripped, known ones still validated', () => {

@@ -1,7 +1,7 @@
 import {
     HEARTBEAT_MAX_BODY_BYTES,
+    AnyHeartbeat,
     HEARTBEAT_MAX_SKEW_MS,
-    Heartbeat,
     deriveEngineId,
     ed25519PublicKeyToBytes,
     parseSignatureHeader,
@@ -94,7 +94,7 @@ export const bodyStrict: PlatformCheck = {
                     `${name} has ${String(beat.rawBody.length)} bytes, over ${String(HEARTBEAT_MAX_BODY_BYTES)}`,
                 );
             }
-            const parsed = Heartbeat.safeParse(parsedBody(beat));
+            const parsed = AnyHeartbeat.safeParse(parsedBody(beat));
             if (!parsed.success) {
                 const fields = [...new Set(parsed.error.issues.map((issue) => issue.path.join('.') || '(body)'))];
                 findings.add(`${name} is not a strict Heartbeat: ${fields.join(', ')}`);

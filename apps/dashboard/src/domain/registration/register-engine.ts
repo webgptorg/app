@@ -50,7 +50,8 @@ export type RegisterOutcome =
 const ATTEMPTS = 2;
 
 function registered(deps: RegisterEngineDeps, engineId: EngineId, hostname: Hostname): RegisterOutcome {
-    return { kind: 'registered', response: { engineId, hostname, relays: [...deps.relays] } };
+    // The member key comes with teams (D-13); until then engines refuse every ticket and revocation.
+    return { kind: 'registered', response: { engineId, hostname, relays: [...deps.relays], memberKey: null } };
 }
 
 async function attempt(

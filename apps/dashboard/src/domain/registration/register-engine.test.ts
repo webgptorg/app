@@ -22,7 +22,7 @@ import { LINK_CODE_TTL_MS } from './issue-link-code';
 
 async function expectedResponse(engine: TestEngine): Promise<RegisterEngineResponse> {
     const engineId = await deriveEngineId(ed25519PublicKeyToBytes(engine.publicKey));
-    return { engineId, hostname: defaultHostname(engineId, TEST_ENGINE_DOMAIN), relays: RELAYS };
+    return { engineId, hostname: defaultHostname(engineId, TEST_ENGINE_DOMAIN), relays: RELAYS, memberKey: null };
 }
 
 describe('registerEngine', () => {

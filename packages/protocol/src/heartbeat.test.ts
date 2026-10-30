@@ -2,12 +2,19 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { encodeBase64Url } from './base64url';
 import type { Bytes } from './bytes';
 import { concatBytes, utf8Encode } from './bytes';
-import type { HeartbeatInput, VerifyHeartbeatInput } from './heartbeat';
+import type { HeartbeatAck, HeartbeatInput, VerifyHeartbeatInput } from './heartbeat';
+import { SIGNED_MEMBER_MESSAGE_MAX_LENGTH } from './member-access';
 import {
     HEARTBEAT_MAX_BODY_BYTES,
+    HEARTBEAT_REPLY_MAX_BYTES,
     HEARTBEAT_SIGNATURE_HEADER,
     Heartbeat,
+    HeartbeatReply,
+    MAX_HEARTBEAT_ACKS,
+    MAX_HEARTBEAT_REVOCATIONS,
+    TolerantHeartbeatReply,
     buildHeartbeat,
+    buildHeartbeatV2,
     heartbeatPath,
     parseSignatureHeader,
     signHeartbeat,
@@ -351,5 +358,85 @@ describe('verifyHeartbeat', () => {
             kind: 'bad-signature-header',
         });
         await expect(verify({ rawBody: notJson })).resolves.toEqual({ kind: 'bad-signature' });
+    });
+});
+
+describe('heartbeat v2 (ADR 0018)', () => {
+    const longestAcks: HeartbeatAck[] = Array.from({ length: MAX_HEARTBEAT_ACKS }, (_, index) => ({
+        id: `${'a'.repeat(62)}${String(index).padStart(2, '0')}`,
+        outcome: 'refused-disabled',
+    }));
+
+    it('adds the pending request count and acks, and stays under the body cap at its largest', async () => {
+        const identity = await freshIdentity();
+        const rawBody = buildHeartbeatV2({
+            ...inputFor(identity.engineId, { agents: 1_000_000, members: 1_000_000, uptimeS: 2 ** 31 }),
+            accessRequests: 1_000_000,
+            acks: longestAcks,
+        });
+        expect(rawBody.length).toBeLessThan(HEARTBEAT_MAX_BODY_BYTES);
+        const verdict = await verifyHeartbeat({
+            rawBody,
+            signatureHeader: await signHeartbeat(identity.signer, rawBody),
+            engineId: identity.engineId,
+            publicKey: identity.publicKey,
+            lastSeq: null,
+            now: Timestamp.parse(TS),
+        });
+        expect(verdict.kind).toBe('accepted');
+        if (verdict.kind === 'accepted' && verdict.heartbeat.v === 2) {
+            expect(verdict.heartbeat.acks).toHaveLength(MAX_HEARTBEAT_ACKS);
+            expect(verdict.heartbeat.accessRequests).toBe(1_000_000);
+        } else {
+            throw new Error('expected a v2 heartbeat');
+        }
+    });
+
+    it.each([
+        ['33 acks', { acks: [...longestAcks, { id: 'b'.repeat(16), outcome: 'approved' }] }],
+        ['an unknown outcome', { acks: [{ id: 'c'.repeat(16), outcome: 'maybe' }] }],
+        ['an ack ID that is a name', { acks: [{ id: 'Petr Svoboda', outcome: 'approved' }] }],
+        ['no request count', { accessRequests: undefined }],
+    ])('refuses a v2 body with %s', async (_, change) => {
+        const identity = await freshIdentity();
+        const base = JSON.parse(
+            new TextDecoder().decode(buildHeartbeatV2({ ...inputFor(identity.engineId), accessRequests: 1, acks: [] })),
+        ) as Record<string, unknown>;
+        const rawBody = utf8Encode(JSON.stringify({ ...base, ...change }));
+        const verdict = await verifyHeartbeat({
+            rawBody,
+            signatureHeader: await signHeartbeat(identity.signer, rawBody),
+            engineId: identity.engineId,
+            publicKey: identity.publicKey,
+            lastSeq: null,
+            now: Timestamp.parse(TS),
+        });
+        expect(verdict).toEqual({ kind: 'invalid-body' });
+    });
+
+    it('never sends a v2 field in a v1 body', async () => {
+        const identity = await freshIdentity();
+        const v1 = JSON.parse(new TextDecoder().decode(buildHeartbeat(inputFor(identity.engineId)))) as object;
+        expect(Object.keys(v1)).not.toContain('acks');
+        expect(Heartbeat.safeParse({ ...v1, acks: [] }).success).toBe(false);
+    });
+
+    it('answers with revocations in a reply under its cap, read tolerantly by the engine', () => {
+        const largest = {
+            v: 1,
+            revocations: Array.from({ length: MAX_HEARTBEAT_REVOCATIONS }, () =>
+                'r'.repeat(SIGNED_MEMBER_MESSAGE_MAX_LENGTH),
+            ),
+        };
+        expect(HeartbeatReply.safeParse(largest).success).toBe(true);
+        expect(utf8Encode(JSON.stringify(largest)).length).toBeLessThan(HEARTBEAT_REPLY_MAX_BYTES);
+        expect(HeartbeatReply.safeParse({ ...largest, revocations: [...largest.revocations, 'x'] }).success).toBe(
+            false,
+        );
+        expect(HeartbeatReply.safeParse({ v: 1, revocations: [], plan: 'pro' }).success).toBe(false);
+        expect(TolerantHeartbeatReply.parse({ v: 1, revocations: ['t'], plan: 'pro' })).toEqual({
+            v: 1,
+            revocations: ['t'],
+        });
     });
 });
