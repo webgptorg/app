@@ -291,6 +291,61 @@
   "passkeys_last_one": "“{name}” is the last passkey, so it cannot be revoked.",
   "security_access_passkeys_hint": "Review the passkeys that sign you in to this engine.",
   "security_access_passkeys_link": "Manage passkeys",
+  "security_access_sessions": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Signed in on {count} device",
+        "countPlural=other": "Signed in on {count} devices"
+      }
+    }
+  ],
+  "security_access_sessions_hint": "See where you are signed in, and sign out devices you no longer use.",
+  "security_access_sessions_link": "Manage sessions",
+  "sessions_back": "Back to security",
+  "sessions_title": "Sessions",
+  "sessions_intro": "Every browser where you signed in with a passkey has a session here. If you don't recognise one, or you lost a device, sign it out.",
+  "sessions_mine": "Where you're signed in",
+  "sessions_empty": "No active sessions",
+  "sessions_device": "{browser} on {os}",
+  "sessions_device_unknown": "Unknown browser",
+  "sessions_this_device": "This device",
+  "sessions_signed_in": "Signed in",
+  "sessions_last_active": "last active",
+  "sessions_actions_for": "Actions for {device}",
+  "sessions_sign_out": "Sign out",
+  "sessions_sign_out_here": "Sign out here",
+  "sessions_sign_out_title": "Sign out {device}?",
+  "sessions_sign_out_body": "That browser is signed out on its next request. Signing in there again takes one of your passkeys.",
+  "sessions_signed_out": "Signed out {device}",
+  "sessions_sign_out_failed": "{device} could not be signed out.",
+  "sessions_more": "Only the {count} most recently active are shown.",
+  "sessions_only_this_one": "You're signed in only on this device.",
+  "sessions_others_hint": "Lost a device, or signed in on a shared computer? Sign out everywhere except here.",
+  "sessions_sign_out_others": "Sign out other sessions",
+  "sessions_others_title": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Sign out {count} other session?",
+        "countPlural=other": "Sign out {count} other sessions?"
+      }
+    }
+  ],
+  "sessions_others_body": "Every browser except this one is signed out on its next request. You stay signed in here.",
+  "sessions_others_signed_out": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Signed out {count} other session",
+        "countPlural=other": "Signed out {count} other sessions"
+      }
+    }
+  ],
+  "sessions_others_failed": "The other sessions could not be signed out.",
   "secrets_write_only": "Secret values are write-only: once saved, nobody can read them back here, not even you. You can replace, revoke or delete a secret.",
   "secrets_search_label": "Search secrets",
   "secrets_new": "New secret",
