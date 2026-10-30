@@ -11,6 +11,7 @@ import { AGENT_TABS } from '../../app/registry/feature';
 import type { AgentTabEntry } from '../../app/registry/feature';
 import { m } from '../../paraglide/messages';
 import { usePermissions } from '../session/use-permissions';
+import { useDocumentTitle } from '../shell/document-title';
 import { useAgentActions } from './agent-actions';
 import type { AgentActions } from './agent-actions';
 import { AgentAvatar } from './agent-avatar';
@@ -111,6 +112,7 @@ export function AgentDetailFrame() {
         tabs
             .filter((tab) => matchRoute({ to: tab.to, params: tabParams(agent), fuzzy: true }) !== false)
             .toSorted((a, b) => b.to.length - a.to.length)[0] ?? tabs[0];
+    useDocumentTitle(...(selected === undefined ? [] : [selected.label()]), agent.name);
     const fill = useMatches({ select: (matches) => matches.some((match) => match.staticData.fillViewport === true) });
     // Inside a chat, "Chat" would only lead back to the list, which the chat's own back link already does.
     const chatTab = fill ? undefined : tabs.find((tab) => tab.id === AGENT_TABS.chat.id);

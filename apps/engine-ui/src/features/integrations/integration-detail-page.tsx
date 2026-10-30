@@ -8,7 +8,7 @@ import type { ReactNode } from 'react';
 import { classifyApiError } from '../../app/api-errors';
 import { ButtonLink, Link } from '../../app/link';
 import { m } from '../../paraglide/messages';
-import { Page } from '../shell/page';
+import { BackLink, Page } from '../shell/page';
 import { IntegrationActions } from './integration-actions';
 import { IntegrationActivityList } from './integration-activity-list';
 import { IntegrationConfig } from './integration-config';
@@ -77,7 +77,12 @@ function AgentLink({ agentId }: { readonly agentId: AgentId }) {
 
 function IntegrationDetail({ integration }: { readonly integration: ReadIntegration }) {
     return (
-        <Page title={integration.name} actions={<IntegrationActions integration={integration} />}>
+        <Page
+            title={integration.name}
+            documentTitle={[integration.name, m.integrations_title()]}
+            back={<BackLink to="/integrations">{m.integration_back()}</BackLink>}
+            actions={<IntegrationActions integration={integration} />}
+        >
             {needsAttention(integration.status) && integration.statusDetail !== null ? (
                 <Banner tone={integration.status === 'error' ? 'danger' : 'warning'}>
                     {/* From the engine, possibly quoting a third party: text only. */}
