@@ -27,6 +27,11 @@ export const MemberId = z.string().regex(OPAQUE_ID_PATTERN).brand<'MemberId', 'i
 export type MemberId = z.infer<typeof MemberId>;
 export const InviteId = z.string().regex(OPAQUE_ID_PATTERN).brand<'InviteId', 'inout'>();
 export type InviteId = z.infer<typeof InviteId>;
+export const AccessRequestId = z.string().regex(OPAQUE_ID_PATTERN).brand<'AccessRequestId', 'inout'>();
+export type AccessRequestId = z.infer<typeof AccessRequestId>;
+/** The dashboard's ID for a user, carried by an access ticket; opaque to the engine. */
+export const DashboardUserId = z.string().regex(OPAQUE_ID_PATTERN).brand<'DashboardUserId', 'inout'>();
+export type DashboardUserId = z.infer<typeof DashboardUserId>;
 export const ApiTokenId = z.string().regex(OPAQUE_ID_PATTERN).brand<'ApiTokenId', 'inout'>();
 export type ApiTokenId = z.infer<typeof ApiTokenId>;
 export const SecretId = z.string().regex(OPAQUE_ID_PATTERN).brand<'SecretId', 'inout'>();

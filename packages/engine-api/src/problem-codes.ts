@@ -16,6 +16,8 @@ export const PROBLEM_STATUS = {
     'name-taken': 409,
     'secret-revoked': 409,
     'last-passkey': 409,
+    /** Removing or demoting the engine's last owner would leave nobody to manage it. */
+    'last-owner': 409,
     'reply-finished': 409,
     cancelled: 409,
     'run-finished': 409,
@@ -25,6 +27,8 @@ export const PROBLEM_STATUS = {
     'payload-too-large': 413,
     'unsupported-media-type': 415,
     'invalid-book': 422,
+    /** The code typed to approve an access request is not the one shown to the person asking. */
+    'access-code-mismatch': 422,
     'invalid-schedule': 422,
     'rate-limited': 429,
     'internal-error': 500,

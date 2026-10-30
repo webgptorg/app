@@ -121,6 +121,28 @@ describe('capabilities through the mock HTTP server (contract)', () => {
         for await (const { event } of draftReply) draftEnd = event.type === 'completed' ? event.content : event.type;
         expect(draftEnd).toContain('Contract draft');
 
+        const pending = controller.requestAccess({
+            dashboardUserId: 'user-contract',
+            displayName: 'Petr',
+            email: 'petr@example.com',
+            proposedRole: 'member',
+            code: '123456',
+        });
+        const declined = controller.requestAccess({
+            dashboardUserId: 'user-declined',
+            displayName: 'Eva',
+            email: 'eva@example.com',
+            proposedRole: 'member',
+            code: '654321',
+        });
+        await okFrom('listAccessRequests', owner.members.listAccessRequests({}, signal()));
+        await okFrom(
+            'approveAccessRequest',
+            owner.members.approveAccessRequest(pending.id, { code: '123456', role: 'member' }, signal()),
+        );
+        await okFrom('declineAccessRequest', owner.members.declineAccessRequest(declined.id, signal()));
+        await okFrom('setDashboardRemovals', owner.settings.setDashboardRemovals({ enabled: true }, signal()));
+
         const capabilityRoutes = ENGINE_API_ROUTE_LIST.filter((route) => route.capability !== undefined).map(
             ({ id }) => id,
         );

@@ -3,7 +3,7 @@
   "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
   "info": {
     "title": "Promptbook engine API",
-    "version": "1.11.0",
+    "version": "1.12.0",
     "license": {
       "name": "MIT",
       "identifier": "MIT"
@@ -4090,11 +4090,10 @@
       },
       "patch": {
         "operationId": "updateMember",
-        "summary": "Change a member's role",
+        "summary": "Change a member's role; the last owner cannot be demoted",
         "tags": ["members"],
         "x-required-permission": "members.manage",
         "x-step-up": true,
-        "x-draft": true,
         "parameters": [
           {
             "name": "memberId",
@@ -4177,6 +4176,17 @@
               }
             }
           },
+          "409": {
+            "description": "Problem: `last-owner`.",
+            "x-problem-codes": ["last-owner"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
           "429": {
             "description": "Problem: `rate-limited`.",
             "x-problem-codes": ["rate-limited"],
@@ -4214,11 +4224,10 @@
       },
       "delete": {
         "operationId": "removeMember",
-        "summary": "Remove a member",
+        "summary": "Remove a member and end their sessions; the last owner cannot be removed",
         "tags": ["members"],
         "x-required-permission": "members.manage",
         "x-step-up": true,
-        "x-draft": true,
         "parameters": [
           {
             "name": "memberId",
@@ -4277,6 +4286,17 @@
               }
             }
           },
+          "409": {
+            "description": "Problem: `last-owner`.",
+            "x-problem-codes": ["last-owner"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
           "429": {
             "description": "Problem: `rate-limited`.",
             "x-problem-codes": ["rate-limited"],
@@ -4319,7 +4339,6 @@
         "summary": "List pending invites",
         "tags": ["invites"],
         "x-required-permission": "members.read",
-        "x-draft": true,
         "parameters": [
           {
             "name": "cursor",
@@ -4387,17 +4406,6 @@
               }
             }
           },
-          "404": {
-            "description": "Problem: `not-found`.",
-            "x-problem-codes": ["not-found"],
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          },
           "429": {
             "description": "Problem: `rate-limited`.",
             "x-problem-codes": ["rate-limited"],
@@ -4439,7 +4447,6 @@
         "tags": ["invites"],
         "x-required-permission": "members.manage",
         "x-step-up": true,
-        "x-draft": true,
         "requestBody": {
           "required": true,
           "content": {
@@ -4504,17 +4511,6 @@
               }
             }
           },
-          "404": {
-            "description": "Problem: `not-found`.",
-            "x-problem-codes": ["not-found"],
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          },
           "429": {
             "description": "Problem: `rate-limited`.",
             "x-problem-codes": ["rate-limited"],
@@ -4557,7 +4553,6 @@
         "summary": "Revoke a pending invite",
         "tags": ["invites"],
         "x-required-permission": "members.manage",
-        "x-draft": true,
         "parameters": [
           {
             "name": "inviteId",
@@ -6484,6 +6479,7 @@
                 "message",
                 "member",
                 "invite",
+                "access-request",
                 "api-token",
                 "secret",
                 "file",
@@ -11485,6 +11481,561 @@
           }
         }
       }
+    },
+    "/access-requests": {
+      "get": {
+        "operationId": "listAccessRequests",
+        "summary": "List pending access requests, oldest first",
+        "tags": ["access-requests"],
+        "x-required-permission": "members.read",
+        "x-capability": {
+          "id": "access-requests",
+          "version": 1,
+          "label": "access-requests@1"
+        },
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1024
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                          },
+                          "displayName": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 128
+                          },
+                          "email": {
+                            "type": "string",
+                            "minLength": 3,
+                            "maxLength": 254
+                          },
+                          "proposedRole": {
+                            "type": "string",
+                            "enum": ["admin", "member"]
+                          },
+                          "createdAt": {
+                            "$ref": "#/components/schemas/Timestamp"
+                          },
+                          "expiresAt": {
+                            "$ref": "#/components/schemas/Timestamp"
+                          }
+                        },
+                        "required": ["id", "displayName", "email", "proposedRole", "createdAt", "expiresAt"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "nextCursor": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 1024
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": ["items", "nextCursor"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Problem: `invalid-cursor`, `validation-failed`.",
+            "x-problem-codes": ["invalid-cursor", "validation-failed"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem: `unauthenticated`.",
+            "x-problem-codes": ["unauthenticated"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem: `forbidden`.",
+            "x-problem-codes": ["forbidden"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem: `capability-not-supported`.",
+            "x-problem-codes": ["capability-not-supported"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Problem: `rate-limited`.",
+            "x-problem-codes": ["rate-limited"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Problem: `internal-error`.",
+            "x-problem-codes": ["internal-error"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Problem: `unavailable`.",
+            "x-problem-codes": ["unavailable"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/access-requests/{accessRequestId}/approve": {
+      "post": {
+        "operationId": "approveAccessRequest",
+        "summary": "Approve an access request with the code the person reads out; they become a member",
+        "description": "The member gets the role in the body, the passkey registered with the request and the ticket’s `dashboardUserId`. A wrong code is 422 `access-code-mismatch` and leaves the request pending.",
+        "tags": ["access-requests"],
+        "x-required-permission": "members.manage",
+        "x-capability": {
+          "id": "access-requests",
+          "version": 1,
+          "label": "access-requests@1"
+        },
+        "x-step-up": true,
+        "parameters": [
+          {
+            "name": "accessRequestId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,64}$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "pattern": "^\\d{6}$"
+                  },
+                  "role": {
+                    "$ref": "#/components/schemas/Role"
+                  }
+                },
+                "required": ["code", "role"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Member"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Problem: `validation-failed`.",
+            "x-problem-codes": ["validation-failed"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem: `step-up-required`, `unauthenticated`.",
+            "x-problem-codes": ["step-up-required", "unauthenticated"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem: `forbidden`.",
+            "x-problem-codes": ["forbidden"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem: `capability-not-supported`, `not-found`.",
+            "x-problem-codes": ["capability-not-supported", "not-found"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Problem: `access-code-mismatch`.",
+            "x-problem-codes": ["access-code-mismatch"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Problem: `rate-limited`.",
+            "x-problem-codes": ["rate-limited"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Problem: `internal-error`.",
+            "x-problem-codes": ["internal-error"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Problem: `unavailable`.",
+            "x-problem-codes": ["unavailable"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/access-requests/{accessRequestId}": {
+      "delete": {
+        "operationId": "declineAccessRequest",
+        "summary": "Decline an access request; its passkey is discarded",
+        "tags": ["access-requests"],
+        "x-required-permission": "members.manage",
+        "x-capability": {
+          "id": "access-requests",
+          "version": 1,
+          "label": "access-requests@1"
+        },
+        "parameters": [
+          {
+            "name": "accessRequestId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,64}$"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Success, no content."
+          },
+          "400": {
+            "description": "Problem: `validation-failed`.",
+            "x-problem-codes": ["validation-failed"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem: `unauthenticated`.",
+            "x-problem-codes": ["unauthenticated"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem: `forbidden`.",
+            "x-problem-codes": ["forbidden"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem: `capability-not-supported`, `not-found`.",
+            "x-problem-codes": ["capability-not-supported", "not-found"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Problem: `rate-limited`.",
+            "x-problem-codes": ["rate-limited"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Problem: `internal-error`.",
+            "x-problem-codes": ["internal-error"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Problem: `unavailable`.",
+            "x-problem-codes": ["unavailable"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/settings/dashboard-removals": {
+      "put": {
+        "operationId": "setDashboardRemovals",
+        "summary": "Allow or refuse member removals signed by the dashboard",
+        "tags": ["settings"],
+        "x-required-permission": "settings.manage",
+        "x-capability": {
+          "id": "access-requests",
+          "version": 1,
+          "label": "access-requests@1"
+        },
+        "x-step-up": true,
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  }
+                },
+                "required": ["enabled"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": ["enabled"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Problem: `validation-failed`.",
+            "x-problem-codes": ["validation-failed"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem: `step-up-required`, `unauthenticated`.",
+            "x-problem-codes": ["step-up-required", "unauthenticated"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem: `forbidden`.",
+            "x-problem-codes": ["forbidden"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem: `capability-not-supported`.",
+            "x-problem-codes": ["capability-not-supported"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Problem: `rate-limited`.",
+            "x-problem-codes": ["rate-limited"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Problem: `internal-error`.",
+            "x-problem-codes": ["internal-error"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Problem: `unavailable`.",
+            "x-problem-codes": ["unavailable"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -13062,10 +13613,14 @@
           "member.remove",
           "invite.create",
           "invite.revoke",
+          "access-request.approve",
+          "access-request.decline",
+          "member.revoke",
           "api-token.create",
           "api-token.revoke",
           "settings.update",
           "settings.update-policy",
+          "settings.dashboard-removals",
           "secret.create",
           "secret.replace",
           "secret.revoke",
@@ -13286,6 +13841,7 @@
               "message",
               "member",
               "invite",
+              "access-request",
               "api-token",
               "secret",
               "file",
@@ -14616,9 +15172,30 @@
                 "type": "null"
               }
             ]
+          },
+          "dashboardUserId": {
+            "default": null,
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,64}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
-        "required": ["id", "displayName", "role", "status", "createdAt", "lastSeenAt", "passkeyCount"],
+        "required": [
+          "id",
+          "displayName",
+          "role",
+          "status",
+          "createdAt",
+          "lastSeenAt",
+          "passkeyCount",
+          "dashboardUserId"
+        ],
         "additionalProperties": false
       },
       "MemberId": {
@@ -14892,6 +15469,7 @@
               "name-taken",
               "secret-revoked",
               "last-passkey",
+              "last-owner",
               "reply-finished",
               "cancelled",
               "run-finished",
@@ -14901,6 +15479,7 @@
               "payload-too-large",
               "unsupported-media-type",
               "invalid-book",
+              "access-code-mismatch",
               "invalid-schedule",
               "rate-limited",
               "internal-error",
@@ -16488,9 +17067,13 @@
           },
           "updatePolicy": {
             "$ref": "#/components/schemas/UpdatePolicy"
+          },
+          "dashboardRemovals": {
+            "default": null,
+            "type": ["boolean", "null"]
           }
         },
-        "required": ["name", "defaultAgentVisibility", "updatePolicy"],
+        "required": ["name", "defaultAgentVisibility", "updatePolicy", "dashboardRemovals"],
         "additionalProperties": false
       },
       "Sha256Hex": {

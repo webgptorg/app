@@ -5,6 +5,7 @@ import type { AgentVisibility } from './agents';
 import { ApiToken } from './api-tokens';
 import { AuditEntry } from './audit';
 import type { AuditAction, AuditActor, AuditDetails, AuditTarget } from './audit';
+import { AccessRequest } from './capabilities/access-requests';
 import { Activity } from './capabilities/activity';
 import { CapabilityRef, KNOWN_CAPABILITIES, supports } from './capabilities/capability';
 import { FileMetadata, FileVersion } from './capabilities/files';
@@ -24,6 +25,7 @@ import {
     AuditEntryId,
     ChatId,
     ClientInfo,
+    DashboardUserId,
     FolderId,
     MemberId,
     MessageId,
@@ -39,6 +41,8 @@ import { EngineInfo } from './engine';
 import { EngineEvent } from './events';
 import { Folder } from './folders';
 import { hashAuditEntry } from './in-memory/audit-chain';
+import { requestAccess, revokeDashboardMember } from './in-memory/access-requests';
+import type { DashboardRevocationOutcome, NewAccessRequest } from './in-memory/access-requests';
 import { checkBook } from './in-memory/book';
 import { HANDLERS } from './in-memory/handlers';
 import type { HandlerContext } from './in-memory/handlers';
@@ -162,6 +166,12 @@ export type InMemorySeedActivity =
         : never;
 
 /** Seed data in contract shapes; every record is validated against its schema when the client is created. */
+export interface InMemorySeedAccessRequest {
+    readonly request: Unbranded<z.input<typeof AccessRequest>>;
+    readonly code: string;
+    readonly dashboardUserId: string;
+}
+
 export interface InMemorySeed {
     readonly orgId?: string;
     /** `engineId` defaults to a fixed ID; `capabilities` come from the `capabilities` option. */
@@ -172,6 +182,8 @@ export interface InMemorySeed {
     readonly security?: Unbranded<z.input<typeof SecurityOverview>>;
     readonly members?: readonly Unbranded<z.input<typeof Member>>[];
     readonly invites?: readonly Unbranded<z.input<typeof Invite>>[];
+    /** Pending requests with the code each person was shown; ignored without `access-requests@1`. */
+    readonly accessRequests?: readonly InMemorySeedAccessRequest[];
     readonly folders?: readonly Unbranded<z.input<typeof Folder>>[];
     readonly agents?: readonly InMemorySeedAgent[];
     readonly chats?: readonly InMemorySeedChat[];
@@ -370,6 +382,10 @@ export interface InMemoryEngineController {
     addVisitorChat(chat: InMemoryVisitorChat): Chat;
     /** Throws if the ID is taken. */
     addMember(member: Unbranded<z.input<typeof Member>>): Member;
+    /** The gateway's join page accepted a dashboard ticket and registered a passkey; throws at the pending cap. */
+    requestAccess(request: NewAccessRequest): AccessRequest;
+    /** Applies a dashboard revocation whose signature checked out; the outcome is what the heartbeat acks. */
+    revokeDashboardMember(dashboardUserId: string): DashboardRevocationOutcome;
     /** A sign-in; throws for an unknown member or a taken ID. `current` is decided per request. */
     addSession(session: Omit<Unbranded<z.input<typeof Session>>, 'current'>): Session;
     /** A sign-out or expiry; `false` if the session was not listed. */
@@ -685,6 +701,8 @@ export function createInMemoryEngineCore(options: InMemoryEngineCoreOptions = {}
             );
             return addChatMessages(system, chat, messages);
         },
+        requestAccess: (request) => requestAccess(system, request),
+        revokeDashboardMember: (dashboardUserId) => revokeDashboardMember(system, dashboardUserId),
         addMember: (input) => {
             const member = Member.parse(input);
             if (state.members.has(member.id)) throw new Error('member ID already taken');
@@ -1011,6 +1029,9 @@ const AUDITED: Partial<Record<EngineApiRouteId, AuditRule>> = {
     updateMember: { action: 'member.update', kind: 'member', param: 'memberId' },
     removeMember: { action: 'member.remove', kind: 'member', param: 'memberId' },
     createInvite: { action: 'invite.create', kind: 'invite' },
+    approveAccessRequest: { action: 'access-request.approve', kind: 'member' },
+    declineAccessRequest: { action: 'access-request.decline', kind: 'access-request', param: 'accessRequestId' },
+    setDashboardRemovals: { action: 'settings.dashboard-removals', kind: null },
     revokeInvite: { action: 'invite.revoke', kind: 'invite', param: 'inviteId' },
     createApiToken: { action: 'api-token.create', kind: 'api-token' },
     revokeApiToken: { action: 'api-token.revoke', kind: 'api-token', param: 'apiTokenId' },
@@ -1075,6 +1096,8 @@ function targetName(state: InMemoryState, kind: AuditTarget['kind'], id: string)
             return state.triggers.get(id)?.trigger.name;
         case 'integration':
             return state.integrations.get(id)?.name;
+        case 'access-request':
+            return null;
         case 'message':
         case 'invite':
         case 'session':
@@ -1114,6 +1137,7 @@ function idTaken(state: InMemoryState, id: string): boolean {
         [
             state.members,
             state.invites,
+            state.accessRequests,
             state.folders,
             state.agents,
             state.chats,
@@ -1192,6 +1216,10 @@ function createState(
             updatePolicy: { policy: 'auto', pinnedVersion: null },
         },
     );
+    // An engine with the capability always has the switch; it starts on, as the spec has it.
+    if (settings.dashboardRemovals === null && supports({ capabilities }, KNOWN_CAPABILITIES.accessRequests)) {
+        settings.dashboardRemovals = true;
+    }
     const files = new Map((seed.files ?? []).map(seedFile));
     const state: InMemoryState = {
         orgId: OrgId.parse(seed.orgId ?? 'org-1'),
@@ -1209,6 +1237,18 @@ function createState(
         security: SecurityOverview.parse(seed.security ?? defaultSecurity(at)),
         members,
         invites: byId((seed.invites ?? []).map((record) => Invite.parse(record))),
+        accessRequests: new Map(
+            (seed.accessRequests ?? []).map(({ request, code, dashboardUserId }) => {
+                const parsed = AccessRequest.parse(request);
+                const record = {
+                    request: parsed,
+                    code,
+                    dashboardUserId: DashboardUserId.parse(dashboardUserId),
+                    passkey: { name: 'Passkey', authenticator: null },
+                };
+                return [parsed.id, record];
+            }),
+        ),
         folders: byId((seed.folders ?? []).map((record) => Folder.parse(record))),
         agents: new Map(),
         chats: new Map(),

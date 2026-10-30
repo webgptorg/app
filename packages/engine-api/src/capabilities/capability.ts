@@ -19,6 +19,11 @@ export const KNOWN_CAPABILITIES = {
     integrations: { id: 'integrations', version: 1 },
     /** Test conversations against an unsaved book; an engine without it simply has no live test chat in the editor. */
     testChat: { id: 'test-chat', version: 1 },
+    /**
+     * People invited by the organization ask for access with a dashboard ticket and an engine admin approves them; the
+     * owner decides whether the dashboard may remove them again. Without it, members join only by invite link.
+     */
+    accessRequests: { id: 'access-requests', version: 1 },
 } as const satisfies Readonly<Record<string, CapabilityRef>>;
 
 export type KnownCapability = (typeof KNOWN_CAPABILITIES)[keyof typeof KNOWN_CAPABILITIES];

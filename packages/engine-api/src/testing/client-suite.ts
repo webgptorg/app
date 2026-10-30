@@ -931,6 +931,7 @@ export function engineApiClientSuite(makeEngine: MakeEngine): void {
                 { id: 'triggers', version: 1 },
                 { id: 'integrations', version: 1 },
                 { id: 'test-chat', version: 1 },
+                { id: 'access-requests', version: 1 },
             ]);
             expect(info.engineId).toMatch(/^[a-z2-7]{26}$/);
             const first = ok(await client.chats.create(AgentId.parse('agent-a'), { title: 'Alpha' }, signal()));

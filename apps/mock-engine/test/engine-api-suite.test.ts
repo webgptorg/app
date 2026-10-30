@@ -1,7 +1,13 @@
 import type { TLSSocket } from 'node:tls';
 import { connect } from 'node:tls';
 
-import { createFetchEngineApiClient, ENGINE_API_ROUTE_LIST, MemberId, OWNER_PERMISSIONS } from '@ptbk/engine-api';
+import {
+    AccessRequestId,
+    createFetchEngineApiClient,
+    ENGINE_API_ROUTE_LIST,
+    MemberId,
+    OWNER_PERMISSIONS,
+} from '@ptbk/engine-api';
 import { createInMemoryEngineCore } from '@ptbk/engine-api/in-memory';
 import type { InMemoryEngine, InMemoryEngineApiOptions } from '@ptbk/engine-api/in-memory';
 import { engineApiClientSuite } from '@ptbk/engine-api/testing';
@@ -222,6 +228,32 @@ describe('operations the shared suite leaves out', () => {
                         lastSeenAt: null,
                     },
                 ],
+                accessRequests: [
+                    {
+                        request: {
+                            id: 'access-approve',
+                            displayName: 'Petr',
+                            email: 'petr@example.com',
+                            proposedRole: 'member',
+                            createdAt: '2026-10-01T00:00:00Z',
+                            expiresAt: '2099-01-01T00:00:00Z',
+                        },
+                        code: '123456',
+                        dashboardUserId: 'user-a',
+                    },
+                    {
+                        request: {
+                            id: 'access-decline',
+                            displayName: 'Petr',
+                            email: 'petr@example.com',
+                            proposedRole: 'member',
+                            createdAt: '2026-10-01T00:00:00Z',
+                            expiresAt: '2099-01-01T00:00:00Z',
+                        },
+                        code: '123456',
+                        dashboardUserId: 'user-b',
+                    },
+                ],
             },
         });
         const agent = await client.agents.create({ source: 'Ada' }, signal());
@@ -252,6 +284,15 @@ describe('operations the shared suite leaves out', () => {
         expect((await client.members.revokeInvite(invite.data.invite.id, signal())).kind).toBe('ok');
         expect((await client.members.remove(ada, signal())).kind).toBe('ok');
         expect((await client.settings.get(signal())).kind).toBe('ok');
+        expect((await client.members.listAccessRequests({}, signal())).kind).toBe('ok');
+        const approve = AccessRequestId.parse('access-approve');
+        expect(
+            (await client.members.approveAccessRequest(approve, { code: '123456', role: 'member' }, signal())).kind,
+        ).toBe('ok');
+        expect(
+            (await client.members.declineAccessRequest(AccessRequestId.parse('access-decline'), signal())).kind,
+        ).toBe('ok');
+        expect((await client.settings.setDashboardRemovals({ enabled: false }, signal())).kind).toBe('ok');
         expect((await client.integrations.connectCalendar({ provider: 'google' }, signal())).kind).toBe('ok');
     });
 });

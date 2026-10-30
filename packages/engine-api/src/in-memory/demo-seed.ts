@@ -54,6 +54,20 @@ export function createDemoSeed(now: Date = new Date()): InMemorySeed {
                 lastSeenAt: ago(42),
             },
         ],
+        accessRequests: [
+            {
+                request: {
+                    id: 'access-petr',
+                    displayName: 'Petr Svoboda',
+                    email: 'petr@example.com',
+                    proposedRole: 'member',
+                    createdAt: ago(25),
+                    expiresAt: ago(25 - 60 * 24 * 7),
+                },
+                code: '482913',
+                dashboardUserId: 'dashboard-user-petr',
+            },
+        ],
         agents: [
             { id: 'agent-ada', source: 'Ada\nPERSONA Reviews pull requests carefully', createdAt: ago(60 * 24 * 20) },
             { id: 'agent-max', source: 'Max\nPERSONA Answers support email', createdAt: ago(60 * 24 * 14) },

@@ -20,6 +20,11 @@ export const Settings = z.strictObject({
     name: z.string().trim().min(1).max(128),
     defaultAgentVisibility: AgentVisibility,
     updatePolicy: UpdatePolicy,
+    /**
+     * Whether the engine applies signed member revocations from the dashboard (`access-requests@1`, since API 1.12);
+     * on by default, changed only by `setDashboardRemovals`. `null` from engines without the capability.
+     */
+    dashboardRemovals: z.boolean().nullable().default(null),
 });
 export type Settings = z.infer<typeof Settings>;
 

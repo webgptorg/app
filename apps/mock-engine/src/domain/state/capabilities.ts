@@ -10,6 +10,7 @@ const MOCK_CAPABILITIES = {
     triggers: KNOWN_CAPABILITIES.triggers,
     integrations: KNOWN_CAPABILITIES.integrations,
     'test-chat': KNOWN_CAPABILITIES.testChat,
+    'access-requests': KNOWN_CAPABILITIES.accessRequests,
 } as const satisfies Readonly<Record<string, CapabilityRef>>;
 
 export const MockCapabilityName = z.enum(
