@@ -33,6 +33,7 @@ The dashboard API knows teams, org roles and invites. It issues access tickets, 
   - accept v2 and apply the acks;
   - reply with pending revocations, resending until acked.
 - **Emails:** the invitation, waiting-for-approval and you-have-access emails, in English and Czech.
+- **Engine status emails:** they go to the org owners and admins in that team, falling back to the org owners (`alert-recipients.ts`).
 - **Docs:** the runbook for moving a team to another organization.
 
 ## Out of scope

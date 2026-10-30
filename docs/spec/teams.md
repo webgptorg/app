@@ -22,13 +22,16 @@ Organization ── billing, org roles
 
 **Organization**
 
-- An organization holds the billing and the org roles. Sign-up still creates a personal organization, and a user can create more.
+- An organization is the billing entity and holds the org roles and its teams.
+- Sign-up still creates a personal organization, including sign-up through an invitation, and a user can create more.
+- A personal organization works like any other: it can have several teams and invite people. `personal` only marks the organization created at sign-up.
 - An agency that wants each client billed separately creates an organization per client. An agency that pays for its clients itself creates a team per client.
 
 **Team**
 
 - A team belongs to one organization. Teams are flat: no teams inside teams.
 - Teams share nothing: no agents, files or people pass between them.
+- Deleting a team unlinks its engine: the relay stops routing to it and the dashboard forgets it. The engine keeps running on its machine with its data.
 
 **Membership**
 
@@ -59,7 +62,7 @@ Organization ── billing, org roles
 
 | Action                                                  | owner | admin | member          |
 | ------------------------------------------------------- | ----- | ----- | --------------- |
-| See the team list                                       | all   | all   | their teams     |
+| See the team list                                       | all\*\* | all\*\* | their teams     |
 | Open a team's engine (ask for access the first time)    | ✓     | ✓     | their teams     |
 | Create, rename or delete a team; link or unlink engines | ✓     | ✓     |                 |
 | Invite people; add them to teams; remove them           | ✓     | ✓     |                 |
@@ -68,6 +71,8 @@ Organization ── billing, org roles
 | Leave a team or the organization                        | ✓\*   | ✓     | ✓               |
 
 \* Except the last owner.
+
+\*\* Seeing a team in the dashboard is not access to its engine. Org owners and admins open an engine only after it approves them, like anyone else.
 
 Two things from the meeting are deliberately not supported:
 
@@ -239,6 +244,10 @@ Contracts change in a new version alongside the old one ([rule 5](../../AGENTS.m
   - It names the engine, then asks "Create a passkey for {engine}".
   - It then shows "Waiting for approval", the code in large digits, and "Tell this code to the person approving you".
 
+## Engine emails
+
+Engine status emails (offline, back online, update problems) go to the org owners and admins who are members of that team. If none of them is, they go to the org owners. Opting team members in is for later. This replaces the owners-only rule of D-05/D-12.
+
 ## Abuse and failure cases
 
 - **A compromised dashboard can:**
@@ -261,5 +270,6 @@ Contracts change in a new version alongside the old one ([rule 5](../../AGENTS.m
 
 ## Open points
 
-- The trial: per organization or per team (see `docs/plan/apply.md`, step 2). The proposal is per organization: one trial, then billing covers every team.
+- Pricing: how an organization pays for its teams is not decided yet and will be specified later. Until then v1 keeps today's billing, per organization with its engines, and nothing in this spec depends on the answer.
+- The trial: per organization or per team (see `docs/plan/apply.md`, step 2). It follows from pricing.
 - Whether the engine's role-to-permission mapping becomes normative, now that people other than the owner use it. This is an engine team decision ([checklist](../engine-integration/checklist.md) ENG-63).
