@@ -8,6 +8,7 @@ import type {
     Hostname,
     LinkCode,
     RegisterEngineResponse,
+    Signer,
 } from '@ptbk/protocol';
 import {
     EngineId as EngineIdSchema,
@@ -16,6 +17,9 @@ import {
     REGISTER_REQUEST_MAX_BYTES,
     RegisterEngineRequest,
     Timestamp,
+    createWebCryptoSigner,
+    ed25519PublicKeyFromBytes,
+    generateEd25519KeyPair,
     defaultHostname,
     deriveEngineId,
     ed25519PublicKeyToBytes,
@@ -103,6 +107,10 @@ export interface FakeDashboard {
     /** A new one-time link code for `org` (default `org-conformance`). */
     issueLinkCode(org?: string): LinkCode;
     suspend(engineId: EngineId): void;
+    /** Signs access tickets and member revocations; its public half goes out as `memberKey` at registration. */
+    readonly memberSigner: Signer;
+    /** Sends a signed revocation in the reply to every accepted v2 heartbeat of that engine until one acks `id`. */
+    queueRevocation(engineId: EngineId, id: string, token: string): void;
     /** Resolves with the first value `select` returns, re-checked after every request, or rejects after `timeoutMs`. */
     waitFor<T>(select: () => T | undefined, timeoutMs: number, signal: AbortSignal): Promise<T>;
     close(): Promise<void>;
@@ -139,6 +147,8 @@ export async function startFakeDashboard(
     const linkCodes = new Map<string, string>();
     const consumed = new Set<string>();
     const engines = new Map<EngineId, StoredEngine>();
+    const memberSigner = await createWebCryptoSigner(await generateEd25519KeyPair({ extractable: false }));
+    const pendingRevocations = new Map<EngineId, Map<string, string>>();
     const registrations: ReceivedRegistration[] = [];
     const heartbeats: ReceivedHeartbeat[] = [];
     const waiters = new Set<() => void>();
@@ -187,6 +197,7 @@ export async function startFakeDashboard(
             engineId,
             hostname: defaultHostname(engineId, ctx.engineDomain),
             relays: [...relays],
+            memberKey: ed25519PublicKeyFromBytes(memberSigner.publicKey()),
         };
         return jsonAnswer(200, options.decorateRegistration?.(response) ?? response);
     }
@@ -208,9 +219,15 @@ export async function startFakeDashboard(
                       now: Timestamp.parse(new Date(at).toISOString()),
                   });
         const received = { at, pathEngineId, rawBody, signatureHeader, verification };
-        const answer = options.onHeartbeat?.(received) ?? defaultHeartbeatAnswer(engine, verification);
+        if (parsedId.success && verification?.kind === 'accepted' && verification.heartbeat.v === 2) {
+            const pending = pendingRevocations.get(parsedId.data);
+            for (const ack of verification.heartbeat.acks) pending?.delete(ack.id);
+        }
+        const answer =
+            options.onHeartbeat?.(received) ??
+            defaultHeartbeatAnswer(engine, verification, parsedId.success ? parsedId.data : null);
         // Like the dashboard, only a beat it accepted moves the replay window, whatever a script answered.
-        if (engine !== undefined && verification?.kind === 'accepted' && answer.status === 204) {
+        if (engine !== undefined && verification?.kind === 'accepted' && answer.status < 300) {
             engine.lastSeq = verification.heartbeat.seq;
         }
         heartbeats.push({ ...received, answer });
@@ -220,12 +237,17 @@ export async function startFakeDashboard(
     function defaultHeartbeatAnswer(
         engine: StoredEngine | undefined,
         verification: HeartbeatVerification | null,
+        engineId: EngineId | null,
     ): DashboardAnswer {
         if (engine === undefined || verification === null) return problemAnswer(404, 'not-found');
         if (engine.suspended) return problemAnswer(403, 'engine-suspended');
         switch (verification.kind) {
-            case 'accepted':
-                return { status: 204 };
+            case 'accepted': {
+                // A v1 engine handles no revocations, so it gets the old empty answer.
+                if (verification.heartbeat.v === 1 || engineId === null) return { status: 204 };
+                const revocations = [...(pendingRevocations.get(engineId)?.values() ?? [])];
+                return jsonAnswer(200, { v: 1, revocations });
+            }
             case 'bad-signature-header':
             case 'bad-signature':
                 return problemAnswer(401, verification.kind);
@@ -287,6 +309,12 @@ export async function startFakeDashboard(
         suspend(engineId) {
             const engine = engines.get(engineId);
             if (engine !== undefined) engine.suspended = true;
+        },
+        memberSigner,
+        queueRevocation(engineId, id, token) {
+            const pending = pendingRevocations.get(engineId) ?? new Map<string, string>();
+            pending.set(id, token);
+            pendingRevocations.set(engineId, pending);
         },
         waitFor(select, timeoutMs, signal) {
             return new Promise((resolve, reject) => {

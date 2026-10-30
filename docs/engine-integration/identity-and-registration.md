@@ -61,6 +61,7 @@ The engine must:
 - Read the response tolerantly with `TolerantRegisterEngineResponse` (unknown fields are stripped; known ones are checked), refuse a body over `REGISTER_RESPONSE_MAX_BYTES`, then run `checkRegistrationResponse`. On `engine-id-mismatch` or `hostname-mismatch`, the engine must refuse the registration: the dashboard handed it someone else's identity.
 - Store the registration (engine ID, hostname, relay list) in `PTBK_DATA_DIR` and use `relays` (1 to `MAX_RELAYS`) as its relay list.
 - Never write the link code to disk or a log, and drop it from memory after the request.
+- Pin `memberKey` from the response with the registration (since teams, [ADR 0018](../adr/0018-teams-and-member-access.md)). It is the only key that may sign access tickets and member revocations for this engine. `null` means a dashboard without teams: refuse every ticket and revocation, and keep heartbeat v1.
 
 ### Errors and re-registration
 

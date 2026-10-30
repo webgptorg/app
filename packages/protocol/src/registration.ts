@@ -51,6 +51,11 @@ const responseShape = {
         .min(1)
         .max(MAX_RELAYS)
         .refine((relays) => new Set(relays).size === relays.length, 'relays must be unique'),
+    /**
+     * The dashboard member key's public half, which signs access tickets and member revocations (ADR 0018); the engine
+     * pins it. `null` from a dashboard without teams: such an engine refuses every ticket and revocation.
+     */
+    memberKey: Ed25519PublicKey.nullable().default(null),
 };
 
 /** As the dashboard sends it. */
@@ -107,7 +112,7 @@ export type RegistrationResponseCheck =
 
 /** The engine refuses a dashboard that hands it an identity its own key does not derive. */
 export async function checkRegistrationResponse(
-    response: RegisterEngineResponse,
+    response: Pick<RegisterEngineResponse, 'engineId' | 'hostname'>,
     publicKey: Bytes,
     engineDomain: Hostname,
 ): Promise<RegistrationResponseCheck> {

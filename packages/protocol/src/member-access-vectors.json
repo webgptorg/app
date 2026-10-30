@@ -1,0 +1,38 @@
+{
+  "description": "Golden vectors for access tickets (ptbk-access-ticket-v1) and member revocations (ptbk-member-revocation-v1), ADR 0018. Computed independently of this package: signing inputs and SHA-256 with Python's standard library, Ed25519 signatures with OpenSSL 4.0 (`openssl pkeyutl -sign -rawin`). The body is the exact UTF-8 bytes signed; the token is base64url(body) '.' base64url(signature).",
+  "memberKey": {
+    "description": "RFC 8032 section 7.1 TEST 2, a published test key",
+    "seedHex": "4ccd089b28ff96da9db6c346ec114e0f5b8a319f35aba624da8cf6ed4fb8a6fb",
+    "publicKeyHex": "3d4017c3e843895a92b70aa74d1b7ebc9c982ccf2ec4968cc0cd55f12af4660c"
+  },
+  "accessTicket": {
+    "body": {
+      "v": 1,
+      "engineId": "eh7ddx5bksrgcytl7bkai36se4",
+      "ticketId": "ticket-0123456789abcdef",
+      "dashboardUserId": "user-petr",
+      "displayName": "Petr Svoboda",
+      "email": "petr@example.com",
+      "proposedRole": "member",
+      "issuedAt": "2026-10-30T12:00:00Z",
+      "expiresAt": "2026-10-30T12:15:00Z"
+    },
+    "bodyUtf8": "{\"v\":1,\"engineId\":\"eh7ddx5bksrgcytl7bkai36se4\",\"ticketId\":\"ticket-0123456789abcdef\",\"dashboardUserId\":\"user-petr\",\"displayName\":\"Petr Svoboda\",\"email\":\"petr@example.com\",\"proposedRole\":\"member\",\"issuedAt\":\"2026-10-30T12:00:00Z\",\"expiresAt\":\"2026-10-30T12:15:00Z\"}",
+    "signingInputHex": "7074626b2d73696700157074626b2d6163636573732d7469636b65742d763100000020f9ca5a96c12916723f6d3fb3af754cd780d42265ca1603c3831b0b2e692f49b0",
+    "signatureHex": "f5cf4ddc0e5fe87207a9b1551d361bb3d41255720d5c94ed49f98f51023b56cce885ad0ed6b6b821297dea2adc7e6464057641d129941fb7366fd1b58512af09",
+    "token": "eyJ2IjoxLCJlbmdpbmVJZCI6ImVoN2RkeDVia3NyZ2N5dGw3YmthaTM2c2U0IiwidGlja2V0SWQiOiJ0aWNrZXQtMDEyMzQ1Njc4OWFiY2RlZiIsImRhc2hib2FyZFVzZXJJZCI6InVzZXItcGV0ciIsImRpc3BsYXlOYW1lIjoiUGV0ciBTdm9ib2RhIiwiZW1haWwiOiJwZXRyQGV4YW1wbGUuY29tIiwicHJvcG9zZWRSb2xlIjoibWVtYmVyIiwiaXNzdWVkQXQiOiIyMDI2LTEwLTMwVDEyOjAwOjAwWiIsImV4cGlyZXNBdCI6IjIwMjYtMTAtMzBUMTI6MTU6MDBaIn0.9c9N3A5f6HIHqbFVHTYbs9QSVXINXJTtSfmPUQI7Vszoha0O1ra4ISl96ircfmRkBXZB0SmUH7c2b9G1hRKvCQ"
+  },
+  "memberRevocation": {
+    "body": {
+      "v": 1,
+      "engineId": "eh7ddx5bksrgcytl7bkai36se4",
+      "revocationId": "revoke-0123456789abcdef",
+      "dashboardUserId": "user-petr",
+      "issuedAt": "2026-10-30T13:00:00Z"
+    },
+    "bodyUtf8": "{\"v\":1,\"engineId\":\"eh7ddx5bksrgcytl7bkai36se4\",\"revocationId\":\"revoke-0123456789abcdef\",\"dashboardUserId\":\"user-petr\",\"issuedAt\":\"2026-10-30T13:00:00Z\"}",
+    "signingInputHex": "7074626b2d73696700197074626b2d6d656d6265722d7265766f636174696f6e2d763100000020d65de03ffd129b538df20bc487642c08d374a9e8091772f1c594e70c23901a12",
+    "signatureHex": "5130733d95a1b6226aea4d4a1aab31ea02250b685ec270cf5008633539829b69afaacdf8f7a822359b9eb6ac8b9a9f4e2446996d6f147830e72bf23be8dbcd00",
+    "token": "eyJ2IjoxLCJlbmdpbmVJZCI6ImVoN2RkeDVia3NyZ2N5dGw3YmthaTM2c2U0IiwicmV2b2NhdGlvbklkIjoicmV2b2tlLTAxMjM0NTY3ODlhYmNkZWYiLCJkYXNoYm9hcmRVc2VySWQiOiJ1c2VyLXBldHIiLCJpc3N1ZWRBdCI6IjIwMjYtMTAtMzBUMTM6MDA6MDBaIn0.UTBzPZWhtiJq6k1KGqsx6gIlC2hewnDPUAhjNTmCm2mvqs3496giNZuetqyLmp9OJEaZbW8UeDDnK_I76NvNAA"
+  }
+}

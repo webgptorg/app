@@ -1,6 +1,7 @@
 import type { PlatformSuite } from './harness/platform';
 import { ENGINE_API_PLATFORM_SUITE } from './suites/engine-api';
 import { HEARTBEAT_SUITE } from './suites/heartbeat';
+import { MEMBER_ACCESS_SUITE } from './suites/member-access';
 import { REGISTRATION_SUITE } from './suites/registration';
 import { TUNNEL_SUITE } from './suites/tunnel';
 import { UI_LOADER_PLATFORM_SUITE } from './suites/ui-loader';
@@ -59,7 +60,14 @@ export type { EngineEndpoints, EngineRoute, UiLoaderPlatformSuiteOptions } from 
 export { createUiLoaderPlatformSuite } from './suites/ui-loader';
 export type { EngineApiPlatformSuiteOptions } from './suites/engine-api';
 export { createEngineApiPlatformSuite } from './suites/engine-api';
-export { ENGINE_API_PLATFORM_SUITE, HEARTBEAT_SUITE, REGISTRATION_SUITE, TUNNEL_SUITE, UI_LOADER_PLATFORM_SUITE };
+export {
+    ENGINE_API_PLATFORM_SUITE,
+    HEARTBEAT_SUITE,
+    MEMBER_ACCESS_SUITE,
+    REGISTRATION_SUITE,
+    TUNNEL_SUITE,
+    UI_LOADER_PLATFORM_SUITE,
+};
 
 /**
  * Every suite that starts the engine itself and acts as the platform around it, in the order they run: the engine API
@@ -69,6 +77,7 @@ export const PLATFORM_SUITES: readonly PlatformSuite[] = [
     ENGINE_API_PLATFORM_SUITE,
     REGISTRATION_SUITE,
     HEARTBEAT_SUITE,
+    MEMBER_ACCESS_SUITE,
     TUNNEL_SUITE,
     UI_LOADER_PLATFORM_SUITE,
 ];

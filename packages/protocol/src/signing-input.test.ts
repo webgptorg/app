@@ -50,6 +50,8 @@ describe('signingInput', () => {
             hostname: 'ptbk-hostname-v1',
             register: 'ptbk-register-v1',
             heartbeat: 'ptbk-heartbeat-v1',
+            accessTicket: 'ptbk-access-ticket-v1',
+            memberRevocation: 'ptbk-member-revocation-v1',
         });
         expect(Object.isFrozen(SIGNING_CONTEXT)).toBe(true);
     });

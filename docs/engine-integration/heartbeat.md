@@ -37,6 +37,14 @@ sequenceDiagram
 - Round percentages with `buildHeartbeat`'s rule: to the nearest ten, halves up (`Math.round(value / 10) * 10`). A value outside 0–100 is a bug and throws.
 - Show the last heartbeat body **verbatim** in the security panel: `GET /security` returns it as `lastHeartbeat.body`, the exact bytes sent, as text, with `sentAt` ([engine-api.md](engine-api.md)). The owner can see everything we learn.
 
+## Heartbeat v2 and the reply (teams)
+
+Once the engine handles access tickets and member revocations ([ADR 0018](../adr/0018-teams-and-member-access.md), [engine-api.md](engine-api.md#access-requests)), it sends `buildHeartbeatV2` instead: the same fields with `v: 2`, plus `accessRequests` (pending requests) and `acks`, at most `MAX_HEARTBEAT_ACKS` (32) `{ id, outcome }` for IDs the dashboard issued. The body still carries no names or free text and stays under 4 KiB.
+
+- Ack a ticket `approved` or `declined` once its request is handled, and `removed` when a member who joined with it is removed on the engine. Ack a revocation `revoked`, `refused-owner` (the last owner), `refused-disabled` (the owner switched dashboard removals off) or `not-found`. Keep sending an ack until a heartbeat carrying it is accepted, then drop it.
+- The dashboard answers an accepted v2 heartbeat with 200 and a `HeartbeatReply` `{ v: 1, revocations }` (a v1 heartbeat still gets 204). Read it with `TolerantHeartbeatReply` and refuse a body over `HEARTBEAT_REPLY_MAX_BYTES`. Check each revocation with `verifyMemberRevocation` against the member key pinned at registration ([identity-and-registration.md](identity-and-registration.md#registration)); apply one that is `accepted` and ack it. Ignore every other verdict, without an ack: a forged or misdirected revocation must change nothing.
+- An engine registered without a member key keeps sending v1.
+
 ## Failure handling
 
 The dashboard checks, in this order, with `verifyHeartbeat`: body size, signature header, the signature over the raw bytes, the strict schema, that the path's engine ID equals the body's, that `seq` is greater than the last one, and the clock. Each failure maps to a problem+json answer:

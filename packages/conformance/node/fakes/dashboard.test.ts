@@ -1,9 +1,11 @@
-import type { EngineId, LinkCode } from '@ptbk/protocol';
+import type { EngineId, HeartbeatAck, LinkCode } from '@ptbk/protocol';
 import {
     HEARTBEAT_SIGNATURE_HEADER,
     REGISTER_PATH,
     buildHeartbeat,
+    buildHeartbeatV2,
     createWebCryptoSigner,
+    encodeBase64Url,
     deriveEngineId,
     generateEd25519KeyPair,
     heartbeatPath,
@@ -59,7 +61,42 @@ async function beat(target: FakeDashboard, key: Signer, engineId: EngineId, seq:
     });
 }
 
+async function beatV2(target: FakeDashboard, key: Signer, engineId: EngineId, seq: number, acks: HeartbeatAck[]) {
+    const body = buildHeartbeatV2({
+        engineId,
+        seq,
+        ts: new Date().toISOString().replace(/\.\d{3}Z$/, 'Z') as never,
+        version: '1.0.0' as never,
+        uptimeS: 1,
+        diskPct: 41,
+        ramPct: 55,
+        cpuLoad: 'low',
+        update: 'none',
+        agents: 0,
+        members: 1,
+        accessRequests: 0,
+        acks,
+    });
+    return post(`${target.url}${heartbeatPath(engineId)}`, body, ctx.ca.certPem, {
+        [HEARTBEAT_SIGNATURE_HEADER]: await signHeartbeat(key, body),
+    });
+}
+
 describe('the fake dashboard', () => {
+    it('answers heartbeat v2 with queued revocations until a beat acks them', async () => {
+        const target = await dashboard();
+        const key = await signer();
+        const engineId = await deriveEngineId(key.publicKey());
+        await register(target, key, target.issueLinkCode());
+        expect(JSON.parse((await beatV2(target, key, engineId, 1, [])).body)).toEqual({ v: 1, revocations: [] });
+        const id = 'revocation-0123456789';
+        target.queueRevocation(engineId, id, 'token');
+        expect(JSON.parse((await beatV2(target, key, engineId, 2, [])).body)).toEqual({ v: 1, revocations: ['token'] });
+        const acked = await beatV2(target, key, engineId, 3, [{ id, outcome: 'not-found' }]);
+        expect(JSON.parse(acked.body)).toEqual({ v: 1, revocations: [] });
+        expect((await beat(target, key, engineId, 4)).status).toBe(204);
+    });
+
     it('registers like the dashboard: once per link code, idempotent in the organisation', async () => {
         const target = await dashboard();
         const key = await signer();
@@ -71,6 +108,7 @@ describe('the fake dashboard', () => {
             engineId,
             hostname: `${engineId}.engine.localhost`,
             relays: ['relay-a.conformance.invalid'],
+            memberKey: encodeBase64Url(target.memberSigner.publicKey()),
         });
         const linkCode = target.issueLinkCode();
         expect((await register(target, key, linkCode)).status).toBe(200);

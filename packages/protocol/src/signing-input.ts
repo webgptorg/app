@@ -1,12 +1,17 @@
 import type { Bytes } from './bytes';
 import { concatBytes, utf8Encode } from './bytes';
 
-/** Every engine-key signature purpose (ADR 0010 §5). A changed input gets a new version, a new purpose a new context. */
+/**
+ * Every signature purpose outside release signing (ADR 0010 §5): the engine key's, and the dashboard member key's
+ * (access tickets, member revocations; ADR 0018). A changed input gets a new version, a new purpose a new context.
+ */
 export const SIGNING_CONTEXT = Object.freeze({
     tunnel: 'ptbk-tunnel-v1',
     hostname: 'ptbk-hostname-v1',
     register: 'ptbk-register-v1',
     heartbeat: 'ptbk-heartbeat-v1',
+    accessTicket: 'ptbk-access-ticket-v1',
+    memberRevocation: 'ptbk-member-revocation-v1',
 } as const);
 
 export type SigningContext = (typeof SIGNING_CONTEXT)[keyof typeof SIGNING_CONTEXT];

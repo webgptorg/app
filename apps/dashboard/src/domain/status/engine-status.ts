@@ -1,4 +1,4 @@
-import { CpuLoad, EngineId, EngineVersion, Timestamp, UpdateState, type Heartbeat } from '@ptbk/protocol';
+import { CpuLoad, EngineId, EngineVersion, Timestamp, UpdateState, type AnyHeartbeat } from '@ptbk/protocol';
 import { z } from 'zod';
 
 import { orgIdSchema } from '../ids';
@@ -161,7 +161,7 @@ function noticeAfter(stored: StoredEngineStatus | null, members: number, receive
 export function acceptHeartbeat(input: {
     readonly stored: StoredEngineStatus | null;
     readonly orgId: TrackedEngineStatus['orgId'];
-    readonly heartbeat: Heartbeat;
+    readonly heartbeat: AnyHeartbeat;
     readonly receivedAt: number;
 }): TrackedEngineStatus {
     const { heartbeat } = input;
