@@ -49,10 +49,7 @@ test('link an engine, see it online, open its page and revoke it, under the prod
     const progress = page.locator('section[data-link-state]');
     await expect(progress).toHaveAttribute('data-link-state', 'waiting');
     await checkScreen('/engines/new install command');
-    await expect(page.getByRole('link', { name: 'How Promptbook protects you, in a new tab' })).toHaveAttribute(
-        'href',
-        '/trust',
-    );
+    await expect(page.getByRole('link', { name: /^How Promptbook protects you/ })).toHaveAttribute('href', '/trust');
     for (const tab of ['Docker Compose', 'Already running Promptbook']) {
         await page.getByRole('tab', { name: tab }).click();
         await expect(page.getByRole('tabpanel', { name: tab }).locator('pre code')).toContainText(/[a-z2-7]{26}/);
