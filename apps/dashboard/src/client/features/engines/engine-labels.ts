@@ -71,11 +71,3 @@ export function modeLabel(mode: EngineView['mode']): string {
 }
 
 /** "1 d 2 h", "3 h 25 min": the two largest units, as engine-ui shows durations. */
-export function uptimeLabel(seconds: number): string {
-    const minutes = Math.floor(seconds / 60);
-    const hours = Math.floor(minutes / 60);
-    if (hours >= 24) {
-        return m.engine_uptime_days({ days: String(Math.floor(hours / 24)), hours: String(hours % 24) });
-    }
-    return m.engine_uptime({ hours: String(hours), minutes: String(minutes % 60) });
-}

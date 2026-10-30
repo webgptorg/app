@@ -13,7 +13,7 @@ import { ButtonLink, Link } from '../../core/link';
 import { AbuseContactLink } from '../abuse/abuse-contact';
 import { useSession } from '../session/use-session';
 import { ENGINE_STATUS_COMMAND, TROUBLESHOOTING_ANCHOR } from './engine-guide';
-import { cpuLoadLabel, modeLabel, updateStateLabel, uptimeLabel } from './engine-labels';
+import { cpuLoadLabel, modeLabel, updateStateLabel } from './engine-labels';
 import { canRename, RenameEngineButton } from './engine-name';
 import { EngineOpenLink } from './engine-open-link';
 import { EngineReachability } from './engine-reachability';
@@ -56,7 +56,7 @@ function HeartbeatFields(props: { readonly heartbeat: HeartbeatView }) {
             fields={[
                 [m.engine_heartbeat_version(), <span className="font-mono">{heartbeat.version}</span>],
                 [m.engine_heartbeat_update(), updateStateLabel(heartbeat.update)],
-                [m.engine_heartbeat_uptime(), uptimeLabel(heartbeat.uptimeS)],
+                [m.engine_heartbeat_uptime(), formatters.formatDuration(heartbeat.uptimeS * 1000)],
                 [m.engine_heartbeat_agents(), formatters.formatNumber(heartbeat.agents)],
                 [m.engine_heartbeat_members(), formatters.formatNumber(heartbeat.members)],
                 [m.engine_heartbeat_disk(), percent(heartbeat.diskPct)],

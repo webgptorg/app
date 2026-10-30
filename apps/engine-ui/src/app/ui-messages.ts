@@ -16,6 +16,8 @@ export function createUiMessages(): UiMessages {
         notifications: () => m.ui_notifications(),
         copy: () => m.ui_copy(),
         copied: () => m.ui_copied(),
+        copyValue: (params) => m.ui_copy_value(params),
+        technicalDetails: () => m.ui_technical_details(),
         copyFailed: () => m.ui_copy_failed(),
         opensInNewTab: () => m.ui_opens_in_new_tab(),
         skipToContent: () => m.ui_skip_to_content(),

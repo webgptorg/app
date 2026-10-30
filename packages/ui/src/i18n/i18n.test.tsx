@@ -28,6 +28,19 @@ describe('Intl formatters', () => {
         expect(cs.formatRelativeTime(new Date(now.getTime() - 86_400_000), now)).toBe('včera');
     });
 
+    it('format durations in the two largest units, numbers localised', () => {
+        const en = createFormatters('en');
+        const cs = createFormatters('cs');
+        expect(en.formatDuration(-5)).toBe('0 s');
+        expect(en.formatDuration(45_900)).toBe('45 s');
+        expect(en.formatDuration(185_000)).toBe('3 min 5 s');
+        expect(en.formatDuration(2 * 3_600_000 + 7 * 60_000 + 59_000)).toBe('2 h 7 min');
+        expect(en.formatDuration(26 * 3_600_000 + 3 * 60_000)).toBe('1 d 2 h');
+        expect(en.formatDuration(3_600_000)).toBe('1 h 0 min');
+        expect(en.formatDuration(1234 * 86_400_000)).toBe('1,234 d 0 h');
+        expect(cs.formatDuration(1234 * 86_400_000)).toBe('1\u00a0234 d 0 h');
+    });
+
     it('format money from a decimal string exactly, keeping its own decimals', () => {
         const en = createFormatters('en');
         const cs = createFormatters('cs');

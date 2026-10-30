@@ -18,6 +18,8 @@ export interface UiMessages {
     readonly copy: () => string;
     readonly copied: () => string;
     readonly copyFailed: () => string;
+    readonly copyValue: (params: { readonly label: string }) => string;
+    readonly technicalDetails: () => string;
     readonly opensInNewTab: () => string;
     readonly skipToContent: () => string;
     readonly required: () => string;

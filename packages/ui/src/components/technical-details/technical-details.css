@@ -1,0 +1,6 @@
+:root {
+    --technical-details-summary: var(--color-text-muted);
+    --technical-details-summary-hover: var(--color-text);
+    --technical-details-label: var(--color-text-muted);
+    --technical-details-value: var(--color-text);
+}
