@@ -25,6 +25,7 @@ const ROUTES = [
     '/audit',
     '/settings',
     '/security/passkeys',
+    '/security/sessions',
     '/__gallery',
     '/nowhere',
 ] as const;

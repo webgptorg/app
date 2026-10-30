@@ -295,6 +295,67 @@
   "passkeys_last_one": "„{name}“ je poslední přístupový klíč, proto ho nelze odvolat.",
   "security_access_passkeys_hint": "Zkontrolujte přístupové klíče, kterými se přihlašujete k tomuto enginu.",
   "security_access_passkeys_link": "Spravovat přístupové klíče",
+  "security_access_sessions": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Přihlášeno na {count} zařízení",
+        "countPlural=few": "Přihlášeno na {count} zařízeních",
+        "countPlural=many": "Přihlášeno na {count} zařízení",
+        "countPlural=other": "Přihlášeno na {count} zařízeních"
+      }
+    }
+  ],
+  "security_access_sessions_hint": "Podívejte se, kde jste přihlášeni, a odhlaste zařízení, která už nepoužíváte.",
+  "security_access_sessions_link": "Spravovat relace",
+  "sessions_back": "Zpět na zabezpečení",
+  "sessions_title": "Relace",
+  "sessions_intro": "Každý prohlížeč, ve kterém jste se přihlásili přístupovým klíčem, tu má svou relaci. Pokud některou nepoznáváte nebo jste přišli o zařízení, odhlaste ji.",
+  "sessions_mine": "Kde jste přihlášeni",
+  "sessions_empty": "Žádné aktivní relace",
+  "sessions_device": "{browser} v systému {os}",
+  "sessions_device_unknown": "Neznámý prohlížeč",
+  "sessions_this_device": "Toto zařízení",
+  "sessions_signed_in": "Přihlášeno",
+  "sessions_last_active": "naposledy aktivní",
+  "sessions_actions_for": "Akce pro {device}",
+  "sessions_sign_out": "Odhlásit",
+  "sessions_sign_out_here": "Odhlásit se zde",
+  "sessions_sign_out_title": "Odhlásit {device}?",
+  "sessions_sign_out_body": "Prohlížeč bude odhlášen při svém příštím požadavku. Znovu se v něm přihlásíte jen svým přístupovým klíčem.",
+  "sessions_signed_out": "{device} odhlášen",
+  "sessions_sign_out_failed": "{device} se nepodařilo odhlásit.",
+  "sessions_more": "Zobrazuje se jen {count} naposledy aktivních.",
+  "sessions_only_this_one": "Jste přihlášeni jen na tomto zařízení.",
+  "sessions_others_hint": "Ztratili jste zařízení nebo jste se přihlásili na sdíleném počítači? Odhlaste se všude kromě tohoto.",
+  "sessions_sign_out_others": "Odhlásit ostatní relace",
+  "sessions_others_title": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Odhlásit {count} další relaci?",
+        "countPlural=few": "Odhlásit {count} další relace?",
+        "countPlural=many": "Odhlásit {count} další relace?",
+        "countPlural=other": "Odhlásit {count} dalších relací?"
+      }
+    }
+  ],
+  "sessions_others_body": "Všechny prohlížeče kromě tohoto budou odhlášeny při svém příštím požadavku. Zde zůstanete přihlášeni.",
+  "sessions_others_signed_out": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Odhlášena {count} další relace",
+        "countPlural=few": "Odhlášeny {count} další relace",
+        "countPlural=many": "Odhlášeno {count} další relace",
+        "countPlural=other": "Odhlášeno {count} dalších relací"
+      }
+    }
+  ],
+  "sessions_others_failed": "Ostatní relace se nepodařilo odhlásit.",
   "secrets_write_only": "Hodnoty tajných údajů lze jen zapsat: po uložení je tu už nikdo nepřečte, ani vy. Tajný údaj můžete nahradit, odvolat nebo smazat.",
   "secrets_search_label": "Hledat tajné údaje",
   "secrets_new": "Nový tajný údaj",

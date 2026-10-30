@@ -1,13 +1,13 @@
 import { Card, Skeleton } from '@ptbk/ui';
 import { useQuery } from '@tanstack/react-query';
-import { KeyRound, ScrollText } from 'lucide-react';
+import { KeyRound, MonitorSmartphone, ScrollText } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 import { useEngineApi } from '../../app/engine-api-context';
 import { ButtonLink } from '../../app/link';
 import { m } from '../../paraglide/messages';
 import { usePermissions } from '../session/use-permissions';
-import { CREDENTIALS_PAGE_SIZE, myPasskeysQueryOptions } from './security-queries';
+import { CREDENTIALS_PAGE_SIZE, myPasskeysQueryOptions, mySessionsQueryOptions } from './security-queries';
 
 export interface AccessRowProps {
     readonly icon: ReactNode;
@@ -42,6 +42,13 @@ function PasskeysSummary() {
     return m.security_access_passkeys({ count: mine.data.items.length });
 }
 
+function SessionsSummary() {
+    const sessions = useQuery(mySessionsQueryOptions(useEngineApi()));
+    if (sessions.data === undefined)
+        return sessions.isError ? m.security_access_sessions_hint() : <Skeleton className="h-4 w-32" />;
+    return m.security_access_sessions({ count: sessions.data.items.length });
+}
+
 /** Who can get in, for every member: their own passkeys, and the audit log for those who may read it. */
 export function AccessCard() {
     const { can } = usePermissions();
@@ -55,6 +62,16 @@ export function AccessCard() {
                     action={
                         <ButtonLink to="/security/passkeys" size="sm">
                             {m.security_access_passkeys_link()}
+                        </ButtonLink>
+                    }
+                />
+                <AccessRow
+                    icon={<MonitorSmartphone />}
+                    title={m.sessions_title()}
+                    summary={<SessionsSummary />}
+                    action={
+                        <ButtonLink to="/security/sessions" size="sm">
+                            {m.security_access_sessions_link()}
                         </ButtonLink>
                     }
                 />

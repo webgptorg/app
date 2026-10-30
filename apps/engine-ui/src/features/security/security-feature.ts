@@ -17,6 +17,12 @@ export const securityFeature = defineFeature({
             keywords: () => [m.nav_security(), m.security_access_title()],
             to: '/security/passkeys',
         },
+        {
+            id: 'security.sessions',
+            label: m.sessions_title,
+            keywords: () => [m.nav_security(), m.security_access_title(), m.sign_out()],
+            to: '/security/sessions',
+        },
     ],
     activityRenderers: [
         { kind: 'engine.*', versions: [1], component: EngineActivityItem, summary: engineActivitySummary },
