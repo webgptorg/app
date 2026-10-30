@@ -6,6 +6,7 @@ import { m } from '../../paraglide/messages';
 import { usePermissions } from '../session/use-permissions';
 import { Page } from '../shell/page';
 import { AccessCard } from './access-card';
+import { DashboardRemovalsCard } from './dashboard-removals-card';
 import { SECURITY_REFRESH_MS, securityOverviewQueryOptions } from './security-queries';
 import { TrustPanel } from './trust-panel';
 import { VerificationCard } from './verification-card';
@@ -28,6 +29,7 @@ export function SecurityPage() {
             <TrustPanel overview={canVerify ? overview : null} />
             {canVerify ? <VerificationCard query={overview} /> : null}
             <AccessCard />
+            <DashboardRemovalsCard />
         </Page>
     );
 }

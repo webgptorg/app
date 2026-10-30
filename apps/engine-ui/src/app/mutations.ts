@@ -20,7 +20,7 @@ export interface StepUpAwareMutationOptions<Data, Variables, Snapshot> {
     /** Only where the feature brief says it is safe; the cache is restored when the engine refuses. */
     readonly optimistic?: OptimisticUpdate<Variables, Snapshot>;
     /** A success toast, where the feature brief asks for one; failures are always reported. */
-    readonly successMessage?: (data: Data, variables: Variables) => string;
+    readonly successMessage?: (data: Data, variables: Variables) => string | undefined;
     /** Overrides the generic failure text for failures other than step-up and 403. */
     readonly errorMessage?: (failure: ApiFailure, variables: Variables) => string;
     readonly onSuccess?: (data: Data, variables: Variables) => void;

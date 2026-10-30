@@ -1,3 +1,4 @@
+import { KNOWN_CAPABILITIES } from '@ptbk/engine-api';
 import type { Member } from '@ptbk/engine-api';
 import {
     Badge,
@@ -20,14 +21,16 @@ import { useBrowser } from '../../app/browser-context';
 import { useCursorPages } from '../../app/cursor-pages';
 import { useEngineApi } from '../../app/engine-api-context';
 import { isInvalidCursor, isPageLevelFailure } from '../../app/list-errors';
+import { useAllows } from '../../app/registry/use-visible-features';
 import { m } from '../../paraglide/messages';
 import { useCurrentMember } from '../session/use-current-member';
 import { usePermissions } from '../session/use-permissions';
 import { Page } from '../shell/page';
 import { roleLabel } from '../shell/role-label';
+import { AccessRequests } from './access-requests';
 import { memberListParams } from './member-list-search';
 import { ChangeRoleDialog, InviteDialog } from './member-dialogs';
-import { inviteListQueryOptions, memberListQueryOptions } from './members-queries';
+import { accessRequestListQueryOptions, inviteListQueryOptions, memberListQueryOptions } from './members-queries';
 import { PendingInvites } from './pending-invites';
 import { useMemberMutations } from './use-member-mutations';
 
@@ -58,6 +61,9 @@ function useMemberColumns(myId: string): DataTableColumnDef<Member>[] {
                     <span className="inline-flex flex-wrap items-center gap-2 font-medium">
                         {row.original.displayName}
                         {row.original.id === myId ? <Badge tone="accent">{m.members_you()}</Badge> : null}
+                        {row.original.dashboardUserId === null ? null : (
+                            <span className="text-xs font-normal text-text-muted">{m.members_via_organization()}</span>
+                        )}
                     </span>
                 ),
             }),
@@ -125,6 +131,8 @@ export function MembersPage() {
         throwOnError: isPageLevelFailure,
     });
     const invites = useQuery(inviteListQueryOptions(engineApi));
+    const requestsSupported = useAllows({ capability: KNOWN_CAPABILITIES.accessRequests });
+    const accessRequests = useQuery({ ...accessRequestListQueryOptions(engineApi), enabled: requestsSupported });
     const invitesUnsupported = invites.isError && isUnsupported(invites.error);
     const managing = canManage && !invitesUnsupported;
     const paging = useCursorPages(search.cursor, list.data?.nextCursor ?? null, (cursor) => {
@@ -188,6 +196,9 @@ export function MembersPage() {
     return (
         <Page title={m.members_title()} actions={inviteButton}>
             <p className="text-sm text-text-muted">{intro}</p>
+            {requestsSupported ? (
+                <AccessRequests query={accessRequests} canManage={canManage} mutations={mutations} />
+            ) : null}
             <DataTable
                 caption={m.members_title()}
                 columns={columns}

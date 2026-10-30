@@ -2,7 +2,7 @@
 
 - **Lane:** Engine UI · **Module:** `apps/engine-ui` · **Milestone:** M3
 - **Depends on:** C-13
-- **Status:** todo
+- **Status:** done (#186)
 - **Spec:** [Teams](../../spec/teams.md) "Engine UI"
 
 ## Goal

@@ -5,6 +5,7 @@ import type { NavGroup } from '../../app/registry/feature';
 import { m } from '../../paraglide/messages';
 import { useCollapsedNavLabel } from './collapsed-nav-label';
 import { navSections } from './nav-groups';
+import type { NavItem } from './nav-groups';
 
 const GROUP_LABELS: Readonly<Record<NavGroup, () => string>> = {
     work: m.nav_group_work,
@@ -17,6 +18,32 @@ export interface SidebarNavProps {
     readonly collapsed?: boolean;
     /** Called after a link is followed, e.g. to close the drawer. */
     readonly onNavigate?: () => void;
+}
+
+/** Calls the entry's own count hook; one component per entry keeps the rules of hooks. */
+function NavBadge({
+    useBadge,
+    collapsed,
+}: {
+    readonly useBadge: NonNullable<NavItem['useBadge']>;
+    readonly collapsed: boolean;
+}) {
+    const count = useBadge();
+    if (count <= 0) return null;
+    const text = m.nav_badge_waiting({ count });
+    if (collapsed) {
+        return (
+            <span className="absolute top-1.5 right-1.5 size-2 rounded-pill bg-accent">
+                <span className="sr-only">{text}</span>
+            </span>
+        );
+    }
+    return (
+        <span className="ms-auto rounded-pill bg-accent-soft px-1.5 text-xs font-semibold text-accent-text tabular-nums">
+            <span aria-hidden="true">{count}</span>
+            <span className="sr-only">{text}</span>
+        </span>
+    );
 }
 
 /**
@@ -66,11 +93,14 @@ export function SidebarNav({ collapsed = false, onNavigate }: SidebarNavProps) {
                                                 'focus-visible:-outline-offset-2',
                                                 'motion-safe:transition-colors motion-safe:duration-(--motion-state)',
                                                 'aria-[current=page]:bg-selected aria-[current=page]:text-accent-text',
-                                                collapsed && 'justify-center px-0',
+                                                collapsed && 'relative justify-center px-0',
                                             )}
                                         >
                                             <Icon aria-hidden className="size-5 shrink-0" />
                                             <span className={collapsed ? 'sr-only' : 'truncate'}>{text}</span>
+                                            {item.useBadge === undefined ? null : (
+                                                <NavBadge useBadge={item.useBadge} collapsed={collapsed} />
+                                            )}
                                         </Link>
                                     </li>
                                 );

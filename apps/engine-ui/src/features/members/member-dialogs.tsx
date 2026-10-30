@@ -9,7 +9,7 @@ import { roleLabel } from '../shell/role-label';
 import type { MemberMutations, MemberTarget } from './use-member-mutations';
 
 /** Every role is offered; which roles a member may grant, and to whom, is the engine's policy and it refuses the rest. */
-function RoleField({ value, onChange }: { readonly value: Role; readonly onChange: (role: Role) => void }) {
+export function RoleField({ value, onChange }: { readonly value: Role; readonly onChange: (role: Role) => void }) {
     return (
         <Field label={m.members_role_label()} hint={m.members_role_hint()}>
             {(control) => (
