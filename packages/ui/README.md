@@ -37,6 +37,8 @@ A redesign or white-label theme replaces primitives and semantic mappings; compo
 
 One component per folder in `src/components/<name>/`: `<name>.tsx`, `<name>.css` (its tokens), `<name>.gallery.tsx` (every state, collected by `src/gallery.tsx`) and `<name>.test.tsx` (keyboard use, accessible name, axe in both themes). Composite patterns (`DataTable`, `EmptyState`, `TrustMark`, `EngineSwitcher`) are modules too, and `src/forms/` is the form layer over TanStack Form. Apps never restyle a component; they use variants or tokens. Components take plain props for what the member may do (`hidden`, `disabled`, `disabledReason`); permission logic stays in the apps.
 
+Controls appear when they help, so a short list reads at a glance: `DataTable` pages only when there is another page, shows the column menu from six rows (or when paged, filtered or hiding a column) and sort buttons from three rows (or when paged, sorted or filtered), and hides `meta.defaultHidden` columns until the reader turns them on. A table wider than its box becomes a focusable region that fades on the side hiding columns. Values never break mid-token: `CodeText` breaks grouped values between groups and `kind="hostname"` only after a dot, and the `TrustMark` code wraps under the seal as one unit.
+
 ## Motion
 
 Durations and easings are tokens; most motion is CSS transitions and keyframes behind Tailwind's `motion-safe:`. Under `prefers-reduced-motion` the motion tokens collapse to a short fade or zero, `useReducedMotion()` lets JS do the same, and `withViewTransition()` skips the View Transitions API. `motion` (CSSOM-based, CSP-safe) is only reachable through `loadMotion()`/`useMotion()`, a dynamic import, so it never lands in an entry chunk.

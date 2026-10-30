@@ -9,7 +9,16 @@ import { renderUi } from '../../testing/render';
 import { createDataTableColumnHelper } from './columns';
 import { dataTableGallery } from './data-table.gallery';
 import type { DataTableColumnDef } from './columns';
-import { columnLabel, COLUMN_MENU_MIN_ROWS, DataTable, hasOtherPages, wantsColumnMenu } from './data-table';
+import {
+    columnLabel,
+    COLUMN_MENU_MIN_ROWS,
+    DataTable,
+    hasOtherPages,
+    initialColumnVisibility,
+    SORT_MIN_ROWS,
+    wantsColumnMenu,
+    wantsSorting,
+} from './data-table';
 import type { DataTableProps } from './data-table';
 import type { RowSelectionState } from './columns';
 import { NARROW_QUERY, useNarrow } from './use-narrow';
@@ -322,6 +331,73 @@ describe('DataTable in server-side mode', () => {
         expect(screen.getByRole('navigation', { name: 'Pagination' })).toBeDefined();
     });
 
+    it('offers sort buttons only from a few rows, and keeps them once shown', () => {
+        const { rerender } = renderUi(table({ data: AGENTS.slice(0, 2) }));
+        expect(screen.queryByRole('button', { name: /^Sort by/ })).toBeNull();
+        const name = screen.getByRole('columnheader', { name: 'Name' });
+        expect(name.hasAttribute('aria-sort')).toBe(false);
+        rerender(table({ data: AGENTS }));
+        expect(screen.getByRole('button', { name: 'Sort by Name' }).closest('th')?.getAttribute('aria-sort')).toBe(
+            'none',
+        );
+        rerender(table({ data: AGENTS.slice(0, 1) }));
+        expect(screen.getByRole('button', { name: 'Sort by Name' })).toBeDefined();
+    });
+
+    it('offers sort buttons on a short list that is sorted or paged', () => {
+        const { unmount } = renderUi(table({ data: AGENTS.slice(0, 1), sorting: [{ id: 'runs', desc: true }] }));
+        expect(screen.getByRole('button', { name: 'Runs, Sorted descending' })).toBeDefined();
+        unmount();
+        renderUi(
+            table({
+                data: AGENTS.slice(0, 1),
+                page: { previousCursor: null, nextCursor: 'cursor-2' },
+                onPageChange: vi.fn(),
+            }),
+        );
+        expect(screen.getByRole('button', { name: 'Sort by Name' })).toBeDefined();
+    });
+
+    it('starts default-hidden columns hidden, with the column menu to bring them back', async () => {
+        const storage = memoryStorage();
+        const columns: DataTableColumnDef<Agent>[] = [
+            helper.accessor('name', { header: 'Name' }),
+            helper.accessor('runs', { header: 'Runs', meta: { defaultHidden: true } }),
+            helper.display({ id: 'note', header: 'Note', meta: { defaultHidden: true }, cell: () => 'note' }),
+            helper.accessor('id', { header: 'ID', meta: { defaultHidden: true }, enableHiding: false }),
+        ];
+        const { user, unmount } = renderUi(
+            table({ columns, data: AGENTS.slice(0, 2), visibilityStorage: { storage, key: 'agents.columns' } }),
+        );
+        expect(screen.queryByRole('columnheader', { name: 'Runs' })).toBeNull();
+        expect(screen.queryByRole('columnheader', { name: 'Note' })).toBeNull();
+        // A column that cannot hide cannot start hidden either: the menu could never bring it back.
+        expect(screen.getByRole('columnheader', { name: 'ID' })).toBeDefined();
+        await user.click(screen.getByRole('button', { name: 'Columns' }));
+        await user.click(screen.getByRole('menuitemcheckbox', { name: 'Runs' }));
+        expect(screen.getByRole('columnheader', { name: 'Runs' })).toBeDefined();
+        unmount();
+
+        // The reader's stored choice wins over the default.
+        renderUi(table({ columns, data: AGENTS.slice(0, 2), visibilityStorage: { storage, key: 'agents.columns' } }));
+        expect(screen.getByRole('columnheader', { name: 'Runs' })).toBeDefined();
+        expect(screen.queryByRole('columnheader', { name: 'Note' })).toBeNull();
+    });
+
+    it('leaves controlled visibility alone when a column is default-hidden', () => {
+        renderUi(
+            table({
+                columns: [
+                    helper.accessor('name', { header: 'Name' }),
+                    helper.accessor('runs', { header: 'Runs', meta: { defaultHidden: true } }),
+                ],
+                columnVisibility: {},
+                onColumnVisibilityChange: vi.fn(),
+            }),
+        );
+        expect(screen.getByRole('columnheader', { name: /Runs/ })).toBeDefined();
+    });
+
     it('offers the column menu only on long, paged, filtered or narrowed lists', () => {
         const { rerender } = renderUi(table({ data: AGENTS.slice(0, 2), columnFilters: [] }));
         expect(screen.queryByRole('button', { name: 'Columns' })).toBeNull();
@@ -416,6 +492,47 @@ describe('DataTable states', () => {
             { theme },
         );
         await expectNoAxeViolations(container);
+    });
+});
+
+describe('DataTable horizontal overflow', () => {
+    function giveWidths(scrollWidth: number, clientWidth: number) {
+        vi.spyOn(Element.prototype, 'scrollWidth', 'get').mockReturnValue(scrollWidth);
+        vi.spyOn(Element.prototype, 'clientWidth', 'get').mockReturnValue(clientWidth);
+    }
+
+    it('makes a table wider than its box a focusable region that fades where columns hide', async () => {
+        giveWidths(1200, 600);
+        const { user } = renderUi(
+            table({ columns: [helper.accessor('name', { header: 'Name' }), helper.accessor('id', { header: 'ID' })] }),
+        );
+        const region = screen.getByRole('region', { name: 'Agents' });
+        expect(region.getAttribute('tabindex')).toBe('0');
+        expect(region.className).toContain('mask-image:linear-gradient(to_right');
+        // The box comes before the sort buttons inside it, so the keyboard can scroll before reaching a column.
+        await user.tab();
+        expect(document.activeElement).toBe(region);
+
+        region.scrollLeft = 300;
+        await act(async () => {
+            region.dispatchEvent(new Event('scroll'));
+            await Promise.resolve();
+        });
+        expect(region.className).toContain('mask-image:linear-gradient(to_right,transparent');
+        region.scrollLeft = 600;
+        await act(async () => {
+            region.dispatchEvent(new Event('scroll'));
+            await Promise.resolve();
+        });
+        expect(region.className).toContain('mask-image:linear-gradient(to_left');
+    });
+
+    it('keeps a table that fits out of the tab order and unfaded', () => {
+        giveWidths(600, 600);
+        const { container } = renderUi(table());
+        expect(screen.queryByRole('region')).toBeNull();
+        expect(container.querySelector('[tabindex="0"]')).toBeNull();
+        expect(container.querySelector('[class*="mask-image"]')).toBeNull();
     });
 });
 
@@ -605,6 +722,32 @@ describe('DataTable controls', () => {
         expect(wantsColumnMenu({ ...short, hideableColumns: 0, rows: 500, paged: true })).toBe(false);
     });
 
+    it('want sort buttons only when a column sorts and the list has a few rows, pages, a sort or a filter', () => {
+        const few = { sortableColumns: 2, rows: SORT_MIN_ROWS - 1, paged: false, sorted: false, filtered: false };
+        expect(SORT_MIN_ROWS).toBe(3);
+        expect(wantsSorting(few)).toBe(false);
+        expect(wantsSorting({ ...few, rows: SORT_MIN_ROWS })).toBe(true);
+        expect(wantsSorting({ ...few, paged: true })).toBe(true);
+        expect(wantsSorting({ ...few, sorted: true })).toBe(true);
+        expect(wantsSorting({ ...few, filtered: true })).toBe(true);
+        expect(wantsSorting({ ...few, sortableColumns: 0, rows: 500, paged: true, sorted: true })).toBe(false);
+    });
+
+    it('merge default-hidden columns under the stored visibility', () => {
+        const columns: DataTableColumnDef<Agent>[] = [
+            helper.accessor('name', { header: 'Name' }),
+            helper.accessor('runs', { header: 'Runs', meta: { defaultHidden: true } }),
+            helper.display({ id: 'note', header: 'Note', meta: { defaultHidden: true } }),
+        ];
+        expect(initialColumnVisibility(columns, {})).toEqual({ runs: false, note: false });
+        expect(initialColumnVisibility(columns, { runs: true, name: false })).toEqual({
+            runs: true,
+            note: false,
+            name: false,
+        });
+        expect(initialColumnVisibility([], {})).toEqual({});
+    });
+
     it('page only when another page exists', () => {
         expect(hasOtherPages(undefined)).toBe(false);
         expect(hasOtherPages({ previousCursor: null, nextCursor: null })).toBe(false);
@@ -625,7 +768,7 @@ describe('column helpers', () => {
                         helper.accessor('runs', { header: () => 'Runs' }),
                         helper.accessor('status', { header: () => 'Status', meta: { label: 'State' } }),
                     ]}
-                    data={[]}
+                    data={AGENTS}
                     getRowId={(row) => row.id}
                     getRowLabel={(row) => row.name}
                     rowActions={() => []}

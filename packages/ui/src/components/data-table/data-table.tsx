@@ -17,6 +17,7 @@ import type { ReactNode } from 'react';
 
 import { useUiMessages } from '../../i18n/ui-provider';
 import { cx } from '../../internal/cx';
+import { useScrollEdges } from '../../internal/scroll-edges';
 import { Button } from '../button/button';
 import { Checkbox } from '../checkbox/checkbox';
 import { EmptyState } from '../empty-state/empty-state';
@@ -117,9 +118,18 @@ export interface DataTableProps<TData extends RowData> {
 const DEFAULT_VIRTUALIZE_ABOVE = 100;
 /** A list this short is read at a glance; hiding its columns only adds a control nobody needs. */
 export const COLUMN_MENU_MIN_ROWS = 6;
+/** One or two rows have no order worth choosing; sort buttons there are only noise and extra Tab stops. */
+export const SORT_MIN_ROWS = 3;
 const DEFAULT_ROW_HEIGHT = 48;
 const NO_SORTING: SortingState = [];
 const NO_FILTERS: ColumnFiltersState = [];
+
+/** A fade where the scroller hides columns, so a reader sees there is more to scroll to. */
+const FADE_CLASSES = {
+    left: '[mask-image:linear-gradient(to_left,#000_calc(100%-var(--data-table-fade)),transparent)]',
+    right: '[mask-image:linear-gradient(to_right,#000_calc(100%-var(--data-table-fade)),transparent)]',
+    both: '[mask-image:linear-gradient(to_right,transparent,#000_var(--data-table-fade),#000_calc(100%-var(--data-table-fade)),transparent)]',
+} as const;
 
 type TableRow<TData extends RowData> = Row<DataTableFeatures, TData>;
 type TableColumn<TData extends RowData> = Column<DataTableFeatures, TData>;
@@ -149,9 +159,40 @@ function hasActiveFilter(filters: ColumnFiltersState): boolean {
     return filters.some(({ value }) => value !== undefined && value !== '' && value !== null);
 }
 
+/** Columns marked `defaultHidden` start hidden; what the reader chose and stored wins. */
+export function initialColumnVisibility<TData extends RowData>(
+    columns: readonly DataTableColumnDef<TData>[],
+    stored: ColumnVisibilityState,
+): ColumnVisibilityState {
+    const hidden: Record<string, boolean> = {};
+    for (const column of columns) {
+        const id = column.id ?? ('accessorKey' in column ? String(column.accessorKey) : undefined);
+        if (column.meta?.defaultHidden === true && column.enableHiding !== false && id !== undefined)
+            hidden[id] = false;
+    }
+    return { ...hidden, ...stored };
+}
+
 /** Paging controls only mean something when there is another page to go to. */
 export function hasOtherPages(page: DataTablePage | undefined): page is DataTablePage {
     return page !== undefined && (page.previousCursor !== null || page.nextCursor !== null);
+}
+
+export interface SortingInput {
+    readonly sortableColumns: number;
+    readonly rows: number;
+    readonly paged: boolean;
+    readonly sorted: boolean;
+    readonly filtered: boolean;
+}
+
+/**
+ * Sort buttons earn their place on a list of a few rows or more, or a paged one. They also stay while a sort is
+ * applied, so the reader can undo it, and while a filter narrows the list.
+ */
+export function wantsSorting({ sortableColumns, rows, paged, sorted, filtered }: SortingInput): boolean {
+    if (sortableColumns === 0) return false;
+    return sorted || paged || filtered || rows >= SORT_MIN_ROWS;
 }
 
 export interface ColumnMenuInput {
@@ -222,7 +263,12 @@ export function DataTable<TData extends RowData>(props: DataTableProps<TData>) {
         [visibilityStorage, props.columnVisibility, onVisibility],
     );
     const [columnVisibility, setColumnVisibility] = useControllable(props.columnVisibility, persistVisibility, () =>
-        visibilityStorage === undefined ? {} : readColumnVisibility(visibilityStorage.storage, visibilityStorage.key),
+        initialColumnVisibility(
+            columns,
+            visibilityStorage === undefined
+                ? {}
+                : readColumnVisibility(visibilityStorage.storage, visibilityStorage.key),
+        ),
     );
 
     const rowSelection = selection?.rowSelection;
@@ -286,6 +332,17 @@ export function DataTable<TData extends RowData>(props: DataTableProps<TData>) {
     const [columnMenuShown, setColumnMenuShown] = useState(columnMenuWanted);
     if (columnMenuWanted && !columnMenuShown) setColumnMenuShown(true);
     const showColumnMenu = hideableColumns.length > 0 && !narrow && (columnMenuWanted || columnMenuShown);
+    const sortingWanted = wantsSorting({
+        sortableColumns: table.getAllLeafColumns().filter((column) => column.getCanSort()).length,
+        rows: data.length,
+        paged,
+        sorted: sorting.length > 0,
+        filtered: hasActiveFilter(columnFilters),
+    });
+    // Like the column menu, it stays once shown: the headers do not change under the reader as the list shrinks.
+    const [sortingShown, setSortingShown] = useState(sortingWanted);
+    if (sortingWanted && !sortingShown) setSortingShown(true);
+    const showSorting = sortingWanted || sortingShown;
     const extraColumns = (selection === undefined ? 0 : 1) + (expansion === undefined ? 0 : 1) + (rowActions ? 1 : 0);
     const columnCount = visibleColumns.length + extraColumns;
     const selectedCount = Object.values(rowSelection ?? {}).filter(Boolean).length;
@@ -299,6 +356,14 @@ export function DataTable<TData extends RowData>(props: DataTableProps<TData>) {
         scrollRef,
         getKey: (index) => rows[index]?.id ?? String(index),
     });
+
+    const edges = useScrollEdges(
+        scrollRef,
+        undefined,
+        `${String(rows.length)}:${String(columnCount)}:${String(narrow)}`,
+    );
+    const overflowing = edges.left || edges.right;
+    const fade = edges.left && edges.right ? 'both' : edges.left ? 'left' : edges.right ? 'right' : null;
 
     const rowContext: RowContext<TData> = {
         table,
@@ -393,107 +458,120 @@ export function DataTable<TData extends RowData>(props: DataTableProps<TData>) {
                     )}
                 </div>
             ) : (
-                <div
-                    ref={scrollRef}
-                    aria-busy={busy || undefined}
-                    {...(rowWindow.virtual ? { role: 'region', 'aria-labelledby': captionId, tabIndex: 0 } : {})}
-                    className={cx(
-                        'overflow-x-auto rounded-(--data-table-radius) border border-(--data-table-border) bg-(--data-table-bg)',
-                        rowWindow.virtual && 'max-h-(--data-table-max-height) overflow-y-auto',
-                    )}
-                >
-                    <table
+                <div className="overflow-hidden rounded-(--data-table-radius) border border-(--data-table-border) bg-(--data-table-bg)">
+                    <div
+                        ref={scrollRef}
+                        aria-busy={busy || undefined}
+                        // Scrolled content without a control in it is out of a keyboard's reach unless the box takes focus.
+                        {...(rowWindow.virtual || overflowing
+                            ? { role: 'region', 'aria-labelledby': captionId, tabIndex: 0 }
+                            : {})}
                         className={cx(
-                            'w-full border-collapse text-left text-sm text-(--data-table-text)',
-                            'motion-safe:transition-opacity motion-safe:duration-(--motion-state) motion-safe:ease-standard',
-                            fetching && '[filter:var(--data-table-fetching-filter)]',
+                            'overflow-x-auto focus-visible:-outline-offset-2',
+                            rowWindow.virtual && 'max-h-(--data-table-max-height) overflow-y-auto',
+                            fade !== null && FADE_CLASSES[fade],
                         )}
                     >
-                        <caption
-                            id={captionId}
-                            className={showCaption ? 'pb-2 text-left font-display text-lg font-semibold' : 'sr-only'}
+                        <table
+                            className={cx(
+                                'w-full border-collapse text-left text-sm text-(--data-table-text)',
+                                'motion-safe:transition-opacity motion-safe:duration-(--motion-state) motion-safe:ease-standard',
+                                fetching && '[filter:var(--data-table-fetching-filter)]',
+                            )}
                         >
-                            {caption}
-                        </caption>
-                        <thead className="sticky top-0 z-10 bg-(--data-table-header-bg)">
-                            {table.getHeaderGroups().map((group) => (
-                                <tr key={group.id}>
-                                    {selection === undefined ? null : (
-                                        <th scope="col" className="w-10 px-3 py-2">
-                                            <Checkbox
-                                                aria-label={messages.selectAllOnPage()}
-                                                checked={table.getIsAllPageRowsSelected()}
-                                                indeterminate={table.getIsSomePageRowsSelected()}
-                                                disabled={rows.length === 0}
-                                                onChange={table.getToggleAllPageRowsSelectedHandler()}
+                            <caption
+                                id={captionId}
+                                className={
+                                    showCaption ? 'pb-2 text-left font-display text-lg font-semibold' : 'sr-only'
+                                }
+                            >
+                                {caption}
+                            </caption>
+                            <thead className="sticky top-0 z-10 bg-(--data-table-header-bg)">
+                                {table.getHeaderGroups().map((group) => (
+                                    <tr key={group.id}>
+                                        {selection === undefined ? null : (
+                                            <th scope="col" className="w-10 px-3 py-2">
+                                                <Checkbox
+                                                    aria-label={messages.selectAllOnPage()}
+                                                    checked={table.getIsAllPageRowsSelected()}
+                                                    indeterminate={table.getIsSomePageRowsSelected()}
+                                                    disabled={rows.length === 0}
+                                                    onChange={table.getToggleAllPageRowsSelectedHandler()}
+                                                />
+                                            </th>
+                                        )}
+                                        {expansion === undefined ? null : <td className="w-10 px-1 py-2" />}
+                                        {group.headers.map((header) => (
+                                            <HeaderCell
+                                                key={header.id}
+                                                header={header}
+                                                table={table}
+                                                sortable={showSorting}
                                             />
-                                        </th>
-                                    )}
-                                    {expansion === undefined ? null : <td className="w-10 px-1 py-2" />}
-                                    {group.headers.map((header) => (
-                                        <HeaderCell key={header.id} header={header} table={table} />
-                                    ))}
-                                    {rowActions === undefined ? null : <td className="w-12 px-1 py-2" />}
-                                </tr>
-                            ))}
-                        </thead>
-                        {showSkeleton ? (
-                            <tbody>
-                                {Array.from({ length: skeletonRows }, (_, index) => (
-                                    <tr
-                                        key={index}
-                                        style={{ height: rowHeight }}
-                                        className="border-t border-(--data-table-divider)"
-                                    >
-                                        {Array.from({ length: columnCount }, (_, cell) => (
-                                            <td key={cell} className="px-3 py-2">
-                                                <Skeleton shape="text" />
-                                            </td>
                                         ))}
+                                        {rowActions === undefined ? null : <td className="w-12 px-1 py-2" />}
                                     </tr>
                                 ))}
-                            </tbody>
-                        ) : rows.length === 0 ? (
-                            <tbody>
-                                <tr>
-                                    <td colSpan={columnCount}>{emptyContent}</td>
-                                </tr>
-                            </tbody>
-                        ) : (
-                            <>
-                                {rowWindow.paddingBefore > 0 ? (
-                                    <tbody aria-hidden="true">
-                                        <tr>
-                                            <td colSpan={columnCount} style={{ height: rowWindow.paddingBefore }} />
+                            </thead>
+                            {showSkeleton ? (
+                                <tbody>
+                                    {Array.from({ length: skeletonRows }, (_, index) => (
+                                        <tr
+                                            key={index}
+                                            style={{ height: rowHeight }}
+                                            className="border-t border-(--data-table-divider)"
+                                        >
+                                            {Array.from({ length: columnCount }, (_, cell) => (
+                                                <td key={cell} className="px-3 py-2">
+                                                    <Skeleton shape="text" />
+                                                </td>
+                                            ))}
                                         </tr>
-                                    </tbody>
-                                ) : null}
-                                {rowWindow.virtual ? (
-                                    rowWindow.indices.map((index) => {
-                                        const row = rows[index];
-                                        return row === undefined ? null : (
-                                            <tbody key={row.id} data-index={index} ref={rowWindow.measure}>
-                                                <TableRow row={row} context={rowContext} />
-                                            </tbody>
-                                        );
-                                    })
-                                ) : (
-                                    <tbody>
-                                        {rows.map((row) => (
-                                            <TableRow key={row.id} row={row} context={rowContext} />
-                                        ))}
-                                    </tbody>
-                                )}
-                                {rowWindow.paddingAfter > 0 ? (
-                                    <tbody aria-hidden="true">
-                                        <tr>
-                                            <td colSpan={columnCount} style={{ height: rowWindow.paddingAfter }} />
-                                        </tr>
-                                    </tbody>
-                                ) : null}
-                            </>
-                        )}
-                    </table>
+                                    ))}
+                                </tbody>
+                            ) : rows.length === 0 ? (
+                                <tbody>
+                                    <tr>
+                                        <td colSpan={columnCount}>{emptyContent}</td>
+                                    </tr>
+                                </tbody>
+                            ) : (
+                                <>
+                                    {rowWindow.paddingBefore > 0 ? (
+                                        <tbody aria-hidden="true">
+                                            <tr>
+                                                <td colSpan={columnCount} style={{ height: rowWindow.paddingBefore }} />
+                                            </tr>
+                                        </tbody>
+                                    ) : null}
+                                    {rowWindow.virtual ? (
+                                        rowWindow.indices.map((index) => {
+                                            const row = rows[index];
+                                            return row === undefined ? null : (
+                                                <tbody key={row.id} data-index={index} ref={rowWindow.measure}>
+                                                    <TableRow row={row} context={rowContext} />
+                                                </tbody>
+                                            );
+                                        })
+                                    ) : (
+                                        <tbody>
+                                            {rows.map((row) => (
+                                                <TableRow key={row.id} row={row} context={rowContext} />
+                                            ))}
+                                        </tbody>
+                                    )}
+                                    {rowWindow.paddingAfter > 0 ? (
+                                        <tbody aria-hidden="true">
+                                            <tr>
+                                                <td colSpan={columnCount} style={{ height: rowWindow.paddingAfter }} />
+                                            </tr>
+                                        </tbody>
+                                    ) : null}
+                                </>
+                            )}
+                        </table>
+                    </div>
                 </div>
             )}
 
@@ -541,14 +619,16 @@ interface RowContext<TData extends RowData> {
 function HeaderCell<TData extends RowData>({
     header,
     table,
+    sortable,
 }: {
     readonly header: Header<DataTableFeatures, TData>;
     readonly table: DataTableInstance<TData>;
+    readonly sortable: boolean;
 }) {
     const messages = useUiMessages();
     const { column } = header;
     const content = header.isPlaceholder ? null : <table.FlexRender header={header} />;
-    if (!column.getCanSort()) {
+    if (!sortable || !column.getCanSort()) {
         return (
             <th scope="col" className="px-3 py-2 font-medium whitespace-nowrap text-(--data-table-header-text)">
                 {content}

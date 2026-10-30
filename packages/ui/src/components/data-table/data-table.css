@@ -16,4 +16,6 @@
     --data-table-fetching-filter: saturate(0.2);
     /* A virtualised table scrolls inside itself, so the page keeps its toolbar and pagination in view. */
     --data-table-max-height: 70vh;
+    /* How far the edge that hides columns fades out. */
+    --data-table-fade: 2rem;
 }
