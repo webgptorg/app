@@ -72,6 +72,8 @@ const CAPABILITY_BY_PATH = [
     ['/triggers', KNOWN_CAPABILITIES.triggers],
     ['/integrations', KNOWN_CAPABILITIES.integrations],
     ['/agents/{agentId}/test-chat', KNOWN_CAPABILITIES.testChat],
+    ['/access-requests', KNOWN_CAPABILITIES.accessRequests],
+    ['/settings/dashboard-removals', KNOWN_CAPABILITIES.accessRequests],
 ] as const;
 
 function expectedCapability(route: RouteDefinition) {

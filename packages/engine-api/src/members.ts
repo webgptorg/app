@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { InviteId, MemberId, PageQuery, Timestamp, pageOf } from './common';
+import { DashboardUserId, InviteId, MemberId, PageQuery, Timestamp, pageOf } from './common';
 import { Role } from './permissions';
 import { defineRoute } from './route';
 
@@ -15,6 +15,11 @@ export const Member = z.strictObject({
     lastSeenAt: Timestamp.nullable(),
     /** How many passkeys the member has; `null` from engines on API 1.2. */
     passkeyCount: z.int().min(0).nullable().default(null),
+    /**
+     * The dashboard user this member joined as through an approved access request (since API 1.12), so a signed
+     * revocation from the dashboard can find them; `null` for members added any other way and from older engines.
+     */
+    dashboardUserId: DashboardUserId.nullable().default(null),
 });
 export type Member = z.infer<typeof Member>;
 export const MemberPage = pageOf(Member);
@@ -60,24 +65,24 @@ export const MEMBER_ROUTES = {
         id: 'updateMember',
         method: 'PATCH',
         path: '/members/{memberId}',
-        summary: "Change a member's role",
+        summary: "Change a member's role; the last owner cannot be demoted",
         permission: 'members.manage',
         params: MemberParams,
         body: { kind: 'json', schema: UpdateMemberBody },
         responses: { 200: { kind: 'json', schema: Member } },
+        problems: ['last-owner'],
         stepUp: true,
-        draft: true,
     }),
     removeMember: defineRoute({
         id: 'removeMember',
         method: 'DELETE',
         path: '/members/{memberId}',
-        summary: 'Remove a member',
+        summary: 'Remove a member and end their sessions; the last owner cannot be removed',
         permission: 'members.manage',
         params: MemberParams,
         responses: { 204: { kind: 'empty' } },
+        problems: ['last-owner'],
         stepUp: true,
-        draft: true,
     }),
     listInvites: defineRoute({
         id: 'listInvites',
@@ -87,7 +92,6 @@ export const MEMBER_ROUTES = {
         permission: 'members.read',
         query: PageQuery,
         responses: { 200: { kind: 'json', schema: InvitePage } },
-        draft: true,
     }),
     createInvite: defineRoute({
         id: 'createInvite',
@@ -98,7 +102,6 @@ export const MEMBER_ROUTES = {
         body: { kind: 'json', schema: CreateInviteBody },
         responses: { 201: { kind: 'json', schema: CreateInviteResult } },
         stepUp: true,
-        draft: true,
     }),
     revokeInvite: defineRoute({
         id: 'revokeInvite',
@@ -108,6 +111,5 @@ export const MEMBER_ROUTES = {
         permission: 'members.manage',
         params: InviteParams,
         responses: { 204: { kind: 'empty' } },
-        draft: true,
     }),
 } as const;

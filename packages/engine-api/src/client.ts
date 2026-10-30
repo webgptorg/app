@@ -188,6 +188,17 @@ export interface EngineApiClient {
         listInvites(query: Query<'listInvites'>, signal: AbortSignal): Result<'listInvites'>;
         createInvite(body: Body<'createInvite'>, signal: AbortSignal): Result<'createInvite'>;
         revokeInvite(inviteId: Param<'revokeInvite', 'inviteId'>, signal: AbortSignal): Result<'revokeInvite'>;
+        /** `access-requests@1`. */
+        listAccessRequests(query: Query<'listAccessRequests'>, signal: AbortSignal): Result<'listAccessRequests'>;
+        approveAccessRequest(
+            accessRequestId: Param<'approveAccessRequest', 'accessRequestId'>,
+            body: Body<'approveAccessRequest'>,
+            signal: AbortSignal,
+        ): Result<'approveAccessRequest'>;
+        declineAccessRequest(
+            accessRequestId: Param<'declineAccessRequest', 'accessRequestId'>,
+            signal: AbortSignal,
+        ): Result<'declineAccessRequest'>;
     };
     readonly apiTokens: {
         list(query: Query<'listApiTokens'>, signal: AbortSignal): Result<'listApiTokens'>;
@@ -198,6 +209,8 @@ export interface EngineApiClient {
         get(signal: AbortSignal): Result<'getSettings'>;
         update(body: Body<'updateSettings'>, signal: AbortSignal): Result<'updateSettings'>;
         setUpdatePolicy(body: Body<'setUpdatePolicy'>, signal: AbortSignal): Result<'setUpdatePolicy'>;
+        /** `access-requests@1`. */
+        setDashboardRemovals(body: Body<'setDashboardRemovals'>, signal: AbortSignal): Result<'setDashboardRemovals'>;
     };
     readonly passkeys: {
         list(query: Query<'listPasskeys'>, signal: AbortSignal): Result<'listPasskeys'>;
@@ -389,6 +402,11 @@ export function createEngineApiClient(transport: EngineApiTransport): EngineApiC
             listInvites: (query, signal) => call(R.listInvites, { query }, signal),
             createInvite: (body, signal) => call(R.createInvite, { body }, signal),
             revokeInvite: (inviteId, signal) => call(R.revokeInvite, { params: { inviteId } }, signal),
+            listAccessRequests: (query, signal) => call(R.listAccessRequests, { query }, signal),
+            approveAccessRequest: (accessRequestId, body, signal) =>
+                call(R.approveAccessRequest, { params: { accessRequestId }, body }, signal),
+            declineAccessRequest: (accessRequestId, signal) =>
+                call(R.declineAccessRequest, { params: { accessRequestId } }, signal),
         },
         apiTokens: {
             list: (query, signal) => call(R.listApiTokens, { query }, signal),
@@ -399,6 +417,7 @@ export function createEngineApiClient(transport: EngineApiTransport): EngineApiC
             get: (signal) => call(R.getSettings, {}, signal),
             update: (body, signal) => call(R.updateSettings, { body }, signal),
             setUpdatePolicy: (body, signal) => call(R.setUpdatePolicy, { body }, signal),
+            setDashboardRemovals: (body, signal) => call(R.setDashboardRemovals, { body }, signal),
         },
         passkeys: {
             list: (query, signal) => call(R.listPasskeys, { query }, signal),

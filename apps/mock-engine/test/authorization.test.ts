@@ -66,6 +66,10 @@ function validBody(route: RouteDefinition): unknown {
             };
         case 'connectCalendar':
             return { provider: 'google' };
+        case 'approveAccessRequest':
+            return { code: '123456', role: 'member' };
+        case 'setDashboardRemovals':
+            return { enabled: true };
         case 'testAgentDraft':
             return { book: 'Matrix', messages: [{ role: 'user', content: 'hello' }] };
         default:

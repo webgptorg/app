@@ -63,6 +63,7 @@ describe('supports', () => {
             'triggers@1',
             'integrations@1',
             'test-chat@1',
+            'access-requests@1',
         ]);
     });
 });

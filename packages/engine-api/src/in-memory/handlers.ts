@@ -33,6 +33,7 @@ import {
 import type { HandlerContext, HandlerResult, Handlers } from './kit';
 import { cancelReply, startReply, streamReply } from './replies';
 import { advanceRun, queueRun, RUN_HANDLERS } from './runs';
+import { ACCESS_REQUEST_HANDLERS, activeOwnerCount, signOutEverywhere } from './access-requests';
 import { TEST_CHAT_HANDLERS } from './test-chat';
 import { TRIGGER_HANDLERS } from './triggers';
 import type { InMemoryState } from './state';
@@ -55,6 +56,10 @@ function withPasskeyCount(ctx: HandlerContext, member: Member): Member {
     let passkeyCount = 0;
     for (const passkey of ctx.state.passkeys.values()) if (passkey.memberId === member.id) passkeyCount++;
     return { ...member, passkeyCount };
+}
+
+function isLastOwner(ctx: HandlerContext, member: Member): boolean {
+    return member.role === 'owner' && member.status === 'active' && activeOwnerCount(ctx.state) <= 1;
 }
 
 /** `current` is not stored: it is whether the session is the one making this request. */
@@ -440,16 +445,18 @@ export const HANDLERS: Handlers = {
     updateMember: ({ params, body }, ctx) => {
         const member = ctx.state.members.get(params.memberId);
         if (!member) return notFound('member');
+        if (isLastOwner(ctx, member) && body.role !== 'owner') return fail('last-owner');
         const updated = { ...member, role: body.role };
         ctx.state.members.set(member.id, updated);
         return ok(withPasskeyCount(ctx, updated));
     },
     removeMember: ({ params }, ctx) => {
-        if (!ctx.state.members.delete(params.memberId)) return notFound('member');
+        const member = ctx.state.members.get(params.memberId);
+        if (!member) return notFound('member');
+        if (isLastOwner(ctx, member)) return fail('last-owner');
+        ctx.state.members.delete(member.id);
         // A removed member is signed out everywhere: the gateway accepts only sessions the engine still lists.
-        for (const session of [...ctx.state.sessions.values()]) {
-            if (session.memberId === params.memberId) ctx.state.sessions.delete(session.id);
-        }
+        signOutEverywhere(ctx.state, member.id);
         return ok(null);
     },
     listInvites: ({ query }, ctx) =>
@@ -644,6 +651,7 @@ export const HANDLERS: Handlers = {
     ...TRIGGER_HANDLERS,
     ...INTEGRATION_HANDLERS,
     ...TEST_CHAT_HANDLERS,
+    ...ACCESS_REQUEST_HANDLERS,
 };
 
 function saveAgent(ctx: HandlerContext, agent: Agent): HandlerResult<Agent> {
