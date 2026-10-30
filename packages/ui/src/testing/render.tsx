@@ -12,6 +12,8 @@ export interface RenderUiOptions {
     readonly locale?: string;
     readonly messages?: UiMessages;
     readonly theme?: 'light' | 'dark';
+    /** Renders under a `StrictMode` root, as the apps do, so effects run, clean up and run again on mount. */
+    readonly strict?: boolean;
 }
 
 export interface RenderedUi extends RenderResult {
@@ -24,6 +26,7 @@ export function renderUi(ui: ReactElement, options: RenderUiOptions = {}): Rende
     const user = userEvent.setup();
     // A wrapper, not a parent element, so `rerender` keeps the provider and only updates `ui`.
     const result = render(ui, {
+        reactStrictMode: options.strict === true,
         wrapper: ({ children }) => (
             <UiProvider messages={options.messages ?? TEST_MESSAGES} locale={options.locale ?? 'en'}>
                 {children}

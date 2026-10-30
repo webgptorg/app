@@ -60,7 +60,9 @@ function installDialog(): void {
         this.removeAttribute('open');
         delete this.dataset['fakeModal'];
         if (returnValue !== undefined) this.returnValue = returnValue;
-        this.dispatchEvent(new Event('close'));
+        // Browsers queue the close event as a task rather than firing it inside close(), so it can land after the
+        // dialog has been shown again; a synchronous stand-in would hide that race.
+        setTimeout(() => this.dispatchEvent(new Event('close')), 0);
     };
     document.addEventListener('keydown', (event) => {
         if (event.key !== 'Escape') return;

@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react';
+import { act, screen } from '@testing-library/react';
 import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -7,8 +7,16 @@ import { renderUi } from '../../testing/render';
 import { Drawer } from './drawer';
 import type { DrawerSide } from './drawer';
 
-function Harness({ side, onClose = () => undefined }: { side?: DrawerSide; onClose?: () => void }) {
-    const [open, setOpen] = useState(false);
+function Harness({
+    side,
+    onClose = () => undefined,
+    initiallyOpen = false,
+}: {
+    side?: DrawerSide;
+    onClose?: () => void;
+    initiallyOpen?: boolean;
+}) {
+    const [open, setOpen] = useState(initiallyOpen);
     return (
         <>
             <button
@@ -73,6 +81,14 @@ describe('Drawer', () => {
         await user.click(screen.getByRole('button', { name: 'Menu' }));
         await user.keyboard('{Escape}');
         expect(screen.queryByRole('dialog')).toBeNull();
+    });
+
+    it('stays open when mounted open in a strict root', async () => {
+        const onClose = vi.fn();
+        renderUi(<Harness onClose={onClose} initiallyOpen />, { strict: true });
+        await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+        expect(screen.getByRole('dialog').hasAttribute('open')).toBe(true);
+        expect(onClose).not.toHaveBeenCalled();
     });
 
     it('renders without a footer', () => {

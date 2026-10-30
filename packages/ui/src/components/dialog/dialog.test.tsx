@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react';
+import { act, screen } from '@testing-library/react';
 import { useRef, useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -6,14 +6,21 @@ import { expectNoAxeViolations } from '../../testing/axe';
 import { renderUi } from '../../testing/render';
 import { Dialog } from './dialog';
 
+/** Lets the dialog's queued `close` event, if any, fire. */
+async function flushCloseEvents(): Promise<void> {
+    await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+}
+
 function Harness({
     onClose = () => undefined,
     withInitialFocus = false,
+    initiallyOpen = false,
 }: {
     onClose?: () => void;
     withInitialFocus?: boolean;
+    initiallyOpen?: boolean;
 }) {
-    const [open, setOpen] = useState(false);
+    const [open, setOpen] = useState(initiallyOpen);
     const nameRef = useRef<HTMLInputElement>(null);
     return (
         <>
@@ -114,6 +121,44 @@ describe('Dialog', () => {
         expect(onClose).not.toHaveBeenCalled();
 
         screen.getByRole<HTMLDialogElement>('dialog').close();
+        await flushCloseEvents();
+        expect(onClose).toHaveBeenCalledOnce();
+    });
+
+    it('stays open when mounted open in a strict root, and still reports Esc and the close button once', async () => {
+        const onClose = vi.fn();
+        const { user } = renderUi(<Harness onClose={onClose} initiallyOpen />, { strict: true });
+        await flushCloseEvents();
+        expect(screen.getByRole('dialog').hasAttribute('open')).toBe(true);
+        expect(onClose).not.toHaveBeenCalled();
+
+        await user.keyboard('{Escape}');
+        await flushCloseEvents();
+        expect(onClose).toHaveBeenCalledOnce();
+        expect(screen.queryByRole('dialog')).toBeNull();
+
+        await user.click(screen.getByRole('button', { name: 'Rename' }));
+        await user.click(screen.getByRole('button', { name: 'Close' }));
+        await flushCloseEvents();
+        expect(onClose).toHaveBeenCalledTimes(2);
+    });
+
+    it('ignores the close event of a dialog shown again before it arrived', async () => {
+        const onClose = vi.fn();
+        const dialogAt = (initialFocusRef: { current: HTMLElement | null }) => (
+            <Dialog open onClose={onClose} title="Notice" initialFocusRef={initialFocusRef}>
+                <p>Read only.</p>
+            </Dialog>
+        );
+        const { rerender } = renderUi(dialogAt({ current: null }));
+        // A new ref object re-runs the show effect: close() then showModal() within one render.
+        rerender(dialogAt({ current: null }));
+        await flushCloseEvents();
+        expect(screen.getByRole('dialog').hasAttribute('open')).toBe(true);
+        expect(onClose).not.toHaveBeenCalled();
+
+        screen.getByRole<HTMLDialogElement>('dialog').close();
+        await flushCloseEvents();
         expect(onClose).toHaveBeenCalledOnce();
     });
 
