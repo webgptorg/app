@@ -49,11 +49,10 @@ test('link an engine, see it online, open its page and revoke it, under the prod
     const progress = page.locator('section[data-link-state]');
     await expect(progress).toHaveAttribute('data-link-state', 'waiting');
     await checkScreen('/engines/new install command');
-    await page.getByRole('button', { name: 'How Promptbook protects you' }).click();
-    await expect(page.getByRole('dialog', { name: 'How Promptbook protects you' })).toBeVisible();
-    await checkScreen('/engines/new trust dialog');
-    await page.keyboard.press('Escape');
-    await expect(command).toBeVisible();
+    await expect(page.getByRole('link', { name: 'How Promptbook protects you, in a new tab' })).toHaveAttribute(
+        'href',
+        '/trust',
+    );
     for (const tab of ['Docker Compose', 'Already running Promptbook']) {
         await page.getByRole('tab', { name: tab }).click();
         await expect(page.getByRole('tabpanel', { name: tab }).locator('pre code')).toContainText(/[a-z2-7]{26}/);

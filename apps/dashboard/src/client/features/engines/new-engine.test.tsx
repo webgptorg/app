@@ -336,18 +336,14 @@ describe('new engine page', () => {
             expect(app.container.textContent).not.toMatch(/engines_new_/);
         });
 
-        it('keeps the security explanation behind one link, in a dialog that keeps the command', async () => {
-            const app = renderApp({ path: '/engines/new', session: OWNER, script: linking([PENDING]) });
+        it('keeps the security explanation behind one link that opens in a new tab, so the command stays', async () => {
+            renderApp({ path: '/engines/new', session: OWNER, script: linking([PENDING]) });
             expect(await screen.findByText(`bun run dev:link ${CODE}`)).toBeTruthy();
-            await app.user.click(screen.getByRole('button', { name: 'How Promptbook protects you' }));
-            const dialog = await screen.findByRole('dialog', { name: 'How Promptbook protects you' });
-            expect(within(dialog).getByText(/It grants nothing inside the engine/)).toBeTruthy();
-            expect(within(dialog).getByText(/Only the engine can make you its owner\./)).toBeTruthy();
-            await expectNoAxeViolations(app.container);
-            await app.user.keyboard('{Escape}');
-            expect(screen.queryByRole('dialog')).toBeNull();
-            expect(screen.getByText(`bun run dev:link ${CODE}`)).toBeTruthy();
-            expect(app.api.callsTo(apiRoutes.createLinkCode)).toHaveLength(1);
+            const trust = screen.getByRole('link', { name: 'How Promptbook protects you, in a new tab' });
+            expect(trust.getAttribute('href')).toBe('/trust');
+            expect(trust.getAttribute('target')).toBe('_blank');
+            expect(trust.getAttribute('rel')).toBe('noopener');
+            expect(screen.queryByText(/grants nothing inside the engine/)).toBeNull();
         });
 
         it('reports the link-code rate limit and offers to try again', async () => {
