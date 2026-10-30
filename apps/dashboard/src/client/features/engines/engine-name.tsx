@@ -1,8 +1,7 @@
-import { Button, Dialog, Form, FormField, FormSubmit, Input, useZodForm } from '@ptbk/ui';
+import { Button, Dialog, Field, Input } from '@ptbk/ui';
 import { useQueryClient } from '@tanstack/react-query';
 import { Pencil } from 'lucide-react';
-import { useMemo, useState } from 'react';
-import { z } from 'zod';
+import { useRef, useState } from 'react';
 
 import { m } from '../../../paraglide/messages';
 import { apiRoutes, type EngineView } from '../../../shared/api/routes';
@@ -18,15 +17,13 @@ export function canRename(permissions: readonly string[]): boolean {
 }
 
 /** An empty field clears the name; anything else must be a label the API takes as it is. */
-function nameSchema() {
-    return z.strictObject({
-        name: z
-            .string()
-            .transform(normalizeEngineLabel)
-            .refine((name) => name === '' || engineLabelSchema.safeParse(name).success, {
-                error: m.engine_name_invalid(),
-            }),
-    });
+function parseName(typed: string): { readonly label: EngineLabel | null } | null {
+    const name = normalizeEngineLabel(typed);
+    if (name === '') {
+        return { label: null };
+    }
+    const parsed = engineLabelSchema.safeParse(name);
+    return parsed.success ? { label: parsed.data } : null;
 }
 
 function useRenameEngine(engineId: string, onSaved: () => void) {
@@ -44,39 +41,71 @@ function useRenameEngine(engineId: string, onSaved: () => void) {
     });
 }
 
+/**
+ * One field, so plain state rather than the form layer, which would double these routes' bundles. Like the form layer,
+ * it checks on submit and then on every change, so an error goes away as soon as it is fixed.
+ */
 function NameForm(props: {
     readonly engine: Pick<EngineView, 'engineId' | 'label'>;
     readonly onSaved: () => void;
     readonly onCancel?: () => void;
 }) {
     const rename = useRenameEngine(props.engine.engineId, props.onSaved);
-    const schema = useMemo(() => nameSchema(), []);
-    const form = useZodForm({
-        schema,
-        defaultValues: { name: props.engine.label ?? '' },
-        onSubmit: async ({ name }) => {
-            const label = name === '' ? null : engineLabelSchema.parse(name);
-            if (label === props.engine.label) {
-                props.onSaved();
-                return;
-            }
-            await rename.mutateAsync(label).catch(() => undefined);
-        },
-    });
+    const input = useRef<HTMLInputElement>(null);
+    const [typed, setTyped] = useState(props.engine.label ?? '');
+    const [submitted, setSubmitted] = useState(false);
+    const invalid = submitted && parseName(typed) === null;
+    const submit = async () => {
+        setSubmitted(true);
+        const parsed = parseName(typed);
+        if (parsed === null) {
+            input.current?.focus();
+            return;
+        }
+        if (parsed.label === props.engine.label) {
+            props.onSaved();
+            return;
+        }
+        await rename.mutateAsync(parsed.label).catch(() => undefined);
+    };
     return (
-        <Form form={form} className="flex flex-col gap-3">
-            <FormField form={form} name="name" label={m.engine_name_label()} hint={m.engine_name_hint()}>
-                {({ text }) => <Input {...text} autoComplete="off" placeholder={m.engine_name_placeholder()} />}
-            </FormField>
+        <form
+            noValidate
+            className="flex flex-col gap-3"
+            onSubmit={(event) => {
+                event.preventDefault();
+                void submit();
+            }}
+        >
+            <Field
+                label={m.engine_name_label()}
+                hint={m.engine_name_hint()}
+                {...(invalid ? { error: m.engine_name_invalid() } : {})}
+            >
+                {(control) => (
+                    <Input
+                        {...control}
+                        ref={input}
+                        value={typed}
+                        autoComplete="off"
+                        placeholder={m.engine_name_placeholder()}
+                        onChange={(event) => {
+                            setTyped(event.target.value);
+                        }}
+                    />
+                )}
+            </Field>
             <div className={`flex flex-wrap gap-2 ${props.onCancel === undefined ? 'justify-start' : 'justify-end'}`}>
                 {props.onCancel === undefined ? null : (
                     <Button variant="ghost" onClick={props.onCancel}>
                         {m.engine_name_cancel()}
                     </Button>
                 )}
-                <FormSubmit form={form}>{m.engine_name_save()}</FormSubmit>
+                <Button type="submit" variant="primary" loading={rename.isPending}>
+                    {m.engine_name_save()}
+                </Button>
             </div>
-        </Form>
+        </form>
     );
 }
 
