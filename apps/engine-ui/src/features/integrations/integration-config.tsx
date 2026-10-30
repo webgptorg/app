@@ -27,7 +27,8 @@ function UrlText({ url }: { readonly url: string }) {
     return href === null ? (
         <CodeText value={url} />
     ) : (
-        <ExternalLink href={href} className="break-all">
+        // The text is the URL itself, so the host in brackets after it would only repeat it.
+        <ExternalLink href={href} showHost={false} className="break-all">
             {url}
         </ExternalLink>
     );

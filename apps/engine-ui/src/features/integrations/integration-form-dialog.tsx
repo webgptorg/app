@@ -4,6 +4,7 @@ import {
     Banner,
     Button,
     Checkbox,
+    ConfirmDialog,
     Dialog,
     errorMessage,
     Form,
@@ -135,9 +136,15 @@ export function IntegrationFormDialog({ mode, mutations, onClose }: IntegrationF
         },
     });
     const integrationKind = mode.kind === 'create' ? mode.integrationKind : mode.integration.kind;
+    const [confirmingDiscard, setConfirmingDiscard] = useState(false);
+    // Esc, the backdrop and Cancel all land here, so typed work is never dropped without asking.
+    const requestClose = () => {
+        if (form.state.isDefaultValue) onClose();
+        else setConfirmingDiscard(true);
+    };
 
     return (
-        <Dialog open onClose={onClose} title={titleOf(mode)} description={m.integration_form_body()}>
+        <Dialog open onClose={requestClose} title={titleOf(mode)} description={m.integration_form_body()}>
             <Form form={form} className="flex flex-col gap-4">
                 {unmatched.length === 0 ? null : (
                     <Banner tone="danger">
@@ -195,7 +202,7 @@ export function IntegrationFormDialog({ mode, mutations, onClose }: IntegrationF
                 ) : null}
                 <SecretNamesField form={form} />
                 <div className="flex flex-wrap justify-end gap-2">
-                    <Button variant="ghost" onClick={onClose}>
+                    <Button variant="ghost" onClick={requestClose}>
                         {m.integration_cancel()}
                     </Button>
                     <FormSubmit form={form}>
@@ -203,6 +210,17 @@ export function IntegrationFormDialog({ mode, mutations, onClose }: IntegrationF
                     </FormSubmit>
                 </div>
             </Form>
+            <ConfirmDialog
+                open={confirmingDiscard}
+                onClose={() => {
+                    setConfirmingDiscard(false);
+                }}
+                onConfirm={onClose}
+                title={m.integration_discard_title()}
+                description={m.integration_discard_body()}
+                confirmLabel={m.integration_discard()}
+                tone="danger"
+            />
         </Dialog>
     );
 }

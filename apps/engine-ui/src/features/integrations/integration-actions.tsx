@@ -1,5 +1,5 @@
 import type { ReadIntegration } from '@ptbk/engine-api';
-import { Button, ConfirmDialog } from '@ptbk/ui';
+import { ActionMenu, Button, ConfirmDialog } from '@ptbk/ui';
 import { useNavigate } from '@tanstack/react-router';
 import { Pencil, Plug, PlugZap, RefreshCw, Trash2 } from 'lucide-react';
 import { useState } from 'react';
@@ -11,7 +11,7 @@ import { useIntegrationMutations } from './use-integration-mutations';
 
 /**
  * Enable or disable (optimistic), check the connection (waits for the engine and shows the status it returns), edit
- * and delete (after confirmation). Nothing renders without `integrations.manage`.
+ * and delete from the "More actions" menu (after confirmation). Nothing renders without `integrations.manage`.
  */
 export function IntegrationActions({ integration }: { readonly integration: ReadIntegration }) {
     const { can } = usePermissions();
@@ -63,15 +63,20 @@ export function IntegrationActions({ integration }: { readonly integration: Read
                 <Pencil aria-hidden className="size-4" />
                 {m.integration_edit()}
             </Button>
-            <Button
-                variant="danger"
-                onClick={() => {
-                    setConfirmingDelete(true);
-                }}
-            >
-                <Trash2 aria-hidden className="size-4" />
-                {m.integration_delete()}
-            </Button>
+            <ActionMenu
+                items={[
+                    {
+                        kind: 'item',
+                        id: 'delete',
+                        label: m.integration_delete(),
+                        icon: <Trash2 aria-hidden />,
+                        tone: 'danger',
+                        onSelect: () => {
+                            setConfirmingDelete(true);
+                        },
+                    },
+                ]}
+            />
             {editing ? (
                 <LazyIntegrationFormDialog
                     mode={{ kind: 'edit', integration }}

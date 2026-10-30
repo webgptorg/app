@@ -55,7 +55,7 @@ describe('integrations list', { timeout: TIMEOUT_MS }, () => {
         expect(within(docs).getByText('MCP server')).toBeDefined();
         expect(within(docs).getByText('All agents')).toBeDefined();
         expect(within(docs).getByText('Connected')).toBeDefined();
-        expect(within(docs).getByText('2')).toBeDefined();
+        expect(within(docs).getByText('docs:read, docs:search')).toBeDefined();
         const billing = within(table()).getByText('Billing repository').closest('tr') as HTMLElement;
         expect(within(billing).getByText('Repository')).toBeDefined();
         expect(within(billing).getByText('Needs attention')).toBeDefined();
@@ -177,13 +177,26 @@ describe('integrations list', { timeout: TIMEOUT_MS }, () => {
         expect(await screen.findByText('Docs search')).toBeDefined();
     });
 
-    it('offers calendars only as a disabled action with the reason', async () => {
-        await renderIntegrations();
-        const connect = screen.getByRole('button', { name: 'Connect calendar' });
-        expect(connect.getAttribute('aria-disabled')).toBe('true');
-        const reason = document.getElementById(connect.getAttribute('aria-describedby') ?? '');
-        expect(reason?.textContent).toMatch(/sign-in flow this engine does not offer yet/);
-        expect(reason?.getAttribute('role')).toBe('tooltip');
+    it('adds through one menu, where a calendar is a disabled item with the reason', async () => {
+        const { user } = await renderIntegrations();
+        expect(screen.getAllByRole('button', { name: /^Add/ }).map((button) => button.textContent)).toEqual([
+            'Add integration',
+        ]);
+        await user.click(screen.getByRole('button', { name: 'Add integration' }));
+        const menu = await screen.findByRole('menu', { name: 'Add integration' });
+        expect(
+            within(menu)
+                .getAllByRole('menuitem')
+                .map((item) => item.textContent),
+        ).toEqual([
+            'MCP server',
+            'Repository',
+            expect.stringMatching(/^Calendar.*sign-in flow this engine does not offer yet/) as string,
+        ]);
+        const calendar = within(menu).getByRole('menuitem', { name: /Calendar/ });
+        expect(calendar.getAttribute('aria-disabled')).toBe('true');
+        await user.click(calendar);
+        expect(screen.queryByRole('dialog')).toBeNull();
     });
 
     it('has no axe violations', { timeout: AXE_TIMEOUT_MS }, async () => {
@@ -221,14 +234,12 @@ describe('integrations access', { timeout: TIMEOUT_MS }, () => {
         const engine = createIntegrationsEngine({ permissions: allBut('integrations.manage') });
         await renderIntegrations('/integrations', engine);
         await within(table()).findByText('Docs search');
-        expect(screen.queryByRole('button', { name: 'Add MCP server' })).toBeNull();
-        expect(screen.queryByRole('button', { name: 'Add repository' })).toBeNull();
-        expect(screen.queryByRole('button', { name: 'Connect calendar' })).toBeNull();
+        expect(screen.queryByRole('button', { name: 'Add integration' })).toBeNull();
         expect(screen.queryByRole('button', { name: /^Actions for/ })).toBeNull();
 
         renderWithProviders({ path: '/integrations/int-docs', engineApi: engine.client });
         await screen.findByRole('heading', { level: 1, name: 'Docs search' });
-        for (const name of ['Disable', 'Enable', 'Check connection', 'Edit', 'Delete']) {
+        for (const name of ['Disable', 'Enable', 'Check connection', 'Edit', 'More actions']) {
             expect(screen.queryByRole('button', { name })).toBeNull();
         }
     });

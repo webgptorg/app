@@ -32,7 +32,14 @@ function ActivityEntry({ item }: { readonly item: ActivityItem }) {
 }
 
 /** The integration's latest activity (`GET /activity?integrationId`), kept current by the event stream. */
-export function IntegrationActivityList({ integrationId }: { readonly integrationId: IntegrationId }) {
+export function IntegrationActivityList({
+    integrationId,
+    lastActivityAt,
+}: {
+    readonly integrationId: IntegrationId;
+    /** When the engine last saw it used; the feed may hold nothing that recent, so the empty copy must not say "never". */
+    readonly lastActivityAt: string | null;
+}) {
     const activity = useQuery(integrationActivityQueryOptions(useEngineApi(), integrationId));
     return (
         <Card title={m.integration_activity_title()} titleLevel={2}>
@@ -53,7 +60,9 @@ export function IntegrationActivityList({ integrationId }: { readonly integratio
                     retrying={activity.isFetching}
                 />
             ) : activity.data.items.length === 0 ? (
-                <p className="text-sm text-text-muted">{m.integration_activity_none()}</p>
+                <p className="text-sm text-text-muted">
+                    {lastActivityAt === null ? m.integration_activity_none() : m.integration_activity_none_recent()}
+                </p>
             ) : (
                 <ul aria-label={m.integration_activity_title()} className="flex flex-col divide-y divide-divider">
                     {activity.data.items.map((item) => (

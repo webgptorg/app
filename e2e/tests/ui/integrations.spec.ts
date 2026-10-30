@@ -20,7 +20,8 @@ test('adds an MCP server referencing a secret by name and checks its connection'
     await createSecret(page, secretName, canary);
 
     await page.goto(appUrl('/integrations'));
-    await page.getByRole('button', { name: 'Add MCP server' }).click();
+    await page.getByRole('button', { name: 'Add integration' }).click();
+    await page.getByRole('menuitem', { name: 'MCP server' }).click();
     const dialog = page.getByRole('dialog', { name: 'Add MCP server' });
     await expect(dialog.locator('input[type="password"]')).toHaveCount(0);
     await dialog.getByRole('textbox', { name: /^Name/ }).fill(name);
@@ -28,13 +29,15 @@ test('adds an MCP server referencing a secret by name and checks its connection'
     await dialog.getByRole('textbox', { name: /^Server URL/ }).fill('https://mcp.example.com/mcp');
     await dialog.getByRole('checkbox', { name: secretName }).check();
     await dialog.getByRole('button', { name: 'Add' }).click();
-    await expect(page.getByText(`${name} added`)).toBeVisible();
+    await expect(page.getByText(`${name} added.`)).toBeVisible();
 
     await page.getByRole('table').getByRole('link', { name, exact: true }).click();
     await expect(page.getByRole('heading', { level: 1, name: new RegExp(`^${name}`) })).toBeVisible();
     await expect(page.getByRole('region', { name: 'Secrets it uses' })).toContainText(secretName);
     await page.getByRole('button', { name: 'Check connection' }).click();
-    await expect(page.getByText(new RegExp(`^${name}: (Connected|Needs attention|Error|Disabled)$`))).toBeVisible();
+    await expect(
+        page.getByText(new RegExp(`^${name} (connected|still needs attention|could not connect|is disabled).*\\.$`)),
+    ).toBeVisible();
     await expect(page.getByText('Connected', { exact: true }).first()).toBeVisible();
 
     await expectCanariesAbsent([canary], {
