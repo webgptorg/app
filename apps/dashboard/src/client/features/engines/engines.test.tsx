@@ -19,7 +19,7 @@ import {
 import { renderApp } from '../../testing/render-app';
 import { createScriptedApi, ok, problem } from '../../testing/scripted-api';
 
-const OWNER = session({
+const OWNER_PERMISSIONS = {
     permissions: [
         'org.read',
         'billing.read',
@@ -29,7 +29,8 @@ const OWNER = session({
         'engine.rename',
         'engine.revoke',
     ],
-});
+};
+const OWNER = session(OWNER_PERMISSIONS);
 const OTHER_ID = 'q4ndy7ejw3zkp6ftr2hcm5sxlg';
 const OPEN_NAME = /^Open engine/;
 
@@ -176,7 +177,7 @@ describe('engine list', () => {
     });
 
     it('shows revoked and suspended engines without an Open link', async () => {
-        renderApp({
+        const app = renderApp({
             path: '/engines',
             session: OWNER,
             script: engines(
@@ -188,9 +189,55 @@ describe('engine list', () => {
                 }),
             ),
         });
-        expect(await screen.findByText('Revoked')).toBeTruthy();
-        expect(screen.getByText('Suspended')).toBeTruthy();
+        expect(await screen.findByText('Suspended')).toBeTruthy();
+        await app.user.click(screen.getByRole('button', { name: 'Show revoked engines (1)' }));
+        expect(screen.getByText('Revoked')).toBeTruthy();
         expect(screen.queryByRole('link', { name: OPEN_NAME })).toBeNull();
+    });
+
+    it('lists engines by what needs attention, and keeps revoked ones behind a toggle', async () => {
+        const app = renderApp({
+            path: '/engines',
+            session: OWNER,
+            script: engines(
+                engineView({
+                    engineId: 'r'.repeat(26) as EngineView['engineId'],
+                    status: 'suspended',
+                    suspendedBy: 'owner',
+                }),
+                engineView({ engineId: 'n'.repeat(26) as EngineView['engineId'] }),
+                engineView({ engineId: 'f'.repeat(26) as EngineView['engineId'], status: 'offline' }),
+            ),
+        });
+        await screen.findByText('Offline');
+        const table = screen.getByRole('table', { name: 'Engines of this organization' });
+        const names = () =>
+            within(table)
+                .getAllByRole('link', { name: /…$/ })
+                .map((link) => link.textContent);
+        expect(names()).toEqual(['ffffffff…', 'nnnnnnnn…']);
+        const toggle = screen.getByRole('button', { name: 'Show revoked engines (1)' });
+        expect(toggle.getAttribute('aria-pressed')).toBe('false');
+        await app.user.click(toggle);
+        expect(toggle.getAttribute('aria-pressed')).toBe('true');
+        expect(names()).toEqual(['ffffffff…', 'nnnnnnnn…', 'rrrrrrrr…']);
+    });
+
+    it('shows a list of revoked engines only without hiding them', async () => {
+        renderApp({
+            path: '/engines',
+            session: OWNER,
+            script: engines(engineView({ status: 'suspended', suspendedBy: 'owner' })),
+        });
+        expect(await screen.findByText('Revoked')).toBeTruthy();
+        expect(screen.queryByRole('button', { name: /Show revoked engines/ })).toBeNull();
+    });
+
+    it('mutes what an offline engine last reported and drops its stale update notice', async () => {
+        renderApp({ path: '/engines', session: OWNER, script: engines(engineView({ status: 'offline' })) });
+        await screen.findByText('Offline');
+        expect(screen.getByText('1.4.2').className).toContain('text-text-muted');
+        expect(screen.queryByText('Update available')).toBeNull();
     });
 
     it('opens an engine at its exact address in a new tab, without opener or referrer', async () => {
@@ -249,11 +296,14 @@ describe('engine page', () => {
         expect(await screen.findByRole('heading', { name: `${ENGINE_ID.slice(0, 8)}…`, level: 1 })).toBeTruthy();
         expect(screen.getByText(/security page shows the same pattern and code/)).toBeTruthy();
         expect(screen.getByText(ENGINE_ID)).toBeTruthy();
-        expect(screen.getByText(`${ENGINE_ID}.${ENGINE_DOMAIN}`)).toBeTruthy();
+        // Rendered label by label so a line breaks only after a dot; the text is still the exact address.
+        const address = screen.getByRole('button', { name: 'Copy address' }).parentElement?.querySelector('code');
+        expect(address?.textContent).toBe(`${ENGINE_ID}.${ENGINE_DOMAIN}`);
+        expect(address?.querySelectorAll('wbr')).toHaveLength(3);
         expect(screen.getByText('agents.customer.test')).toBeTruthy();
         expect(screen.getByText('Through Promptbook relays')).toBeTruthy();
         const heartbeat = screen.getByRole('heading', { name: 'Last heartbeat' }).closest('section') as HTMLElement;
-        for (const text of ['1,760,000,000,123', '1.4.2', '3 h 25 min', '40%', '70%', 'Medium', 'Update available']) {
+        for (const text of ['1760000000123', '1.4.2', '3 h 25 min', '40%', '70%', 'Medium', 'Update available']) {
             expect(within(heartbeat).getByText(text)).toBeTruthy();
         }
         expect(app.api.callsTo(apiRoutes.getEngine)).toEqual([{ params: { engineId: ENGINE_ID } }]);
@@ -278,10 +328,28 @@ describe('engine page', () => {
             script: (api) => api.on(apiRoutes.getEngine, problem(404, 'not-found')),
         });
         expect(await screen.findByRole('heading', { name: 'Engine not found', level: 1 })).toBeTruthy();
+        expect(screen.getByText('This engine does not exist in this organization.')).toBeTruthy();
+        await app.user.click(screen.getByRole('link', { name: 'Go to your engines' }));
+        expect(app.history.location.pathname).toBe('/engines');
         app.unmount();
         const invalid = renderApp({ path: '/engines/not-an-engine', session: OWNER });
         expect(await screen.findByRole('heading', { name: 'Engine not found', level: 1 })).toBeTruthy();
         expect(invalid.api.callsTo(apiRoutes.getEngine)).toHaveLength(0);
+    });
+
+    it('suggests another organization when the person belongs to several', async () => {
+        renderApp({
+            path: `/engines/${OTHER_ID}`,
+            session: session({
+                ...OWNER_PERMISSIONS,
+                memberships: [
+                    { orgId: 'aaaaaaaaaaaaaaaaaaaaaaaaaa', kind: 'personal', name: null, role: 'owner' },
+                    { orgId: 'bbbbbbbbbbbbbbbbbbbbbbbbbb', kind: 'team', name: 'Acme', role: 'owner' },
+                ],
+            }),
+            script: (api) => api.on(apiRoutes.getEngine, problem(404, 'not-found')),
+        });
+        expect(await screen.findByText(/belongs to another of your organizations/)).toBeTruthy();
     });
 
     it('explains a revocation and offers neither Open nor Revoke', async () => {
@@ -295,7 +363,7 @@ describe('engine page', () => {
         expect(screen.queryByRole('button', { name: 'Revoke engine' })).toBeNull();
     });
 
-    it('tells the owner of an offline engine when it was last seen, what to run on the server, and where to read on', async () => {
+    it('warns that an offline engine is not reporting, says when it was last seen once, and what to run', async () => {
         renderApp({
             path: `/engines/${ENGINE_ID}`,
             session: OWNER,
@@ -304,7 +372,11 @@ describe('engine page', () => {
                 api.on(apiRoutes.getInstallGuide, ok({ url: INSTALL_GUIDE_URL }));
             },
         });
-        expect(await screen.findByText(/^Last seen .+\. If the server is up, run this on it:$/)).toBeTruthy();
+        const banner = await screen.findByText('This engine is not reporting');
+        // A warning, not a tip: announced as an alert.
+        expect(banner.closest('[role="alert"]')).not.toBeNull();
+        expect(screen.getByText('If its server is up, run this on it:')).toBeTruthy();
+        expect(screen.getAllByText('2 hours ago')).toHaveLength(1);
         expect(screen.getByText('promptbook-engine status')).toBeTruthy();
         expect(screen.getByRole('button', { name: 'Copy command' })).toBeTruthy();
         const guide = await screen.findByRole('link', { name: /Troubleshooting in the install guide/ });
@@ -328,7 +400,7 @@ describe('engine page', () => {
     it('shows no offline hint for an engine that is online or has never been seen', async () => {
         const app = renderApp({ path: `/engines/${ENGINE_ID}`, session: OWNER, script: engine(engineView()) });
         expect(await screen.findByRole('heading', { name: 'Last heartbeat' })).toBeTruthy();
-        expect(screen.queryByText(/If the server is up/)).toBeNull();
+        expect(screen.queryByText(/If its server is up/)).toBeNull();
         app.unmount();
         renderApp({
             path: `/engines/${ENGINE_ID}`,
@@ -336,7 +408,7 @@ describe('engine page', () => {
             script: engine(engineView({ status: 'never-seen', lastSeenAt: null, heartbeat: null })),
         });
         expect(await screen.findByRole('heading', { name: 'Last heartbeat' })).toBeTruthy();
-        expect(screen.queryByText(/If the server is up/)).toBeNull();
+        expect(screen.queryByText(/If its server is up/)).toBeNull();
     });
 
     it('offers revocation only with engine.revoke', async () => {
@@ -490,7 +562,6 @@ describe('reachability', () => {
             script: engine(engineView({ reachableRelays: 0 })),
         });
         expect(await screen.findByText(NOT_REACHABLE)).toBeTruthy();
-        expect(screen.getByText('Reachability')).toBeTruthy();
         await expectNoAxeViolations(app.container);
     });
 
@@ -506,7 +577,6 @@ describe('reachability', () => {
     it('leaves the engine page without a reachability line while relays report nothing', async () => {
         renderApp({ path: `/engines/${ENGINE_ID}`, session: OWNER, script: engine(engineView()) });
         expect(await screen.findByText('Through Promptbook relays')).toBeTruthy();
-        expect(screen.queryByText('Reachability')).toBeNull();
         expect(screen.queryByText(/^Reachable through|^Not reachable/)).toBeNull();
     });
 });
@@ -597,10 +667,10 @@ describe('engine domain', () => {
 });
 
 describe('revoke', () => {
-    function revokable() {
+    function revokable(options: { readonly steppedUpUntil?: number } = {}) {
         return renderApp({
             path: `/engines/${ENGINE_ID}`,
-            session: OWNER,
+            session: session({ ...OWNER_PERMISSIONS, steppedUpUntil: options.steppedUpUntil ?? null }),
             script: (api) => {
                 const revoked = engineView({ status: 'suspended', suspendedBy: 'owner' });
                 // The server answers the revoked engine from then on, as the refetch after the mutation shows.
@@ -614,21 +684,25 @@ describe('revoke', () => {
         });
     }
 
-    it('explains recovery and sends the request only after the engine ID’s first characters are typed', async () => {
+    async function confirmIn(app: ReturnType<typeof revokable>, button: string | RegExp) {
+        await app.user.click(await screen.findByRole('button', { name: 'Revoke engine' }));
+        const dialog = await screen.findByRole('dialog', { name: /^Revoke engine/ });
+        await app.user.type(within(dialog).getByRole('textbox'), ENGINE_ID.slice(0, 8));
+        await app.user.click(within(dialog).getByRole('button', { name: button }));
+        return dialog;
+    }
+
+    it('states the consequence and sends the request only after the engine ID’s first characters are typed', async () => {
         const app = revokable();
         await app.user.click(await screen.findByRole('button', { name: 'Revoke engine' }));
         const dialog = await screen.findByRole('dialog', { name: `Revoke engine ${ENGINE_ID.slice(0, 8)}…?` });
-        for (const text of [
-            /within minutes/,
-            /permanent for this engine ID/,
-            /new key/,
-            /owner reset on the engine/,
-            /new link code/,
-            /passkeys for the old address/,
-        ]) {
-            expect(within(dialog).getByText(text)).toBeTruthy();
-        }
-        const confirm = within(dialog).getByRole('button', { name: 'Revoke permanently' });
+        expect(within(dialog).getByText(/within minutes. This cannot be undone/)).toBeTruthy();
+        expect(
+            within(dialog)
+                .getAllByRole('listitem')
+                .map((item) => item.textContent),
+        ).toEqual([expect.stringMatching(/address stops working/), expect.stringMatching(/link it with a new code/)]);
+        const confirm = within(dialog).getByRole('button', { name: 'Revoke with passkey' });
         expect((confirm as HTMLButtonElement).disabled).toBe(true);
         await app.user.type(within(dialog).getByRole('textbox'), ENGINE_ID.slice(0, 7));
         expect((confirm as HTMLButtonElement).disabled).toBe(true);
@@ -646,18 +720,45 @@ describe('revoke', () => {
         expect(screen.queryByRole('button', { name: 'Revoke engine' })).toBeNull();
     });
 
-    it('runs the step-up when the API asks for one, then revokes', async () => {
+    it('runs the passkey check from the confirm button, without a second dialog on top', async () => {
         const app = revokable();
-        app.api.once(apiRoutes.revokeEngine, problem(403, 'step-up-required'));
-        await app.user.click(await screen.findByRole('button', { name: 'Revoke engine' }));
-        const dialog = await screen.findByRole('dialog', { name: /Revoke engine/ });
-        await app.user.type(within(dialog).getByRole('textbox'), ENGINE_ID.slice(0, 8));
-        await app.user.click(within(dialog).getByRole('button', { name: 'Revoke permanently' }));
-        const stepUp = await screen.findByRole('dialog', { name: 'Confirm it is you' });
-        await app.user.click(within(stepUp).getByRole('button', { name: 'Use passkey' }));
+        await confirmIn(app, 'Revoke with passkey');
         expect(await screen.findByText('Engine revoked')).toBeTruthy();
-        expect(app.api.callsTo(apiRoutes.revokeEngine)).toHaveLength(2);
+        expect(screen.queryByRole('dialog', { name: 'Confirm it is you' })).toBeNull();
+        expect(app.passkeys.authenticate).toHaveBeenCalledOnce();
         expect(app.api.callsTo(apiRoutes.stepUpVerify)).toHaveLength(1);
+        expect(app.api.callsTo(apiRoutes.revokeEngine)).toHaveLength(1);
+    });
+
+    it('asks for no passkey within the step-up window', async () => {
+        const app = revokable({ steppedUpUntil: NOW + 120_000 });
+        await confirmIn(app, 'Revoke permanently');
+        expect(await screen.findByText('Engine revoked')).toBeTruthy();
+        expect(app.passkeys.authenticate).not.toHaveBeenCalled();
+        expect(app.api.callsTo(apiRoutes.stepUpOptions)).toEqual([]);
+    });
+
+    it('still checks in place when the API asks for a step-up the session did not expect', async () => {
+        const app = revokable({ steppedUpUntil: NOW + 120_000 });
+        app.api.once(apiRoutes.revokeEngine, problem(403, 'step-up-required'));
+        await confirmIn(app, 'Revoke permanently');
+        expect(await screen.findByText('Engine revoked')).toBeTruthy();
+        expect(screen.queryByRole('dialog', { name: 'Confirm it is you' })).toBeNull();
+        expect(app.api.callsTo(apiRoutes.stepUpVerify)).toHaveLength(1);
+        expect(app.api.callsTo(apiRoutes.revokeEngine)).toHaveLength(2);
+    });
+
+    it('says in the dialog why the passkey check failed, sends nothing, and tries again from the same button', async () => {
+        const app = revokable();
+        app.passkeys.failNext('cancelled');
+        const dialog = await confirmIn(app, 'Revoke with passkey');
+        expect(await within(dialog).findByRole('alert')).toBeTruthy();
+        expect(within(dialog).getByText(/passkey prompt was closed/)).toBeTruthy();
+        expect(app.api.callsTo(apiRoutes.revokeEngine)).toEqual([]);
+        expect(screen.queryByText('Engine revoked')).toBeNull();
+        await app.user.click(within(dialog).getByRole('button', { name: 'Revoke with passkey' }));
+        expect(await screen.findByText('Engine revoked')).toBeTruthy();
+        expect(app.api.callsTo(apiRoutes.revokeEngine)).toHaveLength(1);
     });
 
     it('explains the recovery cooldown and changes nothing', async () => {
@@ -666,16 +767,14 @@ describe('revoke', () => {
             session: session({
                 permissions: ['org.read', 'engine.read', 'engine.revoke'],
                 recoveryCooldownEndsAt: NOW + 3_600_000,
+                steppedUpUntil: NOW + 120_000,
             }),
             script: (api) => {
                 engine(engineView())(api);
                 api.on(apiRoutes.revokeEngine, problem(403, 'recovery-cooldown'));
             },
         });
-        await app.user.click(await screen.findByRole('button', { name: 'Revoke engine' }));
-        const dialog = await screen.findByRole('dialog', { name: /Revoke engine/ });
-        await app.user.type(within(dialog).getByRole('textbox'), ENGINE_ID.slice(0, 8));
-        await app.user.click(within(dialog).getByRole('button', { name: 'Revoke permanently' }));
+        await confirmIn(app, 'Revoke permanently');
         expect(await screen.findByText(/recovered/i)).toBeTruthy();
         expect(screen.getAllByText('Online').length).toBeGreaterThan(0);
     });

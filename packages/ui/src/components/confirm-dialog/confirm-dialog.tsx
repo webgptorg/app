@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 
 import { useUiMessages } from '../../i18n/ui-provider';
 import { Banner } from '../banner/banner';
@@ -13,6 +14,8 @@ export interface ConfirmDialogProps {
     readonly onConfirm: () => void | Promise<void>;
     readonly title: string;
     readonly description?: string;
+    /** What the action means in detail, under the description, e.g. a short list of consequences. */
+    readonly children?: ReactNode;
     readonly confirmLabel: string;
     readonly tone?: 'primary' | 'danger';
     /** For irreversible actions: the confirm button stays disabled until this exact text is typed. */
@@ -30,6 +33,7 @@ export function ConfirmDialog({
     onConfirm,
     title,
     description,
+    children,
     confirmLabel,
     tone = 'primary',
     confirmPhrase,
@@ -73,6 +77,7 @@ export function ConfirmDialog({
                 </>
             }
         >
+            {children}
             {error === undefined ? null : <Banner tone="danger">{error}</Banner>}
             {confirmPhrase === undefined ? null : (
                 <Field label={messages.typeToConfirm({ phrase: confirmPhrase })}>

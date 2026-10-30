@@ -1,21 +1,45 @@
 import { Banner, Button, Dialog } from '@ptbk/ui';
+import { useQueryClient } from '@tanstack/react-query';
 import { createContext, use, useCallback, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 
 import { m } from '../../../paraglide/messages';
-import { hasProblem } from '../../api/queries';
+import type { SessionView } from '../../../shared/api/routes';
+import { hasProblem, queryKeys } from '../../api/queries';
 import { useApiClient } from '../../api/api-client-context';
 import { useBrowser } from '../../core/browser';
 import { stepUpWithPasskey } from '../passkeys/ceremonies';
 import type { CeremonyFailure } from '../passkeys/ceremonies';
 import { ceremonyFailureMessage } from '../passkeys/ceremony-messages';
 
+/** A passkey check run in place failed; the screen that asked for it says why, where the person is. */
+export class StepUpFailedError extends Error {
+    readonly failure: CeremonyFailure;
+
+    constructor(failure: CeremonyFailure) {
+        super('Step-up failed');
+        this.name = 'StepUpFailedError';
+        this.failure = failure;
+    }
+}
+
+/**
+ * `dialog`: a `step-up-required` answer opens the step-up dialog. `in-place`: for an action confirmed in a dialog
+ * already, the passkey check runs straight away, so two modals never stack; a failed check throws
+ * {@link StepUpFailedError}.
+ */
+export type StepUpMode = 'dialog' | 'in-place';
+
 interface StepUpContextValue {
     /**
-     * Runs `action`; when the API answers `step-up-required`, asks for a fresh passkey check in a dialog and, once it
-     * passed, runs `action` again. Cancelling rethrows the original failure.
+     * Runs `action`; when the API answers `step-up-required`, asks for a fresh passkey check and, once it passed, runs
+     * `action` again. Cancelling the dialog rethrows the original failure.
      */
-    readonly withStepUp: <T>(action: () => Promise<T>) => Promise<T>;
+    readonly withStepUp: <T>(action: () => Promise<T>, mode?: StepUpMode) => Promise<T>;
+    /** Whether a sensitive action would need a fresh passkey check now. */
+    readonly needsStepUp: () => boolean;
+    /** The passkey check on its own, without a dialog; throws {@link StepUpFailedError} when it fails. */
+    readonly stepUpInPlace: () => Promise<void>;
 }
 
 const StepUpContext = createContext<StepUpContextValue | null>(null);
@@ -27,7 +51,8 @@ type DialogState =
 /** Sensitive actions can require a sign-in or step-up within the last five minutes; the dashboard does it in place. */
 export function StepUpProvider(props: { readonly children: ReactNode }) {
     const api = useApiClient();
-    const { passkeys } = useBrowser();
+    const { passkeys, now } = useBrowser();
+    const queryClient = useQueryClient();
     const [state, setState] = useState<DialogState>({ kind: 'closed' });
     const settle = useRef<((passed: boolean) => void) | null>(null);
 
@@ -47,20 +72,41 @@ export function StepUpProvider(props: { readonly children: ReactNode }) {
         [],
     );
 
+    const stepUpInPlace = useCallback(async () => {
+        const result = await stepUpWithPasskey({ api, passkeys });
+        if (result.kind === 'failed') {
+            throw new StepUpFailedError(result.failure);
+        }
+        // So the next sensitive action within the window goes straight through, without asking again.
+        queryClient.setQueryData<SessionView | null>(queryKeys.session, (session) =>
+            session === undefined || session === null ? session : { ...session, steppedUpUntil: result.value },
+        );
+    }, [api, passkeys, queryClient]);
+
     const value = useMemo<StepUpContextValue>(
         () => ({
-            withStepUp: async (action) => {
+            withStepUp: async (action, mode = 'dialog') => {
                 try {
                     return await action();
                 } catch (error) {
-                    if (!hasProblem(error, 'step-up-required') || !(await confirm())) {
+                    if (!hasProblem(error, 'step-up-required')) {
+                        throw error;
+                    }
+                    if (mode === 'in-place') {
+                        await stepUpInPlace();
+                    } else if (!(await confirm())) {
                         throw error;
                     }
                     return action();
                 }
             },
+            needsStepUp: () => {
+                const until = queryClient.getQueryData<SessionView | null>(queryKeys.session)?.steppedUpUntil ?? null;
+                return until === null || until <= now();
+            },
+            stepUpInPlace,
         }),
-        [confirm],
+        [confirm, stepUpInPlace, queryClient, now],
     );
 
     const verify = async () => {

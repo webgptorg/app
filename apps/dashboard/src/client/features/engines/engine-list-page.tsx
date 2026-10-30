@@ -1,21 +1,31 @@
-import { Banner, Card, CopyButton, createDataTableColumnHelper, DataTable, EmptyState, TrustMark } from '@ptbk/ui';
+import {
+    Banner,
+    Button,
+    Card,
+    CopyButton,
+    createDataTableColumnHelper,
+    DataTable,
+    EmptyState,
+    TrustMark,
+} from '@ptbk/ui';
 import { deriveEngineFingerprint } from '@ptbk/protocol';
 import type { DataTableColumnDef } from '@ptbk/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Plus, Server } from 'lucide-react';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 
 import { m } from '../../../paraglide/messages';
 import type { EngineView } from '../../../shared/api/routes';
 import { useApiClient } from '../../api/api-client-context';
 import { enginesQuery } from '../../api/queries';
-import { ButtonLink, Link } from '../../core/link';
 import { engineLabel } from '../../../shared/engine-label';
+import { ButtonLink, Link } from '../../core/link';
 import { useSession } from '../session/use-session';
 import { EngineOpenLink } from './engine-open-link';
 import { EngineReachability } from './engine-reachability';
 import { EngineStatusBadge } from './engine-status-badge';
 import { updateStateLabel } from './engine-labels';
+import { byAttention, isRevoked, reportsLive } from './engine-order';
 import { LastSeen, useNowFor } from './engine-values';
 
 const READ_PERMISSION = 'engine.read';
@@ -102,10 +112,12 @@ function engineColumns(now: Date): DataTableColumnDef<EngineView>[] {
             id: 'version',
             header: m.engines_column_version(),
             cell: ({ row }) => {
-                const update = row.original.heartbeat?.update;
+                // What a silent engine last reported is history: muted, and no update it may long have installed.
+                const live = reportsLive(row.original);
+                const update = live ? row.original.heartbeat?.update : undefined;
                 return (
                     <span className="flex flex-col gap-1 whitespace-nowrap">
-                        <span className="font-mono text-sm">
+                        <span className={`font-mono text-sm ${live ? '' : 'text-text-muted'}`}>
                             {row.original.heartbeat?.version ?? row.original.registeredVersion}
                         </span>
                         {update === undefined || update === 'none' ? null : (
@@ -156,6 +168,15 @@ export function EngineListPage() {
     const now = useNowFor(engines.dataUpdatedAt);
     const tableColumns = useMemo(() => engineColumns(now), [now]);
     const hasEngines = (engines.data?.length ?? 0) > 0;
+    const [showRevoked, setShowRevoked] = useState(false);
+    const ordered = useMemo(() => byAttention(engines.data ?? NO_ENGINES), [engines.data]);
+    const revoked = ordered.filter(isRevoked).length;
+    // Revoked engines can never come back; they stay one click away, unless nothing else is left to show.
+    const hideRevoked = !showRevoked && revoked < ordered.length;
+    const rows = useMemo(
+        () => (hideRevoked ? ordered.filter((engine) => !isRevoked(engine)) : ordered),
+        [hideRevoked, ordered],
+    );
 
     function content() {
         if (!canRead) {
@@ -165,26 +186,42 @@ export function EngineListPage() {
             return <NoEngines canLink={canLink} />;
         }
         return (
-            <DataTable<EngineView>
-                caption={m.engines_table_caption()}
-                mode="client"
-                columns={tableColumns}
-                data={engines.data ?? NO_ENGINES}
-                getRowId={(engine) => engine.engineId}
-                getRowLabel={engineLabel}
-                loading={engines.isPending}
-                virtualizeAbove={ENGINE_PAGE_ROWS}
-                skeletonRows={2}
-                {...(engines.isError
-                    ? {
-                          error: {
-                              message: m.engines_error(),
-                              onRetry: () => void engines.refetch(),
-                              retrying: engines.isFetching,
-                          },
-                      }
-                    : {})}
-            />
+            <div className="flex flex-col gap-3">
+                <DataTable<EngineView>
+                    caption={m.engines_table_caption()}
+                    mode="client"
+                    columns={tableColumns}
+                    data={rows}
+                    getRowId={(engine) => engine.engineId}
+                    getRowLabel={engineLabel}
+                    loading={engines.isPending}
+                    virtualizeAbove={ENGINE_PAGE_ROWS}
+                    skeletonRows={2}
+                    {...(engines.isError
+                        ? {
+                              error: {
+                                  message: m.engines_error(),
+                                  onRetry: () => void engines.refetch(),
+                                  retrying: engines.isFetching,
+                              },
+                          }
+                        : {})}
+                />
+                {revoked === 0 || revoked === ordered.length ? null : (
+                    <div>
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            aria-pressed={showRevoked}
+                            onClick={() => {
+                                setShowRevoked(!showRevoked);
+                            }}
+                        >
+                            {m.engines_show_revoked({ count: revoked })}
+                        </Button>
+                    </div>
+                )}
+            </div>
         );
     }
 
