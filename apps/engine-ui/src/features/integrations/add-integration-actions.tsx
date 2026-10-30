@@ -1,6 +1,6 @@
 import type { AgentId } from '@ptbk/engine-api';
-import { Button } from '@ptbk/ui';
-import { CalendarPlus, FolderGit2, Plus } from 'lucide-react';
+import { buttonClassName, Menu } from '@ptbk/ui';
+import { CalendarPlus, ChevronDown, FolderGit2, Plus, Server } from 'lucide-react';
 import { useState } from 'react';
 
 import { m } from '../../paraglide/messages';
@@ -10,9 +10,9 @@ import { LazyIntegrationFormDialog } from './lazy-integration-form-dialog';
 import { useIntegrationMutations } from './use-integration-mutations';
 
 /**
- * "Add MCP server" and "Add repository" for members with `integrations.manage`. Calendars connect through an OAuth
- * flow the engine runs on its own origin, and that contract route is still `draft`, so "Connect calendar" stays
- * disabled with the reason in its tooltip; no provider page or script is ever opened from here.
+ * One "Add integration" menu for members with `integrations.manage`. Calendars connect through an OAuth flow the
+ * engine runs on its own origin, and that contract route is still `draft`, so the calendar item stays disabled with the
+ * reason as its description; no provider page or script is ever opened from here.
  */
 export function AddIntegrationActions({ agentId }: { readonly agentId?: AgentId }) {
     const { can } = usePermissions();
@@ -21,29 +21,46 @@ export function AddIntegrationActions({ agentId }: { readonly agentId?: AgentId 
     if (!can('integrations.manage')) return null;
     return (
         <>
-            <div className="flex flex-wrap gap-2">
-                <Button
-                    variant="primary"
-                    onClick={() => {
-                        setAdding('mcp-server');
-                    }}
-                >
-                    <Plus aria-hidden className="size-4" />
-                    {m.integrations_add_mcp()}
-                </Button>
-                <Button
-                    onClick={() => {
-                        setAdding('repository');
-                    }}
-                >
-                    <FolderGit2 aria-hidden className="size-4" />
-                    {m.integrations_add_repository()}
-                </Button>
-                <Button disabled disabledReason={m.integrations_connect_calendar_unavailable()}>
-                    <CalendarPlus aria-hidden className="size-4" />
-                    {m.integrations_connect_calendar()}
-                </Button>
-            </div>
+            <Menu
+                label={m.integrations_add()}
+                align="end"
+                items={[
+                    {
+                        kind: 'item',
+                        id: 'mcp-server',
+                        label: m.integration_kind_mcp_server(),
+                        icon: <Server aria-hidden />,
+                        onSelect: () => {
+                            setAdding('mcp-server');
+                        },
+                    },
+                    {
+                        kind: 'item',
+                        id: 'repository',
+                        label: m.integration_kind_repository(),
+                        icon: <FolderGit2 aria-hidden />,
+                        onSelect: () => {
+                            setAdding('repository');
+                        },
+                    },
+                    {
+                        kind: 'item',
+                        id: 'calendar',
+                        label: m.integration_kind_calendar(),
+                        description: m.integrations_connect_calendar_unavailable(),
+                        icon: <CalendarPlus aria-hidden />,
+                        disabled: true,
+                        onSelect: () => undefined,
+                    },
+                ]}
+                trigger={(props) => (
+                    <button {...props} type="button" className={buttonClassName('primary', 'md')}>
+                        <Plus aria-hidden className="size-4" />
+                        {m.integrations_add()}
+                        <ChevronDown aria-hidden className="size-4" />
+                    </button>
+                )}
+            />
             {adding === null ? null : (
                 <LazyIntegrationFormDialog
                     mode={{ kind: 'create', integrationKind: adding, ...(agentId === undefined ? {} : { agentId }) }}

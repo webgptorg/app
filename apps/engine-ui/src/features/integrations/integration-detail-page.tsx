@@ -8,6 +8,7 @@ import type { ReactNode } from 'react';
 import { classifyApiError } from '../../app/api-errors';
 import { ButtonLink, Link } from '../../app/link';
 import { m } from '../../paraglide/messages';
+import { usePermissions } from '../session/use-permissions';
 import { BackLink, Page } from '../shell/page';
 import { IntegrationActions } from './integration-actions';
 import { IntegrationActivityList } from './integration-activity-list';
@@ -75,6 +76,20 @@ function AgentLink({ agentId }: { readonly agentId: AgentId }) {
     );
 }
 
+/** The fix for the first secret the integration cannot use, on the Secrets page; nothing for who may not see secrets. */
+function SecretFix({ secretRefs }: { readonly secretRefs: ReadIntegration['secretRefs'] }) {
+    const { can } = usePermissions();
+    const unresolved = secretRefs.find(({ state }) => state !== 'resolved');
+    if (unresolved === undefined || !can('secrets.read')) return null;
+    return (
+        <Link to="/secrets" search={{ q: unresolved.name }} className="break-all">
+            {unresolved.state === 'revoked'
+                ? m.integration_secret_replace({ name: unresolved.name })
+                : m.integration_secret_add({ name: unresolved.name })}
+        </Link>
+    );
+}
+
 function IntegrationDetail({ integration }: { readonly integration: ReadIntegration }) {
     return (
         <Page
@@ -84,7 +99,10 @@ function IntegrationDetail({ integration }: { readonly integration: ReadIntegrat
             actions={<IntegrationActions integration={integration} />}
         >
             {needsAttention(integration.status) && integration.statusDetail !== null ? (
-                <Banner tone={integration.status === 'error' ? 'danger' : 'warning'}>
+                <Banner
+                    tone={integration.status === 'error' ? 'danger' : 'warning'}
+                    action={<SecretFix secretRefs={integration.secretRefs} />}
+                >
                     {/* From the engine, possibly quoting a third party: text only. */}
                     <span className="break-words whitespace-pre-wrap">{integration.statusDetail}</span>
                 </Banner>
@@ -128,7 +146,7 @@ function IntegrationDetail({ integration }: { readonly integration: ReadIntegrat
             </Card>
             <IntegrationTools tools={integration.tools} />
             <IntegrationSecrets secretRefs={integration.secretRefs} />
-            <IntegrationActivityList integrationId={integration.id} />
+            <IntegrationActivityList integrationId={integration.id} lastActivityAt={integration.lastActivityAt} />
         </Page>
     );
 }

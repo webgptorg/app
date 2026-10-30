@@ -1,9 +1,19 @@
 import { INTEGRATION_KINDS, INTEGRATION_STATUSES } from '@ptbk/engine-api';
 import type { AgentId, ReadIntegration } from '@ptbk/engine-api';
-import { Button, Checkbox, createDataTableColumnHelper, DataTable, Field, RelativeTime, Select } from '@ptbk/ui';
+import {
+    Button,
+    Checkbox,
+    ConfirmDialog,
+    createDataTableColumnHelper,
+    DataTable,
+    Field,
+    RelativeTime,
+    Select,
+} from '@ptbk/ui';
 import type { DataTableColumnDef, MenuEntry } from '@ptbk/ui';
 import { useQueryClient } from '@tanstack/react-query';
-import { useEffect, useMemo } from 'react';
+import { Pencil, Plug, PlugZap, RefreshCw, Trash2 } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { useBrowser } from '../../app/browser-context';
 import { useCursorPages } from '../../app/cursor-pages';
@@ -16,8 +26,10 @@ import { hasIntegrationFilters, integrationListParams, selectedStatuses } from '
 import type { IntegrationSearch } from './integration-search';
 import { IntegrationStatusBadge, integrationKindLabel, integrationStatusLabel, kindNameOf } from './integration-status';
 import { integrationListQueryOptions, useIntegrations } from './integrations-queries';
+import { LazyIntegrationFormDialog } from './lazy-integration-form-dialog';
 import { useAgentNames } from './use-agent-names';
 import { useIntegrationMutations } from './use-integration-mutations';
+import type { IntegrationMutations } from './use-integration-mutations';
 
 const NO_INTEGRATIONS: readonly ReadIntegration[] = [];
 export const INTEGRATION_COLUMNS_STORAGE_KEY = 'ptbk.integrations.columns';
@@ -75,12 +87,21 @@ function useIntegrationColumns(): DataTableColumnDef<ReadIntegration>[] {
                 meta: { priority: 1 },
                 cell: ({ row }) => <IntegrationStatusBadge status={row.original.status} />,
             }),
-            column.accessor((integration) => integration.scopes.length, {
+            column.accessor((integration) => integration.scopes.join(', '), {
                 id: 'scopes',
                 header: m.integrations_column_scopes(),
                 enableSorting: false,
                 meta: { priority: 5 },
-                cell: ({ row }) => row.original.scopes.length,
+                cell: ({ row }) => {
+                    const scopes = row.original.scopes.join(', ');
+                    return scopes === '' ? (
+                        <span className="text-text-muted">—</span>
+                    ) : (
+                        <span title={scopes} className="line-clamp-2 max-w-64 break-words">
+                            {scopes}
+                        </span>
+                    );
+                },
             }),
             column.accessor('lastActivityAt', {
                 header: m.integrations_column_last_activity(),
@@ -97,19 +118,37 @@ function useIntegrationColumns(): DataTableColumnDef<ReadIntegration>[] {
     }, []);
 }
 
-/** Enable or disable and re-check from the row menu; empty without `integrations.manage`, so no menu renders. */
-function useIntegrationRowActions(): (integration: ReadIntegration) => readonly MenuEntry[] {
+type PendingRowAction = { readonly kind: 'edit' | 'delete'; readonly integration: ReadIntegration } | null;
+
+/**
+ * The same set as the detail page, in its order: edit, enable or disable, check, and delete last and set apart. Empty
+ * without `integrations.manage`, so no menu renders.
+ */
+function useIntegrationRowActions(
+    mutations: IntegrationMutations,
+    onPending: (pending: PendingRowAction) => void,
+): (integration: ReadIntegration) => readonly MenuEntry[] {
     const { can } = usePermissions();
-    const { enable, disable, check } = useIntegrationMutations();
+    const { enable, disable, check } = mutations;
     return (integration) => {
         if (!can('integrations.manage')) return [];
         const target = { id: integration.id, name: integration.name };
         return [
+            {
+                kind: 'item',
+                id: 'edit',
+                label: m.integration_edit(),
+                icon: <Pencil aria-hidden />,
+                onSelect: () => {
+                    onPending({ kind: 'edit', integration });
+                },
+            },
             integration.status === 'disconnected'
                 ? {
                       kind: 'item',
                       id: 'enable',
                       label: m.integration_enable(),
+                      icon: <PlugZap aria-hidden />,
                       onSelect: () => {
                           enable.mutate(target);
                       },
@@ -118,7 +157,7 @@ function useIntegrationRowActions(): (integration: ReadIntegration) => readonly 
                       kind: 'item',
                       id: 'disable',
                       label: m.integration_disable(),
-                      tone: 'danger',
+                      icon: <Plug aria-hidden />,
                       onSelect: () => {
                           disable.mutate(target);
                       },
@@ -127,8 +166,20 @@ function useIntegrationRowActions(): (integration: ReadIntegration) => readonly 
                 kind: 'item',
                 id: 'check',
                 label: m.integration_check(),
+                icon: <RefreshCw aria-hidden />,
                 onSelect: () => {
                     check.mutate(target);
+                },
+            },
+            { kind: 'separator', id: 'danger' },
+            {
+                kind: 'item',
+                id: 'delete',
+                label: m.integration_delete(),
+                icon: <Trash2 aria-hidden />,
+                tone: 'danger',
+                onSelect: () => {
+                    onPending({ kind: 'delete', integration });
                 },
             },
         ];
@@ -153,7 +204,9 @@ export function IntegrationsTable({ search, onSearchChange, agentId }: Integrati
     const scope = agentId === undefined ? 'global' : 'agent';
     const agentNames = useAgentNames();
     const columns = useIntegrationColumns();
-    const rowActions = useIntegrationRowActions();
+    const mutations = useIntegrationMutations();
+    const [pending, setPending] = useState<PendingRowAction>(null);
+    const rowActions = useIntegrationRowActions(mutations, setPending);
     const paging = useCursorPages(search.cursor, list.data?.nextCursor ?? null, (cursor) => {
         onSearchChange({ cursor });
     });
@@ -223,6 +276,38 @@ export function IntegrationsTable({ search, onSearchChange, agentId }: Integrati
                           }
                 }
             />
+            {pending?.kind === 'edit' ? (
+                <LazyIntegrationFormDialog
+                    mode={{ kind: 'edit', integration: pending.integration }}
+                    mutations={mutations}
+                    onClose={() => {
+                        setPending(null);
+                    }}
+                />
+            ) : null}
+            <ConfirmDialog
+                open={pending?.kind === 'delete'}
+                onClose={() => {
+                    setPending(null);
+                }}
+                onConfirm={async () => {
+                    if (pending === null) return;
+                    try {
+                        await mutations.remove.mutateAsync({
+                            id: pending.integration.id,
+                            name: pending.integration.name,
+                        });
+                        setPending(null);
+                    } catch {
+                        // Reported in a toast; the dialog stays open for another try.
+                    }
+                }}
+                title={m.integration_delete_title({ name: pending?.integration.name ?? '' })}
+                description={m.integration_delete_body()}
+                confirmLabel={m.integration_delete()}
+                tone="danger"
+                loading={mutations.remove.isPending}
+            />
         </div>
     );
 }
@@ -291,7 +376,7 @@ function IntegrationFilters({ search, scope, agentNames, onChange, onClear, filt
                                     onChange({ agentId });
                                 }}
                             >
-                                <option value="">{m.integrations_filter_any_agent()}</option>
+                                <option value="">{m.integrations_filter_all_agents()}</option>
                                 {knownAgent ? null : <option value={search.agentId}>{search.agentId}</option>}
                                 {[...agentNames].map(([id, name]) => (
                                     <option key={id} value={id}>

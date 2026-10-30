@@ -22,7 +22,7 @@ export function AgentIntegrationsPage() {
     );
     return (
         <div className="flex flex-col gap-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
                 <p className="text-sm text-text-muted">{m.integrations_agent_intro()}</p>
                 <AddIntegrationActions agentId={agentId} />
             </div>

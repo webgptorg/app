@@ -83,7 +83,7 @@ describe('overview card', { timeout: TIMEOUT_MS }, () => {
         renderWithProviders({ path: '/agents/agent-ada', engineApi: engine.client });
         // The card's code is a lazy chunk.
         const card = await screen.findByRole('region', { name: 'Integrations' }, { timeout: 10_000 });
-        expect(await within(card).findByText('Need attention: 2')).toBeDefined();
+        expect(await within(card).findByText('2 integrations need attention')).toBeDefined();
         const names = within(card)
             .getAllByRole('listitem')
             .map((item) => within(item).getByRole('link').textContent);

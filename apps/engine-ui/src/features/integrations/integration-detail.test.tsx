@@ -8,6 +8,7 @@ import { createIntegrationsEngine, HOSTILE_TEXT, INTEGRATION_IDS } from '../../t
 import type { IntegrationsEngine } from '../../testing/integrations-engine';
 import { renderWithProviders } from '../../testing/render-with-providers';
 import { problemResponse, TEST_NOW } from '../../testing/test-engine-api';
+import { checkOutcome } from './use-integration-mutations';
 
 const TIMEOUT_MS = 20_000;
 /** Route and dialog code are lazy chunks; on a loaded runner they take longer than the default second. */
@@ -239,24 +240,77 @@ describe('integration actions', { timeout: TIMEOUT_MS }, () => {
         expect(engine.spies.enable).toHaveBeenCalledTimes(2);
     });
 
-    it('checks the connection, waits for the engine and shows the status it returns', async () => {
+    it('checks the connection and reports a remaining problem as a warning naming the missing secret', async () => {
         const engine = createIntegrationsEngine();
         const { user } = await renderDetail(INTEGRATION_IDS.billing, engine);
         await user.click(screen.getByRole('button', { name: 'Check connection' }));
-        expect(await screen.findByText('Billing repository: Needs attention')).toBeDefined();
+        expect(
+            await screen.findByText('Billing repository still needs attention. Missing: GITHUB_TOKEN.'),
+        ).toBeDefined();
         expect(engine.spies.check).toHaveBeenCalledWith(INTEGRATION_IDS.billing, expect.anything());
+    });
+
+    it('reports a working connection as a success', async () => {
+        const { user } = await renderDetail(INTEGRATION_IDS.docs);
+        await user.click(screen.getByRole('button', { name: 'Check connection' }));
+        expect(await screen.findByText('Docs search connected.')).toBeDefined();
+    });
+
+    it('gives each checked status the tone of its outcome: only a working connection is a success', () => {
+        const missing = { name: 'TOKEN', secretId: null, state: 'missing' } as const;
+        const tone = (fields: Partial<ReadIntegration>) =>
+            checkOutcome(readIntegration({ kind: 'mcp-server', ...fields } as ReadIntegration));
+        expect(tone({ status: 'connected' })).toEqual({ tone: 'success', title: 'Odd one connected.' });
+        expect(tone({ status: 'needs-attention' })).toEqual({
+            tone: 'warning',
+            title: 'Odd one still needs attention.',
+        });
+        expect(tone({ status: 'needs-attention', secretRefs: [missing] }).title).toBe(
+            'Odd one still needs attention. Missing: TOKEN.',
+        );
+        expect(tone({ status: 'error' }).tone).toBe('danger');
+        expect(tone({ status: 'disconnected' }).tone).toBe('info');
+        expect(tone({ status: 'unknown' }).tone).toBe('info');
+    });
+
+    it('links the fix for a missing secret from the warning, and only for who may see secrets', async () => {
+        await renderDetail(INTEGRATION_IDS.billing);
+        const banner = screen
+            .getByText('Secrets not available: GITHUB_TOKEN.')
+            .closest('[role="alert"]') as HTMLElement;
+        expect(within(banner).getByRole('link', { name: 'Add GITHUB_TOKEN' }).getAttribute('href')).toBe(
+            '/secrets?q=GITHUB_TOKEN',
+        );
+
+        renderWithProviders({
+            path: `/integrations/${INTEGRATION_IDS.billing}`,
+            engineApi: createIntegrationsEngine({ permissions: allBut('secrets.read') }).client,
+        });
+        await screen.findAllByRole('heading', { level: 1, name: 'Billing repository' });
+        expect(screen.getAllByRole('link', { name: 'Add GITHUB_TOKEN' })).toHaveLength(1);
+    });
+
+    it('links back to the list, and not to itself from its own activity', async () => {
+        await renderDetail(INTEGRATION_IDS.docs);
+        expect(screen.getByRole('link', { name: 'Back to integrations' }).getAttribute('href')).toBe('/integrations');
+        await screen.findByRole('list', { name: 'Recent activity' });
+        expect(screen.queryByRole('link', { name: 'Open integration' })).toBeNull();
+        const url = within(region('Settings')).getByRole('link', { name: /mcp\.example\.com/ });
+        expect(url.textContent).not.toContain('(mcp.example.com)');
     });
 
     it('deletes only after confirmation', async () => {
         const engine = createIntegrationsEngine();
         const { user, router } = await renderDetail(INTEGRATION_IDS.docs, engine);
-        await user.click(screen.getByRole('button', { name: 'Delete' }));
+        await user.click(screen.getByRole('button', { name: 'More actions' }));
+        await user.click(await screen.findByRole('menuitem', { name: 'Delete' }));
         const dialog = await screen.findByRole('dialog', { name: 'Delete Docs search?' }, DIALOG_WAIT);
         expect(engine.spies.delete).not.toHaveBeenCalled();
         await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
         expect(engine.spies.delete).not.toHaveBeenCalled();
 
-        await user.click(screen.getByRole('button', { name: 'Delete' }));
+        await user.click(screen.getByRole('button', { name: 'More actions' }));
+        await user.click(await screen.findByRole('menuitem', { name: 'Delete' }));
         await user.click(
             within(await screen.findByRole('dialog', { name: 'Delete Docs search?' }, DIALOG_WAIT)).getByRole(
                 'button',
@@ -269,6 +323,6 @@ describe('integration actions', { timeout: TIMEOUT_MS }, () => {
             expect(router.state.location.pathname).toBe('/integrations');
         });
         expect(engine.spies.delete).toHaveBeenCalledTimes(1);
-        expect(await screen.findByText('Docs search deleted')).toBeDefined();
+        expect(await screen.findByText('Docs search deleted.')).toBeDefined();
     });
 });

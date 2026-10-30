@@ -1,5 +1,7 @@
 import type { Activity } from '@ptbk/engine-api';
 
+import { useParams } from '@tanstack/react-router';
+
 import { Link } from '../../app/link';
 import { m } from '../../paraglide/messages';
 
@@ -24,17 +26,22 @@ export function integrationActivitySummary(activity: Activity): string {
 
 /** The card body for an integration event, linking to the integration and, for a tool call, to its run. */
 export function IntegrationActivityItem({ activity }: { readonly activity: Activity }) {
+    const openIntegrationId = useParams({ strict: false, select: (params) => params.integrationId });
     if (!isIntegrationActivity(activity)) return null;
+    // On the integration's own page a link to it would lead nowhere.
+    const linkIntegration = openIntegrationId !== activity.integrationId;
     return (
         <div className="flex flex-col gap-1 text-sm">
             <p className="break-words">{integrationActivitySummary(activity)}</p>
             {activity.kind === 'integration.error' && activity.statusDetail !== null ? (
                 <p className="break-words text-text-muted">{activity.statusDetail}</p>
             ) : null}
-            <div className="flex flex-wrap gap-x-4 gap-y-1">
-                <Link to="/integrations/$integrationId" params={{ integrationId: activity.integrationId }}>
-                    {m.integration_activity_open()}
-                </Link>
+            <div className="flex flex-wrap gap-x-4 gap-y-1 empty:hidden">
+                {linkIntegration ? (
+                    <Link to="/integrations/$integrationId" params={{ integrationId: activity.integrationId }}>
+                        {m.integration_activity_open()}
+                    </Link>
+                ) : null}
                 {activity.kind === 'integration.used' && activity.runId !== null ? (
                     <Link to="/runs/$runId" params={{ runId: activity.runId }}>
                         {m.integration_activity_open_run()}

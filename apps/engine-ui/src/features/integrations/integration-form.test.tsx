@@ -19,8 +19,13 @@ async function openAdd(
     engine = createIntegrationsEngine(),
 ) {
     const app = renderWithProviders({ path, engineApi: engine.client });
-    await app.user.click(await screen.findByRole('button', { name }, DIALOG_WAIT));
+    await chooseAdd(app.user, name === 'Add MCP server' ? 'MCP server' : 'Repository');
     return { ...app, engine, dialog: await screen.findByRole('dialog', { name }, DIALOG_WAIT) };
+}
+
+async function chooseAdd(user: ReturnType<typeof renderWithProviders>['user'], item: 'MCP server' | 'Repository') {
+    await user.click(await screen.findByRole('button', { name: 'Add integration' }, DIALOG_WAIT));
+    await user.click(await screen.findByRole('menuitem', { name: item }));
 }
 
 const noPasswordInputs = () => {
@@ -71,7 +76,7 @@ describe('add and edit integrations', { timeout: TIMEOUT_MS }, () => {
             },
             expect.anything(),
         );
-        expect(await screen.findByText('Search added')).toBeDefined();
+        expect(await screen.findByText('Search added.')).toBeDefined();
     });
 
     it('refuses a URL that is not https and a repository that is not owner/name before sending', async () => {
@@ -231,7 +236,7 @@ describe('secret values never pass through this feature', { timeout: 60_000 }, (
 
         await within(await screen.findByRole('table')).findByText('Canary server');
         look();
-        await app.user.click(screen.getByRole('button', { name: 'Add MCP server' }));
+        await chooseAdd(app.user, 'MCP server');
         await within(await screen.findByRole('dialog', { name: 'Add MCP server' }, DIALOG_WAIT)).findByRole(
             'checkbox',
             {
@@ -240,6 +245,9 @@ describe('secret values never pass through this feature', { timeout: 60_000 }, (
         );
         look();
         await app.user.click(screen.getByRole('button', { name: 'Cancel' }));
+        await waitFor(() => {
+            expect(screen.queryByRole('dialog', { name: 'Add MCP server' })).toBeNull();
+        });
 
         await app.router.navigate({ to: '/integrations/$integrationId', params: { integrationId } });
         await screen.findByRole('heading', { level: 1, name: 'Canary server' });
@@ -248,9 +256,9 @@ describe('secret values never pass through this feature', { timeout: 60_000 }, (
         await app.user.click(screen.getByRole('button', { name: 'Edit' }));
         const dialog = await screen.findByRole('dialog', { name: 'Edit Canary server' }, DIALOG_WAIT);
         await app.user.click(within(dialog).getByRole('button', { name: 'Save' }));
-        await screen.findByText('Canary server saved');
+        await screen.findByText('Canary server saved.');
         await app.user.click(screen.getByRole('button', { name: 'Check connection' }));
-        await screen.findByText(/^Canary server: /);
+        await screen.findByText(/^Canary server (connected|still needs attention|could not connect).*\.$/);
         look();
 
         expect(seen.join('\n')).toContain('CANARY_TOKEN');

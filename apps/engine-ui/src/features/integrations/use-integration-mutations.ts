@@ -1,4 +1,6 @@
 import type { CreateIntegrationBody, IntegrationId, ReadIntegration, UpdateIntegrationBody } from '@ptbk/engine-api';
+import { useToast } from '@ptbk/ui';
+import type { ToastInput } from '@ptbk/ui';
 import { useQueryClient } from '@tanstack/react-query';
 import type { z } from 'zod';
 
@@ -9,7 +11,6 @@ import { useStepUpAwareMutation } from '../../app/mutations';
 import { m } from '../../paraglide/messages';
 import { restoreIntegration, snapshotIntegration, updateCachedIntegration } from './integration-cache';
 import type { IntegrationCacheSnapshot } from './integration-cache';
-import { integrationStatusLabel } from './integration-status';
 import { integrationKeys } from './integrations-keys';
 
 /** Mutations are not cancelled by navigation, so they carry their own timeout instead of a component's signal. */
@@ -33,6 +34,30 @@ function problemCode(failure: ApiFailure): string | null {
     return failure.kind === 'problem' ? failure.problem.code : null;
 }
 
+/** What a check found, in the tone of the outcome: only a working connection is a success. */
+export function checkOutcome(integration: ReadIntegration): ToastInput {
+    const name = integration.name;
+    const unusable = integration.secretRefs.filter(({ state }) => state !== 'resolved').map((ref) => ref.name);
+    switch (integration.status) {
+        case 'connected':
+            return { tone: 'success', title: m.integration_checked_connected({ name }) };
+        case 'needs-attention':
+            return {
+                tone: 'warning',
+                title:
+                    unusable.length === 0
+                        ? m.integration_checked_attention({ name })
+                        : m.integration_checked_missing({ name, secrets: unusable.join(', ') }),
+            };
+        case 'error':
+            return { tone: 'danger', title: m.integration_checked_error({ name }) };
+        case 'disconnected':
+            return { tone: 'info', title: m.integration_checked_disabled({ name }) };
+        case 'unknown':
+            return { tone: 'info', title: m.integration_checked_unknown({ name }) };
+    }
+}
+
 /**
  * Every change to an integration. Enable and disable are optimistic and roll back with a failure toast; the others
  * wait for the engine, since their outcome (a new status, a refused name) is the engine's to decide. No variable here
@@ -41,6 +66,7 @@ function problemCode(failure: ApiFailure): string | null {
 export function useIntegrationMutations() {
     const engineApi = useEngineApi();
     const queryClient = useQueryClient();
+    const toast = useToast();
     const signal = (ms = MUTATION_TIMEOUT_MS) => AbortSignal.timeout(ms);
     const settle = (integration: ReadIntegration) => {
         updateCachedIntegration(queryClient, integration.id, () => integration);
@@ -99,10 +125,11 @@ export function useIntegrationMutations() {
         mutationFn: async ({ id }: IntegrationTarget) =>
             unwrap(await engineApi.integrations.check(id, signal(CHECK_TIMEOUT_MS))),
         invalidates: INVALIDATES,
-        successMessage: (integration) =>
-            m.integration_checked({ name: integration.name, status: integrationStatusLabel(integration.status) }),
         errorMessage: (_, { name }) => m.integration_check_failed({ name }),
-        onSuccess: settle,
+        onSuccess: (integration) => {
+            toast.show(checkOutcome(integration));
+            settle(integration);
+        },
     });
 
     const remove = useStepUpAwareMutation({
