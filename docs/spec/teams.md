@@ -1,6 +1,6 @@
 # Teams
 
-- **Status:** draft for review
+- **Status:** accepted
 - **Date:** 2026-10-30
 - **Decisions:** [ADR 0018](../adr/0018-teams-and-member-access.md)
 - **Sources:** the architecture meeting of 2026-10-23 and Seb's answers of 2026-10-30
