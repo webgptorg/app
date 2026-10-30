@@ -3,10 +3,22 @@ import { screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
 import { apiRoutes } from '../../../shared/api/routes';
+import type { SessionView } from '../../../shared/api/routes';
 import { expectNoAxeViolations } from '../../testing/axe';
 import { session } from '../../testing/fixtures';
 import { renderApp } from '../../testing/render-app';
 import { ok, problem } from '../../testing/scripted-api';
+
+function twoOrgs(): SessionView {
+    const acme = session({ name: 'Acme' });
+    return {
+        ...acme,
+        memberships: [
+            ...acme.memberships.map((membership) => ({ ...membership, name: 'Acme' })),
+            { orgId: 'cccccccccccccccccccccccccc', kind: 'team' as const, name: 'Beta', role: 'owner' },
+        ],
+    };
+}
 
 function nav() {
     return within(screen.getByRole('navigation', { name: 'Main' }));
@@ -24,22 +36,24 @@ describe('signed-in shell', () => {
         await expectNoAxeViolations(app.container);
     });
 
-    it('names a personal org and hides what the role does not allow', async () => {
+    it('marks the current page with more than colour', async () => {
+        renderApp({ path: '/billing', session: session({ permissions: ['billing.read'] }) });
+        await screen.findByRole('navigation', { name: 'Main' });
+        const current = nav().getByRole('link', { name: 'Billing' });
+        expect(current.getAttribute('aria-current')).toBe('page');
+        expect(current.className).toContain('aria-[current=page]:bg-selected');
+    });
+
+    it('names a single org as plain text, without a menu that offers no choice', async () => {
         renderApp({ path: '/', session: session({ permissions: [] }) });
-        expect(await screen.findByRole('button', { name: 'Organization: Personal' })).toBeTruthy();
+        expect(await screen.findByText('Organization: Personal')).toBeTruthy();
+        expect(screen.queryByRole('button', { name: /^Organization/ })).toBeNull();
         expect(nav().queryByRole('link', { name: 'Engines' })).toBeNull();
         expect(nav().getByRole('link', { name: 'Account' })).toBeTruthy();
     });
 
     it('lists the memberships in the org switcher and moves the session to another organization', async () => {
-        const acme = session({ name: 'Acme' });
-        const both = {
-            ...acme,
-            memberships: [
-                ...acme.memberships.map((membership) => ({ ...membership, name: 'Acme' })),
-                { orgId: 'cccccccccccccccccccccccccc', kind: 'team' as const, name: 'Beta', role: 'owner' },
-            ],
-        };
+        const both = twoOrgs();
         const beta = {
             ...both,
             activeOrg: { ...both.activeOrg, id: 'cccccccccccccccccccccccccc', kind: 'team' as const, name: 'Beta' },
@@ -62,9 +76,9 @@ describe('signed-in shell', () => {
     });
 
     it('does not switch to the organization that is already active', async () => {
-        const app = renderApp({ path: '/engines', session: session({ name: 'Acme' }) });
+        const app = renderApp({ path: '/engines', session: twoOrgs() });
         await app.user.click(await screen.findByRole('button', { name: 'Organization: Acme' }));
-        await app.user.click(screen.getByRole('menuitemradio', { name: 'Personal' }));
+        await app.user.click(screen.getByRole('menuitemradio', { name: 'Acme' }));
         expect(app.api.callsTo(apiRoutes.setActiveOrg)).toHaveLength(0);
     });
 
@@ -83,6 +97,7 @@ describe('signed-in shell', () => {
         await app.user.click(screen.getByRole('menuitem', { name: 'Sign out' }));
         expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeTruthy();
         expect(app.history.location.pathname).toBe('/signin');
+        expect(await screen.findByText("You're signed out.")).toBeTruthy();
     });
 
     it('treats an already ended session as signed out', async () => {
@@ -105,6 +120,7 @@ describe('signed-in shell', () => {
         await app.user.click(await screen.findByRole('button', { name: 'Account menu for ada@example.test' }));
         await app.user.click(screen.getByRole('menuitem', { name: 'Sign out' }));
         expect(await screen.findByText('Signing out did not work. Try again.')).toBeTruthy();
+        expect(screen.queryByText("You're signed out.")).toBeNull();
         expect(app.history.location.pathname).toBe('/engines');
     });
 
@@ -147,6 +163,8 @@ describe('admin area', () => {
     it('is not found for anyone but a platform admin', async () => {
         renderApp({ path: '/admin', session: session() });
         expect(await screen.findByRole('heading', { name: 'Page not found' })).toBeTruthy();
+        expect(nav().getByRole('link', { name: 'Engines' })).toBeTruthy();
+        expect(nav().queryByRole('link', { name: 'Admin' })).toBeNull();
     });
 
     it('shows its navigation entry and empty shell to a platform admin', async () => {
@@ -158,11 +176,23 @@ describe('admin area', () => {
 });
 
 describe('route states', () => {
-    it('shows an unknown URL as not found, with a way back', async () => {
+    it('shows an unknown URL as not found inside the signed-in frame, with a way back', async () => {
         const app = renderApp({ path: '/nowhere/at/all', session: session() });
         expect(await screen.findByRole('heading', { name: 'Page not found' })).toBeTruthy();
+        expect(nav().getByRole('link', { name: 'Account' })).toBeTruthy();
+        expect(screen.getByRole('button', { name: 'Account menu for ada@example.test' })).toBeTruthy();
+        await expectNoAxeViolations(app.container);
         await app.user.click(screen.getByRole('link', { name: 'Back to the start' }));
         expect(await screen.findByRole('heading', { name: 'Your engines' })).toBeTruthy();
+    });
+
+    it('keeps the signed-out frame around an unknown URL', async () => {
+        const app = renderApp({ path: '/nowhere' });
+        expect(await screen.findByRole('heading', { name: 'Page not found' })).toBeTruthy();
+        expect(screen.queryByRole('navigation', { name: 'Main' })).toBeNull();
+        expect(screen.getByRole('button', { name: 'English, language and theme' })).toBeTruthy();
+        await app.user.click(screen.getByRole('link', { name: 'Back to the start' }));
+        expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeTruthy();
     });
 
     it('shows an error with a retry when the session cannot be checked', async () => {

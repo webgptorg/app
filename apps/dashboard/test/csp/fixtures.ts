@@ -114,6 +114,7 @@ export const test = base.extend<Fixtures>({
     checkScreen: async ({ page }, use) => {
         await use(async (name) => {
             await page.waitForLoadState('networkidle');
+            await finishEntranceAnimations(page);
             const axe = await new AxeBuilder({ page }).analyze();
             const axeViolations = axe.violations.map(
                 (violation) => `${violation.id}: ${violation.nodes.map((node) => node.target.join(' ')).join(', ')}`,
@@ -152,6 +153,16 @@ export const test = base.extend<Fixtures>({
         });
     },
 });
+
+/** A toast measured mid fade-in fails colour contrast that it passes once shown; looping spinners are left alone. */
+function finishEntranceAnimations(page: Page): Promise<void> {
+    return page.evaluate(async () => {
+        const finite = document
+            .getAnimations()
+            .filter((animation) => animation.effect?.getComputedTiming().iterations !== Infinity);
+        await Promise.all(finite.map((animation) => animation.finished.catch(() => undefined)));
+    });
+}
 
 function measureOverflow(page: Page): Promise<number> {
     return page.evaluate(

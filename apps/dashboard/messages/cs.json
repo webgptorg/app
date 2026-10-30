@@ -488,6 +488,7 @@
   "sessions_title": "Relace",
   "sign_out": "Odhlásit se",
   "sign_out_failed": "Odhlášení se nepodařilo. Zkuste to znovu.",
+  "signed_out": "Odhlásili jste se.",
   "signin_action": "Přihlásit se přístupovým klíčem",
   "signin_body": "Použijte přístupový klíč (passkey), který jste pro Promptbook vytvořili. Heslo se nepoužívá.",
   "signin_create_account": "Vytvořte si účet",

@@ -9,5 +9,10 @@ export function EnvironmentBadge() {
     if (environment.data === undefined || environment.data.environment === 'production') {
         return null;
     }
-    return <Badge tone="warning">{m.environment_label({ environment: environment.data.environment })}</Badge>;
+    // The org name gives way first: the badge is short, and a hidden environment is the costlier mistake.
+    return (
+        <Badge tone="warning" className="shrink-0">
+            {m.environment_label({ environment: environment.data.environment })}
+        </Badge>
+    );
 }
