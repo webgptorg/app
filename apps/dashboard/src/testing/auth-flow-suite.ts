@@ -464,6 +464,63 @@ export function describeAuthFlows(
         });
 
         describe('passkeys', () => {
+            it('names a passkey by its provider and counts the sign-up as its first use', async () => {
+                const gpm = harness.browser({
+                    authenticator: createSoftwareAuthenticator({
+                        origin: ORIGIN,
+                        aaguid: 'EA9B8D66-4D01-1D21-3CE4-B6B48CB575D4',
+                    }),
+                });
+                await signUp(harness, gpm);
+                const signedUpAt = harness.clock.nowMs();
+                await registerWith(gpm, '/api/passkeys/options', '/api/passkeys/verify', {});
+                const listed = (await gpm.request('GET', '/api/passkeys')).body as {
+                    passkeys: { addedVia: string; provider: string | null; lastUsedAt: number | null }[];
+                };
+                expect(listed.passkeys).toEqual(
+                    expect.arrayContaining([
+                        expect.objectContaining({
+                            addedVia: 'signup',
+                            provider: 'Google Password Manager',
+                            lastUsedAt: signedUpAt,
+                        }),
+                        expect.objectContaining({
+                            addedVia: 'account',
+                            provider: 'Google Password Manager',
+                            lastUsedAt: null,
+                        }),
+                    ]),
+                );
+                const stored = await harness.store.passkeys.listForUser(
+                    (await harness.store.accounts.findUserByEmail((await session(gpm)).user.email))?.id ?? never(),
+                );
+                expect(stored.map((passkey) => passkey.aaguid)).toEqual([
+                    'ea9b8d66-4d01-1d21-3ce4-b6b48cb575d4',
+                    'ea9b8d66-4d01-1d21-3ce4-b6b48cb575d4',
+                ]);
+            });
+
+            it('stores no AAGUID for an anonymous authenticator and names no provider for an unknown one', async () => {
+                await signUp(harness, browser);
+                const unknown = createSoftwareAuthenticator({
+                    origin: ORIGIN,
+                    aaguid: '12345678-1234-1234-1234-123456789abc',
+                });
+                const registration = creationOptions(await browser.request('POST', '/api/passkeys/options'));
+                const response = await unknown.register(registration);
+                expect((await browser.request('POST', '/api/passkeys/verify', { response })).status).toBe(200);
+                const listed = (await browser.request('GET', '/api/passkeys')).body as {
+                    passkeys: { addedVia: string; provider: string | null }[];
+                };
+                expect(listed.passkeys.map((p) => p.provider)).toEqual([null, null]);
+                const user = await harness.store.accounts.findUserByEmail((await session(browser)).user.email);
+                const stored = await harness.store.passkeys.listForUser(user?.id ?? never());
+                expect(Object.fromEntries(stored.map((passkey) => [passkey.addedVia, passkey.aaguid]))).toEqual({
+                    signup: null,
+                    account: '12345678-1234-1234-1234-123456789abc',
+                });
+            });
+
             it('adds a second passkey, lists both, removes one and never the last', async () => {
                 await signUp(harness, browser);
                 const added = await registerWith(browser, '/api/passkeys/options', '/api/passkeys/verify', {});
@@ -668,9 +725,10 @@ export function describeAuthFlows(
                 });
 
                 const listed = (await lost.request('GET', '/api/passkeys')).body as {
-                    passkeys: { credentialId: string; addedVia: string }[];
+                    passkeys: { credentialId: string; addedVia: string; lastUsedAt: number | null }[];
                 };
                 expect(listed.passkeys.map((p) => p.addedVia).sort()).toEqual(['recovery', 'signup']);
+                expect(listed.passkeys.find((p) => p.addedVia === 'recovery')?.lastUsedAt).toBe(recoveredAt);
                 const old = listed.passkeys.find((p) => p.addedVia === 'signup');
                 expect(
                     (await lost.request('POST', '/api/passkeys/delete', { credentialId: old?.credentialId })).status,

@@ -88,10 +88,17 @@ function clientData(type: string, challenge: string, origin: string): Uint8Array
     return Uint8Array.from(new TextEncoder().encode(JSON.stringify({ type, challenge, origin, crossOrigin: false })));
 }
 
+function aaguidBytes(aaguid: string | undefined): Uint8Array {
+    const hex = (aaguid ?? '').replace(/-/g, '').padStart(32, '0');
+    return Uint8Array.from(hex.match(/../g) ?? [], (pair) => parseInt(pair, 16));
+}
+
 export function createSoftwareAuthenticator(config: {
     readonly origin: string;
     /** How much the signature counter grows per assertion; 0 behaves like a synced passkey. */
     readonly counterStep?: number;
+    /** The authenticator model it reports; all zeros (anonymous) by default. */
+    readonly aaguid?: string;
 }) {
     const credentials: SoftwareCredential[] = [];
     const counterStep = config.counterStep ?? 1;
@@ -136,7 +143,7 @@ export function createSoftwareAuthenticator(config: {
                 await sha256(Uint8Array.from(new TextEncoder().encode(rpId))),
                 flags(overrides.userVerified, FLAG_ATTESTED_DATA),
                 uint32(credential.counter),
-                new Uint8Array(16),
+                aaguidBytes(config.aaguid),
                 new Uint8Array([0, credentialId.length]),
                 credentialId,
                 cosePublicKey,

@@ -90,6 +90,13 @@ describe('Button', () => {
         expect(screen.queryByRole('button', { name: 'Secret' })).toBeNull();
     });
 
+    it('styles a secondary destructive action as danger text without a fill', () => {
+        renderUi(<Button variant="danger-ghost">{'Sign out everywhere'}</Button>);
+        const button = screen.getByRole('button', { name: 'Sign out everywhere' });
+        expect(button.className).toContain('text-(--button-danger-ghost-text)');
+        expect(button.className).not.toContain('bg-(--button-danger-bg)');
+    });
+
     it('submits forms when asked to', () => {
         const onSubmit = vi.fn((event: { preventDefault: () => void }) => {
             event.preventDefault();

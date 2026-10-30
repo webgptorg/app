@@ -151,6 +151,7 @@ export function passkey(overrides: Partial<PasskeyView> = {}): PasskeyView {
         createdAt: NOW - 48 * HOUR,
         lastUsedAt: NOW - HOUR,
         backedUp: true,
+        provider: 'Google Password Manager',
         counterRegressedAt: null,
         ...overrides,
     };

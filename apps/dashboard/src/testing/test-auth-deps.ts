@@ -48,6 +48,7 @@ export function createAcceptingRelyingParty(credential: { id: string } = { id: '
                     counter: 0,
                     transports: [],
                     backedUp: false,
+                    aaguid: null,
                 },
             }),
         verifyAuthentication: () => Promise.resolve({ kind: 'verified', newCounter: 0 }),

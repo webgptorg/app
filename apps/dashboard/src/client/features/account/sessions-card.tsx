@@ -79,7 +79,7 @@ export function SessionsCard() {
             title={m.sessions_title()}
             actions={
                 <Button
-                    variant="danger"
+                    variant="danger-ghost"
                     size="sm"
                     onClick={() => {
                         setConfirming(true);

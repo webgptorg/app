@@ -81,6 +81,8 @@ export const passkeyViewSchema = z.strictObject({
     createdAt: timestampSchema,
     lastUsedAt: timestampSchema.nullable(),
     backedUp: z.boolean(),
+    /** The provider's name when its AAGUID is known ("Google Password Manager"); null otherwise. */
+    provider: z.string().min(1).max(100).nullable(),
     counterRegressedAt: timestampSchema.nullable(),
 });
 export type PasskeyView = z.infer<typeof passkeyViewSchema>;

@@ -3,7 +3,7 @@ import { useLocale as useFormatters } from '@ptbk/ui';
 import type { DataTableColumnDef } from '@ptbk/ui';
 import { useQuery } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 
 import { m } from '../../../paraglide/messages';
 import { apiRoutes } from '../../../shared/api/routes';
@@ -14,7 +14,7 @@ import { useBrowser } from '../../core/browser';
 import { useAppMutation } from '../../core/mutations';
 import { addPasskey, CeremonyError, valueOrThrow } from '../passkeys/ceremonies';
 import { ceremonyFailureMessage } from '../passkeys/ceremony-messages';
-import { passkeyName, passkeyOrigin, passkeyAddedVia } from './passkey-labels';
+import { passkeyAddedVia, passkeyLabel, passkeyName, passkeyOrigin } from './passkey-labels';
 
 const columns = createDataTableColumnHelper<PasskeyView>();
 /** Answers that are about the ceremony itself; the rest (step-up, cooldown, rate limit…) get the common handling. */
@@ -54,20 +54,41 @@ export function PasskeysCard() {
         },
     });
 
+    const label = useCallback(
+        (passkey: PasskeyView) => passkeyLabel(passkey, (date) => formatters.formatDate(date)),
+        [formatters],
+    );
     const rows = passkeys.data;
     const onlyOne = rows !== undefined && rows.length <= 1;
     const tableColumns = useMemo(
         (): DataTableColumnDef<PasskeyView>[] => [
             columns.accessor('credentialId', {
                 header: m.passkey_column_name(),
-                cell: (context) => (
-                    <span className="flex flex-wrap items-center gap-2">
-                        <span className="font-medium">{passkeyName(context.row.original)}</span>
-                        {context.row.original.counterRegressedAt === null ? null : (
-                            <Badge tone="danger">{m.passkey_flagged()}</Badge>
-                        )}
-                    </span>
-                ),
+                cell: (context) => {
+                    const passkey = context.row.original;
+                    return (
+                        <span className="flex flex-col gap-0.5">
+                            <span className="flex flex-wrap items-center gap-2">
+                                <span className="font-medium">{passkeyName(passkey)}</span>
+                                {passkey.counterRegressedAt === null ? null : (
+                                    <Badge tone="danger">{m.passkey_flagged()}</Badge>
+                                )}
+                            </span>
+                            <span className="text-sm text-text-muted">
+                                {m.passkey_created_on({ date: formatters.formatDate(new Date(passkey.createdAt)) })}
+                                <span aria-hidden="true"> · </span>
+                                {passkey.lastUsedAt === null ? (
+                                    m.passkey_never_used()
+                                ) : (
+                                    <>
+                                        {m.passkey_last_used()}{' '}
+                                        <RelativeTime value={new Date(passkey.lastUsedAt)} now={now} />
+                                    </>
+                                )}
+                            </span>
+                        </span>
+                    );
+                },
                 meta: { priority: 0 },
             }),
             columns.accessor('backedUp', {
@@ -75,27 +96,10 @@ export function PasskeysCard() {
                 cell: (context) => passkeyOrigin(context.row.original),
                 meta: { priority: 1 },
             }),
-            columns.accessor('createdAt', {
-                header: m.passkey_column_created(),
-                cell: (context) => formatters.formatDate(new Date(context.row.original.createdAt)),
-                meta: { priority: 2 },
-            }),
-            columns.accessor('lastUsedAt', {
-                header: m.passkey_column_last_used(),
-                cell: (context) => {
-                    const lastUsedAt = context.row.original.lastUsedAt;
-                    return lastUsedAt === null ? (
-                        m.passkey_never_used()
-                    ) : (
-                        <RelativeTime value={new Date(lastUsedAt)} now={now} />
-                    );
-                },
-                meta: { priority: 3 },
-            }),
             columns.accessor('addedVia', {
                 header: m.passkey_column_added_via(),
                 cell: (context) => passkeyAddedVia(context.row.original),
-                meta: { priority: 4 },
+                meta: { priority: 2 },
             }),
             columns.display({
                 id: 'remove',
@@ -103,10 +107,10 @@ export function PasskeysCard() {
                 cell: (context) => (
                     <Button
                         size="sm"
-                        variant="ghost"
+                        variant="danger-ghost"
                         disabled={onlyOne}
                         {...(onlyOne ? { disabledReason: m.passkey_remove_last() } : {})}
-                        aria-label={m.passkey_remove_named({ name: passkeyName(context.row.original) })}
+                        aria-label={m.passkey_remove_named({ name: label(context.row.original) })}
                         onClick={() => {
                             setRemoving(context.row.original);
                         }}
@@ -114,10 +118,10 @@ export function PasskeysCard() {
                         {m.passkey_remove()}
                     </Button>
                 ),
-                meta: { label: m.passkey_column_actions(), priority: 5 },
+                meta: { label: m.passkey_column_actions(), priority: 3 },
             }),
         ],
-        [formatters, now, onlyOne],
+        [formatters, now, onlyOne, label],
     );
 
     return (
@@ -144,7 +148,7 @@ export function PasskeysCard() {
                 columns={tableColumns}
                 data={rows ?? []}
                 getRowId={(row) => row.credentialId}
-                getRowLabel={passkeyName}
+                getRowLabel={label}
                 loading={passkeys.isPending}
                 {...(passkeys.isError
                     ? {
@@ -168,7 +172,7 @@ export function PasskeysCard() {
                     }
                 }}
                 title={m.passkey_remove_title()}
-                description={m.passkey_remove_body({ name: removing === null ? '' : passkeyName(removing) })}
+                description={m.passkey_remove_body({ name: removing === null ? '' : label(removing) })}
                 confirmLabel={m.passkey_remove()}
                 tone="danger"
                 loading={remove.isPending}

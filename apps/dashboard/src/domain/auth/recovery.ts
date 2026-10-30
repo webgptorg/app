@@ -114,9 +114,11 @@ export function createRecoveryFlow(deps: AuthDeps) {
                     counter: credential.counter,
                     transports: credential.transports,
                     backedUp: credential.backedUp,
+                    aaguid: credential.aaguid,
                     addedVia: 'recovery',
                     createdAt: now,
-                    lastUsedAt: null,
+                    // The registration signs in, so this passkey has just been used.
+                    lastUsedAt: now,
                     counterRegressedAt: null,
                 },
             });

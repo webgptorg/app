@@ -5,6 +5,7 @@ import {
 } from '@simplewebauthn/server';
 
 import type { RelyingParty } from '../../domain/ports/relying-party';
+import { normalizeAaguid } from '../../domain/auth/passkey-providers';
 import { fromBase64Url } from '../../domain/auth/secrets';
 import { registrationOptionsSchema, type AuthenticationOptions } from '../../shared/api/webauthn';
 
@@ -72,7 +73,7 @@ export function createSimpleWebAuthnRelyingParty(config: {
                 if (!result.verified) {
                     return { kind: 'rejected' };
                 }
-                const { credential, credentialBackedUp } = result.registrationInfo;
+                const { credential, credentialBackedUp, aaguid } = result.registrationInfo;
                 return {
                     kind: 'verified',
                     credential: {
@@ -81,6 +82,7 @@ export function createSimpleWebAuthnRelyingParty(config: {
                         counter: credential.counter,
                         transports: input.response.response.transports ?? [],
                         backedUp: credentialBackedUp,
+                        aaguid: normalizeAaguid(aaguid),
                     },
                 };
             } catch {
