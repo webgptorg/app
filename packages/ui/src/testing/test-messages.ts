@@ -18,6 +18,7 @@ export const TEST_MESSAGES: UiMessages = {
     skipToContent: () => 'Skip to content',
     required: () => 'required',
     showMore: () => 'Show more',
+    moreActions: () => 'More actions',
     typeToConfirm: ({ phrase }) => `Type ${phrase} to confirm`,
     pagination: () => 'Pagination',
     previousPage: () => 'Previous page',

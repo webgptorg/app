@@ -21,6 +21,7 @@ export function createUiMessages(): UiMessages {
         skipToContent: () => m.ui_skip_to_content(),
         required: () => m.ui_required(),
         showMore: () => m.ui_show_more(),
+        moreActions: () => m.ui_more_actions(),
         typeToConfirm: (params) => m.ui_type_to_confirm(params),
         pagination: () => m.ui_pagination(),
         previousPage: () => m.ui_previous_page(),

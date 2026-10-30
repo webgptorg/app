@@ -532,6 +532,7 @@
     }
   ],
   "ui_show_more": "Zobrazit více",
+  "ui_more_actions": "Další akce",
   "ui_skip_to_content": "Přejít na obsah",
   "ui_sort_ascending": "Seřazeno vzestupně",
   "ui_sort_by": "Seřadit podle: {column}",

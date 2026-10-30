@@ -23,6 +23,8 @@ export type { UiMessages } from './i18n/ui-messages';
 
 export { Button, buttonClassName } from './components/button/button';
 export type { ButtonProps, ButtonSize, ButtonVariant } from './components/button/button';
+export { ActionMenu } from './components/action-menu/action-menu';
+export type { ActionMenuProps } from './components/action-menu/action-menu';
 export { IconButton } from './components/icon-button/icon-button';
 export type { IconButtonProps } from './components/icon-button/icon-button';
 export { Field } from './components/field/field';

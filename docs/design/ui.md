@@ -68,6 +68,10 @@ It carries an **engine fingerprint**: a visual pattern and a short code derived 
 
 Same design system, simpler: sign-up and sign-in with passkeys, engines list with live status and fingerprints, add engine (link code and install command), billing (Stripe), account. It links into engines; it never shows engine content.
 
+## Patterns
+
+- **Destructive actions** (Delete, Revoke, Remove…) live in the object's "More" (⋯) `ActionMenu`, after a separator, as red-text items; never as a filled red button beside the primary actions. Filled red appears only in the confirm dialog that names the object. The same holds for page headers, drawers and the phone sticky action bar.
+
 ## Responsive
 
 Works from 360 px. Mobile-first for chat, agent status, runs and their actions, and notifications; desktop-optimised but usable for the Book editor and wide tables (which become cards).

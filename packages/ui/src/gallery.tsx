@@ -1,3 +1,4 @@
+import { actionMenuGallery } from './components/action-menu/action-menu.gallery';
 import { iconButtonGallery } from './components/icon-button/icon-button.gallery';
 import { fieldGallery } from './components/field/field.gallery';
 import { inputGallery } from './components/input/input.gallery';
@@ -37,6 +38,7 @@ import type { GalleryEntry } from './gallery-entry';
 
 /** Every component module's gallery entry, in alphabetical order. */
 export const GALLERY_ENTRIES: readonly GalleryEntry[] = [
+    actionMenuGallery,
     anchorGallery,
     badgeGallery,
     bannerGallery,

@@ -524,6 +524,7 @@
     }
   ],
   "ui_show_more": "Show more",
+  "ui_more_actions": "More actions",
   "ui_skip_to_content": "Skip to content",
   "ui_sort_ascending": "Sorted ascending",
   "ui_sort_by": "Sort by {column}",
