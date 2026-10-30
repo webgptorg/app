@@ -176,7 +176,6 @@ export function FilterBar({ search, filters, onClear, empty = false, label }: Fi
                 {search === undefined ? null : <SearchInput {...search} className="min-w-0 flex-1" />}
                 {filters.length === 0 ? null : (
                     <Button
-                        aria-label={activeCount === 0 ? undefined : messages.filtersActive({ count: activeCount })}
                         aria-haspopup="dialog"
                         onClick={() => {
                             setSheetOpen(true);
@@ -185,7 +184,9 @@ export function FilterBar({ search, filters, onClear, empty = false, label }: Fi
                     >
                         <SlidersHorizontal aria-hidden="true" className="size-4" />
                         {messages.filters()}
-                        {activeCount === 0 ? null : <Count value={activeCount} />}
+                        {activeCount === 0 ? null : (
+                            <Count value={activeCount} label={messages.filtersActive({ count: activeCount })} />
+                        )}
                     </Button>
                 )}
             </div>
@@ -240,11 +241,22 @@ export function FilterBar({ search, filters, onClear, empty = false, label }: Fi
     );
 }
 
-function Count({ value }: { readonly value: number }) {
+/**
+ * The visible number, and for screen readers the same count in words; content rather than `aria-label`, so the
+ * button's name still starts with its visible text (WCAG 2.5.3).
+ */
+function Count({ value, label }: { readonly value: number; readonly label: string }) {
     return (
-        <span className="inline-flex min-w-5 items-center justify-center rounded-pill bg-(--filter-bar-count-bg) px-1.5 text-xs font-medium text-(--filter-bar-count-text)">
-            {value}
-        </span>
+        <>
+            {' '}
+            <span
+                aria-hidden="true"
+                className="inline-flex min-w-5 items-center justify-center rounded-pill bg-(--filter-bar-count-bg) px-1.5 text-xs font-medium text-(--filter-bar-count-text)"
+            >
+                {value}
+            </span>
+            <span className="sr-only">{label}</span>
+        </>
     );
 }
 
@@ -327,14 +339,11 @@ function CompactFilter({ filter }: { readonly filter: FilterBarFilter }) {
                     trigger={(triggerProps) => (
                         <Button
                             {...triggerProps}
-                            aria-label={
-                                count === 0 ? undefined : messages.filterSelected({ label: filter.label, count })
-                            }
                             data-filter-active={count === 0 ? undefined : ''}
                             className="max-w-full"
                         >
                             <span className="truncate">{filter.label}</span>
-                            {count === 0 ? null : <Count value={count} />}
+                            {count === 0 ? null : <Count value={count} label={messages.filterSelected({ count })} />}
                             <ChevronDown aria-hidden="true" className="size-4 shrink-0" />
                         </Button>
                     )}

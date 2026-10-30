@@ -122,7 +122,7 @@ describe('FilterBar on a wide screen', () => {
         await user.click(screen.getByRole('menuitemcheckbox', { name: 'Working' }));
         expect(seen.state.status).toEqual(['failed']);
         await user.keyboard('{Escape}');
-        expect(screen.getByRole('button', { name: 'Status, 1 selected' }).textContent).toContain('1');
+        expect(screen.getByRole('button', { name: /^Status\s*1 selected$/ })).toBeDefined();
     });
 
     it('picks one agent or all from a compact select', async () => {
@@ -172,7 +172,7 @@ describe('FilterBar on a phone', () => {
             );
             expect(screen.getByRole('searchbox', { name: 'Search runs' })).toBeDefined();
             expect(screen.queryByRole('button', { name: /^Status/ })).toBeNull();
-            const open = screen.getByRole('button', { name: 'Filters, 2 active' });
+            const open = screen.getByRole('button', { name: /^Filters\s*2 active$/ });
             expect(open.textContent).toContain('2');
             expect(screen.getAllByRole('button', { name: /^Remove / }).map((chip) => chip.textContent)).toEqual([
                 'Status: Idle',
@@ -195,7 +195,7 @@ describe('FilterBar on a phone', () => {
     it('edits every filter in the sheet, then shows the results', async () => {
         setMedia(NARROW, true);
         const { user } = renderUi(<Harness />);
-        await user.click(screen.getByRole('button', { name: 'Filters' }));
+        await user.click(screen.getByRole('button', { name: /^Filters/ }));
         const sheet = screen.getByRole('dialog', { name: 'Filters' });
         const status = within(sheet).getByRole('group', { name: 'Status' });
         await user.click(within(status).getByRole('checkbox', { name: 'Failed' }));
