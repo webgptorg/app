@@ -33,6 +33,11 @@ const CELL = 5;
 const GAP = 1;
 const GRID_ORIGIN = (VIEWBOX - (FINGERPRINT_GRID_SIZE * CELL + (FINGERPRINT_GRID_SIZE - 1) * GAP)) / 2;
 
+/** "07N5-M6QE-PCJ8" as "07N5-", "M6QE-", "PCJ8": joined back, exactly the code. */
+function codeGroups(formatted: string): readonly string[] {
+    return formatted.split(/(?<=-)/u);
+}
+
 const round = (value: number) => Math.round(value * 100) / 100;
 const point = (radius: number, angle: number) =>
     `${String(round(CENTRE + radius * Math.cos(angle)))} ${String(round(CENTRE + radius * Math.sin(angle)))}`;
@@ -83,7 +88,8 @@ export function TrustMark({ fingerprint, state, size = 'md', label, showCode = t
     const sizes = SIZE_CLASSES[size];
 
     return (
-        // The code is compared group by group with the engine's terminal, so it never breaks; it moves under the seal.
+        // The code is compared group by group with the engine's terminal: it moves under the seal first, and on a very
+        // narrow line breaks only between groups, never inside one.
         <span
             role="img"
             aria-label={accessibleName}
@@ -137,13 +143,13 @@ export function TrustMark({ fingerprint, state, size = 'md', label, showCode = t
                 )}
             </svg>
             {fingerprint !== null && showCode ? (
-                <span
-                    className={cx(
-                        'font-mono tracking-wide whitespace-nowrap text-(--trust-mark-code) tabular-nums',
-                        sizes.code,
-                    )}
-                >
-                    {fingerprint.formatted}
+                <span className={cx('font-mono tracking-wide text-(--trust-mark-code) tabular-nums', sizes.code)}>
+                    {codeGroups(fingerprint.formatted).map((group, index) => (
+                        // Groups can repeat, so the position is the identity; each keeps its trailing hyphen.
+                        <span key={index} className="whitespace-nowrap">
+                            {group}
+                        </span>
+                    ))}
                 </span>
             ) : null}
         </span>
