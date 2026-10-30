@@ -24,3 +24,16 @@ export function memberDetailQueryOptions(engineApi: EngineApiClient, memberId: M
         staleTime: MEMBER_STALE_MS,
     });
 }
+
+/** A page holds every pending invite: they expire, and nobody keeps more open than this. */
+export const INVITES_PAGE_SIZE = 100;
+
+/** `GET /invites`, newest first. Draft in the contract: an engine without invites answers 404 `not-found`. */
+export function inviteListQueryOptions(engineApi: EngineApiClient) {
+    return queryOptions({
+        queryKey: memberKeys.invites(),
+        queryFn: async ({ signal }) =>
+            unwrap(await engineApi.members.listInvites({ limit: INVITES_PAGE_SIZE }, signal)),
+        staleTime: MEMBER_STALE_MS,
+    });
+}

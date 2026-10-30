@@ -150,6 +150,12 @@ const ROUTES: readonly (readonly ['GET' | 'POST' | 'PUT', RegExp, number, Call])
     ['GET', /^\/chats$/, 200, (api, _, query, __, signal) => api.chats.listAll(Object.fromEntries(query), signal)],
     ['GET', /^\/security$/, 200, (api, _, __, ___, signal) => api.security.get(signal)],
     ['GET', /^\/members$/, 200, (api, _, query, __, signal) => api.members.list(Object.fromEntries(query), signal)],
+    [
+        'GET',
+        /^\/invites$/,
+        200,
+        (api, _, query, __, signal) => api.members.listInvites(Object.fromEntries(query), signal),
+    ],
     ['GET', /^\/secrets$/, 200, (api, _, query, __, signal) => api.secrets.list(Object.fromEntries(query), signal)],
     ['POST', /^\/secrets$/, 201, (api, _, __, body, signal) => api.secrets.create(body as never, signal)],
     [

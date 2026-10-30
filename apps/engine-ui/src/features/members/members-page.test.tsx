@@ -1,3 +1,4 @@
+import { OWNER_PERMISSIONS } from '@ptbk/engine-api';
 import { screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -46,15 +47,16 @@ const rowNames = () =>
         .map((row) => within(row).getAllByRole('cell')[0]?.textContent ?? '');
 
 describe('members', { timeout: TIMEOUT_MS }, () => {
-    it('lists members read-only, with role, passkeys, last seen and joined, and passes axe', async () => {
-        const engine = createSecurityEngine({ seed: { members: members(3) } });
+    it('lists members read-only without members.manage, with role, passkeys, last seen and joined, and passes axe', async () => {
+        const permissions = OWNER_PERMISSIONS.filter((permission) => permission !== 'members.manage');
+        const engine = createSecurityEngine({ permissions, seed: { members: members(3) } });
         const { container } = renderWithProviders({ path: '/members', engineApi: engine.client });
         await screen.findByText('Member 001');
         for (const header of ['Name', 'Role', 'Passkeys', 'Last seen', 'Joined']) {
             expect(screen.getByRole('columnheader', { name: new RegExp(header) }), header).toBeDefined();
         }
         const owner = screen.getByText('You').closest('tr') as HTMLElement;
-        expect(owner.textContent).toContain('Owner');
+        expect(owner.textContent).toContain('Member');
         expect(owner.textContent).toContain('1');
         expect(screen.getByText('Member 002').closest('tr')?.textContent).toContain('Never');
 
@@ -63,6 +65,7 @@ describe('members', { timeout: TIMEOUT_MS }, () => {
         expect(screen.queryByRole('checkbox', { name: /Select/ })).toBeNull();
         expect(screen.queryByRole('combobox', { name: /role/i })).toBeNull();
         expect(screen.queryByRole('button', { name: /remove|edit/i })).toBeNull();
+        expect(screen.getByText('Owners and admins invite people and change their roles.')).toBeDefined();
         await expectNoAxeViolations(container);
     });
 
