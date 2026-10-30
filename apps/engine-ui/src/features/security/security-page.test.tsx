@@ -291,7 +291,8 @@ describe('security panel: access', { timeout: TIMEOUT_MS }, () => {
         });
         expect(await screen.findByRole('heading', { name: /Private engine/ })).toBeDefined();
         expect(screen.getByText('memoryengine234567abcdefgh')).toBeDefined();
-        expect(screen.getByText('engine.localhost')).toBeDefined();
+        const trust = screen.getByRole('heading', { name: /Private engine/ }).closest('section') as HTMLElement;
+        expect(within(trust).getByText('engine.localhost')).toBeDefined();
         expect(screen.queryByRole('heading', { name: 'Verification' })).toBeNull();
         expect(screen.getByRole('heading', { name: 'Access' })).toBeDefined();
         await expectNoAxeViolations(container);
