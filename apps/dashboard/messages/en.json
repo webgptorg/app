@@ -542,6 +542,7 @@
   "ui_no_results": "No results match your filters",
   "ui_notifications": "Notifications",
   "ui_opens_in_new_tab": "(opens in a new tab)",
+  "ui_just_now": "just now",
   "ui_pagination": "Pagination",
   "ui_previous_page": "Previous page",
   "ui_remove_filter": "Remove {label}",

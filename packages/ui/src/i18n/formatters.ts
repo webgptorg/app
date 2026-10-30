@@ -11,7 +11,7 @@ export interface Formatters {
      * float, and its own decimals are kept beyond the currency's usual ones (up to 12).
      */
     formatCurrency(amount: string, currency: string): string;
-    /** "3 minutes ago", "in 2 days", "now", relative to `now`. */
+    /** "3 minutes ago", "in 2 days", "now", relative to `now`; the provider's formatters say "just now" instead of "now". */
     formatRelativeTime(value: Date, now: Date): string;
     /**
      * An elapsed time in the two largest units, rounded down: "45 s", "3 min 5 s", "2 h 7 min", "1 d 2 h". The unit
@@ -89,4 +89,21 @@ export function createFormatters(locale: string): Formatters {
     };
     cache.set(locale, formatters);
     return formatters;
+}
+
+const JUST_NOW_SECONDS = 45;
+// Engine timestamps can run a little ahead of the browser's clock; a moment "in 2 seconds" is still just now.
+const CLOCK_SKEW_SECONDS = 5;
+
+/** The formatters with a moment ago (or a few seconds ahead) worded by the app, e.g. "just now". */
+export function withJustNow(formatters: Formatters, justNow: () => string): Formatters {
+    return {
+        ...formatters,
+        formatRelativeTime: (value, now) => {
+            const secondsAgo = (now.getTime() - value.getTime()) / 1000;
+            return secondsAgo > -CLOCK_SKEW_SECONDS && secondsAgo < JUST_NOW_SECONDS
+                ? justNow()
+                : formatters.formatRelativeTime(value, now);
+        },
+    };
 }

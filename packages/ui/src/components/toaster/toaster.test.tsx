@@ -64,6 +64,15 @@ describe('Toaster', () => {
         },
     );
 
+    it('breaks a long unspaced name instead of running out of the card', () => {
+        renderToaster();
+        const name = 'SLACK_WEBHOOK_URL_FOR_THE_SUPPORT_TEAM_CHANNEL';
+        act(() => {
+            toasts().show({ tone: 'success', title: `Secret ${name} saved`, description: name });
+        });
+        for (const line of screen.getAllByText(new RegExp(name))) expect(line.className).toContain('wrap-anywhere');
+    });
+
     it('dismisses after the default duration, but keeps errors until dismissed', () => {
         renderToaster();
         act(() => {

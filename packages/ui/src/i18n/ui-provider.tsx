@@ -2,7 +2,7 @@ import { createContext, use, useMemo } from 'react';
 import type { ReactNode } from 'react';
 
 import { ToastStoreProvider } from '../components/toaster/toast-store';
-import { createFormatters } from './formatters';
+import { createFormatters, withJustNow } from './formatters';
 import type { Formatters } from './formatters';
 import type { UiMessages } from './ui-messages';
 
@@ -25,7 +25,10 @@ export interface UiProviderProps {
  * that `useToast()` shows in `<Toaster />`.
  */
 export function UiProvider({ messages, locale, children }: UiProviderProps) {
-    const value = useMemo(() => ({ messages, formatters: createFormatters(locale) }), [messages, locale]);
+    const value = useMemo(
+        () => ({ messages, formatters: withJustNow(createFormatters(locale), messages.justNow) }),
+        [messages, locale],
+    );
     return (
         <UiContext value={value}>
             <ToastStoreProvider>{children}</ToastStoreProvider>

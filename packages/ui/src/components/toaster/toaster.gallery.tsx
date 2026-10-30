@@ -22,6 +22,16 @@ function ToasterDemo() {
                 </Button>
             ))}
             <Button
+                onClick={() =>
+                    toast.show({
+                        tone: 'success',
+                        title: 'Secret SLACK_WEBHOOK_URL_FOR_THE_SUPPORT_TEAM_CHANNEL saved',
+                    })
+                }
+            >
+                Show long name
+            </Button>
+            <Button
                 onClick={() => {
                     void toast
                         .promise(

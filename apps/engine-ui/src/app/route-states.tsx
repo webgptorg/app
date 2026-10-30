@@ -2,7 +2,7 @@ import { Button, EmptyState, ErrorState, Skeleton } from '@ptbk/ui';
 import { useQueryErrorResetBoundary } from '@tanstack/react-query';
 import { useRouter } from '@tanstack/react-router';
 import type { ErrorComponentProps } from '@tanstack/react-router';
-import { Ban, Compass, LockKeyhole, SearchX } from 'lucide-react';
+import { Compass, LockKeyhole, SearchX } from 'lucide-react';
 import { useEffect } from 'react';
 import type { ReactNode } from 'react';
 
@@ -55,12 +55,13 @@ export function RouteError({ error, reset }: ErrorComponentProps) {
             />
         );
     }
+    // The engine refusing a page is the same situation as the UI knowing the permission is missing: same words.
     if (failure.kind === 'problem' && failure.problem.status === 403) {
         return (
             <RouteMessage
-                icon={<Ban aria-hidden />}
-                title={m.error_forbidden_title()}
-                description={m.error_forbidden_body()}
+                icon={<LockKeyhole aria-hidden />}
+                title={m.access_denied_title()}
+                description={m.access_denied_body()}
             />
         );
     }
