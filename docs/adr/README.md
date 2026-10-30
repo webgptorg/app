@@ -21,3 +21,4 @@ One file per decision. Copy [0000-template.md](0000-template.md), take the next 
 | [0015](0015-ui-architecture-and-design-system.md) | UI architecture and design system                                     | Accepted |
 | [0016](0016-engine-capabilities.md)               | Engine capabilities and a typed, extensible activity model            | Accepted |
 | [0017](0017-billing-entitlements.md)              | Billing through entitlements                                          | Accepted |
+| [0018](0018-teams-and-member-access.md)           | Teams, access requests and dashboard removals                         | Proposed |

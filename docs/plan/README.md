@@ -123,6 +123,12 @@ bun run plan --check  # validates statuses and dependencies (part of bun run che
 | [X-06](tasks/X-06-local-dev-stack.md)                    | Local dev stack for humans: the whole product on one machine                                 | X    | M3        |
 | [X-07](tasks/X-07-e2e-onboarding.md)                     | E2E: onboarding from install command to owner passkey                                        | X    | M3        |
 | [X-08](tasks/X-08-dev-stack-address-space.md)            | The dev stack and e2e side by side                                                           | X    | M3        |
+| [C-13](tasks/C-13-teams-contracts.md)                    | Teams contracts: member key, access tickets, revocations, heartbeat v2                       | C    | M3        |
+| [M-09](tasks/M-09-mock-engine-teams.md)                  | Mock engine: join page, access requests, revocations                                         | M    | M3        |
+| [D-13](tasks/D-13-teams-dashboard-api.md)                | Dashboard teams: data, roles, invites, tickets, revocations                                  | D    | M3        |
+| [D-14](tasks/D-14-teams-dashboard-ui.md)                 | Dashboard teams screens                                                                      | D    | M3        |
+| [U-15](tasks/U-15-access-requests.md)                    | Engine UI: access requests and dashboard removals                                            | U    | M3        |
+| [X-09](tasks/X-09-e2e-teams.md)                          | E2E: invite, approve, remove                                                                 | X    | M3        |
 | [I-01](tasks/I-01-relay-hosts.md)                        | Relay hosts: provisioning and hardening                                                      | I    | M4        |
 | [I-02](tasks/I-02-dns-cloudflare.md)                     | DNS and Cloudflare environments                                                              | I    | M4        |
 | [I-03](tasks/I-03-deploy-pipelines.md)                   | Deploy and release pipelines                                                                 | I    | M4        |
