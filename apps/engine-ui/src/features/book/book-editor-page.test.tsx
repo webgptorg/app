@@ -261,7 +261,8 @@ describe('the book editor page', { timeout: TIMEOUT_MS }, () => {
                 within(dialog).getByTestId('book-viewer').shadowRoot?.querySelector('.cm-deletedChunk'),
             ).not.toBeNull();
         });
-        expect(bookText('book-viewer')).toBe(`${SOURCE}\nRULE Mine`);
+        // A compared text gains a final newline, so the diff keeps unchanged last lines whole (book-viewer.tsx).
+        expect(bookText('book-viewer')).toBe(`${SOURCE}\nRULE Mine\n`);
         await app.user.click(within(dialog).getByRole('button', { name: 'Close' }));
 
         await app.user.click(screen.getByRole('button', { name: 'Reload and discard mine' }));
