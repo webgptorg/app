@@ -4,7 +4,7 @@ import { Badge, Banner, Card, CodeText, EmptyState, ErrorState, RelativeTime, Sk
 import type { BadgeTone } from '@ptbk/ui';
 import { useQuery } from '@tanstack/react-query';
 import { getRouteApi } from '@tanstack/react-router';
-import { ArrowLeft, ChevronRight, CircleCheck, Circle } from 'lucide-react';
+import { ChevronRight, CircleCheck, Circle } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 import { classifyApiError } from '../../app/api-errors';
@@ -13,7 +13,7 @@ import { ButtonLink, Link } from '../../app/link';
 import { isPageLevelFailure } from '../../app/list-errors';
 import { useAllows } from '../../app/registry/use-visible-features';
 import { m } from '../../paraglide/messages';
-import { Page } from '../shell/page';
+import { BackLink, Page } from '../shell/page';
 import { NARROW_QUERY, useMediaQuery } from '../shell/use-media-query';
 import { triggerQueryOptions } from '../triggers/triggers-queries';
 import { DiffView } from './diff-view';
@@ -63,7 +63,12 @@ function RunDetail({ run }: { readonly run: ReadRunDetail }) {
     const hasOutputs =
         run.outputs.messages.length > 0 || run.outputs.files.length > 0 || run.outputs.projectChanges.length > 0;
     return (
-        <Page title={runTitle(run)} back={<BackLink run={run} />} {...(narrow ? {} : { actions })}>
+        <Page
+            title={runTitle(run)}
+            documentTitle={[runTitle(run), m.runs_title()]}
+            back={<RunBackLink run={run} />}
+            {...(narrow ? {} : { actions })}
+        >
             <RunSummary run={run} />
             {run.error === null ? null : (
                 <Banner tone="danger" title={runErrorTitle(run.error.code)}>
@@ -99,28 +104,16 @@ function RunDetail({ run }: { readonly run: ReadRunDetail }) {
 }
 
 /** Back to where the member came from: the agent's Runs tab when they opened the run there, else all runs. */
-function BackLink({ run }: { readonly run: ReadRunDetail }) {
+function RunBackLink({ run }: { readonly run: ReadRunDetail }) {
     const { from } = route.useSearch();
-    const className = 'inline-flex items-center gap-1 text-sm';
     if (from === 'agent') {
         return (
-            <Link
-                to="/agents/$agentId/runs"
-                params={{ agentId: run.agentId }}
-                variant="standalone"
-                className={className}
-            >
-                <ArrowLeft aria-hidden className="size-4" />
+            <BackLink to="/agents/$agentId/runs" params={{ agentId: run.agentId }}>
                 {m.run_back_to_agent_runs({ agent: run.agentName ?? run.agentId })}
-            </Link>
+            </BackLink>
         );
     }
-    return (
-        <Link to="/runs" variant="standalone" className={className}>
-            <ArrowLeft aria-hidden className="size-4" />
-            {m.run_back_to_runs()}
-        </Link>
-    );
+    return <BackLink to="/runs">{m.run_back_to_runs()}</BackLink>;
 }
 
 // Codes are open slugs (the engine may add more); known ones get a plain title, the rest a generic one.
