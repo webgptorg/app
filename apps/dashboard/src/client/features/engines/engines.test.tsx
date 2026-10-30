@@ -127,7 +127,7 @@ describe('engine list', () => {
         expect(address.className).toContain('truncate');
         expect(address.getAttribute('title')).toBe(`${ENGINE_ID}.${ENGINE_DOMAIN}`);
         expect(row.getByRole('button', { name: 'Copy address' })).toBeTruthy();
-        expect(row.getByText('30 seconds ago').getAttribute('datetime')).toBe(new Date(NOW - 30_000).toISOString());
+        expect(row.getByText('just now').getAttribute('datetime')).toBe(new Date(NOW - 30_000).toISOString());
         expect(row.getByText('1.4.2')).toBeTruthy();
         expect(row.getByText('Update available')).toBeTruthy();
         // The heartbeat's numbers are on the engine's page, not in the list.
