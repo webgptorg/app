@@ -110,7 +110,9 @@ describe('agents list', { timeout: TIMEOUT_MS }, () => {
         });
 
         await user.selectOptions(screen.getByRole('combobox', { name: 'Status' }), 'running');
-        expect(await screen.findByText('No results match your filters')).toBeDefined();
+        // The filters live in the FilterBar now, so the page's own "nothing matches" state answers, with its way back.
+        expect(await screen.findByText('No agents match')).toBeDefined();
+        expect(screen.getByRole('button', { name: 'Clear search and filters' })).toBeDefined();
     });
 
     it('falls back to defaults for an unknown status or a garbage cursor instead of crashing', async () => {

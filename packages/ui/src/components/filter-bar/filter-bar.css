@@ -9,3 +9,8 @@
     --filter-bar-chip-border: var(--color-divider);
     --filter-bar-chip-text: var(--color-text);
 }
+
+/* An active filter's control is outlined in the accent; a plain rule, so it wins over the control's own border utility. */
+[role='search'] [data-filter-active] {
+    border-color: var(--filter-bar-active-border);
+}

@@ -284,25 +284,25 @@ function CompactFilter({ filter }: { readonly filter: FilterBarFilter }) {
     const messages = useUiMessages();
     switch (filter.kind) {
         case 'select':
+            // The wrapper sizes the full-width control to its content, so the row stays compact.
             return (
-                <Select
-                    aria-label={filter.label}
-                    value={filter.value ?? ''}
-                    onChange={(event) => {
-                        filter.onChange(event.target.value === '' ? undefined : event.target.value);
-                    }}
-                    className={cx(
-                        'w-auto max-w-full',
-                        filter.value !== undefined && 'border-(--filter-bar-active-border)',
-                    )}
-                >
-                    <option value="">{filter.allLabel}</option>
-                    {filter.options.map((option) => (
-                        <option key={option.value} value={option.value}>
-                            {option.label}
-                        </option>
-                    ))}
-                </Select>
+                <div className="max-w-full">
+                    <Select
+                        aria-label={filter.label}
+                        value={filter.value ?? ''}
+                        onChange={(event) => {
+                            filter.onChange(event.target.value === '' ? undefined : event.target.value);
+                        }}
+                        data-filter-active={filter.value === undefined ? undefined : ''}
+                    >
+                        <option value="">{filter.allLabel}</option>
+                        {filter.options.map((option) => (
+                            <option key={option.value} value={option.value}>
+                                {option.label}
+                            </option>
+                        ))}
+                    </Select>
+                </div>
             );
         case 'multi': {
             const count = filter.value.length;
@@ -330,7 +330,8 @@ function CompactFilter({ filter }: { readonly filter: FilterBarFilter }) {
                             aria-label={
                                 count === 0 ? undefined : messages.filterSelected({ label: filter.label, count })
                             }
-                            className={cx('max-w-full', count > 0 && 'border-(--filter-bar-active-border)')}
+                            data-filter-active={count === 0 ? undefined : ''}
+                            className="max-w-full"
                         >
                             <span className="truncate">{filter.label}</span>
                             {count === 0 ? null : <Count value={count} />}
