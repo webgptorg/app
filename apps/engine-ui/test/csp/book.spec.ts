@@ -82,8 +82,10 @@ test.describe("the book editor's test chat under the engine CSP", () => {
         await expect(panel.getByText('Test · not saved')).toBeVisible();
         expectCleanPage(report);
 
-        await appendLine(page, 'RULE Answer in one line');
         const composer = panel.getByRole('textbox', { name: 'Message' });
+        // The page fits the screen, so the test composer is in view without scrolling.
+        await expect(composer).toBeInViewport();
+        await appendLine(page, 'RULE Answer in one line');
         await composer.fill('Show me everything');
         await composer.press('Enter');
         await expect(panel.locator('[aria-live="polite"][aria-atomic="true"]')).toHaveText('Grace replied');
@@ -98,6 +100,7 @@ test.describe("the book editor's test chat under the engine CSP", () => {
         await page.getByRole('button', { name: 'Test', exact: true }).click();
         await expect(history.getByText('Image: x')).toBeVisible();
         await expect(page.getByTestId('book-editor')).toBeHidden();
+        await expect(composer).toBeInViewport();
         const overflow = await page.evaluate(
             () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
         );

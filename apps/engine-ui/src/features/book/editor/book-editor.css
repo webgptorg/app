@@ -11,7 +11,22 @@
     min-width: 0;
 }
 
-.cm-editor {
+/* `fill`: the editor takes its host's height, which the page sizes to the screen. */
+:host([data-fill]) .book-editor-root {
+    height: 100%;
+}
+
+:host([data-fill]) .book-editor-root .cm-editor {
+    height: 100%;
+    max-height: none;
+}
+
+/*
+ * Every rule below starts at the root, so it outranks CodeMirror's light base theme (`.ͼ2 .cm-gutters` and the like),
+ * whose fixed light colours would otherwise stay in dark mode; style-mod adopts its sheet before this one.
+ */
+
+.book-editor-root .cm-editor {
     border: 1px solid var(--color-border);
     border-radius: 0.5rem;
     background-color: var(--color-surface);
@@ -19,97 +34,109 @@
     font-size: 0.875rem;
 }
 
-.cm-editor.cm-focused {
+.book-editor-root .cm-editor.cm-focused {
     outline: 2px solid var(--color-focus);
     outline-offset: 2px;
 }
 
-.cm-editor {
+.book-editor-root .cm-editor {
     height: 24rem;
     max-height: 70vh;
 }
 
-.cm-scroller {
+.book-editor-root .cm-scroller {
     font-family: var(--font-mono);
     line-height: 1.6;
 }
 
-.cm-content {
+.book-editor-root .cm-content {
     caret-color: var(--color-text);
     padding-block: 0.5rem;
 }
 
-.cm-content ::selection {
+.book-editor-root .cm-content ::selection {
     background-color: var(--color-selected);
 }
 
-.cm-gutters {
+.book-editor-root .cm-gutters {
     border-right: 1px solid var(--color-divider);
     border-radius: 0.5rem 0 0 0.5rem;
     background-color: var(--color-sunken);
     color: var(--color-text-muted);
 }
 
-.cm-specialChar {
+.book-editor-root .cm-specialChar {
     color: var(--color-danger);
 }
 
-.cm-matchingBracket {
+.book-editor-root .cm-matchingBracket {
     background-color: var(--color-accent-soft);
 }
 
-.cm-panels {
+.book-editor-root .cm-panels {
     background-color: var(--color-raised);
     color: var(--color-text);
 }
 
-.cm-panels input,
-.cm-panels button {
+.book-editor-root .cm-panels-top {
+    border-bottom: 1px solid var(--color-divider);
+}
+
+.book-editor-root .cm-button,
+.book-editor-root .cm-textfield {
+    border: 1px solid var(--color-border);
+    border-radius: 0.25rem;
+    background-image: none;
+    background-color: var(--color-surface);
+}
+
+.book-editor-root .cm-panels input,
+.book-editor-root .cm-panels button {
     color: inherit;
     font: inherit;
 }
 
-.cm-tooltip {
+.book-editor-root .cm-tooltip {
     border: 1px solid var(--color-border);
     background-color: var(--color-raised);
     color: var(--color-text);
 }
 
-.cm-deletedChunk {
+.book-editor-root .cm-deletedChunk {
     background-color: var(--color-danger-soft);
 }
 
-.cm-changedLine,
-.cm-insertedLine {
+.book-editor-root .cm-editor .cm-changedLine,
+.book-editor-root .cm-editor .cm-insertedLine {
     background-color: var(--color-success-soft);
 }
 
-.tok-heading {
+.book-editor-root .tok-heading {
     color: var(--color-info);
     font-weight: 600;
 }
 
-.tok-keyword {
+.book-editor-root .tok-keyword {
     color: var(--color-accent-text);
     font-weight: 600;
 }
 
-.tok-url {
+.book-editor-root .tok-url {
     color: var(--color-info);
     text-decoration: underline;
 }
 
-.tok-variableName {
+.book-editor-root .tok-variableName {
     color: var(--color-warning);
 }
 
-.tok-comment {
+.book-editor-root .tok-comment {
     color: var(--color-text-muted);
     font-style: italic;
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .cm-cursor {
+    .book-editor-root .cm-cursor {
         animation: none;
     }
 }

@@ -23,7 +23,7 @@ export function BookViewSwitch({ view, onChange, className }: BookViewSwitchProp
         <div
             role="group"
             aria-label={m.book_view_label()}
-            className={cx('inline-flex w-fit rounded-control border border-divider bg-surface p-0.5', className)}
+            className={cx('inline-flex w-fit gap-0.5 rounded-control bg-sunken p-0.5', className)}
         >
             {VIEWS.map(({ id, label }) => (
                 <button
@@ -34,8 +34,11 @@ export function BookViewSwitch({ view, onChange, className }: BookViewSwitchProp
                         onChange(id);
                     }}
                     className={cx(
-                        'min-h-9 rounded-control px-4 text-sm font-medium motion-safe:transition-colors motion-safe:duration-(--motion-state) focus-visible:outline-2 focus-visible:outline-focus',
-                        view === id ? 'bg-accent-soft text-text' : 'text-text-muted hover:text-text',
+                        'min-h-9 rounded-control border px-4 text-sm motion-safe:transition-colors motion-safe:duration-(--motion-state) focus-visible:outline-2 focus-visible:outline-focus',
+                        // The border carries the selected state at 3:1 in both themes; colour alone was too faint.
+                        view === id
+                            ? 'border-border bg-raised font-semibold text-text shadow-subtle'
+                            : 'border-transparent font-medium text-text-muted hover:text-text',
                     )}
                 >
                     {label()}

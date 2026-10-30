@@ -33,6 +33,8 @@ export interface BookEditorProps {
     readonly readOnly?: boolean;
     /** `Mod-s`; the browser's own "save page" is suppressed while the editor has focus. */
     readonly onSave?: () => void;
+    /** Take the height the parent gives it instead of a fixed one. */
+    readonly fill?: boolean;
     readonly ref?: Ref<BookEditorHandle>;
 }
 
@@ -57,6 +59,7 @@ export function BookEditor({
     label,
     readOnly = false,
     onSave,
+    fill = false,
     ref,
 }: BookEditorProps) {
     const hostRef = useRef<HTMLDivElement>(null);
@@ -143,5 +146,12 @@ export function BookEditor({
         [withView],
     );
 
-    return <div ref={hostRef} className="min-h-96 min-w-0" data-testid="book-editor" />;
+    return (
+        <div
+            ref={hostRef}
+            className={fill ? 'min-h-48 min-w-0 flex-1' : 'min-h-96 min-w-0'}
+            data-fill={fill ? '' : undefined}
+            data-testid="book-editor"
+        />
+    );
 }

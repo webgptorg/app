@@ -6,6 +6,7 @@ import { BookEditorPage } from '../../../features/book/book-editor-page';
 import { agentSourceQueryOptions } from '../../../features/book/book-queries';
 
 export const Route = createFileRoute('/agents/$agentId/book')({
+    staticData: { fillViewport: true },
     beforeLoad: requireFeature('book', { agentTab: 'book' }),
     loader: ({ context, params }) => {
         const agentId = AgentId.safeParse(params.agentId).data;

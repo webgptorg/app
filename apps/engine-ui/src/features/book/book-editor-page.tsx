@@ -47,16 +47,15 @@ function saveFailureMessage(failure: ApiFailure): string {
 /** Shaped like the editor and its toolbar, so the content replaces it without shifting the layout. */
 export function BookEditorSkeleton() {
     return (
-        <div aria-busy="true" className="flex flex-col gap-4">
+        <div aria-busy="true" className="flex min-h-0 flex-1 flex-col gap-3">
             <span className="sr-only" role="status">
                 {m.loading()}
             </span>
-            <div className="flex items-center justify-between gap-3">
-                <Skeleton shape="text" className="h-6 w-24" />
+            <div className="flex items-center justify-end gap-3">
+                <Skeleton shape="text" className="h-5 w-32" />
                 <Skeleton shape="block" className="h-9 w-24" />
             </div>
-            <Skeleton shape="block" className="h-96 w-full" />
-            <Skeleton shape="text" className="h-5 w-40" />
+            <Skeleton shape="block" className="min-h-48 w-full flex-1" />
         </div>
     );
 }
@@ -172,27 +171,28 @@ function BookWorkspace({ agentId, initial }: WorkspaceProps) {
     };
 
     return (
-        <div className="flex min-w-0 flex-col gap-6">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
             <UnsavedChangesGuard when={dirty} />
-            <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="flex min-w-0 flex-col">
-                    <h2 className="text-lg font-semibold">{m.book_title()}</h2>
-                    <p className="text-sm text-text-muted" role="status">
+            <div className="flex flex-wrap items-center gap-3">
+                {testable ? <BookViewSwitch view={view} onChange={setView} className="xl:hidden" /> : null}
+                <div className="ms-auto flex flex-wrap items-center justify-end gap-3">
+                    {/* On a phone the Save button's state says it, and the switch needs the row. */}
+                    <p className="text-sm text-text-muted max-sm:sr-only" role="status">
                         {canWrite ? (dirty ? m.book_unsaved() : m.book_all_saved()) : m.book_read_only()}
                     </p>
+                    {canWrite ? (
+                        <Button
+                            variant="primary"
+                            loading={save.isPending}
+                            disabled={!dirty}
+                            aria-keyshortcuts="Control+S Meta+S"
+                            onClick={() => void saveDraft()}
+                        >
+                            <Save aria-hidden className="size-4" />
+                            {m.book_save()}
+                        </Button>
+                    ) : null}
                 </div>
-                {canWrite ? (
-                    <Button
-                        variant="primary"
-                        loading={save.isPending}
-                        disabled={!dirty}
-                        aria-keyshortcuts="Control+S Meta+S"
-                        onClick={() => void saveDraft()}
-                    >
-                        <Save aria-hidden className="size-4" />
-                        {m.book_save()}
-                    </Button>
-                ) : null}
             </div>
             {conflict === null ? null : (
                 <Banner
@@ -218,18 +218,23 @@ function BookWorkspace({ agentId, initial }: WorkspaceProps) {
                     {m.book_conflict_body()}
                 </Banner>
             )}
-            {testable ? <BookViewSwitch view={view} onChange={setView} className="xl:hidden" /> : null}
+            {/* The editor and the test chat share the screen's height, so the test composer is always in view. */}
             <div
-                className={
-                    testable
-                        ? 'grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(20rem,26rem)] xl:items-start'
-                        : 'contents'
-                }
+                className={cx(
+                    'grid min-h-0 min-w-0 flex-1 grid-rows-[minmax(0,1fr)] gap-6',
+                    testable && 'xl:grid-cols-[minmax(0,1fr)_minmax(20rem,26rem)]',
+                )}
             >
                 {/* Hidden rather than unmounted, so switching views keeps the editor's state and the conversation. */}
-                <div className={cx('flex min-w-0 flex-col gap-6', testable && view === 'test' && 'max-xl:hidden')}>
+                <div
+                    className={cx(
+                        'flex min-h-0 min-w-0 flex-col gap-4',
+                        testable && view === 'test' && 'max-xl:hidden',
+                    )}
+                >
                     <BookEditor
                         ref={editor}
+                        fill
                         initialSource={initial.source}
                         onChange={onChange}
                         diagnostics={validation.diagnostics}
@@ -237,15 +242,17 @@ function BookWorkspace({ agentId, initial }: WorkspaceProps) {
                         readOnly={!canWrite}
                         onSave={() => void saveDraft()}
                     />
-                    {canWrite ? (
-                        <ProblemsList
-                            diagnostics={validation.diagnostics}
-                            checking={validation.checking}
-                            failed={validation.failed}
-                            onSelect={(diagnostic) => editor.current?.focusRange(diagnostic.range)}
-                        />
-                    ) : null}
-                    <BookHistory agentId={agentId} currentRevisionId={base.revisionId} onOpen={setOpenRevision} />
+                    <div className="flex max-h-[40%] min-h-0 shrink-0 flex-col gap-6 overflow-y-auto">
+                        {canWrite ? (
+                            <ProblemsList
+                                diagnostics={validation.diagnostics}
+                                checking={validation.checking}
+                                failed={validation.failed}
+                                onSelect={(diagnostic) => editor.current?.focusRange(diagnostic.range)}
+                            />
+                        ) : null}
+                        <BookHistory agentId={agentId} currentRevisionId={base.revisionId} onOpen={setOpenRevision} />
+                    </div>
                 </div>
                 {testable ? (
                     <TestChatPanel
@@ -254,10 +261,8 @@ function BookWorkspace({ agentId, initial }: WorkspaceProps) {
                         agentName={draftAgentName(draft) ?? m.book_test_unnamed()}
                         onInvalidBook={showInvalidBook}
                         onShowProblems={showProblems}
-                        className={cx(
-                            'h-[70dvh] min-h-96 xl:sticky xl:top-4 xl:h-[calc(100dvh-10rem)]',
-                            view === 'book' && 'max-xl:hidden',
-                        )}
+                        headingLevel={2}
+                        className={cx(view === 'book' && 'max-xl:hidden')}
                     />
                 ) : null}
             </div>
@@ -293,7 +298,7 @@ function BookWorkspace({ agentId, initial }: WorkspaceProps) {
     );
 }
 
-/** The Book tab: the agent's book in the editor, its problems and its history. */
+/** The Book tab: the agent's book in the editor, its problems and its history, sized to the screen (`fillViewport`). */
 export function BookEditorPage() {
     const agentId = useAgentIdParam();
     const source = useQuery(agentSourceQueryOptions(useEngineApi(), agentId));

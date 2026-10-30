@@ -57,7 +57,8 @@ export function Composer({
         const element = box.current;
         if (element === null) return;
         element.style.height = 'auto';
-        element.style.height = `${String(element.scrollHeight)}px`;
+        // A hidden box (the book's test chat behind the Book view on a phone) measures 0: keep its natural one row.
+        element.style.height = element.scrollHeight === 0 ? '' : `${String(element.scrollHeight)}px`;
     }, [text]);
 
     const submit = async () => {

@@ -202,6 +202,9 @@ describe('the book editor page', { timeout: TIMEOUT_MS }, () => {
             expect(historyRows()).toHaveLength(2);
         }, WAIT);
         expect(screen.getByText('All changes saved')).toBeDefined();
+        const [newest, oldest] = historyRows();
+        expect(await within(newest as HTMLElement).findByText('Lines added: 1, removed: 0', {}, WAIT)).toBeDefined();
+        expect(within(oldest as HTMLElement).getByText('First version')).toBeDefined();
     });
 
     it('saves with Mod-s from inside the editor', async () => {
@@ -258,7 +261,8 @@ describe('the book editor page', { timeout: TIMEOUT_MS }, () => {
                 within(dialog).getByTestId('book-viewer').shadowRoot?.querySelector('.cm-deletedChunk'),
             ).not.toBeNull();
         });
-        expect(bookText('book-viewer')).toBe(`${SOURCE}\nRULE Mine`);
+        // A compared text gains a final newline, so the diff keeps unchanged last lines whole (book-viewer.tsx).
+        expect(bookText('book-viewer')).toBe(`${SOURCE}\nRULE Mine\n`);
         await app.user.click(within(dialog).getByRole('button', { name: 'Close' }));
 
         await app.user.click(screen.getByRole('button', { name: 'Reload and discard mine' }));
@@ -287,10 +291,14 @@ describe('the book editor page', { timeout: TIMEOUT_MS }, () => {
         expect(within(dialog).getByRole('button', { name: 'Compare with current' }).getAttribute('aria-pressed')).toBe(
             'true',
         );
+        expect(
+            within(dialog).getByText('Red: only in the current version. Green: only in this version.'),
+        ).toBeDefined();
+        // Whole lines: the unchanged line above the removed one stays out of the change.
         await waitFor(() => {
             expect(
-                within(dialog).getByTestId('book-viewer').shadowRoot?.querySelector('.cm-deletedChunk'),
-            ).not.toBeNull();
+                within(dialog).getByTestId('book-viewer').shadowRoot?.querySelector('.cm-deletedChunk')?.textContent,
+            ).toBe('RULE Second');
         });
 
         await app.user.click(within(dialog).getByRole('button', { name: 'Restore this version' }));
@@ -333,11 +341,16 @@ describe('the book editor page', { timeout: TIMEOUT_MS }, () => {
         await waitFor(() => {
             expect(historyRows()).toHaveLength(20);
         }, WAIT);
+        // The last row's predecessor is on the next page.
+        expect(
+            await within(historyRows()[19] as HTMLElement).findByText('Lines added: 1, removed: 1', {}, WAIT),
+        ).toBeDefined();
 
         await app.user.click(screen.getByRole('button', { name: 'Next page' }));
         await waitFor(() => {
             expect(historyRows()).toHaveLength(2);
         }, WAIT);
+        expect(within(historyRows()[1] as HTMLElement).getByText('First version')).toBeDefined();
         const query = app.spies.listRevisions.mock.lastCall?.[1];
         expect(query?.limit).toBe(20);
         expect(typeof query?.cursor).toBe('string');
