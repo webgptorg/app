@@ -8,23 +8,8 @@ import { m } from '../../paraglide/messages';
 import { roleLabel } from '../shell/role-label';
 import type { MemberMutations, MemberTarget } from './use-member-mutations';
 
-/**
- * The contract guarantees only that `owner` holds every permission, so only a member who holds every permission is
- * offered the owner role: nobody hands out more than they hold. The engine decides the rest.
- */
-export function assignableRoles(holdsEveryPermission: boolean): readonly Role[] {
-    return holdsEveryPermission ? ROLES : ROLES.filter((role) => role !== 'owner');
-}
-
-function RoleField({
-    roles,
-    value,
-    onChange,
-}: {
-    readonly roles: readonly Role[];
-    readonly value: Role;
-    readonly onChange: (role: Role) => void;
-}) {
+/** Every role is offered; which roles a member may grant, and to whom, is the engine's policy and it refuses the rest. */
+function RoleField({ value, onChange }: { readonly value: Role; readonly onChange: (role: Role) => void }) {
     return (
         <Field label={m.members_role_label()} hint={m.members_role_hint()}>
             {(control) => (
@@ -32,11 +17,11 @@ function RoleField({
                     {...control}
                     value={value}
                     onChange={(event) => {
-                        const next = roles.find((role) => role === event.target.value);
+                        const next = ROLES.find((role) => role === event.target.value);
                         if (next !== undefined) onChange(next);
                     }}
                 >
-                    {roles.map((role) => (
+                    {ROLES.map((role) => (
                         <option key={role} value={role}>
                             {roleLabel(role)}
                         </option>
@@ -49,12 +34,11 @@ function RoleField({
 
 export interface ChangeRoleDialogProps {
     readonly member: MemberTarget & { readonly role: Role };
-    readonly roles: readonly Role[];
     readonly mutations: MemberMutations;
     readonly onClose: () => void;
 }
 
-export function ChangeRoleDialog({ member, roles, mutations, onClose }: ChangeRoleDialogProps) {
+export function ChangeRoleDialog({ member, mutations, onClose }: ChangeRoleDialogProps) {
     const formId = useId();
     const [role, setRole] = useState<Role>(member.role);
     const submit = (event: SyntheticEvent<HTMLFormElement>) => {
@@ -85,11 +69,7 @@ export function ChangeRoleDialog({ member, roles, mutations, onClose }: ChangeRo
             }
         >
             <form id={formId} noValidate onSubmit={submit}>
-                <RoleField
-                    roles={roles.includes(member.role) ? roles : [member.role, ...roles]}
-                    value={role}
-                    onChange={setRole}
-                />
+                <RoleField value={role} onChange={setRole} />
             </form>
         </Dialog>
     );
@@ -109,7 +89,6 @@ interface CreatedInvite {
 }
 
 export interface InviteDialogProps {
-    readonly roles: readonly Role[];
     readonly mutations: MemberMutations;
     readonly onClose: () => void;
 }
@@ -118,7 +97,7 @@ export interface InviteDialogProps {
  * Creates an invite link and shows it once. The link carries the invite secret: it lives only in this dialog's state,
  * as text, and is gone when the dialog closes.
  */
-export function InviteDialog({ roles, mutations, onClose }: InviteDialogProps) {
+export function InviteDialog({ mutations, onClose }: InviteDialogProps) {
     const formId = useId();
     const [role, setRole] = useState<Role>('member');
     const [days, setDays] = useState<number>(DEFAULT_INVITE_DAYS);
@@ -190,7 +169,7 @@ export function InviteDialog({ roles, mutations, onClose }: InviteDialogProps) {
             }
         >
             <form id={formId} noValidate onSubmit={submit} className="flex flex-col gap-4">
-                <RoleField roles={roles} value={role} onChange={setRole} />
+                <RoleField value={role} onChange={setRole} />
                 <Field label={m.invites_expiry_label()}>
                     {(control) => (
                         <Select

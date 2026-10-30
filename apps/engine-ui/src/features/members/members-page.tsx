@@ -1,4 +1,3 @@
-import { PERMISSIONS } from '@ptbk/engine-api';
 import type { Member } from '@ptbk/engine-api';
 import {
     Badge,
@@ -27,7 +26,7 @@ import { usePermissions } from '../session/use-permissions';
 import { Page } from '../shell/page';
 import { roleLabel } from '../shell/role-label';
 import { memberListParams } from './member-list-search';
-import { assignableRoles, ChangeRoleDialog, InviteDialog } from './member-dialogs';
+import { ChangeRoleDialog, InviteDialog } from './member-dialogs';
 import { inviteListQueryOptions, memberListQueryOptions } from './members-queries';
 import { PendingInvites } from './pending-invites';
 import { useMemberMutations } from './use-member-mutations';
@@ -114,8 +113,6 @@ export function MembersPage() {
     const me = useCurrentMember();
     const { can } = usePermissions();
     const canManage = can('members.manage');
-    const holdsEveryPermission = PERMISSIONS.every((permission) => can(permission));
-    const roles = assignableRoles(holdsEveryPermission);
     const mutations = useMemberMutations();
     const [pending, setPending] = useState<Pending | null>(null);
     const close = () => {
@@ -138,10 +135,9 @@ export function MembersPage() {
         if (invalidCursor) void navigate({ search: {}, replace: true });
     }, [invalidCursor, navigate]);
 
-    // An owner may hold permissions the viewer lacks (the contract guarantees owners hold every one), so only a member
-    // who holds every permission acts on an owner. Nobody changes or removes themselves here.
+    // Nobody changes or removes themselves here; everything else is the engine's policy to allow or refuse.
     const rowActions = (member: Member): MenuEntry[] => {
-        if (member.id === me.memberId || (member.role === 'owner' && !holdsEveryPermission)) return [];
+        if (member.id === me.memberId) return [];
         return [
             {
                 kind: 'item',
@@ -235,9 +231,9 @@ export function MembersPage() {
                     }
                 />
             ) : null}
-            {pending?.kind === 'invite' ? <InviteDialog roles={roles} mutations={mutations} onClose={close} /> : null}
+            {pending?.kind === 'invite' ? <InviteDialog mutations={mutations} onClose={close} /> : null}
             {pending?.kind === 'role' ? (
-                <ChangeRoleDialog member={pending.member} roles={roles} mutations={mutations} onClose={close} />
+                <ChangeRoleDialog member={pending.member} mutations={mutations} onClose={close} />
             ) : null}
             {pending?.kind === 'remove' ? (
                 <ConfirmDialog

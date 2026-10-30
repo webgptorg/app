@@ -10,7 +10,6 @@ import { problemResponse } from '../../testing/test-engine-api';
 
 const TIMEOUT_MS = 20_000;
 const AT = '2026-09-01T00:00:00Z';
-const ADMIN_PERMISSIONS = OWNER_PERMISSIONS.filter((permission) => permission !== 'settings.manage');
 
 const member = (id: string, displayName: string, role: 'owner' | 'admin' | 'member' | 'viewer') => ({
     id,
@@ -100,27 +99,6 @@ describe('member management', { timeout: TIMEOUT_MS }, () => {
         renderWithProviders({ path: '/members', engineApi: teamEngine().client });
         await screen.findByText('Petr Svoboda');
         expect(screen.queryByRole('button', { name: 'Actions for Owner' })).toBeNull();
-    });
-
-    it('lets only a member holding every permission act on an owner or grant the owner role', async () => {
-        const admin = renderWithProviders({
-            path: '/members',
-            engineApi: teamEngine({ permissions: ADMIN_PERMISSIONS }).client,
-        });
-        await screen.findByText('Eva Dvořáková');
-        expect(screen.queryByRole('button', { name: 'Actions for Eva Dvořáková' })).toBeNull();
-        await pickMenuItem(admin.user, 'Petr Svoboda', 'Change role');
-        const roles = within(screen.getByRole('dialog')).getAllByRole('option');
-        expect(roles.map((option) => option.textContent)).toEqual(['Admin', 'Member', 'Viewer']);
-        admin.unmount();
-
-        const owner = renderWithProviders({ path: '/members', engineApi: teamEngine().client });
-        await pickMenuItem(owner.user, 'Eva Dvořáková', 'Change role');
-        expect(
-            within(screen.getByRole('dialog'))
-                .getAllByRole('option')
-                .map((option) => option.textContent),
-        ).toEqual(['Owner', 'Admin', 'Member', 'Viewer']);
     });
 
     it('offers no invite, role change or removal without members.manage', async () => {
