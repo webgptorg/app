@@ -1,6 +1,6 @@
-// Flow 3: the create-agent wizard end to end: brief, book, a small knowledge file, a test chat with a streamed reply,
-// done; the new agent is then in the list.
-import { uniqueName } from '../../src/ui-app.ts';
+// Flow 3: the create-agent wizard end to end: brief, book, a small knowledge file, a throwaway test chat with a
+// streamed reply, then finish on the agent's page; the new agent is then in the list and the test left no chat.
+import { apiList, uniqueName } from '../../src/ui-app.ts';
 import { expect, test } from '../../src/ui-fixtures.ts';
 
 test('creates an agent through every wizard step', async ({ page, signIn, appUrl }) => {
@@ -29,20 +29,21 @@ test('creates an agent through every wizard step', async ({ page, signIn, appUrl
     await page.getByRole('button', { name: 'Next' }).click();
 
     await expect(page.getByRole('heading', { level: 2, name: 'Try it out' })).toBeVisible();
-    await page.getByRole('button', { name: 'Start a test chat' }).click();
-    const composer = page.getByRole('textbox', { name: 'Message' });
+    const panel = page.getByTestId('book-test-chat');
+    const composer = panel.getByRole('textbox', { name: 'Message' });
     await composer.fill('How much is a coffee?');
     await composer.press('Enter');
-    const history = page.getByRole('region', { name: 'Messages' });
-    // Streamed: the reply shows while it is still being written, then settles.
-    await expect(history.getByText('Replying…')).toBeVisible();
-    await expect(page.getByText(`${name} replied`)).toBeAttached({ timeout: 60_000 });
-    await expect(history.getByText('Replying…')).toHaveCount(0);
-    await page.getByRole('button', { name: 'Next' }).click();
+    await expect(panel.getByRole('region', { name: 'Test messages' }).getByText('How much is a coffee?')).toBeVisible();
+    await expect(panel.locator('[aria-live="polite"][aria-atomic="true"]')).toHaveText(`${name} replied`, {
+        timeout: 60_000,
+    });
+    await expect(page.getByRole('button', { name: 'Finish', exact: true })).toBeInViewport();
+    await page.getByRole('button', { name: 'Finish', exact: true }).click();
 
-    await expect(page.getByRole('heading', { level: 2, name: 'Your agent is ready' })).toBeVisible();
-    await page.getByRole('link', { name: 'Open agent' }).click();
+    await expect(page.getByText(`${name} is ready`)).toBeVisible();
     await expect(page.getByRole('heading', { level: 1, name })).toBeVisible();
+    const agentId = new URL(page.url()).pathname.split('/')[2];
+    expect(await apiList(page, `/agents/${String(agentId)}/chats`)).toEqual([]);
     await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Agents', exact: true }).click();
     await expect(page.getByRole('table', { name: 'Agents' }).getByRole('link', { name, exact: true })).toBeVisible();
 });

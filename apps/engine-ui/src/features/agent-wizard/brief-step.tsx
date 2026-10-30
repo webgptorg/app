@@ -45,6 +45,7 @@ export function BriefStep({ form, headingRef, serverErrors, onCancel }: BriefSte
                 title={m.wizard_brief_title()}
                 description={m.wizard_brief_body()}
                 headingRef={headingRef}
+                width="form"
                 actions={
                     <>
                         <Button variant="ghost" onClick={onCancel}>

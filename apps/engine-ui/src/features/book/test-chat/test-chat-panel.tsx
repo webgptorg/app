@@ -44,6 +44,8 @@ export interface TestChatPanelProps {
     readonly onShowProblems: () => void;
     /** 2 where the panel is a top-level section of its page (the Book tab). */
     readonly headingLevel?: 2 | 3;
+    /** The hint above the composer; the book editor's default speaks of unsaved changes. */
+    readonly intro?: string;
     readonly className?: string;
 }
 
@@ -58,6 +60,7 @@ export function TestChatPanel({
     onInvalidBook,
     onShowProblems,
     headingLevel = 3,
+    intro = m.book_test_intro(),
     className,
 }: TestChatPanelProps) {
     const Heading = headingLevel === 2 ? 'h2' : 'h3';
@@ -147,7 +150,7 @@ export function TestChatPanel({
             {views.length === 0 ? (
                 // Like a fresh chat: the space stays empty and the hint sits right above the composer it is about.
                 <div className="flex min-h-0 flex-1 flex-col justify-end">
-                    <p className="text-sm text-text-muted">{m.book_test_intro()}</p>
+                    <p className="text-sm text-text-muted">{intro}</p>
                 </div>
             ) : (
                 <MessageList
