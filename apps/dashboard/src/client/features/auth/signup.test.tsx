@@ -1,9 +1,9 @@
-import { screen, waitFor } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { act, screen, waitFor } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { apiRoutes } from '../../../shared/api/routes';
 import { expectNoAxeViolations } from '../../testing/axe';
-import { REGISTRATION_OPTIONS, REGISTRATION_RESPONSE, session, TOKEN } from '../../testing/fixtures';
+import { NOW, REGISTRATION_OPTIONS, REGISTRATION_RESPONSE, session, TOKEN } from '../../testing/fixtures';
 import { renderApp } from '../../testing/render-app';
 import type { ScriptedApi } from '../../testing/scripted-api';
 import { ok, problem } from '../../testing/scripted-api';
@@ -30,8 +30,12 @@ describe('sign-up, email step', () => {
         const app = renderApp({ path: '/signup', script: signupScript });
         await app.user.type(await screen.findByRole('textbox', { name: /Email/ }), '  ada@example.test ');
         await app.user.click(screen.getByRole('button', { name: 'Send the link' }));
-        expect(await screen.findByRole('heading', { name: 'Check your email' })).toBeTruthy();
-        expect(screen.getByText(/We sent a message to ada@example.test\./)).toBeTruthy();
+        expect(await screen.findByRole('heading', { name: 'Check your email', level: 1 })).toBe(document.activeElement);
+        expect(screen.queryByRole('heading', { name: 'Create your account' })).toBeNull();
+        expect(screen.getByRole('status').textContent).toBe(
+            'We sent a link to ada@example.test. Open it on this device to continue. It works once and expires in 15 minutes.',
+        );
+        expect(app.container.querySelector('strong')?.textContent).toBe('ada@example.test');
         expect(app.api.callsTo(apiRoutes.signupStart)).toEqual([{ body: { email: 'ada@example.test' } }]);
         await expectNoAxeViolations(app.container);
 
@@ -48,6 +52,63 @@ describe('sign-up, email step', () => {
         await app.user.click(screen.getByRole('button', { name: 'Send the link' }));
         expect(await screen.findByText(message)).toBeTruthy();
         expect(screen.getByRole('button', { name: 'Send the link' })).toBeTruthy();
+    });
+});
+
+function useFakeClock() {
+    vi.useFakeTimers({
+        shouldAdvanceTime: true,
+        toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'],
+    });
+    vi.setSystemTime(NOW);
+    return { advance: (ms: number) => vi.advanceTimersByTime(ms) };
+}
+
+async function elapse(ms: number): Promise<void> {
+    await act(() => vi.advanceTimersByTimeAsync(ms));
+}
+
+async function sendLink(app: ReturnType<typeof renderApp>): Promise<void> {
+    await app.user.type(await screen.findByRole('textbox', { name: /Email/ }), 'ada@example.test');
+    await app.user.click(screen.getByRole('button', { name: 'Send the link' }));
+    await screen.findByRole('heading', { name: 'Check your email' });
+}
+
+describe('sign-up, sending the link again', () => {
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    it('offers the same address again only after a minute, then waits another minute', async () => {
+        const fakeTimers = useFakeClock();
+        const app = renderApp({ path: '/signup', script: signupScript, fakeTimers });
+        await sendLink(app);
+        const waiting = screen.getByRole<HTMLButtonElement>('button', { name: 'Send it again in 60 s' });
+        expect(waiting.disabled).toBe(true);
+        await elapse(59_000);
+        expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Send it again in 1 s' }).disabled).toBe(true);
+        await elapse(1000);
+        await app.user.click(screen.getByRole('button', { name: 'Send it again' }));
+        expect(await screen.findByText('Sent again.')).toBeTruthy();
+        expect(app.api.callsTo(apiRoutes.signupStart)).toEqual([
+            { body: { email: 'ada@example.test' } },
+            { body: { email: 'ada@example.test' } },
+        ]);
+        expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Send it again in 60 s' }).disabled).toBe(true);
+        await expectNoAxeViolations(app.container);
+    });
+
+    it('says when the resend was refused and stays on the sent screen', async () => {
+        const fakeTimers = useFakeClock();
+        const app = renderApp({ path: '/signup', script: signupScript, fakeTimers });
+        await sendLink(app);
+        app.api.on(apiRoutes.signupStart, problem(429, 'rate-limited'));
+        await elapse(60_000);
+        await app.user.click(screen.getByRole('button', { name: 'Send it again' }));
+        expect(await screen.findByText(/Too many attempts/)).toBeTruthy();
+        expect(screen.queryByText('Sent again.')).toBeNull();
+        expect(screen.getByRole('heading', { name: 'Check your email' })).toBeTruthy();
+        expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Send it again' }).disabled).toBe(false);
     });
 });
 

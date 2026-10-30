@@ -29,7 +29,8 @@ describe('recovery', () => {
         await expectNoAxeViolations(app.container);
         await app.user.type(screen.getByRole('textbox', { name: /Email/ }), 'ada@example.test');
         await app.user.click(screen.getByRole('button', { name: 'Send a recovery link' }));
-        expect(await screen.findByText(/If ada@example.test belongs to a Promptbook account/)).toBeTruthy();
+        expect(await screen.findByRole('heading', { name: 'Check your email', level: 1 })).toBeTruthy();
+        expect(screen.getByRole('status').textContent).toMatch(/^If ada@example.test belongs to a Promptbook account/);
         expect(app.api.callsTo(apiRoutes.recoveryRequest)).toEqual([{ body: { email: 'ada@example.test' } }]);
         await expectNoAxeViolations(app.container);
     });

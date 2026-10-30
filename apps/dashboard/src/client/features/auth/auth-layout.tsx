@@ -1,34 +1,16 @@
-import { Card, IconButton, Menu, SkipLink } from '@ptbk/ui';
+import { Card, SkipLink } from '@ptbk/ui';
 import { Outlet } from '@tanstack/react-router';
-import { Settings2 } from 'lucide-react';
 
-import { m } from '../../../paraglide/messages';
-import { usePreferenceEntries } from '../shell/preference-entries';
+import { PublicFooter, PublicHeader } from '../shell/public-frame';
 
 const MAIN_ID = 'main-content';
 
 /** The signed-out frame around sign-in, sign-up and recovery: the brand, language and theme, one card. */
 export function AuthLayout() {
-    const preferences = usePreferenceEntries();
     return (
         <div className="flex min-h-dvh flex-col bg-surface text-text">
             <SkipLink targetId={MAIN_ID} />
-            <header className="mx-auto flex w-full max-w-5xl items-center justify-between gap-4 px-4 py-3">
-                <span className="font-display text-lg font-semibold">{m.app_name()}</span>
-                <Menu
-                    label={m.preferences_menu()}
-                    align="end"
-                    items={preferences}
-                    trigger={(props) => (
-                        <IconButton
-                            {...props}
-                            variant="ghost"
-                            label={m.preferences_menu()}
-                            icon={<Settings2 aria-hidden />}
-                        />
-                    )}
-                />
-            </header>
+            <PublicHeader width="wide" />
             <main
                 id={MAIN_ID}
                 tabIndex={-1}
@@ -38,6 +20,7 @@ export function AuthLayout() {
                     <Outlet />
                 </Card>
             </main>
+            <PublicFooter width="wide" />
         </div>
     );
 }

@@ -20,14 +20,22 @@ export function SignUpPage(props: { readonly initialToken: FragmentToken }) {
     switch (token.kind) {
         case 'none':
             return (
-                <div className="flex flex-col gap-4">
-                    <h1 className="font-display text-2xl font-semibold">{m.signup_title()}</h1>
-                    <p className="text-text-muted">{m.signup_body()}</p>
-                    <EmailStep purpose="signup" submitLabel={m.signup_email_action()} />
-                    <p className="text-sm">
-                        {m.signup_have_account()} <Link to="/signin">{m.signup_sign_in()}</Link>
-                    </p>
-                </div>
+                <EmailStep
+                    purpose="signup"
+                    title={m.signup_title()}
+                    intro={
+                        <>
+                            <p className="font-medium">{m.signup_value()}</p>
+                            <p className="text-text-muted">{m.signup_body()}</p>
+                        </>
+                    }
+                    submitLabel={m.signup_email_action()}
+                    footer={
+                        <p className="text-sm">
+                            {m.signup_have_account()} <Link to="/signin">{m.signup_sign_in()}</Link>
+                        </p>
+                    }
+                />
             );
         case 'malformed':
             return (

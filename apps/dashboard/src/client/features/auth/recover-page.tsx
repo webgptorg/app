@@ -32,14 +32,17 @@ export function RecoverPage(props: { readonly initialToken: FragmentToken }) {
     switch (state.kind) {
         case 'none':
             return (
-                <div className="flex flex-col gap-4">
-                    <h1 className="font-display text-2xl font-semibold">{m.recover_title()}</h1>
-                    <p className="text-text-muted">{m.recover_body()}</p>
-                    <EmailStep purpose="recovery" submitLabel={m.recover_email_action()} />
-                    <p className="text-sm">
-                        {m.recover_remembered()} <Link to="/signin">{m.signup_sign_in()}</Link>
-                    </p>
-                </div>
+                <EmailStep
+                    purpose="recovery"
+                    title={m.recover_title()}
+                    intro={<p className="text-text-muted">{m.recover_body()}</p>}
+                    submitLabel={m.recover_email_action()}
+                    footer={
+                        <p className="text-sm">
+                            {m.recover_remembered()} <Link to="/signin">{m.signup_sign_in()}</Link>
+                        </p>
+                    }
+                />
             );
         case 'malformed':
             return <LinkExpired onRestart={restart} />;
