@@ -37,7 +37,7 @@ src/app/                composition root: engine API client, query client, route
 src/routes/             file-based routes; src/routeTree.gen.ts is generated and not committed
 src/features/<name>/    one folder per feature: <name>-feature.ts (its registry entry), <name>-keys.ts (query keys),
                         <name>-queries.ts (queryOptions), its screens
-src/features/shell/     the app shell built from the registry: sidebar, engine switcher, trust mark, live indicator,
+src/features/shell/     the app shell built from the registry: sidebar, engine switcher with the trust mark, live indicator,
                         user menu, drawer below 768 px, command palette (palette/, loaded on first open)
 src/features/home/      home (U-08): the control center or the member home, the activity feed (activity/)
 src/features/session/   useCurrentMember(), usePermissions(), <Can>, requirePermission()

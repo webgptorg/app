@@ -72,6 +72,8 @@ export interface MenuProps {
     readonly items: readonly MenuEntry[];
     /** Which edge of the trigger the menu lines up with. */
     readonly align?: 'start' | 'end';
+    /** At least as wide as the trigger, e.g. under a full-width sidebar button, so the two line up. */
+    readonly matchTriggerWidth?: boolean;
 }
 
 type ActionEntry = MenuItemEntry | MenuLinkEntry;
@@ -129,26 +131,35 @@ const VIEWPORT_MARGIN = 8;
 interface Position {
     readonly top: number;
     readonly left: number;
+    readonly minWidth: number | undefined;
 }
 
-function placeMenu(trigger: DOMRect, menu: DOMRect, align: 'start' | 'end', rtl: boolean): Position {
+function placeMenu(
+    trigger: DOMRect,
+    menu: DOMRect,
+    align: 'start' | 'end',
+    rtl: boolean,
+    matchTriggerWidth: boolean,
+): Position {
     const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
     const viewportHeight = window.innerHeight;
+    const minWidth = matchTriggerWidth ? Math.min(trigger.width, viewportWidth - 2 * VIEWPORT_MARGIN) : undefined;
+    const width = Math.max(menu.width, minWidth ?? 0);
     const alignLeft = (align === 'start') !== rtl;
-    const preferredLeft = alignLeft ? trigger.left : trigger.right - menu.width;
-    const maxLeft = Math.max(VIEWPORT_MARGIN, viewportWidth - menu.width - VIEWPORT_MARGIN);
+    const preferredLeft = alignLeft ? trigger.left : trigger.right - width;
+    const maxLeft = Math.max(VIEWPORT_MARGIN, viewportWidth - width - VIEWPORT_MARGIN);
     const left = Math.min(Math.max(preferredLeft, VIEWPORT_MARGIN), maxLeft);
     const below = trigger.bottom + GAP;
     const above = trigger.top - GAP - menu.height;
     const top = below + menu.height > viewportHeight - VIEWPORT_MARGIN && above >= VIEWPORT_MARGIN ? above : below;
-    return { top, left };
+    return { top, left, minWidth };
 }
 
 /**
  * A menu of actions and links on the Popover API (top layer, no portal, no injected styles). Keyboard: arrows, Home
  * and End move between items, typing jumps to an item, Tab wraps inside, Esc closes and returns focus to the trigger.
  */
-export function Menu({ label, trigger, items, align = 'start' }: MenuProps) {
+export function Menu({ label, trigger, items, align = 'start', matchTriggerWidth = false }: MenuProps) {
     const triggerId = useId();
     const menuId = useId();
     const triggerRef = useRef<HTMLButtonElement>(null);
@@ -205,7 +216,13 @@ export function Menu({ label, trigger, items, align = 'start' }: MenuProps) {
         const reposition = () => {
             const rtl = getComputedStyle(triggerElement).direction === 'rtl';
             setPosition(
-                placeMenu(triggerElement.getBoundingClientRect(), menuElement.getBoundingClientRect(), align, rtl),
+                placeMenu(
+                    triggerElement.getBoundingClientRect(),
+                    menuElement.getBoundingClientRect(),
+                    align,
+                    rtl,
+                    matchTriggerWidth,
+                ),
             );
         };
         reposition();
@@ -223,7 +240,7 @@ export function Menu({ label, trigger, items, align = 'start' }: MenuProps) {
             window.removeEventListener('resize', reposition);
             window.removeEventListener('scroll', reposition, true);
         };
-    }, [open, align]);
+    }, [open, align, matchTriggerWidth]);
 
     const triggerProps: MenuTriggerProps = {
         ref: triggerRef,
@@ -295,7 +312,13 @@ export function Menu({ label, trigger, items, align = 'start' }: MenuProps) {
     };
 
     const style: CSSProperties | undefined =
-        position === null ? undefined : { top: `${String(position.top)}px`, left: `${String(position.left)}px` };
+        position === null
+            ? undefined
+            : {
+                  top: `${String(position.top)}px`,
+                  left: `${String(position.left)}px`,
+                  minWidth: position.minWidth === undefined ? undefined : `${String(position.minWidth)}px`,
+              };
 
     const renderEntry = ({ entry, index: itemIndex }: IndexedEntry) => {
         const body = (

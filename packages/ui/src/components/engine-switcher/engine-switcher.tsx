@@ -35,6 +35,8 @@ export interface EngineSwitcherProps {
     readonly addEngineHref: string | null;
     /** Mark only, e.g. in a collapsed sidebar; the name stays the accessible name. */
     readonly compact?: boolean;
+    /** Actions about the current engine shown above it, e.g. engine-ui's "Verify this engine". */
+    readonly leadingItems?: readonly MenuEntry[];
 }
 
 const STATUS_TONES: Readonly<Record<EngineStatus, BadgeTone>> = {
@@ -80,9 +82,12 @@ export function EngineSwitcher({
     allEnginesHref,
     addEngineHref,
     compact = false,
+    leadingItems = [],
 }: EngineSwitcherProps) {
     const messages = useUiMessages();
     const items: MenuEntry[] = [
+        ...leadingItems,
+        ...(leadingItems.length === 0 ? [] : [{ kind: 'separator' as const, id: 'leading' }]),
         { kind: 'heading', id: 'current', label: messages.currentEngine() },
         {
             kind: 'item',
@@ -122,6 +127,7 @@ export function EngineSwitcher({
         <Menu
             label={messages.engineSwitcher()}
             items={items}
+            matchTriggerWidth={!compact}
             trigger={(trigger) => (
                 <button
                     type="button"

@@ -44,7 +44,21 @@ export const engineSwitcherGallery: GalleryEntry = {
                 allEnginesHref={DASHBOARD}
                 addEngineHref={`${DASHBOARD}/engines/new`}
             />
-            <EngineSwitcher current={CURRENT} engines={[]} allEnginesHref={null} addEngineHref={null} />
+            <EngineSwitcher
+                current={CURRENT}
+                engines={[]}
+                allEnginesHref={null}
+                addEngineHref={null}
+                leadingItems={[
+                    {
+                        kind: 'item',
+                        id: 'verify',
+                        label: 'Verify this engine',
+                        description: CURRENT.fingerprint.formatted,
+                        onSelect: () => undefined,
+                    },
+                ]}
+            />
             <EngineSwitcher current={CURRENT} engines={[]} allEnginesHref={DASHBOARD} addEngineHref={null} compact />
         </div>
     ),
