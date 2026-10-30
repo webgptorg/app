@@ -117,7 +117,7 @@ test('link an engine, see it online, open its page and revoke it, under the prod
     await expect(open).toHaveAttribute('referrerpolicy', 'no-referrer');
     await checkScreen('/engines');
 
-    await page.getByRole('link', { name: `${engineId.slice(0, 8)}…` }).click();
+    await page.getByRole('link', { name: `${engineId.slice(0, 8)}…`, exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Last heartbeat' })).toBeVisible();
     await checkScreen('/engines/$engineId');
 

@@ -23,7 +23,7 @@ test('while on the dashboard, the browser makes no request to any engine hostnam
         `https://${report.hostname}/`,
     );
     await page.waitForLoadState('networkidle');
-    await rows.getByRole('link', { name: `${report.engineId.slice(0, 8)}…` }).click();
+    await rows.getByRole('link', { name: `${report.engineId.slice(0, 8)}…`, exact: true }).click();
     await expect(page.getByRole('button', { name: 'Revoke engine' })).toBeVisible();
     await page.waitForLoadState('networkidle');
     for (const path of ['/engines/new', '/billing', '/account', '/engines']) {
