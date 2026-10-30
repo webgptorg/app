@@ -28,7 +28,9 @@ describeStatusStoreContract('memory', () => {
         addTeam(_orgId, engineId, userIds) {
             const teamId = teamIdSchema.parse(engineId);
             teams.state.engineTeams.set(engineId, teamId);
-            teams.state.members.push(...userIds.map((userId) => ({ teamId, userId, createdAt: 0 })));
+            teams.state.members.push(
+                ...userIds.map((userId) => ({ teamId, userId, createdAt: 0, access: 'none' as const })),
+            );
             return Promise.resolve();
         },
     };

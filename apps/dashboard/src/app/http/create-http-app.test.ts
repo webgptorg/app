@@ -75,6 +75,7 @@ function app(options: {
         entitlements,
         ...registration,
         teams: createMemoryTeamStore({ auth: auth.state, registration: registration.state }),
+        memberKey: () => Promise.resolve(null),
         relayTokens: createMemoryRelayTokenStore(),
         registry: { findEngine: () => Promise.resolve(null) },
         engineHostnames: createMemoryEngineHostnameStore(),

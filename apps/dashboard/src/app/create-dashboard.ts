@@ -20,6 +20,7 @@ import {
 } from '../adapters/db/d1-registration-store';
 import { createD1RelayPresenceStore } from '../adapters/db/d1-relay-presence-store';
 import { createD1TeamStore } from '../adapters/db/d1-team-store';
+import { memberKeySource } from '../domain/teams/member-key';
 import { createD1RegistryReader, createD1RelayTokenStore } from '../adapters/db/d1-registry-store';
 import { createD1HeartbeatEngineReader } from '../adapters/db/d1-status-store';
 import { createMemoryRateLimiter } from '../adapters/rate-limit/memory-rate-limiter';
@@ -182,6 +183,7 @@ export function createDashboard(
         linkCodes: createD1LinkCodeStore(db),
         engines: createD1EngineStore(db),
         teams: createD1TeamStore(db),
+        memberKey: memberKeySource(config.memberKeySeed),
         platformEngines: createD1PlatformEngineStore(db),
         relayTokens: createD1RelayTokenStore(db),
         registry: createD1RegistryReader(db),

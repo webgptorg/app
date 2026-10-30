@@ -57,6 +57,19 @@ export type EmailMessage =
           readonly link: string;
       })
     | (Envelope & {
+          /** Someone opened a team and waits for an engine admin's approval; no secret, only where to look. */
+          readonly template: 'access-waiting';
+          readonly requesterEmail: string;
+          readonly teamName: string;
+          readonly link: string;
+      })
+    | (Envelope & {
+          /** The team's engine approved the recipient's access request. */
+          readonly template: 'access-granted';
+          readonly teamName: string;
+          readonly link: string;
+      })
+    | (Envelope & {
           /**
            * I-04: to the ops address, numbers and names of our own relays and jobs; I-05's abuse rules go to the abuse
            * inbox with an engine ID or a certificate's issuance key as the subject. Never engine content.

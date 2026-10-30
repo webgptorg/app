@@ -2,6 +2,7 @@ import {
     EngineId,
     HEARTBEAT_MAX_BODY_BYTES,
     HEARTBEAT_SIGNATURE_HEADER,
+    HeartbeatReply,
     REGISTER_PATH,
     REGISTER_REQUEST_MAX_BYTES,
     REGISTRATION_ERROR_CODE,
@@ -14,6 +15,9 @@ import { z } from 'zod';
 import type { EngineCreationPolicy } from '../../domain/registration/engine-creation-policy';
 import { registerEngine } from '../../domain/registration/register-engine';
 import { ingestHeartbeat } from '../../domain/status/ingest-heartbeat';
+import type { EmailMessage } from '../../domain/ports/email-sender';
+import { handleHeartbeatV2 } from '../../domain/teams/member-access';
+import { memberAccessDeps } from './team-routes';
 import { defineRoute, NO_CONTENT, NO_INPUT, RAW_BODY } from '../../shared/api/contract';
 import { environmentSchema } from '../../shared/environment';
 import type { DashboardDeps } from '../deps';
@@ -78,7 +82,8 @@ export const heartbeatRoute = defineRoute({
         body: RAW_BODY,
         maxBodyBytes: HEARTBEAT_MAX_BODY_BYTES,
     },
-    output: NO_CONTENT,
+    // 204 to a v1 heartbeat; a v2 one gets the revocations the engine still owes an ack (ADR 0018).
+    output: z.union([NO_CONTENT, HeartbeatReply]),
     errorCodes: [...Object.values(HEARTBEAT_ERROR_CODE), REGISTRATION_ERROR_CODE.engineSuspended],
 });
 
@@ -94,6 +99,9 @@ export function createV1Router(
         | 'linkCodes'
         | 'engines'
         | 'teams'
+        | 'memberKey'
+        | 'links'
+        | 'email'
         | 'heartbeatEngines'
         | 'engineStatus'
     > & {
@@ -127,7 +135,7 @@ export function createV1Router(
                 return { kind: 'problem', status: 409, code: outcome.kind };
         }
     });
-    deps.routes.bind(router, V1_MOUNT, heartbeatRoute, async ({ input }) => {
+    deps.routes.bind(router, V1_MOUNT, heartbeatRoute, async ({ input, request }) => {
         const outcome = await ingestHeartbeat(deps, {
             engineId: input.params.engineId,
             rawBody: input.body,
@@ -135,8 +143,18 @@ export function createV1Router(
         });
         deps.metrics.record({ name: 'ptbk_dashboard_heartbeats_total', outcome: outcome.kind });
         switch (outcome.kind) {
-            case 'accepted':
-                return { kind: 'ok', body: undefined, status: 204 };
+            case 'accepted': {
+                if (outcome.heartbeat.v === 1) {
+                    return { kind: 'ok', body: undefined, status: 204 };
+                }
+                const { reply, deliver } = await handleHeartbeatV2(
+                    memberAccessDeps(deps),
+                    input.params.engineId,
+                    outcome.heartbeat,
+                );
+                request.waitUntil(sendAccessEmails(deps, deliver));
+                return { kind: 'ok', body: reply };
+            }
             case 'unknown-engine':
                 return { kind: 'problem', status: 404, code: 'not-found' };
             case 'engine-suspended':
@@ -161,4 +179,18 @@ export function createV1Router(
         }
     });
     return router;
+}
+
+const EMAIL_TIMEOUT_MS = 30_000;
+
+async function sendAccessEmails(
+    deps: Pick<DashboardDeps, 'email' | 'logger'>,
+    deliver: (send: (message: EmailMessage) => Promise<void>) => Promise<void>,
+): Promise<void> {
+    const signal = AbortSignal.timeout(EMAIL_TIMEOUT_MS);
+    try {
+        await deliver((message) => deps.email.send(message, signal));
+    } catch (error) {
+        deps.logger.error('heartbeat.access-email-failed', { error: error instanceof Error ? error.name : 'unknown' });
+    }
 }

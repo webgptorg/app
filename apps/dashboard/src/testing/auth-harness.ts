@@ -9,7 +9,7 @@ import { createMemoryLogger, type MemoryLogger } from '../adapters/memory-logger
 import { createMemoryRateLimiter } from '../adapters/rate-limit/memory-rate-limiter';
 import { cryptoRandom } from '../adapters/crypto-random';
 import { createSimpleWebAuthnRelyingParty } from '../adapters/webauthn/simple-webauthn-relying-party';
-import { parseConfig, DEV_RATE_LIMIT_HMAC_KEY } from '../app/config';
+import { parseConfig, DEV_MEMBER_KEY, DEV_RATE_LIMIT_HMAC_KEY } from '../app/config';
 import { authLinks, type DashboardDeps } from '../app/deps';
 import { createHttpApp } from '../app/http/create-http-app';
 import { rateLimitRules } from '../app/rate-limiter';
@@ -43,6 +43,7 @@ import { createMemoryAuthStore, type MemoryAuthState } from './memory-auth-store
 import { createMemoryRegistrationStores, type MemoryRegistrationState } from './memory-registration-store';
 import { createMemoryTeamStore } from './memory-team-store';
 import type { TeamStore } from '../domain/teams/team-store';
+import { memberKeySource } from '../domain/teams/member-key';
 import { createFakeDnsResolver, type FakeDnsResolver } from './fake-dns-resolver';
 import { createMemoryCustomHostnameStore, type MemoryCustomHostnameStore } from './memory-custom-hostname-store';
 import { createMemoryRegistryReader, createMemoryRelayTokenStore } from './memory-registry-stores';
@@ -181,6 +182,7 @@ export function createAuthHarness(options: {
         EMAIL_FROM: 'no-reply@ptbk.test',
         ABUSE_EMAIL: 'abuse@ptbk.test',
         RATE_LIMIT_HMAC_KEY: DEV_RATE_LIMIT_HMAC_KEY,
+        MEMBER_KEY: DEV_MEMBER_KEY,
         BILLING_PLANS: TEST_PLANS,
         STRIPE_WEBHOOK_SECRET: webhookSecret,
         ...(options.heartbeat === undefined ? {} : { HEARTBEAT: options.heartbeat }),
@@ -246,6 +248,7 @@ export function createAuthHarness(options: {
         linkCodes: registration.linkCodes,
         engines: registration.engines,
         teams,
+        memberKey: memberKeySource(config.memberKeySeed),
         platformEngines: registration.platformEngines,
         relayTokens: options.relayTokens ?? createMemoryRelayTokenStore(),
         registry: options.registry ?? createMemoryRegistryReader(registration.engines),

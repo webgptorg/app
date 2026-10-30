@@ -12,7 +12,9 @@ import { env, exports } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
 
 import { cryptoRandom } from '../../src/adapters/crypto-random';
-import { sha256Hex } from '../../src/domain/auth/secrets';
+import { DEV_MEMBER_KEY } from '../../src/app/config';
+import { fromBase64Url, sha256Hex } from '../../src/domain/auth/secrets';
+import { memberKeySource } from '../../src/domain/teams/member-key';
 import { newOrgId, newUserId, type OrgId } from '../../src/domain/ids';
 import { createTestEngine } from '../../src/testing/test-engine';
 
@@ -87,7 +89,14 @@ describe('POST /v1/engines/register on the built Worker', () => {
         expect(response.headers.get('Cache-Control')).toBe('no-store');
         const body = RegisterEngineResponse.parse(await response.json());
         const engineId = await deriveEngineId(ed25519PublicKeyToBytes(engine.publicKey));
-        expect(body).toEqual({ engineId, hostname: `${engineId}.engines.ptbk.test`, relays: ['relay.ptbk.test'] });
+        // The dev member key from wrangler.jsonc, which the built Worker runs with.
+        const memberKey = (await memberKeySource(fromBase64Url(DEV_MEMBER_KEY))())?.publicKey;
+        expect(body).toEqual({
+            engineId,
+            hostname: `${engineId}.engines.ptbk.test`,
+            relays: ['relay.ptbk.test'],
+            memberKey,
+        });
         const row = await env.DB.prepare('SELECT org_id, public_key FROM engines WHERE engine_id = ?')
             .bind(engineId)
             .first();

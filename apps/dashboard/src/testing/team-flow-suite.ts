@@ -1,10 +1,32 @@
-import { LinkCode, REGISTER_PATH } from '@ptbk/protocol';
+import {
+    ed25519PublicKeyToBytes,
+    heartbeatPath,
+    HeartbeatReply,
+    LinkCode,
+    REGISTER_PATH,
+    Timestamp,
+    verifyAccessTicket,
+    verifyMemberRevocation,
+    type EngineId,
+} from '@ptbk/protocol';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import type { EngineView, LinkCodeView, OrgMemberView, PersonView, SessionView, TeamView } from '../shared/api/routes';
+import type {
+    EngineView,
+    LinkCodeView,
+    OrgMemberView,
+    PersonView,
+    SessionView,
+    TeamMemberView,
+    TeamView,
+} from '../shared/api/routes';
 import type { AuthHarness, TestBrowser, TestResponse } from './auth-harness';
 import { lastEmail, problemCode, requestOptions, signUp, uniqueEmail } from './auth-flows';
-import { createTestEngine } from './test-engine';
+import { createTestEngine, type TestEngine } from './test-engine';
+import { signedHeartbeat, signedHeartbeatV2 } from './test-heartbeat';
+import { DEV_MEMBER_KEY } from '../app/config';
+import { fromBase64Url } from '../domain/auth/secrets';
+import { memberKeySource } from '../domain/teams/member-key';
 
 export interface TeamFlowFixture {
     readonly harness: AuthHarness;
@@ -72,15 +94,20 @@ export function describeTeamFlows(name: string, makeFixture: () => TeamFlowFixtu
         }
 
         /** Links an engine to the team through a team link code, as "New team → link" does. */
-        async function linkEngine(browser: TestBrowser, teamId: string): Promise<string> {
+        async function linkTestEngine(browser: TestBrowser, teamId: string): Promise<TestEngine> {
             const response = await browser.request('POST', `/api/teams/${teamId}/link-codes`);
             expect(response.status).toBe(200);
             const engine = await createTestEngine();
             const request = await engine.register(LinkCode.parse((response.body as LinkCodeView).linkCode));
-            expect((await harness.browser({ ip: '198.51.100.7' }).request('POST', REGISTER_PATH, request)).status).toBe(
-                200,
-            );
-            return engine.engineId;
+            const registered = await harness.browser({ ip: '198.51.100.7' }).request('POST', REGISTER_PATH, request);
+            expect(registered.status).toBe(200);
+            const memberKey = (await memberKeySource(fromBase64Url(DEV_MEMBER_KEY))())?.publicKey;
+            expect((registered.body as { memberKey: string }).memberKey).toBe(memberKey);
+            return engine;
+        }
+
+        async function linkEngine(browser: TestBrowser, teamId: string): Promise<string> {
+            return (await linkTestEngine(browser, teamId)).engineId;
         }
 
         async function invite(
@@ -427,6 +454,131 @@ export function describeTeamFlows(name: string, makeFixture: () => TeamFlowFixtu
             const team = await createTeam(boss.browser);
             await stepUp(boss.browser);
             expect((await boss.browser.request('POST', `/api/teams/${team.teamId}/delete`)).status).toBe(204);
+        });
+
+        async function memberKeyBytes(): Promise<Uint8Array<ArrayBuffer>> {
+            const key = await memberKeySource(fromBase64Url(DEV_MEMBER_KEY))();
+            return ed25519PublicKeyToBytes(key?.publicKey ?? ('' as never));
+        }
+
+        async function open(browser: TestBrowser, teamId: string): Promise<TestResponse> {
+            return browser.request('POST', `/api/teams/${teamId}/access-ticket`);
+        }
+
+        /** The ticket an "Open" sent the browser off with, as the engine's join page verifies it. */
+        async function openTicket(browser: TestBrowser, teamId: string, engineId: EngineId) {
+            const response = await open(browser, teamId);
+            expect(response.status).toBe(200);
+            const url = new URL((response.body as { url: string }).url);
+            expect(url.origin).toBe(`https://${engineId}.engines.ptbk.test`);
+            expect(url.pathname).toBe('/auth/join');
+            const verified = await verifyAccessTicket({
+                token: url.hash.slice(1),
+                memberKey: await memberKeyBytes(),
+                engineId,
+                now: Timestamp.parse(new Date(harness.clock.nowMs()).toISOString()),
+            });
+            if (verified.kind !== 'accepted') {
+                throw new Error(`ticket refused: ${verified.kind}`);
+            }
+            return verified.ticket;
+        }
+
+        async function members(browser: TestBrowser, teamId: string) {
+            return (await browser.request('GET', `/api/teams/${teamId}`)).body as {
+                members: TeamMemberView[];
+                removing: PersonView[];
+                invites: { email: string }[];
+            };
+        }
+
+        let seq = 0;
+        async function beatV2(
+            engine: TestEngine,
+            teams: Parameters<typeof signedHeartbeatV2>[3] = {},
+        ): Promise<HeartbeatReply> {
+            seq++;
+            harness.clock.advance(60_000);
+            const heartbeat = await signedHeartbeatV2(engine, seq, harness.clock.nowMs(), teams);
+            const response = await harness.post(heartbeatPath(engine.engineId), heartbeat.body, heartbeat.headers);
+            expect(response.status).toBe(200);
+            return HeartbeatReply.parse(response.body);
+        }
+
+        it('opens a team’s engine with a signed ticket, only for people in the team', async () => {
+            const boss = await owner();
+            const team = await createTeam(boss.browser);
+            expectProblem(await open(boss.browser, team.teamId), 404, 'not-found');
+            const engine = await linkTestEngine(boss.browser, team.teamId);
+            const member = await joined(boss, [team.teamId]);
+            const admin = await joined(boss, [], 'admin');
+
+            const ticket = await openTicket(member.browser, team.teamId, engine.engineId);
+            expect(ticket).toMatchObject({
+                dashboardUserId: member.userId,
+                email: member.email,
+                proposedRole: 'member',
+            });
+            expect((await openTicket(boss.browser, team.teamId, engine.engineId)).proposedRole).toBe('admin');
+            expectProblem(await open(admin.browser, team.teamId), 404, 'not-found');
+
+            const detail = await members(boss.browser, team.teamId);
+            expect(detail.members.find((person) => person.userId === member.userId)?.access).toBe('waiting');
+            expect(detail.members.find((person) => person.userId === boss.userId)?.access).toBe('waiting');
+            expect(await members(boss.browser, team.teamId)).toMatchObject({ removing: [], invites: [] });
+        });
+
+        it('hears the engine: emails a waiting request once, grants access on approval, and resends removals until acked', async () => {
+            const boss = await owner();
+            const team = await createTeam(boss.browser);
+            const engine = await linkTestEngine(boss.browser, team.teamId);
+            const member = await joined(boss, [team.teamId]);
+            const pendingEmail = uniqueEmail('pending');
+            await invite(boss.browser, { emails: [pendingEmail], role: 'member', teamIds: [team.teamId] });
+            expect((await members(boss.browser, team.teamId)).invites.map((i) => i.email)).toEqual([pendingEmail]);
+
+            // A v1 heartbeat still gets 204 and no reply.
+            seq++;
+            harness.clock.advance(60_000);
+            const v1 = await signedHeartbeat(engine, seq, harness.clock.nowMs());
+            expect((await harness.post(heartbeatPath(engine.engineId), v1.body, v1.headers)).status).toBe(204);
+
+            const ticket = await openTicket(member.browser, team.teamId, engine.engineId);
+            expect(await beatV2(engine)).toEqual({ v: 1, revocations: [] });
+            expect(harness.outbox.sentTo(boss.email).some((m) => m.template === 'access-waiting')).toBe(false);
+            await beatV2(engine, { accessRequests: 1 });
+            const waiting = harness.outbox.sentTo(boss.email).filter((m) => m.template === 'access-waiting');
+            expect(waiting).toHaveLength(1);
+            expect(waiting[0]).toMatchObject({ requesterEmail: member.email, teamName: 'Client A' });
+            await beatV2(engine, { accessRequests: 1 });
+            expect(harness.outbox.sentTo(boss.email).filter((m) => m.template === 'access-waiting')).toHaveLength(1);
+
+            await beatV2(engine, { acks: [{ id: ticket.ticketId, outcome: 'approved' }] });
+            expect(lastEmail(harness, member.email)).toMatchObject({
+                template: 'access-granted',
+                teamName: 'Client A',
+            });
+            expect(
+                (await members(boss.browser, team.teamId)).members.find((p) => p.userId === member.userId)?.access,
+            ).toBe('approved');
+
+            await boss.browser.request('POST', `/api/teams/${team.teamId}/members/${member.userId}/remove`);
+            expect((await members(boss.browser, team.teamId)).removing.map((p) => p.userId)).toEqual([member.userId]);
+            const reply = await beatV2(engine);
+            expect(reply.revocations).toHaveLength(1);
+            const revocation = await verifyMemberRevocation({
+                token: reply.revocations[0] ?? '',
+                memberKey: await memberKeyBytes(),
+                engineId: engine.engineId,
+            });
+            if (revocation.kind !== 'accepted') {
+                throw new Error(`revocation refused: ${revocation.kind}`);
+            }
+            expect(revocation.revocation.dashboardUserId).toBe(member.userId);
+            expect((await beatV2(engine)).revocations).toHaveLength(1);
+            await beatV2(engine, { acks: [{ id: revocation.revocation.revocationId, outcome: 'revoked' }] });
+            expect((await beatV2(engine)).revocations).toEqual([]);
+            expect((await members(boss.browser, team.teamId)).removing).toEqual([]);
         });
     });
 }

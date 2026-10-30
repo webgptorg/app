@@ -1,7 +1,15 @@
 import type { EngineId } from '@ptbk/protocol';
 
 import type { InviteId, LinkCodeId, OrgId, TeamId, UserId } from '../domain/ids';
-import type { InviteRecord, TeamAudit, TeamRecord, TeamStore } from '../domain/teams/team-store';
+import type {
+    InviteRecord,
+    MemberAccess,
+    TeamAudit,
+    TeamRecord,
+    TeamStore,
+    TicketOutcome,
+    TicketRecord,
+} from '../domain/teams/team-store';
 import type { TeamName } from '../shared/team-name';
 import type { MemoryAuthState } from './memory-auth-store';
 import type { MemoryRegistrationState } from './memory-registration-store';
@@ -24,11 +32,26 @@ export interface StoredRevocation {
     readonly engineId: EngineId;
     readonly userId: UserId;
     readonly createdAt: number;
+    ackedAt?: number;
+    outcome?: string;
+}
+
+interface StoredTicket extends TicketRecord {
+    outcome: TicketOutcome | null;
+    noticedAt: number | null;
+}
+
+interface StoredMember {
+    readonly teamId: TeamId;
+    readonly userId: UserId;
+    readonly createdAt: number;
+    access: MemberAccess;
 }
 
 export interface MemoryTeamState {
     readonly teams: Map<TeamId, StoredTeam>;
-    readonly members: { teamId: TeamId; userId: UserId; createdAt: number }[];
+    readonly members: StoredMember[];
+    readonly tickets: StoredTicket[];
     readonly invites: StoredInvite[];
     readonly revocations: StoredRevocation[];
     /** `engines.team_id`. */
@@ -48,6 +71,7 @@ export function createMemoryTeamStore(deps: {
     const state: MemoryTeamState = {
         teams: new Map(),
         members: [],
+        tickets: [],
         invites: [],
         revocations: [],
         engineTeams: new Map(),
@@ -83,7 +107,12 @@ export function createMemoryTeamStore(deps: {
         const engineId = engineOf(teamId);
         if (engineId !== null && inTeam(teamId, userId)) {
             nextRevocation += 1;
-            state.revocations.push({ id: `revocation-${String(nextRevocation)}`, engineId, userId, createdAt: at });
+            state.revocations.push({
+                id: `revocation-${String(nextRevocation).padStart(8, '0')}`,
+                engineId,
+                userId,
+                createdAt: at,
+            });
         }
     };
     const removeFromTeam = (teamId: TeamId, userId: UserId, at: number) => {
@@ -114,7 +143,7 @@ export function createMemoryTeamStore(deps: {
     const store: TeamStore = {
         create(team, creator, entry) {
             state.teams.set(team.id, { ...team, deletedAt: null });
-            state.members.push({ teamId: team.id, userId: creator, createdAt: team.createdAt });
+            state.members.push({ teamId: team.id, userId: creator, createdAt: team.createdAt, access: 'none' });
             audit(team.orgId, entry, 'team.create', 'team', team.id);
             return Promise.resolve();
         },
@@ -161,7 +190,15 @@ export function createMemoryTeamStore(deps: {
                 const role = membership(orgId, member.userId)?.role;
                 return member.teamId !== teamId || user === undefined || role === undefined
                     ? []
-                    : [{ userId: member.userId, email: user.email, role, joinedAt: member.createdAt }];
+                    : [
+                          {
+                              userId: member.userId,
+                              email: user.email,
+                              role,
+                              joinedAt: member.createdAt,
+                              access: member.access,
+                          },
+                      ];
             });
             return Promise.resolve(people.sort((a, b) => (a.email < b.email ? -1 : 1)));
         },
@@ -175,7 +212,7 @@ export function createMemoryTeamStore(deps: {
             if (inTeam(teamId, userId)) {
                 return Promise.resolve('already');
             }
-            state.members.push({ teamId, userId, createdAt: entry.at });
+            state.members.push({ teamId, userId, createdAt: entry.at, access: 'none' });
             audit(orgId, entry, 'team.member.add', 'user', userId);
             return Promise.resolve('added');
         },
@@ -186,6 +223,155 @@ export function createMemoryTeamStore(deps: {
             removeFromTeam(teamId, userId, entry.at);
             audit(orgId, entry, 'team.member.remove', 'user', userId);
             return Promise.resolve('removed');
+        },
+        listRemoving(orgId, teamId) {
+            const engineId = liveTeam(orgId, teamId) === null ? null : engineOf(teamId);
+            const seen = new Set<UserId>();
+            const people = state.revocations.flatMap((revocation) => {
+                const user = deps.auth.users.get(revocation.userId);
+                if (
+                    revocation.engineId !== engineId ||
+                    revocation.ackedAt !== undefined ||
+                    inTeam(teamId, revocation.userId) ||
+                    seen.has(revocation.userId) ||
+                    user === undefined
+                ) {
+                    return [];
+                }
+                seen.add(revocation.userId);
+                return [
+                    {
+                        userId: revocation.userId,
+                        email: user.email,
+                        role: membership(orgId, revocation.userId)?.role ?? 'member',
+                        joinedAt: revocation.createdAt,
+                    },
+                ];
+            });
+            return Promise.resolve(people.sort((a, b) => (a.email < b.email ? -1 : 1)));
+        },
+        recordTicket(ticket) {
+            state.tickets.push({ ...ticket, outcome: null, noticedAt: null });
+            const member = state.members.find((m) => m.teamId === ticket.teamId && m.userId === ticket.userId);
+            if (member?.access === 'none') {
+                member.access = 'waiting';
+            }
+            return Promise.resolve();
+        },
+        applyTicketAck(engineId, ticketId, outcome) {
+            const ticket = state.tickets.find(
+                (candidate) => candidate.id === ticketId && candidate.engineId === engineId,
+            );
+            const team = ticket === undefined ? undefined : state.teams.get(ticket.teamId);
+            const user = ticket === undefined ? undefined : deps.auth.users.get(ticket.userId);
+            if (
+                ticket === undefined ||
+                team === undefined ||
+                user === undefined ||
+                !(ticket.outcome === null || (ticket.outcome === 'approved' && outcome === 'removed'))
+            ) {
+                return Promise.resolve(null);
+            }
+            ticket.outcome = outcome;
+            const index = state.members.findIndex((m) => m.teamId === ticket.teamId && m.userId === ticket.userId);
+            const member = state.members[index];
+            if (member !== undefined) {
+                if (outcome === 'removed') {
+                    state.members.splice(index, 1);
+                } else if (outcome === 'approved') {
+                    member.access = 'approved';
+                } else if (member.access === 'waiting') {
+                    member.access = 'none';
+                }
+            }
+            return Promise.resolve({
+                orgId: team.orgId,
+                teamId: team.id,
+                teamName: team.name,
+                userId: ticket.userId,
+                email: user.email,
+                locale: user.locale,
+            });
+        },
+        ticketsAwaitingNotice(engineId, since) {
+            const notices = state.tickets
+                .filter(
+                    (ticket) =>
+                        ticket.engineId === engineId &&
+                        ticket.outcome === null &&
+                        ticket.noticedAt === null &&
+                        ticket.issuedAt > since,
+                )
+                .sort((a, b) => a.issuedAt - b.issuedAt)
+                .flatMap((ticket) => {
+                    const team = state.teams.get(ticket.teamId);
+                    const requester = deps.auth.users.get(ticket.userId);
+                    if (team === undefined || requester === undefined) {
+                        return [];
+                    }
+                    const inviters = new Set(
+                        state.invites
+                            .filter(
+                                (invite) =>
+                                    invite.orgId === team.orgId &&
+                                    invite.email === requester.email &&
+                                    invite.acceptedAt !== null,
+                            )
+                            .map((invite) => invite.invitedByUserId),
+                    );
+                    const recipients = deps.auth.memberships
+                        .filter(
+                            (candidate) =>
+                                candidate.orgId === team.orgId &&
+                                candidate.userId !== ticket.userId &&
+                                (inviters.has(candidate.userId) ||
+                                    ((candidate.role === 'owner' || candidate.role === 'admin') &&
+                                        inTeam(team.id, candidate.userId))),
+                        )
+                        .flatMap((candidate) => {
+                            const user = deps.auth.users.get(candidate.userId);
+                            return user === undefined || user.emailVerifiedAt === null
+                                ? []
+                                : [{ email: user.email, locale: user.locale }];
+                        })
+                        .sort((a, b) => (a.email < b.email ? -1 : 1));
+                    return [
+                        {
+                            ticketId: ticket.id,
+                            orgId: team.orgId,
+                            teamId: team.id,
+                            teamName: team.name,
+                            requesterEmail: requester.email,
+                            recipients,
+                        },
+                    ];
+                });
+            return Promise.resolve(notices);
+        },
+        markNoticed(ticketIds, at) {
+            for (const ticket of state.tickets.filter((candidate) => ticketIds.includes(candidate.id))) {
+                ticket.noticedAt = at;
+            }
+            return Promise.resolve();
+        },
+        pendingRevocations(engineId, limit) {
+            return Promise.resolve(
+                state.revocations
+                    .filter((revocation) => revocation.engineId === engineId && revocation.ackedAt === undefined)
+                    .slice(0, limit)
+                    .map(({ id, userId, createdAt }) => ({ id, userId, createdAt })),
+            );
+        },
+        closeRevocation(engineId, revocationId, outcome, at) {
+            const revocation = state.revocations.find(
+                (candidate) =>
+                    candidate.id === revocationId && candidate.engineId === engineId && candidate.ackedAt === undefined,
+            );
+            if (revocation !== undefined) {
+                revocation.ackedAt = at;
+                revocation.outcome = outcome;
+            }
+            return Promise.resolve();
         },
         engineIdsForUser(orgId, userId) {
             const ids = liveTeams(orgId)
@@ -227,7 +413,12 @@ export function createMemoryTeamStore(deps: {
             });
             state.engineTeams.set(engineId, fallback.teamId);
             if (code !== undefined && membership(engine.orgId, code.createdByUserId) !== null) {
-                state.members.push({ teamId: fallback.teamId, userId: code.createdByUserId, createdAt: fallback.at });
+                state.members.push({
+                    teamId: fallback.teamId,
+                    userId: code.createdByUserId,
+                    createdAt: fallback.at,
+                    access: 'none',
+                });
             }
             return Promise.resolve();
         },
@@ -355,7 +546,7 @@ export function createMemoryTeamStore(deps: {
             }
             for (const teamId of invite.teamIds) {
                 if (liveTeam(invite.orgId, teamId) !== null && !inTeam(teamId, userId)) {
-                    state.members.push({ teamId, userId, createdAt: entry.at });
+                    state.members.push({ teamId, userId, createdAt: entry.at, access: 'none' });
                 }
             }
             audit(invite.orgId, { ...entry, actorUserId: userId }, 'invite.accept', 'invite', invite.id);

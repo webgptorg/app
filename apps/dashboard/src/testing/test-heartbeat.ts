@@ -1,5 +1,7 @@
 import {
     buildHeartbeat,
+    buildHeartbeatV2,
+    type HeartbeatAck,
     EngineVersion,
     HEARTBEAT_SIGNATURE_HEADER,
     signHeartbeat,
@@ -64,4 +66,21 @@ export function signedJson(
     signer: TestEngine['signer'] = engine.signer,
 ): Promise<SignedHeartbeat> {
     return signed(engine, utf8Encode(JSON.stringify(value)), signer);
+}
+
+/** A v2 heartbeat (ADR 0018), with pending access requests and acks. */
+export function signedHeartbeatV2(
+    engine: TestEngine,
+    seq: number,
+    atMs: number,
+    teams: { readonly accessRequests?: number; readonly acks?: readonly HeartbeatAck[] } = {},
+): Promise<SignedHeartbeat> {
+    return signed(
+        engine,
+        buildHeartbeatV2({
+            ...heartbeatInput(engine, seq, atMs),
+            accessRequests: teams.accessRequests ?? 0,
+            acks: teams.acks ?? [],
+        }),
+    );
 }

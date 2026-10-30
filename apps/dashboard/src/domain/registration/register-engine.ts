@@ -17,6 +17,7 @@ import type { EngineStore } from './engine-store';
 import type { LinkCodeStore } from './link-code-store';
 import { newTeamId } from '../ids';
 import type { Random } from '../ports/random';
+import type { MemberKeySource } from '../teams/member-key';
 import type { TeamStore } from '../teams/team-store';
 import { teamNameSchema } from '../../shared/team-name';
 
@@ -26,6 +27,8 @@ export interface RegisterEngineDeps {
     /** Every engine belongs to a team (ADR 0018); a new one joins the team its link code named. */
     readonly teams: Pick<TeamStore, 'bindNewEngine'>;
     readonly random: Random;
+    /** Its public half goes into the response, for the engine to pin (ADR 0018). */
+    readonly memberKey: MemberKeySource;
     readonly policy: Pick<EngineCreationPolicy, 'checkRegistration'>;
     readonly clock: Clock;
     readonly logger: Logger;
@@ -49,9 +52,10 @@ export type RegisterOutcome =
 /** A lost race is retried once against fresh state: the winner's engine or used code then answers properly. */
 const ATTEMPTS = 2;
 
-function registered(deps: RegisterEngineDeps, engineId: EngineId, hostname: Hostname): RegisterOutcome {
-    // The member key comes with teams (D-13); until then engines refuse every ticket and revocation.
-    return { kind: 'registered', response: { engineId, hostname, relays: [...deps.relays], memberKey: null } };
+/** Without a member key the engine pins none, and refuses every ticket and revocation until it re-registers. */
+async function registered(deps: RegisterEngineDeps, engineId: EngineId, hostname: Hostname): Promise<RegisterOutcome> {
+    const memberKey = (await deps.memberKey())?.publicKey ?? null;
+    return { kind: 'registered', response: { engineId, hostname, relays: [...deps.relays], memberKey } };
 }
 
 async function attempt(

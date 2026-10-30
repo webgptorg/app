@@ -9,6 +9,7 @@ import type { CustomHostnameStore } from '../domain/custom-hostnames/custom-host
 import type { PlatformEngineStore } from '../domain/engines/platform-engine-store';
 import type { EngineStore } from '../domain/registration/engine-store';
 import type { LinkCodeStore } from '../domain/registration/link-code-store';
+import type { MemberKeySource } from '../domain/teams/member-key';
 import type { TeamStore } from '../domain/teams/team-store';
 import type { EngineHostnameStore } from '../domain/registry/engine-hostname-store';
 import type { RegistryReader } from '../domain/registry/registry-reader';
@@ -50,6 +51,8 @@ export interface DashboardDeps {
     readonly engines: EngineStore;
     /** Teams, their people, invitations and the member revocations owed to engines (ADR 0018). */
     readonly teams: TeamStore;
+    /** Signs access tickets and member revocations; resolves to null without a configured key. */
+    readonly memberKey: MemberKeySource;
     /** Platform admins' unscoped read and suspension of any engine (I-05). */
     readonly platformEngines: PlatformEngineStore;
     readonly relayTokens: RelayTokenStore;
@@ -78,5 +81,6 @@ export function authLinks(dashboardOrigin: string): AuthLinks {
         signIn: () => `${dashboardOrigin}/signin`,
         recover: () => `${dashboardOrigin}/recover`,
         invite: (token) => `${dashboardOrigin}/invites#${token}`,
+        team: (teamId) => `${dashboardOrigin}/teams/${teamId}`,
     };
 }

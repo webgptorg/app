@@ -110,6 +110,15 @@ const linkCodeTtlSchema = z
  */
 export const DEV_RATE_LIMIT_HMAC_KEY = 'ZGV2LW9ubHktcmF0ZS1saW1pdC1rZXktbm90LXNlY3JldA';
 
+/**
+ * The dev-only member key seed (ADR 0018), committed in wrangler.jsonc's top-level vars so the local stack signs access
+ * tickets. Every other environment gets its own from `wrangler secret put MEMBER_KEY`; this value is refused there.
+ */
+export const DEV_MEMBER_KEY = 'ZGV2LW9ubHktbWVtYmVyLWtleS1ub3QtYS1zZWNyZXQ';
+
+/** An Ed25519 seed: 32 bytes, base64url without padding. */
+const memberKeySchema = z.string().regex(/^[A-Za-z0-9_-]{43}$/);
+
 /** At least 256 bits, base64url without padding. */
 const hmacKeySchema = z.string().regex(/^[A-Za-z0-9_-]{43,86}$/);
 
@@ -238,6 +247,7 @@ const varsSchema = z
         EMAIL_FROM: z.email().max(254),
         ABUSE_EMAIL: z.email().max(254),
         RATE_LIMIT_HMAC_KEY: hmacKeySchema,
+        MEMBER_KEY: memberKeySchema.optional(),
         BILLING_PLANS: planCatalogueSchema,
         HEARTBEAT: heartbeatSchema.optional(),
         LINK_CODE_TTL_S: linkCodeTtlSchema.optional(),
@@ -311,6 +321,9 @@ const varsSchema = z
         if (vars.RATE_LIMIT_HMAC_KEY === DEV_RATE_LIMIT_HMAC_KEY) {
             ctx.addIssue({ code: 'custom', path: ['RATE_LIMIT_HMAC_KEY'], message: 'the dev key runs only in dev' });
         }
+        if (vars.MEMBER_KEY === DEV_MEMBER_KEY) {
+            ctx.addIssue({ code: 'custom', path: ['MEMBER_KEY'], message: 'the dev key runs only in dev' });
+        }
     });
 
 export type AdapterSelection = z.infer<typeof adaptersSchema>;
@@ -342,6 +355,8 @@ export interface DashboardConfig {
     readonly abuseEmail: string;
     /** Secret: keys rate-limit counters, so raw IPs and emails are never stored. */
     readonly rateLimitHmacKey: Uint8Array;
+    /** The member key's Ed25519 seed (ADR 0018); null leaves tickets unavailable and revocations queued. */
+    readonly memberKeySeed: Uint8Array<ArrayBuffer> | null;
     readonly plans: PlanCatalogue;
     readonly heartbeat: HeartbeatTiming;
     readonly linkCodeTtlMs: number;
@@ -451,6 +466,7 @@ export function parseConfig(env: object): DashboardConfig {
         emailFrom: parsed.EMAIL_FROM,
         abuseEmail: parsed.ABUSE_EMAIL,
         rateLimitHmacKey: fromBase64Url(parsed.RATE_LIMIT_HMAC_KEY),
+        memberKeySeed: parsed.MEMBER_KEY === undefined ? null : fromBase64Url(parsed.MEMBER_KEY),
         plans: createPlanCatalogue(parsed.BILLING_PLANS),
         heartbeat: Object.freeze({ ...(parsed.HEARTBEAT ?? heartbeatSchema.parse({})) }),
         linkCodeTtlMs: parsed.LINK_CODE_TTL_S === undefined ? LINK_CODE_TTL_MS : parsed.LINK_CODE_TTL_S * 1000,

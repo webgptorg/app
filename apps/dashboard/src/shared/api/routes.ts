@@ -360,6 +360,10 @@ export const personViewSchema = z.strictObject({
 });
 export type PersonView = z.infer<typeof personViewSchema>;
 
+/** Someone in a team, with what the dashboard knows of their access to its engine (ADR 0018). */
+export const teamMemberViewSchema = personViewSchema.extend({ access: z.enum(['none', 'waiting', 'approved']) });
+export type TeamMemberView = z.infer<typeof teamMemberViewSchema>;
+
 export const orgMemberViewSchema = personViewSchema.extend({ teamIds: z.array(idSchema) });
 export type OrgMemberView = z.infer<typeof orgMemberViewSchema>;
 
@@ -889,7 +893,14 @@ export const apiRoutes = {
         permission: 'team.read',
         rateLimit: null,
         input: { ...NO_INPUT, params: teamParams },
-        output: z.strictObject({ team: teamViewSchema, members: z.array(personViewSchema) }),
+        output: z.strictObject({
+            team: teamViewSchema,
+            members: z.array(teamMemberViewSchema),
+            /** Taken out of the team; the engine has not confirmed the removal yet. */
+            removing: z.array(personViewSchema),
+            /** Pending invitations that name this team. */
+            invites: z.array(inviteViewSchema),
+        }),
         errorCodes: [],
     }),
     renameTeam: defineRoute({
@@ -923,6 +934,21 @@ export const apiRoutes = {
         input: { ...NO_INPUT, params: teamParams },
         output: linkCodeViewSchema,
         errorCodes: ['not-entitled', 'engine-limit', 'team-has-engine'],
+    }),
+    /**
+     * "Open" for someone in the team: a signed access ticket and the engine's join page to take it to. The ticket rides
+     * in the URL's fragment, so it reaches neither the relay nor a log. `not-found` without an active engine, or for
+     * someone not in the team; `unavailable` (503) when the dashboard has no member key.
+     */
+    createAccessTicket: defineRoute({
+        method: 'POST',
+        path: '/api/teams/:teamId/access-ticket',
+        auth: 'session',
+        permission: 'team.read',
+        rateLimit: null,
+        input: { ...NO_INPUT, params: teamParams },
+        output: z.strictObject({ url: z.url({ protocol: /^https$/ }).max(4096), expiresAt: timestampSchema }),
+        errorCodes: ['unavailable'],
     }),
     /** Someone already in the organization; `not-member` otherwise (invite them instead). */
     addTeamMember: defineRoute({
