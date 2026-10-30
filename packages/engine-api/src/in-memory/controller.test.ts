@@ -3,7 +3,8 @@ import { describe, expect, it } from 'vitest';
 import type { EngineApiClient, EngineApiResponse } from '../client';
 import { AgentId, ChatId, FileId, FileVersionId, IntegrationId, RunId, TriggerId } from '../common';
 import type { ReadEngineEvent } from '../events';
-import { createInMemoryEngine } from '../in-memory-client';
+import { KNOWN_CAPABILITIES } from '../capabilities/capability';
+import { createInMemoryEngine, DEFAULT_CAPABILITIES } from '../in-memory-client';
 import type { InMemoryEngineApiOptions } from '../in-memory-client';
 import { PERMISSIONS } from '../permissions';
 import type { EngineApiStreamItem } from '../route';
@@ -475,14 +476,16 @@ describe('in-memory chat runs', () => {
 });
 
 describe('in-memory demo seed', () => {
-    const demo = () =>
+    const SCANNING = [...DEFAULT_CAPABILITIES, KNOWN_CAPABILITIES.fileScanning];
+    const demo = (options: InMemoryEngineApiOptions = {}) =>
         createInMemoryEngine({
             seed: createDemoSeed(new Date('2026-10-19T12:00:00Z')),
             clock: steppingClock('2026-10-19T12:00:00Z'),
+            ...options,
         });
 
     it('answers every list route with data', async () => {
-        const { client } = demo();
+        const { client } = demo({ capabilities: SCANNING });
         expect(ok(await client.agents.list({}, signal())).items).toHaveLength(3);
         expect(ok(await client.chats.listAll({ q: 'billing' }, signal())).items).toHaveLength(1);
         expect(ok(await client.chats.listAll({ agentId: AgentId.parse('agent-max') }, signal())).items).toEqual([]);
@@ -508,8 +511,27 @@ describe('in-memory demo seed', () => {
         expect(activity.items.every((item) => item.kind === 'known')).toBe(true);
     });
 
-    it('serves versions, refuses infected files and retries a failed run', async () => {
+    it('reports no scans and serves every file on an engine without scanning, the default', async () => {
         const { client } = demo();
+        const files = ok(await client.files.list({}, signal())).items;
+        expect(files.length).toBeGreaterThan(0);
+        expect(files.every((file) => file.scan === null)).toBe(true);
+        expect(ok(await client.files.list({ scan: 'infected' }, signal())).items).toEqual([]);
+        expect(ok(await client.files.stats({}, signal())).byScan).toEqual({
+            pending: 0,
+            clean: 0,
+            infected: 0,
+            failed: 0,
+        });
+        expect(code(await client.files.download(FileId.parse('file-invoice-scan'), {}, signal()))).toBe('ok');
+        const kinds = ok(await client.activity.list({}, signal())).items.map((item) =>
+            item.kind === 'known' ? item.activity.kind : null,
+        );
+        expect(kinds).not.toContain('file.scan-failed');
+    });
+
+    it('serves versions, refuses infected files and retries a failed run', async () => {
+        const { client } = demo({ capabilities: SCANNING });
         expect(code(await client.files.download(FileId.parse('file-invoice-scan'), {}, signal()))).toBe(
             'file-infected',
         );
@@ -562,7 +584,7 @@ describe('in-memory files', () => {
         expect(file).toMatchObject({
             agentId: agent.id,
             purpose: 'knowledge',
-            scan: { status: 'clean' },
+            scan: null,
             versionCount: 1,
         });
         expect(ok(await client.files.listVersions(file.id, {}, signal())).items).toHaveLength(1);

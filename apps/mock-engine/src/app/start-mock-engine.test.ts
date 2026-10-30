@@ -272,7 +272,9 @@ describe('startMockEngine', () => {
                 hostname: started.engine.hostname,
                 mode: 'tunnel',
                 dashboardUrl: null,
-                capabilities: Object.values(KNOWN_CAPABILITIES),
+                capabilities: Object.values(KNOWN_CAPABILITIES).filter(
+                    (ref) => ref !== KNOWN_CAPABILITIES.fileScanning,
+                ),
             });
             interface Security {
                 relays: { hostname: string; status: string }[];

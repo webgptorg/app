@@ -1,3 +1,4 @@
+import { KNOWN_CAPABILITIES } from '../capabilities/capability';
 import type { FileScan, FileStats, FileUploadPolicy } from '../capabilities/files';
 import {
     acceptsFile,
@@ -15,7 +16,19 @@ import { AgentId, ChatId, FileId, FileVersionId, MemberId, RunId } from '../comm
 import type { Timestamp } from '../common';
 import { MAX_FILE_BYTES } from '../constants';
 import { sha256OfBlob } from './audit-chain';
-import { agentRecord, fail, invalid, memberActor, notFound, ok, page, recordActivity, sortParam, time } from './kit';
+import {
+    advertises,
+    agentRecord,
+    fail,
+    invalid,
+    memberActor,
+    notFound,
+    ok,
+    page,
+    recordActivity,
+    sortParam,
+    time,
+} from './kit';
 import type { EngineContext, Handlers } from './kit';
 import { addRunOutputFile } from './runs';
 
@@ -48,8 +61,9 @@ function countBy<Key extends string>(keys: readonly Key[], of: readonly Key[]): 
     return counts;
 }
 
-/** A scan that is still running has not been checked yet. */
-function scanOf(status: FileScanStatus, now: Timestamp): z.infer<typeof FileScan> {
+/** A scan that is still running has not been checked yet; an engine without `file-scanning@1` scans nothing. */
+function scanOf(ctx: EngineContext, status: FileScanStatus, now: Timestamp): z.infer<typeof FileScan> | null {
+    if (!advertises(ctx, KNOWN_CAPABILITIES.fileScanning)) return null;
     return { status, checkedAt: status === 'pending' ? null : now };
 }
 
@@ -97,7 +111,7 @@ export async function addFile(ctx: EngineContext, input: NewFile): Promise<FileM
         agentId,
         chatId: input.chatId === undefined || input.chatId === null ? null : ChatId.parse(input.chatId),
         runId,
-        scan: scanOf(FileScanStatus.parse(scan), now),
+        scan: scanOf(ctx, FileScanStatus.parse(scan), now),
         versionCount: 1,
         createdBy,
         createdAt: now,
@@ -129,7 +143,8 @@ export async function addFile(ctx: EngineContext, input: NewFile): Promise<FileM
 export function setFileScan(ctx: EngineContext, fileId: string, status: FileScanStatus): FileMetadata {
     const record = ctx.state.files.get(fileId);
     if (!record) throw new Error(`No file ${fileId}`);
-    const metadata = { ...record.metadata, scan: scanOf(FileScanStatus.parse(status), ctx.now()) };
+    if (!advertises(ctx, KNOWN_CAPABILITIES.fileScanning)) throw new Error('This engine does not scan files.');
+    const metadata = { ...record.metadata, scan: scanOf(ctx, FileScanStatus.parse(status), ctx.now()) };
     record.metadata = metadata;
     ctx.publish({ type: 'file.changed', fileId: metadata.id, agentId: metadata.agentId });
     if (status === 'failed') {
@@ -165,7 +180,7 @@ export const FILE_HANDLERS: Pick<
                 (file) =>
                     (query.agentId === undefined || file.agentId === query.agentId) &&
                     (purposes === undefined || purposes.has(file.purpose)) &&
-                    (scans === undefined || scans.has(file.scan.status)) &&
+                    (scans === undefined || (file.scan !== null && scans.has(file.scan.status))) &&
                     (needle === undefined || file.name.toLowerCase().includes(needle)),
             );
         return page(
@@ -189,7 +204,7 @@ export const FILE_HANDLERS: Pick<
             ),
             byScan: countBy(
                 FILE_SCAN_STATUSES,
-                files.map((file) => file.scan.status),
+                files.flatMap((file) => (file.scan === null ? [] : [file.scan.status])),
             ),
         };
         return ok(stats);
@@ -223,7 +238,7 @@ export const FILE_HANDLERS: Pick<
             agentId: body.agentId ?? null,
             chatId: null,
             runId: null,
-            scan: scanOf(scan, now),
+            scan: scanOf(ctx, scan, now),
             versionCount: 1,
             createdBy: ctx.member.id,
             createdAt: now,
@@ -265,7 +280,7 @@ export const FILE_HANDLERS: Pick<
     downloadFile: ({ params, query }, ctx) => {
         const file = ctx.state.files.get(params.fileId);
         if (!file) return notFound('file');
-        if (file.metadata.scan.status === 'infected') return fail('file-infected');
+        if (file.metadata.scan?.status === 'infected') return fail('file-infected');
         const version =
             query.version === undefined
                 ? file.versions.at(-1)

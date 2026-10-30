@@ -155,8 +155,10 @@ describe('ENGINE_API_ROUTES', () => {
 describe('capability routes', () => {
     it('covers every capability', () => {
         const covered = new Set(capabilityRoutes.map((route) => route.capability?.id));
+        // `file-scanning` adds no route: it changes what `files@1` reports.
         expect([...covered].sort()).toEqual(
             Object.values(KNOWN_CAPABILITIES)
+                .filter((ref) => ref !== KNOWN_CAPABILITIES.fileScanning)
                 .map(({ id }) => id)
                 .sort(),
         );

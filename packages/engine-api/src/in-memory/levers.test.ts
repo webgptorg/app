@@ -4,7 +4,8 @@ import type { EngineApiClient, EngineApiResponse } from '../client';
 import { FileId, IntegrationId, RunId } from '../common';
 import { MAX_RUN_TEXT_BYTES } from '../constants';
 import type { EngineEvent } from '../events';
-import { createInMemoryEngine } from '../in-memory-client';
+import { KNOWN_CAPABILITIES } from '../capabilities/capability';
+import { createInMemoryEngine, DEFAULT_CAPABILITIES } from '../in-memory-client';
 import type { InMemoryEngineApiOptions } from '../in-memory-client';
 import { truncateRunText } from './runs';
 
@@ -137,8 +138,11 @@ describe('in-memory levers: runs', () => {
 });
 
 describe('in-memory levers: files', () => {
+    const scanning = [...DEFAULT_CAPABILITIES, KNOWN_CAPABILITIES.fileScanning];
+
     it("adds a run's output file to its outputs, with activity, and scans it with the engine's scanner", async () => {
         const { client, controller } = engine({
+            capabilities: scanning,
             checks: { scanFile: ({ name }) => (name.endsWith('.exe') ? 'infected' : 'clean') },
         });
         const agent = await agentIn(client);
@@ -168,7 +172,7 @@ describe('in-memory levers: files', () => {
             purpose: 'attachment',
             createdBy: 'member-owner',
         });
-        expect(virus.scan.status).toBe('infected');
+        expect(virus.scan?.status).toBe('infected');
         expect(code(await client.files.download(virus.id, {}, signal()))).toBe('file-infected');
         const pending = await controller.addFile({
             name: 'big.zip',
@@ -194,7 +198,7 @@ describe('in-memory levers: files', () => {
     });
 
     it('sets scan results, reporting a failed scan, and scans uploads with the scanner', async () => {
-        const { client, controller } = engine({ checks: { scanFile: () => 'pending' } });
+        const { client, controller } = engine({ capabilities: scanning, checks: { scanFile: () => 'pending' } });
         const form = {
             file: new Blob(['hello'], { type: 'text/plain' }),
             name: 'hello.txt',
@@ -204,7 +208,7 @@ describe('in-memory levers: files', () => {
         expect(uploaded.scan).toEqual({ status: 'pending', checkedAt: null });
         const events: EngineEvent[] = [];
         const stop = controller.onEvent((event) => events.push(event));
-        expect(controller.setFileScan(uploaded.id, 'failed').scan.status).toBe('failed');
+        expect(controller.setFileScan(uploaded.id, 'failed').scan?.status).toBe('failed');
         stop();
         controller.setFileScan(uploaded.id, 'infected');
         expect(events.map(({ type }) => type)).toEqual(['file.changed', 'activity']);

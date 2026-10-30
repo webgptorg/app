@@ -1,5 +1,6 @@
+import { KNOWN_CAPABILITIES } from '@ptbk/engine-api';
 import type { CapabilityRef, EngineApiClient, Permission } from '@ptbk/engine-api';
-import { createInMemoryEngine } from '@ptbk/engine-api/in-memory';
+import { createInMemoryEngine, DEFAULT_CAPABILITIES } from '@ptbk/engine-api/in-memory';
 import type {
     FileUploadPolicies,
     InMemoryEngineController,
@@ -156,7 +157,9 @@ export interface FilesEngine {
 export interface FilesEngineOptions {
     readonly seed?: InMemorySeed;
     readonly permissions?: readonly Permission[];
+    /** Every capability by default, scanning included; `scanning: false` drops only `file-scanning@1`. */
     readonly capabilities?: readonly CapabilityRef[];
+    readonly scanning?: boolean;
 }
 
 export function createFilesEngine(options: FilesEngineOptions = {}): FilesEngine {
@@ -167,7 +170,9 @@ export function createFilesEngine(options: FilesEngineOptions = {}): FilesEngine
         ...(options.permissions === undefined
             ? {}
             : { member: { id: OWNER_ID, permissions: options.permissions, role: 'member' } }),
-        ...(options.capabilities === undefined ? {} : { capabilities: options.capabilities }),
+        capabilities:
+            options.capabilities ??
+            (options.scanning === false ? DEFAULT_CAPABILITIES : Object.values(KNOWN_CAPABILITIES)),
     });
     const original = { ...engine.client.files };
     const files = { ...original };

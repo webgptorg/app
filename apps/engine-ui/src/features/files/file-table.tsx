@@ -16,6 +16,7 @@ import { SoftBreaks } from '../../app/soft-breaks';
 import { m } from '../../paraglide/messages';
 import { AgentCreator } from '../agents/agent-creator';
 import { PurposeBadge, purposeFilterOptions, ScanBadge, scanFilterOptions } from './file-labels';
+import { useFileScanning } from './use-file-scanning';
 import { AgentName } from './file-origin';
 import { formatBytes } from './file-size';
 import { DEFAULT_FILE_SORT } from './files-search';
@@ -50,6 +51,7 @@ interface ColumnOptions {
 
 function useFileColumns({ global, nameCell }: ColumnOptions): DataTableColumnDef<FileMetadata>[] {
     const formatters = useLocale();
+    const scanning = useFileScanning();
     return useMemo(() => {
         const column = createDataTableColumnHelper<FileMetadata>();
         return [
@@ -106,16 +108,25 @@ function useFileColumns({ global, nameCell }: ColumnOptions): DataTableColumnDef
                     </span>
                 ),
             }),
-            column.accessor((file) => file.scan.status, {
-                id: 'scan',
-                header: m.files_column_scan(),
-                enableSorting: false,
-                meta: {
-                    priority: 1,
-                    filter: { kind: 'select', allLabel: m.files_filter_all_scans(), options: scanFilterOptions() },
-                },
-                cell: ({ row }) => <ScanBadge status={row.original.scan.status} />,
-            }),
+            ...(scanning
+                ? [
+                      column.accessor((file) => file.scan?.status ?? null, {
+                          id: 'scan',
+                          header: m.files_column_scan(),
+                          enableSorting: false,
+                          meta: {
+                              priority: 1,
+                              filter: {
+                                  kind: 'select',
+                                  allLabel: m.files_filter_all_scans(),
+                                  options: scanFilterOptions(),
+                              },
+                          },
+                          cell: ({ row }) =>
+                              row.original.scan === null ? null : <ScanBadge status={row.original.scan.status} />,
+                      }),
+                  ]
+                : []),
             column.accessor('createdBy', {
                 header: m.files_column_created_by(),
                 enableSorting: false,
@@ -129,7 +140,7 @@ function useFileColumns({ global, nameCell }: ColumnOptions): DataTableColumnDef
                 cell: ({ row }) => <RelativeTime value={new Date(row.original.createdAt)} />,
             }),
         ];
-    }, [formatters, global, nameCell]);
+    }, [formatters, global, nameCell, scanning]);
 }
 
 export interface FileTableProps extends ColumnOptions {

@@ -11,6 +11,7 @@ import { FileActivityItem, fileActivitySummary } from './file-activity';
 import { useFileStats } from './files-queries';
 import { SCAN_PROBLEMS } from './files-search';
 import { useFileEventSync } from './use-file-event-sync';
+import { useFileScanning } from './use-file-scanning';
 
 const LazyKnowledgeCard = lazy(() => import('./knowledge-card').then((module) => ({ default: module.KnowledgeCard })));
 
@@ -23,15 +24,17 @@ function KnowledgeOverviewCard({ agentId }: { readonly agentId: AgentId }) {
     );
 }
 
+/** Infected and failed scans; an engine without a scanner never has any. */
 function useScanProblemsAttention(): Attention {
+    const scanning = useFileScanning();
     const stats = useFileStats({});
-    const count = stats.data === undefined ? 0 : stats.data.byScan.infected + stats.data.byScan.failed;
-    return { count, to: '/files', search: { scan: SCAN_PROBLEMS }, pending: stats.data === undefined };
+    const count = !scanning || stats.data === undefined ? 0 : stats.data.byScan.infected + stats.data.byScan.failed;
+    return { count, to: '/files', search: { scan: SCAN_PROBLEMS }, pending: scanning && stats.data === undefined };
 }
 
 /**
- * Files (`files@1`): every agent's knowledge and the files agents produce, with scan status and versions (U-10).
- * Content is never shown, only metadata and, for clean raster images, a preview.
+ * Files (`files@1`): every agent's knowledge and the files agents produce, with versions and, on an engine that scans
+ * (`file-scanning@1`), scan status (U-10). Content is never shown, only metadata and, for raster images, a preview.
  */
 export const filesFeature = defineFeature({
     id: 'files',

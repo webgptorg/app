@@ -1160,7 +1160,7 @@ async function seedFiles(ctx: Context): Promise<SeedFile[]> {
             name: metadata.name,
             purpose: metadata.purpose,
         });
-        if (metadata.scan.status === 'failed') {
+        if (metadata.scan?.status === 'failed') {
             activity(ctx, {
                 kind: 'file.scan-failed',
                 at: metadata.scan.checkedAt ?? metadata.createdAt,

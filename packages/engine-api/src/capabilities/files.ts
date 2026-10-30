@@ -45,7 +45,8 @@ export const FileMetadata = z.strictObject({
     chatId: ChatId.nullable(),
     /** The run that produced an `output` file. */
     runId: RunId.nullable(),
-    scan: FileScan,
+    /** `null` on an engine without `file-scanning@1`, which does not scan (since API 1.13.0). */
+    scan: FileScan.nullable(),
     versionCount: z.int().min(1),
     createdBy: MemberId,
     createdAt: Timestamp,
@@ -71,7 +72,7 @@ export const FileListQuery = PageQuery.extend({
     agentId: AgentId.optional(),
     /** One purpose or a comma-separated set, e.g. `attachment,upload`. */
     purpose: valueSet(FILE_PURPOSES).optional(),
-    /** One scan status or a comma-separated set, e.g. `infected,failed`. */
+    /** One scan status or a comma-separated set, e.g. `infected,failed`; matches nothing on an engine that does not scan. */
     scan: valueSet(FILE_SCAN_STATUSES).optional(),
     /** Matches the name, case-insensitively. */
     q: z.string().min(1).max(255).optional(),
@@ -79,7 +80,7 @@ export const FileListQuery = PageQuery.extend({
 });
 
 export const FileStatsQuery = z.strictObject({ agentId: AgentId.optional() });
-/** How many files there are, by purpose and by scan status; every known key is always present. */
+/** How many files there are, by purpose and by scan status (all zero without scanning); every key is always present. */
 export const FileStats = z.strictObject({
     byPurpose: z.strictObject({
         knowledge: z.int().min(0),
@@ -231,7 +232,7 @@ export const FILE_ROUTES = {
         path: '/files/{fileId}/content',
         summary: "Download a file's bytes, or one version's with `?version=`",
         description:
-            'Always sent as an attachment with `X-Content-Type-Options: nosniff`. A file whose scan found malware is never served: 409 `file-infected`.',
+            'Always sent as an attachment with `X-Content-Type-Options: nosniff`. On an engine with `file-scanning@1`, a file whose scan found malware is never served: 409 `file-infected`.',
         permission: 'files.read',
         capability,
         params: FileParams,

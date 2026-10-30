@@ -1,15 +1,15 @@
-// Flow 14: files. A knowledge upload is scanned and then downloads as an attachment; the seeded infected file offers no
-// download; no file other than a raster image is ever rendered inline.
+// Flow 14: files. A knowledge upload downloads as an attachment; the mock engine does not scan by default
+// (`file-scanning@1` is optional), so nothing about scans shows; no file other than a raster image is rendered inline.
 import type { Page } from '@playwright/test';
 
-import { apiCall, apiList, required } from '../../src/ui-app.ts';
+import { apiList, required } from '../../src/ui-app.ts';
 import { expect, test } from '../../src/ui-fixtures.ts';
 
 interface FileMetadata {
     readonly id: string;
     readonly name: string;
     readonly contentType: string;
-    readonly scan: { readonly status: string };
+    readonly scan: { readonly status: string } | null;
 }
 
 const RASTER = /^image\/(?:png|jpeg|gif|webp|avif)$/;
@@ -23,7 +23,7 @@ async function contentDisposition(page: Page, fileId: string): Promise<string | 
     }, fileId);
 }
 
-test('an uploaded knowledge file is scanned clean and downloads as an attachment', async ({ page, signIn, appUrl }) => {
+test('an uploaded knowledge file downloads as an attachment, with no scan status', async ({ page, signIn, appUrl }) => {
     test.setTimeout(60_000);
     const name = `notes-${crypto.randomUUID().slice(0, 8)}.md`;
     await signIn();
@@ -38,15 +38,14 @@ test('an uploaded knowledge file is scanned clean and downloads as an attachment
     await expect(page.getByRole('list', { name: 'Uploads' }).getByText('Uploaded')).toBeVisible();
 
     const row = page.getByRole('row').filter({ has: page.getByRole('link', { name, exact: true }) });
-    // The mock engine scans an upload as it stores it; an engine with a slower scanner shows "Scanning" first.
-    await expect(row.getByText(/^(Scanning|Clean)$/)).toBeVisible();
-    await expect(row.getByText('Clean', { exact: true })).toBeVisible();
+    await expect(row).toBeVisible();
+    await expect(row.getByText(/^(Scanning|Clean)$/)).toHaveCount(0);
 
     const uploaded = required(
         (await apiList<FileMetadata>(page, `/files?agentId=${agent.id}`)).find((file) => file.name === name),
         'uploaded file',
     );
-    expect(uploaded.scan.status).toBe('clean');
+    expect(uploaded.scan).toBeNull();
     await row.getByRole('link', { name, exact: true }).click();
     const drawer = page.getByRole('dialog', { name: 'File details' });
     await expect(drawer.locator(INLINE_ELEMENTS)).toHaveCount(0);
@@ -56,19 +55,16 @@ test('an uploaded knowledge file is scanned clean and downloads as an attachment
     expect(await contentDisposition(page, uploaded.id)).toMatch(/^attachment\b/);
 });
 
-test('the seeded infected file offers no download', async ({ page, signIn, appUrl }) => {
+test('an engine without a scanner reports no scan results and filters none', async ({ page, signIn, appUrl }) => {
     await signIn();
     await page.goto(appUrl('/'));
-    const infected = required((await apiList<FileMetadata>(page, '/files?scan=infected'))[0], 'infected file');
-    await page.goto(appUrl(`/files?file=${infected.id}`));
-    const drawer = page.getByRole('dialog', { name: 'File details' });
-    await expect(drawer.getByRole('button', { name: `Download ${infected.name}`, exact: true })).toHaveAttribute(
-        'aria-disabled',
-        'true',
-    );
-    await expect(drawer.getByRole('link', { name: `Download ${infected.name}`, exact: true })).toHaveCount(0);
-    await expect(drawer.locator(INLINE_ELEMENTS)).toHaveCount(0);
-    expect((await apiCall(page, 'GET', `/files/${infected.id}/content`)).status).not.toBe(200);
+    const files = await apiList<FileMetadata>(page, '/files');
+    expect(files.length).toBeGreaterThan(0);
+    expect(files.every((file) => file.scan === null)).toBe(true);
+    expect(await apiList<FileMetadata>(page, '/files?scan=infected')).toEqual([]);
+    await page.goto(appUrl('/files'));
+    await expect(page.getByRole('columnheader', { name: 'Name' })).toBeVisible();
+    await expect(page.getByRole('columnheader', { name: 'Scan' })).toHaveCount(0);
 });
 
 test('only raster images are ever rendered inline', async ({ page, signIn, appUrl }) => {
@@ -87,7 +83,7 @@ test('only raster images are ever rendered inline', async ({ page, signIn, appUr
         await page.goto(appUrl(`/files?file=${file.id}`));
         const drawer = page.getByRole('dialog', { name: 'File details' });
         await expect(drawer.getByText(file.name).first()).toBeVisible();
-        if (RASTER.test(file.contentType) && file.scan.status === 'clean') continue;
+        if (RASTER.test(file.contentType) && (file.scan === null || file.scan.status === 'clean')) continue;
         await expect(drawer.locator(INLINE_ELEMENTS), `${file.contentType} is not rendered`).toHaveCount(0);
     }
 });

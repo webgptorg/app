@@ -151,6 +151,36 @@ describe('knowledge at a glance', { timeout: TIMEOUT_MS }, () => {
     });
 });
 
+describe('without file scanning', { timeout: TIMEOUT_MS }, () => {
+    it('leaves scans out of the card, the list and the attention count', async () => {
+        const engine = createFilesEngine({ scanning: false });
+        const probe = defineFeature({
+            id: 'probe',
+            requires: {},
+            agentOverviewCards: [
+                {
+                    id: 'probe',
+                    order: 0,
+                    component: () => <p>{`attention ${String(filesFeature.attention.useAttention().count)}`}</p>,
+                },
+            ],
+        });
+        renderWithProviders({ path: '/agents/agent-ada', engineApi: engine.client, features: [...FEATURES, probe] });
+        const card = await screen.findByRole('region', { name: 'Knowledge at a glance' }, { timeout: CARD_LOAD_MS });
+        expect(await within(card).findByRole('link', { name: HOSTILE_FILE_NAME })).toBeDefined();
+        expect(within(card).queryByText(/needs attention|no scan problems/i)).toBeNull();
+        expect(screen.getByText('attention 0')).toBeDefined();
+    });
+
+    it('has no scan column or filter in the list', async () => {
+        const engine = createFilesEngine({ scanning: false });
+        renderWithProviders({ path: '/files', engineApi: engine.client });
+        expect(await screen.findByRole('link', { name: 'report.pdf' })).toBeDefined();
+        expect(screen.queryByRole('columnheader', { name: /Scan/ })).toBeNull();
+        expect(screen.queryByText('Infected')).toBeNull();
+    });
+});
+
 describe('attention', { timeout: TIMEOUT_MS }, () => {
     it('counts infected and failed scans and links to exactly those', async () => {
         const engine = createFilesEngine();

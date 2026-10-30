@@ -1,4 +1,4 @@
-import { acceptsFile, ENGINE_API_ROUTES, FILE_PURPOSES, KNOWN_CAPABILITIES } from '@ptbk/engine-api';
+import { acceptsFile, ENGINE_API_ROUTES, FILE_PURPOSES, KNOWN_CAPABILITIES, supports } from '@ptbk/engine-api';
 import type { FileMetadata, FilePurpose, FileStats, FileUploadPolicy } from '@ptbk/engine-api';
 
 import type { ConformanceCheck } from '../../check';
@@ -102,15 +102,21 @@ export const FILE_CHECKS: readonly ConformanceCheck[] = [
                     uploads.items,
                     ({ purpose }) => purpose === 'upload',
                 );
+                const scanning = supports(await world.engine(), KNOWN_CAPABILITIES.fileScanning);
+                if (!scanning && listed.items.some(({ scan }) => scan !== null)) {
+                    findings.add(
+                        'GET /files: a file has a scan result, but the engine does not advertise file-scanning',
+                    );
+                }
                 const clean = await world.owner.ok(R.listFiles, { query: { scan: 'clean', limit: 50 } });
-                checkFilter(findings, R.listFiles, 'scan=clean', clean.items, ({ scan }) => scan.status === 'clean');
+                checkFilter(findings, R.listFiles, 'scan=clean', clean.items, ({ scan }) => scan?.status === 'clean');
                 const problems = await world.owner.ok(R.listFiles, { query: { scan: 'infected,failed', limit: 50 } });
                 checkFilter(
                     findings,
                     R.listFiles,
                     'scan=infected,failed',
                     problems.items,
-                    ({ scan }) => scan.status === 'infected' || scan.status === 'failed',
+                    ({ scan }) => scan?.status === 'infected' || scan?.status === 'failed',
                 );
             });
             return findings.outcome();
@@ -126,7 +132,7 @@ export const FILE_CHECKS: readonly ConformanceCheck[] = [
             const findings = new Findings();
             const text = `conformance ${randomToken(ctx.random, 12)}\n`;
             const file = await upload(world, 'download', text);
-            if (file.scan.status === 'infected') skip('the engine’s scanner flagged a plain text upload');
+            if (file.scan?.status === 'infected') skip('the engine’s scanner flagged a plain text upload');
             const params = { fileId: file.id };
             const [version] = (await world.owner.ok(R.listFileVersions, { params })).items;
             const requests = [
@@ -160,6 +166,7 @@ export const FILE_CHECKS: readonly ConformanceCheck[] = [
         async run(ctx) {
             const world = await createWorld(ctx);
             await requireCapability(world, KNOWN_CAPABILITIES.files);
+            await requireCapability(world, KNOWN_CAPABILITIES.fileScanning);
             const [infected] = (await world.owner.ok(R.listFiles, { query: { scan: 'infected', limit: 1 } })).items;
             if (infected === undefined) skip('the engine lists no infected file to try');
             const findings = new Findings();
@@ -184,14 +191,18 @@ export const FILE_CHECKS: readonly ConformanceCheck[] = [
     {
         id: 'engine-api.files.stats',
         suite: SUITE,
-        title: 'GET /files/stats counts every file once by purpose and once by scan status, and counts a new upload',
+        title: 'GET /files/stats counts every file once by purpose and, with scanning, once by scan status',
         async run(ctx) {
             const world = await createWorld(ctx);
             await requireCapability(world, KNOWN_CAPABILITIES.files);
             const findings = new Findings();
+            const scanning = supports(await world.engine(), KNOWN_CAPABILITIES.fileScanning);
             const check = (stats: FileStats, when: string): void => {
-                if (total(stats.byPurpose) !== total(stats.byScan)) {
+                if (scanning && total(stats.byPurpose) !== total(stats.byScan)) {
                     findings.add(`GET /files/stats ${when}: the purpose and scan counts add up to different totals`);
+                }
+                if (!scanning && total(stats.byScan) !== 0) {
+                    findings.add(`GET /files/stats ${when}: scan counts without file-scanning`);
                 }
             };
             const before = await world.owner.ok(R.getFileStats, {});

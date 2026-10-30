@@ -64,6 +64,7 @@ describe('supports', () => {
             'integrations@1',
             'test-chat@1',
             'access-requests@1',
+            'file-scanning@1',
         ]);
     });
 });

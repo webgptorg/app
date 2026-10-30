@@ -244,7 +244,10 @@ export interface InMemoryEngineCoreOptions {
     readonly eventBufferSize?: number;
     /** Paces scripted replies; defaults to a timer. */
     readonly sleep?: Sleep;
-    /** The virus scan and connection test a real engine runs; by default files are clean and connections work. */
+    /**
+     * The virus scan and connection test a real engine runs; by default files are clean and connections work. Scans
+     * run only when `capabilities` includes `file-scanning@1`, which the default leaves out.
+     */
     readonly checks?: Partial<EngineChecks>;
     /** Upload limits per purpose (`GET /files/upload-policy`); by default any type up to `MAX_FILE_BYTES`. */
     readonly uploadPolicies?: FileUploadPolicies;
@@ -494,6 +497,11 @@ const DEFAULT_REPLY_SCRIPT: ReplyScript = ({ agent, content }) => ({
 
 export const DEFAULT_EVENT_BUFFER_SIZE = 1_000;
 
+/** Every capability this contract knows except malware scanning, which an engine offers only with a scanner. */
+export const DEFAULT_CAPABILITIES: readonly CapabilityRef[] = Object.values(KNOWN_CAPABILITIES).filter(
+    (ref) => ref !== KNOWN_CAPABILITIES.fileScanning,
+);
+
 const timerSleep: Sleep = (ms, signal) =>
     new Promise((resolve, reject) => {
         if (signal.aborted) {
@@ -556,9 +564,7 @@ export function createInMemoryEngineCore(options: InMemoryEngineCoreOptions = {}
         createdAt: now(),
         lastSeenAt: now(),
     });
-    const capabilities = (options.capabilities ?? Object.values(KNOWN_CAPABILITIES)).map((ref) =>
-        CapabilityRef.parse(ref),
-    );
+    const capabilities = (options.capabilities ?? DEFAULT_CAPABILITIES).map((ref) => CapabilityRef.parse(ref));
     const state = createState(options.seed ?? {}, seedMember, now, capabilities, options.uploadPolicies);
     const counters = new Map<string, number>();
     const eventWaiters = new Set<() => void>();
@@ -1160,7 +1166,7 @@ function idTaken(state: InMemoryState, id: string): boolean {
 
 const DEFAULT_ENGINE_ID = 'memoryengine234567abcdefgh';
 
-function seedFile({ metadata, content, versions }: InMemorySeedFile): [string, FileRecord] {
+function seedFile({ metadata, content, versions }: InMemorySeedFile, scanning: boolean): [string, FileRecord] {
     const versionRecords = (
         versions ?? [
             {
@@ -1176,7 +1182,11 @@ function seedFile({ metadata, content, versions }: InMemorySeedFile): [string, F
             },
         ]
     ).map((record) => ({ version: FileVersion.parse(record.version), content: record.content }));
-    const parsed = FileMetadata.parse({ ...metadata, versionCount: versionRecords.length });
+    const parsed = FileMetadata.parse({
+        ...metadata,
+        scan: scanning ? metadata.scan : null,
+        versionCount: versionRecords.length,
+    });
     return [parsed.id, { metadata: parsed, versions: versionRecords }];
 }
 
@@ -1220,7 +1230,9 @@ function createState(
     if (settings.dashboardRemovals === null && supports({ capabilities }, KNOWN_CAPABILITIES.accessRequests)) {
         settings.dashboardRemovals = true;
     }
-    const files = new Map((seed.files ?? []).map(seedFile));
+    // A seed may carry scan results; an engine that does not scan reports none of them.
+    const scanning = supports({ capabilities }, KNOWN_CAPABILITIES.fileScanning);
+    const files = new Map((seed.files ?? []).map((record) => seedFile(record, scanning)));
     const state: InMemoryState = {
         orgId: OrgId.parse(seed.orgId ?? 'org-1'),
         engine: EngineInfo.parse({
@@ -1298,9 +1310,9 @@ function createState(
             }),
         ),
         integrations: byId((seed.integrations ?? []).map((record) => Integration.parse(record))),
-        activity: (seed.activity ?? []).map((record) =>
-            Activity.parse({ ...record, agentName: record.agentName ?? null }),
-        ),
+        activity: (seed.activity ?? [])
+            .filter((record) => scanning || record.kind !== 'file.scan-failed')
+            .map((record) => Activity.parse({ ...record, agentName: record.agentName ?? null })),
         audit: [],
         events: [],
         eventSeq: 0,
