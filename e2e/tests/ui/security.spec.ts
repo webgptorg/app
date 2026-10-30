@@ -15,8 +15,10 @@ interface SecurityOverview {
 /** A row of the security checklist, opened: its details are collapsed while the engine reports nothing wrong. */
 async function openCheck(page: Page, name: string) {
     const region = page.getByRole('region', { name, exact: true });
-    if (!(await region.locator('details').evaluate((details) => (details as HTMLDetailsElement).open))) {
-        await region.locator('summary').click();
+    // The row's own disclosure; the heartbeat's details hold a nested one for the field meanings.
+    const details = region.locator(':scope > details');
+    if (!(await details.evaluate((element) => (element as HTMLDetailsElement).open))) {
+        await details.locator(':scope > summary').click();
     }
     return region;
 }
