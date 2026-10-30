@@ -5,7 +5,6 @@ import type { MenuEntry, ThemePreference } from '@ptbk/ui';
 import { m } from '../../../paraglide/messages';
 import type { Locale } from '../../../paraglide/runtime';
 import { useThemePreference } from '../../core/theme';
-import { useLocale } from '../../i18n/locale';
 
 /** Each language in its own name, so it is recognisable whatever the current language is. */
 export function localeLabel(locale: Locale): string {
@@ -33,7 +32,7 @@ export function languageOptions(locales: readonly Locale[]): LanguageOption<Loca
     return locales.map((code) => ({ code, name: localeLabel(code) }));
 }
 
-/** Theme choices; the signed-in header has its own language switch, so the user menu shows only these. */
+/** Theme choices; the language has its own switch in every header, so the menus offer only these. */
 export function useThemeEntries(): MenuEntry[] {
     const { preference, setPreference } = useThemePreference();
     return [
@@ -47,25 +46,5 @@ export function useThemeEntries(): MenuEntry[] {
                 setPreference(option);
             },
         })),
-    ];
-}
-
-/** Language and theme choices, for the signed-out preferences menu. */
-export function usePreferenceEntries(): MenuEntry[] {
-    const { locale, locales, changeLocale } = useLocale();
-    const themeEntries = useThemeEntries();
-    return [
-        { kind: 'heading', id: 'language', label: m.language_label() },
-        ...locales.map((option): MenuEntry => ({
-            kind: 'item',
-            id: `locale-${option}`,
-            label: localeLabel(option),
-            checked: option === locale,
-            onSelect: () => {
-                changeLocale(option);
-            },
-        })),
-        { kind: 'separator', id: 'theme-separator' },
-        ...themeEntries,
     ];
 }

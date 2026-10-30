@@ -27,9 +27,9 @@ describe('trust page', () => {
 });
 
 describe('signed-out frame', () => {
-    it('names the language on the preferences button and links only to pages that exist', async () => {
+    it('shows the language and links only to pages that exist', async () => {
         renderApp({ path: '/signin' });
-        expect(await screen.findByRole('button', { name: 'English, language and theme' })).toBeTruthy();
+        expect(await screen.findByRole('button', { name: 'EN, Language: English' })).toBeTruthy();
         const footer = screen.getByRole('navigation', { name: 'About Promptbook' });
         const links = within(footer).getAllByRole('link');
         expect(links.map((link) => [link.textContent, link.getAttribute('href')])).toEqual([

@@ -149,13 +149,14 @@ describe('signed-in shell', () => {
 
     it('switches language and theme while signed out', async () => {
         const app = renderApp({ path: '/signin' });
-        await app.user.click(await screen.findByRole('button', { name: 'English, language and theme' }));
+        await app.user.click(await screen.findByRole('button', { name: 'Theme' }));
         await app.user.click(screen.getByRole('menuitemradio', { name: 'Light' }));
         expect(app.storage.getItem(THEME_STORAGE_KEY)).toBe('light');
-        await app.user.click(screen.getByRole('button', { name: 'English, language and theme' }));
+        await app.user.click(screen.getByRole('button', { name: 'EN, Language: English' }));
         await app.user.click(screen.getByRole('menuitemradio', { name: 'Čeština' }));
         expect(await screen.findByRole('heading', { name: 'Přihlášení' })).toBeTruthy();
-        await app.user.click(screen.getByRole('button', { name: 'Čeština, jazyk a vzhled' }));
+        expect(document.cookie).toContain('ptbk_locale=cs');
+        await app.user.click(screen.getByRole('button', { name: 'CS, Jazyk: Čeština' }));
         await app.user.click(screen.getByRole('menuitemradio', { name: 'English' }));
         expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeTruthy();
     });
@@ -192,7 +193,7 @@ describe('route states', () => {
         const app = renderApp({ path: '/nowhere' });
         expect(await screen.findByRole('heading', { name: 'Page not found' })).toBeTruthy();
         expect(screen.queryByRole('navigation', { name: 'Main' })).toBeNull();
-        expect(screen.getByRole('button', { name: 'English, language and theme' })).toBeTruthy();
+        expect(screen.getByRole('button', { name: 'EN, Language: English' })).toBeTruthy();
         await app.user.click(screen.getByRole('link', { name: 'Back to the start' }));
         expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeTruthy();
     });
