@@ -759,6 +759,8 @@
   "triggers_empty_agent_body": "This agent starts only from a chat. Add an email address or a schedule to let it work on its own.",
   "triggers_card_title": "Triggers",
   "triggers_card_all": "All triggers",
+  "triggers_card_empty": "No triggers yet. A schedule or an email address lets the agent work on its own.",
+  "triggers_card_add": "Add a trigger",
   "triggers_card_active": "Active",
   "triggers_card_next": "Next fire",
   "triggers_card_paused": "Paused",
@@ -962,8 +964,9 @@
   "files_activity_open": "Open file",
   "files_card_title": "Knowledge at a glance",
   "files_card_all": "All files",
+  "files_card_empty": "No knowledge yet. Files you add here become what the agent knows.",
+  "files_card_add": "Add files",
   "files_card_latest_outputs": "Latest outputs",
-  "files_card_no_outputs": "This agent has produced no files yet.",
   "files_card_no_problems": "No scan problems.",
   "files_card_problems": [
     {
@@ -1093,8 +1096,6 @@
   "integrations_no_results_hint": "Try fewer statuses, another kind or any agent.",
   "integrations_card_title": "Integrations",
   "integrations_card_all": "All integrations",
-  "integrations_card_none": "This agent uses no integrations.",
-  "integrations_card_attention": "Need attention: {count}",
   "integration_status_connected": "Connected",
   "integration_status_needs_attention": "Needs attention",
   "integration_status_disconnected": "Disabled",

@@ -1,5 +1,5 @@
 import type { AgentId, ReadIntegration } from '@ptbk/engine-api';
-import { Banner, Card, ErrorState, Skeleton } from '@ptbk/ui';
+import { Card, ErrorState, Skeleton } from '@ptbk/ui';
 import { useQuery } from '@tanstack/react-query';
 
 import { useEngineApi } from '../../app/engine-api-context';
@@ -13,7 +13,8 @@ const SHOWN = 10;
 
 /**
  * The agent overview's card: what the agent may use, its own and the engine-wide integrations, with the ones that need
- * attention or failed first and called out, so an owner sees at a glance what to fix or switch off.
+ * attention or failed first, so an owner sees at a glance what to fix or switch off. An agent that uses none shows no
+ * card: the Integrations tab is one click away, and an empty card would only add noise to a new agent's overview.
  */
 export function IntegrationsCard({ agentId }: { readonly agentId: AgentId }) {
     const params = { ...integrationListParams({}, agentId), limit: SHOWN };
@@ -21,6 +22,7 @@ export function IntegrationsCard({ agentId }: { readonly agentId: AgentId }) {
     const items = integrations.data?.items ?? [];
     const attention = items.filter(({ status }) => needsAttention(status));
     const ordered = [...attention, ...items.filter(({ status }) => !needsAttention(status))];
+    if (integrations.isSuccess && ordered.length === 0) return null;
     return (
         <Card
             title={m.integrations_card_title()}
@@ -46,19 +48,12 @@ export function IntegrationsCard({ agentId }: { readonly agentId: AgentId }) {
                     }}
                     retrying={integrations.isFetching}
                 />
-            ) : ordered.length === 0 ? (
-                <p className="text-sm text-text-muted">{m.integrations_card_none()}</p>
             ) : (
-                <div className="flex flex-col gap-3">
-                    {attention.length === 0 ? null : (
-                        <Banner tone="warning">{m.integrations_card_attention({ count: attention.length })}</Banner>
-                    )}
-                    <ul className="flex flex-col divide-y divide-divider">
-                        {ordered.map((integration) => (
-                            <CardRow key={integration.id} integration={integration} />
-                        ))}
-                    </ul>
-                </div>
+                <ul className="flex flex-col divide-y divide-divider">
+                    {ordered.map((integration) => (
+                        <CardRow key={integration.id} integration={integration} />
+                    ))}
+                </ul>
             )}
         </Card>
     );

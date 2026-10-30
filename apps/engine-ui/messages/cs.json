@@ -763,6 +763,8 @@
   "triggers_empty_agent_body": "Tento agent se spouští jen z chatu. Přidejte e-mailovou adresu nebo plán, aby pracoval sám.",
   "triggers_card_title": "Spouštěče",
   "triggers_card_all": "Všechny spouštěče",
+  "triggers_card_empty": "Zatím žádné spouštěče. Díky plánu nebo e-mailové adrese může agent pracovat sám.",
+  "triggers_card_add": "Přidat spouštěč",
   "triggers_card_active": "Aktivní",
   "triggers_card_next": "Další spuštění",
   "triggers_card_paused": "Pozastavené",
@@ -976,8 +978,9 @@
   "files_activity_open": "Otevřít soubor",
   "files_card_title": "Znalosti v kostce",
   "files_card_all": "Všechny soubory",
+  "files_card_empty": "Zatím žádné znalosti. Soubory, které sem přidáte, budou to, co agent ví.",
+  "files_card_add": "Přidat soubory",
   "files_card_latest_outputs": "Nejnovější výstupy",
-  "files_card_no_outputs": "Tento agent zatím nevytvořil žádné soubory.",
   "files_card_no_problems": "Žádné problémy s kontrolou.",
   "files_card_problems": [
     {
@@ -1109,8 +1112,6 @@
   "integrations_no_results_hint": "Zkuste méně stavů, jiný druh nebo libovolného agenta.",
   "integrations_card_title": "Integrace",
   "integrations_card_all": "Všechny integrace",
-  "integrations_card_none": "Tento agent nepoužívá žádné integrace.",
-  "integrations_card_attention": "Vyžadují pozornost: {count}",
   "integration_status_connected": "Připojeno",
   "integration_status_needs_attention": "Vyžaduje pozornost",
   "integration_status_disconnected": "Vypnuto",

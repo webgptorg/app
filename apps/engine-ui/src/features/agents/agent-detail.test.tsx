@@ -157,18 +157,49 @@ describe('agent tabs', { timeout: TIMEOUT_MS }, () => {
 });
 
 describe('agent overview', { timeout: TIMEOUT_MS }, () => {
-    it('shows identity, state, visibility, creator, times, last activity and model', async () => {
+    it('adds creator, times, last activity and model to what the header shows, without repeating it', async () => {
         const { engine } = await renderAgent('/agents/agent-003');
         expect(screen.getByRole('heading', { level: 1, name: 'Agent 003' })).toBeDefined();
+        // With runs@1 the state comes from the agent's runs, and agent-003 has none.
+        expect(within(agentHeader()).getByText('Idle')).toBeDefined();
+        expect(within(agentHeader()).getByText('Private')).toBeDefined();
         const details = screen.getByRole('region', { name: 'Details' });
         expect(await within(details).findByText('Jana Nováková')).toBeDefined();
-        // With runs@1 the state comes from the agent's runs, and agent-003 has none.
-        expect(within(details).getAllByText('Idle').length).toBeGreaterThan(0);
-        expect(within(details).getByText('Private')).toBeDefined();
+        expect(within(details).queryByText('Idle')).toBeNull();
+        expect(within(details).queryByText('Private')).toBeNull();
+        expect(within(details).queryByText('Full name')).toBeNull();
+        // The phone header leaves the description out, so Details carries it (hidden from md up by CSS).
         expect(within(details).getByText('Handles research notes')).toBeDefined();
         expect(await within(details).findByText('No activity yet')).toBeDefined();
         expect(within(details).getByText('Model')).toBeDefined();
         expect(engine.spies.get).toHaveBeenCalledWith('agent-003', expect.anything());
+    });
+
+    it('gives a new agent one line each for knowledge and triggers, and no empty runs or integrations card', async () => {
+        await renderAgent('/agents/agent-001');
+        const knowledge = await screen.findByRole('region', { name: 'Knowledge at a glance' }, { timeout: 10_000 });
+        expect(within(knowledge).getByText(/No knowledge yet/)).toBeDefined();
+        expect(within(knowledge).getByRole('link', { name: 'Add files' }).getAttribute('href')).toBe(
+            '/agents/agent-001/files',
+        );
+        const triggers = await screen.findByRole('region', { name: 'Triggers' }, { timeout: 10_000 });
+        expect(await within(triggers).findByText(/No triggers yet/)).toBeDefined();
+        expect(within(triggers).getByRole('link', { name: 'Add a trigger' }).getAttribute('href')).toBe(
+            '/agents/agent-001/triggers',
+        );
+        await waitFor(() => {
+            expect(screen.queryByRole('region', { name: 'Recent runs' })).toBeNull();
+            expect(screen.queryByRole('region', { name: 'Integrations' })).toBeNull();
+        });
+    });
+
+    it('offers no way to add files or triggers to a member who may not', async () => {
+        await renderAgent('/agents/agent-001', { permissions: allBut('files.write', 'triggers.manage') });
+        const triggers = await screen.findByRole('region', { name: 'Triggers' }, { timeout: 10_000 });
+        expect(await within(triggers).findByText(/No triggers yet/)).toBeDefined();
+        expect(within(triggers).queryByRole('link')).toBeNull();
+        const knowledge = await screen.findByRole('region', { name: 'Knowledge at a glance' }, { timeout: 10_000 });
+        expect(within(knowledge).queryByRole('link')).toBeNull();
     });
 
     it('shows when the agent was last active, and leaves the model out without runs', async () => {

@@ -11,9 +11,10 @@ import { runListQueryOptions } from './runs-queries';
 
 const RECENT = 5;
 
-/** The agent overview's card: its last five runs, and the way to all of them. */
+/** The agent overview's card: its last five runs, and the way to all of them; nothing until the agent has run. */
 export function RecentRunsCard({ agentId }: { readonly agentId: AgentId }) {
     const runs = useQuery(runListQueryOptions(useEngineApi(), { agentId, limit: RECENT }));
+    if (runs.isSuccess && runs.data.items.length === 0) return null;
     return (
         <Card
             title={m.runs_recent_title()}
@@ -39,8 +40,6 @@ export function RecentRunsCard({ agentId }: { readonly agentId: AgentId }) {
                     }}
                     retrying={runs.isFetching}
                 />
-            ) : runs.data.items.length === 0 ? (
-                <p className="text-sm text-text-muted">{m.runs_empty_title()}</p>
             ) : (
                 <ul className="flex flex-col divide-y divide-divider">
                     {runs.data.items.map((run) => (

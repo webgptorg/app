@@ -142,12 +142,13 @@ describe('knowledge at a glance', { timeout: TIMEOUT_MS }, () => {
         expect(engine.spies.stats).toHaveBeenCalledWith({ agentId: 'agent-ada' }, expect.anything());
     });
 
-    it('says when an agent has no scan problems and no outputs', async () => {
+    it('leaves out the outputs list and the zero counts when an agent has produced nothing', async () => {
         const engine = createFilesEngine();
         renderWithProviders({ path: '/agents/agent-grace', engineApi: engine.client });
         const card = await screen.findByRole('region', { name: 'Knowledge at a glance' }, { timeout: CARD_LOAD_MS });
-        expect(await within(card).findByText('This agent has produced no files yet.')).toBeDefined();
-        expect(within(card).getByText(/1 file needs attention/)).toBeDefined();
+        expect(await within(card).findByText(/1 file needs attention/)).toBeDefined();
+        expect(within(card).queryByText('Latest outputs')).toBeNull();
+        expect(within(card).queryByText('Output')).toBeNull();
     });
 });
 
