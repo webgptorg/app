@@ -10,4 +10,5 @@ export const securityKeys = {
     myPasskeys: (params: PasskeyListParams) => [...securityKeys.passkeys(), 'mine', params] as const,
     allPasskeys: (params: PasskeyListParams) => [...securityKeys.passkeys(), 'all', params] as const,
     mySessions: () => [...securityKeys.all, 'my-sessions'] as const,
+    settings: () => [...securityKeys.all, 'settings'] as const,
 };

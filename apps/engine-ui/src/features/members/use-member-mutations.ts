@@ -1,7 +1,7 @@
 import { Timestamp } from '@ptbk/engine-api';
-import type { Invite, MemberId, Role } from '@ptbk/engine-api';
+import type { AccessRequest, Invite, MemberId, Role } from '@ptbk/engine-api';
 
-import { unwrap } from '../../app/api-errors';
+import { classifyApiError, unwrap } from '../../app/api-errors';
 import { useEngineApi } from '../../app/engine-api-context';
 import { useStepUpAwareMutation } from '../../app/mutations';
 import { m } from '../../paraglide/messages';
@@ -25,6 +25,16 @@ export interface InviteRequest {
      */
     readonly reveal: (inviteUrl: string) => void;
 }
+
+export const APPROVE_ACCESS_ACTION = 'members.approve-access';
+
+export interface AccessApproval {
+    readonly request: AccessRequest;
+    readonly code: string;
+    readonly role: Role;
+}
+
+export type ApprovalOutcome = 'approved' | 'code-mismatch';
 
 /** Role changes, removals and invites: none optimistic, each waits for the engine and may need step-up. */
 export function useMemberMutations() {
@@ -65,7 +75,39 @@ export function useMemberMutations() {
         errorMessage: () => m.invites_revoke_failed(),
     });
 
-    return { changeRole, remove, invite, revokeInvite };
+    const approveAccess = useStepUpAwareMutation({
+        mutationFn: async ({ request, code, role }: AccessApproval): Promise<ApprovalOutcome> => {
+            try {
+                unwrap(await engineApi.members.approveAccessRequest(request.id, { code, role }, signal()));
+                return 'approved';
+            } catch (error) {
+                // A wrong code is the member's typo, answered in the dialog, not a failure toast.
+                const failure = classifyApiError(error);
+                if (failure.kind === 'problem' && failure.problem.code === 'access-code-mismatch')
+                    return 'code-mismatch';
+                throw error;
+            }
+        },
+        invalidates: [memberKeys.all],
+        successMessage: (outcome, { request }) =>
+            outcome === 'approved' ? m.access_approved({ name: request.displayName }) : undefined,
+        errorMessage: (_, { request }) => m.access_approve_failed({ name: request.displayName }),
+        // The code is not kept: the member asks for it again after confirming it was them.
+        resumeAs: {
+            action: APPROVE_ACCESS_ACTION,
+            data: ({ request, role }) => ({ accessRequestId: request.id, role }),
+        },
+    });
+
+    const declineAccess = useStepUpAwareMutation({
+        mutationFn: async (request: AccessRequest) =>
+            unwrap(await engineApi.members.declineAccessRequest(request.id, signal())),
+        invalidates: [memberKeys.accessRequests()],
+        successMessage: (_, request) => m.access_declined({ name: request.displayName }),
+        errorMessage: () => m.access_decline_failed(),
+    });
+
+    return { changeRole, remove, invite, revokeInvite, approveAccess, declineAccess };
 }
 
 export type MemberMutations = ReturnType<typeof useMemberMutations>;

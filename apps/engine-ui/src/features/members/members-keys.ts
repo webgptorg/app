@@ -9,4 +9,5 @@ export const memberKeys = {
     list: (params: MemberListParams) => [...memberKeys.lists(), params] as const,
     detail: (memberId: MemberId) => [...memberKeys.all, 'detail', memberId] as const,
     invites: () => [...memberKeys.all, 'invites'] as const,
+    accessRequests: () => [...memberKeys.all, 'access-requests'] as const,
 };

@@ -37,3 +37,22 @@ export function inviteListQueryOptions(engineApi: EngineApiClient) {
         staleTime: MEMBER_STALE_MS,
     });
 }
+
+/** The engine keeps at most 20 pending requests (`MAX_PENDING_ACCESS_REQUESTS`), so one page holds them all. */
+export const ACCESS_REQUESTS_PAGE_SIZE = 50;
+/**
+ * No event announces a new request, so the list is refreshed while the page is visible; TanStack Query pauses the
+ * interval in a hidden tab.
+ */
+export const ACCESS_REQUESTS_REFRESH_MS = 30_000;
+
+/** `GET /access-requests` (`access-requests@1`), oldest first. */
+export function accessRequestListQueryOptions(engineApi: EngineApiClient) {
+    return queryOptions({
+        queryKey: memberKeys.accessRequests(),
+        queryFn: async ({ signal }) =>
+            unwrap(await engineApi.members.listAccessRequests({ limit: ACCESS_REQUESTS_PAGE_SIZE }, signal)),
+        staleTime: MEMBER_STALE_MS,
+        refetchInterval: ACCESS_REQUESTS_REFRESH_MS,
+    });
+}

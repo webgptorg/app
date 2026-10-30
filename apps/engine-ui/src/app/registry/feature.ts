@@ -28,6 +28,8 @@ export interface NavEntry {
     readonly label: () => string;
     readonly icon: NavIcon;
     readonly to: RoutePath;
+    /** How many things there wait for the member; shown beside the label while above zero. */
+    readonly useBadge?: () => number;
 }
 
 /**
