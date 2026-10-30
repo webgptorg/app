@@ -42,8 +42,7 @@ function useTriggerColumns(showAgent: boolean, manage: boolean, fromAgent: boole
                 enableSorting: false,
                 enableHiding: false,
                 meta: { priority: 0 },
-                // One line in the table, so the row stays one line; a long name ends in an ellipsis with the full name on
-                // hover. A card has the width to wrap it.
+                // At most two lines, with the full name on hover: a long name must not push the table wider than the page.
                 cell: ({ row }) => (
                     <Link
                         to="/triggers/$triggerId"
@@ -51,7 +50,7 @@ function useTriggerColumns(showAgent: boolean, manage: boolean, fromAgent: boole
                         search={fromAgent ? { from: 'agent' } : {}}
                         variant="standalone"
                         title={row.original.name}
-                        className="inline-block max-w-full break-words md:max-w-72 md:truncate md:align-bottom"
+                        className="line-clamp-2 break-words"
                     >
                         {row.original.name}
                     </Link>
