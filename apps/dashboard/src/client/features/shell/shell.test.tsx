@@ -126,7 +126,7 @@ describe('signed-in shell', () => {
 
     it('switches the language from the header without a reload, and the theme from the user menu', async () => {
         const app = renderApp({ path: '/', session: session() });
-        await app.user.click(await screen.findByRole('button', { name: 'Language: English' }));
+        await app.user.click(await screen.findByRole('button', { name: 'EN, Language: English' }));
         await app.user.click(screen.getByRole('menuitemradio', { name: 'Čeština' }));
         expect(await screen.findByRole('heading', { name: 'Vaše enginy' })).toBeTruthy();
         expect(document.documentElement.lang).toBe('cs');
@@ -141,7 +141,7 @@ describe('signed-in shell', () => {
 
         await app.user.click(screen.getByRole('button', { name: 'Nabídka účtu ada@example.test' }));
         await app.user.click(screen.getByRole('menuitemradio', { name: 'Podle systému' }));
-        await app.user.click(screen.getByRole('button', { name: 'Jazyk: Čeština' }));
+        await app.user.click(screen.getByRole('button', { name: 'CS, Jazyk: Čeština' }));
         await app.user.click(screen.getByRole('menuitemradio', { name: 'English' }));
         expect(await screen.findByRole('heading', { name: 'Your engines' })).toBeTruthy();
         expect(document.documentElement.classList.contains('dark')).toBe(false);
