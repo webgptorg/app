@@ -1,39 +1,19 @@
-import { Button, Menu } from '@ptbk/ui';
-import { ChevronDown, Languages } from 'lucide-react';
-
 import { m } from '../../../paraglide/messages';
 import { Link } from '../../core/link';
-import { useLocale } from '../../i18n/locale';
-import { localeLabel, usePreferenceEntries } from './preference-entries';
+import { HeaderLanguageSwitch } from './language-switch';
+import { ThemeMenu } from './theme-menu';
 
-/** Brand and preferences for the pages anyone can open signed out: sign-in, sign-up, recovery, trust and abuse. */
+/** Brand, language and theme for the pages anyone can open signed out: sign-in, sign-up, recovery, trust and abuse. */
 export function PublicHeader(props: { readonly width: 'narrow' | 'wide' }) {
-    const preferences = usePreferenceEntries();
-    const { locale } = useLocale();
-    const language = localeLabel(locale);
     return (
         <header
             className={`mx-auto flex w-full items-center justify-between gap-4 px-4 py-3 ${props.width === 'wide' ? 'max-w-5xl' : 'max-w-3xl'}`}
         >
             <span className="font-display text-lg font-semibold">{m.app_name()}</span>
-            <Menu
-                label={m.preferences_menu()}
-                align="end"
-                items={preferences}
-                trigger={(triggerProps) => (
-                    // The visible language name starts the accessible name, so voice control finds it by what it says.
-                    <Button
-                        {...triggerProps}
-                        variant="ghost"
-                        size="sm"
-                        aria-label={m.preferences_trigger({ language })}
-                    >
-                        <Languages aria-hidden className="size-4" />
-                        {language}
-                        <ChevronDown aria-hidden className="size-4" />
-                    </Button>
-                )}
-            />
+            <div className="flex items-center gap-1">
+                <HeaderLanguageSwitch />
+                <ThemeMenu />
+            </div>
         </header>
     );
 }
