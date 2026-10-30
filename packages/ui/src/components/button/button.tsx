@@ -1,7 +1,7 @@
-import { useId } from 'react';
 import type { ButtonHTMLAttributes, MouseEvent, ReactNode, Ref } from 'react';
 
 import { cx } from '../../internal/cx';
+import { mergeTooltipHandlers, useTooltip } from '../tooltip/tooltip';
 import { Spinner } from '../spinner/spinner';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
@@ -26,11 +26,24 @@ export interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement
 
 const VARIANT_CLASSES: Readonly<Record<ButtonVariant, string>> = {
     primary:
-        'bg-(--button-primary-bg) text-(--button-primary-text) hover:enabled:bg-(--button-primary-bg-hover) shadow-subtle',
+        'bg-(--button-primary-bg) text-(--button-primary-text) hover:enabled:not-aria-disabled:bg-(--button-primary-bg-hover) shadow-subtle',
     secondary:
-        'border border-(--button-secondary-border) bg-(--button-secondary-bg) text-(--button-secondary-text) hover:enabled:bg-(--button-secondary-bg-hover)',
-    ghost: 'bg-transparent text-(--button-ghost-text) hover:enabled:bg-(--button-ghost-bg-hover)',
-    danger: 'bg-(--button-danger-bg) text-(--button-danger-text) hover:enabled:bg-(--button-danger-bg-hover)',
+        'border border-(--button-secondary-border) bg-(--button-secondary-bg) text-(--button-secondary-text) hover:enabled:not-aria-disabled:bg-(--button-secondary-bg-hover)',
+    ghost: 'bg-transparent text-(--button-ghost-text) hover:enabled:not-aria-disabled:bg-(--button-ghost-bg-hover)',
+    danger: 'bg-(--button-danger-bg) text-(--button-danger-text) hover:enabled:not-aria-disabled:bg-(--button-danger-bg-hover)',
+};
+
+/**
+ * Inert in both themes through its own tokens, not opacity: a half-transparent accent fill still reads as a live
+ * button on a dark surface. Ghost buttons keep no fill, so a disabled one never looks raised.
+ */
+const DISABLED_CLASSES: Readonly<Record<ButtonVariant, string>> = {
+    primary:
+        'disabled:border disabled:border-(--button-disabled-border) disabled:bg-(--button-disabled-bg) disabled:shadow-none aria-disabled:border aria-disabled:border-(--button-disabled-border) aria-disabled:bg-(--button-disabled-bg) aria-disabled:shadow-none',
+    secondary:
+        'disabled:border-(--button-disabled-border) disabled:bg-(--button-disabled-bg) aria-disabled:border-(--button-disabled-border) aria-disabled:bg-(--button-disabled-bg)',
+    ghost: '',
+    danger: 'disabled:border disabled:border-(--button-disabled-border) disabled:bg-(--button-disabled-bg) aria-disabled:border aria-disabled:border-(--button-disabled-border) aria-disabled:bg-(--button-disabled-bg)',
 };
 
 const SIZE_CLASSES: Readonly<Record<ButtonSize, string>> = {
@@ -42,9 +55,12 @@ const SIZE_CLASSES: Readonly<Record<ButtonSize, string>> = {
 export function buttonClassName(variant: ButtonVariant, size: ButtonSize, className?: string): string {
     return cx(
         'inline-flex shrink-0 cursor-pointer items-center justify-center rounded-(--button-radius) font-medium whitespace-nowrap select-none',
-        'motion-safe:transition-colors motion-safe:duration-(--motion-state) motion-safe:ease-standard',
-        'disabled:cursor-not-allowed disabled:opacity-50 aria-disabled:cursor-not-allowed aria-disabled:opacity-50 aria-busy:cursor-progress',
+        // Not `transition-colors`: it includes outline-color, so the focus ring would fade in from the text colour.
+        'motion-safe:transition-[color,background-color,border-color] motion-safe:duration-(--motion-state) motion-safe:ease-standard',
+        'aria-busy:cursor-progress',
         VARIANT_CLASSES[variant],
+        'disabled:cursor-not-allowed disabled:text-(--button-disabled-text) aria-disabled:cursor-not-allowed aria-disabled:text-(--button-disabled-text)',
+        DISABLED_CLASSES[variant],
         SIZE_CLASSES[size],
         className,
     );
@@ -63,14 +79,17 @@ export function Button({
     children,
     ...rest
 }: ButtonProps) {
-    const reasonId = useId();
+    const reason = useTooltip(disabledReason ?? '');
     if (hidden) return null;
     const softDisabled = disabled && disabledReason !== undefined;
     const blocked = loading || softDisabled;
-    const describedBy = cx(rest['aria-describedby'], softDisabled && reasonId) || undefined;
+    const describedBy =
+        cx(rest['aria-describedby'], softDisabled && reason.triggerProps['aria-describedby']) || undefined;
     const handleClick = (event: MouseEvent<HTMLButtonElement>) => {
         if (blocked) {
             event.preventDefault();
+            // A tap has no hover: it shows the reason instead of doing nothing.
+            if (softDisabled) reason.show(event.currentTarget);
             return;
         }
         onClick?.(event);
@@ -79,6 +98,7 @@ export function Button({
         <>
             <button
                 {...rest}
+                {...(softDisabled ? mergeTooltipHandlers(rest, reason.triggerProps) : {})}
                 type={type}
                 className={buttonClassName(variant, size, className)}
                 disabled={disabled && !softDisabled}
@@ -90,11 +110,7 @@ export function Button({
                 {loading ? <Spinner size="sm" tone="current" announce={false} /> : null}
                 {children}
             </button>
-            {softDisabled ? (
-                <span id={reasonId} hidden>
-                    {disabledReason}
-                </span>
-            ) : null}
+            {softDisabled ? reason.tooltip : null}
         </>
     );
 }

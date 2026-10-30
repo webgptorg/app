@@ -1,7 +1,7 @@
-import { useId } from 'react';
 import type { ButtonHTMLAttributes, MouseEvent, ReactNode, Ref } from 'react';
 
 import { cx } from '../../internal/cx';
+import { mergeTooltipHandlers, useTooltip } from '../tooltip/tooltip';
 import { buttonClassName } from '../button/button';
 import type { ButtonSize, ButtonVariant } from '../button/button';
 import { Spinner } from '../spinner/spinner';
@@ -42,14 +42,17 @@ export function IconButton({
     onClick,
     ...rest
 }: IconButtonProps) {
-    const reasonId = useId();
+    const reason = useTooltip(disabledReason ?? '');
     if (hidden) return null;
     const softDisabled = disabled && disabledReason !== undefined;
     const blocked = loading || softDisabled;
-    const describedBy = cx(rest['aria-describedby'], softDisabled && reasonId) || undefined;
+    const describedBy =
+        cx(rest['aria-describedby'], softDisabled && reason.triggerProps['aria-describedby']) || undefined;
     const handleClick = (event: MouseEvent<HTMLButtonElement>) => {
         if (blocked) {
             event.preventDefault();
+            // A tap has no hover: it shows the reason instead of doing nothing.
+            if (softDisabled) reason.show(event.currentTarget);
             return;
         }
         onClick?.(event);
@@ -58,6 +61,7 @@ export function IconButton({
         <>
             <button
                 {...rest}
+                {...(softDisabled ? mergeTooltipHandlers(rest, reason.triggerProps) : {})}
                 type={type}
                 aria-label={label}
                 className={buttonClassName(variant, size, cx(SQUARE[size], className))}
@@ -75,11 +79,7 @@ export function IconButton({
                     </span>
                 )}
             </button>
-            {softDisabled ? (
-                <span id={reasonId} hidden>
-                    {disabledReason}
-                </span>
-            ) : null}
+            {softDisabled ? reason.tooltip : null}
         </>
     );
 }

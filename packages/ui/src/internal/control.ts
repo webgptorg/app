@@ -5,10 +5,10 @@ export function controlClassName(className?: string): string {
     return cx(
         'block w-full min-w-0 rounded-(--input-radius) border border-(--input-border) bg-(--input-bg) px-3 text-sm text-(--input-text)',
         'placeholder:text-(--input-placeholder)',
-        'motion-safe:transition-colors motion-safe:duration-(--motion-state) motion-safe:ease-standard',
+        'motion-safe:transition-[color,background-color,border-color] motion-safe:duration-(--motion-state) motion-safe:ease-standard',
         'hover:border-(--input-border-hover) focus-visible:border-(--input-border-focus)',
         'aria-invalid:border-(--input-border-invalid)',
-        'disabled:cursor-not-allowed disabled:bg-(--input-bg-disabled) disabled:opacity-70',
+        'disabled:cursor-not-allowed disabled:border-(--input-border-disabled) disabled:bg-(--input-bg-disabled) disabled:text-(--input-text-disabled)',
         className,
     );
 }

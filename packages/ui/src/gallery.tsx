@@ -1,5 +1,6 @@
 import { actionMenuGallery } from './components/action-menu/action-menu.gallery';
 import { filterBarGallery } from './components/filter-bar/filter-bar.gallery';
+import { tooltipGallery } from './components/tooltip/tooltip.gallery';
 import { iconButtonGallery } from './components/icon-button/icon-button.gallery';
 import { fieldGallery } from './components/field/field.gallery';
 import { inputGallery } from './components/input/input.gallery';
@@ -76,6 +77,7 @@ export const GALLERY_ENTRIES: readonly GalleryEntry[] = [
     tabsGallery,
     textareaGallery,
     toasterGallery,
+    tooltipGallery,
     trustMarkGallery,
     visuallyHiddenGallery,
 ];

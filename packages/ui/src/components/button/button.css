@@ -12,4 +12,7 @@
     --button-danger-bg: var(--color-danger);
     --button-danger-bg-hover: var(--color-danger-hover);
     --button-danger-text: var(--color-on-danger);
+    --button-disabled-bg: var(--color-sunken);
+    --button-disabled-text: var(--color-text-muted);
+    --button-disabled-border: var(--color-divider);
 }
