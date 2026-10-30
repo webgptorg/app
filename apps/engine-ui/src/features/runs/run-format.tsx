@@ -51,13 +51,21 @@ function LiveDuration({ startedAt }: { readonly startedAt: string }) {
     const now = useNow();
     const locale = useLocale();
     const ms = now - Date.parse(startedAt);
-    return <span className="tabular-nums">{formatDuration(ms, (value) => locale.formatNumber(value))}</span>;
+    return (
+        <span className="whitespace-nowrap tabular-nums">
+            {formatDuration(ms, (value) => locale.formatNumber(value))}
+        </span>
+    );
 }
 
 function StaticDuration({ ms }: { readonly ms: number | null }) {
     const locale = useLocale();
     if (ms === null) return <NotReported />;
-    return <span className="tabular-nums">{formatDuration(ms, (value) => locale.formatNumber(value))}</span>;
+    return (
+        <span className="whitespace-nowrap tabular-nums">
+            {formatDuration(ms, (value) => locale.formatNumber(value))}
+        </span>
+    );
 }
 
 /** The engine's decimal string, formatted exactly; never summed or rounded through a float. */

@@ -63,6 +63,7 @@ function useRunColumns({ acrossAgents, cost }: RunColumnOptions): DataTableColum
                         >
                             {runTitle(row.original)}
                         </Link>
+                        <RunNow run={row.original} />
                         {row.original.retryOf === null ? null : (
                             <span className="text-xs text-text-muted">{m.run_fact_retry_of_link()}</span>
                         )}
@@ -121,6 +122,13 @@ function useRunColumns({ acrossAgents, cost }: RunColumnOptions): DataTableColum
         }
         return columns;
     }, [acrossAgents, cost]);
+}
+
+/** What a running run's agent says it is doing, under its title, so the list shows work moving. */
+function RunNow({ run }: { readonly run: ReadRun }) {
+    const now = run.progress?.now?.trim() ?? '';
+    if (run.status !== 'running' || now === '') return null;
+    return <span className="line-clamp-1 text-xs break-words text-text-muted">{now}</span>;
 }
 
 export interface RunsTableProps {

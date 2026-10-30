@@ -243,6 +243,36 @@ describe('run detail', { timeout: TIMEOUT_MS }, () => {
         expect(engine.spies.list.mock.calls.length).toBe(lists);
     });
 
+    it('marks where a running run is and times its tool call live, opened to its output', async () => {
+        const { engine, ticker } = await renderRun(RUN_IDS.running);
+        const steps = section('Steps');
+        expect(within(steps).getByRole('progressbar', { name: 'Steps done' }).getAttribute('aria-valuenow')).toBe('1');
+        expect(within(steps).getByText('1 of 2 done')).toBeDefined();
+        expect(within(steps).getByText('Working on:', { exact: false }).parentElement?.textContent).toContain(
+            'Read each one',
+        );
+        expect(within(steps).getByText('Reading pull request 7')).toBeDefined();
+
+        act(() => {
+            engine.controller.reportRunProgress(RUN_IDS.running, {
+                toolCall: {
+                    id: 'tool-live',
+                    name: 'github.list_pulls',
+                    state: 'partial',
+                    startedAt: new Date(ticker.now() - 5_000).toISOString(),
+                    durationMs: null,
+                    logs: 'page 1\n',
+                },
+            });
+        });
+        const tools = await screen.findByRole('region', { name: 'Tool calls' });
+        const row = within(tools).getByText('github.list_pulls').closest('details') as HTMLDetailsElement;
+        expect(row.open).toBe(true);
+        expect(within(row).getByText('5 s')).toBeDefined();
+        ticker.advance(3_000);
+        expect(within(row).getByText('8 s')).toBeDefined();
+    });
+
     it('says when the run does not exist', async () => {
         renderWithProviders({ path: '/runs/run-nope', engineApi: createRunsEngine().client });
         expect(await screen.findByRole('heading', { level: 1, name: 'Run not found' })).toBeDefined();
