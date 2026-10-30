@@ -361,6 +361,24 @@ describe('agent header', { timeout: TIMEOUT_MS }, () => {
         expect(screen.getByRole('tab', { name: 'Book' })).toBeDefined();
     });
 
+    it('keeps visibility and delete in the header’s More menu, delete last and apart', async () => {
+        const { user } = await renderAgent('/agents/agent-001');
+        await user.click(within(agentHeader()).getByRole('button', { name: 'More actions' }));
+        const menu = screen.getByRole('menu', { name: 'More actions' });
+        const items = within(menu)
+            .getAllByRole('menuitem')
+            .map((item) => item.textContent);
+        expect(items.at(-1)).toBe('Delete agent');
+        expect(items).toContain('Make private');
+        await user.click(within(menu).getByRole('menuitem', { name: 'Delete agent' }));
+        expect(await screen.findByRole('dialog', { name: 'Delete Agent 001?' })).toBeDefined();
+    });
+
+    it('has no More menu for a member who may neither share nor delete', async () => {
+        await renderAgent('/agents/agent-001', { permissions: allBut('agents.write', 'agents.delete') });
+        expect(within(agentHeader()).queryByRole('button', { name: 'More actions' })).toBeNull();
+    });
+
     it('offers no Chat where no feature registers it', async () => {
         await renderAgent('/agents/agent-002', { features: FEATURES.filter((feature) => feature.id !== 'chat') });
         const headers = screen.getAllByRole('heading', { level: 1, name: 'Agent 002' });

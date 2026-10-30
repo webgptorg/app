@@ -1,5 +1,5 @@
 import type { Agent } from '@ptbk/engine-api';
-import { Button, Tabs } from '@ptbk/ui';
+import { ActionMenu, Button, Tabs } from '@ptbk/ui';
 import { useSuspenseQuery } from '@tanstack/react-query';
 import { Link as RouterLink, Outlet, useMatches, useMatchRoute, useNavigate } from '@tanstack/react-router';
 import { MessageSquare, Square } from 'lucide-react';
@@ -134,6 +134,7 @@ export function AgentDetailFrame() {
                 <div className="flex flex-wrap items-center gap-2">
                     <StopControl agent={agent} size={actionSize} />
                     <ChatLink agent={agent} tab={chatTab} size={actionSize} />
+                    <ActionMenu items={actions.menuEntries(agent)} size={actionSize} />
                 </div>
             </header>
             <Tabs
