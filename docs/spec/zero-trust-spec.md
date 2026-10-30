@@ -166,7 +166,7 @@ We never see the setup secret, so we cannot claim the owner seat. Only someone w
 - **Revoke:** remove a passkey in the engine UI or with the engine CLI. All of its sessions end.
 - **Lose every device:** run `engine owner --reset` on the server. It revokes all passkeys and prints a fresh setup link. Nothing is lost, because the data never left the engine.
 - **Engine key compromised:** engine keys cannot rotate in place, because the engine ID is the key's hash. The owner revokes the engine in the dashboard, which suspends it so relays cut its tunnels, then sets it up again with a new identity.
-- **Members later:** the owner creates an invite link in the engine UI. The invitee registers their own passkey on the engine. Roles live on the engine. Our dashboard learns only a member count, if billing needs it.
+- **Members:** the owner creates an invite link in the engine UI, or an organization invites people to a team and someone on the engine approves their access request ([teams](teams.md)). Either way the invitee registers their own passkey on the engine, and roles live on the engine.
 
 **Devices without a built-in passkey**
 
@@ -244,7 +244,7 @@ Our platform has no command channel into the engine. The limited API from the or
 
 The heartbeat carries no names, prompts, free text or error messages. The engine enforces the schema in open-source code, and the engine UI shows the owner the exact last payload sent. The schema is public and versioned, and any new field ships in the release notes. Agent count and availability are decided; further aggregated statistics stay open and are added only for a real product need.
 
-**The platform cannot:** create, read or change agents; start tasks; read logs or outputs; open a shell; add users or passkeys; or push config. It can only cut transport and stop billing.
+**The platform cannot:** create, read or change agents; start tasks; read logs or outputs; open a shell; add users or passkeys; or push config. It can only cut transport, stop billing and, unless the engine owner switches it off, remove members it brought in ([ADR 0018](../adr/0018-teams-and-member-access.md)).
 
 **Engine-side rules from the original brief**, now enforced by the engine for its own UI:
 
