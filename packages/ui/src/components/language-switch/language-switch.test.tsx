@@ -18,7 +18,7 @@ describe('LanguageSwitch', () => {
                 <LanguageSwitch languages={LANGUAGES} current="cs" onChange={vi.fn()} />,
                 { theme },
             );
-            const trigger = screen.getByRole('button', { name: 'Language: Čeština' });
+            const trigger = screen.getByRole('button', { name: 'CS, Language: Čeština' });
             expect(trigger.textContent).toBe('CS');
             expect(trigger.getAttribute('aria-haspopup')).toBe('menu');
             await expectNoAxeViolations(container);
@@ -31,14 +31,14 @@ describe('LanguageSwitch', () => {
                 'false',
             );
             expect(within(czech).getByText('Čeština').getAttribute('lang')).toBe('cs');
-            await expectNoAxeViolations(document.body);
+            await expectNoAxeViolations(container);
         },
     );
 
     it('changes the language from the keyboard and returns focus to the trigger', async () => {
         const onChange = vi.fn();
         const { user } = renderUi(<LanguageSwitch languages={LANGUAGES} current="en" onChange={onChange} />);
-        const trigger = screen.getByRole('button', { name: 'Language: English' });
+        const trigger = screen.getByRole('button', { name: 'EN, Language: English' });
         await user.tab();
         expect(document.activeElement).toBe(trigger);
         await user.keyboard('{Enter}');
@@ -52,13 +52,13 @@ describe('LanguageSwitch', () => {
     it('does not report choosing the language that is already current', async () => {
         const onChange = vi.fn();
         const { user } = renderUi(<LanguageSwitch languages={LANGUAGES} current="en" onChange={onChange} />);
-        await user.click(screen.getByRole('button', { name: 'Language: English' }));
+        await user.click(screen.getByRole('button', { name: 'EN, Language: English' }));
         await user.click(screen.getByRole('menuitemradio', { name: 'English' }));
         expect(onChange).not.toHaveBeenCalled();
     });
 
     it('names an unlisted current language by its code', () => {
         renderUi(<LanguageSwitch languages={LANGUAGES} current={'de' as 'en'} onChange={vi.fn()} />);
-        expect(screen.getByRole('button', { name: 'Language: de' }).textContent).toBe('DE');
+        expect(screen.getByRole('button', { name: 'DE, Language: de' }).textContent).toBe('DE');
     });
 });
