@@ -68,7 +68,7 @@ function NameForm(props: {
             <FormField form={form} name="name" label={m.engine_name_label()} hint={m.engine_name_hint()}>
                 {({ text }) => <Input {...text} autoComplete="off" placeholder={m.engine_name_placeholder()} />}
             </FormField>
-            <div className="flex flex-wrap justify-end gap-2">
+            <div className={`flex flex-wrap gap-2 ${props.onCancel === undefined ? 'justify-start' : 'justify-end'}`}>
                 {props.onCancel === undefined ? null : (
                     <Button variant="ghost" onClick={props.onCancel}>
                         {m.engine_name_cancel()}
