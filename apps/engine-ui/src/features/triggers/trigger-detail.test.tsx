@@ -158,7 +158,8 @@ describe('trigger detail', { timeout: TIMEOUT_MS }, () => {
         expect(screen.getByRole('link', { name: 'Edit' }).getAttribute('href')).toBe(
             `/triggers/${TRIGGER_IDS.weekday}/edit?from=agent`,
         );
-        await app.user.click(screen.getByRole('button', { name: 'Delete' }));
+        await app.user.click(screen.getByRole('button', { name: 'More actions' }));
+        await app.user.click(await screen.findByRole('menuitem', { name: 'Delete' }));
         const dialog = await screen.findByRole('dialog', { name: 'Delete Morning report?' });
         await app.user.click(within(dialog).getByRole('button', { name: 'Delete' }));
         await waitFor(() => {

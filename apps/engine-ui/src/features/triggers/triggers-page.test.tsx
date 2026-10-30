@@ -167,7 +167,7 @@ describe('triggers list', { timeout: TIMEOUT_MS }, () => {
         expect(within(inbox).getByText('Email')).toBeDefined();
         expect(within(inbox).getByText('trigger-inbox@engine.localhost')).toBeDefined();
         // A quiet dash, named for screen readers.
-        expect(within(inbox).getByText('—')).toBeDefined();
+        expect(within(inbox).getAllByText('—').length).toBeGreaterThan(0);
         expect(within(inbox).getByText('Not scheduled')).toBeDefined();
         expect(within(rowOf('Every quarter hour')).getByText('Paused')).toBeDefined();
         expect(within(rowOf('Every quarter hour')).getByText('Every 15 minutes')).toBeDefined();

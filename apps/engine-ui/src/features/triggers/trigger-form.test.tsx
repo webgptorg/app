@@ -130,7 +130,7 @@ describe('trigger form', { timeout: TIMEOUT_MS }, () => {
     it('lets the engine judge a schedule the preview finds no fire for, and puts its 422 on the field', async () => {
         const app = await renderForm();
         await fillSchedule(app, '0 0 30 2 *', 'Europe/Prague');
-        expect(await within(preview()).findByText('This schedule would not fire.')).toBeDefined();
+        expect(await within(preview()).findByText('This schedule would never run.')).toBeDefined();
         await app.user.click(screen.getByRole('button', { name: 'Create trigger' }));
         await waitFor(() => {
             expect(errorOf(field(/^Cron expression/))).toContain('The expression never fires.');
@@ -209,12 +209,12 @@ describe('trigger form', { timeout: TIMEOUT_MS }, () => {
         const app = await renderForm(`/triggers/${TRIGGER_IDS.weekday}/edit`);
         expect(field(/^Name/)).toHaveProperty('value', 'Morning report');
         expect(field(/^Repeats/)).toHaveProperty('value', 'weekdays');
-        expect(field(/^Time$/)).toHaveProperty('value', '08:00');
+        expect(field(/^Time(?! zone)/)).toHaveProperty('value', '08:00');
         expect(screen.queryByLabelText(/^Cron expression/)).toBeNull();
         expect(field(/^Time zone/)).toHaveProperty('value', 'Europe/Prague');
         expect(field(/^Agent/)).toHaveProperty('disabled', true);
         expect(screen.queryByLabelText(/^Kind/)).toBeNull();
-        fireEvent.change(field(/^Time$/), { target: { value: '09:00' } });
+        fireEvent.change(field(/^Time(?! zone)/), { target: { value: '09:00' } });
         await app.user.click(screen.getByRole('button', { name: 'Save' }));
         await waitFor(() => {
             expect(app.engine.spies.update).toHaveBeenCalledWith(
@@ -233,7 +233,7 @@ describe('trigger form', { timeout: TIMEOUT_MS }, () => {
     it('starts on every weekday at 09:00 and offers the presets before once, interval and custom cron', async () => {
         await renderForm();
         expect(field(/^Repeats/)).toHaveProperty('value', 'weekdays');
-        expect(field(/^Time$/)).toHaveProperty('value', '09:00');
+        expect(field(/^Time(?! zone)/)).toHaveProperty('value', '09:00');
         expect(
             within(field(/^Repeats/))
                 .getAllByRole('option')
@@ -255,7 +255,7 @@ describe('trigger form', { timeout: TIMEOUT_MS }, () => {
         await app.user.type(field(/^Name/), 'Friday wrap-up');
         await app.user.selectOptions(field(/^Repeats/), 'weekly');
         await app.user.selectOptions(field(/^Day/), 'Friday');
-        fireEvent.change(field(/^Time$/), { target: { value: '16:30' } });
+        fireEvent.change(field(/^Time(?! zone)/), { target: { value: '16:30' } });
         await app.user.selectOptions(field(/^Time zone/), 'Europe/Prague');
         await app.user.type(field(/^Message/), 'Sum up the week.');
         expect(within(preview()).getByText('Every Friday at 16:30, Europe/Prague')).toBeDefined();
@@ -273,7 +273,7 @@ describe('trigger form', { timeout: TIMEOUT_MS }, () => {
     it('starts a custom cron from the preset it replaces', async () => {
         const app = await renderForm();
         await app.user.selectOptions(field(/^Repeats/), 'daily');
-        fireEvent.change(field(/^Time$/), { target: { value: '07:45' } });
+        fireEvent.change(field(/^Time(?! zone)/), { target: { value: '07:45' } });
         await app.user.selectOptions(field(/^Repeats/), 'cron');
         expect(field(/^Cron expression/)).toHaveProperty('value', '45 7 * * *');
     });
@@ -281,10 +281,10 @@ describe('trigger form', { timeout: TIMEOUT_MS }, () => {
     it('refuses a preset without a time, on the time field', async () => {
         const app = await renderForm();
         await app.user.selectOptions(field(/^Repeats/), 'daily');
-        fireEvent.change(field(/^Time$/), { target: { value: '' } });
+        fireEvent.change(field(/^Time(?! zone)/), { target: { value: '' } });
         await app.user.click(screen.getByRole('button', { name: 'Create trigger' }));
         await waitFor(() => {
-            expect(errorOf(field(/^Time$/))).toContain('Enter a time.');
+            expect(errorOf(field(/^Time(?! zone)/))).toContain('Enter a time.');
         });
         expect(within(preview()).getByText('Fill in the schedule to see when it runs.')).toBeDefined();
         expect(app.engine.spies.create).not.toHaveBeenCalled();
