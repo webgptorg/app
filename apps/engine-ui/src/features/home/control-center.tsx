@@ -1,6 +1,9 @@
 import { KNOWN_CAPABILITIES } from '@ptbk/engine-api';
+import type { RunStats } from '@ptbk/engine-api';
 import { Banner, Card, ErrorState, Skeleton, useLocale } from '@ptbk/ui';
 import { useQuery } from '@tanstack/react-query';
+import type { UseQueryResult } from '@tanstack/react-query';
+import { CircleCheck } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 
@@ -76,19 +79,47 @@ function UpdateBanner() {
     );
 }
 
-/** Run counts with `runs@1` and `runs.read` (absent without, never a zero), and every attention provider's count. */
+/**
+ * Run counts with `runs@1` and `runs.read` (absent without, never a zero), and every attention provider's count. When
+ * all of them are known to be zero, one quiet line replaces the tiles.
+ */
 function Counts() {
     const runsVisible = useAllows({ capability: KNOWN_CAPABILITIES.runs, permission: 'runs.read' });
-    const attention = useVisibleFeatures().flatMap((feature) =>
+    const sources = useVisibleFeatures().flatMap((feature) =>
         feature.attention === undefined ? [] : [{ feature, entry: feature.attention }],
     );
-    if (!runsVisible && attention.length === 0) return null;
+    const stats = useQuery({ ...runStatsQueryOptions(useEngineApi()), enabled: runsVisible });
+    const [reported, setReported] = useState<ReadonlyMap<string, Attention>>(new Map());
+    const [onAttention] = useState(() => (id: string, attention: Attention) => {
+        setReported((previous) => {
+            const known = previous.get(id);
+            return known?.count === attention.count && known.pending === attention.pending
+                ? previous
+                : new Map(previous).set(id, attention);
+        });
+    });
+    if (!runsVisible && sources.length === 0) return null;
+    const runsQuiet = !runsVisible || (stats.data?.running === 0 && stats.data.queued === 0);
+    const attentionQuiet = sources.every(({ entry }) => {
+        const attention = reported.get(entry.id);
+        return attention !== undefined && attention.pending !== true && attention.count === 0;
+    });
     return (
         <Card title={m.home_counts_title()} className="min-w-0">
-            <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-                {runsVisible ? <RunCounts /> : null}
-                {attention.length > 0 ? <AttentionCount sources={attention} /> : null}
-            </dl>
+            {sources.map(({ entry }) => (
+                <AttentionProbe key={entry.id} entry={entry} onAttention={onAttention} />
+            ))}
+            {runsQuiet && attentionQuiet ? (
+                <p className="flex items-center gap-2 text-text-muted">
+                    <CircleCheck aria-hidden className="size-4 shrink-0 text-success" />
+                    {runsVisible ? m.home_all_quiet() : m.home_nothing_needs_attention()}
+                </p>
+            ) : (
+                <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+                    {runsVisible ? <RunCounts stats={stats} /> : null}
+                    {sources.length > 0 ? <AttentionCount sources={sources} reported={reported} /> : null}
+                </dl>
+            )}
         </Card>
     );
 }
@@ -117,8 +148,7 @@ function Stat({
     );
 }
 
-function RunCounts() {
-    const stats = useQuery(runStatsQueryOptions(useEngineApi()));
+function RunCounts({ stats }: { readonly stats: UseQueryResult<RunStats> }) {
     const locale = useLocale();
     if (stats.isError && stats.data === undefined) {
         return (
@@ -166,20 +196,17 @@ function AttentionProbe({
 }
 
 /** The sum of every registered provider, each linking to the view that shows exactly what it counts. */
-function AttentionCount({ sources }: { readonly sources: readonly AttentionSource[] }) {
+function AttentionCount({
+    sources,
+    reported,
+}: {
+    readonly sources: readonly AttentionSource[];
+    readonly reported: ReadonlyMap<string, Attention>;
+}) {
     const locale = useLocale();
-    const [reported, setReported] = useState<ReadonlyMap<string, Attention>>(new Map());
-    const [onAttention] = useState(() => (id: string, attention: Attention) => {
-        setReported((previous) =>
-            previous.get(id)?.count === attention.count ? previous : new Map(previous).set(id, attention),
-        );
-    });
     const total = sources.reduce((sum, { entry }) => sum + (reported.get(entry.id)?.count ?? 0), 0);
     return (
         <Stat label={m.home_needs_attention()} value={locale.formatNumber(total)} className="col-span-2 sm:col-span-1">
-            {sources.map(({ entry }) => (
-                <AttentionProbe key={entry.id} entry={entry} onAttention={onAttention} />
-            ))}
             <ul className="flex flex-col gap-1 text-sm">
                 {sources.map(({ feature, entry }) => {
                     const attention = reported.get(entry.id);

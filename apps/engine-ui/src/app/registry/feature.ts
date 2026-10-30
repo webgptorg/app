@@ -80,6 +80,8 @@ export interface Attention {
     readonly to: RoutePath;
     /** Search params for `to`, e.g. a status filter that shows exactly what needs attention. */
     readonly search?: Readonly<Record<string, string>>;
+    /** The count is not known yet, so the home neither shows it as zero nor calls the engine quiet. */
+    readonly pending?: boolean;
 }
 
 /**

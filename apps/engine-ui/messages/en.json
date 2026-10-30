@@ -915,7 +915,6 @@
   "run_origin_unknown": "A run",
   "run_activity_duration": "Took {duration}.",
   "run_activity_cost": "Cost {cost}.",
-  "run_activity_open": "Open run",
   "nav_triggers": "Triggers",
   "agent_tab_triggers": "Triggers",
   "command_go_to_triggers": "Go to triggers",
@@ -1042,7 +1041,6 @@
   "trigger_activity_failed": "{name} failed",
   "trigger_activity_paused": "{name} was paused",
   "trigger_activity_resumed": "{name} was resumed",
-  "trigger_activity_open": "Open trigger",
   "trigger_activity_open_run": "Open run",
   "trigger_once": "Once on {when}",
   "trigger_in_zone": "{schedule}, {timeZone}",
@@ -1148,7 +1146,6 @@
   "files_activity_created": "{name} added ({purpose})",
   "files_activity_deleted": "{name} deleted",
   "files_activity_scan_failed": "The virus scan of {name} failed",
-  "files_activity_open": "Open file",
   "files_card_title": "Knowledge at a glance",
   "files_card_all": "All files",
   "files_card_latest_outputs": "Latest outputs",
@@ -1341,7 +1338,6 @@
   "integration_activity_connected": "{name} connected",
   "integration_activity_error": "{name} needs attention",
   "integration_activity_used": "{name}: tool {tool} used",
-  "integration_activity_open": "Open integration",
   "integration_activity_open_run": "Open run",
   "integration_enable": "Enable",
   "integration_disable": "Disable",
@@ -1402,15 +1398,20 @@
   "home_running_now": "Running now",
   "home_queued": "Queued",
   "home_needs_attention": "Needs attention",
+  "home_all_quiet": "Nothing is running, and nothing needs your attention.",
+  "home_nothing_needs_attention": "Nothing needs your attention.",
   "home_recent_agents": "Recent agents",
   "home_my_agents": "Agents you can use",
   "home_all_agents": "All agents",
   "home_no_agents": "No agents yet",
   "home_no_agents_body": "Agents you create or are given access to appear here.",
   "home_my_runs": "Your running work",
-  "home_my_runs_empty": "Nothing of yours is running or queued.",
   "home_recent_chats": "Recent chats",
-  "home_recent_chats_empty": "No chats yet.",
+  "home_recent_chats_empty": "No chats yet",
+  "home_recent_chats_empty_body": "Your conversations with agents show up here.",
+  "home_recent_chats_start_body": "Ask an agent something, and the conversation shows up here.",
+  "home_chat_with": "Chat with {name}",
+  "home_chat_start": "Start a chat with {name}",
   "home_update_title": "Engine update available",
   "home_update_body": "A new engine version is available.",
   "home_update_version": "Version {version} is available.",
@@ -1427,6 +1428,7 @@
   "activity_area_engine": "Engine",
   "activity_empty": "No activity yet",
   "activity_empty_body": "What your agents and members do shows up here as it happens.",
+  "activity_empty_area": "Nothing of this kind yet.",
   "activity_failed": "Activity could not load.",
   "activity_older_failed": "Older activity could not load.",
   "activity_load_older": "Load older",
@@ -1456,11 +1458,9 @@
   "member_activity_joined": "{name} joined",
   "member_activity_role_changed": "{name} changed from {from} to {to}",
   "member_activity_removed": "{name} was removed",
-  "member_activity_open": "Open members",
   "engine_activity_update_available": "Engine version {version} is available",
   "engine_activity_updated": "The engine was updated from {from} to {to}",
   "engine_activity_relay_disconnected": "The connection to relay {relay} dropped",
-  "engine_activity_open": "Open security",
   "runs_attention_failed": [
     {
       "declarations": ["input count", "local countPlural = count: plural"],
@@ -1468,6 +1468,36 @@
       "match": {
         "countPlural=one": "{count} failed run",
         "countPlural=other": "{count} failed runs"
+      }
+    }
+  ],
+  "files_attention_scan": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} file to check",
+        "countPlural=other": "{count} files to check"
+      }
+    }
+  ],
+  "triggers_attention_failed": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} failed trigger",
+        "countPlural=other": "{count} failed triggers"
+      }
+    }
+  ],
+  "integrations_attention": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} integration needs attention",
+        "countPlural=other": "{count} integrations need attention"
       }
     }
   ],

@@ -29,9 +29,18 @@ test('the owner sees the control center with the counts the engine reports', asy
     await page.goto(appUrl('/'));
     const me = await apiGet<{ displayName: string }>(page, '/me');
     await expect(page.getByRole('heading', { level: 1, name: new RegExp(`, ${me.displayName}$`) })).toBeVisible();
-    await expect(page.getByText('Running now', { exact: true })).toBeVisible();
-    await expect(page.getByText('Queued', { exact: true }).first()).toBeVisible();
-    await expect(page.getByText('Needs attention', { exact: true })).toBeVisible();
+    // Tiles while anything runs or needs a look, one quiet line when everything the engine reports is zero.
+    const stats = await apiGet<{ running: number; queued: number }>(page, '/runs/stats');
+    const counts = page.getByRole('region', { name: 'Right now' });
+    if (stats.running + stats.queued > 0) {
+        await expect(counts.getByText('Running now', { exact: true })).toBeVisible();
+        await expect(counts.getByText('Queued', { exact: true })).toBeVisible();
+        await expect(counts.getByText('Needs attention', { exact: true })).toBeVisible();
+    } else {
+        await expect(
+            counts.getByText(/^(Running now|Nothing is running, and nothing needs your attention\.)$/),
+        ).toBeVisible();
+    }
     await expect(page.getByRole('region', { name: 'Activity' })).toBeVisible();
 });
 

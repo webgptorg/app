@@ -172,7 +172,8 @@ describe('attention', { timeout: TIMEOUT_MS }, () => {
         });
         renderWithProviders({ path: '/agents/agent-ada', engineApi: engine.client, features: [...FEATURES, probe] });
         expect(await screen.findByText('attention 2')).toBeDefined();
-        expect(seen.at(-1)).toEqual({ count: 2, to: '/files', search: { scan: 'infected,failed' } });
+        expect(seen[0]).toMatchObject({ count: 0, pending: true });
+        expect(seen.at(-1)).toEqual({ count: 2, to: '/files', search: { scan: 'infected,failed' }, pending: false });
     });
 });
 
@@ -251,9 +252,13 @@ describe('file activity renderers', { timeout: TIMEOUT_MS }, () => {
         expect(within(list).getByText(`${HOSTILE_FILE_NAME} added (Output)`)).toBeDefined();
         expect(within(list).getByText(`${HOSTILE_FILE_NAME} deleted`)).toBeDefined();
         expect(within(list).getByText(`The virus scan of ${HOSTILE_FILE_NAME} failed`)).toBeDefined();
-        const links = within(list).getAllByRole('link', { name: 'Open file' });
-        expect(links).toHaveLength(2);
+        const links = within(list).getAllByRole('link');
+        expect(links.map((link) => link.textContent)).toEqual([
+            `${HOSTILE_FILE_NAME} added (Output)`,
+            `The virus scan of ${HOSTILE_FILE_NAME} failed`,
+        ]);
         for (const link of links) expect(link.getAttribute('href')).toBe(`/files?file=${FILE_IDS.photo}`);
+        expect(within(list).getByText(`${HOSTILE_FILE_NAME} deleted`).closest('a')).toBeNull();
         expect(container.querySelector('img[src="x"]')).toBeNull();
         expect(ACTIVITIES.map((activity) => renderer.summary(activity))).toEqual([
             `${HOSTILE_FILE_NAME} added (Output)`,

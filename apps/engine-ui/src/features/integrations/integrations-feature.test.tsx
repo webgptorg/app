@@ -73,6 +73,7 @@ describe('attention', { timeout: TIMEOUT_MS }, () => {
             count: 2,
             to: '/integrations',
             search: { status: 'needs-attention,error' },
+            pending: false,
         });
     });
 });
@@ -176,7 +177,9 @@ describe('integration activity renderer', { timeout: TIMEOUT_MS }, () => {
         expect(within(list).getByText('Token expired.')).toBeDefined();
         expect(within(list).getByText('Docs search: tool search used')).toBeDefined();
         expect(within(list).getByRole('link', { name: 'Open run' }).getAttribute('href')).toBe('/runs/run-1');
-        for (const link of within(list).getAllByRole('link', { name: 'Open integration' })) {
+        const integrationLinks = within(list).getAllByRole('link', { name: /^Docs search/ });
+        expect(integrationLinks).toHaveLength(3);
+        for (const link of integrationLinks) {
             expect(link.getAttribute('href')).toBe(`/integrations/${INTEGRATION_IDS.docs}`);
         }
         expect(ACTIVITIES.map((activity) => renderer.summary(activity))).toEqual([

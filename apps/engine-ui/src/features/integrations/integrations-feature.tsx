@@ -30,6 +30,7 @@ function useIntegrationAttention(): Attention {
         count: (stats?.needsAttention ?? 0) + (stats?.error ?? 0),
         to: '/integrations',
         search: { status: 'needs-attention,error' },
+        pending: stats === undefined,
     };
 }
 
@@ -51,7 +52,11 @@ export const integrationsFeature = defineFeature({
             summary: integrationActivitySummary,
         },
     ],
-    attention: { id: 'integrations.attention', useAttention: useIntegrationAttention },
+    attention: {
+        id: 'integrations.attention',
+        useAttention: useIntegrationAttention,
+        label: (count) => m.integrations_attention({ count }),
+    },
     eventSync: { useEventSync: useIntegrationEventSync },
     commands: [
         {

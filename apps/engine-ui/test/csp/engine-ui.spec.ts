@@ -52,7 +52,7 @@ test.describe('the built bundle under the engine CSP', () => {
 
         await expect(page.getByRole('heading', { level: 1, name: /, Jana Nováková$/ })).toBeVisible();
         await expect(
-            page.getByRole('region', { name: 'Agents you can use' }).getByRole('link', { name: 'Grace' }),
+            page.getByRole('region', { name: 'Agents you can use' }).getByRole('link', { name: 'Grace', exact: true }),
         ).toBeVisible();
         await expect(page.getByRole('region', { name: 'Recent chats' })).toBeVisible();
         await expect(page.getByRole('region', { name: 'Activity' })).toHaveCount(0);

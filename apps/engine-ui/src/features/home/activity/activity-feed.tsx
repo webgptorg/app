@@ -73,7 +73,12 @@ export function ActivityFeed() {
     } else if (feed.data === undefined) {
         content = <FeedSkeleton />;
     } else if (items.length === 0) {
-        content = <EmptyState title={m.activity_empty()} description={m.activity_empty_body()} headingLevel={3} />;
+        content =
+            area === null ? (
+                <EmptyState title={m.activity_empty()} description={m.activity_empty_body()} headingLevel={3} />
+            ) : (
+                <p className="py-4 text-text-muted">{m.activity_empty_area()}</p>
+            );
     } else {
         content = (
             <>
@@ -134,8 +139,13 @@ export function ActivityFeed() {
     return (
         <Card title={m.activity_title()} className="min-w-0">
             <div ref={sentinelRef} data-activity-top="" />
-            {areas.length > 0 ? (
-                <div role="group" aria-label={m.activity_filter_label()} className="flex flex-wrap gap-2 pb-2">
+            {/* Filters only once there is something to filter; a chosen area keeps them, so the way back stays. */}
+            {areas.length > 0 && (area !== null || items.length > 0) ? (
+                <div
+                    role="group"
+                    aria-label={m.activity_filter_label()}
+                    className="-mx-1 flex gap-2 overflow-x-auto px-1 pt-1 pb-2"
+                >
                     {[null, ...areas].map((chip) => (
                         <button
                             key={chip ?? 'all'}
@@ -145,7 +155,7 @@ export function ActivityFeed() {
                                 void navigate({ search: (previous) => ({ ...previous, activity: chip ?? undefined }) });
                             }}
                             className={cx(
-                                'min-h-9 rounded-pill border px-3 text-sm',
+                                'min-h-9 shrink-0 rounded-pill border px-3 text-sm',
                                 chip === area
                                     ? 'border-accent bg-selected font-medium text-accent-text'
                                     : 'border-border text-text hover:bg-hover',

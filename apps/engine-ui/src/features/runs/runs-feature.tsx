@@ -33,7 +33,12 @@ function useRunningCount(): number {
 
 function useFailedRunsAttention(): Attention {
     const stats = useRunStats();
-    return { count: stats.data?.failedLast24h ?? 0, to: '/runs', search: { status: 'failed' } };
+    return {
+        count: stats.data?.failedLast24h ?? 0,
+        to: '/runs',
+        search: { status: 'failed' },
+        pending: stats.data === undefined,
+    };
 }
 
 /**

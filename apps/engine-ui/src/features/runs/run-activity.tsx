@@ -33,7 +33,7 @@ export function runActivitySummary(activity: Activity): string {
     }
 }
 
-/** The home feed's card body for a run event, linking to the run. */
+/** The home feed's card body for a run event: its summary is the link to the run. */
 export function RunActivityItem({ activity }: { readonly activity: Activity }) {
     const locale = useLocale();
     if (!isRunActivity(activity)) return null;
@@ -41,7 +41,9 @@ export function RunActivityItem({ activity }: { readonly activity: Activity }) {
     const error = activity.kind === 'run.failed' ? activity.error : null;
     return (
         <div className="flex flex-col gap-1 text-sm">
-            <p>{runActivitySummary(activity)}</p>
+            <Link to="/runs/$runId" params={{ runId: activity.runId }} variant="standalone">
+                {runActivitySummary(activity)}
+            </Link>
             {usage === null ? null : (
                 <p className="text-text-muted">
                     {usage.durationMs === null
@@ -55,9 +57,6 @@ export function RunActivityItem({ activity }: { readonly activity: Activity }) {
                 </p>
             )}
             {error === null ? null : <p className="break-words text-text-muted">{error.summary}</p>}
-            <Link to="/runs/$runId" params={{ runId: activity.runId }}>
-                {m.run_activity_open()}
-            </Link>
         </div>
     );
 }
