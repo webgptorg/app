@@ -678,8 +678,32 @@
   "secrets_scope_option_agent": "Jen jeden agent",
   "audit_intro": "Každá ověřená akce na tomto enginu, od nejnovější. Záznam je pouze připisovaný a řetězený hashem: nic zde nemůže položku změnit ani smazat.",
   "audit_refresh": "Obnovit",
-  "audit_chain_intact_title": "Řetězec hashů je neporušený",
-  "audit_chain_intact_body": "Engine celý řetězec znovu ověřil {at}: počet záznamů {count}, žádný nebyl odstraněn ani upraven.",
+  "audit_chain_verified": "Řetězec ověřen {time}",
+  "audit_chain_intact_details": [
+    {
+      "declarations": ["input count", "input total", "input at", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "Engine ověřil celý řetězec {at}: jeho jediný záznam je neporušený.",
+        "countPlural=few": "Engine ověřil celý řetězec {at}: všechny {total} záznamy jsou neporušené, žádný nebyl odstraněn ani upraven.",
+        "countPlural=many": "Engine ověřil celý řetězec {at}: všech {total} záznamu je neporušených, žádný nebyl odstraněn ani upraven.",
+        "countPlural=other": "Engine ověřil celý řetězec {at}: všech {total} záznamů je neporušených, žádný nebyl odstraněn ani upraven."
+      }
+    }
+  ],
+  "audit_filters_count": "Filtry ({count})",
+  "audit_more_filters": "Další filtry",
+  "audit_more_filters_count": "Další filtry ({count})",
+  "audit_active_filters": "Použité filtry",
+  "audit_filter_remove": "Zrušit filtr {filter}",
+  "audit_filter_target_id_hint": "Přesné ID z podrobností záznamu.",
+  "audit_target_this_engine": "Tento engine",
+  "audit_copy_target_id": "Kopírovat ID cíle",
+  "audit_detail_fields": "Změněno",
+  "audit_detail_problem": "Důvod",
+  "audit_detail_required_permission": "Chybějící oprávnění",
+  "audit_detail_version": "Verze",
+  "audit_raw_details": "Data v JSON",
   "audit_chain_broken_title": "Řetězec hashů je porušený",
   "audit_chain_broken_body": "Engine zjistil, že záznam {seq} nenavazuje na předchozí, takže záznamy od něj dál mohly být upraveny nebo odstraněny. Ověřeno {at}.",
   "audit_chain_failed": "Výsledek kontroly řetězce se nepodařilo načíst.",
@@ -713,8 +737,6 @@
   "audit_outcome_failed": "Selhalo",
   "audit_not_recorded": "Nezaznamenáno",
   "audit_entry_label": "{action} v {time}",
-  "audit_details": "Podrobnosti",
-  "audit_no_details": "Žádné podrobnosti nezaznamenány.",
   "audit_sequence": "Pořadové číslo",
   "audit_entry_hash": "Hash záznamu",
   "audit_previous_hash": "Hash předchozího záznamu",

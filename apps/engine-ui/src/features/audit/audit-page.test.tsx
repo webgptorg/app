@@ -157,6 +157,7 @@ describe('audit log: filters', { timeout: TIMEOUT_MS }, () => {
         expect(screen.queryByText('Target 228')).toBeNull();
 
         await app.user.selectOptions(screen.getByRole('combobox', { name: 'Action' }), 'secret.replace');
+        await app.user.click(screen.getByRole('button', { name: 'More filters' }));
         await app.user.selectOptions(screen.getByRole('combobox', { name: 'Target type' }), 'secret');
         await app.user.selectOptions(screen.getByRole('combobox', { name: 'Outcome' }), 'success');
         await app.user.type(screen.getByRole('textbox', { name: 'Target ID' }), 'target-225');
@@ -241,6 +242,7 @@ describe('audit log: filters', { timeout: TIMEOUT_MS }, () => {
         const engine = auditEngine({ count: 3 });
         const app = renderWithProviders({ path: '/audit', engineApi: engine.client });
         await screen.findByText('Target 3');
+        await app.user.click(screen.getByRole('button', { name: 'More filters' }));
         await app.user.type(screen.getByRole('textbox', { name: 'Target ID' }), 'a b');
         expect(await screen.findByText('Use letters, digits, - and _ only, at most 64.')).toBeDefined();
         await new Promise((resolve) => setTimeout(resolve, 400));
@@ -266,6 +268,8 @@ describe('audit log: entries', { timeout: TIMEOUT_MS }, () => {
         await app.user.keyboard('{Enter}');
         expect(firstExpand.getAttribute('aria-expanded')).toBe('true');
         expect(await screen.findByText('Entry hash')).toBeDefined();
+        expect(screen.queryByTestId('audit-details')).toBeNull();
+        await app.user.click(screen.getByRole('button', { name: 'Raw JSON' }));
         expect(screen.getByText(JSON.stringify(third.details, null, 2), { normalizer: (text) => text })).toBeDefined();
         await app.user.click(screen.getByRole('button', { name: 'Copy entry hash' }));
         expect(writeText).toHaveBeenLastCalledWith(third.hash);
@@ -306,6 +310,8 @@ describe('audit log: entries', { timeout: TIMEOUT_MS }, () => {
         expect(await screen.findByText(HOSTILE)).toBeDefined();
         expect(screen.getByText('<script>alert(1)</script>')).toBeDefined();
         await app.user.click(screen.getByRole('button', { name: /^Expand / }));
+        expect(screen.getAllByText(HOSTILE)).toHaveLength(2);
+        await app.user.click(screen.getByRole('button', { name: 'Raw JSON' }));
         expect(within(screen.getByTestId('audit-details')).getByText(/onerror=alert/)).toBeDefined();
         expect(screen.getByRole('table').querySelector('img, script')).toBeNull();
     });
@@ -356,11 +362,226 @@ describe('audit log: entries', { timeout: TIMEOUT_MS }, () => {
     });
 });
 
+describe('audit log: filter layout', { timeout: TIMEOUT_MS }, () => {
+    it('keeps rare filters behind "More filters" and opens it when the URL already uses them', async () => {
+        const app = renderWithProviders({ path: '/audit', engineApi: auditEngine({ count: 3 }).client });
+        await screen.findByText('Target 3');
+        const more = screen.getByRole('button', { name: 'More filters' });
+        expect(more.getAttribute('aria-expanded')).toBe('false');
+        expect(screen.queryByRole('combobox', { name: 'Outcome' })).toBeNull();
+        expect(screen.getByRole('combobox', { name: 'Action' })).toBeDefined();
+        await app.user.click(more);
+        expect(more.getAttribute('aria-expanded')).toBe('true');
+        expect(screen.getByRole('combobox', { name: 'Outcome' })).toBeDefined();
+        app.unmount();
+
+        renderWithProviders({
+            path: '/audit?outcome=denied&targetKind=agent',
+            engineApi: auditEngine({ count: 3 }).client,
+        });
+        const reopened = await screen.findByRole('button', { name: 'More filters (2)' });
+        expect(reopened.getAttribute('aria-expanded')).toBe('true');
+        expect(screen.getByRole<HTMLSelectElement>('combobox', { name: 'Outcome' }).value).toBe('denied');
+    });
+
+    it('shows each filter in force as a chip that removes only that filter', async () => {
+        const engine = auditEngine({ count: 3 });
+        const app = renderWithProviders({
+            path: '/audit?memberId=member-petr&action=agent.create&from=2026-09-01',
+            engineApi: engine.client,
+        });
+        const chips = await screen.findByRole('list', { name: 'Active filters' });
+        await within(chips).findByRole('button', { name: 'Remove filter Member: Petr Svoboda' });
+        expect(within(chips).getByRole('button', { name: 'Remove filter Action: Agent created' })).toBeDefined();
+        expect(within(chips).getByRole('button', { name: /^Remove filter From: / })).toBeDefined();
+
+        await app.user.click(within(chips).getByRole('button', { name: 'Remove filter Action: Agent created' }));
+        await waitFor(() => {
+            expect(app.router.state.location.search).toEqual({ memberId: 'member-petr', from: '2026-09-01' });
+        });
+        expect(within(chips).queryByRole('button', { name: /Action/ })).toBeNull();
+        await waitFor(() => {
+            expect(lastQuery(engine.spies.list)).toEqual({
+                limit: 50,
+                memberId: 'member-petr',
+                from: new Date(2026, 8, 1).toISOString(),
+            });
+        });
+
+        await app.user.click(within(chips).getByRole('button', { name: 'Clear filters' }));
+        await waitFor(() => {
+            expect(app.router.state.location.search).toEqual({});
+        });
+        expect(screen.queryByRole('list', { name: 'Active filters' })).toBeNull();
+    });
+
+    it('puts every filter behind one "Filters" button on a phone, with the count in force', async () => {
+        const app = renderWithProviders({
+            path: '/audit?action=agent.create&outcome=denied',
+            engineApi: auditEngine({ count: 3 }).client,
+        });
+        app.media.set('(max-width: 767.98px)', true);
+        const toggle = await screen.findByRole('button', { name: 'Filters (2)' });
+        expect(toggle.getAttribute('aria-expanded')).toBe('false');
+        expect(screen.queryByRole('combobox', { name: 'Action' })).toBeNull();
+        expect(screen.getByRole('list', { name: 'Active filters' })).toBeDefined();
+        await app.user.click(toggle);
+        expect(screen.getByRole<HTMLSelectElement>('combobox', { name: 'Action' }).value).toBe('agent.create');
+        expect(screen.getByRole<HTMLSelectElement>('combobox', { name: 'Outcome' }).value).toBe('denied');
+        expect(screen.getByLabelText('From').getAttribute('aria-describedby')).toBe(
+            screen.getByText(/^Days in your time zone/).id,
+        );
+    });
+
+    it('keeps the filters when a filtered log is empty, so they can be changed', async () => {
+        renderWithProviders({ path: '/audit?targetId=nothing', engineApi: auditEngine({ count: 3 }).client });
+        expect(await screen.findByText('No matching entries')).toBeDefined();
+        expect(screen.getByRole('search', { name: 'Filters' })).toBeDefined();
+    });
+});
+
+describe('audit log: rows', { timeout: TIMEOUT_MS }, () => {
+    it('badges only denied and failed entries, so the exceptions stand out', async () => {
+        renderWithProviders({ path: '/audit', engineApi: auditEngine({ count: 4 }).client });
+        await screen.findByText('Target 4');
+        const table = screen.getByRole('table');
+        expect(within(table).queryByText('Succeeded')).toBeNull();
+        expect(within(table).getAllByText('Denied')).toHaveLength(1);
+        expect(within(table).getAllByText('Failed')).toHaveLength(1);
+        expect(within(table).queryByRole('columnheader', { name: 'Outcome' })).toBeNull();
+    });
+
+    it('shows a short time in the row and the full one on hover and in the details', async () => {
+        const app = renderWithProviders({ path: '/audit', engineApi: auditEngine({ count: 1 }).client });
+        await screen.findByText('Target 1');
+        const time = screen.getByRole('table').querySelector('tbody time');
+        expect(time?.getAttribute('dateTime')).toBe('2026-09-01T01:00:00Z');
+        expect(time?.textContent).not.toMatch(/2026/);
+        expect(time?.getAttribute('title')).toMatch(/2026/);
+        await app.user.click(screen.getByRole('button', { name: /^Expand / }));
+        const details = screen.getByText('Sequence number').closest('dl');
+        expect(details?.querySelector('time')?.textContent).toBe(time?.getAttribute('title'));
+    });
+
+    it('names a target by kind and name and keeps its ID in the details', async () => {
+        const app = renderWithProviders({ path: '/audit', engineApi: auditEngine({ count: 1 }).client });
+        await screen.findByText('Target 1');
+        expect(screen.queryByText('target-1')).toBeNull();
+        await app.user.click(screen.getByRole('button', { name: /^Expand / }));
+        expect(screen.getByText('target-1')).toBeDefined();
+        expect(screen.getByRole('button', { name: 'Copy target ID' })).toBeDefined();
+    });
+
+    it('says "This engine" for engine-wide actions and "Not recorded" only where a target was expected', async () => {
+        const engine = auditEngine({ count: 1 });
+        const seeded = (action: string, seq: number) => ({
+            id: `audit-${String(seq)}`,
+            seq,
+            at: '2026-09-02T00:00:00Z',
+            actor: { kind: 'system' },
+            action,
+            target: null,
+            outcome: 'success',
+            client: null,
+            hash: String(seq).repeat(64),
+            prevHash: null,
+        });
+        engine.spies.list.mockResolvedValue({
+            kind: 'ok',
+            data: { items: [seeded('settings.update-policy', 2), seeded('agent.create', 1)], nextCursor: null },
+        } as never);
+        const app = renderWithProviders({ path: '/audit', engineApi: engine.client });
+        const table = await screen.findByRole('table');
+        // Cells re-render once the member names arrive, so look the rows up after that.
+        await within(table).findByText('Update policy changed');
+        await waitFor(() => {
+            expect(app.queryClient.isFetching()).toBe(0);
+        });
+        const policy = within(table).getByText('Update policy changed').closest('tr');
+        const agent = within(table).getByText('Agent created').closest('tr');
+        if (policy === null || agent === null) throw new Error('expected both rows');
+        const targetColumn = screen.getByRole<HTMLTableCellElement>('columnheader', { name: 'Target' }).cellIndex;
+        expect(policy.cells[targetColumn]?.textContent).toBe('This engine');
+        expect(agent.cells[targetColumn]?.textContent).toBe('Not recorded');
+    });
+
+    it('shows known details as facts and the exact JSON only on request', async () => {
+        const engine = auditEngine({ count: 1 });
+        engine.spies.list.mockResolvedValue({
+            kind: 'ok',
+            data: {
+                items: [
+                    {
+                        id: 'audit-1',
+                        seq: 1,
+                        at: '2026-09-02T00:00:00Z',
+                        actor: { kind: 'system' },
+                        action: 'settings.update-policy',
+                        target: null,
+                        outcome: 'denied',
+                        client: null,
+                        details: {
+                            fields: ['policy', 'version'],
+                            problem: 'permission-denied',
+                            requiredPermission: 'settings.manage',
+                            nested: { deep: true },
+                        },
+                        hash: 'a'.repeat(64),
+                        prevHash: null,
+                    },
+                ],
+                nextCursor: null,
+            },
+        } as never);
+        const app = renderWithProviders({ path: '/audit', engineApi: engine.client });
+        await app.user.click(await screen.findByRole('button', { name: /^Expand / }));
+        const facts = screen.getByText('Sequence number').closest('dl');
+        if (facts === null) throw new Error('expected the details list');
+        const fact = (label: string) => within(facts).getByText(label).nextElementSibling?.textContent;
+        expect(fact('Changed')).toBe('policy, version');
+        expect(fact('Reason')).toBe('permission-denied');
+        expect(fact('Missing permission')).toBe('settings.manage');
+        expect(fact('Outcome')).toBe('Denied');
+        expect(within(facts).queryByText('nested')).toBeNull();
+        const raw = screen.getByRole('button', { name: 'Raw JSON' });
+        expect(raw.getAttribute('aria-expanded')).toBe('false');
+        await app.user.click(raw);
+        expect(within(screen.getByTestId('audit-details')).getByText(/"deep": true/)).toBeDefined();
+    });
+});
+
 describe('audit log: chain status and refresh', { timeout: TIMEOUT_MS }, () => {
-    it('reports an intact chain with the time checked', async () => {
-        renderWithProviders({ path: '/audit', engineApi: auditEngine({ count: 3 }).client });
-        expect(await screen.findByText('Hash chain intact')).toBeDefined();
-        expect(screen.getByText(/3 entries, none removed or edited/)).toBeDefined();
+    it('reports an intact chain as one quiet line with the details on request', async () => {
+        const app = renderWithProviders({ path: '/audit', engineApi: auditEngine({ count: 3 }).client });
+        const status = await screen.findByRole('button', { name: /^Chain verified / });
+        expect(screen.queryByRole('alert')).toBeNull();
+        expect(status.getAttribute('aria-expanded')).toBe('false');
+        expect(status.getAttribute('title')).toMatch(/all 3 entries are intact, none removed or edited\.$/);
+        await app.user.click(status);
+        expect(status.getAttribute('aria-expanded')).toBe('true');
+        expect(screen.getByText(/^The engine checked the whole chain at .+: all 3 entries are intact/)).toBeDefined();
+    });
+
+    it('words a single checked entry in the singular', async () => {
+        const app = renderWithProviders({ path: '/audit', engineApi: auditEngine({ count: 1 }).client });
+        await app.user.click(await screen.findByRole('button', { name: /^Chain verified / }));
+        expect(screen.getByText(/: its one entry is intact\.$/)).toBeDefined();
+    });
+
+    it('shows a date with the check time when the check was not today', async () => {
+        const engine = auditEngine({ count: 3 });
+        engine.spies.verify.mockResolvedValue({
+            kind: 'ok',
+            data: {
+                status: 'intact',
+                checkedEntries: 3,
+                lastSeq: 3,
+                firstBrokenSeq: null,
+                checkedAt: '2026-01-02T12:00:00Z',
+            },
+        } as never);
+        renderWithProviders({ path: '/audit', engineApi: engine.client });
+        expect(await screen.findByRole('button', { name: /^Chain verified Jan 2, 2026, / })).toBeDefined();
     });
 
     it('shows a danger banner with the first broken sequence number', async () => {
@@ -388,14 +609,14 @@ describe('audit log: chain status and refresh', { timeout: TIMEOUT_MS }, () => {
         expect(await screen.findByText("The engine's chain check could not be loaded.")).toBeDefined();
         engine.spies.verify.mockRestore();
         await app.user.click(screen.getByRole('button', { name: 'Try again' }));
-        expect(await screen.findByText('Hash chain intact')).toBeDefined();
+        expect(await screen.findByRole('button', { name: /^Chain verified / })).toBeDefined();
     });
 
     it('refreshes only when asked', async () => {
         const engine = auditEngine({ count: 3 });
         const app = renderWithProviders({ path: '/audit', engineApi: engine.client });
         await screen.findByText('Target 3');
-        await screen.findByText('Hash chain intact');
+        await screen.findByRole('button', { name: /^Chain verified / });
         const lists = engine.spies.list.mock.calls.length;
         focusManager.setFocused(false);
         focusManager.setFocused(true);
@@ -411,10 +632,18 @@ describe('audit log: chain status and refresh', { timeout: TIMEOUT_MS }, () => {
 });
 
 describe('audit log: states', { timeout: TIMEOUT_MS }, () => {
-    it('says when there are no entries yet', async () => {
-        const app = renderWithProviders({ path: '/audit', engineApi: auditEngine({ count: 0 }).client });
+    it('says when there are no entries yet, without filters or a chain line over nothing', async () => {
+        const engine = auditEngine({ count: 0 });
+        const app = renderWithProviders({ path: '/audit', engineApi: engine.client });
         expect(await screen.findByText('No entries yet')).toBeDefined();
-        await screen.findByText('Hash chain intact');
+        await waitFor(() => {
+            expect(engine.spies.verify).toHaveBeenCalled();
+        });
+        await waitFor(() => {
+            expect(app.queryClient.isFetching()).toBe(0);
+        });
+        expect(screen.queryByRole('search', { name: 'Filters' })).toBeNull();
+        expect(screen.queryByRole('button', { name: /^Chain verified / })).toBeNull();
         await expectNoAxeViolations(app.container);
     });
 
@@ -445,7 +674,7 @@ describe('audit log: states', { timeout: TIMEOUT_MS }, () => {
     it('passes axe with rows and an expanded entry', async () => {
         const app = renderWithProviders({ path: '/audit', engineApi: auditEngine({ count: 5 }).client });
         await screen.findByText('Target 5');
-        await screen.findByText('Hash chain intact');
+        await screen.findByRole('button', { name: /^Chain verified / });
         const [expand] = screen.getAllByRole('button', { name: /^Expand / });
         if (expand === undefined) throw new Error('expected an expand button');
         await app.user.click(expand);
