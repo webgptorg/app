@@ -1,8 +1,8 @@
 import type { MemberId, PasskeyId, ReadPasskey } from '@ptbk/engine-api';
-import { Badge, CodeText, ConfirmDialog, IconButton, Menu, RelativeTime } from '@ptbk/ui';
+import { ActionMenu, Badge, CodeText, ConfirmDialog, RelativeTime } from '@ptbk/ui';
 import { useQuery } from '@tanstack/react-query';
 import type { UseQueryResult } from '@tanstack/react-query';
-import { ArrowLeft, Ellipsis } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import { useState } from 'react';
 
 import { unwrap } from '../../app/api-errors';
@@ -139,32 +139,26 @@ function PasskeyList({
                                                 )}
                                             </span>
                                         </div>
-                                        <Menu
-                                            label={m.passkeys_actions({ name })}
-                                            align="end"
-                                            items={[
-                                                {
-                                                    kind: 'item',
-                                                    id: 'revoke',
-                                                    label: m.passkeys_revoke(),
-                                                    tone: 'danger',
-                                                    disabled: last,
-                                                    ...(last ? { description: m.passkeys_last_one_hint() } : {}),
-                                                    onSelect: () => {
-                                                        onRevoke({ passkey, own: ownerOf(passkey), current });
+                                        <span className="self-end sm:self-center">
+                                            <ActionMenu
+                                                label={m.passkeys_actions({ name })}
+                                                variant="ghost"
+                                                size="sm"
+                                                items={[
+                                                    {
+                                                        kind: 'item',
+                                                        id: 'revoke',
+                                                        label: m.passkeys_revoke(),
+                                                        tone: 'danger',
+                                                        disabled: last,
+                                                        ...(last ? { description: m.passkeys_last_one_hint() } : {}),
+                                                        onSelect: () => {
+                                                            onRevoke({ passkey, own: ownerOf(passkey), current });
+                                                        },
                                                     },
-                                                },
-                                            ]}
-                                            trigger={(triggerProps) => (
-                                                <IconButton
-                                                    {...triggerProps}
-                                                    size="sm"
-                                                    label={m.passkeys_actions({ name })}
-                                                    icon={<Ellipsis aria-hidden className="size-4" />}
-                                                    className="self-end sm:self-center"
-                                                />
-                                            )}
-                                        />
+                                                ]}
+                                            />
+                                        </span>
                                     </li>
                                 );
                             })}
