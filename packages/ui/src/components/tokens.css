@@ -33,6 +33,7 @@
 @import './tabs/tabs.css';
 @import './textarea/textarea.css';
 @import './toaster/toaster.css';
+@import './tooltip/tooltip.css';
 @import './trust-mark/trust-mark.css';
 @import './visually-hidden/visually-hidden.css';
 @import '../forms/forms.css';

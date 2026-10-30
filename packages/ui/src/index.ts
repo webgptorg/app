@@ -37,6 +37,8 @@ export type {
     FilterBarText,
 } from './components/filter-bar/filter-bar';
 export { IconButton } from './components/icon-button/icon-button';
+export { Tooltip, useTooltip } from './components/tooltip/tooltip';
+export type { TooltipProps, TooltipState, TooltipTriggerProps } from './components/tooltip/tooltip';
 export type { IconButtonProps } from './components/icon-button/icon-button';
 export { Field } from './components/field/field';
 export type { FieldControlProps, FieldProps } from './components/field/field';

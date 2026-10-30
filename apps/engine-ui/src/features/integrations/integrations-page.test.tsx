@@ -180,9 +180,10 @@ describe('integrations list', { timeout: TIMEOUT_MS }, () => {
     it('offers calendars only as a disabled action with the reason', async () => {
         await renderIntegrations();
         const connect = screen.getByRole('button', { name: 'Connect calendar' });
-        expect(connect).toHaveProperty('disabled', true);
+        expect(connect.getAttribute('aria-disabled')).toBe('true');
         const reason = document.getElementById(connect.getAttribute('aria-describedby') ?? '');
         expect(reason?.textContent).toMatch(/sign-in flow this engine does not offer yet/);
+        expect(reason?.getAttribute('role')).toBe('tooltip');
     });
 
     it('has no axe violations', { timeout: AXE_TIMEOUT_MS }, async () => {

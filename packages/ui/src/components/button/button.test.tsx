@@ -53,11 +53,31 @@ describe('Button', () => {
         expect(button.getAttribute('aria-disabled')).toBe('true');
         const describedBy = button.getAttribute('aria-describedby') ?? '';
         expect(document.getElementById(describedBy)?.textContent).toBe('You need the agents.delete permission');
+        const reason = document.getElementById(describedBy);
+        expect(reason?.getAttribute('role')).toBe('tooltip');
+        expect(reason?.dataset['fakePopoverOpen']).toBeUndefined();
         await user.tab();
         expect(document.activeElement).toBe(button);
+        expect(reason?.dataset['fakePopoverOpen']).toBe('true');
         await user.click(button);
         expect(onClick).not.toHaveBeenCalled();
+        expect(reason?.dataset['fakePopoverOpen']).toBe('true');
     });
+
+    it.each(['primary', 'secondary', 'ghost', 'danger'] as const)(
+        'looks inert through disabled tokens, not opacity (%s)',
+        (variant) => {
+            renderUi(
+                <Button variant={variant} disabled>
+                    {'Save'}
+                </Button>,
+            );
+            const classes = screen.getByRole('button', { name: 'Save' }).className;
+            expect(classes).toContain('disabled:text-(--button-disabled-text)');
+            expect(classes).not.toContain('opacity');
+            expect(classes).not.toContain('transition-colors');
+        },
+    );
 
     it('is natively disabled without a reason, and renders nothing when hidden', () => {
         renderUi(

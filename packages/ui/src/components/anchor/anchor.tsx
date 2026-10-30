@@ -20,7 +20,7 @@ export function Anchor({ variant = 'inline', className, children, ...rest }: Anc
             {...rest}
             className={cx(
                 'rounded-small text-(--anchor-text) hover:text-(--anchor-text-hover)',
-                'motion-safe:transition-colors motion-safe:duration-(--motion-state)',
+                'motion-safe:transition-[color,background-color,border-color,text-decoration-color] motion-safe:duration-(--motion-state)',
                 variant === 'inline' ? 'underline underline-offset-2' : 'no-underline hover:underline',
                 className,
             )}

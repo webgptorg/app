@@ -3,6 +3,8 @@
     --input-radius: var(--radius-control);
     --input-bg: var(--color-raised);
     --input-bg-disabled: var(--color-sunken);
+    --input-text-disabled: var(--color-text-muted);
+    --input-border-disabled: var(--color-divider);
     --input-text: var(--color-text);
     --input-placeholder: var(--color-text-muted);
     --input-border: var(--color-border);
