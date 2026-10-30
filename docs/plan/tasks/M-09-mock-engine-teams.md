@@ -2,7 +2,7 @@
 
 - **Lane:** Mock engine · **Module:** `apps/mock-engine` · **Milestone:** M3
 - **Depends on:** C-13
-- **Status:** todo
+- **Status:** in progress (feat/m-09-mock-engine-teams)
 - **Spec:** [Teams](../../spec/teams.md) "Adding a person", "Removing a person"; ADRs: [0018](../../adr/0018-teams-and-member-access.md)
 
 ## Goal
