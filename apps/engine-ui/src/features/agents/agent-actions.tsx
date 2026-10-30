@@ -1,7 +1,7 @@
 import type { Agent, AgentVisibility } from '@ptbk/engine-api';
 import { ConfirmDialog } from '@ptbk/ui';
 import type { MenuEntry } from '@ptbk/ui';
-import { Globe, Lock, Play, Square, Trash2 } from 'lucide-react';
+import { Globe, Lock, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import type { ReactNode } from 'react';
 
@@ -16,12 +16,8 @@ type PendingConfirmation =
     { readonly kind: 'make-public'; readonly agent: Agent } | { readonly kind: 'delete'; readonly agent: Agent };
 
 export interface AgentActions {
-    readonly canRun: boolean;
     readonly canChangeVisibility: boolean;
     readonly canDelete: boolean;
-    readonly start: (agent: Agent) => void;
-    readonly stop: (agent: Agent) => void;
-    readonly isChangingRunState: boolean;
     /** Making an agent public asks first: anyone with the link could then chat with it without signing in. */
     readonly changeVisibility: (agent: Agent, visibility: AgentVisibility) => void;
     readonly requestDelete: (agent: Agent) => void;
@@ -31,24 +27,20 @@ export interface AgentActions {
     readonly dialogs: ReactNode;
 }
 
-/** Start, stop, visibility and delete for any agent, each offered only when `can()` allows it. */
+/**
+ * Visibility and delete for any agent, each offered only when `can()` allows it. Stopping depends on the agent's live
+ * state, so it is `AgentStop` on the agent page rather than a menu entry offered whatever the state.
+ */
 export function useAgentActions(options: AgentMutationOptions = {}): AgentActions {
     const { can } = usePermissions();
     const mutations = useAgentMutations(options);
     const [pending, setPending] = useState<PendingConfirmation | null>(null);
     const [deleteError, setDeleteError] = useState<string | undefined>(undefined);
 
-    const canRun = can('agents.run');
     const canChangeVisibility = can('agents.write');
     const canDelete = can('agents.delete');
     const target = (agent: Agent) => ({ id: agent.id, name: agent.name });
 
-    const start = (agent: Agent) => {
-        mutations.start.mutate(target(agent));
-    };
-    const stop = (agent: Agent) => {
-        mutations.stop.mutate(target(agent));
-    };
     const changeVisibility = (agent: Agent, visibility: AgentVisibility) => {
         // A second change while one is in flight could be undone by the first one's rollback. The control stays
         // enabled (disabling it would drop keyboard focus) and simply ignores the change.
@@ -67,28 +59,6 @@ export function useAgentActions(options: AgentMutationOptions = {}): AgentAction
 
     const menuEntries = (agent: Agent): MenuEntry[] => {
         const entries: MenuEntry[] = [];
-        if (canRun) {
-            entries.push(
-                {
-                    kind: 'item',
-                    id: 'start',
-                    label: m.agent_action_start(),
-                    icon: <Play />,
-                    onSelect: () => {
-                        start(agent);
-                    },
-                },
-                {
-                    kind: 'item',
-                    id: 'stop',
-                    label: m.agent_action_stop(),
-                    icon: <Square />,
-                    onSelect: () => {
-                        stop(agent);
-                    },
-                },
-            );
-        }
         if (canChangeVisibility) {
             const makePublic = agent.visibility !== 'public';
             entries.push({
@@ -151,8 +121,8 @@ export function useAgentActions(options: AgentMutationOptions = {}): AgentAction
                     onClose={close}
                     tone="danger"
                     title={m.agent_delete_title({ name: pending.agent.name })}
-                    description={m.agent_delete_body()}
-                    confirmLabel={m.agent_action_delete()}
+                    description={m.agent_delete_body({ name: pending.agent.name })}
+                    confirmLabel={m.agent_delete_named({ name: pending.agent.name })}
                     confirmPhrase={pending.agent.name}
                     loading={mutations.remove.isPending}
                     {...(deleteError === undefined ? {} : { error: deleteError })}
@@ -165,12 +135,8 @@ export function useAgentActions(options: AgentMutationOptions = {}): AgentAction
     );
 
     return {
-        canRun,
         canChangeVisibility,
         canDelete,
-        start,
-        stop,
-        isChangingRunState: mutations.start.isPending || mutations.stop.isPending,
         changeVisibility,
         requestDelete,
         menuEntries,

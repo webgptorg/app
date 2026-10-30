@@ -57,7 +57,9 @@ test('a member without delete, secrets and audit permissions is offered none of 
     const agent = required((await apiList<{ id: string; name: string }>(page, '/agents'))[0], 'agent');
     const actions = page.getByRole('button', { name: `Actions for ${agent.name}`, exact: true });
     if ((await actions.count()) > 0) {
-        await expect((await openRowMenu(page, agent.name)).getByRole('menuitem', { name: 'Delete' })).toHaveCount(0);
+        await expect((await openRowMenu(page, agent.name)).getByRole('menuitem', { name: 'Delete agent' })).toHaveCount(
+            0,
+        );
         await page.keyboard.press('Escape');
     }
 

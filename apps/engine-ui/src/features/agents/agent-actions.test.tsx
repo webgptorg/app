@@ -24,10 +24,10 @@ async function openRowMenu(user: ReturnType<typeof renderWithProviders>['user'],
 describe('deleting an agent', { timeout: TIMEOUT_MS }, () => {
     it('needs the exact name, then removes the agent, reports it and moves focus to the search', async () => {
         const { user, engine } = await renderList();
-        await user.click(within(await openRowMenu(user, 'Agent 002')).getByRole('menuitem', { name: 'Delete' }));
+        await user.click(within(await openRowMenu(user, 'Agent 002')).getByRole('menuitem', { name: 'Delete agent' }));
 
         const dialog = screen.getByRole('dialog', { name: 'Delete Agent 002?' });
-        const confirm = within(dialog).getByRole('button', { name: 'Delete' });
+        const confirm = within(dialog).getByRole('button', { name: 'Delete Agent 002' });
         const phrase = within(dialog).getByRole('textbox', { name: 'Type Agent 002 to confirm' });
         expect(confirm.hasAttribute('disabled')).toBe(true);
         await user.type(phrase, 'agent 002');
@@ -51,17 +51,17 @@ describe('deleting an agent', { timeout: TIMEOUT_MS }, () => {
     it('keeps the agent and the dialog on an API error, shows why, and can be retried', async () => {
         const { user, engine } = await renderList();
         engine.spies.delete.mockImplementationOnce(() => problemResponse('internal-error'));
-        await user.click(within(await openRowMenu(user, 'Agent 003')).getByRole('menuitem', { name: 'Delete' }));
+        await user.click(within(await openRowMenu(user, 'Agent 003')).getByRole('menuitem', { name: 'Delete agent' }));
         const dialog = screen.getByRole('dialog', { name: 'Delete Agent 003?' });
         await user.type(within(dialog).getByRole('textbox'), 'Agent 003');
-        await user.click(within(dialog).getByRole('button', { name: 'Delete' }));
+        await user.click(within(dialog).getByRole('button', { name: 'Delete Agent 003' }));
 
         expect(await within(dialog).findByRole('alert')).toBeDefined();
         expect(within(dialog).getByRole('alert').textContent).toContain('The engine did not delete the agent.');
         expect(await screen.findByText('The agent could not be deleted.')).toBeDefined();
         expect(screen.getByRole('link', { name: 'Agent 003' })).toBeDefined();
 
-        await user.click(within(dialog).getByRole('button', { name: 'Delete' }));
+        await user.click(within(dialog).getByRole('button', { name: 'Delete Agent 003' }));
         expect(await screen.findByText('Agent 003 deleted')).toBeDefined();
         await waitFor(() => {
             expect(screen.queryByRole('link', { name: 'Agent 003' })).toBeNull();
@@ -72,10 +72,10 @@ describe('deleting an agent', { timeout: TIMEOUT_MS }, () => {
     it('says "not allowed" when the engine refuses with 403 an action the UI offered', async () => {
         const { user, engine } = await renderList();
         engine.spies.delete.mockImplementationOnce(() => problemResponse('forbidden'));
-        await user.click(within(await openRowMenu(user, 'Agent 001')).getByRole('menuitem', { name: 'Delete' }));
+        await user.click(within(await openRowMenu(user, 'Agent 001')).getByRole('menuitem', { name: 'Delete agent' }));
         const dialog = screen.getByRole('dialog', { name: 'Delete Agent 001?' });
         await user.type(within(dialog).getByRole('textbox'), 'Agent 001');
-        await user.click(within(dialog).getByRole('button', { name: 'Delete' }));
+        await user.click(within(dialog).getByRole('button', { name: 'Delete Agent 001' }));
 
         expect(await screen.findByText('Not allowed')).toBeDefined();
         expect(within(dialog).getByRole('alert').textContent).toContain('does not allow deleting');
@@ -84,10 +84,10 @@ describe('deleting an agent', { timeout: TIMEOUT_MS }, () => {
     it('opens the step-up dialog when the engine wants a fresh passkey check', async () => {
         const { user, engine } = await renderList(createAgentsEngine({ agentCount: 3 }));
         engine.spies.delete.mockImplementationOnce(() => problemResponse('step-up-required'));
-        await user.click(within(await openRowMenu(user, 'Agent 001')).getByRole('menuitem', { name: 'Delete' }));
+        await user.click(within(await openRowMenu(user, 'Agent 001')).getByRole('menuitem', { name: 'Delete agent' }));
         const dialog = screen.getByRole('dialog', { name: 'Delete Agent 001?' });
         await user.type(within(dialog).getByRole('textbox'), 'Agent 001');
-        await user.click(within(dialog).getByRole('button', { name: 'Delete' }));
+        await user.click(within(dialog).getByRole('button', { name: 'Delete Agent 001' }));
 
         expect(await screen.findByRole('dialog', { name: 'Confirm it is you' })).toBeDefined();
         expect(within(dialog).queryByRole('alert')).toBeNull();
@@ -151,45 +151,14 @@ describe('changing visibility', { timeout: TIMEOUT_MS }, () => {
     });
 });
 
-describe('starting and stopping', { timeout: TIMEOUT_MS }, () => {
-    it('updates the badge once the engine confirms, and reports each outcome', async () => {
-        // Without runs@1 the badge follows the draft status endpoint that start and stop answer with.
-        const { user, engine } = await renderList(createAgentsEngine({ agentCount: 6, capabilities: [] }));
-        // Agent 004 starts idle (index % 4 === 0).
-        expect(await within(rowOf('Agent 004')).findByText('Idle')).toBeDefined();
-        let confirm: () => void = () => undefined;
-        const original = engine.agents.start;
-        engine.spies.start.mockImplementationOnce(
-            (agentId, signal) =>
-                new Promise((resolve) => {
-                    confirm = () => {
-                        void original(agentId, signal).then(resolve);
-                    };
-                }),
-        );
-        await user.click(within(await openRowMenu(user, 'Agent 004')).getByRole('menuitem', { name: 'Start' }));
-        expect(within(rowOf('Agent 004')).getByText('Idle')).toBeDefined();
-
-        confirm();
-        expect(await within(rowOf('Agent 004')).findByText('Running')).toBeDefined();
-        expect(await screen.findByText('Agent 004 started')).toBeDefined();
-
-        await user.click(within(await openRowMenu(user, 'Agent 004')).getByRole('menuitem', { name: 'Stop' }));
-        expect(await within(rowOf('Agent 004')).findByText('Stopped')).toBeDefined();
-        expect(await screen.findByText('Agent 004 stopped')).toBeDefined();
-    });
-
-    it('reports a failed start', async () => {
-        const { user, engine } = await renderList();
-        engine.spies.start.mockImplementationOnce(() => problemResponse('agent-deleted'));
-        await user.click(within(await openRowMenu(user, 'Agent 004')).getByRole('menuitem', { name: 'Start' }));
-        expect(await screen.findByText('The agent could not be started.')).toBeDefined();
-    });
-
-    it('reports a failed stop', async () => {
-        const { user, engine } = await renderList();
-        engine.spies.stop.mockImplementationOnce(() => problemResponse('not-found'));
-        await user.click(within(await openRowMenu(user, 'Agent 001')).getByRole('menuitem', { name: 'Stop' }));
-        expect(await screen.findByText('The agent could not be stopped.')).toBeDefined();
+describe('row menu', { timeout: TIMEOUT_MS }, () => {
+    it('offers neither Start nor Stop, whatever the agent is doing', async () => {
+        const { user } = await renderList(createAgentsEngine({ agentCount: 6, capabilities: [] }));
+        // Agent 001 runs and agent 004 is idle (index % 4).
+        for (const name of ['Agent 001', 'Agent 004']) {
+            const menu = await openRowMenu(user, name);
+            expect(within(menu).queryByRole('menuitem', { name: /Start|Stop/ })).toBeNull();
+            await user.keyboard('{Escape}');
+        }
     });
 });

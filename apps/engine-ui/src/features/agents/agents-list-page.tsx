@@ -107,7 +107,7 @@ function useAgentColumns(): DataTableColumnDef<Agent>[] {
                 cell: ({ row }) => <AgentCreator memberId={row.original.createdBy} />,
             }),
             column.accessor('updatedAt', {
-                header: m.agents_column_last_activity(),
+                header: m.agents_column_updated(),
                 sortDescFirst: true,
                 meta: { priority: 3 },
                 cell: ({ row }) => <RelativeTime value={new Date(row.original.updatedAt)} />,

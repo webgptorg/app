@@ -32,7 +32,7 @@ export interface NavEntry {
 
 /**
  * Agent detail tabs in the order of docs/design/ui.md. Features register their tab with this ID and order, so the
- * detail page needs no knowledge of them and its header can offer "Chat" and "Edit" when those tabs exist.
+ * detail page needs no knowledge of them and its header can offer "Chat" when that tab exists.
  */
 export const AGENT_TABS = {
     overview: { id: 'overview', order: 10 },
@@ -96,6 +96,24 @@ export interface ActivityRendererEntry {
 
 export type AgentLiveState = 'idle' | 'working' | 'waiting' | 'failed';
 
+/**
+ * Whether the agent has work to stop: `stoppable` while something runs or waits, `stopping` once all of it was asked
+ * to stop and the engine has not finished stopping it yet.
+ */
+export type AgentStopState = 'none' | 'stoppable' | 'stopping';
+
+export interface AgentStopControl {
+    readonly state: AgentStopState;
+    readonly isPending: boolean;
+    readonly stop: () => void;
+}
+
+/** The agent a stop acts on; the name is for messages only. */
+export interface AgentStopTarget {
+    readonly id: AgentId;
+    readonly name: string;
+}
+
 /** One command palette result a feature finds for what the member typed. */
 export interface PaletteResult {
     /** Unique across the palette, e.g. `run:<id>:stop`. */
@@ -145,7 +163,11 @@ export interface FeatureDefinition {
         readonly label?: (count: number) => string;
     };
     readonly liveIndicator?: { readonly useActiveCount: () => number };
-    readonly agentStatusProvider?: { readonly useAgentLiveState: (agentId: AgentId) => AgentLiveState | null };
+    readonly agentStatusProvider?: {
+        readonly useAgentLiveState: (agentId: AgentId) => AgentLiveState | null;
+        /** Stops what the agent is doing; `null` when the member may not. */
+        readonly useAgentStop: (agent: AgentStopTarget) => AgentStopControl | null;
+    };
     readonly activityRenderers?: readonly ActivityRendererEntry[];
     readonly paletteSearch?: PaletteSearchEntry;
     /**

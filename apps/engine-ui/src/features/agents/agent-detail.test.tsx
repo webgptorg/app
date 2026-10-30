@@ -152,7 +152,7 @@ describe('agent tabs', { timeout: TIMEOUT_MS }, () => {
             expect(router.state.location.pathname).toBe('/agents/agent-001/settings');
         });
         expect(settings.getAttribute('aria-selected')).toBe('true');
-        expect(await screen.findByRole('heading', { level: 2, name: 'Visibility' })).toBeDefined();
+        expect(await screen.findByRole('heading', { level: 2, name: 'Sharing' })).toBeDefined();
     });
 });
 
@@ -267,6 +267,7 @@ describe('agent live state', { timeout: TIMEOUT_MS }, () => {
                             },
                             () => state,
                         ),
+                    useAgentStop: () => null,
                 },
             }),
         };
@@ -317,33 +318,68 @@ describe('agent live state', { timeout: TIMEOUT_MS }, () => {
         expect(await within(header).findByText('Unknown')).toBeDefined();
     });
 
-    it('stops a running agent from the header and starts it again', async () => {
-        const { user } = await renderAgent('/agents/agent-001', { capabilities: [] });
+    it('stops a running agent from the header through the draft endpoint, and offers no Start after', async () => {
+        const { user, engine } = await renderAgent('/agents/agent-001', { capabilities: [] });
         const header = agentHeader();
         await user.click(await within(header).findByRole('button', { name: 'Stop' }));
         expect(await within(header).findByText('Stopped')).toBeDefined();
-        await user.click(within(header).getByRole('button', { name: 'Start' }));
-        expect(await within(header).findByText('Running')).toBeDefined();
+        expect(await screen.findByText("Stopped Agent 001's work")).toBeDefined();
+        expect(engine.spies.stop).toHaveBeenCalledTimes(1);
+        expect(within(header).queryByRole('button', { name: /Start|Stop/ })).toBeNull();
+    });
+
+    it('offers no Stop for an agent the draft status does not report as running', async () => {
+        // Agent 004 is idle and agent 002 stopped (index % 4).
+        await renderAgent('/agents/agent-004', { capabilities: [] });
+        expect(await within(agentHeader()).findByText('Idle')).toBeDefined();
+        expect(within(agentHeader()).queryByRole('button', { name: /Start|Stop/ })).toBeNull();
+    });
+
+    it('reports a failed stop and keeps offering it', async () => {
+        const engine = createAgentsEngine({ agentCount: 2, capabilities: [] });
+        engine.spies.stop.mockImplementationOnce(() => problemResponse('not-found'));
+        const { user } = renderWithProviders({ path: '/agents/agent-001', engineApi: engine.client });
+        await screen.findByRole('tablist');
+        await user.click(await within(agentHeader()).findByRole('button', { name: 'Stop' }));
+        expect(await screen.findByText('The agent could not be stopped.')).toBeDefined();
+        expect(within(agentHeader()).getByRole('button', { name: 'Stop' })).toBeDefined();
+    });
+
+    it('offers no Stop without agents.run', async () => {
+        await renderAgent('/agents/agent-001', { capabilities: [], permissions: allBut('agents.run') });
+        expect(await within(agentHeader()).findByText('Running')).toBeDefined();
+        expect(within(agentHeader()).queryByRole('button', { name: 'Stop' })).toBeNull();
     });
 });
 
 describe('agent header', { timeout: TIMEOUT_MS }, () => {
-    it('offers Chat and Edit where those tabs exist and the member may edit', async () => {
+    it('offers Chat as its one primary action and leaves the book to its tab', async () => {
         await renderAgent('/agents/agent-001', { features: FEATURES });
         const header = agentHeader();
         expect(within(header).getByRole('link', { name: 'Chat' }).getAttribute('href')).toBe('/agents/agent-001/chat');
-        expect(within(header).getByRole('link', { name: 'Edit' }).getAttribute('href')).toBe('/agents/agent-001/book');
+        expect(within(header).queryByRole('link', { name: 'Edit' })).toBeNull();
+        expect(screen.getByRole('tab', { name: 'Book' })).toBeDefined();
     });
 
-    it('offers no Edit without agents.write, and no Chat where no feature registers it', async () => {
-        await renderAgent('/agents/agent-001', {
-            features: FEATURES,
-            permissions: allBut('agents.write'),
-        });
-        const header = agentHeader();
-        expect(within(header).getByRole('link', { name: 'Chat' })).toBeDefined();
-        expect(within(header).queryByRole('link', { name: 'Edit' })).toBeNull();
+    it('keeps visibility and delete in the header’s More menu, delete last and apart', async () => {
+        const { user } = await renderAgent('/agents/agent-001');
+        await user.click(within(agentHeader()).getByRole('button', { name: 'More actions' }));
+        const menu = screen.getByRole('menu', { name: 'More actions' });
+        const items = within(menu)
+            .getAllByRole('menuitem')
+            .map((item) => item.textContent);
+        expect(items.at(-1)).toBe('Delete agent');
+        expect(items).toContain('Make private');
+        await user.click(within(menu).getByRole('menuitem', { name: 'Delete agent' }));
+        expect(await screen.findByRole('dialog', { name: 'Delete Agent 001?' })).toBeDefined();
+    });
 
+    it('has no More menu for a member who may neither share nor delete', async () => {
+        await renderAgent('/agents/agent-001', { permissions: allBut('agents.write', 'agents.delete') });
+        expect(within(agentHeader()).queryByRole('button', { name: 'More actions' })).toBeNull();
+    });
+
+    it('offers no Chat where no feature registers it', async () => {
         await renderAgent('/agents/agent-002', { features: FEATURES.filter((feature) => feature.id !== 'chat') });
         const headers = screen.getAllByRole('heading', { level: 1, name: 'Agent 002' });
         expect(within(headers[0]?.closest('header') as HTMLElement).queryByRole('link', { name: 'Chat' })).toBeNull();
@@ -379,10 +415,11 @@ describe('agent settings', { timeout: TIMEOUT_MS }, () => {
 
     it('deletes the agent, then returns to the list and reports it', async () => {
         const { user, router } = await renderAgent('/agents/agent-002/settings');
-        await user.click(await screen.findByRole('button', { name: 'Delete' }));
+        await user.click(await screen.findByRole('button', { name: 'Delete Agent 002' }));
         const dialog = screen.getByRole('dialog', { name: 'Delete Agent 002?' });
+        expect(within(dialog).getByText(/Its past runs stay in the history/)).toBeDefined();
         await user.type(within(dialog).getByRole('textbox'), 'Agent 002');
-        await user.click(within(dialog).getByRole('button', { name: 'Delete' }));
+        await user.click(within(dialog).getByRole('button', { name: 'Delete Agent 002' }));
 
         await waitFor(() => {
             expect(router.state.location.pathname).toBe('/agents');
@@ -396,10 +433,10 @@ describe('agent settings', { timeout: TIMEOUT_MS }, () => {
         const engine = createAgentsEngine({ agentCount: 2 });
         engine.spies.delete.mockImplementation(() => problemResponse('step-up-required'));
         const { user } = renderWithProviders({ path: '/agents/agent-002/settings', engineApi: engine.client });
-        await user.click(await screen.findByRole('button', { name: 'Delete' }));
+        await user.click(await screen.findByRole('button', { name: 'Delete Agent 002' }));
         const dialog = screen.getByRole('dialog', { name: 'Delete Agent 002?' });
         await user.type(within(dialog).getByRole('textbox'), 'Agent 002');
-        await user.click(within(dialog).getByRole('button', { name: 'Delete' }));
+        await user.click(within(dialog).getByRole('button', { name: 'Delete Agent 002' }));
         expect(await screen.findByRole('dialog', { name: 'Confirm it is you' })).toBeDefined();
     });
 
@@ -411,9 +448,20 @@ describe('agent settings', { timeout: TIMEOUT_MS }, () => {
 
     it('shows only the delete section with agents.delete alone', async () => {
         await renderAgent('/agents/agent-001/settings', { permissions: ['agents.read', 'agents.delete'] });
-        expect(await screen.findByRole('button', { name: 'Delete' })).toBeDefined();
+        expect(await screen.findByRole('button', { name: 'Delete Agent 001' })).toBeDefined();
         expect(screen.queryByRole('combobox', { name: 'Visibility' })).toBeNull();
+        expect(screen.queryByRole('region', { name: 'Name and description' })).toBeNull();
         expect(within(agentHeader()).queryByRole('button', { name: /Start|Stop/ })).toBeNull();
+    });
+
+    it('points to the book for the name and description, under a title that is not the field label', async () => {
+        await renderAgent('/agents/agent-001/settings');
+        const identity = await screen.findByRole('region', { name: 'Name and description' });
+        expect(within(identity).getByRole('link', { name: 'Edit the book' }).getAttribute('href')).toBe(
+            '/agents/agent-001/book',
+        );
+        const sharing = screen.getByRole('region', { name: 'Sharing' });
+        expect(within(sharing).getByRole('combobox', { name: 'Visibility' })).toBeDefined();
     });
 
     it('has no axe violations', async () => {

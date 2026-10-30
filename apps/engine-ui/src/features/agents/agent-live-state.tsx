@@ -3,9 +3,16 @@ import { useQuery } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
 import { useEngineApi } from '../../app/engine-api-context';
-import type { AgentLiveState as ProvidedState, FeatureDefinition } from '../../app/registry/feature';
+import type {
+    AgentStopControl,
+    AgentStopTarget,
+    AgentLiveState as ProvidedState,
+    FeatureDefinition,
+} from '../../app/registry/feature';
 import { useVisibleFeatures } from '../../app/registry/use-visible-features';
+import { usePermissions } from '../session/use-permissions';
 import { agentStatusQueryOptions } from './agents-queries';
+import { useAgentMutations } from './use-agent-mutations';
 
 /** What the UI knows about an agent's state right now; `state` may be a value this UI does not know yet. */
 export type AgentLiveStatus =
@@ -63,4 +70,42 @@ function FallbackState({ agentId, children }: AgentLiveStateProps) {
     const status = useQuery(agentStatusQueryOptions(useEngineApi(), agentId));
     if (status.data !== undefined) return children({ kind: 'state', state: status.data.state });
     return children(status.isError ? { kind: 'unavailable' } : { kind: 'pending' });
+}
+
+export interface AgentStopProps {
+    readonly agent: AgentStopTarget;
+    /** `null` when the member may not stop this agent. */
+    readonly children: (control: AgentStopControl | null) => ReactNode;
+}
+
+/**
+ * Stopping the agent, from the same source as its state: the provider's stop, or C-04's draft `POST /stop` while the
+ * draft status says `running`. There is deliberately no start: agents work on demand (chat, email, schedule).
+ */
+export function AgentStop({ agent, children }: AgentStopProps) {
+    const registered = useStatusProvider();
+    if (registered === undefined) return <FallbackStop agent={agent}>{children}</FallbackStop>;
+    return (
+        <ProvidedStop key={registered.featureId} provider={registered.provider} agent={agent}>
+            {children}
+        </ProvidedStop>
+    );
+}
+
+function ProvidedStop({ provider, agent, children }: AgentStopProps & { readonly provider: StatusProvider }) {
+    return children(provider.useAgentStop(agent));
+}
+
+function FallbackStop({ agent, children }: AgentStopProps) {
+    const allowed = usePermissions().can('agents.run');
+    const status = useQuery(agentStatusQueryOptions(useEngineApi(), agent.id));
+    const { stop } = useAgentMutations();
+    if (!allowed) return children(null);
+    return children({
+        state: status.data?.state === 'running' ? 'stoppable' : 'none',
+        isPending: stop.isPending,
+        stop: () => {
+            if (!stop.isPending) stop.mutate(agent);
+        },
+    });
 }

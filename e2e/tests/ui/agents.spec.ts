@@ -1,4 +1,4 @@
-// Flow 2: the seeded agents, search, paging, filters in the URL, detail, start and stop, visibility with
+// Flow 2: the seeded agents, search, paging, filters in the URL, detail without a Start, visibility with
 // confirmation, delete with the typed name.
 import type { Page } from '@playwright/test';
 
@@ -73,23 +73,17 @@ test('pages through a fleet larger than one page', async ({ page, engine, signIn
     await expect(firstLink).toHaveText(firstOnPageOne ?? '');
 });
 
-test('opens an agent, then stops and starts it', async ({ page }) => {
+test('opens an agent, which offers no Start: agents work on demand', async ({ page }) => {
     const agent = required((await seededAgents(page))[0], 'agent');
+    const menu = await openRowMenu(page, agent.name);
+    await expect(menu.getByRole('menuitem', { name: /^(Start|Stop)$/ })).toHaveCount(0);
+    await page.keyboard.press('Escape');
+
     await page.getByRole('link', { name: agent.name, exact: true }).click();
     await expect(page.getByRole('heading', { level: 1, name: agent.name })).toBeVisible();
     await expect(page.getByRole('tab', { name: 'Overview' })).toHaveAttribute('aria-selected', 'true');
-    await page.goBack();
-
-    const menu = await openRowMenu(page, agent.name);
-    const stop = menu.getByRole('menuitem', { name: 'Stop' });
-    if ((await stop.count()) === 0) {
-        await menu.getByRole('menuitem', { name: 'Start' }).click();
-        await expect(page.getByText(`${agent.name} started`)).toBeVisible();
-        await (await openRowMenu(page, agent.name)).getByRole('menuitem', { name: 'Stop' }).click();
-    } else await stop.click();
-    await expect(page.getByText(`${agent.name} stopped`)).toBeVisible();
-    await (await openRowMenu(page, agent.name)).getByRole('menuitem', { name: 'Start' }).click();
-    await expect(page.getByText(`${agent.name} started`)).toBeVisible();
+    // Stop appears only while the agent has running or queued runs; the unit tests drive that.
+    await expect(page.getByRole('button', { name: 'Start', exact: true })).toHaveCount(0);
 });
 
 test('makes an agent public only after confirming', async ({ page }) => {
@@ -117,9 +111,9 @@ test('makes an agent public only after confirming', async ({ page }) => {
 
 test('deletes an agent only once its name is typed', async ({ page }) => {
     const { id, name } = required((await seededAgents(page)).at(-1), 'agent');
-    await (await openRowMenu(page, name)).getByRole('menuitem', { name: 'Delete' }).click();
+    await (await openRowMenu(page, name)).getByRole('menuitem', { name: 'Delete agent' }).click();
     const dialog = page.getByRole('dialog', { name: `Delete ${name}?` });
-    const confirm = dialog.getByRole('button', { name: 'Delete' });
+    const confirm = dialog.getByRole('button', { name: `Delete ${name}` });
     const phrase = dialog.getByRole('textbox', { name: `Type ${name} to confirm` });
     await expect(confirm).toBeDisabled();
     await phrase.fill(`${name}x`);

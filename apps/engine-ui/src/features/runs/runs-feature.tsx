@@ -9,6 +9,7 @@ import type { Attention } from '../../app/registry/feature';
 import { m } from '../../paraglide/messages';
 import { RunActivityItem, runActivitySummary } from './run-activity';
 import { useRunPaletteResults } from './run-palette-search';
+import { useRunAgentStop } from './run-agent-stop';
 import { useRunAgentLiveState } from './run-agent-state';
 import { useRunStats } from './runs-queries';
 import { useRunEventSync } from './use-run-event-sync';
@@ -52,7 +53,7 @@ export const runsFeature = defineFeature({
         label: (count) => m.runs_attention_failed({ count }),
     },
     liveIndicator: { useActiveCount: useRunningCount },
-    agentStatusProvider: { useAgentLiveState: useRunAgentLiveState },
+    agentStatusProvider: { useAgentLiveState: useRunAgentLiveState, useAgentStop: useRunAgentStop },
     eventSync: { useEventSync: useRunEventSync },
     paletteSearch: { id: 'runs', label: m.nav_runs, useResults: useRunPaletteResults },
 });
