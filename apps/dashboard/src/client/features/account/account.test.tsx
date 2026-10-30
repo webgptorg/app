@@ -62,7 +62,7 @@ describe('account page', () => {
 
         expect(within(passkeyTable()).getByText('Google Password Manager')).toBeTruthy();
         expect(within(passkeyTable()).getByText(/^Created /)).toBeTruthy();
-        expect(within(passkeyTable()).getByText(/^Last used/)).toBeTruthy();
+        expect(within(passkeyTable()).getByText(/Last used/)).toBeTruthy();
         const remove = within(passkeyTable()).getByRole('button', {
             name: /^Remove Google Password Manager \(created .+\)$/,
         });
@@ -80,7 +80,8 @@ describe('account page', () => {
         expect(await notifications().findByText('Passkey added')).toBeTruthy();
         expect(await within(passkeyTable()).findByText('From your account')).toBeTruthy();
         expect(within(passkeyTable()).getByText('On one device')).toBeTruthy();
-        expect(within(passkeyTable()).getByText('Passkey')).toBeTruthy();
+        // The column header and the passkey whose provider is unknown.
+        expect(within(passkeyTable()).getAllByText('Passkey')).toHaveLength(2);
         expect(within(passkeyTable()).getByText(/Never used/)).toBeTruthy();
         expect(within(passkeyTable()).getByText('Possible copy, check it')).toBeTruthy();
     });
