@@ -2,7 +2,7 @@
 
 - **Lane:** Contracts · **Module:** `packages/protocol`, `packages/engine-api`, `packages/conformance` · **Milestone:** M3
 - **Depends on:** —
-- **Status:** in progress (feat/c-13-teams-protocol)
+- **Status:** done (#184)
 - **Spec:** [Teams](../../spec/teams.md) "Contracts"; ADRs: [0018](../../adr/0018-teams-and-member-access.md)
 
 ## Goal
@@ -37,10 +37,10 @@ The contracts for teams exist, with vectors and conformance checks:
 
 ## Acceptance criteria
 
-- [ ] Vectors and reject-path tests for both signed messages; coverage thresholds hold.
-- [ ] Heartbeat v1 is unchanged and still accepted.
-- [ ] `bun run check` passes.
-- [ ] **Status** line above set to `done (#<PR>)`.
+- [x] Vectors and reject-path tests for both signed messages; coverage thresholds hold.
+- [x] Heartbeat v1 is unchanged and still accepted.
+- [x] `bun run check` passes.
+- [x] **Status** line above set to `done (#<PR>)`.
 
 ## Risks and open points
 
