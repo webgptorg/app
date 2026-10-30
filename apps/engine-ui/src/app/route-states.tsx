@@ -48,7 +48,12 @@ export function RouteError({ error, reset }: ErrorComponentProps) {
                 title={m.step_up_title()}
                 description={m.step_up_body()}
                 action={
-                    <Button variant="primary" onClick={stepUp.request}>
+                    <Button
+                        variant="primary"
+                        onClick={() => {
+                            stepUp.request();
+                        }}
+                    >
                         {m.step_up_continue()}
                     </Button>
                 }

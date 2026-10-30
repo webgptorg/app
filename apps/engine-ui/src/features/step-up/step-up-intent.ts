@@ -58,9 +58,11 @@ function readStored(storage: PreferenceStorage, now: number): StoredIntent | und
     } catch {
         stored = undefined;
     }
-    const usable = isStoredIntent(stored) && now - stored.at >= 0 && now - stored.at <= STEP_UP_INTENT_MAX_AGE_MS;
-    if (!usable) clear(storage);
-    return usable ? stored : undefined;
+    if (!isStoredIntent(stored) || now - stored.at < 0 || now - stored.at > STEP_UP_INTENT_MAX_AGE_MS) {
+        clear(storage);
+        return undefined;
+    }
+    return stored;
 }
 
 /**
