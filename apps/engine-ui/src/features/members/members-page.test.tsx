@@ -123,7 +123,7 @@ describe('members', { timeout: TIMEOUT_MS }, () => {
 });
 
 describe('access without permissions', { timeout: TIMEOUT_MS }, () => {
-    it.each(['/members', '/secrets', '/security'])('%s says "no access"', async (path) => {
+    it.each(['/members', '/secrets'])('%s says "no access"', async (path) => {
         renderWithProviders({ path, permissions: [] });
         expect(await screen.findByRole('heading', { name: 'No access' })).toBeDefined();
     });

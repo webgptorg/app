@@ -1,6 +1,6 @@
 import { SemVer, UPDATE_POLICIES } from '@ptbk/engine-api';
 import type { ReadSecurityOverview, UpdatePolicy } from '@ptbk/engine-api';
-import { Button, CodeText, Field, Input, Select } from '@ptbk/ui';
+import { Button, CodeText, Field, Input, Select, useLocale } from '@ptbk/ui';
 import type { UseQueryResult } from '@tanstack/react-query';
 import { useState } from 'react';
 import type { SyntheticEvent } from 'react';
@@ -9,10 +9,11 @@ import { unwrap } from '../../app/api-errors';
 import { useEngineApi } from '../../app/engine-api-context';
 import { useStepUpAwareMutation } from '../../app/mutations';
 import { m } from '../../paraglide/messages';
+import { Facts, FactsSkeleton } from '../security/facts';
+import { SectionCard } from '../security/section-card';
+import { securityKeys } from '../security/security-keys';
+import { updateStatusLabel } from '../security/security-labels';
 import { usePermissions } from '../session/use-permissions';
-import { Facts, FactsSkeleton } from './facts';
-import { SectionCard } from './section-card';
-import { securityKeys } from './security-keys';
 
 type PolicyName = UpdatePolicy['policy'];
 
@@ -36,10 +37,16 @@ function policyText(policy: PolicyName, pinnedVersion: string | null): string {
         : POLICY_LABEL[policy]();
 }
 
-function PolicyForm({ current }: { readonly current: ReadSecurityOverview['update'] }) {
+interface PolicyFormProps {
+    readonly current: ReadSecurityOverview['update'];
+    /** What a new pin starts from: pinning usually means "stay where you are". */
+    readonly runningVersion: string;
+}
+
+function PolicyForm({ current, runningVersion }: PolicyFormProps) {
     const engineApi = useEngineApi();
     const [policy, setPolicy] = useState<PolicyName>(current.policy);
-    const [version, setVersion] = useState(current.pinnedVersion ?? '');
+    const [version, setVersion] = useState(current.pinnedVersion ?? runningVersion);
     const [versionError, setVersionError] = useState<string | undefined>(undefined);
     const save = useStepUpAwareMutation({
         mutationFn: async (next: { readonly policy: PolicyName; readonly pinnedVersion: string }) =>
@@ -88,12 +95,16 @@ function PolicyForm({ current }: { readonly current: ReadSecurityOverview['updat
                 )}
             </Field>
             {policy === 'pinned' ? (
-                <Field label={m.security_policy_version()} error={versionError} required>
+                <Field
+                    label={m.security_policy_version()}
+                    hint={m.security_policy_version_hint({ version: runningVersion })}
+                    error={versionError}
+                    required
+                >
                     {(control) => (
                         <Input
                             {...control}
                             value={version}
-                            placeholder="1.4.0"
                             autoComplete="off"
                             spellCheck={false}
                             maxLength={256}
@@ -113,35 +124,73 @@ function PolicyForm({ current }: { readonly current: ReadSecurityOverview['updat
     );
 }
 
-/** The update policy: read-only without `settings.manage`; a change needs a fresh passkey assertion and is logged. */
-export function UpdatePolicySection({ query }: { readonly query: UseQueryResult<ReadSecurityOverview> }) {
+function UpdateFacts({ overview: { engine, update } }: { readonly overview: ReadSecurityOverview }) {
+    const locale = useLocale();
+    return (
+        <Facts
+            facts={[
+                { label: m.security_version(), value: <CodeText value={engine.version} /> },
+                { label: m.security_update_status(), value: updateStatusLabel(update.status) },
+                update.availableVersion === null
+                    ? null
+                    : { label: m.security_update_version(), value: <CodeText value={update.availableVersion} /> },
+                update.eligibleAt === null
+                    ? null
+                    : {
+                          label: m.security_update_earliest(),
+                          value: (
+                              <time dateTime={update.eligibleAt}>
+                                  {locale.formatDateTime(new Date(update.eligibleAt))}
+                              </time>
+                          ),
+                      },
+            ]}
+        />
+    );
+}
+
+/**
+ * The engine's version and update policy, with `security.read` (the policy is part of the security overview). The
+ * policy is read-only without `settings.manage`; a change needs a fresh passkey assertion and is logged.
+ */
+export function UpdatesCard({ query }: { readonly query: UseQueryResult<ReadSecurityOverview> }) {
     const { can } = usePermissions();
     return (
-        <SectionCard title={m.security_policy_title()} query={query} skeleton={<FactsSkeleton rows={2} />}>
-            {({ update }) => (
-                <div className="flex flex-col gap-4">
-                    <p className="text-sm text-text-muted">{m.security_policy_logged()}</p>
-                    {can('settings.manage') ? (
-                        <PolicyForm key={`${update.policy}:${update.pinnedVersion ?? ''}`} current={update} />
-                    ) : (
-                        <Facts
-                            facts={[
-                                {
-                                    label: m.security_policy_label(),
-                                    value:
-                                        update.policy === 'pinned' && update.pinnedVersion !== null ? (
-                                            <span>
-                                                {POLICY_LABEL.pinned()} <CodeText value={update.pinnedVersion} />
-                                            </span>
-                                        ) : (
-                                            POLICY_LABEL[update.policy]()
-                                        ),
-                                },
-                            ]}
-                        />
-                    )}
-                </div>
-            )}
+        <SectionCard title={m.settings_updates()} query={query} skeleton={<FactsSkeleton rows={3} />}>
+            {(overview) => {
+                const { update } = overview;
+                return (
+                    <div className="flex flex-col gap-5">
+                        <UpdateFacts overview={overview} />
+                        {can('settings.manage') ? (
+                            <div className="flex flex-col gap-3 border-t border-divider pt-5">
+                                <p className="text-sm text-text-muted">{m.security_policy_logged()}</p>
+                                <PolicyForm
+                                    key={`${update.policy}:${update.pinnedVersion ?? ''}`}
+                                    current={update}
+                                    runningVersion={overview.engine.version}
+                                />
+                            </div>
+                        ) : (
+                            <Facts
+                                facts={[
+                                    {
+                                        label: m.security_policy_label(),
+                                        value:
+                                            update.policy === 'pinned' && update.pinnedVersion !== null ? (
+                                                <span>
+                                                    {POLICY_LABEL.pinned()} <CodeText value={update.pinnedVersion} />
+                                                </span>
+                                            ) : (
+                                                POLICY_LABEL[update.policy]()
+                                            ),
+                                    },
+                                ]}
+                            />
+                        )}
+                    </div>
+                );
+            }}
         </SectionCard>
     );
 }

@@ -62,7 +62,7 @@ function UpdateBanner() {
             tone="info"
             title={m.home_update_title()}
             action={
-                <Link to="/security" className="text-sm font-medium">
+                <Link to="/settings" className="text-sm font-medium">
                     {m.home_update_open()}
                 </Link>
             }

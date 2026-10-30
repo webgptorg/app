@@ -136,7 +136,7 @@ describe('home: control center', { timeout: TIMEOUT_MS }, () => {
 
         const banner = await screen.findByText(/Version 9\.1\.0 can be installed from/);
         expect(banner).toBeDefined();
-        expect(screen.getByRole('link', { name: 'Review the update' }).getAttribute('href')).toBe('/security');
+        expect(screen.getByRole('link', { name: 'Review the update' }).getAttribute('href')).toBe('/settings');
     });
 
     it('shows the update banner on an engine.update-available event', async () => {

@@ -13,7 +13,11 @@ import { engineInfoQueryOptions } from '../engine/engine-queries';
 import { Facts } from './facts';
 import { TRUST_PANEL_HASH } from './trust-panel-hash';
 
-export function TrustPanel({ overview }: { readonly overview: UseQueryResult<ReadSecurityOverview> }) {
+/**
+ * The engine's identity for every member. With `security.read` (`overview` set) the seal also checks that the served
+ * UI is the one this page was built as; without it, the engine's own hostname stands in for the reported one.
+ */
+export function TrustPanel({ overview }: { readonly overview: UseQueryResult<ReadSecurityOverview> | null }) {
     const { data: engine } = useSuspenseQuery(engineInfoQueryOptions(useEngineApi()));
     const heading = useRef<HTMLHeadingElement>(null);
     const hash = useLocation({ select: (location) => location.hash });
@@ -21,7 +25,7 @@ export function TrustPanel({ overview }: { readonly overview: UseQueryResult<Rea
         if (hash === TRUST_PANEL_HASH) heading.current?.focus();
     }, [hash]);
 
-    const bundleMatches = overview.data?.ui.version === UI_VERSION;
+    const bundleMatches = overview === null || overview.data?.ui.version === UI_VERSION;
     // Shown as verifying for the first frame even when the data is cached, so the seal is drawn once on every visit.
     const [settled, setSettled] = useState(false);
     useEffect(() => {
@@ -34,14 +38,17 @@ export function TrustPanel({ overview }: { readonly overview: UseQueryResult<Rea
     }, []);
     const verified = settled && bundleMatches;
     const label =
-        overview.data === undefined
-            ? overview.isError
-                ? m.security_trust_unverified()
-                : undefined
-            : bundleMatches
-              ? undefined
-              : m.security_trust_mismatch();
-    const defaultHostname = overview.data?.hostnames.find(({ kind }) => kind === 'default')?.hostname;
+        overview === null
+            ? undefined
+            : overview.data === undefined
+              ? overview.isError
+                  ? m.security_trust_unverified()
+                  : undefined
+              : bundleMatches
+                ? undefined
+                : m.security_trust_mismatch();
+    const defaultHostname =
+        overview === null ? engine.hostname : overview.data?.hostnames.find(({ kind }) => kind === 'default')?.hostname;
 
     return (
         <section
@@ -78,10 +85,10 @@ export function TrustPanel({ overview }: { readonly overview: UseQueryResult<Rea
                                   ),
                               },
                         {
-                            label: m.security_default_hostname(),
+                            label: overview === null ? m.security_hostname() : m.security_default_hostname(),
                             value:
                                 defaultHostname === undefined ? (
-                                    overview.isError ? (
+                                    overview?.isError === true ? (
                                         m.security_not_reported()
                                     ) : (
                                         <Skeleton className="h-5 w-48" />

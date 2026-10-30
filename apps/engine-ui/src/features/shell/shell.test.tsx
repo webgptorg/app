@@ -73,11 +73,11 @@ describe('app shell', () => {
         });
     });
 
-    it('shows only Home and Settings to a member without permissions, and "no access" on guarded routes', async () => {
+    it('shows only Home, Security and Settings to a member without permissions, and "no access" on guarded routes', async () => {
         renderWithProviders({ path: '/members', permissions: [] });
 
         expect(await screen.findByRole('heading', { level: 1, name: 'No access' })).toBeDefined();
-        expect(await sidebarLinks()).toEqual(['Home', 'Settings']);
+        expect(await sidebarLinks()).toEqual(['Home', 'Security', 'Settings']);
     });
 
     it('shows every item with full permissions', async () => {
@@ -111,7 +111,7 @@ describe('app shell', () => {
             },
         });
 
-        expect(await sidebarLinks()).toEqual(['Home', 'Agents', 'Settings']);
+        expect(await sidebarLinks()).toEqual(['Home', 'Agents', 'Security', 'Settings']);
     });
 
     it('hides a capability-gated feature the engine does not advertise, and its route says so', async () => {
