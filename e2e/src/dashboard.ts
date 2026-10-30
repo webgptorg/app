@@ -134,7 +134,8 @@ export const test = base.extend<DashboardFixtures>({
                 await page.getByRole('link', { name: 'Billing' }).click();
                 // The dev plan starts with a trial (D-10); the fake Checkout grants it at once.
                 await page.getByRole('button', { name: 'Start your 14-day trial of Standard' }).click();
-                await expect(page).toHaveURL(/\/billing\?checkout=success$/);
+                await expect(page.getByText('Thank you, your subscription is starting')).toBeVisible();
+                await expect(page).toHaveURL(/\/billing$/);
             },
             async createLinkCode() {
                 // The page issues the code on load once the organization may link (D-10).

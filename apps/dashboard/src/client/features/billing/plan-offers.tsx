@@ -102,7 +102,7 @@ function PlanOffer(props: {
         dataOrThrow(await api.call(apiRoutes.billingCheckout, { body: { planId, returnTo: props.returnTo } })),
     );
     return (
-        <li className="flex flex-col gap-3 rounded-control border border-border p-4">
+        <li className="flex flex-col gap-3 rounded-control border border-border bg-(--card-bg) p-4">
             <div className="flex flex-col gap-1">
                 <h3 className="font-display text-lg font-semibold">{name}</h3>
                 <p className={plan.price === null ? 'text-sm text-text-muted' : 'font-medium tabular-nums'}>

@@ -48,7 +48,7 @@ describe('billing page', () => {
         expect(screen.getByText('Standard')).toBeTruthy();
         expect(screen.queryByText('standard')).toBeNull();
         expect(screen.getByText(/^Renews on /)).toBeTruthy();
-        const list = within(screen.getByRole('region', { name: 'Included in your plan' }));
+        const list = within(screen.getByLabelText('Included in your plan'));
         expect(list.getByText('Link new engines')).toBeTruthy();
         expect(list.getByText('Included')).toBeTruthy();
         expect(list.getByText('2 of 5')).toBeTruthy();
@@ -59,13 +59,14 @@ describe('billing page', () => {
         await expectNoAxeViolations(app.container);
     });
 
-    it('offers the catalogue plans to an org without a subscription', async () => {
+    it('leads with the plan offers when the org has no plan, and no empty subscription', async () => {
         const app = renderApp({ path: '/billing', session: OWNER, script: withBilling() });
-        expect(await screen.findByText('No subscription')).toBeTruthy();
-        expect(screen.getByText('None')).toBeTruthy();
-        const current = within(screen.getByRole('region', { name: 'Included in your plan' }));
-        expect(current.getByText('Not included')).toBeTruthy();
-        expect(current.getAllByText('0')).toHaveLength(2);
+        expect(await screen.findByRole('heading', { name: 'Choose a plan to link engines', level: 2 })).toBeTruthy();
+        expect(screen.queryByText('No subscription')).toBeNull();
+        expect(screen.queryByText('No plan')).toBeNull();
+        expect(screen.queryByRole('heading', { name: 'Subscription' })).toBeNull();
+        expect(screen.queryByLabelText('Included in your plan')).toBeNull();
+        expect(screen.getByText('Payment happens on Stripe; card details never reach Promptbook.')).toBeTruthy();
         expect(screen.getByRole('heading', { name: 'Standard', level: 3 })).toBeTruthy();
         expect(screen.getByText('€29.00 per month')).toBeTruthy();
         expect(screen.queryByText('standard')).toBeNull();
@@ -73,6 +74,8 @@ describe('billing page', () => {
         const plan = within(screen.getByLabelText('Plan Standard includes'));
         expect(plan.getByText('Included')).toBeTruthy();
         expect(plan.getByText('Unlimited')).toBeTruthy();
+        expect(plan.getByText('Not included')).toBeTruthy();
+        expect(plan.queryByText('0')).toBeNull();
         expect(screen.queryByRole('button', { name: 'Manage billing' })).toBeNull();
         expect(screen.getByRole('button', { name: 'Subscribe to Standard' })).toBeTruthy();
         await expectNoAxeViolations(app.container);
@@ -248,10 +251,20 @@ describe('billing page', () => {
     });
 
     it('shows no billing actions without billing.manage', async () => {
-        renderApp({ path: '/billing', session: READER, script: withBilling(billingView({ hasBillingAccount: true })) });
-        expect(await screen.findByText('No subscription')).toBeTruthy();
-        expect(screen.queryByRole('button', { name: 'Manage billing' })).toBeNull();
+        const { unmount } = renderApp({
+            path: '/billing',
+            session: READER,
+            script: withBilling(billingView({ hasBillingAccount: true })),
+        });
+        expect(
+            await screen.findByText('This organization has no plan yet. An owner can choose one here.'),
+        ).toBeTruthy();
+        expect(screen.queryByRole('heading', { name: 'Choose a plan to link engines' })).toBeNull();
         expect(screen.queryByRole('button', { name: /^Subscribe/ })).toBeNull();
+        unmount();
+        renderApp({ path: '/billing', session: READER, script: withBilling(ACTIVE) });
+        expect(await screen.findByText('Active')).toBeTruthy();
+        expect(screen.queryByRole('button', { name: 'Manage billing' })).toBeNull();
     });
 
     it('warns about an overdue payment and points to the portal', async () => {
@@ -292,32 +305,77 @@ describe('billing page', () => {
         });
         expect(await screen.findByText(/^Ended on /)).toBeTruthy();
         expect(screen.getByText('Canceled')).toBeTruthy();
+        expect(screen.getByText('No plan')).toBeTruthy();
+        expect(screen.getByRole('heading', { name: 'Plans', level: 2 })).toBeTruthy();
+        expect(screen.getByRole('button', { name: 'Subscribe to Standard' })).toBeTruthy();
     });
 
-    it('counts usage against an unlimited quota and says when there are no plans', async () => {
+    it('counts usage against an unlimited quota and says a plan does not include a quota', async () => {
         renderApp({
             path: '/billing',
             session: OWNER,
-            script: withBilling(
-                billingView({
-                    plans: [],
-                    entitlements: { features: [], quotas: [{ quota: 'engines.max', limit: null, used: 3 }] },
-                }),
-            ),
+            script: withBilling({
+                ...ACTIVE,
+                entitlements: {
+                    features: ['engines.create'],
+                    quotas: [
+                        { quota: 'engines.max', limit: null, used: 3 },
+                        { quota: 'custom-domains.max', limit: 0, used: null },
+                    ],
+                },
+            }),
         });
-        expect(await screen.findByText('3, unlimited')).toBeTruthy();
-        expect(screen.getByText('No plans are available yet.')).toBeTruthy();
+        const list = within(await screen.findByLabelText('Included in your plan'));
+        expect(list.getByText('3 of unlimited')).toBeTruthy();
+        expect(list.getByText('Not included')).toBeTruthy();
     });
 
-    it('thanks after a completed Checkout and drops unknown search values', async () => {
-        const { unmount } = renderApp({ path: '/billing?checkout=success', session: OWNER, script: withBilling() });
+    it('says when there are no plans to choose from', async () => {
+        renderApp({ path: '/billing', session: OWNER, script: withBilling(billingView({ plans: [] })) });
+        expect(await screen.findByText('No plans are available yet.')).toBeTruthy();
+    });
+
+    it('thanks once after a completed Checkout, mentioning the wait only while the plan is on its way', async () => {
+        const app = renderApp({ path: '/billing?checkout=success', session: OWNER, script: withBilling() });
         expect(await screen.findByText('Thank you, your subscription is starting')).toBeTruthy();
+        expect(screen.getByText('It can take a moment until the new plan shows here.')).toBeTruthy();
+        await waitFor(() => {
+            expect(app.history.location.search).toBe('');
+        });
+        expect(screen.getByText('Thank you, your subscription is starting')).toBeTruthy();
+        // The webhook lands: the page asks again by itself and the wait note goes.
+        app.api.on(apiRoutes.getBilling, ok(ACTIVE));
+        expect(await screen.findByText('Active', {}, { timeout: 5000 })).toBeTruthy();
+        expect(screen.queryByText('It can take a moment until the new plan shows here.')).toBeNull();
+        expect(screen.getByText('Thank you, your subscription is starting')).toBeTruthy();
+        app.unmount();
+    });
+
+    it('thanks without the wait note when the plan is already there, and not again on reload', async () => {
+        const { unmount } = renderApp({
+            path: '/billing?checkout=success',
+            session: OWNER,
+            script: withBilling(ACTIVE),
+        });
+        expect(await screen.findByText('Active')).toBeTruthy();
+        expect(screen.getByText('Thank you, your subscription is starting')).toBeTruthy();
+        expect(screen.queryByText('It can take a moment until the new plan shows here.')).toBeNull();
         unmount();
+        renderApp({ path: '/billing', session: OWNER, script: withBilling(ACTIVE) });
+        expect(await screen.findByText('Active')).toBeTruthy();
+        expect(screen.queryByText('Thank you, your subscription is starting')).toBeNull();
+    });
+
+    it('says a cancelled Checkout charged nothing and drops unknown search values', async () => {
         const cancelled = renderApp({ path: '/billing?checkout=cancel', session: OWNER, script: withBilling() });
         expect(await screen.findByText('Checkout was cancelled. Nothing was charged.')).toBeTruthy();
+        await waitFor(() => {
+            expect(cancelled.history.location.search).toBe('');
+        });
+        expect(screen.getByText('Checkout was cancelled. Nothing was charged.')).toBeTruthy();
         cancelled.unmount();
         renderApp({ path: '/billing?checkout=evil', session: OWNER, script: withBilling() });
-        expect(await screen.findByText('No subscription')).toBeTruthy();
+        expect(await screen.findByRole('heading', { name: 'Choose a plan to link engines' })).toBeTruthy();
         expect(screen.queryByRole('status', { name: /Checkout/ })).toBeNull();
         expect(screen.queryByText(/Checkout was cancelled|Thank you/)).toBeNull();
     });

@@ -24,7 +24,7 @@ const HANDLED_EVENTS: ReadonlySet<string> = new Set([
 export interface QuotaUsage {
     readonly quota: Quota;
     readonly limit: number | null;
-    /** Null until the module that owns the counted resource reports usage (engines D-03, custom domains D-08). */
+    /** Null here: `/api/billing` counts engines from the engine store; custom domains are not counted yet (D-08). */
     readonly used: number | null;
 }
 

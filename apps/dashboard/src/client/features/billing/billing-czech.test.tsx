@@ -22,8 +22,10 @@ describe('billing for a Czech browser', () => {
             script: (api) => api.on(apiRoutes.getBilling, ok(billingView())),
         });
         expect(await screen.findByRole('heading', { name: 'Fakturace', level: 1 })).toBeTruthy();
-        expect(await screen.findByText('Bez předplatného')).toBeTruthy();
-        expect(screen.getByText('Žádný')).toBeTruthy();
+        expect(
+            await screen.findByRole('heading', { name: 'Vyberte si tarif a připojte enginy', level: 2 }),
+        ).toBeTruthy();
+        expect(screen.getByText('Nezahrnuto')).toBeTruthy();
         expect(screen.getByRole('heading', { name: 'Standard', level: 3 })).toBeTruthy();
         expect(screen.getByText(/^29,00\s€ měsíčně$/)).toBeTruthy();
         expect(screen.getByRole('button', { name: 'Předplatit tarif Standard' })).toBeTruthy();

@@ -22,10 +22,12 @@ test('subscribe through the fake Checkout and open the portal under the producti
 
     // The dev plan has a trial (D-10), so the fake Checkout starts one.
     await page.getByRole('button', { name: 'Start your 14-day trial of Standard' }).click();
-    await expect(page).toHaveURL(/\/billing\?checkout=success$/);
     await expect(page.getByText('Thank you, your subscription is starting')).toBeVisible();
+    // Shown once: the page drops the Checkout return from the URL, so a reload does not thank again.
+    await expect(page).toHaveURL(/\/billing$/);
     await expect(page.getByText('Trial', { exact: true })).toBeVisible();
     await expect(page.getByText(/^Trial ends on /)).toBeVisible();
+    await expect(page.getByText('0 of unlimited')).toBeVisible();
     await checkScreen('/billing subscribed');
 
     await page.getByRole('button', { name: 'Manage billing' }).click();

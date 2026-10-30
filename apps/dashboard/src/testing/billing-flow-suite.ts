@@ -108,7 +108,7 @@ export function describeBillingFlows(
                 entitlements: {
                     features: ['engines.create'],
                     quotas: [
-                        { quota: 'engines.max', limit: 2, used: null },
+                        { quota: 'engines.max', limit: 2, used: 0 },
                         { quota: 'custom-domains.max', limit: 0, used: null },
                     ],
                 },

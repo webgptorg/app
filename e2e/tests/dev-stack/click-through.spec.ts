@@ -112,7 +112,7 @@ test('sign up from the dev mailbox, subscribe, link with dev:link, open the engi
 
     await page.getByRole('link', { name: 'Billing' }).click();
     await page.getByRole('button', { name: 'Start your 14-day trial of Standard' }).click();
-    await expect(page).toHaveURL(/\/billing\?checkout=success$/);
+    await expect(page.getByText('Thank you, your subscription is starting')).toBeVisible();
 
     await page.goto(`${DEV_DASHBOARD_ORIGIN}/engines/new`);
     const command = page.getByText(/^bun run dev:link /);
