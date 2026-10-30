@@ -209,7 +209,7 @@ describe('app shell', () => {
         await first.user.click(await screen.findByRole('button', { name: /Owner/ }));
         await first.user.click(screen.getByRole('menuitemradio', { name: 'Dark' }));
         expect(document.documentElement.classList.contains('dark')).toBe(true);
-        await first.user.click(screen.getByRole('button', { name: /Owner/ }));
+        await first.user.click(screen.getByRole('button', { name: /^EN, / }));
         await first.user.click(screen.getByRole('menuitemradio', { name: 'Čeština' }));
         expect(await screen.findByRole('heading', { level: 1, name: 'Nastavení' })).toBeDefined();
         first.unmount();

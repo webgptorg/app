@@ -5,18 +5,18 @@ import { useNavigate } from '@tanstack/react-router';
 import { LogOut, Settings, ShieldCheck } from 'lucide-react';
 
 import { useBrowser } from '../../app/browser-context';
-import { useAppLocale } from '../../app/locale';
 import { useVisibleFeatures } from '../../app/registry/use-visible-features';
 import { useThemePreference } from '../../app/theme';
 import { m } from '../../paraglide/messages';
 import { securityFeature } from '../security/security-feature';
-import { localeLabel, themeLabel } from '../settings/preference-labels';
+import { themeLabel } from '../settings/preference-labels';
 import { useCurrentMember } from '../session/use-current-member';
 import { roleLabel } from './role-label';
 import { signOut } from './sign-out';
 
 /**
- * The account menu: the member's own places (Settings, Security), language, theme and sign-out. The trigger already
+ * The account menu: the member's own places (Settings, Security), theme and sign-out; the language has its own switch
+ * in the shell header. The trigger already
  * shows the name and role, so the menu repeats the name only when the trigger is an icon.
  */
 export function UserMenu({
@@ -28,7 +28,6 @@ export function UserMenu({
     readonly onNavigate?: () => void;
 }) {
     const member = useCurrentMember();
-    const { locale, locales, changeLocale } = useAppLocale();
     const { preference, setPreference } = useThemePreference();
     const browser = useBrowser();
     const toast = useToast();
@@ -58,17 +57,6 @@ export function UserMenu({
                   },
               ]
             : []),
-        { kind: 'separator', id: 'language-separator' },
-        { kind: 'heading', id: 'language', label: m.language_label() },
-        ...locales.map((option): MenuEntry => ({
-            kind: 'item',
-            id: `locale-${option}`,
-            label: localeLabel(option),
-            checked: option === locale,
-            onSelect: () => {
-                changeLocale(option);
-            },
-        })),
         { kind: 'separator', id: 'theme-separator' },
         { kind: 'heading', id: 'theme', label: m.theme_label() },
         ...THEME_PREFERENCES.map((option): MenuEntry => ({

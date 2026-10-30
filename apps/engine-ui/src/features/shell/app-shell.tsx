@@ -8,6 +8,7 @@ import { cx } from '../../app/cx';
 import { m } from '../../paraglide/messages';
 import { FeatureEventSync } from './feature-event-sync';
 import { ShellEngineSwitcher } from './shell-engine-switcher';
+import { ShellLanguageSwitch } from './shell-language-switch';
 import { LiveIndicator } from './live-indicator';
 import { NavScroller } from './nav-scroller';
 import { persistSidebarCollapsed, readSidebarCollapsed } from './sidebar-preference';
@@ -19,8 +20,8 @@ import { UserMenu } from './user-menu';
 const MAIN_ID = 'main-content';
 
 /**
- * The authenticated frame around every route: the sidebar (engine switcher with the trust mark, navigation from the
- * feature registry, live indicator, user menu), which collapses to icons on wide screens and becomes a drawer below
+ * The authenticated frame around every route: the sidebar (engine switcher with the trust mark, the language switch,
+ * navigation from the feature registry, live indicator, user menu), which collapses to icons on wide screens and becomes a drawer below
  * 768 px.
  */
 export function AppShell() {
@@ -70,7 +71,12 @@ function WideSidebar({ onOpenPalette }: { readonly onOpenPalette: () => void }) 
                 collapsed ? 'w-18' : 'w-64',
             )}
         >
-            <ShellEngineSwitcher compact={collapsed} />
+            <div className={cx('flex gap-1', collapsed ? 'flex-col items-center' : 'items-center')}>
+                <div className={cx(!collapsed && 'min-w-0 flex-1')}>
+                    <ShellEngineSwitcher compact={collapsed} />
+                </div>
+                <ShellLanguageSwitch align={collapsed ? 'start' : 'end'} />
+            </div>
             <div className={cx(collapsed && 'flex justify-center')}>
                 <PaletteButton onOpen={onOpenPalette} compact={collapsed} />
             </div>
@@ -115,6 +121,7 @@ function NarrowShell({ onOpenPalette }: { readonly onOpenPalette: () => void }) 
                     <ShellEngineSwitcher compact={false} />
                 </div>
                 <LiveIndicator compact />
+                <ShellLanguageSwitch />
                 <PaletteButton onOpen={onOpenPalette} compact />
             </header>
             <Drawer
