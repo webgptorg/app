@@ -2,7 +2,7 @@
 
 - **Lane:** Dashboard · **Module:** `apps/dashboard` · **Milestone:** M3
 - **Depends on:** C-13
-- **Status:** done (#PR)
+- **Status:** done (#188)
 - **Spec:** [Teams](../../spec/teams.md); ADRs: [0006](../../adr/0006-organizations-and-roles.md), [0018](../../adr/0018-teams-and-member-access.md)
 
 ## Goal
