@@ -257,8 +257,35 @@ export const teamMembers = sqliteTable(
             .notNull()
             .references(() => users.id),
         createdAt: integer('created_at').notNull(),
+        // What the dashboard knows of their access to the team's engine, from tickets and the engine's acks: `none`
+        // until they open it, `waiting` once a ticket went out, `approved` once the engine acked it approved.
+        access: text('access', { enum: ['none', 'waiting', 'approved'] })
+            .notNull()
+            .default('none'),
     },
     (t) => [primaryKey({ columns: [t.teamId, t.userId] }), index('team_members_user_id_idx').on(t.userId)],
+);
+
+/**
+ * Access tickets the dashboard signed (ADR 0018): which person it sent to which engine, so the engine's ack by
+ * `ticketId` can be traced back. Never the ticket itself.
+ */
+export const accessTickets = sqliteTable(
+    'access_tickets',
+    {
+        id: text('id').primaryKey(),
+        teamId: text('team_id').notNull(),
+        engineId: text('engine_id').notNull(),
+        userId: text('user_id').notNull(),
+        issuedAt: integer('issued_at').notNull(),
+        expiresAt: integer('expires_at').notNull(),
+        // `approved`, `declined` or `removed`, from the engine's ack.
+        outcome: text('outcome'),
+        outcomeAt: integer('outcome_at'),
+        // When the waiting-for-approval email went out for it, so it goes out once.
+        noticedAt: integer('noticed_at'),
+    },
+    (t) => [index('access_tickets_engine_id_idx').on(t.engineId)],
 );
 
 /** An invitation to an organization and some of its teams: single use, valid for 7 days. */

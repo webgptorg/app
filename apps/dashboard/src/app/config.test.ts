@@ -3,7 +3,14 @@ import { describe, expect, it } from 'vitest';
 import { syntheticStripeKey, syntheticWebhookSecret, TEST_PLANS } from '../testing/billing-fixtures';
 import { TEST_INSTALL_VARS } from '../testing/install-fixtures';
 import { DEFAULT_THRESHOLDS } from '../domain/monitoring/alert-rules';
-import { ConfigError, DEFAULT_ABUSE_MONITORING, DEV_RATE_LIMIT_HMAC_KEY, parseConfig, relayName } from './config';
+import {
+    ConfigError,
+    DEFAULT_ABUSE_MONITORING,
+    DEV_MEMBER_KEY,
+    DEV_RATE_LIMIT_HMAC_KEY,
+    parseConfig,
+    relayName,
+} from './config';
 
 const devVars = {
     ENVIRONMENT: 'dev',
@@ -57,6 +64,7 @@ describe('parseConfig', () => {
             emailFrom: 'no-reply@ptbk.test',
             abuseEmail: 'abuse@ptbk.test',
             rateLimitHmacKey: new TextEncoder().encode('dev-only-rate-limit-key-not-secret'),
+            memberKeySeed: null,
             heartbeat: { intervalS: 60, missedLimit: 3, graceS: 15, perEngineLimit: 5 },
             linkCodeTtlMs: 30 * 60_000,
             stripeSecretKey: null,
@@ -215,6 +223,13 @@ describe('parseConfig', () => {
             'RATE_LIMIT_HMAC_KEY',
         ]);
         expect(parseConfig({ ...bindings, ...stagingVars }).rateLimitHmacKey).toHaveLength(38);
+    });
+
+    it('takes an optional member key, refusing the committed dev one outside dev', () => {
+        expect(parseConfig({ ...bindings, ...stagingVars }).memberKeySeed).toBeNull();
+        expect(parseConfig({ ...bindings, ...devVars, MEMBER_KEY: DEV_MEMBER_KEY }).memberKeySeed).toHaveLength(32);
+        expect(failedPaths({ ...bindings, ...stagingVars, MEMBER_KEY: DEV_MEMBER_KEY })).toEqual(['MEMBER_KEY']);
+        expect(failedPaths({ ...bindings, ...devVars, MEMBER_KEY: 'c2hvcnQ' })).toEqual(['MEMBER_KEY']);
     });
 
     it('requires a plain sender address', () => {

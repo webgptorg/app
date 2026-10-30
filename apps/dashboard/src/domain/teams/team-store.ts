@@ -2,6 +2,7 @@ import type { EngineId } from '@ptbk/protocol';
 
 import type { TeamName } from '../../shared/team-name';
 import type { InviteId, LinkCodeId, OrgAuditEntryId, OrgId, TeamId, UserId } from '../ids';
+import type { Locale } from '../locale';
 import type { OrgRole } from '../roles';
 
 /** The `org_audit_log` entry a change writes with it, all or nothing. */
@@ -27,6 +28,55 @@ export interface PersonRecord {
     readonly role: OrgRole;
     /** When they joined the team, or the organization for {@link TeamStore.listOrgMembers}. */
     readonly joinedAt: number;
+}
+
+/**
+ * What the dashboard knows of someone's access to the team's engine: `none` until they open it, `waiting` once a ticket
+ * went out, `approved` once the engine acked it. The engine stays the authority; this is only what it told us.
+ */
+export type MemberAccess = 'none' | 'waiting' | 'approved';
+
+export interface TeamPersonRecord extends PersonRecord {
+    readonly access: MemberAccess;
+}
+
+export interface TicketRecord {
+    /** The ticket's `ticketId`. */
+    readonly id: string;
+    readonly teamId: TeamId;
+    readonly engineId: EngineId;
+    readonly userId: UserId;
+    readonly issuedAt: number;
+    readonly expiresAt: number;
+}
+
+export type TicketOutcome = 'approved' | 'declined' | 'removed';
+
+/** What an applied ticket ack changed, for the email it may cause. */
+export interface TicketAckEffect {
+    readonly orgId: OrgId;
+    readonly teamId: TeamId;
+    readonly teamName: TeamName;
+    readonly userId: UserId;
+    readonly email: string;
+    readonly locale: Locale;
+}
+
+/** A ticket whose request the engine may now be holding, and who should hear of it. */
+export interface TicketNotice {
+    readonly ticketId: string;
+    readonly orgId: OrgId;
+    readonly teamId: TeamId;
+    readonly teamName: TeamName;
+    readonly requesterEmail: string;
+    /** The person who invited the requester, and the org owners and admins in the team; never the requester. */
+    readonly recipients: readonly { readonly email: string; readonly locale: Locale }[];
+}
+
+export interface PendingRevocation {
+    readonly id: string;
+    readonly userId: UserId;
+    readonly createdAt: number;
 }
 
 export interface OrgMemberRecord extends PersonRecord {
@@ -80,7 +130,9 @@ export interface TeamStore {
      */
     delete(orgId: OrgId, teamId: TeamId, audit: TeamAudit): Promise<'deleted' | 'not-found'>;
 
-    listMembers(orgId: OrgId, teamId: TeamId): Promise<readonly PersonRecord[]>;
+    listMembers(orgId: OrgId, teamId: TeamId): Promise<readonly TeamPersonRecord[]>;
+    /** People taken out of the team whose removal the team's engine has not acked yet. */
+    listRemoving(orgId: OrgId, teamId: TeamId): Promise<readonly PersonRecord[]>;
     /** `not-member`: the user is not in the organization; teams hold only its people. */
     addMember(
         orgId: OrgId,
@@ -102,6 +154,27 @@ export interface TeamStore {
         engineId: EngineId,
         fallback: { readonly teamId: TeamId; readonly name: TeamName; readonly at: number },
     ): Promise<void>;
+
+    /** Records a ticket the dashboard signed; the person's access becomes `waiting` unless already `approved`. */
+    recordTicket(ticket: TicketRecord): Promise<void>;
+    /**
+     * Applies the engine's ack of a ticket it was sent: `approved` grants, `declined` resets, `removed` (later, when the
+     * engine removed that member) drops the person from the team without a revocation. Null for a ticket of another
+     * engine, one never issued, or an ack already applied.
+     */
+    applyTicketAck(
+        engineId: EngineId,
+        ticketId: string,
+        outcome: TicketOutcome,
+        at: number,
+    ): Promise<TicketAckEffect | null>;
+    /** Unresolved tickets of the engine nobody was told about yet, issued after `since`. */
+    ticketsAwaitingNotice(engineId: EngineId, since: number): Promise<readonly TicketNotice[]>;
+    markNoticed(ticketIds: readonly string[], at: number): Promise<void>;
+    /** Unacked revocations of the engine, oldest first. */
+    pendingRevocations(engineId: EngineId, limit: number): Promise<readonly PendingRevocation[]>;
+    /** Closes a revocation the engine acked; one of another engine or already closed stays as it is. */
+    closeRevocation(engineId: EngineId, revocationId: string, outcome: string, at: number): Promise<void>;
 
     listOrgMembers(orgId: OrgId): Promise<readonly OrgMemberRecord[]>;
     changeRole(

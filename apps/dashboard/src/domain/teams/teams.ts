@@ -7,7 +7,7 @@ import type { Clock } from '../ports/clock';
 import type { Logger } from '../ports/logger';
 import type { Random } from '../ports/random';
 import type { EngineStore } from '../registration/engine-store';
-import type { PersonRecord, TeamAudit, TeamRecord, TeamStore } from './team-store';
+import type { TeamAudit, TeamPersonRecord, TeamRecord, TeamStore } from './team-store';
 
 export interface TeamDeps {
     readonly teams: TeamStore;
@@ -86,7 +86,7 @@ export async function listTeamMembers(
     deps: Pick<TeamDeps, 'teams'>,
     actor: TeamActor,
     teamId: TeamId,
-): Promise<readonly PersonRecord[] | null> {
+): Promise<readonly TeamPersonRecord[] | null> {
     const team = await findVisibleTeam(deps, actor, teamId);
     return team === null ? null : deps.teams.listMembers(actor.orgId, teamId);
 }

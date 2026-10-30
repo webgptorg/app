@@ -13,6 +13,7 @@ import { createFakeEntitlements } from './fake-entitlements';
 import { createMemoryAuthStore } from './memory-auth-store';
 import { createMemoryRegistrationStores, type MemoryRegistrationStores } from './memory-registration-store';
 import { createMemoryTeamStore } from './memory-team-store';
+import type { MemberKeySource } from '../domain/teams/member-key';
 import { TEST_ENGINE_DOMAIN } from './test-engine';
 
 export const REGISTRATION_START_MS = 1_800_000_000_000;
@@ -27,6 +28,7 @@ export function createTestRegistration(
         readonly wrapLinkCodes?: (store: LinkCodeStore, stores: MemoryRegistrationStores) => LinkCodeStore;
         readonly linkCodeTtlMs?: number;
         readonly engineDomain?: Hostname;
+        readonly memberKey?: MemberKeySource;
     } = {},
 ) {
     const clock = createFakeClock(REGISTRATION_START_MS);
@@ -46,6 +48,7 @@ export function createTestRegistration(
         engines: stores.engines,
         teams,
         random: cryptoRandom,
+        memberKey: options.memberKey ?? (() => Promise.resolve(null)),
         policy,
         clock,
         logger,

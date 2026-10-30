@@ -344,5 +344,122 @@ export function describeTeamStoreContract(suite: string, makeFixture: () => Team
                 (await fixture.auditActions(owner.orgId)).filter((action) => action === 'invite.accept'),
             ).toHaveLength(2);
         });
+
+        async function ticket(teamId: TeamId, engineId: EngineId, userId: UserId, issuedAt = NOW): Promise<string> {
+            const id = toBase64Url(cryptoRandom.bytes(32));
+            await fixture.teams.recordTicket({
+                id,
+                teamId,
+                engineId,
+                userId,
+                issuedAt,
+                expiresAt: issuedAt + 15 * 60_000,
+            });
+            return id;
+        }
+
+        async function accessOf(teamId: TeamId, userId: UserId) {
+            return (await fixture.teams.listMembers(owner.orgId, teamId)).find((person) => person.userId === userId)
+                ?.access;
+        }
+
+        it('follows a member’s access through tickets and the engine’s acks', async () => {
+            const a = await team();
+            const engineId = await engineFor(a);
+            await fixture.teams.addMember(owner.orgId, a, member.id, entry(owner.userId));
+            expect(await accessOf(a, member.id)).toBe('none');
+
+            const declined = await ticket(a, engineId, member.id);
+            expect(await accessOf(a, member.id)).toBe('waiting');
+            expect(await fixture.teams.applyTicketAck(engineId, declined, 'declined', NOW + 1)).toMatchObject({
+                teamId: a,
+                userId: member.id,
+                email: member.email,
+            });
+            expect(await accessOf(a, member.id)).toBe('none');
+            expect(await fixture.teams.applyTicketAck(engineId, declined, 'approved', NOW + 2)).toBeNull();
+
+            const approved = await ticket(a, engineId, member.id);
+            const otherEngine = await createTestEngine();
+            expect(await fixture.teams.applyTicketAck(otherEngine.engineId, approved, 'approved', NOW + 3)).toBeNull();
+            expect(await fixture.teams.applyTicketAck(engineId, 'never-issued-ticket', 'approved', NOW + 3)).toBeNull();
+            expect(await fixture.teams.applyTicketAck(engineId, approved, 'approved', NOW + 3)).toMatchObject({
+                teamName: 'Client A',
+                locale: 'cs',
+            });
+            expect(await accessOf(a, member.id)).toBe('approved');
+            await ticket(a, engineId, member.id);
+            expect(await accessOf(a, member.id)).toBe('approved');
+
+            expect(await fixture.teams.applyTicketAck(engineId, approved, 'removed', NOW + 4)).not.toBeNull();
+            expect(await fixture.teams.isMember(owner.orgId, a, member.id)).toBe(false);
+            expect(await fixture.teams.applyTicketAck(engineId, approved, 'removed', NOW + 5)).toBeNull();
+            expect(await fixture.revocations(owner.orgId)).toEqual([]);
+        });
+
+        it('tells the inviter and the team’s owners and admins of a waiting request, once', async () => {
+            const a = await team();
+            const engineId = await engineFor(a);
+            const admin = testAccount(`c-admin-${crypto.randomUUID()}@example.test`).user;
+            const outsideAdmin = testAccount().user;
+            await fixture.addMember(owner.orgId, admin, 'admin');
+            await fixture.addMember(owner.orgId, outsideAdmin, 'admin');
+            await fixture.teams.addMember(owner.orgId, a, admin.id, entry(owner.userId));
+            const newcomer = testAccount();
+            await fixture.addAccount(newcomer);
+            const invited = invite({ email: newcomer.user.email, teamIds: [a], invitedByUserId: outsideAdmin.id });
+            await fixture.teams.insertInvite(invited, entry(outsideAdmin.id));
+            await fixture.teams.acceptInvite(invited.tokenHash, newcomer.userId, {
+                id: entry(newcomer.userId).id,
+                at: NOW,
+            });
+
+            const old = await ticket(a, engineId, newcomer.userId, NOW - 10);
+            const fresh = await ticket(a, engineId, newcomer.userId, NOW + 10);
+            const notices = await fixture.teams.ticketsAwaitingNotice(engineId, NOW);
+            expect(notices.map((notice) => notice.ticketId)).toEqual([fresh]);
+            expect(notices[0]).toMatchObject({ teamId: a, teamName: 'Client A', requesterEmail: newcomer.user.email });
+            expect(notices[0]?.recipients.map((recipient) => recipient.email).sort()).toEqual(
+                [owner.user.email, admin.email, outsideAdmin.email].sort(),
+            );
+            await fixture.teams.markNoticed([fresh], NOW + 20);
+            await fixture.teams.markNoticed([], NOW + 20);
+            expect(await fixture.teams.ticketsAwaitingNotice(engineId, NOW)).toEqual([]);
+            expect((await fixture.teams.ticketsAwaitingNotice(engineId, NOW - 100)).map((n) => n.ticketId)).toEqual([
+                old,
+            ]);
+        });
+
+        it('hands out pending revocations oldest first, closes acked ones, and shows who is still being removed', async () => {
+            const a = await team();
+            const engineId = await engineFor(a);
+            const second = testAccount().user;
+            await fixture.addMember(owner.orgId, second, 'member');
+            await fixture.teams.addMember(owner.orgId, a, member.id, entry(owner.userId));
+            await fixture.teams.addMember(owner.orgId, a, second.id, entry(owner.userId));
+            await fixture.teams.removeMember(owner.orgId, a, member.id, entry(owner.userId, NOW + 1));
+            await fixture.teams.removeMember(owner.orgId, a, second.id, entry(owner.userId, NOW + 2));
+            const pending = await fixture.teams.pendingRevocations(engineId, 32);
+            expect(pending.map((revocation) => revocation.userId)).toEqual([member.id, second.id]);
+            expect(await fixture.teams.pendingRevocations(engineId, 1)).toHaveLength(1);
+            expect(pending[0]?.id).toMatch(/^[A-Za-z0-9_-]{16,64}$/);
+            expect((await fixture.teams.listRemoving(owner.orgId, a)).map((person) => person.userId).sort()).toEqual(
+                [member.id, second.id].sort(),
+            );
+
+            const otherEngine = await createTestEngine();
+            await fixture.teams.closeRevocation(otherEngine.engineId, pending[0]?.id ?? '', 'revoked', NOW + 3);
+            expect(await fixture.teams.pendingRevocations(engineId, 32)).toHaveLength(2);
+            await fixture.teams.closeRevocation(engineId, pending[0]?.id ?? '', 'revoked', NOW + 3);
+            expect((await fixture.teams.pendingRevocations(engineId, 32)).map((r) => r.userId)).toEqual([second.id]);
+            expect((await fixture.teams.listRemoving(owner.orgId, a)).map((person) => person.userId)).toEqual([
+                second.id,
+            ]);
+
+            // Back in the team, they are a member again, not someone being removed.
+            await fixture.teams.addMember(owner.orgId, a, second.id, entry(owner.userId));
+            expect(await fixture.teams.listRemoving(owner.orgId, a)).toEqual([]);
+            expect(await fixture.teams.listRemoving(other.orgId, a)).toEqual([]);
+        });
     });
 }

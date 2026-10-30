@@ -80,6 +80,7 @@ export function createTestAuthDeps(
             signIn: () => 'https://app.ptbk.test/signin',
             recover: () => 'https://app.ptbk.test/recover',
             invite: (token) => `https://app.ptbk.test/invites#${token}`,
+            team: (teamId) => `https://app.ptbk.test/teams/${teamId}`,
         },
     };
 }

@@ -16,7 +16,8 @@ import {
 } from '../../domain/teams/invites';
 import type { ActiveSession } from '../../domain/auth/account';
 import { changeOrgRole, leaveOrg, removeFromOrg } from '../../domain/teams/people';
-import type { TeamRecord } from '../../domain/teams/team-store';
+import { issueAccessTicket, type MemberAccessDeps } from '../../domain/teams/member-access';
+import type { InviteRecord, TeamRecord } from '../../domain/teams/team-store';
 import {
     addTeamMember,
     createTeam,
@@ -28,12 +29,20 @@ import {
     renameTeam,
     type TeamActor,
 } from '../../domain/teams/teams';
-import { apiRoutes, type TeamView } from '../../shared/api/routes';
+import { apiRoutes, type InviteView, type TeamView } from '../../shared/api/routes';
 import { LINK_CODE_PLACEHOLDER } from '../config';
 import type { DashboardDeps } from '../deps';
 import type { RequestContext, RouteBinder } from './bind-route';
 
 const NO_CONTENT = { kind: 'ok', body: undefined, status: 204 } as const;
+/** The engine's join gateway page (teams spec, "Adding a person"), under its reserved `/auth/` prefix. */
+const JOIN_PATH = '/auth/join';
+
+export function memberAccessDeps(
+    deps: Pick<DashboardDeps, 'teams' | 'engines' | 'memberKey' | 'clock' | 'random' | 'logger' | 'links'>,
+): MemberAccessDeps {
+    return { ...deps, teamLink: (teamId) => deps.links.team(teamId) };
+}
 const NOT_FOUND = { kind: 'problem', status: 404, code: 'not-found' } as const;
 const LAST_OWNER = { kind: 'problem', status: 409, code: 'last-owner' } as const;
 
@@ -43,6 +52,17 @@ function requestLocale(request: RequestContext) {
         cookieHeader: request.header('cookie'),
         acceptLanguage: request.header('accept-language'),
     });
+}
+
+function inviteView(invite: InviteRecord): InviteView {
+    return {
+        inviteId: invite.id,
+        email: invite.email,
+        role: invite.role,
+        teamIds: [...invite.teamIds],
+        createdAt: invite.createdAt,
+        expiresAt: invite.expiresAt,
+    };
 }
 
 async function teamView(deps: Pick<DashboardDeps, 'teams'>, actor: TeamActor, team: TeamRecord): Promise<TeamView> {
@@ -92,7 +112,19 @@ export function bindTeamRoutes(
         if (team === null || members === null) {
             return NOT_FOUND;
         }
-        return { kind: 'ok', body: { team: await teamView(deps, session.actor, team), members: [...members] } };
+        const [removing, invites] = await Promise.all([
+            deps.teams.listRemoving(session.actor.orgId, teamId),
+            deps.teams.listPendingInvites(session.actor.orgId, deps.clock.nowMs()),
+        ]);
+        return {
+            kind: 'ok',
+            body: {
+                team: await teamView(deps, session.actor, team),
+                members: [...members],
+                removing: [...removing],
+                invites: invites.filter((invite) => invite.teamIds.includes(teamId)).map(inviteView),
+            },
+        };
     });
 
     bind(router, mount, apiRoutes.renameTeam, async ({ input, session }) => {
@@ -145,6 +177,28 @@ export function bindTeamRoutes(
         };
     });
 
+    bind(router, mount, apiRoutes.createAccessTicket, async ({ input, session }) => {
+        const outcome = await issueAccessTicket(
+            memberAccessDeps(deps),
+            { ...session.actor, email: session.user.email },
+            teamIdSchema.parse(input.params.teamId),
+        );
+        switch (outcome.kind) {
+            case 'issued':
+                return {
+                    kind: 'ok',
+                    body: {
+                        url: `https://${outcome.hostname}${JOIN_PATH}#${outcome.ticket}`,
+                        expiresAt: outcome.expiresAt,
+                    },
+                };
+            case 'not-found':
+                return NOT_FOUND;
+            case 'unavailable':
+                return { kind: 'problem', status: 503, code: 'unavailable' };
+        }
+    });
+
     bind(router, mount, apiRoutes.addTeamMember, async ({ input, session }) => {
         const outcome = await addTeamMember(
             deps,
@@ -192,14 +246,7 @@ export function bindTeamRoutes(
             kind: 'ok',
             body: {
                 members: members.map((member) => ({ ...member, teamIds: [...member.teamIds] })),
-                invites: invites.map((invite) => ({
-                    inviteId: invite.id,
-                    email: invite.email,
-                    role: invite.role,
-                    teamIds: [...invite.teamIds],
-                    createdAt: invite.createdAt,
-                    expiresAt: invite.expiresAt,
-                })),
+                invites: invites.map(inviteView),
             },
         };
     });

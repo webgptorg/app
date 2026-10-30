@@ -65,7 +65,19 @@ const ALLOWLIST: Readonly<Record<string, readonly string[]>> = {
     ],
     // Teams (ADR 0018): a name the organization typed, and who is in it. No engine content.
     teams: ['id', 'org_id', 'name', 'created_at', 'deleted_at'],
-    team_members: ['team_id', 'user_id', 'created_at'],
+    team_members: ['team_id', 'user_id', 'created_at', 'access'],
+    // Access tickets the dashboard signed: which person it sent to which engine, and the engine's ack. Never the ticket.
+    access_tickets: [
+        'id',
+        'team_id',
+        'engine_id',
+        'user_id',
+        'issued_at',
+        'expires_at',
+        'outcome',
+        'outcome_at',
+        'noticed_at',
+    ],
     // Invitations: the token only as SHA-256, the invited address, role and teams, 7-day lifetime.
     invites: [
         'id',
