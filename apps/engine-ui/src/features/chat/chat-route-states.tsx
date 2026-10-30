@@ -18,7 +18,7 @@ export function ChatNotFound() {
                 description={m.chat_not_found_body()}
                 headingLevel={2}
                 action={
-                    <Link to="/agents/$agentId/chat" params={{ agentId }} variant="standalone">
+                    <Link to="/agents/$agentId/chat/all" params={{ agentId }} variant="standalone">
                         {m.chat_back()}
                     </Link>
                 }

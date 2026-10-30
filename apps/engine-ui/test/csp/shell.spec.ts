@@ -10,6 +10,7 @@ const ROUTES = [
     `/agents/${FAKE_AGENT_ID}`,
     `/agents/${FAKE_AGENT_ID}/settings`,
     `/agents/${FAKE_AGENT_ID}/chat`,
+    `/agents/${FAKE_AGENT_ID}/chat/all`,
     `/agents/${FAKE_AGENT_ID}/chat/${FAKE_CHAT_ID}`,
     `/agents/${FAKE_AGENT_ID}/runs`,
     '/runs',

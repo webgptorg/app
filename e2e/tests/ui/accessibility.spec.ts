@@ -22,7 +22,13 @@ const MAIN_PAGES = [
 
 async function mainPages(page: Page): Promise<readonly string[]> {
     const agent = required((await apiList<{ id: string }>(page, '/agents'))[0], 'agent');
-    return [...MAIN_PAGES, `/agents/${agent.id}`, `/agents/${agent.id}/chat`, `/agents/${agent.id}/book`];
+    return [
+        ...MAIN_PAGES,
+        `/agents/${agent.id}`,
+        `/agents/${agent.id}/chat`,
+        `/agents/${agent.id}/chat/all`,
+        `/agents/${agent.id}/book`,
+    ];
 }
 
 async function open(page: Page, url: string): Promise<void> {

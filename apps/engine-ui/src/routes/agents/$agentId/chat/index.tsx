@@ -1,19 +1,20 @@
 import { AgentId } from '@ptbk/engine-api';
 import { createFileRoute } from '@tanstack/react-router';
 
-import { ChatListPage } from '../../../../features/chat/chat-list-page';
-import { chatListParams, ChatListSearch } from '../../../../features/chat/chat-list-search';
+import { redirectToChatTable } from '../../../../features/chat/chat-home-redirect';
+import { ChatListSearch } from '../../../../features/chat/chat-list-search';
 import { chatListQueryOptions } from '../../../../features/chat/chat-queries';
+import { NewChatPage } from '../../../../features/chat/new-chat-page';
 
 export const Route = createFileRoute('/agents/$agentId/chat/')({
+    staticData: { fillViewport: true },
     validateSearch: ChatListSearch,
-    loaderDeps: ({ search }) => chatListParams(search),
-    // Not awaited: the table keeps the previous page on screen while the next one loads (keepPreviousData).
-    loader: ({ context, params, deps }) => {
+    beforeLoad: redirectToChatTable,
+    // The recent list's first page, not awaited: the message box should not wait for it.
+    loader: ({ context, params }) => {
         const agentId = AgentId.safeParse(params.agentId).data;
         if (agentId === undefined) return;
-        // A failure shows in the table (with retry) once the component's own query sees it.
-        context.queryClient.query(chatListQueryOptions(context.engineApi, agentId, deps)).catch(() => undefined);
+        context.queryClient.query(chatListQueryOptions(context.engineApi, agentId, {})).catch(() => undefined);
     },
-    component: ChatListPage,
+    component: NewChatPage,
 });

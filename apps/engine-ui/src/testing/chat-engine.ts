@@ -59,6 +59,8 @@ export interface ChatEngineOptions {
     readonly messages?: readonly SeedMessage[];
     readonly permissions?: readonly Permission[];
     readonly replyScript?: ReplyScript;
+    /** Ada's book, for a profile the default one lacks (e.g. `INITIAL MESSAGE`); its first line must stay "Ada". */
+    readonly agentSource?: string;
 }
 
 type ChatMethods = EngineApiClient['chats'];
@@ -86,7 +88,13 @@ export function createChatEngine(options: ChatEngineOptions = {}): ChatEngine {
                     lastSeenAt: null,
                 },
             ],
-            agents: [{ id: CHAT_AGENT_ID, source: `${CHAT_AGENT_NAME}\nPERSONA Research`, visibility: 'public' }],
+            agents: [
+                {
+                    id: CHAT_AGENT_ID,
+                    source: options.agentSource ?? `${CHAT_AGENT_NAME}\nPERSONA Research`,
+                    visibility: 'public',
+                },
+            ],
             chats: options.chats ?? [],
             messages: options.messages ?? [],
         },
