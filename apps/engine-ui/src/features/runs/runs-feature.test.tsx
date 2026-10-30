@@ -184,7 +184,7 @@ describe('run activity renderers', { timeout: TIMEOUT_MS }, () => {
         expect(within(list).getByText('Took 1 min 5 s. Cost $0.0042.')).toBeDefined();
         expect(within(list).getByText('A run from an email failed')).toBeDefined();
         expect(within(list).getByText('Too many requests')).toBeDefined();
-        expect(within(list).getByText('A run from an email was cancelled')).toBeDefined();
+        expect(within(list).getByText('A run from an email was stopped')).toBeDefined();
         for (const link of within(list).getAllByRole('link', { name: 'Open run' })) {
             expect(link.getAttribute('href')).toBe(`/runs/${RUN_IDS.completed}`);
         }
@@ -193,7 +193,7 @@ describe('run activity renderers', { timeout: TIMEOUT_MS }, () => {
             'A run from an email started',
             'A run from an email completed',
             'A run from an email failed',
-            'A run from an email was cancelled',
+            'A run from an email was stopped',
         ]);
     });
 });

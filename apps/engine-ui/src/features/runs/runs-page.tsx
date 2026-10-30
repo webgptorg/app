@@ -19,8 +19,7 @@ export function RunsPage() {
         [navigate],
     );
     return (
-        <Page title={m.runs_title()}>
-            <p className="text-sm text-text-muted">{m.runs_intro()}</p>
+        <Page title={m.runs_title()} description={m.runs_intro()}>
             <RunsTable search={search} onSearchChange={onSearchChange} />
         </Page>
     );

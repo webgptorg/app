@@ -1,25 +1,27 @@
-import { RunId } from '@ptbk/engine-api';
-import type { ReadRunDetail, ToolCall } from '@ptbk/engine-api';
-import { Badge, Banner, Card, CodeText, EmptyState, ErrorState, Skeleton, useLocale } from '@ptbk/ui';
+import { KNOWN_CAPABILITIES, RunId } from '@ptbk/engine-api';
+import type { ReadRun, ReadRunDetail, ToolCall, TriggerId } from '@ptbk/engine-api';
+import { Badge, Banner, Card, CodeText, EmptyState, ErrorState, RelativeTime, Skeleton, useLocale } from '@ptbk/ui';
 import type { BadgeTone } from '@ptbk/ui';
 import { useQuery } from '@tanstack/react-query';
 import { getRouteApi } from '@tanstack/react-router';
-import { ArrowLeft, CircleCheck, Circle } from 'lucide-react';
+import { ChevronRight, CircleCheck, Circle } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 import { classifyApiError } from '../../app/api-errors';
 import { useEngineApi } from '../../app/engine-api-context';
 import { ButtonLink, Link } from '../../app/link';
 import { isPageLevelFailure } from '../../app/list-errors';
+import { useAllows } from '../../app/registry/use-visible-features';
 import { m } from '../../paraglide/messages';
-import { sourceLabel } from '../chat/chat-source';
-import { Page } from '../shell/page';
+import { BackLink, Page } from '../shell/page';
 import { NARROW_QUERY, useMediaQuery } from '../shell/use-media-query';
+import { triggerQueryOptions } from '../triggers/triggers-queries';
 import { DiffView } from './diff-view';
 import { RunActions } from './run-actions';
-import { formatDuration, ReportedDuration, RunCost, runTitle } from './run-format';
+import { finishedDurationMs, formatDuration, NotReported, RunCost, RunDuration, runTitle } from './run-format';
+import { runSourceLabel } from './run-source';
 import { RunStatusBadge } from './run-status';
-import { runQueryOptions } from './runs-queries';
+import { runListQueryOptions, runQueryOptions } from './runs-queries';
 
 const route = getRouteApi('/runs/$runId');
 
@@ -56,35 +58,171 @@ function LoadedRunDetail({ runId }: { readonly runId: RunId }) {
 
 function RunDetail({ run }: { readonly run: ReadRunDetail }) {
     const narrow = useMediaQuery(NARROW_QUERY);
-    const actions = <RunActions run={run} />;
+    const retry = useRetryOf(run);
+    const actions = <RunActions run={run} retried={retry !== null} />;
+    const hasOutputs =
+        run.outputs.messages.length > 0 || run.outputs.files.length > 0 || run.outputs.projectChanges.length > 0;
     return (
         <Page
             title={runTitle(run)}
-            back={
-                <Link to="/runs" variant="standalone" className="inline-flex items-center gap-1 text-sm">
-                    <ArrowLeft aria-hidden className="size-4" />
-                    {m.run_back_to_runs()}
-                </Link>
-            }
+            documentTitle={[runTitle(run), m.runs_title()]}
+            back={<RunBackLink run={run} />}
             {...(narrow ? {} : { actions })}
         >
-            <RunHeader run={run} />
+            <RunSummary run={run} />
             {run.error === null ? null : (
-                <Banner tone="danger" title={m.run_error_title({ code: run.error.code })}>
-                    {/* The summary may quote what the agent read: text only. */}
-                    <span className="break-words whitespace-pre-wrap">{run.error.summary}</span>
+                <Banner tone="danger" title={runErrorTitle(run.error.code)}>
+                    <span className="flex flex-col gap-1">
+                        {/* The summary may quote what the agent read: text only. */}
+                        <span className="break-words whitespace-pre-wrap">{run.error.summary}</span>
+                        <span className="text-xs text-text-muted">
+                            {m.run_error_code()} <span className="font-mono">{run.error.code}</span>
+                        </span>
+                        {retry === null ? null : (
+                            <span>
+                                {m.run_retried_as()}{' '}
+                                <Link to="/runs/$runId" params={{ runId: retry.id }}>
+                                    {m.run_retried_open()}
+                                </Link>
+                            </span>
+                        )}
+                    </span>
                 </Banner>
             )}
-            <StepsSection run={run} />
-            <ToolCallsSection toolCalls={run.toolCalls} />
-            <UsageSection run={run} />
-            <OutputsSection run={run} />
+            {run.progress === null ? null : <StepsSection run={run} progress={run.progress} />}
+            {run.toolCalls.length === 0 ? null : <ToolCallsSection toolCalls={run.toolCalls} />}
+            {hasOutputs ? <OutputsSection run={run} /> : null}
+            {hasTokenUsage(run) ? <UsageSection run={run} /> : null}
+            <RunDetails run={run} />
             {narrow ? (
                 <div className="sticky bottom-0 z-10 -mx-4 border-t border-divider bg-raised px-4 py-3 empty:hidden">
                     {actions}
                 </div>
             ) : null}
         </Page>
+    );
+}
+
+/** Back to where the member came from: the agent's Runs tab when they opened the run there, else all runs. */
+function RunBackLink({ run }: { readonly run: ReadRunDetail }) {
+    const { from } = route.useSearch();
+    if (from === 'agent') {
+        return (
+            <BackLink to="/agents/$agentId/runs" params={{ agentId: run.agentId }}>
+                {m.run_back_to_agent_runs({ agent: run.agentName ?? run.agentId })}
+            </BackLink>
+        );
+    }
+    return <BackLink to="/runs">{m.run_back_to_runs()}</BackLink>;
+}
+
+// Codes are open slugs (the engine may add more); known ones get a plain title, the rest a generic one.
+function runErrorTitle(code: string): string {
+    switch (code) {
+        case 'tool-error':
+            return m.run_error_tool();
+        case 'tool-timeout':
+        case 'timeout':
+            return m.run_error_timeout();
+        case 'agent-unavailable':
+            return m.run_error_agent_unavailable();
+        default:
+            return m.run_error_generic();
+    }
+}
+
+/** Only the first page after the failed run is searched: a retry is queued right after it, so it is nearly always there. */
+const RETRY_LOOKUP_LIMIT = 50;
+
+/** The run that retried this failed one, if any; the contract has no reverse link, so it is looked up among later runs. */
+function useRetryOf(run: ReadRunDetail): ReadRun | null {
+    const params = { agentId: run.agentId, from: run.queuedAt, sort: 'queuedAt', limit: RETRY_LOOKUP_LIMIT } as const;
+    const later = useQuery({ ...runListQueryOptions(useEngineApi(), params), enabled: run.status === 'failed' });
+    return later.data?.items.find((candidate) => candidate.retryOf === run.id) ?? null;
+}
+
+function SummaryItem({ label, children }: { readonly label: string; readonly children: ReactNode }) {
+    return (
+        <div className="flex min-w-0 items-center">
+            <dt className="sr-only">{label}</dt>
+            <dd className="min-w-0 break-words">{children}</dd>
+        </div>
+    );
+}
+
+/** One quiet line under the title: what a member asks first. The rest waits in Details. */
+function RunSummary({ run }: { readonly run: ReadRunDetail }) {
+    const cost = run.usage?.cost ?? null;
+    const showDuration = (run.status === 'running' && run.startedAt !== null) || finishedDurationMs(run) !== null;
+    return (
+        <dl className="-mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-text-muted">
+            <SummaryItem label={m.run_fact_status()}>
+                <RunStatusBadge status={run.status} cancelling={run.cancelRequestedAt !== null} />
+            </SummaryItem>
+            <SummaryItem label={m.run_fact_agent()}>
+                <Link to="/agents/$agentId" params={{ agentId: run.agentId }}>
+                    {run.agentName ?? run.agentId}
+                </Link>
+            </SummaryItem>
+            <SummaryItem label={m.run_fact_source()}>
+                <Source run={run} />
+            </SummaryItem>
+            <SummaryItem label={m.run_fact_queued()}>
+                <RelativeTime value={new Date(run.queuedAt)} />
+            </SummaryItem>
+            {showDuration ? (
+                <SummaryItem label={m.run_usage_duration()}>
+                    <RunDuration run={run} />
+                </SummaryItem>
+            ) : null}
+            {cost === null ? null : (
+                <SummaryItem label={m.run_usage_cost()}>
+                    <RunCost cost={cost} />
+                </SummaryItem>
+            )}
+            {run.retryOf === null ? null : (
+                <SummaryItem label={m.run_fact_retry_of()}>
+                    <Link to="/runs/$runId" params={{ runId: run.retryOf }}>
+                        {m.run_fact_retry_of_link()}
+                    </Link>
+                </SummaryItem>
+            )}
+        </dl>
+    );
+}
+
+function Source({ run }: { readonly run: ReadRunDetail }) {
+    const label = runSourceLabel(run.source);
+    if (run.chatId !== null) {
+        return (
+            <Link to="/agents/$agentId/chat/$chatId" params={{ agentId: run.agentId, chatId: run.chatId }}>
+                {run.source === 'web' ? label : m.run_source_chat({ source: label })}
+            </Link>
+        );
+    }
+    if (run.triggerId !== null) return <TriggerSource label={label} triggerId={run.triggerId} />;
+    return <span>{label}</span>;
+}
+
+/** "Schedule · Weekly report", linking the trigger by name; never its ID. */
+function TriggerSource({ label, triggerId }: { readonly label: string; readonly triggerId: TriggerId }) {
+    const allowed = useAllows({ capability: KNOWN_CAPABILITIES.triggers, permission: 'triggers.read' });
+    const trigger = useQuery({ ...triggerQueryOptions(useEngineApi(), triggerId), enabled: allowed });
+    let name: ReactNode = null;
+    if (trigger.data !== undefined) {
+        name = (
+            <Link to="/triggers/$triggerId" params={{ triggerId }}>
+                {trigger.data.name}
+            </Link>
+        );
+    } else if (trigger.isError && isNotFound(trigger.error)) {
+        name = m.run_source_trigger_deleted();
+    }
+    if (name === null) return <span>{label}</span>;
+    return (
+        <span>
+            {label} · {name}
+        </span>
     );
 }
 
@@ -97,112 +235,79 @@ function Fact({ label, children }: { readonly label: string; readonly children: 
     );
 }
 
-function Unknown() {
-    return <span className="text-text-muted">{m.run_value_unknown()}</span>;
-}
-
 function DateTime({ at }: { readonly at: string | null }) {
     const locale = useLocale();
     if (at === null) return <span className="text-text-muted">{m.run_value_not_yet()}</span>;
     return <time dateTime={at}>{locale.formatDateTime(new Date(at))}</time>;
 }
 
-function Source({ run }: { readonly run: ReadRunDetail }) {
-    const label = sourceLabel(run.source);
-    if (run.chatId !== null) {
-        return (
-            <Link to="/agents/$agentId/chat/$chatId" params={{ agentId: run.agentId, chatId: run.chatId }}>
-                {m.run_source_chat({ source: label })}
-            </Link>
-        );
-    }
-    if (run.triggerId !== null) {
-        return (
-            <span>
-                {m.run_source_trigger({ source: label })} <CodeText value={run.triggerId} />
-            </span>
-        );
-    }
-    return <span>{label}</span>;
-}
-
-function RunHeader({ run }: { readonly run: ReadRunDetail }) {
+/** Exact times and how the run ran: for whoever investigates, folded away for everyone else. */
+function RunDetails({ run }: { readonly run: ReadRunDetail }) {
     return (
-        <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-            <Fact label={m.run_fact_status()}>
-                <RunStatusBadge status={run.status} cancelling={run.cancelRequestedAt !== null} />
-            </Fact>
-            <Fact label={m.run_fact_source()}>
-                <Source run={run} />
-            </Fact>
-            <Fact label={m.run_fact_agent()}>
-                <Link to="/agents/$agentId" params={{ agentId: run.agentId }}>
-                    {run.agentName ?? run.agentId}
-                </Link>
-            </Fact>
-            <Fact label={m.run_fact_queued()}>
-                <DateTime at={run.queuedAt} />
-            </Fact>
-            <Fact label={m.run_fact_started()}>
-                <DateTime at={run.startedAt} />
-            </Fact>
-            <Fact label={m.run_fact_completed()}>
-                <DateTime at={run.completedAt} />
-            </Fact>
-            <Fact label={m.run_fact_attempt()}>{run.attemptCount}</Fact>
-            <Fact label={m.run_fact_runner()}>{run.runner ?? <Unknown />}</Fact>
-            <Fact label={m.run_fact_model()}>{run.model ?? <Unknown />}</Fact>
-            {run.retryOf === null ? null : (
-                <Fact label={m.run_fact_retry_of()}>
-                    <Link to="/runs/$runId" params={{ runId: run.retryOf }}>
-                        {m.run_fact_retry_of_link()}
-                    </Link>
+        <details className="group rounded-surface border border-divider">
+            <summary className="flex cursor-pointer items-center gap-2 rounded-surface px-4 py-3 text-sm font-medium focus-visible:outline-2 focus-visible:outline-focus">
+                <ChevronRight aria-hidden className="size-4 transition-transform group-open:rotate-90" />
+                {m.run_details_title()}
+            </summary>
+            <dl className="grid grid-cols-2 gap-4 border-t border-divider p-4 text-sm sm:grid-cols-3">
+                <Fact label={m.run_fact_queued()}>
+                    <DateTime at={run.queuedAt} />
                 </Fact>
-            )}
-        </dl>
+                <Fact label={m.run_fact_started()}>
+                    <DateTime at={run.startedAt} />
+                </Fact>
+                <Fact label={m.run_fact_completed()}>
+                    <DateTime at={run.completedAt} />
+                </Fact>
+                <Fact label={m.run_fact_attempt()}>{run.attemptCount}</Fact>
+                <Fact label={m.run_fact_runner()}>{run.runner ?? <NotReported />}</Fact>
+                <Fact label={m.run_fact_model()}>{run.model ?? <NotReported />}</Fact>
+            </dl>
+        </details>
     );
 }
 
-function StepsSection({ run }: { readonly run: ReadRunDetail }) {
-    const progress = run.progress;
+function StepsSection({
+    run,
+    progress,
+}: {
+    readonly run: ReadRunDetail;
+    readonly progress: NonNullable<ReadRunDetail['progress']>;
+}) {
     return (
         <Card title={m.run_steps_title()}>
-            {progress === null ? (
-                <p className="text-sm text-text-muted">{m.run_steps_none()}</p>
-            ) : (
-                <div className="flex flex-col gap-3" aria-live={run.status === 'running' ? 'polite' : 'off'}>
-                    <p className="font-medium break-words">{progress.title}</p>
-                    {progress.now === null ? null : (
-                        <p className="text-sm break-words">
-                            <span className="text-text-muted">{m.run_steps_now()} </span>
-                            {progress.now}
-                        </p>
-                    )}
-                    {progress.next === null ? null : (
-                        <p className="text-sm break-words">
-                            <span className="text-text-muted">{m.run_steps_next()} </span>
-                            {progress.next}
-                        </p>
-                    )}
-                    <ol className="flex flex-col gap-1.5">
-                        {progress.items.map((item) => (
-                            <li key={item.id} className="flex items-start gap-2 text-sm">
-                                {item.status === 'completed' ? (
-                                    <CircleCheck aria-hidden className="mt-0.5 size-4 shrink-0 text-success" />
-                                ) : (
-                                    <Circle aria-hidden className="mt-0.5 size-4 shrink-0 text-text-muted" />
-                                )}
-                                <span className="break-words">
-                                    <span className="sr-only">
-                                        {item.status === 'completed' ? m.run_step_done() : m.run_step_pending()}{' '}
-                                    </span>
-                                    {item.text}
+            <div className="flex flex-col gap-3" aria-live={run.status === 'running' ? 'polite' : 'off'}>
+                <p className="font-medium break-words">{progress.title}</p>
+                {progress.now === null ? null : (
+                    <p className="text-sm break-words">
+                        <span className="text-text-muted">{m.run_steps_now()} </span>
+                        {progress.now}
+                    </p>
+                )}
+                {progress.next === null ? null : (
+                    <p className="text-sm break-words">
+                        <span className="text-text-muted">{m.run_steps_next()} </span>
+                        {progress.next}
+                    </p>
+                )}
+                <ol className="flex flex-col gap-1.5">
+                    {progress.items.map((item) => (
+                        <li key={item.id} className="flex items-start gap-2 text-sm">
+                            {item.status === 'completed' ? (
+                                <CircleCheck aria-hidden className="mt-0.5 size-4 shrink-0 text-success" />
+                            ) : (
+                                <Circle aria-hidden className="mt-0.5 size-4 shrink-0 text-text-muted" />
+                            )}
+                            <span className="break-words">
+                                <span className="sr-only">
+                                    {item.status === 'completed' ? m.run_step_done() : m.run_step_pending()}{' '}
                                 </span>
-                            </li>
-                        ))}
-                    </ol>
-                </div>
-            )}
+                                {item.text}
+                            </span>
+                        </li>
+                    ))}
+                </ol>
+            </div>
         </Card>
     );
 }
@@ -231,53 +336,55 @@ function ToolCallsSection({ toolCalls }: { readonly toolCalls: ReadRunDetail['to
     const locale = useLocale();
     return (
         <Card title={m.run_tools_title()}>
-            {toolCalls.length === 0 ? (
-                <p className="text-sm text-text-muted">{m.run_tools_none()}</p>
-            ) : (
-                <ul className="flex flex-col divide-y divide-divider">
-                    {toolCalls.map((call) => (
-                        <li key={call.id}>
-                            <details className="group py-2">
-                                <summary className="flex cursor-pointer flex-wrap items-center gap-x-3 gap-y-1 rounded-small focus-visible:outline-2 focus-visible:outline-focus">
-                                    <span className="font-mono text-sm break-all">{call.name}</span>
-                                    <Badge tone={TOOL_STATE_TONES[call.state]}>{toolStateLabel(call.state)}</Badge>
-                                    <span className="text-sm text-text-muted tabular-nums">
-                                        {call.durationMs === null
-                                            ? m.run_value_unknown()
-                                            : formatDuration(call.durationMs, (value) => locale.formatNumber(value))}
-                                    </span>
-                                </summary>
-                                <div className="mt-2 flex flex-col gap-2">
-                                    {call.logsTruncated ? (
-                                        <Banner tone="warning">{m.run_logs_truncated()}</Banner>
-                                    ) : null}
-                                    {call.logs === '' ? (
-                                        <p className="text-sm text-text-muted">{m.run_logs_empty()}</p>
-                                    ) : (
-                                        // Tool output is attacker-controlled once an agent reads outside content: text only.
-                                        <pre
-                                            // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
-                                            tabIndex={0}
-                                            className="run-text max-h-96 overflow-auto rounded-surface p-3 font-mono text-xs whitespace-pre-wrap break-words focus-visible:outline-2 focus-visible:outline-focus"
-                                        >
-                                            {call.logs}
-                                        </pre>
-                                    )}
-                                </div>
-                            </details>
-                        </li>
-                    ))}
-                </ul>
-            )}
+            <ul className="flex flex-col divide-y divide-divider">
+                {toolCalls.map((call) => (
+                    <li key={call.id}>
+                        <details className="group py-2">
+                            <summary className="flex cursor-pointer flex-wrap items-center gap-x-3 gap-y-1 rounded-small focus-visible:outline-2 focus-visible:outline-focus">
+                                <span className="font-mono text-sm break-all">{call.name}</span>
+                                <Badge tone={TOOL_STATE_TONES[call.state]}>{toolStateLabel(call.state)}</Badge>
+                                <span className="text-sm text-text-muted tabular-nums">
+                                    {call.durationMs === null
+                                        ? null
+                                        : formatDuration(call.durationMs, (value) => locale.formatNumber(value))}
+                                </span>
+                            </summary>
+                            <div className="mt-2 flex flex-col gap-2">
+                                {call.logsTruncated ? <Banner tone="warning">{m.run_logs_truncated()}</Banner> : null}
+                                {call.logs === '' ? (
+                                    <p className="text-sm text-text-muted">{m.run_logs_empty()}</p>
+                                ) : (
+                                    // Tool output is attacker-controlled once an agent reads outside content: text only.
+                                    <pre
+                                        // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
+                                        tabIndex={0}
+                                        className="run-text max-h-96 overflow-auto rounded-surface p-3 font-mono text-xs whitespace-pre-wrap break-words focus-visible:outline-2 focus-visible:outline-focus"
+                                    >
+                                        {call.logs}
+                                    </pre>
+                                )}
+                            </div>
+                        </details>
+                    </li>
+                ))}
+            </ul>
         </Card>
     );
 }
 
+function hasTokenUsage(run: ReadRunDetail): boolean {
+    return (
+        (run.usage?.inputTokens !== null && run.usage?.inputTokens !== undefined) ||
+        (run.usage?.outputTokens !== null && run.usage?.outputTokens !== undefined)
+    );
+}
+
+/** Tokens only: duration and cost already sit in the summary line. */
 function UsageSection({ run }: { readonly run: ReadRunDetail }) {
     const locale = useLocale();
     const tokens = (value: number | null | undefined) =>
         value === null || value === undefined ? (
-            <Unknown />
+            <NotReported />
         ) : (
             <span className="tabular-nums">{locale.formatNumber(value)}</span>
         );
@@ -286,12 +393,6 @@ function UsageSection({ run }: { readonly run: ReadRunDetail }) {
             <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
                 <Fact label={m.run_usage_input_tokens()}>{tokens(run.usage?.inputTokens)}</Fact>
                 <Fact label={m.run_usage_output_tokens()}>{tokens(run.usage?.outputTokens)}</Fact>
-                <Fact label={m.run_usage_duration()}>
-                    <ReportedDuration run={run} />
-                </Fact>
-                <Fact label={m.run_usage_cost()}>
-                    <RunCost cost={run.usage?.cost} />
-                </Fact>
             </dl>
         </Card>
     );
@@ -299,47 +400,49 @@ function UsageSection({ run }: { readonly run: ReadRunDetail }) {
 
 function OutputsSection({ run }: { readonly run: ReadRunDetail }) {
     const { messages, files, fileNames, projectChanges } = run.outputs;
-    const empty = messages.length === 0 && files.length === 0 && projectChanges.length === 0;
+    const filesLinked = useAllows({ capability: KNOWN_CAPABILITIES.files, permission: 'files.read' });
     return (
         <Card title={m.run_outputs_title()}>
-            {empty ? (
-                <p className="text-sm text-text-muted">{m.run_outputs_none()}</p>
-            ) : (
-                <div className="flex flex-col gap-6">
-                    {messages.length === 0 ? null : (
-                        <section className="flex flex-col gap-2">
-                            <h3 className="font-medium">{m.run_outputs_messages()}</h3>
-                            <ul className="flex flex-col gap-1">
-                                {messages.map((message) => (
-                                    <li key={message.messageId}>
-                                        <Link
-                                            to="/agents/$agentId/chat/$chatId"
-                                            params={{ agentId: run.agentId, chatId: message.chatId }}
-                                        >
-                                            {m.run_outputs_message_link()}
+            <div className="flex flex-col gap-6">
+                {messages.length === 0 ? null : (
+                    <section className="flex flex-col gap-2">
+                        <h3 className="font-medium">{m.run_outputs_messages()}</h3>
+                        <ul className="flex flex-col gap-1">
+                            {messages.map((message) => (
+                                <li key={message.messageId}>
+                                    <Link
+                                        to="/agents/$agentId/chat/$chatId"
+                                        params={{ agentId: run.agentId, chatId: message.chatId }}
+                                    >
+                                        {m.run_outputs_message_link()}
+                                    </Link>
+                                </li>
+                            ))}
+                        </ul>
+                    </section>
+                )}
+                {files.length === 0 ? null : (
+                    <section className="flex flex-col gap-2">
+                        <h3 className="font-medium">{m.run_outputs_files()}</h3>
+                        <ul className="flex flex-col gap-1 text-sm">
+                            {files.map((fileId, index) => (
+                                <li key={fileId} className="break-words">
+                                    {filesLinked ? (
+                                        <Link to="/files" search={{ file: fileId }}>
+                                            {fileNames[index] ?? fileId}
                                         </Link>
-                                    </li>
-                                ))}
-                            </ul>
-                        </section>
-                    )}
-                    {files.length === 0 ? null : (
-                        <section className="flex flex-col gap-2">
-                            <h3 className="font-medium">{m.run_outputs_files()}</h3>
-                            <ul className="flex flex-col gap-1 text-sm">
-                                {files.map((fileId, index) => (
-                                    <li key={fileId} className="break-all">
-                                        {fileNames[index] ?? fileId}
-                                    </li>
-                                ))}
-                            </ul>
-                        </section>
-                    )}
-                    {projectChanges.map((change, index) => (
-                        <ProjectChangeView key={`${change.commitHash}-${String(index)}`} change={change} />
-                    ))}
-                </div>
-            )}
+                                    ) : (
+                                        (fileNames[index] ?? fileId)
+                                    )}
+                                </li>
+                            ))}
+                        </ul>
+                    </section>
+                )}
+                {projectChanges.map((change, index) => (
+                    <ProjectChangeView key={`${change.commitHash}-${String(index)}`} change={change} />
+                ))}
+            </div>
         </Card>
     );
 }

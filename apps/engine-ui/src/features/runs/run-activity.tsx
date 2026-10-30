@@ -3,35 +3,13 @@ import { useLocale } from '@ptbk/ui';
 
 import { Link } from '../../app/link';
 import { m } from '../../paraglide/messages';
-import type { ChatSourceLabel } from '../chat/chat-source';
 import { formatDuration } from './run-format';
+import { runOrigin } from './run-source';
 
 type RunActivity = Extract<Activity, { readonly kind: `run.${string}` }>;
 
 function isRunActivity(activity: Activity): activity is RunActivity {
     return activity.kind.startsWith('run.');
-}
-
-/** The run as the subject of a sentence, named by what started it: "A scheduled run", "A run from a chat". */
-export function runOrigin(source: ChatSourceLabel): string {
-    switch (source) {
-        case 'web':
-            return m.run_origin_web();
-        case 'api':
-            return m.run_origin_api();
-        case 'email':
-            return m.run_origin_email();
-        case 'schedule':
-            return m.run_origin_schedule();
-        case 'member':
-            return m.run_origin_member();
-        case 'goal':
-            return m.run_origin_goal();
-        case 'webhook':
-            return m.run_origin_webhook();
-        case 'unknown':
-            return m.run_origin_unknown();
-    }
 }
 
 /**

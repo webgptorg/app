@@ -72,7 +72,7 @@ test('a scripted run progresses live in the timeline and in its detail', async (
     await expect(
         page.getByRole('region', { name: 'Tool calls' }).getByText('github.list_issues').first(),
     ).toBeVisible();
-    await expect(page.getByRole('region', { name: 'Usage and cost' })).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Token usage' })).toBeVisible();
 });
 
 test('a finished run shows usage, cost and the project change with the truncated diff', async ({
@@ -85,9 +85,9 @@ test('a finished run shows usage, cost and the project change with the truncated
     await page.goto(appUrl('/runs'));
     const { runId, change } = await runWithTruncatedDiff(page);
     await page.goto(appUrl(`/runs/${runId}`));
-    const usage = page.getByRole('region', { name: 'Usage and cost' });
+    const usage = page.getByRole('region', { name: 'Token usage' });
     await expect(factValue(usage, 'Input tokens')).toHaveText(/\d/);
-    await expect(factValue(usage, 'Cost')).toHaveText(/\$/);
+    await expect(factValue(page.locator('main'), 'Cost')).toHaveText(/\$/);
     const outputs = page.getByRole('region', { name: 'Outputs' });
     await expect(outputs.getByRole('heading', { name: `Changes in ${change.projectName}` })).toBeVisible();
     const firstFile = required(change.changedFiles[0], 'changed file');
@@ -98,7 +98,7 @@ test('a finished run shows usage, cost and the project change with the truncated
     await expect(outputs.getByRole('region', { name: `Diff of ${change.projectName}` })).toBeVisible();
 });
 
-test('a running run is cancelled and a failed one retried as a new linked run', async ({
+test('a running run is stopped and a failed one retried as a new linked run', async ({
     page,
     engine,
     signIn,
@@ -119,10 +119,11 @@ test('a running run is cancelled and a failed one retried as a new linked run', 
     await page.goto(appUrl(`/runs/${runId}`));
     const status = factValue(page.locator('main'), 'Status');
     await expect(status).toContainText('Running');
-    await page.getByRole('button', { name: 'Cancel run' }).click();
-    await expect(page.getByText('Cancelling…').first()).toBeVisible();
+    await page.getByRole('button', { name: 'Stop' }).click();
+    await expect(page.getByText('Stopping…').first()).toBeVisible();
+    await expect(page.getByText(/^Run ".+" stopped\.$/)).toBeVisible();
     await advanceTime(2_000);
-    await expect(status).toContainText('Cancelled');
+    await expect(status).toContainText('Stopped');
     expect((await apiGet<Run>(page, `/runs/${runId}`)).status).toBe('cancelled');
 
     const failed = required((await apiList<Run>(page, '/runs?status=failed'))[0], 'failed run');
@@ -131,12 +132,15 @@ test('a running run is cancelled and a failed one retried as a new linked run', 
     await expect(page.getByText(/as a new run\.$/)).toBeVisible();
     await expect(page).not.toHaveURL(new RegExp(`/runs/${failed.id}$`));
     const retryOf = factValue(page.locator('main'), 'Retry of');
-    await expect(retryOf.getByRole('link', { name: 'The failed run' })).toHaveAttribute('href', `/runs/${failed.id}`);
+    await expect(retryOf.getByRole('link', { name: 'Retry of a failed run' })).toHaveAttribute(
+        'href',
+        `/runs/${failed.id}`,
+    );
     const retried = required(/\/runs\/([^/?#]+)$/.exec(page.url())?.[1], 'new run ID');
     expect((await apiGet<{ retryOf: string | null }>(page, `/runs/${retried}`)).retryOf).toBe(failed.id);
 });
 
-test('a member without runs.control is offered neither cancel nor retry, and the engine refuses both', async ({
+test('a member without runs.control is offered neither stop nor retry, and the engine refuses both', async ({
     page,
     signIn,
     appUrl,
@@ -148,7 +152,7 @@ test('a member without runs.control is offered neither cancel nor retry, and the
 
     await page.goto(appUrl(`/runs/${running.id}`));
     await expect(factValue(page.locator('main'), 'Status')).toContainText('Running');
-    await expect(page.getByRole('button', { name: 'Cancel run' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Stop' })).toHaveCount(0);
     await page.goto(appUrl(`/runs/${failed.id}`));
     await expect(factValue(page.locator('main'), 'Status')).toContainText('Failed');
     await expect(page.getByRole('button', { name: 'Retry' })).toHaveCount(0);
