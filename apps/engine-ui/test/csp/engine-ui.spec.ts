@@ -367,8 +367,9 @@ test.describe('the built bundle under the engine CSP', () => {
         await page.getByRole('combobox', { name: /^Agent/ }).selectOption(FAKE_AGENT_ID);
         await page.getByRole('textbox', { name: /^Name/ }).fill('Weekly digest');
         await page.getByRole('combobox', { name: /^Time zone/ }).selectOption('Europe/Prague');
+        await page.getByRole('combobox', { name: /^Repeats/ }).selectOption('cron');
         await page.getByRole('textbox', { name: /^Cron expression/ }).fill('*/15 * * * *');
-        const preview = page.getByRole('region', { name: 'Next fires' });
+        const preview = page.getByRole('region', { name: 'Next runs' });
         await expect(preview.getByText('Every 15 minutes, Europe/Prague')).toBeVisible();
         await expect(preview.getByRole('listitem')).toHaveCount(5);
         await expect(page.getByRole('combobox', { name: /^Kind/ }).locator('option[value="webhook"]')).toBeDisabled();
