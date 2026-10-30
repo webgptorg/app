@@ -9,7 +9,13 @@ import { instantOfWallTime, isKnownTimeZone, wallTimeAt } from './schedule/zoned
 import type { CreateTriggerBody, UpdateTriggerBody } from './use-trigger-mutations';
 
 export const FORM_KINDS = ['schedule', 'email'] as const;
-export const RECURRENCE_KINDS = ['once', 'interval', 'cron'] as const;
+/** The presets first, as the form lists them; each preset is a cron the form writes, `cron` is the expression typed. */
+export const RECURRENCE_KINDS = ['hourly', 'daily', 'weekdays', 'weekly', 'once', 'interval', 'cron'] as const;
+export type RecurrenceKind = (typeof RECURRENCE_KINDS)[number];
+export type PresetKind = Exclude<RecurrenceKind, 'once' | 'interval' | 'cron'>;
+/** 0 is Sunday, as cron counts. */
+export const WEEKDAYS = ['0', '1', '2', '3', '4', '5', '6'] as const;
+
 export const INTERVAL_UNITS = { minutes: 60, hours: 3_600, days: 86_400 } as const;
 export type IntervalUnit = keyof typeof INTERVAL_UNITS;
 const UNITS = Object.keys(INTERVAL_UNITS) as [IntervalUnit, ...IntervalUnit[]];
@@ -38,6 +44,52 @@ export function localInputOf(instant: string, timeZone: string): string {
 
 const POSITIVE_INT = /^[1-9]\d{0,8}$/;
 
+/** `HH:MM`, as a `time` input writes it. */
+const TIME_OF_DAY = /^([01]\d|2[0-3]):([0-5]\d)$/;
+
+export function isPreset(kind: RecurrenceKind): kind is PresetKind {
+    return kind === 'hourly' || kind === 'daily' || kind === 'weekdays' || kind === 'weekly';
+}
+
+/** Whether the schedule is a cron in a time zone: a preset or a typed expression. */
+export function isCronLike(kind: RecurrenceKind): boolean {
+    return kind === 'cron' || isPreset(kind);
+}
+
+/** The cron a preset stands for; `undefined` while its time is not a valid `HH:MM`. */
+export function presetCron(kind: PresetKind, time: string, weekday: string): string | undefined {
+    if (kind === 'hourly') return '0 * * * *';
+    const match = TIME_OF_DAY.exec(time);
+    if (match === null) return undefined;
+    const at = `${String(Number(match[2]))} ${String(Number(match[1]))}`;
+    switch (kind) {
+        case 'daily':
+            return `${at} * * *`;
+        case 'weekdays':
+            return `${at} * * 1-5`;
+        case 'weekly':
+            return `${at} * * ${weekday}`;
+    }
+}
+
+type PresetFields = Pick<TriggerFormValues, 'recurrence' | 'atTime' | 'weekday'>;
+
+/**
+ * The preset an expression is, when the form would write exactly that expression back; any other cron stays
+ * `undefined` and opens as typed, so editing never rewrites a schedule the member did not touch.
+ */
+export function presetOf(expression: string): PresetFields | undefined {
+    const normalized = expression.trim().split(/\s+/).join(' ');
+    if (normalized === '0 * * * *') return { recurrence: 'hourly', atTime: '09:00', weekday: '1' };
+    const match = /^(\d{1,2}) (\d{1,2}) \* \* (\*|1-5|[0-6])$/.exec(normalized);
+    if (match === null) return undefined;
+    const [, minute = '', hour = '', days = ''] = match;
+    const atTime = `${hour.padStart(2, '0')}:${minute.padStart(2, '0')}`;
+    const weekday = WEEKDAYS.find((day) => day === days) ?? '1';
+    const recurrence: PresetKind = days === '*' ? 'daily' : days === '1-5' ? 'weekdays' : 'weekly';
+    return presetCron(recurrence, atTime, weekday) === normalized ? { recurrence, atTime, weekday } : undefined;
+}
+
 /**
  * Every field as the inputs hold it (text), validated together: only the fields of the chosen kind and recurrence
  * count. What the browser cannot judge (a cron the engine's dialect refuses, a range the engine dislikes) is the
@@ -52,6 +104,8 @@ export const TriggerFormValues = z
         onceAt: z.string(),
         everyAmount: z.string(),
         everyUnit: z.enum(UNITS),
+        atTime: z.string(),
+        weekday: z.enum(WEEKDAYS),
         expression: z.string(),
         timeZone: z.string(),
         startsAt: z.string(),
@@ -88,6 +142,13 @@ export const TriggerFormValues = z
                     issue('expression', m.trigger_form_cron_invalid());
                 }
                 break;
+            case 'daily':
+            case 'weekdays':
+            case 'weekly':
+                if (!TIME_OF_DAY.test(values.atTime)) issue('atTime', m.trigger_form_time_required());
+                break;
+            case 'hourly':
+                break;
         }
         const starts = values.startsAt === '' ? null : instantOfLocalInput(values.startsAt, zone);
         if (values.startsAt !== '' && starts === null) issue('startsAt', m.trigger_form_date_invalid());
@@ -109,10 +170,12 @@ export function emptyFormValues(options: { readonly agentId?: string; readonly t
         kind: 'schedule',
         agentId: options.agentId ?? '',
         name: '',
-        recurrence: 'cron',
+        recurrence: 'weekdays',
         onceAt: '',
         everyAmount: '1',
         everyUnit: 'hours',
+        atTime: '09:00',
+        weekday: '1',
         expression: '0 9 * * 1-5',
         timeZone: options.timeZone,
         startsAt: '',
@@ -154,7 +217,12 @@ export function formValuesOf(trigger: ReadTrigger, browserTimeZone: string): Tri
         case 'interval':
             return { ...shared, recurrence: 'interval', ...intervalFields(recurrence.everySeconds) };
         case 'cron':
-            return { ...shared, recurrence: 'cron', expression: recurrence.expression };
+            return {
+                ...shared,
+                recurrence: 'cron',
+                ...presetOf(recurrence.expression),
+                expression: recurrence.expression,
+            };
         case 'unknown':
             return shared;
     }
@@ -176,6 +244,15 @@ function recurrenceOf(values: TriggerFormValues): Recurrence {
             };
         case 'cron':
             return { kind: 'cron', expression: values.expression.trim(), timeZone: values.timeZone };
+        case 'hourly':
+        case 'daily':
+        case 'weekdays':
+        case 'weekly':
+            return {
+                kind: 'cron',
+                expression: presetCron(values.recurrence, values.atTime, values.weekday) ?? '',
+                timeZone: values.timeZone,
+            };
     }
 }
 
@@ -214,6 +291,8 @@ const PREVIEW_FIELDS: ReadonlySet<PropertyKey> = new Set<keyof TriggerFormValues
     'onceAt',
     'everyAmount',
     'everyUnit',
+    'atTime',
+    'weekday',
     'expression',
     'timeZone',
     'startsAt',
@@ -251,7 +330,12 @@ const SERVER_FIELDS: Readonly<Record<string, keyof TriggerFormValues>> = {
     'body.message': 'message',
 };
 
-/** The engine's `errors[].path` (`body.recurrence.expression`) as this form's field, or the path when none fits. */
-export function formFieldOf(path: string): string {
-    return SERVER_FIELDS[path] ?? path;
+/**
+ * The engine's `errors[].path` (`body.recurrence.expression`) as this form's field, or the path when none fits. A
+ * preset has no expression field: its time carries the error, or the choice itself for "Every hour".
+ */
+export function formFieldOf(path: string, recurrence: RecurrenceKind): string {
+    const field = SERVER_FIELDS[path] ?? path;
+    if (field !== 'expression' || !isPreset(recurrence)) return field;
+    return recurrence === 'hourly' ? 'recurrence' : 'atTime';
 }

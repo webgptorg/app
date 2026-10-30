@@ -8,8 +8,9 @@ import { usePermissions } from '../session/use-permissions';
 import { canPause, canResume, useTriggerMutations } from './use-trigger-mutations';
 
 /**
- * Pause or resume in one tap, the owner's way to stop anything at once (docs/design/ui.md). Nothing without
- * `triggers.manage`, and nothing for a trigger that can do neither (ended, or a newer engine's lifecycle).
+ * Pause or resume in one tap, the owner's way to stop anything at once (docs/design/ui.md). Both stay secondary: a
+ * list may hold several, and none is the page's primary action. Nothing without `triggers.manage`, and nothing for a
+ * trigger that can do neither (ended, or a newer engine's lifecycle).
  */
 export function TriggerToggle({
     trigger,
@@ -40,7 +41,6 @@ export function TriggerToggle({
         return (
             <Button
                 size={size}
-                variant="primary"
                 aria-label={m.trigger_resume_named({ name: trigger.name })}
                 onClick={() => {
                     resume.mutate(target);

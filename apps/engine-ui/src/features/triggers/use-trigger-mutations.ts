@@ -25,6 +25,18 @@ export interface TriggerTarget {
 export type CreateTriggerBody = Parameters<EngineApiClient['triggers']['create']>[0];
 export type UpdateTriggerBody = Parameters<EngineApiClient['triggers']['update']>[1];
 
+/** `fromAgent`: the form was opened from the agent's tab, and the saved trigger keeps that way back. */
+export interface CreateTriggerInput {
+    readonly body: CreateTriggerBody;
+    readonly fromAgent?: boolean;
+}
+
+export interface UpdateTriggerInput {
+    readonly id: TriggerId;
+    readonly body: UpdateTriggerBody;
+    readonly fromAgent?: boolean;
+}
+
 /** Pause applies to a running trigger, resume to a paused or failed one; an ended one can do neither (409). */
 export function canPause(trigger: Pick<ReadTrigger, 'lifecycle'>): boolean {
     return trigger.lifecycle === 'active';
@@ -32,6 +44,13 @@ export function canPause(trigger: Pick<ReadTrigger, 'lifecycle'>): boolean {
 
 export function canResume(trigger: Pick<ReadTrigger, 'lifecycle'>): boolean {
     return trigger.lifecycle === 'paused' || trigger.lifecycle === 'failed';
+}
+
+/** A recurrence a newer engine invented cannot be shown in the form, and saving would replace it; ended is final. */
+export function canEdit(trigger: ReadTrigger): boolean {
+    const known =
+        trigger.kind === 'email' || (trigger.kind === 'schedule' && trigger.config.recurrence.kind !== 'unknown');
+    return known && trigger.lifecycle !== 'ended';
 }
 
 export function isTriggerEnded(failure: ApiFailure): boolean {
@@ -71,6 +90,15 @@ export function useTriggerMutations() {
     const queryClient = useQueryClient();
     const navigate = useNavigate();
     const timeout = () => AbortSignal.timeout(MUTATION_TIMEOUT_MS);
+    const openSaved = (trigger: ReadTrigger, fromAgent: boolean | undefined) => {
+        // Saved, so the form's unsaved-changes guard has nothing left to protect.
+        void navigate({
+            to: '/triggers/$triggerId',
+            params: { triggerId: trigger.id },
+            search: fromAgent === true ? { from: 'agent' } : {},
+            ignoreBlocker: true,
+        });
+    };
 
     const pause = useStepUpAwareMutation<ReadTrigger, TriggerTarget, TriggerCacheSnapshot>({
         mutationFn: async (target) => unwrap(await engineApi.triggers.pause(target.id, timeout())),
@@ -106,25 +134,25 @@ export function useTriggerMutations() {
         },
     });
 
-    const create = useStepUpAwareMutation<ReadTrigger, CreateTriggerBody>({
-        mutationFn: async (body) => unwrap(await engineApi.triggers.create(body, timeout())),
+    const create = useStepUpAwareMutation<ReadTrigger, CreateTriggerInput>({
+        mutationFn: async ({ body }) => unwrap(await engineApi.triggers.create(body, timeout())),
         invalidates: [triggerKeys.lists(), triggerKeys.allStats()],
         successMessage: (trigger) => m.trigger_created_toast({ name: trigger.name }),
         errorMessage: () => m.trigger_save_failed(),
-        onSuccess: (trigger) => {
+        onSuccess: (trigger, { fromAgent }) => {
             queryClient.setQueryData(triggerKeys.detail(trigger.id), trigger);
-            void navigate({ to: '/triggers/$triggerId', params: { triggerId: trigger.id } });
+            openSaved(trigger, fromAgent);
         },
     });
 
-    const update = useStepUpAwareMutation<ReadTrigger, { readonly id: TriggerId; readonly body: UpdateTriggerBody }>({
+    const update = useStepUpAwareMutation<ReadTrigger, UpdateTriggerInput>({
         mutationFn: async ({ id, body }) => unwrap(await engineApi.triggers.update(id, body, timeout())),
         invalidates: EVERYTHING,
         successMessage: (trigger) => m.trigger_updated_toast({ name: trigger.name }),
         errorMessage: (failure) => (isTriggerEnded(failure) ? m.trigger_ended_message() : m.trigger_save_failed()),
-        onSuccess: (trigger) => {
+        onSuccess: (trigger, { fromAgent }) => {
             settle(queryClient, trigger);
-            void navigate({ to: '/triggers/$triggerId', params: { triggerId: trigger.id } });
+            openSaved(trigger, fromAgent);
         },
     });
 

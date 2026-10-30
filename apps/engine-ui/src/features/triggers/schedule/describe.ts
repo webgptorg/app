@@ -31,7 +31,7 @@ function everyDay(cron: Cron): boolean {
 }
 
 /** "Monday", "pondělí": a reference Monday in UTC, formatted by `Intl` in the reader's language. */
-function weekdayName(weekday: number, locale: Locale): string {
+export function weekdayName(weekday: number, locale: Locale): string {
     return new Intl.DateTimeFormat(locale, { weekday: 'long', timeZone: 'UTC' }).format(Date.UTC(2024, 0, 7 + weekday));
 }
 

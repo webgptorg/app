@@ -1,7 +1,7 @@
 import type { ReadTriggerFire, TriggerId } from '@ptbk/engine-api';
 import { createDataTableColumnHelper, DataTable } from '@ptbk/ui';
 import type { DataTableColumnDef } from '@ptbk/ui';
-import { useMemo, useState } from 'react';
+import { useId, useMemo, useState } from 'react';
 
 import { useCursorPages } from '../../app/cursor-pages';
 import { Link } from '../../app/link';
@@ -68,31 +68,37 @@ export function TriggerFiresTable({ triggerId, zone }: { readonly triggerId: Tri
     const fires = useTriggerFires(triggerId, cursor ?? null);
     const columns = useFireColumns(useRunLinks(), zone);
     const paging = useCursorPages(cursor, fires.data?.nextCursor ?? null, setCursor);
+    const headingId = useId();
+    // A section heading above the table, like the cards' titles: the table's own caption sits flush in its frame.
     return (
-        <DataTable
-            caption={m.trigger_fires_title()}
-            showCaption
-            columns={columns}
-            data={fires.data?.items ?? NO_FIRES}
-            getRowId={(fire) => fire.id}
-            getRowLabel={(fire) => fire.at}
-            page={paging.page}
-            onPageChange={paging.onPageChange}
-            loading={fires.isPending}
-            fetching={fires.isFetching && !fires.isPending}
-            skeletonRows={3}
-            {...(fires.isError
-                ? {
-                      error: {
-                          message: m.trigger_fires_load_failed(),
-                          onRetry: () => {
-                              void fires.refetch();
+        <section aria-labelledby={headingId} className="flex flex-col gap-3">
+            <h2 id={headingId} className="font-display text-lg font-semibold">
+                {m.trigger_fires_title()}
+            </h2>
+            <DataTable
+                caption={m.trigger_fires_title()}
+                columns={columns}
+                data={fires.data?.items ?? NO_FIRES}
+                getRowId={(fire) => fire.id}
+                getRowLabel={(fire) => fire.at}
+                page={paging.page}
+                onPageChange={paging.onPageChange}
+                loading={fires.isPending}
+                fetching={fires.isFetching && !fires.isPending}
+                skeletonRows={3}
+                {...(fires.isError
+                    ? {
+                          error: {
+                              message: m.trigger_fires_load_failed(),
+                              onRetry: () => {
+                                  void fires.refetch();
+                              },
+                              retrying: fires.isFetching,
                           },
-                          retrying: fires.isFetching,
-                      },
-                  }
-                : {})}
-            empty={{ title: m.trigger_fires_empty_title(), description: m.trigger_fires_empty_body() }}
-        />
+                      }
+                    : {})}
+                empty={{ title: m.trigger_fires_empty_title(), description: m.trigger_fires_empty_body() }}
+            />
+        </section>
     );
 }

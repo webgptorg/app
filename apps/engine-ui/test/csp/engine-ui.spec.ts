@@ -347,7 +347,7 @@ test.describe('the built bundle under the engine CSP', () => {
         const report = await visit(`/triggers/${FAKE_TRIGGER_ID}`);
         await expect(page.getByText('Every weekday at 08:00, Europe/Prague')).toBeVisible();
         await expect(page.getByText(`Write the morning report. ${HOSTILE_RUN_TEXT}`)).toBeVisible();
-        const fires = page.getByRole('table', { name: 'Fire history' });
+        const fires = page.getByRole('table', { name: 'History' });
         await expect(fires.getByText(`Nothing ran: ${HOSTILE_RUN_TEXT}`)).toBeVisible();
         await expect(fires.getByRole('link', { name: 'Open run' })).toHaveAttribute('href', `/runs/${FAKE_RUN_ID}`);
         expect(await page.locator('main img, main script, main iframe, main object, main embed').count()).toBe(0);
@@ -367,8 +367,9 @@ test.describe('the built bundle under the engine CSP', () => {
         await page.getByRole('combobox', { name: /^Agent/ }).selectOption(FAKE_AGENT_ID);
         await page.getByRole('textbox', { name: /^Name/ }).fill('Weekly digest');
         await page.getByRole('combobox', { name: /^Time zone/ }).selectOption('Europe/Prague');
+        await page.getByRole('combobox', { name: /^Repeats/ }).selectOption('cron');
         await page.getByRole('textbox', { name: /^Cron expression/ }).fill('*/15 * * * *');
-        const preview = page.getByRole('region', { name: 'Next fires' });
+        const preview = page.getByRole('region', { name: 'Next runs' });
         await expect(preview.getByText('Every 15 minutes, Europe/Prague')).toBeVisible();
         await expect(preview.getByRole('listitem')).toHaveCount(5);
         await expect(page.getByRole('combobox', { name: /^Kind/ }).locator('option[value="webhook"]')).toBeDisabled();
