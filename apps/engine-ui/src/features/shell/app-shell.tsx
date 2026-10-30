@@ -3,7 +3,6 @@ import { Outlet } from '@tanstack/react-router';
 import { Menu as MenuIcon, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { useState } from 'react';
 
-import { useBrowser } from '../../app/browser-context';
 import { cx } from '../../app/cx';
 import { m } from '../../paraglide/messages';
 import { FeatureEventSync } from './feature-event-sync';
@@ -11,7 +10,8 @@ import { ShellEngineSwitcher } from './shell-engine-switcher';
 import { ShellLanguageSwitch } from './shell-language-switch';
 import { LiveIndicator } from './live-indicator';
 import { NavScroller } from './nav-scroller';
-import { persistSidebarCollapsed, readSidebarCollapsed } from './sidebar-preference';
+import { useSidebarState } from './sidebar-preference';
+import type { SidebarState } from './sidebar-preference';
 import { SidebarNav } from './sidebar-nav';
 import { NARROW_QUERY, useMediaQuery } from './use-media-query';
 import { CommandPaletteHost, PaletteButton, useCommandPalette } from './palette/palette-launcher';
@@ -27,6 +27,7 @@ const MAIN_ID = 'main-content';
 export function AppShell() {
     const narrow = useMediaQuery(NARROW_QUERY);
     const palette = useCommandPalette();
+    const sidebar = useSidebarState();
     return (
         <div className={cx('flex min-h-dvh', narrow && 'flex-col pt-14')}>
             <SkipLink targetId={MAIN_ID} />
@@ -34,9 +35,9 @@ export function AppShell() {
             {narrow ? (
                 <NarrowShell onOpenPalette={palette.openPalette} />
             ) : (
-                <WideSidebar onOpenPalette={palette.openPalette} />
+                <WideSidebar sidebar={sidebar} onOpenPalette={palette.openPalette} />
             )}
-            <CommandPaletteHost state={palette} />
+            <CommandPaletteHost state={palette} sidebar={narrow ? null : sidebar} />
             {/* `--main-fill-height`: the viewport minus the narrow top bar and this padding, for screens that fit it. */}
             <main
                 id={MAIN_ID}
@@ -54,15 +55,13 @@ export function AppShell() {
     );
 }
 
-function WideSidebar({ onOpenPalette }: { readonly onOpenPalette: () => void }) {
-    const { storage } = useBrowser();
-    const [collapsed, setCollapsed] = useState(() => readSidebarCollapsed(storage));
-    const toggle = () => {
-        setCollapsed((previous) => {
-            persistSidebarCollapsed(storage, !previous);
-            return !previous;
-        });
-    };
+function WideSidebar({
+    sidebar: { collapsed, toggle },
+    onOpenPalette,
+}: {
+    readonly sidebar: SidebarState;
+    readonly onOpenPalette: () => void;
+}) {
     return (
         <aside
             className={cx(

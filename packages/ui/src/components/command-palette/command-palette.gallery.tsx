@@ -47,7 +47,8 @@ function PaletteDemo({ label, loading = false }: { label: string; loading?: bool
                     setOpen(false);
                 }}
                 title="Command palette"
-                label="Search or jump to…"
+                label="Search agents, pages and commands"
+                placeholder="Search or jump to…"
                 query={query}
                 onQueryChange={setQuery}
                 groups={groups}
@@ -57,6 +58,11 @@ function PaletteDemo({ label, loading = false }: { label: string; loading?: bool
                 loading={loading}
                 emptyText="Nothing matches"
                 resultsText={(count) => `${String(count)} results`}
+                keyHints={[
+                    { keys: '↑↓', label: 'Move' },
+                    { keys: '↵', label: 'Open' },
+                    { keys: 'Esc', label: 'Close' },
+                ]}
             />
         </>
     );

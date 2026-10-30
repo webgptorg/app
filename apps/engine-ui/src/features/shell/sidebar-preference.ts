@@ -1,4 +1,7 @@
 import type { PreferenceStorage } from '@ptbk/ui';
+import { useCallback, useState } from 'react';
+
+import { useBrowser } from '../../app/browser-context';
 
 export const SIDEBAR_STORAGE_KEY = 'ptbk.sidebar';
 
@@ -17,4 +20,22 @@ export function persistSidebarCollapsed(storage: PreferenceStorage | undefined, 
     } catch {
         // Still applies to this page; it just will not survive a reload.
     }
+}
+
+export interface SidebarState {
+    readonly collapsed: boolean;
+    readonly toggle: () => void;
+}
+
+/** Held by the shell, so the sidebar's own button and the command palette change the same state. */
+export function useSidebarState(): SidebarState {
+    const { storage } = useBrowser();
+    const [collapsed, setCollapsed] = useState(() => readSidebarCollapsed(storage));
+    const toggle = useCallback(() => {
+        setCollapsed((previous) => {
+            persistSidebarCollapsed(storage, !previous);
+            return !previous;
+        });
+    }, [storage]);
+    return { collapsed, toggle };
 }

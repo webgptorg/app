@@ -4,6 +4,7 @@ import { lazy, Suspense, useEffect, useState } from 'react';
 
 import { cx } from '../../../app/cx';
 import { m } from '../../../paraglide/messages';
+import type { SidebarState } from '../sidebar-preference';
 
 // The palette's code (and its search) loads on first open, so the shell pays only for this button and the shortcut.
 const LazyPaletteDialog = lazy(() => import('./palette-dialog').then((module) => ({ default: module.PaletteDialog })));
@@ -50,11 +51,18 @@ export function useCommandPalette(): CommandPaletteState {
     };
 }
 
-export function CommandPaletteHost({ state }: { readonly state: CommandPaletteState }) {
+export function CommandPaletteHost({
+    state,
+    sidebar,
+}: {
+    readonly state: CommandPaletteState;
+    /** The wide layout's sidebar, which the palette can collapse; `null` where there is none (the drawer). */
+    readonly sidebar: SidebarState | null;
+}) {
     if (!state.loaded) return null;
     return (
         <Suspense fallback={null}>
-            <LazyPaletteDialog open={state.open} onClose={state.closePalette} />
+            <LazyPaletteDialog open={state.open} onClose={state.closePalette} sidebar={sidebar} />
         </Suspense>
     );
 }
@@ -80,6 +88,8 @@ export function PaletteButton({ onOpen, compact }: { readonly onOpen: () => void
     return (
         <button
             type="button"
+            // The visible "Search" stays short enough for the sidebar; the name says commands are in there too. A
+            // hidden full name instead of `aria-label`, so the name is not a mismatch with the visible label.
             aria-keyshortcuts="Meta+K Control+K"
             aria-haspopup="dialog"
             onClick={onOpen}
@@ -89,7 +99,10 @@ export function PaletteButton({ onOpen, compact }: { readonly onOpen: () => void
             )}
         >
             <Search aria-hidden className="size-4 shrink-0" />
-            <span className="flex-1 truncate text-start">{m.palette_open()}</span>
+            <span aria-hidden="true" className="flex-1 truncate text-start">
+                {m.palette_open_short()}
+            </span>
+            <span className="sr-only">{m.palette_open()}</span>
             <kbd aria-hidden="true" className="font-mono text-xs">
                 {shortcutHint()}
             </kbd>

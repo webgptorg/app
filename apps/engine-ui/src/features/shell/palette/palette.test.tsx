@@ -1,4 +1,4 @@
-import { PERMISSIONS } from '@ptbk/engine-api';
+import { MemberId, PERMISSIONS, SIGN_IN_PATH, SIGN_OUT_PATH } from '@ptbk/engine-api';
 import type { Permission } from '@ptbk/engine-api';
 import { screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
@@ -9,10 +9,13 @@ import { expectNoAxeViolations } from '../../../testing/axe';
 import { createFakeMatchMedia } from '../../../testing/fake-match-media';
 import { createHomeEngine } from '../../../testing/home-engine';
 import { renderWithProviders } from '../../../testing/render-with-providers';
+import { createMemoryStorage } from '../../../testing/memory-storage';
 import { RUN_IDS } from '../../../testing/runs-engine';
+import { createSecurityEngine, OWNER_ID } from '../../../testing/security-engine';
 import { NARROW_QUERY } from '../use-media-query';
 import { isPaletteShortcut } from './palette-launcher';
 import { matchesQuery } from './palette-match';
+import { MAX_RECENT, readRecentPicks, recentStorageKey, rememberPick } from './palette-recent';
 
 const TIMEOUT_MS = 20_000;
 const allBut = (...missing: readonly Permission[]) => PERMISSIONS.filter((permission) => !missing.includes(permission));
@@ -21,6 +24,15 @@ const searchBox = () => screen.findByRole('combobox', { name: 'Search agents, ru
 const options = () =>
     within(screen.getByRole('listbox'))
         .queryAllByRole('option')
+        .map((option) => option.textContent);
+const groupNames = () =>
+    within(screen.getByRole('listbox'))
+        .getAllByRole('group')
+        .map((group) => group.getAttribute('aria-labelledby'))
+        .map((id) => document.getElementById(id ?? '')?.textContent);
+const optionsIn = (group: string) =>
+    within(screen.getByRole('group', { name: group }))
+        .getAllByRole('option')
         .map((option) => option.textContent);
 
 describe('palette matching', () => {
@@ -38,6 +50,32 @@ describe('palette matching', () => {
         expect(isPaletteShortcut(key)).toBe(false);
         expect(isPaletteShortcut({ ...key, ctrlKey: true, shiftKey: true })).toBe(false);
         expect(isPaletteShortcut({ ...key, ctrlKey: true, key: 'j' })).toBe(false);
+    });
+});
+
+describe('recent palette picks', () => {
+    const member = MemberId.parse(OWNER_ID);
+
+    it('keeps the newest first, each once, at most five', () => {
+        const storage = createMemoryStorage();
+        for (const id of ['a', 'b', 'c', 'd', 'e', 'f', 'b']) rememberPick(storage, member, { kind: 'item', id });
+
+        expect(readRecentPicks(storage, member).map((pick) => pick.id)).toEqual(['b', 'f', 'e', 'd', 'c']);
+        expect(readRecentPicks(storage, member)).toHaveLength(MAX_RECENT);
+    });
+
+    it('drops entries it cannot read instead of trusting them, and keeps them per member', () => {
+        const storage = createMemoryStorage();
+        storage.setItem(
+            recentStorageKey(member),
+            JSON.stringify([{ kind: 'agent', id: 'agent-ada' }, { kind: 'item', id: 'nav:home' }, 'x', null]),
+        );
+        expect(readRecentPicks(storage, member)).toEqual([{ kind: 'item', id: 'nav:home' }]);
+
+        storage.setItem(recentStorageKey(member), '{not json');
+        expect(readRecentPicks(storage, member)).toEqual([]);
+        expect(readRecentPicks(storage, MemberId.parse('member-other'))).toEqual([]);
+        expect(readRecentPicks(undefined, member)).toEqual([]);
     });
 });
 
@@ -256,4 +294,203 @@ describe('command palette', { timeout: TIMEOUT_MS }, () => {
             expect(router.state.location.pathname).toBe('/runs/run-old-050');
         });
     });
+
+    it('shows a short label in the sidebar and keeps the full name', async () => {
+        renderWithProviders({ path: '/settings', engineApi: createHomeEngine().client });
+        const button = await screen.findByRole('button', { name: 'Search and commands' });
+        const visible = button.querySelector(':scope > span[aria-hidden="true"]');
+        expect(visible?.textContent).toBe('Search');
+    });
+
+    it('opens on agents, then places in the sidebar order, with a short placeholder and key hints', async () => {
+        const { user } = renderWithProviders({ path: '/settings', engineApi: createHomeEngine().client });
+        await user.click(await screen.findByRole('button', { name: 'Search and commands' }));
+        const box = await searchBox();
+
+        expect(box.getAttribute('placeholder')).toBe('Search or jump to…');
+        await waitFor(() => {
+            expect(groupNames().slice(0, 2)).toEqual(['Agents', 'Go to']);
+        });
+        const places = optionsIn('Go to');
+        expect(places.slice(0, 7)).toEqual(['Home', 'Agents', 'Runs', 'Files', 'Triggers', 'Integrations', 'Members']);
+        expect(screen.getByText('Esc').closest('[aria-hidden="true"]')).not.toBeNull();
+    });
+
+    it('leads with what the member picked last, kept across visits', async () => {
+        const first = renderWithProviders({ path: '/settings', engineApi: createHomeEngine().client });
+        await first.user.click(await screen.findByRole('button', { name: 'Search and commands' }));
+        await first.user.type(await searchBox(), 'Grace');
+        await screen.findByRole('option', { name: /^Grace/ });
+        await first.user.keyboard('{Enter}');
+        await first.user.click(screen.getByRole('button', { name: 'Search and commands' }));
+        await first.user.type(await searchBox(), 'triggers');
+        await waitFor(() => {
+            expect(options()[0]).toBe('Triggers');
+        });
+        await first.user.keyboard('{Enter}');
+        await waitFor(() => {
+            expect(first.router.state.location.pathname).toBe('/triggers');
+        });
+        first.unmount();
+
+        const second = renderWithProviders({
+            path: '/settings',
+            engineApi: createHomeEngine().client,
+            storage: first.storage,
+        });
+        await second.user.click(await screen.findByRole('button', { name: 'Search and commands' }));
+        await searchBox();
+        expect(groupNames()[0]).toBe('Recent');
+        expect(optionsIn('Recent')).toEqual(['Triggers', 'Grace']);
+        expect(optionsIn('Go to')).not.toContain('Triggers');
+
+        await second.user.type(await searchBox(), 'tri');
+        await waitFor(() => {
+            expect(groupNames()).not.toContain('Recent');
+        });
+        expect(optionsIn('Go to')).toContain('Triggers');
+    });
+
+    it('leaves out a recent place the member may no longer open', async () => {
+        const storage = createMemoryStorage();
+        rememberPick(storage, MemberId.parse('member-owner'), { kind: 'item', id: 'nav:members' });
+        const engine = createHomeEngine({ permissions: allBut('members.read') });
+        const { user } = renderWithProviders({ path: '/settings', engineApi: engine.client, storage });
+        await user.click(await screen.findByRole('button', { name: 'Search and commands' }));
+        await searchBox();
+
+        expect(groupNames()).not.toContain('Recent');
+        expect(options()).not.toContain('Members');
+    });
+
+    it('switches the theme and the language in one step, offering only a change', async () => {
+        const { user } = renderWithProviders({ path: '/settings', engineApi: createHomeEngine().client });
+        await user.click(await screen.findByRole('button', { name: 'Search and commands' }));
+        await user.type(await searchBox(), 'theme');
+        await waitFor(() => {
+            expect(options()).toEqual(['Theme: Light', 'Theme: Dark']);
+        });
+        await user.click(screen.getByRole('option', { name: 'Theme: Dark' }));
+        expect(document.documentElement.classList.contains('dark')).toBe(true);
+
+        await user.click(screen.getByRole('button', { name: 'Search and commands' }));
+        await user.type(await searchBox(), 'jazyk');
+        await screen.findByRole('option', { name: 'Language: Čeština' });
+        await user.keyboard('{Enter}');
+        expect(await screen.findByRole('button', { name: 'Hledat a příkazy' })).toBeDefined();
+        expect(document.documentElement.lang).toBe('cs');
+    });
+
+    it('collapses the sidebar', async () => {
+        const { user } = renderWithProviders({ path: '/settings', engineApi: createHomeEngine().client });
+        await user.click(await screen.findByRole('button', { name: 'Search and commands' }));
+        await user.type(await searchBox(), 'sidebar');
+        await user.click(await screen.findByRole('option', { name: 'Collapse sidebar' }));
+        expect(await screen.findByRole('button', { name: 'Expand sidebar' })).toBeDefined();
+    });
+
+    it('offers no sidebar command in the narrow layout, where the drawer has none', async () => {
+        const media = createFakeMatchMedia({ [NARROW_QUERY]: true });
+        const engine = createHomeEngine();
+        const { user } = renderWithProviders({ path: '/settings', media, engineApi: engine.client });
+        await user.click(await screen.findByRole('button', { name: 'Search and commands' }));
+        await user.type(await searchBox(), 'sidebar');
+        await waitFor(() => {
+            expect(engine.spies.agents).toHaveBeenLastCalledWith(
+                expect.objectContaining({ q: 'sidebar' }),
+                expect.anything(),
+            );
+        });
+        expect(options()).toEqual([]);
+    });
+
+    it('signs out at the gateway', async () => {
+        const { user, fetch, location } = renderWithProviders({
+            path: '/settings',
+            engineApi: createHomeEngine().client,
+        });
+        await user.click(await screen.findByRole('button', { name: 'Search and commands' }));
+        await user.type(await searchBox(), 'log out');
+        await user.click(await screen.findByRole('option', { name: 'Sign out' }));
+        await waitFor(() => {
+            expect(location.assign).toHaveBeenCalledWith(SIGN_IN_PATH);
+        });
+        expect(fetch).toHaveBeenCalledWith(SIGN_OUT_PATH, expect.objectContaining({ method: 'POST' }));
+    });
+
+    it('finds a secret by name and opens the list searched for it', async () => {
+        const engine = secretsPaletteEngine();
+        const { user, router } = renderWithProviders({ path: '/settings', engineApi: engine.client });
+        await user.click(await screen.findByRole('button', { name: 'Search and commands' }));
+        const box = await searchBox();
+        expect(groupNames()).not.toContain('Secrets');
+        expect(engine.list).not.toHaveBeenCalled();
+
+        await user.type(box, 'slack');
+        const secrets = await screen.findByRole('group', { name: 'Secrets' });
+        expect(
+            within(secrets)
+                .getAllByRole('option')
+                .map((option) => option.textContent),
+        ).toEqual(['SLACK_TOKENEngine-wide']);
+        expect(engine.list).toHaveBeenLastCalledWith(expect.objectContaining({ q: 'slack' }), expect.anything());
+        await user.click(within(secrets).getByRole('option'));
+        await waitFor(() => {
+            expect(router.state.location.pathname).toBe('/secrets');
+        });
+        expect(router.state.location.search).toMatchObject({ q: 'SLACK_TOKEN' });
+    });
+
+    it('opens "New secret" over the list with secrets.manage, and drops the request when it closes', async () => {
+        const { user, router } = renderWithProviders({ path: '/settings', engineApi: secretsPaletteEngine().client });
+        await user.click(await screen.findByRole('button', { name: 'Search and commands' }));
+        await user.type(await searchBox(), 'new secret');
+        await user.click(await screen.findByRole('option', { name: 'New secret' }));
+
+        const dialog = await screen.findByRole('dialog', { name: 'New secret' });
+        expect(router.state.location.search).toMatchObject({ dialog: 'new' });
+        await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+        await waitFor(() => {
+            expect(router.state.location.search).not.toHaveProperty('dialog');
+        });
+        expect(screen.queryByRole('dialog', { name: 'New secret' })).toBeNull();
+    });
+
+    it('offers no "New secret" without secrets.manage, and the list ignores the request', async () => {
+        const engine = secretsPaletteEngine(allBut('secrets.manage'));
+        const { user } = renderWithProviders({ path: '/settings', engineApi: engine.client });
+        await user.click(await screen.findByRole('button', { name: 'Search and commands' }));
+        await user.type(await searchBox(), 'new secret');
+        await waitFor(() => {
+            expect(options()).not.toContain('New secret');
+        });
+
+        renderWithProviders({
+            path: '/secrets?dialog=new',
+            engineApi: secretsPaletteEngine(allBut('secrets.manage')).client,
+        });
+        expect(await screen.findByRole('heading', { name: 'Secrets', level: 1 })).toBeDefined();
+        expect(screen.queryByRole('dialog', { name: 'New secret' })).toBeNull();
+    });
 });
+
+function secretsPaletteEngine(permissions?: readonly Permission[]) {
+    const engine = createSecurityEngine({
+        ...(permissions === undefined ? {} : { permissions }),
+        seed: {
+            secrets: ['SLACK_TOKEN', 'GITHUB_TOKEN'].map((name, index) => ({
+                id: `secret-00${String(index + 1)}`,
+                name,
+                scope: { kind: 'engine' as const },
+                status: 'active' as const,
+                createdBy: OWNER_ID,
+                createdAt: '2026-09-01T00:00:00Z',
+                updatedAt: '2026-09-01T00:00:00Z',
+                lastUsedAt: null,
+            })),
+        },
+    });
+    const secrets = { ...engine.client.secrets };
+    const list = vi.spyOn(secrets, 'list');
+    return { client: { ...engine.client, secrets }, list };
+}

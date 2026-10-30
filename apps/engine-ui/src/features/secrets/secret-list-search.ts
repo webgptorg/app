@@ -17,6 +17,8 @@ export const SecretListSearch = z.object({
         .regex(/^[A-Za-z0-9_-]{1,1024}$/)
         .optional()
         .catch(undefined),
+    /** Opens "New secret" over the list, e.g. from the command palette. Opening a form writes nothing (PR 135). */
+    dialog: z.literal('new').optional().catch(undefined),
 });
 export type SecretListSearch = z.output<typeof SecretListSearch>;
 
