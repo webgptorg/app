@@ -8,13 +8,14 @@ import type { EngineStatus } from '../domain/registration/engine-store';
 import type { EmailMessage, EmailSender } from '../domain/ports/email-sender';
 import type { AlertRecipient, HeartbeatTiming } from '../domain/status/engine-status';
 import type { EngineStatusServiceDeps } from '../domain/status/engine-status-service';
+import type { EngineLabel } from '../shared/engine-label';
 import { testOrgId } from './billing-fixtures';
 import { createMemoryEngineStatusStorage, type MemoryEngineStatusStorage } from './memory-engine-status';
 import { TEST_ENGINE_DOMAIN } from './test-engine';
 
 export const STATUS_START_MS = 1_800_000_000_000;
 export const DEFAULT_TIMING: HeartbeatTiming = { intervalS: 60, missedLimit: 3, graceS: 15, perEngineLimit: 5 };
-// The status object reads only the engine's status from the row; the rest is a placeholder.
+// The status object reads only the engine's status and label from the row; the rest is a placeholder.
 const PLACEHOLDER_KEY = Ed25519PublicKey.parse('A'.repeat(43));
 
 /** An outbox whose sends to `failing` addresses reject, until they are removed from the set. */
@@ -50,6 +51,7 @@ export function createStatusTestDeps(
         readonly recipients?: ReadonlyMap<OrgId, readonly AlertRecipient[]>;
         readonly recipientsFail?: () => boolean;
         readonly engineStatus?: () => Promise<EngineStatus | null>;
+        readonly engineLabel?: EngineLabel;
     } = {},
 ): {
     readonly deps: EngineStatusServiceDeps;
@@ -75,7 +77,14 @@ export function createStatusTestDeps(
             heartbeatEngines: {
                 async findEngine() {
                     const status = await (options.engineStatus?.() ?? Promise.resolve('active'));
-                    return status === null ? null : { orgId: testOrgId(), publicKey: PLACEHOLDER_KEY, status };
+                    return status === null
+                        ? null
+                        : {
+                              orgId: testOrgId(),
+                              publicKey: PLACEHOLDER_KEY,
+                              status,
+                              label: options.engineLabel ?? null,
+                          };
                 },
             },
             recipients: {

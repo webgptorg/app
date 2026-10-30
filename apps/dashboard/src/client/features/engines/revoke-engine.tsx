@@ -7,7 +7,7 @@ import { apiRoutes, type EngineView } from '../../../shared/api/routes';
 import { useApiClient } from '../../api/api-client-context';
 import { dataOrThrow, queryKeys } from '../../api/queries';
 import { useAppMutation } from '../../core/mutations';
-import { shortEngineId } from './engine-labels';
+import { engineLabel, shortEngineId } from '../../../shared/engine-label';
 
 /**
  * "Revoke engine" (D-06): permanent, so the dialog spells out what recovery takes and asks for the engine ID's first
@@ -49,7 +49,7 @@ export function RevokeEngineCard(props: { readonly engine: EngineView }) {
                 onConfirm={() => {
                     revoke.mutate();
                 }}
-                title={m.engine_revoke_dialog_title({ shortId })}
+                title={m.engine_revoke_dialog_title({ name: engineLabel(props.engine) })}
                 description={m.engine_revoke_dialog_body()}
                 confirmLabel={m.engine_revoke_confirm()}
                 tone="danger"

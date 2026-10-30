@@ -17,6 +17,8 @@ export const DASHBOARD_POLICY = {
     'engine.link': { scope: 'org', orgRoles: ['owner'], ...PLAIN },
     // The organization's engines with their registry data and heartbeat numbers (D-06).
     'engine.read': { scope: 'org', orgRoles: ['owner'], ...PLAIN },
+    // The owner's own name for an engine (D-06): account metadata, audited, never sent to the engine.
+    'engine.rename': { scope: 'org', orgRoles: ['owner'], ...PLAIN },
     // Permanent: relays stop routing the engine ID, and recovery is a new engine identity (D-06).
     'engine.revoke': { scope: 'org', orgRoles: ['owner'], ...SENSITIVE_STEP_UP },
     // Read-only list of organizations in a problem state; acting on one (suspension, I-05) needs its own step-up action.

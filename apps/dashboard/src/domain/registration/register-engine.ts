@@ -93,6 +93,7 @@ async function attempt(
         statusReason: null,
         createdAt: now,
         updatedAt: now,
+        label: null,
     });
     return created === 'redeemed' ? registered(deps, engineId, hostname) : 'conflict';
 }

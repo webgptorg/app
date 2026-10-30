@@ -425,7 +425,7 @@ describe('new engine page', () => {
             expect(await screen.findByText('Your engine is ready.', { selector: 'p.font-medium' })).toBeTruthy();
             expect(progress().dataset['linkState']).toBe('ready');
             expect(screen.getByText('Owner set up.')).toBeTruthy();
-            const open = screen.getByRole('link', { name: `Open engine ${ENGINE_ID.slice(0, 8)}, in a new tab` });
+            const open = screen.getByRole('link', { name: `Open engine ${ENGINE_ID.slice(0, 8)}…, in a new tab` });
             expect(open.getAttribute('href')).toBe(`https://${HOSTNAME}/`);
             expect(open.getAttribute('target')).toBe('_blank');
             expect(open.getAttribute('rel')).toBe('noopener noreferrer');
@@ -553,6 +553,44 @@ describe('new engine page', () => {
             expect(screen.queryByRole('heading', { name: 'Install command' })).toBeNull();
             expect(app.api.callsTo(apiRoutes.createLinkCode)).toEqual([]);
             expect(app.api.callsTo(apiRoutes.getLinkCode)).toEqual([{ params: { linkCodeId: LINK_ID } }]);
+        });
+
+        it('lets the owner name the linked engine, and the ready step opens it by that name', async () => {
+            const label = 'Staging' as NonNullable<EngineView['label']>;
+            const app = renderApp({
+                path: `/engines/new?link=${LINK_ID}`,
+                session: session({ permissions: [...OWNER.activeOrg.permissions, 'engine.rename'] }),
+                script: (api) => {
+                    eligible()(api);
+                    scriptProgress(api, [LINKED], []);
+                    api.on(apiRoutes.getEngine, () =>
+                        ok({ engine: api.callsTo(apiRoutes.renameEngine).length > 0 ? { ...READY, label } : READY }),
+                    );
+                    api.on(apiRoutes.renameEngine, ok({ engine: { ...READY, label } }));
+                },
+            });
+            expect(await screen.findByText(/so you can tell your engines apart/)).toBeTruthy();
+            await app.user.type(screen.getByRole('textbox', { name: 'Name' }), 'Staging');
+            await app.user.click(screen.getByRole('button', { name: 'Save name' }));
+            expect(await screen.findByText('Name saved')).toBeTruthy();
+            expect(app.api.callsTo(apiRoutes.renameEngine)).toEqual([
+                { params: { engineId: ENGINE_ID }, body: { label } },
+            ]);
+            expect(await screen.findByRole('link', { name: 'Open engine Staging, in a new tab' })).toBeTruthy();
+            await expectNoAxeViolations(app.container);
+        });
+
+        it('offers no name field without engine.rename', async () => {
+            renderApp({
+                path: `/engines/new?link=${LINK_ID}`,
+                session: OWNER,
+                script: (api) => {
+                    eligible()(api);
+                    scriptProgress(api, [LINKED], [READY]);
+                },
+            });
+            expect(await screen.findByText('Your engine is ready.', { selector: 'p.font-medium' })).toBeTruthy();
+            expect(screen.queryByRole('textbox', { name: 'Name' })).toBeNull();
         });
 
         it('says when the link ID in the URL is not the organization’s', async () => {

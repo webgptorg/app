@@ -12,6 +12,7 @@ import {
     type EngineStore,
 } from '../../domain/registration/engine-store';
 import type { LinkCodeStore } from '../../domain/registration/link-code-store';
+import { engineLabelSchema } from '../../shared/engine-label';
 import type { Database } from './client';
 import { adminAuditLog, engines, linkCodes, orgAuditLog } from './schema';
 
@@ -29,6 +30,7 @@ function toEngine(row: typeof engines.$inferSelect): EngineRecord {
         statusReason: row.statusReason,
         createdAt: row.createdAt,
         updatedAt: row.updatedAt,
+        label: row.label === null ? null : engineLabelSchema.parse(row.label),
     };
 }
 
@@ -126,6 +128,7 @@ export function createD1LinkCodeStore(db: Database): LinkCodeStore {
                             statusReason: sql`${engine.statusReason}`.as('status_reason'),
                             createdAt: sql`${engine.createdAt}`.as('created_at'),
                             updatedAt: sql`${engine.updatedAt}`.as('updated_at'),
+                            label: sql`${engine.label}`.as('label'),
                         })
                         .from(linkCodes)
                         .where(
@@ -179,6 +182,7 @@ export function createD1LinkCodeStore(db: Database): LinkCodeStore {
 }
 
 const REVOKE_ACTION = 'engine.revoke';
+const RENAME_ACTION = 'engine.rename';
 
 /** Every organization-facing query filters by `org_id`; `findForRegistration` is the documented exception. */
 export function createD1EngineStore(db: Database): EngineStore {
@@ -266,6 +270,38 @@ export function createD1EngineStore(db: Database): EngineStore {
                 return 'revoked';
             }
             return (await findInOrg(orgId, engineId)) === null ? 'not-found' : 'already-revoked';
+        },
+
+        // One batch: the audit insert, then the update, under the same condition, so an entry is written exactly when
+        // the label changes. `IS NOT` compares null as a value, so clearing an unnamed engine changes nothing.
+        async rename(orgId, engineId, label, audit) {
+            const differs = and(inOrg(orgId, engineId), sql`${engines.label} IS NOT ${label}`);
+            const [, renamed] = await db.batch([
+                db.insert(orgAuditLog).select((qb) =>
+                    qb
+                        // Every column of `org_audit_log`, in table order.
+                        .select({
+                            id: sql`${audit.id}`.as('id'),
+                            orgId: engines.orgId,
+                            actorUserId: sql`${audit.actorUserId}`.as('actor_user_id'),
+                            action: sql`${RENAME_ACTION}`.as('action'),
+                            targetType: sql`'engine'`.as('target_type'),
+                            targetId: engines.engineId,
+                            createdAt: sql`${audit.at}`.as('created_at'),
+                        })
+                        .from(engines)
+                        .where(differs),
+                ),
+                db
+                    .update(engines)
+                    .set({ label, updatedAt: audit.at })
+                    .where(differs)
+                    .returning({ engineId: engines.engineId }),
+            ]);
+            if (renamed.length === 1) {
+                return 'renamed';
+            }
+            return (await findInOrg(orgId, engineId)) === null ? 'not-found' : 'unchanged';
         },
 
         async findForRegistration(engineId) {

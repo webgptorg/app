@@ -22,7 +22,8 @@ const ALLOWLIST: Readonly<Record<string, readonly string[]>> = {
     // Where each CT source's next query starts.
     ct_cursors: ['source', 'cursor'],
     // Registered engines: the public key and what derives from it, the mode and version the engine signed, and the
-    // dashboard's status for it. Routing and billing metadata only.
+    // dashboard's status for it. Routing and billing metadata only, plus the owner's own label for it: account metadata
+    // typed in the dashboard, never sent to or read from the engine.
     // Custom hostnames (D-08): the customer's hostname, which engine and organization it belongs to, the engine's
     // signature claiming it, whether its CNAME was seen, and which platform admin added it. Routing metadata only.
     engine_hostnames: [
@@ -46,6 +47,7 @@ const ALLOWLIST: Readonly<Record<string, readonly string[]>> = {
         'status_reason',
         'created_at',
         'updated_at',
+        'label',
     ],
     // One-time link codes: the code only as SHA-256, who issued it for which organization, a 30-minute lifetime, and
     // the engine that redeemed it.

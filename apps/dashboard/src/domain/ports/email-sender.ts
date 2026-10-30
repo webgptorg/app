@@ -19,6 +19,8 @@ export type EmailMessage =
       })
     | (Envelope & {
           readonly template: 'engine-offline';
+          /** `engineLabel()`: the owner's label, or the short engine ID. */
+          readonly label: string;
           readonly engineId: string;
           readonly hostname: string;
           readonly lastSeenAt: number;
@@ -28,12 +30,14 @@ export type EmailMessage =
     | (Envelope & {
           /** Never the setup link: only the engine can make someone its owner, so only its terminal shows that link. */
           readonly template: 'engine-online';
+          readonly label: string;
           readonly engineId: string;
           readonly hostname: string;
           readonly link: string;
       })
     | (Envelope & {
           readonly template: 'engine-back-online';
+          readonly label: string;
           readonly engineId: string;
           readonly hostname: string;
           /** The last heartbeat before the outage. */

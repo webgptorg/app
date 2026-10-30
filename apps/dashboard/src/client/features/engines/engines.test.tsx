@@ -20,7 +20,15 @@ import { renderApp } from '../../testing/render-app';
 import { createScriptedApi, ok, problem } from '../../testing/scripted-api';
 
 const OWNER = session({
-    permissions: ['org.read', 'billing.read', 'billing.manage', 'engine.link', 'engine.read', 'engine.revoke'],
+    permissions: [
+        'org.read',
+        'billing.read',
+        'billing.manage',
+        'engine.link',
+        'engine.read',
+        'engine.rename',
+        'engine.revoke',
+    ],
 });
 const OTHER_ID = 'q4ndy7ejw3zkp6ftr2hcm5sxlg';
 const OPEN_NAME = /^Open engine/;
@@ -188,7 +196,7 @@ describe('engine list', () => {
     it('opens an engine at its exact address in a new tab, without opener or referrer', async () => {
         renderApp({ path: '/engines', session: OWNER, script: engines(engineView()) });
         await screen.findByText('Online');
-        const open = screen.getByRole('link', { name: `Open engine ${ENGINE_ID.slice(0, 8)}, in a new tab` });
+        const open = screen.getByRole('link', { name: `Open engine ${ENGINE_ID.slice(0, 8)}…, in a new tab` });
         expect(open.getAttribute('href')).toBe(`https://${ENGINE_ID}.${ENGINE_DOMAIN}/`);
         expect(open.getAttribute('target')).toBe('_blank');
         expect(open.getAttribute('rel')).toBe('noopener noreferrer');
@@ -238,7 +246,7 @@ describe('engine page', () => {
             session: OWNER,
             script: engine(engineView({ customHostnames: ['agents.customer.test' as EngineView['hostname']] })),
         });
-        expect(await screen.findByRole('heading', { name: `Engine ${ENGINE_ID.slice(0, 8)}`, level: 1 })).toBeTruthy();
+        expect(await screen.findByRole('heading', { name: `${ENGINE_ID.slice(0, 8)}…`, level: 1 })).toBeTruthy();
         expect(screen.getByText(/security page shows the same pattern and code/)).toBeTruthy();
         expect(screen.getByText(ENGINE_ID)).toBeTruthy();
         expect(screen.getByText(`${ENGINE_ID}.${ENGINE_DOMAIN}`)).toBeTruthy();
@@ -339,6 +347,111 @@ describe('engine page', () => {
         });
         expect(await screen.findByRole('heading', { name: 'Last heartbeat' })).toBeTruthy();
         expect(screen.queryByRole('button', { name: 'Revoke engine' })).toBeNull();
+    });
+});
+
+describe('engine name', () => {
+    const LABEL = 'Produkce – Brno' as NonNullable<EngineView['label']>;
+
+    it('names a labelled engine by its label in the list, the title and the revoke dialog', async () => {
+        const app = renderApp({
+            path: '/engines',
+            session: OWNER,
+            script: (api) => {
+                engines(
+                    engineView({ label: LABEL }),
+                    engineView({ engineId: OTHER_ID as EngineView['engineId'] }),
+                )(api);
+                engine(engineView({ label: LABEL }))(api);
+            },
+        });
+        expect(await screen.findByRole('link', { name: `${OTHER_ID.slice(0, 8)}…` })).toBeTruthy();
+        await app.user.click(screen.getByRole('link', { name: LABEL }));
+        expect(await screen.findByRole('heading', { name: LABEL, level: 1 })).toBeTruthy();
+        expect(screen.getByRole('link', { name: `Open engine ${LABEL}, in a new tab` })).toBeTruthy();
+        await app.user.click(screen.getByRole('button', { name: 'Revoke engine' }));
+        const dialog = await screen.findByRole('dialog', { name: `Revoke engine ${LABEL}?` });
+        expect(within(dialog).getByText(`Type ${ENGINE_ID.slice(0, 8)} to confirm`)).toBeTruthy();
+    });
+
+    it('saves a typed name as the API takes it, refuses one it would not, and clears it when emptied', async () => {
+        const app = renderApp({
+            path: `/engines/${ENGINE_ID}`,
+            session: OWNER,
+            script: (api) => {
+                api.on(apiRoutes.getEngine, () => {
+                    const last = api.callsTo(apiRoutes.renameEngine).at(-1) as
+                        { body: { label: string | null } } | undefined;
+                    return ok({ engine: engineView({ label: (last?.body.label ?? null) as EngineView['label'] }) });
+                });
+                api.on(apiRoutes.renameEngine, (input) => {
+                    const { body } = input as { body: { label: string | null } };
+                    return ok({ engine: engineView({ label: body.label as EngineView['label'] }) });
+                });
+            },
+        });
+        await app.user.click(await screen.findByRole('button', { name: 'Name it' }));
+        let dialog = await screen.findByRole('dialog', { name: 'Name this engine' });
+        const field = within(dialog).getByRole('textbox', { name: 'Name' });
+        await app.user.type(field, '<b>Prod</b>');
+        await app.user.click(within(dialog).getByRole('button', { name: 'Save name' }));
+        expect(await within(dialog).findByText(/Use up to 40 letters/)).toBeTruthy();
+        expect(field.getAttribute('aria-invalid')).toBe('true');
+        expect(app.api.callsTo(apiRoutes.renameEngine)).toEqual([]);
+        await expectNoAxeViolations(dialog);
+
+        await app.user.clear(field);
+        await app.user.type(field, '  Produkce   –  Brno ');
+        await app.user.click(within(dialog).getByRole('button', { name: 'Save name' }));
+        expect(await screen.findByText('Name saved')).toBeTruthy();
+        expect(app.api.callsTo(apiRoutes.renameEngine)).toEqual([
+            { params: { engineId: ENGINE_ID }, body: { label: LABEL } },
+        ]);
+        expect(await screen.findByRole('heading', { name: LABEL, level: 1 })).toBeTruthy();
+        expect(screen.queryByRole('dialog', { name: 'Name this engine' })).toBeNull();
+
+        await app.user.click(screen.getByRole('button', { name: 'Rename' }));
+        dialog = await screen.findByRole('dialog', { name: 'Rename engine' });
+        await app.user.clear(within(dialog).getByRole('textbox', { name: 'Name' }));
+        await app.user.click(within(dialog).getByRole('button', { name: 'Save name' }));
+        expect(await screen.findByText('Name removed')).toBeTruthy();
+        expect(app.api.callsTo(apiRoutes.renameEngine).at(-1)).toEqual({
+            params: { engineId: ENGINE_ID },
+            body: { label: null },
+        });
+        expect(await screen.findByRole('heading', { name: `${ENGINE_ID.slice(0, 8)}…`, level: 1 })).toBeTruthy();
+    });
+
+    it('closes without a request when the name did not change, and on Cancel', async () => {
+        const app = renderApp({
+            path: `/engines/${ENGINE_ID}`,
+            session: OWNER,
+            script: engine(engineView({ label: LABEL })),
+        });
+        await app.user.click(await screen.findByRole('button', { name: 'Rename' }));
+        let dialog = await screen.findByRole('dialog', { name: 'Rename engine' });
+        expect(within(dialog).getByRole<HTMLInputElement>('textbox', { name: 'Name' }).value).toBe(LABEL);
+        await app.user.click(within(dialog).getByRole('button', { name: 'Save name' }));
+        await waitFor(() => {
+            expect(screen.queryByRole('dialog', { name: 'Rename engine' })).toBeNull();
+        });
+        await app.user.click(screen.getByRole('button', { name: 'Rename' }));
+        dialog = await screen.findByRole('dialog', { name: 'Rename engine' });
+        await app.user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+        await waitFor(() => {
+            expect(screen.queryByRole('dialog', { name: 'Rename engine' })).toBeNull();
+        });
+        expect(app.api.callsTo(apiRoutes.renameEngine)).toEqual([]);
+    });
+
+    it('offers no renaming without engine.rename', async () => {
+        renderApp({
+            path: `/engines/${ENGINE_ID}`,
+            session: session({ permissions: ['org.read', 'engine.read'] }),
+            script: engine(engineView()),
+        });
+        expect(await screen.findByRole('heading', { name: `${ENGINE_ID.slice(0, 8)}…`, level: 1 })).toBeTruthy();
+        expect(screen.queryByRole('button', { name: 'Name it' })).toBeNull();
     });
 });
 
@@ -504,7 +617,7 @@ describe('revoke', () => {
     it('explains recovery and sends the request only after the engine ID’s first characters are typed', async () => {
         const app = revokable();
         await app.user.click(await screen.findByRole('button', { name: 'Revoke engine' }));
-        const dialog = await screen.findByRole('dialog', { name: `Revoke engine ${ENGINE_ID.slice(0, 8)}?` });
+        const dialog = await screen.findByRole('dialog', { name: `Revoke engine ${ENGINE_ID.slice(0, 8)}…?` });
         for (const text of [
             /within minutes/,
             /permanent for this engine ID/,

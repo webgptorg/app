@@ -19,7 +19,8 @@ async function setup(status: EngineStatus | null) {
         clock: t.clock,
         logger: t.logger,
         heartbeatEngines: {
-            findEngine: () => Promise.resolve(status === null ? null : { orgId, publicKey: engine.publicKey, status }),
+            findEngine: () =>
+                Promise.resolve(status === null ? null : { orgId, publicKey: engine.publicKey, status, label: null }),
         },
         engineStatus: {
             recordHeartbeat: (input: RecordHeartbeatInput) => (recorded.push(input), service.recordHeartbeat(input)),

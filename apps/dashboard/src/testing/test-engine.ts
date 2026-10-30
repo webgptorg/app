@@ -63,6 +63,7 @@ export function engineRecord(
         statusReason: null,
         createdAt: 1_800_000_000_000,
         updatedAt: 1_800_000_000_000,
+        label: null,
         ...overrides,
     };
 }

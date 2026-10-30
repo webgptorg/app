@@ -1,6 +1,7 @@
 import type { Hono } from 'hono';
 
 import { readEngineOverview, readEngineOverviews, type EngineOverview } from '../../domain/engines/engine-overview';
+import { renameEngine } from '../../domain/engines/rename-engine';
 import { revokeEngine } from '../../domain/engines/revoke-engine';
 import type { EngineCreationPolicy } from '../../domain/registration/engine-creation-policy';
 import { linkCodeIdSchema } from '../../domain/ids';
@@ -17,6 +18,7 @@ function engineView(overview: EngineOverview): EngineView {
     const seen = snapshot === null || snapshot.state === 'never-seen' ? null : snapshot;
     return {
         engineId: engine.engineId,
+        label: engine.label,
         hostname: engine.hostname,
         customHostnames: [...overview.customHostnames],
         mode: engine.mode,
@@ -140,6 +142,16 @@ export function bindEngineRoutes(
 
     bind(router, mount, apiRoutes.getEngine, async ({ input, session }) => {
         const engine = await deps.engines.findInOrg(session.actor.orgId, input.params.engineId);
+        if (engine === null) {
+            return { kind: 'problem', status: 404, code: 'not-found' };
+        }
+        return { kind: 'ok', body: { engine: engineView(await readEngineOverview(deps, engine)) } };
+    });
+
+    bind(router, mount, apiRoutes.renameEngine, async ({ input, session }) => {
+        const { engineId } = input.params;
+        const outcome = await renameEngine(deps, session.actor, engineId, input.body.label);
+        const engine = outcome === 'not-found' ? null : await deps.engines.findInOrg(session.actor.orgId, engineId);
         if (engine === null) {
             return { kind: 'problem', status: 404, code: 'not-found' };
         }

@@ -12,8 +12,10 @@ import { engineQuery, problemCode } from '../../api/queries';
 import { useBrowser } from '../../core/browser';
 import { ButtonLink } from '../../core/link';
 import { EngineOpenLink } from './engine-open-link';
+import { engineLabel, shortEngineId } from '../../../shared/engine-label';
+import { useSession } from '../session/use-session';
+import { canRename, EngineNameField } from './engine-name';
 import { linkCodeQuery } from './link-queries';
-import { shortEngineId } from './engine-labels';
 
 /** onboarding.md, step 4: the page asks every 3 seconds while it is visible, and stops at ready or expiry. */
 export const LINK_POLL_MS = 3000;
@@ -120,30 +122,45 @@ function TroubleshootingHint(props: { readonly troubleshootingUrl: string | null
     );
 }
 
-function LinkedDetails(props: { readonly engineId: string; readonly hostname: string }) {
+function LinkedDetails(props: {
+    readonly engineId: string;
+    readonly hostname: string;
+    readonly engine: EngineView | undefined;
+}) {
     const shortId = shortEngineId(props.engineId);
+    const session = useSession();
     return (
-        <dl className="grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2">
-            <dt className="text-text-muted">{m.link_progress_engine_id()}</dt>
-            <dd className="flex items-center gap-2">
-                <CodeText value={shortId} />
-                <CopyFullId engineId={props.engineId} />
-            </dd>
-            <dt className="text-text-muted">{m.link_progress_address()}</dt>
-            <dd className="min-w-0 break-all">
-                <CodeText value={props.hostname} />
-            </dd>
-            <dt className="text-text-muted">{m.engine_fingerprint_title()}</dt>
-            <dd className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                <TrustMark
-                    fingerprint={deriveEngineFingerprint(props.engineId)}
-                    state="verified"
-                    size="lg"
-                    label={m.engines_fingerprint_label({ shortId })}
-                />
-                <span>{m.link_progress_compare()}</span>
-            </dd>
-        </dl>
+        <>
+            <dl className="grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2">
+                <dt className="text-text-muted">{m.link_progress_engine_id()}</dt>
+                <dd className="flex items-center gap-2">
+                    <CodeText value={shortId} />
+                    <CopyFullId engineId={props.engineId} />
+                </dd>
+                <dt className="text-text-muted">{m.link_progress_address()}</dt>
+                <dd className="min-w-0 break-all">
+                    <CodeText value={props.hostname} />
+                </dd>
+                <dt className="text-text-muted">{m.engine_fingerprint_title()}</dt>
+                <dd className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <TrustMark
+                        fingerprint={deriveEngineFingerprint(props.engineId)}
+                        state="verified"
+                        size="lg"
+                        label={m.engines_fingerprint_label({
+                            name: engineLabel({ engineId: props.engineId, label: props.engine?.label ?? null }),
+                        })}
+                    />
+                    <span>{m.link_progress_compare()}</span>
+                </dd>
+            </dl>
+            {props.engine === undefined || !canRename(session.activeOrg.permissions) ? null : (
+                <div className="flex flex-col gap-2">
+                    <p>{m.link_progress_name()}</p>
+                    <EngineNameField engine={props.engine} />
+                </div>
+            )}
+        </>
     );
 }
 
@@ -227,7 +244,7 @@ function Checklist(props: {
                 ) : (
                     <>
                         <p className="font-medium">{m.link_progress_linked()}</p>
-                        <LinkedDetails engineId={linked.engineId} hostname={linked.hostname} />
+                        <LinkedDetails engineId={linked.engineId} hostname={linked.hostname} engine={engine} />
                     </>
                 )}
             </Row>
@@ -346,7 +363,7 @@ export function LinkProgress(props: {
                     <p className="font-medium">{m.link_progress_ready()}</p>
                     <div className="flex flex-wrap gap-3">
                         <EngineOpenLink
-                            engineId={linked.engineId}
+                            name={engineLabel({ engineId: linked.engineId, label: engine.data?.label ?? null })}
                             hostname={linked.hostname}
                             variant="primary"
                             size="md"

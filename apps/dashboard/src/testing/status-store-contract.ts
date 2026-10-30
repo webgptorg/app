@@ -5,6 +5,7 @@ import type { OrgId } from '../domain/ids';
 import type { EngineRecord } from '../domain/registration/engine-store';
 import type { AlertRecipients } from '../domain/status/alert-recipients';
 import type { HeartbeatEngineReader } from '../domain/status/heartbeat-engine-reader';
+import { engineLabelSchema } from '../shared/engine-label';
 import { testAccount } from './auth-store-contract';
 import { createTestEngine, engineRecord } from './test-engine';
 
@@ -52,19 +53,29 @@ export function describeStatusStoreContract(name: string, makeFixture: () => Sta
             ]);
         });
 
-        it('reads an engine’s organization, key and status, and nothing for an unknown engine', async () => {
+        it('reads an engine’s organization, key, status and label, and nothing for an unknown engine', async () => {
             const account = testAccount();
             await fixture.addAccount(account);
             const active = await createTestEngine();
             const suspended = await createTestEngine();
             await fixture.addEngine(engineRecord(active, account.orgId));
-            await fixture.addEngine(engineRecord(suspended, account.orgId, { status: 'suspended', statusReason: 'x' }));
+            await fixture.addEngine(
+                engineRecord(suspended, account.orgId, {
+                    status: 'suspended',
+                    statusReason: 'x',
+                    label: engineLabelSchema.parse('Old box'),
+                }),
+            );
             expect(await fixture.engines.findEngine(active.engineId)).toEqual({
                 orgId: account.orgId,
                 publicKey: active.publicKey,
                 status: 'active',
+                label: null,
             });
-            expect(await fixture.engines.findEngine(suspended.engineId)).toMatchObject({ status: 'suspended' });
+            expect(await fixture.engines.findEngine(suspended.engineId)).toMatchObject({
+                status: 'suspended',
+                label: 'Old box',
+            });
             expect(await fixture.engines.findEngine((await createTestEngine()).engineId)).toBeNull();
         });
     });

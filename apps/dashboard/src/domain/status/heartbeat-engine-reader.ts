@@ -1,5 +1,6 @@
 import type { Ed25519PublicKey, EngineId } from '@ptbk/protocol';
 
+import type { EngineLabel } from '../../shared/engine-label';
 import type { OrgId } from '../ids';
 import type { EngineStatus } from '../registration/engine-store';
 
@@ -7,6 +8,8 @@ export interface HeartbeatEngine {
     readonly orgId: OrgId;
     readonly publicKey: Ed25519PublicKey;
     readonly status: EngineStatus;
+    /** For the status emails' wording only; the owner's own name for it. */
+    readonly label: EngineLabel | null;
 }
 
 /**

@@ -249,8 +249,10 @@ test('Journey 1: sign up, start the trial, link a fresh engine, become its owner
         await expect.poll(async () => (await onlineEmails()).length).toBeGreaterThan(0);
         const [online, ...more] = await onlineEmails();
         expect(more).toEqual([]);
-        expect(online?.subject).toBe(`Your engine ${identity.hostname} is online`);
-        expect(online?.text).toContain("Finish setup on the engine's terminal");
+        // Unnamed when its first heartbeat arrives, so the email names it by its short ID and gives the address below.
+        expect(online?.subject).toBe(`Your engine ${identity.hostname.slice(0, 8)}… is online`);
+        expect(online?.text).toContain(identity.hostname);
+        expect(online?.text).toContain("open the setup link in the engine's terminal");
     });
 
     const engineRow = async () => (await dashboard.reloadEngineRows()).filter({ hasText: identity.hostname });

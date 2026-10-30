@@ -28,7 +28,7 @@ describeStatusStoreContract('D1', () => {
         },
         async addEngine(engine) {
             await env.DB.prepare(
-                'INSERT INTO engines (engine_id, org_id, public_key, hostname, mode, engine_version, status, status_reason, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                'INSERT INTO engines (engine_id, org_id, public_key, hostname, mode, engine_version, status, status_reason, created_at, updated_at, label) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
             )
                 .bind(
                     engine.engineId,
@@ -41,6 +41,7 @@ describeStatusStoreContract('D1', () => {
                     engine.statusReason,
                     engine.createdAt,
                     engine.updatedAt,
+                    engine.label,
                 )
                 .run();
         },

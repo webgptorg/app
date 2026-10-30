@@ -3,7 +3,6 @@ import type { ButtonSize, ButtonVariant } from '@ptbk/ui';
 import { ExternalLink } from 'lucide-react';
 
 import { m } from '../../../paraglide/messages';
-import { shortEngineId } from './engine-labels';
 
 /**
  * The only reference to an engine hostname our pages may contain: a top-level link the person follows. It is built from
@@ -11,7 +10,8 @@ import { shortEngineId } from './engine-labels';
  * frames or prefetches it (the router's intent preloading applies to router links only).
  */
 export function EngineOpenLink(props: {
-    readonly engineId: string;
+    /** `engineLabel()` of the engine, for the link's accessible name. */
+    readonly name: string;
     readonly hostname: string;
     readonly variant?: ButtonVariant;
     readonly size?: ButtonSize;
@@ -30,8 +30,8 @@ export function EngineOpenLink(props: {
             {props.prominent === true ? m.link_progress_open() : m.engines_open()}{' '}
             <span className="sr-only">
                 {props.prominent === true
-                    ? m.link_progress_open_new_tab({ shortId: shortEngineId(props.engineId) })
-                    : m.engines_open_new_tab({ shortId: shortEngineId(props.engineId) })}
+                    ? m.link_progress_open_new_tab({ name: props.name })
+                    : m.engines_open_new_tab({ name: props.name })}
             </span>
         </a>
     );

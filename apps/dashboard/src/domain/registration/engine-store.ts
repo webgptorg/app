@@ -1,5 +1,6 @@
 import type { Ed25519PublicKey, EngineId, EngineVersion, Hostname, RegistrationMode } from '@ptbk/protocol';
 
+import type { EngineLabel } from '../../shared/engine-label';
 import type { OrgAuditEntryId, OrgId, UserId } from '../ids';
 
 export type EngineStatus = 'active' | 'suspended';
@@ -10,14 +11,16 @@ export const OWNER_REVOKED = 'owner-revoked';
 /** `status_reason` of an engine a platform admin suspended (I-05); the admin's own words go to the audit log only. */
 export const PLATFORM_SUSPENDED = 'platform-suspended';
 
-/** The `org_audit_log` entry a revocation writes with it. */
-export interface RevocationAudit {
+/** The `org_audit_log` entry a revocation or a rename writes with it. */
+export interface OrgEngineAudit {
     readonly id: OrgAuditEntryId;
     readonly actorUserId: UserId;
     readonly at: number;
 }
 
 export type RevokeOutcome = 'revoked' | 'already-revoked' | 'not-found';
+
+export type RenameOutcome = 'renamed' | 'unchanged' | 'not-found';
 
 /** A registered engine: its key and what derives from it, the mode and version it signed, and our status for it. */
 export interface EngineRecord {
@@ -32,6 +35,8 @@ export interface EngineRecord {
     readonly statusReason: string | null;
     readonly createdAt: number;
     readonly updatedAt: number;
+    /** The owner's own name for it, typed in the dashboard; null until they give one. */
+    readonly label: EngineLabel | null;
 }
 
 /** Engines in D1. Organization-facing reads take the `orgId` first and never see another organization's engines. */
@@ -46,7 +51,12 @@ export interface EngineStore {
      * Suspends the engine with {@link OWNER_REVOKED} and appends the `engine.revoke` audit entry, all or nothing. An
      * engine its owner already revoked stays as it is and gets no second entry.
      */
-    revoke(orgId: OrgId, engineId: EngineId, audit: RevocationAudit): Promise<RevokeOutcome>;
+    revoke(orgId: OrgId, engineId: EngineId, audit: OrgEngineAudit): Promise<RevokeOutcome>;
+    /**
+     * Sets or clears the owner's label and appends the `engine.rename` audit entry, all or nothing; the same label again
+     * changes nothing and logs nothing. The entry records who renamed which engine, never the label.
+     */
+    rename(orgId: OrgId, engineId: EngineId, label: EngineLabel | null, audit: OrgEngineAudit): Promise<RenameOutcome>;
     /**
      * Registration only, and the one unscoped read: the engine ID is the key's hash, so the caller has just proved it
      * holds that key, and must learn whether another organization already has it.

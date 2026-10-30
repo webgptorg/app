@@ -117,12 +117,12 @@ test('link an engine, see it online, open its page and revoke it, under the prod
     await expect(open).toHaveAttribute('referrerpolicy', 'no-referrer');
     await checkScreen('/engines');
 
-    await page.getByRole('link', { name: `${engineId.slice(0, 8)}…` }).click();
+    await page.getByRole('link', { name: `${engineId.slice(0, 8)}…`, exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Last heartbeat' })).toBeVisible();
     await checkScreen('/engines/$engineId');
 
     await page.getByRole('button', { name: 'Revoke engine' }).click();
-    const dialog = page.getByRole('dialog', { name: `Revoke engine ${engineId.slice(0, 8)}?` });
+    const dialog = page.getByRole('dialog', { name: `Revoke engine ${engineId.slice(0, 8)}…?` });
     // axe measures colours as rendered, so the dialog's opening animation has to be over; and it is checked before
     // typing, since enabling the confirm button starts a colour transition too.
     await dialog.evaluate((element) =>

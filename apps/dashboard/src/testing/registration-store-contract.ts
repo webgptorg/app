@@ -7,8 +7,9 @@ import { newLinkCodeId, newOrgAuditEntryId, newUserId, type OrgId } from '../dom
 import type { AdminAuditEntry } from '../domain/auth/records';
 import type { PlatformEngineStore } from '../domain/engines/platform-engine-store';
 import { newAdminAuditEntryId } from '../domain/ids';
-import type { EngineRecord, EngineStore, RevocationAudit } from '../domain/registration/engine-store';
+import type { EngineRecord, EngineStore, OrgEngineAudit } from '../domain/registration/engine-store';
 import type { LinkCodeRecord, LinkCodeStore } from '../domain/registration/link-code-store';
+import { engineLabelSchema } from '../shared/engine-label';
 import type { StoredOrgAuditEntry } from './memory-registration-store';
 import { createTestEngine, engineRecord, type TestEngine } from './test-engine';
 
@@ -28,7 +29,7 @@ export interface RegistrationStoreFixture {
     orgAudit(orgId: OrgId): Promise<readonly StoredOrgAuditEntry[]>;
 }
 
-function audit(at: number): RevocationAudit {
+function audit(at: number): OrgEngineAudit {
     return { id: newOrgAuditEntryId(cryptoRandom), actorUserId: newUserId(cryptoRandom), at };
 }
 
@@ -295,6 +296,72 @@ export function describeRegistrationStoreContract(name: string, makeFixture: () 
             const { row } = await created(orgA);
             expect(await fixture.engines.revoke(orgB, engine.engineId, audit(NOW + 20))).toBe('not-found');
             expect(await fixture.engines.revoke(orgA, (await createTestEngine()).engineId, audit(NOW + 20))).toBe(
+                'not-found',
+            );
+            expect(await fixture.engines.findInOrg(orgA, engine.engineId)).toEqual(row);
+            expect(await fixture.orgAudit(orgA)).toEqual([]);
+            expect(await fixture.orgAudit(orgB)).toEqual([]);
+        });
+
+        it('sets, keeps and clears the owner’s label, with one audit entry per change and never the label', async () => {
+            const { row } = await created(orgA);
+            const label = engineLabelSchema.parse('Produkce – Brno (2)');
+            const entry = audit(NOW + 20);
+            expect(await fixture.engines.rename(orgA, engine.engineId, label, entry)).toBe('renamed');
+            expect(await fixture.engines.findInOrg(orgA, engine.engineId)).toEqual({
+                ...row,
+                label,
+                updatedAt: NOW + 20,
+            });
+            expect(await fixture.orgAudit(orgA)).toEqual([
+                {
+                    id: entry.id,
+                    orgId: orgA,
+                    actorUserId: entry.actorUserId,
+                    action: 'engine.rename',
+                    targetType: 'engine',
+                    targetId: engine.engineId,
+                    createdAt: NOW + 20,
+                },
+            ]);
+            expect(await fixture.engines.rename(orgA, engine.engineId, label, audit(NOW + 30))).toBe('unchanged');
+            expect(await fixture.engines.findInOrg(orgA, engine.engineId)).toMatchObject({ updatedAt: NOW + 20 });
+            expect(await fixture.orgAudit(orgA)).toHaveLength(1);
+            expect(await fixture.engines.rename(orgA, engine.engineId, null, audit(NOW + 40))).toBe('renamed');
+            expect(await fixture.engines.findInOrg(orgA, engine.engineId)).toMatchObject({ label: null });
+            expect(await fixture.engines.rename(orgA, engine.engineId, null, audit(NOW + 50))).toBe('unchanged');
+            expect((await fixture.orgAudit(orgA)).map((logged) => logged.action)).toEqual([
+                'engine.rename',
+                'engine.rename',
+            ]);
+        });
+
+        it('keeps the label when the engine re-registers or is revoked', async () => {
+            await created(orgA);
+            const label = engineLabelSchema.parse('Staging');
+            await fixture.engines.rename(orgA, engine.engineId, label, audit(NOW + 5));
+            const code = codeRecord(orgA);
+            await fixture.linkCodes.insert(code);
+            const refresh = {
+                engineId: engine.engineId,
+                orgId: orgA,
+                mode: 'tunnel',
+                engineVersion: EngineVersion.parse('2.0.0'),
+                now: NOW + 10,
+            } as const;
+            expect(await fixture.linkCodes.redeemForExistingEngine(code.codeHash, refresh)).toBe('redeemed');
+            expect(await fixture.engines.revoke(orgA, engine.engineId, audit(NOW + 20))).toBe('revoked');
+            expect(await fixture.engines.findInOrg(orgA, engine.engineId)).toMatchObject({
+                label,
+                status: 'suspended',
+            });
+        });
+
+        it('cannot rename another organization’s engine or one that does not exist', async () => {
+            const { row } = await created(orgA);
+            const label = engineLabelSchema.parse('Mine now');
+            expect(await fixture.engines.rename(orgB, engine.engineId, label, audit(NOW + 20))).toBe('not-found');
+            expect(await fixture.engines.rename(orgA, (await createTestEngine()).engineId, label, audit(NOW))).toBe(
                 'not-found',
             );
             expect(await fixture.engines.findInOrg(orgA, engine.engineId)).toEqual(row);

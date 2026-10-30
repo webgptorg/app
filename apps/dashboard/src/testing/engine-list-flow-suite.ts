@@ -137,6 +137,7 @@ export function describeEngineListFlows(
                 expect(engines.map((engine) => engine.engineId)).toEqual([first.engineId, second.engineId]);
                 expect(engines[0]).toEqual({
                     engineId: first.engineId,
+                    label: null,
                     hostname: `${first.engineId}.${TEST_ENGINE_DOMAIN}`,
                     customHostnames: [],
                     mode: 'tunnel',
@@ -343,6 +344,86 @@ export function describeEngineListFlows(
                 const repeated = await revoke(browser, engine.engineId);
                 expect(repeated.status).toBe(200);
                 expect(await fixture.orgAudit(orgId)).toHaveLength(1);
+            });
+        });
+
+        describe('rename', () => {
+            function rename(browser: TestBrowser, engineId: string, body: unknown): Promise<TestResponse> {
+                return browser.request('POST', `${ENGINES}/${engineId}/label`, body);
+            }
+
+            it('labels the engine with one audit entry per change, without a step-up, and clears it with null', async () => {
+                const { browser, orgId } = await owner();
+                const engine = await registered(browser);
+                expect((await list(browser))[0]?.label).toBeNull();
+                const response = await rename(browser, engine.engineId, { label: 'Produkce – Brno' });
+                expect(response.status).toBe(200);
+                expect((response.body as { engine: EngineView }).engine).toMatchObject({
+                    engineId: engine.engineId,
+                    label: 'Produkce – Brno',
+                });
+                expect((await list(browser))[0]?.label).toBe('Produkce – Brno');
+                expect((await rename(browser, engine.engineId, { label: 'Produkce – Brno' })).status).toBe(200);
+                const session = (await browser.request('GET', '/api/session')).body as SessionView;
+                expect(await fixture.orgAudit(orgId)).toEqual([
+                    {
+                        orgId,
+                        actorUserId: session.user.id,
+                        action: 'engine.rename',
+                        targetType: 'engine',
+                        targetId: engine.engineId,
+                    },
+                ]);
+                expect((await rename(browser, engine.engineId, { label: null })).status).toBe(200);
+                expect((await list(browser))[0]?.label).toBeNull();
+                expect(await fixture.orgAudit(orgId)).toHaveLength(2);
+            });
+
+            it.each([
+                ['a missing label', {}],
+                ['an empty label', { label: '' }],
+                ['a label with spaces at the ends', { label: ' Prod ' }],
+                ['a label too long', { label: 'a'.repeat(41) }],
+                ['markup', { label: '<b>Prod</b>' }],
+                ['a URL', { label: 'https://evil.example' }],
+                ['an unknown field', { label: 'Prod', hostname: 'evil.example' }],
+                ['a number', { label: 42 }],
+            ])('refuses %s with 400 and changes nothing', async (_, body) => {
+                const { browser, orgId } = await owner();
+                const engine = await registered(browser);
+                expectProblem(await rename(browser, engine.engineId, body), 400, 'invalid-request');
+                expect((await list(browser))[0]?.label).toBeNull();
+                expect(await fixture.orgAudit(orgId)).toEqual([]);
+            });
+
+            it('answers org B’s engine ID with 404 and leaves it alone', async () => {
+                const a = await owner();
+                const b = await owner();
+                const foreign = await registered(b.browser);
+                expectProblem(await rename(a.browser, foreign.engineId, { label: 'Mine' }), 404, 'not-found');
+                expect((await list(b.browser))[0]?.label).toBeNull();
+                expect(await fixture.orgAudit(a.orgId)).toEqual([]);
+                expect(await fixture.orgAudit(b.orgId)).toEqual([]);
+            });
+
+            it('is forbidden to a role without engine.rename', async () => {
+                setUp({
+                    policy: {
+                        ...DASHBOARD_POLICY,
+                        'engine.rename': { ...DASHBOARD_POLICY['engine.rename'], orgRoles: [] },
+                    },
+                });
+                const { browser, orgId } = await owner();
+                const engine = await registered(browser);
+                expectProblem(await rename(browser, engine.engineId, { label: 'Prod' }), 403, 'forbidden');
+                expect(await fixture.orgAudit(orgId)).toEqual([]);
+            });
+
+            it('needs a session', async () => {
+                const { browser } = await owner();
+                const engine = await registered(browser);
+                const anonymous = harness.browser({ ip: '203.0.113.250' });
+                expect((await rename(anonymous, engine.engineId, { label: 'Prod' })).status).toBe(401);
             });
         });
 

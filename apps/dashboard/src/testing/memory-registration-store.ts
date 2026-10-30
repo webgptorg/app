@@ -164,6 +164,26 @@ export function createMemoryRegistrationStores(deps: {
             });
             return Promise.resolve('revoked');
         },
+        rename(orgId, engineId, label, audit) {
+            const engine = state.engines.get(engineId);
+            if (engine?.orgId !== orgId) {
+                return Promise.resolve('not-found');
+            }
+            if (engine.label === label) {
+                return Promise.resolve('unchanged');
+            }
+            state.engines.set(engineId, { ...engine, label, updatedAt: audit.at });
+            state.orgAudit.push({
+                id: audit.id,
+                orgId,
+                actorUserId: audit.actorUserId,
+                action: 'engine.rename',
+                targetType: 'engine',
+                targetId: engineId,
+                createdAt: audit.at,
+            });
+            return Promise.resolve('renamed');
+        },
         findForRegistration: (engineId) => Promise.resolve(state.engines.get(engineId) ?? null),
     };
 
