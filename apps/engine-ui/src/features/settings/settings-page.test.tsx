@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { LOCALE_STORAGE_KEY } from '../../app/locale-storage';
 import { expectNoAxeViolations } from '../../testing/axe';
 import { renderWithProviders } from '../../testing/render-with-providers';
+import { createMemoryStorage } from '../../testing/memory-storage';
 import { createSecurityEngine } from '../../testing/security-engine';
 import { problemResponse } from '../../testing/test-engine-api';
 
@@ -69,6 +70,27 @@ describe('settings: updates', { timeout: TIMEOUT_MS }, () => {
         expect(await screen.findByRole('dialog', { name: 'Confirm it is you' })).toBeDefined();
         const overview = await engine.client.security.get(AbortSignal.timeout(1000));
         expect(overview.kind === 'ok' && overview.data.update.policy).toBe('auto');
+    });
+
+    it('brings the change back after the passkey check, for one more click', async () => {
+        const storage = createMemoryStorage();
+        const engine = createSecurityEngine({ stepUp: 'required' });
+        const first = renderWithProviders({ path: '/settings', engineApi: engine.client, storage });
+        await first.user.selectOptions(await screen.findByRole('combobox', { name: 'Policy' }), 'pinned');
+        await first.user.click(screen.getByRole('button', { name: 'Save policy' }));
+        const dialog = await screen.findByRole('dialog', { name: 'Confirm it is you' });
+        await first.user.click(within(dialog).getByRole('button', { name: 'Continue with passkey' }));
+        expect(first.location.assign).toHaveBeenCalledOnce();
+        first.unmount();
+
+        const save = vi.spyOn(engine.client.settings, 'setUpdatePolicy');
+        renderWithProviders({ path: '/settings', engineApi: engine.client, storage });
+        expect(
+            await screen.findByText('You confirmed it is you. Check the change and save it once more.'),
+        ).toBeDefined();
+        expect(screen.getByRole<HTMLSelectElement>('combobox', { name: 'Policy' }).value).toBe('pinned');
+        expect(screen.getByRole<HTMLInputElement>('textbox', { name: /^Version/ }).value).toBe('1.0.0');
+        expect(save).not.toHaveBeenCalled();
     });
 
     it('reports a refused change', async () => {

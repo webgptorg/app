@@ -24,6 +24,11 @@ export interface StepUpAwareMutationOptions<Data, Variables, Snapshot> {
     /** Overrides the generic failure text for failures other than step-up and 403. */
     readonly errorMessage?: (failure: ApiFailure, variables: Variables) => string;
     readonly onSuccess?: (data: Data, variables: Variables) => void;
+    /**
+     * Saved when the member goes to confirm a step-up, so the page can restore the form or dialog on return
+     * (`useResumedStepUp` with the same `action`). Only non-secret parameters belong in `data`.
+     */
+    readonly resumeAs?: { readonly action: string; readonly data: (variables: Variables) => unknown };
 }
 
 interface MutationContext<Snapshot> {
@@ -62,7 +67,10 @@ export function useStepUpAwareMutation<Data, Variables = void, Snapshot = undefi
             }
             const failure = classifyApiError(error);
             if (isStepUpRequired(failure)) {
-                stepUp.request();
+                const resume = options.resumeAs;
+                stepUp.request(
+                    resume === undefined ? undefined : { action: resume.action, data: resume.data(variables) },
+                );
                 return;
             }
             if (isForbidden(failure)) {

@@ -6,7 +6,9 @@ import { userEvent } from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
 import { StepUpProvider } from '../features/step-up/step-up';
+import { STEP_UP_INTENT_KEY } from '../features/step-up/step-up-intent';
 import { createFakeLocation } from '../testing/fake-location';
+import { createMemoryStorage } from '../testing/memory-storage';
 import { problemResponse } from '../testing/test-engine-api';
 import { unwrap } from './api-errors';
 import { useStepUpAwareMutation } from './mutations';
@@ -35,17 +37,18 @@ function Harness({ options }: { readonly options: StepUpAwareMutationOptions<str
 function setUp(options: StepUpAwareMutationOptions<string, string, readonly string[]>) {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const location = createFakeLocation('/agents');
+    const storage = createMemoryStorage();
     render(
         <UiProvider messages={createUiMessages()} locale="en">
             <QueryClientProvider client={queryClient}>
-                <StepUpProvider location={location}>
+                <StepUpProvider location={location} storage={storage}>
                     <Harness options={options} />
                 </StepUpProvider>
             </QueryClientProvider>
             <Toaster />
         </UiProvider>,
     );
-    return { queryClient, location, user: userEvent.setup() };
+    return { queryClient, location, storage, user: userEvent.setup() };
 }
 
 const optimisticAdd = {
@@ -120,7 +123,7 @@ describe('useStepUpAwareMutation', () => {
 
         const dialog = await screen.findByRole('dialog', { name: 'Confirm it is you' });
         expect(screen.queryByText('That did not work. Please try again.')).toBeNull();
-        await user.click(within(dialog).getByRole('button', { name: 'Not now' }));
+        await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
         await waitFor(() => {
             expect(screen.queryByRole('dialog')).toBeNull();
         });
@@ -130,5 +133,26 @@ describe('useStepUpAwareMutation', () => {
             within(await screen.findByRole('dialog')).getByRole('button', { name: 'Continue with passkey' }),
         );
         expect(location.assign).toHaveBeenCalledWith(`${STEP_UP_PATH}?returnTo=%2Fagents`);
+    });
+
+    it('keeps what the member was doing for the return, only when they go to confirm', async () => {
+        const { user, storage, location } = setUp({
+            mutationFn: async () => unwrap(await problemResponse('step-up-required')),
+            resumeAs: { action: 'names.add', data: (name) => ({ name }) },
+        });
+        await user.click(await screen.findByRole('button', { name: 'Add' }));
+        await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Cancel' }));
+        expect(storage.getItem(STEP_UP_INTENT_KEY)).toBeNull();
+
+        await user.click(screen.getByRole('button', { name: 'Add' }));
+        await user.click(
+            within(await screen.findByRole('dialog')).getByRole('button', { name: 'Continue with passkey' }),
+        );
+        expect(JSON.parse(storage.getItem(STEP_UP_INTENT_KEY) ?? '{}')).toMatchObject({
+            action: 'names.add',
+            path: '/agents',
+            data: { name: 'Grace' },
+        });
+        expect(location.assign).toHaveBeenCalledOnce();
     });
 });
