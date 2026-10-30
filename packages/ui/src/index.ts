@@ -159,6 +159,9 @@ export type {
     SwitchableEngine,
 } from './components/engine-switcher/engine-switcher';
 
+export { LanguageSwitch } from './components/language-switch/language-switch';
+export type { LanguageOption, LanguageSwitchProps } from './components/language-switch/language-switch';
+
 export { Gallery, GALLERY_ENTRIES } from './gallery';
 export type { GalleryEntry } from './gallery-entry';
 

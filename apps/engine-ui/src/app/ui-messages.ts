@@ -50,5 +50,7 @@ export function createUiMessages(): UiMessages {
         engineOnline: () => m.ui_engine_online(),
         engineOffline: () => m.ui_engine_offline(),
         engineUnknown: () => m.ui_engine_unknown(),
+        language: () => m.ui_language(),
+        languageCurrent: ({ language }) => m.ui_language_current({ language }),
     };
 }

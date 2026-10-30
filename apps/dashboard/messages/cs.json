@@ -506,6 +506,8 @@
   "ui_error_title": "Něco se pokazilo",
   "ui_expand_row": "Rozbalit {label}",
   "ui_form_invalid": "Zkontrolujte zvýrazněná pole",
+  "ui_language": "Jazyk",
+  "ui_language_current": "Jazyk: {language}",
   "ui_loading": "Načítání",
   "ui_next_page": "Další stránka",
   "ui_no_data": "Zatím tu nic není",
