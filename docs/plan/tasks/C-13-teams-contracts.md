@@ -2,7 +2,7 @@
 
 - **Lane:** Contracts · **Module:** `packages/protocol`, `packages/engine-api`, `packages/conformance` · **Milestone:** M3
 - **Depends on:** —
-- **Status:** todo
+- **Status:** in progress (feat/c-13-teams-engine-api)
 - **Spec:** [Teams](../../spec/teams.md) "Contracts"; ADRs: [0018](../../adr/0018-teams-and-member-access.md)
 
 ## Goal
