@@ -139,6 +139,12 @@ These are not decided yet. Do not build against a guess: ask, or wait for the de
      - CSRF: every request other than `GET`, `HEAD` and `OPTIONS` needs a same-origin `Origin` and a `Sec-Fetch-Site` of `same-origin` or `none`. Non-browser clients, such as the conformance runner, must then send both headers.
      - Sign-in counts as a fresh step-up for 5 minutes.
      - Other members' chats: the contract lets a member holding `chats.read` read a chat another member started, read-only ([engine-api.md](engine-api.md#chats)); the mock gives `chats.read` to every role. Whether members may read each other's chats at all is engine policy.
+   - Members, invites and sessions (found while building the UI for them, #154 and #163). The UI offers every role and leaves the decision to you, because it never decides by role name:
+     - **Owner protection, security-relevant:** nothing in the contract stops a `members.manage` holder from removing the owner or the last owner, or from granting Owner, and no problem code exists to refuse it. The mock and the in-memory engine allow all three. Proposed: refuse them with a dedicated problem code.
+     - Which roles a member may assign, and what each role holds, are not exposed, so the UI cannot hide roles the engine will refuse.
+     - Invites carry no recipient or label and have no maximum lifetime. How `Member.status: 'invited'` relates to the `Invite` object is not specified.
+     - Sessions carry only IP and user agent, and nothing says when `lastSeenAt` must be updated.
+     - The member and invite routes are `draft`; the UI hides management when `GET /invites` answers 404.
    - Decided for the next additive engine API version, not in the contract yet: `build: "conformance"` in `GET /engine`, so the conformance runner can tell a conformance build apart. Today only the startup log says so ([ui-loader.md](ui-loader.md#open-points-decided-2026-10-26)).
    - The gateway's sign-in rules added with X-07 (#125, #127), in [gateway.md](gateway.md): a MUST that the redirect to sign-in keeps the requested path in `next` ([anonymous access](gateway.md#anonymous-access), `engine-api.gateway.sign-in-keeps-next`, ENG-94), and a SHOULD that the sign-in page detects an existing session through same-origin `GET /api/v1/me` and goes on to a validated `next` ([sessions](gateway.md#sessions)).
 3. **Release log (C-06).**
