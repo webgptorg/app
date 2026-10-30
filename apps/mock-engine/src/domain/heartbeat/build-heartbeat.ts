@@ -1,5 +1,5 @@
-import type { Bytes, EngineId, EngineVersion, Signer, Timestamp, UpdateState } from '@ptbk/protocol';
-import { Timestamp as TimestampSchema, buildHeartbeat, signHeartbeat } from '@ptbk/protocol';
+import type { Bytes, EngineId, EngineVersion, HeartbeatAck, Signer, Timestamp, UpdateState } from '@ptbk/protocol';
+import { Timestamp as TimestampSchema, buildHeartbeat, buildHeartbeatV2, signHeartbeat } from '@ptbk/protocol';
 
 import type { Clock } from '../clock';
 import type { SystemStatsSample } from './system-stats';
@@ -13,6 +13,8 @@ export interface HeartbeatFacts {
     readonly system: SystemStatsSample;
     readonly counts: { readonly agents: number; readonly members: number };
     readonly update: UpdateState;
+    /** Present once the engine pinned a member key: it then sends heartbeat v2 (ADR 0018). */
+    readonly teams?: { readonly accessRequests: number; readonly acks: readonly HeartbeatAck[] };
 }
 
 export interface SignedHeartbeat {
@@ -33,8 +35,8 @@ export function isoSeconds(ms: number): Timestamp {
 const decoder = new TextDecoder();
 
 /**
- * C-03's `buildHeartbeat` checks the payload against the strict schema, rounds the percentages and serialises once;
- * C-03's `signHeartbeat` signs those bytes (`ptbk-heartbeat-v1` over their raw SHA-256). Nothing here adds a field.
+ * C-03's `buildHeartbeat` (or C-13's `buildHeartbeatV2`) checks the payload against the strict schema, rounds the
+ * percentages and serialises once; `signHeartbeat` signs those bytes (`ptbk-heartbeat-v1` over their raw SHA-256).
  */
 export async function buildSignedHeartbeat(
     facts: HeartbeatFacts,
@@ -42,7 +44,7 @@ export async function buildSignedHeartbeat(
 ): Promise<SignedHeartbeat> {
     const nowMs = deps.clock.nowMs();
     const ts = isoSeconds(nowMs);
-    const rawBody = buildHeartbeat({
+    const fields = {
         engineId: facts.engineId,
         seq: facts.seq,
         ts,
@@ -54,7 +56,9 @@ export async function buildSignedHeartbeat(
         update: facts.update,
         agents: facts.counts.agents,
         members: facts.counts.members,
-    });
+    };
+    const rawBody =
+        facts.teams === undefined ? buildHeartbeat(fields) : buildHeartbeatV2({ ...fields, ...facts.teams });
     const signature = await signHeartbeat(deps.signer, rawBody, deps.signal);
     return Object.freeze({ rawBody, body: decoder.decode(rawBody), signature, ts });
 }

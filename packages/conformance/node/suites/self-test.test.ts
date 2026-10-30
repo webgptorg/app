@@ -4,6 +4,7 @@ import type { EngineApiEndpoint, EngineTargetFactory } from '../harness/platform
 import { runPlatformConformance } from '../harness/run-platform';
 import { createMockEngineTargetFactory } from '../targets/mock-engine';
 import { fakeEngineCommand, mockEngineCommand } from '../testing/engines';
+import { MEMBER_ACCESS_SUITE } from '../index';
 import { DASHBOARD_SUITES, EXPECTATIONS, WITHOUT_ENGINE_API, notPassing, run } from '../testing/self-test';
 
 /** The mock's sessions, behind an engine API whose security panel lies about the clock skew in the given way. */
@@ -27,6 +28,15 @@ function lyingSecurityPanel(rewrite: (skew: { seconds: number } | null) => unkno
         certificateAuthority: (engine) => mock.certificateAuthority?.(engine) ?? Promise.resolve(null),
     };
 }
+
+describe('the member-access suite', () => {
+    it('passes against the mock engine', async () => {
+        const results = await run(mockEngineCommand(), undefined, {}, createMockEngineTargetFactory(), [
+            MEMBER_ACCESS_SUITE,
+        ]);
+        expect(notPassing(results)).toEqual({});
+    }, 300_000);
+});
 
 describe('the registration and heartbeat suites', () => {
     it('pass against the mock engine', async () => {

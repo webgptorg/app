@@ -35,8 +35,8 @@ function parse(text: string): Registration | null {
     }
     const parsed = StoredRegistration.safeParse(json);
     if (!parsed.success) return null;
-    const { dashboardUrl, engineId, hostname, relays } = parsed.data;
-    return Object.freeze({ dashboardUrl, engineId, hostname, relays: Object.freeze(relays) });
+    const { dashboardUrl, engineId, hostname, relays, memberKey } = parsed.data;
+    return Object.freeze({ dashboardUrl, engineId, hostname, relays: Object.freeze(relays), memberKey });
 }
 
 /**

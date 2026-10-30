@@ -1,4 +1,4 @@
-import type { EngineId, Hostname } from '@ptbk/protocol';
+import type { Ed25519PublicKey, EngineId, Hostname } from '@ptbk/protocol';
 
 /** The engine's identity as the dashboard confirmed it, and where it registered. */
 export interface Registration {
@@ -9,6 +9,11 @@ export interface Registration {
     readonly hostname: Hostname;
     /** The relays to dial, 1 to `MAX_RELAYS`. */
     readonly relays: readonly Hostname[];
+    /**
+     * The dashboard member key (base64url), pinned at registration: it signs access tickets and member revocations
+     * (ADR 0018). `null` from a dashboard without teams, and for registrations stored before it existed.
+     */
+    readonly memberKey: Ed25519PublicKey | null;
 }
 
 export interface RegistrationStore {

@@ -5,7 +5,7 @@ export const GATEWAY_ASSET_PATH = '/auth/assets/';
 export const GATEWAY_PAGES_DIR: URL = new URL('../pages/', import.meta.url);
 
 /** Templates: render them with `renderGatewayPage` and serve as `text/html; charset=utf-8`. */
-export const GATEWAY_PAGES = ['setup.html', 'sign-in.html', 'step-up.html'] as const;
+export const GATEWAY_PAGES = ['setup.html', 'sign-in.html', 'step-up.html', 'join.html'] as const;
 export type GatewayPage = (typeof GATEWAY_PAGES)[number];
 
 /** Static files served unchanged under `GATEWAY_ASSET_PATH`, with their content types. */

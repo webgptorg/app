@@ -140,7 +140,10 @@ function inTunnelRoutes(devLogin: boolean): readonly Route[] {
                 clock,
                 logger: createMemoryLogger(),
             }),
-            files: { pages: { 'setup.html': '', 'sign-in.html': '', 'step-up.html': '' }, assets: new Map() },
+            files: {
+                pages: { 'setup.html': '', 'sign-in.html': '', 'step-up.html': '', 'join.html': '' },
+                assets: new Map(),
+            },
             ownerSetUp: () => false,
             command: 'mock-engine',
         },

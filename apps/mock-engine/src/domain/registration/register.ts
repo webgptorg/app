@@ -120,6 +120,7 @@ export async function registerEngine(deps: RegisterEngineDeps): Promise<Registra
                 engineId: call.response.engineId,
                 hostname: call.response.hostname,
                 relays: Object.freeze([...call.response.relays]),
+                memberKey: call.response.memberKey,
             });
             await deps.store.save(registration);
             return { kind: 'registered', registration };

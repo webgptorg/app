@@ -438,8 +438,7 @@ export async function startRegisteredEngine(
             'send an accepted heartbeat',
             () =>
                 dashboard.heartbeats.find(
-                    (beat) =>
-                        beat.at >= afterMs && beat.verification?.kind === 'accepted' && beat.answer.status === 204,
+                    (beat) => beat.at >= afterMs && beat.verification?.kind === 'accepted' && beat.answer.status < 300,
                 ),
             timeoutMs + ctx.expectations.heartbeatIntervalMs,
         );

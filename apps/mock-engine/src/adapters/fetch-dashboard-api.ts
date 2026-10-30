@@ -1,9 +1,11 @@
 import type { Bytes } from '@ptbk/protocol';
 import {
+    HEARTBEAT_REPLY_MAX_BYTES,
     HEARTBEAT_SIGNATURE_HEADER,
     PROBLEM_DETAILS_MAX_BYTES,
     REGISTER_PATH,
     REGISTER_RESPONSE_MAX_BYTES,
+    TolerantHeartbeatReply,
     TolerantProblemDetails,
     TolerantRegisterEngineResponse,
     heartbeatPath,
@@ -131,8 +133,12 @@ export function createFetchDashboardApi(options: FetchDashboardApiOptions): Dash
                 signal,
                 async (response) => {
                     if (response.ok) {
-                        await response.body?.cancel();
-                        return { kind: 'accepted', status: response.status } as const;
+                        // A v1 answer is 204 without a body; an unreadable reply only means no revocations this time.
+                        const reply = TolerantHeartbeatReply.safeParse(
+                            parseJson(await readBounded(response, HEARTBEAT_REPLY_MAX_BYTES)),
+                        );
+                        const revocations = reply.success ? reply.data.revocations : [];
+                        return { kind: 'accepted', status: response.status, revocations } as const;
                     }
                     return { kind: 'refused', status: response.status, problem: await readProblem(response) } as const;
                 },

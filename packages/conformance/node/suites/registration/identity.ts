@@ -106,7 +106,7 @@ export const linkCodeUsedOnce: PlatformCheck = {
             ctx,
             linked,
             'send an accepted heartbeat after the restart',
-            () => linked.dashboard.heartbeats.find((beat) => beat.at >= restartedAt && beat.answer.status === 204),
+            () => linked.dashboard.heartbeats.find((beat) => beat.at >= restartedAt && beat.answer.status < 300),
             restartWindow(ctx),
         );
         const findings = new Findings();

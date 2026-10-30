@@ -12,6 +12,35 @@ export const SIGN_IN_PATH = '/auth/sign-in';
 export const SIGN_OUT_PATH = '/auth/sign-out';
 export const STEP_UP_PATH = '/auth/step-up';
 
+/**
+ * The join page (ADR 0018) and its JSON endpoints, which the conformance suite drives without a browser. Each takes a
+ * same-origin `POST`: options `{ ticket }` answers 200 `{ options }` (WebAuthn creation options); verify
+ * `{ ticket, response }` answers 201 `{ code, request }`, the 6-digit code and an opaque token for status; status
+ * `{ request }` answers 200 `{ state }`, `waiting`, `declined`, or `approved` with `next` and the session cookie.
+ */
+export const JOIN_PATH = '/auth/join';
+export const JOIN_OPTIONS_PATH = '/auth/join/options';
+export const JOIN_VERIFY_PATH = '/auth/join/verify';
+export const JOIN_STATUS_PATH = '/auth/join/status';
+
+/** The join endpoints' problem codes, each one state of the page. */
+export const JOIN_PROBLEM = {
+    /** 403: no member key pinned, a bad signature, a malformed ticket or one for another engine. */
+    ticketInvalid: 'ticket-invalid',
+    /** 403: past `expiresAt`, or not valid yet. */
+    ticketExpired: 'ticket-expired',
+    /** 409: this `ticketId` already made a request. */
+    ticketUsed: 'ticket-used',
+    /** 409: the ticket's person is already an active member; they sign in instead. */
+    alreadyMember: 'already-member',
+    /** 409: `MAX_PENDING_ACCESS_REQUESTS` are waiting. */
+    tooManyRequests: 'too-many-requests',
+    /** 400: the passkey's registration response did not verify. */
+    passkeyNotVerified: 'passkey-not-verified',
+    /** 404 from status: no such request token. */
+    requestUnknown: 'join-request-unknown',
+} as const;
+
 /** Path prefixes the UI loader's SPA fallback must never shadow. */
 export const ENGINE_RESERVED_PATHS = ['/api/', '/auth/', '/setup', '/.well-known/'] as const;
 

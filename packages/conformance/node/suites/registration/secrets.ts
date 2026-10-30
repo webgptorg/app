@@ -18,7 +18,7 @@ export const secretsNeverLogged: PlatformCheck = {
             ctx,
             linked,
             'send an accepted heartbeat',
-            () => linked.dashboard.heartbeats.find((beat) => beat.answer.status === 204),
+            () => linked.dashboard.heartbeats.find((beat) => beat.answer.status < 300),
             window,
         );
         if (!first.ok) return { kind: 'fail', detail: first.reason };
@@ -29,7 +29,7 @@ export const secretsNeverLogged: PlatformCheck = {
             ctx,
             linked,
             'send an accepted heartbeat after the restart',
-            () => linked.dashboard.heartbeats.find((beat) => beat.at >= restartedAt && beat.answer.status === 204),
+            () => linked.dashboard.heartbeats.find((beat) => beat.at >= restartedAt && beat.answer.status < 300),
             window,
         );
         await linked.engine.stop();

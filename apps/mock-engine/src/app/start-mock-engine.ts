@@ -2,7 +2,14 @@ import type { Duplex } from 'node:stream';
 
 import type { InMemoryEngineCore } from '@ptbk/engine-api/in-memory';
 import type { Hostname } from '@ptbk/protocol';
-import { CLOSE_CODE, TUNNEL_FEATURES, TUNNEL_PROTOCOL_VERSIONS, TunnelFeature, defaultHostname } from '@ptbk/protocol';
+import {
+    CLOSE_CODE,
+    TUNNEL_FEATURES,
+    TUNNEL_PROTOCOL_VERSIONS,
+    TunnelFeature,
+    defaultHostname,
+    ed25519PublicKeyToBytes,
+} from '@ptbk/protocol';
 
 import type { ControlServer, FaultSettings } from '../adapters/control-server';
 import { createFaultSettings, startControlServer } from '../adapters/control-server';
@@ -15,6 +22,7 @@ import { createSimpleWebAuthnCeremonies } from '../adapters/simplewebauthn-cerem
 import type { PasskeyCeremonies } from '../domain/gateway/passkey-ceremonies';
 import { createChallenges } from '../domain/gateway/passkey-ceremonies';
 import type { PasskeyStore } from '../domain/gateway/passkey-gateway';
+import { createJoinGateway } from '../domain/gateway/join-gateway';
 import { createInMemoryPasskeyStore, createPasskeyGateway } from '../domain/gateway/passkey-gateway';
 import type { SetupSecretStore } from '../domain/onboarding/setup-secret';
 import { createInMemorySetupSecretStore, createSetupSecrets } from '../domain/onboarding/setup-secret';
@@ -263,6 +271,51 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
             logger.error('simulation.error', { problem: error instanceof Error ? error.name : 'unknown' });
         },
     });
+    const sessions = createSessionStore({ engine: () => runtime.controller(), clock: deps.clock, random: deps.random });
+    const ownerSetUpNow = (): boolean => hasOwner(runtime.controller().inspect());
+    // Assigned below; the owner changes only through requests and commands that come after startup.
+    let onboardingChanged = (): void => undefined;
+    const onboarding = deps.onboarding;
+    const setupSecrets = createSetupSecrets({
+        store: onboarding?.setupSecrets ?? createInMemorySetupSecretStore(),
+        random: deps.random,
+        clock: deps.clock,
+        hasOwner: ownerSetUpNow,
+    });
+    const passkeyStore = onboarding?.passkeys ?? createInMemoryPasskeyStore();
+    const ceremonies = onboarding?.ceremonies ?? createSimpleWebAuthnCeremonies();
+    const passkeyChallenges = createChallenges({ random: deps.random, clock: deps.clock });
+    const passkeyGateway = createPasskeyGateway({
+        engine: () => runtime.controller(),
+        sessions,
+        secrets: setupSecrets,
+        passkeys: passkeyStore,
+        ceremonies,
+        challenges: passkeyChallenges,
+        random: deps.random,
+        clock: deps.clock,
+        logger,
+        onOwnerChanged: () => {
+            onboardingChanged();
+        },
+    });
+    await passkeyGateway.restore();
+    const joinGateway = createJoinGateway({
+        engine: () => runtime.controller(),
+        engineId: identity.engineId,
+        memberKey: () => {
+            const key = registration?.memberKey ?? null;
+            return key === null ? null : ed25519PublicKeyToBytes(key);
+        },
+        passkeys: passkeyStore,
+        sessions,
+        ceremonies,
+        challenges: passkeyChallenges,
+        random: deps.random,
+        clock: deps.clock,
+        engineNowMs: () => runtime.clock.nowMs(),
+        logger,
+    });
     const heartbeat =
         dashboard === null
             ? null
@@ -283,33 +336,8 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
                   onStatus: (status) => {
                       runtime.setHeartbeat(status);
                   },
+                  teams: joinGateway,
               });
-    const sessions = createSessionStore({ engine: () => runtime.controller(), clock: deps.clock, random: deps.random });
-    const ownerSetUpNow = (): boolean => hasOwner(runtime.controller().inspect());
-    // Assigned below; the owner changes only through requests and commands that come after startup.
-    let onboardingChanged = (): void => undefined;
-    const onboarding = deps.onboarding;
-    const setupSecrets = createSetupSecrets({
-        store: onboarding?.setupSecrets ?? createInMemorySetupSecretStore(),
-        random: deps.random,
-        clock: deps.clock,
-        hasOwner: ownerSetUpNow,
-    });
-    const passkeyGateway = createPasskeyGateway({
-        engine: () => runtime.controller(),
-        sessions,
-        secrets: setupSecrets,
-        passkeys: onboarding?.passkeys ?? createInMemoryPasskeyStore(),
-        ceremonies: onboarding?.ceremonies ?? createSimpleWebAuthnCeremonies(),
-        challenges: createChallenges({ random: deps.random, clock: deps.clock }),
-        random: deps.random,
-        clock: deps.clock,
-        logger,
-        onOwnerChanged: () => {
-            onboardingChanged();
-        },
-    });
-    await passkeyGateway.restore();
     runtime.onReset(() => {
         sessions.clear();
         passkeyGateway.restore().catch((error: unknown) => {
@@ -339,6 +367,7 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
                                 files: onboarding.pages,
                                 ownerSetUp: ownerSetUpNow,
                                 command: ENGINE_COMMAND,
+                                join: joinGateway,
                             },
                         }),
                   clock: deps.clock,

@@ -2,7 +2,7 @@
 
 - **Lane:** Mock engine · **Module:** `apps/mock-engine` · **Milestone:** M3
 - **Depends on:** C-13
-- **Status:** in progress (feat/m-09-mock-engine-teams)
+- **Status:** done (#187)
 - **Spec:** [Teams](../../spec/teams.md) "Adding a person", "Removing a person"; ADRs: [0018](../../adr/0018-teams-and-member-access.md)
 
 ## Goal
@@ -23,7 +23,7 @@ The mock engine implements the teams contracts as the reference for the engine t
 - **Conformance for what needs the join page,** which C-13 left to this task because it needs a browser on the engine's
   origin. Add these checks to `member-access`:
   - tickets: forged, expired, replayed, for the wrong engine, over the pending cap;
-  - approve: a wrong code, missing step-up;
+  - approve: a wrong code (missing step-up is a mock unit test: the harness's sessions are always fresh);
   - revocations: the last owner, removals switched off.
 
 ## Acceptance criteria

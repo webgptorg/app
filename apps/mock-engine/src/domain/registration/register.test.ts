@@ -91,6 +91,7 @@ describe('registerEngine', () => {
             engineId: identity.engineId,
             hostname: defaultHostname(identity.engineId, ENGINE_DOMAIN),
             relays: RELAYS,
+            memberKey: null,
         };
         expect(outcome).toEqual({ kind: 'registered', registration: expected });
         expect(await store.load()).toEqual(expected);
@@ -354,6 +355,7 @@ describe('loadRegistration', () => {
             engineId: identity.engineId,
             hostname: defaultHostname(identity.engineId, ENGINE_DOMAIN),
             relays: RELAYS,
+            memberKey: null,
             ...registration,
         });
         return { identity, store };

@@ -35,7 +35,7 @@ async function registeredEngine(
         ctx,
         linked,
         'register and send an accepted heartbeat',
-        () => linked.dashboard.heartbeats.find((beat) => beat.answer.status === 204),
+        () => linked.dashboard.heartbeats.find((beat) => beat.answer.status < 300),
         ctx.expectations.startTimeoutMs + ctx.expectations.heartbeatIntervalMs,
     );
     if (!up.ok) return up.reason;

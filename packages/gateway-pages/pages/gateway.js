@@ -1,11 +1,14 @@
 /*
- * Reference gateway pages (MIT, @ptbk/gateway-pages): the one script behind setup.html, sign-in.html and step-up.html.
+ * Reference gateway pages (MIT, @ptbk/gateway-pages): the one script behind setup.html, sign-in.html, step-up.html and
+ * join.html.
  * It only switches between the states the page already holds: no user-visible copy lives here and no HTML is ever
  * written, so it runs unchanged under the engine's CSP and Trusted Types.
  */
 import { isSafeNextPath } from './next-path.js';
 
 const SETUP_SECRET = /^[A-Za-z0-9_-]{22}$/;
+/** A dashboard access ticket: `<base64url body>.<base64url signature>`, at most 2048 characters. */
+const ACCESS_TICKET = /^[A-Za-z0-9_-]{1,1958}\.[A-Za-z0-9_-]{86}$/;
 const FINGERPRINT_CELLS = /^[01]{25}$/;
 const REQUEST_TIMEOUT_MS = 15_000;
 const ME_PATH = '/api/v1/me';
@@ -161,6 +164,97 @@ function setupPage(webauthn) {
     return { create, retry: prepare };
 }
 
+function joinProblem({ status, code }) {
+    if (status === 0) return 'offline';
+    if (status === 429) return 'rate-limited';
+    if (code === 'ticket-invalid') return 'invalid';
+    if (code === 'ticket-expired') return 'expired';
+    if (code === 'ticket-used') return 'used';
+    if (code === 'already-member') return 'already-member';
+    if (code === 'too-many-requests') return 'full';
+    if (code === 'passkey-not-verified') return 'not-verified';
+    return 'error';
+}
+
+function joinPage(webauthn) {
+    const fragment = location.hash.slice(1);
+    // Before anything else, so the ticket is never left in the address bar, the history or a bookmark.
+    if (location.hash !== '') history.replaceState(null, '', location.pathname + location.search);
+    let options = null;
+    let waitingFor = null;
+
+    /*
+     * The gateway holds each status request until something changes or a few seconds pass, so this loop needs no
+     * timer. A network failure stops it on the offline state, whose retry picks the waiting up again.
+     */
+    async function wait() {
+        show('waiting');
+        for (;;) {
+            const result = await post('/auth/join/status', { request: waitingFor });
+            if (result.status === 200 && result.body?.state === 'approved') {
+                const target = nextFrom(result.body);
+                pointLinksAt('[data-next-link]', target);
+                show('done');
+                location.assign(target);
+                return;
+            }
+            if ((result.status === 200 && result.body?.state === 'declined') || result.status === 404) {
+                show('declined');
+                return;
+            }
+            if (result.status !== 200) {
+                show(joinProblem(result));
+                return;
+            }
+        }
+    }
+
+    if (!ACCESS_TICKET.test(fragment)) {
+        show('missing');
+        return {};
+    }
+    const ticket = fragment;
+
+    async function prepare() {
+        show('loading');
+        const result = await post('/auth/join/options', { ticket });
+        if (result.status === 200 && isObject(result.body?.options)) {
+            options = result.body.options;
+            show('valid');
+        } else show(joinProblem(result));
+    }
+
+    async function create() {
+        if (options === null) return;
+        if (!supportsPasskeys(webauthn)) {
+            show('unsupported');
+            return;
+        }
+        const optionsJSON = options;
+        options = null;
+        show('prompt');
+        let response;
+        try {
+            response = await webauthn.startRegistration({ optionsJSON });
+        } catch (error) {
+            show(ceremonyState(error));
+            return;
+        }
+        const result = await post('/auth/join/verify', { ticket, response });
+        if (result.status === 201 && typeof result.body?.request === 'string' && /^\d{6}$/.test(result.body.code)) {
+            waitingFor = result.body.request;
+            const { code } = result.body;
+            for (const element of document.querySelectorAll('[data-join-code]')) {
+                element.textContent = `${code.slice(0, 3)} ${code.slice(3)}`;
+            }
+            await wait();
+        } else show(joinProblem(result));
+    }
+
+    void prepare();
+    return { create, retry: () => (waitingFor === null ? prepare() : wait()) };
+}
+
 function assertionPage(webauthn, { base, nextParameter, problem, resumeSession = false }) {
     const requested = new URLSearchParams(location.search).get(nextParameter);
     const next = requested !== null && isSafeNextPath(requested) ? requested : null;
@@ -248,6 +342,7 @@ function start() {
     const page = document.body.dataset.page;
     let actions = {};
     if (page === 'setup') actions = setupPage(webauthn);
+    else if (page === 'join') actions = joinPage(webauthn);
     else if (page === 'sign-in') {
         if (document.body.dataset.owner === 'none') show('no-owner');
         else

@@ -11,11 +11,13 @@ import type { EngineId } from '@ptbk/protocol';
 import { deriveEngineFingerprint } from '@ptbk/protocol';
 import { z } from 'zod';
 
+import type { JoinGateway } from '../../domain/gateway/join-gateway';
 import type { RelyingParty } from '../../domain/gateway/passkey-ceremonies';
 import type { PasskeyGateway } from '../../domain/gateway/passkey-gateway';
 import type { SecureConnection } from '../tls-stream-server';
 import type { GatewayPageFiles } from './gateway-page-files';
 import { clientInfo, sessionCookie } from './gateway-middleware';
+import { createJoinRoutes } from './join-routes';
 import type { Route } from './route';
 import { defineHttpRoute } from './route';
 
@@ -37,6 +39,8 @@ export interface PasskeyRouteDeps {
     readonly command: string;
     /** With dev login the dev pages keep `SIGN_IN_PATH` and `STEP_UP_PATH`; the passkey endpoints stay. */
     readonly devLogin: boolean;
+    /** Teams (ADR 0018): the join page and its endpoints. */
+    readonly join?: JoinGateway;
 }
 
 const NO_QUERY = z.strictObject({});
@@ -97,10 +101,14 @@ export function createPasskeyRoutes(deps: PasskeyRouteDeps): readonly Route[] {
     const cells = fingerprintCells(deps.engineId);
 
     function page(name: GatewayPage, connection: SecureConnection, acceptLanguage: string | undefined): Response {
+        return pageFor(name, connection.hostname, acceptLanguage);
+    }
+
+    function pageFor(name: GatewayPage, hostname: string, acceptLanguage: string | undefined): Response {
         const html = renderGatewayPage(deps.files.pages[name], {
             lang: pickGatewayLanguage(acceptLanguage ?? null),
             engineId: deps.engineId,
-            hostname: connection.hostname,
+            hostname,
             fingerprint,
             fingerprintCells: cells,
             command: deps.command,
@@ -233,6 +241,8 @@ export function createPasskeyRoutes(deps: PasskeyRouteDeps): readonly Route[] {
                 maxBytes: CEREMONY_BODY_MAX_BYTES,
             },
             handle: async ({ body, headers, connection, clientIp }) => {
+                // Someone approved since their join page closed has their passkey put in place here.
+                await deps.join?.settle();
                 const outcome = await deps.gateway.signIn({
                     response: body.response,
                     rp: relyingParty(connection, headers.host),
@@ -285,6 +295,14 @@ export function createPasskeyRoutes(deps: PasskeyRouteDeps): readonly Route[] {
             },
         }),
     ];
+    if (deps.join !== undefined) {
+        routes.push(
+            ...createJoinRoutes({
+                join: deps.join,
+                page: ({ hostname, acceptLanguage }) => pageFor('join.html', hostname, acceptLanguage),
+            }),
+        );
+    }
     if (deps.devLogin) return routes;
     routes.push(
         defineHttpRoute({

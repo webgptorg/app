@@ -15,6 +15,7 @@ const REGISTRATION: Registration = {
     engineId: ENGINE_ID,
     hostname: Hostname.parse(`${ENGINE_ID}.engines.ptbk.test`),
     relays: [Hostname.parse('relay-a.ptbk.test'), Hostname.parse('relay-b.ptbk.test')],
+    memberKey: null,
 };
 const SECRET_MARKER = 'do-not-echo-this-content';
 
@@ -72,8 +73,16 @@ describe('createFsRegistrationStore', () => {
             'engineId',
             'hostname',
             'relays',
+            'memberKey',
         ]);
         expect(await readdir(dir)).toEqual([REGISTRATION_FILE]);
+    });
+
+    it('reads a registration stored before teams as having no member key', async () => {
+        const dir = await dataDir();
+        // JSON leaves an undefined field out, as files written before teams have it.
+        await writeStored(dir, stored({ memberKey: undefined }));
+        expect((await createFsRegistrationStore(dir).load())?.memberKey).toBeNull();
     });
 
     it('replaces an earlier registration', async () => {

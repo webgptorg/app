@@ -20,7 +20,7 @@ import { createMemoryLogger } from '../../testing/memory-logger';
 import type { DashboardApi } from '../dashboard/dashboard-api';
 import { registerEngine } from '../registration/register';
 import { isoSeconds } from './build-heartbeat';
-import type { HeartbeatStatus } from './heartbeat-loop';
+import type { HeartbeatStatus, HeartbeatTeams } from './heartbeat-loop';
 import { DEFAULT_HEARTBEAT_INTERVAL_S, createHeartbeatLoop } from './heartbeat-loop';
 import { createScenarioSystemStats } from './scenario-system-stats';
 import type { SeqStore } from './seq-store';
@@ -34,6 +34,7 @@ interface SetupOptions {
     readonly clockOffsetMs?: number;
     readonly seqs?: (fallback: SeqStore) => SeqStore;
     readonly api?: (fake: FakeDashboard) => DashboardApi;
+    readonly teams?: HeartbeatTeams;
 }
 
 async function setup(options: SetupOptions = {}) {
@@ -72,6 +73,7 @@ async function setup(options: SetupOptions = {}) {
         intervalS: options.intervalS ?? DEFAULT_HEARTBEAT_INTERVAL_S,
         startedAtMs: START_MS,
         onStatus: (status) => statuses.push(status),
+        ...(options.teams === undefined ? {} : { teams: options.teams }),
     });
     return { clock, logger, identity, fake, loop, statuses, memorySeqs };
 }
@@ -95,6 +97,54 @@ function deferred(): { readonly promise: Promise<void>; resolve(): void } {
     });
     return { promise, resolve };
 }
+
+describe('createHeartbeatLoop: teams', () => {
+    function fakeTeams(enabled: boolean) {
+        const acked: string[][] = [];
+        const applied: string[][] = [];
+        let settled = 0;
+        const teams: HeartbeatTeams = {
+            enabled: () => enabled,
+            settle: () => {
+                settled++;
+                return Promise.resolve();
+            },
+            pendingRequests: () => 2,
+            acks: () => [{ id: 'ticket-0000000000000001', outcome: 'approved' }],
+            acked: (ids) => acked.push([...ids]),
+            applyRevocations: (tokens) => {
+                applied.push([...tokens]);
+                return Promise.resolve();
+            },
+        };
+        return { teams, acked, applied, settled: () => settled };
+    }
+
+    it('sends v2 with the pending count and acks, clears the acks it delivered and applies the reply', async () => {
+        const teams = fakeTeams(true);
+        const started = await setup({ teams: teams.teams });
+        started.fake.queueRevocation(started.identity.engineId, 'revocation-000000000001', 'body.signature');
+        started.loop.start();
+        await received(started, 1);
+        const [beat] = started.fake.heartbeats;
+        expect(beat?.verification).toMatchObject({
+            kind: 'accepted',
+            heartbeat: { v: 2, accessRequests: 2, acks: [{ id: 'ticket-0000000000000001', outcome: 'approved' }] },
+        });
+        expect(teams.settled()).toBe(1);
+        expect(teams.acked).toEqual([['ticket-0000000000000001']]);
+        expect(teams.applied).toEqual([['body.signature']]);
+    });
+
+    it('stays on v1 until a member key is pinned', async () => {
+        const teams = fakeTeams(false);
+        const started = await setup({ teams: teams.teams });
+        started.loop.start();
+        await received(started, 1);
+        expect(started.fake.heartbeats[0]?.verification).toMatchObject({ kind: 'accepted', heartbeat: { v: 1 } });
+        expect(teams.acked).toEqual([]);
+    });
+});
 
 describe('createHeartbeatLoop', () => {
     it('beats once on start and then every 60 s by default', async () => {
@@ -340,7 +390,7 @@ describe('createHeartbeatLoop', () => {
                             reject(new Error('aborted'));
                         });
                         void release.promise.then(() => {
-                            resolve({ kind: 'accepted', status: 204 });
+                            resolve({ kind: 'accepted', status: 204, revocations: [] });
                         });
                     });
                 },

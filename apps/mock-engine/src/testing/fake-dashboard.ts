@@ -1,5 +1,6 @@
 import type {
     Bytes,
+    Ed25519PublicKey,
     EngineId,
     Hostname,
     HeartbeatVerification,
@@ -51,6 +52,8 @@ export interface FakeDashboard {
     unreachable: boolean;
     /** Leave `serverTime` out of `stale-timestamp` problems. */
     omitServerTime: boolean;
+    /** Sends a signed member revocation in every v2 reply to that engine until a heartbeat acks `id`. */
+    queueRevocation(engineId: EngineId, id: string, token: string): void;
 }
 
 export interface ReceivedHeartbeat {
@@ -80,6 +83,8 @@ export interface FakeDashboardOptions {
     readonly relays: readonly Hostname[];
     /** Added to the engine's clock to get the dashboard's: tests of clock skew. */
     readonly clockOffsetMs?: number;
+    /** The member key's public half to send at registration; without it, like a dashboard without teams. */
+    readonly memberKey?: Ed25519PublicKey;
 }
 
 const PROBLEM_STATUS: Readonly<Record<RegistrationErrorCode, number>> = {
@@ -114,6 +119,7 @@ export function createFakeDashboard(options: FakeDashboardOptions): FakeDashboar
     const registerRequests: RegisterEngineRequest[] = [];
     const heartbeats: ReceivedHeartbeat[] = [];
     let registerOverride: ((request: RegisterEngineRequest) => RegisterAnswer) | null = null;
+    const revocations = new Map<EngineId, Map<string, string>>();
 
     async function register(json: unknown): Promise<RegisterAnswer> {
         const parsed = RegisterEngineRequest.safeParse(json);
@@ -145,7 +151,7 @@ export function createFakeDashboard(options: FakeDashboardOptions): FakeDashboar
             engineId,
             hostname: defaultHostname(engineId, options.engineDomain),
             relays: [...options.relays],
-            memberKey: null,
+            memberKey: options.memberKey ?? null,
         };
         return { status: 200, body: response };
     }
@@ -170,7 +176,10 @@ export function createFakeDashboard(options: FakeDashboardOptions): FakeDashboar
         heartbeats.push({ engineId, rawBody: rawBody.slice(), signature, verification });
         if (verification.kind === 'accepted') {
             lastSeq.set(engineId, verification.heartbeat.seq);
-            return { status: 204, body: null };
+            if (verification.heartbeat.v === 1) return { status: 204, body: null };
+            const queued = revocations.get(engineId) ?? new Map<string, string>();
+            for (const { id } of verification.heartbeat.acks) queued.delete(id);
+            return { status: 200, body: { v: 1, revocations: [...queued.values()] } };
         }
         if (verification.kind === 'stale-ts') {
             return problem(401, 'stale-timestamp', fake.omitServerTime ? {} : { serverTime: verification.serverTime });
@@ -192,7 +201,10 @@ export function createFakeDashboard(options: FakeDashboardOptions): FakeDashboar
         async heartbeat(engineId, rawBody, signature): Promise<HeartbeatCall> {
             if (fake.unreachable) return { kind: 'unavailable' };
             const answer = await heartbeat(engineId, rawBody, signature);
-            if (answer.status >= 200 && answer.status < 300) return { kind: 'accepted', status: answer.status };
+            if (answer.status >= 200 && answer.status < 300) {
+                const body = answer.body as { readonly revocations?: readonly string[] } | null;
+                return { kind: 'accepted', status: answer.status, revocations: body?.revocations ?? [] };
+            }
             const body = answer.body as { code: string; serverTime?: Timestamp };
             return {
                 kind: 'refused',
@@ -254,6 +266,11 @@ export function createFakeDashboard(options: FakeDashboardOptions): FakeDashboar
         },
         unreachable: false,
         omitServerTime: false,
+        queueRevocation(engineId, id, token) {
+            const queued = revocations.get(engineId) ?? new Map<string, string>();
+            queued.set(id, token);
+            revocations.set(engineId, queued);
+        },
     };
     return fake;
 }
