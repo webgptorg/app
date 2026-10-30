@@ -2,12 +2,10 @@ import type { MemberId, PasskeyId, ReadPasskey } from '@ptbk/engine-api';
 import { ActionMenu, Badge, CodeText, ConfirmDialog, RelativeTime } from '@ptbk/ui';
 import { useQuery } from '@tanstack/react-query';
 import type { UseQueryResult } from '@tanstack/react-query';
-import { ArrowLeft } from 'lucide-react';
 import { useState } from 'react';
 
 import { unwrap } from '../../app/api-errors';
 import { useEngineApi } from '../../app/engine-api-context';
-import { Link } from '../../app/link';
 import { isPageLevelFailure } from '../../app/list-errors';
 import { useStepUpAwareMutation } from '../../app/mutations';
 import { m } from '../../paraglide/messages';
@@ -15,7 +13,7 @@ import { memberKeys } from '../members/members-keys';
 import { memberDetailQueryOptions } from '../members/members-queries';
 import { useCurrentMember } from '../session/use-current-member';
 import { usePermissions } from '../session/use-permissions';
-import { Page } from '../shell/page';
+import { BackLink, Page } from '../shell/page';
 import { FactsSkeleton } from './facts';
 import { SectionCard } from './section-card';
 import { securityKeys } from './security-keys';
@@ -213,14 +211,9 @@ export function PasskeysPage() {
     return (
         <Page
             title={m.passkeys_title()}
-            back={
-                <Link to="/security" variant="standalone" className="inline-flex items-center gap-1 text-sm">
-                    <ArrowLeft aria-hidden className="size-4" />
-                    {m.passkeys_back()}
-                </Link>
-            }
+            description={m.passkeys_intro()}
+            back={<BackLink to="/security">{m.passkeys_back()}</BackLink>}
         >
-            <p className="text-sm text-text-muted">{m.passkeys_intro()}</p>
             <PasskeyList
                 query={mine}
                 title={m.passkeys_mine()}
