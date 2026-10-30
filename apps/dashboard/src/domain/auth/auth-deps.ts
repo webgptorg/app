@@ -12,6 +12,8 @@ export interface AuthLinks {
     recovery(token: string): string;
     signIn(): string;
     recover(): string;
+    /** The invitation page (ADR 0018); the token rides in the fragment, so it never reaches a log or a `Referer`. */
+    invite(token: string): string;
 }
 
 export interface AuthDeps {

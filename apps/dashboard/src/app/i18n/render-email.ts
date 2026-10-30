@@ -122,6 +122,27 @@ export function renderEmail(message: EmailMessage): RenderedEmail {
                     options,
                 ),
             };
+        case 'team-invite': {
+            const org = message.orgName ?? message.inviterEmail;
+            return {
+                subject: m.email_team_invite_subject({ org }, options),
+                text: m.email_team_invite_body(
+                    {
+                        inviter: message.inviterEmail,
+                        org,
+                        teams:
+                            message.teamNames.length === 0
+                                ? m.email_team_invite_no_teams({}, options)
+                                : new Intl.ListFormat(message.locale, { type: 'conjunction' }).format(
+                                      message.teamNames,
+                                  ),
+                        expiresAt: formatUtc(message.expiresAt, message.locale),
+                        link: message.link,
+                    },
+                    options,
+                ),
+            };
+        }
         case 'ops-alert':
             return renderOpsAlert(message);
     }

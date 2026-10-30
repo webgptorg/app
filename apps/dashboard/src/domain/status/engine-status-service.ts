@@ -77,7 +77,12 @@ export function createEngineStatusService(deps: EngineStatusServiceDeps): Engine
                 return { kind: 'engine-inactive' };
             }
             recipients =
-                owed ?? (await deps.recipients.forEngineStatus(status.orgId, AbortSignal.timeout(SEND_TIMEOUT_MS)));
+                owed ??
+                (await deps.recipients.forEngineStatus(
+                    status.orgId,
+                    status.engineId,
+                    AbortSignal.timeout(SEND_TIMEOUT_MS),
+                ));
         } catch {
             return { kind: 'unresolved' };
         }

@@ -1,5 +1,5 @@
 import { Ed25519PublicKey, type EngineId } from '@ptbk/protocol';
-import { and, eq, isNotNull } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, sql, type SQL } from 'drizzle-orm';
 import { z } from 'zod';
 
 import { orgIdSchema, type OrgId } from '../../domain/ids';
@@ -8,7 +8,7 @@ import type { AlertRecipients } from '../../domain/status/alert-recipients';
 import type { HeartbeatEngineReader } from '../../domain/status/heartbeat-engine-reader';
 import { engineLabelSchema } from '../../shared/engine-label';
 import type { Database } from './client';
-import { engines, memberships, users } from './schema';
+import { engines, memberships, teamMembers, users } from './schema';
 
 const engineStatusSchema = z.enum(['active', 'suspended']);
 
@@ -41,19 +41,30 @@ export function createD1HeartbeatEngineReader(db: Database): HeartbeatEngineRead
     };
 }
 
-/** The organization's owners with a verified email, in their saved locale. */
+/** See {@link AlertRecipients}: in their saved locale, ordered by email. */
 export function createD1AlertRecipients(db: Database): AlertRecipients {
     return {
-        async forEngineStatus(orgId: OrgId) {
-            const rows = await db
-                .select({ email: users.email, locale: users.locale })
-                .from(memberships)
-                .innerJoin(users, eq(users.id, memberships.userId))
-                .where(
-                    and(eq(memberships.orgId, orgId), eq(memberships.role, 'owner'), isNotNull(users.emailVerifiedAt)),
-                )
-                .orderBy(users.email)
-                .all();
+        async forEngineStatus(orgId: OrgId, engineId: EngineId) {
+            const inTeam = sql`EXISTS (
+                SELECT 1 FROM ${teamMembers} INNER JOIN ${engines} ON ${engines.teamId} = ${teamMembers.teamId}
+                WHERE ${engines.engineId} = ${engineId} AND ${teamMembers.userId} = ${users.id})`;
+            const recipients = (roles: readonly string[], condition: SQL | undefined) =>
+                db
+                    .select({ email: users.email, locale: users.locale })
+                    .from(memberships)
+                    .innerJoin(users, eq(users.id, memberships.userId))
+                    .where(
+                        and(
+                            eq(memberships.orgId, orgId),
+                            inArray(memberships.role, [...roles]),
+                            isNotNull(users.emailVerifiedAt),
+                            condition,
+                        ),
+                    )
+                    .orderBy(users.email)
+                    .all();
+            const team = await recipients(['owner', 'admin'], inTeam);
+            const rows = team.length > 0 ? team : await recipients(['owner'], undefined);
             return rows.map((row) => ({ email: row.email, locale: localeSchema.parse(row.locale) }));
         },
     };

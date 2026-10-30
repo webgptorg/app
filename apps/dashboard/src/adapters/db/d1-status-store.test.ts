@@ -45,5 +45,22 @@ describeStatusStoreContract('D1', () => {
                 )
                 .run();
         },
+        async addTeam(orgId, engineId, userIds) {
+            const teamId = engineId;
+            await env.DB.batch([
+                env.DB.prepare('INSERT INTO teams (id, org_id, name, created_at) VALUES (?, ?, ?, 0)').bind(
+                    teamId,
+                    orgId,
+                    'Team',
+                ),
+                env.DB.prepare('UPDATE engines SET team_id = ? WHERE engine_id = ?').bind(teamId, engineId),
+                ...userIds.map((userId) =>
+                    env.DB.prepare('INSERT INTO team_members (team_id, user_id, created_at) VALUES (?, ?, 0)').bind(
+                        teamId,
+                        userId,
+                    ),
+                ),
+            ]);
+        },
     };
 });

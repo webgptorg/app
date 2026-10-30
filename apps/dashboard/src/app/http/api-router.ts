@@ -11,6 +11,7 @@ import { bindBillingRoutes } from './billing-routes';
 import { bindEngineRoutes } from './engine-routes';
 import type { RouteBinder } from './bind-route';
 import { crossSiteRequestGuard } from './csrf';
+import { bindTeamRoutes } from './team-routes';
 
 export const API_MOUNT = '/api';
 
@@ -29,6 +30,7 @@ export function createApiRouter(
     bindAuthRoutes(router, API_MOUNT, deps);
     bindBillingRoutes(router, API_MOUNT, deps);
     bindEngineRoutes(router, API_MOUNT, deps);
+    bindTeamRoutes(router, API_MOUNT, deps);
     bindAdminEngineRoutes(router, API_MOUNT, deps);
     bindAdminHostnameRoutes(router, API_MOUNT, deps);
     const { devOutbox } = deps;

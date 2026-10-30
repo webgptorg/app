@@ -15,10 +15,17 @@ import type { Logger } from '../ports/logger';
 import type { EngineCreationPolicy } from './engine-creation-policy';
 import type { EngineStore } from './engine-store';
 import type { LinkCodeStore } from './link-code-store';
+import { newTeamId } from '../ids';
+import type { Random } from '../ports/random';
+import type { TeamStore } from '../teams/team-store';
+import { teamNameSchema } from '../../shared/team-name';
 
 export interface RegisterEngineDeps {
     readonly linkCodes: Pick<LinkCodeStore, 'findRedeemable' | 'redeemForNewEngine' | 'redeemForExistingEngine'>;
     readonly engines: Pick<EngineStore, 'findForRegistration'>;
+    /** Every engine belongs to a team (ADR 0018); a new one joins the team its link code named. */
+    readonly teams: Pick<TeamStore, 'bindNewEngine'>;
+    readonly random: Random;
     readonly policy: Pick<EngineCreationPolicy, 'checkRegistration'>;
     readonly clock: Clock;
     readonly logger: Logger;
@@ -75,7 +82,12 @@ async function attempt(
             engineVersion: request.engineVersion,
             now,
         });
-        return refreshed === 'redeemed' ? registered(deps, engineId, existing.hostname) : 'conflict';
+        if (refreshed === 'conflict') {
+            return 'conflict';
+        }
+        // An engine registered before teams, or whose binding was cut short, gets its team now.
+        await bindTeam(deps, engineId, existing.hostname, now);
+        return registered(deps, engineId, existing.hostname);
     }
     const decision = await deps.policy.checkRegistration(orgId, signal);
     if (decision.kind === 'denied') {
@@ -95,7 +107,21 @@ async function attempt(
         updatedAt: now,
         label: null,
     });
-    return created === 'redeemed' ? registered(deps, engineId, hostname) : 'conflict';
+    if (created === 'conflict') {
+        return 'conflict';
+    }
+    await bindTeam(deps, engineId, hostname, now);
+    return registered(deps, engineId, hostname);
+}
+
+/** A team named after the engine's hostname, for an engine whose link code named none. */
+function bindTeam(deps: RegisterEngineDeps, engineId: EngineId, hostname: Hostname, now: number): Promise<void> {
+    return deps.teams.bindNewEngine(engineId, {
+        teamId: newTeamId(deps.random),
+        // A hostname under a long engine domain may not fit a team name; the engine ID always does.
+        name: teamNameSchema.safeParse(hostname).data ?? teamNameSchema.parse(engineId),
+        at: now,
+    });
 }
 
 async function resolve(deps: RegisterEngineDeps, request: RegisterEngineRequest, signal: AbortSignal) {

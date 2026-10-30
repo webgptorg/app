@@ -24,9 +24,10 @@ import {
     quotaSchema,
 } from '../billing';
 import { engineLabelSchema } from '../engine-label';
+import { teamNameSchema } from '../team-name';
 import { environmentSchema } from '../environment';
 import { docsAnchorSchema, installPathIdSchema, installPathLabelKeySchema } from '../install-paths';
-import { defineRoute, NO_INPUT } from './contract';
+import { defineRoute, NO_CONTENT, NO_INPUT } from './contract';
 import {
     authenticationOptionsSchema,
     authenticationResponseSchema,
@@ -334,6 +335,62 @@ const authenticationInput = {
     ...NO_INPUT,
     body: z.strictObject({ response: authenticationResponseSchema }),
     maxBodyBytes: WEBAUTHN_BODY_BYTES,
+} as const;
+
+/** A team as the SPA shows it (ADR 0018): its name, its engine if linked, and how many people are in it. */
+export const teamViewSchema = z.strictObject({
+    teamId: idSchema,
+    name: teamNameSchema,
+    /** Null until its engine registers; at most one in v1. */
+    engineId: EngineId.nullable(),
+    memberCount: z.int().min(0),
+    /** Whether the signed-in user is in it; owners and admins also see teams they are not in. */
+    isMember: z.boolean(),
+    createdAt: timestampSchema,
+});
+export type TeamView = z.infer<typeof teamViewSchema>;
+
+const orgRoleViewSchema = z.enum(['owner', 'admin', 'member']);
+
+export const personViewSchema = z.strictObject({
+    userId: idSchema,
+    email: z.string(),
+    role: orgRoleViewSchema,
+    joinedAt: timestampSchema,
+});
+export type PersonView = z.infer<typeof personViewSchema>;
+
+export const orgMemberViewSchema = personViewSchema.extend({ teamIds: z.array(idSchema) });
+export type OrgMemberView = z.infer<typeof orgMemberViewSchema>;
+
+/** A pending invitation; never its token. */
+export const inviteViewSchema = z.strictObject({
+    inviteId: idSchema,
+    email: z.string(),
+    role: orgRoleViewSchema,
+    teamIds: z.array(idSchema),
+    createdAt: timestampSchema,
+    expiresAt: timestampSchema,
+});
+export type InviteView = z.infer<typeof inviteViewSchema>;
+
+/** At most this many teams per invitation, and addresses per request. */
+export const MAX_INVITE_TEAMS = 50;
+export const MAX_INVITE_EMAILS = 20;
+
+const teamParams = z.strictObject({ teamId: idSchema });
+const teamMemberParams = z.strictObject({ teamId: idSchema, userId: idSchema });
+const userParams = z.strictObject({ userId: idSchema });
+const inviteParams = z.strictObject({ inviteId: idSchema });
+const teamNameInput = {
+    ...NO_INPUT,
+    body: z.strictObject({ name: teamNameSchema }),
+    maxBodyBytes: SMALL_BODY_BYTES,
+} as const;
+const inviteTokenInput = {
+    ...NO_INPUT,
+    body: z.strictObject({ token: emailTokenSchema }),
+    maxBodyBytes: SMALL_BODY_BYTES,
 } as const;
 
 /** The SPA's own API. Every `/api` endpoint is declared here and nowhere else. */
@@ -802,6 +859,226 @@ export const apiRoutes = {
         input: { ...NO_INPUT, body: z.strictObject({ orgId: idSchema }), maxBodyBytes: SMALL_BODY_BYTES },
         output: sessionViewSchema,
         errorCodes: [],
+    }),
+
+    // Teams (ADR 0018). A team of another organization, or one a member is not in, is `not-found`.
+    listTeams: defineRoute({
+        method: 'GET',
+        path: '/api/teams',
+        auth: 'session',
+        permission: 'team.read',
+        rateLimit: null,
+        input: NO_INPUT,
+        output: z.strictObject({ teams: z.array(teamViewSchema) }),
+        errorCodes: [],
+    }),
+    createTeam: defineRoute({
+        method: 'POST',
+        path: '/api/teams',
+        auth: 'session',
+        permission: 'team.manage',
+        rateLimit: null,
+        input: teamNameInput,
+        output: z.strictObject({ team: teamViewSchema }),
+        errorCodes: [],
+    }),
+    getTeam: defineRoute({
+        method: 'GET',
+        path: '/api/teams/:teamId',
+        auth: 'session',
+        permission: 'team.read',
+        rateLimit: null,
+        input: { ...NO_INPUT, params: teamParams },
+        output: z.strictObject({ team: teamViewSchema, members: z.array(personViewSchema) }),
+        errorCodes: [],
+    }),
+    renameTeam: defineRoute({
+        method: 'POST',
+        path: '/api/teams/:teamId/name',
+        auth: 'session',
+        permission: 'team.manage',
+        rateLimit: null,
+        input: { ...teamNameInput, params: teamParams },
+        output: z.strictObject({ team: teamViewSchema }),
+        errorCodes: [],
+    }),
+    /** Revokes the team's engine, as `revokeEngine` does, and removes everyone from it. Needs a step-up. */
+    deleteTeam: defineRoute({
+        method: 'POST',
+        path: '/api/teams/:teamId/delete',
+        auth: 'session',
+        permission: 'team.delete',
+        rateLimit: null,
+        input: { ...NO_INPUT, params: teamParams },
+        output: NO_CONTENT,
+        errorCodes: [],
+    }),
+    /** A link code whose engine joins this team; the team must not have an engine yet. */
+    createTeamLinkCode: defineRoute({
+        method: 'POST',
+        path: '/api/teams/:teamId/link-codes',
+        auth: 'session',
+        permission: 'engine.link',
+        rateLimit: null,
+        input: { ...NO_INPUT, params: teamParams },
+        output: linkCodeViewSchema,
+        errorCodes: ['not-entitled', 'engine-limit', 'team-has-engine'],
+    }),
+    /** Someone already in the organization; `not-member` otherwise (invite them instead). */
+    addTeamMember: defineRoute({
+        method: 'POST',
+        path: '/api/teams/:teamId/members',
+        auth: 'session',
+        permission: 'team.members.manage',
+        rateLimit: null,
+        input: {
+            ...NO_INPUT,
+            params: teamParams,
+            body: z.strictObject({ userId: idSchema }),
+            maxBodyBytes: SMALL_BODY_BYTES,
+        },
+        output: NO_CONTENT,
+        errorCodes: ['not-member'],
+    }),
+    removeTeamMember: defineRoute({
+        method: 'POST',
+        path: '/api/teams/:teamId/members/:userId/remove',
+        auth: 'session',
+        permission: 'team.members.manage',
+        rateLimit: null,
+        input: { ...NO_INPUT, params: teamMemberParams },
+        output: NO_CONTENT,
+        errorCodes: [],
+    }),
+    leaveTeam: defineRoute({
+        method: 'POST',
+        path: '/api/teams/:teamId/leave',
+        auth: 'session',
+        permission: 'team.leave',
+        rateLimit: null,
+        input: { ...NO_INPUT, params: teamParams },
+        output: NO_CONTENT,
+        errorCodes: [],
+    }),
+
+    // The organization's people.
+    listOrgMembers: defineRoute({
+        method: 'GET',
+        path: '/api/org/members',
+        auth: 'session',
+        permission: 'org.members.read',
+        rateLimit: null,
+        input: NO_INPUT,
+        output: z.strictObject({ members: z.array(orgMemberViewSchema), invites: z.array(inviteViewSchema) }),
+        errorCodes: [],
+    }),
+    /** `last-owner` (409): the organization keeps at least one owner. */
+    changeOrgRole: defineRoute({
+        method: 'POST',
+        path: '/api/org/members/:userId/role',
+        auth: 'session',
+        permission: 'org.roles.manage',
+        rateLimit: null,
+        input: {
+            ...NO_INPUT,
+            params: userParams,
+            body: z.strictObject({ role: orgRoleViewSchema }),
+            maxBodyBytes: SMALL_BODY_BYTES,
+        },
+        output: NO_CONTENT,
+        errorCodes: ['last-owner'],
+    }),
+    /** Out of every team and the organization. Only an owner removes an owner (`forbidden`, 403). */
+    removeOrgMember: defineRoute({
+        method: 'POST',
+        path: '/api/org/members/:userId/remove',
+        auth: 'session',
+        permission: 'org.members.manage',
+        rateLimit: null,
+        input: { ...NO_INPUT, params: userParams },
+        output: NO_CONTENT,
+        errorCodes: ['last-owner'],
+    }),
+    leaveOrg: defineRoute({
+        method: 'POST',
+        path: '/api/org/leave',
+        auth: 'session',
+        permission: 'org.leave',
+        rateLimit: null,
+        input: NO_INPUT,
+        output: NO_CONTENT,
+        errorCodes: ['last-owner'],
+    }),
+
+    // Invitations: emailed, single use, valid for 7 days.
+    /** People already in the organization are added to the teams at once (`added`); only owners invite owners. */
+    createInvites: defineRoute({
+        method: 'POST',
+        path: '/api/invites',
+        auth: 'session',
+        permission: 'org.members.manage',
+        rateLimit: null,
+        input: {
+            ...NO_INPUT,
+            body: z.strictObject({
+                emails: z.array(emailSchema).min(1).max(MAX_INVITE_EMAILS),
+                role: orgRoleViewSchema,
+                teamIds: z.array(idSchema).max(MAX_INVITE_TEAMS),
+            }),
+            maxBodyBytes: 16 * 1024,
+        },
+        output: z.strictObject({
+            results: z.array(z.strictObject({ email: z.string(), outcome: z.enum(['invited', 'added']) })),
+        }),
+        errorCodes: ['invalid-email', 'team-not-found'],
+    }),
+    resendInvite: defineRoute({
+        method: 'POST',
+        path: '/api/invites/:inviteId/resend',
+        auth: 'session',
+        permission: 'org.members.manage',
+        rateLimit: null,
+        input: { ...NO_INPUT, params: inviteParams },
+        output: NO_CONTENT,
+        errorCodes: [],
+    }),
+    revokeInvite: defineRoute({
+        method: 'POST',
+        path: '/api/invites/:inviteId/revoke',
+        auth: 'session',
+        permission: 'org.members.manage',
+        rateLimit: null,
+        input: { ...NO_INPUT, params: inviteParams },
+        output: NO_CONTENT,
+        errorCodes: [],
+    }),
+    /** What the invitation page shows before sign-in; an unknown, used, revoked or expired token is `not-found`. */
+    previewInvite: defineRoute({
+        method: 'POST',
+        path: '/api/invites/preview',
+        auth: 'public',
+        permission: null,
+        // Like the other token checks: a 256-bit token cannot be guessed, but probing should still be slow.
+        rateLimit: 'verify-ip',
+        input: inviteTokenInput,
+        output: z.strictObject({
+            orgName: z.string().nullable(),
+            teamNames: z.array(teamNameSchema),
+            email: z.string(),
+            expiresAt: timestampSchema,
+        }),
+        errorCodes: [],
+    }),
+    /** Joins the invitation's organization and teams; `email-mismatch` (403) when signed in with another address. */
+    acceptInvite: defineRoute({
+        method: 'POST',
+        path: '/api/invites/accept',
+        auth: 'session',
+        permission: 'invite.accept',
+        rateLimit: null,
+        input: inviteTokenInput,
+        output: z.strictObject({ orgId: idSchema }),
+        errorCodes: ['invite-invalid', 'email-mismatch'],
     }),
 
     /**

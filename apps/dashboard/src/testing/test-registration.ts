@@ -10,7 +10,9 @@ import { issueLinkCode, LINK_CODE_TTL_MS } from '../domain/registration/issue-li
 import type { LinkCodeStore } from '../domain/registration/link-code-store';
 import { registerEngine, type RegisterEngineDeps } from '../domain/registration/register-engine';
 import { createFakeEntitlements } from './fake-entitlements';
+import { createMemoryAuthStore } from './memory-auth-store';
 import { createMemoryRegistrationStores, type MemoryRegistrationStores } from './memory-registration-store';
+import { createMemoryTeamStore } from './memory-team-store';
 import { TEST_ENGINE_DOMAIN } from './test-engine';
 
 export const REGISTRATION_START_MS = 1_800_000_000_000;
@@ -24,11 +26,13 @@ export function createTestRegistration(
     options: {
         readonly wrapLinkCodes?: (store: LinkCodeStore, stores: MemoryRegistrationStores) => LinkCodeStore;
         readonly linkCodeTtlMs?: number;
+        readonly engineDomain?: Hostname;
     } = {},
 ) {
     const clock = createFakeClock(REGISTRATION_START_MS);
     const logger = createMemoryLogger();
     const stores = createMemoryRegistrationStores({ orgExists: () => true });
+    const teams = createMemoryTeamStore({ auth: createMemoryAuthStore().state, registration: stores.state });
     const entitlements = createFakeEntitlements();
     const policy = createEngineCreationPolicy({
         entitlements,
@@ -40,10 +44,12 @@ export function createTestRegistration(
     const deps: RegisterEngineDeps = {
         linkCodes: options.wrapLinkCodes?.(stores.linkCodes, stores) ?? stores.linkCodes,
         engines: stores.engines,
+        teams,
+        random: cryptoRandom,
         policy,
         clock,
         logger,
-        engineDomain: TEST_ENGINE_DOMAIN,
+        engineDomain: options.engineDomain ?? TEST_ENGINE_DOMAIN,
         relays: TEST_RELAYS,
     };
     const tryIssue = (orgId: OrgId) =>
@@ -62,6 +68,7 @@ export function createTestRegistration(
         clock,
         logger,
         stores,
+        teams,
         entitlements,
         tryIssue,
         async issue(orgId: OrgId): Promise<LinkCode> {

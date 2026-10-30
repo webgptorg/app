@@ -47,6 +47,16 @@ export type EmailMessage =
           readonly link: string;
       })
     | (Envelope & {
+          /** An invitation to an organization and its teams (ADR 0018); names typed by the inviting organization. */
+          readonly template: 'team-invite';
+          readonly inviterEmail: string;
+          /** Null for an organization without a name, e.g. a personal one: the email then names the inviter. */
+          readonly orgName: string | null;
+          readonly teamNames: readonly string[];
+          readonly expiresAt: number;
+          readonly link: string;
+      })
+    | (Envelope & {
           /**
            * I-04: to the ops address, numbers and names of our own relays and jobs; I-05's abuse rules go to the abuse
            * inbox with an engine ID or a certificate's issuance key as the subject. Never engine content.

@@ -26,6 +26,13 @@ export type OrgAuditEntryId = z.infer<typeof orgAuditEntryIdSchema>;
 export const linkCodeIdSchema = z.string().regex(ID_PATTERN).brand<'LinkCodeId'>();
 export type LinkCodeId = z.infer<typeof linkCodeIdSchema>;
 
+export const teamIdSchema = z.string().regex(ID_PATTERN).brand<'TeamId'>();
+export type TeamId = z.infer<typeof teamIdSchema>;
+
+/** An `invites` row, never its token: what the people page resends and revokes by. */
+export const inviteIdSchema = z.string().regex(ID_PATTERN).brand<'InviteId'>();
+export type InviteId = z.infer<typeof inviteIdSchema>;
+
 /** 128 random bits as 26 characters of lowercase RFC 4648 base32 without padding. */
 function randomId(random: Random): string {
     let bits = 0;
@@ -65,4 +72,12 @@ export function newAdminAuditEntryId(random: Random): string {
 
 export function newOrgAuditEntryId(random: Random): OrgAuditEntryId {
     return orgAuditEntryIdSchema.parse(randomId(random));
+}
+
+export function newTeamId(random: Random): TeamId {
+    return teamIdSchema.parse(randomId(random));
+}
+
+export function newInviteId(random: Random): InviteId {
+    return inviteIdSchema.parse(randomId(random));
 }

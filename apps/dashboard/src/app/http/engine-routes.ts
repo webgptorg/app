@@ -3,6 +3,7 @@ import type { Hono } from 'hono';
 import { readEngineOverview, readEngineOverviews, type EngineOverview } from '../../domain/engines/engine-overview';
 import { renameEngine } from '../../domain/engines/rename-engine';
 import { revokeEngine } from '../../domain/engines/revoke-engine';
+import { visibleEngineIds } from '../../domain/teams/teams';
 import type { EngineCreationPolicy } from '../../domain/registration/engine-creation-policy';
 import { linkCodeIdSchema } from '../../domain/ids';
 import { issueLinkCode } from '../../domain/registration/issue-link-code';
@@ -55,6 +56,7 @@ export function bindEngineRoutes(
         | 'engineStatus'
         | 'engineHostnames'
         | 'relayPresence'
+        | 'teams'
     > & {
         readonly policy: EngineCreationPolicy;
         readonly routes: RouteBinder;
@@ -131,7 +133,10 @@ export function bindEngineRoutes(
     });
 
     bind(router, mount, apiRoutes.listEngines, async ({ session }) => {
-        const engines = await deps.engines.listForOrg(session.actor.orgId);
+        const visible = await visibleEngineIds(deps, session.actor);
+        const engines = (await deps.engines.listForOrg(session.actor.orgId)).filter(
+            (engine) => visible === null || visible.has(engine.engineId),
+        );
         const overviews = await readEngineOverviews(deps, engines);
         return { kind: 'ok', body: { engines: overviews.map(engineView) } };
     });
@@ -141,8 +146,9 @@ export function bindEngineRoutes(
     );
 
     bind(router, mount, apiRoutes.getEngine, async ({ input, session }) => {
+        const visible = await visibleEngineIds(deps, session.actor);
         const engine = await deps.engines.findInOrg(session.actor.orgId, input.params.engineId);
-        if (engine === null) {
+        if (engine === null || (visible !== null && !visible.has(engine.engineId))) {
             return { kind: 'problem', status: 404, code: 'not-found' };
         }
         return { kind: 'ok', body: { engine: engineView(await readEngineOverview(deps, engine)) } };

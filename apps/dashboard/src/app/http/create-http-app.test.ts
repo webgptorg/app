@@ -12,6 +12,7 @@ import { TEST_INSTALL_VARS } from '../../testing/install-fixtures';
 import { createFakeDnsResolver } from '../../testing/fake-dns-resolver';
 import { createMemoryAuthStore } from '../../testing/memory-auth-store';
 import { createMemoryCustomHostnameStore } from '../../testing/memory-custom-hostname-store';
+import { createMemoryTeamStore } from '../../testing/memory-team-store';
 import { createMemoryRegistrationStores } from '../../testing/memory-registration-store';
 import { createMemoryEngineHostnameStore, createMemoryRelayTokenStore } from '../../testing/memory-registry-stores';
 import { createMemoryRelayPresenceStore } from '../../testing/memory-relay-presence-store';
@@ -54,6 +55,8 @@ function app(options: {
     const logger = createMemoryLogger();
     const assets = options.assets ?? (() => Promise.resolve(new Response('<!doctype html>')));
     const metrics = createMemoryDashboardMetrics(clock);
+    const auth = createMemoryAuthStore();
+    const registration = createMemoryRegistrationStores({ orgExists: () => true });
     const { app: http } = createHttpApp({
         config,
         clock,
@@ -62,7 +65,7 @@ function app(options: {
         logger,
         metrics,
         authorizer: createAuthorizer({ clock, policy: DASHBOARD_POLICY }),
-        store: createMemoryAuthStore(),
+        store: auth,
         relyingParty: createSimpleWebAuthnRelyingParty({ origin: 'https://app.ptbk.test', rpName: 'Promptbook' }),
         email: createFakeEmailSender(),
         rateLimiter: createMemoryRateLimiter(clock),
@@ -70,7 +73,8 @@ function app(options: {
         devOutbox: null,
         billing,
         entitlements,
-        ...createMemoryRegistrationStores({ orgExists: () => true }),
+        ...registration,
+        teams: createMemoryTeamStore({ auth: auth.state, registration: registration.state }),
         relayTokens: createMemoryRelayTokenStore(),
         registry: { findEngine: () => Promise.resolve(null) },
         engineHostnames: createMemoryEngineHostnameStore(),

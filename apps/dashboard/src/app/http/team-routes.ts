@@ -1,0 +1,345 @@
+import type { Hono } from 'hono';
+
+import { emailAddressSchema, type EmailAddress } from '../../domain/auth/email-address';
+import { inviteIdSchema, teamIdSchema, userIdSchema } from '../../domain/ids';
+import { resolveRequestLocale } from '../i18n/resolve-request-locale';
+import { issueLinkCode } from '../../domain/registration/issue-link-code';
+import type { EngineCreationPolicy } from '../../domain/registration/engine-creation-policy';
+import {
+    acceptInvite,
+    createInvites,
+    previewInvite,
+    resendInvite,
+    revokeInvite,
+    type InviteDeps,
+    type Inviter,
+} from '../../domain/teams/invites';
+import type { ActiveSession } from '../../domain/auth/account';
+import { changeOrgRole, leaveOrg, removeFromOrg } from '../../domain/teams/people';
+import type { TeamRecord } from '../../domain/teams/team-store';
+import {
+    addTeamMember,
+    createTeam,
+    deleteTeam,
+    findVisibleTeam,
+    listTeamMembers,
+    listTeams,
+    removeTeamMember,
+    renameTeam,
+    type TeamActor,
+} from '../../domain/teams/teams';
+import { apiRoutes, type TeamView } from '../../shared/api/routes';
+import { LINK_CODE_PLACEHOLDER } from '../config';
+import type { DashboardDeps } from '../deps';
+import type { RequestContext, RouteBinder } from './bind-route';
+
+const NO_CONTENT = { kind: 'ok', body: undefined, status: 204 } as const;
+const NOT_FOUND = { kind: 'problem', status: 404, code: 'not-found' } as const;
+const LAST_OWNER = { kind: 'problem', status: 409, code: 'last-owner' } as const;
+
+function requestLocale(request: RequestContext) {
+    return resolveRequestLocale({
+        userLocale: null,
+        cookieHeader: request.header('cookie'),
+        acceptLanguage: request.header('accept-language'),
+    });
+}
+
+async function teamView(deps: Pick<DashboardDeps, 'teams'>, actor: TeamActor, team: TeamRecord): Promise<TeamView> {
+    return {
+        teamId: team.id,
+        name: team.name,
+        engineId: team.engineId,
+        memberCount: team.memberCount,
+        isMember: await deps.teams.isMember(actor.orgId, team.id, actor.userId),
+        createdAt: team.createdAt,
+    };
+}
+
+/**
+ * Teams, the organization's people and invitations (ADR 0018). The organization is always the session's active one;
+ * a team a member may not see answers exactly as one that does not exist.
+ */
+export function bindTeamRoutes(
+    router: Hono,
+    mount: string,
+    deps: DashboardDeps & { readonly policy: EngineCreationPolicy; readonly routes: RouteBinder },
+): void {
+    const bind = deps.routes.bind.bind(deps.routes);
+    const inviteDeps: InviteDeps = {
+        ...deps,
+        accounts: deps.store.accounts,
+        inviteLink: (token) => deps.links.invite(token),
+    };
+
+    bind(router, mount, apiRoutes.listTeams, async ({ session }) => {
+        const teams = await listTeams(deps, session.actor);
+        return {
+            kind: 'ok',
+            body: { teams: await Promise.all(teams.map((team) => teamView(deps, session.actor, team))) },
+        };
+    });
+
+    bind(router, mount, apiRoutes.createTeam, async ({ input, session }) => {
+        const team = await createTeam(deps, session.actor, input.body.name);
+        return { kind: 'ok', body: { team: await teamView(deps, session.actor, team) } };
+    });
+
+    bind(router, mount, apiRoutes.getTeam, async ({ input, session }) => {
+        const teamId = teamIdSchema.parse(input.params.teamId);
+        const team = await findVisibleTeam(deps, session.actor, teamId);
+        const members = await listTeamMembers(deps, session.actor, teamId);
+        if (team === null || members === null) {
+            return NOT_FOUND;
+        }
+        return { kind: 'ok', body: { team: await teamView(deps, session.actor, team), members: [...members] } };
+    });
+
+    bind(router, mount, apiRoutes.renameTeam, async ({ input, session }) => {
+        const teamId = teamIdSchema.parse(input.params.teamId);
+        if ((await renameTeam(deps, session.actor, teamId, input.body.name)) === 'not-found') {
+            return NOT_FOUND;
+        }
+        const team = await deps.teams.find(session.actor.orgId, teamId);
+        return team === null ? NOT_FOUND : { kind: 'ok', body: { team: await teamView(deps, session.actor, team) } };
+    });
+
+    bind(router, mount, apiRoutes.deleteTeam, async ({ input, session }) => {
+        const outcome = await deleteTeam(deps, session.actor, teamIdSchema.parse(input.params.teamId));
+        return outcome === 'deleted' ? NO_CONTENT : NOT_FOUND;
+    });
+
+    bind(router, mount, apiRoutes.createTeamLinkCode, async ({ input, request, session }) => {
+        const team = await deps.teams.find(session.actor.orgId, teamIdSchema.parse(input.params.teamId));
+        if (team === null) {
+            return NOT_FOUND;
+        }
+        if (team.engineId !== null) {
+            return { kind: 'problem', status: 409, code: 'team-has-engine' };
+        }
+        const outcome = await issueLinkCode(
+            { ...deps, linkCodeTtlMs: deps.config.linkCodeTtlMs },
+            { orgId: session.actor.orgId, userId: session.actor.userId },
+            request.signal,
+        );
+        if (outcome.kind === 'denied') {
+            return outcome.reason === 'rate-limited'
+                ? { kind: 'problem', status: 429, code: 'rate-limited' }
+                : { kind: 'problem', status: 403, code: outcome.reason };
+        }
+        await deps.teams.attachLinkCode(session.actor.orgId, outcome.linkCodeId, team.id);
+        return {
+            kind: 'ok',
+            body: {
+                linkCodeId: outcome.linkCodeId,
+                linkCode: outcome.linkCode,
+                installCommands: deps.config.installCommands.map((path) => ({
+                    id: path.id,
+                    labelKey: path.labelKey,
+                    command: path.template.replace(LINK_CODE_PLACEHOLDER, () => outcome.linkCode),
+                    docsAnchor: path.docsAnchor,
+                })),
+                installGuideUrl: deps.config.installGuideUrl,
+                expiresAt: outcome.expiresAt,
+            },
+        };
+    });
+
+    bind(router, mount, apiRoutes.addTeamMember, async ({ input, session }) => {
+        const outcome = await addTeamMember(
+            deps,
+            session.actor,
+            teamIdSchema.parse(input.params.teamId),
+            userIdSchema.parse(input.body.userId),
+        );
+        switch (outcome) {
+            case 'added':
+            case 'already':
+                return NO_CONTENT;
+            case 'not-member':
+                return { kind: 'problem', status: 409, code: 'not-member' };
+            case 'not-found':
+                return NOT_FOUND;
+        }
+    });
+
+    bind(router, mount, apiRoutes.removeTeamMember, async ({ input, session }) => {
+        const outcome = await removeTeamMember(
+            deps,
+            session.actor,
+            teamIdSchema.parse(input.params.teamId),
+            userIdSchema.parse(input.params.userId),
+        );
+        return outcome === 'removed' ? NO_CONTENT : NOT_FOUND;
+    });
+
+    bind(router, mount, apiRoutes.leaveTeam, async ({ input, session }) => {
+        const outcome = await removeTeamMember(
+            deps,
+            session.actor,
+            teamIdSchema.parse(input.params.teamId),
+            session.actor.userId,
+        );
+        return outcome === 'removed' ? NO_CONTENT : NOT_FOUND;
+    });
+
+    bind(router, mount, apiRoutes.listOrgMembers, async ({ session }) => {
+        const [members, invites] = await Promise.all([
+            deps.teams.listOrgMembers(session.actor.orgId),
+            deps.teams.listPendingInvites(session.actor.orgId, deps.clock.nowMs()),
+        ]);
+        return {
+            kind: 'ok',
+            body: {
+                members: members.map((member) => ({ ...member, teamIds: [...member.teamIds] })),
+                invites: invites.map((invite) => ({
+                    inviteId: invite.id,
+                    email: invite.email,
+                    role: invite.role,
+                    teamIds: [...invite.teamIds],
+                    createdAt: invite.createdAt,
+                    expiresAt: invite.expiresAt,
+                })),
+            },
+        };
+    });
+
+    bind(router, mount, apiRoutes.changeOrgRole, async ({ input, session }) => {
+        const outcome = await changeOrgRole(
+            deps,
+            session.actor,
+            userIdSchema.parse(input.params.userId),
+            input.body.role,
+        );
+        switch (outcome) {
+            case 'changed':
+            case 'unchanged':
+                return NO_CONTENT;
+            case 'last-owner':
+                return LAST_OWNER;
+            case 'not-found':
+                return NOT_FOUND;
+        }
+    });
+
+    bind(router, mount, apiRoutes.removeOrgMember, async ({ input, session }) => {
+        const outcome = await removeFromOrg(deps, session.actor, userIdSchema.parse(input.params.userId));
+        switch (outcome) {
+            case 'removed':
+                return NO_CONTENT;
+            case 'last-owner':
+                return LAST_OWNER;
+            case 'forbidden':
+                return { kind: 'problem', status: 403, code: 'forbidden' };
+            case 'not-found':
+                return NOT_FOUND;
+        }
+    });
+
+    // The session moves to another organization of the user's, since it can no longer act in this one.
+    bind(router, mount, apiRoutes.leaveOrg, async ({ session }) => {
+        const outcome = await leaveOrg(deps, session.actor);
+        if (outcome === 'last-owner') {
+            return LAST_OWNER;
+        }
+        const [next] = await deps.store.accounts.listMemberships(session.actor.userId);
+        if (next !== undefined) {
+            await deps.store.sessions.setActiveOrg(session.record.idHash, next.orgId);
+        }
+        return NO_CONTENT;
+    });
+
+    bind(router, mount, apiRoutes.createInvites, async ({ input, request, session }) => {
+        const emails: EmailAddress[] = [];
+        for (const raw of input.body.emails) {
+            const email = emailAddressSchema.safeParse(raw);
+            if (!email.success) {
+                return { kind: 'problem', status: 400, code: 'invalid-email' };
+            }
+            emails.push(email.data);
+        }
+        const outcome = await createInvites(inviteDeps, inviter(session), {
+            emails,
+            role: input.body.role,
+            teamIds: input.body.teamIds.map((teamId) => teamIdSchema.parse(teamId)),
+            locale: requestLocale(request),
+        });
+        switch (outcome.kind) {
+            case 'ok':
+                request.waitUntil(sendInBackground(deps, outcome.deliver));
+                return { kind: 'ok', body: { results: [...outcome.results] } };
+            case 'forbidden':
+                return { kind: 'problem', status: 403, code: 'forbidden' };
+            case 'team-not-found':
+                return { kind: 'problem', status: 404, code: 'team-not-found' };
+        }
+    });
+
+    bind(router, mount, apiRoutes.resendInvite, async ({ input, request, session }) => {
+        const outcome = await resendInvite(
+            inviteDeps,
+            inviter(session),
+            inviteIdSchema.parse(input.params.inviteId),
+            requestLocale(request),
+        );
+        if (outcome.kind === 'not-found') {
+            return NOT_FOUND;
+        }
+        request.waitUntil(sendInBackground(deps, outcome.deliver));
+        return NO_CONTENT;
+    });
+
+    bind(router, mount, apiRoutes.revokeInvite, async ({ input, session }) => {
+        const outcome = await revokeInvite(inviteDeps, session.actor, inviteIdSchema.parse(input.params.inviteId));
+        return outcome === 'revoked' ? NO_CONTENT : NOT_FOUND;
+    });
+
+    bind(router, mount, apiRoutes.previewInvite, async ({ input }) => {
+        const preview = await previewInvite(deps, input.body.token);
+        if (preview === null) {
+            return NOT_FOUND;
+        }
+        return {
+            kind: 'ok',
+            body: {
+                orgName: preview.orgName,
+                teamNames: [...preview.teamNames],
+                email: preview.invite.email,
+                expiresAt: preview.invite.expiresAt,
+            },
+        };
+    });
+
+    bind(router, mount, apiRoutes.acceptInvite, async ({ input, session }) => {
+        const outcome = await acceptInvite(
+            inviteDeps,
+            { userId: session.user.id, email: session.user.email },
+            input.body.token,
+        );
+        switch (outcome.kind) {
+            case 'accepted':
+                return { kind: 'ok', body: { orgId: outcome.orgId } };
+            case 'invalid':
+                return { kind: 'problem', status: 404, code: 'invite-invalid' };
+            case 'email-mismatch':
+                return { kind: 'problem', status: 403, code: 'email-mismatch' };
+        }
+    });
+}
+
+function inviter(session: ActiveSession): Inviter {
+    return { ...session.actor, email: session.user.email, orgName: session.membership.org.name };
+}
+
+const SEND_TIMEOUT_MS = 30_000;
+
+async function sendInBackground(
+    deps: Pick<DashboardDeps, 'logger'>,
+    deliver: (signal: AbortSignal) => Promise<void>,
+): Promise<void> {
+    try {
+        await deliver(AbortSignal.timeout(SEND_TIMEOUT_MS));
+    } catch (error) {
+        deps.logger.error('invites.email-failed', { error: error instanceof Error ? error.name : 'unknown' });
+    }
+}
