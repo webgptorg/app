@@ -122,7 +122,7 @@ test('link an engine, see it online, open its page and revoke it, under the prod
     await checkScreen('/engines/$engineId');
 
     await page.getByRole('button', { name: 'Revoke engine' }).click();
-    const dialog = page.getByRole('dialog', { name: `Revoke engine ${engineId.slice(0, 8)}?` });
+    const dialog = page.getByRole('dialog', { name: `Revoke engine ${engineId.slice(0, 8)}…?` });
     // axe measures colours as rendered, so the dialog's opening animation has to be over; and it is checked before
     // typing, since enabling the confirm button starts a colour transition too.
     await dialog.evaluate((element) =>
