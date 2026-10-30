@@ -415,7 +415,8 @@ test.describe('the built bundle under the engine CSP', () => {
     }) => {
         const report = await visit('/integrations');
         await expect(page.getByRole('table').getByRole('link', { name: 'Billing repository' })).toBeVisible();
-        await page.getByRole('button', { name: 'Add MCP server' }).click();
+        await page.getByRole('button', { name: 'Add integration' }).click();
+        await page.getByRole('menuitem', { name: 'MCP server' }).click();
         const dialog = page.getByRole('dialog', { name: 'Add MCP server' });
         await expect(dialog.getByRole('checkbox', { name: 'GITHUB_TOKEN' })).toBeVisible();
         expect(await page.locator('input[type="password"]').count()).toBe(0);
@@ -423,7 +424,7 @@ test.describe('the built bundle under the engine CSP', () => {
         await dialog.getByRole('textbox', { name: /^Server URL/ }).fill('https://search.example.com/mcp');
         await dialog.getByRole('checkbox', { name: 'GITHUB_TOKEN' }).check();
         await dialog.getByRole('button', { name: 'Add' }).click();
-        await expect(page.getByText('Search added')).toBeVisible();
+        await expect(page.getByText('Search added.')).toBeVisible();
         expect(await page.evaluate(() => window.__ptbkCspViolations ?? [])).toEqual([]);
         expectCleanPage(report);
     });
