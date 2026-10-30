@@ -315,11 +315,11 @@ describe('app shell', () => {
         expect(router.state.location.hash).toBe('trust');
     });
 
-    it('offers no verify item to a member who may not see Security', async () => {
-        const { user } = renderWithProviders({ path: '/settings', permissions: ['agents.read'] });
+    it("offers the verify item to every member, as Security is everyone's page", async () => {
+        const { user } = renderWithProviders({ path: '/settings', permissions: [] });
         await user.click(await screen.findByRole('button', { name: /Test engine/ }));
         expect(screen.getByRole('menuitemradio', { name: /Test engine/ })).toBeDefined();
-        expect(screen.queryByRole('menuitem', { name: /Verify this engine/ })).toBeNull();
+        expect(screen.getByRole('menuitem', { name: /Verify this engine/ })).toBeDefined();
     });
 
     it('opens Settings and Security from the account menu without repeating the name and role', async () => {
@@ -339,14 +339,14 @@ describe('app shell', () => {
         });
     });
 
-    it('names the member in the account menu when the sidebar shows icons only, and hides Security without access', async () => {
+    it('names the member in the account menu when the sidebar shows icons only', async () => {
         const { user } = renderWithProviders({ path: '/settings', permissions: [] });
         await user.click(await screen.findByRole('button', { name: 'Collapse sidebar' }));
         await user.click(screen.getByRole('button', { name: 'Account menu: Owner' }));
         const menu = screen.getByRole('menu', { name: 'Account menu' });
         expect(within(menu).getByText('Owner')).toBeDefined();
         expect(within(menu).getByRole('menuitem', { name: 'Settings' })).toBeDefined();
-        expect(within(menu).queryByRole('menuitem', { name: 'Security' })).toBeNull();
+        expect(within(menu).getByRole('menuitem', { name: 'Security' })).toBeDefined();
     });
 
     it('keeps the live indicator readable when the sidebar shows icons only', async () => {
