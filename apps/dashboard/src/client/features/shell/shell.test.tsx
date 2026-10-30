@@ -190,7 +190,7 @@ describe('route states', () => {
         const app = renderApp({ path: '/nowhere' });
         expect(await screen.findByRole('heading', { name: 'Page not found' })).toBeTruthy();
         expect(screen.queryByRole('navigation', { name: 'Main' })).toBeNull();
-        expect(screen.getByRole('button', { name: 'Language and theme' })).toBeTruthy();
+        expect(screen.getByRole('button', { name: 'English, language and theme' })).toBeTruthy();
         await app.user.click(screen.getByRole('link', { name: 'Back to the start' }));
         expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeTruthy();
     });
