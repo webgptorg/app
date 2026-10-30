@@ -36,8 +36,19 @@ describe('createAppEngineApiClient', () => {
         const client = await createAppEngineApiClient({ origin: 'https://engine.example', fetch });
 
         expect(Object.prototype.toString.call(client)).toContain(IN_MEMORY_CLIENT_MARKER);
-        const agents = await client.agents.list({}, AbortSignal.timeout(1000));
-        expect(agents.kind === 'ok' && agents.data.items.length).toBeGreaterThan(0);
+        const signal = AbortSignal.timeout(1000);
+        const lists = await Promise.all([
+            client.agents.list({}, signal),
+            client.runs.list({}, signal),
+            client.files.list({}, signal),
+            client.triggers.list({}, signal),
+            client.integrations.list({}, signal),
+        ]);
+        for (const list of lists) expect(list.kind === 'ok' && list.data.items.length).toBeGreaterThan(0);
+        expect(await client.engine.get(signal)).toMatchObject({
+            kind: 'ok',
+            data: { name: 'Dev engine', mode: 'local' },
+        });
         expect(fetch).not.toHaveBeenCalled();
     });
 });

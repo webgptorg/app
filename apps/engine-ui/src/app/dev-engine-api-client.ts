@@ -1,16 +1,22 @@
-import { createInMemoryEngineApiClient } from '@ptbk/engine-api/in-memory';
+import { createDemoSeed, createInMemoryEngineApiClient } from '@ptbk/engine-api/in-memory';
 import type { EngineApiClient } from '@ptbk/engine-api';
 
-/** Offline development (`VITE_ENGINE_API=memory`): fake data with the contract's rules, no mock engine needed. */
+/**
+ * Offline development (`VITE_ENGINE_API=memory`): the demo engine's agents, runs, files, triggers and integrations with
+ * the contract's rules, no mock engine needed.
+ */
 export function createDevEngineApiClient(): EngineApiClient {
+    const seed = createDemoSeed();
     return createInMemoryEngineApiClient({
         seed: {
-            engine: { name: 'Dev engine', hostname: 'engine.localhost', dashboardUrl: null, mode: 'local' },
-            agents: [
-                { source: 'Ada\nPERSONA A careful research assistant' },
-                { source: 'Grace\nPERSONA Reviews pull requests' },
-                { source: 'Linus\nPERSONA Keeps the build green' },
-            ],
+            ...seed,
+            engine: {
+                ...seed.engine,
+                name: 'Dev engine',
+                hostname: 'engine.localhost',
+                dashboardUrl: null,
+                mode: 'local',
+            },
         },
     });
 }
