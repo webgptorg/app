@@ -114,4 +114,28 @@ describe('ConfirmDialog', () => {
         await user.click(screen.getByRole('button', { name: 'Delete' }));
         expect(onConfirm).toHaveBeenCalledOnce();
     });
+
+    it('shows details under the description, before the phrase field', () => {
+        renderUi(
+            <ConfirmDialog
+                open
+                onClose={() => undefined}
+                onConfirm={() => undefined}
+                title="Delete Lead bot?"
+                description="This cannot be undone."
+                confirmLabel="Delete"
+                tone="danger"
+                confirmPhrase="Lead bot"
+            >
+                <ul>
+                    <li>Its chats go too.</li>
+                </ul>
+            </ConfirmDialog>,
+        );
+        const dialog = screen.getByRole('dialog', { name: 'Delete Lead bot?' });
+        const item = screen.getByText('Its chats go too.');
+        expect(dialog.contains(item)).toBe(true);
+        const field = screen.getByRole('textbox');
+        expect(item.compareDocumentPosition(field) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
 });

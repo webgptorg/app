@@ -42,13 +42,12 @@ describe('engines in Czech', () => {
         expect(await screen.findByRole('heading', { name: 'Poslední signál' })).toBeTruthy();
         expect(screen.getByText(/Bezpečnostní stránka samotného enginu/)).toBeTruthy();
         expect(screen.getByText('Přes relaye Promptbooku')).toBeTruthy();
-        expect(screen.getByText('Dostupnost')).toBeTruthy();
         expect(screen.getByText('Nedostupný: žádné spojení s relayem')).toBeTruthy();
 
         await app.user.click(screen.getByRole('button', { name: 'Odvolat engine' }));
         const dialog = await screen.findByRole('dialog', { name: `Odvolat engine ${ENGINE_ID.slice(0, 8)}…?` });
-        expect(within(dialog).getByText(/nové ID enginu a novou adresu/)).toBeTruthy();
-        expect(within(dialog).getByRole('button', { name: 'Trvale odvolat' })).toBeTruthy();
+        expect(within(dialog).getByText(/Dostane nové ID i adresu/)).toBeTruthy();
+        expect(within(dialog).getByRole('button', { name: 'Odvolat přístupovým klíčem' })).toBeTruthy();
         expect(document.body.textContent).not.toMatch(/engines_|engine_[a-z]/);
     });
 
@@ -94,7 +93,8 @@ describe('engines in Czech', () => {
                 api.on(apiRoutes.getInstallGuide, ok({ url: 'https://docs.ptbk.test/engine/installation' }));
             },
         });
-        expect(await screen.findByText(/^Naposledy viděn .+\. Pokud server běží, spusťte na něm:$/)).toBeTruthy();
+        expect(await screen.findByText('Engine se neozývá')).toBeTruthy();
+        expect(screen.getByText('Pokud jeho server běží, spusťte na něm:')).toBeTruthy();
         expect(await screen.findByRole('link', { name: /Řešení potíží v návodu k instalaci/ })).toBeTruthy();
     });
 });

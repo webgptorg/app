@@ -130,9 +130,9 @@ test('link an engine, see it online, open its page and revoke it, under the prod
     );
     await checkScreen('/engines/$engineId revoke dialog');
     await dialog.getByRole('textbox').fill(engineId.slice(0, 8));
-    await dialog.getByRole('button', { name: 'Revoke permanently' }).click();
-    // A sign-up is no step-up, so the API asks for one and the step-up dialog runs in place.
-    await page.getByRole('dialog', { name: 'Confirm it is you' }).getByRole('button', { name: 'Use passkey' }).click();
+    // A sign-up is no step-up, so the confirm button runs the passkey check itself, without a second dialog.
+    await dialog.getByRole('button', { name: 'Revoke with passkey' }).click();
+    await expect(page.getByRole('dialog', { name: 'Confirm it is you' })).toHaveCount(0);
     await expect(page.getByText(/You revoked this engine/)).toBeVisible();
     await expect(page.getByRole('link', { name: /^Open engine/ })).toHaveCount(0);
 

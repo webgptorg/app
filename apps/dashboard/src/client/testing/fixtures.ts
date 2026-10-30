@@ -28,6 +28,8 @@ export function session(
         readonly recoveryCooldownEndsAt?: number | null;
         readonly name?: string | null;
         readonly permissions?: readonly string[];
+        readonly memberships?: SessionView['memberships'];
+        readonly steppedUpUntil?: number | null;
     } = {},
 ): SessionView {
     const cooldown = overrides.recoveryCooldownEndsAt ?? null;
@@ -47,8 +49,10 @@ export function session(
             role: 'owner',
             permissions: [...(overrides.permissions ?? ['org.read', 'engine.read'])],
         },
-        memberships: [{ orgId: 'bbbbbbbbbbbbbbbbbbbbbbbbbb', kind: 'personal', name: null, role: 'owner' }],
-        steppedUpUntil: null,
+        memberships: overrides.memberships ?? [
+            { orgId: 'bbbbbbbbbbbbbbbbbbbbbbbbbb', kind: 'personal', name: null, role: 'owner' },
+        ],
+        steppedUpUntil: overrides.steppedUpUntil ?? null,
     };
 }
 

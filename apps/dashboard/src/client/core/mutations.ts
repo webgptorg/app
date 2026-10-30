@@ -5,7 +5,8 @@ import { useLocale as useFormatters, useToast } from '@ptbk/ui';
 import { m } from '../../paraglide/messages';
 import type { SessionView } from '../../shared/api/routes';
 import { ApiError, hasProblem, queryKeys } from '../api/queries';
-import { useStepUp } from '../features/step-up/step-up';
+import { StepUpFailedError, useStepUp } from '../features/step-up/step-up';
+import type { StepUpMode } from '../features/step-up/step-up';
 
 export interface AppMutationOptions<Data, Variables> {
     readonly mutationFn: (variables: Variables) => Promise<Data>;
@@ -15,6 +16,8 @@ export interface AppMutationOptions<Data, Variables> {
     /** The failure text for errors this mutation knows; `undefined` falls back to the common ones. */
     readonly errorMessage?: (error: unknown) => string | undefined;
     readonly onSuccess?: (data: Data, variables: Variables) => void | Promise<void>;
+    /** `in-place` for actions confirmed in a dialog: a failed passkey check is shown there, not in a toast. */
+    readonly stepUp?: StepUpMode;
 }
 
 /** Ends of the recovery cooldown and similar instants, in the person's locale. */
@@ -54,8 +57,11 @@ export function useAppMutation<Data, Variables = void>(
     const { withStepUp } = useStepUp();
     const formatters = useFormatters();
     return useMutation<Data, unknown, Variables>({
-        mutationFn: (variables) => withStepUp(() => options.mutationFn(variables)),
+        mutationFn: (variables) => withStepUp(() => options.mutationFn(variables), options.stepUp),
         onError: (error) => {
+            if (error instanceof StepUpFailedError) {
+                return;
+            }
             const session = queryClient.getQueryData<SessionView | null>(queryKeys.session);
             const recoveryCooldownEndsAt = session?.user.recoveryCooldownEndsAt ?? null;
             const title =
