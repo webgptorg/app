@@ -180,7 +180,8 @@ export function BillingPage(props: { readonly checkout: CheckoutReturn | undefin
     const leftCheckout = props.checkout !== undefined;
     useEffect(() => {
         if (leftCheckout) {
-            void navigate({ to: '/billing', search: {}, replace: true });
+            // Only the query changes; a view transition here would cut short the one that brought the page in.
+            void navigate({ to: '/billing', search: {}, replace: true, viewTransition: false });
         }
     }, [leftCheckout, navigate]);
 
