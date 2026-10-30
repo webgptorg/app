@@ -88,8 +88,8 @@ export function PaletteButton({ onOpen, compact }: { readonly onOpen: () => void
     return (
         <button
             type="button"
-            // The visible "Search" stays short enough for the sidebar; the name says commands are in there too.
-            aria-label={m.palette_open()}
+            // The visible "Search" stays short enough for the sidebar; the name says commands are in there too. A
+            // hidden full name instead of `aria-label`, so the name is not a mismatch with the visible label.
             aria-keyshortcuts="Meta+K Control+K"
             aria-haspopup="dialog"
             onClick={onOpen}
@@ -99,7 +99,10 @@ export function PaletteButton({ onOpen, compact }: { readonly onOpen: () => void
             )}
         >
             <Search aria-hidden className="size-4 shrink-0" />
-            <span className="flex-1 truncate text-start">{m.palette_open_short()}</span>
+            <span aria-hidden="true" className="flex-1 truncate text-start">
+                {m.palette_open_short()}
+            </span>
+            <span className="sr-only">{m.palette_open()}</span>
             <kbd aria-hidden="true" className="font-mono text-xs">
                 {shortcutHint()}
             </kbd>

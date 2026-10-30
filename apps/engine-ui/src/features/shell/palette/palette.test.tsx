@@ -298,8 +298,8 @@ describe('command palette', { timeout: TIMEOUT_MS }, () => {
     it('shows a short label in the sidebar and keeps the full name', async () => {
         renderWithProviders({ path: '/settings', engineApi: createHomeEngine().client });
         const button = await screen.findByRole('button', { name: 'Search and commands' });
-        expect(button.textContent).toContain('Search');
-        expect(button.textContent).not.toContain('commands');
+        const visible = button.querySelector(':scope > span[aria-hidden="true"]');
+        expect(visible?.textContent).toBe('Search');
     });
 
     it('opens on agents, then places in the sidebar order, with a short placeholder and key hints', async () => {
