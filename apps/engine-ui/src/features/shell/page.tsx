@@ -1,9 +1,9 @@
-import type { Anchor } from '@ptbk/ui';
-import type { LinkComponent } from '@tanstack/react-router';
+import { Anchor } from '@ptbk/ui';
+import type { AnchorProps } from '@ptbk/ui';
+import { createLink } from '@tanstack/react-router';
 import { ArrowLeft } from 'lucide-react';
 import type { ReactNode } from 'react';
 
-import { Link } from '../../app/link';
 import { useDocumentTitle } from './document-title';
 
 export interface PageProps {
@@ -51,17 +51,17 @@ export function Page({ title, description, back, documentTitle, actions, childre
     );
 }
 
+function BackAnchor({ children, ...rest }: AnchorProps) {
+    return (
+        <Anchor {...rest} variant="standalone" className="inline-flex items-center gap-1 text-sm">
+            <ArrowLeft aria-hidden className="size-4" />
+            {children}
+        </Anchor>
+    );
+}
+
 /**
  * The one way back from a detail or form page to its list ("Back to runs"), placed by `Page` above the title. Name
- * where it leads, including the context the user came from ("Back to Ada's runs").
+ * where it leads, including the context the member came from ("Back to Ada's runs").
  */
-export const BackLink: LinkComponent<typeof Anchor> = ({ children, ...link }) => (
-    <Link {...link} variant="standalone" className="inline-flex items-center gap-1 text-sm">
-        {(state) => (
-            <>
-                <ArrowLeft aria-hidden className="size-4" />
-                {typeof children === 'function' ? children(state) : children}
-            </>
-        )}
-    </Link>
-);
+export const BackLink = createLink(BackAnchor);
