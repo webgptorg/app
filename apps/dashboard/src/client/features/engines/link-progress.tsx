@@ -147,6 +147,7 @@ function LinkedDetails(props: {
                         fingerprint={deriveEngineFingerprint(props.engineId)}
                         state="verified"
                         size="lg"
+                        className="shrink-0"
                         label={m.engines_fingerprint_label({
                             name: engineLabel({ engineId: props.engineId, label: props.engine?.label ?? null }),
                         })}

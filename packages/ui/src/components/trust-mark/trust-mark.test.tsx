@@ -26,8 +26,15 @@ describe('TrustMark', () => {
         expect(mark.getAttribute('aria-label')).toBe(
             `Private engine verified, Engine fingerprint ${fingerprint.formatted}`,
         );
-        // One comparable unit: the code never breaks after a hyphen; the mark wraps it under the seal instead.
-        expect(screen.getByText(fingerprint.formatted).className).toContain('whitespace-nowrap');
+        // The mark wraps the code under the seal before the code itself breaks.
+        const code = mark.querySelector('.font-mono');
+        if (code === null) throw new Error('the code as text');
+        expect(code.textContent).toBe(fingerprint.formatted);
+        // Line breaks only between groups: each group is one unbreakable span, and together they are the exact code.
+        const groups = [...code.children];
+        expect(groups.map((group) => group.textContent).join('')).toBe(fingerprint.formatted);
+        expect(groups.map((group) => group.textContent.replace(/-$/u, ''))).toEqual(fingerprint.formatted.split('-'));
+        for (const group of groups) expect(group.className).toContain('whitespace-nowrap');
         expect(mark.className).toContain('flex-wrap');
         expect(mark.querySelector('[data-fingerprint]')?.getAttribute('data-fingerprint')).toBe(
             fingerprint.patternBits,
@@ -74,7 +81,7 @@ describe('TrustMark', () => {
         expect(screen.getByRole('img').getAttribute('aria-label')).toBe(
             `Lead engine, Engine fingerprint ${FINGERPRINT.formatted}`,
         );
-        expect(screen.queryByText(FINGERPRINT.formatted)).toBeNull();
+        expect(screen.getByRole('img').textContent).toBe('');
     });
 
     it('plays the seal animation on verifying → verified only, and replays it after verifying again', () => {
