@@ -1,10 +1,9 @@
 import { KNOWN_CAPABILITIES, RunId } from '@ptbk/engine-api';
-import type { ReadRun, ReadRunDetail, ToolCall, TriggerId } from '@ptbk/engine-api';
-import { Badge, Banner, Card, CodeText, EmptyState, ErrorState, RelativeTime, Skeleton, useLocale } from '@ptbk/ui';
-import type { BadgeTone } from '@ptbk/ui';
+import type { ReadRun, ReadRunDetail, TriggerId } from '@ptbk/engine-api';
+import { Banner, Card, CodeText, EmptyState, ErrorState, RelativeTime, Skeleton, useLocale } from '@ptbk/ui';
 import { useQuery } from '@tanstack/react-query';
 import { getRouteApi } from '@tanstack/react-router';
-import { ChevronRight, CircleCheck, Circle } from 'lucide-react';
+import { ChevronRight } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 import { classifyApiError } from '../../app/api-errors';
@@ -18,9 +17,10 @@ import { NARROW_QUERY, useMediaQuery } from '../shell/use-media-query';
 import { triggerQueryOptions } from '../triggers/triggers-queries';
 import { DiffView } from './diff-view';
 import { RunActions } from './run-actions';
-import { finishedDurationMs, formatDuration, NotReported, RunCost, RunDuration, runTitle } from './run-format';
+import { finishedDurationMs, NotReported, RunCost, RunDuration, runTitle } from './run-format';
 import { runSourceLabel } from './run-source';
 import { RunStatusBadge } from './run-status';
+import { StepsSection, ToolCallsSection } from './run-timeline';
 import { runListQueryOptions, runQueryOptions } from './runs-queries';
 
 const route = getRouteApi('/runs/$runId');
@@ -90,7 +90,7 @@ function RunDetail({ run }: { readonly run: ReadRunDetail }) {
                 </Banner>
             )}
             {run.progress === null ? null : <StepsSection run={run} progress={run.progress} />}
-            {run.toolCalls.length === 0 ? null : <ToolCallsSection toolCalls={run.toolCalls} />}
+            {run.toolCalls.length === 0 ? null : <ToolCallsSection run={run} />}
             {hasOutputs ? <OutputsSection run={run} /> : null}
             {hasTokenUsage(run) ? <UsageSection run={run} /> : null}
             <RunDetails run={run} />
@@ -264,111 +264,6 @@ function RunDetails({ run }: { readonly run: ReadRunDetail }) {
                 <Fact label={m.run_fact_model()}>{run.model ?? <NotReported />}</Fact>
             </dl>
         </details>
-    );
-}
-
-function StepsSection({
-    run,
-    progress,
-}: {
-    readonly run: ReadRunDetail;
-    readonly progress: NonNullable<ReadRunDetail['progress']>;
-}) {
-    return (
-        <Card title={m.run_steps_title()}>
-            <div className="flex flex-col gap-3" aria-live={run.status === 'running' ? 'polite' : 'off'}>
-                <p className="font-medium break-words">{progress.title}</p>
-                {progress.now === null ? null : (
-                    <p className="text-sm break-words">
-                        <span className="text-text-muted">{m.run_steps_now()} </span>
-                        {progress.now}
-                    </p>
-                )}
-                {progress.next === null ? null : (
-                    <p className="text-sm break-words">
-                        <span className="text-text-muted">{m.run_steps_next()} </span>
-                        {progress.next}
-                    </p>
-                )}
-                <ol className="flex flex-col gap-1.5">
-                    {progress.items.map((item) => (
-                        <li key={item.id} className="flex items-start gap-2 text-sm">
-                            {item.status === 'completed' ? (
-                                <CircleCheck aria-hidden className="mt-0.5 size-4 shrink-0 text-success" />
-                            ) : (
-                                <Circle aria-hidden className="mt-0.5 size-4 shrink-0 text-text-muted" />
-                            )}
-                            <span className="break-words">
-                                <span className="sr-only">
-                                    {item.status === 'completed' ? m.run_step_done() : m.run_step_pending()}{' '}
-                                </span>
-                                {item.text}
-                            </span>
-                        </li>
-                    ))}
-                </ol>
-            </div>
-        </Card>
-    );
-}
-
-const TOOL_STATE_TONES: Readonly<Record<ToolCall['state'], BadgeTone>> = {
-    pending: 'neutral',
-    partial: 'info',
-    complete: 'success',
-    error: 'danger',
-};
-
-function toolStateLabel(state: ToolCall['state']): string {
-    switch (state) {
-        case 'pending':
-            return m.run_tool_pending();
-        case 'partial':
-            return m.run_tool_partial();
-        case 'complete':
-            return m.run_tool_complete();
-        case 'error':
-            return m.run_tool_error();
-    }
-}
-
-function ToolCallsSection({ toolCalls }: { readonly toolCalls: ReadRunDetail['toolCalls'] }) {
-    const locale = useLocale();
-    return (
-        <Card title={m.run_tools_title()}>
-            <ul className="flex flex-col divide-y divide-divider">
-                {toolCalls.map((call) => (
-                    <li key={call.id}>
-                        <details className="group py-2">
-                            <summary className="flex cursor-pointer flex-wrap items-center gap-x-3 gap-y-1 rounded-small focus-visible:outline-2 focus-visible:outline-focus">
-                                <span className="font-mono text-sm break-all">{call.name}</span>
-                                <Badge tone={TOOL_STATE_TONES[call.state]}>{toolStateLabel(call.state)}</Badge>
-                                <span className="text-sm text-text-muted tabular-nums">
-                                    {call.durationMs === null
-                                        ? null
-                                        : formatDuration(call.durationMs, (value) => locale.formatNumber(value))}
-                                </span>
-                            </summary>
-                            <div className="mt-2 flex flex-col gap-2">
-                                {call.logsTruncated ? <Banner tone="warning">{m.run_logs_truncated()}</Banner> : null}
-                                {call.logs === '' ? (
-                                    <p className="text-sm text-text-muted">{m.run_logs_empty()}</p>
-                                ) : (
-                                    // Tool output is attacker-controlled once an agent reads outside content: text only.
-                                    <pre
-                                        // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
-                                        tabIndex={0}
-                                        className="run-text max-h-96 overflow-auto rounded-surface p-3 font-mono text-xs whitespace-pre-wrap break-words focus-visible:outline-2 focus-visible:outline-focus"
-                                    >
-                                        {call.logs}
-                                    </pre>
-                                )}
-                            </div>
-                        </details>
-                    </li>
-                ))}
-            </ul>
-        </Card>
     );
 }
 

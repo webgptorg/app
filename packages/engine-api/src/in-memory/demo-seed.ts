@@ -155,8 +155,30 @@ export function createDemoSeed(now: Date = new Date()): InMemorySeed {
                     items: [
                         { id: 'p1', text: 'Read the email', status: 'completed' },
                         { id: 'p2', text: 'Find the order', status: 'pending' },
+                        { id: 'p3', text: 'Check the refund policy', status: 'pending' },
+                        { id: 'p4', text: 'Draft the reply', status: 'pending' },
                     ],
                 },
+                toolCalls: [
+                    {
+                        id: 'tool-max-email-1',
+                        name: 'email.read_message',
+                        state: 'complete',
+                        startedAt: ago(1.9),
+                        durationMs: 2_400,
+                        logs: 'Read message from a customer: refund request for order 1042.',
+                        logsTruncated: false,
+                    },
+                    {
+                        id: 'tool-max-email-2',
+                        name: 'shop.find_order',
+                        state: 'partial',
+                        startedAt: ago(1.2),
+                        durationMs: null,
+                        logs: 'GET /orders?number=1042\n200 OK, 1 match\nLoading payments…\n',
+                        logsTruncated: false,
+                    },
+                ],
             }),
             run('run-iris-weekly-failed', {
                 agentId: 'agent-iris',
