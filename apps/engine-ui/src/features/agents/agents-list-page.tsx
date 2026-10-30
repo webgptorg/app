@@ -1,7 +1,7 @@
 import { AGENT_RUN_STATES, AGENT_VISIBILITIES } from '@ptbk/engine-api';
 import type { Agent } from '@ptbk/engine-api';
-import { Button, createDataTableColumnHelper, DataTable, Field, Input, RelativeTime } from '@ptbk/ui';
-import type { ColumnFiltersState, DataTableColumnDef, SortingState } from '@ptbk/ui';
+import { Button, createDataTableColumnHelper, DataTable, FilterBar, RelativeTime } from '@ptbk/ui';
+import type { DataTableColumnDef, SortingState } from '@ptbk/ui';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { getRouteApi } from '@tanstack/react-router';
 import { Plus } from 'lucide-react';
@@ -45,18 +45,6 @@ function sortOf(sorting: SortingState): AgentListSearch['sort'] {
     if (first === undefined || !SORTABLE.has(first.id)) return DEFAULT_AGENT_SORT;
     const field = first.id as SortField;
     return first.desc ? `-${field}` : field;
-}
-
-function filtersOf(search: AgentListSearch): ColumnFiltersState {
-    return [
-        ...(search.status === undefined ? [] : [{ id: 'status', value: search.status }]),
-        ...(search.visibility === undefined ? [] : [{ id: 'visibility', value: search.visibility }]),
-    ];
-}
-
-function filterValue<T extends string>(filters: ColumnFiltersState, id: string, known: readonly T[]): T | undefined {
-    const value = filters.find((filter) => filter.id === id)?.value;
-    return known.find((candidate) => candidate === value);
 }
 
 /** Refusals the route explains as a whole page ("not allowed", "confirm it is you") rather than inside the table. */
@@ -103,30 +91,13 @@ function useAgentColumns(): DataTableColumnDef<Agent>[] {
                 id: 'status',
                 header: m.agents_column_status(),
                 enableSorting: false,
-                meta: {
-                    priority: 1,
-                    filter: {
-                        kind: 'select',
-                        allLabel: m.agents_filter_all_statuses(),
-                        options: AGENT_RUN_STATES.map((state) => ({ value: state, label: stateLabel(state) })),
-                    },
-                },
+                meta: { priority: 1 },
                 cell: ({ row }) => <AgentStatusBadge agentId={row.original.id} />,
             }),
             column.accessor('visibility', {
                 header: m.agents_column_visibility(),
                 enableSorting: false,
-                meta: {
-                    priority: 2,
-                    filter: {
-                        kind: 'select',
-                        allLabel: m.agents_filter_all_visibilities(),
-                        options: AGENT_VISIBILITIES.map((visibility) => ({
-                            value: visibility,
-                            label: visibilityLabel(visibility),
-                        })),
-                    },
-                },
+                meta: { priority: 2 },
                 cell: ({ row }) => <AgentVisibilityBadge visibility={row.original.visibility} />,
             }),
             column.accessor('createdBy', {
@@ -194,35 +165,53 @@ export function AgentsListPage() {
             {m.agents_new()}
         </ButtonLink>
     ) : null;
-    const clearFilters = (
-        <Button
-            onClick={() => {
-                setText('');
-                update({ q: undefined, status: undefined, visibility: undefined });
-            }}
-        >
-            {m.agents_clear_filters()}
-        </Button>
-    );
+    const clear = () => {
+        setText('');
+        update({ q: undefined, status: undefined, visibility: undefined });
+    };
+    const clearFilters = <Button onClick={clear}>{m.agents_clear_filters()}</Button>;
 
     return (
         <Page title={m.agents_title()} actions={newAgent}>
-            <Field label={m.agents_search_label()} className="w-full sm:max-w-sm">
-                {(control) => (
-                    <Input
-                        {...control}
-                        ref={searchRef}
-                        type="search"
-                        value={text}
-                        placeholder={m.agents_search_placeholder()}
-                        autoComplete="off"
-                        maxLength={256}
-                        onChange={(event) => {
-                            setText(event.target.value);
-                        }}
-                    />
-                )}
-            </Field>
+            <FilterBar
+                search={{
+                    label: m.agents_search_label(),
+                    placeholder: m.agents_search_placeholder(),
+                    value: text,
+                    onChange: setText,
+                    maxLength: 256,
+                    inputRef: searchRef,
+                }}
+                filters={[
+                    {
+                        kind: 'select',
+                        id: 'status',
+                        label: m.agents_column_status(),
+                        allLabel: m.agents_filter_all_statuses(),
+                        options: AGENT_RUN_STATES.map((state) => ({ value: state, label: stateLabel(state) })),
+                        value: search.status,
+                        onChange: (value) => {
+                            update({ status: AGENT_RUN_STATES.find((state) => state === value) });
+                        },
+                    },
+                    {
+                        kind: 'select',
+                        id: 'visibility',
+                        label: m.agents_column_visibility(),
+                        allLabel: m.agents_filter_all_visibilities(),
+                        options: AGENT_VISIBILITIES.map((visibility) => ({
+                            value: visibility,
+                            label: visibilityLabel(visibility),
+                        })),
+                        value: search.visibility,
+                        onChange: (value) => {
+                            update({ visibility: AGENT_VISIBILITIES.find((visibility) => visibility === value) });
+                        },
+                    },
+                ]}
+                onClear={clear}
+                empty={!list.isPending && search.cursor === undefined && list.data?.items.length === 0}
+            />
             <DataTable
                 caption={m.agents_title()}
                 columns={columns}
@@ -232,13 +221,6 @@ export function AgentsListPage() {
                 sorting={sortingOf(search.sort)}
                 onSortingChange={(sorting) => {
                     update({ sort: sortOf(sorting) });
-                }}
-                columnFilters={filtersOf(search)}
-                onColumnFiltersChange={(filters) => {
-                    update({
-                        status: filterValue(filters, 'status', AGENT_RUN_STATES),
-                        visibility: filterValue(filters, 'visibility', AGENT_VISIBILITIES),
-                    });
                 }}
                 visibilityStorage={{ storage, key: AGENT_COLUMNS_STORAGE_KEY }}
                 page={{

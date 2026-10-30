@@ -1,0 +1,16 @@
+:root {
+    --filter-bar-icon: var(--color-text-muted);
+    --filter-bar-label: var(--color-text-muted);
+    --filter-bar-active-border: var(--color-accent);
+    --filter-bar-count-bg: var(--color-accent-soft);
+    --filter-bar-count-text: var(--color-accent-text);
+    --filter-bar-chip-bg: var(--color-raised);
+    --filter-bar-chip-hover: var(--color-hover);
+    --filter-bar-chip-border: var(--color-divider);
+    --filter-bar-chip-text: var(--color-text);
+}
+
+/* An active filter's control is outlined in the accent; a plain rule, so it wins over the control's own border utility. */
+[role='search'] [data-filter-active] {
+    border-color: var(--filter-bar-active-border);
+}
