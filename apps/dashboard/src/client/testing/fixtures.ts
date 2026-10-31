@@ -47,7 +47,7 @@ export function session(
             kind: 'personal',
             name: overrides.name === undefined ? null : overrides.name,
             role: 'owner',
-            permissions: [...(overrides.permissions ?? ['org.read', 'engine.read'])],
+            permissions: [...(overrides.permissions ?? ['org.read', 'engine.read', 'team.read'])],
         },
         memberships: overrides.memberships ?? [
             { orgId: 'bbbbbbbbbbbbbbbbbbbbbbbbbb', kind: 'personal', name: null, role: 'owner' },

@@ -46,7 +46,7 @@ function OrgMenu({ name }: { readonly name: string }) {
         onSuccess: async (next: SessionView) => {
             queryClient.removeQueries({ predicate: (query) => query.queryKey[0] !== queryKeys.session[0] });
             queryClient.setQueryData(queryKeys.session, next);
-            await navigate({ to: '/engines' });
+            await navigate({ to: '/teams' });
         },
     });
     const items: MenuEntry[] = session.memberships.map((membership) => ({

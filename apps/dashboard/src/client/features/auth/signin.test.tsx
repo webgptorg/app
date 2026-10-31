@@ -53,8 +53,8 @@ describe('sign-in', () => {
     it('goes home without a returnTo', async () => {
         const app = renderApp({ path: '/signin', script: signInScript });
         await app.user.click(await screen.findByRole('button', { name: 'Sign in with a passkey' }));
-        expect(await screen.findByRole('heading', { name: 'Your engines' })).toBeTruthy();
-        expect(app.history.location.pathname).toBe('/engines');
+        expect(await screen.findByRole('heading', { name: 'Teams' })).toBeTruthy();
+        expect(app.history.location.pathname).toBe('/teams');
     });
 
     it.each(['%2F%2Fevil.example', '%2F%5Cevil.example', 'https%3A%2F%2Fevil.example%2F', '%2Fsignup'])(
@@ -62,8 +62,8 @@ describe('sign-in', () => {
         async (returnTo) => {
             const app = renderApp({ path: `/signin?returnTo=${returnTo}`, script: signInScript });
             await app.user.click(await screen.findByRole('button', { name: 'Sign in with a passkey' }));
-            expect(await screen.findByRole('heading', { name: 'Your engines' })).toBeTruthy();
-            expect(app.history.location.pathname).toBe('/engines');
+            expect(await screen.findByRole('heading', { name: 'Teams' })).toBeTruthy();
+            expect(app.history.location.pathname).toBe('/teams');
         },
     );
 
@@ -79,7 +79,7 @@ describe('sign-in', () => {
         expect(await screen.findByText(message)).toBeTruthy();
         await expectNoAxeViolations(app.container);
         await app.user.click(screen.getByRole('button', { name: 'Try again' }));
-        expect(await screen.findByRole('heading', { name: 'Your engines' })).toBeTruthy();
+        expect(await screen.findByRole('heading', { name: 'Teams' })).toBeTruthy();
     });
 
     it.each([
@@ -100,13 +100,13 @@ describe('sign-in', () => {
 
     it('sends someone already signed in from /signin and /signup home', async () => {
         const first = renderApp({ path: '/signin', session: session() });
-        expect(await screen.findByRole('heading', { name: 'Your engines' })).toBeTruthy();
-        expect(first.history.location.pathname).toBe('/engines');
+        expect(await screen.findByRole('heading', { name: 'Teams' })).toBeTruthy();
+        expect(first.history.location.pathname).toBe('/teams');
         first.unmount();
         const second = renderApp({ path: '/signup', session: session() });
-        expect(await screen.findByRole('heading', { name: 'Your engines' })).toBeTruthy();
+        expect(await screen.findByRole('heading', { name: 'Teams' })).toBeTruthy();
         await waitFor(() => {
-            expect(second.history.location.pathname).toBe('/engines');
+            expect(second.history.location.pathname).toBe('/teams');
         });
     });
 

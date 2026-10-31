@@ -122,8 +122,8 @@ describe('sign-up, passkey step', () => {
 
         app.api.on(apiRoutes.getSession, ok(session()));
         await app.user.click(screen.getByRole('button', { name: 'Create passkey' }));
-        expect(await screen.findByRole('heading', { name: 'Your engines' })).toBeTruthy();
-        expect(app.history.location.pathname).toBe('/engines');
+        expect(await screen.findByRole('heading', { name: 'Teams' })).toBeTruthy();
+        expect(app.history.location.pathname).toBe('/teams');
         expect(app.api.callsTo(apiRoutes.signupOptions)).toEqual([{ body: { token: TOKEN } }]);
         expect(app.api.callsTo(apiRoutes.signupVerify)).toEqual([
             { body: { token: TOKEN, response: REGISTRATION_RESPONSE } },
@@ -140,7 +140,7 @@ describe('sign-up, passkey step', () => {
         });
         app.api.on(apiRoutes.getSession, ok(session({ locale: 'cs' })));
         await app.user.click(await screen.findByRole('button', { name: 'Create passkey' }));
-        expect(await screen.findByRole('heading', { name: 'Vaše enginy' })).toBeTruthy();
+        expect(await screen.findByRole('heading', { name: 'Týmy' })).toBeTruthy();
         expect(document.documentElement.lang).toBe('cs');
         expect(document.cookie).toContain('ptbk_locale=cs');
     });
@@ -156,7 +156,7 @@ describe('sign-up, passkey step', () => {
         expect(await screen.findByText(message)).toBeTruthy();
         app.api.on(apiRoutes.getSession, ok(session()));
         await app.user.click(screen.getByRole('button', { name: 'Try again' }));
-        expect(await screen.findByRole('heading', { name: 'Your engines' })).toBeTruthy();
+        expect(await screen.findByRole('heading', { name: 'Teams' })).toBeTruthy();
         expect(app.api.callsTo(apiRoutes.signupOptions)).toHaveLength(2);
     });
 
