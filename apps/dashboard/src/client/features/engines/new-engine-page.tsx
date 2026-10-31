@@ -41,15 +41,18 @@ export interface NewEngineSearch {
     /** A link code's ID (not the code): the page shows that code's progress, after a reload too. */
     readonly link?: string;
     readonly checkout?: CheckoutReturn;
+    /** The team the new engine joins (ADR 0018); without it the engine gets a team of its own. */
+    readonly team?: string;
 }
 
 const LINK_CODE_ID = /^[a-z2-7]{26}$/;
 
 /** `link` is a link code's ID from issuance; `checkout` is set by the Checkout return URLs. Anything else is dropped. */
 export function parseNewEngineSearch(search: Readonly<Record<string, unknown>>): NewEngineSearch {
-    const { link, checkout } = search;
+    const { link, checkout, team } = search;
     return {
         ...(typeof link === 'string' && LINK_CODE_ID.test(link) ? { link } : {}),
+        ...(typeof team === 'string' && LINK_CODE_ID.test(team) ? { team } : {}),
         ...(checkout === 'success' || checkout === 'cancel' ? { checkout } : {}),
     };
 }
@@ -272,7 +275,10 @@ function LinkFlow(props: { readonly search: NewEngineSearch }) {
     const billing = useQuery({ ...billingQuery(api), enabled: props.search.checkout === 'success' });
     const [issued, setIssued] = useState<LinkCodeView | null>(null);
     const create = useAppMutation<LinkCodeView>({
-        mutationFn: async () => dataOrThrow(await api.call(apiRoutes.createLinkCode, {})),
+        mutationFn: async () =>
+            props.search.team === undefined
+                ? dataOrThrow(await api.call(apiRoutes.createLinkCode, {}))
+                : dataOrThrow(await api.call(apiRoutes.createTeamLinkCode, { params: { teamId: props.search.team } })),
         errorMessage: linkCodeErrorMessage,
         onSuccess: async (view) => {
             setIssued(view);
@@ -287,7 +293,14 @@ function LinkFlow(props: { readonly search: NewEngineSearch }) {
                 });
             }
             // Only the ID goes into the URL, so a reload shows the progress again but never the code.
-            await navigate({ to: '/engines/new', search: { link: view.linkCodeId }, replace: true });
+            await navigate({
+                to: '/engines/new',
+                search: {
+                    link: view.linkCodeId,
+                    ...(props.search.team === undefined ? {} : { team: props.search.team }),
+                },
+                replace: true,
+            });
         },
     });
     const linkCodeId = issued?.linkCodeId ?? props.search.link;
@@ -376,15 +389,50 @@ function LinkFlow(props: { readonly search: NewEngineSearch }) {
     );
 }
 
+const PENDING_TEAM_KEY = 'ptbk.link.team';
+
+/**
+ * The team this link is for. Checkout's return URL knows no team, so the team rides through it in this tab's session
+ * storage: a team ID only, which grants nothing. Without storage, the engine gets a team of its own.
+ */
+function linkSearch(search: NewEngineSearch): NewEngineSearch {
+    try {
+        if (search.team !== undefined) {
+            window.sessionStorage.setItem(PENDING_TEAM_KEY, search.team);
+            return search;
+        }
+        const team = search.checkout === undefined ? null : window.sessionStorage.getItem(PENDING_TEAM_KEY);
+        return team !== null && LINK_CODE_ID.test(team) ? { ...search, team } : search;
+    } catch {
+        return search;
+    }
+}
+
 export function NewEnginePage(props: { readonly search: NewEngineSearch }) {
+    return <NewEngineContent search={linkSearch(props.search)} />;
+}
+
+function NewEngineContent(props: { readonly search: NewEngineSearch }) {
     const session = useSession();
     const canLink = session.activeOrg.permissions.includes(LINK_PERMISSION);
     return (
         <div className="flex flex-col gap-6">
-            <Link to="/engines" variant="standalone" className="inline-flex items-center gap-1 self-start text-sm">
-                <ArrowLeft aria-hidden className="size-4" />
-                {m.engine_back()}
-            </Link>
+            {props.search.team === undefined ? (
+                <Link to="/engines" variant="standalone" className="inline-flex items-center gap-1 self-start text-sm">
+                    <ArrowLeft aria-hidden className="size-4" />
+                    {m.engine_back()}
+                </Link>
+            ) : (
+                <Link
+                    to="/teams/$teamId"
+                    params={{ teamId: props.search.team }}
+                    variant="standalone"
+                    className="inline-flex items-center gap-1 self-start text-sm"
+                >
+                    <ArrowLeft aria-hidden className="size-4" />
+                    {m.team_back_to_team()}
+                </Link>
+            )}
             <h1 className="font-display text-2xl font-semibold">{m.engines_new_title()}</h1>
             {canLink ? <LinkFlow search={props.search} /> : <Banner tone="info">{m.engines_new_not_allowed()}</Banner>}
             <TrustLink />

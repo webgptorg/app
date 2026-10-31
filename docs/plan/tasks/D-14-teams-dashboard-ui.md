@@ -2,7 +2,7 @@
 
 - **Lane:** Dashboard · **Module:** `apps/dashboard` · **Milestone:** M3
 - **Depends on:** D-13
-- **Status:** todo
+- **Status:** done (#PR)
 - **Spec:** [Teams](../../spec/teams.md) "Dashboard UI"; design: [ui.md](../../design/ui.md)
 
 ## Goal

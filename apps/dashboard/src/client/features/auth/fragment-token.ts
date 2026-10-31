@@ -2,7 +2,7 @@
 export type FragmentToken =
     { readonly kind: 'none' } | { readonly kind: 'token'; readonly token: string } | { readonly kind: 'malformed' };
 
-export type TokenPurpose = 'signup' | 'recovery';
+export type TokenPurpose = 'signup' | 'recovery' | 'invite';
 
 /** 256-bit email tokens, base64url, as `src/shared/api/routes.ts` accepts them. */
 const EMAIL_TOKEN = /^[A-Za-z0-9_-]{43}$/;

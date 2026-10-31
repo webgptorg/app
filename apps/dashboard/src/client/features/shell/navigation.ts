@@ -1,6 +1,6 @@
 import type { LinkProps } from '@tanstack/react-router';
 import type { ComponentType } from 'react';
-import { CreditCard, Server, ShieldCheck, UserRound } from 'lucide-react';
+import { Contact, CreditCard, ShieldCheck, UserRound, UsersRound } from 'lucide-react';
 
 import type { SessionView } from '../../../shared/api/routes';
 import { m } from '../../../paraglide/messages';
@@ -22,12 +22,20 @@ export interface NavEntry {
 
 /** The shell's navigation; later screens (admin tools) add their entries here. */
 export const NAV_ENTRIES: readonly NavEntry[] = [
+    // Teams replace the engine list (ADR 0018); each team's page links its engine.
     {
-        id: 'engines',
-        to: '/engines',
-        label: () => m.nav_engines(),
-        icon: Server,
-        requires: { permission: 'engine.read' },
+        id: 'teams',
+        to: '/teams',
+        label: () => m.nav_teams(),
+        icon: UsersRound,
+        requires: { permission: 'team.read' },
+    },
+    {
+        id: 'people',
+        to: '/people',
+        label: () => m.nav_people(),
+        icon: Contact,
+        requires: { permission: 'org.members.read' },
     },
     {
         id: 'billing',

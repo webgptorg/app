@@ -79,11 +79,10 @@ describe('engine list', () => {
         expect(app.history.location.search).toContain('returnTo=%2Fengines');
     });
 
-    it('is where a signed-in person lands', async () => {
-        const app = renderApp({ path: '/', session: OWNER, script: engines(engineView()) });
+    it('is still reachable by its address, without a navigation entry of its own (teams replace it)', async () => {
+        renderApp({ path: '/engines', session: OWNER, script: engines(engineView()) });
         expect(await screen.findByRole('heading', { name: 'Your engines' })).toBeTruthy();
-        expect(app.history.location.pathname).toBe('/engines');
-        expect(screen.getByRole('link', { name: 'Engines' }).getAttribute('aria-current')).toBe('page');
+        expect(screen.queryByRole('link', { name: 'Engines' })).toBeNull();
     });
 
     it('shows an empty state instead of an empty table, with linking an engine as the next step', async () => {
