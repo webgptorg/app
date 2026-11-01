@@ -107,5 +107,15 @@
         "typescript": "6.0.3",
         "typescript-eslint": "8.72.0",
         "vitest": "4.1.12"
-    }
+    },
+    "funding": [
+        {
+            "type": "individual",
+            "url": "https://buymeacoffee.com/hejny"
+        },
+        {
+            "type": "github",
+            "url": "https://github.com/webgptorg/app/blob/main/README.md#%EF%B8%8F-contributing"
+        }
+    ]
 }
