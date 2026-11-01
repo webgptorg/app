@@ -117,5 +117,6 @@
             "type": "github",
             "url": "https://github.com/webgptorg/app/blob/main/README.md#%EF%B8%8F-contributing"
         }
-    ]
+    ],
+    "description": "The commercial, private half of the Promptbook zero-trust interface: the relay that carries encrypted traffic to engines, the dashboard at app.ptbk.io, and the engine UI that engines download as a signed bundle and serve themselves."
 }
