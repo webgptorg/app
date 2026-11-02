@@ -16,6 +16,7 @@ COPY apps/mock-engine/package.json apps/mock-engine/
 COPY apps/relay/package.json apps/relay/
 COPY packages/conformance/package.json packages/conformance/
 COPY packages/engine-api/package.json packages/engine-api/
+COPY packages/gateway-pages/package.json packages/gateway-pages/
 COPY packages/protocol/package.json packages/protocol/
 COPY packages/release-tools/package.json packages/release-tools/
 COPY packages/ui/package.json packages/ui/

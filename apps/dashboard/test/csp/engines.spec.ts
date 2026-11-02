@@ -32,8 +32,10 @@ test('link an engine, see it online, open its page and revoke it, under the prod
     await page.getByRole('button', { name: 'Send the link' }).click();
     await page.goto(await outboxLink(page.request, email, 'signup-link'));
     await page.getByRole('button', { name: 'Create passkey' }).click();
-    await expect(page.getByRole('heading', { name: 'Your engines' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Teams', level: 1 })).toBeVisible();
 
+    await page.goto('/engines');
+    await expect(page.getByRole('heading', { name: 'Your engines' })).toBeVisible();
     await page.getByRole('link', { name: 'Link an engine' }).click();
     await expect(page.getByRole('heading', { name: 'Link an engine', level: 1 })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Choose a plan to link your engine' })).toBeVisible();

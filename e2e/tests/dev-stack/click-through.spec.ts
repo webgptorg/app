@@ -108,7 +108,7 @@ test('sign up from the dev mailbox, subscribe, link with dev:link, open the engi
     const message = page.getByRole('listitem').filter({ hasText: `To ${email}` });
     await message.getByRole('link', { name: /\/signup#/ }).click();
     await page.getByRole('button', { name: 'Create passkey' }).click();
-    await expect(page.getByRole('heading', { name: 'Your engines' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Teams', level: 1 })).toBeVisible();
 
     await page.getByRole('link', { name: 'Billing' }).click();
     await page.getByRole('button', { name: 'Start your 14-day trial of Standard' }).click();
@@ -173,7 +173,8 @@ test('sign up from the dev mailbox, subscribe, link with dev:link, open the engi
     expect(up.output).toContain(`engine       https://${engineHost}/`);
     await page.goto(`${DEV_DASHBOARD_ORIGIN}/signin`);
     await page.getByRole('button', { name: 'Sign in with a passkey' }).click();
-    await expect(page.getByRole('heading', { name: 'Your engines' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Teams', level: 1 })).toBeVisible();
+    await page.goto(`${DEV_DASHBOARD_ORIGIN}/engines`);
     await expectEngineOnline(page);
     await expect(engineRow.getByText(engineHost, { exact: true })).toBeVisible();
 

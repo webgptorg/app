@@ -9,6 +9,7 @@ import {
     createProblem,
     encodeSseMessage,
     ENGINE_API_PREFIX,
+    KNOWN_CAPABILITIES,
     MemberId,
     MessageId,
 } from '@ptbk/engine-api';
@@ -21,7 +22,7 @@ import type {
     TestChatBody,
     TestChatEvent,
 } from '@ptbk/engine-api';
-import { createInMemoryEngineApiClient } from '@ptbk/engine-api/in-memory';
+import { DEFAULT_CAPABILITIES, createInMemoryEngineApiClient } from '@ptbk/engine-api/in-memory';
 import type { InMemoryMember } from '@ptbk/engine-api/in-memory';
 import { readFileSync } from 'node:fs';
 
@@ -150,6 +151,13 @@ const ROUTES: readonly (readonly ['GET' | 'POST' | 'PUT', RegExp, number, Call])
     ['GET', /^\/chats$/, 200, (api, _, query, __, signal) => api.chats.listAll(Object.fromEntries(query), signal)],
     ['GET', /^\/security$/, 200, (api, _, __, ___, signal) => api.security.get(signal)],
     ['GET', /^\/members$/, 200, (api, _, query, __, signal) => api.members.list(Object.fromEntries(query), signal)],
+    [
+        'GET',
+        /^\/access-requests$/,
+        200,
+        (api, _, query, __, signal) => api.members.listAccessRequests(Object.fromEntries(query), signal),
+    ],
+    ['GET', /^\/settings$/, 200, (api, _, __, ___, signal) => api.settings.get(signal)],
     [
         'GET',
         /^\/invites$/,
@@ -788,6 +796,8 @@ export async function routeFakeEngineApi(
     options: { readonly member?: InMemoryMember } = {},
 ): Promise<void> {
     const engineApi = createInMemoryEngineApiClient({
+        // File scanning is optional (#189); these checks cover its badges and the blocked download.
+        capabilities: [...DEFAULT_CAPABILITIES, KNOWN_CAPABILITIES.fileScanning],
         ...(options.member === undefined ? {} : { member: options.member }),
         seed: {
             activity: [...FAKE_ACTIVITY],

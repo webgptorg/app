@@ -58,21 +58,39 @@ function otherRelay(relay: RelayNode): RelayNode {
 
 const ALL_RELAY_IPS = RELAYS.map((relay) => relay.ip);
 
-/** Every relay routes the engine and is back in the engine domain's DNS (compose.relay-dns.yaml), first in its name. */
+/**
+ * How long DNS must keep listing every relay before an outage counts as over. A relay can serve again while the checker
+ * has not noticed it was gone: a check that started during the outage fails up to `timeoutMs` later, the relay then
+ * leaves DNS, and CoreDNS loads that on its next reload. Seen on CI: the wait passed, 20 ms later the alert said relay-a
+ * left, and the next test's browser found only the relay it was about to kill. One more interval as margin on a slow host.
+ */
+const COREDNS_RELOAD_MS = 1_000;
+const DNS_SETTLE_MS = RELAY_DNS.timeoutMs + COREDNS_RELOAD_MS + RELAY_DNS.intervalMs + 1_000;
+
+async function dnsListsEveryRelay(): Promise<boolean> {
+    const listings = await Promise.all(
+        RELAYS.map(async (relay) => {
+            const expected = [relay.ip, ...ALL_RELAY_IPS.filter((ip) => ip !== relay.ip)];
+            return (await addressesListedFor(relay)).join() === expected.join();
+        }),
+    );
+    return listings.every(Boolean);
+}
+
+/** Every relay routes the engine and has stayed in the engine domain's DNS, first in its name, for `DNS_SETTLE_MS`. */
 async function waitUntilEveryRelayIsBack(engineHost: string, caCertificatePem: string): Promise<void> {
+    let settlingSince: number | null = null;
     await expect
-        .poll(() => everyRelayServesEngine(engineHost, caCertificatePem), { intervals: [100], timeout: 90_000 })
+        .poll(
+            async () => {
+                const back =
+                    (await everyRelayServesEngine(engineHost, caCertificatePem)) && (await dnsListsEveryRelay());
+                settlingSince = back ? (settlingSince ?? Date.now()) : null;
+                return settlingSince !== null && Date.now() - settlingSince >= DNS_SETTLE_MS;
+            },
+            { intervals: [100], timeout: 90_000, message: 'every relay serves and DNS keeps listing it' },
+        )
         .toBe(true);
-    for (const relay of RELAYS) {
-        const expected = [relay.ip, ...ALL_RELAY_IPS.filter((ip) => ip !== relay.ip)];
-        await expect
-            .poll(() => addressesListedFor(relay), {
-                intervals: [100],
-                timeout: 30_000,
-                message: 'DNS lists every relay',
-            })
-            .toEqual(expected);
-    }
 }
 
 for (const relay of RELAYS) {
