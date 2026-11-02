@@ -2,7 +2,7 @@
 
 - **Lane:** Cross-cutting · **Module:** `e2e/` · **Milestone:** M3
 - **Depends on:** M-09, D-14, U-15
-- **Status:** in progress (feat/x-09-e2e-teams)
+- **Status:** done (#197)
 - **Spec:** [Teams](../../spec/teams.md)
 
 ## Goal
