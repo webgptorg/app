@@ -38,6 +38,9 @@ function buildPath(contract: RouteContract, input: Readonly<Record<string, unkno
 async function readJson(
     response: Response,
 ): Promise<{ readonly ok: true; readonly value: unknown } | { readonly ok: false }> {
+    if (response.status === 204) {
+        return { ok: true, value: undefined };
+    }
     try {
         return { ok: true, value: await response.json() };
     } catch {
