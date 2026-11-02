@@ -73,19 +73,26 @@ export function MessageList(props: MessageListProps) {
     };
 
     const firstId = views[0]?.id;
-    const previous = useRef({ firstId, count: views.length, height: 0 });
+    const lastView = views.at(-1);
+    const sending = lastView?.state === 'pending';
+    const previous = useRef({ firstId, count: views.length, height: 0, sending });
     useLayoutEffect(() => {
         const element = scrollRef.current;
         if (element === null) return;
         const before = previous.current;
         const height = contentHeight(element);
+        if (sending && !before.sending) {
+            // The member's own message: they want to see it and its reply, wherever they had scrolled to. The scroll
+            // event this causes clears "Jump to latest".
+            atBottomRef.current = true;
+        }
         if (before.firstId !== undefined && firstId !== before.firstId && views.length > before.count) {
             // Older messages arrived above: move down by what they added, so the same message stays in view.
             element.scrollTop += height - before.height;
         } else if (atBottomRef.current) {
             scrollToEnd();
         }
-        previous.current = { firstId, count: views.length, height: contentHeight(element) };
+        previous.current = { firstId, count: views.length, height: contentHeight(element), sending };
     });
 
     const onScroll = () => {

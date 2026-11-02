@@ -314,6 +314,19 @@ describe('chat panel sending', { timeout: TIMEOUT_MS }, () => {
         expect((composer() as HTMLTextAreaElement).value).toBe('One');
     });
 
+    it('returns to the bottom when the member sends while scrolled up', async () => {
+        const { engine } = ownChatEngine();
+        const app = await renderChat(engine);
+        const region = history();
+        Object.defineProperty(region, 'scrollHeight', { configurable: true, value: 5000 });
+        Object.defineProperty(region, 'clientHeight', { configurable: true, value: 500 });
+        fireEvent.scroll(region, { target: { scrollTop: 1000 } });
+        expect(await screen.findByRole('button', { name: 'Jump to latest' })).toBeDefined();
+
+        await sendAndOpen(app, engine, 'Back to the end');
+        expect(region.scrollTop).toBe(5000);
+    });
+
     it('adds a line with Shift+Enter, ignores an empty message, and sends with the button', async () => {
         const { engine } = ownChatEngine();
         const app = await renderChat(engine);
