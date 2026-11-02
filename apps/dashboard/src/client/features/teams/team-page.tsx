@@ -196,7 +196,7 @@ function TeamMenu(props: { readonly team: TeamView }) {
         successMessage: () => m.team_deleted({ name: props.team.name }),
         onSuccess: async () => {
             setDeleting(false);
-            await navigate({ to: '/teams' });
+            await navigate({ to: '/engines' });
         },
     });
     const permissions = session.activeOrg.permissions;
@@ -275,7 +275,7 @@ function NotFound() {
                 title={m.team_not_found_title()}
                 headingLevel={2}
                 description={m.team_not_found_body()}
-                action={<ButtonLink to="/teams">{m.team_back()}</ButtonLink>}
+                action={<ButtonLink to="/engines">{m.team_back()}</ButtonLink>}
             />
         </Card>
     );
@@ -310,7 +310,7 @@ export function TeamPage(props: { readonly teamId: string }) {
     const people = rows(team.data.members, team.data.removing, team.data.refused, team.data.invites);
     return (
         <div className="flex flex-col gap-6">
-            <Link to="/teams" variant="standalone" className="inline-flex items-center gap-1 self-start text-sm">
+            <Link to="/engines" variant="standalone" className="inline-flex items-center gap-1 self-start text-sm">
                 <ArrowLeft aria-hidden className="size-4" />
                 {m.team_back()}
             </Link>

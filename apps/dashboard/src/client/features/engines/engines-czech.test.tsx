@@ -19,7 +19,7 @@ describe('engines in Czech', () => {
 
     it('renders the list, the engine page and the revoke dialog without missing texts', async () => {
         const app = renderApp({
-            path: '/engines',
+            path: '/engines/all',
             session: OWNER,
             script: (api) => {
                 api.on(apiRoutes.listEngines, ok({ engines: [engineView({ reachableRelays: 2 })] }));

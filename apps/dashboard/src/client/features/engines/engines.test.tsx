@@ -73,20 +73,20 @@ function expectOnlyLinksToEngines(): void {
 
 describe('engine list', () => {
     it('sends a signed-out visitor to sign in first', async () => {
-        const app = renderApp({ path: '/engines' });
+        const app = renderApp({ path: '/engines/all' });
         expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeTruthy();
         expect(app.history.location.pathname).toBe('/signin');
         expect(app.history.location.search).toContain('returnTo=%2Fengines');
     });
 
     it('is still reachable by its address, without a navigation entry of its own (teams replace it)', async () => {
-        renderApp({ path: '/engines', session: OWNER, script: engines(engineView()) });
+        renderApp({ path: '/engines/all', session: OWNER, script: engines(engineView()) });
         expect(await screen.findByRole('heading', { name: 'Your engines' })).toBeTruthy();
         expect(screen.queryByRole('link', { name: 'Engines' })).toBeNull();
     });
 
     it('shows an empty state instead of an empty table, with linking an engine as the next step', async () => {
-        const app = renderApp({ path: '/engines', session: OWNER });
+        const app = renderApp({ path: '/engines/all', session: OWNER });
         expect(await screen.findByRole('heading', { name: 'No engines yet', level: 2 })).toBeTruthy();
         expect(screen.queryByRole('table')).toBeNull();
         expect(screen.queryByRole('columnheader')).toBeNull();
@@ -100,7 +100,7 @@ describe('engine list', () => {
 
     it('shows each engine on one line: fingerprint, status with last seen, address and version', async () => {
         const app = renderApp({
-            path: '/engines',
+            path: '/engines/all',
             session: OWNER,
             script: engines(
                 engineView(),
@@ -145,7 +145,7 @@ describe('engine list', () => {
     it('labels an online engine without an owner, still with its reachability', async () => {
         const base = engineView();
         renderApp({
-            path: '/engines',
+            path: '/engines/all',
             session: OWNER,
             script: engines(
                 engineView({
@@ -162,7 +162,7 @@ describe('engine list', () => {
 
     it('renders an engine whose status could not be read as unknown, not as an error', async () => {
         renderApp({
-            path: '/engines',
+            path: '/engines/all',
             session: OWNER,
             script: engines(
                 engineView({ status: 'unknown', lastSeenAt: null, heartbeat: null }),
@@ -177,7 +177,7 @@ describe('engine list', () => {
 
     it('shows revoked and suspended engines without an Open link', async () => {
         const app = renderApp({
-            path: '/engines',
+            path: '/engines/all',
             session: OWNER,
             script: engines(
                 engineView({ status: 'suspended', suspendedBy: 'owner' }),
@@ -196,7 +196,7 @@ describe('engine list', () => {
 
     it('lists engines by what needs attention, and keeps revoked ones behind a toggle', async () => {
         const app = renderApp({
-            path: '/engines',
+            path: '/engines/all',
             session: OWNER,
             script: engines(
                 engineView({
@@ -224,7 +224,7 @@ describe('engine list', () => {
 
     it('shows a list of revoked engines only without hiding them', async () => {
         renderApp({
-            path: '/engines',
+            path: '/engines/all',
             session: OWNER,
             script: engines(engineView({ status: 'suspended', suspendedBy: 'owner' })),
         });
@@ -233,14 +233,14 @@ describe('engine list', () => {
     });
 
     it('mutes what an offline engine last reported and drops its stale update notice', async () => {
-        renderApp({ path: '/engines', session: OWNER, script: engines(engineView({ status: 'offline' })) });
+        renderApp({ path: '/engines/all', session: OWNER, script: engines(engineView({ status: 'offline' })) });
         await screen.findByText('Offline');
         expect(screen.getByText('1.4.2').className).toContain('text-text-muted');
         expect(screen.queryByText('Update available')).toBeNull();
     });
 
     it('opens an engine at its exact address in a new tab, without opener or referrer', async () => {
-        renderApp({ path: '/engines', session: OWNER, script: engines(engineView()) });
+        renderApp({ path: '/engines/all', session: OWNER, script: engines(engineView()) });
         await screen.findByText('Online');
         const open = screen.getByRole('link', { name: `Open engine ${ENGINE_ID.slice(0, 8)}…, in a new tab` });
         expect(open.getAttribute('href')).toBe(`https://${ENGINE_ID}.${ENGINE_DOMAIN}/`);
@@ -251,7 +251,7 @@ describe('engine list', () => {
 
     it('says when the list cannot be loaded, with a retry', async () => {
         const app = renderApp({
-            path: '/engines',
+            path: '/engines/all',
             session: OWNER,
             // A contract breach is not retried, so the error shows at once.
             script: (api) => api.on(apiRoutes.listEngines, { kind: 'invalid-response', status: 200 }),
@@ -263,13 +263,13 @@ describe('engine list', () => {
     });
 
     it('offers no way to link an engine on the empty list without engine.link', async () => {
-        renderApp({ path: '/engines', session: session({ permissions: ['org.read', 'engine.read'] }) });
+        renderApp({ path: '/engines/all', session: session({ permissions: ['org.read', 'engine.read'] }) });
         expect(await screen.findByRole('heading', { name: 'No engines yet', level: 2 })).toBeTruthy();
         expect(screen.queryByRole('link', { name: 'Link an engine' })).toBeNull();
     });
 
     it('tells a role without engine.read that it cannot see engines, without asking the API', async () => {
-        const app = renderApp({ path: '/engines', session: session({ permissions: ['org.read'] }) });
+        const app = renderApp({ path: '/engines/all', session: session({ permissions: ['org.read'] }) });
         expect(await screen.findByText('Your role in this organization cannot see its engines.')).toBeTruthy();
         expect(app.api.callsTo(apiRoutes.listEngines)).toHaveLength(0);
     });
@@ -426,7 +426,7 @@ describe('engine name', () => {
 
     it('names a labelled engine by its label in the list, the title and the revoke dialog', async () => {
         const app = renderApp({
-            path: '/engines',
+            path: '/engines/all',
             session: OWNER,
             script: (api) => {
                 engines(
@@ -532,7 +532,7 @@ describe('reachability', () => {
 
     it('shows in the list how many relays reach each online engine, and nothing without presence data', async () => {
         renderApp({
-            path: '/engines',
+            path: '/engines/all',
             session: OWNER,
             script: engines(
                 engineView({ reachableRelays: 2 }),
@@ -585,7 +585,7 @@ describe('fingerprint', () => {
 
     it('renders every shared vector’s pattern in the list, with its code in the mark’s accessible name', async () => {
         renderApp({
-            path: '/engines',
+            path: '/engines/all',
             session: OWNER,
             script: engines(
                 ...engineIds.map((engineId) => engineView({ engineId: engineId as EngineView['engineId'] })),
@@ -616,7 +616,7 @@ describe('fingerprint', () => {
 
 describe('engine domain', () => {
     it('appears in the list and on the engine page only as link targets', async () => {
-        const app = renderApp({ path: '/engines', session: OWNER, script: engines(engineView()) });
+        const app = renderApp({ path: '/engines/all', session: OWNER, script: engines(engineView()) });
         await screen.findByText('Online');
         expectOnlyLinksToEngines();
         app.unmount();
@@ -656,7 +656,7 @@ describe('engine domain', () => {
                 );
             },
         });
-        const app = renderApp({ path: '/engines', apiClient });
+        const app = renderApp({ path: '/engines/all', apiClient });
         await app.user.click(await screen.findByRole('link', { name: `${ENGINE_ID.slice(0, 8)}…` }));
         await screen.findByRole('heading', { name: 'Last heartbeat' });
         expect(fetched).toContain(`/api/engines/${ENGINE_ID}`);

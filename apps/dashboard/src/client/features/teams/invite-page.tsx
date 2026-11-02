@@ -45,7 +45,7 @@ export function InvitePage(props: { readonly token: FragmentToken }) {
         onSuccess: async () => {
             router.options.context.fragmentTokens.forget('invite');
             await queryClient.invalidateQueries();
-            await navigate({ to: '/teams' });
+            await navigate({ to: '/engines' });
         },
     });
 

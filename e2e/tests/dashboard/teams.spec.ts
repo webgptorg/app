@@ -65,8 +65,8 @@ async function linkTeamEngine(
     await dashboard.subscribe();
 
     await page.goto(`${DASHBOARD_ORIGIN}/teams`);
-    await page.getByRole('button', { name: 'New team' }).click();
-    await page.getByLabel('Team name').fill(TEAM);
+    await page.getByRole('button', { name: 'New engine' }).click();
+    await page.getByLabel('Engine name').fill(TEAM);
     await page.getByRole('button', { name: 'Create and link an engine' }).click();
     await expect(page).toHaveURL(/\/engines\/new\?.*link=[a-z2-7]{26}/);
     const linkCode = devInstallLinkCode((await page.getByRole('tabpanel').locator('code').textContent()) ?? '');
@@ -136,7 +136,7 @@ async function inviteAndApprove(
         await steps.signUp(email);
         await person.goto(await dashboard.emailedLink(email, 'team-invite'));
         await person.getByRole('button', { name: 'Accept invitation' }).click();
-        await expect(person).toHaveURL(/\/teams$/);
+        await expect(person).toHaveURL(/\/engines$/);
     });
 
     let code = '';
@@ -176,8 +176,8 @@ async function removeFromTeam(page: Page, email: string): Promise<void> {
     await page.goto(`${DASHBOARD_ORIGIN}/teams`);
     await page.getByRole('link', { name: TEAM, exact: true }).click();
     await page.getByRole('button', { name: `Actions for ${email}` }).click();
-    await page.getByRole('menuitem', { name: 'Remove from team' }).click();
-    await page.getByRole('dialog').getByRole('button', { name: 'Remove from team' }).click();
+    await page.getByRole('menuitem', { name: 'Remove from engine' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Remove from engine' }).click();
 }
 
 async function reloadedRow(page: Page, email: string) {

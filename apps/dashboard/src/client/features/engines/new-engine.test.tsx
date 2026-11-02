@@ -118,7 +118,7 @@ describe('new engine page', () => {
     });
 
     it('is reachable from the empty engine list', async () => {
-        const app = renderApp({ path: '/engines', session: OWNER, script: eligible('engine-limit') });
+        const app = renderApp({ path: '/engines/all', session: OWNER, script: eligible('engine-limit') });
         await app.user.click(await screen.findByRole('link', { name: 'Link an engine' }));
         expect(await screen.findByRole('heading', { name: 'Link an engine', level: 1 })).toBeTruthy();
         expect(app.history.location.pathname).toBe('/engines/new');

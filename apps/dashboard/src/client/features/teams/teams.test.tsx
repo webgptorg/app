@@ -100,13 +100,13 @@ describe('teams list', () => {
                 );
             },
         });
-        expect(await screen.findByRole('heading', { name: 'Teams' })).toBeTruthy();
-        expect(app.history.location.pathname).toBe('/teams');
-        const list = await screen.findByRole('list', { name: 'Teams' });
+        expect(await screen.findByRole('heading', { name: 'Engines' })).toBeTruthy();
+        expect(app.history.location.pathname).toBe('/engines');
+        const list = await screen.findByRole('list', { name: 'Engines' });
         const [first, second] = within(list).getAllByRole('listitem');
         if (first === undefined || second === undefined) throw new Error('two teams');
         expect(within(first).getByText('Online')).toBeTruthy();
-        expect(within(second).getByText('No engine yet')).toBeTruthy();
+        expect(within(second).getByText('Not linked yet')).toBeTruthy();
         expect(within(second).queryByRole('button', { name: /Open/ })).toBeNull();
         await expectNoAxeViolations(app.container);
         await app.user.click(within(first).getByRole('button', { name: 'Open Northwind' }));
@@ -125,7 +125,7 @@ describe('teams list', () => {
             },
         });
         await app.user.click(await screen.findByRole('button', { name: 'Open Northwind' }));
-        expect(await screen.findByText("Opening teams isn't available right now. Try again later.")).toBeTruthy();
+        expect(await screen.findByText("Opening engines isn't available right now. Try again later.")).toBeTruthy();
         expect(app.navigations).toEqual([]);
     });
 
@@ -145,24 +145,24 @@ describe('teams list', () => {
                 );
             },
         });
-        expect(await screen.findByRole('heading', { name: 'No teams yet' })).toBeTruthy();
-        await app.user.click(screen.getByRole('button', { name: 'New team' }));
+        expect(await screen.findByRole('heading', { name: 'No engines yet' })).toBeTruthy();
+        await app.user.click(screen.getByRole('button', { name: 'New engine' }));
         await app.user.click(screen.getByRole('button', { name: 'Create and link an engine' }));
         expect(await screen.findByText(/Use letters, digits/)).toBeTruthy();
-        await app.user.type(screen.getByLabelText('Team name'), 'Northwind');
+        await app.user.type(screen.getByLabelText('Engine name'), 'Northwind');
         await app.user.click(screen.getByRole('button', { name: 'Create and link an engine' }));
         await waitFor(() => {
             expect(app.history.location.pathname).toBe('/engines/new');
         });
         expect(app.history.location.search).toContain(`team=${TEAM_ID}`);
         expect(app.api.callsTo(apiRoutes.createTeam)).toEqual([{ body: { name: 'Northwind' } }]);
-        expect(await screen.findByRole('link', { name: 'Back to the team' })).toBeTruthy();
+        expect(await screen.findByRole('link', { name: 'Back to the engine' })).toBeTruthy();
     });
 
     it('tells a member in no team whom to ask', async () => {
         renderApp({ path: '/teams', session: MEMBER });
-        expect(await screen.findByRole('heading', { name: "You're not in a team yet" })).toBeTruthy();
-        expect(screen.queryByRole('button', { name: 'New team' })).toBeNull();
+        expect(await screen.findByRole('heading', { name: "You're not on an engine yet" })).toBeTruthy();
+        expect(screen.queryByRole('button', { name: 'New engine' })).toBeNull();
         expect(screen.queryByRole('link', { name: 'People' })).toBeNull();
     });
 });
@@ -220,18 +220,18 @@ describe('team page', () => {
             },
         });
         await app.user.click(await screen.findByRole('button', { name: 'Actions for bob@example.test' }));
-        await app.user.click(screen.getByRole('menuitem', { name: 'Remove from team' }));
-        const confirm = await screen.findByRole('dialog', { name: 'Remove bob@example.test from the team?' });
-        await app.user.click(within(confirm).getByRole('button', { name: 'Remove from team' }));
-        expect(await screen.findByText('bob@example.test removed from the team')).toBeTruthy();
+        await app.user.click(screen.getByRole('menuitem', { name: 'Remove from engine' }));
+        const confirm = await screen.findByRole('dialog', { name: 'Remove bob@example.test from the engine?' });
+        await app.user.click(within(confirm).getByRole('button', { name: 'Remove from engine' }));
+        expect(await screen.findByText('bob@example.test removed from the engine')).toBeTruthy();
         expect(app.api.callsTo(apiRoutes.removeTeamMember)).toEqual([
             { params: { teamId: TEAM_ID, userId: 'b1bbbbbbbbbbbbbbbbbbbbbbbb' } },
         ]);
         await app.user.click(screen.getByRole('button', { name: 'Actions for ada@example.test' }));
-        await app.user.click(screen.getByRole('menuitem', { name: 'Leave team' }));
-        const leave = await screen.findByRole('dialog', { name: 'Leave this team?' });
-        await app.user.click(within(leave).getByRole('button', { name: 'Leave team' }));
-        expect(await screen.findByText('You left the team')).toBeTruthy();
+        await app.user.click(screen.getByRole('menuitem', { name: 'Leave engine' }));
+        const leave = await screen.findByRole('dialog', { name: 'Leave this engine?' });
+        await app.user.click(within(leave).getByRole('button', { name: 'Leave engine' }));
+        expect(await screen.findByText('You left the engine')).toBeTruthy();
         expect(app.api.callsTo(apiRoutes.leaveTeam)).toEqual([{ params: { teamId: TEAM_ID } }]);
         // Nobody can be removed from an invitation or a removal in progress here.
         expect(screen.queryByRole('button', { name: 'Actions for dana@example.test' })).toBeNull();
@@ -249,8 +249,8 @@ describe('team page', () => {
         });
         await app.user.click(await screen.findByRole('button', { name: 'Actions for Northwind' }));
         await app.user.click(screen.getByRole('menuitem', { name: 'Rename' }));
-        const rename = await screen.findByRole('dialog', { name: 'Rename team' });
-        await app.user.type(within(rename).getByLabelText('Team name'), ' EU');
+        const rename = await screen.findByRole('dialog', { name: 'Rename engine' });
+        await app.user.type(within(rename).getByLabelText('Engine name'), ' EU');
         await app.user.click(within(rename).getByRole('button', { name: 'Save' }));
         await waitFor(() => {
             expect(app.api.callsTo(apiRoutes.renameTeam)).toEqual([
@@ -258,12 +258,12 @@ describe('team page', () => {
             ]);
         });
         await app.user.click(screen.getByRole('button', { name: 'Actions for Northwind' }));
-        await app.user.click(screen.getByRole('menuitem', { name: 'Delete team' }));
+        await app.user.click(screen.getByRole('menuitem', { name: 'Delete engine' }));
         const remove = await screen.findByRole('dialog', { name: 'Delete Northwind?' });
         await app.user.type(within(remove).getByRole('textbox'), 'Northwind');
-        await app.user.click(within(remove).getByRole('button', { name: 'Delete team' }));
+        await app.user.click(within(remove).getByRole('button', { name: 'Delete engine' }));
         await waitFor(() => {
-            expect(app.history.location.pathname).toBe('/teams');
+            expect(app.history.location.pathname).toBe('/engines');
         });
         expect(await screen.findByText('Northwind deleted')).toBeTruthy();
     });
@@ -289,7 +289,7 @@ describe('team page', () => {
             session: MEMBER,
             script: (api) => api.on(apiRoutes.getTeam, problem(404, 'not-found')),
         });
-        expect(await screen.findByRole('heading', { name: 'Team not found' })).toBeTruthy();
+        expect(await screen.findByRole('heading', { name: 'Engine not found' })).toBeTruthy();
     });
 });
 
@@ -327,7 +327,7 @@ describe('people page', () => {
             },
         });
         expect(await screen.findByText('Northwind')).toBeTruthy();
-        expect(screen.getByText('No teams')).toBeTruthy();
+        expect(screen.getByText('No engines')).toBeTruthy();
         await expectNoAxeViolations(app.container);
         await app.user.click(screen.getByRole('button', { name: 'Actions for bob@example.test' }));
         await app.user.click(screen.getByRole('menuitemradio', { name: 'Admin' }));
@@ -401,7 +401,7 @@ describe('invitation page', () => {
         });
         await app.user.click(await screen.findByRole('button', { name: 'Accept invitation' }));
         await waitFor(() => {
-            expect(app.history.location.pathname).toBe('/teams');
+            expect(app.history.location.pathname).toBe('/engines');
         });
         expect(app.api.callsTo(apiRoutes.setActiveOrg)).toEqual([{ body: { orgId: 'cccccccccccccccccccccccccc' } }]);
     });
