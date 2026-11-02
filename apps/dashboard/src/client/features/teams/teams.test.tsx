@@ -204,6 +204,7 @@ describe('team page', () => {
         await app.user.selectOptions(within(dialog).getByLabelText('Role in the organization'), 'admin');
         await app.user.click(within(dialog).getByRole('button', { name: 'Send invitations' }));
         expect(await screen.findByText('Invitations sent: 1')).toBeTruthy();
+        expect(screen.getByText(/what the engine has told the dashboard/)).toBeTruthy();
         expect(app.api.callsTo(apiRoutes.createInvites)).toEqual([
             { body: { emails: ['eve@example.test'], role: 'admin', teamIds: [TEAM_ID] } },
         ]);
@@ -281,6 +282,7 @@ describe('team page', () => {
         });
         const link = await screen.findByRole('link', { name: 'Link an engine' });
         expect(link.getAttribute('href')).toBe(`/engines/new?team=${TEAM_ID}`);
+        expect(screen.queryByText(/what the engine has told the dashboard/)).toBeNull();
         expect(screen.queryByRole('button', { name: /^Open/ })).toBeNull();
         app.unmount();
 

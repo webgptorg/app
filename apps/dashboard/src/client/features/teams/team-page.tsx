@@ -370,7 +370,7 @@ export function TeamPage(props: { readonly teamId: string }) {
                     ))}
                 </ul>
             </Card>
-            <p className="text-sm text-text-muted">{m.team_access_note()}</p>
+            {view.engineId === null ? null : <p className="text-sm text-text-muted">{m.team_access_note()}</p>}
             <InviteDialog
                 open={inviting}
                 teamIds={[view.teamId]}
