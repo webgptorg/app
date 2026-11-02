@@ -37,7 +37,7 @@ interface Answer {
 }
 
 /** An engine registered with a fake dashboard, reachable through a fake relay, that speaks heartbeat v2. */
-interface JoinableEngine {
+export interface JoinableEngine {
     readonly registered: RegisteredEngine;
     readonly endpoint: EngineApiEndpoint;
     readonly engineId: EngineId;
@@ -144,8 +144,14 @@ async function refused(engine: JoinableEngine, token: string, status: number, co
 const timeoutMs: NonNullable<PlatformCheck['timeoutMs']> = (expectations) =>
     expectations.startTimeoutMs * 2 + expectations.heartbeatIntervalMs * (BEATS_TO_ACK + 2);
 
-function check(id: string, title: string, run: (engine: JoinableEngine) => Promise<Outcome>): PlatformCheck {
+/** `against` runs the rule on a given engine, so a test can prove each check fails an engine that breaks it. */
+export interface JoinCheck extends PlatformCheck {
+    against(engine: JoinableEngine): Promise<Outcome>;
+}
+
+function check(id: string, title: string, run: (engine: JoinableEngine) => Promise<Outcome>): JoinCheck {
     return {
+        against: run,
         id: `member-access.${id}`,
         suite: SUITE,
         title,

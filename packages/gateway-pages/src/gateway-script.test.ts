@@ -508,6 +508,175 @@ describe('step-up page', () => {
     });
 });
 
+describe('join page', () => {
+    const TICKET = `${'a'.repeat(40)}.${'b'.repeat(86)}`;
+    const options = { status: 200, body: { options: OPTIONS } };
+    const created = { status: 201, body: { request: 'req_1', code: '123456' } };
+    const pending = { status: 200, body: { state: 'pending' } };
+
+    const openJoin = () => open('join.html', `/auth/join?from=mail#${TICKET}`);
+
+    it('removes the ticket from the address bar before anything else', async () => {
+        fakeEngine({ '/auth/join/options': options });
+        fakeWebAuthn();
+        await openJoin();
+        expect(location.hash).toBe('');
+        expect(location.href).not.toContain(TICKET);
+        expect(`${location.pathname}${location.search}`).toBe('/auth/join?from=mail');
+    });
+
+    it.each(['', '#short', `#${TICKET}!`, `#${'a'.repeat(40)}.${'b'.repeat(85)}`])(
+        'asks nothing of the engine for the malformed ticket %j',
+        async (hash) => {
+            const requests = fakeEngine({});
+            fakeWebAuthn();
+            await open('join.html', `/auth/join${hash}`);
+            await expectState('missing');
+            expect(requests).toEqual([]);
+        },
+    );
+
+    it('registers the passkey, shows the code, waits and goes on when approved', async () => {
+        const requests = fakeEngine({
+            '/auth/join/options': options,
+            '/auth/join/verify': created,
+            '/auth/join/status': [{ ...pending }, { status: 200, body: { state: 'approved', next: '/agents' } }],
+        });
+        const webauthn = fakeWebAuthn();
+        await openJoin();
+        await expectState('valid');
+        click('create');
+        await expectState('done');
+        expect(webauthn.startRegistration).toHaveBeenCalledWith({ optionsJSON: OPTIONS });
+        expect(requests.map(({ path, body }) => [path, body])).toEqual([
+            ['/auth/join/options', { ticket: TICKET }],
+            ['/auth/join/verify', { ticket: TICKET, response: CREDENTIAL }],
+            ['/auth/join/status', { request: 'req_1' }],
+            ['/auth/join/status', { request: 'req_1' }],
+        ]);
+        expect(document.querySelector('[data-join-code]')?.textContent).toBe('123 456');
+        expect(nextLinks()).toEqual(['/agents']);
+        expect(document.documentElement.outerHTML).not.toContain(TICKET);
+    });
+
+    it('shows the declined state when the owner declines', async () => {
+        fakeEngine({
+            '/auth/join/options': options,
+            '/auth/join/verify': created,
+            '/auth/join/status': { status: 200, body: { state: 'declined' } },
+        });
+        fakeWebAuthn();
+        await openJoin();
+        await expectState('valid');
+        click('create');
+        await expectState('declined');
+    });
+
+    it('treats a request the engine no longer knows as declined', async () => {
+        fakeEngine({
+            '/auth/join/options': options,
+            '/auth/join/verify': created,
+            '/auth/join/status': { status: 404, body: { code: 'not-found' } },
+        });
+        fakeWebAuthn();
+        await openJoin();
+        await expectState('valid');
+        click('create');
+        await expectState('declined');
+    });
+
+    it('picks the waiting up again after a network failure, without a second passkey', async () => {
+        const requests = fakeEngine({
+            '/auth/join/options': options,
+            '/auth/join/verify': created,
+            '/auth/join/status': ['network-error', { status: 200, body: { state: 'declined' } }],
+        });
+        const webauthn = fakeWebAuthn();
+        await openJoin();
+        await expectState('valid');
+        click('create');
+        await expectState('offline');
+        click('retry');
+        await expectState('declined');
+        expect(webauthn.startRegistration).toHaveBeenCalledTimes(1);
+        expect(requests.filter(({ path }) => path === '/auth/join/verify')).toHaveLength(1);
+    });
+
+    it.each([
+        [{ status: 400, body: { code: 'ticket-invalid' } }, 'invalid'],
+        [{ status: 410, body: { code: 'ticket-expired' } }, 'expired'],
+        [{ status: 409, body: { code: 'ticket-used' } }, 'used'],
+        [{ status: 409, body: { code: 'already-member' } }, 'already-member'],
+        [{ status: 409, body: { code: 'too-many-requests' } }, 'full'],
+        [{ status: 429, body: { code: 'rate-limited' } }, 'rate-limited'],
+        [{ status: 500, body: { code: 'internal' } }, 'error'],
+        [{ status: 200, body: { options: 'nope' } }, 'error'],
+        ['network-error', 'offline'],
+    ] as const)('shows the options answer %j as %s', async (route, state) => {
+        fakeEngine({ '/auth/join/options': route });
+        fakeWebAuthn();
+        await openJoin();
+        await expectState(state);
+    });
+
+    it('retries the options after a failure', async () => {
+        fakeEngine({ '/auth/join/options': ['network-error', options] });
+        fakeWebAuthn();
+        await openJoin();
+        await expectState('offline');
+        click('retry');
+        await expectState('valid');
+    });
+
+    it.each([
+        [{ status: 400, body: { code: 'passkey-not-verified' } }, 'not-verified'],
+        [{ status: 409, body: { code: 'ticket-used' } }, 'used'],
+        [{ status: 201, body: { request: 'req_1', code: '12345' } }, 'error'],
+        [{ status: 201, body: { code: '123456' } }, 'error'],
+    ] as const)('shows the verify answer %j as %s', async (route, state) => {
+        fakeEngine({ '/auth/join/options': options, '/auth/join/verify': route });
+        fakeWebAuthn();
+        await openJoin();
+        await expectState('valid');
+        click('create');
+        await expectState(state);
+    });
+
+    it('stops on a status request the engine refuses', async () => {
+        fakeEngine({
+            '/auth/join/options': options,
+            '/auth/join/verify': created,
+            '/auth/join/status': { status: 429, body: { code: 'rate-limited' } },
+        });
+        fakeWebAuthn();
+        await openJoin();
+        await expectState('valid');
+        click('create');
+        await expectState('rate-limited');
+    });
+
+    it('offers no passkey where the browser has none', async () => {
+        const requests = fakeEngine({ '/auth/join/options': options });
+        const webauthn = fakeWebAuthn({ supported: false });
+        await openJoin();
+        await expectState('valid');
+        click('create');
+        await expectState('unsupported');
+        expect(webauthn.startRegistration).not.toHaveBeenCalled();
+        expect(requests).toHaveLength(1);
+    });
+
+    it('sends nothing when the passkey prompt is cancelled', async () => {
+        const requests = fakeEngine({ '/auth/join/options': options });
+        fakeWebAuthn({ register: Object.assign(new Error('aborted'), { code: 'ERROR_CEREMONY_ABORTED' }) });
+        await openJoin();
+        await expectState('valid');
+        click('create');
+        await expectState('cancelled');
+        expect(requests.map(({ path }) => path)).toEqual(['/auth/join/options']);
+    });
+});
+
 describe('any page', () => {
     it('does nothing for an unknown page or action', async () => {
         const requests = fakeEngine({});

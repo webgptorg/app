@@ -5,7 +5,7 @@ import {
     capabilityLabel,
     supports,
 } from '@ptbk/engine-api';
-import { Ed25519PublicKey, Heartbeat, deriveEngineId, ed25519PublicKeyToBytes } from '@ptbk/protocol';
+import { AnyHeartbeat, Ed25519PublicKey, deriveEngineId, ed25519PublicKeyToBytes } from '@ptbk/protocol';
 
 import type { ConformanceCheck } from '../../check';
 import { Findings, fail, skip } from '../../check';
@@ -91,7 +91,7 @@ export const ENGINE_CHECKS: readonly ConformanceCheck[] = [
             } catch {
                 fail(`${describe(R.getSecurityOverview)}: lastHeartbeat.body is not JSON`);
             }
-            const parsed = Heartbeat.safeParse(body);
+            const parsed = AnyHeartbeat.safeParse(body);
             const findings = new Findings();
             if (!parsed.success)
                 findings.add(`lastHeartbeat.body is not a Heartbeat: ${issuesOf(parsed.error.issues)}`);

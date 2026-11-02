@@ -23,7 +23,8 @@ afterEach(async () => {
 });
 
 async function start(): Promise<{ engine: ApiHarness; clock: FakeClock }> {
-    const clock = createFakeClock(Date.parse('2026-10-26T10:00:00Z'));
+    // From the real now: the dev CA dates its certificates by this clock, the TLS client checks them by the real one.
+    const clock = createFakeClock(Date.now());
     harness = await createApiHarness({ clock, onboarding: {} });
     return { engine: harness, clock };
 }
