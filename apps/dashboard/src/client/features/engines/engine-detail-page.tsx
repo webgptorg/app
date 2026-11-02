@@ -20,6 +20,7 @@ import { EngineReachability } from './engine-reachability';
 import { EngineStatusBadge } from './engine-status-badge';
 import { LastSeen, useNowFor } from './engine-values';
 import { RevokeEngineCard } from './revoke-engine';
+import { useEngineTeam } from './use-engine-name';
 
 const READ_PERMISSION = 'engine.read';
 const REVOKE_PERMISSION = 'engine.revoke';
@@ -121,16 +122,19 @@ function StatusNotice(props: { readonly engine: EngineView }) {
 function Summary(props: { readonly engine: EngineView; readonly canRename: boolean }) {
     const { engine } = props;
     const now = useNowFor(engine);
-    const name = engineLabel(engine);
+    const { givenName } = useEngineTeam(engine.engineId, engine.hostname);
+    const name = givenName ?? engineLabel(engine);
     const update = engine.heartbeat?.update ?? 'none';
     return (
         <div className="flex flex-col gap-3">
             <div className="flex flex-wrap items-center gap-3">
-                <h1 className={`${engine.label === null ? 'font-mono' : 'font-display'} text-2xl font-semibold`}>
+                <h1
+                    className={`${givenName === null && engine.label === null ? 'font-mono' : 'font-display'} text-2xl font-semibold`}
+                >
                     {name}
                 </h1>
                 <EngineStatusBadge engine={engine} />
-                {props.canRename ? <RenameEngineButton engine={engine} /> : null}
+                {props.canRename && givenName === null ? <RenameEngineButton engine={engine} /> : null}
             </div>
             <p className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-text-muted">
                 <span>
@@ -158,7 +162,8 @@ function EngineDetail(props: {
 }) {
     const { engine } = props;
     const formatters = useLocale();
-    const name = engineLabel(engine);
+    const { givenName } = useEngineTeam(engine.engineId, engine.hostname);
+    const name = givenName ?? engineLabel(engine);
     return (
         <>
             <Summary engine={engine} canRename={props.canRename} />
