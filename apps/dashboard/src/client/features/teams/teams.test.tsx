@@ -404,6 +404,8 @@ describe('invitation page', () => {
             expect(app.history.location.pathname).toBe('/engines');
         });
         expect(app.api.callsTo(apiRoutes.setActiveOrg)).toEqual([{ body: { orgId: 'cccccccccccccccccccccccccc' } }]);
+        // The token is spent: asking again would flash "no longer valid" on the way out.
+        expect(app.api.callsTo(apiRoutes.previewInvite)).toHaveLength(1);
     });
 
     it('explains an invitation for another address, and one that no longer works', async () => {
