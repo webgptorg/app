@@ -89,7 +89,7 @@
   "ui_language": "Language",
   "ui_language_current": "Language: {language}",
   "not_found_body": "This page does not exist on this engine, or it moved.",
-  "error_body": "The page could not be loaded. Your data is safe; try again in a moment.",
+  "error_body": "The page could not be loaded. Try again in a moment.",
   "error_forbidden_title": "Not allowed",
   "error_forbidden_body": "Your role on this engine does not allow this. An owner or admin can change that.",
   "error_mutation_failed": "That did not work. Please try again.",
