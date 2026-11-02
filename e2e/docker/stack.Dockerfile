@@ -116,11 +116,10 @@ USER node
 # The official image already holds the browsers for this exact @playwright/test version; nothing is downloaded at
 # install time (no install scripts) or at run time.
 FROM ${PLAYWRIGHT_IMAGE} AS playwright
-# Exactly the version of the image's own libnss3, which libnss3-tools requires. Ubuntu keeps only the newest
-# version in noble-updates, so once it ships a newer NSS this pin fails the build loudly: bump the image digest and
-# this version together.
+# Not pinned: noble-updates keeps only the newest version, so any pin stops building at Ubuntu's next NSS update.
+# libnss3-tools requires its exact libnss3, and apt upgrades the image's copy to match. Test tooling only.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libnss3-tools=2:3.98-1ubuntu0.2 \
+    && apt-get install -y --no-install-recommends libnss3-tools \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=bun /usr/local/bin/bun /usr/local/bin/bun
 WORKDIR /repo
