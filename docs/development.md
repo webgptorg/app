@@ -186,7 +186,7 @@ bun run dev:stack up     # builds, creates the dev CA in .dev/pki/, starts every
 bun run dev:trust        # once per machine: trust the dev CA and resolve the test domains (one sudo prompt)
 ```
 
-Then open `https://app.ptbk.test:8444/`, sign up (the link is on `https://app.ptbk.test:8444/__dev/mailbox`), subscribe through the fake Checkout under Billing, create a link code on "Link an engine" and paste the command the page shows:
+Then open `https://app.ptbk.test:8444/`, sign up (the link is on `https://app.ptbk.test:8444/__dev/mailbox`), subscribe through the fake Checkout under Billing, choose "New engine" on the Engines page to get a link code and paste the command the page shows:
 
 ```sh
 bun run dev:link <code>  # registers the stack's mock engine with that code and starts it
