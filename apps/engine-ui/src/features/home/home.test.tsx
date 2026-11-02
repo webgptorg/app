@@ -2,7 +2,7 @@ import { createProblem, KNOWN_CAPABILITIES, PERMISSIONS, SemVer } from '@ptbk/en
 import type { ActivityItem, ActivityPageRead, EngineApiResponse, Permission } from '@ptbk/engine-api';
 import { setMedia } from '@ptbk/ui';
 import { act, screen, waitFor, within } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { FEATURES } from '../../app/features';
 import { defineFeature } from '../../app/registry/feature';
@@ -218,7 +218,20 @@ describe('home: control center', { timeout: TIMEOUT_MS }, () => {
         await waitFor(() => {
             expect(countValue('Running now')).toBe('0');
         });
-        expect(countValue('Needs attention')).toBe('0');
+        expect(countValue('Needs attention')).toBe('—Not reported');
+        expect(screen.queryByText('Nothing is running, and nothing needs your attention.')).toBeNull();
+    });
+
+    it('does not report zero attention when the stats behind it fail', async () => {
+        const engine = createHomeEngine({ activity: [], seed: { agents: [], runs: [], chats: [], messages: [] } });
+        const refused = { kind: 'problem', problem: createProblem('forbidden') } as const;
+        vi.spyOn(engine.client.integrations, 'stats').mockResolvedValue(refused);
+        vi.spyOn(engine.client.triggers, 'stats').mockResolvedValue(refused);
+        renderWithProviders({ path: '/', engineApi: engine.client, features: FEATURES });
+        await waitFor(() => {
+            expect(countValue('Running now')).toBe('0');
+        });
+        expect(countValue('Needs attention')).toBe('—Not reported');
         expect(screen.queryByText('Nothing is running, and nothing needs your attention.')).toBeNull();
     });
 

@@ -13,6 +13,7 @@ import { Link } from '../../app/link';
 import type { Attention, FeatureDefinition } from '../../app/registry/feature';
 import { useAllows, useVisibleFeatures } from '../../app/registry/use-visible-features';
 import { m } from '../../paraglide/messages';
+import { NotReported } from '../runs/run-format';
 import { runStatsQueryOptions } from '../runs/runs-queries';
 import { securityOverviewQueryOptions } from '../security/security-queries';
 import { ActivityFeed } from './activity/activity-feed';
@@ -205,8 +206,19 @@ function AttentionCount({
 }) {
     const locale = useLocale();
     const total = sources.reduce((sum, { entry }) => sum + (reported.get(entry.id)?.count ?? 0), 0);
+    // Still loading, or never going to: the stats route failed. Zero would say all is well.
+    const unknown =
+        total === 0 &&
+        sources.some(({ entry }) => {
+            const attention = reported.get(entry.id);
+            return attention === undefined || attention.pending === true;
+        });
     return (
-        <Stat label={m.home_needs_attention()} value={locale.formatNumber(total)} className="col-span-2 sm:col-span-1">
+        <Stat
+            label={m.home_needs_attention()}
+            value={unknown ? <NotReported /> : locale.formatNumber(total)}
+            className="col-span-2 sm:col-span-1"
+        >
             <ul className="flex flex-col gap-1 text-sm">
                 {sources.map(({ feature, entry }) => {
                     const attention = reported.get(entry.id);
