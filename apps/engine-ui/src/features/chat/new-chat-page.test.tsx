@@ -91,10 +91,65 @@ describe('fresh conversation', { timeout: TIMEOUT_MS }, () => {
         expect(await screen.findByText('Your message was not sent')).toBeDefined();
         expect((box as HTMLTextAreaElement).value).toBe('Hello');
         await user.keyboard('{Enter}');
-        await waitFor(() => {
-            expect(screen.getAllByText('Your message was not sent')).toHaveLength(2);
-        });
+        await waitFor(
+            () => {
+                expect(screen.getAllByText('Your message was not sent')).toHaveLength(2);
+            },
+            { timeout: 5_000 },
+        );
         expect((box as HTMLTextAreaElement).value).toBe('Hello');
+    });
+
+    it('opens the chat when the first message arrived although its answer was lost, without starting another', async () => {
+        const engine = engineWithAChat();
+        engine.spies.sendMessage.mockImplementationOnce(async (...args) => {
+            await engine.real.sendMessage(...args);
+            throw new TypeError('connection reset');
+        });
+        const { user } = await renderFresh(engine);
+        await user.click(starter());
+        await user.keyboard('Hello{Enter}');
+        expect(await screen.findByRole('heading', { level: 2, name: 'Hello' }, { timeout: 5_000 })).toBeDefined();
+        expect(engine.spies.create).toHaveBeenCalledTimes(1);
+        expect(engine.spies.sendMessage).toHaveBeenCalledTimes(1);
+    });
+
+    it('sends a retry into the chat it already started when the first message is known lost', async () => {
+        const engine = engineWithAChat();
+        engine.spies.sendMessage.mockRejectedValueOnce(new TypeError('offline'));
+        const { user } = await renderFresh(engine);
+        const box = starter();
+        await user.click(box);
+        await user.keyboard('Hello{Enter}');
+        expect(await screen.findByText('Your message was not sent', {}, { timeout: 5_000 })).toBeDefined();
+        expect((box as HTMLTextAreaElement).value).toBe('Hello');
+        await user.keyboard('{Enter}');
+        expect(await screen.findByRole('heading', { level: 2, name: 'Hello' }, { timeout: 5_000 })).toBeDefined();
+        expect(engine.spies.create).toHaveBeenCalledTimes(1);
+        expect(engine.spies.sendMessage).toHaveBeenCalledTimes(2);
+    });
+
+    it('keeps the text but blocks a resend while it cannot tell whether the first message arrived', async () => {
+        const engine = engineWithAChat();
+        engine.spies.sendMessage.mockRejectedValueOnce(new TypeError('offline'));
+        engine.spies.listMessages.mockRejectedValueOnce(new TypeError('offline'));
+        const { user } = await renderFresh(engine);
+        const box = starter();
+        await user.click(box);
+        await user.keyboard('Hello{Enter}');
+        const again = await screen.findByRole('button', { name: 'Check again' }, { timeout: 5_000 });
+        expect(screen.getByText('Couldn’t check whether this arrived')).toBeDefined();
+        expect((box as HTMLTextAreaElement).value).toBe('Hello');
+        expect((box as HTMLTextAreaElement).readOnly).toBe(true);
+        await user.click(box);
+        await user.keyboard('{Enter}');
+        expect(engine.spies.sendMessage).toHaveBeenCalledTimes(1);
+
+        await user.click(again);
+        expect(await screen.findByText('Your message was not sent', {}, { timeout: 5_000 })).toBeDefined();
+        expect((box as HTMLTextAreaElement).value).toBe('Hello');
+        expect((box as HTMLTextAreaElement).readOnly).toBe(false);
+        expect(screen.queryByRole('button', { name: 'Check again' })).toBeNull();
     });
 
     it('has no axe violations', async () => {

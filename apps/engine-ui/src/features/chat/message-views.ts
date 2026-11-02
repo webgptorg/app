@@ -2,7 +2,7 @@ import type { MemberId, Message } from '@ptbk/engine-api';
 
 import type { ChatSessionState } from './chat-session';
 
-export type MessageState = 'pending' | 'streaming' | 'stopped' | 'interrupted' | 'failed' | null;
+export type MessageState = 'pending' | 'unconfirmed' | 'streaming' | 'stopped' | 'interrupted' | 'failed' | null;
 
 /** One row of the conversation as the panel shows it, from the cached history and the reply being followed. */
 export interface MessageView {
@@ -14,7 +14,7 @@ export interface MessageView {
     /** Only a completed agent reply is rendered as markdown; everything else, including a partial reply, is text. */
     readonly markdown: boolean;
     readonly state: MessageState;
-    /** The row offers Retry: a dropped stream to resume, or a failed reply to send again. */
+    /** The row offers Retry: a dropped stream to resume, a failed reply to send again, a send to check on again. */
     readonly retry: boolean;
 }
 
@@ -73,14 +73,15 @@ export function messageViews(
         views.push(followedView(reply.messageId, ''));
     }
     if (session.outgoing !== null) {
+        const unconfirmed = phase === 'unconfirmed';
         views.push({
             id: OUTGOING_ID,
             role: 'user',
             createdBy: options.memberId,
             text: session.outgoing,
             markdown: false,
-            state: 'pending',
-            retry: false,
+            state: unconfirmed ? 'unconfirmed' : 'pending',
+            retry: unconfirmed,
         });
     }
     return views;

@@ -70,6 +70,8 @@ export interface ChatEngine {
     readonly client: EngineApiClient;
     readonly controller: InMemoryEngineController;
     readonly spies: { readonly [Key in keyof ChatMethods]: MockInstance<ChatMethods[Key]> };
+    /** The engine's own chat methods, for an override that lets the call through and then fails. */
+    readonly real: ChatMethods;
 }
 
 /** The in-memory engine with one agent ("Ada"), the owner, a second member, and the given chats. */
@@ -103,7 +105,8 @@ export function createChatEngine(options: ChatEngineOptions = {}): ChatEngine {
             : { member: { id: OWNER_ID, permissions: options.permissions, role: 'member' } }),
         ...(options.replyScript === undefined ? {} : { replyScript: options.replyScript }),
     });
-    const chats = { ...engine.client.chats };
+    const real = { ...engine.client.chats };
+    const chats = { ...real };
     const spies = {
         listAll: vi.spyOn(chats, 'listAll'),
         list: vi.spyOn(chats, 'list'),
@@ -114,7 +117,7 @@ export function createChatEngine(options: ChatEngineOptions = {}): ChatEngine {
         streamReply: vi.spyOn(chats, 'streamReply'),
         cancelReply: vi.spyOn(chats, 'cancelReply'),
     };
-    return { client: { ...engine.client, chats }, controller: engine.controller, spies };
+    return { client: { ...engine.client, chats }, controller: engine.controller, spies, real };
 }
 
 /** Both reply streams number their deltas with `seq`, which is also the SSE id. */

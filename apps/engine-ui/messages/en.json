@@ -215,6 +215,8 @@
   "chat_send": "Send",
   "chat_stop": "Stop",
   "chat_send_failed": "Your message was not sent",
+  "chat_send_unconfirmed": "Couldn’t check whether this arrived",
+  "chat_send_check_again": "Check again",
   "chat_column_title": "Chat",
   "chat_column_source": "Source",
   "chat_column_started_by": "Started by",

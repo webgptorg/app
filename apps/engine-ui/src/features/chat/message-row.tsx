@@ -25,6 +25,8 @@ function StateLabel({ state }: { readonly state: MessageState }) {
             return <Badge tone="warning">{m.chat_status_interrupted()}</Badge>;
         case 'failed':
             return <Badge tone="danger">{m.chat_status_failed()}</Badge>;
+        case 'unconfirmed':
+            return <Badge tone="warning">{m.chat_send_unconfirmed()}</Badge>;
         case 'pending':
         case null:
             return null;
@@ -91,7 +93,7 @@ export function MessageRow({
                 <StateLabel state={view.state} />
                 {view.retry ? (
                     <Button size="sm" onClick={onRetry}>
-                        {m.error_retry()}
+                        {view.state === 'unconfirmed' ? m.chat_send_check_again() : m.error_retry()}
                     </Button>
                 ) : null}
             </div>
@@ -120,7 +122,7 @@ export function MessageRow({
                     <div
                         className={cx(
                             'max-w-[85%] min-w-0 rounded-[1.25rem] rounded-ee-small bg-accent-soft px-4 py-2.5 sm:max-w-[75%]',
-                            view.state === 'pending' && 'opacity-70',
+                            (view.state === 'pending' || view.state === 'unconfirmed') && 'opacity-70',
                         )}
                     >
                         {text}

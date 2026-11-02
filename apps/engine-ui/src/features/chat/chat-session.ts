@@ -3,9 +3,11 @@ import type { MessageId } from '@ptbk/engine-api';
 /**
  * Where the reply this panel follows stands. `sending` waits for the engine to accept the message; `stopping` waits
  * for the cancel call; `interrupted` means the stream dropped while the reply may still be generating; `error` means
- * the engine reported the reply failed.
+ * the engine reported the reply failed; `unconfirmed` means a send got no clear answer and neither did the check for
+ * it, so nobody knows whether the message arrived.
  */
-export type ReplyPhase = 'idle' | 'sending' | 'streaming' | 'stopping' | 'done' | 'interrupted' | 'error';
+export type ReplyPhase =
+    'idle' | 'sending' | 'unconfirmed' | 'streaming' | 'stopping' | 'done' | 'interrupted' | 'error';
 
 export interface FollowedReply {
     readonly messageId: MessageId;
@@ -31,6 +33,9 @@ export interface ChatSessionState {
 export type ChatSessionAction =
     | { readonly type: 'send'; readonly content: string }
     | { readonly type: 'send-failed' }
+    | { readonly type: 'send-unconfirmed' }
+    | { readonly type: 'send-recheck' }
+    | { readonly type: 'send-arrived' }
     | { readonly type: 'sent'; readonly replyMessageId: MessageId }
     | { readonly type: 'follow'; readonly messageId: MessageId }
     | { readonly type: 'resume' }
@@ -54,7 +59,7 @@ export const INITIAL_CHAT_SESSION: ChatSessionState = {
 
 /** A reply is under way: the composer waits, and events for the chat do not refresh what the stream will deliver. */
 export function isReplyActive(phase: ReplyPhase): boolean {
-    return phase === 'sending' || phase === 'streaming' || phase === 'stopping';
+    return phase === 'sending' || phase === 'unconfirmed' || phase === 'streaming' || phase === 'stopping';
 }
 
 function keepPartial(state: ChatSessionState): ReadonlyMap<string, string> {
@@ -72,7 +77,12 @@ export function chatSessionReducer(state: ChatSessionState, action: ChatSessionA
                 ? state
                 : { ...state, phase: 'sending', outgoing: action.content, reply: null, lastSent: action.content };
         case 'send-failed':
+        case 'send-arrived':
             return { ...state, phase: 'idle', outgoing: null };
+        case 'send-unconfirmed':
+            return state.phase === 'sending' ? { ...state, phase: 'unconfirmed' } : state;
+        case 'send-recheck':
+            return state.phase === 'unconfirmed' ? { ...state, phase: 'sending' } : state;
         case 'sent':
             return {
                 ...state,

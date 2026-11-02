@@ -47,10 +47,11 @@ export function ChatPanel({ chat, agentName, agentProfile, canWrite, fill = fals
     const active = isReplyActive(session.state.phase);
     const { completedCount } = session.state;
     // Once per finished reply, never per token; the trailing space makes a repeat count as a change.
-    const announcement =
+    const finished =
         completedCount === 0
             ? ''
             : `${m.chat_reply_finished({ name: agentName })}${completedCount % 2 === 0 ? ' ' : ''}`;
+    const announcement = session.state.phase === 'unconfirmed' ? m.chat_send_unconfirmed() : finished;
 
     const stop = () => {
         session.stop();
@@ -138,6 +139,7 @@ export function ChatPanel({ chat, agentName, agentProfile, canWrite, fill = fals
                     labelHidden
                     placeholder={m.chat_composer_placeholder({ name: agentName })}
                     busy={active}
+                    sendPaused={session.state.phase === 'unconfirmed'}
                     {...(session.state.phase === 'streaming'
                         ? { stop: 'ready' as const }
                         : session.state.phase === 'stopping'

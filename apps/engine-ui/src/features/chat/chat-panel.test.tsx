@@ -19,6 +19,8 @@ import { ESTIMATED_ROW_PX } from './message-list';
 
 // Each test renders the whole app on the in-memory engine; a shared CI runner is several times slower than a laptop.
 const TIMEOUT_MS = 20_000;
+/** Longer than the pause before an unclear send is called lost. */
+const SETTLE_WAIT = { timeout: 5_000 };
 
 const CHAT_ID = 'chat-own';
 const chatPath = (chatId = CHAT_ID) => `/agents/${CHAT_AGENT_ID}/chat/${chatId}`;
@@ -306,8 +308,9 @@ describe('chat panel sending', { timeout: TIMEOUT_MS }, () => {
         await app.user.click(composer());
         await app.user.keyboard('One{Enter}');
         expect(await screen.findByText('Not allowed')).toBeDefined();
+        expect(engine.spies.listMessages).toHaveBeenCalledTimes(1);
         await app.user.keyboard('{Enter}');
-        expect(await screen.findByText('Your message was not sent')).toBeDefined();
+        expect(await screen.findByText('Your message was not sent', {}, SETTLE_WAIT)).toBeDefined();
         expect((composer() as HTMLTextAreaElement).value).toBe('One');
     });
 
@@ -327,6 +330,150 @@ describe('chat panel sending', { timeout: TIMEOUT_MS }, () => {
                 expect.anything(),
             );
         });
+    });
+});
+
+/** The engine took the message, but its answer never reached the browser. */
+function loseAnswer(engine: ChatEngine, failure: 'network' | 'server' = 'network') {
+    engine.spies.sendMessage.mockImplementationOnce(async (...args) => {
+        await engine.real.sendMessage(...args);
+        if (failure === 'server') return { kind: 'problem', problem: createProblem('internal-error') };
+        throw new TypeError('connection reset');
+    });
+}
+
+const sentContents = (engine: ChatEngine) => engine.spies.sendMessage.mock.calls.map(([, body]) => body.content);
+const checkAgain = () => screen.findByRole('button', { name: 'Check again' }, SETTLE_WAIT);
+
+describe('chat panel unclear sends', { timeout: TIMEOUT_MS }, () => {
+    it('finds a message the engine got after a dropped answer: no resend, one message, the reply followed', async () => {
+        const { engine, control } = ownChatEngine();
+        loseAnswer(engine);
+        const app = await renderChat(engine);
+        await app.user.click(composer());
+        await app.user.keyboard('Did you get this?{Enter}');
+
+        await waitFor(() => {
+            expect(engine.spies.streamReply).toHaveBeenCalledTimes(1);
+        });
+        expect(within(history()).getAllByText('Did you get this?')).toHaveLength(1);
+        expect((composer() as HTMLTextAreaElement).value).toBe('');
+        expect(screen.queryByText('Your message was not sent')).toBeNull();
+        expect(sentContents(engine)).toEqual(['Did you get this?']);
+        act(() => {
+            control.latest().push({ type: 'delta', seq: 1, text: 'Yes' });
+        });
+        expect(await within(history()).findByText('Yes')).toBeDefined();
+    });
+
+    it('treats a 5xx like a dropped answer: the engine may have kept the message', async () => {
+        const { engine } = ownChatEngine();
+        loseAnswer(engine, 'server');
+        const app = await renderChat(engine);
+        await app.user.click(composer());
+        await app.user.keyboard('Half done{Enter}');
+        await waitFor(() => {
+            expect(engine.spies.streamReply).toHaveBeenCalledTimes(1);
+        });
+        expect(screen.queryByText('Your message was not sent')).toBeNull();
+        expect(within(history()).getAllByText('Half done')).toHaveLength(1);
+    });
+
+    it('gives the text back only after the check shows the message did not arrive, and a resend sends once', async () => {
+        const { engine } = ownChatEngine();
+        engine.spies.sendMessage.mockRejectedValueOnce(new TypeError('offline'));
+        const app = await renderChat(engine);
+        await app.user.click(composer());
+        await app.user.keyboard('Lost on the way{Enter}');
+        expect((composer() as HTMLTextAreaElement).value).toBe('');
+        expect(await screen.findByText('Your message was not sent', {}, SETTLE_WAIT)).toBeDefined();
+        expect((composer() as HTMLTextAreaElement).value).toBe('Lost on the way');
+        expect(within(history()).queryByText('Lost on the way')).toBeNull();
+
+        await app.user.keyboard('{Enter}');
+        await waitFor(() => {
+            expect(engine.spies.streamReply).toHaveBeenCalledTimes(1);
+        });
+        expect(within(history()).getAllByText('Lost on the way')).toHaveLength(1);
+        expect(sentContents(engine)).toEqual(['Lost on the way', 'Lost on the way']);
+    });
+
+    it('does not take an earlier identical message, or someone else’s, for the one that went missing', async () => {
+        const own = seededConversation(CHAT_ID, 2, OWNER_ID);
+        const engine = createChatEngine({ chats: [own.chat], messages: own.messages });
+        controlReplyStreams(engine);
+        engine.spies.sendMessage.mockRejectedValueOnce(new TypeError('offline'));
+        const app = await renderChat(engine);
+        // Another member wrote the same words while the send was failing.
+        engine.spies.listMessages.mockImplementation(async (...args) => {
+            const response = await engine.real.listMessages(...args);
+            if (response.kind !== 'ok') return response;
+            const twin = {
+                id: 'message-from-someone-else',
+                chatId: own.chat.id,
+                role: 'user',
+                content: 'Question 1',
+                status: 'completed',
+                createdBy: SECOND_MEMBER_ID,
+                createdAt: own.messages[0]?.createdAt,
+            };
+            return {
+                ...response,
+                data: { ...response.data, items: [twin, ...response.data.items] },
+            } as typeof response;
+        });
+        await app.user.click(composer());
+        await app.user.keyboard('Question 1{Enter}');
+        expect(await screen.findByText('Your message was not sent', {}, SETTLE_WAIT)).toBeDefined();
+        expect((composer() as HTMLTextAreaElement).value).toBe('Question 1');
+    });
+
+    it('says it cannot tell when the check fails too, blocks a resend, and Check again settles it', async () => {
+        const { engine } = ownChatEngine();
+        loseAnswer(engine);
+        const app = await renderChat(engine);
+        engine.spies.listMessages.mockRejectedValueOnce(new TypeError('offline'));
+        await app.user.click(composer());
+        await app.user.keyboard('Anyone there?{Enter}');
+
+        const again = await checkAgain();
+        expect(within(history()).getByText('Couldn’t check whether this arrived')).toBeDefined();
+        expect(screen.queryByText('Your message was not sent')).toBeNull();
+        expect(within(history()).getByText('Anyone there?')).toBeDefined();
+        expect((composer() as HTMLTextAreaElement).readOnly).toBe(true);
+        expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Send' }).disabled).toBe(true);
+        await app.user.click(composer());
+        await app.user.keyboard('{Enter}');
+        expect(engine.spies.sendMessage).toHaveBeenCalledTimes(1);
+
+        await app.user.click(again);
+        await waitFor(() => {
+            expect(engine.spies.streamReply).toHaveBeenCalledTimes(1);
+        });
+        expect(within(history()).getAllByText('Anyone there?')).toHaveLength(1);
+        expect(screen.queryByRole('button', { name: 'Check again' })).toBeNull();
+        expect(engine.spies.sendMessage).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps saying it cannot tell while the check keeps failing, then gives the text back once it can tell', async () => {
+        const { engine } = ownChatEngine();
+        engine.spies.sendMessage.mockRejectedValueOnce(new TypeError('offline'));
+        const app = await renderChat(engine);
+        engine.spies.listMessages
+            .mockRejectedValueOnce(new TypeError('offline'))
+            .mockResolvedValueOnce({ kind: 'problem', problem: createProblem('internal-error') });
+        await app.user.click(composer());
+        await app.user.keyboard('Still down{Enter}');
+
+        await app.user.click(await checkAgain());
+        const again = await checkAgain();
+        expect((composer() as HTMLTextAreaElement).value).toBe('');
+
+        await app.user.click(again);
+        expect(await screen.findByText('Your message was not sent', {}, SETTLE_WAIT)).toBeDefined();
+        expect((composer() as HTMLTextAreaElement).value).toBe('Still down');
+        expect(screen.queryByRole('button', { name: 'Check again' })).toBeNull();
+        expect(within(history()).queryByText('Still down')).toBeNull();
     });
 });
 

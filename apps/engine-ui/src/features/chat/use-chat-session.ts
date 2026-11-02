@@ -6,10 +6,13 @@ import { useCallback, useEffect, useReducer, useRef } from 'react';
 import { useEngineApi } from '../../app/engine-api-context';
 import { useEngineEvents } from '../../app/engine-events-context';
 import { m } from '../../paraglide/messages';
+import { useCurrentMember } from '../session/use-current-member';
 import { mergeNewestPage, upsertMessages } from './chat-cache';
 import { MESSAGE_PAGE_SIZE } from './chat-queries';
 import { chatSessionReducer, INITIAL_CHAT_SESSION, isReplyActive } from './chat-session';
 import type { ChatSessionState } from './chat-session';
+import { checkDelivery, isRefusal } from './send-delivery';
+import type { UnclearSend } from './send-delivery';
 
 export interface ChatSession {
     readonly state: ChatSessionState;
@@ -17,7 +20,10 @@ export interface ChatSession {
     readonly send: (content: string) => Promise<boolean>;
     /** Stops the reply in progress; does nothing unless one is streaming, so a second click is harmless. */
     readonly stop: () => void;
-    /** After a dropped stream, resumes it where it stopped; after a failed reply, sends the message again. */
+    /**
+     * After a dropped stream, resumes it where it stopped; after a failed reply, sends the message again; after a send
+     * nobody could confirm, checks again whether it arrived.
+     */
     readonly retry: () => void;
 }
 
@@ -42,9 +48,13 @@ export function useChatSession({ chatId, lastMessageAt, messages }: ChatSessionO
     const stream = useRef<AbortController | null>(null);
     const followed = useRef(new Set<string>());
     const unmounted = useRef(new AbortController());
+    const memberId = useCurrentMember().memberId;
+    const latestMessages = useRef(messages);
+    const checkAgain = useRef<(() => void) | null>(null);
 
     useEffect(() => {
         stateRef.current = state;
+        latestMessages.current = messages;
     });
 
     useEffect(() => {
@@ -116,13 +126,53 @@ export function useChatSession({ chatId, lastMessageAt, messages }: ChatSessionO
         [engineApi, queryClient, chatId, refreshNewest],
     );
 
+    /** The send got no clear answer. The contract has no idempotency key, so only the history can say what happened. */
+    const settleUnclearSend = useCallback(
+        async (sent: UnclearSend) => {
+            const { signal } = unmounted.current;
+            let check = await checkDelivery(engineApi, chatId, sent, signal);
+            while (check.kind === 'unknown' && !signal.aborted) {
+                dispatch({ type: 'send-unconfirmed' });
+                await new Promise<void>((resolve) => {
+                    checkAgain.current = resolve;
+                    signal.addEventListener('abort', () => {
+                        resolve();
+                    });
+                });
+                check = await checkDelivery(engineApi, chatId, sent, signal);
+            }
+            if (signal.aborted || check.kind === 'unknown') return false;
+            if (check.page !== null) mergeNewestPage(queryClient, chatId, check.page);
+            if (check.kind === 'arrived') {
+                dispatch({ type: 'send-arrived' });
+                return true;
+            }
+            dispatch({ type: 'send-failed' });
+            toast.show({ tone: 'danger', title: m.chat_send_failed() });
+            return false;
+        },
+        [engineApi, queryClient, chatId, toast],
+    );
+
+    const recheckSend = useCallback(() => {
+        if (checkAgain.current === null) return;
+        dispatch({ type: 'send-recheck' });
+        const wake = checkAgain.current;
+        checkAgain.current = null;
+        wake();
+    }, []);
+
     const send = useCallback(
         async (content: string) => {
             if (isReplyActive(stateRef.current.phase)) return false;
             // A second Enter before React re-renders must not send twice.
             stateRef.current = { ...stateRef.current, phase: 'sending' };
             dispatch({ type: 'send', content });
-            let refusedWith: number | undefined;
+            const unclear: UnclearSend = {
+                content,
+                memberId,
+                knownIds: new Set(latestMessages.current.map((message) => message.id)),
+            };
             try {
                 const response = await engineApi.chats.sendMessage(chatId, { content }, unmounted.current.signal);
                 if (response.kind === 'ok') {
@@ -131,18 +181,20 @@ export function useChatSession({ chatId, lastMessageAt, messages }: ChatSessionO
                     void follow(response.data.replyMessageId, 0);
                     return true;
                 }
-                refusedWith = response.problem.status;
+                if (isRefusal(response.problem)) {
+                    dispatch({ type: 'send-failed' });
+                    toast.show({
+                        tone: 'danger',
+                        title: response.problem.status === 403 ? m.error_forbidden_title() : m.chat_send_failed(),
+                    });
+                    return false;
+                }
             } catch {
-                // A network failure reads like any other: the message did not go out.
+                // No answer says nothing about the message, as with the 5xx above: settled below.
             }
-            dispatch({ type: 'send-failed' });
-            toast.show({
-                tone: 'danger',
-                title: refusedWith === 403 ? m.error_forbidden_title() : m.chat_send_failed(),
-            });
-            return false;
+            return settleUnclearSend(unclear);
         },
-        [engineApi, queryClient, chatId, follow, toast],
+        [engineApi, queryClient, chatId, memberId, follow, toast, settleUnclearSend],
     );
 
     const stop = useCallback(() => {
@@ -174,24 +226,28 @@ export function useChatSession({ chatId, lastMessageAt, messages }: ChatSessionO
 
     const retry = useCallback(() => {
         const { phase, reply, lastSent } = stateRef.current;
-        if (phase === 'interrupted' && reply !== null) {
+        if (phase === 'unconfirmed') {
+            recheckSend();
+        } else if (phase === 'interrupted' && reply !== null) {
             dispatch({ type: 'resume' });
             void follow(reply.messageId, reply.lastSeq);
         } else if (phase === 'error' && lastSent !== null) {
             void send(lastSent);
         }
-    }, [follow, send]);
+    }, [follow, send, recheckSend]);
 
     useEngineEvents({
         onEvent: () => undefined,
         onReconnect: () => {
-            if (!isReplyActive(stateRef.current.phase)) void refreshNewest();
+            if (stateRef.current.phase === 'unconfirmed') recheckSend();
+            else if (!isReplyActive(stateRef.current.phase)) void refreshNewest();
         },
     });
 
     const newest = messages.at(-1);
     useEffect(() => {
-        // A reply still generating when the history loaded (a reload, another tab, a visitor's chat): follow it once.
+        // A reply still generating when the history loaded (a reload, another tab, a visitor's chat, a send confirmed
+        // by the history rather than by its own answer): follow it once.
         if (newest?.role !== 'agent' || newest.status !== 'streaming') return;
         if (followed.current.has(newest.id) || isReplyActive(stateRef.current.phase)) return;
         dispatch({ type: 'follow', messageId: newest.id });
