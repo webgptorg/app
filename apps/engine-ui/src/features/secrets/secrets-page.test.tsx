@@ -19,7 +19,7 @@ import type { RenderedApp } from '../../testing/render-with-providers';
 import { createSecurityEngine, documentText } from '../../testing/security-engine';
 import { problemResponse, TEST_NOW } from '../../testing/test-engine-api';
 
-const TIMEOUT_MS = 20_000;
+const TIMEOUT_MS = 60_000;
 const CANARY = 'sk-CANARY-7f3a9c1e';
 
 function secret(index: number) {

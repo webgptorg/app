@@ -74,7 +74,7 @@ async function expectEngineOnline(page: Page): Promise<void> {
     await expect
         .poll(
             async () => {
-                await page.goto(`${DEV_DASHBOARD_ORIGIN}/engines`);
+                await page.goto(`${DEV_DASHBOARD_ORIGIN}/engines/all`);
                 await expect(engineRow.or(page.getByText('No engines yet', { exact: true })).first()).toBeVisible();
                 return engineRow.getByText('Online', { exact: true }).count();
             },
@@ -108,7 +108,7 @@ test('sign up from the dev mailbox, subscribe, link with dev:link, open the engi
     const message = page.getByRole('listitem').filter({ hasText: `To ${email}` });
     await message.getByRole('link', { name: /\/signup#/ }).click();
     await page.getByRole('button', { name: 'Create passkey' }).click();
-    await expect(page.getByRole('heading', { name: 'Teams', level: 1 })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Engines', level: 1 })).toBeVisible();
 
     await page.getByRole('link', { name: 'Billing' }).click();
     await page.getByRole('button', { name: 'Start your 14-day trial of Standard' }).click();
@@ -162,7 +162,7 @@ test('sign up from the dev mailbox, subscribe, link with dev:link, open the engi
     // `down` and `up` keep the account, its passkey and the linked engine (the fake billing state is in memory and
     // goes, as accepted). Signed out first, so the way back in is the passkey.
     await enginePage.close();
-    await page.goto(`${DEV_DASHBOARD_ORIGIN}/engines`);
+    await page.goto(`${DEV_DASHBOARD_ORIGIN}/engines/all`);
     await page.getByRole('button', { name: /^Account menu for / }).click();
     await page.getByRole('menuitem', { name: 'Sign out' }).click();
     await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
@@ -173,8 +173,8 @@ test('sign up from the dev mailbox, subscribe, link with dev:link, open the engi
     expect(up.output).toContain(`engine       https://${engineHost}/`);
     await page.goto(`${DEV_DASHBOARD_ORIGIN}/signin`);
     await page.getByRole('button', { name: 'Sign in with a passkey' }).click();
-    await expect(page.getByRole('heading', { name: 'Teams', level: 1 })).toBeVisible();
-    await page.goto(`${DEV_DASHBOARD_ORIGIN}/engines`);
+    await expect(page.getByRole('heading', { name: 'Engines', level: 1 })).toBeVisible();
+    await page.goto(`${DEV_DASHBOARD_ORIGIN}/engines/all`);
     await expectEngineOnline(page);
     await expect(engineRow.getByText(engineHost, { exact: true })).toBeVisible();
 

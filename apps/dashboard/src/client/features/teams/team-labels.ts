@@ -14,7 +14,7 @@ export function roleLabel(role: OrgRole): string {
 }
 
 /** The state shown beside a person in a team (teams spec): the engine stays the authority on all of them. */
-export type PersonState = 'invited' | 'not-opened' | 'waiting' | 'has-access' | 'removing';
+export type PersonState = 'invited' | 'not-opened' | 'waiting' | 'has-access' | 'removing' | 'refused';
 
 export function personStateLabel(state: PersonState): string {
     switch (state) {
@@ -28,6 +28,8 @@ export function personStateLabel(state: PersonState): string {
             return m.team_state_has_access();
         case 'removing':
             return m.team_state_removing();
+        case 'refused':
+            return m.team_state_refused();
     }
 }
 

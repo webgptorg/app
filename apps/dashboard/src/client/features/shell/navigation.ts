@@ -22,10 +22,10 @@ export interface NavEntry {
 
 /** The shell's navigation; later screens (admin tools) add their entries here. */
 export const NAV_ENTRIES: readonly NavEntry[] = [
-    // Teams replace the engine list (ADR 0018); each team's page links its engine.
+    // Each entry is a team underneath (ADR 0018); the screens say engine until that design is settled.
     {
-        id: 'teams',
-        to: '/teams',
+        id: 'engines',
+        to: '/engines',
         label: () => m.nav_teams(),
         icon: UsersRound,
         requires: { permission: 'team.read' },

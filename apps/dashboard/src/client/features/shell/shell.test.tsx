@@ -27,9 +27,9 @@ function nav() {
 describe('signed-in shell', () => {
     it('shows the org, navigation by capability and the home page', async () => {
         const app = renderApp({ path: '/', session: session({ name: 'Acme' }) });
-        expect(await screen.findByRole('heading', { name: 'Teams' })).toBeTruthy();
+        expect(await screen.findByRole('heading', { name: 'Engines' })).toBeTruthy();
         expect(screen.getByText('Acme')).toBeTruthy();
-        expect(nav().getByRole('link', { name: 'Teams' }).getAttribute('aria-current')).toBe('page');
+        expect(nav().getByRole('link', { name: 'Engines' }).getAttribute('aria-current')).toBe('page');
         expect(nav().getByRole('link', { name: 'Account' })).toBeTruthy();
         expect(nav().queryByRole('link', { name: 'Admin' })).toBeNull();
         expect(screen.getByRole('link', { name: 'Skip to content' })).toBeTruthy();
@@ -48,8 +48,26 @@ describe('signed-in shell', () => {
         renderApp({ path: '/', session: session({ permissions: [] }) });
         expect(await screen.findByText('Organization: Personal')).toBeTruthy();
         expect(screen.queryByRole('button', { name: /^Organization/ })).toBeNull();
-        expect(nav().queryByRole('link', { name: 'Teams' })).toBeNull();
+        expect(nav().queryByRole('link', { name: 'Engines' })).toBeNull();
         expect(nav().getByRole('link', { name: 'Account' })).toBeTruthy();
+    });
+
+    it('tells an unnamed organization one was invited to from one’s own', async () => {
+        const own = session({ permissions: [] });
+        const shared = 'cccccccccccccccccccccccccc';
+        const app = renderApp({
+            path: '/',
+            session: {
+                ...own,
+                memberships: [
+                    { orgId: own.activeOrg.id, kind: 'personal', name: null, role: 'owner' },
+                    { orgId: shared, kind: 'personal', name: null, role: 'member' },
+                ],
+            },
+        });
+        await app.user.click(await screen.findByRole('button', { name: 'Organization: Personal' }));
+        expect(screen.getByRole('menuitemradio', { name: 'Personal' }).getAttribute('aria-checked')).toBe('true');
+        expect(screen.getByRole('menuitemradio', { name: 'Shared with you' })).toBeTruthy();
     });
 
     it('lists the memberships in the org switcher and moves the session to another organization', async () => {
@@ -68,7 +86,7 @@ describe('signed-in shell', () => {
         await app.user.click(screen.getByRole('menuitemradio', { name: 'Beta' }));
         expect(await screen.findByRole('button', { name: 'Organization: Beta' })).toBeTruthy();
         expect(app.api.callsTo(apiRoutes.setActiveOrg)).toEqual([{ body: { orgId: 'cccccccccccccccccccccccccc' } }]);
-        expect(app.history.location.pathname).toBe('/teams');
+        expect(app.history.location.pathname).toBe('/engines');
         // The engine list of the new organization is fetched afresh, never served from the old one's cache.
         await waitFor(() => {
             expect(app.api.callsTo(apiRoutes.listEngines).length).toBeGreaterThanOrEqual(2);
@@ -121,14 +139,14 @@ describe('signed-in shell', () => {
         await app.user.click(screen.getByRole('menuitem', { name: 'Sign out' }));
         expect(await screen.findByText('Signing out did not work. Try again.')).toBeTruthy();
         expect(screen.queryByText("You're signed out.")).toBeNull();
-        expect(app.history.location.pathname).toBe('/teams');
+        expect(app.history.location.pathname).toBe('/engines');
     });
 
     it('switches the language from the header without a reload, and the theme from the user menu', async () => {
         const app = renderApp({ path: '/', session: session() });
         await app.user.click(await screen.findByRole('button', { name: 'EN, Language: English' }));
         await app.user.click(screen.getByRole('menuitemradio', { name: 'Čeština' }));
-        expect(await screen.findByRole('heading', { name: 'Týmy' })).toBeTruthy();
+        expect(await screen.findByRole('heading', { name: 'Enginy' })).toBeTruthy();
         expect(document.documentElement.lang).toBe('cs');
         expect(document.cookie).toContain('ptbk_locale=cs');
         expect(app.navigations).toEqual([]);
@@ -143,7 +161,7 @@ describe('signed-in shell', () => {
         await app.user.click(screen.getByRole('menuitemradio', { name: 'Podle systému' }));
         await app.user.click(screen.getByRole('button', { name: 'CS, Jazyk: Čeština' }));
         await app.user.click(screen.getByRole('menuitemradio', { name: 'English' }));
-        expect(await screen.findByRole('heading', { name: 'Teams' })).toBeTruthy();
+        expect(await screen.findByRole('heading', { name: 'Engines' })).toBeTruthy();
         expect(document.documentElement.classList.contains('dark')).toBe(false);
     });
 
@@ -166,7 +184,7 @@ describe('admin area', () => {
     it('is not found for anyone but a platform admin', async () => {
         renderApp({ path: '/admin', session: session() });
         expect(await screen.findByRole('heading', { name: 'Page not found' })).toBeTruthy();
-        expect(nav().getByRole('link', { name: 'Teams' })).toBeTruthy();
+        expect(nav().getByRole('link', { name: 'Engines' })).toBeTruthy();
         expect(nav().queryByRole('link', { name: 'Admin' })).toBeNull();
     });
 
@@ -186,7 +204,7 @@ describe('route states', () => {
         expect(screen.getByRole('button', { name: 'Account menu for ada@example.test' })).toBeTruthy();
         await expectNoAxeViolations(app.container);
         await app.user.click(screen.getByRole('link', { name: 'Back to the start' }));
-        expect(await screen.findByRole('heading', { name: 'Teams' })).toBeTruthy();
+        expect(await screen.findByRole('heading', { name: 'Engines' })).toBeTruthy();
     });
 
     it('keeps the signed-out frame around an unknown URL', async () => {
@@ -203,7 +221,7 @@ describe('route states', () => {
         expect(await screen.findByText(/could not be reached/, {}, { timeout: 5000 })).toBeTruthy();
         app.api.on(apiRoutes.getSession, ok(session()));
         await app.user.click(screen.getByRole('button', { name: 'Try again' }));
-        expect(await screen.findByRole('heading', { name: 'Teams' })).toBeTruthy();
+        expect(await screen.findByRole('heading', { name: 'Engines' })).toBeTruthy();
     });
 
     it('explains other failures generically', async () => {

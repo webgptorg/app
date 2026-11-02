@@ -123,25 +123,25 @@ export function renderEmail(message: EmailMessage): RenderedEmail {
                 ),
             };
         case 'team-invite': {
-            const org = message.orgName ?? message.inviterEmail;
-            return {
-                subject: m.email_team_invite_subject({ org }, options),
-                text: m.email_team_invite_body(
-                    {
-                        inviter: message.inviterEmail,
-                        org,
-                        teams:
-                            message.teamNames.length === 0
-                                ? m.email_team_invite_no_teams({}, options)
-                                : new Intl.ListFormat(message.locale, { type: 'conjunction' }).format(
-                                      message.teamNames,
-                                  ),
-                        expiresAt: formatUtc(message.expiresAt, message.locale),
-                        link: message.link,
-                    },
-                    options,
-                ),
+            const body = {
+                inviter: message.inviterEmail,
+                teams:
+                    message.teamNames.length === 0
+                        ? m.email_team_invite_no_teams({}, options)
+                        : new Intl.ListFormat(message.locale, { type: 'conjunction' }).format(message.teamNames),
+                expiresAt: formatUtc(message.expiresAt, message.locale),
+                link: message.link,
             };
+            const org = message.orgName;
+            return org === null
+                ? {
+                      subject: m.email_team_invite_subject_unnamed({ inviter: message.inviterEmail }, options),
+                      text: m.email_team_invite_body_unnamed(body, options),
+                  }
+                : {
+                      subject: m.email_team_invite_subject({ org }, options),
+                      text: m.email_team_invite_body({ ...body, org }, options),
+                  };
         }
         case 'access-waiting':
             return {

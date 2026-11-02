@@ -16,7 +16,7 @@ describe('app for a Czech browser', () => {
     it('renders in Czech when no cookie is set', async () => {
         expect(document.cookie).toBe('');
         renderApp({ path: '/', session: session() });
-        expect(await screen.findByRole('heading', { name: 'Týmy' })).toBeTruthy();
+        expect(await screen.findByRole('heading', { name: 'Enginy' })).toBeTruthy();
         expect(document.documentElement.lang).toBe('cs');
         expect(screen.getByRole('link', { name: 'Účet' })).toBeTruthy();
     });

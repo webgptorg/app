@@ -4,6 +4,7 @@ import type { InviteId, LinkCodeId, OrgId, TeamId, UserId } from '../domain/ids'
 import type {
     InviteRecord,
     MemberAccess,
+    RefusedRemovalRecord,
     TeamAudit,
     TeamRecord,
     TeamStore,
@@ -224,6 +225,42 @@ export function createMemoryTeamStore(deps: {
             audit(orgId, entry, 'team.member.remove', 'user', userId);
             return Promise.resolve('removed');
         },
+        listRefused(orgId, teamId) {
+            const engineId = liveTeam(orgId, teamId) === null ? null : engineOf(teamId);
+            const ofEngine = state.revocations.filter((revocation) => revocation.engineId === engineId);
+            const people = ofEngine.flatMap((revocation): RefusedRemovalRecord[] => {
+                const user = deps.auth.users.get(revocation.userId);
+                const outcome = revocation.outcome;
+                if (
+                    (outcome !== 'refused-disabled' && outcome !== 'refused-owner') ||
+                    user === undefined ||
+                    inTeam(teamId, revocation.userId) ||
+                    ofEngine.some(
+                        (other) =>
+                            other.userId === revocation.userId &&
+                            (other.createdAt > revocation.createdAt || other.ackedAt === undefined),
+                    ) ||
+                    state.tickets.some(
+                        (ticket) =>
+                            ticket.engineId === engineId &&
+                            ticket.userId === revocation.userId &&
+                            ticket.outcome === 'removed',
+                    )
+                ) {
+                    return [];
+                }
+                return [
+                    {
+                        userId: revocation.userId,
+                        email: user.email,
+                        role: membership(orgId, revocation.userId)?.role ?? 'member',
+                        joinedAt: revocation.createdAt,
+                        outcome,
+                    },
+                ];
+            });
+            return Promise.resolve(people.sort((a, b) => (a.email < b.email ? -1 : 1)));
+        },
         listRemoving(orgId, teamId) {
             const engineId = liveTeam(orgId, teamId) === null ? null : engineOf(teamId);
             const seen = new Set<UserId>();
@@ -402,6 +439,10 @@ export function createMemoryTeamStore(deps: {
             const named = code === undefined ? undefined : state.linkCodeTeams.get(code.id);
             if (named !== undefined && liveTeam(engine.orgId, named) !== null && engineOf(named) === null) {
                 state.engineTeams.set(engineId, named);
+                const creator = state.members.find(
+                    (member) => member.teamId === named && member.userId === code?.createdByUserId,
+                );
+                if (creator !== undefined) creator.access = 'approved';
                 return Promise.resolve();
             }
             state.teams.set(fallback.teamId, {
@@ -417,7 +458,7 @@ export function createMemoryTeamStore(deps: {
                     teamId: fallback.teamId,
                     userId: code.createdByUserId,
                     createdAt: fallback.at,
-                    access: 'none',
+                    access: 'approved',
                 });
             }
             return Promise.resolve();

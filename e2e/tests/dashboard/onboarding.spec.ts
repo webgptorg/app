@@ -3,7 +3,7 @@ import type { BrowserContext, Page, TestInfo } from '@playwright/test';
 import type { OneOffContainer } from '../../src/compose.ts';
 import type { SetupLink } from '../../src/dashboard-outputs.ts';
 import { devInstallLinkCode, distinctInOrder, parseSetupLink, terminalIdentity } from '../../src/dashboard-outputs.ts';
-import { ENGINE_CLI, expect, isEngineUrl, test, uniqueEmail } from '../../src/dashboard.ts';
+import { ENGINE_CLI, addPasskeyAuthenticator, expect, isEngineUrl, test, uniqueEmail } from '../../src/dashboard.ts';
 import { DASHBOARD_ORIGIN, DASHBOARD_TIMING } from '../../src/stack.ts';
 
 // X-07: Journey 1 of docs/design/onboarding.md as a person walks it, on a fresh engine that has no owner and no dev
@@ -71,21 +71,6 @@ async function recordLinkStates(context: BrowserContext): Promise<readonly strin
         });
     }, LINK_STATE_BINDING);
     return states;
-}
-
-async function addPasskeyAuthenticator(page: Page): Promise<void> {
-    const cdp = await page.context().newCDPSession(page);
-    await cdp.send('WebAuthn.enable');
-    await cdp.send('WebAuthn.addVirtualAuthenticator', {
-        options: {
-            protocol: 'ctap2',
-            transport: 'internal',
-            hasResidentKey: true,
-            hasUserVerification: true,
-            isUserVerified: true,
-            automaticPresenceSimulation: true,
-        },
-    });
 }
 
 /** Until the engine answers on its operator socket: `connect` hands the registration to the running engine there. */

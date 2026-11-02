@@ -519,12 +519,28 @@ export function describeTeamFlows(name: string, makeFixture: () => TeamFlowFixtu
                 email: member.email,
                 proposedRole: 'member',
             });
-            expect((await openTicket(boss.browser, team.teamId, engine.engineId)).proposedRole).toBe('admin');
+            const teamAdmin = await joined(boss, [team.teamId], 'admin');
+            expect((await openTicket(teamAdmin.browser, team.teamId, engine.engineId)).proposedRole).toBe('admin');
             expectProblem(await open(admin.browser, team.teamId), 404, 'not-found');
 
             const detail = await members(boss.browser, team.teamId);
             expect(detail.members.find((person) => person.userId === member.userId)?.access).toBe('waiting');
-            expect(detail.members.find((person) => person.userId === boss.userId)?.access).toBe('waiting');
+        });
+
+        it('sends whoever linked the engine straight to it: a ticket would make its owner ask themselves', async () => {
+            const boss = await owner();
+            const team = await createTeam(boss.browser);
+            const engine = await linkTestEngine(boss.browser, team.teamId);
+
+            const detail = await members(boss.browser, team.teamId);
+            expect(detail.members.find((person) => person.userId === boss.userId)?.access).toBe('approved');
+
+            const opened = await open(boss.browser, team.teamId);
+            expect(opened.status).toBe(200);
+            expect(opened.body).toEqual({
+                url: `https://${engine.engineId}.engines.ptbk.test/`,
+                expiresAt: null,
+            });
             expect(await members(boss.browser, team.teamId)).toMatchObject({ removing: [], invites: [] });
         });
 

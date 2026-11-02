@@ -30,7 +30,7 @@ async function signUp(page: Page, email: string): Promise<void> {
     await requestLink(page, '/signup', email, 'Send the link');
     await openEmailLink(page, await outboxLink(page.request, email, 'signup-link'), '/signup');
     await page.getByRole('button', { name: 'Create passkey' }).click();
-    await expect(page.getByRole('heading', { name: 'Teams', level: 1 })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Engines', level: 1 })).toBeVisible();
 }
 
 async function signOut(page: Page): Promise<void> {
@@ -66,13 +66,13 @@ test('sign up, sign out, sign in, add a passkey, remove the first, recover', asy
     await openEmailLink(page, await outboxLink(page.request, email, 'signup-link'), '/signup');
     await checkScreen('/signup passkey step');
     await page.getByRole('button', { name: 'Create passkey' }).click();
-    await expect(page.getByRole('heading', { name: 'Teams', level: 1 })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Engines', level: 1 })).toBeVisible();
     await checkScreen('/');
 
     await signOut(page);
     await checkScreen('/signin');
     await signIn(page);
-    await expect(page.getByRole('heading', { name: 'Teams', level: 1 })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Engines', level: 1 })).toBeVisible();
 
     await page.getByRole('link', { name: 'Account' }).click();
     await expect(page.getByRole('heading', { name: 'Account', level: 1 })).toBeVisible();
@@ -94,7 +94,7 @@ test('sign up, sign out, sign in, add a passkey, remove the first, recover', asy
 
     await signOut(page);
     await signIn(page);
-    await expect(page.getByRole('heading', { name: 'Teams', level: 1 })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Engines', level: 1 })).toBeVisible();
     await signOut(page);
 
     await authenticators.remove(second);
@@ -134,9 +134,9 @@ test('a signed-out visit to /account goes to sign-in and returns afterwards', as
     await expect(page.getByRole('heading', { name: 'Account', level: 1 })).toBeVisible();
 
     await page.goto('/signin');
-    await expect(page).toHaveURL(/\/teams$/);
+    await expect(page).toHaveURL(/\/engines$/);
     await page.goto('/signup');
-    await expect(page).toHaveURL(/\/teams$/);
+    await expect(page).toHaveURL(/\/engines$/);
 
     expectNoBrowserErrors(browserReport());
 });
@@ -167,7 +167,7 @@ test('keyboard only: sign up, sign out and sign in', async ({ page, authenticato
     await openEmailLink(page, await outboxLink(page.request, email, 'signup-link'), '/signup');
     await tabTo(page, focused(page, 'button', 'Create passkey'));
     await page.keyboard.press('Enter');
-    await expect(page.getByRole('heading', { name: 'Teams', level: 1 })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Engines', level: 1 })).toBeVisible();
 
     await tabTo(page, focused(page, 'button', /^Account menu for /));
     await page.keyboard.press('Enter');
@@ -179,7 +179,7 @@ test('keyboard only: sign up, sign out and sign in', async ({ page, authenticato
 
     await tabTo(page, focused(page, 'button', 'Sign in with a passkey'));
     await page.keyboard.press('Enter');
-    await expect(page.getByRole('heading', { name: 'Teams', level: 1 })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Engines', level: 1 })).toBeVisible();
 
     expectNoBrowserErrors(browserReport());
 });
@@ -239,7 +239,7 @@ test('sign up by following the link on the dev mailbox page (X-06)', async ({
     await message.getByRole('link', { name: /\/signup#/ }).click();
     await expect(page).toHaveURL((url) => url.pathname === '/signup' && url.hash === '');
     await page.getByRole('button', { name: 'Create passkey' }).click();
-    await expect(page.getByRole('heading', { name: 'Teams', level: 1 })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Engines', level: 1 })).toBeVisible();
 
     expectNoBrowserErrors(browserReport());
 });

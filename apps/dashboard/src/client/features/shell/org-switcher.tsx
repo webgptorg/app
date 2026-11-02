@@ -11,8 +11,9 @@ import { dataOrThrow, queryKeys } from '../../api/queries';
 import { useAppMutation } from '../../core/mutations';
 import { useSession } from '../session/use-session';
 
-function orgName(org: { readonly name: string | null }): string {
-    return org.name ?? m.org_personal();
+/** Everyone's own organization has no name, so one you were invited to must not read "Personal" beside yours. */
+function orgName(org: { readonly name: string | null; readonly role: string }): string {
+    return org.name ?? (org.role === 'owner' ? m.org_personal() : m.org_shared());
 }
 
 /**
@@ -46,7 +47,7 @@ function OrgMenu({ name }: { readonly name: string }) {
         onSuccess: async (next: SessionView) => {
             queryClient.removeQueries({ predicate: (query) => query.queryKey[0] !== queryKeys.session[0] });
             queryClient.setQueryData(queryKeys.session, next);
-            await navigate({ to: '/teams' });
+            await navigate({ to: '/engines' });
         },
     });
     const items: MenuEntry[] = session.memberships.map((membership) => ({

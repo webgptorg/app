@@ -32,9 +32,9 @@ test('link an engine, see it online, open its page and revoke it, under the prod
     await page.getByRole('button', { name: 'Send the link' }).click();
     await page.goto(await outboxLink(page.request, email, 'signup-link'));
     await page.getByRole('button', { name: 'Create passkey' }).click();
-    await expect(page.getByRole('heading', { name: 'Teams', level: 1 })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Engines', level: 1 })).toBeVisible();
 
-    await page.goto('/engines');
+    await page.goto('/engines/all');
     await expect(page.getByRole('heading', { name: 'Your engines' })).toBeVisible();
     await page.getByRole('link', { name: 'Link an engine' }).click();
     await expect(page.getByRole('heading', { name: 'Link an engine', level: 1 })).toBeVisible();
@@ -112,7 +112,7 @@ test('link an engine, see it online, open its page and revoke it, under the prod
     await expect(ready).toHaveAttribute('rel', 'noopener noreferrer');
     await checkScreen('/engines/new ready');
 
-    await page.goto('/engines');
+    await page.goto('/engines/all');
     await expect(page.getByText('Online')).toBeVisible();
     const open = page.getByRole('link', { name: /^Open engine/ });
     await expect(open).toHaveAttribute('href', `https://${engineId}.${ENGINE_DOMAIN}/`);

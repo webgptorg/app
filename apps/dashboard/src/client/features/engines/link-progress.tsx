@@ -16,6 +16,7 @@ import { engineLabel, shortEngineId } from '../../../shared/engine-label';
 import { useSession } from '../session/use-session';
 import { canRename, EngineNameField } from './engine-name';
 import { linkCodeQuery } from './link-queries';
+import { useEngineTeam } from './use-engine-name';
 
 /** onboarding.md, step 4: the page asks every 3 seconds while it is visible, and stops at ready or expiry. */
 export const LINK_POLL_MS = 3000;
@@ -143,6 +144,7 @@ function LinkedDetails(props: {
 }) {
     const shortId = shortEngineId(props.engineId);
     const session = useSession();
+    const { givenName } = useEngineTeam(props.engineId, props.hostname);
     return (
         <>
             <dl className="grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2">
@@ -163,13 +165,18 @@ function LinkedDetails(props: {
                         size="lg"
                         className="shrink-0"
                         label={m.engines_fingerprint_label({
-                            name: engineLabel({ engineId: props.engineId, label: props.engine?.label ?? null }),
+                            name:
+                                givenName ??
+                                engineLabel({ engineId: props.engineId, label: props.engine?.label ?? null }),
                         })}
                     />
                     <span>{m.link_progress_compare()}</span>
                 </dd>
             </dl>
-            {!props.askName || props.engine === undefined || !canRename(session.activeOrg.permissions) ? null : (
+            {!props.askName ||
+            givenName !== null ||
+            props.engine === undefined ||
+            !canRename(session.activeOrg.permissions) ? null : (
                 <div className="flex flex-col gap-2">
                     <p>{m.link_progress_name()}</p>
                     <EngineNameField engine={props.engine} />
@@ -405,14 +412,15 @@ export function LinkProgress(props: {
     );
 }
 
-/** The end of onboarding: one moment, one primary action, and the name if the owner has not given one yet. */
+/** The end of onboarding: one moment, one primary action, and the name if nobody has given one yet. */
 function ReadyPanel(props: {
     readonly engineId: string;
     readonly hostname: string;
     readonly engine: EngineView | undefined;
 }) {
     const session = useSession();
-    const name = engineLabel({ engineId: props.engineId, label: props.engine?.label ?? null });
+    const { givenName } = useEngineTeam(props.engineId, props.hostname);
+    const name = givenName ?? engineLabel({ engineId: props.engineId, label: props.engine?.label ?? null });
     return (
         <div
             className="flex flex-col items-center gap-4 rounded-(--card-radius) border border-(--card-border) bg-(--card-bg) px-6 py-8 text-center shadow-(--card-shadow)"
@@ -431,7 +439,7 @@ function ReadyPanel(props: {
                 <p>{m.link_progress_ready_body()}</p>
                 <p className="text-sm text-text-muted">{m.link_progress_compare()}</p>
             </div>
-            {props.engine === undefined || !canRename(session.activeOrg.permissions) ? null : (
+            {givenName !== null || props.engine === undefined || !canRename(session.activeOrg.permissions) ? null : (
                 <div className="flex w-full max-w-md flex-col gap-2 text-start text-sm">
                     <p>{m.link_progress_name()}</p>
                     <EngineNameField engine={props.engine} />

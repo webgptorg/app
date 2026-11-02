@@ -20,9 +20,11 @@ import type {
     TeamAudit,
     TeamPersonRecord,
     TeamRecord,
+    RefusedRemovalRecord,
     TeamStore,
     TicketNotice,
 } from '../../domain/teams/team-store';
+import { REFUSED_REMOVAL_OUTCOMES } from '../../domain/teams/team-store';
 import { localeSchema } from '../../domain/locale';
 import { teamNameSchema } from '../../shared/team-name';
 import type { Database } from './client';
@@ -248,6 +250,48 @@ export function createD1TeamStore(db: Database): TeamStore {
                 role: orgRoleSchema.parse(row.role),
                 joinedAt: row.joinedAt,
                 access: row.access,
+            }));
+        },
+
+        async listRefused(orgId, teamId) {
+            const rows = await db
+                .select({
+                    userId: memberRevocations.userId,
+                    email: users.email,
+                    role: memberships.role,
+                    joinedAt: memberRevocations.createdAt,
+                    outcome: memberRevocations.outcome,
+                })
+                .from(memberRevocations)
+                .innerJoin(engines, eq(engines.engineId, memberRevocations.engineId))
+                .innerJoin(teams, eq(teams.id, engines.teamId))
+                .innerJoin(users, eq(users.id, memberRevocations.userId))
+                .leftJoin(memberships, and(eq(memberships.userId, users.id), eq(memberships.orgId, teams.orgId)))
+                .where(
+                    and(
+                        eq(teams.id, teamId),
+                        live(orgId),
+                        inArray(memberRevocations.outcome, [...REFUSED_REMOVAL_OUTCOMES]),
+                        sql`NOT EXISTS (SELECT 1 FROM ${teamMembers} WHERE ${teamMembers.teamId} = ${teams.id}
+                            AND ${teamMembers.userId} = ${memberRevocations.userId})`,
+                        sql`NOT EXISTS (SELECT 1 FROM member_revocations AS later
+                            WHERE later.engine_id = ${memberRevocations.engineId}
+                            AND later.user_id = ${memberRevocations.userId}
+                            AND (later.created_at > ${memberRevocations.createdAt} OR later.acked_at IS NULL))`,
+                        sql`NOT EXISTS (SELECT 1 FROM ${accessTickets}
+                            WHERE ${accessTickets.engineId} = ${memberRevocations.engineId}
+                            AND ${accessTickets.userId} = ${memberRevocations.userId}
+                            AND ${accessTickets.outcome} = 'removed')`,
+                    ),
+                )
+                .orderBy(asc(users.email))
+                .all();
+            return rows.map((row): RefusedRemovalRecord => ({
+                userId: userIdSchema.parse(row.userId),
+                email: row.email,
+                role: row.role === null ? 'member' : orgRoleSchema.parse(row.role),
+                joinedAt: row.joinedAt,
+                outcome: row.outcome === 'refused-owner' ? 'refused-owner' : 'refused-disabled',
             }));
         },
 
@@ -507,11 +551,18 @@ export function createD1TeamStore(db: Database): TeamStore {
                 .orderBy(desc(linkCodes.usedAt))
                 .get();
             const named = code?.teamId == null ? null : await find(orgId, teamIdSchema.parse(code.teamId));
+            const creator = code === undefined ? null : userIdSchema.parse(code.createdBy);
             if (named !== null && named.engineId === null) {
-                await db.update(engines).set({ teamId: named.id }).where(eq(engines.engineId, engineId));
+                await db.batch([
+                    db.update(engines).set({ teamId: named.id }).where(eq(engines.engineId, engineId)),
+                    // Whoever linked it holds the setup secret and becomes its owner; no ticket could add them.
+                    db
+                        .update(teamMembers)
+                        .set({ access: 'approved' })
+                        .where(and(eq(teamMembers.teamId, named.id), eq(teamMembers.userId, creator ?? ''))),
+                ]);
                 return;
             }
-            const creator = code === undefined ? null : userIdSchema.parse(code.createdBy);
             const stillMember = creator !== null && (await isOrgMember(orgId, creator)) !== null;
             await db.batch([
                 db.insert(teams).values({
@@ -524,9 +575,12 @@ export function createD1TeamStore(db: Database): TeamStore {
                 db.update(engines).set({ teamId: fallback.teamId }).where(eq(engines.engineId, engineId)),
                 ...(stillMember
                     ? [
-                          db
-                              .insert(teamMembers)
-                              .values({ teamId: fallback.teamId, userId: creator, createdAt: fallback.at }),
+                          db.insert(teamMembers).values({
+                              teamId: fallback.teamId,
+                              userId: creator,
+                              createdAt: fallback.at,
+                              access: 'approved',
+                          }),
                       ]
                     : []),
             ]);

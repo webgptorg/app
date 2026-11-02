@@ -360,6 +360,12 @@ export const personViewSchema = z.strictObject({
 });
 export type PersonView = z.infer<typeof personViewSchema>;
 
+export const refusedViewSchema = z.strictObject({
+    ...personViewSchema.shape,
+    outcome: z.enum(['refused-disabled', 'refused-owner']),
+});
+export type RefusedView = z.infer<typeof refusedViewSchema>;
+
 /** Someone in a team, with what the dashboard knows of their access to its engine (ADR 0018). */
 export const teamMemberViewSchema = personViewSchema.extend({ access: z.enum(['none', 'waiting', 'approved']) });
 export type TeamMemberView = z.infer<typeof teamMemberViewSchema>;
@@ -898,6 +904,8 @@ export const apiRoutes = {
             members: z.array(teamMemberViewSchema),
             /** Taken out of the team; the engine has not confirmed the removal yet. */
             removing: z.array(personViewSchema),
+            /** Taken out of the team, but the engine refused: they can still use it until removed there. */
+            refused: z.array(refusedViewSchema),
             /** Pending invitations that name this team. */
             invites: z.array(inviteViewSchema),
         }),
@@ -947,7 +955,10 @@ export const apiRoutes = {
         permission: 'team.read',
         rateLimit: null,
         input: { ...NO_INPUT, params: teamParams },
-        output: z.strictObject({ url: z.url({ protocol: /^https$/ }).max(4096), expiresAt: timestampSchema }),
+        output: z.strictObject({
+            url: z.url({ protocol: /^https$/ }).max(4096),
+            expiresAt: timestampSchema.nullable(),
+        }),
         errorCodes: ['unavailable'],
     }),
     /** Someone already in the organization; `not-member` otherwise (invite them instead). */

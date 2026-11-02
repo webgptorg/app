@@ -112,8 +112,9 @@ export function bindTeamRoutes(
         if (team === null || members === null) {
             return NOT_FOUND;
         }
-        const [removing, invites] = await Promise.all([
+        const [removing, refused, invites] = await Promise.all([
             deps.teams.listRemoving(session.actor.orgId, teamId),
+            deps.teams.listRefused(session.actor.orgId, teamId),
             deps.teams.listPendingInvites(session.actor.orgId, deps.clock.nowMs()),
         ]);
         return {
@@ -122,6 +123,7 @@ export function bindTeamRoutes(
                 team: await teamView(deps, session.actor, team),
                 members: [...members],
                 removing: [...removing],
+                refused: [...refused],
                 invites: invites.filter((invite) => invite.teamIds.includes(teamId)).map(inviteView),
             },
         };
@@ -192,6 +194,8 @@ export function bindTeamRoutes(
                         expiresAt: outcome.expiresAt,
                     },
                 };
+            case 'direct':
+                return { kind: 'ok', body: { url: `https://${outcome.hostname}/`, expiresAt: null } };
             case 'not-found':
                 return NOT_FOUND;
             case 'unavailable':

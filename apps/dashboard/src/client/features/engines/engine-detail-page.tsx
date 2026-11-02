@@ -12,6 +12,7 @@ import { engineQuery, installGuideQuery, problemCode } from '../../api/queries';
 import { ButtonLink, Link } from '../../core/link';
 import { AbuseContactLink } from '../abuse/abuse-contact';
 import { useSession } from '../session/use-session';
+import { OpenTeamButton } from '../teams/open-team-button';
 import { ENGINE_STATUS_COMMAND, TROUBLESHOOTING_ANCHOR } from './engine-guide';
 import { cpuLoadLabel, modeLabel, updateStateLabel } from './engine-labels';
 import { canRename, RenameEngineButton } from './engine-name';
@@ -20,6 +21,7 @@ import { EngineReachability } from './engine-reachability';
 import { EngineStatusBadge } from './engine-status-badge';
 import { LastSeen, useNowFor } from './engine-values';
 import { RevokeEngineCard } from './revoke-engine';
+import { useEngineTeam } from './use-engine-name';
 
 const READ_PERMISSION = 'engine.read';
 const REVOKE_PERMISSION = 'engine.revoke';
@@ -117,20 +119,26 @@ function StatusNotice(props: { readonly engine: EngineView }) {
     return engine.status === 'offline' ? <OfflineHint /> : null;
 }
 
-/** Name, status, when it was last heard from and what it runs, with the one thing to do: open it. */
+/**
+ * Name, status, when it was last heard from and what it runs, with the one thing to do: open it. Someone in the team
+ * opens with a ticket, as on the list: the plain link lands a person not yet approved at a sign-in they cannot pass.
+ */
 function Summary(props: { readonly engine: EngineView; readonly canRename: boolean }) {
     const { engine } = props;
     const now = useNowFor(engine);
-    const name = engineLabel(engine);
+    const { team, givenName } = useEngineTeam(engine.engineId, engine.hostname);
+    const name = givenName ?? engineLabel(engine);
     const update = engine.heartbeat?.update ?? 'none';
     return (
         <div className="flex flex-col gap-3">
             <div className="flex flex-wrap items-center gap-3">
-                <h1 className={`${engine.label === null ? 'font-mono' : 'font-display'} text-2xl font-semibold`}>
+                <h1
+                    className={`${givenName === null && engine.label === null ? 'font-mono' : 'font-display'} text-2xl font-semibold`}
+                >
                     {name}
                 </h1>
                 <EngineStatusBadge engine={engine} />
-                {props.canRename ? <RenameEngineButton engine={engine} /> : null}
+                {props.canRename && givenName === null ? <RenameEngineButton engine={engine} /> : null}
             </div>
             <p className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-text-muted">
                 <span>
@@ -144,7 +152,11 @@ function Summary(props: { readonly engine: EngineView; readonly canRename: boole
             </p>
             {engine.status === 'suspended' ? null : (
                 <div>
-                    <EngineOpenLink name={name} hostname={engine.hostname} variant="primary" size="md" prominent />
+                    {team?.isMember === true ? (
+                        <OpenTeamButton team={team} variant="primary" />
+                    ) : (
+                        <EngineOpenLink name={name} hostname={engine.hostname} variant="primary" size="md" prominent />
+                    )}
                 </div>
             )}
         </div>
@@ -158,7 +170,8 @@ function EngineDetail(props: {
 }) {
     const { engine } = props;
     const formatters = useLocale();
-    const name = engineLabel(engine);
+    const { givenName } = useEngineTeam(engine.engineId, engine.hostname);
+    const name = givenName ?? engineLabel(engine);
     return (
         <>
             <Summary engine={engine} canRename={props.canRename} />
