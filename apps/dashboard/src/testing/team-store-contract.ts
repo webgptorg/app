@@ -486,5 +486,20 @@ export function describeTeamStoreContract(suite: string, makeFixture: () => Team
             await fixture.teams.closeRevocation(engineId, second?.id ?? '', 'revoked', NOW + 5);
             expect(await fixture.teams.listRefused(owner.orgId, a)).toEqual([]);
         });
+
+        it('stops listing a refused person once they are removed on the engine itself', async () => {
+            const a = await team();
+            const engineId = await engineFor(a);
+            await fixture.teams.addMember(owner.orgId, a, member.id, entry(owner.userId));
+            const issued = await ticket(a, engineId, member.id);
+            await fixture.teams.applyTicketAck(engineId, issued, 'approved', NOW + 1);
+            await fixture.teams.removeMember(owner.orgId, a, member.id, entry(owner.userId, NOW + 2));
+            const [revocation] = await fixture.teams.pendingRevocations(engineId, 1);
+            await fixture.teams.closeRevocation(engineId, revocation?.id ?? '', 'refused-disabled', NOW + 3);
+            expect(await fixture.teams.listRefused(owner.orgId, a)).toMatchObject([{ userId: member.id }]);
+
+            await fixture.teams.applyTicketAck(engineId, issued, 'removed', NOW + 4);
+            expect(await fixture.teams.listRefused(owner.orgId, a)).toEqual([]);
+        });
     });
 }
