@@ -10,6 +10,7 @@ import {
     apiRoutes,
     type InviteView,
     type PersonView,
+    type RefusedView,
     type TeamMemberView,
     type TeamView,
 } from '../../../shared/api/routes';
@@ -40,12 +41,15 @@ interface Row {
     readonly role: PersonView['role'];
     readonly state: PersonState;
     readonly userId: string | null;
+    /** Why they are still on the engine, when it refused the removal. */
+    readonly note?: string;
 }
 
 /** Everyone the team page lists, in one order: people in the team, then those on their way in or out. */
 function rows(
     members: readonly TeamMemberView[],
     removing: readonly PersonView[],
+    refused: readonly RefusedView[],
     invites: readonly InviteView[],
 ): Row[] {
     return [
@@ -70,6 +74,14 @@ function rows(
             state: 'removing' as const,
             userId: null,
         })),
+        ...refused.map((person) => ({
+            key: `refused-${person.userId}`,
+            email: person.email,
+            role: person.role,
+            state: 'refused' as const,
+            userId: null,
+            note: person.outcome === 'refused-owner' ? m.team_refused_owner() : m.team_refused_disabled(),
+        })),
     ];
 }
 
@@ -79,6 +91,7 @@ const STATE_TONES: Readonly<Record<PersonState, 'neutral' | 'info' | 'success' |
     waiting: 'info',
     'has-access': 'success',
     removing: 'warning',
+    refused: 'warning',
 };
 
 function PersonRow(props: {
@@ -124,6 +137,7 @@ function PersonRow(props: {
             <span className="flex min-w-0 flex-1 flex-col">
                 <span className="truncate">{row.email}</span>
                 <span className="text-sm text-text-muted">{roleLabel(row.role)}</span>
+                {row.note === undefined ? null : <span className="text-sm">{row.note}</span>}
             </span>
             <Badge tone={STATE_TONES[row.state]}>{personStateLabel(row.state)}</Badge>
             <span className="w-9">
@@ -293,7 +307,7 @@ export function TeamPage(props: { readonly teamId: string }) {
     }
     const view = team.data.team;
     const engine = engines.data?.find((candidate) => candidate.engineId === view.engineId);
-    const people = rows(team.data.members, team.data.removing, team.data.invites);
+    const people = rows(team.data.members, team.data.removing, team.data.refused, team.data.invites);
     return (
         <div className="flex flex-col gap-6">
             <Link to="/teams" variant="standalone" className="inline-flex items-center gap-1 self-start text-sm">

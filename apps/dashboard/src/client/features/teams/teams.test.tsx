@@ -56,6 +56,9 @@ function teamPage(api: ScriptedApi) {
                 { ...person('ada@example.test', 'owner', 'aaaaaaaaaaaaaaaaaaaaaaaaaa'), access: 'none' as const },
             ],
             removing: [person('cy@example.test', 'member', 'c1cccccccccccccccccccccccc')],
+            refused: [
+                { ...person('dee@example.test', 'member', 'd1dddddddddddddddddddddddd'), outcome: 'refused-disabled' },
+            ],
             invites: [
                 {
                     inviteId: 'd1dddddddddddddddddddddddd',
@@ -185,6 +188,7 @@ describe('team page', () => {
             ['ada@example.test', 'Not opened yet'],
             ['dana@example.test', 'Invited'],
             ['cy@example.test', 'Removing…'],
+            ['dee@example.test', 'Still on the engine'],
         ] as const) {
             const row = within(people).getByText(email).closest('li');
             expect(row === null ? null : within(row).getByText(state)).toBeTruthy();
@@ -271,7 +275,7 @@ describe('team page', () => {
             script: (api) => {
                 api.on(
                     apiRoutes.getTeam,
-                    ok({ team: team({ engineId: null }), members: [], removing: [], invites: [] }),
+                    ok({ team: team({ engineId: null }), members: [], removing: [], refused: [], invites: [] }),
                 );
             },
         });

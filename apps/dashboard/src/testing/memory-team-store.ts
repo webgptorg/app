@@ -4,6 +4,7 @@ import type { InviteId, LinkCodeId, OrgId, TeamId, UserId } from '../domain/ids'
 import type {
     InviteRecord,
     MemberAccess,
+    RefusedRemovalRecord,
     TeamAudit,
     TeamRecord,
     TeamStore,
@@ -223,6 +224,42 @@ export function createMemoryTeamStore(deps: {
             removeFromTeam(teamId, userId, entry.at);
             audit(orgId, entry, 'team.member.remove', 'user', userId);
             return Promise.resolve('removed');
+        },
+        listRefused(orgId, teamId) {
+            const engineId = liveTeam(orgId, teamId) === null ? null : engineOf(teamId);
+            const ofEngine = state.revocations.filter((revocation) => revocation.engineId === engineId);
+            const people = ofEngine.flatMap((revocation): RefusedRemovalRecord[] => {
+                const user = deps.auth.users.get(revocation.userId);
+                const outcome = revocation.outcome;
+                if (
+                    (outcome !== 'refused-disabled' && outcome !== 'refused-owner') ||
+                    user === undefined ||
+                    inTeam(teamId, revocation.userId) ||
+                    ofEngine.some(
+                        (other) =>
+                            other.userId === revocation.userId &&
+                            (other.createdAt > revocation.createdAt || other.ackedAt === undefined),
+                    ) ||
+                    state.tickets.some(
+                        (ticket) =>
+                            ticket.engineId === engineId &&
+                            ticket.userId === revocation.userId &&
+                            ticket.outcome === 'removed',
+                    )
+                ) {
+                    return [];
+                }
+                return [
+                    {
+                        userId: revocation.userId,
+                        email: user.email,
+                        role: membership(orgId, revocation.userId)?.role ?? 'member',
+                        joinedAt: revocation.createdAt,
+                        outcome,
+                    },
+                ];
+            });
+            return Promise.resolve(people.sort((a, b) => (a.email < b.email ? -1 : 1)));
         },
         listRemoving(orgId, teamId) {
             const engineId = liveTeam(orgId, teamId) === null ? null : engineOf(teamId);

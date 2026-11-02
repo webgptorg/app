@@ -461,5 +461,30 @@ export function describeTeamStoreContract(suite: string, makeFixture: () => Team
             expect(await fixture.teams.listRemoving(owner.orgId, a)).toEqual([]);
             expect(await fixture.teams.listRemoving(other.orgId, a)).toEqual([]);
         });
+
+        it('lists a person whose removal the engine refused until a later removal or the engine settles it', async () => {
+            const a = await team();
+            const engineId = await engineFor(a);
+            await fixture.teams.addMember(owner.orgId, a, member.id, entry(owner.userId));
+            await fixture.teams.removeMember(owner.orgId, a, member.id, entry(owner.userId, NOW + 1));
+            expect(await fixture.teams.listRefused(owner.orgId, a)).toEqual([]);
+
+            const [first] = await fixture.teams.pendingRevocations(engineId, 1);
+            await fixture.teams.closeRevocation(engineId, first?.id ?? '', 'refused-disabled', NOW + 2);
+            expect(await fixture.teams.listRemoving(owner.orgId, a)).toEqual([]);
+            expect(await fixture.teams.listRefused(owner.orgId, a)).toMatchObject([
+                { userId: member.id, outcome: 'refused-disabled' },
+            ]);
+            expect(await fixture.teams.listRefused(other.orgId, a)).toEqual([]);
+
+            // Back in the team and removed again: the new removal is what counts, and the engine accepts it.
+            await fixture.teams.addMember(owner.orgId, a, member.id, entry(owner.userId, NOW + 3));
+            expect(await fixture.teams.listRefused(owner.orgId, a)).toEqual([]);
+            await fixture.teams.removeMember(owner.orgId, a, member.id, entry(owner.userId, NOW + 4));
+            expect(await fixture.teams.listRefused(owner.orgId, a)).toEqual([]);
+            const [second] = await fixture.teams.pendingRevocations(engineId, 1);
+            await fixture.teams.closeRevocation(engineId, second?.id ?? '', 'revoked', NOW + 5);
+            expect(await fixture.teams.listRefused(owner.orgId, a)).toEqual([]);
+        });
     });
 }

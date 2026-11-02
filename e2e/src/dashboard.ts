@@ -1,6 +1,6 @@
 // Fixtures for the dashboard scenario (X-05): a virtual passkey authenticator, the dashboard's screens as steps, and
 // mock engines started from the on-demand `mock-engine` service with what a test learned on the way (a link code).
-import type { Locator, TestInfo } from '@playwright/test';
+import type { Locator, Page, TestInfo } from '@playwright/test';
 
 import type { OneOffContainer } from './compose.ts';
 import { expect, test as base } from './fixtures.ts';
@@ -61,13 +61,104 @@ export interface DashboardSteps {
     reloadEngineRows(): Promise<Locator>;
     /** Everything the dev outbox holds for `email`, oldest first. */
     emails(email: string): Promise<readonly OutboxEmail[]>;
+    /** The link the dev outbox holds for `email` from `template`, once it arrives. */
+    emailedLink(email: string, template: string): Promise<string>;
 }
 
 interface DashboardFixtures {
     /** A CTAP2 platform authenticator with resident keys and user verification, added through CDP before the test. */
     authenticator: string;
     dashboard: DashboardSteps;
+    /** The dashboard's steps for a second person, in their own browser context and page. */
+    dashboardFor: (page: Page) => DashboardSteps;
     mockEngines: MockEngines;
+}
+
+/** A CTAP2 platform authenticator for one page's passkey ceremonies: each person and relying party holds its own. */
+export async function addPasskeyAuthenticator(page: Page): Promise<string> {
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('WebAuthn.enable');
+    const { authenticatorId } = await cdp.send('WebAuthn.addVirtualAuthenticator', {
+        options: {
+            protocol: 'ctap2',
+            transport: 'internal',
+            hasResidentKey: true,
+            hasUserVerification: true,
+            isUserVerified: true,
+            automaticPresenceSimulation: true,
+        },
+    });
+    return authenticatorId;
+}
+
+function dashboardSteps(page: Page, caCertificatePem: string): DashboardSteps {
+    const fetchOutbox = (email: string): Promise<string> =>
+        fetchText(
+            `${DASHBOARD_ORIGIN}/api/__dev/emails?to=${encodeURIComponent(email)}`,
+            caCertificatePem,
+            OUTBOX_TIMEOUT_MS,
+        );
+    const outboxLink = async (email: string, template: string): Promise<string> => {
+        let link: string | undefined;
+        await expect
+            .poll(async () => {
+                link = emailedLink(await fetchOutbox(email), template);
+                return link;
+            })
+            .toBeDefined();
+        if (link === undefined) throw new Error('no emailed link');
+        return link;
+    };
+    const landing = page.getByRole('heading', { name: 'Teams', level: 1 });
+    return {
+        origin: DASHBOARD_ORIGIN,
+        async signUp(email) {
+            await page.goto(`${DASHBOARD_ORIGIN}/signup`);
+            await page.getByLabel('Email').fill(email);
+            await page.getByRole('button', { name: 'Send the link' }).click();
+            await expect(page.getByRole('heading', { name: 'Check your email' })).toBeVisible();
+            await page.goto(await outboxLink(email, 'signup-link'));
+            await page.getByRole('button', { name: 'Create passkey' }).click();
+            await expect(landing).toBeVisible();
+        },
+        async subscribe() {
+            await page.getByRole('link', { name: 'Billing' }).click();
+            // The dev plan starts with a trial (D-10); the fake Checkout grants it at once.
+            await page.getByRole('button', { name: 'Start your 14-day trial of Standard' }).click();
+            await expect(page.getByText('Thank you, your subscription is starting')).toBeVisible();
+            await expect(page).toHaveURL(/\/billing$/);
+        },
+        async createLinkCode() {
+            // The page issues the code on load once the organization may link (D-10).
+            await page.goto(`${DASHBOARD_ORIGIN}/engines/new`);
+            const command = page.getByText(LINK_CODE);
+            await expect(command).toBeVisible();
+            const installCommand = (await command.textContent()) ?? '';
+            const linkCode = installCommand.match(LINK_CODE)?.[0];
+            if (linkCode === undefined) throw new Error('no link code in the install command');
+            return { installCommand, linkCode };
+        },
+        async signOut() {
+            await page.getByRole('button', { name: /^Account menu for / }).click();
+            await page.getByRole('menuitem', { name: 'Sign out' }).click();
+            await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
+        },
+        async signIn() {
+            await page.getByRole('button', { name: 'Sign in with a passkey' }).click();
+            await expect(landing).toBeVisible();
+        },
+        async emails(email) {
+            return outboxEmails(await fetchOutbox(email));
+        },
+        emailedLink: outboxLink,
+        async reloadEngineRows() {
+            await page.goto(`${DASHBOARD_ORIGIN}/engines`);
+            const rows = page.getByRole('row').filter({ hasText: `.${ENGINE_DOMAIN}` });
+            // Loaded: engine rows or the empty state, not the skeleton rows shown while the list loads.
+            await expect(rows.first().or(page.getByText('No engines yet', { exact: true }))).toBeVisible();
+            return rows;
+        },
+    };
 }
 
 async function attachLogs(testInfo: TestInfo, containers: readonly OneOffContainer[]): Promise<void> {
@@ -81,92 +172,19 @@ async function attachLogs(testInfo: TestInfo, containers: readonly OneOffContain
 export const test = base.extend<DashboardFixtures>({
     authenticator: [
         async ({ page }, use) => {
-            const cdp = await page.context().newCDPSession(page);
-            await cdp.send('WebAuthn.enable');
-            const { authenticatorId } = await cdp.send('WebAuthn.addVirtualAuthenticator', {
-                options: {
-                    protocol: 'ctap2',
-                    transport: 'internal',
-                    hasResidentKey: true,
-                    hasUserVerification: true,
-                    isUserVerified: true,
-                    automaticPresenceSimulation: true,
-                },
-            });
+            const authenticatorId = await addPasskeyAuthenticator(page);
             await use(authenticatorId);
-            await cdp.detach().catch(() => undefined);
         },
         // Every dashboard test signs up or in with a passkey, so the authenticator exists before any ceremony.
         { auto: true },
     ],
 
     dashboard: async ({ page, caCertificatePem }, use) => {
-        const fetchOutbox = (email: string): Promise<string> =>
-            fetchText(
-                `${DASHBOARD_ORIGIN}/api/__dev/emails?to=${encodeURIComponent(email)}`,
-                caCertificatePem,
-                OUTBOX_TIMEOUT_MS,
-            );
-        const outboxLink = async (email: string, template: string): Promise<string> => {
-            let link: string | undefined;
-            await expect
-                .poll(async () => {
-                    link = emailedLink(await fetchOutbox(email), template);
-                    return link;
-                })
-                .toBeDefined();
-            if (link === undefined) throw new Error('no emailed link');
-            return link;
-        };
-        const landing = page.getByRole('heading', { name: 'Teams', level: 1 });
-        await use({
-            origin: DASHBOARD_ORIGIN,
-            async signUp(email) {
-                await page.goto(`${DASHBOARD_ORIGIN}/signup`);
-                await page.getByLabel('Email').fill(email);
-                await page.getByRole('button', { name: 'Send the link' }).click();
-                await expect(page.getByRole('heading', { name: 'Check your email' })).toBeVisible();
-                await page.goto(await outboxLink(email, 'signup-link'));
-                await page.getByRole('button', { name: 'Create passkey' }).click();
-                await expect(landing).toBeVisible();
-            },
-            async subscribe() {
-                await page.getByRole('link', { name: 'Billing' }).click();
-                // The dev plan starts with a trial (D-10); the fake Checkout grants it at once.
-                await page.getByRole('button', { name: 'Start your 14-day trial of Standard' }).click();
-                await expect(page.getByText('Thank you, your subscription is starting')).toBeVisible();
-                await expect(page).toHaveURL(/\/billing$/);
-            },
-            async createLinkCode() {
-                // The page issues the code on load once the organization may link (D-10).
-                await page.goto(`${DASHBOARD_ORIGIN}/engines/new`);
-                const command = page.getByText(LINK_CODE);
-                await expect(command).toBeVisible();
-                const installCommand = (await command.textContent()) ?? '';
-                const linkCode = installCommand.match(LINK_CODE)?.[0];
-                if (linkCode === undefined) throw new Error('no link code in the install command');
-                return { installCommand, linkCode };
-            },
-            async signOut() {
-                await page.getByRole('button', { name: /^Account menu for / }).click();
-                await page.getByRole('menuitem', { name: 'Sign out' }).click();
-                await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
-            },
-            async signIn() {
-                await page.getByRole('button', { name: 'Sign in with a passkey' }).click();
-                await expect(landing).toBeVisible();
-            },
-            async emails(email) {
-                return outboxEmails(await fetchOutbox(email));
-            },
-            async reloadEngineRows() {
-                await page.goto(`${DASHBOARD_ORIGIN}/engines`);
-                const rows = page.getByRole('row').filter({ hasText: `.${ENGINE_DOMAIN}` });
-                // Loaded: engine rows or the empty state, not the skeleton rows shown while the list loads.
-                await expect(rows.first().or(page.getByText('No engines yet', { exact: true }))).toBeVisible();
-                return rows;
-            },
-        });
+        await use(dashboardSteps(page, caCertificatePem));
+    },
+
+    dashboardFor: async ({ caCertificatePem }, use) => {
+        await use((page) => dashboardSteps(page, caCertificatePem));
     },
 
     mockEngines: async ({ compose }, use, testInfo) => {

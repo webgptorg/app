@@ -73,6 +73,13 @@ export interface TicketNotice {
     readonly recipients: readonly { readonly email: string; readonly locale: Locale }[];
 }
 
+export const REFUSED_REMOVAL_OUTCOMES = ['refused-disabled', 'refused-owner'] as const;
+export type RefusedRemovalOutcome = (typeof REFUSED_REMOVAL_OUTCOMES)[number];
+
+export interface RefusedRemovalRecord extends PersonRecord {
+    readonly outcome: RefusedRemovalOutcome;
+}
+
 export interface PendingRevocation {
     readonly id: string;
     readonly userId: UserId;
@@ -133,6 +140,11 @@ export interface TeamStore {
     listMembers(orgId: OrgId, teamId: TeamId): Promise<readonly TeamPersonRecord[]>;
     /** People taken out of the team whose removal the team's engine has not acked yet. */
     listRemoving(orgId: OrgId, teamId: TeamId): Promise<readonly PersonRecord[]>;
+    /**
+     * People taken out of the team whose latest removal the engine refused, so they can still use it. They leave the
+     * list once someone removes them on the engine (its ticket ack `removed`) or adds them back.
+     */
+    listRefused(orgId: OrgId, teamId: TeamId): Promise<readonly RefusedRemovalRecord[]>;
     /** `not-member`: the user is not in the organization; teams hold only its people. */
     addMember(
         orgId: OrgId,
