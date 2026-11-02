@@ -61,7 +61,15 @@ export function ChatPage() {
                     </div>
                 </div>
                 {ownChat ? null : <Banner tone="info">{m.chat_read_only()}</Banner>}
-                <ChatPanel chat={chat} agentName={agent.name} agentProfile={agent.profile} canWrite={canWrite} fill />
+                {/* Keyed: the stream, the draft and the scroll position belong to one chat, not to the route. */}
+                <ChatPanel
+                    key={chat.id}
+                    chat={chat}
+                    agentName={agent.name}
+                    agentProfile={agent.profile}
+                    canWrite={canWrite}
+                    fill
+                />
             </section>
         </WithRecentChats>
     );

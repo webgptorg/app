@@ -8,6 +8,7 @@ import { useEngineEvents } from '../../app/engine-events-context';
 import { m } from '../../paraglide/messages';
 import { useCurrentMember } from '../session/use-current-member';
 import { mergeNewestPage, upsertMessages } from './chat-cache';
+import { chatKeys } from './chat-keys';
 import { MESSAGE_PAGE_SIZE } from './chat-queries';
 import { chatSessionReducer, INITIAL_CHAT_SESSION, isReplyActive } from './chat-session';
 import type { ChatSessionState } from './chat-session';
@@ -60,13 +61,19 @@ export function useChatSession({ chatId, lastMessageAt, messages }: ChatSessionO
     useEffect(() => {
         const lifetime = new AbortController();
         unmounted.current = lifetime;
+        const followedIds = followed.current;
         return () => {
             lifetime.abort();
             stream.current?.abort();
             // An effect re-run (StrictMode, Activity) has to open the stream this just closed.
-            followed.current.clear();
+            followedIds.clear();
+            // The cache never goes stale by itself and holds no row for the reply being followed, which outlives this.
+            const { phase, reply } = stateRef.current;
+            if (isReplyActive(phase) || reply !== null) {
+                void queryClient.invalidateQueries({ queryKey: chatKeys.messages(chatId), refetchType: 'none' });
+            }
         };
-    }, []);
+    }, [queryClient, chatId]);
 
     const refreshNewest = useCallback(async () => {
         try {

@@ -345,6 +345,61 @@ function loseAnswer(engine: ChatEngine, failure: 'network' | 'server' = 'network
 const sentContents = (engine: ChatEngine) => engine.spies.sendMessage.mock.calls.map(([, body]) => body.content);
 const checkAgain = () => screen.findByRole('button', { name: 'Check again' }, SETTLE_WAIT);
 
+describe('chat panel moving between chats', { timeout: TIMEOUT_MS }, () => {
+    function twoChats() {
+        const own = seededConversation(CHAT_ID, 2, OWNER_ID);
+        const other = seededConversation('chat-other', 2, OWNER_ID);
+        const engine = createChatEngine({
+            chats: [own.chat, { ...other.chat, title: 'The other chat' }],
+            messages: [...own.messages, ...other.messages],
+        });
+        return { engine, control: controlReplyStreams(engine) };
+    }
+
+    it('leaves a streaming reply and a draft in their own chat', async () => {
+        const { engine, control } = twoChats();
+        const app = await renderChat(engine);
+        await sendAndOpen(app, engine, 'Explain it');
+        act(() => {
+            control.latest().push({ type: 'delta', seq: 1, text: 'Only for this chat' });
+        });
+        expect(await within(history()).findByText('Only for this chat')).toBeDefined();
+
+        await act(() => app.router.navigate({ to: chatPath('chat-other') }));
+        expect(await screen.findByRole('heading', { level: 2, name: 'The other chat' })).toBeDefined();
+        await waitFor(() => {
+            expect(within(history()).queryByText('Only for this chat')).toBeNull();
+        });
+        expect(control.latest().aborted()).toBe(true);
+        expect((composer() as HTMLTextAreaElement).readOnly).toBe(false);
+        expect(replyStop()).toBeNull();
+
+        await app.user.click(composer());
+        await app.user.keyboard('Half a thought');
+        await act(() => app.router.navigate({ to: chatPath() }));
+        await screen.findByRole('heading', { level: 2, name: 'Question 1' });
+        await waitFor(() => {
+            expect((composer() as HTMLTextAreaElement).value).toBe('');
+        });
+    });
+
+    it('shows a reply that finished while the member was in another chat', async () => {
+        const { engine, control } = twoChats();
+        const app = await renderChat(engine);
+        await sendAndOpen(app, engine, 'Explain it');
+        act(() => {
+            control.latest().push({ type: 'delta', seq: 1, text: 'Half' });
+        });
+        await within(history()).findByText('Half');
+        await act(() => app.router.navigate({ to: chatPath('chat-other') }));
+        expect(await screen.findByRole('heading', { level: 2, name: 'The other chat' })).toBeDefined();
+
+        engine.spies.streamReply.mockImplementation((...args) => engine.real.streamReply(...args));
+        await act(() => app.router.navigate({ to: chatPath() }));
+        expect(await within(history()).findByText(/received: Explain it/, {}, SETTLE_WAIT)).toBeDefined();
+    });
+});
+
 describe('chat panel unclear sends', { timeout: TIMEOUT_MS }, () => {
     it('finds a message the engine got after a dropped answer: no resend, one message, the reply followed', async () => {
         const { engine, control } = ownChatEngine();
