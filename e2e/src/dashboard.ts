@@ -115,8 +115,11 @@ function dashboardSteps(page: Page, caCertificatePem: string): DashboardSteps {
         async signUp(email) {
             await page.goto(`${DASHBOARD_ORIGIN}/signup`);
             await page.getByLabel('Email').fill(email);
-            await page.getByRole('button', { name: 'Send the link' }).click();
-            await expect(page.getByRole('heading', { name: 'Check your email' })).toBeVisible();
+            // Every test signs up from the Playwright container's one address, so a run can reach the per-IP limit.
+            await expect(async () => {
+                await page.getByRole('button', { name: 'Send the link' }).click();
+                await expect(page.getByRole('heading', { name: 'Check your email' })).toBeVisible({ timeout: 3_000 });
+            }).toPass({ timeout: 90_000, intervals: [10_000] });
             await page.goto(await outboxLink(email, 'signup-link'));
             await page.getByRole('button', { name: 'Create passkey' }).click();
             await expect(landing).toBeVisible();
