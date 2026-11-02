@@ -115,11 +115,17 @@ function dashboardSteps(page: Page, caCertificatePem: string): DashboardSteps {
         async signUp(email) {
             await page.goto(`${DASHBOARD_ORIGIN}/signup`);
             await page.getByLabel('Email').fill(email);
-            // Every test signs up from the Playwright container's one address, so a run can reach the per-IP limit.
-            await expect(async () => {
-                await page.getByRole('button', { name: 'Send the link' }).click();
-                await expect(page.getByRole('heading', { name: 'Check your email' })).toBeVisible({ timeout: 3_000 });
-            }).toPass({ timeout: 90_000, intervals: [10_000] });
+            // A run signs up more often than the per-IP limit allows; each sign-up comes from its own address.
+            await page.route('**/api/auth/signup/start', (route) =>
+                route.continue({
+                    headers: {
+                        ...route.request().headers(),
+                        'cf-connecting-ip': `198.51.100.${String(++signUps % 250)}`,
+                    },
+                }),
+            );
+            await page.getByRole('button', { name: 'Send the link' }).click();
+            await expect(page.getByRole('heading', { name: 'Check your email' })).toBeVisible();
             await page.goto(await outboxLink(email, 'signup-link'));
             await page.getByRole('button', { name: 'Create passkey' }).click();
             await expect(landing).toBeVisible();
@@ -163,6 +169,8 @@ function dashboardSteps(page: Page, caCertificatePem: string): DashboardSteps {
         },
     };
 }
+
+let signUps = process.pid;
 
 async function attachLogs(testInfo: TestInfo, containers: readonly OneOffContainer[]): Promise<void> {
     if (testInfo.status === testInfo.expectedStatus) return;
