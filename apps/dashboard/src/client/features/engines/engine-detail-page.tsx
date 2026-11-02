@@ -12,6 +12,7 @@ import { engineQuery, installGuideQuery, problemCode } from '../../api/queries';
 import { ButtonLink, Link } from '../../core/link';
 import { AbuseContactLink } from '../abuse/abuse-contact';
 import { useSession } from '../session/use-session';
+import { OpenTeamButton } from '../teams/open-team-button';
 import { ENGINE_STATUS_COMMAND, TROUBLESHOOTING_ANCHOR } from './engine-guide';
 import { cpuLoadLabel, modeLabel, updateStateLabel } from './engine-labels';
 import { canRename, RenameEngineButton } from './engine-name';
@@ -118,11 +119,14 @@ function StatusNotice(props: { readonly engine: EngineView }) {
     return engine.status === 'offline' ? <OfflineHint /> : null;
 }
 
-/** Name, status, when it was last heard from and what it runs, with the one thing to do: open it. */
+/**
+ * Name, status, when it was last heard from and what it runs, with the one thing to do: open it. Someone in the team
+ * opens with a ticket, as on the list: the plain link lands a person not yet approved at a sign-in they cannot pass.
+ */
 function Summary(props: { readonly engine: EngineView; readonly canRename: boolean }) {
     const { engine } = props;
     const now = useNowFor(engine);
-    const { givenName } = useEngineTeam(engine.engineId, engine.hostname);
+    const { team, givenName } = useEngineTeam(engine.engineId, engine.hostname);
     const name = givenName ?? engineLabel(engine);
     const update = engine.heartbeat?.update ?? 'none';
     return (
@@ -148,7 +152,11 @@ function Summary(props: { readonly engine: EngineView; readonly canRename: boole
             </p>
             {engine.status === 'suspended' ? null : (
                 <div>
-                    <EngineOpenLink name={name} hostname={engine.hostname} variant="primary" size="md" prominent />
+                    {team?.isMember === true ? (
+                        <OpenTeamButton team={team} variant="primary" />
+                    ) : (
+                        <EngineOpenLink name={name} hostname={engine.hostname} variant="primary" size="md" prominent />
+                    )}
                 </div>
             )}
         </div>

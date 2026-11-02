@@ -25,7 +25,7 @@ import { useSession } from '../session/use-session';
 import { StepUpFailedError, useStepUp } from '../step-up/step-up';
 import { InviteDialog } from './invite-dialog';
 import { accessState, personStateLabel, roleLabel, type PersonState } from './team-labels';
-import { OpenTeamButton } from './team-list-page';
+import { OpenTeamButton } from './open-team-button';
 import { TeamNameDialog } from './team-name-dialog';
 import { teamKeys, teamQuery } from './team-queries';
 

@@ -467,6 +467,36 @@ describe('engine name', () => {
         expect(screen.queryByRole('button', { name: 'Name it' })).toBeNull();
     });
 
+    it('opens through an access ticket for someone in the engine’s team, as the list does', async () => {
+        const ticket = `https://${ENGINE_ID}.${ENGINE_DOMAIN}/auth/join#ticket`;
+        const app = renderApp({
+            path: `/engines/${ENGINE_ID}`,
+            session: session({ permissions: ['engine.read', 'team.read'] }),
+            script: (api) => {
+                engine(engineView())(api);
+                api.on(apiRoutes.listTeams, ok({ teams: [teamWith('Northwind')] }));
+                api.on(apiRoutes.createAccessTicket, ok({ url: ticket, expiresAt: null }));
+            },
+        });
+        await app.user.click(await screen.findByRole('button', { name: 'Open Northwind' }));
+        await waitFor(() => {
+            expect(app.navigations).toEqual([ticket]);
+        });
+        expect(screen.queryByRole('link', { name: /^Open engine/ })).toBeNull();
+    });
+
+    it('keeps the plain link for someone outside the engine’s team', async () => {
+        renderApp({
+            path: `/engines/${ENGINE_ID}`,
+            session: session({ permissions: ['engine.read', 'team.read'] }),
+            script: (api) => {
+                engine(engineView())(api);
+                api.on(apiRoutes.listTeams, ok({ teams: [{ ...teamWith('Northwind'), isMember: false }] }));
+            },
+        });
+        expect(await screen.findByRole('link', { name: 'Open engine Northwind, in a new tab' })).toBeTruthy();
+    });
+
     it('keeps the engine label for a team only named after the engine’s hostname', async () => {
         const view = engineView();
         renderApp({
