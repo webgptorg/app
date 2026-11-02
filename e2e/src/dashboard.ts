@@ -118,7 +118,7 @@ export const test = base.extend<DashboardFixtures>({
             if (link === undefined) throw new Error('no emailed link');
             return link;
         };
-        const engineList = page.getByRole('heading', { name: 'Your engines' });
+        const landing = page.getByRole('heading', { name: 'Teams', level: 1 });
         await use({
             origin: DASHBOARD_ORIGIN,
             async signUp(email) {
@@ -128,7 +128,7 @@ export const test = base.extend<DashboardFixtures>({
                 await expect(page.getByRole('heading', { name: 'Check your email' })).toBeVisible();
                 await page.goto(await outboxLink(email, 'signup-link'));
                 await page.getByRole('button', { name: 'Create passkey' }).click();
-                await expect(engineList).toBeVisible();
+                await expect(landing).toBeVisible();
             },
             async subscribe() {
                 await page.getByRole('link', { name: 'Billing' }).click();
@@ -154,7 +154,7 @@ export const test = base.extend<DashboardFixtures>({
             },
             async signIn() {
                 await page.getByRole('button', { name: 'Sign in with a passkey' }).click();
-                await expect(engineList).toBeVisible();
+                await expect(landing).toBeVisible();
             },
             async emails(email) {
                 return outboxEmails(await fetchOutbox(email));
