@@ -16,13 +16,14 @@ export type RegisterCall =
     | { readonly kind: 'unavailable'; readonly status: number | null };
 
 export type HeartbeatCall =
-    | { readonly kind: 'accepted'; readonly status: number }
+    /** `revocations`: the signed member revocations a v2 reply carried, unverified; none for v1. */
+    | { readonly kind: 'accepted'; readonly status: number; readonly revocations: readonly string[] }
     | { readonly kind: 'refused'; readonly status: number; readonly problem: DashboardProblem | null }
     | { readonly kind: 'unavailable' };
 
 /**
- * The engine's only conversation with our platform: one registration, then one-way heartbeats. Both go straight to
- * the dashboard over HTTPS, never through a relay.
+ * The engine's only conversation with our platform: one registration, then heartbeats, whose v2 reply may carry member
+ * revocations. Both go straight to the dashboard over HTTPS, never through a relay.
  */
 export interface DashboardApi {
     register(request: RegisterEngineRequest, signal: AbortSignal): Promise<RegisterCall>;

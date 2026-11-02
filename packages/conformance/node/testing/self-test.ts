@@ -27,10 +27,11 @@ export async function run(
     ids?: readonly string[],
     expectations: Partial<typeof EXPECTATIONS> = {},
     targets?: EngineTargetFactory,
+    suites: readonly PlatformSuite[] = DASHBOARD_SUITES,
 ): Promise<readonly CheckResult[]> {
     const report = await runPlatformConformance({
         command,
-        suites: DASHBOARD_SUITES,
+        suites,
         ...(targets === undefined ? {} : { targets }),
         timeoutMs: 30_000,
         stopGraceMs: 2000,

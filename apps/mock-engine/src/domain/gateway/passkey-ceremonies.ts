@@ -67,7 +67,7 @@ export const CHALLENGE_LIFETIME_MS = 5 * 60_000;
 /** Pending challenges are bounded, so anonymous option requests cannot grow memory without end. */
 export const MAX_PENDING_CHALLENGES = 1_000;
 
-export type CeremonyPurpose = 'setup' | 'sign-in' | 'step-up';
+export type CeremonyPurpose = 'setup' | 'sign-in' | 'step-up' | 'join';
 
 export interface Challenges {
     /** A fresh challenge for `purpose`, tied to `binding` (e.g. the session a step-up is for). */

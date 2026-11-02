@@ -9,6 +9,7 @@ import {
 
 import type { PlatformCheck, PlatformCheckContext, PlatformSuite } from '../../harness/platform';
 import type { LinkedEngine } from '../support';
+import { JOIN_CHECKS } from './join';
 import { attemptWait, startLinkedEngine } from '../support';
 
 export const SUITE = 'member-access';
@@ -147,10 +148,10 @@ export const otherEngineIgnored: PlatformCheck = {
 };
 
 /**
- * Acting as the dashboard with teams (ADR 0018): member revocations in the heartbeat reply. Tickets, the join page and
- * approval need a browser on the engine's origin and come with the reference join page (M-09).
+ * Acting as the dashboard with teams (ADR 0018): member revocations in the heartbeat reply, and the join page's
+ * tickets, approval and revocation outcomes through the gateway's join endpoints.
  */
 export const MEMBER_ACCESS_SUITE: PlatformSuite = {
     id: SUITE,
-    checks: [unknownMemberAcked, forgedIgnored, otherEngineIgnored],
+    checks: [unknownMemberAcked, forgedIgnored, otherEngineIgnored, ...JOIN_CHECKS],
 };

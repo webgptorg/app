@@ -51,12 +51,13 @@ export function signOutEverywhere(state: InMemoryState, memberId: string): void 
 /** What the gateway's join page does once the ticket checked out: throws when the engine is at its pending cap. */
 export function requestAccess(ctx: EngineContext, input: NewAccessRequest): AccessRequest {
     dropExpired(ctx);
-    if (ctx.state.accessRequests.size >= MAX_PENDING_ACCESS_REQUESTS) throw new Error('too many pending requests');
     const dashboardUserId = DashboardUserId.parse(input.dashboardUserId);
-    // A second ticket for the same person replaces their earlier request instead of piling up.
-    for (const [id, record] of ctx.state.accessRequests) {
-        if (record.dashboardUserId === dashboardUserId) ctx.state.accessRequests.delete(id);
+    // A second ticket for the same person replaces their earlier request instead of piling up, even at the cap.
+    const replaced = [...ctx.state.accessRequests].filter(([, record]) => record.dashboardUserId === dashboardUserId);
+    if (replaced.length === 0 && ctx.state.accessRequests.size >= MAX_PENDING_ACCESS_REQUESTS) {
+        throw new Error('too many pending requests');
     }
+    for (const [id] of replaced) ctx.state.accessRequests.delete(id);
     const createdAt = ctx.now();
     const request = AccessRequest.parse({
         id: ctx.newId(AccessRequestId, 'access'),

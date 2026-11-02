@@ -1,4 +1,4 @@
-import type { EngineVersion, Timestamp } from '@ptbk/protocol';
+import type { EngineVersion, HeartbeatAck, Timestamp } from '@ptbk/protocol';
 
 import type { Clock } from '../clock';
 import type { DashboardApi, DashboardProblem } from '../dashboard/dashboard-api';
@@ -55,6 +55,19 @@ export interface HeartbeatLoopDeps {
     readonly startedAtMs: number;
     /** Every change of the status (each body as it goes out, each skew measured or cleared), for the security panel. */
     readonly onStatus?: (status: HeartbeatStatus) => void;
+    /** Teams (ADR 0018): while `enabled()`, beats are v2 with these facts, and replies' revocations go to `apply`. */
+    readonly teams?: HeartbeatTeams;
+}
+
+export interface HeartbeatTeams {
+    enabled(): boolean;
+    /** Brings approvals and removals up to date before the counts and acks are read. */
+    settle(): Promise<void>;
+    pendingRequests(): number;
+    acks(): readonly HeartbeatAck[];
+    /** The dashboard accepted a beat carrying these acks. */
+    acked(ids: readonly string[]): void;
+    applyRevocations(tokens: readonly string[]): Promise<void>;
 }
 
 export interface HeartbeatLoop {
@@ -98,6 +111,9 @@ export function createHeartbeatLoop(deps: HeartbeatLoopDeps): HeartbeatLoop {
 
     async function beat(signal: AbortSignal): Promise<void> {
         const seq = await deps.seqs.next();
+        const teams = deps.teams?.enabled() === true ? deps.teams : null;
+        await teams?.settle();
+        const acks = teams?.acks() ?? [];
         const signed = await buildSignedHeartbeat(
             {
                 engineId: deps.identity.engineId,
@@ -107,6 +123,7 @@ export function createHeartbeatLoop(deps: HeartbeatLoopDeps): HeartbeatLoop {
                 system: await deps.system.sample(),
                 counts: deps.engine.counts(),
                 update: deps.engine.updateState(),
+                ...(teams === null ? {} : { teams: { accessRequests: teams.pendingRequests(), acks } }),
             },
             { clock, signer, signal },
         );
@@ -118,6 +135,10 @@ export function createHeartbeatLoop(deps: HeartbeatLoopDeps): HeartbeatLoop {
         switch (result.kind) {
             case 'accepted':
                 setStatus({ clockSkew: null, lastAnswer: { kind: 'accepted', status: result.status } });
+                if (teams !== null) {
+                    teams.acked(acks.map(({ id }) => id));
+                    await teams.applyRevocations(result.revocations);
+                }
                 return;
             case 'refused':
                 logger.warn('heartbeat.refused', { status: result.status });

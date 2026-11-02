@@ -61,7 +61,7 @@ function errorCheck(error: RegistrationError): PlatformCheck {
                 ctx,
                 linked,
                 'register after a restart once the dashboard accepts',
-                () => linked.dashboard.heartbeats.find((beat) => beat.at >= restartedAt && beat.answer.status === 204),
+                () => linked.dashboard.heartbeats.find((beat) => beat.at >= restartedAt && beat.answer.status < 300),
                 ctx.expectations.startTimeoutMs + ctx.expectations.heartbeatIntervalMs,
             );
             if (!after.ok) findings.add(`${after.reason}; a refused registration must leave nothing stored`);

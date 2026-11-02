@@ -114,7 +114,7 @@ const RP_NAME = 'Promptbook engine';
 const ID_BYTES = 12;
 
 /** The name the owner sees in the passkey list; they tell devices apart by its kind and date. */
-function passkeyName(credential: PasskeyCredential): string {
+export function passkeyName(credential: PasskeyCredential): string {
     switch (credential.attachment) {
         case 'platform':
             return 'Built-in passkey';

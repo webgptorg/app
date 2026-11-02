@@ -89,6 +89,11 @@ describe('access requests', () => {
         expect(() =>
             controller.requestAccess({ ...petr, dashboardUserId: 'user-late', proposedRole: 'member' }),
         ).toThrow(/too many/);
+        // A person already waiting may still replace their own request at the cap.
+        controller.requestAccess({ ...petr, dashboardUserId: 'user-0', proposedRole: 'admin' });
+        expect(ok(await client.members.listAccessRequests({ limit: 100 }, signal())).items).toHaveLength(
+            MAX_PENDING_ACCESS_REQUESTS,
+        );
     });
 
     it('replaces an earlier request from the same person', async () => {

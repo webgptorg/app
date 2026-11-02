@@ -23,7 +23,7 @@ export const unknownFieldsIgnored: PlatformCheck = {
             ctx,
             linked,
             'send an accepted heartbeat after an answer with unknown fields',
-            () => linked.dashboard.heartbeats.find((beat) => beat.answer.status === 204),
+            () => linked.dashboard.heartbeats.find((beat) => beat.answer.status < 300),
             acceptedWindow(ctx),
         );
         return accepted.ok ? { kind: 'pass' } : { kind: 'fail', detail: accepted.reason };
@@ -86,7 +86,7 @@ export const invalidRefused: PlatformCheck = {
                 ctx,
                 linked,
                 'register again and send an accepted heartbeat',
-                () => linked.dashboard.heartbeats.find((beat) => beat.at >= restartedAt && beat.answer.status === 204),
+                () => linked.dashboard.heartbeats.find((beat) => beat.at >= restartedAt && beat.answer.status < 300),
                 acceptedWindow(ctx),
             );
             if (!again.ok) findings.add(`${answer.name}, then a valid answer after a restart: ${again.reason}`);

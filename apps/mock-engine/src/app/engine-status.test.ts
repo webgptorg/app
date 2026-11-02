@@ -61,6 +61,7 @@ describe('engineStatus', () => {
                 engineId: ENGINE_ID,
                 hostname: HOSTNAME,
                 relays: [Hostname.parse('relay-a.ptbk.test')],
+                memberKey: null,
             },
             links: [link('relay-a.ptbk.test', 'ready'), link('relay-b.ptbk.test', 'backoff')],
             certificateNotAfter: '2026-11-02T10:00:00Z',

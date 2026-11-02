@@ -1,0 +1,336 @@
+import type { EngineApiClient, Member } from '@ptbk/engine-api';
+import { MAX_PENDING_ACCESS_REQUESTS, PERMISSIONS, createEngineApiClient } from '@ptbk/engine-api';
+import type { AccessTicket, Signer } from '@ptbk/protocol';
+import {
+    EngineId as EngineIdSchema,
+    Timestamp,
+    createWebCryptoSigner,
+    generateEd25519KeyPair,
+    signAccessTicket,
+    signMemberRevocation,
+} from '@ptbk/protocol';
+import { describe, expect, it } from 'vitest';
+
+import { createFakeClock } from '../../testing/fake-clock';
+import { createFakeCeremonies } from '../../testing/fake-passkey-ceremonies';
+import { createMemoryLogger } from '../../testing/memory-logger';
+import { createSeededRandom } from '../../testing/seeded-random';
+import { createTestRuntime } from '../../testing/test-runtime';
+import type { RelyingParty } from './passkey-ceremonies';
+import { createChallenges } from './passkey-ceremonies';
+import { createInMemoryPasskeyStore } from './passkey-gateway';
+import { createJoinGateway } from './join-gateway';
+import { createSessionStore } from './sessions';
+
+const ENGINE_ID = EngineIdSchema.parse('abcdefghijklmnopqrstuvwxyz');
+const OTHER_ENGINE = EngineIdSchema.parse('bbbbbbbbbbbbbbbbbbbbbbbbbb');
+const HOSTNAME = `${ENGINE_ID}.engines.ptbk.test`;
+const RP: RelyingParty = { id: HOSTNAME, origin: `https://${HOSTNAME}` };
+const CLIENT = { ip: '203.0.113.9', userAgent: 'test browser' };
+const NOW = Date.parse('2026-10-30T10:00:00Z');
+const SIGNAL = new AbortController().signal;
+
+const iso = (ms: number) => Timestamp.parse(new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z'));
+
+async function setup(options: { readonly pinned?: boolean } = {}) {
+    const clock = createFakeClock(NOW);
+    const runtime = await createTestRuntime({
+        seed: 7,
+        scenario: 'small-team',
+        epoch: new Date('2026-10-01T00:00:00Z'),
+        identity: { engineId: ENGINE_ID, hostname: HOSTNAME, mode: 'tunnel', version: '0.1.0' },
+        clock,
+        passkeys: 'none',
+    });
+    const random = createSeededRandom(13);
+    const memberSigner = await createWebCryptoSigner(await generateEd25519KeyPair({ extractable: false }));
+    const ceremonies = createFakeCeremonies();
+    const passkeys = createInMemoryPasskeyStore();
+    const sessions = createSessionStore({ engine: () => runtime.controller(), clock, random });
+    const logger = createMemoryLogger();
+    const join = createJoinGateway({
+        engine: () => runtime.controller(),
+        engineId: ENGINE_ID,
+        memberKey: () => (options.pinned === false ? null : memberSigner.publicKey()),
+        passkeys,
+        sessions,
+        ceremonies,
+        challenges: createChallenges({ random, clock }),
+        random,
+        clock,
+        engineNowMs: () => runtime.clock.nowMs(),
+        logger,
+    });
+    let ids = 0;
+    const nextId = () => `ticket-${String(++ids).padStart(12, '0')}`;
+
+    function ticket(overrides: Partial<AccessTicket> = {}, signer: Signer = memberSigner): Promise<string> {
+        const issuedAt = clock.nowMs();
+        return signAccessTicket(signer, {
+            v: 1,
+            engineId: ENGINE_ID,
+            ticketId: nextId(),
+            dashboardUserId: `user-${String(ids)}`,
+            displayName: 'Dana Novak',
+            email: 'dana@example.com',
+            proposedRole: 'member',
+            issuedAt: iso(issuedAt),
+            expiresAt: iso(issuedAt + 15 * 60_000),
+            ...overrides,
+        });
+    }
+
+    /** The browser's whole join: options with the ticket, a new credential, then verify with the ticket again. */
+    async function joinWith(token: string, credentialId = `credential-${String(ids)}`) {
+        const options = await join.options({ ticket: token, rp: RP });
+        if (options.kind !== 'options') return options;
+        return join.complete({
+            ticket: token,
+            response: ceremonies.register(options.options, credentialId, RP),
+            rp: RP,
+        });
+    }
+
+    const owner = (): Member => {
+        const found = runtime
+            .controller()
+            .inspect()
+            .members.find((member) => member.role === 'owner' && member.status === 'active');
+        if (found === undefined) throw new Error('the seed has no owner');
+        return found;
+    };
+
+    function apiAs(memberId: string): EngineApiClient {
+        return createEngineApiClient(
+            runtime.core().transport({
+                memberId: memberId as Member['id'],
+                sessionId: 'session-test' as never,
+                client: CLIENT,
+                permissions: new Set(PERMISSIONS),
+                stepUpFresh: true,
+            }),
+        );
+    }
+
+    async function approve(code: string, role: Member['role'] = 'member') {
+        const [request] = runtime.controller().inspect().accessRequests;
+        if (request === undefined) throw new Error('no pending request');
+        return apiAs(owner().id).members.approveAccessRequest(request.id, { code, role }, SIGNAL);
+    }
+
+    async function revocation(dashboardUserId: string, revocationId: string, signer: Signer = memberSigner) {
+        return signMemberRevocation(signer, {
+            v: 1,
+            engineId: ENGINE_ID,
+            revocationId,
+            dashboardUserId,
+            issuedAt: iso(clock.nowMs()),
+        });
+    }
+
+    return { clock, runtime, join, ticket, joinWith, approve, apiAs, owner, revocation, passkeys, sessions };
+}
+
+const forger = async () => createWebCryptoSigner(await generateEd25519KeyPair({ extractable: false }));
+
+describe('join gateway: tickets', () => {
+    it('turns a valid ticket and a new passkey into a pending request with a 6-digit code', async () => {
+        const { join, ticket, joinWith, runtime } = await setup();
+        const outcome = await joinWith(await ticket());
+        expect(outcome.kind === 'waiting' && /^\d{6}$/.test(outcome.code)).toBe(true);
+        const [request] = runtime.controller().inspect().accessRequests;
+        expect(request).toMatchObject({ displayName: 'Dana Novak', email: 'dana@example.com', proposedRole: 'member' });
+        expect(join.pendingRequests()).toBe(1);
+    });
+
+    it('refuses every ticket while no member key is pinned', async () => {
+        const { join, ticket } = await setup({ pinned: false });
+        expect(join.enabled()).toBe(false);
+        expect(await join.options({ ticket: await ticket(), rp: RP })).toEqual({ kind: 'invalid' });
+    });
+
+    it.each([
+        ['signed by another key', async (make: Awaited<ReturnType<typeof setup>>) => make.ticket({}, await forger())],
+        ['for another engine', (make: Awaited<ReturnType<typeof setup>>) => make.ticket({ engineId: OTHER_ENGINE })],
+        ['malformed', () => Promise.resolve('not.a-ticket')],
+    ])('refuses a ticket %s as invalid', async (_label, make) => {
+        const context = await setup();
+        expect(await context.join.options({ ticket: await make(context), rp: RP })).toEqual({ kind: 'invalid' });
+    });
+
+    it('refuses an expired ticket and one issued in the future', async () => {
+        const { join, ticket, clock } = await setup();
+        const expired = await ticket();
+        clock.advance(15 * 60_000);
+        expect(await join.options({ ticket: expired, rp: RP })).toEqual({ kind: 'expired' });
+        const later = clock.nowMs() + 10 * 60_000;
+        const early = await ticket({ issuedAt: iso(later), expiresAt: iso(later + 60_000) });
+        expect(await join.options({ ticket: early, rp: RP })).toEqual({ kind: 'expired' });
+    });
+
+    it('spends a ticket once: a replay is refused as used', async () => {
+        const { join, ticket, joinWith } = await setup();
+        const token = await ticket();
+        expect((await joinWith(token)).kind).toBe('waiting');
+        expect(await join.options({ ticket: token, rp: RP })).toEqual({ kind: 'used' });
+    });
+
+    it('refuses a passkey that does not verify and keeps the ticket usable', async () => {
+        const { join, ticket } = await setup();
+        const token = await ticket();
+        const options = await join.options({ ticket: token, rp: RP });
+        expect(options.kind).toBe('options');
+        expect(await join.complete({ ticket: token, response: { fake: 'nonsense' }, rp: RP })).toEqual({
+            kind: 'not-verified',
+        });
+        expect((await join.options({ ticket: token, rp: RP })).kind).toBe('options');
+    });
+
+    it(`stops at ${String(MAX_PENDING_ACCESS_REQUESTS)} pending requests, but lets a person replace their own`, async () => {
+        const { join, ticket, joinWith, runtime } = await setup();
+        for (let index = 0; index < MAX_PENDING_ACCESS_REQUESTS; index++) {
+            expect((await joinWith(await ticket())).kind).toBe('waiting');
+        }
+        expect(await join.options({ ticket: await ticket(), rp: RP })).toEqual({ kind: 'full' });
+        const again = await joinWith(await ticket({ dashboardUserId: 'user-1' }));
+        expect(again.kind).toBe('waiting');
+        expect(runtime.controller().inspect().accessRequests).toHaveLength(MAX_PENDING_ACCESS_REQUESTS);
+    });
+});
+
+describe('join gateway: approval', () => {
+    it('signs the person in once approved with the code, and acks the ticket approved', async () => {
+        const { join, ticket, joinWith, approve, passkeys, runtime } = await setup();
+        const token = await ticket({ dashboardUserId: 'user-dana' });
+        const waiting = await joinWith(token, 'credential-dana');
+        if (waiting.kind !== 'waiting') throw new Error(waiting.kind);
+        expect(await join.status({ request: waiting.request, client: CLIENT })).toEqual({ kind: 'waiting' });
+
+        const wrong = waiting.code === '000000' ? '000001' : '000000';
+        expect((await approve(wrong)).kind).toBe('problem');
+        expect((await approve(waiting.code)).kind).toBe('ok');
+
+        const status = await join.status({ request: waiting.request, client: CLIENT });
+        expect(status.kind).toBe('approved');
+        const member = runtime
+            .controller()
+            .inspect()
+            .members.find(({ dashboardUserId }) => dashboardUserId === 'user-dana');
+        expect(member?.status).toBe('active');
+        expect((await passkeys.list()).map(({ credentialId, memberId }) => [credentialId, memberId])).toEqual([
+            ['credential-dana', member?.id],
+        ]);
+        expect(join.acks()).toEqual([{ id: 'ticket-000000000001', outcome: 'approved' }]);
+        // The token signs in once; a second poll knows nothing.
+        expect(await join.status({ request: waiting.request, client: CLIENT })).toEqual({ kind: 'unknown' });
+        expect(await join.options({ ticket: await ticket({ dashboardUserId: 'user-dana' }), rp: RP })).toEqual({
+            kind: 'already-member',
+        });
+    });
+
+    it('reports a declined request to the page and in an ack', async () => {
+        const { join, ticket, joinWith, runtime, apiAs, owner } = await setup();
+        const waiting = await joinWith(await ticket());
+        if (waiting.kind !== 'waiting') throw new Error(waiting.kind);
+        const [request] = runtime.controller().inspect().accessRequests;
+        await apiAs(owner().id).members.declineAccessRequest(request?.id ?? ('' as never), SIGNAL);
+        expect(await join.status({ request: waiting.request, client: CLIENT })).toEqual({ kind: 'declined' });
+        expect(join.acks()).toEqual([{ id: 'ticket-000000000001', outcome: 'declined' }]);
+        join.acked(['ticket-000000000001']);
+        expect(join.acks()).toEqual([]);
+    });
+
+    it('acks a ticket removed when an engine admin removes the member it brought', async () => {
+        const { join, ticket, joinWith, approve, apiAs, owner, runtime } = await setup();
+        const waiting = await joinWith(await ticket({ dashboardUserId: 'user-eve' }));
+        if (waiting.kind !== 'waiting') throw new Error(waiting.kind);
+        await approve(waiting.code);
+        await join.settle();
+        join.acked(join.acks().map(({ id }) => id));
+        const member = runtime
+            .controller()
+            .inspect()
+            .members.find(({ dashboardUserId }) => dashboardUserId === 'user-eve');
+        await apiAs(owner().id).members.remove(member?.id ?? ('' as never), SIGNAL);
+        await join.settle();
+        expect(join.acks()).toEqual([{ id: 'ticket-000000000001', outcome: 'removed' }]);
+    });
+});
+
+describe('join gateway: revocations', () => {
+    async function joined(context: Awaited<ReturnType<typeof setup>>, dashboardUserId: string, role?: Member['role']) {
+        const waiting = await context.joinWith(await context.ticket({ dashboardUserId }));
+        if (waiting.kind !== 'waiting') throw new Error(waiting.kind);
+        await context.approve(waiting.code, role);
+        await context.join.settle();
+        context.join.acked(context.join.acks().map(({ id }) => id));
+        const member = context.runtime
+            .controller()
+            .inspect()
+            .members.find((candidate) => candidate.dashboardUserId === dashboardUserId);
+        if (member === undefined) throw new Error('not approved');
+        return member;
+    }
+
+    it('disables the member, writes audit and acks revoked; a resent one is acked the same', async () => {
+        const context = await setup();
+        const member = await joined(context, 'user-fay');
+        const token = await context.revocation('user-fay', 'revocation-0000000001');
+        await context.join.applyRevocations([token]);
+        const after = context.runtime.controller().inspect();
+        expect(after.members.find(({ id }) => id === member.id)?.status).toBe('disabled');
+        expect(after.passkeys.some(({ memberId }) => memberId === member.id)).toBe(false);
+        expect(context.join.acks()).toEqual([{ id: 'revocation-0000000001', outcome: 'revoked' }]);
+        context.join.acked(['revocation-0000000001']);
+        await context.join.applyRevocations([token]);
+        expect(context.join.acks()).toEqual([{ id: 'revocation-0000000001', outcome: 'revoked' }]);
+        // Removed by the organization: the ticket is not reported as removed on the engine as well.
+        await context.join.settle();
+        expect(context.join.acks()).toHaveLength(1);
+    });
+
+    it('ignores a forged revocation and one for another engine, acking neither', async () => {
+        const context = await setup();
+        await joined(context, 'user-gus');
+        const forged = await context.revocation('user-gus', 'revocation-0000000002', await forger());
+        const misdirected = await signMemberRevocation(await forger(), {
+            v: 1,
+            engineId: OTHER_ENGINE,
+            revocationId: 'revocation-0000000003',
+            dashboardUserId: 'user-gus',
+            issuedAt: iso(NOW),
+        });
+        await context.join.applyRevocations([forged, misdirected, 'garbage']);
+        expect(context.join.acks()).toEqual([]);
+        expect(
+            context.runtime
+                .controller()
+                .inspect()
+                .members.find(({ dashboardUserId }) => dashboardUserId === 'user-gus')?.status,
+        ).toBe('active');
+    });
+
+    it('refuses to revoke the last owner and acks not-found for nobody', async () => {
+        const context = await setup();
+        const original = context.owner();
+        const member = await joined(context, 'user-hal', 'owner');
+        const demoted = await context.apiAs(member.id).members.update(original.id, { role: 'admin' }, SIGNAL);
+        expect(demoted.kind).toBe('ok');
+        await context.join.applyRevocations([
+            await context.revocation('user-hal', 'revocation-0000000004'),
+            await context.revocation('user-nobody', 'revocation-0000000005'),
+        ]);
+        expect(context.join.acks()).toEqual([
+            { id: 'revocation-0000000004', outcome: 'refused-owner' },
+            { id: 'revocation-0000000005', outcome: 'not-found' },
+        ]);
+    });
+
+    it('refuses when the owner switched dashboard removals off', async () => {
+        const context = await setup();
+        await joined(context, 'user-ida');
+        await context.apiAs(context.owner().id).settings.setDashboardRemovals({ enabled: false }, SIGNAL);
+        await context.join.applyRevocations([await context.revocation('user-ida', 'revocation-0000000006')]);
+        expect(context.join.acks()).toEqual([{ id: 'revocation-0000000006', outcome: 'refused-disabled' }]);
+    });
+});

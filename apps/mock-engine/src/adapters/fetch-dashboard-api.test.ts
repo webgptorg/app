@@ -72,6 +72,7 @@ describe('createFetchDashboardApi: register', () => {
                 engineId: engine.engineId,
                 hostname: defaultHostname(engine.engineId, ENGINE_DOMAIN),
                 relays: RELAYS,
+                memberKey: null,
             },
         });
         expect(dashboard.registerRequests).toEqual([request]);
@@ -103,7 +104,7 @@ describe('createFetchDashboardApi: register', () => {
             await signedRequest(engine, LINK_CODE),
             SIGNAL,
         );
-        expect(call).toEqual({ kind: 'ok', response });
+        expect(call).toEqual({ kind: 'ok', response: { ...response, memberKey: null } });
         expect(call.kind === 'ok' && 'addedLater' in call.response).toBe(false);
     });
 
@@ -203,7 +204,11 @@ describe('createFetchDashboardApi: heartbeat', () => {
             seen.push({ request, body: new Uint8Array(await request.arrayBuffer()) });
             return new Response(null, { status: 204 });
         });
-        expect(await api.heartbeat(ENGINE_ID, BODY, SIGNATURE, SIGNAL)).toEqual({ kind: 'accepted', status: 204 });
+        expect(await api.heartbeat(ENGINE_ID, BODY, SIGNATURE, SIGNAL)).toEqual({
+            kind: 'accepted',
+            status: 204,
+            revocations: [],
+        });
         const [sent] = seen;
         expect(sent?.request.method).toBe('POST');
         expect(sent?.request.url).toBe(`${BASE_URL}${heartbeatPath(ENGINE_ID)}`);
@@ -212,9 +217,22 @@ describe('createFetchDashboardApi: heartbeat', () => {
         expect(sent?.body).toEqual(BODY);
     });
 
-    it('accepts any 2xx and discards its body', async () => {
+    it('accepts any 2xx, reading no revocations from a body that is not a heartbeat reply', async () => {
         const api = apiWith(answering(() => json({ ignored: true }, 200)));
-        expect(await api.heartbeat(ENGINE_ID, BODY, SIGNATURE, SIGNAL)).toEqual({ kind: 'accepted', status: 200 });
+        expect(await api.heartbeat(ENGINE_ID, BODY, SIGNATURE, SIGNAL)).toEqual({
+            kind: 'accepted',
+            status: 200,
+            revocations: [],
+        });
+    });
+
+    it('reads the revocations of a v2 reply, unknown fields stripped', async () => {
+        const api = apiWith(answering(() => json({ v: 1, revocations: ['a.b'], later: true }, 200)));
+        expect(await api.heartbeat(ENGINE_ID, BODY, SIGNATURE, SIGNAL)).toEqual({
+            kind: 'accepted',
+            status: 200,
+            revocations: ['a.b'],
+        });
     });
 
     it('reads serverTime from a stale-timestamp problem', async () => {

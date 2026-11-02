@@ -335,6 +335,8 @@ export interface InMemoryEngineSnapshot {
     readonly passkeys: readonly Passkey[];
     /** As stored: `current` is always `false` here, since no request is making them current. */
     readonly sessions: readonly Session[];
+    /** Pending requests, expired ones included until a request drops them; never their codes. */
+    readonly accessRequests: readonly AccessRequest[];
 }
 
 /**
@@ -778,6 +780,7 @@ export function createInMemoryEngineCore(options: InMemoryEngineCoreOptions = {}
             members: [...state.members.values()],
             passkeys: [...state.passkeys.values()],
             sessions: [...state.sessions.values()].map((session) => ({ ...session, current: false })),
+            accessRequests: [...state.accessRequests.values()].map((record) => record.request),
         }),
     };
 

@@ -16,6 +16,23 @@ const EXPECTED: Readonly<Record<GatewayPage, { readonly page: string; readonly s
         states: [...COMMON_STATES, 'checking', 'ready', 'not-recognised', 'no-owner', 'done'],
     },
     'step-up.html': { page: 'step-up', states: [...COMMON_STATES, 'ready', 'not-recognised', 'signed-out', 'done'] },
+    'join.html': {
+        page: 'join',
+        states: [
+            ...COMMON_STATES,
+            'valid',
+            'waiting',
+            'done',
+            'declined',
+            'missing',
+            'invalid',
+            'expired',
+            'used',
+            'already-member',
+            'full',
+            'not-verified',
+        ],
+    },
 };
 const ACTIONS = new Set(['create', 'confirm', 'retry']);
 
