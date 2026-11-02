@@ -429,6 +429,7 @@
   "not_found_body": "Tato stránka neexistuje, nebo byla přesunuta.",
   "not_found_title": "Stránka nenalezena",
   "org_personal": "Osobní",
+  "org_shared": "Sdíleno s vámi",
   "org_switch_failed": "Organizaci se nepodařilo přepnout.",
   "org_switcher": "Organizace",
   "org_switcher_for": "Organizace: {name}",

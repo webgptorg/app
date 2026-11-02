@@ -427,6 +427,7 @@
   "not_found_body": "This page does not exist, or it moved.",
   "not_found_title": "Page not found",
   "org_personal": "Personal",
+  "org_shared": "Shared with you",
   "org_switch_failed": "Could not switch the organization.",
   "org_switcher": "Organization",
   "org_switcher_for": "Organization: {name}",
