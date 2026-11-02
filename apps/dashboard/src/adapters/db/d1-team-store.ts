@@ -551,11 +551,18 @@ export function createD1TeamStore(db: Database): TeamStore {
                 .orderBy(desc(linkCodes.usedAt))
                 .get();
             const named = code?.teamId == null ? null : await find(orgId, teamIdSchema.parse(code.teamId));
+            const creator = code === undefined ? null : userIdSchema.parse(code.createdBy);
             if (named !== null && named.engineId === null) {
-                await db.update(engines).set({ teamId: named.id }).where(eq(engines.engineId, engineId));
+                await db.batch([
+                    db.update(engines).set({ teamId: named.id }).where(eq(engines.engineId, engineId)),
+                    // Whoever linked it holds the setup secret and becomes its owner; no ticket could add them.
+                    db
+                        .update(teamMembers)
+                        .set({ access: 'approved' })
+                        .where(and(eq(teamMembers.teamId, named.id), eq(teamMembers.userId, creator ?? ''))),
+                ]);
                 return;
             }
-            const creator = code === undefined ? null : userIdSchema.parse(code.createdBy);
             const stillMember = creator !== null && (await isOrgMember(orgId, creator)) !== null;
             await db.batch([
                 db.insert(teams).values({
@@ -568,9 +575,12 @@ export function createD1TeamStore(db: Database): TeamStore {
                 db.update(engines).set({ teamId: fallback.teamId }).where(eq(engines.engineId, engineId)),
                 ...(stillMember
                     ? [
-                          db
-                              .insert(teamMembers)
-                              .values({ teamId: fallback.teamId, userId: creator, createdAt: fallback.at }),
+                          db.insert(teamMembers).values({
+                              teamId: fallback.teamId,
+                              userId: creator,
+                              createdAt: fallback.at,
+                              access: 'approved',
+                          }),
                       ]
                     : []),
             ]);

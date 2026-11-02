@@ -194,6 +194,8 @@ export function bindTeamRoutes(
                         expiresAt: outcome.expiresAt,
                     },
                 };
+            case 'direct':
+                return { kind: 'ok', body: { url: `https://${outcome.hostname}/`, expiresAt: null } };
             case 'not-found':
                 return NOT_FOUND;
             case 'unavailable':

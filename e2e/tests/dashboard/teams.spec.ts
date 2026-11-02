@@ -64,7 +64,7 @@ async function linkTeamEngine(
     await dashboard.signUp(uniqueEmail('teams-admin'));
     await dashboard.subscribe();
 
-    await page.goto(`${DASHBOARD_ORIGIN}/teams`);
+    await page.goto(`${DASHBOARD_ORIGIN}/engines`);
     await page.getByRole('button', { name: 'New engine' }).click();
     await page.getByLabel('Engine name').fill(TEAM);
     await page.getByRole('button', { name: 'Create and link an engine' }).click();
@@ -116,7 +116,7 @@ async function inviteAndApprove(
     const { owner } = engine;
     const email = uniqueEmail('teams-person');
     await test.step('an org admin invites a person to the team', async () => {
-        await page.goto(`${DASHBOARD_ORIGIN}/teams`);
+        await page.goto(`${DASHBOARD_ORIGIN}/engines`);
         await page.getByRole('link', { name: TEAM, exact: true }).click();
         await expect(page.getByRole('heading', { name: TEAM, level: 1 })).toBeVisible();
         await page.getByRole('button', { name: 'Invite people' }).click();
@@ -173,7 +173,7 @@ async function inviteAndApprove(
 }
 
 async function removeFromTeam(page: Page, email: string): Promise<void> {
-    await page.goto(`${DASHBOARD_ORIGIN}/teams`);
+    await page.goto(`${DASHBOARD_ORIGIN}/engines`);
     await page.getByRole('link', { name: TEAM, exact: true }).click();
     await page.getByRole('button', { name: `Actions for ${email}` }).click();
     await page.getByRole('menuitem', { name: 'Remove from engine' }).click();

@@ -955,7 +955,10 @@ export const apiRoutes = {
         permission: 'team.read',
         rateLimit: null,
         input: { ...NO_INPUT, params: teamParams },
-        output: z.strictObject({ url: z.url({ protocol: /^https$/ }).max(4096), expiresAt: timestampSchema }),
+        output: z.strictObject({
+            url: z.url({ protocol: /^https$/ }).max(4096),
+            expiresAt: timestampSchema.nullable(),
+        }),
         errorCodes: ['unavailable'],
     }),
     /** Someone already in the organization; `not-member` otherwise (invite them instead). */

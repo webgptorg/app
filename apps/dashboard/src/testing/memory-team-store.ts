@@ -439,6 +439,10 @@ export function createMemoryTeamStore(deps: {
             const named = code === undefined ? undefined : state.linkCodeTeams.get(code.id);
             if (named !== undefined && liveTeam(engine.orgId, named) !== null && engineOf(named) === null) {
                 state.engineTeams.set(engineId, named);
+                const creator = state.members.find(
+                    (member) => member.teamId === named && member.userId === code?.createdByUserId,
+                );
+                if (creator !== undefined) creator.access = 'approved';
                 return Promise.resolve();
             }
             state.teams.set(fallback.teamId, {
@@ -454,7 +458,7 @@ export function createMemoryTeamStore(deps: {
                     teamId: fallback.teamId,
                     userId: code.createdByUserId,
                     createdAt: fallback.at,
-                    access: 'none',
+                    access: 'approved',
                 });
             }
             return Promise.resolve();

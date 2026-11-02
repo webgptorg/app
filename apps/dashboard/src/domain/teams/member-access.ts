@@ -35,6 +35,8 @@ export interface MemberAccessDeps {
 
 export type TicketOutcomeView =
     | { readonly kind: 'issued'; readonly ticket: string; readonly hostname: Hostname; readonly expiresAt: number }
+    /** The actor already has access: open the engine itself, no ticket. */
+    | { readonly kind: 'direct'; readonly hostname: Hostname }
     /** Not a team of the organization the actor is in, or one without an active engine. */
     | { readonly kind: 'not-found' }
     /** No member key is configured. */
@@ -59,6 +61,12 @@ export async function issueAccessTicket(
             : await deps.engines.findInOrg(actor.orgId, engineId);
     if (engine === null || engine.status !== 'active') {
         return { kind: 'not-found' };
+    }
+    // The engine already has them, or they own it through its setup secret and it has no dashboard ID to match:
+    // a ticket would only make them ask themselves for access. Going there grants nothing, the engine still signs in.
+    const members = await deps.teams.listMembers(actor.orgId, teamId);
+    if (members.some((member) => member.userId === actor.userId && member.access === 'approved')) {
+        return { kind: 'direct', hostname: engine.hostname };
     }
     const key = await deps.memberKey();
     if (key === null) {
