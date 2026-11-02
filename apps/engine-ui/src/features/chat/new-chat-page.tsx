@@ -1,3 +1,4 @@
+import { Button } from '@ptbk/ui';
 import { useSuspenseQuery } from '@tanstack/react-query';
 
 import { useEngineApi } from '../../app/engine-api-context';
@@ -34,14 +35,23 @@ export function NewChatPage() {
                         <p className="text-lg break-words whitespace-pre-line">{greeting}</p>
                     </div>
                 </div>
-                <Composer
-                    label={m.chat_new_label()}
-                    labelHidden
-                    placeholder={m.chat_composer_placeholder({ name: agent.name })}
-                    busy={false}
-                    onSend={startChat}
-                    className="mx-auto w-full max-w-2xl shrink-0"
-                />
+                <div className="mx-auto flex w-full max-w-2xl shrink-0 flex-col gap-2">
+                    {startChat.unconfirmed ? (
+                        <p role="status" className="flex flex-wrap items-center gap-2 text-sm text-text-muted">
+                            {m.chat_send_unconfirmed()}
+                            <Button size="sm" onClick={startChat.checkAgain}>
+                                {m.chat_send_check_again()}
+                            </Button>
+                        </p>
+                    ) : null}
+                    <Composer
+                        label={m.chat_new_label()}
+                        labelHidden
+                        placeholder={m.chat_composer_placeholder({ name: agent.name })}
+                        busy={startChat.unconfirmed}
+                        onSend={startChat.start}
+                    />
+                </div>
             </div>
         </WithRecentChats>
     );

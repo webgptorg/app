@@ -14,6 +14,8 @@ export interface ComposerProps {
     readonly placeholder: string;
     /** A reply is under way: the text cannot change or be sent. */
     readonly busy: boolean;
+    /** The send is waiting for the member to check on it, so Send stays off without claiming to be working. */
+    readonly sendPaused?: boolean;
     /** Whether Stop replaces Send: a reply is streaming (`ready`) or its cancel is on the way (`stopping`). */
     readonly stop?: 'ready' | 'stopping';
     /** Resolves `false` when the message did not go out; the text then comes back into the box. */
@@ -38,6 +40,7 @@ export function Composer({
     labelHidden = false,
     placeholder,
     busy,
+    sendPaused = false,
     stop,
     onSend,
     onStop,
@@ -127,7 +130,7 @@ export function Composer({
                                 icon={<ArrowUp className="size-4" strokeWidth={2.5} />}
                                 variant="primary"
                                 disabled={!canSend}
-                                loading={sending}
+                                loading={sending && !sendPaused}
                                 className="rounded-full!"
                             />
                         )}

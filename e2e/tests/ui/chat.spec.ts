@@ -35,7 +35,7 @@ async function startChat(page: Page, appUrl: (path: string) => string, agent: Ag
     const starter = page.getByRole('textbox', { name: 'New chat' });
     await starter.fill(text);
     await starter.press('Enter');
-    await expect(page.getByRole('region', { name: 'Messages' }).getByText(text)).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Messages' }).getByText(text, { exact: true })).toBeVisible();
 }
 
 test('streams a reply, stops another mid-stream and renders markdown once complete', async ({
