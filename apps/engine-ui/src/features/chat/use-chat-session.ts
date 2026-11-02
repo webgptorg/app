@@ -63,6 +63,8 @@ export function useChatSession({ chatId, lastMessageAt, messages }: ChatSessionO
         return () => {
             lifetime.abort();
             stream.current?.abort();
+            // An effect re-run (StrictMode, Activity) has to open the stream this just closed.
+            followed.current.clear();
         };
     }, []);
 

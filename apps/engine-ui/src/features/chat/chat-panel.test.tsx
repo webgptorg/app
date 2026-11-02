@@ -1,6 +1,6 @@
 import { createProblem } from '@ptbk/engine-api';
 import type { SendMessageResult } from '@ptbk/engine-api';
-import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { act, configure, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { z } from 'zod';
 
@@ -478,6 +478,28 @@ describe('chat panel unclear sends', { timeout: TIMEOUT_MS }, () => {
 });
 
 describe('chat panel access', { timeout: TIMEOUT_MS }, () => {
+    it('follows a reply still generating on load when effects run twice, as in StrictMode', async () => {
+        const own = seededConversation(CHAT_ID, 3, OWNER_ID);
+        const streaming = own.messages.map((message, index) =>
+            index === 2 ? { ...message, role: 'agent' as const, content: '', status: 'streaming' as const } : message,
+        );
+        const engine = createChatEngine({ chats: [own.chat], messages: streaming });
+        const control = controlReplyStreams(engine);
+        configure({ reactStrictMode: true });
+        try {
+            await renderChat(engine);
+            await waitFor(() => {
+                expect(control.streams.at(-1)?.stream.aborted()).toBe(false);
+            });
+            act(() => {
+                control.latest().push({ type: 'delta', seq: 1, text: 'Still here' });
+            });
+            expect(await screen.findByText('Still here')).toBeDefined();
+        } finally {
+            configure({ reactStrictMode: false });
+        }
+    });
+
     it('shows other members’ and visitors’ chats read-only, and follows a reply still generating there', async () => {
         const jana = seededConversation('chat-jana', 2, SECOND_MEMBER_ID);
         const visitor = seededConversation('chat-visitor', 3, null);
