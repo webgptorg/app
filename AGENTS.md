@@ -31,6 +31,18 @@ The engine is open source in `webgptorg/promptbook`, built by the engine team. N
 - `bun run --filter @ptbk/<module> <script>`: a script in one module.
 - `bun add <pkg> --cwd apps/<module>`: a runtime dependency for one module (see dependency rules below).
 
+## Run it locally
+
+When someone asks to see or try the product, possibly someone who has never used a terminal, this is the path. It changes nothing on their machine beyond what they install. Details and troubleshooting: [docs/development.md](docs/development.md#local-stack).
+
+1. Check for Docker (OrbStack or Docker Desktop), Bun and Node 24, and install what is missing. macOS or Linux only; Windows is not supported yet, so say so instead of trying.
+2. From an up-to-date `main`: `bun install`, then `bun run dev:stack up --no-system`. The first run builds images for several minutes. Say so, and don't take the silence for a hang.
+3. Run the Chrome line that command prints. It opens the dashboard in its own profile with the flags the stack needs. Tell them this window is the product and that the certificate warnings are switched off only for it.
+4. Walk them through it: sign up at `https://app.ptbk.test:8444/` (emails arrive at `/__dev/mailbox`), the fake Checkout under Billing, then "New engine" on Engines, then run `bun run dev:link <code>` with the code the page shows. The engine turns online within a minute and "Open" goes to it.
+5. `bun run dev:stack down` when they're done. It keeps the account and engine, but not the fake subscription. `reset` deletes the account and engine, so ask first.
+
+They have to do these themselves: approve Docker's first start and any password prompt, and confirm the passkey in Chrome. Everything runs against the mock engine with fake data, never a real one.
+
 ## Rules that must never break
 
 These are the zero-trust guarantees. A change that weakens one needs an ADR and a human decision. Stop and ask instead.

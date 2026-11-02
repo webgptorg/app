@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
-import { defineRoute, NO_INPUT } from '../../shared/api/contract';
+import { defineRoute, NO_CONTENT, NO_INPUT } from '../../shared/api/contract';
 import { apiRoutes } from '../../shared/api/routes';
 import { createApiClient } from './api-client';
 
@@ -47,6 +47,27 @@ describe('API client', () => {
         expect(requests[0]?.url).toBe('https://app.ptbk.test/api/engines/a%20b');
         expect(requests[0]?.method).toBe('GET');
         expect(requests[0]?.credentials).toBe('same-origin');
+    });
+
+    it('takes a 204 without a body as success for a route that answers no content', async () => {
+        const removeEngine = defineRoute({
+            ...ROUTE,
+            method: 'POST',
+            path: '/api/engines/remove',
+            input: NO_INPUT,
+            output: NO_CONTENT,
+            errorCodes: [],
+        });
+        const client = createApiClient({ fetch: () => Promise.resolve(new Response(null, { status: 204 })) });
+        expect(await client.call(removeEngine, {})).toEqual({ kind: 'ok', data: undefined });
+    });
+
+    it('still refuses a 204 for a route that promises data', async () => {
+        const client = createApiClient({ fetch: () => Promise.resolve(new Response(null, { status: 204 })) });
+        expect(await client.call(getEngine, { params: { engineId: 'a' } })).toEqual({
+            kind: 'invalid-response',
+            status: 204,
+        });
     });
 
     it('reads responses tolerantly: unknown fields are dropped at every depth, known ones still validated', async () => {

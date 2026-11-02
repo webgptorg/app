@@ -1,7 +1,7 @@
 import { act, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { apiRoutes, type EngineView, type LinkCodeStatusView } from '../../../shared/api/routes';
+import { apiRoutes, type EngineView, type LinkCodeStatusView, type TeamView } from '../../../shared/api/routes';
 import { expectNoAxeViolations } from '../../testing/axe';
 import {
     billingView,
@@ -626,6 +626,36 @@ describe('new engine page', () => {
                 { params: { engineId: ENGINE_ID }, body: { label } },
             ]);
             expect(await screen.findByRole('link', { name: 'Open engine Staging, in a new tab' })).toBeTruthy();
+            await expectNoAxeViolations(app.container);
+        });
+
+        it('calls an engine by the name it got at creation, and does not ask for another', async () => {
+            const app = renderApp({
+                path: `/engines/new?link=${LINK_ID}`,
+                session: session({ permissions: [...OWNER.activeOrg.permissions, 'engine.rename', 'team.read'] }),
+                script: (api) => {
+                    eligible()(api);
+                    scriptProgress(api, [LINKED], [READY]);
+                    api.on(
+                        apiRoutes.listTeams,
+                        ok({
+                            teams: [
+                                {
+                                    teamId: 'tttttttttttttttttttttttttt',
+                                    name: 'Northwind' as TeamView['name'],
+                                    engineId: ENGINE_ID as TeamView['engineId'],
+                                    memberCount: 1,
+                                    isMember: true,
+                                    createdAt: NOW,
+                                },
+                            ],
+                        }),
+                    );
+                },
+            });
+            expect(await screen.findByRole('link', { name: 'Open engine Northwind, in a new tab' })).toBeTruthy();
+            expect(screen.queryByRole('textbox', { name: 'Name' })).toBeNull();
+            expect(screen.queryByText(/so you can tell your engines apart/)).toBeNull();
             await expectNoAxeViolations(app.container);
         });
 

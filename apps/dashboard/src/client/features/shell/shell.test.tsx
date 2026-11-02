@@ -52,6 +52,24 @@ describe('signed-in shell', () => {
         expect(nav().getByRole('link', { name: 'Account' })).toBeTruthy();
     });
 
+    it('tells an unnamed organization one was invited to from one’s own', async () => {
+        const own = session({ permissions: [] });
+        const shared = 'cccccccccccccccccccccccccc';
+        const app = renderApp({
+            path: '/',
+            session: {
+                ...own,
+                memberships: [
+                    { orgId: own.activeOrg.id, kind: 'personal', name: null, role: 'owner' },
+                    { orgId: shared, kind: 'personal', name: null, role: 'member' },
+                ],
+            },
+        });
+        await app.user.click(await screen.findByRole('button', { name: 'Organization: Personal' }));
+        expect(screen.getByRole('menuitemradio', { name: 'Personal' }).getAttribute('aria-checked')).toBe('true');
+        expect(screen.getByRole('menuitemradio', { name: 'Shared with you' })).toBeTruthy();
+    });
+
     it('lists the memberships in the org switcher and moves the session to another organization', async () => {
         const both = twoOrgs();
         const beta = {

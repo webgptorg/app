@@ -3,7 +3,7 @@ import { EngineId } from '@ptbk/protocol';
 import { screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
-import { apiRoutes, type EngineView } from '../../../shared/api/routes';
+import { apiRoutes, type EngineView, type TeamView } from '../../../shared/api/routes';
 import { createApiClient } from '../../api/api-client';
 import { ENGINE_REFETCH_MS, engineQuery, enginesQuery } from '../../api/queries';
 import { expectNoAxeViolations } from '../../testing/axe';
@@ -443,6 +443,72 @@ describe('engine name', () => {
         await app.user.click(screen.getByRole('button', { name: 'Revoke engine' }));
         const dialog = await screen.findByRole('dialog', { name: `Revoke engine ${LABEL}?` });
         expect(within(dialog).getByText(`Type ${ENGINE_ID.slice(0, 8)} to confirm`)).toBeTruthy();
+    });
+
+    const teamWith = (name: string): TeamView => ({
+        teamId: 'tttttttttttttttttttttttttt',
+        name: name as TeamView['name'],
+        engineId: ENGINE_ID as TeamView['engineId'],
+        memberCount: 1,
+        isMember: true,
+        createdAt: NOW,
+    });
+
+    it('titles an engine by the name its team was given, instead of its ID, with no second name to set', async () => {
+        renderApp({
+            path: `/engines/${ENGINE_ID}`,
+            session: session({ permissions: [...OWNER.activeOrg.permissions, 'engine.rename', 'team.read'] }),
+            script: (api) => {
+                engine(engineView())(api);
+                api.on(apiRoutes.listTeams, ok({ teams: [teamWith('Northwind')] }));
+            },
+        });
+        expect(await screen.findByRole('heading', { name: 'Northwind', level: 1 })).toBeTruthy();
+        expect(screen.queryByRole('button', { name: 'Name it' })).toBeNull();
+    });
+
+    it('opens through an access ticket for someone in the engine’s team, as the list does', async () => {
+        const ticket = `https://${ENGINE_ID}.${ENGINE_DOMAIN}/auth/join#ticket`;
+        const app = renderApp({
+            path: `/engines/${ENGINE_ID}`,
+            session: session({ permissions: ['engine.read', 'team.read'] }),
+            script: (api) => {
+                engine(engineView())(api);
+                api.on(apiRoutes.listTeams, ok({ teams: [teamWith('Northwind')] }));
+                api.on(apiRoutes.createAccessTicket, ok({ url: ticket, expiresAt: null }));
+            },
+        });
+        await app.user.click(await screen.findByRole('button', { name: 'Open Northwind' }));
+        await waitFor(() => {
+            expect(app.navigations).toEqual([ticket]);
+        });
+        expect(screen.queryByRole('link', { name: /^Open engine/ })).toBeNull();
+    });
+
+    it('keeps the plain link for someone outside the engine’s team', async () => {
+        renderApp({
+            path: `/engines/${ENGINE_ID}`,
+            session: session({ permissions: ['engine.read', 'team.read'] }),
+            script: (api) => {
+                engine(engineView())(api);
+                api.on(apiRoutes.listTeams, ok({ teams: [{ ...teamWith('Northwind'), isMember: false }] }));
+            },
+        });
+        expect(await screen.findByRole('link', { name: 'Open engine Northwind, in a new tab' })).toBeTruthy();
+    });
+
+    it('keeps the engine label for a team only named after the engine’s hostname', async () => {
+        const view = engineView();
+        renderApp({
+            path: `/engines/${ENGINE_ID}`,
+            session: session({ permissions: [...OWNER.activeOrg.permissions, 'engine.rename', 'team.read'] }),
+            script: (api) => {
+                engine(view)(api);
+                api.on(apiRoutes.listTeams, ok({ teams: [teamWith(view.hostname)] }));
+            },
+        });
+        expect(await screen.findByRole('button', { name: 'Name it' })).toBeTruthy();
+        expect(screen.getByRole('heading', { name: `${ENGINE_ID.slice(0, 8)}…`, level: 1 })).toBeTruthy();
     });
 
     it('saves a typed name as the API takes it, refuses one it would not, and clears it when emptied', async () => {

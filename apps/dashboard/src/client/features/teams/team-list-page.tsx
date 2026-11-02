@@ -1,7 +1,7 @@
 import { Button, Card, EmptyState, ErrorState, Skeleton } from '@ptbk/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
-import { ArrowUpRight, Plus, UsersRound } from 'lucide-react';
+import { Plus, UsersRound } from 'lucide-react';
 import { useState } from 'react';
 
 import { m } from '../../../paraglide/messages';
@@ -13,33 +13,11 @@ import { Link } from '../../core/link';
 import { useAppMutation } from '../../core/mutations';
 import { EngineStatusBadge } from '../engines/engine-status-badge';
 import { useSession } from '../session/use-session';
-import { useOpenTeam } from './open-team';
+import { OpenTeamButton } from './open-team-button';
 import { TeamNameDialog } from './team-name-dialog';
 import { teamKeys, teamsQuery } from './team-queries';
 
 const MANAGE_PERMISSION = 'team.manage';
-
-/** Opens the team's engine; only for people in the team, and only once it has an engine. */
-export function OpenTeamButton(props: { readonly team: TeamView; readonly variant?: 'primary' | 'secondary' }) {
-    const open = useOpenTeam(props.team.teamId);
-    if (!props.team.isMember || props.team.engineId === null) {
-        return null;
-    }
-    return (
-        <Button
-            variant={props.variant ?? 'secondary'}
-            size="sm"
-            loading={open.isPending}
-            aria-label={m.team_open_named({ name: props.team.name })}
-            onClick={() => {
-                open.mutate();
-            }}
-        >
-            {m.team_open()}
-            <ArrowUpRight aria-hidden className="size-4" />
-        </Button>
-    );
-}
 
 function TeamRow(props: { readonly team: TeamView; readonly engine: EngineView | undefined }) {
     const { team, engine } = props;
