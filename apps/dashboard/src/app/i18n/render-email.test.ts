@@ -67,6 +67,34 @@ describe('renderEmail', () => {
         expect(text).not.toMatch(/undefined|\{[a-zA-Z]+\}/);
     });
 
+    const INVITE = {
+        template: 'team-invite',
+        to: 'eve@example.test',
+        locale: 'en',
+        inviterEmail: 'ada@example.test',
+        orgName: null,
+        teamNames: ['Northwind'],
+        expiresAt: 1_800_000_000_000,
+        link: 'https://app.ptbk.test/invites#token',
+    } as unknown as EmailMessage;
+
+    it.each(['en', 'cs'] as const)(
+        'invites to the inviter’s unnamed organization, not to the inviter (%s)',
+        (locale) => {
+            const { subject, text } = renderEmail({ ...INVITE, locale });
+            expect(subject).toContain('ada@example.test');
+            expect(text.match(/ada@example\.test/g)).toHaveLength(1);
+            expect(text).toContain('Northwind');
+            expect(text).not.toMatch(/undefined|\{[a-zA-Z]+\}/);
+        },
+    );
+
+    it('names an organization that has a name', () => {
+        const { subject, text } = renderEmail({ ...INVITE, orgName: 'Acme' } as EmailMessage);
+        expect(subject).toBe("You're invited to Acme on Promptbook");
+        expect(text).toContain('ada@example.test invited you to Acme on Promptbook.');
+    });
+
     it('differs between English and Czech', () => {
         const en = renderEmail({ ...MESSAGES[0], locale: 'en' } as EmailMessage);
         const cs = renderEmail({ ...MESSAGES[0], locale: 'cs' } as EmailMessage);
