@@ -215,6 +215,7 @@
   "chat_send": "Send",
   "chat_stop": "Stop",
   "chat_send_failed": "Your message was not sent",
+  "chat_send_signed_out": "You’re signed out, so this wasn’t sent. Reload the page to sign in.",
   "chat_send_unconfirmed": "Couldn’t check whether this arrived",
   "chat_send_check_again": "Check again",
   "chat_column_title": "Chat",

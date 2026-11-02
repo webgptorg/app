@@ -219,6 +219,7 @@
   "chat_send": "Odeslat",
   "chat_stop": "Zastavit",
   "chat_send_failed": "Zprávu se nepodařilo odeslat",
+  "chat_send_signed_out": "Byli jste odhlášeni, zpráva se neodeslala. Přihlaste se načtením stránky.",
   "chat_send_unconfirmed": "Nepodařilo se ověřit, jestli zpráva dorazila",
   "chat_send_check_again": "Zkontrolovat znovu",
   "chat_column_title": "Chat",

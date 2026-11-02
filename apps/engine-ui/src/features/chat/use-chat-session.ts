@@ -12,7 +12,7 @@ import { chatKeys } from './chat-keys';
 import { MESSAGE_PAGE_SIZE } from './chat-queries';
 import { chatSessionReducer, INITIAL_CHAT_SESSION, isReplyActive } from './chat-session';
 import type { ChatSessionState } from './chat-session';
-import { checkDelivery, isRefusal } from './send-delivery';
+import { checkDelivery, isRefusal, refusalTitle } from './send-delivery';
 import type { UnclearSend } from './send-delivery';
 
 export interface ChatSession {
@@ -192,10 +192,7 @@ export function useChatSession({ chatId, lastMessageAt, messages }: ChatSessionO
                 }
                 if (isRefusal(response.problem)) {
                     dispatch({ type: 'send-failed' });
-                    toast.show({
-                        tone: 'danger',
-                        title: response.problem.status === 403 ? m.error_forbidden_title() : m.chat_send_failed(),
-                    });
+                    toast.show({ tone: 'danger', title: refusalTitle(response.problem) });
                     return false;
                 }
             } catch {

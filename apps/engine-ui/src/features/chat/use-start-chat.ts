@@ -8,7 +8,7 @@ import { useEngineApi } from '../../app/engine-api-context';
 import { m } from '../../paraglide/messages';
 import { useCurrentMember } from '../session/use-current-member';
 import { chatKeys } from './chat-keys';
-import { checkDelivery, isRefusal } from './send-delivery';
+import { checkDelivery, isRefusal, refusalTitle } from './send-delivery';
 
 const START_TIMEOUT_MS = 30_000;
 
@@ -38,7 +38,7 @@ export function useStartChat(agentId: AgentId): StartChat {
     // A retry goes into the chat the failed attempt created, so failures leave no trail of empty chats.
     const started = useRef<{ readonly agentId: AgentId; readonly chatId: ChatId } | null>(null);
 
-    const failed = (title = m.chat_send_failed()) => {
+    const failed = (title: string = m.chat_send_failed()) => {
         toast.show({ tone: 'danger', title });
         return false;
     };
@@ -70,13 +70,13 @@ export function useStartChat(agentId: AgentId): StartChat {
         try {
             if (chatId === null) {
                 const created = await engineApi.chats.create(agentId, {}, signal);
-                if (created.kind !== 'ok') return failed();
+                if (created.kind !== 'ok') return failed(refusalTitle(created.problem));
                 chatId = created.data.id;
                 started.current = { agentId, chatId };
             }
             const sent = await engineApi.chats.sendMessage(chatId, { content }, signal);
             if (sent.kind === 'ok') return open(chatId);
-            if (isRefusal(sent.problem)) return failed();
+            if (isRefusal(sent.problem)) return failed(refusalTitle(sent.problem));
         } catch {
             // Without a chat no message went out; with one, no answer says nothing about the message.
             if (chatId === null) return failed();

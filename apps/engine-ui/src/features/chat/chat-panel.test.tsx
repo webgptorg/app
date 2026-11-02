@@ -314,6 +314,16 @@ describe('chat panel sending', { timeout: TIMEOUT_MS }, () => {
         expect((composer() as HTMLTextAreaElement).value).toBe('One');
     });
 
+    it('says the session ended when the engine answers 401, and keeps the text', async () => {
+        const { engine } = ownChatEngine();
+        engine.spies.sendMessage.mockResolvedValueOnce({ kind: 'problem', problem: createProblem('unauthenticated') });
+        const app = await renderChat(engine);
+        await app.user.click(composer());
+        await app.user.keyboard('Still signed in?{Enter}');
+        expect(await screen.findByText(/You’re signed out, so this wasn’t sent/)).toBeDefined();
+        expect((composer() as HTMLTextAreaElement).value).toBe('Still signed in?');
+    });
+
     it('returns to the bottom when the member sends while scrolled up', async () => {
         const { engine } = ownChatEngine();
         const app = await renderChat(engine);
