@@ -1,7 +1,7 @@
 // Decides which CI jobs a pull request needs, from the files it changes (`changes`), and runs the matching part of
-// `bun run check` (`check`). Main and the schedule always run everything: ci.yml enforces that from the event, so
-// nothing here can narrow them. Every guess errs towards running more: a file this script cannot attribute to a
-// workspace or a job makes the run full.
+// `bun run check` (`check`). On main it may only tell a documentation-only push apart (`--docs-only`); ci.yml runs
+// every job for any other push and for the schedule, whatever this says. Every guess errs towards running more: a
+// file this script cannot attribute to a workspace or a job makes the run full.
 import { execFileSync, spawnSync } from 'node:child_process';
 import { appendFileSync, readFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
@@ -235,11 +235,27 @@ function everything(workspaces: readonly Workspace[], reason: string): Scope {
     };
 }
 
-function scope(base: string, head: string): Scope {
+function isDoc(file: string): boolean {
+    return file.endsWith('.md') || file.startsWith('docs/');
+}
+
+function isAncestor(base: string, head: string): boolean {
+    return spawnSync('git', ['merge-base', '--is-ancestor', base, head], { stdio: 'ignore' }).status === 0;
+}
+
+// `docsOnly` is for pushes to main: a push that changes only documentation runs the format checks, anything else
+// runs everything. A base that is missing or not an ancestor (a force-push) runs everything too.
+function scope(base: string, head: string, docsOnly: boolean): Scope {
     const workspaces = readWorkspaces(head);
+    if (docsOnly && !isAncestor(base, head)) return everything(workspaces, `${base} is not an ancestor of ${head}`);
     const files = git('diff', '--name-only', '--no-renames', base, head)
         .split('\n')
         .filter((file) => file !== '');
+    if (docsOnly) {
+        const code = files.find((file) => !isDoc(file));
+        if (code !== undefined) return everything(workspaces, `${code} is not documentation`);
+        return { check: 'format', workspaces: [], jobs: [], reasons: ['documentation only'] };
+    }
     const reasons: string[] = [];
     const direct = new Set<string>();
     const otherPaths: string[] = [];
@@ -249,7 +265,7 @@ function scope(base: string, head: string): Scope {
         workspaces.find((workspace) => file.startsWith(`${workspace.dir}/`));
 
     for (const file of files) {
-        if (file.endsWith('.md') || file.startsWith('docs/')) continue;
+        if (isDoc(file)) continue;
         if (FULL_RUN_FILES.has(file)) return everything(workspaces, `${file} changed`);
         const owner = ownerOf(file);
         if (owner !== undefined) {
@@ -315,15 +331,16 @@ function scope(base: string, head: string): Scope {
     };
 }
 
-function runChanges(base: string, head: string): void {
-    const result = scope(base, head);
+function runChanges(base: string, head: string, docsOnly: boolean): void {
+    const result = scope(base, head, docsOnly);
     console.log(result.reasons.join('\n'));
     console.log(`check: ${result.check}\nworkspaces: ${result.workspaces.join(' ')}\njobs: ${result.jobs.join(' ')}`);
     const outputFile = process.env['GITHUB_OUTPUT'];
     if (outputFile !== undefined) {
         appendFileSync(
             outputFile,
-            `check=${result.check}\nworkspaces=${result.workspaces.join(' ')}\njobs=${JSON.stringify(result.jobs)}\n`,
+            `check=${result.check}\nworkspaces=${result.workspaces.join(' ')}\njobs=${JSON.stringify(result.jobs)}\n` +
+                `docs-only=${String(docsOnly && result.check === 'format')}\n`,
         );
     }
 }
@@ -361,14 +378,18 @@ function runCheck(mode: string, workspaces: readonly string[]): void {
 
 const { positionals, values } = parseArgs({
     allowPositionals: true,
-    options: { base: { type: 'string', default: 'HEAD^1' }, head: { type: 'string', default: 'HEAD' } },
+    options: {
+        base: { type: 'string', default: 'HEAD^1' },
+        head: { type: 'string', default: 'HEAD' },
+        'docs-only': { type: 'boolean', default: false },
+    },
 });
 
 const command = positionals[0];
-if (command === 'changes') runChanges(values.base, values.head);
+if (command === 'changes') runChanges(values.base, values.head, values['docs-only']);
 else if (command === 'check') {
     runCheck(
         process.env['CHECK_MODE'] ?? 'full',
         (process.env['WORKSPACES'] ?? '').split(' ').filter((name) => name.startsWith('@ptbk/')),
     );
-} else throw new Error('usage: node scripts/ci-scope.ts changes [--base <rev>] [--head <rev>] | check');
+} else throw new Error('usage: node scripts/ci-scope.ts changes [--base <rev>] [--head <rev>] [--docs-only] | check');
