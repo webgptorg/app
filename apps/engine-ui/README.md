@@ -89,6 +89,7 @@ Code checks permissions (`usePermissions().can()`, `<Can>`, `requirePermission()
 - No JSX text: every string is a Paraglide message (`m.key()`) in `messages/en.json` and `messages/cs.json`, which a test keeps in sync; plurals are variants over `Intl.PluralRules`. Dates and numbers go through `useLocale()` from `@ptbk/ui`.
 - Every route passes `visit(path)` from `test/csp/fixtures.ts` and `expectCleanPage()`: no CSP or Trusted Types violation, console error, page error or foreign request; no serious or critical axe violation; no horizontal overflow at 360 × 740; cumulative layout shift below 0.1; once more with reduced motion.
 - A route that needs more than its budget raises it in `bundle-budget.json` in the same PR, with the reason. The build fails over budget when `CI` is set.
+- Routes are split per component, except home (`/`), which ships in the entry because opening an engine lands there; lucide icons the entry does not use share one chunk (`vite.config.ts`). Every split chunk costs a request after the entry runs, and over HTTP/1.1 those queue six at a time, so prefer fewer, larger chunks for screens people open cold. `preloadMatchedRouteChunks()` starts a deep link's chunks alongside `GET /engine` and `GET /me` instead of after the guards.
 
 ## Commands
 

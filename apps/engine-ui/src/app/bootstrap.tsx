@@ -8,7 +8,7 @@ import { createAppEngineApiClient } from './engine-api-client';
 import { AppProviders } from './providers';
 import { FEATURES } from './features';
 import { createAppQueryClient } from './query-client';
-import { createAppRouter } from './router';
+import { createAppRouter, preloadMatchedRouteChunks } from './router';
 import { createSignInRedirect } from './sign-in-redirect';
 import type { BrowserLocation } from './sign-in-redirect';
 import type { ThemeMatchMedia } from './theme';
@@ -44,6 +44,7 @@ export async function bootstrap(container: HTMLElement, browser: BrowserDeps): P
     const engineApi = await createAppEngineApiClient({ origin: browser.location.origin, fetch: browser.fetch });
     const queryClient = createAppQueryClient({ onUnauthenticated: createSignInRedirect(browser.location) });
     const router = createAppRouter({ engineApi, queryClient, features: FEATURES }, { matchMedia: browser.matchMedia });
+    preloadMatchedRouteChunks(router);
 
     let devtools: ReactNode = null;
     // Both conditions are build-time constants, so production builds drop the import and its chunk entirely.
