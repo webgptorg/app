@@ -423,7 +423,9 @@ describe('heartbeat v2 (ADR 0018)', () => {
         const extra = { ...inputFor(identity.engineId), displayName: 'Petr Svoboda', accessRequests: 1, acks: [] };
         const body = new TextDecoder().decode(buildHeartbeatV2(extra));
         expect(body).not.toContain('Petr');
-        const named = [{ id: 'd'.repeat(16), outcome: 'approved', email: 'petr@example.com' }] as HeartbeatAck[];
+        const named = [
+            { id: 'd'.repeat(16), outcome: 'approved', email: 'petr@example.com' },
+        ] as unknown as HeartbeatAck[];
         expect(() => buildHeartbeatV2({ ...inputFor(identity.engineId), accessRequests: 0, acks: named })).toThrow();
     });
 

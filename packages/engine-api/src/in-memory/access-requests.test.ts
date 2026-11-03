@@ -142,7 +142,7 @@ describe('access request guards', () => {
 
     it('lets someone with members.read see requests but neither approve nor decline them', async () => {
         const { client, controller } = engineAt(AT, {
-            member: { id: 'member-viewer', role: 'viewer', permissions: ['members.read', 'settings.read'] },
+            member: { id: 'member-viewer', role: 'viewer', permissions: ['members.read'] },
         });
         const request = controller.requestAccess({ ...petr, proposedRole: 'member' });
         expect(ok(await client.members.listAccessRequests({}, signal())).items).toEqual([request]);
