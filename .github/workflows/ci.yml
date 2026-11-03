@@ -11,37 +11,49 @@ on:
 permissions:
   contents: read
 
-# A pull request cancels its superseded run. Main and the schedule never cancel a running one; GitHub keeps one
-# pending run per group, so a burst of merges runs the newest commit, which contains the others.
+# A pull request cancels its superseded run. On main every commit has its own group, so no run is cancelled or
+# replaced while pending: a documentation-only push is diffed against the commit before it, which must get its own
+# full run.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Actions are pinned to full commit SHAs and nothing is cached between runs (spec, Security hardening item 10).
-# Pull requests run only the jobs their files reach (scripts/ci-scope.ts); main and the schedule run every job, which
-# each job's `if` decides from the event, not from the script.
+# Pull requests run only the jobs their files reach (scripts/ci-scope.ts). A push to main that changes only
+# documentation runs only the format checks; every other push and the schedule run every job, which each job's `if`
+# decides from the event and the `docs-only` output, not from the job list.
 jobs:
   changes:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
-      check: ${{ steps.scope.outputs.check || 'full' }}
+      check: ${{ steps.scope.outputs.check || steps.push.outputs.check || 'full' }}
       workspaces: ${{ steps.scope.outputs.workspaces }}
-      jobs: ${{ steps.scope.outputs.jobs || '[]' }}
+      jobs: ${{ steps.scope.outputs.jobs || steps.push.outputs.jobs || '[]' }}
+      docs-only: ${{ steps.push.outputs.docs-only || 'false' }}
     steps:
-      # Depth 2: the pull request's merge commit and both parents, so HEAD^1 is the base it merges into.
+      # A pull request needs depth 2: its merge commit and both parents, so HEAD^1 is the base it merges into. A push
+      # needs the history back to `before`, which a force-push may not even contain.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' || github.event_name == 'push'
         with:
           persist-credentials: false
-          fetch-depth: 2
+          fetch-depth: ${{ github.event_name == 'push' && '0' || '2' }}
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' || github.event_name == 'push'
         with:
           node-version-file: .nvmrc
       - id: scope
         if: github.event_name == 'pull_request'
         run: node scripts/ci-scope.ts changes
+      # No `before` (a new branch) or a force-push skips this step, so the push runs everything.
+      - id: push
+        if: >-
+          github.event_name == 'push' && !github.event.forced &&
+          github.event.before != '' && github.event.before != '0000000000000000000000000000000000000000'
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: node scripts/ci-scope.ts changes --docs-only --base "$BEFORE" --head HEAD
 
   check:
     needs: changes
@@ -60,12 +72,16 @@ jobs:
           node-version-file: .nvmrc
       - run: bun install --frozen-lockfile
       # One step on purpose: whatever `check` runs locally runs in CI, so new checks cannot be forgotten here.
-      - if: github.event_name != 'pull_request' || needs.changes.outputs.check == 'full'
+      - if: >-
+          (github.event_name != 'pull_request' && needs.changes.outputs.docs-only != 'true') ||
+          (github.event_name == 'pull_request' && needs.changes.outputs.check == 'full')
         run: bun run check
       # The same `check` script, with tests only for the affected workspaces, or only Prettier and the plan and engine
-      # guide checks when no workspace is affected.
+      # guide checks when no workspace is affected or a push to main changes only documentation.
       - name: bun run check (affected)
-        if: github.event_name == 'pull_request' && needs.changes.outputs.check != 'full'
+        if: >-
+          (github.event_name == 'pull_request' && needs.changes.outputs.check != 'full') ||
+          needs.changes.outputs.docs-only == 'true'
         env:
           CHECK_MODE: ${{ needs.changes.outputs.check }}
           WORKSPACES: ${{ needs.changes.outputs.workspaces }}
@@ -75,7 +91,9 @@ jobs:
   # a browser; nothing is cached, not even the Bun binary.
   engine-ui-csp:
     needs: changes
-    if: github.event_name != 'pull_request' || contains(fromJSON(needs.changes.outputs.jobs), 'engine-ui-csp')
+    if: >-
+      github.event_name == 'pull_request' && contains(fromJSON(needs.changes.outputs.jobs), 'engine-ui-csp') ||
+      github.event_name != 'pull_request' && needs.changes.outputs.docs-only != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -99,7 +117,9 @@ jobs:
   # authenticator for the sign-up, sign-in and recovery flows (D-09).
   dashboard-csp:
     needs: changes
-    if: github.event_name != 'pull_request' || contains(fromJSON(needs.changes.outputs.jobs), 'dashboard-csp')
+    if: >-
+      github.event_name == 'pull_request' && contains(fromJSON(needs.changes.outputs.jobs), 'dashboard-csp') ||
+      github.event_name != 'pull_request' && needs.changes.outputs.docs-only != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -124,7 +144,9 @@ jobs:
   # authenticator, through an in-process relay under the engine's CSP (M-08).
   mock-engine-browser:
     needs: changes
-    if: github.event_name != 'pull_request' || contains(fromJSON(needs.changes.outputs.jobs), 'mock-engine-browser')
+    if: >-
+      github.event_name == 'pull_request' && contains(fromJSON(needs.changes.outputs.jobs), 'mock-engine-browser') ||
+      github.event_name != 'pull_request' && needs.changes.outputs.docs-only != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -148,7 +170,9 @@ jobs:
   # Docker. Every image is built from scratch on each run: no actions/cache, no Buildx cache.
   e2e:
     needs: changes
-    if: github.event_name != 'pull_request' || contains(fromJSON(needs.changes.outputs.jobs), 'e2e')
+    if: >-
+      github.event_name == 'pull_request' && contains(fromJSON(needs.changes.outputs.jobs), 'e2e') ||
+      github.event_name != 'pull_request' && needs.changes.outputs.docs-only != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -178,7 +202,9 @@ jobs:
   # names resolve to loopback (systemd-resolved), so no DNS or hosts file is touched.
   conformance:
     needs: changes
-    if: github.event_name != 'pull_request' || contains(fromJSON(needs.changes.outputs.jobs), 'conformance')
+    if: >-
+      github.event_name == 'pull_request' && contains(fromJSON(needs.changes.outputs.jobs), 'conformance') ||
+      github.event_name != 'pull_request' && needs.changes.outputs.docs-only != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -232,7 +258,9 @@ jobs:
   # script runs everything in pinned containers, so it runs the same way on a laptop with Docker.
   infra:
     needs: changes
-    if: github.event_name != 'pull_request' || contains(fromJSON(needs.changes.outputs.jobs), 'infra')
+    if: >-
+      github.event_name == 'pull_request' && contains(fromJSON(needs.changes.outputs.jobs), 'infra') ||
+      github.event_name != 'pull_request' && needs.changes.outputs.docs-only != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -244,7 +272,9 @@ jobs:
   # `promtool check metrics` over what the relay's GET /metrics answers after routing a connection (I-04).
   relay-metrics:
     needs: changes
-    if: github.event_name != 'pull_request' || contains(fromJSON(needs.changes.outputs.jobs), 'relay-metrics')
+    if: >-
+      github.event_name == 'pull_request' && contains(fromJSON(needs.changes.outputs.jobs), 'relay-metrics') ||
+      github.event_name != 'pull_request' && needs.changes.outputs.docs-only != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -267,7 +297,9 @@ jobs:
   # allowlist (no deploy user or key: relays pull their deploys), and verify.sh failing on password SSH (I-01).
   relay-host-vm:
     needs: changes
-    if: github.event_name != 'pull_request' || contains(fromJSON(needs.changes.outputs.jobs), 'relay-host-vm')
+    if: >-
+      github.event_name == 'pull_request' && contains(fromJSON(needs.changes.outputs.jobs), 'relay-host-vm') ||
+      github.event_name != 'pull_request' && needs.changes.outputs.docs-only != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
@@ -304,7 +336,9 @@ jobs:
   # tag and the rollback of a broken image (I-03).
   relay-deploy:
     needs: changes
-    if: github.event_name != 'pull_request' || contains(fromJSON(needs.changes.outputs.jobs), 'relay-deploy')
+    if: >-
+      github.event_name == 'pull_request' && contains(fromJSON(needs.changes.outputs.jobs), 'relay-deploy') ||
+      github.event_name != 'pull_request' && needs.changes.outputs.docs-only != 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
