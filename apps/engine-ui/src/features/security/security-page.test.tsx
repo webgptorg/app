@@ -96,6 +96,51 @@ describe('security panel: trust panel', { timeout: TIMEOUT_MS }, () => {
         expect(container.querySelector('.trust-mark-sealing')).toBeNull();
     });
 
+    it('does not seal the panel while CT logs list a certificate the engine did not request', async () => {
+        const foreign = { sha256: '99'.repeat(32), issuer: 'CN=Other CA', notBefore: AT, notAfter: AT };
+        const { container } = renderSecurity({
+            seed: {
+                security: {
+                    ...FULL_OVERVIEW,
+                    tls: {
+                        ...FULL_OVERVIEW.tls,
+                        lastCtCheck: { at: AT, result: 'unexpected-certificate', unexpectedCertificates: [foreign] },
+                    },
+                },
+            },
+        });
+        await screen.findByText('relay-a.ptbk.io');
+        const trust = container.querySelector('#trust') as HTMLElement;
+        expect(trust.querySelector('svg')?.getAttribute('data-state')).toBe('verifying');
+        expect(within(trust).getByRole('img', { name: /did not request/ })).toBeDefined();
+        expect(within(trust).queryByRole('img', { name: /verified/ })).toBeNull();
+    });
+
+    it('does not call the UI a signed release when the engine reports no log entry for it', async () => {
+        const { container } = renderSecurity({
+            seed: { security: { ...FULL_OVERVIEW, ui: { ...FULL_OVERVIEW.ui, releaseLogIndex: null } } },
+        });
+        await screen.findByText('relay-a.ptbk.io');
+        const summary = row('UI bundle').querySelector('summary')?.textContent ?? '';
+        expect(summary).not.toContain('signed and verified');
+        expect(summary).toContain('Version 1.0.0; the engine reports no release log entry for it');
+        expect((row('UI bundle').querySelector('details') as HTMLDetailsElement).open).toBe(true);
+        expect(container.querySelector('#trust svg')?.getAttribute('data-state')).toBe('verifying');
+    });
+
+    it('claims no verification to a member who cannot see the checks', async () => {
+        const { container } = renderSecurity({
+            permissions: OWNER_PERMISSIONS.filter((permission) => permission !== 'security.read'),
+        });
+        await screen.findByRole('heading', { name: /Private engine/ });
+        const trust = container.querySelector('#trust') as HTMLElement;
+        await waitFor(() => {
+            expect(trust.querySelector('svg')?.getAttribute('data-state')).toBe('verified');
+        });
+        const mark = within(trust).getByRole('img', { name: /Engine fingerprint/ });
+        expect(mark.getAttribute('aria-label')).not.toMatch(/verified/i);
+    });
+
     it("opens from the engine switcher's verify item and moves focus to the trust panel heading", async () => {
         const { user, router } = renderSecurity({}, '/settings');
         await user.click(await screen.findByRole('button', { name: /Switch engine|Test engine/ }));

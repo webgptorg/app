@@ -13,9 +13,30 @@ import { engineInfoQueryOptions } from '../engine/engine-queries';
 import { Facts } from './facts';
 import { TRUST_PANEL_HASH } from './trust-panel-hash';
 
+interface Seal {
+    readonly verified: boolean;
+    readonly label: string | undefined;
+}
+
 /**
- * The engine's identity for every member. With `security.read` (`overview` set) the seal also checks that the served
- * UI is the one this page was built as; without it, the engine's own hostname stands in for the reported one.
+ * Sealed only when the checks this page can read hold up. Without `security.read` there are none, so the seal stays
+ * the engine's identity and its name claims no verification.
+ */
+function sealOf(overview: UseQueryResult<ReadSecurityOverview> | null): Seal {
+    if (overview === null) return { verified: true, label: m.security_trust_identity() };
+    const data = overview.data;
+    if (data === undefined)
+        return { verified: false, label: overview.isError ? m.security_trust_unverified() : undefined };
+    if (data.ui.version !== UI_VERSION) return { verified: false, label: m.security_trust_mismatch() };
+    if (data.ui.releaseLogIndex === null) return { verified: false, label: m.security_trust_unlogged() };
+    if (data.tls.lastCtCheck?.result === 'unexpected-certificate')
+        return { verified: false, label: m.security_ct_foreign_title() };
+    return { verified: true, label: undefined };
+}
+
+/**
+ * The engine's identity for every member. With `security.read` (`overview` set) the seal also reflects the checks
+ * (`sealOf`); without it, the engine's own hostname stands in for the reported one.
  */
 export function TrustPanel({ overview }: { readonly overview: UseQueryResult<ReadSecurityOverview> | null }) {
     const { data: engine } = useSuspenseQuery(engineInfoQueryOptions(useEngineApi()));
@@ -25,7 +46,6 @@ export function TrustPanel({ overview }: { readonly overview: UseQueryResult<Rea
         if (hash === TRUST_PANEL_HASH) heading.current?.focus();
     }, [hash]);
 
-    const bundleMatches = overview === null || overview.data?.ui.version === UI_VERSION;
     // Shown as verifying for the first frame even when the data is cached, so the seal is drawn once on every visit.
     const [settled, setSettled] = useState(false);
     useEffect(() => {
@@ -36,17 +56,9 @@ export function TrustPanel({ overview }: { readonly overview: UseQueryResult<Rea
             cancelAnimationFrame(frame);
         };
     }, []);
-    const verified = settled && bundleMatches;
-    const label =
-        overview === null
-            ? undefined
-            : overview.data === undefined
-              ? overview.isError
-                  ? m.security_trust_unverified()
-                  : undefined
-              : bundleMatches
-                ? undefined
-                : m.security_trust_mismatch();
+    const seal = sealOf(overview);
+    const verified = settled && seal.verified;
+    const label = seal.label;
     const defaultHostname =
         overview === null ? engine.hostname : overview.data?.hostnames.find(({ kind }) => kind === 'default')?.hostname;
 

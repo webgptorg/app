@@ -80,6 +80,35 @@ describe('access requests', { timeout: TIMEOUT_MS }, () => {
         expect(engine.controller.inspect().members.map(({ displayName }) => displayName)).not.toContain('Petr Svoboda');
     });
 
+    it('says the request was removed after the last wrong code, and offers nothing more to approve', async () => {
+        const engine = engineWithRequest();
+        const approve = vi.spyOn(engine.client.members, 'approveAccessRequest');
+        const { user } = renderWithProviders({ path: '/members', engineApi: engine.client });
+        const dialog = await openApprove(user);
+        const input = within(dialog).getByRole('textbox', { name: /Code/ });
+        for (let attempt = 1; attempt <= 5; attempt += 1) {
+            await user.clear(input);
+            await user.type(input, '000000');
+            await user.click(within(dialog).getByRole('button', { name: 'Approve' }));
+            await waitFor(() => {
+                expect(approve).toHaveBeenCalledTimes(attempt);
+            });
+            if (attempt < 5) await within(dialog).findByText(/^That code doesn't match/);
+        }
+        const removed = await screen.findByRole('dialog', { name: 'Approve Petr Svoboda' });
+        expect(
+            await within(removed).findByText(
+                "Too many wrong codes, so Petr Svoboda's request was removed. Ask them to open the engine from the dashboard again.",
+            ),
+        ).toBeDefined();
+        expect(within(removed).queryByRole('textbox', { name: /Code/ })).toBeNull();
+        expect(within(removed).queryByRole('button', { name: 'Approve' })).toBeNull();
+        await user.click(within(removed).getAllByRole('button', { name: 'Close' }).at(-1) as HTMLElement);
+        await waitFor(() => {
+            expect(screen.queryByRole('dialog')).toBeNull();
+        });
+    });
+
     it('asks for the 6 digits before calling the engine', async () => {
         const engine = engineWithRequest();
         const approve = vi.spyOn(engine.client.members, 'approveAccessRequest');

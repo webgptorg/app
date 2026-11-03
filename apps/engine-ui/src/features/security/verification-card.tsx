@@ -42,6 +42,8 @@ function uiBundleCheck(overview: Overview): Pick<Check, 'tone' | 'summary'> {
     if (overview.ui.lastUpdateCheck?.outcome === 'refused')
         return { tone: 'problem', summary: m.security_check_refused_title() };
     if (overview.ui.version !== UI_VERSION) return { tone: 'attention', summary: m.security_ui_mismatch_title() };
+    if (overview.ui.releaseLogIndex === null)
+        return { tone: 'attention', summary: m.security_check_ui_unlogged({ version: overview.ui.version }) };
     return { tone: 'ok', summary: m.security_check_ui_ok({ version: overview.ui.version }) };
 }
 
