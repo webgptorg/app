@@ -977,6 +977,7 @@ export const apiRoutes = {
         output: NO_CONTENT,
         errorCodes: ['not-member'],
     }),
+    /** Queues a member revocation on the team's engine. Only an owner removes an owner (`forbidden`, 403). */
     removeTeamMember: defineRoute({
         method: 'POST',
         path: '/api/teams/:teamId/members/:userId/remove',

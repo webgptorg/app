@@ -1,20 +1,11 @@
 import type { UserId } from '../ids';
 import type { OrgRole } from '../roles';
 import type { LastOwner, TeamStore } from './team-store';
-import { teamAudit, type TeamActor, type TeamDeps } from './teams';
+import { mayActOn, teamAudit, type TeamActor, type TeamDeps } from './teams';
 
 export type PeopleDeps = Pick<TeamDeps, 'teams' | 'clock' | 'random'> & {
     readonly teams: Pick<TeamStore, 'listOrgMembers' | 'changeRole' | 'removeFromOrg'>;
 };
-
-/** Only an owner may act on an owner: an admin can neither demote nor remove one. */
-async function targetAllowed(deps: PeopleDeps, actor: TeamActor, userId: UserId): Promise<boolean> {
-    if (actor.orgRole === 'owner') {
-        return true;
-    }
-    const target = (await deps.teams.listOrgMembers(actor.orgId)).find((member) => member.userId === userId);
-    return target?.role !== 'owner';
-}
 
 export function changeOrgRole(
     deps: PeopleDeps,
@@ -31,7 +22,7 @@ export async function removeFromOrg(
     actor: TeamActor,
     userId: UserId,
 ): Promise<'removed' | 'not-found' | 'forbidden' | LastOwner> {
-    if (!(await targetAllowed(deps, actor, userId))) {
+    if (!(await mayActOn(deps, actor, userId))) {
         return 'forbidden';
     }
     return deps.teams.removeFromOrg(actor.orgId, userId, teamAudit(deps, actor));

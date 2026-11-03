@@ -228,7 +228,14 @@ export function bindTeamRoutes(
             teamIdSchema.parse(input.params.teamId),
             userIdSchema.parse(input.params.userId),
         );
-        return outcome === 'removed' ? NO_CONTENT : NOT_FOUND;
+        switch (outcome) {
+            case 'removed':
+                return NO_CONTENT;
+            case 'forbidden':
+                return { kind: 'problem', status: 403, code: 'forbidden' };
+            case 'not-found':
+                return NOT_FOUND;
+        }
     });
 
     bind(router, mount, apiRoutes.leaveTeam, async ({ input, session }) => {
