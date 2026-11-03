@@ -128,7 +128,21 @@ async function setup(options: { readonly pinned?: boolean } = {}) {
         });
     }
 
-    return { clock, runtime, join, ticket, joinWith, approve, apiAs, owner, revocation, passkeys, sessions };
+    return {
+        clock,
+        runtime,
+        join,
+        ticket,
+        joinWith,
+        approve,
+        apiAs,
+        owner,
+        revocation,
+        passkeys,
+        sessions,
+        ceremonies,
+        logger,
+    };
 }
 
 const forger = async () => createWebCryptoSigner(await generateEd25519KeyPair({ extractable: false }));
@@ -173,6 +187,20 @@ describe('join gateway: tickets', () => {
         const token = await ticket();
         expect((await joinWith(token)).kind).toBe('waiting');
         expect(await join.options({ ticket: token, rp: RP })).toEqual({ kind: 'used' });
+    });
+
+    it('lets only one of two browsers racing with the same ticket make a request', async () => {
+        const { join, ticket, ceremonies, runtime } = await setup();
+        const token = await ticket();
+        const first = await join.options({ ticket: token, rp: RP });
+        const second = await join.options({ ticket: token, rp: RP });
+        if (first.kind !== 'options' || second.kind !== 'options') throw new Error('no options');
+        const outcomes = await Promise.all([
+            join.complete({ ticket: token, response: ceremonies.register(first.options, 'credential-a', RP), rp: RP }),
+            join.complete({ ticket: token, response: ceremonies.register(second.options, 'credential-b', RP), rp: RP }),
+        ]);
+        expect(outcomes.map(({ kind }) => kind).sort()).toEqual(['used', 'waiting']);
+        expect(runtime.controller().inspect().accessRequests).toHaveLength(1);
     });
 
     it('refuses a passkey that does not verify and keeps the ticket usable', async () => {
@@ -326,11 +354,79 @@ describe('join gateway: revocations', () => {
         ]);
     });
 
+    it('ignores every revocation while no member key is pinned', async () => {
+        const context = await setup({ pinned: false });
+        context.runtime.controller().addMember({
+            id: 'member-dashboard',
+            displayName: 'Joined earlier',
+            role: 'member',
+            status: 'active',
+            createdAt: iso(NOW),
+            lastSeenAt: null,
+            dashboardUserId: 'user-jan',
+        });
+        await context.join.applyRevocations([await context.revocation('user-jan', 'revocation-0000000007')]);
+        expect(context.join.acks()).toEqual([]);
+        expect(
+            context.runtime
+                .controller()
+                .inspect()
+                .members.find(({ id }) => id === 'member-dashboard')?.status,
+        ).toBe('active');
+    });
+
+    it('never applies a resent revocation to the same person once they were approved again', async () => {
+        const context = await setup();
+        await joined(context, 'user-kim');
+        const token = await context.revocation('user-kim', 'revocation-0000000008');
+        await context.join.applyRevocations([token]);
+        await joined(context, 'user-kim');
+        await context.join.applyRevocations([token]);
+        expect(context.join.acks()).toEqual([{ id: 'revocation-0000000008', outcome: 'revoked' }]);
+        const kim = context.runtime
+            .controller()
+            .inspect()
+            .members.filter(({ dashboardUserId }) => dashboardUserId === 'user-kim');
+        expect(kim.map(({ status }) => status)).toEqual(['disabled', 'active']);
+    });
+
+    it('never logs a ticket, a code or a revocation', async () => {
+        const context = await setup();
+        const token = await context.ticket({ dashboardUserId: 'user-lea' });
+        await context.join.options({ ticket: 'forged.ticket', rp: RP });
+        const waiting = await context.joinWith(token);
+        if (waiting.kind !== 'waiting') throw new Error(waiting.kind);
+        await context.approve(waiting.code);
+        await context.join.settle();
+        const revocation = await context.revocation('user-lea', 'revocation-0000000009');
+        await context.join.applyRevocations([
+            revocation,
+            await context.revocation('user-lea', 'x'.repeat(16), await forger()),
+        ]);
+        const logged = context.logger.text();
+        expect(logged).toContain('member-revocation');
+        for (const secret of [token, waiting.code, waiting.request, 'ticket-000000000001', revocation]) {
+            expect(logged).not.toContain(secret);
+        }
+    });
+
     it('refuses when the owner switched dashboard removals off', async () => {
         const context = await setup();
         await joined(context, 'user-ida');
         await context.apiAs(context.owner().id).settings.setDashboardRemovals({ enabled: false }, SIGNAL);
         await context.join.applyRevocations([await context.revocation('user-ida', 'revocation-0000000006')]);
         expect(context.join.acks()).toEqual([{ id: 'revocation-0000000006', outcome: 'refused-disabled' }]);
+    });
+
+    it('still acks the ticket removed when an engine admin removes someone whose revocation it refused', async () => {
+        const context = await setup();
+        const member = await joined(context, 'user-ivo');
+        const owner = context.apiAs(context.owner().id);
+        await owner.settings.setDashboardRemovals({ enabled: false }, SIGNAL);
+        await context.join.applyRevocations([await context.revocation('user-ivo', 'revocation-0000000010')]);
+        context.join.acked(['revocation-0000000010']);
+        await owner.members.remove(member.id, SIGNAL);
+        await context.join.settle();
+        expect(context.join.acks()).toEqual([{ id: 'ticket-000000000001', outcome: 'removed' }]);
     });
 });

@@ -266,9 +266,12 @@ export function createJoinGateway(deps: JoinGatewayDeps): JoinGateway {
                 details: { by: 'dashboard' },
             });
         }
-        // Removed by the organization, so the ticket it joined with is not reported as removed on the engine too.
+        // Removed by the organization, so the ticket it joined with is not reported as removed on the engine too. A
+        // refused revocation leaves the member in place: a later removal on the engine must still be acked, or the
+        // dashboard lists them as refused forever. Their pending request is gone either way.
         for (const entry of joining.values()) {
-            if (entry.dashboardUserId === dashboardUserId) entry.state = 'closed';
+            if (entry.dashboardUserId !== dashboardUserId) continue;
+            if (outcome === 'revoked' || entry.state === 'pending') entry.state = 'closed';
         }
         if (revocations.size >= MAX_REMEMBERED_REVOCATIONS) {
             const oldest = revocations.keys().next();
