@@ -57,7 +57,7 @@ import type { EngineIdentity, IdentityStore } from '../domain/identity/engine-id
 import type { Logger } from '../domain/logger';
 import type { Random } from '../domain/random';
 import { createWindowRateLimiter } from '../domain/rate-limit/rate-limiter';
-import type { RateLimiter } from '../domain/rate-limit/rate-limiter';
+import type { RateLimiter, WindowRateLimiter } from '../domain/rate-limit/rate-limiter';
 import type { Registration, RegistrationStore } from '../domain/registration/registration';
 import type { AcmeChallenges } from '../domain/tls/acme-challenges';
 import { createAcmeChallenges } from '../domain/tls/acme-challenges';
@@ -126,6 +126,8 @@ export interface MockEngineDeps {
     readonly onboarding?: OnboardingDeps;
     /** Serves the operator API to the host's commands (the Unix socket); none in tests that drive `operator` directly. */
     readonly operatorChannel?: (api: OperatorApi) => Promise<{ close(): Promise<void> }>;
+    /** The in-tunnel routes' limiter; a fresh one when absent. */
+    readonly rateLimiter?: WindowRateLimiter;
 }
 
 export interface OnboardingDeps {
@@ -343,8 +345,10 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
                   },
                   teams: joinGateway,
               });
+    const rateLimiter = deps.rateLimiter ?? createWindowRateLimiter({ clock: deps.clock });
     runtime.onReset(() => {
         sessions.clear();
+        rateLimiter.clear();
         passkeyGateway.restore().catch((error: unknown) => {
             logger.error('passkeys.restore-failed', { problem: error instanceof Error ? error.name : 'unknown' });
         });
@@ -363,6 +367,7 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
                   seed: config.seed,
                   devLogin: config.devLogin,
                   canary: spikeCanary(deps.random),
+                  rateLimiter,
                   bundles: ui?.store ?? NO_BUNDLES,
                   ...(onboarding === undefined
                       ? {}

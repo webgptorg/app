@@ -33,6 +33,11 @@ export interface RateLimiter {
     consume(rule: RateLimitRule, key: string): RateLimitDecision;
 }
 
+/** The in-memory limiter; the control listener's reset clears it, so one test's traffic never limits the next. */
+export interface WindowRateLimiter extends RateLimiter {
+    clear(): void;
+}
+
 /** Above this many live windows, new keys are refused until old windows expire, so memory stays bounded. */
 export const MAX_RATE_LIMIT_KEYS = 10_000;
 
@@ -43,7 +48,7 @@ interface Window {
 }
 
 /** Fixed windows in memory: one engine process, no shared store needed. */
-export function createWindowRateLimiter(deps: { readonly clock: Clock; readonly maxKeys?: number }): RateLimiter {
+export function createWindowRateLimiter(deps: { readonly clock: Clock; readonly maxKeys?: number }): WindowRateLimiter {
     const maxKeys = deps.maxKeys ?? MAX_RATE_LIMIT_KEYS;
     const windows = new Map<string, Window>();
 
@@ -72,6 +77,9 @@ export function createWindowRateLimiter(deps: { readonly clock: Clock; readonly 
             if (window.count >= limit) return { kind: 'limited', retryAfterMs: window.startMs + windowMs - nowMs };
             window.count++;
             return { kind: 'allowed' };
+        },
+        clear() {
+            windows.clear();
         },
     };
 }
