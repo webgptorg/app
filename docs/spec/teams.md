@@ -123,6 +123,7 @@ sequenceDiagram
 4. **Request.** The engine's join page, a gateway page, verifies the ticket:
    - the signature against the pinned dashboard key;
    - the engine ID, the expiry, and that the ticket is unused.
+   - The engine MUST keep each spent `ticketId` durably until the ticket expires: written to storage before the request is stored, and read back after a restart. A ticket makes one request, even across a crash.
    - The person then registers a passkey on the engine's hostname, and the engine stores an access request (see [Contracts](#contracts)).
    - The page shows "Waiting for approval" and a 6-digit code. It checks for approval, and signs the person in once approved.
 5. **Notify.**
@@ -134,6 +135,7 @@ sequenceDiagram
    - They ask the person for the code on their screen and type it in.
    - On a match and a fresh passkey assertion, the engine adds the member with the `dashboardUserId` from the ticket, and their passkey.
    - The code proves the request is the person in front of them; the name from the dashboard is only a hint. Declining deletes the request.
+   - A wrong code leaves the request pending, up to 5 wrong codes per request (`MAX_ACCESS_CODE_ATTEMPTS`). The fifth deletes the request: the waiting page says it was declined, the engine acks the ticket `declined`, and the person needs a new ticket (they open the team in the dashboard again). Six digits and five tries leave a guesser 5 chances in a million.
 7. **Confirm.**
    - The next heartbeat acks the ticket as `approved` (or `declined`), and the dashboard updates the person's state on the team to "Has access".
    - It can then email them "You now have access to {team}".
@@ -141,6 +143,7 @@ sequenceDiagram
 **Limits**
 
 - A request expires after 7 days.
+- A request survives 4 wrong codes; the fifth deletes it.
 - An engine keeps at most 20 pending requests; the 21st ticket is refused with "too many pending requests".
 - A ticket for a `dashboardUserId` that is already an active member just signs them in, or asks them to sign in.
 
@@ -158,6 +161,8 @@ An org owner or admin can take someone out of a team, or out of the organization
    - deletes their passkeys and ends their sessions;
    - deletes a pending access request from them;
    - writes an audit entry: "removed by the organization (dashboard)".
+
+   A revocation issued before the person's current membership began was meant for an earlier one: the dashboard removed them, then let them back in, and the old revocation arrives late or again. The engine compares `issuedAt` with when it stored the access request through which the person joined (or that is still pending). If `issuedAt` is more than 120 s earlier (`MEMBER_REVOCATION_MAX_SKEW_MS`, `revocationPredates` in `@ptbk/protocol`), the engine applies nothing, keeps any pending request, and acks it `not-found`. The 120 s is the heartbeat's skew tolerance: an engine whose heartbeats the dashboard accepts runs within 120 s of the dashboard's clock, so a revocation issued after the person joined is never taken for an older one. The engine needs no store of applied revocation IDs for this. A member with no recorded join time (one who joined before the engine supported this) is revoked as before.
 3. The next heartbeat acks the revocation, and the person disappears from the team.
 
 **What an engine refuses**
@@ -167,6 +172,9 @@ An org owner or admin can take someone out of a team, or out of the organization
 | Targets the last engine owner | `refused-owner`    | Transfer ownership on the engine first             |
 | Owner switched it off        | `refused-disabled` | This engine doesn't accept removals from here; remove them on the engine |
 | No such member               | `not-found`        | The person is simply gone                          |
+| Issued before the person joined again | `not-found` | The person is simply gone (from the earlier membership) |
+
+With removals switched off, the engine still deletes a pending access request from the person, and acks the revocation `refused-disabled`. That is intended: a request is not access, and the organization has taken the person out of the team, so an engine admin should not approve them by mistake. Members are untouched.
 
 The owner switches dashboard removals off in Settings → Security ("Let the organization remove members from the dashboard"). It is on by default, and changing it needs step-up. This keeps the stricter model available to anyone who wants it, for example a client who wants sole control while the agency still pays.
 
@@ -190,6 +198,7 @@ Contracts change in a new version alongside the old one ([rule 5](../../AGENTS.m
   - At most 15 minutes of life, and a size cap.
 - **`MemberRevocation`**, signed over `signingInput('ptbk-member-revocation-v1', sha256(body))`.
   - Fields: `{ v: 1, engineId, revocationId, dashboardUserId, issuedAt }`.
+  - No expiry: the dashboard resends it until acked. `issuedAt` lets the engine ignore one meant for an earlier membership (see [Removing a person](#removing-a-person)).
 - **Heartbeat v2.**
   - It adds `accessRequests` (an integer) and `acks`, at most 32 entries of the form `[{ id, outcome }]`. The outcome is one of `approved | declined | removed | revoked | refused-owner | refused-disabled | not-found`.
   - IDs are random values the dashboard issued, so the heartbeat still carries no names or free text.
@@ -200,7 +209,7 @@ Contracts change in a new version alongside the old one ([rule 5](../../AGENTS.m
 - **Gateway: `/auth/join`.** The join page plus its WebAuthn registration endpoints, under the reserved `/auth/` prefix. They are documented in `gateway.md`, like the setup page.
 - **Access requests.**
   - `GET /access-requests` needs `members.read`.
-  - `POST /access-requests/{id}/approve` takes `{ code, role }` and needs `members.manage` and step-up.
+  - `POST /access-requests/{id}/approve` takes `{ code, role }` and needs `members.manage` and step-up. A wrong code is 422 `access-code-mismatch`; the fifth for a request also deletes it.
   - `DELETE /access-requests/{id}` needs `members.manage`.
   - A request is `{ id, displayName, email, proposedRole, createdAt, expiresAt }`. The code is never returned.
 - **`Member.dashboardUserId`:** a string or null.
@@ -208,8 +217,9 @@ Contracts change in a new version alongside the old one ([rule 5](../../AGENTS.m
 - **Member drafts made final:** `PATCH` and `DELETE /members/{id}` and the invite routes, as they are today.
 - **Conformance:**
   - ticket checks: forged, expired, replayed, wrong engine, over the pending cap;
-  - the approve code: wrong code, missing step-up;
-  - revocations: forged, replayed, last owner, switched off;
+  - ticket checks also: a spent ticket still refused after a restart;
+  - the approve code: wrong code, the request deleted at the fifth wrong code. A missing step-up is the engine's own test: the conformance harness's sessions always carry a fresh assertion;
+  - revocations: forged, replayed, last owner, switched off, issued before the person joined;
   - heartbeat v2 acks.
 
 ## Dashboard UI

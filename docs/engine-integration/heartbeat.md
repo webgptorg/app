@@ -43,6 +43,8 @@ Once the engine handles access tickets and member revocations ([ADR 0018](../adr
 
 - Ack a ticket `approved` or `declined` once its request is handled, and `removed` when a member who joined with it is removed on the engine. Ack a revocation `revoked`, `refused-owner` (the last owner), `refused-disabled` (the owner switched dashboard removals off) or `not-found`. Keep sending an ack until a heartbeat carrying it is accepted, then drop it.
 - The dashboard answers an accepted v2 heartbeat with 200 and a `HeartbeatReply` `{ v: 1, revocations }` (a v1 heartbeat still gets 204). Read it with `TolerantHeartbeatReply` and refuse a body over `HEARTBEAT_REPLY_MAX_BYTES`. Check each revocation with `verifyMemberRevocation` against the member key pinned at registration ([identity-and-registration.md](identity-and-registration.md#registration)); apply one that is `accepted` and ack it. Ignore every other verdict, without an ack: a forged or misdirected revocation must change nothing.
+- Before applying an accepted revocation, check it against the person's current membership: if `revocationPredates(revocation, joinedAt)` holds, where `joinedAt` is when you stored the access request through which they joined (or their pending one), it was meant for an earlier membership. Apply nothing, keep a pending request, and ack it `not-found`. `MEMBER_REVOCATION_MAX_SKEW_MS` (120 s) absorbs the clock difference the heartbeat already bounds. No store of applied revocation IDs is needed (`member-access.revocation.stale-ignored`).
+- With dashboard removals switched off, still delete a pending request from the person the revocation names, then ack `refused-disabled`.
 - An engine registered without a member key keeps sending v1.
 
 ## Failure handling

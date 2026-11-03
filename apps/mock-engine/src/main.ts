@@ -16,6 +16,7 @@ import { createHttpsFetch } from './adapters/https-fetch';
 import { createJsonLogger } from './adapters/json-logger';
 import { PasskeyStoreError, createFsPasskeyStore } from './adapters/fs-passkey-store';
 import { SetupSecretStoreError, createFsSetupSecretStore } from './adapters/fs-setup-secret-store';
+import { SpentTicketStoreError, createFsSpentTicketStore } from './adapters/fs-spent-ticket-store';
 import { gatewayPagesDir, loadGatewayPageFiles } from './adapters/http/gateway-page-files';
 import { OperatorAnswerError, createOperatorClient } from './adapters/operator-client';
 import { OperatorSocketError, startOperatorSocket } from './adapters/operator-socket';
@@ -74,6 +75,7 @@ function problemOf(error: unknown): string {
         error instanceof SetupLinkUsageError ||
         error instanceof SetupSecretStoreError ||
         error instanceof PasskeyStoreError ||
+        error instanceof SpentTicketStoreError ||
         error instanceof OperatorSocketError ||
         error instanceof OperatorAnswerError ||
         error instanceof UiLoaderSetupError ||
@@ -204,6 +206,7 @@ async function start(): Promise<{ readonly engine: MockEngine; readonly logger: 
             onboarding: {
                 setupSecrets: createFsSetupSecretStore(config.dataDir),
                 passkeys: createFsPasskeyStore(config.dataDir),
+                spentTickets: createFsSpentTicketStore(config.dataDir),
                 pages: await loadGatewayPageFiles(gatewayPagesDir(import.meta.url)),
             },
             operatorChannel: (api) => startOperatorSocket({ dataDir: config.dataDir, api, clock: systemClock, logger }),

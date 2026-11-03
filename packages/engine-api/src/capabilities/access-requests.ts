@@ -11,6 +11,11 @@ export const MAX_PENDING_ACCESS_REQUESTS = 20;
 /** A request nobody handled is dropped after this long. */
 export const ACCESS_REQUEST_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 export const ACCESS_CODE_PATTERN = /^\d{6}$/;
+/**
+ * Wrong codes a request survives: the one that reaches this deletes it, and the person needs a new ticket. Six digits
+ * then leave a guesser 5 in a million, and an approver who mistypes a few times can still finish.
+ */
+export const MAX_ACCESS_CODE_ATTEMPTS = 5;
 
 /** The roles a dashboard ticket may propose; the approver may grant any role. */
 export const PROPOSED_ROLES = ['admin', 'member'] as const;
@@ -56,7 +61,8 @@ export const ACCESS_REQUEST_ROUTES = {
         summary: 'Approve an access request with the code the person reads out; they become a member',
         description:
             'The member gets the role in the body, the passkey registered with the request and the ticket’s ' +
-            '`dashboardUserId`. A wrong code is 422 `access-code-mismatch` and leaves the request pending.',
+            '`dashboardUserId`. A wrong code is 422 `access-code-mismatch` and leaves the request pending, except ' +
+            'the fifth wrong code for a request, which also deletes it.',
         permission: 'members.manage',
         capability,
         params: AccessRequestParams,

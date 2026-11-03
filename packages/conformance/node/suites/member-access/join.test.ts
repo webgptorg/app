@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import type { SessionCredential } from '../../../src/index';
 import type { JoinCheck, JoinableEngine } from './join';
 import {
+    codeAttemptCap,
     expiredTicketRefused,
     forgedTicketRefused,
     lastOwnerRefused,
@@ -13,6 +14,8 @@ import {
     pendingCapEnforced,
     replayedTicketRefused,
     revocationRevokes,
+    spentTicketSurvivesRestart,
+    staleRevocationIgnored,
     switchedOffRefused,
     wrongCodeRefused,
 } from './join';
@@ -75,7 +78,11 @@ async function scripted(script: Script, { session = { cookie: 's=1' }, engineId,
         engineTarget: () => (session === null ? null : { session: () => Promise.resolve(session) }),
     };
     const engine = {
-        registered: { dashboard, engine: { waitForExit: () => Promise.resolve(null) } },
+        registered: {
+            dashboard,
+            engine: { waitForExit: () => Promise.resolve(null) },
+            restart: () => Promise.resolve(),
+        },
         endpoint,
         engineId: engineId ?? 'a'.repeat(26),
         ctx,
@@ -91,6 +98,8 @@ const approve = `POST ${API}/access-requests/r1/approve`;
 const me = `GET ${API}/me`;
 const stepDown = `PATCH ${API}/members/m1`;
 const removals = `PUT ${API}/settings/dashboard-removals`;
+const members = `GET ${API}/members`;
+const mismatch: Answer = [422, { code: 'access-code-mismatch' }];
 
 const joins: Script = { [options]: [200, OPTIONS], [verify]: [201, JOINED] };
 const pending: Answer = [200, { items: [{ id: 'r1' }] }];
@@ -148,6 +157,44 @@ describe('the join checks fail an engine that breaks their rule', () => {
             'status answered 200',
         ],
         ['fails the join', wrongCodeRefused, { [options]: [500] }, 'the join failed: 500'],
+        [
+            'forgets a spent ticket when it restarts',
+            spentTicketSurvivesRestart,
+            joins,
+            'after the restart the ticket answered 200, not 409 ticket-used',
+        ],
+        [
+            'stays unreachable after a restart',
+            spentTicketSurvivesRestart,
+            { [options]: [[200, OPTIONS], [503]], [verify]: [201, JOINED] },
+            'answered 503',
+        ],
+        ['fails the join before a restart', spentTicketSurvivesRestart, {}, 'the join failed: 599'],
+        [
+            'approves at a wrong code',
+            codeAttemptCap,
+            { ...joins, [list]: pending, [approve]: [201] },
+            'wrong code 1 answered 201',
+        ],
+        [
+            'keeps the request after 5 wrong codes',
+            codeAttemptCap,
+            { ...joins, [list]: pending, [approve]: [mismatch] },
+            'the right code after 5 wrong ones answered 422 access-code-mismatch',
+        ],
+        [
+            'leaves the waiting page waiting after the cap',
+            codeAttemptCap,
+            {
+                ...joins,
+                [list]: pending,
+                [approve]: [mismatch, mismatch, mismatch, mismatch, mismatch, [404, { code: 'not-found' }]],
+                [status]: [200, { state: 'waiting' }],
+            },
+            'status answered 200, not declined',
+        ],
+        ['does not list the request for the cap', codeAttemptCap, { ...joins, [list]: [200, {}] }, 'not listed'],
+        ['fails the join before the cap', codeAttemptCap, {}, 'the join failed: 599'],
         ['fails the join before a revocation', revocationRevokes, {}, 'the join failed: 599'],
         ['fails the approval before a revocation', revocationRevokes, joins, 'approving the request failed'],
         ['has no /me', lastOwnerRefused, {}, 'GET /me answered 599'],
@@ -157,6 +204,35 @@ describe('the join checks fail an engine that breaks their rule', () => {
     });
 
     const revokes: Script = { ...joins, [list]: pending, [approve]: [201] };
+
+    it('passes a spent ticket refused after the restart, and the cap that ends in declined', async () => {
+        expect(
+            await detail(spentTicketSurvivesRestart, {
+                [options]: [
+                    [200, OPTIONS],
+                    [409, { code: 'ticket-used' }],
+                ],
+                [verify]: [201, JOINED],
+            }),
+        ).toBe('pass');
+        expect(
+            await detail(codeAttemptCap, {
+                ...joins,
+                [list]: pending,
+                [approve]: [mismatch, mismatch, mismatch, mismatch, mismatch, [404, { code: 'not-found' }]],
+                [status]: [200, { state: 'declined' }],
+            }),
+        ).toBe('pass');
+    });
+
+    it('fails an engine that applies a stale revocation, or loses the member it kept', async () => {
+        expect(await detail(staleRevocationIgnored, revokes, { ack: 'revoked' })).toBe(
+            'the ack says revoked, not not-found',
+        );
+        expect(
+            await detail(staleRevocationIgnored, { ...revokes, [members]: [200, { items: [] }] }, { ack: 'not-found' }),
+        ).toBe('the member is not listed after the stale revocation');
+    });
 
     it('reports an ack that says something else', async () => {
         expect(await detail(revocationRevokes, revokes, { ack: 'not-found' })).toBe(
@@ -184,7 +260,14 @@ describe('the join checks fail an engine that breaks their rule', () => {
     });
 
     it('skips what needs an owner when the run has no session for the engine', async () => {
-        for (const check of [wrongCodeRefused, revocationRevokes, lastOwnerRefused, switchedOffRefused]) {
+        for (const check of [
+            wrongCodeRefused,
+            codeAttemptCap,
+            revocationRevokes,
+            staleRevocationIgnored,
+            lastOwnerRefused,
+            switchedOffRefused,
+        ]) {
             expect(await detail(check, {}, { session: null })).toContain('no owner session');
         }
     });

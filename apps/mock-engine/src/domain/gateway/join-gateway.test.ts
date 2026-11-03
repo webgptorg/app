@@ -1,8 +1,14 @@
 import type { EngineApiClient, Member } from '@ptbk/engine-api';
-import { MAX_PENDING_ACCESS_REQUESTS, PERMISSIONS, createEngineApiClient } from '@ptbk/engine-api';
+import {
+    MAX_ACCESS_CODE_ATTEMPTS,
+    MAX_PENDING_ACCESS_REQUESTS,
+    PERMISSIONS,
+    createEngineApiClient,
+} from '@ptbk/engine-api';
 import type { AccessTicket, Signer } from '@ptbk/protocol';
 import {
     EngineId as EngineIdSchema,
+    MEMBER_REVOCATION_MAX_SKEW_MS,
     Timestamp,
     createWebCryptoSigner,
     generateEd25519KeyPair,
@@ -21,6 +27,8 @@ import { createChallenges } from './passkey-ceremonies';
 import { createInMemoryPasskeyStore } from './passkey-gateway';
 import { createJoinGateway } from './join-gateway';
 import { createSessionStore } from './sessions';
+import { createInMemorySpentTickets } from './spent-tickets';
+import type { SpentTicketStore } from './spent-tickets';
 
 const ENGINE_ID = EngineIdSchema.parse('abcdefghijklmnopqrstuvwxyz');
 const OTHER_ENGINE = EngineIdSchema.parse('bbbbbbbbbbbbbbbbbbbbbbbbbb');
@@ -32,7 +40,7 @@ const SIGNAL = new AbortController().signal;
 
 const iso = (ms: number) => Timestamp.parse(new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z'));
 
-async function setup(options: { readonly pinned?: boolean } = {}) {
+async function setup(options: { readonly pinned?: boolean; readonly spentTickets?: () => SpentTicketStore } = {}) {
     const clock = createFakeClock(NOW);
     const runtime = await createTestRuntime({
         seed: 7,
@@ -48,19 +56,24 @@ async function setup(options: { readonly pinned?: boolean } = {}) {
     const passkeys = createInMemoryPasskeyStore();
     const sessions = createSessionStore({ engine: () => runtime.controller(), clock, random });
     const logger = createMemoryLogger();
-    const join = createJoinGateway({
-        engine: () => runtime.controller(),
-        engineId: ENGINE_ID,
-        memberKey: () => (options.pinned === false ? null : memberSigner.publicKey()),
-        passkeys,
-        sessions,
-        ceremonies,
-        challenges: createChallenges({ random, clock }),
-        random,
-        clock,
-        engineNowMs: () => runtime.clock.nowMs(),
-        logger,
-    });
+    const spentTickets = options.spentTickets ?? createInMemorySpentTickets;
+    /** A new gateway over the same engine, as after a restart: only what its stores persisted is left. */
+    const startGateway = () =>
+        createJoinGateway({
+            engine: () => runtime.controller(),
+            engineId: ENGINE_ID,
+            memberKey: () => (options.pinned === false ? null : memberSigner.publicKey()),
+            passkeys,
+            spentTickets: spentTickets(),
+            sessions,
+            ceremonies,
+            challenges: createChallenges({ random, clock }),
+            random,
+            clock,
+            engineNowMs: () => runtime.clock.nowMs(),
+            logger,
+        });
+    const join = startGateway();
     let ids = 0;
     const nextId = () => `ticket-${String(++ids).padStart(12, '0')}`;
 
@@ -142,6 +155,7 @@ async function setup(options: { readonly pinned?: boolean } = {}) {
         sessions,
         ceremonies,
         logger,
+        startGateway,
     };
 }
 
@@ -203,6 +217,31 @@ describe('join gateway: tickets', () => {
         expect(runtime.controller().inspect().accessRequests).toHaveLength(1);
     });
 
+    it('keeps a spent ticket spent across a restart when its store is durable', async () => {
+        // The same store for both gateways stands in for the file the engine reads back (fs-spent-ticket-store).
+        const durable = createInMemorySpentTickets();
+        const context = await setup({ spentTickets: () => durable });
+        const token = await context.ticket();
+        expect((await context.joinWith(token)).kind).toBe('waiting');
+        const restarted = context.startGateway();
+        expect(await restarted.options({ ticket: token, rp: RP })).toEqual({ kind: 'used' });
+        expect((await restarted.options({ ticket: await context.ticket(), rp: RP })).kind).toBe('options');
+    });
+
+    it('refuses a ticket as full when the store keeps its maximum', async () => {
+        const full: SpentTicketStore = { has: () => Promise.resolve(false), spend: () => Promise.resolve('full') };
+        const context = await setup({ spentTickets: () => full });
+        expect(await context.joinWith(await context.ticket())).toEqual({ kind: 'full' });
+        expect(context.runtime.controller().inspect().accessRequests).toEqual([]);
+    });
+
+    it('forgets spent tickets across a restart without a durable store, which is why engines must keep one', async () => {
+        const context = await setup();
+        const token = await context.ticket();
+        expect((await context.joinWith(token)).kind).toBe('waiting');
+        expect((await context.startGateway().options({ ticket: token, rp: RP })).kind).toBe('options');
+    });
+
     it('refuses a passkey that does not verify and keeps the ticket usable', async () => {
         const { join, ticket } = await setup();
         const token = await ticket();
@@ -254,6 +293,23 @@ describe('join gateway: approval', () => {
         expect(await join.options({ ticket: await ticket({ dashboardUserId: 'user-dana' }), rp: RP })).toEqual({
             kind: 'already-member',
         });
+    });
+
+    it(`drops the request after ${String(MAX_ACCESS_CODE_ATTEMPTS)} wrong codes: the page says declined, the ticket stays spent`, async () => {
+        const { join, ticket, joinWith, approve } = await setup();
+        const token = await ticket({ dashboardUserId: 'user-max' });
+        const waiting = await joinWith(token);
+        if (waiting.kind !== 'waiting') throw new Error(waiting.kind);
+        const wrong = waiting.code === '000000' ? '000001' : '000000';
+        for (let attempt = 0; attempt < MAX_ACCESS_CODE_ATTEMPTS; attempt++) {
+            const answer = await approve(wrong);
+            expect(answer.kind === 'problem' && answer.problem.code).toBe('access-code-mismatch');
+        }
+        await expect(approve(waiting.code)).rejects.toThrow('no pending request');
+        expect(await join.status({ request: waiting.request, client: CLIENT })).toEqual({ kind: 'declined' });
+        expect(join.acks()).toEqual([{ id: 'ticket-000000000001', outcome: 'declined' }]);
+        expect(await join.options({ ticket: token, rp: RP })).toEqual({ kind: 'used' });
+        expect((await joinWith(await ticket({ dashboardUserId: 'user-max' }))).kind).toBe('waiting');
     });
 
     it('reports a declined request to the page and in an ack', async () => {
@@ -408,6 +464,44 @@ describe('join gateway: revocations', () => {
         for (const secret of [token, waiting.code, waiting.request, 'ticket-000000000001', revocation]) {
             expect(logged).not.toContain(secret);
         }
+    });
+
+    it('acks not-found and applies nothing for a revocation issued before the person joined again', async () => {
+        const context = await setup();
+        const issuedBeforeRejoin = await context.revocation('user-kim', 'revocation-0000000011');
+        context.clock.advance(MEMBER_REVOCATION_MAX_SKEW_MS + 1_000);
+        await joined(context, 'user-kim');
+        await context.join.applyRevocations([issuedBeforeRejoin]);
+        expect(context.join.acks()).toEqual([{ id: 'revocation-0000000011', outcome: 'not-found' }]);
+        const kim = context.runtime
+            .controller()
+            .inspect()
+            .members.filter(({ dashboardUserId }) => dashboardUserId === 'user-kim');
+        expect(kim.map(({ status }) => status)).toEqual(['active']);
+        // Still theirs to lose: a removal after they joined is applied, and the ticket still acks a later removal.
+        await context.join.applyRevocations([await context.revocation('user-kim', 'revocation-0000000012')]);
+        expect(context.join.acks().at(-1)).toEqual({ id: 'revocation-0000000012', outcome: 'revoked' });
+    });
+
+    it('leaves a pending request made after the revocation was issued', async () => {
+        const context = await setup();
+        const old = await context.revocation('user-liv', 'revocation-0000000013');
+        context.clock.advance(10 * 60_000);
+        const waiting = await context.joinWith(await context.ticket({ dashboardUserId: 'user-liv' }));
+        if (waiting.kind !== 'waiting') throw new Error(waiting.kind);
+        await context.join.applyRevocations([old]);
+        expect(context.join.acks()).toEqual([{ id: 'revocation-0000000013', outcome: 'not-found' }]);
+        expect(context.runtime.controller().inspect().accessRequests).toHaveLength(1);
+        expect(await context.join.status({ request: waiting.request, client: CLIENT })).toEqual({ kind: 'waiting' });
+    });
+
+    it('applies a revocation issued within the clock skew before the join', async () => {
+        const context = await setup();
+        const close = await context.revocation('user-mia', 'revocation-0000000014');
+        context.clock.advance(MEMBER_REVOCATION_MAX_SKEW_MS - 1_000);
+        await joined(context, 'user-mia');
+        await context.join.applyRevocations([close]);
+        expect(context.join.acks()).toEqual([{ id: 'revocation-0000000014', outcome: 'revoked' }]);
     });
 
     it('refuses when the owner switched dashboard removals off', async () => {

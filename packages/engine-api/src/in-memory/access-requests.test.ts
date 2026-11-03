@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { MAX_PENDING_ACCESS_REQUESTS } from '../capabilities/access-requests';
+import { MAX_ACCESS_CODE_ATTEMPTS, MAX_PENDING_ACCESS_REQUESTS } from '../capabilities/access-requests';
 import { KNOWN_CAPABILITIES } from '../capabilities/capability';
 import type { EngineApiResponse } from '../client';
 import { AccessRequestId, MemberId } from '../common';
@@ -168,6 +168,41 @@ describe('access request guards', () => {
         );
         expect(code(crossed)).toBe('access-code-mismatch');
         expect(controller.inspect().accessRequests).toHaveLength(2);
+    });
+
+    it(`deletes the request at the ${String(MAX_ACCESS_CODE_ATTEMPTS)}th wrong code, so the person needs a new ticket`, async () => {
+        const { client, controller } = engineAt();
+        const request = controller.requestAccess({ ...petr, proposedRole: 'member' });
+        const attempt = (guess: string) =>
+            client.members.approveAccessRequest(request.id, { code: guess, role: 'member' }, signal());
+        for (let index = 1; index < MAX_ACCESS_CODE_ATTEMPTS; index++) {
+            expect(code(await attempt('000000'))).toBe('access-code-mismatch');
+            expect(controller.inspect().accessRequests).toEqual([request]);
+        }
+        expect(code(await attempt('000000'))).toBe('access-code-mismatch');
+        expect(controller.inspect().accessRequests).toEqual([]);
+        expect(code(await attempt(petr.code))).toBe('not-found');
+        expect(controller.inspect().members.some((member) => member.dashboardUserId === petr.dashboardUserId)).toBe(
+            false,
+        );
+    });
+
+    it('counts wrong codes per request, and a new request from the same person starts again', async () => {
+        const { client, controller } = engineAt();
+        const first = controller.requestAccess({ ...petr, proposedRole: 'member' });
+        for (let index = 1; index < MAX_ACCESS_CODE_ATTEMPTS; index++) {
+            await client.members.approveAccessRequest(first.id, { code: '000000', role: 'member' }, signal());
+        }
+        const second = controller.requestAccess({ ...petr, code: '222222', proposedRole: 'member' });
+        for (let index = 1; index < MAX_ACCESS_CODE_ATTEMPTS; index++) {
+            await client.members.approveAccessRequest(second.id, { code: '000000', role: 'member' }, signal());
+        }
+        const approved = await client.members.approveAccessRequest(
+            second.id,
+            { code: '222222', role: 'member' },
+            signal(),
+        );
+        expect(code(approved)).toBe('ok');
     });
 
     it('refuses an approval after the request expired', async () => {

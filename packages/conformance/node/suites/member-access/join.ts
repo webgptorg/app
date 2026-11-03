@@ -4,6 +4,7 @@ import {
     JOIN_PROBLEM,
     JOIN_STATUS_PATH,
     JOIN_VERIFY_PATH,
+    MAX_ACCESS_CODE_ATTEMPTS,
     MAX_PENDING_ACCESS_REQUESTS,
 } from '@ptbk/engine-api';
 import type { AccessTicket, EngineId, HeartbeatV2, Signer } from '@ptbk/protocol';
@@ -22,10 +23,13 @@ import type { RegisteredEngine } from '../../fakes/dashboard';
 import { startRegisteredEngine } from '../../fakes/dashboard';
 import type { EngineApiEndpoint, PlatformCheck, PlatformCheckContext } from '../../harness/platform';
 import { startTunnelRelay } from '../../tunnel/tunnel-relay';
-import { attemptWait } from '../support';
+import { attemptWait, quietly } from '../support';
 
 const SUITE = 'member-access';
 const TICKET_LIFETIME_MS = 15 * 60_000;
+/** Far beyond the skew engines tolerate when comparing a revocation with a join (`MEMBER_REVOCATION_MAX_SKEW_MS`). */
+const STALE_REVOCATION_MS = 10 * 60_000;
+const RETRY_MS = 250;
 const BEATS_TO_ACK = 3;
 
 type Outcome = Awaited<ReturnType<PlatformCheck['run']>>;
@@ -149,13 +153,18 @@ export interface JoinCheck extends PlatformCheck {
     against(engine: JoinableEngine): Promise<Outcome>;
 }
 
-function check(id: string, title: string, run: (engine: JoinableEngine) => Promise<Outcome>): JoinCheck {
+function check(
+    id: string,
+    title: string,
+    run: (engine: JoinableEngine) => Promise<Outcome>,
+    timeout: NonNullable<PlatformCheck['timeoutMs']> = timeoutMs,
+): JoinCheck {
     return {
         against: run,
         id: `member-access.${id}`,
         suite: SUITE,
         title,
-        timeoutMs,
+        timeoutMs: timeout,
         async run(ctx) {
             const opened = await openJoinable(ctx);
             return opened.kind === 'done' ? opened.outcome : run(opened.engine);
@@ -217,6 +226,35 @@ export const pendingCapEnforced = check(
     },
 );
 
+export const spentTicketSurvivesRestart = check(
+    'ticket.spent-across-restart',
+    'A ticket that made a request is still refused as ticket-used after the engine restarts',
+    async (engine) => {
+        const token = await ticket(engine);
+        const first = await join(engine, token);
+        if (first.kind !== 'waiting') return { kind: 'fail', detail: `the join failed: ${describe(first.answer)}` };
+        await engine.registered.restart();
+        // The engine is back once it beat; its tunnel through the relay may take a moment longer.
+        const deadline = Date.now() + engine.ctx.expectations.startTimeoutMs;
+        let answer: Answer | null = null;
+        while (answer === null || (answer.status >= 500 && Date.now() < deadline)) {
+            if (answer !== null) await quietly(RETRY_MS, engine.ctx.signal);
+            answer = await call(engine, 'POST', JOIN_OPTIONS_PATH, { ticket: token }).catch((): Answer => ({
+                status: 599,
+                code: null,
+                body: null,
+            }));
+        }
+        return answer.status === 409 && answer.code === JOIN_PROBLEM.ticketUsed
+            ? { kind: 'pass' }
+            : {
+                  kind: 'fail',
+                  detail: `after the restart the ticket answered ${describe(answer)}, not 409 ticket-used`,
+              };
+    },
+    (expectations) => timeoutMs(expectations) + expectations.startTimeoutMs * 2,
+);
+
 /** The owner's session, or why the check cannot go on without one. */
 async function ownerSession(engine: JoinableEngine): Promise<SessionCredential | Outcome> {
     const target = engine.ctx.engineTarget(engine.registered.engine, engine.endpoint);
@@ -270,6 +308,39 @@ export const wrongCodeRefused = check(
     },
 );
 
+export const codeAttemptCap = check(
+    'approve.attempt-cap',
+    `The ${String(MAX_ACCESS_CODE_ATTEMPTS)}th wrong code deletes the request: the right code then finds nothing and the page says declined`,
+    async (engine) => {
+        const owner = await ownerSession(engine);
+        if (isOutcome(owner)) return owner;
+        const joined = await join(engine, await ticket(engine));
+        if (joined.kind !== 'waiting') return { kind: 'fail', detail: `the join failed: ${describe(joined.answer)}` };
+        const id = await pendingRequestId(engine, owner);
+        if (id === null) return { kind: 'fail', detail: 'the request is not listed' };
+        const attempt = (code: string) =>
+            call(engine, 'POST', `${ENGINE_API_PREFIX}/access-requests/${id}/approve`, { code, role: 'member' }, owner);
+        const wrong = joined.code === '000000' ? '000001' : '000000';
+        for (let index = 1; index <= MAX_ACCESS_CODE_ATTEMPTS; index++) {
+            const answer = await attempt(wrong);
+            if (answer.status !== 422 || answer.code !== 'access-code-mismatch') {
+                return { kind: 'fail', detail: `wrong code ${String(index)} answered ${describe(answer)}` };
+            }
+        }
+        const right = await attempt(joined.code);
+        if (right.status !== 404) {
+            return {
+                kind: 'fail',
+                detail: `the right code after ${String(MAX_ACCESS_CODE_ATTEMPTS)} wrong ones answered ${describe(right)}`,
+            };
+        }
+        const status = await call(engine, 'POST', JOIN_STATUS_PATH, { request: joined.request });
+        return status.status === 200 && status.body?.['state'] === 'declined'
+            ? { kind: 'pass' }
+            : { kind: 'fail', detail: `the waiting page's status answered ${describe(status)}, not declined` };
+    },
+);
+
 function acksOf(engine: JoinableEngine, since: number): HeartbeatV2['acks'] {
     return engine.registered.dashboard.heartbeats
         .filter((beat) => beat.at >= since)
@@ -286,6 +357,7 @@ async function revokeJoined(
     owner: SessionCredential,
     role: string,
     beforeRevoking: (dashboardUserId: string) => Promise<Outcome | null> = () => Promise.resolve(null),
+    issuedAtMs: number = Date.now(),
 ): Promise<
     { readonly kind: 'acked'; readonly outcome: string } | { readonly kind: 'done'; readonly outcome: Outcome }
 > {
@@ -306,7 +378,7 @@ async function revokeJoined(
         engineId: engine.engineId,
         revocationId: id,
         dashboardUserId,
-        issuedAt: Timestamp.parse(new Date().toISOString().replace(/\.\d{3}Z$/, 'Z')),
+        issuedAt: Timestamp.parse(new Date(issuedAtMs).toISOString().replace(/\.\d{3}Z$/, 'Z')),
     });
     const since = Date.now();
     engine.registered.dashboard.queueRevocation(engine.engineId, id, token);
@@ -382,6 +454,40 @@ export const switchedOffRefused = check(
     },
 );
 
+export const staleRevocationIgnored = check(
+    'revocation.stale-ignored',
+    'A revocation issued well before the person joined is acked not-found and leaves them a member',
+    async (engine) => {
+        const owner = await ownerSession(engine);
+        if (isOutcome(owner)) return owner;
+        let target = '';
+        const result = await revokeJoined(
+            engine,
+            owner,
+            'member',
+            (dashboardUserId) => {
+                target = dashboardUserId;
+                return Promise.resolve(null);
+            },
+            Date.now() - STALE_REVOCATION_MS,
+        );
+        const acked = expectAck(result, 'not-found');
+        if (acked.kind !== 'pass') return acked;
+        const members = await call(engine, 'GET', `${ENGINE_API_PREFIX}/members?limit=100`, undefined, owner);
+        const items = Array.isArray(members.body?.['items'])
+            ? (members.body['items'] as Record<string, unknown>[])
+            : [];
+        const member = items.find((item) => item['dashboardUserId'] === target);
+        const status = member?.['status'];
+        return status === 'active'
+            ? { kind: 'pass' }
+            : {
+                  kind: 'fail',
+                  detail: `the member is ${typeof status === 'string' ? status : 'not listed'} after the stale revocation`,
+              };
+    },
+);
+
 /**
  * The join page's checks (ADR 0018), driven through the gateway's join endpoints with a software authenticator. A
  * missing step-up on approval is not checked here: the harness's sessions always come with a fresh assertion.
@@ -391,9 +497,12 @@ export const JOIN_CHECKS: readonly PlatformCheck[] = [
     otherEngineTicketRefused,
     expiredTicketRefused,
     replayedTicketRefused,
+    spentTicketSurvivesRestart,
     pendingCapEnforced,
     wrongCodeRefused,
+    codeAttemptCap,
     revocationRevokes,
+    staleRevocationIgnored,
     lastOwnerRefused,
     switchedOffRefused,
 ];
