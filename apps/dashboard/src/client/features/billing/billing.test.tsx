@@ -339,6 +339,7 @@ describe('billing page', () => {
         const app = renderApp({ path: '/billing?checkout=success', session: OWNER, script: withBilling() });
         expect(await screen.findByText('Thank you, your subscription is starting')).toBeTruthy();
         expect(screen.getByText('It can take a moment until the new plan shows here.')).toBeTruthy();
+        expect(screen.queryByRole('link', { name: 'Next: add an engine' })).toBeNull();
         await waitFor(() => {
             expect(app.history.location.search).toBe('');
         });
@@ -360,6 +361,7 @@ describe('billing page', () => {
         expect(await screen.findByText('Active')).toBeTruthy();
         expect(screen.getByText('Thank you, your subscription is starting')).toBeTruthy();
         expect(screen.queryByText('It can take a moment until the new plan shows here.')).toBeNull();
+        expect(screen.getByRole('link', { name: 'Next: add an engine' }).getAttribute('href')).toBe('/engines');
         unmount();
         renderApp({ path: '/billing', session: OWNER, script: withBilling(ACTIVE) });
         expect(await screen.findByText('Active')).toBeTruthy();

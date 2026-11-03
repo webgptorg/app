@@ -10,6 +10,7 @@ import type { BillingView } from '../../../shared/api/routes';
 import type { BillingStatus } from '../../../shared/billing';
 import { useApiClient } from '../../api/api-client-context';
 import { billingQuery, dataOrThrow } from '../../api/queries';
+import { Link } from '../../core/link';
 import { useSession } from '../session/use-session';
 import { useLocale } from '../../i18n/locale';
 import { planNameText, STATUS_LABELS, STATUS_TONES } from './billing-labels';
@@ -31,6 +32,9 @@ function CheckoutBanner(props: {
             return (
                 <Banner tone="success" title={m.billing_checkout_success_title()}>
                     {props.status === 'none' ? m.billing_checkout_success_body() : null}
+                    {props.status === null || props.status === 'none' ? null : (
+                        <Link to="/engines">{m.billing_checkout_next()}</Link>
+                    )}
                 </Banner>
             );
         case 'cancel':

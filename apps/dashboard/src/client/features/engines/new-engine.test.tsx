@@ -490,6 +490,17 @@ describe('new engine page', () => {
             expect(document.querySelector('[data-step="reachable"]')?.getAttribute('data-step-state')).toBe('current');
         });
 
+        it('does not call a linked engine unreachable before its first heartbeat', async () => {
+            renderApp({
+                path: '/engines/new',
+                session: OWNER,
+                script: linking([LINKED], [{ ...NO_HEARTBEAT, reachableRelays: 0 }]),
+            });
+            expect(await screen.findByText("Waiting for the engine's first heartbeat.")).toBeTruthy();
+            expect(document.querySelector('[data-step="reachable"]')).toBeNull();
+            expect(screen.queryByText('Not reachable: no relay connection')).toBeNull();
+        });
+
         it('hides the reachability row while no relay reports', async () => {
             renderApp({ path: '/engines/new', session: OWNER, script: linking([LINKED], [OWNER_PENDING]) });
             expect(await screen.findByText(OWNER_TEXT)).toBeTruthy();
