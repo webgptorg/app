@@ -45,6 +45,19 @@ export function createAppRouter(context: RouterContext, options: AppRouterOption
 
 export type AppRouter = ReturnType<typeof createAppRouter>;
 
+/**
+ * Starts fetching the lazy chunks of every route the current URL matches. The router itself fetches them only after
+ * each `beforeLoad` above them has resolved, and the feature guards wait for `GET /engine` and `GET /me`, so a cold
+ * open of a deep link would download its screen one round trip after the API answered instead of alongside it.
+ */
+export function preloadMatchedRouteChunks(router: AppRouter): void {
+    const [routes] = router.getMatchedRoutes(router.latestLocation.pathname);
+    for (const route of routes) {
+        // A chunk that fails here fails again when the router loads it, which shows the route's error state.
+        router.loadRouteChunk(route)?.catch(() => undefined);
+    }
+}
+
 declare module '@tanstack/react-router' {
     interface Register {
         router: AppRouter;
