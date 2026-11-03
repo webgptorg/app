@@ -6,6 +6,7 @@ const SECTIONS = [
     { id: 'app', title: () => m.trust_app_title(), body: () => m.trust_app_body() },
     { id: 'link', title: () => m.trust_link_title(), body: () => m.trust_link_body() },
     { id: 'owner', title: () => m.trust_owner_title(), body: () => m.trust_owner_body() },
+    { id: 'fingerprint', title: () => m.trust_fingerprint_title(), body: () => m.trust_fingerprint_body() },
     { id: 'account', title: () => m.trust_account_title(), body: () => m.trust_account_body() },
 ] as const;
 

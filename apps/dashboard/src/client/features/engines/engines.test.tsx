@@ -293,7 +293,11 @@ describe('engine page', () => {
             script: engine(engineView({ customHostnames: ['agents.customer.test' as EngineView['hostname']] })),
         });
         expect(await screen.findByRole('heading', { name: `${ENGINE_ID.slice(0, 8)}…`, level: 1 })).toBeTruthy();
-        expect(screen.getByText(/security page shows the same pattern and code/)).toBeTruthy();
+        expect(
+            screen.getByText(
+                "The engine's sign-in page and its Security page show the same pattern and code. If they differ, you are not on this engine, so enter nothing there.",
+            ),
+        ).toBeTruthy();
         expect(screen.getByText(ENGINE_ID)).toBeTruthy();
         // Rendered label by label so a line breaks only after a dot; the text is still the exact address.
         const address = screen.getByRole('button', { name: 'Copy address' }).parentElement?.querySelector('code');

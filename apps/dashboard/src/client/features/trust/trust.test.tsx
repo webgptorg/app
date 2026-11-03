@@ -15,6 +15,8 @@ describe('trust page', () => {
         expect(screen.getByText(/It grants nothing inside the engine/)).toBeTruthy();
         expect(screen.getByText(/Only the engine can make you its owner\./)).toBeTruthy();
         expect(screen.getByText(/card details never reach Promptbook/)).toBeTruthy();
+        const fingerprint = screen.getByRole('heading', { name: 'Checking it is your engine' }).closest('section');
+        expect(fingerprint?.textContent).toMatch(/enter nothing there and open your engine from this dashboard/);
         expect(app.api.callsTo(apiRoutes.listEngines)).toEqual([]);
         await expectNoAxeViolations(app.container);
     });
