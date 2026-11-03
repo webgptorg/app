@@ -4,17 +4,47 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Weekly, for what moves outside the repo: the runner image, apt, the Debian cloud image, pinned containers.
+  schedule:
+    - cron: '23 4 * * 1'
 
 permissions:
   contents: read
 
+# A pull request cancels its superseded run. Main and the schedule never cancel a running one; GitHub keeps one
+# pending run per group, so a burst of merges runs the newest commit, which contains the others.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Actions are pinned to full commit SHAs and nothing is cached between runs (spec, Security hardening item 10).
+# Pull requests run only the jobs their files reach (scripts/ci-scope.ts); main and the schedule run every job, which
+# each job's `if` decides from the event, not from the script.
 jobs:
+  changes:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      check: ${{ steps.scope.outputs.check || 'full' }}
+      workspaces: ${{ steps.scope.outputs.workspaces }}
+      jobs: ${{ steps.scope.outputs.jobs || '[]' }}
+    steps:
+      # Depth 2: the pull request's merge commit and both parents, so HEAD^1 is the base it merges into.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: github.event_name == 'pull_request'
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: github.event_name == 'pull_request'
+        with:
+          node-version-file: .nvmrc
+      - id: scope
+        if: github.event_name == 'pull_request'
+        run: node scripts/ci-scope.ts changes
+
   check:
+    needs: changes
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
@@ -24,16 +54,28 @@ jobs:
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: package.json
+          no-cache: true
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
       - run: bun install --frozen-lockfile
       # One step on purpose: whatever `check` runs locally runs in CI, so new checks cannot be forgotten here.
-      - run: bun run check
+      - if: github.event_name != 'pull_request' || needs.changes.outputs.check == 'full'
+        run: bun run check
+      # The same `check` script, with tests only for the affected workspaces, or only Prettier and the plan and engine
+      # guide checks when no workspace is affected.
+      - name: bun run check (affected)
+        if: github.event_name == 'pull_request' && needs.changes.outputs.check != 'full'
+        env:
+          CHECK_MODE: ${{ needs.changes.outputs.check }}
+          WORKSPACES: ${{ needs.changes.outputs.workspaces }}
+        run: node scripts/ci-scope.ts check
 
   # The built engine-ui bundle in Chromium under the engine's exact CSP (U-01). Separate from `check` because it needs
   # a browser; nothing is cached, not even the Bun binary.
   engine-ui-csp:
+    needs: changes
+    if: github.event_name != 'pull_request' || contains(fromJSON(needs.changes.outputs.jobs), 'engine-ui-csp')
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -56,6 +98,8 @@ jobs:
   # The built dashboard (SPA and Worker in workerd) in Chromium under its production CSP, with a virtual WebAuthn
   # authenticator for the sign-up, sign-in and recovery flows (D-09).
   dashboard-csp:
+    needs: changes
+    if: github.event_name != 'pull_request' || contains(fromJSON(needs.changes.outputs.jobs), 'dashboard-csp')
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -79,6 +123,8 @@ jobs:
   # The owner's setup and passkey sign-in on the mock engine's reference gateway pages, in Chromium with a virtual
   # authenticator, through an in-process relay under the engine's CSP (M-08).
   mock-engine-browser:
+    needs: changes
+    if: github.event_name != 'pull_request' || contains(fromJSON(needs.changes.outputs.jobs), 'mock-engine-browser')
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -101,6 +147,8 @@ jobs:
   # Browsers through both relays to the mock engine in Docker Compose (X-01). Separate from `check`, which never needs
   # Docker. Every image is built from scratch on each run: no actions/cache, no Buildx cache.
   e2e:
+    needs: changes
+    if: github.event_name != 'pull_request' || contains(fromJSON(needs.changes.outputs.jobs), 'e2e')
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -129,6 +177,8 @@ jobs:
   # store on loopback and reaches the engine API through its fake relay, over TLS, as a browser would. `*.localhost`
   # names resolve to loopback (systemd-resolved), so no DNS or hosts file is touched.
   conformance:
+    needs: changes
+    if: github.event_name != 'pull_request' || contains(fromJSON(needs.changes.outputs.jobs), 'conformance')
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -147,17 +197,25 @@ jobs:
         run: |
           bun run --filter @ptbk/mock-engine build
           bun run --filter @ptbk/conformance build
-      # A seeded team, so the engine API checks that need existing data (an infected file, an ended trigger) have it.
-      - name: Run every suite against mock engines the harness starts
-        run: |
-          node packages/conformance/dist/ptbk-conformance.js \
-            --engine-cmd "MOCK_SCENARIO=small-team MOCK_SEED=1 MOCK_HEARTBEAT_INTERVAL_S=2 exec node $GITHUB_WORKSPACE/apps/mock-engine/dist/main.mjs" \
-            --heartbeat-interval-s 2 --mock-control --seed 1 --report junit --out conformance-report.xml
-      - name: Check the production heartbeat cadence (60 s) of a mock engine the harness starts
+      # The production heartbeat cadence (60 s) check mostly waits, so it runs beside the suites instead of after them;
+      # every engine and fake service the harness starts listens on its own ephemeral port. A seeded team, so the
+      # engine API checks that need existing data (an infected file, an ended trigger) have it.
+      - name: Run every suite, and the production heartbeat cadence, against mock engines the harness starts
         run: |
           node packages/conformance/dist/ptbk-conformance.js \
             --engine-cmd "MOCK_SCENARIO=empty exec node $GITHUB_WORKSPACE/apps/mock-engine/dist/main.mjs" \
-            --filter heartbeat.cadence.interval --seed 1 --report junit --out conformance-cadence-report.xml
+            --filter heartbeat.cadence.interval --seed 1 --report junit --out conformance-cadence-report.xml \
+            > "$RUNNER_TEMP/conformance-cadence.log" 2>&1 &
+          cadence=$!
+          status=0
+          node packages/conformance/dist/ptbk-conformance.js \
+            --engine-cmd "MOCK_SCENARIO=small-team MOCK_SEED=1 MOCK_HEARTBEAT_INTERVAL_S=2 exec node $GITHUB_WORKSPACE/apps/mock-engine/dist/main.mjs" \
+            --heartbeat-interval-s 2 --mock-control --seed 1 --report junit --out conformance-report.xml || status=$?
+          wait "$cadence" || status=$?
+          echo "::group::Heartbeat cadence"
+          cat "$RUNNER_TEMP/conformance-cadence.log"
+          echo "::endgroup::"
+          exit "$status"
       - name: Upload the JUnit report
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -173,6 +231,8 @@ jobs:
   # the rendered relay host user data through cloud-init, nft, systemd-analyze, sshd, unbound and ShellCheck. The
   # script runs everything in pinned containers, so it runs the same way on a laptop with Docker.
   infra:
+    needs: changes
+    if: github.event_name != 'pull_request' || contains(fromJSON(needs.changes.outputs.jobs), 'infra')
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -183,6 +243,8 @@ jobs:
 
   # `promtool check metrics` over what the relay's GET /metrics answers after routing a connection (I-04).
   relay-metrics:
+    needs: changes
+    if: github.event_name != 'pull_request' || contains(fromJSON(needs.changes.outputs.jobs), 'relay-metrics')
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -204,6 +266,8 @@ jobs:
   # Pebble through a Cloudflare API and DNS stand-in; then verify.sh, port scans from inside and outside the SSH
   # allowlist (no deploy user or key: relays pull their deploys), and verify.sh failing on password SSH (I-01).
   relay-host-vm:
+    needs: changes
+    if: github.event_name != 'pull_request' || contains(fromJSON(needs.changes.outputs.jobs), 'relay-host-vm')
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
@@ -239,6 +303,8 @@ jobs:
   # a registry with their deploy tags and a fake Sigstore: signature refusals, the downgrade guard, a rolling deploy by
   # tag and the rollback of a broken image (I-03).
   relay-deploy:
+    needs: changes
+    if: github.event_name != 'pull_request' || contains(fromJSON(needs.changes.outputs.jobs), 'relay-deploy')
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -265,3 +331,29 @@ jobs:
           persist-credentials: false
       - name: Audit workflows with zizmor
         run: pipx run zizmor==1.30.1 --min-severity medium .github/workflows
+
+  # The one status to require for main: a job skipped because the pull request does not reach it counts as passed,
+  # a failed or cancelled one fails this.
+  ci-passed:
+    if: always()
+    needs:
+      - changes
+      - check
+      - engine-ui-csp
+      - dashboard-csp
+      - mock-engine-browser
+      - e2e
+      - conformance
+      - infra
+      - relay-metrics
+      - relay-host-vm
+      - relay-deploy
+      - workflows
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "$RESULTS"
+          case " $RESULTS " in *" failure "* | *" cancelled "*) exit 1 ;; esac
