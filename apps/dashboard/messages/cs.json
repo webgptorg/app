@@ -548,7 +548,6 @@
   "team_access_note": "Přístup k enginu se schvaluje přímo v enginu. Stavy tady vycházejí z toho, co engine nahlásil dashboardu.",
   "team_actions": "Akce pro {name}",
   "team_back": "Všechny enginy",
-  "team_back_to_team": "Zpět na engine",
   "team_cancel": "Zrušit",
   "team_delete": "Smazat engine",
   "team_delete_body": "Odpojí se natrvalo: relay se k němu přestane připojovat, jeho adresa přestane fungovat a odsud zmizí. Dál běží na svém serveru i s daty.",

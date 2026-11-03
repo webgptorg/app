@@ -298,6 +298,8 @@ async function link(context: DevContext, code: string): Promise<number> {
         say(`engine       https://${report.hostname}/`);
     } else {
         say(`engine linked: https://${report.hostname}/ (online on the dashboard after its first heartbeat)`);
+        // The dashboard asks for the setup link a real install prints; this engine comes with its owner seeded.
+        say('no setup link to open: this engine already has an owner, so sign in there by picking a member');
     }
     return 0;
 }

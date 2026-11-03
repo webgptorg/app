@@ -417,22 +417,11 @@ function NewEngineContent(props: { readonly search: NewEngineSearch }) {
     const canLink = session.activeOrg.permissions.includes(LINK_PERMISSION);
     return (
         <div className="flex flex-col gap-6">
-            {props.search.team === undefined ? (
-                <Link to="/engines" variant="standalone" className="inline-flex items-center gap-1 self-start text-sm">
-                    <ArrowLeft aria-hidden className="size-4" />
-                    {m.engine_back()}
-                </Link>
-            ) : (
-                <Link
-                    to="/teams/$teamId"
-                    params={{ teamId: props.search.team }}
-                    variant="standalone"
-                    className="inline-flex items-center gap-1 self-start text-sm"
-                >
-                    <ArrowLeft aria-hidden className="size-4" />
-                    {m.team_back_to_team()}
-                </Link>
-            )}
+            {/* Only a team without an engine is linked here, so there is no engine to go back to yet. */}
+            <Link to="/engines" variant="standalone" className="inline-flex items-center gap-1 self-start text-sm">
+                <ArrowLeft aria-hidden className="size-4" />
+                {m.engine_back()}
+            </Link>
             <h1 className="font-display text-2xl font-semibold">{m.engines_new_title()}</h1>
             {canLink ? <LinkFlow search={props.search} /> : <Banner tone="info">{m.engines_new_not_allowed()}</Banner>}
             <TrustLink />
