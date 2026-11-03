@@ -546,7 +546,6 @@
   "team_access_note": "Access to an engine is approved on the engine itself. These states are what the engine has told the dashboard.",
   "team_actions": "Actions for {name}",
   "team_back": "All engines",
-  "team_back_to_team": "Back to the engine",
   "team_cancel": "Cancel",
   "team_delete": "Delete engine",
   "team_delete_body": "It is unlinked for good: the relay stops reaching it, its address stops working and it disappears from here. It keeps running on its own server, with its data.",

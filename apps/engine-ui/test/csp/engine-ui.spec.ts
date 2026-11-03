@@ -95,6 +95,21 @@ test.describe('the built bundle under the engine CSP', () => {
         expectCleanPage(settings);
     });
 
+    test(`/agents/${FAKE_AGENT_ID} keeps its actions on the title row at 360 px`, async ({ page, visit }) => {
+        await page.setViewportSize({ width: 360, height: 740 });
+        for (const path of [`/agents/${FAKE_AGENT_ID}`, `/agents/${FAKE_AGENT_ID}/chat`]) {
+            expectCleanPage(await visit(path));
+            // The title block: on a phone the badges may wrap under the name, and the actions centre on both lines.
+            const title = await page.getByRole('heading', { level: 1 }).locator('..').boundingBox();
+            const more = await page.getByRole('button', { name: 'More actions' }).boundingBox();
+            expect(title).not.toBeNull();
+            expect(more).not.toBeNull();
+            const middle = (more?.y ?? 0) + (more?.height ?? 0) / 2;
+            expect(middle).toBeGreaterThanOrEqual(title?.y ?? Infinity);
+            expect(middle).toBeLessThanOrEqual((title?.y ?? 0) + (title?.height ?? 0));
+        }
+    });
+
     test(`/agents/${FAKE_AGENT_ID}/chat opens a fresh conversation and meets the UX checks`, async ({
         page,
         visit,

@@ -156,7 +156,7 @@ describe('teams list', () => {
         });
         expect(app.history.location.search).toContain(`team=${TEAM_ID}`);
         expect(app.api.callsTo(apiRoutes.createTeam)).toEqual([{ body: { name: 'Northwind' } }]);
-        expect(await screen.findByRole('link', { name: 'Back to the engine' })).toBeTruthy();
+        expect((await screen.findByRole('link', { name: 'All engines' })).getAttribute('href')).toBe('/engines');
     });
 
     it('tells a member in no team whom to ask', async () => {

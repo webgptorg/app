@@ -102,9 +102,9 @@ export function AgentDetailFrame() {
             )}
         >
             <header
-                className={cx('flex flex-wrap justify-between', compact ? 'items-center gap-3' : 'items-start gap-4')}
+                className={cx('flex justify-between', compact ? 'items-center gap-3' : 'flex-wrap items-start gap-4')}
             >
-                <div className={cx('flex min-w-0', compact ? 'items-center gap-3' : 'items-start gap-4')}>
+                <div className={cx('flex min-w-0', compact ? 'flex-1 items-center gap-3' : 'items-start gap-4')}>
                     <AgentAvatar name={agent.name} profile={agent.profile} size={compact ? 'sm' : 'lg'} />
                     <div
                         className={cx(
@@ -114,7 +114,10 @@ export function AgentDetailFrame() {
                     >
                         <h1
                             id="page-title"
-                            className={cx('font-semibold break-words', compact ? 'text-lg' : 'text-2xl')}
+                            className={cx(
+                                'font-semibold',
+                                compact ? 'max-w-full truncate text-lg' : 'text-2xl break-words',
+                            )}
                         >
                             {agent.name}
                         </h1>
@@ -131,7 +134,7 @@ export function AgentDetailFrame() {
                         </div>
                     </div>
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
+                <div className={cx('flex items-center gap-2', compact ? 'shrink-0' : 'flex-wrap')}>
                     <StopControl agent={agent} size={actionSize} />
                     <ChatLink agent={agent} tab={chatTab} size={actionSize} />
                     <ActionMenu items={actions.menuEntries(agent)} size={actionSize} />
