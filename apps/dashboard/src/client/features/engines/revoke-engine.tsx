@@ -48,6 +48,7 @@ export function EngineActionMenu(props: { readonly engine: EngineView; readonly 
         <>
             <ActionMenu
                 label={m.engine_actions({ name: props.name })}
+                align="start"
                 items={[
                     {
                         kind: 'item',
