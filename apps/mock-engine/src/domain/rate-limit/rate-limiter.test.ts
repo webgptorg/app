@@ -36,6 +36,15 @@ describe('createWindowRateLimiter', () => {
         expect(limiter.consume('spike-bulk-ip', 'a').kind).toBe('allowed');
     });
 
+    it('gives every key a fresh window once cleared', () => {
+        const clock = createFakeClock();
+        const limiter = createWindowRateLimiter({ clock });
+        for (let i = 0; i < RATE_LIMITS['spike-bulk-ip'].limit; i++) limiter.consume('spike-bulk-ip', 'a');
+        expect(limiter.consume('spike-bulk-ip', 'a').kind).toBe('limited');
+        limiter.clear();
+        expect(limiter.consume('spike-bulk-ip', 'a').kind).toBe('allowed');
+    });
+
     it('refuses new keys beyond maxKeys until old windows expire', () => {
         const clock = createFakeClock();
         const limiter = createWindowRateLimiter({ clock, maxKeys: 2 });

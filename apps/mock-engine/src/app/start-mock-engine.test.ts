@@ -17,6 +17,7 @@ import { tlsCertificateInfo } from '../adapters/certificate-fingerprint';
 import { createDevCa, issueLeaf } from '../adapters/dev-ca';
 import { createMemoryIdentityStore } from '../adapters/memory-identity-store';
 import { NO_FAULTS } from '../domain/faults/fault-plan';
+import { RATE_LIMITS, createWindowRateLimiter } from '../domain/rate-limit/rate-limiter';
 import type { TunnelDuplex } from '../adapters/tunnel-duplex';
 import type { ManagedCertificateSource } from '../domain/tls/certificate-source';
 import type { RelayLinkState } from '../domain/tunnel/relay-link';
@@ -348,6 +349,26 @@ describe('startMockEngine', () => {
                 expect.objectContaining({ hostname: 'relay-a.ptbk.test', status: 'connected' }),
             );
         });
+    });
+
+    it('gives every client of the tunnel a fresh rate-limit budget on a reset', async () => {
+        const clock = createFakeClock();
+        const rateLimiter = createWindowRateLimiter({ clock });
+        const dialer = createFakeDialer();
+        const engine = await startMockEngine(CONFIG, {
+            logger: createMemoryLogger(),
+            clock,
+            random: createSeededRandom(1),
+            identityStore: createMemoryIdentityStore(),
+            dialer,
+            rateLimiter,
+        });
+        for (let i = 0; i < RATE_LIMITS['ui-ip'].limit; i++) rateLimiter.consume('ui-ip', '203.0.113.7');
+        expect(rateLimiter.consume('ui-ip', '203.0.113.7').kind).toBe('limited');
+        await engine.runtime.reset({ seed: 1, scenario: 'empty' });
+        expect(rateLimiter.consume('ui-ip', '203.0.113.7').kind).toBe('allowed');
+        for (const dial of dialer.dials) dial.fail({ reason: 'network' });
+        await engine.close();
     });
 
     describe('control listener', () => {
