@@ -9,7 +9,8 @@ import {
     type Actor,
     type PolicyTable,
 } from './authorizer';
-import { DASHBOARD_POLICY } from './policy';
+import type { OrgRole } from '../roles';
+import { DASHBOARD_POLICY, type DashboardAction } from './policy';
 
 const ORG_A = orgIdSchema.parse('aaaaaaaaaaaaaaaaaaaaaaaaaa');
 const ORG_B = orgIdSchema.parse('bbbbbbbbbbbbbbbbbbbbbbbbbb');
@@ -196,6 +197,41 @@ describe('DASHBOARD_POLICY', () => {
             reason: 'not-member',
         });
         expect(authorizer.can(steppedUp, 'engine.revoke', engine)).toEqual({ kind: 'allowed' });
+    });
+
+    // The teams spec's role table (ADR 0018), action by action, so a widened row fails here and not in review.
+    it.each<[DashboardAction, readonly OrgRole[]]>([
+        ['team.read', ['owner', 'admin', 'member']],
+        ['team.leave', ['owner', 'admin', 'member']],
+        ['org.leave', ['owner', 'admin', 'member']],
+        ['team.manage', ['owner', 'admin']],
+        ['team.delete', ['owner', 'admin']],
+        ['team.members.manage', ['owner', 'admin']],
+        ['engine.link', ['owner', 'admin']],
+        ['org.members.read', ['owner', 'admin']],
+        ['org.members.manage', ['owner', 'admin']],
+        ['org.roles.manage', ['owner']],
+        ['billing.read', ['owner']],
+        ['billing.manage', ['owner']],
+        ['billing.owner.change', ['owner']],
+    ])('gives %s to exactly %j', (action, roles) => {
+        const resource = { kind: 'org', orgId: ORG_A } as const;
+        for (const orgRole of ['owner', 'admin', 'member'] as const) {
+            const actor = { ...owner, orgRole, steppedUpAt: RECOVERED_AT };
+            expect([orgRole, authorizer.can(actor, action, resource).kind]).toEqual([
+                orgRole,
+                roles.includes(orgRole) ? 'allowed' : 'denied',
+            ]);
+        }
+    });
+
+    it('marks adding and removing people sensitive, so a recovered account waits out the cooldown', () => {
+        for (const action of ['team.members.manage', 'org.members.manage', 'org.roles.manage'] as const) {
+            expect(authorizer.can(recovered, action, { kind: 'org', orgId: ORG_A })).toEqual({
+                kind: 'denied',
+                reason: 'recovery-cooldown',
+            });
+        }
     });
 
     it('keeps the billing problem list to platform admins', () => {

@@ -618,5 +618,187 @@ export function describeTeamFlows(name: string, makeFixture: () => TeamFlowFixtu
             expect((await beatV2(engine)).revocations).toEqual([]);
             expect((await members(boss.browser, team.teamId)).removing).toEqual([]);
         });
+
+        type Call = readonly [method: string, path: string, body?: unknown];
+
+        async function pendingInviteId(browser: TestBrowser): Promise<string> {
+            const listed = (await browser.request('GET', '/api/org/members')).body as {
+                invites: { inviteId: string }[];
+            };
+            return listed.invites[0]?.inviteId ?? '';
+        }
+
+        it('keeps teams and people from members, and roles and billing from admins', async () => {
+            const boss = await owner();
+            const team = await createTeam(boss.browser);
+            const admin = await joined(boss, [team.teamId], 'admin');
+            const member = await joined(boss, [team.teamId]);
+            await invite(boss.browser, { emails: [uniqueEmail()], role: 'member', teamIds: [] });
+            const inviteId = await pendingInviteId(boss.browser);
+            const managers: readonly Call[] = [
+                ['POST', '/api/teams', { name: 'Mine' }],
+                ['POST', `/api/teams/${team.teamId}/name`, { name: 'Renamed' }],
+                ['POST', `/api/teams/${team.teamId}/delete`],
+                ['POST', `/api/teams/${team.teamId}/link-codes`],
+                ['POST', `/api/teams/${team.teamId}/members`, { userId: admin.userId }],
+                ['POST', `/api/teams/${team.teamId}/members/${admin.userId}/remove`],
+                ['GET', '/api/org/members'],
+                ['POST', `/api/org/members/${admin.userId}/remove`],
+                ['POST', '/api/invites', { emails: [uniqueEmail()], role: 'member', teamIds: [] }],
+                ['POST', `/api/invites/${inviteId}/resend`],
+                ['POST', `/api/invites/${inviteId}/revoke`],
+            ];
+            const owners: readonly Call[] = [
+                ['POST', `/api/org/members/${member.userId}/role`, { role: 'admin' }],
+                ['POST', `/api/org/members/${admin.userId}/role`, { role: 'owner' }],
+                ['GET', '/api/billing'],
+                ['POST', '/api/billing/checkout', { planId: 'starter' }],
+                ['POST', '/api/billing/portal'],
+            ];
+            for (const [method, path, body] of [...managers, ...owners]) {
+                const response = await member.browser.request(method, path, body);
+                expect([path, response.status, problemCode(response)]).toEqual([path, 403, 'forbidden']);
+            }
+            for (const [method, path, body] of owners) {
+                const response = await admin.browser.request(method, path, body);
+                expect([path, response.status, problemCode(response)]).toEqual([path, 403, 'forbidden']);
+            }
+
+            const after = (await boss.browser.request('GET', '/api/org/members')).body as {
+                members: OrgMemberView[];
+                invites: unknown[];
+            };
+            expect(after.members.map((person) => [person.userId, person.role]).sort()).toEqual(
+                [
+                    [boss.userId, 'owner'],
+                    [admin.userId, 'admin'],
+                    [member.userId, 'member'],
+                ].sort(),
+            );
+            expect(after.invites).toHaveLength(1);
+            expect((await teams(boss.browser)).map((t) => [t.name, t.memberCount])).toEqual([['Client A', 3]]);
+        });
+
+        it('answers another organization’s teams, people and invitations as missing, and changes none of them', async () => {
+            const boss = await owner();
+            const team = await createTeam(boss.browser);
+            await linkEngine(boss.browser, team.teamId);
+            const member = await joined(boss, [team.teamId]);
+            await invite(boss.browser, { emails: [uniqueEmail()], role: 'member', teamIds: [team.teamId] });
+            const inviteId = await pendingInviteId(boss.browser);
+            const rival = await owner();
+            const rivalTeam = await createTeam(rival.browser, 'Rival');
+            await stepUp(rival.browser);
+
+            const calls: readonly Call[] = [
+                ['GET', `/api/teams/${team.teamId}`],
+                ['POST', `/api/teams/${team.teamId}/name`, { name: 'Taken' }],
+                ['POST', `/api/teams/${team.teamId}/delete`],
+                ['POST', `/api/teams/${team.teamId}/link-codes`],
+                ['POST', `/api/teams/${team.teamId}/access-ticket`],
+                ['POST', `/api/teams/${team.teamId}/members`, { userId: rival.userId }],
+                ['POST', `/api/teams/${team.teamId}/members/${member.userId}/remove`],
+                ['POST', `/api/teams/${team.teamId}/leave`],
+                ['POST', `/api/org/members/${member.userId}/role`, { role: 'admin' }],
+                ['POST', `/api/org/members/${member.userId}/remove`],
+                ['POST', `/api/invites/${inviteId}/resend`],
+                ['POST', `/api/invites/${inviteId}/revoke`],
+            ];
+            for (const [method, path, body] of calls) {
+                const response = await rival.browser.request(method, path, body);
+                expect([path, response.status, problemCode(response)]).toEqual([path, 404, 'not-found']);
+            }
+            expectProblem(
+                await rival.browser.request('POST', `/api/teams/${rivalTeam.teamId}/members`, {
+                    userId: member.userId,
+                }),
+                409,
+                'not-member',
+            );
+            expectProblem(
+                await invite(rival.browser, { emails: [uniqueEmail()], role: 'member', teamIds: [team.teamId] }),
+                404,
+                'team-not-found',
+            );
+            expect((await teams(rival.browser)).map((t) => t.teamId)).toEqual([rivalTeam.teamId]);
+            expect(await engines(rival.browser)).toEqual([]);
+
+            const detail = await members(boss.browser, team.teamId);
+            expect(detail.members.map((p) => p.userId).sort()).toEqual([boss.userId, member.userId].sort());
+            expect(detail.invites).toHaveLength(1);
+            expect((await teams(boss.browser)).map((t) => t.name)).toEqual(['Client A']);
+            expect(await fixture.revokedOn(member.userId)).toEqual([]);
+        });
+
+        it('ignores acks for IDs it never issued, or issued to another engine', async () => {
+            const boss = await owner();
+            const team = await createTeam(boss.browser);
+            const engine = await linkTestEngine(boss.browser, team.teamId);
+            const otherTeam = await createTeam(boss.browser, 'Client B');
+            const other = await linkTestEngine(boss.browser, otherTeam.teamId);
+            const member = await joined(boss, [team.teamId]);
+            const leaving = await joined(boss, [team.teamId]);
+            const ticket = await openTicket(member.browser, team.teamId, engine.engineId);
+            await boss.browser.request('POST', `/api/teams/${team.teamId}/members/${leaving.userId}/remove`);
+            const [token] = (await beatV2(engine)).revocations;
+            const revocation = await verifyMemberRevocation({
+                token: token ?? '',
+                memberKey: await memberKeyBytes(),
+                engineId: engine.engineId,
+            });
+            if (revocation.kind !== 'accepted') {
+                throw new Error(`revocation refused: ${revocation.kind}`);
+            }
+            const { revocationId } = revocation.revocation;
+            const sent = harness.outbox.sentTo(member.email).length;
+
+            expect(
+                await beatV2(other, {
+                    acks: [
+                        { id: ticket.ticketId, outcome: 'approved' },
+                        { id: revocationId, outcome: 'revoked' },
+                        { id: 'n'.repeat(43), outcome: 'approved' },
+                    ],
+                }),
+            ).toEqual({ v: 1, revocations: [] });
+            await beatV2(engine, {
+                acks: [
+                    { id: ticket.ticketId, outcome: 'revoked' },
+                    { id: revocationId, outcome: 'approved' },
+                    { id: 'n'.repeat(43), outcome: 'removed' },
+                ],
+            });
+
+            const detail = await members(boss.browser, team.teamId);
+            expect(detail.members.find((p) => p.userId === member.userId)?.access).toBe('waiting');
+            expect(detail.removing.map((p) => p.userId)).toEqual([leaving.userId]);
+            expect(harness.outbox.sentTo(member.email)).toHaveLength(sent);
+            expect((await beatV2(engine)).revocations).toEqual([token]);
+        });
+
+        it('never logs an invitation token, an access ticket or a revocation', async () => {
+            const boss = await owner();
+            const team = await createTeam(boss.browser);
+            const engine = await linkTestEngine(boss.browser, team.teamId);
+            const member = await joined(boss, [team.teamId]);
+            const inviteTokens = harness.outbox
+                .sentTo(member.email)
+                .flatMap((message) =>
+                    message.template === 'team-invite' ? [new URL(message.link).hash.slice(1)] : [],
+                );
+            const opened = await open(member.browser, team.teamId);
+            const ticket = new URL((opened.body as { url: string }).url).hash.slice(1);
+            const { ticketId } = await openTicket(member.browser, team.teamId, engine.engineId);
+            await beatV2(engine, { accessRequests: 1, acks: [{ id: ticketId, outcome: 'approved' }] });
+            await boss.browser.request('POST', `/api/teams/${team.teamId}/members/${member.userId}/remove`);
+            const [revocation] = (await beatV2(engine)).revocations;
+
+            const secrets = [...inviteTokens, ticket, ticketId, revocation ?? ''];
+            expect(secrets.every((secret) => secret.length >= 16)).toBe(true);
+            const logged = JSON.stringify(harness.logger.entries);
+            for (const secret of secrets) {
+                expect(logged).not.toContain(secret);
+            }
+        });
     });
 }
