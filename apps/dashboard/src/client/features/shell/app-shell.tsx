@@ -67,7 +67,7 @@ export function AppFrame({ session, children }: { readonly session: SessionView;
                                             className="inline-flex items-center gap-2 rounded-control px-2 py-1.5 text-sm font-medium text-text-muted no-underline hover:bg-hover motion-safe:transition-colors motion-safe:duration-(--motion-state) aria-[current=page]:bg-selected aria-[current=page]:text-accent-text"
                                             activeProps={{ 'aria-current': 'page' }}
                                         >
-                                            <entry.icon aria-hidden className="size-4" />
+                                            <entry.icon aria-hidden className="hidden size-4 sm:block" />
                                             {entry.label()}
                                         </Link>
                                     </li>

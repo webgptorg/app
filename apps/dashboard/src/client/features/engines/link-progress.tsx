@@ -299,7 +299,9 @@ function Checklist(props: {
                             <p>{m.link_progress_online({ version: heartbeat.version })}</p>
                         )}
                     </Row>
-                    {engine === undefined ? null : (
+                    {/* Relays only see an engine once it runs, so before its first heartbeat "not reachable" would
+                        be a false alarm. */}
+                    {engine === undefined || heartbeat === null ? null : (
                         <Reachability engine={engine} troubleshootingUrl={props.troubleshootingUrl} />
                     )}
                     <Row
