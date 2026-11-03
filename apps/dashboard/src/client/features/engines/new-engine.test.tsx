@@ -430,7 +430,7 @@ describe('new engine page', () => {
             expect(screen.getByText(HOSTNAME)).toBeTruthy();
             expect(
                 screen.getByText(
-                    'Your terminal shows the same fingerprint. Compare them: if they differ, this is not your engine.',
+                    'Your terminal shows the same fingerprint. If they differ, this is not your engine: revoke it from its page and link yours with a new code.',
                 ),
             ).toBeTruthy();
             expect(await screen.findByText("Waiting for the engine's first heartbeat.")).toBeTruthy();

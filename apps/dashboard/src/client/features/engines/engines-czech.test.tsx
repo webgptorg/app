@@ -40,7 +40,7 @@ describe('engines in Czech', () => {
 
         await app.user.click(screen.getByRole('link', { name: `${ENGINE_ID.slice(0, 8)}…` }));
         expect(await screen.findByRole('heading', { name: 'Poslední signál' })).toBeTruthy();
-        expect(screen.getByText(/Bezpečnostní stránka samotného enginu/)).toBeTruthy();
+        expect(screen.getByText(/Přihlašovací a bezpečnostní stránka enginu/)).toBeTruthy();
         expect(screen.getByText('Přes relaye Promptbooku')).toBeTruthy();
         expect(screen.getByText('Nedostupný: žádné spojení s relayem')).toBeTruthy();
 
