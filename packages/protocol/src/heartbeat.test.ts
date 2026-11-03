@@ -397,6 +397,10 @@ describe('heartbeat v2 (ADR 0018)', () => {
         ['an unknown outcome', { acks: [{ id: 'c'.repeat(16), outcome: 'maybe' }] }],
         ['an ack ID that is a name', { acks: [{ id: 'Petr Svoboda', outcome: 'approved' }] }],
         ['no request count', { accessRequests: undefined }],
+        ['a negative request count', { accessRequests: -1 }],
+        ['an ack that carries a name', { acks: [{ id: 'c'.repeat(16), outcome: 'approved', name: 'Petr' }] }],
+        ['an ack ID too short to be one the dashboard issued', { acks: [{ id: 'short', outcome: 'approved' }] }],
+        ['a field outside the schema', { requesterEmails: ['petr@example.com'] }],
     ])('refuses a v2 body with %s', async (_, change) => {
         const identity = await freshIdentity();
         const base = JSON.parse(
@@ -412,6 +416,15 @@ describe('heartbeat v2 (ADR 0018)', () => {
             now: Timestamp.parse(TS),
         });
         expect(verdict).toEqual({ kind: 'invalid-body' });
+    });
+
+    it('builds only the schema’s fields, and refuses to build an ack that carries anything else', async () => {
+        const identity = await freshIdentity();
+        const extra = { ...inputFor(identity.engineId), displayName: 'Petr Svoboda', accessRequests: 1, acks: [] };
+        const body = new TextDecoder().decode(buildHeartbeatV2(extra));
+        expect(body).not.toContain('Petr');
+        const named = [{ id: 'd'.repeat(16), outcome: 'approved', email: 'petr@example.com' }] as HeartbeatAck[];
+        expect(() => buildHeartbeatV2({ ...inputFor(identity.engineId), accessRequests: 0, acks: named })).toThrow();
     });
 
     it('never sends a v2 field in a v1 body', async () => {

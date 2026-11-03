@@ -108,8 +108,20 @@ describe('verifyAccessTicket', () => {
         ['a lifetime over 15 minutes', { ...ticket, expiresAt: '2026-10-30T12:15:01Z' }],
         ['an expiry before issue', { ...ticket, expiresAt: '2026-10-30T11:59:00Z' }],
         ['a ticket ID too short to be random', { ...ticket, ticketId: 'short' }],
+        ['no ticket ID, so nothing to spend', { ...ticket, ticketId: undefined }],
+        ['a display name over 128 characters', { ...ticket, displayName: 'x'.repeat(129) }],
+        ['an email over 254 characters', { ...ticket, email: `${'x'.repeat(250)}@x.cz` }],
+        ['a dashboard user ID outside its alphabet', { ...ticket, dashboardUserId: 'user/../owner' }],
+        ['an expiry that is not a timestamp', { ...ticket, expiresAt: 'tomorrow' }],
+        ['null for a body', null],
+        ['an array for a body', [ticket]],
     ])('refuses a signed body with %s', async (_, body) => {
         expect(await verifyTicket(await signedBody(JSON.stringify(body)))).toEqual({ kind: 'invalid-body' });
+    });
+
+    it('refuses a ticket signed under another purpose’s context', async () => {
+        const underHeartbeat = await signedBody(vectors.accessTicket.bodyUtf8, SIGNING_CONTEXT.heartbeat);
+        expect(await verifyTicket(underHeartbeat)).toEqual({ kind: 'bad-signature' });
     });
 
     it('refuses a ticket for another engine', async () => {
@@ -148,6 +160,21 @@ describe('verifyMemberRevocation', () => {
         expect(await verify(vectors.memberRevocation.token, EngineId.parse('b'.repeat(26)))).toEqual({
             kind: 'engine-mismatch',
         });
+    });
+
+    it.each([
+        ['another version', { ...revocation, v: 2 }],
+        ['no dashboard user', { ...revocation, dashboardUserId: undefined }],
+        ['a revocation ID too short to be random', { ...revocation, revocationId: 'short' }],
+        ['a member ID in place of a dashboard user', { ...revocation, dashboardUserId: 'member owner' }],
+    ])('refuses a signed revocation with %s', async (_, body) => {
+        const token = await signedBody(JSON.stringify(body), SIGNING_CONTEXT.memberRevocation);
+        expect(await verify(token)).toEqual({ kind: 'invalid-body' });
+    });
+
+    it('refuses a signed revocation that is not JSON, and one over the size cap', async () => {
+        expect(await verify(await signedBody('{', SIGNING_CONTEXT.memberRevocation))).toEqual({ kind: 'malformed' });
+        expect(await verify('a'.repeat(SIGNED_MEMBER_MESSAGE_MAX_LENGTH + 1))).toEqual({ kind: 'malformed' });
     });
 
     it('keeps a token within the reply cap for the longest IDs', async () => {
