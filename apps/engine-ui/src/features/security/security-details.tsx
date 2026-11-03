@@ -4,6 +4,7 @@ import type { BadgeTone } from '@ptbk/ui';
 
 import { UI_VERSION } from '../../app/ui-version';
 import { m } from '../../paraglide/messages';
+import { usePermissions } from '../session/use-permissions';
 import { Facts } from './facts';
 import { ReleaseLogEntry } from './release-log-entry';
 import {
@@ -120,12 +121,18 @@ export function UiBundleDetails({ overview: { ui } }: { readonly overview: Overv
 
 export function CertificateDetails({ overview: { tls } }: { readonly overview: Overview }) {
     const check = tls.lastCtCheck;
+    // Whoever may change the engine is the one who has to act, so only they get the remedy; everyone else gets a person.
+    const canActOnEngine = usePermissions().can('settings.manage');
     return (
         <div className="flex flex-col gap-4">
             {check?.result === 'unexpected-certificate' ? (
                 <Banner tone="danger">
                     <span className="flex flex-col gap-2">
-                        <span>{m.security_ct_foreign_body()}</span>
+                        <span>
+                            {canActOnEngine
+                                ? m.security_ct_foreign_manager_body()
+                                : m.security_ct_foreign_member_body()}
+                        </span>
                         {check.unexpectedCertificates.length === 0 ? null : (
                             <ul className="flex flex-col gap-2">
                                 {check.unexpectedCertificates.map((certificate) => (

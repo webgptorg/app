@@ -241,6 +241,40 @@ describe('security panel: checklist', { timeout: TIMEOUT_MS }, () => {
         expect(document.querySelector('b')).toBeNull();
     });
 
+    const foreignCertificateOverview = {
+        ...FULL_OVERVIEW,
+        tls: {
+            ...FULL_OVERVIEW.tls,
+            lastCtCheck: {
+                at: AT,
+                result: 'unexpected-certificate',
+                unexpectedCertificates: [
+                    { sha256: '99'.repeat(32), issuer: 'CN=Other CA', notBefore: AT, notAfter: AT },
+                ],
+            },
+        },
+    } as const;
+
+    it('gives whoever runs the engine a next step for a foreign certificate, not an administrator to call', async () => {
+        renderSecurity({ seed: { security: foreignCertificateOverview } });
+        await screen.findByText('relay-a.ptbk.io');
+        const certificate = row('Certificate and Certificate Transparency');
+        expect(certificate.textContent).toContain('ask that issuer to revoke it');
+        expect(certificate.textContent).not.toContain('administrator');
+        expect(certificate.textContent).not.toContain('Tell an owner');
+    });
+
+    it('sends a member who cannot change the engine to its owner about a foreign certificate', async () => {
+        renderSecurity({
+            seed: { security: foreignCertificateOverview },
+            permissions: OWNER_PERMISSIONS.filter((permission) => permission !== 'settings.manage'),
+        });
+        await screen.findByText('relay-a.ptbk.io');
+        const certificate = row('Certificate and Certificate Transparency');
+        expect(certificate.textContent).toContain('Tell an owner of this engine.');
+        expect(certificate.textContent).not.toContain('revoke');
+    });
+
     it('flags a failed CT check without alarm', async () => {
         renderSecurity({
             seed: {
