@@ -23,6 +23,8 @@ import type { PasskeyCeremonies } from '../domain/gateway/passkey-ceremonies';
 import { createChallenges } from '../domain/gateway/passkey-ceremonies';
 import type { PasskeyStore } from '../domain/gateway/passkey-gateway';
 import { createJoinGateway } from '../domain/gateway/join-gateway';
+import { createInMemorySpentTickets } from '../domain/gateway/spent-tickets';
+import type { SpentTicketStore } from '../domain/gateway/spent-tickets';
 import { createInMemoryPasskeyStore, createPasskeyGateway } from '../domain/gateway/passkey-gateway';
 import type { SetupSecretStore } from '../domain/onboarding/setup-secret';
 import { createInMemorySetupSecretStore, createSetupSecrets } from '../domain/onboarding/setup-secret';
@@ -129,6 +131,8 @@ export interface MockEngineDeps {
 export interface OnboardingDeps {
     readonly setupSecrets: SetupSecretStore;
     readonly passkeys: PasskeyStore;
+    /** Access tickets the join page spent; in memory without it. */
+    readonly spentTickets?: SpentTicketStore;
     readonly ceremonies?: PasskeyCeremonies;
     readonly pages: GatewayPageFiles;
 }
@@ -308,6 +312,7 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
             return key === null ? null : ed25519PublicKeyToBytes(key);
         },
         passkeys: passkeyStore,
+        spentTickets: onboarding?.spentTickets ?? createInMemorySpentTickets(),
         sessions,
         ceremonies,
         challenges: passkeyChallenges,

@@ -3,11 +3,11 @@ import { MAX_PENDING_ACCESS_REQUESTS } from '@ptbk/engine-api';
 import type { InMemoryEngineController } from '@ptbk/engine-api/in-memory';
 import type { Bytes, EngineId, HeartbeatAck } from '@ptbk/protocol';
 import {
-    ACCESS_TICKET_MAX_LIFETIME_MS,
     ACCESS_TICKET_MAX_SKEW_MS,
     MAX_HEARTBEAT_ACKS,
     Timestamp,
     encodeBase64Url,
+    revocationPredates,
     verifyAccessTicket,
     verifyMemberRevocation,
 } from '@ptbk/protocol';
@@ -20,6 +20,7 @@ import type { Challenges, PasskeyCeremonies, PasskeyCredential, RelyingParty } f
 import type { PasskeyStore } from './passkey-gateway';
 import { passkeyName } from './passkey-gateway';
 import type { SessionStore } from './sessions';
+import type { SpentTicketStore } from './spent-tickets';
 
 export type JoinEngine = Pick<
     InMemoryEngineController,
@@ -75,6 +76,8 @@ export interface JoinGatewayDeps {
     /** The pinned dashboard member key, read per call: registration may complete after startup. */
     readonly memberKey: () => Bytes | null;
     readonly passkeys: PasskeyStore;
+    /** Durable in the engine itself, so a restart does not let a spent ticket make a second request. */
+    readonly spentTickets: SpentTicketStore;
     readonly sessions: SessionStore;
     readonly ceremonies: PasskeyCeremonies;
     readonly challenges: Challenges;
@@ -93,13 +96,12 @@ interface Joining {
     readonly dashboardUserId: string;
     readonly credential: PasskeyCredential;
     state: 'pending' | 'joined' | 'closed';
+    /** When the request was stored, on the real clock: the person's join time, which revocations are checked against. */
     readonly createdMs: number;
 }
 
 const RP_NAME = 'Promptbook engine';
 const ID_BYTES = 16;
-/** Spent ticket IDs are kept a little longer than any ticket can live. */
-const SPENT_TICKET_MS = ACCESS_TICKET_MAX_LIFETIME_MS + 2 * ACCESS_TICKET_MAX_SKEW_MS;
 /** How long a request's outcome waits for its browser to poll; a request itself expires after 7 days. */
 const JOINING_MS = 8 * 24 * 60 * 60 * 1000;
 /** Revocation outcomes remembered, so a resent revocation whose ack got lost is acked the same way again. */
@@ -123,7 +125,6 @@ function activeMemberOf(members: readonly Member[], dashboardUserId: string): Me
  */
 export function createJoinGateway(deps: JoinGatewayDeps): JoinGateway {
     const { logger } = deps;
-    const spentTickets = new Map<string, number>();
     /** By `ticketId`; joined entries stay, so a removal on the engine can be acked. */
     const joining = new Map<string, Joining>();
     /** The waiting page's opaque token, by which it polls, to the ticket; spent by the sign-in it leads to. */
@@ -132,7 +133,6 @@ export function createJoinGateway(deps: JoinGatewayDeps): JoinGateway {
     const pendingAcks = new Map<string, HeartbeatAck['outcome']>();
 
     function sweep(nowMs: number): void {
-        for (const [ticketId, untilMs] of spentTickets) if (untilMs <= nowMs) spentTickets.delete(ticketId);
         for (const [ticketId, entry] of joining) {
             if (entry.state === 'closed' && entry.createdMs + JOINING_MS <= nowMs) joining.delete(ticketId);
         }
@@ -170,8 +170,9 @@ export function createJoinGateway(deps: JoinGatewayDeps): JoinGateway {
         if (verification.kind === 'expired' || verification.kind === 'not-yet-valid') return { kind: 'expired' };
         if (verification.kind !== 'accepted') return { kind: 'invalid' };
         const { ticket } = verification;
-        sweep(deps.clock.nowMs());
-        if (spentTickets.has(ticket.ticketId)) return { kind: 'used' };
+        const nowMs = deps.clock.nowMs();
+        sweep(nowMs);
+        if (await deps.spentTickets.has(ticket.ticketId, nowMs)) return { kind: 'used' };
         if (activeMemberOf(deps.engine().inspect().members, ticket.dashboardUserId) !== undefined) {
             return { kind: 'already-member' };
         }
@@ -241,6 +242,20 @@ export function createJoinGateway(deps: JoinGatewayDeps): JoinGateway {
         return ticketId !== undefined && joining.get(ticketId)?.state === 'pending';
     }
 
+    /**
+     * A revocation issued before the person's current request was stored (beyond the skew) was meant for an earlier
+     * membership: applying it would remove someone the organization let back in. A member or request the gateway has
+     * no join time for is revoked as before.
+     */
+    function predatesJoin(revocation: { readonly dashboardUserId: string; readonly issuedAt: Timestamp }): boolean {
+        const joinedMs = Math.max(
+            ...[...joining.values()]
+                .filter((entry) => entry.dashboardUserId === revocation.dashboardUserId && entry.state !== 'closed')
+                .map((entry) => entry.createdMs),
+        );
+        return Number.isFinite(joinedMs) && revocationPredates(revocation, iso(joinedMs));
+    }
+
     async function applyRevocation(token: string, memberKey: Bytes): Promise<void> {
         const verification = await verifyMemberRevocation({ token, memberKey, engineId: deps.engineId });
         if (verification.kind !== 'accepted') {
@@ -255,7 +270,8 @@ export function createJoinGateway(deps: JoinGatewayDeps): JoinGateway {
         }
         const engine = deps.engine();
         const member = activeMemberOf(engine.inspect().members, dashboardUserId);
-        const outcome = engine.revokeDashboardMember(dashboardUserId);
+        const stale = predatesJoin(verification.revocation);
+        const outcome = stale ? 'not-found' : engine.revokeDashboardMember(dashboardUserId);
         if (outcome === 'revoked' && member !== undefined) {
             engine.recordAudit({
                 actor: { kind: 'system' },
@@ -270,7 +286,7 @@ export function createJoinGateway(deps: JoinGatewayDeps): JoinGateway {
         // refused revocation leaves the member in place: a later removal on the engine must still be acked, or the
         // dashboard lists them as refused forever. Their pending request is gone either way.
         for (const entry of joining.values()) {
-            if (entry.dashboardUserId !== dashboardUserId) continue;
+            if (entry.dashboardUserId !== dashboardUserId || stale) continue;
             if (outcome === 'revoked' || entry.state === 'pending') entry.state = 'closed';
         }
         if (revocations.size >= MAX_REMEMBERED_REVOCATIONS) {
@@ -279,7 +295,7 @@ export function createJoinGateway(deps: JoinGatewayDeps): JoinGateway {
         }
         revocations.set(revocationId, outcome);
         ack(revocationId, outcome);
-        logger.info('member-revocation.applied', { outcome });
+        logger.info('member-revocation.applied', { outcome, stale });
     }
 
     return {
@@ -307,10 +323,13 @@ export function createJoinGateway(deps: JoinGatewayDeps): JoinGateway {
                 expectChallenge: (challenge) => deps.challenges.take(challenge, 'join', ticket.ticketId),
             });
             if (credential === null) return { kind: 'not-verified' };
-            // Spent here, after the passkey verified and after the awaits: of two racing browsers only one gets through.
-            if (spentTickets.has(ticket.ticketId)) return { kind: 'used' };
+            // Spent here, after the passkey verified, and durably before the request exists: of two racing browsers only
+            // one gets through, and a restart cannot let the ticket in again. Kept past `expiresAt` by the skew, in case
+            // the engine's clock steps back.
             const nowMs = deps.clock.nowMs();
-            spentTickets.set(ticket.ticketId, nowMs + SPENT_TICKET_MS);
+            const untilMs = Date.parse(ticket.expiresAt) + ACCESS_TICKET_MAX_SKEW_MS;
+            const spent = await deps.spentTickets.spend(ticket.ticketId, untilMs, nowMs);
+            if (spent !== 'ok') return { kind: spent === 'spent' ? 'used' : 'full' };
             const code = sixDigitCode();
             let accessRequest: AccessRequest;
             try {

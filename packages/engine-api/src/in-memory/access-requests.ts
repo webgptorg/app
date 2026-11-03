@@ -1,4 +1,9 @@
-import { AccessRequest, ACCESS_REQUEST_TTL_MS, MAX_PENDING_ACCESS_REQUESTS } from '../capabilities/access-requests';
+import {
+    AccessRequest,
+    ACCESS_REQUEST_TTL_MS,
+    MAX_ACCESS_CODE_ATTEMPTS,
+    MAX_PENDING_ACCESS_REQUESTS,
+} from '../capabilities/access-requests';
 import { AccessRequestId, DashboardUserId, MemberId, PasskeyId } from '../common';
 import type { Member } from '../members';
 import type { Passkey } from '../passkeys';
@@ -12,6 +17,8 @@ export interface AccessRequestRecord {
     readonly code: string;
     readonly dashboardUserId: DashboardUserId;
     readonly passkey: Pick<Passkey, 'name' | 'authenticator'>;
+    /** Wrong codes so far; absent in seeds, meaning none. */
+    readonly wrongCodes?: number;
 }
 
 export interface NewAccessRequest {
@@ -108,7 +115,12 @@ export const ACCESS_REQUEST_HANDLERS: Pick<
         dropExpired(ctx);
         const record = ctx.state.accessRequests.get(params.accessRequestId);
         if (record === undefined) return notFound('access request');
-        if (record.code !== body.code) return fail('access-code-mismatch');
+        if (record.code !== body.code) {
+            const wrongCodes = (record.wrongCodes ?? 0) + 1;
+            if (wrongCodes >= MAX_ACCESS_CODE_ATTEMPTS) ctx.state.accessRequests.delete(record.request.id);
+            else ctx.state.accessRequests.set(record.request.id, { ...record, wrongCodes });
+            return fail('access-code-mismatch');
+        }
         ctx.state.accessRequests.delete(record.request.id);
         const at = ctx.now();
         const member: Member = {

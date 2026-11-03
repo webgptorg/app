@@ -72,7 +72,11 @@ describe('access requests', { timeout: TIMEOUT_MS }, () => {
         const dialog = await openApprove(user);
         await user.type(within(dialog).getByRole('textbox', { name: /Code/ }), '000000');
         await user.click(within(dialog).getByRole('button', { name: 'Approve' }));
-        expect(await within(dialog).findByText("That code doesn't match. Check it with Petr Svoboda.")).toBeDefined();
+        expect(
+            await within(dialog).findByText(
+                /^That code doesn't match\. Check it with Petr Svoboda\. After 5 wrong codes/,
+            ),
+        ).toBeDefined();
         expect(engine.controller.inspect().members.map(({ displayName }) => displayName)).not.toContain('Petr Svoboda');
     });
 

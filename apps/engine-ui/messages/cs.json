@@ -301,7 +301,7 @@
   "access_approve_body": "Požádejte osobu {name} o šestimístný kód, který vidí na své obrazovce. Ověříte tím, že žádost je opravdu její.",
   "access_code_label": "Kód",
   "access_code_invalid": "Zadejte 6 číslic.",
-  "access_code_mismatch": "Kód nesouhlasí. Ověřte ho s osobou {name}.",
+  "access_code_mismatch": "Kód nesouhlasí. Ověřte ho s osobou {name}. Po 5 chybných kódech se žádost smaže a osoba musí engine znovu otevřít z dashboardu.",
   "access_approved": "{name}: přístup schválen",
   "access_approve_failed": "{name}: žádost se nepodařilo schválit.",
   "access_declined": "{name}: žádost odmítnuta",

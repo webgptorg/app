@@ -6,7 +6,9 @@ import { createWebCryptoSigner, generateEd25519KeyPair, importEd25519PrivateKey 
 import { EngineId, Timestamp } from './ids';
 import type { AccessTicket, MemberRevocation } from './member-access';
 import {
+    MEMBER_REVOCATION_MAX_SKEW_MS,
     SIGNED_MEMBER_MESSAGE_MAX_LENGTH,
+    revocationPredates,
     signAccessTicket,
     signMemberRevocation,
     verifyAccessTicket,
@@ -186,5 +188,22 @@ describe('verifyMemberRevocation', () => {
         expect(longest.length).toBeLessThan(SIGNED_MEMBER_MESSAGE_MAX_LENGTH);
         const [body] = longest.split('.');
         expect(decodeBase64Url(body ?? '').kind).toBe('ok');
+    });
+});
+
+describe('revocationPredates', () => {
+    const joinedAt = at('2026-10-30T12:10:00Z');
+    const issued = (iso: string) => ({ issuedAt: at(iso) });
+
+    it('takes a revocation issued more than the skew before the join for an earlier membership', () => {
+        expect(MEMBER_REVOCATION_MAX_SKEW_MS).toBe(120_000);
+        expect(revocationPredates(issued('2026-10-30T12:07:59Z'), joinedAt)).toBe(true);
+        expect(revocationPredates(issued('2026-10-30T11:00:00Z'), joinedAt)).toBe(true);
+    });
+
+    it('applies one issued within the skew of the join, or after it', () => {
+        expect(revocationPredates(issued('2026-10-30T12:08:00Z'), joinedAt)).toBe(false);
+        expect(revocationPredates(issued('2026-10-30T12:09:59Z'), joinedAt)).toBe(false);
+        expect(revocationPredates(issued('2026-10-30T12:30:00Z'), joinedAt)).toBe(false);
     });
 });

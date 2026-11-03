@@ -129,6 +129,22 @@ export async function verifyAccessTicket(input: VerifyAccessTicketInput): Promis
     return { kind: 'accepted', ticket: ticket.data };
 }
 
+/**
+ * Clock skew tolerated when an engine compares a revocation's `issuedAt` (the dashboard's clock) with a join time (its
+ * own). The heartbeat's tolerance: an engine whose heartbeats are accepted runs within it of the dashboard, so a
+ * revocation issued after the person joined is never taken for an older one.
+ */
+export const MEMBER_REVOCATION_MAX_SKEW_MS = 120_000;
+
+/**
+ * Whether a revocation was issued before the targeted person's current membership began, beyond the skew: when the
+ * engine stored the access request that made them a member, or that is still pending. Such a revocation was meant for
+ * an earlier membership the organization has since given back; the engine applies nothing and acks it `not-found`.
+ */
+export function revocationPredates(revocation: Pick<MemberRevocation, 'issuedAt'>, joinedAt: Timestamp): boolean {
+    return Date.parse(revocation.issuedAt) < Date.parse(joinedAt) - MEMBER_REVOCATION_MAX_SKEW_MS;
+}
+
 export async function signMemberRevocation(
     signer: Signer,
     revocation: MemberRevocation,
