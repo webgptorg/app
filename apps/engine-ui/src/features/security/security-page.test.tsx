@@ -139,6 +139,30 @@ describe('security panel: trust panel', { timeout: TIMEOUT_MS }, () => {
         });
         const mark = within(trust).getByRole('img', { name: /Engine fingerprint/ });
         expect(mark.getAttribute('aria-label')).not.toMatch(/verified/i);
+        expect(trust.textContent).toContain('Checks unavailable: your access does not include');
+    });
+
+    it('says in words what the seal shows: verified, not verified, or checks unavailable', async () => {
+        const trustText = (container: HTMLElement) => container.querySelector('#trust')?.textContent ?? '';
+
+        const verified = renderSecurity();
+        await screen.findByText('relay-a.ptbk.io');
+        expect(trustText(verified.container)).toContain('Verified: the checks below hold up.');
+        verified.unmount();
+
+        const unlogged = renderSecurity({
+            seed: { security: { ...FULL_OVERVIEW, ui: { ...FULL_OVERVIEW.ui, releaseLogIndex: null } } },
+        });
+        await screen.findByText('relay-a.ptbk.io');
+        expect(trustText(unlogged.container)).toContain('Not verified: a check below found a problem.');
+        expect(trustText(unlogged.container)).not.toContain('Verified:');
+        unlogged.unmount();
+
+        const engine = createSecurityEngine({ seed: { security: FULL_OVERVIEW } });
+        vi.spyOn(engine.client.security, 'get').mockImplementation(() => problemResponse('internal-error'));
+        const failed = renderWithProviders({ path: '/security', engineApi: engine.client });
+        await screen.findByRole('button', { name: 'Try again' }, { timeout: 10_000 });
+        expect(trustText(failed.container)).toContain('Checks unavailable: the engine could not report them.');
     });
 
     it("opens from the engine switcher's verify item and moves focus to the trust panel heading", async () => {

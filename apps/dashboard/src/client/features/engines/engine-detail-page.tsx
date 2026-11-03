@@ -20,7 +20,7 @@ import { EngineOpenLink } from './engine-open-link';
 import { EngineReachability } from './engine-reachability';
 import { EngineStatusBadge } from './engine-status-badge';
 import { LastSeen, useNowFor } from './engine-values';
-import { RevokeEngineCard } from './revoke-engine';
+import { EngineActionMenu } from './revoke-engine';
 import { useEngineTeam } from './use-engine-name';
 
 const READ_PERMISSION = 'engine.read';
@@ -123,7 +123,7 @@ function StatusNotice(props: { readonly engine: EngineView }) {
  * Name, status, when it was last heard from and what it runs, with the one thing to do: open it. Someone in the team
  * opens with a ticket, as on the list: the plain link lands a person not yet approved at a sign-in they cannot pass.
  */
-function Summary(props: { readonly engine: EngineView; readonly canRename: boolean }) {
+function Summary(props: { readonly engine: EngineView; readonly canRename: boolean; readonly canRevoke: boolean }) {
     const { engine } = props;
     const now = useNowFor(engine);
     const { team, givenName } = useEngineTeam(engine.engineId, engine.hostname);
@@ -151,12 +151,13 @@ function Summary(props: { readonly engine: EngineView; readonly canRename: boole
                 <EngineReachability engine={engine} />
             </p>
             {engine.status === 'suspended' ? null : (
-                <div>
+                <div className="flex items-center gap-2">
                     {team?.isMember === true ? (
                         <OpenTeamButton team={team} variant="primary" />
                     ) : (
                         <EngineOpenLink name={name} hostname={engine.hostname} variant="primary" size="md" prominent />
                     )}
+                    {props.canRevoke ? <EngineActionMenu engine={engine} name={name} /> : null}
                 </div>
             )}
         </div>
@@ -174,7 +175,7 @@ function EngineDetail(props: {
     const name = givenName ?? engineLabel(engine);
     return (
         <>
-            <Summary engine={engine} canRename={props.canRename} />
+            <Summary engine={engine} canRename={props.canRename} canRevoke={props.canRevoke} />
             <StatusNotice engine={engine} />
             <Card title={m.engine_identity_title()}>
                 <div className="flex flex-col gap-4">
@@ -250,7 +251,6 @@ function EngineDetail(props: {
                     </details>
                 )}
             </Card>
-            {props.canRevoke && engine.status !== 'suspended' ? <RevokeEngineCard engine={engine} /> : null}
         </>
     );
 }

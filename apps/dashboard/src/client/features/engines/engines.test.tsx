@@ -33,6 +33,12 @@ const OWNER_PERMISSIONS = {
 const OWNER = session(OWNER_PERMISSIONS);
 const OTHER_ID = 'q4ndy7ejw3zkp6ftr2hcm5sxlg';
 const OPEN_NAME = /^Open engine/;
+const ENGINE_ACTIONS = /^Actions for engine/;
+
+async function openRevoke(app: ReturnType<typeof renderApp>): Promise<void> {
+    await app.user.click(await screen.findByRole('button', { name: ENGINE_ACTIONS }));
+    await app.user.click(screen.getByRole('menuitem', { name: 'Revoke engine' }));
+}
 
 function engines(...list: EngineView[]) {
     return (api: ReturnType<typeof createScriptedApi>) => api.on(apiRoutes.listEngines, ok({ engines: list }));
@@ -363,7 +369,7 @@ describe('engine page', () => {
         });
         expect(await screen.findByText(/You revoked this engine/)).toBeTruthy();
         expect(screen.queryByRole('link', { name: OPEN_NAME })).toBeNull();
-        expect(screen.queryByRole('button', { name: 'Revoke engine' })).toBeNull();
+        expect(screen.queryByRole('button', { name: ENGINE_ACTIONS })).toBeNull();
     });
 
     it('warns that an offline engine is not reporting, says when it was last seen once, and what to run', async () => {
@@ -414,6 +420,17 @@ describe('engine page', () => {
         expect(screen.queryByText(/If its server is up/)).toBeNull();
     });
 
+    it("keeps revocation in the engine's overflow menu, never as a button on the page", async () => {
+        const app = renderApp({ path: `/engines/${ENGINE_ID}`, session: OWNER, script: engine(engineView()) });
+        expect(await screen.findByRole('heading', { name: 'Last heartbeat' })).toBeTruthy();
+        expect(screen.queryByRole('button', { name: 'Revoke engine' })).toBeNull();
+        await app.user.click(screen.getByRole('button', { name: `Actions for engine ${ENGINE_ID.slice(0, 8)}…` }));
+        const item = screen.getByRole('menuitem', { name: 'Revoke engine' });
+        expect(item.className).toContain('menu-danger');
+        await app.user.click(item);
+        expect(await screen.findByRole('dialog', { name: `Revoke engine ${ENGINE_ID.slice(0, 8)}…?` })).toBeTruthy();
+    });
+
     it('offers revocation only with engine.revoke', async () => {
         renderApp({
             path: `/engines/${ENGINE_ID}`,
@@ -421,7 +438,7 @@ describe('engine page', () => {
             script: engine(engineView()),
         });
         expect(await screen.findByRole('heading', { name: 'Last heartbeat' })).toBeTruthy();
-        expect(screen.queryByRole('button', { name: 'Revoke engine' })).toBeNull();
+        expect(screen.queryByRole('button', { name: ENGINE_ACTIONS })).toBeNull();
     });
 });
 
@@ -444,7 +461,7 @@ describe('engine name', () => {
         await app.user.click(screen.getByRole('link', { name: LABEL }));
         expect(await screen.findByRole('heading', { name: LABEL, level: 1 })).toBeTruthy();
         expect(screen.getByRole('link', { name: `Open engine ${LABEL}, in a new tab` })).toBeTruthy();
-        await app.user.click(screen.getByRole('button', { name: 'Revoke engine' }));
+        await openRevoke(app);
         const dialog = await screen.findByRole('dialog', { name: `Revoke engine ${LABEL}?` });
         expect(within(dialog).getByText(`Type ${ENGINE_ID.slice(0, 8)} to confirm`)).toBeTruthy();
     });
@@ -754,7 +771,7 @@ describe('revoke', () => {
     }
 
     async function confirmIn(app: ReturnType<typeof revokable>, button: string | RegExp) {
-        await app.user.click(await screen.findByRole('button', { name: 'Revoke engine' }));
+        await openRevoke(app);
         const dialog = await screen.findByRole('dialog', { name: /^Revoke engine/ });
         await app.user.type(within(dialog).getByRole('textbox'), ENGINE_ID.slice(0, 8));
         await app.user.click(within(dialog).getByRole('button', { name: button }));
@@ -763,7 +780,7 @@ describe('revoke', () => {
 
     it('states the consequence and sends the request only after the engine ID’s first characters are typed', async () => {
         const app = revokable();
-        await app.user.click(await screen.findByRole('button', { name: 'Revoke engine' }));
+        await openRevoke(app);
         const dialog = await screen.findByRole('dialog', { name: `Revoke engine ${ENGINE_ID.slice(0, 8)}…?` });
         expect(within(dialog).getByText(/within minutes. This cannot be undone/)).toBeTruthy();
         expect(
@@ -786,7 +803,7 @@ describe('revoke', () => {
             expect(screen.queryByRole('dialog', { name: /Revoke engine/ })).toBeNull();
         });
         expect(await screen.findByText(/You revoked this engine/)).toBeTruthy();
-        expect(screen.queryByRole('button', { name: 'Revoke engine' })).toBeNull();
+        expect(screen.queryByRole('button', { name: ENGINE_ACTIONS })).toBeNull();
     });
 
     it('runs the passkey check from the confirm button, without a second dialog on top', async () => {
