@@ -44,7 +44,8 @@ describe('engines in Czech', () => {
         expect(screen.getByText('Přes relaye Promptbooku')).toBeTruthy();
         expect(screen.getByText('Nedostupný: žádné spojení s relayem')).toBeTruthy();
 
-        await app.user.click(screen.getByRole('button', { name: 'Odvolat engine' }));
+        await app.user.click(screen.getByRole('button', { name: `Akce pro engine ${ENGINE_ID.slice(0, 8)}…` }));
+        await app.user.click(screen.getByRole('menuitem', { name: 'Odvolat engine' }));
         const dialog = await screen.findByRole('dialog', { name: `Odvolat engine ${ENGINE_ID.slice(0, 8)}…?` });
         expect(within(dialog).getByText(/Dostane nové ID i adresu/)).toBeTruthy();
         expect(within(dialog).getByRole('button', { name: 'Odvolat přístupovým klíčem' })).toBeTruthy();
