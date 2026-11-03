@@ -65,7 +65,7 @@ Organization ── billing, org roles
 | See the team list                                       | all\*\* | all\*\* | their teams     |
 | Open a team's engine (ask for access the first time)    | ✓     | ✓     | their teams     |
 | Create, rename or delete a team; link or unlink engines | ✓     | ✓     |                 |
-| Invite people; add them to teams; remove them           | ✓     | ✓     |                 |
+| Invite people; add them to teams; remove them           | ✓     | ✓\*\*\* |                 |
 | Change org roles                                        | ✓     |       |                 |
 | Billing, delete the organization                        | ✓     |       |                 |
 | Leave a team or the organization                        | ✓\*   | ✓     | ✓               |
@@ -73,6 +73,8 @@ Organization ── billing, org roles
 \* Except the last owner.
 
 \*\* Seeing a team in the dashboard is not access to its engine. Org owners and admins open an engine only after it approves them, like anyone else.
+
+\*\*\* Except owners: only an owner removes an owner, from a team or from the organization, since either queues a member revocation on the engine. Admins invite only admins and members.
 
 Two things from the meeting are deliberately not supported:
 
