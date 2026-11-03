@@ -95,7 +95,31 @@ export function addTeamMember(deps: TeamDeps, actor: TeamActor, teamId: TeamId, 
     return deps.teams.addMember(actor.orgId, teamId, userId, teamAudit(deps, actor));
 }
 
-/** Also the way out of a team for the actor themselves (`team.leave`). */
-export function removeTeamMember(deps: TeamDeps, actor: TeamActor, teamId: TeamId, userId: UserId) {
+/** Only an owner may act on an owner: an admin can neither demote nor remove one, from a team or the organization. */
+export async function mayActOn(
+    deps: { readonly teams: Pick<TeamStore, 'listOrgMembers'> },
+    actor: TeamActor,
+    userId: UserId,
+): Promise<boolean> {
+    if (actor.orgRole === 'owner' || userId === actor.userId) {
+        return true;
+    }
+    const target = (await deps.teams.listOrgMembers(actor.orgId)).find((member) => member.userId === userId);
+    return target?.role !== 'owner';
+}
+
+/**
+ * Also the way out of a team for the actor themselves (`team.leave`). Leaving the team queues a revocation on its
+ * engine, so an admin taking an owner out would be the removal `removeFromOrg` refuses, one team at a time.
+ */
+export async function removeTeamMember(
+    deps: TeamDeps,
+    actor: TeamActor,
+    teamId: TeamId,
+    userId: UserId,
+): Promise<'removed' | 'not-found' | 'forbidden'> {
+    if (!(await mayActOn(deps, actor, userId))) {
+        return 'forbidden';
+    }
     return deps.teams.removeMember(actor.orgId, teamId, userId, teamAudit(deps, actor));
 }

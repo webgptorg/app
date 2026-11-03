@@ -238,6 +238,38 @@ describe('team page', () => {
         expect(screen.queryByRole('button', { name: 'Actions for dana@example.test' })).toBeNull();
     });
 
+    it('offers an admin no way to take an owner out of the team', async () => {
+        renderApp({
+            path: `/teams/${TEAM_ID}`,
+            session: { ...ADMIN, activeOrg: { ...ADMIN.activeOrg, role: 'admin' } },
+            script: (api) => {
+                teamPage(api);
+                api.on(
+                    apiRoutes.getTeam,
+                    ok({
+                        team: team(),
+                        members: [
+                            {
+                                ...person('bob@example.test', 'member', 'b1bbbbbbbbbbbbbbbbbbbbbbbb'),
+                                access: 'approved' as const,
+                            },
+                            {
+                                ...person('eve@example.test', 'owner', 'e1eeeeeeeeeeeeeeeeeeeeeeee'),
+                                access: 'approved' as const,
+                            },
+                        ],
+                        removing: [],
+                        refused: [],
+                        invites: [],
+                    }),
+                );
+            },
+        });
+        expect(await screen.findByRole('button', { name: 'Actions for bob@example.test' })).toBeTruthy();
+        expect(screen.getByText('eve@example.test')).toBeTruthy();
+        expect(screen.queryByRole('button', { name: 'Actions for eve@example.test' })).toBeNull();
+    });
+
     it('renames the team and deletes it after naming it', async () => {
         const app = renderApp({
             path: `/teams/${TEAM_ID}`,

@@ -365,7 +365,10 @@ export function TeamPage(props: { readonly teamId: string }) {
                             row={row}
                             teamId={view.teamId}
                             self={row.userId === session.user.id}
-                            canRemove={permissions.includes(MEMBERS)}
+                            canRemove={
+                                permissions.includes(MEMBERS) &&
+                                (row.role !== 'owner' || session.activeOrg.role === 'owner')
+                            }
                         />
                     ))}
                 </ul>

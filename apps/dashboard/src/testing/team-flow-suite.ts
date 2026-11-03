@@ -416,6 +416,28 @@ export function describeTeamFlows(name: string, makeFixture: () => TeamFlowFixtu
             );
         });
 
+        it('never lets an admin take an owner out of a team, which would revoke them on its engine', async () => {
+            const boss = await owner();
+            const team = await createTeam(boss.browser);
+            await linkEngine(boss.browser, team.teamId);
+            const coOwner = await joined(boss, [team.teamId], 'owner');
+            const admin = await joined(boss, [team.teamId], 'admin');
+
+            expectProblem(
+                await admin.browser.request('POST', `/api/teams/${team.teamId}/members/${coOwner.userId}/remove`),
+                403,
+                'forbidden',
+            );
+            expect((await members(boss.browser, team.teamId)).members.map((p) => p.userId)).toContain(coOwner.userId);
+            expect(await fixture.revokedOn(coOwner.userId)).toEqual([]);
+
+            expect(
+                (await boss.browser.request('POST', `/api/teams/${team.teamId}/members/${coOwner.userId}/remove`))
+                    .status,
+            ).toBe(204);
+            expect((await admin.browser.request('POST', `/api/teams/${team.teamId}/leave`)).status).toBe(204);
+        });
+
         it('lets people leave a team and an organization, moving their session home; the last owner stays', async () => {
             const boss = await owner();
             const team = await createTeam(boss.browser);
