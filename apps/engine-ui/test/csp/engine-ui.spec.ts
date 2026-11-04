@@ -458,7 +458,7 @@ test.describe('the built bundle under the engine CSP', () => {
         expectCleanPage(report);
 
         const filtered = await visit('/integrations?status=needs-attention,error');
-        await expect(page.getByRole('button', { name: /^Status\s*1 selected$/ })).toBeVisible();
+        await expect(page.getByRole('button', { name: /^Status\s*2 selected$/ })).toBeVisible();
         await expect(page.getByRole('table').getByRole('link', { name: 'Calendar' })).toBeVisible();
         await expect(page.getByRole('table').getByRole('link', { name: /^Documentation search/ })).toHaveCount(0);
         expectCleanPage(filtered);
