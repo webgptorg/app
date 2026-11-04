@@ -19,9 +19,9 @@
       "@inlang/plugin-message-format": "4.5.4",
       "@noble/curves": "2.4.0",
       "@noble/hashes": "2.4.0",
-      "@peculiar/asn1-schema": "2.10.0",
-      "@peculiar/asn1-x509": "2.10.0",
-      "@peculiar/x509": "2.1.0",
+      "@peculiar/asn1-schema": "2.11.1",
+      "@peculiar/asn1-x509": "2.11.1",
+      "@peculiar/x509": "2.2.0",
       "@playwright/test": "1.64.0",
       "@sigstore/bundle": "5.0.0",
       "@sigstore/protobuf-specs": "0.5.2",
@@ -60,6 +60,10 @@
       "ws": "8.22.0",
       "zod": "4.6.7"
     }
+  },
+  "overrides": {
+    "@peculiar/asn1-schema": "catalog:",
+    "@peculiar/asn1-x509": "catalog:"
   },
   "scripts": {
     "lint": "NODE_OPTIONS=--max-old-space-size=6144 eslint .",

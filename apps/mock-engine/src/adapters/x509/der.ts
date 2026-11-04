@@ -1,6 +1,6 @@
 /*
- * A minimal DER writer and reader, just enough for the dev CA's certificates. Hand-rolled because the catalog's ASN.1
- * libraries resolve to two copies of @peculiar/asn1-schema whose schema registries do not see each other, and
+ * A minimal DER writer and reader, just enough for the dev CA's certificates. Hand-rolled because the ASN.1 libraries
+ * break whenever a second copy of @peculiar/asn1-schema lands in the tree (its schema registry is per copy), and
  * @peculiar/x509 needs a global reflect-metadata polyfill that is not in the catalog. OpenSSL verifies everything this
  * writes (the tests connect through `node:tls`), so an encoding mistake fails loudly instead of silently.
  */

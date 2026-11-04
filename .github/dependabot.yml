@@ -23,6 +23,10 @@ updates:
       prefix: chore
       include: scope
     groups:
+      # One copy of @peculiar/asn1-schema only: its schema registry and instanceof checks break across copies, so the
+      # ASN.1 packages and @peculiar/x509 move together.
+      peculiar:
+        patterns: ['@peculiar/*']
       dev-dependencies:
         dependency-type: development
     ignore:
@@ -34,6 +38,10 @@ updates:
       - dependency-name: vitest
         update-types: ['version-update:semver-major']
       - dependency-name: '@vitest/*'
+        update-types: ['version-update:semver-major']
+      # 3.x of @peculiar/* needs asn1-schema 3, but @simplewebauthn/server still requires x509 2 and asn1-* 2, so a
+      # major would leave two copies. Lift when @simplewebauthn/server supports asn1-schema 3.
+      - dependency-name: '@peculiar/*'
         update-types: ['version-update:semver-major']
       # Node types follow the runtime (Node 24 LTS), not the newest Node.
       - dependency-name: '@types/node'
