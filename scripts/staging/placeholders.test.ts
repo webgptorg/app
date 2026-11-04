@@ -45,12 +45,11 @@ function stagingOf(wrangler: string): string {
 describe('fillPlaceholders on the committed files', () => {
     const result = fillPlaceholders(committed, ALL);
 
-    it('leaves only the placeholders that wait on the engine team or Stripe', () => {
+    // The Stripe IDs wait in the commented-out BILLING_PLANS while billing is off, so they are not left in the config.
+    it('leaves only the placeholders that wait on the engine team', () => {
         assert.deepEqual(result.left.map(({ placeholder }) => placeholder).sort(), [
             '<installer-sha256>',
             '<installer-url>',
-            '<staging-standard-price-id>',
-            '<staging-standard-product-id>',
         ]);
     });
 
