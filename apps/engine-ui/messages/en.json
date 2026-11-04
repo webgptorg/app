@@ -666,7 +666,7 @@
   "security_claim_unknown": "claim not reported",
   "security_custom_domains_empty_body": "The engine is reachable at its default hostname only.",
   "security_outbound_title": "Where it connects",
-  "security_outbound_hint": "Every destination the engine reports contacting.",
+  "security_outbound_hint": "Every outbound destination the engine reports contacting.",
   "security_outbound_empty": "No outbound destinations",
   "security_outbound_empty_body": "The engine reports no outbound connections.",
   "security_heartbeat_title": "Last report to the dashboard",

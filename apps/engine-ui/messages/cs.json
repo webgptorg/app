@@ -686,7 +686,7 @@
   "security_claim_unknown": "nárok nehlášen",
   "security_custom_domains_empty_body": "Engine je dostupný jen na své výchozí adrese.",
   "security_outbound_title": "Kam se připojuje",
-  "security_outbound_hint": "Všechna místa, se kterými engine podle svého hlášení komunikuje.",
+  "security_outbound_hint": "Všechna místa, se kterými engine podle svého hlášení komunikuje (odchozí spojení).",
   "security_outbound_empty": "Žádná odchozí spojení",
   "security_outbound_empty_body": "Engine nehlásí žádná odchozí spojení.",
   "security_heartbeat_title": "Poslední hlášení dashboardu",
