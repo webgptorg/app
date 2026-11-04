@@ -467,16 +467,15 @@ function abuseMonitoringConfig(parsed: z.infer<typeof varsSchema>): AbuseMonitor
 }
 
 function billingConfig(parsed: z.infer<typeof varsSchema>): BillingConfig {
-    const { BILLING_OFF_PLAN: grant, BILLING_PLANS: plans } = parsed;
     const adapter = parsed.ADAPTERS.billing;
-    if (adapter === 'off' && grant !== undefined) {
-        return Object.freeze({ adapter, grant: createPlanEntitlements(grant) });
-    }
-    if (adapter !== 'off' && plans !== undefined) {
-        return Object.freeze({ adapter, plans: createPlanCatalogue(plans) });
-    }
-    throw new Error('billing vars were validated');
+    // The refinement above requires the var each adapter reads.
+    return adapter === 'off'
+        ? Object.freeze({ adapter, grant: createPlanEntitlements(parsed.BILLING_OFF_PLAN as PlanEntitlementsVar) })
+        : Object.freeze({ adapter, plans: createPlanCatalogue(parsed.BILLING_PLANS as PlanCatalogueVar) });
 }
+
+type PlanEntitlementsVar = z.output<typeof planEntitlementsSchema>;
+type PlanCatalogueVar = z.output<typeof planCatalogueSchema>;
 
 function installCommandsConfig(parsed: z.infer<typeof varsSchema>): readonly InstallCommandConfig[] {
     const legacy =
