@@ -44,18 +44,18 @@ test('the security panel matches what the browser and the release store see', as
     await expect(factValue(engineCard, 'Version')).toHaveText(reported.engine.version);
     expect(reported.engine.version).toMatch(/^\d+\.\d+\.\d+/);
 
-    const relays = await openCheck(page, 'Relays and tunnel');
+    const relays = await openCheck(page, 'Relays');
     for (const relay of relayHosts) {
         await expect(relays.getByRole('listitem').filter({ hasText: relay.hostname })).toContainText('Connected');
     }
-    await expect(await openCheck(page, 'Hostnames')).toContainText(engineHost);
+    await expect(await openCheck(page, 'Addresses')).toContainText(engineHost);
 
     const browserSha256 = await peerCertificateSha256(page);
     expect(browserSha256).toBe(engineCertSha256);
-    const certificate = await openCheck(page, 'Certificate and Certificate Transparency');
+    const certificate = await openCheck(page, 'Secure connection');
     await expect.poll(() => shownSha256(factValue(certificate, 'Certificate SHA-256'))).toBe(browserSha256);
 
-    const heartbeat = await openCheck(page, 'Last heartbeat');
+    const heartbeat = await openCheck(page, 'Last report to the dashboard');
     const sent = await lastHeartbeat();
     if (sent === null) {
         // This stack has no dashboard, so the engine has sent none; the panel must say so rather than invent one.
@@ -66,7 +66,7 @@ test('the security panel matches what the browser and the release store see', as
     }
 
     const release = await downloadUiRelease(UI_RELEASES.installed, caCertificatePem);
-    const bundle = await openCheck(page, 'UI bundle');
+    const bundle = await openCheck(page, 'This app');
     await expect(factValue(bundle, 'Served version')).toHaveText(UI_RELEASES.installed);
     await expect.poll(() => shownSha256(factValue(bundle, 'SHA-256'))).toBe(release.archiveSha256);
 });

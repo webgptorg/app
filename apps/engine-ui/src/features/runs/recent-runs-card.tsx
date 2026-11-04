@@ -52,11 +52,14 @@ export function RecentRunsCard({ agentId }: { readonly agentId: AgentId }) {
     );
 }
 
+/** On a phone the title gets its own line, with the status and time under it, instead of a narrow column. */
 function RecentRun({ run }: { readonly run: ReadRun }) {
     return (
-        <li className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
-            <RunStatusBadge status={run.status} cancelling={run.cancelRequestedAt !== null} />
-            <Link to="/runs/$runId" params={{ runId: run.id }} className="min-w-0 flex-1 break-words">
+        <li className="grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-1 py-2 sm:grid-cols-[auto_1fr_auto]">
+            <span className="row-start-2 sm:row-start-1">
+                <RunStatusBadge status={run.status} cancelling={run.cancelRequestedAt !== null} />
+            </span>
+            <Link to="/runs/$runId" params={{ runId: run.id }} className="col-span-2 min-w-0 break-words sm:col-span-1">
                 {runTitle(run)}
             </Link>
             <RelativeTime value={new Date(run.queuedAt)} className="text-sm text-text-muted" />

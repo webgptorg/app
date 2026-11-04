@@ -433,6 +433,7 @@ function ReadyPanel(props: {
                 state="verified"
                 size="lg"
                 label={m.engines_fingerprint_label({ name })}
+                className="justify-center"
             />
             <div className="flex max-w-md flex-col gap-2">
                 <h2 id="link-ready-title" className="font-display text-2xl font-semibold">

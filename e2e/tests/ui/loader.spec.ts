@@ -68,7 +68,7 @@ test('a tampered release is refused and the verified bundle keeps being served',
     expect(await servedSha256(page, ['index.html'])).toEqual(before);
 
     await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Security' }).click();
-    const bundle = page.getByRole('region', { name: 'UI bundle' });
+    const bundle = page.getByRole('region', { name: 'This app' });
     await expect(bundle.getByText('The engine refused a UI release')).toBeVisible();
     await expect(bundle.getByText('Reason: the download does not match its hash')).toBeVisible();
 });

@@ -110,6 +110,26 @@ test.describe('the built bundle under the engine CSP', () => {
         }
     });
 
+    test(`/agents/${FAKE_AGENT_ID} gives run and integration names a line of their own at 360 px`, async ({
+        page,
+        visit,
+    }) => {
+        await page.setViewportSize({ width: 360, height: 740 });
+        expectCleanPage(await visit(`/agents/${FAKE_AGENT_ID}`));
+        for (const name of [
+            'Summarise open pull requests',
+            'Documentation search with a rather long name that has to wrap',
+        ]) {
+            const link = page.getByRole('link', { name, exact: true });
+            const row = await link.locator('xpath=ancestor::li[1]').boundingBox();
+            const box = await link.boundingBox();
+            expect(row).not.toBeNull();
+            expect(box).not.toBeNull();
+            // Not squeezed between the status badge and the time: the name may use the whole row.
+            expect(box?.x ?? Infinity).toBeLessThanOrEqual((row?.x ?? 0) + 1);
+        }
+    });
+
     test(`/agents/${FAKE_AGENT_ID}/chat opens a fresh conversation and meets the UX checks`, async ({
         page,
         visit,

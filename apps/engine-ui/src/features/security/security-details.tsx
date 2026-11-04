@@ -80,6 +80,7 @@ function LastUpdateCheck({ check }: { readonly check: NonNullable<Overview['ui']
 export function UiBundleDetails({ overview: { ui } }: { readonly overview: Overview }) {
     return (
         <div className="flex flex-col gap-4">
+            <p className="text-sm text-text-muted">{m.security_ui_hint()}</p>
             {ui.version === UI_VERSION ? null : (
                 <Banner tone="warning">
                     {m.security_ui_mismatch_body({ served: ui.version, compiled: UI_VERSION })}
@@ -125,6 +126,7 @@ export function CertificateDetails({ overview: { tls } }: { readonly overview: O
     const canActOnEngine = usePermissions().can('settings.manage');
     return (
         <div className="flex flex-col gap-4">
+            <p className="text-sm text-text-muted">{m.security_tls_hint()}</p>
             {check?.result === 'unexpected-certificate' ? (
                 <Banner tone="danger">
                     <span className="flex flex-col gap-2">

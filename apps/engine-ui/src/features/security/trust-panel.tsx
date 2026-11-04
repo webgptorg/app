@@ -1,6 +1,6 @@
 import type { ReadSecurityOverview } from '@ptbk/engine-api';
 import { deriveEngineFingerprint } from '@ptbk/protocol';
-import { CodeText, Skeleton, TrustMark } from '@ptbk/ui';
+import { CodeText, ExternalLink, Skeleton, TrustMark } from '@ptbk/ui';
 import { useSuspenseQuery } from '@tanstack/react-query';
 import type { UseQueryResult } from '@tanstack/react-query';
 import { useLocation } from '@tanstack/react-router';
@@ -10,6 +10,7 @@ import { useEngineApi } from '../../app/engine-api-context';
 import { UI_VERSION } from '../../app/ui-version';
 import { m } from '../../paraglide/messages';
 import { engineInfoQueryOptions } from '../engine/engine-queries';
+import { dashboardLinks } from '../shell/dashboard-links';
 import { Facts } from './facts';
 import { TRUST_PANEL_HASH } from './trust-panel-hash';
 
@@ -74,6 +75,7 @@ export function TrustPanel({ overview }: { readonly overview: UseQueryResult<Rea
     const seal = sealOf(overview);
     const verified = settled && seal.verified;
     const label = seal.label;
+    const explanation = dashboardLinks(engine.dashboardUrl).trust;
     const defaultHostname =
         overview === null ? engine.hostname : overview.data?.hostnames.find(({ kind }) => kind === 'default')?.hostname;
 
@@ -127,6 +129,11 @@ export function TrustPanel({ overview }: { readonly overview: UseQueryResult<Rea
                         },
                     ]}
                 />
+                {explanation === null ? null : (
+                    <ExternalLink href={explanation} showHost={false} className="self-start text-sm">
+                        {m.security_trust_explained()}
+                    </ExternalLink>
+                )}
             </div>
         </section>
     );

@@ -26,6 +26,16 @@ describe('trust page', () => {
         expect(await screen.findByRole('heading', { name: 'How Promptbook protects you', level: 1 })).toBeTruthy();
         expect(screen.queryByRole('heading', { name: 'Your engines' })).toBeNull();
     });
+
+    it('does not link to itself from its footer', async () => {
+        renderApp({ path: '/trust' });
+        const footer = await screen.findByRole('navigation', { name: 'About Promptbook' });
+        expect(
+            within(footer)
+                .getAllByRole('link')
+                .map((link) => link.getAttribute('href')),
+        ).toEqual(['/abuse']);
+    });
 });
 
 describe('signed-out frame', () => {

@@ -66,12 +66,14 @@ export function IntegrationsCard({ agentId }: { readonly agentId: AgentId }) {
 
 function CardRow({ integration }: { readonly integration: ReadIntegration }) {
     return (
-        <li className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
-            <IntegrationStatusBadge status={integration.status} />
+        <li className="grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-1 py-2 sm:grid-cols-[auto_1fr_auto]">
+            <span className="row-start-2 sm:row-start-1">
+                <IntegrationStatusBadge status={integration.status} />
+            </span>
             <Link
                 to="/integrations/$integrationId"
                 params={{ integrationId: integration.id }}
-                className="min-w-0 flex-1 break-words"
+                className="col-span-2 min-w-0 break-words sm:col-span-1"
             >
                 {integration.name}
             </Link>
