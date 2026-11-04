@@ -46,3 +46,7 @@ updates:
       # Node types follow the runtime (Node 24 LTS), not the newest Node.
       - dependency-name: '@types/node'
         update-types: ['version-update:semver-major']
+      # 8.72.1 runs the whole-repo `bun run lint` out of its 6 GB heap (peak RSS 6.6 GB; 8.72.0 stays near 5.2 GB, #211,
+      # #222). Only this release: the next one is checked again.
+      - dependency-name: typescript-eslint
+        versions: ['8.72.1']
