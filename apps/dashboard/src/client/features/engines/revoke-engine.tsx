@@ -14,8 +14,9 @@ import { StepUpFailedError, useStepUp } from '../step-up/step-up';
 /**
  * The engine's ⋯ menu, whose one item is "Revoke engine" (D-06): destructive actions live there, never as a filled red
  * button on the page (docs/design/ui.md, Patterns). Revoking is permanent, so the dialog says what that means and asks
- * for the engine ID's first characters before anything is sent. The passkey check revoking needs runs from the dialog's own button, so a second modal never
- * opens on top of it; its failure shows in the dialog, which stays open for another try.
+ * for the engine ID's first characters before anything is sent. The passkey check revoking needs runs from the dialog's
+ * own button, so a second modal never opens on top of it; its failure shows in the dialog, which stays open for another
+ * try.
  */
 export function EngineActionMenu(props: { readonly engine: EngineView; readonly name: string }) {
     const api = useApiClient();
