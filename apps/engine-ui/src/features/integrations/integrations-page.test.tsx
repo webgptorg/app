@@ -69,8 +69,10 @@ describe('integrations list', { timeout: TIMEOUT_MS }, () => {
 
     it('writes kind, status and agent to the URL, sends them to the engine and restores them on reload', async () => {
         const { user, engine, router } = await renderIntegrations();
-        await user.click(screen.getByRole('checkbox', { name: 'Error' }));
-        await user.click(screen.getByRole('checkbox', { name: 'Needs attention' }));
+        await user.click(screen.getByRole('button', { name: 'Status' }));
+        await user.click(screen.getByRole('menuitemcheckbox', { name: 'Error' }));
+        await user.click(screen.getByRole('menuitemcheckbox', { name: 'Needs attention' }));
+        await user.keyboard('{Escape}');
         await waitFor(() => {
             expect(router.state.location.search).toMatchObject({ status: 'needs-attention,error' });
         });
@@ -104,7 +106,7 @@ describe('integrations list', { timeout: TIMEOUT_MS }, () => {
         await waitFor(() => {
             expect(reloaded.spies.list).toHaveBeenCalledWith(filtered, expect.anything());
         });
-        expect(screen.getAllByRole('checkbox', { name: 'Error' }).at(-1)).toHaveProperty('checked', true);
+        expect(screen.getAllByRole('button', { name: /^Status\s*2 selected$/ })).not.toHaveLength(0);
     });
 
     it('opens the attention link with exactly what needs attention', async () => {
