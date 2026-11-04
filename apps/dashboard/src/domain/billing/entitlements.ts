@@ -39,8 +39,9 @@ export function createSubscriptionEntitlements(deps: {
 }
 
 /**
- * Billing `off` (V0 does not charge): every organization holds `grant`, whatever the billing store says. Nothing is
- * written either, so switching to Stripe later starts every organization from no subscription, its `none` plan.
+ * Billing `off` (staging; production always charges): every organization holds `grant`, whatever the billing store
+ * says. Nothing is written either, so switching to Stripe later starts every organization from no subscription, on
+ * its `none` plan.
  */
 export function createFixedEntitlements(grant: PlanEntitlements): Entitlements {
     return {

@@ -153,7 +153,7 @@ Extra overlays (`E2E_OVERLAYS`, comma-separated) are layered after the scenario'
 E2E_OVERLAYS=debug bun run --filter @ptbk/e2e e2e:up
 ```
 
-`billing-off` runs the `dashboard` scenario as staging and production run V0: `ADAPTERS.billing = "off"`, so there is no Billing screen and no Checkout, and the specs skip the subscribe step and expect no plan step (`E2E_SCENARIO=dashboard E2E_OVERLAYS=billing-off bun run --filter @ptbk/e2e e2e`). Without it the dashboard keeps the fake billing provider.
+`billing-off` runs the `dashboard` scenario as staging runs: `ADAPTERS.billing = "off"`, so there is no Billing screen and no Checkout, and the specs skip the subscribe step and expect no plan step (`E2E_SCENARIO=dashboard E2E_OVERLAYS=billing-off bun run --filter @ptbk/e2e e2e`). Without it the dashboard keeps the fake billing provider.
 
 ### Debugging from the host
 

@@ -196,13 +196,20 @@ describe('parseConfig', () => {
         it.each([
             ['dev', devOff],
             ['staging', stagingOff],
-            ['production', { ...stagingOff, ENVIRONMENT: 'production' }],
         ])('runs in %s without Stripe secrets or Stripe IDs', (_, vars) => {
             const config = parseConfig({ ...bindings, ...vars });
             expect(config.adapters.billing).toBe('off');
             expect(config.billing).toEqual({ adapter: 'off', grant: TEST_OFF_PLAN });
             expect(Object.isFrozen(config.billing)).toBe(true);
             expect(config.stripeSecretKey).toBeNull();
+        });
+
+        it('refuses billing off in production, which charges', () => {
+            expect(failedPaths({ ...bindings, ...stagingOff, ENVIRONMENT: 'production' })).toEqual([
+                'ADAPTERS.billing',
+            ]);
+            const staged = { ...stagingOff, BILLING_PLANS: TEST_PLANS, STRIPE_SECRET_KEY: syntheticStripeKey('live') };
+            expect(failedPaths({ ...bindings, ...staged, ENVIRONMENT: 'production' })).toEqual(['ADAPTERS.billing']);
         });
 
         it('requires BILLING_OFF_PLAN', () => {

@@ -73,7 +73,7 @@ const installGuideUrlSchema = z
 
 const adaptersSchema = z.strictObject({
     email: z.enum(['cloudflare', 'fake']),
-    /** `off`: nobody is charged and every organization holds `BILLING_OFF_PLAN`; Stripe is not used at all. */
+    /** `off` (dev and staging): nobody is charged and every organization holds `BILLING_OFF_PLAN`; no Stripe at all. */
     billing: z.enum(['stripe', 'fake', 'off']),
     rateLimit: z.enum(['workers', 'memory']),
 });
@@ -282,6 +282,14 @@ const varsSchema = z
         if (vars.ADAPTERS.billing === 'off') {
             if (vars.BILLING_OFF_PLAN === undefined) {
                 ctx.addIssue({ code: 'custom', path: ['BILLING_OFF_PLAN'], message: 'required with billing off' });
+            }
+            // Production charges (Seb, 2026-11-04): only dev and staging may give engines away.
+            if (vars.ENVIRONMENT === 'production') {
+                ctx.addIssue({
+                    code: 'custom',
+                    path: ['ADAPTERS', 'billing'],
+                    message: 'billing off is not for production',
+                });
             }
         } else {
             if (vars.BILLING_PLANS === undefined) {
