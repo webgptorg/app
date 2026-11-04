@@ -43,6 +43,11 @@ CI never carries them. A maintainer logged in with their own Cloudflare account 
 
 ```sh
 bunx wrangler secret put RATE_LIMIT_HMAC_KEY --env staging     # base64url, at least 256 bits
+```
+
+The Stripe secrets are needed only once billing is switched on: V0 runs `ADAPTERS.billing = "off"` (ADR 0017). To switch on, put them first (config accepts them while off and ignores them), then change `ADAPTERS.billing` to `"stripe"` and replace `BILLING_OFF_PLAN` with the commented `BILLING_PLANS` in `wrangler.jsonc`, in one PR, and register the webhook endpoint (`apps/dashboard/README.md`, Environments). No data migration is needed.
+
+```sh
 bunx wrangler secret put STRIPE_SECRET_KEY --env staging       # rk_test_… in staging, rk_live_… in production
 bunx wrangler secret put STRIPE_WEBHOOK_SECRET --env staging   # whsec_…
 ```

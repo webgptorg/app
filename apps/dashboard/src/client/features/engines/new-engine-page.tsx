@@ -5,7 +5,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
 
 import { m } from '../../../paraglide/messages';
-import { apiRoutes, type LinkCodeView } from '../../../shared/api/routes';
+import { apiRoutes, type LinkCodeView, type SessionView } from '../../../shared/api/routes';
 import type { InstallPathLabelKey } from '../../../shared/install-paths';
 import { useApiClient } from '../../api/api-client-context';
 import { billingQuery, dataOrThrow, problemCode } from '../../api/queries';
@@ -64,15 +64,32 @@ function upgradeReason(error: unknown): UpgradeReason | null {
     return code === 'not-entitled' || code === 'engine-limit' ? code : null;
 }
 
-function linkCodeErrorMessage(error: unknown): string | undefined {
-    switch (upgradeReason(error)) {
-        case 'not-entitled':
-            return m.engines_new_not_entitled_title();
-        case 'engine-limit':
-            return m.engines_new_engine_limit_title();
-        case null:
-            return undefined;
-    }
+/** With billing off there is no plan to upgrade, so the copy names the account and points nowhere. */
+const UPGRADE_COPY: Record<'on' | 'off', Record<UpgradeReason, { title: () => string; body: () => string }>> = {
+    on: {
+        'not-entitled': {
+            title: () => m.engines_new_not_entitled_title(),
+            body: () => m.engines_new_not_entitled_body(),
+        },
+        'engine-limit': {
+            title: () => m.engines_new_engine_limit_title(),
+            body: () => m.engines_new_engine_limit_body(),
+        },
+    },
+    off: {
+        'not-entitled': {
+            title: () => m.engines_new_not_entitled_off_title(),
+            body: () => m.engines_new_not_entitled_off_body(),
+        },
+        'engine-limit': {
+            title: () => m.engines_new_engine_limit_off_title(),
+            body: () => m.engines_new_engine_limit_off_body(),
+        },
+    },
+};
+
+function upgradeCopy(billingEnabled: boolean, reason: UpgradeReason) {
+    return UPGRADE_COPY[billingEnabled ? 'on' : 'off'][reason];
 }
 
 /** Ticks every second from the injected clock; the caller remounts it per code (`key`). */
@@ -96,16 +113,12 @@ function minutesAndSeconds(ms: number): string {
 }
 
 function UpgradeBanner(props: { readonly reason: UpgradeReason }) {
-    const title =
-        props.reason === 'not-entitled' ? m.engines_new_not_entitled_title() : m.engines_new_engine_limit_title();
+    const { billingEnabled } = useSession();
+    const copy = upgradeCopy(billingEnabled, props.reason);
     return (
-        <Banner tone="warning" title={title}>
-            <p>
-                {props.reason === 'not-entitled'
-                    ? m.engines_new_not_entitled_body()
-                    : m.engines_new_engine_limit_body()}
-            </p>
-            <Link to="/billing">{m.engines_new_upgrade()}</Link>
+        <Banner tone="warning" title={copy.title()}>
+            <p>{copy.body()}</p>
+            {billingEnabled ? <Link to="/billing">{m.engines_new_upgrade()}</Link> : null}
         </Banner>
     );
 }
@@ -197,12 +210,17 @@ function InstallCommand(props: {
     );
 }
 
+/** Only while the dashboard charges, and only for whoever manages billing. */
+function canChoosePlan(session: SessionView): boolean {
+    return session.billingEnabled && session.activeOrg.permissions.includes(BILLING_PERMISSION);
+}
+
 /** Step 2 of onboarding.md: without `engines.create`, the plans come first, and Checkout returns here. */
 function PlanStep(props: { readonly checkout: CheckoutReturn | undefined }) {
     const api = useApiClient();
     const session = useSession();
-    const billing = useQuery(billingQuery(api));
-    if (!session.activeOrg.permissions.includes(BILLING_PERMISSION)) {
+    const billing = useQuery({ ...billingQuery(api), enabled: canChoosePlan(session) });
+    if (!canChoosePlan(session)) {
         return <UpgradeBanner reason="not-entitled" />;
     }
     return (
@@ -279,7 +297,10 @@ function LinkFlow(props: { readonly search: NewEngineSearch }) {
             props.search.team === undefined
                 ? dataOrThrow(await api.call(apiRoutes.createLinkCode, {}))
                 : dataOrThrow(await api.call(apiRoutes.createTeamLinkCode, { params: { teamId: props.search.team } })),
-        errorMessage: linkCodeErrorMessage,
+        errorMessage: (error) => {
+            const reason = upgradeReason(error);
+            return reason === null ? undefined : upgradeCopy(session.billingEnabled, reason).title();
+        },
         onSuccess: async (view) => {
             setIssued(view);
             // Thanked once, here; the URL drops `checkout`, so a reload or a bookmark does not thank again.
@@ -337,7 +358,7 @@ function LinkFlow(props: { readonly search: NewEngineSearch }) {
     const steps =
         (linkCodeId === undefined && state === undefined) ||
         state === 'engine-limit' ||
-        (state === 'not-entitled' && !session.activeOrg.permissions.includes(BILLING_PERMISSION)) ? null : (
+        (state === 'not-entitled' && !canChoosePlan(session)) ? null : (
             <LinkSteps steps={flowSteps(planShown)} current={currentStep(planStep && !backFromCheckout, linkState)} />
         );
 
@@ -409,7 +430,13 @@ function linkSearch(search: NewEngineSearch): NewEngineSearch {
 }
 
 export function NewEnginePage(props: { readonly search: NewEngineSearch }) {
-    return <NewEngineContent search={linkSearch(props.search)} />;
+    const { billingEnabled } = useSession();
+    return <NewEngineContent search={linkSearch(billingEnabled ? props.search : withoutCheckout(props.search))} />;
+}
+
+/** With billing off nothing returns from Checkout, so a `checkout` in the address thanks nobody and waits for nothing. */
+function withoutCheckout({ link, team }: NewEngineSearch): NewEngineSearch {
+    return { ...(link === undefined ? {} : { link }), ...(team === undefined ? {} : { team }) };
 }
 
 function NewEngineContent(props: { readonly search: NewEngineSearch }) {

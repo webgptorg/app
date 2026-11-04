@@ -1,0 +1,13 @@
+# The dashboard scenario with billing off, as staging and production run V0: no Billing screen, no Checkout, and every
+# organization may link engines up to BILLING_OFF_PLAN. Layered over compose.dashboard.yaml; its vars stay as they are.
+services:
+  dashboard:
+    environment:
+      DASHBOARD_OVERLAY_VARS: >-
+        {"ADAPTERS": {"email": "fake", "billing": "off", "rateLimit": "memory"},
+        "BILLING_OFF_PLAN": {"features": ["engines.create"], "quotas": {"engines.max": null, "custom-domains.max": 0}}}
+
+  # The specs read it to skip Checkout and expect no Billing screen.
+  playwright:
+    environment:
+      E2E_BILLING: 'off'

@@ -153,6 +153,8 @@ Extra overlays (`E2E_OVERLAYS`, comma-separated) are layered after the scenario'
 E2E_OVERLAYS=debug bun run --filter @ptbk/e2e e2e:up
 ```
 
+`billing-off` runs the `dashboard` scenario as staging and production run V0: `ADAPTERS.billing = "off"`, so there is no Billing screen and no Checkout, and the specs skip the subscribe step and expect no plan step (`E2E_SCENARIO=dashboard E2E_OVERLAYS=billing-off bun run --filter @ptbk/e2e e2e`). Without it the dashboard keeps the fake billing provider.
+
 ### Debugging from the host
 
 The `debug` overlay publishes relay-a (through `relay-a-net`, which owns its address) on `127.0.0.1:8443` (`E2E_DEBUG_PORT` to change it). Copy the dev CA out of the stack and point a client at that port:

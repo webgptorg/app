@@ -7,6 +7,7 @@ import { createMemoryRateLimiter } from '../../adapters/rate-limit/memory-rate-l
 import { createSimpleWebAuthnRelyingParty } from '../../adapters/webauthn/simple-webauthn-relying-party';
 import { createAuthorizer } from '../../domain/authz/authorizer';
 import { DASHBOARD_POLICY } from '../../domain/authz/policy';
+import { createPlanCatalogue, planCatalogueSchema } from '../../domain/billing/plan-catalogue';
 import { syntheticStripeKey, syntheticWebhookSecret, TEST_PLANS } from '../../testing/billing-fixtures';
 import { TEST_INSTALL_VARS } from '../../testing/install-fixtures';
 import { createFakeDnsResolver } from '../../testing/fake-dns-resolver';
@@ -49,7 +50,7 @@ function app(options: {
     });
     const { billing, entitlements } = createTestBilling({
         clock,
-        catalogue: config.plans,
+        catalogue: createPlanCatalogue(planCatalogueSchema.parse(TEST_PLANS)),
         dashboardOrigin: 'https://app.ptbk.test',
     });
     const logger = createMemoryLogger();

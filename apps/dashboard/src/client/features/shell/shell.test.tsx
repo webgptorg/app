@@ -181,6 +181,17 @@ describe('signed-in shell', () => {
 });
 
 describe('admin area', () => {
+    it('leaves Billing out of the navigation, and the page out of the app, while billing is off', async () => {
+        const app = renderApp({
+            path: '/billing',
+            session: session({ permissions: ['team.read', 'billing.read', 'billing.manage'], billingEnabled: false }),
+        });
+        expect(await screen.findByRole('heading', { name: 'Page not found' })).toBeTruthy();
+        expect(nav().getByRole('link', { name: 'Engines' })).toBeTruthy();
+        expect(nav().queryByRole('link', { name: 'Billing' })).toBeNull();
+        expect(app.api.callsTo(apiRoutes.getBilling)).toEqual([]);
+    });
+
     it('is not found for anyone but a platform admin', async () => {
         renderApp({ path: '/admin', session: session() });
         expect(await screen.findByRole('heading', { name: 'Page not found' })).toBeTruthy();

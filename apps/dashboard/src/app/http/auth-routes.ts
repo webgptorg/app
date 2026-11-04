@@ -71,7 +71,11 @@ function passkeyView(passkey: PasskeyRecord) {
 }
 
 /** Signup, sign-in, recovery, sessions and passkeys: D-02's `/api` routes. */
-export function bindAuthRoutes(router: Hono, mount: string, deps: AuthDeps & { readonly routes: RouteBinder }): void {
+export function bindAuthRoutes(
+    router: Hono,
+    mount: string,
+    deps: AuthDeps & { readonly routes: RouteBinder; readonly billingEnabled: boolean },
+): void {
     const signup = createSignupFlow(deps);
     const signIn = createSignInFlow(deps);
     const recovery = createRecoveryFlow(deps);
@@ -99,6 +103,7 @@ export function bindAuthRoutes(router: Hono, mount: string, deps: AuthDeps & { r
             },
             memberships: memberships.map((m) => ({ orgId: m.orgId, kind: m.org.kind, name: m.org.name, role: m.role })),
             steppedUpUntil: record.steppedUpAt === null ? null : record.steppedUpAt + STEP_UP_WINDOW_MS,
+            billingEnabled: deps.billingEnabled,
         };
     }
 

@@ -3,7 +3,15 @@ import type { BrowserContext, Page, TestInfo } from '@playwright/test';
 import type { OneOffContainer } from '../../src/compose.ts';
 import type { SetupLink } from '../../src/dashboard-outputs.ts';
 import { devInstallLinkCode, distinctInOrder, parseSetupLink, terminalIdentity } from '../../src/dashboard-outputs.ts';
-import { ENGINE_CLI, addPasskeyAuthenticator, expect, isEngineUrl, test, uniqueEmail } from '../../src/dashboard.ts';
+import {
+    BILLING_OFF,
+    ENGINE_CLI,
+    addPasskeyAuthenticator,
+    expect,
+    isEngineUrl,
+    test,
+    uniqueEmail,
+} from '../../src/dashboard.ts';
 import { DASHBOARD_ORIGIN, DASHBOARD_TIMING } from '../../src/stack.ts';
 
 // X-07: Journey 1 of docs/design/onboarding.md as a person walks it, on a fresh engine that has no owner and no dev
@@ -141,8 +149,16 @@ test('Journey 1: sign up, start the trial, link a fresh engine, become its owner
     await dashboard.signUp(email);
     const accountAt = Date.now();
 
-    await test.step('the plan step comes first, and the trial returns to the link page', async () => {
+    const planStep = BILLING_OFF
+        ? 'with billing off there is no plan step: the code is issued on arrival'
+        : 'the plan step comes first, and the trial returns to the link page';
+    await test.step(planStep, async () => {
         await page.goto(`${DASHBOARD_ORIGIN}/engines/new`);
+        if (BILLING_OFF) {
+            await expect(page).toHaveURL(/\/engines\/new\?link=[a-z2-7]{26}$/);
+            await expect(page.getByRole('heading', { name: 'Choose a plan to link your engine' })).toHaveCount(0);
+            return;
+        }
         await expect(page.getByRole('heading', { name: 'Choose a plan to link your engine' })).toBeVisible();
         await page.getByRole('button', { name: 'Start your 14-day trial of Standard' }).click();
         await expect(page.getByText('Thank you, your trial has started.')).toBeVisible();

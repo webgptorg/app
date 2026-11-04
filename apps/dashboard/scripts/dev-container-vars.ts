@@ -36,10 +36,12 @@ export function mergeWorkerVars(configText: string, varsText: string): string {
 if (import.meta.main) {
     const appDir = dirname(dirname(fileURLToPath(import.meta.url)));
     const configPath = join(appDir, 'dist', 'ptbk_dashboard', 'wrangler.json');
-    // DASHBOARD_VARS_FILE comes second, so a stack can add vars made at start (the e2e monitoring overlay's metrics
-    // tokens) to the ones in its compose file. Its contents are never printed, only the names.
+    // DASHBOARD_OVERLAY_VARS lets a compose overlay change a few vars without restating DASHBOARD_VARS (the e2e
+    // billing-off overlay). DASHBOARD_VARS_FILE comes last, so a stack can add vars made at start (the e2e monitoring
+    // overlay's metrics tokens) to the ones in its compose files. Its contents are never printed, only the names.
     const sources = [
         ['DASHBOARD_VARS', process.env['DASHBOARD_VARS']],
+        ['DASHBOARD_OVERLAY_VARS', process.env['DASHBOARD_OVERLAY_VARS']],
         ['DASHBOARD_VARS_FILE', fileContents(process.env['DASHBOARD_VARS_FILE'])],
     ] as const;
     for (const [name, varsText] of sources) {

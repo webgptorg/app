@@ -47,6 +47,12 @@ export const TEST_PLANS = {
     ],
 } as const;
 
+/** `BILLING_OFF_PLAN` for tests: engines without a subscription, capped so the limit path is reachable. */
+export const TEST_OFF_PLAN = {
+    features: ['engines.create'],
+    quotas: { 'engines.max': 3, 'custom-domains.max': 1 },
+} as const;
+
 export function testOrgId(): OrgId {
     return newOrgId(cryptoRandom);
 }

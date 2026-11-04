@@ -44,7 +44,8 @@ export interface DashboardDeps {
     readonly email: EmailSender;
     readonly rateLimiter: RateLimiter;
     readonly links: AuthLinks;
-    readonly billing: BillingService;
+    /** Null with billing `off`: nothing is sold, and no Checkout, portal or webhook route is mounted. */
+    readonly billing: BillingService | null;
     /** What every gated action asks (ADR 0017); nothing outside billing sees plans or the provider. */
     readonly entitlements: Entitlements;
     readonly linkCodes: LinkCodeStore;

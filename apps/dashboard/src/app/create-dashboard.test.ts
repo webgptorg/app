@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { syntheticStripeKey, syntheticWebhookSecret, TEST_PLANS } from '../testing/billing-fixtures';
+import { syntheticStripeKey, syntheticWebhookSecret, TEST_OFF_PLAN, TEST_PLANS } from '../testing/billing-fixtures';
 import { TEST_INSTALL_VARS } from '../testing/install-fixtures';
 import { stripeEvent, stripeSignatureHeader } from '../testing/stripe-signature';
 import { DEV_RATE_LIMIT_HMAC_KEY } from './config';
@@ -229,6 +229,41 @@ describe('createDashboard adapter selection', () => {
             expect((await dashboard.fetch(webhook(signed))).status).toBe(200);
             const forged = await stripeSignatureHeader(payload, syntheticWebhookSecret(), Date.now());
             expect((await dashboard.fetch(webhook(forged))).status).toBe(400);
+            expect(fetchSpy).not.toHaveBeenCalled();
+        });
+
+        it('mounts no webhook or billing route with billing off, in production without Stripe config', async () => {
+            const fetchSpy = vi.spyOn(globalThis, 'fetch');
+            const { bindings } = productionBindings();
+            const withoutStripe = Object.fromEntries(
+                Object.entries(stagingVars).filter(([name]) => !['BILLING_PLANS', 'STRIPE_SECRET_KEY'].includes(name)),
+            );
+            const dashboard = createDashboard(
+                env({
+                    ...withoutStripe,
+                    ...bindings,
+                    ENVIRONMENT: 'production',
+                    ADAPTERS: { ...stagingVars.ADAPTERS, billing: 'off' },
+                    BILLING_OFF_PLAN: TEST_OFF_PLAN,
+                    // Staged ahead of switching on: still no route verifies with it.
+                    STRIPE_WEBHOOK_SECRET: WEBHOOK_SECRET,
+                }),
+                { viteDevServer: false },
+            );
+            expect((await dashboard.fetch(new Request('https://app.ptbk.test/v1/health'))).status).toBe(200);
+            const signed = await stripeSignatureHeader(payload, WEBHOOK_SECRET, Date.now());
+            const response = await dashboard.fetch(webhook(signed));
+            expect([response.status, await response.json()]).toMatchObject([404, { code: 'not-found' }]);
+            for (const path of ['/api/billing', '/api/billing/checkout', '/api/billing/portal']) {
+                const method = path === '/api/billing' ? 'GET' : 'POST';
+                const answer = await dashboard.fetch(
+                    new Request(`https://app.ptbk.test${path}`, {
+                        method,
+                        headers: { 'Sec-Fetch-Site': 'same-origin' },
+                    }),
+                );
+                expect(answer.status, path).toBe(404);
+            }
             expect(fetchSpy).not.toHaveBeenCalled();
         });
 

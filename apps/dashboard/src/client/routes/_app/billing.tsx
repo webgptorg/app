@@ -2,6 +2,7 @@ import { createFileRoute } from '@tanstack/react-router';
 
 import { billingQuery } from '../../api/queries';
 import { BillingPage } from '../../features/billing/billing-page';
+import { requireBilling } from '../../features/session/session-guards';
 import type { CheckoutReturn } from '../../features/billing/billing-page';
 
 interface BillingSearch {
@@ -17,6 +18,9 @@ export const Route = createFileRoute('/_app/billing')({
     validateSearch: (search: Readonly<Record<string, unknown>>): BillingSearch => {
         const checkout = checkoutReturn(search['checkout']);
         return checkout === undefined ? {} : { checkout };
+    },
+    beforeLoad: ({ context }) => {
+        requireBilling(context.session);
     },
     // Prefetch only, failures swallowed: the page shows its own loading and error state.
     loader: ({ context }) => {
