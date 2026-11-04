@@ -4,6 +4,8 @@ The code for every task lands before the cloud accounts exist ([local-first](REA
 
 Each Apply step is a PR or a runbook run with `Refs: <task>`. Secrets go into the place named below (a password manager, a GitHub environment secret, `wrangler secret put` or a host credential file), never into the repo, a PR, a log or this page.
 
+For staging, [staging-runbook.md](../staging-runbook.md) runs the steps below in order by hand, without CI: accounts, tokens, secrets, placeholders, both stacks, the dashboard, email, the relay host and a linked mock engine.
+
 ## Credentials and accounts
 
 | Item                                                                                                                                                                                   | Service                                     | Created by    | Scope                                                                                                                  | Consumed at                                                                                                    | Tasks            |

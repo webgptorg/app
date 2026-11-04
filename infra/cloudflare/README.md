@@ -64,6 +64,8 @@ Nothing can be applied yet. These wait on the decisions in the plan's "Still nee
 | Relay addresses                                            | `terraform.tfvars`                                  | I-01 outputs                                                                      |
 | `<staging-d1-id>`, `<production-d1-id>`                    | `apps/dashboard/wrangler.jsonc`                     | `d1_database_id` output after the first apply                                     |
 
+For staging, `scripts/staging/fill-placeholders.ts` fills all of these, and the relay stack's, from one local `staging.env` ([staging runbook](../../docs/staging-runbook.md#5-placeholders)).
+
 `wrangler.jsonc` names relays `relay-1.…`; when the relay domain is decided, its `RELAYS` list takes the `relay_hostnames` output instead.
 
 ## Bootstrap (once per environment)
