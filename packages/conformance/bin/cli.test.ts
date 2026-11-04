@@ -190,6 +190,13 @@ describe('runCli', () => {
         expect(streams.err.join('')).toContain(message);
     });
 
+    it('takes an engine public key that starts with a dash, as one in 64 random keys does', async () => {
+        const key = `-${'A'.repeat(42)}`;
+        const streams = io();
+        expect(await runCli(['--engine-cmd', 'true', '--engine-public-key', key], streams)).toBe(2);
+        expect(streams.err.join('')).toContain('--engine-public-key is for --base-url');
+    });
+
     it('prints usage for --help', async () => {
         const streams = io();
         expect(await runCli(['--help'], streams)).toBe(0);
