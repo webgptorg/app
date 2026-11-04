@@ -16,6 +16,8 @@ import { TRUST_PANEL_HASH } from './trust-panel-hash';
 interface Seal {
     readonly verified: boolean;
     readonly label: string | undefined;
+    /** The same verdict in words, so the seal's colour and motion never carry it alone. */
+    readonly status: string;
 }
 
 /**
@@ -23,15 +25,28 @@ interface Seal {
  * the engine's identity and its name claims no verification.
  */
 function sealOf(overview: UseQueryResult<ReadSecurityOverview> | null): Seal {
-    if (overview === null) return { verified: true, label: m.security_trust_identity() };
+    if (overview === null)
+        return { verified: true, label: m.security_trust_identity(), status: m.security_trust_status_no_access() };
     const data = overview.data;
     if (data === undefined)
-        return { verified: false, label: overview.isError ? m.security_trust_unverified() : undefined };
-    if (data.ui.version !== UI_VERSION) return { verified: false, label: m.security_trust_mismatch() };
-    if (data.ui.releaseLogIndex === null) return { verified: false, label: m.security_trust_unlogged() };
-    if (data.tls.lastCtCheck?.result === 'unexpected-certificate')
-        return { verified: false, label: m.security_ct_foreign_title() };
-    return { verified: true, label: undefined };
+        return overview.isError
+            ? {
+                  verified: false,
+                  label: m.security_trust_unverified(),
+                  status: m.security_trust_status_unavailable(),
+              }
+            : { verified: false, label: undefined, status: m.security_trust_status_checking() };
+    const problem = problemOf(data);
+    return problem === undefined
+        ? { verified: true, label: undefined, status: m.security_trust_status_verified() }
+        : { verified: false, label: problem, status: m.security_trust_status_unverified() };
+}
+
+function problemOf(data: ReadSecurityOverview): string | undefined {
+    if (data.ui.version !== UI_VERSION) return m.security_trust_mismatch();
+    if (data.ui.releaseLogIndex === null) return m.security_trust_unlogged();
+    if (data.tls.lastCtCheck?.result === 'unexpected-certificate') return m.security_ct_foreign_title();
+    return undefined;
 }
 
 /**
@@ -79,6 +94,7 @@ export function TrustPanel({ overview }: { readonly overview: UseQueryResult<Rea
                 <h2 id="trust-panel-title" ref={heading} tabIndex={-1} className="text-xl font-semibold">
                     {m.security_trust_headline()}
                 </h2>
+                <p className="text-sm font-medium">{seal.status}</p>
                 <p className="text-sm text-text-muted">
                     {engine.engineId === null ? m.security_trust_no_fingerprint() : m.security_trust_compare()}
                 </p>

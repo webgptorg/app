@@ -1,4 +1,4 @@
-import { Button, Card, ConfirmDialog } from '@ptbk/ui';
+import { ActionMenu, ConfirmDialog } from '@ptbk/ui';
 import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 
@@ -12,11 +12,13 @@ import { ceremonyFailureMessage } from '../passkeys/ceremony-messages';
 import { StepUpFailedError, useStepUp } from '../step-up/step-up';
 
 /**
- * "Revoke engine" (D-06): permanent, so the dialog says what that means and asks for the engine ID's first characters
- * before anything is sent. The passkey check revoking needs runs from the dialog's own button, so a second modal never
- * opens on top of it; its failure shows in the dialog, which stays open for another try.
+ * The engine's ⋯ menu, whose one item is "Revoke engine" (D-06): destructive actions live there, never as a filled red
+ * button on the page (docs/design/ui.md, Patterns). Revoking is permanent, so the dialog says what that means and asks
+ * for the engine ID's first characters before anything is sent. The passkey check revoking needs runs from the dialog's
+ * own button, so a second modal never opens on top of it; its failure shows in the dialog, which stays open for another
+ * try.
  */
-export function RevokeEngineCard(props: { readonly engine: EngineView }) {
+export function EngineActionMenu(props: { readonly engine: EngineView; readonly name: string }) {
     const api = useApiClient();
     const queryClient = useQueryClient();
     const { needsStepUp, stepUpInPlace } = useStepUp();
@@ -44,18 +46,22 @@ export function RevokeEngineCard(props: { readonly engine: EngineView }) {
     };
     const failure = revoke.error instanceof StepUpFailedError ? revoke.error.failure : null;
     return (
-        <Card title={m.engine_revoke_title()}>
-            <div className="flex flex-col items-start gap-3">
-                <p className="text-sm">{m.engine_revoke_body()}</p>
-                <Button
-                    variant="danger"
-                    onClick={() => {
-                        setOpen(true);
-                    }}
-                >
-                    {m.engine_revoke_button()}
-                </Button>
-            </div>
+        <>
+            <ActionMenu
+                label={m.engine_actions({ name: props.name })}
+                align="start"
+                items={[
+                    {
+                        kind: 'item',
+                        id: 'revoke',
+                        label: m.engine_revoke_button(),
+                        tone: 'danger',
+                        onSelect: () => {
+                            setOpen(true);
+                        },
+                    },
+                ]}
+            />
             <ConfirmDialog
                 open={open}
                 onClose={close}
@@ -75,6 +81,6 @@ export function RevokeEngineCard(props: { readonly engine: EngineView }) {
                     <li>{m.engine_revoke_dialog_recover()}</li>
                 </ul>
             </ConfirmDialog>
-        </Card>
+        </>
     );
 }
