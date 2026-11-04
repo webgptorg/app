@@ -147,14 +147,14 @@ describe('security panel: trust panel', { timeout: TIMEOUT_MS }, () => {
 
         const verified = renderSecurity();
         await screen.findByText('relay-a.ptbk.io');
-        expect(trustText(verified.container)).toContain('Verified: the checks below hold up.');
+        expect(trustText(verified.container)).toContain('Verified: every check below passed.');
         verified.unmount();
 
         const unlogged = renderSecurity({
             seed: { security: { ...FULL_OVERVIEW, ui: { ...FULL_OVERVIEW.ui, releaseLogIndex: null } } },
         });
         await screen.findByText('relay-a.ptbk.io');
-        expect(trustText(unlogged.container)).toContain('Not verified: a check below found a problem.');
+        expect(trustText(unlogged.container)).toContain('Not verified: a check below failed.');
         expect(trustText(unlogged.container)).not.toContain('Verified:');
         unlogged.unmount();
 
