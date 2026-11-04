@@ -45,3 +45,10 @@ export function requirePlatformAdmin(session: SessionView): void {
         throw notFound();
     }
 }
+
+/** With billing off the billing screens do not exist, the same 404 the server gives for their API. */
+export function requireBilling(session: SessionView): void {
+    if (!session.billingEnabled) {
+        throw notFound();
+    }
+}

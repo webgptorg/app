@@ -2,7 +2,14 @@ import { Hostname, MAX_RELAYS } from '@ptbk/protocol';
 import { z } from 'zod';
 
 import { fromBase64Url } from '../domain/auth/secrets';
-import { createPlanCatalogue, planCatalogueSchema, type PlanCatalogue } from '../domain/billing/plan-catalogue';
+import {
+    createPlanCatalogue,
+    createPlanEntitlements,
+    planCatalogueSchema,
+    planEntitlementsSchema,
+    type PlanCatalogue,
+    type PlanEntitlements,
+} from '../domain/billing/plan-catalogue';
 import { CT_SOURCES, type CtSourceName } from '../domain/abuse/ct-log-source';
 import { MOCK_ENGINE_SIGN_IN_FINGERPRINT } from '../domain/abuse/public-face';
 import { LINK_CODE_TTL_MS } from '../domain/registration/issue-link-code';
@@ -66,7 +73,8 @@ const installGuideUrlSchema = z
 
 const adaptersSchema = z.strictObject({
     email: z.enum(['cloudflare', 'fake']),
-    billing: z.enum(['stripe', 'fake']),
+    /** `off`: nobody is charged and every organization holds `BILLING_OFF_PLAN`; Stripe is not used at all. */
+    billing: z.enum(['stripe', 'fake', 'off']),
     rateLimit: z.enum(['workers', 'memory']),
 });
 
@@ -248,7 +256,10 @@ const varsSchema = z
         ABUSE_EMAIL: z.email().max(254),
         RATE_LIMIT_HMAC_KEY: hmacKeySchema,
         MEMBER_KEY: memberKeySchema.optional(),
-        BILLING_PLANS: planCatalogueSchema,
+        /** Required unless billing is `off`; with `off` it may be staged, validated and unused, for switching on. */
+        BILLING_PLANS: planCatalogueSchema.optional(),
+        /** What every organization holds with billing `off`, and only then. */
+        BILLING_OFF_PLAN: planEntitlementsSchema.optional(),
         HEARTBEAT: heartbeatSchema.optional(),
         LINK_CODE_TTL_S: linkCodeTtlSchema.optional(),
         STRIPE_SECRET_KEY: stripeKeySchema.optional(),
@@ -267,6 +278,19 @@ const varsSchema = z
         }
         if (vars.INSTALL_COMMANDS !== undefined && vars.INSTALL_COMMAND !== undefined) {
             ctx.addIssue({ code: 'custom', path: ['INSTALL_COMMAND'], message: 'replaced by INSTALL_COMMANDS' });
+        }
+        if (vars.ADAPTERS.billing === 'off') {
+            if (vars.BILLING_OFF_PLAN === undefined) {
+                ctx.addIssue({ code: 'custom', path: ['BILLING_OFF_PLAN'], message: 'required with billing off' });
+            }
+        } else {
+            if (vars.BILLING_PLANS === undefined) {
+                ctx.addIssue({ code: 'custom', path: ['BILLING_PLANS'], message: 'required with billing on' });
+            }
+            // Once billing is on, a leftover grant would look like it still applies.
+            if (vars.BILLING_OFF_PLAN !== undefined) {
+                ctx.addIssue({ code: 'custom', path: ['BILLING_OFF_PLAN'], message: 'only with billing off' });
+            }
         }
         if (vars.ADAPTERS.billing === 'stripe') {
             for (const name of ['STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET'] as const) {
@@ -328,6 +352,14 @@ const varsSchema = z
 
 export type AdapterSelection = z.infer<typeof adaptersSchema>;
 
+/**
+ * `adapters.billing` with what it needs: `off` grants one fixed plan and has no catalogue; otherwise the catalogue's
+ * plans are sold through the provider.
+ */
+export type BillingConfig =
+    | { readonly adapter: 'off'; readonly grant: PlanEntitlements }
+    | { readonly adapter: 'stripe' | 'fake'; readonly plans: PlanCatalogue };
+
 export interface InstallCommandConfig {
     readonly id: InstallPathId;
     readonly labelKey: InstallPathLabelKey;
@@ -357,10 +389,10 @@ export interface DashboardConfig {
     readonly rateLimitHmacKey: Uint8Array;
     /** The member key's Ed25519 seed (ADR 0018); null leaves tickets unavailable and revocations queued. */
     readonly memberKeySeed: Uint8Array<ArrayBuffer> | null;
-    readonly plans: PlanCatalogue;
+    readonly billing: BillingConfig;
     readonly heartbeat: HeartbeatTiming;
     readonly linkCodeTtlMs: number;
-    /** Secret; present whenever `adapters.billing` is `stripe`. */
+    /** Secret; present whenever `adapters.billing` is `stripe`; may be put ahead of switching from `off`, unused. */
     readonly stripeSecretKey: string | null;
     /** Secret; present whenever `adapters.billing` is `stripe`, optional with the fake. */
     readonly stripeWebhookSecret: string | null;
@@ -434,6 +466,17 @@ function abuseMonitoringConfig(parsed: z.infer<typeof varsSchema>): AbuseMonitor
     });
 }
 
+function billingConfig(parsed: z.infer<typeof varsSchema>): BillingConfig {
+    const adapter = parsed.ADAPTERS.billing;
+    // The refinement above requires the var each adapter reads.
+    return adapter === 'off'
+        ? Object.freeze({ adapter, grant: createPlanEntitlements(parsed.BILLING_OFF_PLAN as PlanEntitlementsVar) })
+        : Object.freeze({ adapter, plans: createPlanCatalogue(parsed.BILLING_PLANS as PlanCatalogueVar) });
+}
+
+type PlanEntitlementsVar = z.output<typeof planEntitlementsSchema>;
+type PlanCatalogueVar = z.output<typeof planCatalogueSchema>;
+
 function installCommandsConfig(parsed: z.infer<typeof varsSchema>): readonly InstallCommandConfig[] {
     const legacy =
         parsed.INSTALL_COMMAND === undefined ? [] : [{ ...LEGACY_INSTALL_PATH, template: parsed.INSTALL_COMMAND }];
@@ -467,7 +510,7 @@ export function parseConfig(env: object): DashboardConfig {
         abuseEmail: parsed.ABUSE_EMAIL,
         rateLimitHmacKey: fromBase64Url(parsed.RATE_LIMIT_HMAC_KEY),
         memberKeySeed: parsed.MEMBER_KEY === undefined ? null : fromBase64Url(parsed.MEMBER_KEY),
-        plans: createPlanCatalogue(parsed.BILLING_PLANS),
+        billing: billingConfig(parsed),
         heartbeat: Object.freeze({ ...(parsed.HEARTBEAT ?? heartbeatSchema.parse({})) }),
         linkCodeTtlMs: parsed.LINK_CODE_TTL_S === undefined ? LINK_CODE_TTL_MS : parsed.LINK_CODE_TTL_S * 1000,
         stripeSecretKey: parsed.STRIPE_SECRET_KEY ?? null,

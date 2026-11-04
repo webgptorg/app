@@ -32,7 +32,7 @@ About 1.5 hours of hands-on time. Each step ends with **You should see** (the ch
 
 - An up-to-date checkout of `main` with `bun install` done; Node 24 (`nvm use`), [OpenTofu](https://opentofu.org/docs/intro/install/) 1.10 or later, `dig` and `delv` (BIND tools), `ssh`, and `nmap` for one check.
 - Two hardware security keys, and a password manager vault for staging (one entry per secret below).
-- `ADAPTERS.billing` is `"off"` in `env.staging` of [apps/dashboard/wrangler.jsonc](../apps/dashboard/wrangler.jsonc). Until the billing-off change has landed, the staging Worker refuses its config (`BILLING_PLANS.plans.0.stripeProductId`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`), and you would need Stripe test keys. Stripe is needed only when billing is switched on ([apply.md](plan/apply.md) step 2).
+- `ADAPTERS.billing` is `"off"` in `env.staging` of [apps/dashboard/wrangler.jsonc](../apps/dashboard/wrangler.jsonc). Every organization then holds `BILLING_OFF_PLAN` (engines, up to 3 per organization) with no Stripe secrets or IDs; the Stripe catalogue stays commented out next to it. Stripe is needed only when billing is switched on ([apply.md](plan/apply.md) step 2).
 - Secrets never go into the repo, a PR, a chat, a log or this page. Values in `staging.env` are not secrets (IDs, domains, addresses, a public SSH key) and end up committed.
 
 ## 1. Accounts and domains
@@ -185,7 +185,7 @@ Every staging placeholder:
 | `<staging-d1-id>`                                                     | `wrangler.jsonc` (`database_id`)                                                                | `D1_DATABASE_ID`                                                                           | Step 7, `tofu output d1_database_id`                                                                |
 | `<public-install-guide-url>`                                          | `wrangler.jsonc` (`INSTALL_GUIDE_URL`)                                                          | `INSTALL_GUIDE_URL`                                                                        | The public install guide once it exists; the repo's guide until then                                |
 | `<installer-url>`, `<installer-sha256>`                               | `wrangler.jsonc` (`INSTALL_COMMANDS`)                                                           | Left on purpose                                                                            | The engine team's first release ([apply.md](plan/apply.md) step 12, D-11)                           |
-| `<staging-standard-product-id>`, `<staging-standard-price-id>`        | `wrangler.jsonc` (`BILLING_PLANS`)                                                              | Left on purpose                                                                            | Stripe test mode, only when billing is on                                                           |
+| `<staging-standard-product-id>`, `<staging-standard-price-id>`        | `wrangler.jsonc` (`BILLING_PLANS`, commented out)                                               | Left on purpose                                                                            | Stripe test mode, only when billing is on                                                           |
 | `UI_STAGING_RELEASE_KEY` public key                                   | `apps/engine-ui/release/trust-policy.staging.json`                                              | By hand                                                                                    | Step 4                                                                                              |
 
 Later, with CI (I-03), these go into GitHub environments, not files ([deploy runbook, GitHub settings](runbooks/deploy.md#github-settings)): `staging` gets the `CLOUDFLARE_API_TOKEN` secret (the deploy token) and the variables `CLOUDFLARE_ACCOUNT_ID` and `RELAY_HOSTS` (`relay-fsn.<staging zone>`); `release` gets `UI_STAGING_RELEASE_KEY`, `UI_STAGING_R2_ACCESS_KEY_ID` and `UI_STAGING_R2_SECRET_ACCESS_KEY`, plus the variables `UI_STAGING_R2_ENDPOINT` (`https://<account id>.r2.cloudflarestorage.com`) and `UI_STAGING_R2_BUCKET`.
@@ -353,7 +353,7 @@ The mock's certificate comes from its dev CA, so browsers warn. A CA-issued cert
 
 A real engine links the same way with its own `connect --link <code>` against `https://<dashboard host>`. The installer tab on the page still shows the D-11 placeholders.
 
-**If it fails:** exit 3 means the code was refused (used, or older than 30 minutes): make a new one. Exit 5 (`engine-limit`, `not-entitled`) means billing is not off. Exit 6 means the dashboard was unreachable.
+**If it fails:** exit 3 means the code was refused (used, or older than 30 minutes): make a new one. Exit 5 (`engine-limit`, `not-entitled`) means the organization already has `BILLING_OFF_PLAN`'s 3 engines (revoke one), or billing is not off. Exit 6 means the dashboard was unreachable.
 
 ## 13. e2e against staging
 

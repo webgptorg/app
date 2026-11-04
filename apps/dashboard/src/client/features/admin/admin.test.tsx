@@ -76,6 +76,18 @@ describe('platform admin', () => {
         expect(await screen.findByText('Acme')).toBeTruthy();
     });
 
+    it('lists no billing tool while billing is off', async () => {
+        renderApp({ path: '/admin', session: { ...ADMIN, billingEnabled: false } });
+        expect(await screen.findByRole('heading', { name: 'Platform admin', level: 1 })).toBeTruthy();
+        expect(screen.queryByRole('link', { name: 'Billing problems' })).toBeNull();
+    });
+
+    it('has no billing page while billing is off', async () => {
+        const app = renderApp({ path: '/admin/billing', session: { ...ADMIN, billingEnabled: false } });
+        expect(await screen.findByRole('heading', { name: 'Page not found' })).toBeTruthy();
+        expect(app.api.callsTo(apiRoutes.adminBilling)).toEqual([]);
+    });
+
     it('does not exist for anyone else, and asks the API for nothing', async () => {
         const app = renderApp({ path: '/admin/billing', session: session() });
         expect(await screen.findByRole('heading', { name: 'Page not found' })).toBeTruthy();

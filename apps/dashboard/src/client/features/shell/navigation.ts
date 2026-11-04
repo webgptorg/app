@@ -18,6 +18,8 @@ export interface NavEntry {
     readonly label: () => string;
     readonly icon: ComponentType<{ readonly 'aria-hidden': true; readonly className?: string }>;
     readonly requires: NavRequirement;
+    /** Shown only while the dashboard charges (`billingEnabled`). */
+    readonly billingOnly?: true;
 }
 
 /** The shell's navigation; later screens (admin tools) add their entries here. */
@@ -43,6 +45,7 @@ export const NAV_ENTRIES: readonly NavEntry[] = [
         label: () => m.nav_billing(),
         icon: CreditCard,
         requires: { permission: 'billing.read' },
+        billingOnly: true,
     },
     {
         id: 'account',
@@ -64,5 +67,7 @@ export function isAllowed(requirement: NavRequirement, session: SessionView): bo
 }
 
 export function visibleNavEntries(session: SessionView): readonly NavEntry[] {
-    return NAV_ENTRIES.filter((entry) => isAllowed(entry.requires, session));
+    return NAV_ENTRIES.filter(
+        (entry) => isAllowed(entry.requires, session) && (entry.billingOnly !== true || session.billingEnabled),
+    );
 }

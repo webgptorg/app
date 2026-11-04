@@ -27,8 +27,12 @@ export function createApiRouter(
     deps.routes.bind(router, API_MOUNT, apiRoutes.getAbuseContact, () =>
         Promise.resolve({ kind: 'ok', body: { email: deps.config.abuseEmail } }),
     );
-    bindAuthRoutes(router, API_MOUNT, deps);
-    bindBillingRoutes(router, API_MOUNT, deps);
+    const { billing } = deps;
+    bindAuthRoutes(router, API_MOUNT, { ...deps, billingEnabled: billing !== null });
+    // Not mounted with billing off, so every billing route answers 404 like any unknown path.
+    if (billing !== null) {
+        bindBillingRoutes(router, API_MOUNT, { ...deps, billing });
+    }
     bindEngineRoutes(router, API_MOUNT, deps);
     bindTeamRoutes(router, API_MOUNT, deps);
     bindAdminEngineRoutes(router, API_MOUNT, deps);

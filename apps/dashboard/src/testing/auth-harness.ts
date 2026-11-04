@@ -30,7 +30,9 @@ import type { HeartbeatTiming } from '../domain/status/engine-status';
 import type { EngineStatusDirectory } from '../domain/status/engine-status-directory';
 import type { HeartbeatEngineReader } from '../domain/status/heartbeat-engine-reader';
 import type { RouteContract } from '../shared/api/contract';
-import { syntheticWebhookSecret, TEST_PLANS } from './billing-fixtures';
+import { syntheticWebhookSecret, TEST_OFF_PLAN, TEST_PLANS } from './billing-fixtures';
+import { createFixedEntitlements } from '../domain/billing/entitlements';
+import { createPlanCatalogue, planCatalogueSchema } from '../domain/billing/plan-catalogue';
 import { TEST_INSTALL_VARS } from './install-fixtures';
 import { createSoftwareAuthenticator, type SoftwareAuthenticator } from './software-authenticator';
 import { stripeSignatureHeader } from './stripe-signature';
@@ -137,6 +139,8 @@ export function createAuthHarness(options: {
     readonly store: AuthStore;
     readonly rateLimiter?: (clock: FakeClock) => RateLimiter;
     readonly email?: 'fake' | 'cloudflare';
+    /** `off` grants {@link TEST_OFF_PLAN} to everyone and mounts no billing route; the store is still there to inspect. */
+    readonly billing?: 'fake' | 'off';
     /** Defaults to an in-memory store; the auth tests that use the default never touch billing. */
     readonly billingStore?: BillingStore;
     /** Default to in-memory stores whose organizations always exist. */
@@ -178,18 +182,19 @@ export function createAuthHarness(options: {
         ENGINE_DOMAIN: 'engines.ptbk.test',
         RELAYS: (options.relays ?? ['relay-1.ptbk.test']).map((relayId) => ({ relayId, region: 'eu-central' })),
         ...TEST_INSTALL_VARS,
-        ADAPTERS: { email: options.email ?? 'fake', billing: 'fake', rateLimit: 'memory' },
+        ADAPTERS: { email: options.email ?? 'fake', billing: options.billing ?? 'fake', rateLimit: 'memory' },
         EMAIL_FROM: 'no-reply@ptbk.test',
         ABUSE_EMAIL: 'abuse@ptbk.test',
         RATE_LIMIT_HMAC_KEY: DEV_RATE_LIMIT_HMAC_KEY,
         MEMBER_KEY: DEV_MEMBER_KEY,
-        BILLING_PLANS: TEST_PLANS,
-        STRIPE_WEBHOOK_SECRET: webhookSecret,
+        ...(options.billing === 'off'
+            ? { BILLING_OFF_PLAN: TEST_OFF_PLAN }
+            : { BILLING_PLANS: TEST_PLANS, STRIPE_WEBHOOK_SECRET: webhookSecret }),
         ...(options.heartbeat === undefined ? {} : { HEARTBEAT: options.heartbeat }),
     });
     const testBilling = createTestBilling({
         clock,
-        catalogue: config.plans,
+        catalogue: createPlanCatalogue(planCatalogueSchema.parse(TEST_PLANS)),
         dashboardOrigin: ORIGIN,
         logger,
         webhookSecret,
@@ -243,8 +248,9 @@ export function createAuthHarness(options: {
         rateLimiter: options.rateLimiter?.(clock) ?? createMemoryRateLimiter(clock, rateLimitRules(config)),
         links: authLinks(ORIGIN),
         devOutbox: options.email === 'cloudflare' ? null : outbox,
-        billing: testBilling.billing,
-        entitlements: testBilling.entitlements,
+        ...(config.billing.adapter === 'off'
+            ? { billing: null, entitlements: createFixedEntitlements(config.billing.grant) }
+            : { billing: testBilling.billing, entitlements: testBilling.entitlements }),
         linkCodes: registration.linkCodes,
         engines: registration.engines,
         teams,

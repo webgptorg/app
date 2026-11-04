@@ -32,11 +32,18 @@ export const webhookRoutes = {
 } as const;
 
 /** Signed provider callbacks. Fast and idempotent: write D1 and answer; Stripe retries anything that is not 2xx. */
-export function createWebhooksRouter(deps: { readonly billing: BillingService; readonly routes: RouteBinder }): Hono {
+export function createWebhooksRouter(deps: {
+    readonly billing: BillingService | null;
+    readonly routes: RouteBinder;
+}): Hono {
     const router = new Hono();
-    deps.routes.bind(router, WEBHOOKS_MOUNT, webhookRoutes.stripe, async ({ input, request }) => {
-        await deps.billing.handleEvent(input.body, request.signal);
-        return { kind: 'ok', body: { received: true as const } };
-    });
+    const { billing } = deps;
+    // With billing off nothing is mounted: no event is verified, recorded or acknowledged.
+    if (billing !== null) {
+        deps.routes.bind(router, WEBHOOKS_MOUNT, webhookRoutes.stripe, async ({ input, request }) => {
+            await billing.handleEvent(input.body, request.signal);
+            return { kind: 'ok', body: { received: true as const } };
+        });
+    }
     return router;
 }

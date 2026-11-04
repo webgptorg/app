@@ -30,8 +30,12 @@ import { systemTimer } from '../adapters/system-timer';
 import { createSimpleWebAuthnRelyingParty } from '../adapters/webauthn/simple-webauthn-relying-party';
 import { createAuthorizer } from '../domain/authz/authorizer';
 import type { BillingEvent, BillingProvider } from '../domain/billing/billing-provider';
-import { createBillingService } from '../domain/billing/billing-service';
-import { createSubscriptionEntitlements } from '../domain/billing/entitlements';
+import { createBillingService, type BillingService } from '../domain/billing/billing-service';
+import {
+    createFixedEntitlements,
+    createSubscriptionEntitlements,
+    type Entitlements,
+} from '../domain/billing/entitlements';
 import { DASHBOARD_POLICY } from '../domain/authz/policy';
 import type { Logger } from '../domain/ports/logger';
 import type { DashboardMetrics } from '../domain/monitoring/dashboard-metrics';
@@ -84,6 +88,7 @@ export function emailSender(env: Env, config: DashboardConfig, dev: DevAdapters,
 
 function billingProvider(
     config: DashboardConfig,
+    adapter: 'stripe' | 'fake',
     dev: DevAdapters,
     deliver: (event: BillingEvent, signal: AbortSignal) => Promise<unknown>,
 ): BillingProvider | null {
@@ -91,7 +96,7 @@ function billingProvider(
         config.stripeWebhookSecret === null
             ? rejectAllWebhooks
             : createStripeWebhookVerifier({ secret: config.stripeWebhookSecret, clock: systemClock });
-    switch (config.adapters.billing) {
+    switch (adapter) {
         case 'fake':
             return createFakeBillingProvider({
                 state: dev.billing,
@@ -133,6 +138,32 @@ function rateLimiter(env: Env, config: DashboardConfig, dev: DevAdapters) {
     }
 }
 
+/**
+ * With billing `off` there is no provider and no billing service, so no Stripe route is mounted; entitlements are the
+ * fixed grant. Null when the configured provider cannot be built.
+ */
+function billingWiring(
+    config: DashboardConfig,
+    dev: DevAdapters,
+    db: ReturnType<typeof createDatabase>,
+    logger: Logger,
+): { readonly billing: BillingService | null; readonly entitlements: Entitlements } | null {
+    if (config.billing.adapter === 'off') {
+        return { billing: null, entitlements: createFixedEntitlements(config.billing.grant) };
+    }
+    const catalogue = config.billing.plans;
+    const store = createD1BillingStore(db);
+    // The fake's Checkout completes through the webhook's own handler, which needs the service it belongs to.
+    const provider = billingProvider(config, config.billing.adapter, dev, (event, signal) =>
+        billing.handleEvent(event, signal),
+    );
+    if (provider === null) {
+        return null;
+    }
+    const billing = createBillingService({ store, provider, catalogue, clock: systemClock, logger });
+    return { billing, entitlements: createSubscriptionEntitlements({ store, catalogue }) };
+}
+
 /** The composition root. Called per request: building it is cheap; state that must outlive a request is in `devAdapters`. */
 export function createDashboard(
     env: Env,
@@ -155,19 +186,10 @@ export function createDashboard(
         return misconfigured(logger, ['EMAIL']);
     }
     const db = createDatabase(env.DB);
-    const billingStore = createD1BillingStore(db);
-    // The fake's Checkout completes through the webhook's own handler, which needs the service it belongs to.
-    const provider = billingProvider(config, dev, (event, signal) => billing.handleEvent(event, signal));
-    if (provider === null) {
+    const billing = billingWiring(config, dev, db, logger);
+    if (billing === null) {
         return misconfigured(logger, ['STRIPE_SECRET_KEY']);
     }
-    const billing = createBillingService({
-        store: billingStore,
-        provider,
-        catalogue: config.plans,
-        clock: systemClock,
-        logger,
-    });
     const customHostnames = createD1CustomHostnameStore(db);
     const deps: DashboardDeps = {
         config,
@@ -178,8 +200,7 @@ export function createDashboard(
         metrics,
         authorizer: createAuthorizer({ clock: systemClock, policy: DASHBOARD_POLICY }),
         store: createD1AuthStore(db),
-        billing,
-        entitlements: createSubscriptionEntitlements({ store: billingStore, catalogue: config.plans }),
+        ...billing,
         linkCodes: createD1LinkCodeStore(db),
         engines: createD1EngineStore(db),
         teams: createD1TeamStore(db),

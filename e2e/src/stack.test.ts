@@ -56,6 +56,7 @@ const OVERLAYS = [
     'monitoring',
     'relay-dns',
     'debug',
+    'billing-off',
 ] as const;
 
 describe('the topology in compose.yaml and the Corefile', () => {

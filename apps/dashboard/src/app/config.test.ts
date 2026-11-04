@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { syntheticStripeKey, syntheticWebhookSecret, TEST_PLANS } from '../testing/billing-fixtures';
+import { syntheticStripeKey, syntheticWebhookSecret, TEST_OFF_PLAN, TEST_PLANS } from '../testing/billing-fixtures';
 import { TEST_INSTALL_VARS } from '../testing/install-fixtures';
 import { DEFAULT_THRESHOLDS } from '../domain/monitoring/alert-rules';
 import {
@@ -38,6 +38,10 @@ class FakeBinding {
 }
 const bindings = { DB: new FakeBinding(), ASSETS: new FakeBinding() };
 
+function without(vars: object, ...names: readonly string[]): Record<string, unknown> {
+    return Object.fromEntries(Object.entries(vars).filter(([name]) => !names.includes(name)));
+}
+
 function failedPaths(env: object): readonly string[] {
     try {
         parseConfig(env);
@@ -52,7 +56,7 @@ function failedPaths(env: object): readonly string[] {
 
 describe('parseConfig', () => {
     it('parses a complete dev configuration into a frozen object', () => {
-        const { plans, ...config } = parseConfig({ ...bindings, ...devVars });
+        const { billing, ...config } = parseConfig({ ...bindings, ...devVars });
         expect(config).toEqual({
             environment: 'dev',
             dashboardOrigin: 'https://app.ptbk.test',
@@ -72,7 +76,10 @@ describe('parseConfig', () => {
             monitoring: null,
             abuseMonitoring: { ...DEFAULT_ABUSE_MONITORING, certSpotterApiKey: null, webRiskApiKey: null },
         });
-        expect(plans.plans.map((plan) => plan.id)).toEqual(['starter', 'scale']);
+        expect(billing.adapter === 'fake' ? billing.plans.plans.map((plan) => plan.id) : null).toEqual([
+            'starter',
+            'scale',
+        ]);
         expect(Object.isFrozen(parseConfig({ ...bindings, ...devVars }))).toBe(true);
         expect(Object.isFrozen(config.relays[0])).toBe(true);
         expect(Object.isFrozen(config.adapters)).toBe(true);
@@ -149,9 +156,14 @@ describe('parseConfig', () => {
         ]);
     });
 
-    it('refuses the fake billing adapter in staging', () => {
+    it.each(['staging', 'production'])('refuses the fake billing adapter in %s', (environment) => {
         expect(
-            failedPaths({ ...bindings, ...stagingVars, ADAPTERS: { ...stagingVars.ADAPTERS, billing: 'fake' } }),
+            failedPaths({
+                ...bindings,
+                ...stagingVars,
+                ENVIRONMENT: environment,
+                ADAPTERS: { ...stagingVars.ADAPTERS, billing: 'fake' },
+            }),
         ).toEqual(['ADAPTERS.billing']);
     });
 
@@ -166,6 +178,76 @@ describe('parseConfig', () => {
             ADAPTERS: { ...stagingVars.ADAPTERS, [port]: adapter },
         };
         expect(failedPaths(env)).toEqual([`ADAPTERS.${port}`]);
+    });
+
+    describe('billing off', () => {
+        const stagingOff = {
+            ...without(stagingVars, 'BILLING_PLANS', 'STRIPE_SECRET_KEY', 'STRIPE_WEBHOOK_SECRET'),
+            ADAPTERS: { ...stagingVars.ADAPTERS, billing: 'off' },
+            BILLING_OFF_PLAN: TEST_OFF_PLAN,
+        };
+
+        const devOff = {
+            ...without(devVars, 'BILLING_PLANS'),
+            ADAPTERS: { ...devVars.ADAPTERS, billing: 'off' },
+            BILLING_OFF_PLAN: TEST_OFF_PLAN,
+        };
+
+        it.each([
+            ['dev', devOff],
+            ['staging', stagingOff],
+            ['production', { ...stagingOff, ENVIRONMENT: 'production' }],
+        ])('runs in %s without Stripe secrets or Stripe IDs', (_, vars) => {
+            const config = parseConfig({ ...bindings, ...vars });
+            expect(config.adapters.billing).toBe('off');
+            expect(config.billing).toEqual({ adapter: 'off', grant: TEST_OFF_PLAN });
+            expect(Object.isFrozen(config.billing)).toBe(true);
+            expect(config.stripeSecretKey).toBeNull();
+        });
+
+        it('requires BILLING_OFF_PLAN', () => {
+            expect(failedPaths({ ...bindings, ...without(stagingOff, 'BILLING_OFF_PLAN') })).toEqual([
+                'BILLING_OFF_PLAN',
+            ]);
+        });
+
+        it('refuses BILLING_OFF_PLAN once billing is on', () => {
+            expect(failedPaths({ ...bindings, ...stagingVars, BILLING_OFF_PLAN: TEST_OFF_PLAN })).toEqual([
+                'BILLING_OFF_PLAN',
+            ]);
+            expect(failedPaths({ ...bindings, ...devVars, BILLING_OFF_PLAN: TEST_OFF_PLAN })).toEqual([
+                'BILLING_OFF_PLAN',
+            ]);
+        });
+
+        it.each([
+            ['an unknown feature', { ...TEST_OFF_PLAN, features: ['engines.create', 'everything'] }],
+            ['an unknown quota', { ...TEST_OFF_PLAN, quotas: { ...TEST_OFF_PLAN.quotas, 'seats.max': 1 } }],
+            ['a missing quota', { ...TEST_OFF_PLAN, quotas: { 'engines.max': 1 } }],
+            ['a negative limit', { ...TEST_OFF_PLAN, quotas: { ...TEST_OFF_PLAN.quotas, 'engines.max': -1 } }],
+            ['a plan name', { ...TEST_OFF_PLAN, id: 'standard' }],
+        ])('refuses a BILLING_OFF_PLAN with %s', (_, plan) => {
+            expect(failedPaths({ ...bindings, ...stagingOff, BILLING_OFF_PLAN: plan })[0]).toMatch(/^BILLING_OFF_PLAN/);
+        });
+
+        it('lets the Stripe catalogue and secrets be staged ahead of switching on, still validated', () => {
+            const staged = {
+                ...bindings,
+                ...stagingOff,
+                BILLING_PLANS: TEST_PLANS,
+                STRIPE_SECRET_KEY: syntheticStripeKey(),
+                STRIPE_WEBHOOK_SECRET: syntheticWebhookSecret(),
+            };
+            expect(parseConfig(staged).billing.adapter).toBe('off');
+            expect(failedPaths({ ...staged, BILLING_PLANS: { plans: [] } })).toEqual(['BILLING_PLANS.none']);
+            expect(failedPaths({ ...staged, STRIPE_SECRET_KEY: syntheticStripeKey('live') })).toEqual([
+                'STRIPE_SECRET_KEY',
+            ]);
+        });
+
+        it('requires BILLING_PLANS with billing on', () => {
+            expect(failedPaths({ ...bindings, ...without(stagingVars, 'BILLING_PLANS') })).toEqual(['BILLING_PLANS']);
+        });
     });
 
     it('requires both Stripe secrets with the stripe billing adapter, and neither with the fake', () => {

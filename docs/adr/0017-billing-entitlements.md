@@ -18,3 +18,7 @@ Stripe will handle billing, but plans and pricing are not decided (per engine, p
 
 - Pricing changes touch the plan catalogue and the webhook mapping only.
 - Trials, coupons, team plans and usage-based add-ons fit the same port.
+
+## Update 2026-11-04: billing off for V0
+
+V0 does not charge (Seb). A third billing adapter, `off`, runs in every environment: no provider, no Stripe secrets or IDs, and the entitlements port answers from one configured grant, `BILLING_OFF_PLAN`, for every organization. Stripe routes are not mounted and the SPA shows no billing. Nothing is written to the billing tables while off, so switching to `stripe` is a config change: every organization then starts on `none` and subscribes through Checkout. The design above is unchanged.

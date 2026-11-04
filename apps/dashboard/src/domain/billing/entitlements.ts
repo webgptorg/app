@@ -2,7 +2,7 @@ import type { Feature, Quota } from '../../shared/billing';
 import type { OrgId } from '../ids';
 import { billingState, usesSubscribedPlan } from './billing-state';
 import type { BillingStore, SubscriptionRecord } from './billing-store';
-import type { Plan, PlanCatalogue } from './plan-catalogue';
+import type { Plan, PlanCatalogue, PlanEntitlements } from './plan-catalogue';
 
 export type { Feature, Quota };
 
@@ -35,5 +35,16 @@ export function createSubscriptionEntitlements(deps: {
     return {
         allows: async (orgId, feature) => (await planOf(orgId)).features.includes(feature),
         limit: async (orgId, quota) => (await planOf(orgId)).quotas[quota],
+    };
+}
+
+/**
+ * Billing `off` (V0 does not charge): every organization holds `grant`, whatever the billing store says. Nothing is
+ * written either, so switching to Stripe later starts every organization from no subscription, its `none` plan.
+ */
+export function createFixedEntitlements(grant: PlanEntitlements): Entitlements {
+    return {
+        allows: (_orgId, feature) => Promise.resolve(grant.features.includes(feature)),
+        limit: (_orgId, quota) => Promise.resolve(grant.quotas[quota]),
     };
 }

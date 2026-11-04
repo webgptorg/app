@@ -73,6 +73,8 @@ export const sessionViewSchema = z.strictObject({
     ),
     /** Sensitive admin actions need a step-up when this is null or in the past. */
     steppedUpUntil: timestampSchema.nullable(),
+    /** False while the dashboard charges nobody (billing `off`): no billing screen, plan step or Checkout exists. */
+    billingEnabled: z.boolean(),
 });
 export type SessionView = z.infer<typeof sessionViewSchema>;
 

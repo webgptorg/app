@@ -12,6 +12,9 @@ import { DASHBOARD_ORIGIN, ENGINE_DOMAIN, MOUNTS } from './stack.ts';
 export { expect };
 export { isEngineUrl, uniqueEmail } from './dashboard-outputs.ts';
 
+/** Set by the billing-off overlay (`E2E_OVERLAYS=billing-off`): the dashboard runs as V0's staging and production do. */
+export const BILLING_OFF = process.env['E2E_BILLING'] === 'off';
+
 const ENGINE_SERVICE = 'mock-engine';
 /** The mock engine's CLI inside its container, for the operator commands a test runs there. */
 export const ENGINE_CLI = ['node', '--enable-source-maps', '/app/main.mjs'] as const;
@@ -50,7 +53,7 @@ export interface DashboardSteps {
     readonly origin: string;
     /** Email-first sign-up through the dev outbox; ends signed in on the engine list with a new passkey. */
     signUp(email: string): Promise<void>;
-    /** The fake billing provider's Checkout: the account may then link engines. */
+    /** The fake billing provider's Checkout: the account may then link engines. With billing off, there is none. */
     subscribe(): Promise<void>;
     /** Creates a link code on `/engines/new` and reads the install command and the code from the page. */
     createLinkCode(): Promise<LinkCodeView>;
@@ -131,6 +134,11 @@ function dashboardSteps(page: Page, caCertificatePem: string): DashboardSteps {
             await expect(landing).toBeVisible();
         },
         async subscribe() {
+            if (BILLING_OFF) {
+                await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible();
+                await expect(page.getByRole('link', { name: 'Billing' })).toHaveCount(0);
+                return;
+            }
             await page.getByRole('link', { name: 'Billing' }).click();
             // The dev plan starts with a trial (D-10); the fake Checkout grants it at once.
             await page.getByRole('button', { name: 'Start your 14-day trial of Standard' }).click();

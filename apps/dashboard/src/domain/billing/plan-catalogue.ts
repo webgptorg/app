@@ -30,6 +30,9 @@ export interface Plan {
     readonly trialDays: number | null;
 }
 
+/** What a plan grants, and all the entitlements port reads of one. */
+export type PlanEntitlements = Pick<Plan, 'features' | 'quotas'>;
+
 /** A plan Checkout can sell. */
 export interface PaidPlan extends Plan {
     readonly name: PlanName;
@@ -58,6 +61,9 @@ const featuresSchema = z
     .max(FEATURES.length)
     .refine((features) => new Set(features).size === features.length, 'duplicate feature');
 
+/** The JSON shape of a plan's grants: `none` in `BILLING_PLANS`, and `BILLING_OFF_PLAN`. */
+export const planEntitlementsSchema = z.strictObject({ features: featuresSchema, quotas: quotasSchema });
+
 const paidPlanSchema = z.strictObject({
     id: planIdSchema.refine((id) => id !== NONE_PLAN_ID, `"${NONE_PLAN_ID}" is reserved`),
     name: planNameSchema,
@@ -72,7 +78,7 @@ const paidPlanSchema = z.strictObject({
 /** The JSON shape of the `BILLING_PLANS` var. */
 export const planCatalogueSchema = z
     .strictObject({
-        none: z.strictObject({ features: featuresSchema, quotas: quotasSchema }),
+        none: planEntitlementsSchema,
         plans: z.array(paidPlanSchema).max(32),
     })
     .superRefine((catalogue, ctx) => {
@@ -86,6 +92,13 @@ export const planCatalogueSchema = z
             }
         });
     });
+
+export function createPlanEntitlements(parsed: z.output<typeof planEntitlementsSchema>): PlanEntitlements {
+    return Object.freeze({
+        features: Object.freeze([...parsed.features]),
+        quotas: Object.freeze({ ...parsed.quotas }),
+    });
+}
 
 export function createPlanCatalogue(parsed: z.output<typeof planCatalogueSchema>): PlanCatalogue {
     const freeze = <P extends Plan>(plan: P): P =>

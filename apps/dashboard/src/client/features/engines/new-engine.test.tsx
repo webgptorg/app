@@ -216,6 +216,43 @@ describe('new engine page', () => {
         });
     });
 
+    describe('with billing off', () => {
+        const OFF_OWNER = { ...OWNER, billingEnabled: false };
+
+        it('goes straight to the command, with no plan step and no billing request', async () => {
+            const app = renderApp({ path: '/engines/new', session: OFF_OWNER, script: linking([PENDING]) });
+            expect(await screen.findByText(`bun run dev:link ${CODE}`)).toBeTruthy();
+            expect(steps()).toEqual(['install:current', 'connect:ahead', 'finish:ahead']);
+            expect(screen.queryByRole('heading', { name: 'Choose a plan to link your engine' })).toBeNull();
+            expect(app.api.callsTo(apiRoutes.getBilling)).toEqual([]);
+        });
+
+        it.each([
+            ['engine-limit', "Your account's engine limit is reached", 'Remove an engine to link another one.'],
+            ['not-entitled', 'Linking engines is not open yet', 'This account cannot link an engine at the moment.'],
+        ] as const)('says %s without a plan or a way to billing', async (eligibility, title, body) => {
+            const app = renderApp({ path: '/engines/new', session: OFF_OWNER, script: eligible(eligibility) });
+            expect(await screen.findByText(title)).toBeTruthy();
+            expect(screen.getByText(body)).toBeTruthy();
+            expect(screen.queryByRole('link', { name: 'Go to billing' })).toBeNull();
+            expect(screen.queryByRole('list', { name: 'Steps' })).toBeNull();
+            expect(app.api.callsTo(apiRoutes.getBilling)).toEqual([]);
+            expect(app.api.callsTo(apiRoutes.createLinkCode)).toEqual([]);
+        });
+
+        it('ignores a Checkout return in the address: no thanks, no waiting', async () => {
+            const app = renderApp({
+                path: '/engines/new?checkout=success',
+                session: OFF_OWNER,
+                script: linking([PENDING]),
+            });
+            expect(await screen.findByText(`bun run dev:link ${CODE}`)).toBeTruthy();
+            expect(screen.queryByText(/Thank you/)).toBeNull();
+            expect(steps()).toEqual(['install:current', 'connect:ahead', 'finish:ahead']);
+            expect(app.api.callsTo(apiRoutes.getBilling)).toEqual([]);
+        });
+    });
+
     describe('install command', () => {
         it('issues the code on load, once, and keeps only its ID in the URL', async () => {
             const app = renderApp({ path: '/engines/new', session: OWNER, script: linking([PENDING]) });

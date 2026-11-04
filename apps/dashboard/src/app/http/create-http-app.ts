@@ -68,6 +68,9 @@ export function createHttpApp(deps: HttpAppDeps): HttpApp {
         routeTemplates,
         signatures: {
             'stripe-signature': async (payload, signature) => {
+                if (deps.billing === null) {
+                    return { kind: 'invalid' };
+                }
                 const verified = await deps.billing.verifyWebhook(payload, signature);
                 return verified.kind === 'verified' ? { kind: 'verified', payload: verified.event } : verified;
             },

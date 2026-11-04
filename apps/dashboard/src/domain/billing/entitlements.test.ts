@@ -1,11 +1,16 @@
 import { describe, expect, it } from 'vitest';
 
 import type { BillingStatus } from '../../shared/billing';
-import { TEST_PLANS, TEST_PRICE_IDS, testOrgId } from '../../testing/billing-fixtures';
+import { TEST_OFF_PLAN, TEST_PLANS, TEST_PRICE_IDS, testOrgId } from '../../testing/billing-fixtures';
 import type { OrgId } from '../ids';
 import type { SubscriptionRecord } from './billing-store';
-import { createSubscriptionEntitlements, resolvePlan } from './entitlements';
-import { createPlanCatalogue, planCatalogueSchema } from './plan-catalogue';
+import { createFixedEntitlements, createSubscriptionEntitlements, resolvePlan } from './entitlements';
+import {
+    createPlanCatalogue,
+    createPlanEntitlements,
+    planCatalogueSchema,
+    planEntitlementsSchema,
+} from './plan-catalogue';
 
 const catalogue = createPlanCatalogue(planCatalogueSchema.parse(TEST_PLANS));
 const signal = new AbortController().signal;
@@ -90,5 +95,26 @@ describe('SubscriptionEntitlements', () => {
         expect(await entitlements.allows(orgB, 'engines.create', signal)).toBe(false);
         expect(await entitlements.allows(orgA, 'engines.create', signal)).toBe(true);
         expect(reads).toEqual([orgB, orgA]);
+    });
+});
+
+describe('createFixedEntitlements (billing off)', () => {
+    const entitlements = createFixedEntitlements(createPlanEntitlements(planEntitlementsSchema.parse(TEST_OFF_PLAN)));
+
+    it('grants every organization the same plan, with its limits', async () => {
+        for (const orgId of [testOrgId(), testOrgId()]) {
+            expect(await entitlements.allows(orgId, 'engines.create', signal)).toBe(true);
+            expect(await entitlements.limit(orgId, 'engines.max', signal)).toBe(3);
+            expect(await entitlements.limit(orgId, 'custom-domains.max', signal)).toBe(1);
+        }
+    });
+
+    it('grants nothing the plan leaves out, and keeps unlimited as null', async () => {
+        const none = createFixedEntitlements({
+            features: [],
+            quotas: { 'engines.max': null, 'custom-domains.max': 0 },
+        });
+        expect(await none.allows(testOrgId(), 'engines.create', signal)).toBe(false);
+        expect(await none.limit(testOrgId(), 'engines.max', signal)).toBeNull();
     });
 });
