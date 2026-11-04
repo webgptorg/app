@@ -80,9 +80,20 @@ export async function runCli(argv: readonly string[], io: CliIo): Promise<number
     }
 }
 
+const BASE64URL_KEY = /^[A-Za-z0-9_-]{43}$/;
+
+/** parseArgs takes a value starting with "-" for an option, and one in 64 base64url keys starts with one. */
+function withInlineKey(argv: readonly string[]): string[] {
+    const args = [...argv];
+    const at = args.indexOf('--engine-public-key');
+    const key = at < 0 ? undefined : args[at + 1];
+    if (key !== undefined && BASE64URL_KEY.test(key)) args.splice(at, 2, `--engine-public-key=${key}`);
+    return args;
+}
+
 async function run(argv: readonly string[], io: CliIo): Promise<number> {
     const { values } = parseArgs({
-        args: [...argv],
+        args: withInlineKey(argv),
         strict: true,
         allowPositionals: false,
         options: {
