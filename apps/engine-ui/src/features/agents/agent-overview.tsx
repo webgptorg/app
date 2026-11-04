@@ -24,9 +24,7 @@ function Detail({
     readonly children: ReactNode;
 }) {
     return (
-        <div
-            className={wide ? 'flex min-w-0 flex-col gap-1 sm:col-span-2 lg:col-span-3' : 'flex min-w-0 flex-col gap-1'}
-        >
+        <div className={wide ? 'col-span-2 flex min-w-0 flex-col gap-1 lg:col-span-3' : 'flex min-w-0 flex-col gap-1'}>
             <dt className="text-sm text-text-muted">{term}</dt>
             <dd className="min-w-0 break-words">{children}</dd>
         </div>
@@ -60,7 +58,7 @@ export function AgentOverview() {
     return (
         <div className="flex flex-col gap-6">
             <Card title={m.agent_overview_details()}>
-                <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <dl className="grid grid-cols-2 gap-4 lg:grid-cols-3">
                     <Detail term={m.agent_field_name()}>{agent.profile.fullname || agent.name}</Detail>
                     <Detail term={m.agents_column_status()}>
                         <AgentStatusBadge agentId={agent.id} />

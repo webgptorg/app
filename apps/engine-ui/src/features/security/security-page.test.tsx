@@ -80,6 +80,27 @@ describe('security panel: trust panel', { timeout: TIMEOUT_MS }, () => {
         expect(await within(trust).findByText('memoryengine234567abcdefgh.ptbk.io')).toBeDefined();
     });
 
+    it("links to the dashboard's explanation only when the engine is linked to one", async () => {
+        const linked = renderSecurity({
+            seed: {
+                engine: {
+                    name: 'Lab',
+                    hostname: 'lab.engine.test',
+                    dashboardUrl: 'https://app.ptbk.test',
+                    mode: 'tunnel',
+                },
+            },
+        });
+        const explanation = await screen.findByRole('link', { name: /^How Promptbook protects you/ });
+        expect(explanation.getAttribute('href')).toBe('https://app.ptbk.test/trust');
+        expect(explanation.getAttribute('rel')).toBe('noopener noreferrer');
+        linked.unmount();
+
+        renderSecurity();
+        await screen.findByRole('heading', { name: 'Private engine: your data stays on your server' });
+        expect(screen.queryByRole('link', { name: /How Promptbook protects you/ })).toBeNull();
+    });
+
     it('plays the verify animation once the data has loaded and the bundle version matches', async () => {
         const { container } = renderSecurity();
         await waitFor(() => {
@@ -121,10 +142,10 @@ describe('security panel: trust panel', { timeout: TIMEOUT_MS }, () => {
             seed: { security: { ...FULL_OVERVIEW, ui: { ...FULL_OVERVIEW.ui, releaseLogIndex: null } } },
         });
         await screen.findByText('relay-a.ptbk.io');
-        const summary = row('UI bundle').querySelector('summary')?.textContent ?? '';
+        const summary = row('This app').querySelector('summary')?.textContent ?? '';
         expect(summary).not.toContain('signed and verified');
         expect(summary).toContain('Version 1.0.0; the engine reports no release log entry for it');
-        expect((row('UI bundle').querySelector('details') as HTMLDetailsElement).open).toBe(true);
+        expect((row('This app').querySelector('details') as HTMLDetailsElement).open).toBe(true);
         expect(container.querySelector('#trust svg')?.getAttribute('data-state')).toBe('verifying');
     });
 
@@ -184,14 +205,14 @@ describe('security panel: checklist', { timeout: TIMEOUT_MS }, () => {
         const { container } = renderSecurity();
         await screen.findByText('relay-a.ptbk.io');
         expect(row('Engine').textContent).toContain('Version 1.4.0 · Update waiting to install');
-        expect(row('UI bundle').textContent).toContain('Version 1.0.0, signed and verified by the engine');
-        expect(row('Certificate and Certificate Transparency').textContent).toContain(
+        expect(row('This app').textContent).toContain('Version 1.0.0, signed and verified by the engine');
+        expect(row('Secure connection').textContent).toContain(
             'Valid until Dec 1, 2026; no foreign certificates in CT logs',
         );
-        expect(row('Relays and tunnel').textContent).toContain('1 of 2 relays connected');
-        expect(row('Hostnames').textContent).toContain('memoryengine234567abcdefgh.ptbk.io and 1 custom domain');
-        expect(row('Outbound destinations').textContent).toContain('2 destinations reported');
-        expect(row('Last heartbeat').textContent).toMatch(/Sent/);
+        expect(row('Relays').textContent).toContain('1 of 2 relays connected');
+        expect(row('Addresses').textContent).toContain('memoryengine234567abcdefgh.ptbk.io and 1 custom domain');
+        expect(row('Where it connects').textContent).toContain('2 destinations reported');
+        expect(row('Last report to the dashboard').textContent).toMatch(/Sent/);
 
         const engine = row('Engine');
         expect(within(engine).getByText('123456')).toBeDefined();
@@ -201,10 +222,10 @@ describe('security panel: checklist', { timeout: TIMEOUT_MS }, () => {
                 .getAttribute('href'),
         ).toBe('https://search.sigstore.dev/?logIndex=123456');
         expect(within(engine).getByText('1.5.0')).toBeDefined();
-        expect(row('UI bundle').textContent).toContain(SHA);
-        expect(row('Hostnames').textContent).toContain('signed claim registered');
-        expect(row('Outbound destinations').textContent).toContain('https://app.ptbk.io');
-        expect(row('Last heartbeat').textContent).toContain(SIGNATURE);
+        expect(row('This app').textContent).toContain(SHA);
+        expect(row('Addresses').textContent).toContain('signed claim registered');
+        expect(row('Where it connects').textContent).toContain('https://app.ptbk.io');
+        expect(row('Last report to the dashboard').textContent).toContain(SIGNATURE);
         await expectNoAxeViolations(container);
     });
 
@@ -212,16 +233,16 @@ describe('security panel: checklist', { timeout: TIMEOUT_MS }, () => {
         renderSecurity();
         await screen.findByText('relay-a.ptbk.io');
         const open = (title: string) => (row(title).querySelector('details') as HTMLDetailsElement).open;
-        expect(open('UI bundle')).toBe(false);
-        expect(open('Certificate and Certificate Transparency')).toBe(false);
-        expect(open('Relays and tunnel')).toBe(true);
+        expect(open('This app')).toBe(false);
+        expect(open('Secure connection')).toBe(false);
+        expect(open('Relays')).toBe(true);
     });
 
     it('opens a row on click', async () => {
         const { user } = renderSecurity();
         await screen.findByText('relay-a.ptbk.io');
-        const details = row('UI bundle').querySelector('details') as HTMLDetailsElement;
-        await user.click(screen.getByText('UI bundle', { selector: 'summary span' }));
+        const details = row('This app').querySelector('details') as HTMLDetailsElement;
+        await user.click(screen.getByText('This app', { selector: 'summary span' }));
         expect(details.open).toBe(true);
     });
 
@@ -237,7 +258,7 @@ describe('security panel: checklist', { timeout: TIMEOUT_MS }, () => {
     it('warns when the served UI version differs from the one compiled into the page', async () => {
         renderSecurity({ seed: { security: { ...FULL_OVERVIEW, ui: { ...FULL_OVERVIEW.ui, version: '0.9.0' } } } });
         expect((await screen.findAllByText('The UI version does not match')).length).toBeGreaterThan(0);
-        expect((row('UI bundle').querySelector('details') as HTMLDetailsElement).open).toBe(true);
+        expect((row('This app').querySelector('details') as HTMLDetailsElement).open).toBe(true);
         expect(screen.getByRole('img', { name: /not the version this page was built as/ })).toBeDefined();
     });
 
@@ -255,7 +276,7 @@ describe('security panel: checklist', { timeout: TIMEOUT_MS }, () => {
             },
         });
         await screen.findByText('relay-a.ptbk.io');
-        const certificate = row('Certificate and Certificate Transparency');
+        const certificate = row('Secure connection');
         expect((certificate.querySelector('details') as HTMLDetailsElement).open).toBe(true);
         expect(certificate.querySelector('summary')?.textContent).toContain(
             'A certificate this engine did not request exists for its hostname',
@@ -282,7 +303,7 @@ describe('security panel: checklist', { timeout: TIMEOUT_MS }, () => {
     it('gives whoever runs the engine a next step for a foreign certificate, not an administrator to call', async () => {
         renderSecurity({ seed: { security: foreignCertificateOverview } });
         await screen.findByText('relay-a.ptbk.io');
-        const certificate = row('Certificate and Certificate Transparency');
+        const certificate = row('Secure connection');
         expect(certificate.textContent).toContain('ask that issuer to revoke it');
         expect(certificate.textContent).not.toContain('administrator');
         expect(certificate.textContent).not.toContain('Tell an owner');
@@ -294,7 +315,7 @@ describe('security panel: checklist', { timeout: TIMEOUT_MS }, () => {
             permissions: OWNER_PERMISSIONS.filter((permission) => permission !== 'settings.manage'),
         });
         await screen.findByText('relay-a.ptbk.io');
-        const certificate = row('Certificate and Certificate Transparency');
+        const certificate = row('Secure connection');
         expect(certificate.textContent).toContain('Tell an owner of this engine.');
         expect(certificate.textContent).not.toContain('revoke');
     });
@@ -312,9 +333,7 @@ describe('security panel: checklist', { timeout: TIMEOUT_MS }, () => {
             },
         });
         await screen.findByText('relay-a.ptbk.io');
-        expect(row('Certificate and Certificate Transparency').querySelector('summary')?.textContent).toContain(
-            'The last CT check failed',
-        );
+        expect(row('Secure connection').querySelector('summary')?.textContent).toContain('The last CT check failed');
     });
 
     it('says a relay is disconnected in words, not only by colour', async () => {
@@ -346,7 +365,7 @@ describe('security panel: checklist', { timeout: TIMEOUT_MS }, () => {
         expect((await screen.findAllByText('The engine refused a UI release')).length).toBeGreaterThan(0);
         expect(screen.getByText('Reason: the revocation list could not be verified')).toBeDefined();
         expect(screen.getByText('Revocation list: older than one already accepted')).toBeDefined();
-        const heartbeat = row('Last heartbeat');
+        const heartbeat = row('Last report to the dashboard');
         expect(heartbeat.querySelector('summary')?.textContent).toContain("The engine's clock is off");
         expect(heartbeat.textContent).toContain("The engine's clock is 300 s behind the dashboard's");
     });
@@ -365,12 +384,12 @@ describe('security panel: checklist', { timeout: TIMEOUT_MS }, () => {
             },
         });
         await screen.findAllByText('This engine is reached directly, not through a relay.');
-        expect(row('Hostnames').textContent).toContain('memoryengine234567abcdefgh.ptbk.io, no custom domains');
-        expect(row('Outbound destinations').querySelector('summary')?.textContent).toContain(
-            'No outbound destinations',
+        expect(row('Addresses').textContent).toContain('memoryengine234567abcdefgh.ptbk.io, no custom domains');
+        expect(row('Where it connects').querySelector('summary')?.textContent).toContain('No outbound destinations');
+        expect(row('Last report to the dashboard').querySelector('summary')?.textContent).toContain(
+            'No heartbeat sent yet',
         );
-        expect(row('Last heartbeat').querySelector('summary')?.textContent).toContain('No heartbeat sent yet');
-        expect(row('Certificate and Certificate Transparency').textContent).toContain('not checked in CT logs yet');
+        expect(row('Secure connection').textContent).toContain('not checked in CT logs yet');
         expect(screen.queryByRole('heading', { name: 'No relays' })).toBeNull();
     });
 

@@ -9,8 +9,8 @@ export const OWNER_ID = 'member-owner';
 export interface SecurityEngineOptions {
     readonly permissions?: readonly Permission[];
     readonly stepUp?: 'satisfied' | 'required';
-    /** Replaces parts of the default seed (members, passkeys, sessions, secrets, security…). */
-    readonly seed?: Omit<InMemorySeed, 'engine'>;
+    /** Replaces parts of the default seed (engine, members, passkeys, sessions, secrets, security…). */
+    readonly seed?: InMemorySeed;
 }
 
 export interface SecurityEngine {

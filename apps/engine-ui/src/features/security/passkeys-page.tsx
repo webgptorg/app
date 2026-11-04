@@ -117,7 +117,7 @@ function PasskeyList({
                                 return (
                                     <li
                                         key={passkey.id}
-                                        className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between"
+                                        className="flex items-start justify-between gap-3 py-3 first:pt-0 last:pb-0 sm:items-center"
                                     >
                                         <div className="flex min-w-0 flex-col gap-1">
                                             <span className="flex flex-wrap items-center gap-2 font-medium">
@@ -146,7 +146,7 @@ function PasskeyList({
                                                 )}
                                             </span>
                                         </div>
-                                        <span className="self-end sm:self-center">
+                                        <span className="shrink-0">
                                             <ActionMenu
                                                 label={m.passkeys_actions({ name })}
                                                 variant="ghost"

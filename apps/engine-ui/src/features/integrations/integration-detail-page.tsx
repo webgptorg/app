@@ -1,6 +1,6 @@
 import { IntegrationId } from '@ptbk/engine-api';
 import type { AgentId, ReadIntegration } from '@ptbk/engine-api';
-import { Badge, Banner, Card, EmptyState, ErrorState, Skeleton, useLocale } from '@ptbk/ui';
+import { Banner, Card, CodeText, EmptyState, ErrorState, Skeleton, useLocale } from '@ptbk/ui';
 import { getRouteApi } from '@tanstack/react-router';
 import { SearchX } from 'lucide-react';
 import type { ReactNode } from 'react';
@@ -136,9 +136,7 @@ function IntegrationDetail({ integration }: { readonly integration: ReadIntegrat
                     <ul className="flex flex-wrap gap-2">
                         {integration.scopes.map((scope) => (
                             <li key={scope} className="max-w-full">
-                                <Badge tone="neutral" className="max-w-full break-all">
-                                    {scope}
-                                </Badge>
+                                <CodeText value={scope} />
                             </li>
                         ))}
                     </ul>

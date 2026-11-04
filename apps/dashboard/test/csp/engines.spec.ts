@@ -112,6 +112,18 @@ test('link an engine, see it online, open its page and revoke it, under the prod
     await expect(ready).toHaveAttribute('rel', 'noopener noreferrer');
     await checkScreen('/engines/new ready');
 
+    // On a phone the fingerprint code wraps under the seal; both stay centred in the panel.
+    const desktop = page.viewportSize();
+    await page.setViewportSize({ width: 375, height: 812 });
+    const panelBox = await page.locator('[data-link-ready]').boundingBox();
+    const sealBox = await page.locator('[data-link-ready] svg[data-state]').boundingBox();
+    expect(panelBox).not.toBeNull();
+    expect(sealBox).not.toBeNull();
+    const centreOf = (box: { readonly x: number; readonly width: number } | null) =>
+        (box?.x ?? 0) + (box?.width ?? 0) / 2;
+    expect(Math.abs(centreOf(sealBox) - centreOf(panelBox))).toBeLessThan(2);
+    if (desktop !== null) await page.setViewportSize(desktop);
+
     await page.goto('/engines/all');
     await expect(page.getByText('Online')).toBeVisible();
     const open = page.getByRole('link', { name: /^Open engine/ });
