@@ -232,7 +232,7 @@ describe('createDashboard adapter selection', () => {
             expect(fetchSpy).not.toHaveBeenCalled();
         });
 
-        it('mounts no webhook or billing route with billing off, in production without Stripe config', async () => {
+        it('mounts no webhook or billing route with billing off, in staging without Stripe config', async () => {
             const fetchSpy = vi.spyOn(globalThis, 'fetch');
             const { bindings } = productionBindings();
             const withoutStripe = Object.fromEntries(
@@ -242,7 +242,7 @@ describe('createDashboard adapter selection', () => {
                 env({
                     ...withoutStripe,
                     ...bindings,
-                    ENVIRONMENT: 'production',
+                    ENVIRONMENT: 'staging',
                     ADAPTERS: { ...stagingVars.ADAPTERS, billing: 'off' },
                     BILLING_OFF_PLAN: TEST_OFF_PLAN,
                     // Staged ahead of switching on: still no route verifies with it.

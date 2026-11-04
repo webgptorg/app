@@ -162,12 +162,13 @@
                 // the analytics read token ANALYTICS_API_TOKEN (docs/runbooks/observability.md).
                 "MONITORING": { "opsEmail": "ops@<staging-ops-domain>" },
                 "ANALYTICS": { "accountId": "<staging-account-id>", "dataset": "ptbk_ops_staging" },
-                // V0 charges nobody (Seb, 2026-11-04): billing is "off" and every organization holds BILLING_OFF_PLAN,
-                // without Stripe secrets or IDs. To charge, in one change: set ADAPTERS.billing to "stripe", replace
-                // BILLING_OFF_PLAN with the BILLING_PLANS below, and put both Stripe secrets (ADR 0017, deploy.md).
+                // Staging charges nobody (Seb, 2026-11-04): billing is "off" and every organization holds BILLING_OFF_PLAN,
+                // without Stripe secrets or IDs; its quotas are config, so changing them needs no code. To charge here
+                // too, in one change: set ADAPTERS.billing to "stripe", replace BILLING_OFF_PLAN with the BILLING_PLANS
+                // below, and put both Stripe secrets (ADR 0017, deploy.md). Production always charges.
                 "BILLING_OFF_PLAN": {
                     "features": ["engines.create"],
-                    "quotas": { "engines.max": 3, "custom-domains.max": 0 },
+                    "quotas": { "engines.max": 10, "custom-domains.max": 0 },
                 },
                 // Test-mode Stripe IDs; secrets via `wrangler secret put STRIPE_SECRET_KEY --env staging` (and
                 // STRIPE_WEBHOOK_SECRET). Quotas are placeholders until pricing is decided.
@@ -257,33 +258,26 @@
                     },
                 ],
                 "INSTALL_GUIDE_URL": "<public-install-guide-url>",
-                "ADAPTERS": { "email": "cloudflare", "billing": "off", "rateLimit": "workers" },
+                "ADAPTERS": { "email": "cloudflare", "billing": "stripe", "rateLimit": "workers" },
                 "EMAIL_FROM": "no-reply@<production-sending-domain>",
                 "ABUSE_EMAIL": "abuse@<production-abuse-domain>",
                 "MONITORING": { "opsEmail": "ops@<production-ops-domain>" },
                 "ANALYTICS": { "accountId": "<production-account-id>", "dataset": "ptbk_ops_production" },
-                // V0 charges nobody (Seb, 2026-11-04): billing is "off" and every organization holds BILLING_OFF_PLAN,
-                // without Stripe secrets or IDs. To charge, in one change: set ADAPTERS.billing to "stripe", replace
-                // BILLING_OFF_PLAN with the BILLING_PLANS below, and put both Stripe secrets (ADR 0017, deploy.md).
-                "BILLING_OFF_PLAN": {
-                    "features": ["engines.create"],
-                    "quotas": { "engines.max": 3, "custom-domains.max": 0 },
-                },
                 // Live-mode Stripe IDs; secrets via `wrangler secret put STRIPE_SECRET_KEY --env production` (and
                 // STRIPE_WEBHOOK_SECRET). Quotas are placeholders until pricing is decided.
-                // "BILLING_PLANS": {
-                //     "none": { "features": [], "quotas": { "engines.max": 0, "custom-domains.max": 0 } },
-                //     "plans": [
-                //         {
-                //             "id": "standard",
-                //             "name": { "en": "Standard", "cs": "Standard" },
-                //             "stripeProductId": "<production-standard-product-id>",
-                //             "stripePriceId": "<production-standard-price-id>",
-                //             "features": ["engines.create"],
-                //             "quotas": { "engines.max": null, "custom-domains.max": 0 },
-                //         },
-                //     ],
-                // },
+                "BILLING_PLANS": {
+                    "none": { "features": [], "quotas": { "engines.max": 0, "custom-domains.max": 0 } },
+                    "plans": [
+                        {
+                            "id": "standard",
+                            "name": { "en": "Standard", "cs": "Standard" },
+                            "stripeProductId": "<production-standard-product-id>",
+                            "stripePriceId": "<production-standard-price-id>",
+                            "features": ["engines.create"],
+                            "quotas": { "engines.max": null, "custom-domains.max": 0 },
+                        },
+                    ],
+                },
             },
             "send_email": [{ "name": "EMAIL" }],
             "durable_objects": {

@@ -12,7 +12,7 @@ import { DASHBOARD_ORIGIN, ENGINE_DOMAIN, MOUNTS } from './stack.ts';
 export { expect };
 export { isEngineUrl, uniqueEmail } from './dashboard-outputs.ts';
 
-/** Set by the billing-off overlay (`E2E_OVERLAYS=billing-off`): the dashboard runs as V0's staging and production do. */
+/** Set by the billing-off overlay (`E2E_OVERLAYS=billing-off`): the dashboard runs as staging does. */
 export const BILLING_OFF = process.env['E2E_BILLING'] === 'off';
 
 const ENGINE_SERVICE = 'mock-engine';

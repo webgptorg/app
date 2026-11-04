@@ -32,7 +32,7 @@ About 1.5 hours of hands-on time. Each step ends with **You should see** (the ch
 
 - An up-to-date checkout of `main` with `bun install` done; Node 24 (`nvm use`), [OpenTofu](https://opentofu.org/docs/intro/install/) 1.10 or later, `dig` and `delv` (BIND tools), `ssh`, and `nmap` for one check.
 - Two hardware security keys, and a password manager vault for staging (one entry per secret below).
-- `ADAPTERS.billing` is `"off"` in `env.staging` of [apps/dashboard/wrangler.jsonc](../apps/dashboard/wrangler.jsonc). Every organization then holds `BILLING_OFF_PLAN` (engines, up to 3 per organization) with no Stripe secrets or IDs; the Stripe catalogue stays commented out next to it. Stripe is needed only when billing is switched on ([apply.md](plan/apply.md) step 2).
+- `ADAPTERS.billing` is `"off"` in `env.staging` of [apps/dashboard/wrangler.jsonc](../apps/dashboard/wrangler.jsonc). Every organization then holds `BILLING_OFF_PLAN` (engines, up to 10 per organization; a plain `wrangler.jsonc` value, so changing it needs no code) with no Stripe secrets or IDs; the Stripe catalogue stays commented out next to it. Stripe is needed only when billing is switched on ([apply.md](plan/apply.md) step 2).
 - Secrets never go into the repo, a PR, a chat, a log or this page. Values in `staging.env` are not secrets (IDs, domains, addresses, a public SSH key) and end up committed.
 
 ## 1. Accounts and domains
@@ -353,7 +353,7 @@ The mock's certificate comes from its dev CA, so browsers warn. A CA-issued cert
 
 A real engine links the same way with its own `connect --link <code>` against `https://<dashboard host>`. The installer tab on the page still shows the D-11 placeholders.
 
-**If it fails:** exit 3 means the code was refused (used, or older than 30 minutes): make a new one. Exit 5 (`engine-limit`, `not-entitled`) means the organization already has `BILLING_OFF_PLAN`'s 3 engines (revoke one), or billing is not off. Exit 6 means the dashboard was unreachable.
+**If it fails:** exit 3 means the code was refused (used, or older than 30 minutes): make a new one. Exit 5 (`engine-limit`, `not-entitled`) means the organization already has `BILLING_OFF_PLAN`'s 10 engines (revoke one), or billing is not off. Exit 6 means the dashboard was unreachable.
 
 ## 13. e2e against staging
 
