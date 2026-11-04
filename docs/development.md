@@ -331,3 +331,7 @@ It runs C-06's `verifyRelease` with the real Sigstore verifier (built on `@sigst
 | `bun run --filter @ptbk/engine-ui release:refresh-trusted-root` | Refreshes the pinned Sigstore trusted root through TUF; the change lands in its own reviewed PR           |
 
 Reproducibility depends on the exact Node version (`.nvmrc`, which also fixes the zstd library), `bun.lock`, `SOURCE_DATE_EPOCH` (the commit time) and a deterministic tar (byte-sorted entries, fixed owner, modes and mtime).
+
+## Staging
+
+Staging is brought up by hand from a laptop, without CI: [staging-runbook.md](staging-runbook.md). `node scripts/staging/generate-secrets.ts` prints every secret staging generates itself, and `node scripts/staging/fill-placeholders.ts` writes the values from a local, git-ignored `staging.env` into the staging configs. Their tests run with `bun run test:scripts`, which `bun run test` includes.

@@ -1,7 +1,9 @@
 {
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
-    "types": ["node"]
+    "types": ["node"],
+    // Node runs the root scripts straight from .ts, which needs explicit extensions.
+    "allowImportingTsExtensions": true
   },
   "include": ["*.js", "*.ts", "scripts"]
 }
