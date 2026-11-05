@@ -8,7 +8,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { expectNoAxeViolations } from '../../testing/axe';
 import { renderWithProviders } from '../../testing/render-with-providers';
 import { HOSTILE } from '../../testing/runs-engine';
-import { TEST_NOW } from '../../testing/test-engine-api';
+import { problemResponse, TEST_NOW } from '../../testing/test-engine-api';
 
 // Each test renders the whole app on the in-memory engine; a shared CI runner is several times slower than a laptop.
 const TIMEOUT_MS = 20_000;
@@ -173,5 +173,131 @@ describe('tasks', { timeout: TIMEOUT_MS }, () => {
         });
         await screen.findByRole('link', { name: 'Runs' });
         expect(screen.queryByRole('link', { name: 'Tasks' })).toBeNull();
+    });
+
+    it('pages the inventory and the history on with "Show more"', async () => {
+        const seed = createDemoSeed(TEST_NOW);
+        const tasks = seed.tasks ?? [];
+        const weekly = tasks.find(({ task }) => task.id === 'task-weekly-report');
+        if (weekly === undefined) throw new Error('the demo seed changed');
+        const filler = Array.from({ length: 55 }, (_, index) => ({
+            task: {
+                ...weekly.task,
+                id: `task-filler-${String(index)}`,
+                name: `Filler ${String(index)}`,
+                state: 'done' as const,
+            },
+        }));
+        const occurrences = Array.from({ length: 55 }, (_, index) => ({
+            id: `occ-many-${String(index)}`,
+            taskId: 'task-weekly-report',
+            sequence: index + 1,
+            cycle: index + 1,
+            reason: 'repeat' as const,
+            retryOf: null,
+            state: 'completed' as const,
+            scheduledFor: null,
+            startedAt: null,
+            endedAt: null,
+            summary: null,
+            runIds: [],
+        }));
+        const engineApi = createInMemoryEngineApiClient({
+            clock: { now: () => TEST_NOW },
+            seed: {
+                ...seed,
+                runs: (seed.runs ?? []).map((run) => ({ ...run, taskId: null, occurrenceId: null })),
+                tasks: [
+                    ...tasks.map((record) => (record.task.id === weekly.task.id ? { ...record, occurrences } : record)),
+                    ...filler,
+                ],
+            },
+        });
+        const { user, unmount } = renderWithProviders({ path: '/tasks', engineApi });
+        await screen.findByRole('region', { name: 'Finished' });
+        expect(screen.queryByRole('link', { name: 'Filler 54' })).toBeNull();
+        await user.click(screen.getByRole('button', { name: 'Show more' }));
+        await screen.findByRole('link', { name: 'Filler 54' });
+        expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull();
+        unmount();
+
+        const detail = renderWithProviders({ path: '/tasks/task-weekly-report', engineApi });
+        const history = await screen.findByRole('region', { name: 'History' });
+        await within(history).findByText('#55 · Scheduled');
+        expect(within(history).queryByText('#1 · Scheduled')).toBeNull();
+        expect(within(history).getByText('Cycle 55')).toBeTruthy();
+        await detail.user.click(within(history).getByRole('button', { name: 'Show more' }));
+        await within(history).findByText('#1 · Scheduled');
+    });
+
+    it('shows an engine task by its executor, without a chat or a source', async () => {
+        renderWithProviders({ path: '/tasks/task-engine-update', engineApi: demoEngine() });
+        await screen.findByRole('heading', { level: 1, name: 'Update Promptbook 0.119.0 → 0.120.0' });
+        expect(screen.getByText('Promptbook engine (deterministic update, no agent)')).toBeTruthy();
+        expect(screen.getByText('Built into the engine')).toBeTruthy();
+        expect(screen.getByText('The engine')).toBeTruthy();
+        expect(
+            within(screen.getByRole('region', { name: 'Before it can start' })).getByText('No task is running'),
+        ).toBeTruthy();
+        expect(screen.queryByRole('link', { name: 'Discuss in chat' })).toBeNull();
+    });
+
+    it('names where work came from and links agents it points to', async () => {
+        const seed = createDemoSeed(TEST_NOW);
+        const tasks = (seed.tasks ?? []).map((record) =>
+            record.task.id === 'task-deploy-billing'
+                ? {
+                      ...record,
+                      task: {
+                          ...record.task,
+                          agentId: null,
+                          purpose: 'system' as const,
+                          origin: { kind: 'goal' as const, chatId: null, taskId: null, text: null },
+                          priority: { rank: 0, text: 'soon' },
+                          notBefore: TEST_NOW.toISOString(),
+                          dueAt: TEST_NOW.toISOString(),
+                          reopened: true,
+                          doneCount: 1,
+                          lastDoneAt: TEST_NOW.toISOString(),
+                      },
+                      links: [
+                          {
+                              direction: 'outgoing' as const,
+                              target: { type: 'agent' as const, agentId: null, name: 'Nobody' },
+                          },
+                          {
+                              direction: 'outgoing' as const,
+                              target: { type: 'task' as const, taskId: null, name: 'Old task' },
+                          },
+                      ],
+                  }
+                : record,
+        );
+        const engineApi = createInMemoryEngineApiClient({ clock: { now: () => TEST_NOW }, seed: { ...seed, tasks } });
+        renderWithProviders({ path: '/tasks/task-deploy-billing', engineApi });
+        const related = await screen.findByRole('region', { name: 'Related' });
+        expect(within(related).getByText("Suggested from the agents' goals")).toBeTruthy();
+        expect(within(related).getByText('Nobody')).toBeTruthy();
+        expect(within(related).getByText('Old task')).toBeTruthy();
+        expect(screen.getByText('No agent yet')).toBeTruthy();
+        expect(screen.getAllByText('System').length).toBeGreaterThan(0);
+        expect(screen.getByText('Yes, not completed since')).toBeTruthy();
+        expect(screen.queryByRole('link', { name: 'Discuss in chat' })).toBeNull();
+    });
+
+    it('offers a retry when the list, a task or its history fails to load', async () => {
+        const engineApi = demoEngine();
+        vi.spyOn(engineApi.tasks, 'list').mockImplementation(() => problemResponse('validation-failed'));
+        vi.spyOn(engineApi.tasks, 'listOccurrences').mockImplementation(() => problemResponse('validation-failed'));
+        const { unmount } = renderWithProviders({ path: '/tasks', engineApi });
+        expect(await screen.findByText('The tasks could not be loaded.')).toBeTruthy();
+        unmount();
+        renderWithProviders({ path: '/tasks/task-ship-billing', engineApi });
+        expect(await screen.findByText('The history could not be loaded.')).toBeTruthy();
+
+        const failing = demoEngine();
+        vi.spyOn(failing.tasks, 'get').mockImplementation(() => problemResponse('validation-failed'));
+        renderWithProviders({ path: '/tasks/task-ship-billing', engineApi: failing });
+        expect(await screen.findByText('The task could not be loaded.')).toBeTruthy();
     });
 });
