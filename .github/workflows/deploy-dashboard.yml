@@ -5,6 +5,8 @@ name: Deploy dashboard
 # and rebuilds the same commit for production, because the Cloudflare Vite plugin bakes the environment in at build
 # time. Pull requests build both environments and dry-run the upload, with no credential. Application secrets (Stripe,
 # rate-limit key) are set by humans with `wrangler secret put` (docs/runbooks/deploy.md); CI never carries them.
+# Until staging exists, the repository variable STAGING_DEPLOY_ENABLED is not `true` and a push runs none of this; a
+# dispatch from main still deploys (docs/staging-runbook.md, "Next: CI"). Draft pull requests run nothing.
 on:
   push:
     branches: [main]
@@ -16,6 +18,7 @@ on:
       - bun.lock
       - .github/workflows/deploy-dashboard.yml
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - apps/dashboard/**
       - packages/protocol/**
@@ -34,7 +37,7 @@ concurrency:
 # Actions are pinned to full commit SHAs and nothing is cached (spec, Security hardening item 10).
 jobs:
   dry-run:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && !github.event.pull_request.draft
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -71,7 +74,9 @@ jobs:
 
   # The same single `check` step as ci.yml, so the D1 drift and destructive-change guards run before any deploy.
   check:
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'workflow_dispatch' || github.event_name == 'push' && vars.STAGING_DEPLOY_ENABLED == 'true')
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:

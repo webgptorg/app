@@ -1,7 +1,6 @@
-// Decides which CI jobs a pull request needs, from the files it changes (`changes`), and runs the matching part of
-// `bun run check` (`check`). On main it may only tell a documentation-only push apart (`--docs-only`); ci.yml runs
-// every job for any other push and for the schedule, whatever this says. Every guess errs towards running more: a
-// file this script cannot attribute to a workspace or a job makes the run full.
+// Decides which CI jobs a run needs, from the files a pull request or a push to main changes (`changes`), runs the
+// matching part of `bun run check` (`check`), and decides whether the nightly full run is needed (`nightly`). Every
+// guess errs towards running more: a file this script cannot attribute to a workspace or a job makes the run full.
 import { execFileSync, spawnSync } from 'node:child_process';
 import { appendFileSync, readFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
@@ -18,6 +17,8 @@ interface JobInputs {
     readonly workspaces?: readonly string[];
     readonly paths?: readonly string[];
 }
+
+type Range = { readonly base: string; readonly head: string } | { readonly full: string };
 
 interface Scope {
     readonly check: CheckMode;
@@ -63,6 +64,7 @@ const MANIFEST_METADATA = new Set(['description', 'repository', 'homepage', 'bug
 const FORMAT_PARTS = new Set(['bun run format:check', 'bun run plan --check', 'bun run engine-guide']);
 const CHECK_PART = /^bun run [\w:-]+(?: --[\w-]+)*$/;
 const LOCK_SECTIONS_ATTRIBUTED = new Set(['workspaces', 'packages', 'catalog']);
+const COMMIT = /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/;
 
 function git(...args: readonly string[]): string {
     return execFileSync('git', args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
@@ -243,19 +245,27 @@ function isAncestor(base: string, head: string): boolean {
     return spawnSync('git', ['merge-base', '--is-ancestor', base, head], { stdio: 'ignore' }).status === 0;
 }
 
-// `docsOnly` is for pushes to main: a push that changes only documentation runs the format checks, anything else
-// runs everything. A base that is missing or not an ancestor (a force-push) runs everything too.
-function scope(base: string, head: string, docsOnly: boolean): Scope {
+// A pull request's merge commit is compared with the base it merges into. A push to main is compared with the commit
+// main was at before it, so consecutive pushes together cover every change, and the nightly full run catches what
+// scoping cannot. A push without that commit (a new branch, a force-push, history it does not extend) and every
+// other event run everything.
+function rangeFor(eventName: string | undefined, event: Record<string, unknown>): Range {
+    if (eventName === undefined || eventName === 'pull_request') return { base: 'HEAD^1', head: 'HEAD' };
+    if (eventName !== 'push') return { full: `a ${eventName} run checks everything` };
+    if (event['forced'] !== false) return { full: 'a force-push' };
+    const before = event['before'];
+    if (typeof before !== 'string' || !COMMIT.test(before) || /^0+$/.test(before)) {
+        return { full: 'the push has no before commit' };
+    }
+    if (!isAncestor(before, 'HEAD')) return { full: `${before} is not an ancestor of HEAD` };
+    return { base: before, head: 'HEAD' };
+}
+
+function scope(base: string, head: string): Scope {
     const workspaces = readWorkspaces(head);
-    if (docsOnly && !isAncestor(base, head)) return everything(workspaces, `${base} is not an ancestor of ${head}`);
     const files = git('diff', '--name-only', '--no-renames', base, head)
         .split('\n')
         .filter((file) => file !== '');
-    if (docsOnly) {
-        const code = files.find((file) => !isDoc(file));
-        if (code !== undefined) return everything(workspaces, `${code} is not documentation`);
-        return { check: 'format', workspaces: [], jobs: [], reasons: ['documentation only'] };
-    }
     const reasons: string[] = [];
     const direct = new Set<string>();
     const otherPaths: string[] = [];
@@ -331,16 +341,15 @@ function scope(base: string, head: string, docsOnly: boolean): Scope {
     };
 }
 
-function runChanges(base: string, head: string, docsOnly: boolean): void {
-    const result = scope(base, head, docsOnly);
+function runChanges(range: Range): void {
+    const result = 'full' in range ? everything(readWorkspaces('HEAD'), range.full) : scope(range.base, range.head);
     console.log(result.reasons.join('\n'));
     console.log(`check: ${result.check}\nworkspaces: ${result.workspaces.join(' ')}\njobs: ${result.jobs.join(' ')}`);
     const outputFile = process.env['GITHUB_OUTPUT'];
     if (outputFile !== undefined) {
         appendFileSync(
             outputFile,
-            `check=${result.check}\nworkspaces=${result.workspaces.join(' ')}\njobs=${JSON.stringify(result.jobs)}\n` +
-                `docs-only=${String(docsOnly && result.check === 'format')}\n`,
+            `check=${result.check}\nworkspaces=${result.workspaces.join(' ')}\njobs=${JSON.stringify(result.jobs)}\n`,
         );
     }
 }
@@ -376,20 +385,58 @@ function runCheck(mode: string, workspaces: readonly string[]): void {
     }
 }
 
+// The nightly full run on main is skipped when main is still at the commit the last passing nightly ran on. Mondays
+// run whatever happened, for what moves outside the repo: the runner image, apt, the Debian cloud image, pinned
+// containers.
+function nightly(head: string, lastPassed: string, now: Date): { run: boolean; reason: string } {
+    if (now.getUTCDay() === 1) return { run: true, reason: 'Monday: the weekly full run' };
+    if (lastPassed === '') return { run: true, reason: 'no nightly has passed yet' };
+    if (lastPassed === head) return { run: false, reason: `main is still at ${head}, where the last nightly passed` };
+    return { run: true, reason: `main moved from ${lastPassed} to ${head}` };
+}
+
+function runNightly(head: string, lastPassed: string, now: Date): void {
+    const { run, reason } = nightly(head, lastPassed, now);
+    console.log(`${reason}\nrun: ${String(run)}`);
+    const outputFile = process.env['GITHUB_OUTPUT'];
+    if (outputFile !== undefined) appendFileSync(outputFile, `run=${String(run)}\n`);
+}
+
+function eventPayload(): Record<string, unknown> {
+    const path = process.env['GITHUB_EVENT_PATH'];
+    return path === undefined ? {} : (parseJson(readFileSync(path, 'utf8')) ?? {});
+}
+
 const { positionals, values } = parseArgs({
     allowPositionals: true,
     options: {
-        base: { type: 'string', default: 'HEAD^1' },
-        head: { type: 'string', default: 'HEAD' },
-        'docs-only': { type: 'boolean', default: false },
+        base: { type: 'string' },
+        head: { type: 'string' },
+        last: { type: 'string', default: '' },
+        now: { type: 'string' },
     },
 });
 
 const command = positionals[0];
-if (command === 'changes') runChanges(values.base, values.head, values['docs-only']);
-else if (command === 'check') {
+if (command === 'changes') {
+    runChanges(
+        values.base === undefined
+            ? rangeFor(process.env['GITHUB_EVENT_NAME'], eventPayload())
+            : { base: values.base, head: values.head ?? 'HEAD' },
+    );
+} else if (command === 'nightly') {
+    runNightly(
+        values.head ?? process.env['GITHUB_SHA'] ?? git('rev-parse', 'HEAD').trim(),
+        values.last,
+        values.now === undefined ? new Date() : new Date(values.now),
+    );
+} else if (command === 'check') {
     runCheck(
         process.env['CHECK_MODE'] ?? 'full',
         (process.env['WORKSPACES'] ?? '').split(' ').filter((name) => name.startsWith('@ptbk/')),
     );
-} else throw new Error('usage: node scripts/ci-scope.ts changes [--base <rev>] [--head <rev>] [--docs-only] | check');
+} else {
+    throw new Error(
+        'usage: node scripts/ci-scope.ts changes [--base <rev>] [--head <rev>] | nightly --last <commit> | check',
+    );
+}

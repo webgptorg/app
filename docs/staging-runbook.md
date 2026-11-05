@@ -370,4 +370,11 @@ Not supported yet. The e2e suite runs only against its own Docker Compose stacks
 
 ## Next: CI
 
-Once GitHub Actions runs and the plan has environments (I-03): create `staging` and `release` as in [deploy runbook, GitHub settings](runbooks/deploy.md#github-settings), with the values from step 5. A push to `main` then deploys the dashboard to staging, `release-relay.yml` rolls the relay out, and `ui-release.yml` dry-runs the UI. Then run [apply.md](plan/apply.md) steps 3, 6 and 7.
+Once GitHub Actions runs and the plan has environments (I-03): create `staging` and `release` as in [deploy runbook, GitHub settings](runbooks/deploy.md#github-settings), with the values from step 5. Then run [apply.md](plan/apply.md) steps 3, 6 and 7.
+
+Pushes to `main` deploy nothing until you switch them on, so CI minutes are not spent on a target that does not exist. Once the `staging` environment has its secrets and variables:
+
+1. Repository Settings, Secrets and variables, Actions, **Variables** tab: add the repository variable `STAGING_DEPLOY_ENABLED` with the value `true` (or `gh variable set STAGING_DEPLOY_ENABLED --body true`).
+2. Dispatch **Deploy dashboard** and **Release relay** from `main` once, and check that both reach staging. Their production jobs wait for approval; reject them if you only meant staging.
+
+From then on, a push to `main` that touches the dashboard deploys it to staging, `release-relay.yml` builds, signs and rolls the relay out, and `ui-release.yml` dry-runs the UI. Production still waits for its approval. To pause deploys on push again, delete the variable or set it to anything else. The variable only switches the push trigger on: a dispatch from `main` deploys whatever it says, and environments, approvals, signing and permissions are the same either way.

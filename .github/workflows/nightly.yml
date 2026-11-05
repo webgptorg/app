@@ -1,0 +1,44 @@
+name: Nightly
+
+# Every CI job on main, at most once a night: pushes to main run only the jobs their changes reach (ci.yml), so this
+# catches what scoping misses. It runs only if main moved since the last nightly that passed, and every Monday
+# regardless, for what moves outside the repo: the runner image, apt, the Debian cloud image, pinned containers
+# (scripts/ci-scope.ts nightly).
+on:
+  schedule:
+    - cron: '17 3 * * *'
+
+permissions:
+  contents: read
+
+jobs:
+  decide:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read # the commit of the last nightly that passed
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      # A night that skipped also passed, on the same commit, so the latest passing run is the one to compare with.
+      - id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          last=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow nightly.yml --branch main --event schedule \
+            --status success --limit 1 --json headSha --jq '.[0].headSha // ""')
+          node scripts/ci-scope.ts nightly --last "$last"
+
+  ci:
+    needs: decide
+    if: needs.decide.outputs.run == 'true'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/ci.yml
