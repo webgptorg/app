@@ -5,7 +5,7 @@ export const ENGINE_API_PREFIX = '/api/v1';
  * SemVer of this contract. Additive changes bump the minor; the UI bundle manifest's `engineApi` range refers to it
  * (C-06, X-03), so the engine's loader refuses a bundle built against an API it does not speak.
  */
-export const ENGINE_API_VERSION = '1.14.0';
+export const ENGINE_API_VERSION = '1.15.0';
 
 /** Gateway pages owned by the open engine, not by this API. */
 export const SIGN_IN_PATH = '/auth/sign-in';
