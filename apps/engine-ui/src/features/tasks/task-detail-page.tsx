@@ -325,7 +325,7 @@ function RelationsCard({ task }: { readonly task: ReadTaskDetail }) {
                 {origin === null ? null : (
                     <Relation label={m.task_relation_origin()}>
                         <li className="break-words">
-                            <Origin task={task} />
+                            <Origin task={task} origin={origin} />
                         </li>
                     </Relation>
                 )}
@@ -404,9 +404,13 @@ function RelationsCard({ task }: { readonly task: ReadTaskDetail }) {
     );
 }
 
-function Origin({ task }: { readonly task: ReadTaskDetail }) {
-    const origin = task.origin;
-    if (origin === null) return null;
+function Origin({
+    task,
+    origin,
+}: {
+    readonly task: ReadTaskDetail;
+    readonly origin: NonNullable<ReadTaskDetail['origin']>;
+}) {
     // `text` is the Book's own wording (`Chat {…}`); the chat or task is named as the links and parent name it.
     if (origin.chatId !== null) {
         const chatId = origin.chatId;
