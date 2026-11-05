@@ -52,7 +52,7 @@ describe('parseMockEngineConfig', () => {
             // Tests keep the simulation paused; a real engine runs it unless told otherwise.
             simulation: { mode: 'running', speed: 1 },
             // Tests see every capability; a started mock shows only what the Reborn engine has.
-            capabilities: ['tasks', 'files'],
+            capabilities: ['tasks', 'files', 'onboarding'],
         });
         expect(Object.isFrozen(config)).toBe(true);
         expect(Object.isFrozen(config.relays)).toBe(true);
@@ -520,7 +520,7 @@ describe('parseIdentityConfig', () => {
 
         it('reads the capabilities and the simulation settings (M-07)', () => {
             expect(parseMockEngineConfig(BASE)).toMatchObject({
-                capabilities: ['tasks', 'files'],
+                capabilities: ['tasks', 'files', 'onboarding'],
                 simulation: { mode: 'running', speed: 1 },
             });
             expect(parseMockEngineConfig({ ...BASE, MOCK_PROFILE: 'full' }).capabilities).toEqual([
@@ -536,6 +536,7 @@ describe('parseIdentityConfig', () => {
                 'audit',
                 'book-editor',
                 'agent-management',
+                'onboarding',
             ]);
             expect(
                 parseMockEngineConfig({ ...BASE, MOCK_PROFILE: 'full', MOCK_CAPABILITIES: 'runs' }).capabilities,
@@ -555,6 +556,7 @@ describe('parseIdentityConfig', () => {
             ['MOCK_CAPABILITIES', 'runs,chats'],
             ['MOCK_CAPABILITIES', 'runs@1'],
             ['MOCK_PROFILE', 'legacy'],
+            ['MOCK_ONBOARDING', 'skipped'],
             ['MOCK_SIMULATION', 'fast'],
             ['MOCK_SIMULATION_SPEED', '0'],
             ['MOCK_SIMULATION_SPEED', '10000'],

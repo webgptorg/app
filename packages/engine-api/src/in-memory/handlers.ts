@@ -36,6 +36,7 @@ import { advanceRun, queueRun, RUN_HANDLERS } from './runs';
 import { TASK_HANDLERS } from './tasks';
 import { ACCESS_REQUEST_HANDLERS, activeOwnerCount, signOutEverywhere } from './access-requests';
 import { LIVE_HANDLERS } from './live';
+import { ONBOARDING_HANDLERS } from './onboarding';
 import { TEST_CHAT_HANDLERS } from './test-chat';
 import { TRIGGER_HANDLERS } from './triggers';
 import type { InMemoryState } from './state';
@@ -666,6 +667,7 @@ export const HANDLERS: Handlers = {
     ...TEST_CHAT_HANDLERS,
     ...ACCESS_REQUEST_HANDLERS,
     ...LIVE_HANDLERS,
+    ...ONBOARDING_HANDLERS,
 };
 
 function saveAgent(ctx: HandlerContext, agent: Agent): HandlerResult<Agent> {

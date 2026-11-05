@@ -73,6 +73,9 @@ const revisionId = (match: RegExpExecArray) => RevisionId.parse(match[2] ?? '');
 const ROUTES: readonly (readonly ['GET' | 'POST' | 'PUT', RegExp, number, Call])[] = [
     ['GET', /^\/engine$/, 200, (api, _, __, ___, signal) => api.engine.get(signal)],
     ['GET', /^\/me$/, 200, (api, _, __, ___, signal) => api.me.get(signal)],
+    ['GET', /^\/onboarding$/, 200, (api, _, __, ___, signal) => api.onboarding.get(signal)],
+    ['POST', /^\/onboarding\/answer$/, 200, (api, _, __, body, signal) => api.onboarding.answer(body as never, signal)],
+    ['POST', /^\/onboarding\/defer$/, 200, (api, _, __, ___, signal) => api.onboarding.defer(signal)],
     ['GET', /^\/agents$/, 200, (api, _, query, __, signal) => api.agents.list(Object.fromEntries(query), signal)],
     ['POST', /^\/agents$/, 201, (api, _, __, body, signal) => api.agents.create(body as { source: string }, signal)],
     [
@@ -859,7 +862,7 @@ async function serveTestChat(
  */
 export async function routeFakeEngineApi(
     page: Page,
-    options: { readonly member?: InMemoryMember } = {},
+    options: { readonly member?: InMemoryMember; readonly onboarding?: 'pending' } = {},
 ): Promise<void> {
     const engineApi = createInMemoryEngineApiClient({
         // File scanning is optional (#189); these checks cover its badges and the blocked download.
@@ -868,6 +871,7 @@ export async function routeFakeEngineApi(
         seed: {
             activity: [...FAKE_ACTIVITY],
             engine: { name: 'CSP test engine', hostname: 'engine.localhost', dashboardUrl: null, mode: 'local' },
+            ...(options.onboarding === undefined ? {} : { onboarding: options.onboarding }),
             security: SECURITY_OVERVIEW,
             secrets: [
                 {

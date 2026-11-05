@@ -14,6 +14,7 @@ import { INPUT_CHECKS } from './input';
 import { INTEGRATION_CHECKS } from './integrations';
 import { LIVE_CHECKS } from './live';
 import { MEMBER_CHECKS } from './members';
+import { ONBOARDING_CHECKS } from './onboarding';
 import { PAGINATION_CHECKS } from './pagination';
 import { PERMISSION_CHECKS } from './permissions';
 import { RUN_CHECKS } from './runs';
@@ -43,6 +44,7 @@ export const ENGINE_API_SUITE: ConformanceSuite = {
         ...INTEGRATION_CHECKS,
         ...TEST_CHAT_CHECKS,
         ...LIVE_CHECKS,
+        ...ONBOARDING_CHECKS,
         ...ACTIVITY_CHECKS,
         ...AUDIT_CHECKS,
         ...PERMISSION_CHECKS,

@@ -8,6 +8,7 @@ import { RUN_ROUTES } from './capabilities/runs';
 import { TASK_ROUTES } from './capabilities/tasks';
 import { ACCESS_REQUEST_ROUTES } from './capabilities/access-requests';
 import { LIVE_ROUTES } from './capabilities/live';
+import { ONBOARDING_ROUTES } from './capabilities/onboarding';
 import { TEST_CHAT_ROUTES } from './capabilities/test-chat';
 import { TRIGGER_ROUTES } from './capabilities/triggers';
 import { CHAT_ROUTES } from './chats';
@@ -49,6 +50,7 @@ export const ENGINE_API_ROUTES = {
     ...TEST_CHAT_ROUTES,
     ...ACCESS_REQUEST_ROUTES,
     ...LIVE_ROUTES,
+    ...ONBOARDING_ROUTES,
 } as const satisfies Readonly<Record<string, RouteDefinition>>;
 
 export type EngineApiRouteId = keyof typeof ENGINE_API_ROUTES;

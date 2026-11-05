@@ -194,6 +194,7 @@ describe('control listener: simulation (M-07)', () => {
                 'audit@1',
                 'book-editor@1',
                 'agent-management@1',
+                'onboarding@1',
             ],
             simulation: { mode: 'paused', speed: 1, now: '2026-10-01T00:00:00.000Z' },
         });

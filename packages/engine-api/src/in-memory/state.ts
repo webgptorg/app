@@ -14,6 +14,7 @@ import type { EngineEvent } from '../events';
 import type { Folder } from '../folders';
 import type { Invite, Member } from '../members';
 import type { AccessRequestRecord } from './access-requests';
+import type { OnboardingRecord } from './onboarding';
 import type { Passkey } from '../passkeys';
 import type { SecretMetadata } from '../secrets';
 import type { SecurityOverview } from '../security';
@@ -71,6 +72,7 @@ export interface InMemoryState {
     readonly members: Map<string, Member>;
     readonly invites: Map<string, Invite>;
     readonly accessRequests: Map<string, AccessRequestRecord>;
+    readonly onboarding: OnboardingRecord;
     readonly folders: Map<string, Folder>;
     readonly agents: Map<string, AgentRecord>;
     readonly chats: Map<string, Chat>;

@@ -7,6 +7,8 @@ declare global {
         readonly VITE_ENGINE_API?: string;
         /** `full` advertises every capability on the in-memory engine; anything else only what Reborn has. */
         readonly VITE_ENGINE_PROFILE?: string;
+        /** `pending` starts the in-memory engine before its setup, to work on onboarding. */
+        readonly VITE_ENGINE_ONBOARDING?: string;
         /** `1` in the `test:csp` build only: mounts `@ptbk/ui`'s gallery at `/__gallery`. */
         readonly VITE_UI_GALLERY?: string;
     }

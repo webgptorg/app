@@ -76,6 +76,8 @@ export interface MockEngineConfig {
     readonly devLogin: boolean;
     /** `MOCK_PASSKEYS`: `seeded` (the owner is set up) or `none` (a fresh engine that waits for its owner). */
     readonly passkeys: 'seeded' | 'none';
+    /** `MOCK_ONBOARDING`: `pending` or `completed`; without it `empty` is pending and the other scenarios completed. */
+    readonly onboarding: 'pending' | 'completed' | null;
     /** `MOCK_CONTROL=enabled` with `MOCK_CONTROL_HOST` and `MOCK_CONTROL_PORT`; refused with `NODE_ENV=production`. */
     readonly control: { readonly host: string; readonly port: number } | null;
     /** `PTBK_DASHBOARD_URL` and what goes with it; null runs the M1 dev mode on `PTBK_RELAYS`, without heartbeats. */
@@ -398,6 +400,7 @@ const envSchema = z.strictObject({
     ).default(1),
     MOCK_DEV_LOGIN: toggle.default('disabled'),
     MOCK_PASSKEYS: value(z.enum(['seeded', 'none']), 'must be seeded or none').default('seeded'),
+    MOCK_ONBOARDING: value(z.enum(['pending', 'completed']), 'must be pending or completed').optional(),
     MOCK_CONTROL: toggle.default('disabled'),
     MOCK_CONTROL_HOST: value(
         z.union([z.ipv4(), z.ipv6(), HostnameSchema]),
@@ -568,6 +571,7 @@ export function parseMockEngineConfig(env: Env): MockEngineConfig {
         simulation: Object.freeze({ mode: parsedEnv.MOCK_SIMULATION, speed: parsedEnv.MOCK_SIMULATION_SPEED }),
         devLogin: parsedEnv.MOCK_DEV_LOGIN === 'enabled',
         passkeys: parsedEnv.MOCK_PASSKEYS,
+        onboarding: parsedEnv.MOCK_ONBOARDING ?? null,
         control:
             parsedEnv.MOCK_CONTROL === 'enabled'
                 ? Object.freeze({ host: parsedEnv.MOCK_CONTROL_HOST, port: parsedEnv.MOCK_CONTROL_PORT })

@@ -157,6 +157,13 @@ describe('capabilities through the mock HTTP server (contract)', () => {
         await okFrom('declineAccessRequest', owner.members.declineAccessRequest(declined.id, signal()));
         await okFrom('setDashboardRemovals', owner.settings.setDashboardRemovals({ enabled: true }, signal()));
 
+        // The seeded team finished its setup, so an answer can only be refused; the onboarding tests answer for real.
+        await okFrom('getOnboarding', owner.onboarding.get(signal()));
+        await okFrom('deferOnboarding', owner.onboarding.defer(signal()));
+        const stale = await owner.onboarding.answer({ promptId: 'gone', action: 'back' }, signal());
+        expect(stale.kind === 'problem' && stale.problem.code).toBe('onboarding-prompt-stale');
+        answered.add('answerOnboarding');
+
         const { members, apiTokens, audit, bookEditor, agentManagement } = KNOWN_CAPABILITIES;
         const coreFeatures = new Set<string>(
             [members, apiTokens, audit, bookEditor, agentManagement].map(({ id }) => id),

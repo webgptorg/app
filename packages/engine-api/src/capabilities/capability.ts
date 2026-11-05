@@ -51,6 +51,11 @@ export const KNOWN_CAPABILITIES = {
      * and Settings tab need it; without it agents are created and changed through chat with the engine's own agents.
      */
     agentManagement: { id: 'agent-management', version: 1 },
+    /**
+     * Engine-driven onboarding: the engine's initializer asks its setup questions as prompts the UI renders, harness
+     * sign-in included. An engine set up some other way (a terminal `ptbk init`) does not advertise it.
+     */
+    onboarding: { id: 'onboarding', version: 1 },
 } as const satisfies Readonly<Record<string, CapabilityRef>>;
 
 export type KnownCapability = (typeof KNOWN_CAPABILITIES)[keyof typeof KNOWN_CAPABILITIES];

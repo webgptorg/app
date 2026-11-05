@@ -43,6 +43,8 @@ import { EngineEvent } from './events';
 import { Folder } from './folders';
 import { hashAuditEntry } from './in-memory/audit-chain';
 import { requestAccess, revokeDashboardMember } from './in-memory/access-requests';
+import { createOnboardingRecord, settleHarnessLogin } from './in-memory/onboarding';
+import type { HarnessLoginOutcome } from './in-memory/onboarding';
 import type { DashboardRevocationOutcome, NewAccessRequest } from './in-memory/access-requests';
 import { checkBook } from './in-memory/book';
 import { HANDLERS } from './in-memory/handlers';
@@ -203,6 +205,8 @@ export interface InMemorySeed {
     readonly invites?: readonly Unbranded<z.input<typeof Invite>>[];
     /** Pending requests with the code each person was shown; ignored without `access-requests@1`. */
     readonly accessRequests?: readonly InMemorySeedAccessRequest[];
+    /** `onboarding@1`: whether setup still waits for the owner (`pending`) or is done (`completed`, the default). */
+    readonly onboarding?: 'pending' | 'completed';
     readonly folders?: readonly Unbranded<z.input<typeof Folder>>[];
     readonly agents?: readonly InMemorySeedAgent[];
     readonly chats?: readonly InMemorySeedChat[];
@@ -411,6 +415,8 @@ export interface InMemoryEngineController {
     addMember(member: Unbranded<z.input<typeof Member>>): Member;
     /** The gateway's join page accepted a dashboard ticket and registered a passkey; throws at the pending cap. */
     requestAccess(request: NewAccessRequest): AccessRequest;
+    /** `onboarding@1`: the provider answered the running harness sign-in; throws when none runs. */
+    settleHarnessLogin(outcome: HarnessLoginOutcome, diagnostic?: string): void;
     /** Applies a dashboard revocation whose signature checked out; the outcome is what the heartbeat acks. */
     revokeDashboardMember(dashboardUserId: string): DashboardRevocationOutcome;
     /** A sign-in; throws for an unknown member or a taken ID. `current` is decided per request. */
@@ -732,6 +738,9 @@ export function createInMemoryEngineCore(options: InMemoryEngineCoreOptions = {}
             return addChatMessages(system, chat, messages);
         },
         requestAccess: (request) => requestAccess(system, request),
+        settleHarnessLogin: (outcome, diagnostic) => {
+            settleHarnessLogin(system, outcome, diagnostic);
+        },
         revokeDashboardMember: (dashboardUserId) => revokeDashboardMember(system, dashboardUserId),
         addMember: (input) => {
             const member = Member.parse(input);
@@ -1278,6 +1287,7 @@ function createState(
         security: SecurityOverview.parse(seed.security ?? defaultSecurity(at)),
         members,
         invites: byId((seed.invites ?? []).map((record) => Invite.parse(record))),
+        onboarding: createOnboardingRecord(seed.onboarding ?? 'completed'),
         accessRequests: new Map(
             (seed.accessRequests ?? []).map(({ request, code, dashboardUserId }) => {
                 const parsed = AccessRequest.parse(request);

@@ -65,6 +65,8 @@ export interface EngineRuntimeOptions {
      * as on a fresh engine whose owner has yet to open the setup link. Members and data stay either way.
      */
     readonly passkeys?: 'seeded' | 'none';
+    /** `MOCK_ONBOARDING`: overrides the scenario's onboarding state (`empty` is `pending`, the others `completed`). */
+    readonly onboarding?: 'pending' | 'completed';
 }
 
 export interface ResetInput {
@@ -170,7 +172,8 @@ export async function createEngineRuntime(options: EngineRuntimeOptions): Promis
             epoch: options.epoch,
             hostname: identity.hostname,
         });
-        const seed = options.passkeys === 'none' ? { ...seeded, passkeys: [], sessions: [] } : seeded;
+        const withOwner = options.passkeys === 'none' ? { ...seeded, passkeys: [], sessions: [] } : seeded;
+        const seed = options.onboarding === undefined ? withOwner : { ...withOwner, onboarding: options.onboarding };
         const replyScript: ReplyScript = ({ agent, content, chatId, messageIndex }) => ({
             chunks: generateReply({
                 seed: seedValue,

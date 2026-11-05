@@ -24,6 +24,11 @@ Each entry has this shape. Platform authors: add yours at the top of the list, o
 - **Redo:** what the engine's agent must change, re-run or drop; "nothing" if it is inert.
 ```
 
+### 2026-11-05: Engine-driven onboarding
+
+- **Changed:** new capability `onboarding@1`: `GET /onboarding`, `POST /onboarding/answer`, `POST /onboarding/defer`. Your initializer presents its prompts (text or intent, choice, confirm, upload through `files@1`, harness login with URL, code and status) and the UI only renders and answers them, like your desktop client's prompt transport. New problem `onboarding-prompt-stale`, new checks `engine-api.onboarding.state` and `engine-api.onboarding.refusals` (ENG-115). See [engine-api.md](engine-api.md#onboarding).
+- **Redo:** expose the pending App-started `ptbk init` through these routes: map each prompt to a kind, keep choice values and drafts in the engine, report the harness adapter's real sign-in (Codex `--device-auth` URL and code, Claude URL plus returned code) and its readiness, and treat `defer` as "set up through the built-in agents". Never log a code or send it as chat; leave Wallet setup out.
+
 ### 2026-11-05: Activity follows capabilities
 
 - **Changed:** `GET /activity` lists no item of a capability the engine does not advertise (`ACTIVITY_CAPABILITIES`). See [engine-api.md](engine-api.md#capabilities).

@@ -71,6 +71,7 @@ describe('supports', () => {
             'audit@1',
             'book-editor@1',
             'agent-management@1',
+            'onboarding@1',
         ]);
     });
 });

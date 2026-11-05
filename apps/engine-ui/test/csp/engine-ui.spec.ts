@@ -39,6 +39,20 @@ test.describe('the built bundle under the engine CSP', () => {
         expectCleanPage(report);
     });
 
+    test('a new engine opens on its setup, whose prompts render and answer under the CSP', async ({ page, visit }) => {
+        await routeFakeEngineApi(page, { onboarding: 'pending' });
+        const report = await visit('/');
+
+        await expect(page.getByRole('heading', { level: 1, name: 'Your project' })).toBeVisible();
+        await expect(page.getByRole('progressbar')).toBeVisible();
+        await page.getByRole('textbox', { name: 'What are you working on?' }).fill('<img src=x onerror=alert(1)>');
+        await page.getByRole('button', { name: 'Continue' }).click();
+        await page.getByRole('button', { name: 'Continue' }).click();
+        await expect(page.getByRole('heading', { level: 1, name: 'Sign in to OpenAI Codex' })).toBeVisible();
+        await expect(page.getByText('K7QF-3MRP')).toBeVisible();
+        expectCleanPage(report);
+    });
+
     test("/ is a member's own home without the control center and meets the UX checks", async ({ page, visit }) => {
         await routeFakeEngineApi(page, {
             member: {

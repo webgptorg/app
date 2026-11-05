@@ -325,6 +325,12 @@ export interface EngineApiClient {
             signal: AbortSignal,
         ): Result<'checkIntegration'>;
     };
+    /** `onboarding@1`: the engine asks, the UI answers; poll `get` while the engine works or a login waits. */
+    readonly onboarding: {
+        get(signal: AbortSignal): Result<'getOnboarding'>;
+        answer(body: Body<'answerOnboarding'>, signal: AbortSignal): Result<'answerOnboarding'>;
+        defer(signal: AbortSignal): Result<'deferOnboarding'>;
+    };
     /** Items of unknown kinds read as `{ kind: 'unknown' }`; items without a valid base are dropped and counted. */
     readonly activity: {
         list(query: Query<'listActivity'>, signal: AbortSignal): Result<'listActivity'>;
@@ -494,6 +500,11 @@ export function createEngineApiClient(transport: EngineApiTransport): EngineApiC
             enable: (integrationId, signal) => call(R.enableIntegration, { params: { integrationId } }, signal),
             disable: (integrationId, signal) => call(R.disableIntegration, { params: { integrationId } }, signal),
             check: (integrationId, signal) => call(R.checkIntegration, { params: { integrationId } }, signal),
+        },
+        onboarding: {
+            get: (signal) => call(R.getOnboarding, {}, signal),
+            answer: (body, signal) => call(R.answerOnboarding, { body }, signal),
+            defer: (signal) => call(R.deferOnboarding, {}, signal),
         },
         activity: {
             list: (query, signal) => call(R.listActivity, { query }, signal),

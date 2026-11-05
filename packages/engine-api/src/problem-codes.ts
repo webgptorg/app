@@ -26,6 +26,8 @@ export const PROBLEM_STATUS = {
     'run-not-retryable': 409,
     'trigger-ended': 409,
     'file-infected': 409,
+    /** The answer is to an onboarding prompt the engine has moved past; read the state again. */
+    'onboarding-prompt-stale': 409,
     'payload-too-large': 413,
     'unsupported-media-type': 415,
     'invalid-book': 422,

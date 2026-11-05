@@ -4,6 +4,7 @@
 @import '../features/chat/render/code.css';
 @import '../features/runs/runs.css';
 @import '../features/home/home.css';
+@import '../features/onboarding/onboarding.css';
 
 /* Tailwind only generates classes it sees; the design system's components live in the package. */
 @source '../../node_modules/@ptbk/ui/src';

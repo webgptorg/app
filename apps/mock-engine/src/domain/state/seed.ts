@@ -447,6 +447,8 @@ export async function seedEngine({ seed, scenario, epoch, hostname }: SeedInput)
         members,
         folders,
         agents: [...builtInAgents(owner.id, iso(epochMs - 200 * DAY)), ...agents],
+        // A fresh engine waits for its owner to set it up; the seeded teams have been at work for a while.
+        onboarding: scenario === 'empty' ? 'pending' : 'completed',
         chats,
         messages,
         secrets,
