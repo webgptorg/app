@@ -177,7 +177,8 @@ describe('agent overview', { timeout: TIMEOUT_MS }, () => {
     });
 
     it('shows when the agent was last active, and leaves the model out without runs', async () => {
-        const engine = createAgentsEngine({ agentCount: 2, capabilities: [] });
+        // Member activity needs members@1; the engine lists none without it.
+        const engine = createAgentsEngine({ agentCount: 2, capabilities: [KNOWN_CAPABILITIES.members] });
         engine.controller.appendActivity({
             kind: 'member.joined',
             agentId: 'agent-001',
