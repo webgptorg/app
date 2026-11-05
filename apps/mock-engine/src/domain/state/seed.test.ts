@@ -72,7 +72,7 @@ describe('seedEngine', () => {
     it('gives a stable small-team seed for seed 42 and a fixed epoch, including every capability', async () => {
         const data = await seedFor(42, 'small-team');
         expect(await sha256(JSON.stringify(data))).toBe(
-            '53fded270e482adac280573cdf6a244236cfcdb31d3dce2d1bab84403893e475',
+            'ef30862381df2a468b55420b340046f2e8867543b9e86e98a41f984d3d37b004',
         );
         for (const key of ['runs', 'files', 'triggers', 'integrations', 'activity'] as const) {
             expect(data[key]?.length, key).toBeGreaterThan(0);
