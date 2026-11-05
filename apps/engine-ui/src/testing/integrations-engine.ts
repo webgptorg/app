@@ -63,26 +63,13 @@ export function integrationsSeed(): InMemorySeed {
             { id: 'agent-grace', source: 'Grace\nPERSONA Review' },
             { id: 'agent-max', source: 'Max\nPERSONA Imports' },
         ],
-        secrets: [
-            {
-                id: 'secret-docs',
-                name: 'DOCS_TOKEN',
-                scope: { kind: 'engine' },
-                status: 'active',
-                createdBy: OWNER_ID,
-                createdAt: ago(900),
-                updatedAt: ago(900),
-                lastUsedAt: null,
-            },
+        integrationSecrets: [
+            { id: 'secret-docs', name: 'DOCS_TOKEN', scope: { kind: 'engine' }, status: 'active' },
             {
                 id: 'secret-old',
                 name: 'OLD_CALENDAR_TOKEN',
                 scope: { kind: 'agent', agentId: 'agent-ada' },
                 status: 'revoked',
-                createdBy: OWNER_ID,
-                createdAt: ago(900),
-                updatedAt: ago(800),
-                lastUsedAt: null,
             },
         ],
         integrations: [

@@ -40,7 +40,7 @@ async function runAgainstMock(targets: EngineTargetFactory, skips: Readonly<Reco
         command: mockEngineCommand(
             'MOCK_SCENARIO=small-team MOCK_SEED=1 ' +
                 'MOCK_CAPABILITIES=runs,tasks,files,triggers,integrations,test-chat,access-requests,file-scanning,' +
-                'members,api-tokens,audit,book-editor,agent-management,onboarding',
+                'members,api-tokens,audit,book-editor,agent-management,onboarding,wallet',
         ),
         suites: [ENGINE_API_PLATFORM_SUITE],
         targets,
@@ -84,6 +84,9 @@ describe('the engine-api suite on one engine the harness starts', () => {
                     // Engine policy that only the mock's own target reports.
                     'engine-api.cross-member.private-resources':
                         'skip: the target reports no resources private to one member',
+                    // Raising a Wallet request is a test-mode lever the session command does not offer.
+                    'engine-api.wallet.requests':
+                        'skip: the target cannot raise a Wallet request (ConformanceTarget.walletRequest)',
                 },
             );
         },

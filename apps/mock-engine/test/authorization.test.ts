@@ -49,10 +49,12 @@ function validBody(route: RouteDefinition): unknown {
             return { name: 'Matrix engine' };
         case 'setUpdatePolicy':
             return { policy: 'auto' };
-        case 'createSecret':
-            return { name: unique('MATRIX').replace(' ', '_'), scope: { kind: 'engine' }, value: 'matrix-value' };
-        case 'replaceSecretValue':
-            return { value: 'matrix-value-2' };
+        case 'addWalletRecord':
+        case 'updateWalletRecord':
+            return { origin: 'https://matrix.example.com', username: unique('matrix'), password: 'matrix-value' };
+        case 'markWalletRequestSeen':
+        case 'rejectWalletRequest':
+            return { step: 0 };
         case 'createTrigger':
             return {
                 kind: 'schedule',
@@ -174,7 +176,7 @@ describe('authorisation matrix', () => {
     });
 
     it.each<[string, Permission[]]>([
-        ['core reads', ['agents.read', 'secrets.read']],
+        ['core reads', ['agents.read', 'wallet.read']],
         ['run control without reading triggers', ['agents.read', 'runs.read', 'runs.control', 'files.read']],
         [
             'trigger and integration managers',
@@ -188,22 +190,28 @@ describe('authorisation matrix', () => {
         },
     );
 
-    it('lets secrets.read list secret metadata but write nothing', async () => {
-        const cookie = harness.signIn({ memberId: memberOf('member'), permissions: ['secrets.read'] });
-        const listed = await call(harness, cookie, ENGINE_API_ROUTES.listSecrets);
+    it('lets wallet.read see logins and requests but write nothing', async () => {
+        const cookie = harness.signIn({ memberId: memberOf('member'), permissions: ['wallet.read'] });
+        const listed = await call(harness, cookie, ENGINE_API_ROUTES.getWallet);
         expect(listed.status).toBe(200);
-        expect((listed.body?.['items'] as unknown[]).length).toBeGreaterThan(0);
-        expect(JSON.stringify(listed.body)).not.toMatch(/"value"/);
-        const [secret] = listed.body?.['items'] as { id: string }[];
+        expect((listed.body?.['records'] as unknown[]).length).toBeGreaterThan(0);
+        expect((listed.body?.['pending'] as unknown[]).length).toBe(2);
+        expect(JSON.stringify(listed.body)).not.toMatch(/"(value|password)"/);
+        const [login] = listed.body?.['records'] as { id: string }[];
+        const [request] = listed.body?.['pending'] as { id: string }[];
         for (const route of [
-            ENGINE_API_ROUTES.createSecret,
-            ENGINE_API_ROUTES.replaceSecretValue,
-            ENGINE_API_ROUTES.revokeSecret,
-            ENGINE_API_ROUTES.deleteSecret,
+            ENGINE_API_ROUTES.addWalletRecord,
+            ENGINE_API_ROUTES.updateWalletRecord,
+            ENGINE_API_ROUTES.deleteWalletRecord,
+            ENGINE_API_ROUTES.markWalletRequestSeen,
+            ENGINE_API_ROUTES.rejectWalletRequest,
         ]) {
-            const result = await call(harness, cookie, route, { secretId: secret?.id ?? '' });
+            const result = await call(harness, cookie, route, {
+                recordId: login?.id ?? '',
+                requestId: request?.id ?? '',
+            });
             expect(result.status, route.id).toBe(403);
-            expect(result.body, route.id).toMatchObject({ code: 'forbidden', requiredPermission: 'secrets.manage' });
+            expect(result.body, route.id).toMatchObject({ code: 'forbidden', requiredPermission: 'wallet.manage' });
         }
     });
 
@@ -217,7 +225,7 @@ describe('authorisation matrix', () => {
                 route.permission !== null &&
                 route.permission !== 'chats.read',
         );
-        expect(mutating.length).toBeGreaterThan(25);
+        expect(mutating.length).toBeGreaterThan(20);
         for (const route of mutating) {
             const result = await call(harness, cookie, route);
             expect(result.status, route.id).toBe(403);
@@ -235,13 +243,13 @@ function isCoreFeature(capability: { readonly id: string }): boolean {
 describe('order of checks', () => {
     it('answers a missing permission with 403 even when the input is invalid', async () => {
         const cookie = harness.signIn({ memberId: memberOf('viewer') });
-        const denied = await call(harness, cookie, ENGINE_API_ROUTES.createSecret, {}, { surprise: true });
+        const denied = await call(harness, cookie, ENGINE_API_ROUTES.addWalletRecord, {}, { surprise: true });
         expect(denied.status).toBe(403);
-        expect(denied.body).toMatchObject({ code: 'forbidden', requiredPermission: 'secrets.manage' });
+        expect(denied.body).toMatchObject({ code: 'forbidden', requiredPermission: 'wallet.manage' });
         const allowed = await call(
             harness,
             harness.signIn({ memberId: memberOf('owner') }),
-            ENGINE_API_ROUTES.createSecret,
+            ENGINE_API_ROUTES.addWalletRecord,
             {},
             { surprise: true },
         );

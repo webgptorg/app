@@ -114,7 +114,8 @@ describe('seedEngine', () => {
             'system',
         ]);
         expect(data.chats).toEqual([]);
-        expect(data.secrets).toEqual([]);
+        expect(data.integrationSecrets).toEqual([]);
+        expect(data.wallet).toBeUndefined();
         expect(data.passkeys).toHaveLength(1);
         for (const key of ['runs', 'files', 'triggers', 'integrations', 'activity'] as const)
             expect(data[key]).toEqual([]);
@@ -161,9 +162,16 @@ describe('seedEngine', () => {
             'agent',
             'agent',
         ]);
-        const secrets = ok(await client.secrets.list({ limit: 100 }, signal())).items;
+        const secrets = data.integrationSecrets ?? [];
         expect(secrets.map(({ status }) => status)).toContain('revoked');
         expect(new Set(secrets.map(({ scope }) => scope.kind))).toEqual(new Set(['engine', 'agent']));
+        const wallet = ok(await client.wallet.get(signal()));
+        expect(wallet.state).toBe('ready');
+        expect(new Set(wallet.records.map(({ verification }) => verification?.state ?? 'unverified'))).toEqual(
+            new Set(['verified', 'rejected', 'incomplete', 'unverified']),
+        );
+        expect(wallet.pending.map(({ problem }) => problem)).toEqual(['rejected', 'missing']);
+        expect(wallet.pending.every(({ seenAt }) => seenAt === null)).toBe(true);
     });
 
     it('describes every passkey, counts them per member and names the passkey each session signed in with', async () => {
@@ -184,13 +192,13 @@ describe('seedEngine', () => {
         for (const session of sessions) expect(owners.get(session.passkeyId ?? ''), session.id).toBe(session.memberId);
     });
 
-    it('keeps secrets metadata-only', async () => {
+    it('keeps integration secrets and Wallet logins free of any value', async () => {
         for (const scenario of SCENARIOS) {
-            for (const secret of (await seedFor(5, scenario)).secrets ?? []) {
-                expect(Object.keys(secret).sort()).toEqual(
-                    ['createdAt', 'createdBy', 'id', 'lastUsedAt', 'name', 'scope', 'status', 'updatedAt'].sort(),
-                );
+            const data = await seedFor(5, scenario);
+            for (const secret of data.integrationSecrets ?? []) {
+                expect(Object.keys(secret).sort()).toEqual(['id', 'name', 'scope', 'status']);
             }
+            expect(JSON.stringify(data.wallet ?? {})).not.toMatch(/"(password|value)":/);
         }
     });
 
@@ -433,7 +441,7 @@ describe('seedEngine: capabilities in small-team', () => {
         );
         const refs = integrations.flatMap(({ secretRefs }) => secretRefs);
         expect(new Set(refs.map(({ state }) => state))).toEqual(new Set(['resolved', 'missing', 'revoked']));
-        const secrets = new Map((data.secrets ?? []).map((secret) => [secret.id, secret]));
+        const secrets = new Map((data.integrationSecrets ?? []).map((secret) => [secret.id, secret]));
         for (const ref of refs.filter(({ secretId }) => secretId !== null)) {
             expect(secrets.get(ref.secretId ?? '')?.name).toBe(ref.name);
             expect(secrets.get(ref.secretId ?? '')?.status).toBe(ref.state === 'revoked' ? 'revoked' : 'active');

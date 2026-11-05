@@ -23,7 +23,7 @@ const ROUTES = [
     '/triggers/new',
     '/members',
     '/security',
-    '/secrets',
+    '/wallet',
     '/audit',
     '/settings',
     '/onboarding',

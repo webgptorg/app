@@ -1,4 +1,4 @@
-import { AgentId, Permission, Role, TriggerId } from '@ptbk/engine-api';
+import { AgentId, Permission, Role, TriggerId, WALLET_REQUEST_PROBLEMS, WalletOrigin } from '@ptbk/engine-api';
 import { EngineVersion } from '@ptbk/protocol';
 import { z } from 'zod';
 
@@ -48,6 +48,13 @@ const InboundEmail = z.strictObject({
     triggerId: TriggerId,
     from: z.email().max(254),
     subject: z.string().max(998),
+});
+
+/** What agent work asks the Wallet for when a login is missing or refused; the request text is the mock's. */
+const WalletLoginRequest = z.strictObject({
+    origin: WalletOrigin,
+    account: z.string().min(1).max(320).nullable().default(null),
+    problem: z.enum(WALLET_REQUEST_PROBLEMS).default('missing'),
 });
 
 function invalidBody(path: string, message: string): Response {
@@ -218,6 +225,22 @@ export function createControlRoutes(deps: ControlDeps): readonly HttpRoute[] {
                     .find(({ id }) => id === body.agentId);
                 if (agent === undefined) return invalidBody('body.agentId', 'No such agent.');
                 return Response.json(runtime.simulation().scriptRun(body), { status: 201 });
+            },
+        }),
+        control({
+            method: 'POST',
+            path: '/__mock/wallet-requests',
+            body: { kind: 'json', schema: WalletLoginRequest, maxBytes: BODY_MAX_BYTES },
+            handle: ({ body }) => {
+                const request = runtime.controller().requestWalletLogin({
+                    ...body,
+                    fields: [],
+                    recordId: null,
+                    reason: `An agent needs a login for ${new URL(body.origin).host}.`,
+                    tasks: [],
+                    agents: [],
+                });
+                return Response.json({ request }, { status: 201 });
             },
         }),
         control({

@@ -223,16 +223,26 @@ export interface EngineApiClient {
         list(query: Query<'listSessions'>, signal: AbortSignal): Result<'listSessions'>;
         revoke(sessionId: Param<'revokeSession', 'sessionId'>, signal: AbortSignal): Result<'revokeSession'>;
     };
-    readonly secrets: {
-        list(query: Query<'listSecrets'>, signal: AbortSignal): Result<'listSecrets'>;
-        create(body: Body<'createSecret'>, signal: AbortSignal): Result<'createSecret'>;
-        replaceValue(
-            secretId: Param<'replaceSecretValue', 'secretId'>,
-            body: Body<'replaceSecretValue'>,
+    /** `wallet@1`. */
+    readonly wallet: {
+        get(signal: AbortSignal): Result<'getWallet'>;
+        add(body: Body<'addWalletRecord'>, signal: AbortSignal): Result<'addWalletRecord'>;
+        update(
+            recordId: Param<'updateWalletRecord', 'recordId'>,
+            body: Body<'updateWalletRecord'>,
             signal: AbortSignal,
-        ): Result<'replaceSecretValue'>;
-        revoke(secretId: Param<'revokeSecret', 'secretId'>, signal: AbortSignal): Result<'revokeSecret'>;
-        delete(secretId: Param<'deleteSecret', 'secretId'>, signal: AbortSignal): Result<'deleteSecret'>;
+        ): Result<'updateWalletRecord'>;
+        delete(recordId: Param<'deleteWalletRecord', 'recordId'>, signal: AbortSignal): Result<'deleteWalletRecord'>;
+        markSeen(
+            requestId: Param<'markWalletRequestSeen', 'requestId'>,
+            body: Body<'markWalletRequestSeen'>,
+            signal: AbortSignal,
+        ): Result<'markWalletRequestSeen'>;
+        reject(
+            requestId: Param<'rejectWalletRequest', 'requestId'>,
+            body: Body<'rejectWalletRequest'>,
+            signal: AbortSignal,
+        ): Result<'rejectWalletRequest'>;
     };
     /** `files@1`; every capability group answers 404 `capability-not-supported` unless `GET /engine` advertises it. */
     readonly files: {
@@ -448,13 +458,14 @@ export function createEngineApiClient(transport: EngineApiTransport): EngineApiC
             list: (query, signal) => call(R.listSessions, { query }, signal),
             revoke: (sessionId, signal) => call(R.revokeSession, { params: { sessionId } }, signal),
         },
-        secrets: {
-            list: (query, signal) => call(R.listSecrets, { query }, signal),
-            create: (body, signal) => call(R.createSecret, { body }, signal),
-            replaceValue: (secretId, body, signal) =>
-                call(R.replaceSecretValue, { params: { secretId }, body }, signal),
-            revoke: (secretId, signal) => call(R.revokeSecret, { params: { secretId } }, signal),
-            delete: (secretId, signal) => call(R.deleteSecret, { params: { secretId } }, signal),
+        wallet: {
+            get: (signal) => call(R.getWallet, {}, signal),
+            add: (body, signal) => call(R.addWalletRecord, { body }, signal),
+            update: (recordId, body, signal) => call(R.updateWalletRecord, { params: { recordId }, body }, signal),
+            delete: (recordId, signal) => call(R.deleteWalletRecord, { params: { recordId } }, signal),
+            markSeen: (requestId, body, signal) =>
+                call(R.markWalletRequestSeen, { params: { requestId }, body }, signal),
+            reject: (requestId, body, signal) => call(R.rejectWalletRequest, { params: { requestId }, body }, signal),
         },
         files: {
             list: (query, signal) => call(R.listFiles, { query }, signal),

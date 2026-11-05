@@ -38,4 +38,12 @@ describe('createMockEngineTarget', () => {
         ).rejects.toThrow('no usable session cookie');
         await expect(targetAnswering(201, {}).target.session({ kind: 'owner' })).rejects.toThrow('no usable');
     });
+
+    it('raises a Wallet request through the control listener', async () => {
+        const { target, requests } = targetAnswering(201, { request: { id: 'walletreq-1' } });
+        expect(await target.walletRequest?.('https://github.com')).toBe('walletreq-1');
+        expect(requests[0]?.url).toBe('http://127.0.0.1:4480/__mock/wallet-requests');
+        expect(await requests[0]?.json()).toEqual({ origin: 'https://github.com' });
+        await expect(targetAnswering(400, {}).target.walletRequest?.('x')).rejects.toThrow('answered 400');
+    });
 });

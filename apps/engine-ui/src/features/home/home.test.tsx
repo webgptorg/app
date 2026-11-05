@@ -86,10 +86,10 @@ describe('home: control center', { timeout: TIMEOUT_MS }, () => {
         const secrets = defineFeature({
             id: 'fake-secrets',
             requires: {},
-            nav: { group: 'admin', order: 99, label: () => 'Vault', icon: Icon, to: '/secrets' },
+            nav: { group: 'admin', order: 99, label: () => 'Vault', icon: Icon, to: '/wallet' },
             attention: {
                 id: 'secrets',
-                useAttention: () => ({ count: 3, to: '/secrets', search: { status: 'revoked' } }),
+                useAttention: () => ({ count: 3, to: '/wallet', search: { dialog: 'new' } }),
             },
         });
         const bare = defineFeature({
@@ -105,7 +105,7 @@ describe('home: control center', { timeout: TIMEOUT_MS }, () => {
         });
         expect(screen.getByRole('link', { name: 'bare: 1' }).getAttribute('href')).toBe('/members');
         expect(screen.getByRole('link', { name: '2 to review' }).getAttribute('href')).toBe('/audit');
-        expect(screen.getByRole('link', { name: 'Vault: 3' }).getAttribute('href')).toBe('/secrets?status=revoked');
+        expect(screen.getByRole('link', { name: 'Vault: 3' }).getAttribute('href')).toBe('/wallet?dialog=new');
     });
 
     it('leaves the run counts out, not at zero, without runs@1', async () => {

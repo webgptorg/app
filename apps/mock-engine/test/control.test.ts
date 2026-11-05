@@ -81,7 +81,7 @@ describe('control listener: sessions', () => {
         expect(viewerMe.body).toMatchObject({ memberId: viewer.body?.['memberId'], role: 'viewer' });
         expect([...(viewerMe.body['permissions'] as string[])].sort()).toEqual([...ROLE_PERMISSIONS.viewer].sort());
 
-        const permissions = ['agents.read', 'secrets.read'];
+        const permissions = ['agents.read', 'wallet.read'];
         const first = await call('/__mock/sessions', {
             method: 'POST',
             body: { subject: { kind: 'member', permissions } },
@@ -195,6 +195,7 @@ describe('control listener: simulation (M-07)', () => {
                 'book-editor@1',
                 'agent-management@1',
                 'onboarding@1',
+                'wallet@1',
             ],
             simulation: { mode: 'paused', speed: 1, now: '2026-10-01T00:00:00.000Z' },
         });

@@ -164,6 +164,16 @@ describe('capabilities through the mock HTTP server (contract)', () => {
         expect(stale.kind === 'problem' && stale.problem.code).toBe('onboarding-prompt-stale');
         answered.add('answerOnboarding');
 
+        const wallet = await okFrom('getWallet', owner.wallet.get(signal()));
+        const [seen, rejected] = wallet.pending;
+        if (seen === undefined || rejected === undefined) throw new Error('no pending Wallet requests');
+        await okFrom('markWalletRequestSeen', owner.wallet.markSeen(seen.id, { step: seen.step }, signal()));
+        await okFrom('rejectWalletRequest', owner.wallet.reject(rejected.id, { step: rejected.step }, signal()));
+        const login = { origin: 'https://contract.example.com', username: 'contract', password: 'contract-password' };
+        const { record } = await okFrom('addWalletRecord', owner.wallet.add(login, signal()));
+        await okFrom('updateWalletRecord', owner.wallet.update(record.id, { ...login, label: 'Contract' }, signal()));
+        await okFrom('deleteWalletRecord', owner.wallet.delete(record.id, signal()));
+
         const { members, apiTokens, audit, bookEditor, agentManagement } = KNOWN_CAPABILITIES;
         const coreFeatures = new Set<string>(
             [members, apiTokens, audit, bookEditor, agentManagement].map(({ id }) => id),

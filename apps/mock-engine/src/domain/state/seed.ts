@@ -4,6 +4,7 @@ import type { InMemorySeed } from '@ptbk/engine-api/in-memory';
 
 import { seedCapabilities } from './capability-seed';
 import type { SeedChatRef, SeedMessageRef } from './capability-seed';
+import { seedWallet } from './wallet-seed';
 import type { Scenario, ScenarioSize } from './scenarios';
 import { SCENARIO_SIZES } from './scenarios';
 import type { SeededSequence } from './seed-random';
@@ -465,17 +466,12 @@ export async function seedEngine({ seed, scenario, epoch, hostname }: SeedInput)
         const base = SECRET_NAMES[index % SECRET_NAMES.length] ?? 'API_KEY';
         const round = Math.floor(index / SECRET_NAMES.length);
         const agent = index % 3 === 2 && agents.length > 0 ? sequence.pick(agents) : undefined;
-        const createdAt = iso(epochMs - sequence.int(20 * DAY, 90 * DAY));
         return {
             id: sequence.id('secret'),
             name: round === 0 ? base : `${base}_${String(round + 1)}`,
             scope:
                 agent?.id === undefined ? { kind: 'engine' as const } : { kind: 'agent' as const, agentId: agent.id },
             status: index === 1 ? ('revoked' as const) : ('active' as const),
-            createdBy: sequence.pick(members.filter((member) => member.role === 'owner' || member.role === 'admin')).id,
-            createdAt,
-            updatedAt: createdAt,
-            lastUsedAt: sequence.chance(0.7) ? iso(epochMs - sequence.int(MINUTE, 5 * DAY)) : null,
         };
     });
 
@@ -525,16 +521,6 @@ export async function seedEngine({ seed, scenario, epoch, hostname }: SeedInput)
                 },
             ),
         ),
-        ...secrets.map((secret) =>
-            memberAudit(
-                secret.createdAt,
-                secret.createdBy,
-                'secret.create',
-                { kind: 'secret', id: secret.id, name: secret.name },
-                clientOf(faker),
-                { fields: ['name', 'scope', 'value'], scope: secret.scope.kind },
-            ),
-        ),
         ...hostileRename(agents, owner.id, faker),
     ].sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
 
@@ -570,7 +556,8 @@ export async function seedEngine({ seed, scenario, epoch, hostname }: SeedInput)
         // A fresh engine waits for its owner to set it up; the seeded teams have been at work for a while.
         onboarding: scenario === 'empty' ? 'pending' : 'completed',
         chats,
-        secrets,
+        integrationSecrets: secrets,
+        ...(size.secrets > 0 ? { wallet: seedWallet(epochMs) } : {}),
         passkeys,
         sessions,
         auditEntries: audit,

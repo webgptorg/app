@@ -16,10 +16,10 @@ const TIMEOUT_MS = 30_000;
 const HOSTILE = '<img src=x onerror=alert(1)>';
 const START_MS = Date.parse('2026-09-01T00:00:00Z');
 const HOUR_MS = 3_600_000;
-const SEEDED_ACTIONS = ['agent.create', 'secret.replace', 'folder.rename', 'agent.stop'] as const;
+const SEEDED_ACTIONS = ['agent.create', 'wallet.record.update', 'folder.rename', 'agent.stop'] as const;
 const KINDS = {
     'agent.create': 'agent',
-    'secret.replace': 'secret',
+    'wallet.record.update': 'wallet-record',
     'folder.rename': 'folder',
     'agent.stop': 'agent',
 } as const;
@@ -156,17 +156,17 @@ describe('audit log: filters', { timeout: TIMEOUT_MS }, () => {
         expect(await screen.findByText('Target 229')).toBeDefined();
         expect(screen.queryByText('Target 228')).toBeNull();
 
-        await app.user.selectOptions(screen.getByRole('combobox', { name: 'Action' }), 'secret.replace');
+        await app.user.selectOptions(screen.getByRole('combobox', { name: 'Action' }), 'wallet.record.update');
         await app.user.click(screen.getByRole('button', { name: 'More filters' }));
-        await app.user.selectOptions(screen.getByRole('combobox', { name: 'Target type' }), 'secret');
+        await app.user.selectOptions(screen.getByRole('combobox', { name: 'Target type' }), 'wallet-record');
         await app.user.selectOptions(screen.getByRole('combobox', { name: 'Outcome' }), 'success');
         await app.user.type(screen.getByRole('textbox', { name: 'Target ID' }), 'target-225');
         await waitFor(() => {
             expect(lastQuery(engine.spies.list)).toEqual({
                 limit: 50,
                 memberId: 'member-petr',
-                action: 'secret.replace',
-                targetKind: 'secret',
+                action: 'wallet.record.update',
+                targetKind: 'wallet-record',
                 targetId: 'target-225',
                 outcome: 'success',
             });
@@ -180,8 +180,8 @@ describe('audit log: filters', { timeout: TIMEOUT_MS }, () => {
         const search = app.router.state.location.search;
         expect(search).toMatchObject({
             memberId: 'member-petr',
-            action: 'secret.replace',
-            targetKind: 'secret',
+            action: 'wallet.record.update',
+            targetKind: 'wallet-record',
             targetId: 'target-225',
             outcome: 'success',
             from: '2026-09-10',
@@ -345,7 +345,7 @@ describe('audit log: entries', { timeout: TIMEOUT_MS }, () => {
         expect(within(screen.getByRole('table')).getByText('System')).toBeDefined();
         const action = screen.getByRole('combobox', { name: 'Action' });
         expect(within(action).getAllByRole('option')).toHaveLength(AUDIT_ACTIONS.length + 1);
-        expect(within(action).getByRole('option', { name: 'Secret value replaced' })).toBeDefined();
+        expect(within(action).getByRole('option', { name: 'Wallet login updated' })).toBeDefined();
     });
 
     it('names actors from the members list and falls back to the ID', async () => {

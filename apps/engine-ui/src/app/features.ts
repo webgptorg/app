@@ -9,7 +9,7 @@ import { integrationsFeature } from '../features/integrations/integrations-featu
 import { membersFeature } from '../features/members/members-feature';
 import { onboardingFeature } from '../features/onboarding/onboarding-feature';
 import { runsFeature } from '../features/runs/runs-feature';
-import { secretsFeature } from '../features/secrets/secrets-feature';
+import { walletFeature } from '../features/wallet/wallet-feature';
 import { securityFeature } from '../features/security/security-feature';
 import { settingsFeature } from '../features/settings/settings-feature';
 import { tasksFeature } from '../features/tasks/tasks-feature';
@@ -33,7 +33,7 @@ export const FEATURES: readonly FeatureDefinition[] = [
     bookFeature,
     membersFeature,
     securityFeature,
-    secretsFeature,
+    walletFeature,
     auditFeature,
     settingsFeature,
     onboardingFeature,

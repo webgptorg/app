@@ -115,6 +115,8 @@ export function createMockEngineUiTarget(options: MockEngineTargetOptions): Engi
             async advanceTime(ms: number) {
                 await control('POST', '/__mock/simulation/advance', { ms });
             },
+            walletRequest: (origin: string) =>
+                conformance.walletRequest?.(origin) ?? Promise.reject(new Error('no lever')),
             async scriptRun(input: ScriptedRunInput) {
                 const run = await control('POST', '/__mock/runs', input);
                 const runId = readString(run, 'id');

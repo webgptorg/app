@@ -21,7 +21,7 @@ export const ROLE_PERMISSIONS: Readonly<Record<Role, readonly Permission[]>> = O
         'chats.write',
         'files.read',
         'files.write',
-        'secrets.read',
+        'wallet.read',
         'members.read',
         'runs.read',
         'runs.control',

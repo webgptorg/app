@@ -19,11 +19,11 @@ import { PAGINATION_CHECKS } from './pagination';
 import { PERMISSION_CHECKS } from './permissions';
 import { RUN_CHECKS } from './runs';
 import { SCHEMA_CHECKS } from './schemas';
-import { SECRET_CHECKS } from './secrets';
 import { SUITE } from './support';
 import { TASK_CHECKS } from './tasks';
 import { TEST_CHAT_CHECKS } from './test-chat';
 import { TRIGGER_CHECKS } from './triggers';
+import { WALLET_CHECKS } from './wallet';
 
 /** v1: the engine API that engine-ui depends on (C-04, C-07), checked through the gateway as a browser would. */
 export const ENGINE_API_SUITE: ConformanceSuite = {
@@ -36,7 +36,7 @@ export const ENGINE_API_SUITE: ConformanceSuite = {
         ...PAGINATION_CHECKS,
         ...AGENT_CHECKS,
         ...CHAT_CHECKS,
-        ...SECRET_CHECKS,
+        ...WALLET_CHECKS,
         ...RUN_CHECKS,
         ...TASK_CHECKS,
         ...FILE_CHECKS,

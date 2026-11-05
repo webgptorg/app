@@ -6103,627 +6103,6 @@
         }
       }
     },
-    "/secrets": {
-      "get": {
-        "operationId": "listSecrets",
-        "summary": "List secret metadata",
-        "tags": ["secrets"],
-        "x-required-permission": "secrets.read",
-        "parameters": [
-          {
-            "name": "cursor",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 1024
-            }
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "default": 50,
-              "type": "integer",
-              "minimum": 1,
-              "maximum": 100
-            }
-          },
-          {
-            "name": "q",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 128
-            }
-          },
-          {
-            "name": "scope",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "enum": ["engine", "agent"]
-            }
-          },
-          {
-            "name": "agentId",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "$ref": "#/components/schemas/AgentId"
-            }
-          },
-          {
-            "name": "status",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "enum": ["active", "revoked"]
-            }
-          },
-          {
-            "name": "sort",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "default": "name",
-              "type": "string",
-              "enum": ["name", "-name", "createdAt", "-createdAt", "lastUsedAt", "-lastUsedAt"]
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Success.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SecretPage"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Problem: `invalid-cursor`, `validation-failed`.",
-            "x-problem-codes": ["invalid-cursor", "validation-failed"],
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Problem: `unauthenticated`.",
-            "x-problem-codes": ["unauthenticated"],
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Problem: `forbidden`.",
-            "x-problem-codes": ["forbidden"],
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Problem: `rate-limited`.",
-            "x-problem-codes": ["rate-limited"],
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Problem: `internal-error`.",
-            "x-problem-codes": ["internal-error"],
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "Problem: `unavailable`.",
-            "x-problem-codes": ["unavailable"],
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "operationId": "createSecret",
-        "summary": "Store a secret; its value can never be read back",
-        "tags": ["secrets"],
-        "x-required-permission": "secrets.manage",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "name": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 128
-                  },
-                  "scope": {
-                    "$ref": "#/components/schemas/SecretScope"
-                  },
-                  "value": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 65536
-                  }
-                },
-                "required": ["name", "scope", "value"],
-                "additionalProperties": false
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Success.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SecretMetadata"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Problem: `validation-failed`.",
-            "x-problem-codes": ["validation-failed"],
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Problem: `unauthenticated`.",
-            "x-problem-codes": ["unauthenticated"],
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Problem: `forbidden`.",
-            "x-problem-codes": ["forbidden"],
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Problem: `name-taken`.",
-            "x-problem-codes": ["name-taken"],
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Problem: `rate-limited`.",
-            "x-problem-codes": ["rate-limited"],
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Problem: `internal-error`.",
-            "x-problem-codes": ["internal-error"],
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "Problem: `unavailable`.",
-            "x-problem-codes": ["unavailable"],
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/secrets/{secretId}/value": {
-      "put": {
-        "operationId": "replaceSecretValue",
-        "summary": "Replace a secret's value",
-        "tags": ["secrets"],
-        "x-required-permission": "secrets.manage",
-        "parameters": [
-          {
-            "name": "secretId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "$ref": "#/components/schemas/SecretId"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "value": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 65536
-                  }
-                },
-                "required": ["value"],
-                "additionalProperties": false
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Success.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SecretMetadata"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Problem: `validation-failed`.",
-            "x-problem-codes": ["validation-failed"],
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Problem: `unauthenticated`.",
-            "x-problem-codes": ["unauthenticated"],
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Problem: `forbidden`.",
-            "x-problem-codes": ["forbidden"],
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Problem: `not-found`.",
-            "x-problem-codes": ["not-found"],
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Problem: `secret-revoked`.",
-            "x-problem-codes": ["secret-revoked"],
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Problem: `rate-limited`.",
-            "x-problem-codes": ["rate-limited"],
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Problem: `internal-error`.",
-            "x-problem-codes": ["internal-error"],
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "Problem: `unavailable`.",
-            "x-problem-codes": ["unavailable"],
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/secrets/{secretId}/revoke": {
-      "post": {
-        "operationId": "revokeSecret",
-        "summary": "Revoke a secret so agents can no longer use it (idempotent)",
-        "tags": ["secrets"],
-        "x-required-permission": "secrets.manage",
-        "parameters": [
-          {
-            "name": "secretId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "$ref": "#/components/schemas/SecretId"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Success.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SecretMetadata"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Problem: `validation-failed`.",
-            "x-problem-codes": ["validation-failed"],
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Problem: `unauthenticated`.",
-            "x-problem-codes": ["unauthenticated"],
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Problem: `forbidden`.",
-            "x-problem-codes": ["forbidden"],
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Problem: `not-found`.",
-            "x-problem-codes": ["not-found"],
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Problem: `rate-limited`.",
-            "x-problem-codes": ["rate-limited"],
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Problem: `internal-error`.",
-            "x-problem-codes": ["internal-error"],
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "Problem: `unavailable`.",
-            "x-problem-codes": ["unavailable"],
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/secrets/{secretId}": {
-      "delete": {
-        "operationId": "deleteSecret",
-        "summary": "Delete a secret",
-        "tags": ["secrets"],
-        "x-required-permission": "secrets.manage",
-        "parameters": [
-          {
-            "name": "secretId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "$ref": "#/components/schemas/SecretId"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Success, no content."
-          },
-          "400": {
-            "description": "Problem: `validation-failed`.",
-            "x-problem-codes": ["validation-failed"],
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Problem: `unauthenticated`.",
-            "x-problem-codes": ["unauthenticated"],
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Problem: `forbidden`.",
-            "x-problem-codes": ["forbidden"],
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Problem: `not-found`.",
-            "x-problem-codes": ["not-found"],
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Problem: `rate-limited`.",
-            "x-problem-codes": ["rate-limited"],
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Problem: `internal-error`.",
-            "x-problem-codes": ["internal-error"],
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "Problem: `unavailable`.",
-            "x-problem-codes": ["unavailable"],
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/security": {
       "get": {
         "operationId": "getSecurityOverview",
@@ -6863,7 +6242,8 @@
                 "invite",
                 "access-request",
                 "api-token",
-                "secret",
+                "wallet-record",
+                "wallet-request",
                 "file",
                 "passkey",
                 "session",
@@ -16336,6 +15716,852 @@
           }
         }
       }
+    },
+    "/wallet": {
+      "get": {
+        "operationId": "getWallet",
+        "summary": "The Wallet's state, saved logins without secrets and pending agent requests",
+        "tags": ["wallet"],
+        "x-required-permission": "wallet.read",
+        "x-capability": {
+          "id": "wallet",
+          "version": 1,
+          "label": "wallet@1"
+        },
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WalletOverview"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem: `unauthenticated`.",
+            "x-problem-codes": ["unauthenticated"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem: `forbidden`.",
+            "x-problem-codes": ["forbidden"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem: `capability-not-supported`.",
+            "x-problem-codes": ["capability-not-supported"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Problem: `rate-limited`.",
+            "x-problem-codes": ["rate-limited"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Problem: `internal-error`.",
+            "x-problem-codes": ["internal-error"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Problem: `unavailable`.",
+            "x-problem-codes": ["unavailable"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/wallet/records": {
+      "post": {
+        "operationId": "addWalletRecord",
+        "summary": "Save a login; its password and field values can never be read back",
+        "description": "A login for the same origin and username is updated rather than duplicated. The save resolves the pending requests for that origin (and `requestId`), except one-time code requests. A new or changed login stays unverified until the engine tests it. 409 `wallet-not-ready` unless the Wallet is `ready`.",
+        "tags": ["wallet"],
+        "x-required-permission": "wallet.manage",
+        "x-capability": {
+          "id": "wallet",
+          "version": 1,
+          "label": "wallet@1"
+        },
+        "x-step-up": true,
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "origin": {
+                    "type": "string",
+                    "maxLength": 2048,
+                    "pattern": "^https?:\\/\\/[^\\s/?#@]+$"
+                  },
+                  "username": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 320
+                  },
+                  "password": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4096
+                  },
+                  "label": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "fields": {
+                    "maxItems": 12,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "label": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 80
+                        },
+                        "value": {
+                          "type": "string",
+                          "maxLength": 1000
+                        },
+                        "uncertain": {
+                          "default": false,
+                          "type": "boolean"
+                        }
+                      },
+                      "required": ["label", "value"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "requestId": {
+                    "$ref": "#/components/schemas/WalletRequestId"
+                  }
+                },
+                "required": ["origin", "username", "password"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WalletSaved"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Problem: `validation-failed`.",
+            "x-problem-codes": ["validation-failed"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem: `step-up-required`, `unauthenticated`.",
+            "x-problem-codes": ["step-up-required", "unauthenticated"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem: `forbidden`.",
+            "x-problem-codes": ["forbidden"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem: `capability-not-supported`.",
+            "x-problem-codes": ["capability-not-supported"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Problem: `wallet-not-ready`.",
+            "x-problem-codes": ["wallet-not-ready"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Problem: `rate-limited`.",
+            "x-problem-codes": ["rate-limited"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Problem: `internal-error`.",
+            "x-problem-codes": ["internal-error"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Problem: `unavailable`.",
+            "x-problem-codes": ["unavailable"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/wallet/records/{recordId}": {
+      "put": {
+        "operationId": "updateWalletRecord",
+        "summary": "Replace one login’s username and password, and change its label or fields",
+        "tags": ["wallet"],
+        "x-required-permission": "wallet.manage",
+        "x-capability": {
+          "id": "wallet",
+          "version": 1,
+          "label": "wallet@1"
+        },
+        "x-step-up": true,
+        "parameters": [
+          {
+            "name": "recordId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/WalletRecordId"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "origin": {
+                    "type": "string",
+                    "maxLength": 2048,
+                    "pattern": "^https?:\\/\\/[^\\s/?#@]+$"
+                  },
+                  "username": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 320
+                  },
+                  "password": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 4096
+                  },
+                  "label": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "fields": {
+                    "maxItems": 12,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "label": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 80
+                        },
+                        "value": {
+                          "type": "string",
+                          "maxLength": 1000
+                        },
+                        "uncertain": {
+                          "default": false,
+                          "type": "boolean"
+                        }
+                      },
+                      "required": ["label", "value"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "requestId": {
+                    "$ref": "#/components/schemas/WalletRequestId"
+                  }
+                },
+                "required": ["origin", "username", "password"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WalletSaved"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Problem: `validation-failed`.",
+            "x-problem-codes": ["validation-failed"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem: `step-up-required`, `unauthenticated`.",
+            "x-problem-codes": ["step-up-required", "unauthenticated"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem: `forbidden`.",
+            "x-problem-codes": ["forbidden"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem: `capability-not-supported`, `not-found`.",
+            "x-problem-codes": ["capability-not-supported", "not-found"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Problem: `wallet-not-ready`.",
+            "x-problem-codes": ["wallet-not-ready"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Problem: `rate-limited`.",
+            "x-problem-codes": ["rate-limited"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Problem: `internal-error`.",
+            "x-problem-codes": ["internal-error"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Problem: `unavailable`.",
+            "x-problem-codes": ["unavailable"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteWalletRecord",
+        "summary": "Remove one saved login; other logins are untouched",
+        "tags": ["wallet"],
+        "x-required-permission": "wallet.manage",
+        "x-capability": {
+          "id": "wallet",
+          "version": 1,
+          "label": "wallet@1"
+        },
+        "x-step-up": true,
+        "parameters": [
+          {
+            "name": "recordId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/WalletRecordId"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Success, no content."
+          },
+          "400": {
+            "description": "Problem: `validation-failed`.",
+            "x-problem-codes": ["validation-failed"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem: `step-up-required`, `unauthenticated`.",
+            "x-problem-codes": ["step-up-required", "unauthenticated"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem: `forbidden`.",
+            "x-problem-codes": ["forbidden"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem: `capability-not-supported`, `not-found`.",
+            "x-problem-codes": ["capability-not-supported", "not-found"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Problem: `wallet-not-ready`.",
+            "x-problem-codes": ["wallet-not-ready"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Problem: `rate-limited`.",
+            "x-problem-codes": ["rate-limited"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Problem: `internal-error`.",
+            "x-problem-codes": ["internal-error"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Problem: `unavailable`.",
+            "x-problem-codes": ["unavailable"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/wallet/requests/{requestId}/seen": {
+      "post": {
+        "operationId": "markWalletRequestSeen",
+        "summary": "Mark as seen: the request keeps waiting, but stops asking for attention in every client",
+        "description": "Neither an answer nor a refusal. Idempotent for the same step; 409 `wallet-request-moved` when the request moved to another step since it was shown, 404 once it is no longer pending.",
+        "tags": ["wallet"],
+        "x-required-permission": "wallet.manage",
+        "x-capability": {
+          "id": "wallet",
+          "version": 1,
+          "label": "wallet@1"
+        },
+        "parameters": [
+          {
+            "name": "requestId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/WalletRequestId"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "step": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": ["step"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WalletRequest"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Problem: `validation-failed`.",
+            "x-problem-codes": ["validation-failed"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem: `unauthenticated`.",
+            "x-problem-codes": ["unauthenticated"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem: `forbidden`.",
+            "x-problem-codes": ["forbidden"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem: `capability-not-supported`, `not-found`.",
+            "x-problem-codes": ["capability-not-supported", "not-found"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Problem: `wallet-request-moved`.",
+            "x-problem-codes": ["wallet-request-moved"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Problem: `rate-limited`.",
+            "x-problem-codes": ["rate-limited"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Problem: `internal-error`.",
+            "x-problem-codes": ["internal-error"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Problem: `unavailable`.",
+            "x-problem-codes": ["unavailable"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/wallet/requests/{requestId}/reject": {
+      "post": {
+        "operationId": "rejectWalletRequest",
+        "summary": "Reject request: end it; the waiting work learns that nothing was provided",
+        "description": "The work is never told it signed in, and the same request is not raised again for it. 409 `wallet-request-moved` for a stale step, 404 once it is no longer pending.",
+        "tags": ["wallet"],
+        "x-required-permission": "wallet.manage",
+        "x-capability": {
+          "id": "wallet",
+          "version": 1,
+          "label": "wallet@1"
+        },
+        "parameters": [
+          {
+            "name": "requestId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/WalletRequestId"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "step": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": ["step"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Success, no content."
+          },
+          "400": {
+            "description": "Problem: `validation-failed`.",
+            "x-problem-codes": ["validation-failed"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem: `unauthenticated`.",
+            "x-problem-codes": ["unauthenticated"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem: `forbidden`.",
+            "x-problem-codes": ["forbidden"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem: `capability-not-supported`, `not-found`.",
+            "x-problem-codes": ["capability-not-supported", "not-found"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Problem: `wallet-request-moved`.",
+            "x-problem-codes": ["wallet-request-moved"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Problem: `rate-limited`.",
+            "x-problem-codes": ["rate-limited"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Problem: `internal-error`.",
+            "x-problem-codes": ["internal-error"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Problem: `unavailable`.",
+            "x-problem-codes": ["unavailable"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -17926,10 +18152,11 @@
           "settings.update",
           "settings.update-policy",
           "settings.dashboard-removals",
-          "secret.create",
-          "secret.replace",
-          "secret.revoke",
-          "secret.delete",
+          "wallet.record.save",
+          "wallet.record.update",
+          "wallet.record.delete",
+          "wallet.request.seen",
+          "wallet.request.reject",
           "file.upload",
           "file.delete",
           "run.cancel",
@@ -18148,7 +18375,8 @@
               "invite",
               "access-request",
               "api-token",
-              "secret",
+              "wallet-record",
+              "wallet-request",
               "file",
               "passkey",
               "session",
@@ -19919,8 +20147,8 @@
           "chats.write",
           "files.read",
           "files.write",
-          "secrets.read",
-          "secrets.manage",
+          "wallet.read",
+          "wallet.manage",
           "members.read",
           "members.manage",
           "api-tokens.manage",
@@ -19978,7 +20206,8 @@
               "revision-conflict",
               "folder-not-empty",
               "name-taken",
-              "secret-revoked",
+              "wallet-not-ready",
+              "wallet-request-moved",
               "last-passkey",
               "last-owner",
               "reply-finished",
@@ -21061,93 +21290,6 @@
         "type": "string",
         "pattern": "^[A-Za-z0-9_-]{1,64}$"
       },
-      "SecretMetadata": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "$ref": "#/components/schemas/SecretId"
-          },
-          "name": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 128
-          },
-          "scope": {
-            "$ref": "#/components/schemas/SecretScope"
-          },
-          "status": {
-            "type": "string",
-            "enum": ["active", "revoked"]
-          },
-          "createdBy": {
-            "$ref": "#/components/schemas/MemberId"
-          },
-          "createdAt": {
-            "$ref": "#/components/schemas/Timestamp"
-          },
-          "updatedAt": {
-            "$ref": "#/components/schemas/Timestamp"
-          },
-          "valueUpdatedAt": {
-            "default": null,
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Timestamp"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "lastUsedAt": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Timestamp"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "required": [
-          "id",
-          "name",
-          "scope",
-          "status",
-          "createdBy",
-          "createdAt",
-          "updatedAt",
-          "valueUpdatedAt",
-          "lastUsedAt"
-        ],
-        "additionalProperties": false
-      },
-      "SecretPage": {
-        "type": "object",
-        "properties": {
-          "items": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/SecretMetadata"
-            }
-          },
-          "nextCursor": {
-            "anyOf": [
-              {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 1024
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "required": ["items", "nextCursor"],
-        "additionalProperties": false
-      },
       "SecretRef": {
         "type": "object",
         "properties": {
@@ -21173,35 +21315,6 @@
         },
         "required": ["name", "secretId", "state"],
         "additionalProperties": false
-      },
-      "SecretScope": {
-        "oneOf": [
-          {
-            "type": "object",
-            "properties": {
-              "kind": {
-                "type": "string",
-                "const": "engine"
-              }
-            },
-            "required": ["kind"],
-            "additionalProperties": false
-          },
-          {
-            "type": "object",
-            "properties": {
-              "kind": {
-                "type": "string",
-                "const": "agent"
-              },
-              "agentId": {
-                "$ref": "#/components/schemas/AgentId"
-              }
-            },
-            "required": ["kind", "agentId"],
-            "additionalProperties": false
-          }
-        ]
       },
       "SecurityOverview": {
         "type": "object",
@@ -22204,6 +22317,273 @@
         },
         "required": ["policy", "pinnedVersion"],
         "additionalProperties": false
+      },
+      "WalletOverview": {
+        "type": "object",
+        "properties": {
+          "state": {
+            "$ref": "#/components/schemas/WalletState"
+          },
+          "records": {
+            "maxItems": 1000,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WalletRecord"
+            }
+          },
+          "lockedRecords": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "pending": {
+            "maxItems": 200,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WalletRequest"
+            }
+          }
+        },
+        "required": ["state", "records", "lockedRecords", "pending"],
+        "additionalProperties": false
+      },
+      "WalletRecord": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/WalletRecordId"
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "origin": {
+            "type": "string",
+            "maxLength": 2048,
+            "pattern": "^https?:\\/\\/[^\\s/?#@]+$"
+          },
+          "username": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 320
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fields": {
+            "maxItems": 12,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "label": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80
+                },
+                "uncertain": {
+                  "type": "boolean"
+                }
+              },
+              "required": ["label", "uncertain"],
+              "additionalProperties": false
+            }
+          },
+          "updatedAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "lastUse": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "at": {
+                    "$ref": "#/components/schemas/Timestamp"
+                  },
+                  "outcome": {
+                    "type": "string",
+                    "enum": ["signed-in", "rejected"]
+                  }
+                },
+                "required": ["at", "outcome"],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "verification": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "state": {
+                    "type": "string",
+                    "enum": ["verified", "rejected", "incomplete"]
+                  },
+                  "at": {
+                    "$ref": "#/components/schemas/Timestamp"
+                  },
+                  "reason": {
+                    "type": "string",
+                    "maxLength": 500
+                  }
+                },
+                "required": ["state", "at", "reason"],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": ["id", "label", "origin", "username", "fields", "updatedAt", "lastUse", "verification"],
+        "additionalProperties": false
+      },
+      "WalletRecordId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,64}$"
+      },
+      "WalletRequest": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/WalletRequestId"
+          },
+          "origin": {
+            "type": "string",
+            "maxLength": 2048,
+            "pattern": "^https?:\\/\\/[^\\s/?#@]+$"
+          },
+          "account": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 320
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "problem": {
+            "type": "string",
+            "enum": ["missing", "rejected", "locked", "code", "field"]
+          },
+          "fields": {
+            "maxItems": 12,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            }
+          },
+          "recordId": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WalletRecordId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 1000
+          },
+          "tasks": {
+            "maxItems": 50,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            }
+          },
+          "agents": {
+            "maxItems": 50,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            }
+          },
+          "requests": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "createdAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "seenAt": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Timestamp"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "step": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "id",
+          "origin",
+          "account",
+          "problem",
+          "fields",
+          "recordId",
+          "reason",
+          "tasks",
+          "agents",
+          "requests",
+          "createdAt",
+          "seenAt",
+          "step"
+        ],
+        "additionalProperties": false
+      },
+      "WalletRequestId": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9_-]{1,64}$"
+      },
+      "WalletSaved": {
+        "type": "object",
+        "properties": {
+          "record": {
+            "$ref": "#/components/schemas/WalletRecord"
+          },
+          "resolvedRequestIds": {
+            "maxItems": 200,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WalletRequestId"
+            }
+          }
+        },
+        "required": ["record", "resolvedRequestIds"],
+        "additionalProperties": false
+      },
+      "WalletState": {
+        "type": "string",
+        "enum": ["ready", "empty", "setup", "locked", "unavailable"]
       }
     },
     "securitySchemes": {

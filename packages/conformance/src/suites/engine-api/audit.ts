@@ -45,10 +45,11 @@ export const AUDIT_EXPECTATIONS: Partial<
     revokeMyPasskey: { action: 'passkey.revoke', kind: 'passkey', param: 'passkeyId' },
     revokeMySession: { action: 'session.revoke', kind: 'session', param: 'sessionId' },
     revokeMyOtherSessions: { action: 'session.revoke-others', kind: null, param: null },
-    createSecret: { action: 'secret.create', kind: 'secret', param: 'created' },
-    replaceSecretValue: { action: 'secret.replace', kind: 'secret', param: 'secretId' },
-    revokeSecret: { action: 'secret.revoke', kind: 'secret', param: 'secretId' },
-    deleteSecret: { action: 'secret.delete', kind: 'secret', param: 'secretId' },
+    addWalletRecord: { action: 'wallet.record.save', kind: 'wallet-record', param: 'created' },
+    updateWalletRecord: { action: 'wallet.record.update', kind: 'wallet-record', param: 'recordId' },
+    deleteWalletRecord: { action: 'wallet.record.delete', kind: 'wallet-record', param: 'recordId' },
+    markWalletRequestSeen: { action: 'wallet.request.seen', kind: 'wallet-request', param: 'requestId' },
+    rejectWalletRequest: { action: 'wallet.request.reject', kind: 'wallet-request', param: 'requestId' },
     uploadFile: { action: 'file.upload', kind: 'file', param: 'created' },
     deleteFile: { action: 'file.delete', kind: 'file', param: 'fileId' },
     cancelRun: { action: 'run.cancel', kind: 'run', param: 'runId' },
@@ -155,20 +156,22 @@ export const AUDIT_CHECKS: readonly ConformanceCheck[] = [
             await owner.ok(R.sendChatMessage, { params: { chatId: chat.id }, body: { content: CHAT_MESSAGE } });
             record('POST /chats/{chatId}/messages', 'chat.message.send', 'chat', chat.id);
 
-            const secret = await owner.ok(R.createSecret, {
-                body: { name: world.name('audited'), scope: { kind: 'engine' }, value: randomToken(ctx.random, 32) },
-            });
-            const secretParams = { secretId: secret.id };
-            record('POST /secrets', 'secret.create', 'secret', secret.id);
-            await owner.ok(R.replaceSecretValue, {
-                params: secretParams,
-                body: { value: randomToken(ctx.random, 32) },
-            });
-            record('PUT /secrets/{secretId}/value', 'secret.replace', 'secret', secret.id);
-            await owner.ok(R.revokeSecret, { params: secretParams });
-            record('POST /secrets/{secretId}/revoke', 'secret.revoke', 'secret', secret.id);
-            await owner.ok(R.deleteSecret, { params: secretParams });
-            record('DELETE /secrets/{secretId}', 'secret.delete', 'secret', secret.id);
+            const login = await world.createWalletLogin('audited', randomToken(ctx.random, 32));
+            if (login !== null) {
+                const params = { recordId: login.id };
+                record('POST /wallet/records', 'wallet.record.save', 'wallet-record', login.id);
+                await owner.ok(R.updateWalletRecord, {
+                    params,
+                    body: {
+                        origin: login.origin,
+                        username: login.username ?? 'ada',
+                        password: randomToken(ctx.random, 32),
+                    },
+                });
+                record('PUT /wallet/records/{recordId}', 'wallet.record.update', 'wallet-record', login.id);
+                await owner.ok(R.deleteWalletRecord, { params });
+                record('DELETE /wallet/records/{recordId}', 'wallet.record.delete', 'wallet-record', login.id);
+            }
 
             for (const expected of done) await attempt(findings, () => findAuditEntry(owner, expected, findings));
             return findings.outcome();
@@ -183,7 +186,7 @@ export const AUDIT_CHECKS: readonly ConformanceCheck[] = [
             await requireCapability(world, KNOWN_CAPABILITIES.audit);
             const findings = new Findings();
             await world.folder();
-            await world.secret();
+            await world.createFolder('chain');
             const page = await world.owner.ok(R.listAuditEntries, { query: { limit: 50 } });
             if (page.items.length < 2) findings.add('GET /audit: fewer than two entries after two mutations');
             for (let index = 0; index + 1 < page.items.length; index++) {

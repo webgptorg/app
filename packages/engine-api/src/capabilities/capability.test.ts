@@ -72,6 +72,7 @@ describe('supports', () => {
             'book-editor@1',
             'agent-management@1',
             'onboarding@1',
+            'wallet@1',
         ]);
     });
 });

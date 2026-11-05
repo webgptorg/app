@@ -42,10 +42,10 @@ function spellings(value: string): string[] {
     return [value, bytes.toString('base64'), bytes.toString('base64url'), bytes.toString('hex')];
 }
 
-/** Formerly core features an engine may now leave out; the harness advertises them. */
-const CORE_FEATURES = ['members', 'api-tokens', 'audit', 'book-editor', 'agent-management'];
+/** Formerly core features an engine may now leave out, and the Wallet; the harness advertises them. */
+const CORE_FEATURES = ['members', 'api-tokens', 'audit', 'book-editor', 'agent-management', 'wallet'];
 
-describe('secret values', () => {
+describe('Wallet secrets', () => {
     it('never appear in any response, whatever route or stream', async () => {
         const clock = createFakeClock(Date.now());
         harness = await createApiHarness({ clock, rateLimiter: { consume: () => ({ kind: 'allowed' }) } });
@@ -65,27 +65,29 @@ describe('secret values', () => {
         const written: string[] = [];
         const [agent] = ok(await client.agents.list({ limit: 1 }, signal())).items;
         if (agent === undefined) throw new Error('no agent');
-        const engineSecret = canary();
-        const agentSecret = canary();
-        written.push(engineSecret, agentSecret);
-        const first = ok(
-            await client.secrets.create(
-                { name: 'CANARY_ENGINE', scope: { kind: 'engine' }, value: engineSecret },
+        const password = canary();
+        const fieldValue = canary();
+        written.push(password, fieldValue);
+        const { record } = ok(
+            await client.wallet.add(
+                {
+                    origin: 'https://canary.example.com',
+                    username: 'canary@example.com',
+                    password,
+                    fields: [{ label: 'Security answer', value: fieldValue }],
+                },
                 signal(),
             ),
         );
-        const second = ok(
-            await client.secrets.create(
-                { name: 'CANARY_AGENT', scope: { kind: 'agent', agentId: agent.id }, value: agentSecret },
+        const replacement = canary();
+        written.push(replacement);
+        ok(
+            await client.wallet.update(
+                record.id,
+                { origin: record.origin, username: 'canary@example.com', password: replacement, label: 'CANARY_LOGIN' },
                 signal(),
             ),
         );
-        for (const secret of [first, second]) {
-            const replacement = canary();
-            written.push(replacement);
-            ok(await client.secrets.replaceValue(secret.id, { value: replacement }, signal()));
-        }
-        ok(await client.secrets.revoke(second.id, signal()));
 
         const chat = ok(await client.chats.create({ agentId: agent.id, title: 'Canary chat' }, signal()));
         const sent = ok(await client.chats.sendMessage(chat.id, { content: 'What secrets do you hold?' }, signal()));
@@ -101,7 +103,6 @@ describe('secret values', () => {
             chatId: chat.id,
             messageId: replyIdOf(sent),
             memberId: me.memberId,
-            secretId: first.id,
             passkeyId: passkey?.id,
             sessionId: session?.id,
             folderId: folder?.id,
@@ -127,17 +128,17 @@ describe('secret values', () => {
         await engine.recorder.settled();
 
         const bytes = engine.recorder.bytes().toString('utf8');
-        expect(bytes).toContain('CANARY_ENGINE');
-        expect(bytes).toContain('secret.replace');
+        expect(bytes).toContain('CANARY_LOGIN');
+        expect(bytes).toContain('wallet.record.update');
         for (const value of written) {
             for (const spelling of spellings(value)) expect(bytes).not.toContain(spelling);
         }
-        // Read raw: the client strips unknown fields, which would hide a `value` the engine sent.
-        const raw = (await (await fetch(`${HARNESS_ORIGIN}${ENGINE_API_PREFIX}/secrets?limit=100`)).json()) as {
-            items: Record<string, unknown>[];
+        // Read raw: the client strips unknown fields, which would hide a `password` the engine sent.
+        const raw = (await (await fetch(`${HARNESS_ORIGIN}${ENGINE_API_PREFIX}/wallet`)).json()) as {
+            records: Record<string, unknown>[];
         };
-        expect(raw.items.length).toBeGreaterThanOrEqual(2);
-        for (const secret of raw.items) expect(Object.keys(secret)).not.toContain('value');
+        expect(raw.records.length).toBeGreaterThanOrEqual(2);
+        for (const login of raw.records) expect(Object.keys(login)).not.toContain('password');
         expect(engine.recorder.answered.size).toBeGreaterThan(routes.length);
         expect(engine.recorder.violations).toEqual([]);
     });

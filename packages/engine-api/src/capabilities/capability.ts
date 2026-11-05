@@ -56,6 +56,8 @@ export const KNOWN_CAPABILITIES = {
      * sign-in included. An engine set up some other way (a terminal `ptbk init`) does not advertise it.
      */
     onboarding: { id: 'onboarding', version: 1 },
+    /** The engine's Wallet: saved logins without secrets, agents' login requests, one-at-a-time add and update. */
+    wallet: { id: 'wallet', version: 1 },
 } as const satisfies Readonly<Record<string, CapabilityRef>>;
 
 export type KnownCapability = (typeof KNOWN_CAPABILITIES)[keyof typeof KNOWN_CAPABILITIES];

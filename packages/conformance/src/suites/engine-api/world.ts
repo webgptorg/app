@@ -1,4 +1,4 @@
-import { ENGINE_API_ROUTES, supports } from '@ptbk/engine-api';
+import { ENGINE_API_ROUTES, KNOWN_CAPABILITIES, supports } from '@ptbk/engine-api';
 import type {
     Agent,
     ApiToken,
@@ -10,7 +10,7 @@ import type {
     Message,
     Permission,
     RouteDefinition,
-    SecretMetadata,
+    WalletRecord,
 } from '@ptbk/engine-api';
 
 import type { CheckContext } from '../../check';
@@ -69,8 +69,13 @@ export interface World {
     reply(): Promise<Reply>;
     folder(): Promise<Folder>;
     createFolder(label: string): Promise<Folder>;
-    secret(): Promise<SecretMetadata>;
-    createSecret(label: string, value: string): Promise<SecretMetadata>;
+    /**
+     * A Wallet login on an origin of its own (`https://<label>-<n>.<runId>.conformance.invalid`), removed after the
+     * check. `null` without `wallet@1`, when the Wallet is not `ready`, or when the engine wants a fresh step-up the
+     * suite cannot give.
+     */
+    walletLogin(): Promise<WalletRecord | null>;
+    createWalletLogin(label: string, password: string, fieldValue?: string): Promise<WalletRecord | null>;
     /** `null` when the engine wants a fresh step-up the suite cannot give. */
     apiToken(): Promise<ApiToken | null>;
     /** Values for the route's path parameters, or `null` when the engine has nothing to name. */
@@ -114,12 +119,26 @@ export async function createWorld(ctx: CheckContext, api?: EngineApi): Promise<W
         ctx.resources.defer((signal) => cleanupApi(signal).send(R.deleteFolder, { params: { folderId: folder.id } }));
         return folder;
     }
-    async function createSecret(label: string, value: string): Promise<SecretMetadata> {
-        const secret = await owner.ok(R.createSecret, {
-            body: { name: name(label), scope: { kind: 'engine' }, value },
+    async function createWalletLogin(label: string, password: string, fieldValue?: string) {
+        if (!supports(await engine(), KNOWN_CAPABILITIES.wallet)) return null;
+        if ((await owner.ok(R.getWallet)).state !== 'ready') return null;
+        const result = await owner.call(R.addWalletRecord, {
+            body: {
+                origin: `https://${label}-${String(++counter)}.${ctx.runId}.conformance.invalid`,
+                username: name(label),
+                password,
+                ...(fieldValue === undefined ? {} : { fields: [{ label: 'Security answer', value: fieldValue }] }),
+            },
         });
-        ctx.resources.defer((signal) => cleanupApi(signal).send(R.deleteSecret, { params: { secretId: secret.id } }));
-        return secret;
+        if (result.kind === 'problem') {
+            if (result.problem.code === 'step-up-required') return null;
+            fail(`POST /wallet/records: expected success, got ${String(result.status)} ${result.problem.code}`);
+        }
+        const { record } = result.data;
+        ctx.resources.defer((signal) =>
+            cleanupApi(signal).send(R.deleteWalletRecord, { params: { recordId: record.id } }),
+        );
+        return record;
     }
 
     const agent = memo(() => createAgent('agent'));
@@ -144,7 +163,11 @@ export async function createWorld(ctx: CheckContext, api?: EngineApi): Promise<W
         return { userMessage: sent.message, replyMessageId: reply.id };
     });
     const folder = memo(() => createFolder('folder'));
-    const secret = memo(() => createSecret('secret', randomToken(ctx.random, 32)));
+    const walletLogin = memo(() => createWalletLogin('login', randomToken(ctx.random, 32)));
+    const walletRequest = memo(async () => {
+        if (!(await advertises(R.getWallet))) return null;
+        return (await owner.ok(R.getWallet)).pending[0]?.id ?? null;
+    });
     const apiToken = memo(async () => {
         if (!(await advertises(R.createApiToken))) return null;
         const expiresAt = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
@@ -220,7 +243,8 @@ export async function createWorld(ctx: CheckContext, api?: EngineApi): Promise<W
         chatId: async () => (await chat()).id,
         messageId: async () => (await reply()).replyMessageId,
         folderId: async () => (await folder()).id,
-        secretId: async () => (await secret()).id,
+        recordId: async () => (await walletLogin())?.id ?? null,
+        requestId: walletRequest,
         memberId: async () => (await me()).memberId,
         passkeyId: ownPasskey,
         sessionId: ownSession,
@@ -245,8 +269,8 @@ export async function createWorld(ctx: CheckContext, api?: EngineApi): Promise<W
         reply,
         folder,
         createFolder,
-        secret,
-        createSecret,
+        walletLogin,
+        createWalletLogin,
         apiToken,
         async paramsFor(route) {
             const params: Record<string, string> = {};

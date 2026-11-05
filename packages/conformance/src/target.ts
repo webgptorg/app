@@ -35,4 +35,9 @@ export interface ConformanceTarget {
     /** `false` when the API is tested without the engine gateway in front of it; gateway checks then skip. */
     readonly gateway?: boolean;
     readonly memberPrivateResources?: MemberPrivateResources;
+    /**
+     * Raises a pending Wallet login request for `origin` as agent work would, and answers its ID: a test-mode lever.
+     * Without it, `engine-api.wallet.requests` skips.
+     */
+    readonly walletRequest?: (origin: string) => Promise<string>;
 }

@@ -16,7 +16,10 @@ export const PROBLEM_STATUS = {
     'revision-conflict': 409,
     'folder-not-empty': 409,
     'name-taken': 409,
-    'secret-revoked': 409,
+    /** The Wallet is not set up or not unlocked on the server; that is fixed there, not through the API. */
+    'wallet-not-ready': 409,
+    /** The Wallet request moved to another step since the client showed it. */
+    'wallet-request-moved': 409,
     'last-passkey': 409,
     /** Removing or demoting the engine's last owner would leave nobody to manage it. */
     'last-owner': 409,

@@ -22,6 +22,7 @@ export interface ScenarioSize {
     /** Chats long enough to page through, on top of `chatsPerAgent`. */
     readonly longChats: number;
     readonly longChatMessages: Range;
+    /** Named tool secrets the integrations reference; a scenario with any also seeds the Wallet. */
     readonly secrets: number;
     /** At least two, so `last-passkey` can be exercised without revoking the only one. */
     readonly ownerPasskeys: number;

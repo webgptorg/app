@@ -1,6 +1,6 @@
 // Flow 8: what the owner did in the flows above shows up in the audit log, and its filters by action and by target
 // work and stay in the URL.
-import { apiList, createSecret, openRowMenu, required, uniqueName } from '../../src/ui-app.ts';
+import { addWalletLogin, apiList, openRowMenu, required } from '../../src/ui-app.ts';
 import { expect, test } from '../../src/ui-fixtures.ts';
 
 interface Agent {
@@ -11,7 +11,7 @@ interface Agent {
 
 test('the actions taken in the UI are audited and the filters find them', async ({ page, signIn, appUrl }) => {
     test.setTimeout(60_000);
-    const secretName = uniqueName('E2E_AUDIT').replace(' ', '_').toUpperCase();
+    const site = `audit-${crypto.randomUUID().slice(0, 8)}.example`;
     await signIn();
     await page.goto(appUrl('/agents'));
     const agent = required(
@@ -25,17 +25,17 @@ test('the actions taken in the UI are audited and the filters find them', async 
         .click();
     await expect(page.getByText(`${agent.name} is now Public`)).toBeVisible();
 
-    await page.goto(appUrl('/secrets'));
-    await createSecret(page, secretName, `audit-${crypto.randomUUID()}`);
+    await page.goto(appUrl('/wallet'));
+    await addWalletLogin(page, site, 'audit@example.com', `audit-${crypto.randomUUID()}`);
 
     await page.goto(appUrl('/audit'));
     await expect(page.getByRole('button', { name: /^Chain verified / })).toBeVisible();
     const table = page.getByRole('table');
 
-    await page.getByRole('combobox', { name: 'Action' }).selectOption('secret.create');
-    await expect(page).toHaveURL((url) => url.searchParams.get('action') === 'secret.create');
-    await expect(table.getByText(secretName, { exact: true })).toBeVisible();
-    await expect(table.getByText('Secret created', { exact: true }).first()).toBeVisible();
+    await page.getByRole('combobox', { name: 'Action' }).selectOption('wallet.record.save');
+    await expect(page).toHaveURL((url) => url.searchParams.get('action') === 'wallet.record.save');
+    await expect(table.getByText(`${site} · au…@example.com`, { exact: true })).toBeVisible();
+    await expect(table.getByText('Wallet login saved', { exact: true }).first()).toBeVisible();
     await expect(table.getByText('Agent updated', { exact: true })).toHaveCount(0);
 
     await page.getByRole('button', { name: 'Clear filters' }).click();
@@ -47,7 +47,7 @@ test('the actions taken in the UI are audited and the filters find them', async 
         (url) => url.searchParams.get('targetKind') === 'agent' && url.searchParams.get('targetId') === agent.id,
     );
     await expect(table.getByText('Agent updated', { exact: true }).first()).toBeVisible();
-    await expect(table.getByText(secretName, { exact: true })).toHaveCount(0);
+    await expect(table.getByText(`${site} · au…@example.com`, { exact: true })).toHaveCount(0);
 
     // The filters come back from the URL alone.
     await page.reload();

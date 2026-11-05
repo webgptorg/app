@@ -45,7 +45,7 @@ export const AUTH_CHECKS: readonly ConformanceCheck[] = [
             // The problem's strict schema leaves only free text (title, detail, instance) to leak through; resource
             // names are data the caller cannot know without signing in, unlike the IDs it put in the URL.
             if (world !== null) {
-                const names = [(await world.agent()).name, (await world.folder()).name, (await world.secret()).name];
+                const names = [(await world.agent()).name, (await world.folder()).name];
                 for (const refusal of refusals) {
                     if (names.some((name) => refusal.body.includes(name))) {
                         findings.add(`${refusal.route}: the 401 carries a resource name`);

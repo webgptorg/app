@@ -31,6 +31,8 @@ export interface SensitiveInputProps extends Omit<
 > {
     readonly handle: SensitiveInputHandle;
     readonly invalid?: boolean;
+    /** Shows the typed value while the owner holds it revealed; switching keeps the value, it lives in the input. */
+    readonly revealed?: boolean;
 }
 
 /**
@@ -38,13 +40,13 @@ export interface SensitiveInputProps extends Omit<
  * remembered by the browser. `new-password` rather than `off`, which browsers ignore on password fields and would
  * autofill a saved password into. Put it inside `Field` like any control.
  */
-export function SensitiveInput({ handle, ...rest }: SensitiveInputProps) {
+export function SensitiveInput({ handle, revealed = false, ...rest }: SensitiveInputProps) {
     const { inputRef } = handle;
     return (
         <Input
             {...rest}
             ref={inputRef}
-            type="password"
+            type={revealed ? 'text' : 'password'}
             autoComplete="new-password"
             autoCorrect="off"
             autoCapitalize="off"

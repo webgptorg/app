@@ -427,79 +427,38 @@ describe('command palette', { timeout: TIMEOUT_MS }, () => {
         expect(fetch).toHaveBeenCalledWith(SIGN_OUT_PATH, expect.objectContaining({ method: 'POST' }));
     });
 
-    it('finds a secret by name and opens the list searched for it', async () => {
-        const engine = secretsPaletteEngine();
-        const { user, router } = renderWithProviders({ path: '/settings', engineApi: engine.client });
+    it('opens "Add login" over the Wallet with wallet.manage, and drops the request when it closes', async () => {
+        const { user, router } = renderWithProviders({ path: '/settings', engineApi: walletPaletteEngine() });
         await user.click(await screen.findByRole('button', { name: 'Search and commands' }));
-        const box = await searchBox();
-        expect(groupNames()).not.toContain('Secrets');
-        expect(engine.list).not.toHaveBeenCalled();
+        await user.type(await searchBox(), 'add login');
+        await user.click(await screen.findByRole('option', { name: 'Add login' }));
 
-        await user.type(box, 'slack');
-        const secrets = await screen.findByRole('group', { name: 'Secrets' });
-        expect(
-            within(secrets)
-                .getAllByRole('option')
-                .map((option) => option.textContent),
-        ).toEqual(['SLACK_TOKENEngine-wide']);
-        expect(engine.list).toHaveBeenLastCalledWith(expect.objectContaining({ q: 'slack' }), expect.anything());
-        await user.click(within(secrets).getByRole('option'));
-        await waitFor(() => {
-            expect(router.state.location.pathname).toBe('/secrets');
-        });
-        expect(router.state.location.search).toMatchObject({ q: 'SLACK_TOKEN' });
-    });
-
-    it('opens "New secret" over the list with secrets.manage, and drops the request when it closes', async () => {
-        const { user, router } = renderWithProviders({ path: '/settings', engineApi: secretsPaletteEngine().client });
-        await user.click(await screen.findByRole('button', { name: 'Search and commands' }));
-        await user.type(await searchBox(), 'new secret');
-        await user.click(await screen.findByRole('option', { name: 'New secret' }));
-
-        const dialog = await screen.findByRole('dialog', { name: 'New secret' });
+        const dialog = await screen.findByRole('dialog', { name: 'Add login' });
         expect(router.state.location.search).toMatchObject({ dialog: 'new' });
         await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
         await waitFor(() => {
             expect(router.state.location.search).not.toHaveProperty('dialog');
         });
-        expect(screen.queryByRole('dialog', { name: 'New secret' })).toBeNull();
+        expect(screen.queryByRole('dialog', { name: 'Add login' })).toBeNull();
     });
 
-    it('offers no "New secret" without secrets.manage, and the list ignores the request', async () => {
-        const engine = secretsPaletteEngine(allBut('secrets.manage'));
-        const { user } = renderWithProviders({ path: '/settings', engineApi: engine.client });
+    it('offers no "Add login" without wallet.manage, and the Wallet ignores the request', async () => {
+        const { user } = renderWithProviders({
+            path: '/settings',
+            engineApi: walletPaletteEngine(allBut('wallet.manage')),
+        });
         await user.click(await screen.findByRole('button', { name: 'Search and commands' }));
-        await user.type(await searchBox(), 'new secret');
+        await user.type(await searchBox(), 'add login');
         await waitFor(() => {
-            expect(options()).not.toContain('New secret');
+            expect(options()).not.toContain('Add login');
         });
 
-        renderWithProviders({
-            path: '/secrets?dialog=new',
-            engineApi: secretsPaletteEngine(allBut('secrets.manage')).client,
-        });
-        expect(await screen.findByRole('heading', { name: 'Secrets', level: 1 })).toBeDefined();
-        expect(screen.queryByRole('dialog', { name: 'New secret' })).toBeNull();
+        renderWithProviders({ path: '/wallet?dialog=new', engineApi: walletPaletteEngine(allBut('wallet.manage')) });
+        expect(await screen.findByRole('heading', { name: 'Wallet', level: 1 })).toBeDefined();
+        expect(screen.queryByRole('dialog', { name: 'Add login' })).toBeNull();
     });
 });
 
-function secretsPaletteEngine(permissions?: readonly Permission[]) {
-    const engine = createSecurityEngine({
-        ...(permissions === undefined ? {} : { permissions }),
-        seed: {
-            secrets: ['SLACK_TOKEN', 'GITHUB_TOKEN'].map((name, index) => ({
-                id: `secret-00${String(index + 1)}`,
-                name,
-                scope: { kind: 'engine' as const },
-                status: 'active' as const,
-                createdBy: OWNER_ID,
-                createdAt: '2026-09-01T00:00:00Z',
-                updatedAt: '2026-09-01T00:00:00Z',
-                lastUsedAt: null,
-            })),
-        },
-    });
-    const secrets = { ...engine.client.secrets };
-    const list = vi.spyOn(secrets, 'list');
-    return { client: { ...engine.client, secrets }, list };
+function walletPaletteEngine(permissions?: readonly Permission[]) {
+    return createSecurityEngine(permissions === undefined ? {} : { permissions }).client;
 }

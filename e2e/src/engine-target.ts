@@ -32,7 +32,8 @@ export type EngineCapabilityName =
     | 'audit'
     | 'book-editor'
     | 'agent-management'
-    | 'onboarding';
+    | 'onboarding'
+    | 'wallet';
 
 /** The mock's `full` profile: every screen the UI has, so each flow can reach its own. */
 export const ALL_CAPABILITIES: readonly EngineCapabilityName[] = [
@@ -49,6 +50,7 @@ export const ALL_CAPABILITIES: readonly EngineCapabilityName[] = [
     'book-editor',
     'agent-management',
     'onboarding',
+    'wallet',
 ];
 
 export interface ResetOptions {
@@ -105,6 +107,8 @@ export interface EngineControls {
     /** Stops engine time; it then moves only through `advanceTime`. */
     readonly pauseSimulation?: () => Promise<void>;
     readonly advanceTime?: (ms: number) => Promise<void>;
+    /** Agent work asks the Wallet for a login it lacks on `origin`; answers the request's ID. */
+    readonly walletRequest?: (origin: string) => Promise<string>;
     /** Queues a run that makes one transition per simulated second; answers its ID. */
     readonly scriptRun?: (input: ScriptedRunInput) => Promise<{ readonly runId: string }>;
     /** An email arriving for an email trigger; answers the run it started, if any. */

@@ -207,7 +207,7 @@ The engine is `apps/agents-server` in `webgptorg/promptbook`: a Next.js app rout
 **Build:**
 
 - An `EngineApiTransport` that serves every route in `ENGINE_API_ROUTE_LIST` from the engine's domain, mounted with `createEngineApiHttpHandler` behind the gateway. The HTTP binding parses the query and body by media type; your transport validates params, query and body with the route's strict schemas, enforces the route's `permission` in one policy module, returns exactly the route's response schema and answers every error with `createProblem` and a code from `PROBLEM_CODES`.
-- Start with the core groups (me, engine, agents, chats with SSE replies, secrets, security, audit, events, settings, API tokens, passkeys, sessions, folders, members, activity). Answer `draft` routes with 404 `not-found` if you have no behaviour for them.
+- Start with the core groups (me, engine, agents, chats with SSE replies, security, audit, events, settings, API tokens, passkeys, sessions, folders, members, activity). Answer `draft` routes with 404 `not-found` if you have no behaviour for them.
 - Then the capabilities you choose to ship (`runs@1`, `files@1`, `triggers@1`, `integrations@1`), each advertised in `GET /engine` only when all its routes work; every route of an unadvertised one answers 404 `capability-not-supported`.
 - The audit hash chain covering every field, `target.name` and `details` included, and `GET /audit/verify`.
 - Optional: a conformance target module that runs your `conformance-session` command (phase 6), for runs against an engine you started yourself; [testing-against-the-platform.md](testing-against-the-platform.md#against-a-running-engine-the-engine-api-suite-on-its-own) has one.
@@ -235,7 +235,7 @@ While you build the gateway, `--no-gateway` skips the gateway check. To iterate 
 - `GET /engine` must report the hostname the request came in on, so the base URL must use the engine's real hostname, not `localhost`. Names under `.localhost` resolve to loopback on most systems, which is how our CI does it (`<engineId>.engine.localhost`); where they do not, add the name to `/etc/hosts`.
 - Every request from the suite carries `Origin` and `Sec-Fetch-Site: same-origin`; a gateway that refuses those refuses the suite.
 - Strict responses: an extra field anywhere fails `engine-api.schemas.responses-strict`. Build responses from the contract types, not from your database rows.
-- `engine-api.secrets.never-returned` looks for a canary value in every GET route and the event stream, raw, hex and base64. Secrets never go into audit `details`, events or errors.
+- `engine-api.secrets.never-returned` looks for a canary Wallet password and field value in every GET route and the event stream, raw, hex and base64. They never go into audit `details`, events or errors.
 - Denials must change nothing and must be audited with outcome `denied`.
 - Nobody owns a thread: every member with `chats.write` writes in any thread, as the User, and the message names the member who sent it (`engine-api.cross-member.shared-threads`).
 

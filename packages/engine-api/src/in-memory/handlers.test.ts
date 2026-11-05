@@ -11,11 +11,11 @@ import {
     MemberId,
     MessageId,
     PasskeyId,
-    SecretId,
     SessionId,
 } from '../common';
+import { WalletRecordId } from '../capabilities/wallet';
 import { MAX_FILE_BYTES } from '../constants';
-import { createInMemoryEngineApiClient } from '../in-memory-client';
+import { createInMemoryEngine, createInMemoryEngineApiClient } from '../in-memory-client';
 import { createInMemoryEngineApiTransport } from '../testing/in-memory-transport';
 import type { InMemoryEngineApiOptions } from '../in-memory-client';
 import { PERMISSIONS } from '../permissions';
@@ -291,52 +291,116 @@ describe('in-memory credentials (admin view)', () => {
     });
 });
 
-describe('in-memory secrets and files', () => {
-    it('filters and sorts secret metadata', async () => {
-        const client = engine();
-        const ada = ok(await client.agents.create({ source: 'Ada' }, signal()));
-        const bob = ok(await client.agents.create({ source: 'Bob' }, signal()));
-        const create = async (name: string, scope: Parameters<EngineApiClient['secrets']['create']>[0]['scope']) =>
-            ok(await client.secrets.create({ name, scope, value: 'v' }, signal()));
-        await create('KEY', { kind: 'engine' });
-        await create('KEY', { kind: 'agent', agentId: ada.id });
-        const forBob = await create('KEY', { kind: 'agent', agentId: bob.id });
-        await create('OTHER', { kind: 'agent', agentId: bob.id });
-        expect(
-            code(
-                await client.secrets.create(
-                    { name: 'KEY', scope: { kind: 'agent', agentId: bob.id }, value: 'v' },
-                    signal(),
-                ),
+describe('in-memory wallet and files', () => {
+    const request = {
+        origin: 'https://github.com',
+        account: 'ada@example.com',
+        problem: 'missing',
+        fields: [],
+        recordId: null,
+        reason: 'Ada needs GitHub.',
+        tasks: ['Review'],
+        agents: ['Ada'],
+    } as const;
+    const updatedBody = { origin: 'https://github.com', username: 'ada', password: 'p' };
+    const request_ = request;
+
+    it('saves logins without keeping a secret and resolves the requests they answer', async () => {
+        const { client, controller } = createInMemoryEngine({ clock: steppingClock() });
+        const github = controller.requestWalletLogin(request);
+        const codeRequest = controller.requestWalletLogin({ ...request, account: null, problem: 'code' });
+        expect(controller.requestWalletLogin(request)).toMatchObject({ id: github.id, requests: 2, step: 0 });
+        const saved = ok(
+            await client.wallet.add(
+                {
+                    origin: 'https://www.github.com',
+                    username: 'ada@example.com',
+                    password: 'hunter2-canary',
+                    fields: [{ label: 'PIN', value: '0000-canary' }],
+                },
+                signal(),
             ),
-        ).toBe('name-taken');
-        expect(
-            code(
-                await client.secrets.create(
-                    { name: 'X', scope: { kind: 'agent', agentId: AgentId.parse('nope') }, value: 'v' },
-                    signal(),
-                ),
+        );
+        expect(saved.record).toMatchObject({ label: 'github.com · ad…@example.com', verification: null });
+        expect(saved.record.fields).toEqual([{ label: 'PIN', uncertain: false }]);
+        expect(saved.resolvedRequestIds).toEqual([github.id]);
+        const again = ok(
+            await client.wallet.add(
+                {
+                    origin: 'https://www.github.com',
+                    username: 'ADA@example.com',
+                    password: 'p',
+                    requestId: codeRequest.id,
+                },
+                signal(),
             ),
-        ).toBe('validation-failed');
-        ok(await client.secrets.revoke(forBob.id, signal()));
-        expect(ok(await client.secrets.revoke(forBob.id, signal())).status).toBe('revoked');
-        const list = async (query: Parameters<EngineApiClient['secrets']['list']>[0]) =>
-            ok(await client.secrets.list(query, signal())).items.map(
-                ({ name, scope }) => `${name}@${scope.kind === 'agent' ? scope.agentId : 'engine'}`,
-            );
-        expect(await list({ q: 'oth' })).toEqual([`OTHER@${bob.id}`]);
-        expect(await list({ scope: 'agent', agentId: bob.id, status: 'active' })).toEqual([`OTHER@${bob.id}`]);
-        expect(await list({ status: 'revoked' })).toEqual([`KEY@${bob.id}`]);
-        expect(await list({ sort: '-createdAt' })).toEqual([
-            `OTHER@${bob.id}`,
-            `KEY@${bob.id}`,
-            `KEY@${ada.id}`,
-            'KEY@engine',
-        ]);
-        expect(await list({ sort: '-lastUsedAt', limit: 1 })).toHaveLength(1);
-        const missing = SecretId.parse('nope');
-        expect(code(await client.secrets.replaceValue(missing, { value: 'v' }, signal()))).toBe('not-found');
-        expect(code(await client.secrets.delete(missing, signal()))).toBe('not-found');
+        );
+        expect(again.record.id).toBe(saved.record.id);
+        expect(again.resolvedRequestIds).toEqual([]);
+        const updated = ok(
+            await client.wallet.update(
+                saved.record.id,
+                {
+                    origin: 'https://github.com',
+                    username: 'ada',
+                    password: 'p',
+                    label: 'Work GitHub',
+                    fields: [{ label: 'pin', value: '' }],
+                },
+                signal(),
+            ),
+        );
+        expect(updated.record).toMatchObject({ label: 'Work GitHub', fields: [] });
+        const overview = ok(await client.wallet.get(signal()));
+        expect(overview.records).toHaveLength(1);
+        expect(overview.pending.map(({ id }) => id)).toEqual([codeRequest.id]);
+        expect(JSON.stringify([saved, again, updated, overview])).not.toMatch(/canary/);
+        const tooMany = Array.from({ length: 13 }, (_, index) => ({ label: `F${String(index)}`, value: 'v' }));
+        expect(code(await client.wallet.update(saved.record.id, { ...updatedBody, fields: tooMany }, signal()))).toBe(
+            'validation-failed',
+        );
+        const missing = WalletRecordId.parse('nope');
+        expect(code(await client.wallet.update(missing, updatedBody, signal()))).toBe('not-found');
+        ok(await client.wallet.delete(saved.record.id, signal()));
+        expect(code(await client.wallet.delete(saved.record.id, signal()))).toBe('not-found');
+    });
+
+    it('marks a request seen for its step only and rejects it for good', async () => {
+        const { client, controller } = createInMemoryEngine({ clock: steppingClock() });
+        const first = controller.requestWalletLogin(request);
+        const seen = ok(await client.wallet.markSeen(first.id, { step: 0 }, signal()));
+        expect(seen.seenAt).not.toBeNull();
+        expect(ok(await client.wallet.markSeen(first.id, { step: 0 }, signal())).seenAt).toBe(seen.seenAt);
+        const moved = controller.requestWalletLogin({ ...request, problem: 'rejected' });
+        expect(moved).toMatchObject({ id: first.id, step: 1, seenAt: null });
+        expect(code(await client.wallet.markSeen(first.id, { step: 0 }, signal()))).toBe('wallet-request-moved');
+        expect(code(await client.wallet.reject(first.id, { step: 0 }, signal()))).toBe('wallet-request-moved');
+        ok(await client.wallet.reject(first.id, { step: 1 }, signal()));
+        expect(ok(await client.wallet.get(signal())).pending).toEqual([]);
+        expect(code(await client.wallet.reject(first.id, { step: 1 }, signal()))).toBe('not-found');
+        expect(code(await client.wallet.markSeen(first.id, { step: 1 }, signal()))).toBe('not-found');
+    });
+
+    it('asks for a fresh passkey to add, update or remove a login, not to answer a request', async () => {
+        const { client, controller } = createInMemoryEngine({ clock: steppingClock(), stepUp: 'required' });
+        const login = WalletRecordId.parse('login-1');
+        expect(code(await client.wallet.add(updatedBody, signal()))).toBe('step-up-required');
+        expect(code(await client.wallet.update(login, updatedBody, signal()))).toBe('step-up-required');
+        expect(code(await client.wallet.delete(login, signal()))).toBe('step-up-required');
+        const request = controller.requestWalletLogin(request_);
+        ok(await client.wallet.markSeen(request.id, { step: 0 }, signal()));
+        ok(await client.wallet.reject(request.id, { step: 0 }, signal()));
+    });
+
+    it('accepts no write and shows no login until the Wallet is ready', async () => {
+        const { client, controller } = createInMemoryEngine({ clock: steppingClock() });
+        const saved = ok(await client.wallet.add(updatedBody, signal()));
+        controller.setWalletState('locked', 3);
+        expect(ok(await client.wallet.get(signal()))).toMatchObject({ state: 'locked', records: [], lockedRecords: 3 });
+        expect(code(await client.wallet.add(updatedBody, signal()))).toBe('wallet-not-ready');
+        expect(code(await client.wallet.delete(saved.record.id, signal()))).toBe('wallet-not-ready');
+        controller.setWalletState('empty');
+        expect(ok(await client.wallet.get(signal()))).toMatchObject({ state: 'empty', lockedRecords: 0 });
     });
 
     it('refuses oversized files and missing ones', async () => {

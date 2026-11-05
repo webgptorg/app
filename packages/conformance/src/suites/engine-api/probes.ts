@@ -44,7 +44,8 @@ const readState: Probe = async (owner, request) => {
 };
 const apiTokens: Probe = (owner) => all(owner, R.listApiTokens);
 const settings: Probe = (owner) => owner.ok(R.getSettings);
-const secrets: Probe = (owner) => all(owner, R.listSecrets, { q: 'conformance-' });
+const walletRecords: Probe = async (owner) => (await owner.ok(R.getWallet)).records;
+const walletRequests: Probe = async (owner) => (await owner.ok(R.getWallet)).pending;
 // Runs, triggers, files and integrations also change on their own (progress, firing, scanning), so their probes
 // compare only what the refused request would have changed.
 const run: Probe = async (owner, request) =>
@@ -89,10 +90,11 @@ const PROBES: Partial<Record<EngineApiRouteId, Probe>> = {
     // Sessions see `lastSeenAt` move with every request, so only which ones exist is compared.
     revokeSession: (owner) => ids(owner, R.listSessions),
     revokePasskey: (owner) => all(owner, R.listPasskeys),
-    createSecret: secrets,
-    replaceSecretValue: secrets,
-    revokeSecret: secrets,
-    deleteSecret: secrets,
+    addWalletRecord: walletRecords,
+    updateWalletRecord: walletRecords,
+    deleteWalletRecord: walletRecords,
+    markWalletRequestSeen: walletRequests,
+    rejectWalletRequest: walletRequests,
     cancelRun: run,
     retryRun: retries,
     uploadFile: (owner, request) => ids(owner, R.listFiles, { q: bodyField(request, 'name') }),

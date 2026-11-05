@@ -117,6 +117,17 @@ describe('control server', () => {
         expect(members.find(({ role }) => role === 'owner')?.id).toBe(owner.body['memberId']);
     });
 
+    it('raises one Wallet request per origin and account, moving it to a new step on another problem', async () => {
+        const { post } = await start();
+        const first = await post('/__mock/wallet-requests', { origin: 'https://github.com' });
+        expect(first.response.status).toBe(201);
+        expect(first.body['request']).toMatchObject({ origin: 'https://github.com', problem: 'missing', step: 0 });
+        const moved = await post('/__mock/wallet-requests', { origin: 'https://github.com', problem: 'rejected' });
+        expect(moved.body['request']).toMatchObject({ requests: 2, step: 1 });
+        const refused = await post('/__mock/wallet-requests', { origin: 'https://github.com/login' });
+        expect(refused.response.status).toBe(400);
+    });
+
     it('answers 429 with Retry-After when the rate limit refuses', async () => {
         const { server } = await start({
             rateLimiter: { consume: () => ({ kind: 'limited', retryAfterMs: 1500 }) },
@@ -161,6 +172,7 @@ describe('control server', () => {
             'POST /__mock/simulation',
             'POST /__mock/simulation/advance',
             'POST /__mock/ui/check',
+            'POST /__mock/wallet-requests',
             'PUT /__mock/faults',
         ]);
         expect(logger.entries).toContainEqual(

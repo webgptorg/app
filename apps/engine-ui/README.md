@@ -1,6 +1,6 @@
 # @ptbk/engine-ui
 
-The full app for engine owners and members: agents, agent creation and editing, chat, runs, triggers and schedules, integrations, security panel, members, passkeys, secrets metadata, audit log.
+The full app for engine owners and members: agents, agent creation and editing, chat, runs, triggers and schedules, integrations, security panel, members, passkeys, the Wallet (logins without their passwords), audit log.
 
 It is built into a hashed static bundle, signed and logged as part of a release. The engine downloads it on update, verifies it and serves it from its own origin; we never serve it to browsers ([ADR 0003](../../docs/adr/0003-ui-as-signed-bundle.md)). It talks only to the engine API through `EngineApiClient` from `@ptbk/engine-api`.
 
@@ -81,7 +81,7 @@ Code checks permissions (`usePermissions().can()`, `<Can>`, `requirePermission()
 - Search params are zod schemas in `validateSearch` with `.catch()` defaults, so a bad URL falls back instead of throwing.
 - No route writes on load: loaders and effects only read and navigate, and every mutation runs from the member's click or submit, never from URL or path parameters. The sign-in page resumes a session for a link from another site ([gateway.md](../../docs/engine-integration/gateway.md#sessions)), so a URL that wrote would be a cross-site request forgery.
 - Server-side tables keep their state in typed search params and send it all to the engine: `useCursorPages` (`src/app/cursor-pages.ts`) for cursor paging, `useDebouncedSearch` for the search box, and `isInvalidCursor` / `isPageLevelFailure` (`src/app/list-errors.ts`) for an expired cursor and refusals the route explains.
-- Write-only values (secrets) never enter React state, a form store, a query or mutation cache, the URL or a toast: `SensitiveInput` is read once on submit and emptied at once, and the value travels in a `OneTimeValue` (`src/features/secrets/one-time-value.ts`) that the mutation takes once and that serialises to nothing. Code that needs the form layer (`@tanstack/react-form`) loads it lazily, as the secret dialogs do.
+- Write-only values (Wallet passwords and fields) never enter React state, a form store, a query or mutation cache, the URL or a toast: `SensitiveInput` is read once on submit and emptied at once, and the value travels in a `OneTimeValue` (`src/features/wallet/one-time-value.ts`) that the mutation takes once and that serialises to nothing. Code that needs the form layer (`@tanstack/react-form`) loads it lazily, as the Wallet login form does.
 - Client failures are mapped in one place, `src/app/api-errors.ts`. Queries retry at most twice and only on network errors, timeouts and 5xx.
 - Every mutation goes through `useStepUpAwareMutation` (`src/app/mutations.ts`): `step-up-required` opens the step-up dialog (then `STEP_UP_PATH?returnTo=…`), a 403 says "not allowed", every other failure is a toast; an optional `optimistic: { apply, rollback }` is rolled back on failure and every listed query is refetched on settle; success toasts where the feature brief asks.
 - Route-level states come from the router defaults (`src/app/route-states.tsx`): an error state with retry, a layout-shaped skeleton after 300 ms, not-found, and the access explanations.

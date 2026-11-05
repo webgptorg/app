@@ -289,6 +289,7 @@ describe('control listener route table', () => {
                 'http GET /__mock/state',
                 'http GET /__mock/ui',
                 'http POST /__mock/ui/check',
+                'http POST /__mock/wallet-requests',
                 'http POST /__mock/reset',
                 'http POST /__mock/sessions',
                 'http POST /__mock/simulation',

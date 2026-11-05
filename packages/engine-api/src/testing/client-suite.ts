@@ -21,7 +21,6 @@ import {
     PasskeyId,
     RevisionId,
     RunId,
-    SecretId,
     SessionId,
     TaskId,
 } from '../common';
@@ -174,38 +173,58 @@ export function engineApiClientSuite(makeEngine: MakeEngine): void {
         expect(ok(await client.agents.get(agent.id, signal())).profile.description).toBe('v2');
     });
 
-    it('stores secrets without ever returning their values', async () => {
+    it('stores Wallet logins without ever returning a password or field value', async () => {
         const client = owner();
-        const secret = ok(
-            await client.secrets.create(
-                { name: 'OPENAI_API_KEY', scope: { kind: 'engine' }, value: 'sk-super-secret' },
+        const saved = ok(
+            await client.wallet.add(
+                {
+                    origin: 'https://github.com',
+                    username: 'ada@example.com',
+                    password: 'sk-super-secret',
+                    fields: [{ label: 'Recovery code', value: 'rc-super-secret' }],
+                },
                 signal(),
             ),
         );
-        expect(JSON.stringify(secret)).not.toContain('sk-super-secret');
-        expect(secret).not.toHaveProperty('value');
-        expect(secret.valueUpdatedAt).toBe(secret.createdAt);
-        expect(
-            problem(
-                await client.secrets.create(
-                    { name: 'OPENAI_API_KEY', scope: { kind: 'engine' }, value: 'x' },
-                    signal(),
-                ),
-            ).code,
-        ).toBe('name-taken');
-        const listed = ok(await client.secrets.list({ scope: 'engine' }, signal()));
-        expect(JSON.stringify(listed)).not.toContain('sk-super-secret');
-        const replaced = ok(await client.secrets.replaceValue(secret.id, { value: 'sk-new' }, signal()));
-        expect(replaced.valueUpdatedAt).toBe(replaced.updatedAt);
-        expect(replaced.updatedAt > secret.createdAt).toBe(true);
-        const revoked = ok(await client.secrets.revoke(secret.id, signal()));
-        expect(revoked).toMatchObject({ status: 'revoked', valueUpdatedAt: replaced.valueUpdatedAt });
-        expect(revoked.updatedAt > replaced.updatedAt).toBe(true);
-        expect(problem(await client.secrets.replaceValue(secret.id, { value: 'x' }, signal())).code).toBe(
-            'secret-revoked',
+        expect(saved.record).not.toHaveProperty('password');
+        expect(saved.record).toMatchObject({ username: 'ada@example.com', fields: [{ label: 'Recovery code' }] });
+        const listed = ok(await client.wallet.get(signal()));
+        expect(listed.records.map(({ id }) => id)).toContain(saved.record.id);
+        const updated = ok(
+            await client.wallet.update(
+                saved.record.id,
+                { origin: 'https://github.com', username: 'ada@example.com', password: 'sk-new-secret' },
+                signal(),
+            ),
         );
-        expect(ok(await client.secrets.delete(secret.id, signal()))).toBeNull();
-        expect(problem(await client.secrets.revoke(SecretId.parse(secret.id), signal())).code).toBe('not-found');
+        expect(JSON.stringify([saved, listed, updated])).not.toMatch(/super-secret|new-secret/);
+        expect(ok(await client.wallet.delete(saved.record.id, signal()))).toBeNull();
+        expect(problem(await client.wallet.delete(saved.record.id, signal())).code).toBe('not-found');
+    });
+
+    it('keeps a Wallet request waiting when seen and ends it when rejected, never for a stale step', async () => {
+        const { client, controller } = makeEngine({ clock: steppingClock() });
+        const raise = (origin: string) =>
+            controller.requestWalletLogin({
+                origin,
+                account: null,
+                problem: 'missing',
+                fields: [],
+                recordId: null,
+                reason: 'Ada needs a login.',
+                tasks: ['Review'],
+                agents: ['Ada'],
+            });
+        const request = raise('https://linear.app');
+        expect(problem(await client.wallet.markSeen(request.id, { step: 1 }, signal())).code).toBe(
+            'wallet-request-moved',
+        );
+        const seen = ok(await client.wallet.markSeen(request.id, { step: 0 }, signal()));
+        expect(seen.seenAt).not.toBeNull();
+        expect(ok(await client.wallet.get(signal())).pending).toMatchObject([{ id: request.id, seenAt: seen.seenAt }]);
+        expect(ok(await client.wallet.reject(request.id, { step: 0 }, signal()))).toBeNull();
+        expect(ok(await client.wallet.get(signal())).pending).toEqual([]);
+        expect(problem(await client.wallet.reject(request.id, { step: 0 }, signal())).code).toBe('not-found');
     });
 
     it('answers 403 with the required permission and audits the denial', async () => {
@@ -1053,6 +1072,7 @@ export function engineApiClientSuite(makeEngine: MakeEngine): void {
                 { id: 'book-editor', version: 1 },
                 { id: 'agent-management', version: 1 },
                 { id: 'onboarding', version: 1 },
+                { id: 'wallet', version: 1 },
             ]);
             expect(info.engineId).toMatch(/^[a-z2-7]{26}$/);
             const first = ok(
@@ -1560,13 +1580,14 @@ export function engineApiClientSuite(makeEngine: MakeEngine): void {
         });
 
         it('connects integrations by secret name, pages and filters them, and enables and disables them', async () => {
-            const { client } = engine();
-            ok(
-                await client.secrets.create(
-                    { name: 'GITHUB_TOKEN', scope: { kind: 'engine' }, value: 'ghp_x' },
-                    signal(),
-                ),
-            );
+            const { client } = engine({
+                seed: {
+                    ...seed,
+                    integrationSecrets: [
+                        { id: 'secret-gh', name: 'GITHUB_TOKEN', scope: { kind: 'engine' }, status: 'active' },
+                    ],
+                },
+            });
             const repo = ok(
                 await client.integrations.create(
                     {
@@ -1584,7 +1605,6 @@ export function engineApiClientSuite(makeEngine: MakeEngine): void {
                 status: 'connected',
                 secretRefs: [{ name: 'GITHUB_TOKEN', state: 'resolved' }],
             });
-            expect(JSON.stringify(repo)).not.toContain('ghp_x');
             const mcp = ok(
                 await client.integrations.create(
                     {
@@ -1636,8 +1656,7 @@ export function engineApiClientSuite(makeEngine: MakeEngine): void {
             expect(disabled.status).toBe('disconnected');
             expect(ok(await client.integrations.disable(repo.id, signal()))).toEqual(disabled);
             expect(ok(await client.integrations.enable(repo.id, signal())).status).toBe('connected');
-            ok(await client.secrets.create({ name: 'DOCS_KEY', scope: { kind: 'engine' }, value: 'k' }, signal()));
-            expect(ok(await client.integrations.check(mcp.id, signal())).status).toBe('connected');
+            expect(ok(await client.integrations.check(mcp.id, signal())).status).toBe('needs-attention');
             expect(ok(await client.integrations.update(mcp.id, { name: 'Docs search' }, signal())).name).toBe(
                 'Docs search',
             );

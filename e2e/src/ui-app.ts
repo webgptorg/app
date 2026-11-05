@@ -96,14 +96,15 @@ export function required<Value>(value: Value | undefined, what: string): Value {
     return value;
 }
 
-/** Creates an engine-wide secret through the Secrets page's dialog, as an owner would. */
-export async function createSecret(page: Page, name: string, value: string): Promise<void> {
-    await page.getByRole('button', { name: 'New secret' }).click();
-    const dialog = page.getByRole('dialog', { name: 'New secret' });
-    await dialog.getByRole('textbox', { name: /^Name/ }).fill(name);
-    await dialog.getByLabel(/^Value/).fill(value);
-    await dialog.getByRole('button', { name: 'Save secret' }).click();
-    await expect(page.getByText(`Secret ${name} saved`)).toBeVisible();
+/** Saves a Wallet login through the Wallet page's form, as an owner would; `site` is a bare host. */
+export async function addWalletLogin(page: Page, site: string, username: string, password: string): Promise<void> {
+    await page.getByRole('button', { name: 'Add login' }).first().click();
+    const dialog = page.getByRole('dialog', { name: 'Add login' });
+    await dialog.getByRole('textbox', { name: /^Website/ }).fill(site);
+    await dialog.getByRole('textbox', { name: /^Username or email/ }).fill(username);
+    await dialog.getByLabel(/^Password/).fill(password);
+    await dialog.getByRole('button', { name: 'Save login' }).click();
+    await expect(page.getByText(`Login for ${site} saved.`)).toBeVisible();
 }
 
 /** `@ptbk/ui`'s skeletons, which have no role: they pulse with this animation until their data is there. */

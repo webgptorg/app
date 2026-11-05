@@ -289,4 +289,17 @@ describe('form helpers', () => {
         screen.getByRole('button', { name: 'Read' }).click();
         expect(reads).toEqual(['']);
     });
+
+    it('reveals a sensitive value on request without losing what was typed', async () => {
+        function Probe({ revealed }: { readonly revealed: boolean }) {
+            return <SensitiveInput aria-label="Password" handle={useSensitiveInput()} revealed={revealed} />;
+        }
+        const { rerender, user } = renderUi(<Probe revealed={false} />);
+        const input = screen.getByLabelText('Password');
+        expect(input.getAttribute('type')).toBe('password');
+        await user.type(input, 'hunter2');
+        rerender(<Probe revealed />);
+        expect(input.getAttribute('type')).toBe('text');
+        expect((input as HTMLInputElement).value).toBe('hunter2');
+    });
 });

@@ -19,7 +19,7 @@ const ALL_PERMISSIONS: readonly Permission[] = [
     'agents.read',
     'members.read',
     'security.read',
-    'secrets.read',
+    'wallet.read',
     'audit.read',
 ];
 
@@ -53,7 +53,7 @@ describe('app shell', () => {
             'Integrations',
             'Members',
             'Security',
-            'Secrets',
+            'Wallet',
             'Audit log',
             'Settings',
         ]);
@@ -92,7 +92,7 @@ describe('app shell', () => {
             'Agents',
             'Members',
             'Security',
-            'Secrets',
+            'Wallet',
             'Audit log',
             'Settings',
         ]);
@@ -130,9 +130,12 @@ describe('app shell', () => {
     });
 
     it('shows only what a Reborn engine reports, and its hidden screens say so by URL and stay out of the palette', async () => {
-        const { user } = renderWithProviders({ path: '/members', capabilities: [KNOWN_CAPABILITIES.files] });
+        const { user } = renderWithProviders({
+            path: '/members',
+            capabilities: [KNOWN_CAPABILITIES.files, KNOWN_CAPABILITIES.wallet],
+        });
         expect(await screen.findByRole('heading', { level: 1, name: 'Not available on this engine' })).toBeDefined();
-        expect(await sidebarLinks()).toEqual(['Home', 'Agents', 'Chats', 'Files', 'Security', 'Secrets', 'Settings']);
+        expect(await sidebarLinks()).toEqual(['Home', 'Agents', 'Chats', 'Files', 'Security', 'Wallet', 'Settings']);
 
         await user.click(screen.getByRole('button', { name: 'Search and commands' }));
         const commands = within(await screen.findByRole('group', { name: 'Commands' }))

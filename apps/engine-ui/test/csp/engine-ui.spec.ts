@@ -484,10 +484,7 @@ test.describe('the built bundle under the engine CSP', () => {
         await expect(page.getByRole('heading', { level: 1, name: /^Documentation search/ })).toBeVisible();
         const tools = page.getByRole('region', { name: 'Tools' });
         await expect(tools.getByText(HOSTILE_TOOL_TEXT, { exact: true })).toBeVisible();
-        await expect(page.getByRole('region', { name: 'Secrets it uses' }).getByRole('link')).toHaveAttribute(
-            'href',
-            '/secrets?q=GITHUB_TOKEN',
-        );
+        await expect(page.getByRole('region', { name: 'Secrets it uses' }).getByText('GITHUB_TOKEN')).toBeVisible();
         expect(await page.locator('main img, main script, main iframe, main object, main embed').count()).toBe(0);
         expect(await page.locator('main a[href^="javascript:"]').count()).toBe(0);
         expectCleanPage(report);
@@ -502,11 +499,10 @@ test.describe('the built bundle under the engine CSP', () => {
         await page.getByRole('button', { name: 'Add integration' }).click();
         await page.getByRole('menuitem', { name: 'MCP server' }).click();
         const dialog = page.getByRole('dialog', { name: 'Add MCP server' });
-        await expect(dialog.getByRole('checkbox', { name: 'GITHUB_TOKEN' })).toBeVisible();
         expect(await page.locator('input[type="password"]').count()).toBe(0);
         await dialog.getByRole('textbox', { name: /^Name/ }).fill('Search');
         await dialog.getByRole('textbox', { name: /^Server URL/ }).fill('https://search.example.com/mcp');
-        await dialog.getByRole('checkbox', { name: 'GITHUB_TOKEN' }).check();
+        await dialog.getByRole('textbox', { name: /^Secrets it uses/ }).fill('GITHUB_TOKEN');
         await dialog.getByRole('button', { name: 'Add' }).click();
         await expect(page.getByText('Search added.')).toBeVisible();
         expect(await page.evaluate(() => window.__ptbkCspViolations ?? [])).toEqual([]);
@@ -520,21 +516,27 @@ test.describe('the built bundle under the engine CSP', () => {
         expectCleanPage(report);
     });
 
-    test('the new secret dialog loads its form under the CSP and keeps the value out of the page', async ({
+    test('the Wallet login form loads under the CSP, reveals only inside it and keeps the password out', async ({
         page,
         visit,
     }) => {
-        const report = await visit('/secrets');
-        await expect(page.getByText('GITHUB_TOKEN')).toBeVisible();
+        const report = await visit('/wallet');
+        await expect(page.getByText('github.com · ad…@example.com')).toBeVisible();
+        await expect(page.getByText('Ada needs a login for linear.app')).toBeVisible();
 
-        await page.getByRole('button', { name: 'New secret' }).click();
-        const dialog = page.getByRole('dialog', { name: 'New secret' });
-        await dialog.getByRole('textbox', { name: /^Name/ }).fill('OPENAI_KEY');
-        await dialog.getByLabel(/^Value/).fill('sk-csp-canary');
-        await expect(dialog.getByLabel(/^Value/)).toHaveAttribute('type', 'password');
-        await dialog.getByRole('button', { name: 'Save secret' }).click();
-        await expect(page.getByText('Secret OPENAI_KEY saved')).toBeVisible();
-        expect(await page.content()).not.toContain('sk-csp-canary');
+        await page.getByRole('button', { name: 'Add login' }).last().click();
+        const dialog = page.getByRole('dialog', { name: 'Add login' });
+        await expect(dialog.getByRole('textbox', { name: /^Website/ })).toHaveValue('https://linear.app');
+        await dialog.getByRole('textbox', { name: /^Username or email/ }).fill('ada@example.com');
+        const password = dialog.getByLabel(/^Password/);
+        await password.fill('csp-canary-password');
+        await expect(password).toHaveAttribute('type', 'password');
+        await dialog.getByRole('button', { name: 'Show' }).click();
+        await expect(password).toHaveAttribute('type', 'text');
+        await expect(password).toHaveValue('csp-canary-password');
+        await dialog.getByRole('button', { name: 'Save login' }).click();
+        await expect(page.getByText('Login for linear.app saved. The waiting work continues.')).toBeVisible();
+        expect(await page.content()).not.toContain('csp-canary-password');
         expectCleanPage(report);
     });
 

@@ -9,7 +9,7 @@ import type { EngineContext, HandlerContext, Handlers, HandlerResult } from './k
 /** Engine-wide secrets serve every integration; agent secrets only that agent's. */
 function resolveSecrets(ctx: EngineContext, names: readonly string[], agentId: AgentId | null): SecretRef[] {
     return [...new Set(names)].map((name) => {
-        const candidates = [...ctx.state.secrets.values()].filter(
+        const candidates = [...ctx.state.integrationSecrets.values()].filter(
             (secret) =>
                 secret.name === name &&
                 (secret.scope.kind === 'engine' || (agentId !== null && secret.scope.agentId === agentId)),

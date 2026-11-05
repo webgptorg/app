@@ -48,7 +48,7 @@ describe('the current member', () => {
                     <Can permission="audit.read" fallback={<span>{'no audit'}</span>}>
                         <span>{'may read audit'}</span>
                     </Can>
-                    <Can permission="secrets.manage">
+                    <Can permission="wallet.manage">
                         <span>{'may manage secrets'}</span>
                     </Can>
                 </>

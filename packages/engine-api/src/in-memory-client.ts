@@ -18,6 +18,8 @@ import type { Run, RunStatus } from './capabilities/runs';
 import { Trigger, TriggerFire } from './capabilities/triggers';
 import { ParticipantRef } from './chats';
 import type { Chat, ChatStatus } from './chats';
+import { WalletRecord, WalletRequest } from './capabilities/wallet';
+import type { WalletState } from './capabilities/wallet';
 import { createEngineApiClient, EngineApiContractError } from './client';
 import type { EngineApiClient, EngineApiResponse, EngineApiTransport, EngineApiTransportRequest } from './client';
 import {
@@ -71,7 +73,7 @@ import {
 } from './in-memory/runs';
 import type { RunOutcome, RunReport, StartRun } from './in-memory/runs';
 import { checkTaskSeed } from './in-memory/tasks';
-import type { FileRecord, InMemoryState } from './in-memory/state';
+import type { FileRecord, InMemoryState, IntegrationSecret } from './in-memory/state';
 import {
     appendMessage,
     chatView,
@@ -84,6 +86,8 @@ import {
     touch,
 } from './in-memory/threads';
 import type { ChatRecord } from './in-memory/threads';
+import { requestWalletLogin } from './in-memory/wallet';
+import type { NewWalletRequest } from './in-memory/wallet';
 import { findTriggers, fireTrigger } from './in-memory/triggers';
 import type { FireInput } from './in-memory/triggers';
 import { withClientReading } from './reader';
@@ -94,7 +98,6 @@ import type { Permission, Role } from './permissions';
 import { createProblem } from './problem';
 import type { EngineApiStreamItem, ParsedRouteRequest, RouteDefinition } from './route';
 import type { EngineApiRouteId } from './routes';
-import { SecretMetadata } from './secrets';
 import { SecurityOverview } from './security';
 import { Session } from './sessions';
 import { Settings } from './settings';
@@ -213,7 +216,15 @@ export interface InMemorySeed {
     readonly agents?: readonly InMemorySeedAgent[];
     /** Replayed after the agents, so joins carry their names. */
     readonly chats?: readonly InMemorySeedChat[];
-    readonly secrets?: readonly Unbranded<z.input<typeof SecretMetadata>>[];
+    /** Named tool secrets the seeded integrations reference; no route lists them. */
+    readonly integrationSecrets?: readonly Unbranded<IntegrationSecret>[];
+    /** Ignored without `wallet@1`; `state` defaults to `ready`. */
+    readonly wallet?: {
+        readonly state?: WalletState;
+        readonly lockedRecords?: number;
+        readonly records?: readonly Unbranded<z.input<typeof WalletRecord>>[];
+        readonly pending?: readonly Unbranded<z.input<typeof WalletRequest>>[];
+    };
     readonly apiTokens?: readonly Unbranded<z.input<typeof ApiToken>>[];
     readonly passkeys?: readonly Unbranded<z.input<typeof Passkey>>[];
     readonly sessions?: readonly Unbranded<z.input<typeof Session>>[];
@@ -313,7 +324,8 @@ export const RESOURCE_KINDS = [
     'api-token',
     'passkey',
     'session',
-    'secret',
+    'wallet-record',
+    'wallet-request',
     'file',
     'run',
     'task',
@@ -358,7 +370,7 @@ export interface InMemoryEngineSnapshot {
             | 'folders'
             | 'chats'
             | 'messages'
-            | 'secrets'
+            | 'walletRecords'
             | 'apiTokens'
             | 'passkeys'
             | 'sessions'
@@ -433,6 +445,10 @@ export interface InMemoryEngineController {
     requestAccess(request: NewAccessRequest): AccessRequest;
     /** `onboarding@1`: the provider answered the running harness sign-in; throws when none runs. */
     settleHarnessLogin(outcome: HarnessLoginOutcome, diagnostic?: string): void;
+    /** Agent work needs a login it does not have; asking again for the same origin and account counts on one request. */
+    requestWalletLogin(request: Unbranded<NewWalletRequest>): WalletRequest;
+    /** E.g. the operator set the Wallet up or it locked on this host. */
+    setWalletState(state: WalletState, lockedRecords?: number): void;
     /** Applies a dashboard revocation whose signature checked out; the outcome is what the heartbeat acks. */
     revokeDashboardMember(dashboardUserId: string): DashboardRevocationOutcome;
     /** A sign-in; throws for an unknown member or a taken ID. `current` is decided per request. */
@@ -736,6 +752,11 @@ export function createInMemoryEngineCore(options: InMemoryEngineCoreOptions = {}
         settleHarnessLogin: (outcome, diagnostic) => {
             settleHarnessLogin(system, outcome, diagnostic);
         },
+        requestWalletLogin: (request) => requestWalletLogin(system, request as NewWalletRequest),
+        setWalletState: (walletState, lockedRecords = 0) => {
+            state.wallet.state = walletState;
+            state.wallet.lockedRecords = lockedRecords;
+        },
         revokeDashboardMember: (dashboardUserId) => revokeDashboardMember(system, dashboardUserId),
         addMember: (input) => {
             const member = Member.parse(input);
@@ -791,7 +812,7 @@ export function createInMemoryEngineCore(options: InMemoryEngineCoreOptions = {}
                 folders: state.folders.size,
                 chats: state.chats.size,
                 messages: state.messages.size,
-                secrets: state.secrets.size,
+                walletRecords: state.wallet.records.size,
                 apiTokens: state.apiTokens.size,
                 passkeys: state.passkeys.size,
                 sessions: state.sessions.size,
@@ -881,7 +902,8 @@ const PARAM_RESOURCES: Readonly<Record<string, ResourceKind>> = {
     apiTokenId: 'api-token',
     passkeyId: 'passkey',
     sessionId: 'session',
-    secretId: 'secret',
+    recordId: 'wallet-record',
+    requestId: 'wallet-request',
     fileId: 'file',
     runId: 'run',
     taskId: 'task',
@@ -930,8 +952,6 @@ function ownerOf(
             return state.passkeys.get(id)?.memberId;
         case 'session':
             return state.sessions.get(id)?.memberId;
-        case 'secret':
-            return state.secrets.get(id)?.createdBy;
         case 'file':
             return state.files.get(id)?.metadata.createdBy;
         case 'run':
@@ -943,6 +963,8 @@ function ownerOf(
         case 'folder':
         case 'member':
         case 'task':
+        case 'wallet-record':
+        case 'wallet-request':
             return undefined;
     }
 }
@@ -1062,10 +1084,11 @@ const AUDITED: Partial<Record<EngineApiRouteId, AuditRule>> = {
     revokeMyPasskey: { action: 'passkey.revoke', kind: 'passkey', param: 'passkeyId' },
     revokeMySession: { action: 'session.revoke', kind: 'session', param: 'sessionId' },
     revokeMyOtherSessions: { action: 'session.revoke-others', kind: null },
-    createSecret: { action: 'secret.create', kind: 'secret' },
-    replaceSecretValue: { action: 'secret.replace', kind: 'secret', param: 'secretId' },
-    revokeSecret: { action: 'secret.revoke', kind: 'secret', param: 'secretId' },
-    deleteSecret: { action: 'secret.delete', kind: 'secret', param: 'secretId' },
+    addWalletRecord: { action: 'wallet.record.save', kind: 'wallet-record' },
+    updateWalletRecord: { action: 'wallet.record.update', kind: 'wallet-record', param: 'recordId' },
+    deleteWalletRecord: { action: 'wallet.record.delete', kind: 'wallet-record', param: 'recordId' },
+    markWalletRequestSeen: { action: 'wallet.request.seen', kind: 'wallet-request', param: 'requestId' },
+    rejectWalletRequest: { action: 'wallet.request.reject', kind: 'wallet-request', param: 'requestId' },
     uploadFile: { action: 'file.upload', kind: 'file' },
     deleteFile: { action: 'file.delete', kind: 'file', param: 'fileId' },
     cancelRun: { action: 'run.cancel', kind: 'run', param: 'runId' },
@@ -1106,8 +1129,10 @@ function targetName(state: InMemoryState, kind: AuditTarget['kind'], id: string)
             return state.members.get(id)?.displayName;
         case 'api-token':
             return state.apiTokens.get(id)?.name;
-        case 'secret':
-            return state.secrets.get(id)?.name;
+        case 'wallet-record':
+            return state.wallet.records.get(id)?.label;
+        case 'wallet-request':
+            return state.wallet.requests.get(id)?.origin;
         case 'file':
             return state.files.get(id)?.metadata.name;
         case 'passkey':
@@ -1148,7 +1173,7 @@ function createdId(created: unknown): unknown {
     if (typeof created !== 'object' || created === null) return undefined;
     const record = created as Record<string, unknown>;
     if ('id' in record) return record['id'];
-    const wrapped = record['invite'] ?? record['apiToken'];
+    const wrapped = record['invite'] ?? record['apiToken'] ?? record['record'];
     return typeof wrapped === 'object' && wrapped !== null ? (wrapped as Record<string, unknown>)['id'] : undefined;
 }
 
@@ -1163,7 +1188,9 @@ function idTaken(state: InMemoryState, id: string): boolean {
             state.chats,
             state.messages,
             state.chatEvents,
-            state.secrets,
+            state.integrationSecrets,
+            state.wallet.records,
+            state.wallet.requests,
             state.apiTokens,
             state.passkeys,
             state.sessions,
@@ -1286,9 +1313,15 @@ function createState(
         chatEvents: new Map(),
         chatRequestKeys: new Map(),
         replies: new Map(),
-        secrets: byId(
-            (seed.secrets ?? []).map((record) => SecretMetadata.parse({ valueUpdatedAt: record.createdAt, ...record })),
+        integrationSecrets: new Map(
+            (seed.integrationSecrets ?? []).map((secret) => [secret.id, secret as IntegrationSecret]),
         ),
+        wallet: {
+            state: seed.wallet?.state ?? 'ready',
+            lockedRecords: seed.wallet?.lockedRecords ?? 0,
+            records: byId((seed.wallet?.records ?? []).map((record) => WalletRecord.parse(record))),
+            requests: byId((seed.wallet?.pending ?? []).map((record) => WalletRequest.parse(record))),
+        },
         apiTokens: byId((seed.apiTokens ?? []).map((record) => ApiToken.parse(record))),
         passkeys: byId(
             (

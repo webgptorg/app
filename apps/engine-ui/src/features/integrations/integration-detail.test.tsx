@@ -1,5 +1,5 @@
-import { IntegrationId, PERMISSIONS } from '@ptbk/engine-api';
-import type { ActivityItem, Permission, ReadIntegration } from '@ptbk/engine-api';
+import { IntegrationId } from '@ptbk/engine-api';
+import type { ActivityItem, ReadIntegration } from '@ptbk/engine-api';
 import { act, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
@@ -15,7 +15,6 @@ const TIMEOUT_MS = 20_000;
 const DIALOG_WAIT = { timeout: 10_000 };
 // axe walks the whole page; on a loaded runner that alone can take longer than a render.
 const AXE_TIMEOUT_MS = 60_000;
-const allBut = (...missing: readonly Permission[]) => PERMISSIONS.filter((permission) => !missing.includes(permission));
 
 async function renderDetail(integrationId: string, engine: IntegrationsEngine = createIntegrationsEngine()) {
     const app = renderWithProviders({ path: `/integrations/${integrationId}`, engineApi: engine.client });
@@ -66,13 +65,12 @@ describe('integration detail', { timeout: TIMEOUT_MS }, () => {
         expect(tools.querySelector('img, script')).toBeNull();
 
         const secrets = region('Secrets it uses');
-        expect(within(secrets).getByRole('link', { name: 'DOCS_TOKEN' }).getAttribute('href')).toBe(
-            '/secrets?q=DOCS_TOKEN',
-        );
+        expect(within(secrets).getByText('DOCS_TOKEN')).toBeDefined();
+        expect(within(secrets).queryByRole('link')).toBeNull();
         expect(within(secrets).getByText('Available')).toBeDefined();
     });
 
-    it('shows a repository on GitHub and a missing secret with a link to fix it', async () => {
+    it('shows a repository on GitHub and a missing secret, set on the engine', async () => {
         await renderDetail(INTEGRATION_IDS.billing);
         const repository = within(region('Settings')).getByRole('link', { name: /acme\/billing/ });
         expect(repository.getAttribute('href')).toBe('https://github.com/acme/billing');
@@ -81,19 +79,13 @@ describe('integration detail', { timeout: TIMEOUT_MS }, () => {
         expect(within(region('Scopes')).getByText('contents:read')).toBeDefined();
         const secrets = region('Secrets it uses');
         expect(within(secrets).getByText('Missing')).toBeDefined();
-        expect(within(secrets).getByRole('link', { name: 'GITHUB_TOKEN' }).getAttribute('href')).toBe(
-            '/secrets?q=GITHUB_TOKEN',
-        );
-        expect(within(secrets).getByText(/on the Secrets page/)).toBeDefined();
-    });
-
-    it('names a missing secret without a link for a member who may not see secrets', async () => {
-        await renderDetail(INTEGRATION_IDS.billing, createIntegrationsEngine({ permissions: allBut('secrets.read') }));
-        const secrets = region('Secrets it uses');
         expect(within(secrets).getByText('GITHUB_TOKEN')).toBeDefined();
         expect(within(secrets).queryByRole('link')).toBeNull();
-        expect(within(secrets).getByText('Missing')).toBeDefined();
-        expect(within(secrets).getByText(/Ask someone who manages secrets/)).toBeDefined();
+        expect(within(secrets).getByText(/set on the engine, not here/)).toBeDefined();
+        const banner = screen
+            .getByText('Secrets not available: GITHUB_TOKEN.')
+            .closest('[role="alert"]') as HTMLElement;
+        expect(within(banner).queryByRole('link')).toBeNull();
     });
 
     it('shows a calendar’s provider and account and its error detail as text', async () => {
@@ -271,23 +263,6 @@ describe('integration actions', { timeout: TIMEOUT_MS }, () => {
         expect(tone({ status: 'error' }).tone).toBe('danger');
         expect(tone({ status: 'disconnected' }).tone).toBe('info');
         expect(tone({ status: 'unknown' }).tone).toBe('info');
-    });
-
-    it('links the fix for a missing secret from the warning, and only for who may see secrets', async () => {
-        await renderDetail(INTEGRATION_IDS.billing);
-        const banner = screen
-            .getByText('Secrets not available: GITHUB_TOKEN.')
-            .closest('[role="alert"]') as HTMLElement;
-        expect(within(banner).getByRole('link', { name: 'Add GITHUB_TOKEN' }).getAttribute('href')).toBe(
-            '/secrets?q=GITHUB_TOKEN',
-        );
-
-        renderWithProviders({
-            path: `/integrations/${INTEGRATION_IDS.billing}`,
-            engineApi: createIntegrationsEngine({ permissions: allBut('secrets.read') }).client,
-        });
-        await screen.findAllByRole('heading', { level: 1, name: 'Billing repository' });
-        expect(screen.getAllByRole('link', { name: 'Add GITHUB_TOKEN' })).toHaveLength(1);
     });
 
     it('links back to the list, and not to itself from its own activity', async () => {

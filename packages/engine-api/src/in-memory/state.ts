@@ -8,7 +8,7 @@ import type { RunDetail } from '../capabilities/runs';
 import type { TaskRecord } from './tasks';
 import type { Trigger, TriggerFire } from '../capabilities/triggers';
 import type { Message } from '../chats';
-import type { OrgId } from '../common';
+import type { AgentId, OrgId, SecretId } from '../common';
 import type { EngineInfo } from '../engine';
 import type { EngineEvent } from '../events';
 import type { Folder } from '../folders';
@@ -16,8 +16,8 @@ import type { Invite, Member } from '../members';
 import type { AccessRequestRecord } from './access-requests';
 import type { OnboardingRecord } from './onboarding';
 import type { ChatEvent, ChatRecord, RequestKeyRecord } from './threads';
+import type { InMemoryWallet } from './wallet';
 import type { Passkey } from '../passkeys';
-import type { SecretMetadata } from '../secrets';
 import type { SecurityOverview } from '../security';
 import type { Session } from '../sessions';
 import type { Settings } from '../settings';
@@ -56,6 +56,17 @@ export interface TriggerRecord {
     readonly fires: TriggerFire[];
 }
 
+/**
+ * A named tool secret an integration references. The engine API has no route for these; the fake keeps only what
+ * resolving a reference needs, and never a value.
+ */
+export interface IntegrationSecret {
+    readonly id: SecretId;
+    readonly name: string;
+    readonly scope: { readonly kind: 'engine' } | { readonly kind: 'agent'; readonly agentId: AgentId };
+    readonly status: 'active' | 'revoked';
+}
+
 export interface EventRecord {
     /** The SSE id: `seq` as a string. */
     readonly id: string;
@@ -83,8 +94,8 @@ export interface InMemoryState {
     /** `<member> <scope> <requestKey>` to the key's first use; scope is `create` or the thread's ID. */
     readonly chatRequestKeys: Map<string, RequestKeyRecord>;
     readonly replies: Map<string, ReplyRecord>;
-    /** Values are never kept: nothing in the contract can read them back, so the fake has no reason to hold them. */
-    readonly secrets: Map<string, SecretMetadata>;
+    readonly integrationSecrets: Map<string, IntegrationSecret>;
+    readonly wallet: InMemoryWallet;
     readonly apiTokens: Map<string, ApiToken>;
     readonly passkeys: Map<string, Passkey>;
     readonly sessions: Map<string, Session>;
