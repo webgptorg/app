@@ -13,6 +13,7 @@ import type { FileScanStatus } from './capabilities/files';
 import { Integration } from './capabilities/integrations';
 import type { IntegrationStatus } from './capabilities/integrations';
 import { RunDetail } from './capabilities/runs';
+import { Task, TaskLink, TaskOccurrence } from './capabilities/tasks';
 import type { Run, RunStatus } from './capabilities/runs';
 import { Trigger, TriggerFire } from './capabilities/triggers';
 import { Chat, Message } from './chats';
@@ -77,6 +78,7 @@ import {
     startRun,
 } from './in-memory/runs';
 import type { RunOutcome, RunReport, StartRun } from './in-memory/runs';
+import { checkTaskSeed } from './in-memory/tasks';
 import type { FileRecord, InMemoryState } from './in-memory/state';
 import { findTriggers, fireTrigger } from './in-memory/triggers';
 import type { FireInput } from './in-memory/triggers';
@@ -143,11 +145,26 @@ type RunDetailInput = Unbranded<z.input<typeof RunDetail>>;
  * A run in contract shape, minus what the core derives: `agentName` comes from the agent and `outputs.fileNames` from
  * the seeded files; a missing `preview` is `null`.
  */
-export type InMemorySeedRun = Omit<RunDetailInput, 'agentName' | 'preview' | 'outputs'> & {
+export type InMemorySeedRun = Omit<RunDetailInput, 'agentName' | 'preview' | 'outputs' | 'taskId' | 'occurrenceId'> & {
     readonly agentName?: string | null;
     readonly preview?: string | null;
+    /** Both default to `null`: a run outside any task. */
+    readonly taskId?: string | null;
+    readonly occurrenceId?: string | null;
     readonly outputs: Omit<RunDetailInput['outputs'], 'fileNames'> & { readonly fileNames?: readonly string[] };
 };
+
+/**
+ * A task as the engine reads it from its Book and runtime. `agentName` defaults to `null`; reads answer the agent's
+ * current name and each prerequisite's current standing, and derive children, dependants and incoming task links.
+ */
+export interface InMemorySeedTask {
+    readonly task: Omit<Unbranded<z.input<typeof Task>>, 'agentName'> & { readonly agentName?: string | null };
+    readonly links?: readonly Unbranded<z.input<typeof TaskLink>>[];
+    readonly notes?: readonly string[];
+    /** Oldest first; every run they list must be seeded too. */
+    readonly occurrences?: readonly Unbranded<z.input<typeof TaskOccurrence>>[];
+}
 
 type TriggerInput = Unbranded<z.input<typeof Trigger>>;
 
@@ -194,6 +211,8 @@ export interface InMemorySeed {
     readonly sessions?: readonly Unbranded<z.input<typeof Session>>[];
     readonly files?: readonly InMemorySeedFile[];
     readonly runs?: readonly InMemorySeedRun[];
+    /** Ignored without `tasks@1`. */
+    readonly tasks?: readonly InMemorySeedTask[];
     readonly triggers?: readonly {
         readonly trigger: InMemorySeedTrigger;
         /** Oldest first. */
@@ -275,6 +294,7 @@ export const RESOURCE_KINDS = [
     'secret',
     'file',
     'run',
+    'task',
     'trigger',
     'integration',
 ] as const;
@@ -861,6 +881,7 @@ const PARAM_RESOURCES: Readonly<Record<string, ResourceKind>> = {
     secretId: 'secret',
     fileId: 'file',
     runId: 'run',
+    taskId: 'task',
     triggerId: 'trigger',
     integrationId: 'integration',
 };
@@ -932,6 +953,7 @@ function ownerOf(
             return state.integrations.get(id)?.createdBy;
         case 'folder':
         case 'member':
+        case 'task':
             return undefined;
     }
 }
@@ -1206,6 +1228,8 @@ function seedRun(record: InMemorySeedRun, files: ReadonlyMap<string, FileRecord>
         ...record,
         agentName: record.agentName ?? null,
         preview: record.preview ?? null,
+        taskId: record.taskId ?? null,
+        occurrenceId: record.occurrenceId ?? null,
         outputs: { ...record.outputs, fileNames },
     });
 }
@@ -1306,6 +1330,20 @@ function createState(
         files,
         uploadPolicies: resolveUploadPolicies(uploadPolicies),
         runs: byId((seed.runs ?? []).map((record) => seedRun(record, files))),
+        tasks: new Map(
+            (seed.tasks ?? []).map((record) => {
+                const task = Task.parse({ ...record.task, agentName: record.task.agentName ?? null });
+                return [
+                    task.id,
+                    {
+                        task,
+                        links: (record.links ?? []).map((link) => TaskLink.parse(link)),
+                        notes: [...(record.notes ?? [])],
+                        occurrences: (record.occurrences ?? []).map((occurrence) => TaskOccurrence.parse(occurrence)),
+                    },
+                ];
+            }),
+        ),
         triggers: new Map(
             (seed.triggers ?? []).map(({ trigger, fires }) => {
                 const parsed = Trigger.parse({ ...trigger, agentName: trigger.agentName ?? null });
@@ -1353,6 +1391,7 @@ function createState(
             runStatus: { state: AgentRunState.parse(seedAgent.runState ?? 'idle'), since: createdAt },
         });
     }
+    checkTaskSeed(state.tasks, new Set(state.runs.keys()));
     return state;
 }
 

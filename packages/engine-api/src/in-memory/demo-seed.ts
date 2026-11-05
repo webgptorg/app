@@ -123,6 +123,8 @@ export function createDemoSeed(now: Date = new Date()): InMemorySeed {
         runs: [
             run('run-ada-review', {
                 agentId: 'agent-ada',
+                taskId: 'task-billing-review',
+                occurrenceId: 'occ-billing-review-1',
                 preview: 'Please review the billing pull request.',
                 chatId: 'chat-ada-1',
                 messageId: 'message-ada-2',
@@ -196,6 +198,8 @@ export function createDemoSeed(now: Date = new Date()): InMemorySeed {
             }),
             run('run-iris-weekly-failed', {
                 agentId: 'agent-iris',
+                taskId: 'task-weekly-report',
+                occurrenceId: 'occ-weekly-report-1',
                 preview: 'Write the weekly report from the calendar and the reports project.',
                 source: 'schedule',
                 status: 'failed',
@@ -209,6 +213,8 @@ export function createDemoSeed(now: Date = new Date()): InMemorySeed {
             }),
             run('run-iris-weekly', {
                 agentId: 'agent-iris',
+                taskId: 'task-weekly-report',
+                occurrenceId: 'occ-weekly-report-2',
                 preview: 'Write the weekly report from the calendar and the reports project.',
                 source: 'schedule',
                 status: 'completed',
@@ -332,6 +338,7 @@ export function createDemoSeed(now: Date = new Date()): InMemorySeed {
                 content: new Blob(['MZ..']),
             },
         ],
+        tasks: demoTasks(ago),
         triggers: [
             {
                 trigger: {
@@ -530,4 +537,194 @@ export function createDemoSeed(now: Date = new Date()): InMemorySeed {
             },
         ],
     };
+}
+
+/** Billing v2 with a reviewed child and a blocked one, Iris's recurring report with a retried failure, and an update. */
+function demoTasks(ago: (minutes: number) => string): NonNullable<InMemorySeed['tasks']> {
+    const base = {
+        kind: 'ordinary',
+        purpose: 'content',
+        core: false,
+        agentId: 'agent-ada',
+        executor: null,
+        priority: { rank: 0, text: null },
+        stateReason: null,
+        next: null,
+        conditions: [],
+        repeat: null,
+        notBefore: null,
+        dueAt: null,
+        nextAt: null,
+        progress: null,
+        parent: null,
+        dependsOn: [],
+        origin: null,
+        doneCount: 0,
+        lastDoneAt: null,
+        reopened: false,
+        allowedActions: [],
+        updatedAt: ago(80),
+    } as const;
+    const ship = { taskId: 'task-ship-billing', name: 'Ship billing v2 — 2026-10-30 09:00:00' };
+    const review = { taskId: 'task-billing-review', name: 'Review the billing pull request — 2026-10-30 09:05:00' };
+    type Occurrence = NonNullable<NonNullable<InMemorySeed['tasks']>[number]['occurrences']>[number];
+    const occurrence = (id: string, fields: Partial<Occurrence> & Pick<Occurrence, 'taskId'>): Occurrence => ({
+        id,
+        sequence: 1,
+        cycle: 1,
+        reason: 'first',
+        retryOf: null,
+        state: 'completed',
+        scheduledFor: null,
+        startedAt: null,
+        endedAt: null,
+        summary: null,
+        runIds: [],
+        ...fields,
+    });
+    return [
+        {
+            task: {
+                ...base,
+                id: ship.taskId,
+                name: ship.name,
+                state: 'active',
+                stateReason: 'Running now.',
+                priority: { rank: 2, text: 'high' },
+                progress: { completed: 1, total: 3, summary: 'Waiting for the invoice migration' },
+                origin: { kind: 'chat', chatId: 'chat-ada-1', taskId: null, text: 'Chat {Review the billing PR}' },
+                sourcePath: 'tasks/ship-billing-v2.book',
+            },
+            links: [
+                {
+                    direction: 'outgoing',
+                    target: { type: 'chat', chatId: 'chat-ada-1', name: 'Review the billing PR' },
+                },
+                { direction: 'outgoing', target: { type: 'agent', agentId: 'agent-max', name: 'Max' } },
+            ],
+        },
+        {
+            task: {
+                ...base,
+                id: review.taskId,
+                name: review.name,
+                state: 'done',
+                parent: ship,
+                doneCount: 1,
+                lastDoneAt: ago(80),
+                origin: { kind: 'task', chatId: null, taskId: ship.taskId, text: `Task {${ship.name}}` },
+                sourcePath: 'tasks/review-billing-pr.book',
+            },
+            links: [
+                {
+                    direction: 'incoming',
+                    target: { type: 'chat', chatId: 'chat-ada-1', name: 'Review the billing PR' },
+                },
+            ],
+            occurrences: [
+                occurrence('occ-billing-review-1', {
+                    taskId: review.taskId,
+                    startedAt: ago(90),
+                    endedAt: ago(80),
+                    summary: 'Two comments, one blocking.',
+                    runIds: ['run-ada-review'],
+                }),
+            ],
+        },
+        {
+            task: {
+                ...base,
+                id: 'task-deploy-billing',
+                name: 'Deploy billing v2 — 2026-10-30 09:06:00',
+                state: 'waiting-dependency',
+                stateReason: 'Waits for Migrate the old invoices.',
+                parent: ship,
+                dependsOn: [
+                    { ...review, state: 'met' },
+                    {
+                        taskId: 'task-migrate-invoices',
+                        name: 'Migrate the old invoices — 2026-10-30 09:07:00',
+                        state: 'pending',
+                    },
+                ],
+                sourcePath: 'tasks/deploy-billing-v2.book',
+            },
+        },
+        {
+            task: {
+                ...base,
+                id: 'task-migrate-invoices',
+                name: 'Migrate the old invoices — 2026-10-30 09:07:00',
+                agentId: 'agent-max',
+                state: 'blocked',
+                stateReason: 'Dependency {Export invoices from the old system} was not found.',
+                next: 'Fix the TASK DEPENDS ON reference (dependencies name tasks).',
+                parent: ship,
+                dependsOn: [{ taskId: null, name: 'Export invoices from the old system', state: 'missing' }],
+                sourcePath: 'tasks/migrate-invoices.book',
+            },
+        },
+        {
+            task: {
+                ...base,
+                id: 'task-weekly-report',
+                name: 'Weekly report — 2026-10-01 08:00:00',
+                agentId: 'agent-iris',
+                state: 'waiting-until',
+                stateReason: 'Next occurrence in six days.',
+                repeat: { text: '7d', intervalSeconds: 604_800 },
+                nextAt: ago(-60 * 24 * 6),
+                doneCount: 1,
+                lastDoneAt: ago(60 * 23 - 6),
+                origin: { kind: 'user', chatId: null, taskId: null, text: 'Added by the owner' },
+                sourcePath: 'tasks/weekly-report.book',
+            },
+            occurrences: [
+                occurrence('occ-weekly-report-1', {
+                    taskId: 'task-weekly-report',
+                    reason: 'repeat',
+                    state: 'failed',
+                    scheduledFor: ago(60 * 24),
+                    startedAt: ago(60 * 24),
+                    endedAt: ago(60 * 24 - 4),
+                    summary: 'The calendar integration was not reachable.',
+                    runIds: ['run-iris-weekly-failed'],
+                }),
+                occurrence('occ-weekly-report-2', {
+                    taskId: 'task-weekly-report',
+                    sequence: 2,
+                    reason: 'retry',
+                    retryOf: 'occ-weekly-report-1',
+                    startedAt: ago(60 * 23),
+                    endedAt: ago(60 * 23 - 6),
+                    summary: 'Report saved to reports/weekly/report.md.',
+                    runIds: ['run-iris-weekly'],
+                }),
+                occurrence('occ-weekly-report-3', {
+                    taskId: 'task-weekly-report',
+                    sequence: 3,
+                    cycle: 2,
+                    reason: 'repeat',
+                    state: 'pending',
+                    scheduledFor: ago(-60 * 24 * 6),
+                }),
+            ],
+        },
+        {
+            task: {
+                ...base,
+                id: 'task-engine-update',
+                name: 'Update Promptbook 0.119.0 → 0.120.0',
+                kind: 'engine',
+                purpose: 'system',
+                agentId: null,
+                executor: 'Promptbook engine (deterministic update, no agent)',
+                state: 'not-ready',
+                stateReason: 'Waits until the installation is idle.',
+                conditions: [{ kind: 'resource', met: false, text: 'No task is running' }],
+                origin: { kind: 'engine', chatId: null, taskId: null, text: 'Automatic update' },
+                sourcePath: null,
+            },
+        },
+    ];
 }

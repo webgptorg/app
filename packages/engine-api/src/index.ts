@@ -23,6 +23,7 @@ export * from './audit';
 export * from './capabilities/capability';
 export * from './capabilities/activity';
 export * from './capabilities/runs';
+export * from './capabilities/tasks';
 export * from './capabilities/files';
 export * from './capabilities/triggers';
 export * from './capabilities/integrations';

@@ -14,6 +14,8 @@ export type CapabilityRef = z.infer<typeof CapabilityRef>;
 /** The capability versions this contract defines. */
 export const KNOWN_CAPABILITIES = {
     runs: { id: 'runs', version: 1 },
+    /** The engine's task inventory: definitions, occurrences and relations, read-only. */
+    tasks: { id: 'tasks', version: 1 },
     files: { id: 'files', version: 1 },
     triggers: { id: 'triggers', version: 1 },
     integrations: { id: 'integrations', version: 1 },

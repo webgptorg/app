@@ -151,6 +151,7 @@ export async function createWorld(ctx: CheckContext, api?: EngineApi): Promise<W
     });
     const ownPasskey = memo(async () => (await owner.ok(R.listMyPasskeys)).items[0]?.id ?? null);
     const run = memo(() => firstItem(R.listRuns));
+    const task = memo(() => firstItem(R.listTasks));
     const file = memo(async () => {
         if (!(await advertises(R.uploadFile))) return null;
         const form = new FormData();
@@ -201,6 +202,7 @@ export async function createWorld(ctx: CheckContext, api?: EngineApi): Promise<W
         sessionId: ownSession,
         apiTokenId: async () => (await apiToken())?.id ?? null,
         runId: run,
+        taskId: task,
         fileId: file,
         triggerId: trigger,
         integrationId: integration,

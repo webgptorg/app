@@ -541,6 +541,8 @@ describe('tolerant reading', () => {
             messageId: null,
             triggerId: null,
             retryOf: null,
+            taskId: null,
+            occurrenceId: null,
             createdBy: null,
             queuedAt: AT,
             startedAt: null,

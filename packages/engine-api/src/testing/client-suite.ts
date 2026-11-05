@@ -23,6 +23,7 @@ import {
     RunId,
     SecretId,
     SessionId,
+    TaskId,
 } from '../common';
 import type { InMemoryEngine, InMemoryEngineApiOptions, InMemorySeed } from '../in-memory-client';
 import { PERMISSIONS } from '../permissions';
@@ -857,6 +858,8 @@ export function engineApiClientSuite(makeEngine: MakeEngine): void {
             messageId: null,
             triggerId: null,
             retryOf: null,
+            taskId: null,
+            occurrenceId: null,
             createdBy: 'member-owner',
             queuedAt: AT,
             startedAt: null,
@@ -928,6 +931,7 @@ export function engineApiClientSuite(makeEngine: MakeEngine): void {
             const info = ok(await client.engine.get(signal()));
             expect(info.capabilities).toEqual([
                 { id: 'runs', version: 1 },
+                { id: 'tasks', version: 1 },
                 { id: 'files', version: 1 },
                 { id: 'triggers', version: 1 },
                 { id: 'integrations', version: 1 },
@@ -1036,6 +1040,89 @@ export function engineApiClientSuite(makeEngine: MakeEngine): void {
                 code: 'run-finished',
             });
             expect(problem(await client.runs.cancel(RunId.parse('run-1'), signal())).code).toBe('run-finished');
+        });
+
+        it('lists tasks, reads one with its relations and pages its occurrences, read-only', async () => {
+            const base = {
+                kind: 'ordinary',
+                purpose: null,
+                core: false,
+                agentId: 'agent-a',
+                executor: null,
+                priority: { rank: 0, text: null },
+                stateReason: null,
+                next: null,
+                conditions: [],
+                repeat: null,
+                notBefore: null,
+                dueAt: null,
+                nextAt: null,
+                progress: null,
+                origin: null,
+                doneCount: 0,
+                lastDoneAt: null,
+                reopened: false,
+                sourcePath: null,
+                allowedActions: [],
+                updatedAt: minutes(-60),
+            } as const;
+            const { client } = engine({
+                seed: {
+                    ...seed,
+                    tasks: [
+                        {
+                            task: {
+                                ...base,
+                                id: 'task-parent',
+                                name: 'Parent',
+                                state: 'active',
+                                parent: null,
+                                dependsOn: [],
+                            },
+                        },
+                        {
+                            task: {
+                                ...base,
+                                id: 'task-child',
+                                name: 'Child',
+                                state: 'done',
+                                parent: { taskId: 'task-parent', name: 'Parent' },
+                                dependsOn: [],
+                            },
+                            occurrences: [1, 2].map((sequence) => ({
+                                id: `occ-${String(sequence)}`,
+                                taskId: 'task-child',
+                                sequence,
+                                cycle: sequence,
+                                reason: sequence === 1 ? 'first' : 'reopen',
+                                retryOf: null,
+                                state: 'completed',
+                                scheduledFor: null,
+                                startedAt: minutes(-50),
+                                endedAt: minutes(-40),
+                                summary: null,
+                                runIds: sequence === 1 ? ['run-1'] : [],
+                            })),
+                        },
+                    ],
+                },
+            });
+            expect(ids(ok(await client.tasks.list({}, signal())).items)).toEqual(['task-parent', 'task-child']);
+            expect(ids(ok(await client.tasks.list({ state: 'done' }, signal())).items)).toEqual(['task-child']);
+            const parent = ok(await client.tasks.get(TaskId.parse('task-parent'), signal()));
+            expect(parent.children).toEqual([{ taskId: 'task-child', name: 'Child', state: 'done' }]);
+            expect(parent.agentName).toBe('Ada');
+            const first = ok(await client.tasks.listOccurrences(TaskId.parse('task-child'), { limit: 1 }, signal()));
+            expect(first.items.map(({ reason }) => reason)).toEqual(['reopen']);
+            const rest = ok(
+                await client.tasks.listOccurrences(
+                    TaskId.parse('task-child'),
+                    { limit: 1, cursor: first.nextCursor ?? '' },
+                    signal(),
+                ),
+            );
+            expect(rest.items.map(({ runIds }) => runIds)).toEqual([['run-1']]);
+            expect(problem(await client.tasks.get(TaskId.parse('task-none'), signal())).code).toBe('not-found');
         });
 
         it('retries only failed runs', async () => {

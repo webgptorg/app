@@ -50,6 +50,11 @@ export const ToolCallId = z.string().regex(OPAQUE_ID_PATTERN).brand<'ToolCallId'
 export type ToolCallId = z.infer<typeof ToolCallId>;
 export const TriggerId = z.string().regex(OPAQUE_ID_PATTERN).brand<'TriggerId', 'inout'>();
 export type TriggerId = z.infer<typeof TriggerId>;
+/** The engine's transport form of a task's identity (its normalized Book name, or an engine-owned definition). */
+export const TaskId = z.string().regex(OPAQUE_ID_PATTERN).brand<'TaskId', 'inout'>();
+export type TaskId = z.infer<typeof TaskId>;
+export const TaskOccurrenceId = z.string().regex(OPAQUE_ID_PATTERN).brand<'TaskOccurrenceId', 'inout'>();
+export type TaskOccurrenceId = z.infer<typeof TaskOccurrenceId>;
 export const TriggerFireId = z.string().regex(OPAQUE_ID_PATTERN).brand<'TriggerFireId', 'inout'>();
 export type TriggerFireId = z.infer<typeof TriggerFireId>;
 export const IntegrationId = z.string().regex(OPAQUE_ID_PATTERN).brand<'IntegrationId', 'inout'>();

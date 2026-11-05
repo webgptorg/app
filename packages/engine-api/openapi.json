@@ -7076,6 +7076,15 @@
             }
           },
           {
+            "name": "taskId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,64}$"
+            }
+          },
+          {
             "name": "createdBy",
             "in": "query",
             "required": false,
@@ -7629,6 +7638,1618 @@
           "409": {
             "description": "Problem: `run-not-retryable`.",
             "x-problem-codes": ["run-not-retryable"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Problem: `rate-limited`.",
+            "x-problem-codes": ["rate-limited"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Problem: `internal-error`.",
+            "x-problem-codes": ["internal-error"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Problem: `unavailable`.",
+            "x-problem-codes": ["unavailable"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tasks": {
+      "get": {
+        "operationId": "listTasks",
+        "summary": "List every task definition, ordinary and engine-owned, in the engine's default order",
+        "tags": ["tasks"],
+        "x-required-permission": "tasks.read",
+        "x-capability": {
+          "id": "tasks",
+          "version": 1,
+          "label": "tasks@1"
+        },
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1024
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 512,
+              "pattern": "^(?:active|awaiting-user|ready|needs-assignment|assigning|needs-recovery|failed|incompatible|blocked|waiting-until|waiting-dependency|not-ready|placeholder|done|cancelled|retired)(?:,(?:active|awaiting-user|ready|needs-assignment|assigning|needs-recovery|failed|incompatible|blocked|waiting-until|waiting-dependency|not-ready|placeholder|done|cancelled|retired))*$"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": ["ordinary", "engine"]
+            }
+          },
+          {
+            "name": "agentId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/AgentId"
+            }
+          },
+          {
+            "name": "parentId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,64}$"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                          },
+                          "name": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 512
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": ["ordinary", "engine"]
+                          },
+                          "purpose": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "enum": ["content", "system"]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "core": {
+                            "type": "boolean"
+                          },
+                          "agentId": {
+                            "anyOf": [
+                              {
+                                "$ref": "#/components/schemas/AgentId"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "agentName": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 256
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "executor": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "maxLength": 128
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "priority": {
+                            "type": "object",
+                            "properties": {
+                              "rank": {
+                                "type": "number",
+                                "minimum": 0,
+                                "maximum": 1000000
+                              },
+                              "text": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "maxLength": 256
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            },
+                            "required": ["rank", "text"],
+                            "additionalProperties": false
+                          },
+                          "state": {
+                            "type": "string",
+                            "enum": [
+                              "active",
+                              "awaiting-user",
+                              "ready",
+                              "needs-assignment",
+                              "assigning",
+                              "needs-recovery",
+                              "failed",
+                              "incompatible",
+                              "blocked",
+                              "waiting-until",
+                              "waiting-dependency",
+                              "not-ready",
+                              "placeholder",
+                              "done",
+                              "cancelled",
+                              "retired"
+                            ]
+                          },
+                          "stateReason": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "maxLength": 2048
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "next": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "maxLength": 2048
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "conditions": {
+                            "maxItems": 100,
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "kind": {
+                                  "type": "string",
+                                  "enum": ["not-before", "dependency", "answer", "resource", "schedule", "other"]
+                                },
+                                "met": {
+                                  "type": "boolean"
+                                },
+                                "text": {
+                                  "type": "string",
+                                  "maxLength": 2048
+                                }
+                              },
+                              "required": ["kind", "met", "text"],
+                              "additionalProperties": false
+                            }
+                          },
+                          "repeat": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "text": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 128
+                                  },
+                                  "intervalSeconds": {
+                                    "type": "integer",
+                                    "minimum": 1,
+                                    "maximum": 9007199254740991
+                                  }
+                                },
+                                "required": ["text", "intervalSeconds"],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "notBefore": {
+                            "anyOf": [
+                              {
+                                "$ref": "#/components/schemas/Timestamp"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "dueAt": {
+                            "anyOf": [
+                              {
+                                "$ref": "#/components/schemas/Timestamp"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "nextAt": {
+                            "anyOf": [
+                              {
+                                "$ref": "#/components/schemas/Timestamp"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "progress": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "completed": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 9007199254740991
+                                  },
+                                  "total": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 9007199254740991
+                                  },
+                                  "summary": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string",
+                                        "maxLength": 1024
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  }
+                                },
+                                "required": ["completed", "total", "summary"],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "parent": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "taskId": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string",
+                                        "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "name": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 512
+                                  }
+                                },
+                                "required": ["taskId", "name"],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "dependsOn": {
+                            "maxItems": 200,
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "taskId": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string",
+                                      "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "name": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 512
+                                },
+                                "state": {
+                                  "type": "string",
+                                  "enum": ["met", "pending", "failed", "missing", "cycle"]
+                                }
+                              },
+                              "required": ["taskId", "name", "state"],
+                              "additionalProperties": false
+                            }
+                          },
+                          "origin": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "kind": {
+                                    "type": "string",
+                                    "enum": ["user", "chat", "task", "goal", "engine", "conversion"]
+                                  },
+                                  "chatId": {
+                                    "anyOf": [
+                                      {
+                                        "$ref": "#/components/schemas/ChatId"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "taskId": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string",
+                                        "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "text": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string",
+                                        "maxLength": 512
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  }
+                                },
+                                "required": ["kind", "chatId", "taskId", "text"],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "doneCount": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "lastDoneAt": {
+                            "anyOf": [
+                              {
+                                "$ref": "#/components/schemas/Timestamp"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "reopened": {
+                            "type": "boolean"
+                          },
+                          "sourcePath": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": 1024
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "allowedActions": {
+                            "maxItems": 6,
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "enum": ["amend", "accept", "cancel", "retire", "reopen", "notify"]
+                            }
+                          },
+                          "updatedAt": {
+                            "$ref": "#/components/schemas/Timestamp"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name",
+                          "kind",
+                          "purpose",
+                          "core",
+                          "agentId",
+                          "agentName",
+                          "executor",
+                          "priority",
+                          "state",
+                          "stateReason",
+                          "next",
+                          "conditions",
+                          "repeat",
+                          "notBefore",
+                          "dueAt",
+                          "nextAt",
+                          "progress",
+                          "parent",
+                          "dependsOn",
+                          "origin",
+                          "doneCount",
+                          "lastDoneAt",
+                          "reopened",
+                          "sourcePath",
+                          "allowedActions",
+                          "updatedAt"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "nextCursor": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 1024
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": ["items", "nextCursor"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Problem: `invalid-cursor`, `validation-failed`.",
+            "x-problem-codes": ["invalid-cursor", "validation-failed"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem: `unauthenticated`.",
+            "x-problem-codes": ["unauthenticated"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem: `forbidden`.",
+            "x-problem-codes": ["forbidden"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem: `capability-not-supported`.",
+            "x-problem-codes": ["capability-not-supported"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Problem: `rate-limited`.",
+            "x-problem-codes": ["rate-limited"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Problem: `internal-error`.",
+            "x-problem-codes": ["internal-error"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Problem: `unavailable`.",
+            "x-problem-codes": ["unavailable"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tasks/{taskId}": {
+      "get": {
+        "operationId": "getTask",
+        "summary": "Get a task with its children, dependants, links and notes",
+        "tags": ["tasks"],
+        "x-required-permission": "tasks.read",
+        "x-capability": {
+          "id": "tasks",
+          "version": 1,
+          "label": "tasks@1"
+        },
+        "parameters": [
+          {
+            "name": "taskId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,64}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                    },
+                    "name": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 512
+                    },
+                    "kind": {
+                      "type": "string",
+                      "enum": ["ordinary", "engine"]
+                    },
+                    "purpose": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "enum": ["content", "system"]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "core": {
+                      "type": "boolean"
+                    },
+                    "agentId": {
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/AgentId"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "agentName": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 256
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "executor": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "maxLength": 128
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "priority": {
+                      "type": "object",
+                      "properties": {
+                        "rank": {
+                          "type": "number",
+                          "minimum": 0,
+                          "maximum": 1000000
+                        },
+                        "text": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "maxLength": 256
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": ["rank", "text"],
+                      "additionalProperties": false
+                    },
+                    "state": {
+                      "type": "string",
+                      "enum": [
+                        "active",
+                        "awaiting-user",
+                        "ready",
+                        "needs-assignment",
+                        "assigning",
+                        "needs-recovery",
+                        "failed",
+                        "incompatible",
+                        "blocked",
+                        "waiting-until",
+                        "waiting-dependency",
+                        "not-ready",
+                        "placeholder",
+                        "done",
+                        "cancelled",
+                        "retired"
+                      ]
+                    },
+                    "stateReason": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "maxLength": 2048
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "next": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "maxLength": 2048
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "conditions": {
+                      "maxItems": 100,
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": ["not-before", "dependency", "answer", "resource", "schedule", "other"]
+                          },
+                          "met": {
+                            "type": "boolean"
+                          },
+                          "text": {
+                            "type": "string",
+                            "maxLength": 2048
+                          }
+                        },
+                        "required": ["kind", "met", "text"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "repeat": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "text": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 128
+                            },
+                            "intervalSeconds": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 9007199254740991
+                            }
+                          },
+                          "required": ["text", "intervalSeconds"],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "notBefore": {
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/Timestamp"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "dueAt": {
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/Timestamp"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "nextAt": {
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/Timestamp"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "progress": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "completed": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "total": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 9007199254740991
+                            },
+                            "summary": {
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                  "maxLength": 1024
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          },
+                          "required": ["completed", "total", "summary"],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "parent": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "taskId": {
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                  "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "name": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 512
+                            }
+                          },
+                          "required": ["taskId", "name"],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "dependsOn": {
+                      "maxItems": 200,
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "taskId": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "name": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 512
+                          },
+                          "state": {
+                            "type": "string",
+                            "enum": ["met", "pending", "failed", "missing", "cycle"]
+                          }
+                        },
+                        "required": ["taskId", "name", "state"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "origin": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "enum": ["user", "chat", "task", "goal", "engine", "conversion"]
+                            },
+                            "chatId": {
+                              "anyOf": [
+                                {
+                                  "$ref": "#/components/schemas/ChatId"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "taskId": {
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                  "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "text": {
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                  "maxLength": 512
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          },
+                          "required": ["kind", "chatId", "taskId", "text"],
+                          "additionalProperties": false
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "doneCount": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "lastDoneAt": {
+                      "anyOf": [
+                        {
+                          "$ref": "#/components/schemas/Timestamp"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "reopened": {
+                      "type": "boolean"
+                    },
+                    "sourcePath": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 1024
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "allowedActions": {
+                      "maxItems": 6,
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": ["amend", "accept", "cancel", "retire", "reopen", "notify"]
+                      }
+                    },
+                    "updatedAt": {
+                      "$ref": "#/components/schemas/Timestamp"
+                    },
+                    "children": {
+                      "maxItems": 1000,
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "taskId": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "name": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 512
+                          },
+                          "state": {
+                            "type": "string",
+                            "enum": [
+                              "active",
+                              "awaiting-user",
+                              "ready",
+                              "needs-assignment",
+                              "assigning",
+                              "needs-recovery",
+                              "failed",
+                              "incompatible",
+                              "blocked",
+                              "waiting-until",
+                              "waiting-dependency",
+                              "not-ready",
+                              "placeholder",
+                              "done",
+                              "cancelled",
+                              "retired"
+                            ]
+                          }
+                        },
+                        "required": ["taskId", "name", "state"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "blocks": {
+                      "maxItems": 1000,
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "taskId": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "name": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 512
+                          },
+                          "state": {
+                            "type": "string",
+                            "enum": [
+                              "active",
+                              "awaiting-user",
+                              "ready",
+                              "needs-assignment",
+                              "assigning",
+                              "needs-recovery",
+                              "failed",
+                              "incompatible",
+                              "blocked",
+                              "waiting-until",
+                              "waiting-dependency",
+                              "not-ready",
+                              "placeholder",
+                              "done",
+                              "cancelled",
+                              "retired"
+                            ]
+                          }
+                        },
+                        "required": ["taskId", "name", "state"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "links": {
+                      "maxItems": 1000,
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "direction": {
+                            "type": "string",
+                            "enum": ["outgoing", "incoming"]
+                          },
+                          "target": {
+                            "oneOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "type": {
+                                    "type": "string",
+                                    "const": "chat"
+                                  },
+                                  "chatId": {
+                                    "anyOf": [
+                                      {
+                                        "$ref": "#/components/schemas/ChatId"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "name": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 512
+                                  }
+                                },
+                                "required": ["type", "chatId", "name"],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "type": {
+                                    "type": "string",
+                                    "const": "agent"
+                                  },
+                                  "agentId": {
+                                    "anyOf": [
+                                      {
+                                        "$ref": "#/components/schemas/AgentId"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "name": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 512
+                                  }
+                                },
+                                "required": ["type", "agentId", "name"],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "type": {
+                                    "type": "string",
+                                    "const": "task"
+                                  },
+                                  "taskId": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string",
+                                        "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "name": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 512
+                                  }
+                                },
+                                "required": ["type", "taskId", "name"],
+                                "additionalProperties": false
+                              }
+                            ]
+                          }
+                        },
+                        "required": ["direction", "target"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "notes": {
+                      "maxItems": 200,
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "maxLength": 2048
+                      }
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "kind",
+                    "purpose",
+                    "core",
+                    "agentId",
+                    "agentName",
+                    "executor",
+                    "priority",
+                    "state",
+                    "stateReason",
+                    "next",
+                    "conditions",
+                    "repeat",
+                    "notBefore",
+                    "dueAt",
+                    "nextAt",
+                    "progress",
+                    "parent",
+                    "dependsOn",
+                    "origin",
+                    "doneCount",
+                    "lastDoneAt",
+                    "reopened",
+                    "sourcePath",
+                    "allowedActions",
+                    "updatedAt",
+                    "children",
+                    "blocks",
+                    "links",
+                    "notes"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Problem: `validation-failed`.",
+            "x-problem-codes": ["validation-failed"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem: `unauthenticated`.",
+            "x-problem-codes": ["unauthenticated"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem: `forbidden`.",
+            "x-problem-codes": ["forbidden"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem: `capability-not-supported`, `not-found`.",
+            "x-problem-codes": ["capability-not-supported", "not-found"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Problem: `rate-limited`.",
+            "x-problem-codes": ["rate-limited"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Problem: `internal-error`.",
+            "x-problem-codes": ["internal-error"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Problem: `unavailable`.",
+            "x-problem-codes": ["unavailable"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/tasks/{taskId}/occurrences": {
+      "get": {
+        "operationId": "listTaskOccurrences",
+        "summary": "List a task's occurrences, newest first",
+        "tags": ["tasks"],
+        "x-required-permission": "tasks.read",
+        "x-capability": {
+          "id": "tasks",
+          "version": 1,
+          "label": "tasks@1"
+        },
+        "parameters": [
+          {
+            "name": "taskId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_-]{1,64}$"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1024
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                          },
+                          "taskId": {
+                            "type": "string",
+                            "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                          },
+                          "sequence": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 9007199254740991
+                          },
+                          "cycle": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 9007199254740991
+                          },
+                          "reason": {
+                            "type": "string",
+                            "enum": ["first", "repeat", "catch-up", "reopen", "retry"]
+                          },
+                          "retryOf": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "state": {
+                            "type": "string",
+                            "enum": ["pending", "running", "waiting", "completed", "failed", "cancelled", "interrupted"]
+                          },
+                          "scheduledFor": {
+                            "anyOf": [
+                              {
+                                "$ref": "#/components/schemas/Timestamp"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "startedAt": {
+                            "anyOf": [
+                              {
+                                "$ref": "#/components/schemas/Timestamp"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "endedAt": {
+                            "anyOf": [
+                              {
+                                "$ref": "#/components/schemas/Timestamp"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "summary": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "maxLength": 1024
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "runIds": {
+                            "maxItems": 100,
+                            "type": "array",
+                            "items": {
+                              "$ref": "#/components/schemas/RunId"
+                            }
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "taskId",
+                          "sequence",
+                          "cycle",
+                          "reason",
+                          "retryOf",
+                          "state",
+                          "scheduledFor",
+                          "startedAt",
+                          "endedAt",
+                          "summary",
+                          "runIds"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "nextCursor": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 1024
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": ["items", "nextCursor"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Problem: `invalid-cursor`, `validation-failed`.",
+            "x-problem-codes": ["invalid-cursor", "validation-failed"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem: `unauthenticated`.",
+            "x-problem-codes": ["unauthenticated"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem: `forbidden`.",
+            "x-problem-codes": ["forbidden"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem: `capability-not-supported`, `not-found`.",
+            "x-problem-codes": ["capability-not-supported", "not-found"],
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -14756,6 +16377,42 @@
             "properties": {
               "type": {
                 "type": "string",
+                "const": "task.changed"
+              },
+              "taskId": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,64}$"
+              },
+              "state": {
+                "type": "string",
+                "enum": [
+                  "active",
+                  "awaiting-user",
+                  "ready",
+                  "needs-assignment",
+                  "assigning",
+                  "needs-recovery",
+                  "failed",
+                  "incompatible",
+                  "blocked",
+                  "waiting-until",
+                  "waiting-dependency",
+                  "not-ready",
+                  "placeholder",
+                  "done",
+                  "cancelled",
+                  "retired"
+                ]
+              }
+            },
+            "required": ["type", "taskId", "state"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
                 "const": "activity"
               },
               "activity": {
@@ -15909,6 +17566,7 @@
           "audit.read",
           "runs.read",
           "runs.control",
+          "tasks.read",
           "triggers.read",
           "triggers.manage",
           "integrations.read",
@@ -16304,6 +17962,28 @@
               }
             ]
           },
+          "taskId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,64}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "occurrenceId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,64}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "createdBy": {
             "anyOf": [
               {
@@ -16502,6 +18182,28 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/RunId"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "taskId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,64}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "occurrenceId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,64}$"
               },
               {
                 "type": "null"

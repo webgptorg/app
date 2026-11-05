@@ -5,6 +5,7 @@ import type { Activity } from '../capabilities/activity';
 import type { FileMetadata, FilePurpose, FileUploadPolicy, FileVersion } from '../capabilities/files';
 import type { Integration } from '../capabilities/integrations';
 import type { RunDetail } from '../capabilities/runs';
+import type { TaskRecord } from './tasks';
 import type { Trigger, TriggerFire } from '../capabilities/triggers';
 import type { Chat, Message } from '../chats';
 import type { OrgId } from '../common';
@@ -83,6 +84,7 @@ export interface InMemoryState {
     readonly files: Map<string, FileRecord>;
     readonly uploadPolicies: Readonly<Record<FilePurpose, FileUploadPolicy>>;
     readonly runs: Map<string, RunDetail>;
+    readonly tasks: Map<string, TaskRecord>;
     readonly triggers: Map<string, TriggerRecord>;
     readonly integrations: Map<string, Integration>;
     /** Oldest first. */

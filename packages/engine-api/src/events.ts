@@ -6,6 +6,7 @@ import type { ActivityItem } from './capabilities/activity';
 import { FileChangedEvent } from './capabilities/files';
 import { IntegrationChangedEvent } from './capabilities/integrations';
 import { RunChangedEvent, RunChangedEventReader } from './capabilities/runs';
+import { TaskChangedEvent, TaskChangedEventReader } from './capabilities/tasks';
 import { TriggerChangedEvent } from './capabilities/triggers';
 import { AgentId, ChatId, Timestamp } from './common';
 import { defineRoute } from './route';
@@ -19,7 +20,7 @@ const coreEvents = [
     FileChangedEvent,
     IntegrationChangedEvent,
 ] as const;
-const CoreEngineEvent = z.discriminatedUnion('type', [...coreEvents, RunChangedEvent]);
+const CoreEngineEvent = z.discriminatedUnion('type', [...coreEvents, RunChangedEvent, TaskChangedEvent]);
 
 /**
  * Change notifications, so the UI refreshes lists without polling. They carry IDs, never content, and the engine sends
@@ -30,11 +31,14 @@ export type EngineEvent = z.infer<typeof EngineEvent>;
 
 /** An event as the client reads it: activity goes through `parseActivity`, so an unknown kind is data, not an error. */
 export type ReadEngineEvent =
-    | Exclude<EngineEvent, { readonly type: 'activity' | 'run.changed' }>
+    | Exclude<EngineEvent, { readonly type: 'activity' | 'run.changed' | 'task.changed' }>
     | z.output<typeof RunChangedEventReader>
+    | z.output<typeof TaskChangedEventReader>
     | { readonly type: 'activity'; readonly activity: ActivityItem };
 
-const tolerantCoreEvent = toTolerant(z.discriminatedUnion('type', [...coreEvents, RunChangedEventReader]));
+const tolerantCoreEvent = toTolerant(
+    z.discriminatedUnion('type', [...coreEvents, RunChangedEventReader, TaskChangedEventReader]),
+);
 const KNOWN_EVENT_TYPES: ReadonlySet<string> = new Set(EngineEvent.options.map((option) => option.shape.type.value));
 
 /** `null` for events the client skips: unknown types, and activity without a valid base. */

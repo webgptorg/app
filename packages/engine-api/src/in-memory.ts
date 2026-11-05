@@ -29,6 +29,7 @@ export type {
     InMemorySeedChat,
     InMemorySeedFile,
     InMemorySeedRun,
+    InMemorySeedTask,
     InMemorySeedTrigger,
     InMemoryVisitorChat,
     ResourceKind,

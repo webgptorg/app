@@ -181,6 +181,8 @@ const run = {
     messageId: null,
     triggerId: 'trg_1',
     retryOf: null,
+    taskId: null,
+    occurrenceId: null,
     createdBy: null,
     queuedAt: NOW,
     startedAt: NOW,

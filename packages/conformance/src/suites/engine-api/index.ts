@@ -20,6 +20,7 @@ import { RUN_CHECKS } from './runs';
 import { SCHEMA_CHECKS } from './schemas';
 import { SECRET_CHECKS } from './secrets';
 import { SUITE } from './support';
+import { TASK_CHECKS } from './tasks';
 import { TEST_CHAT_CHECKS } from './test-chat';
 import { TRIGGER_CHECKS } from './triggers';
 
@@ -36,6 +37,7 @@ export const ENGINE_API_SUITE: ConformanceSuite = {
         ...CHAT_CHECKS,
         ...SECRET_CHECKS,
         ...RUN_CHECKS,
+        ...TASK_CHECKS,
         ...FILE_CHECKS,
         ...TRIGGER_CHECKS,
         ...INTEGRATION_CHECKS,

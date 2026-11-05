@@ -68,6 +68,7 @@ function requestCredentialKeys(route: RouteDefinition): string[] {
 
 const CAPABILITY_BY_PATH = [
     ['/runs', KNOWN_CAPABILITIES.runs],
+    ['/tasks', KNOWN_CAPABILITIES.tasks],
     ['/files', KNOWN_CAPABILITIES.files],
     ['/triggers', KNOWN_CAPABILITIES.triggers],
     ['/integrations', KNOWN_CAPABILITIES.integrations],

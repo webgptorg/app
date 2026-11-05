@@ -183,6 +183,7 @@ describe('control listener: simulation (M-07)', () => {
         expect((await call('/__mock/state')).body).toMatchObject({
             capabilities: [
                 'runs@1',
+                'tasks@1',
                 'files@1',
                 'triggers@1',
                 'integrations@1',
