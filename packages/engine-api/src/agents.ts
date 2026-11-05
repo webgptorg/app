@@ -3,6 +3,7 @@ import { z } from 'zod';
 import {
     AgentId,
     AgentPermanentId,
+    Cursor,
     Diagnostic,
     FolderId,
     MemberId,
@@ -15,6 +16,7 @@ import {
 import { MAX_BOOK_SOURCE_LENGTH } from './constants';
 import { KNOWN_CAPABILITIES } from './capabilities/capability';
 import { defineRoute } from './route';
+import { toTolerant } from './tolerant';
 
 export const AGENT_VISIBILITIES = ['public', 'private', 'unlisted'] as const;
 export const AgentVisibility = z.enum(AGENT_VISIBILITIES);
@@ -69,6 +71,22 @@ export const Agent = z.strictObject({
 });
 export type Agent = z.infer<typeof Agent>;
 export const AgentPage = pageOf(Agent);
+
+/**
+ * `origin` as the client reads it: an engine that does not report it yet, or reports one this contract does not know,
+ * reads as `content`, a project's own agent, which every agent was before origins. The engine still refuses changes to
+ * its own agents, so a misread origin costs at most an action that answers 409.
+ */
+const ReadAgentOrigin = z
+    .string()
+    .max(64)
+    .optional()
+    .transform((value): AgentOrigin => AGENT_ORIGINS.find((origin) => origin === value) ?? 'content');
+
+/** Agents as the client reads them; engines still answer with the strict `Agent`. */
+export const AgentReader = toTolerant(Agent.extend({ origin: ReadAgentOrigin }));
+export type ReadAgent = z.output<typeof AgentReader>;
+export const AgentPageReader = z.object({ items: z.array(AgentReader), nextCursor: Cursor.nullable() });
 
 export const AGENT_SORTS = ['name', '-name', 'updatedAt', '-updatedAt', 'createdAt', '-createdAt'] as const;
 export const AGENT_DELETED_FILTERS = ['exclude', 'include', 'only'] as const;
@@ -144,7 +162,7 @@ export const AGENT_ROUTES = {
         summary: 'List agents',
         permission: 'agents.read',
         query: AgentListQuery,
-        responses: { 200: { kind: 'json', schema: AgentPage } },
+        responses: { 200: { kind: 'json', schema: AgentPage, read: AgentPageReader } },
     }),
     createAgent: defineRoute({
         id: 'createAgent',
@@ -153,7 +171,7 @@ export const AGENT_ROUTES = {
         summary: 'Create an agent from book source; a book with an error diagnostic is refused and nothing is stored',
         permission: 'agents.write',
         body: { kind: 'json', schema: CreateAgentBody },
-        responses: { 201: { kind: 'json', schema: Agent } },
+        responses: { 201: { kind: 'json', schema: Agent, read: AgentReader } },
         problems: ['invalid-book'],
     }),
     validateAgentSource: defineRoute({
@@ -173,7 +191,7 @@ export const AGENT_ROUTES = {
         summary: 'Get an agent, including a soft-deleted one',
         permission: 'agents.read',
         params: AgentParams,
-        responses: { 200: { kind: 'json', schema: Agent } },
+        responses: { 200: { kind: 'json', schema: Agent, read: AgentReader } },
     }),
     updateAgent: defineRoute({
         id: 'updateAgent',
@@ -184,7 +202,7 @@ export const AGENT_ROUTES = {
         capability: KNOWN_CAPABILITIES.agentManagement,
         params: AgentParams,
         body: { kind: 'json', schema: UpdateAgentBody },
-        responses: { 200: { kind: 'json', schema: Agent } },
+        responses: { 200: { kind: 'json', schema: Agent, read: AgentReader } },
         problems: ['agent-deleted', 'agent-engine-owned'],
     }),
     deleteAgent: defineRoute({
@@ -194,7 +212,7 @@ export const AGENT_ROUTES = {
         summary: 'Soft-delete an agent (idempotent)',
         permission: 'agents.delete',
         params: AgentParams,
-        responses: { 200: { kind: 'json', schema: Agent } },
+        responses: { 200: { kind: 'json', schema: Agent, read: AgentReader } },
         problems: ['agent-engine-owned'],
     }),
     restoreAgent: defineRoute({
@@ -205,7 +223,7 @@ export const AGENT_ROUTES = {
         permission: 'agents.delete',
         capability: KNOWN_CAPABILITIES.agentManagement,
         params: AgentParams,
-        responses: { 200: { kind: 'json', schema: Agent } },
+        responses: { 200: { kind: 'json', schema: Agent, read: AgentReader } },
         problems: ['agent-engine-owned'],
     }),
     getAgentSource: defineRoute({

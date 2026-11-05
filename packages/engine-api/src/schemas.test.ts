@@ -1,7 +1,7 @@
 import type { z } from 'zod';
 import { describe, expect, it } from 'vitest';
 
-import { Agent, AgentListQuery } from './agents';
+import { Agent, AgentListQuery, AgentPageReader, AgentReader } from './agents';
 import { AuditEntry, AuditPageReader, isAuditAction } from './audit';
 import { Activity } from './capabilities/activity';
 import { FileMetadata, FileVersion } from './capabilities/files';
@@ -811,5 +811,22 @@ describe('capability schema details', () => {
             CreateIntegrationBody.safeParse({ kind: 'mcp-server', name: 'Plain', url: 'http://mcp.example.com' })
                 .success,
         ).toBe(false);
+    });
+});
+
+describe('AgentReader (agent origin)', () => {
+    const withoutOrigin = Object.fromEntries(Object.entries(agent).filter(([key]) => key !== 'origin'));
+
+    it('requires origin from engines, but reads an agent without one as content', () => {
+        expect(Agent.safeParse(withoutOrigin).success).toBe(false);
+        expect(AgentReader.parse(withoutOrigin).origin).toBe('content');
+        expect(AgentPageReader.parse({ items: [withoutOrigin], nextCursor: null }).items[0]?.origin).toBe('content');
+    });
+
+    it('reads an origin a newer engine added as content, and keeps the known ones', () => {
+        expect(AgentReader.parse({ ...agent, origin: 'plugin' }).origin).toBe('content');
+        for (const origin of ['content', 'core', 'system'] as const) {
+            expect(AgentReader.parse({ ...agent, origin }).origin).toBe(origin);
+        }
     });
 });
