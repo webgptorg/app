@@ -272,6 +272,7 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
         capabilities: capabilitiesFor(config.capabilities),
         simulation: config.simulation,
         passkeys: config.passkeys,
+        ...(config.onboarding === null ? {} : { onboarding: config.onboarding }),
         faults: () => faults.plan(),
         onSimulationError: (error) => {
             logger.error('simulation.error', { problem: error instanceof Error ? error.name : 'unknown' });

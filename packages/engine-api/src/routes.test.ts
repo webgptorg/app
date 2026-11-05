@@ -77,6 +77,7 @@ const CAPABILITY_BY_PATH = [
     ['/settings/dashboard-removals', KNOWN_CAPABILITIES.accessRequests],
     ['/chats/{chatId}/live-audio', RESERVED_CAPABILITIES.liveAudio],
     ['/browser-tab-sessions', RESERVED_CAPABILITIES.browserTab],
+    ['/onboarding', KNOWN_CAPABILITIES.onboarding],
 ] as const;
 
 /** Core features an engine may leave out: these routes share paths with core routes that stay, so they go by ID. */

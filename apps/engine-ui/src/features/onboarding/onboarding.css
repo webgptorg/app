@@ -1,0 +1,19 @@
+/* The native progress element: its value needs no inline style, which the engine's CSP forbids. */
+.onboarding-progress {
+    appearance: none;
+    border: 0;
+    border-radius: 9999px;
+    overflow: hidden;
+    background: var(--color-sunken);
+}
+.onboarding-progress::-webkit-progress-bar {
+    background: var(--color-sunken);
+}
+.onboarding-progress::-webkit-progress-value {
+    background: var(--color-accent);
+    border-radius: 9999px;
+}
+.onboarding-progress::-moz-progress-bar {
+    background: var(--color-accent);
+    border-radius: 9999px;
+}

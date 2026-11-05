@@ -1,11 +1,13 @@
 import { KNOWN_CAPABILITIES } from '@ptbk/engine-api';
-import { createFileRoute } from '@tanstack/react-router';
+import { createFileRoute, redirect } from '@tanstack/react-router';
 
 import { loadAccess } from '../app/registry/engine-access';
 import { isAllowed } from '../app/registry/visibility';
 import { HomeSearch } from '../features/home/activity/activity-areas';
 import { activityFeedQueryOptions } from '../features/home/activity/activity-queries';
 import { homeVariant } from '../features/home/home-variant';
+import { ONBOARDING_REQUIREMENT } from '../features/onboarding/onboarding-feature';
+import { onboardingQueryOptions } from '../features/onboarding/onboarding-queries';
 import { HomePage } from '../features/home/home-page';
 import {
     memberAgentsQueryOptions,
@@ -18,6 +20,12 @@ import { runStatsQueryOptions } from '../features/runs/runs-queries';
 
 export const Route = createFileRoute('/')({
     validateSearch: HomeSearch,
+    // A new engine opens on its setup, once: after "Skip for now" (`deferred`) home only offers it.
+    beforeLoad: async ({ context }) => {
+        if (!isAllowed(ONBOARDING_REQUIREMENT, await loadAccess(context))) return;
+        const state = await context.queryClient.query(onboardingQueryOptions(context.engineApi)).catch(() => undefined);
+        if (state?.status === 'pending' && !state.deferred) redirect({ to: '/onboarding', throw: true });
+    },
     loaderDeps: ({ search }) => ({ area: search.activity ?? null }),
     // Prefetches without waiting: each widget shows its own skeleton and error, so no endpoint holds up the others.
     loader: async ({ context, deps }) => {

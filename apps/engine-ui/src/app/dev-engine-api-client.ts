@@ -19,7 +19,10 @@ export function createDevEngineApiClient(): EngineApiClient {
                 dashboardUrl: null,
                 mode: 'local',
             },
+            ...(import.meta.env.VITE_ENGINE_ONBOARDING === 'pending' ? { onboarding: 'pending' as const } : {}),
         },
-        ...(import.meta.env.VITE_ENGINE_PROFILE === 'full' ? {} : { capabilities: [KNOWN_CAPABILITIES.files] }),
+        ...(import.meta.env.VITE_ENGINE_PROFILE === 'full'
+            ? {}
+            : { capabilities: [KNOWN_CAPABILITIES.files, KNOWN_CAPABILITIES.onboarding] }),
     });
 }

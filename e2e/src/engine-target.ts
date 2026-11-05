@@ -31,7 +31,8 @@ export type EngineCapabilityName =
     | 'api-tokens'
     | 'audit'
     | 'book-editor'
-    | 'agent-management';
+    | 'agent-management'
+    | 'onboarding';
 
 /** The mock's `full` profile: every screen the UI has, so each flow can reach its own. */
 export const ALL_CAPABILITIES: readonly EngineCapabilityName[] = [
@@ -47,6 +48,7 @@ export const ALL_CAPABILITIES: readonly EngineCapabilityName[] = [
     'audit',
     'book-editor',
     'agent-management',
+    'onboarding',
 ];
 
 export interface ResetOptions {

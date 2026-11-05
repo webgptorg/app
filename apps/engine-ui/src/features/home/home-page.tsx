@@ -3,6 +3,7 @@ import { ControlCenter } from './control-center';
 import { HomeHeader } from './home-header';
 import { homeVariant } from './home-variant';
 import { MemberHome } from './member-home';
+import { OnboardingNotice } from '../onboarding/onboarding-notice';
 
 /** The first screen after sign-in: the control center for members who oversee the engine, a personal home otherwise. */
 export function HomePage() {
@@ -10,6 +11,7 @@ export function HomePage() {
     return (
         <section aria-labelledby="page-title" className="flex flex-col gap-6">
             <HomeHeader now={new Date()} />
+            <OnboardingNotice />
             {homeVariant(permissions) === 'control-center' ? <ControlCenter /> : <MemberHome />}
         </section>
     );

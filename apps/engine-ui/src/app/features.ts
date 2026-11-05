@@ -7,6 +7,7 @@ import { filesFeature } from '../features/files/files-feature';
 import { homeFeature } from '../features/home/home-feature';
 import { integrationsFeature } from '../features/integrations/integrations-feature';
 import { membersFeature } from '../features/members/members-feature';
+import { onboardingFeature } from '../features/onboarding/onboarding-feature';
 import { runsFeature } from '../features/runs/runs-feature';
 import { secretsFeature } from '../features/secrets/secrets-feature';
 import { securityFeature } from '../features/security/security-feature';
@@ -35,4 +36,5 @@ export const FEATURES: readonly FeatureDefinition[] = [
     secretsFeature,
     auditFeature,
     settingsFeature,
+    onboardingFeature,
 ];

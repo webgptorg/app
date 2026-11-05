@@ -145,21 +145,23 @@ describe('app shell', () => {
         expect(destinations).not.toContain('Audit log');
     });
 
-    it.each(['/audit', '/agents/new', '/agents/agent-001/book', '/agents/agent-001/settings', '/triggers'])(
-        'answers %s on a Reborn engine with "not available on this engine"',
-        async (path) => {
-            renderWithProviders({
-                path,
-                engineApi: createTestEngineApi({
-                    capabilities: [KNOWN_CAPABILITIES.files],
-                    seed: { agents: [{ id: 'agent-001', source: 'Ada\nPERSONA Research' }] },
-                }),
-            });
-            expect(
-                await screen.findByRole('heading', { level: 1, name: 'Not available on this engine' }),
-            ).toBeDefined();
-        },
-    );
+    it.each([
+        '/audit',
+        '/onboarding',
+        '/agents/new',
+        '/agents/agent-001/book',
+        '/agents/agent-001/settings',
+        '/triggers',
+    ])('answers %s on a Reborn engine with "not available on this engine"', async (path) => {
+        renderWithProviders({
+            path,
+            engineApi: createTestEngineApi({
+                capabilities: [KNOWN_CAPABILITIES.files],
+                seed: { agents: [{ id: 'agent-001', source: 'Ada\nPERSONA Research' }] },
+            }),
+        });
+        expect(await screen.findByRole('heading', { level: 1, name: 'Not available on this engine' })).toBeDefined();
+    });
 
     it('says "no access" for an advertised capability without the permission', async () => {
         const gatedAudit: FeatureDefinition = {
