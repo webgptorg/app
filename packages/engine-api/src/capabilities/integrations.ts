@@ -13,7 +13,6 @@ import {
     valueSet,
 } from '../common';
 import { defineRoute } from '../route';
-import { SecretName } from '../secrets';
 import { openEnum, toTolerant } from '../tolerant';
 import { KNOWN_CAPABILITIES } from './capability';
 
@@ -28,6 +27,9 @@ export const IntegrationKindName = z.string().regex(/^[a-z][a-z0-9-]{0,63}$/);
 export const INTEGRATION_STATUSES = ['connected', 'needs-attention', 'disconnected', 'error'] as const;
 export const IntegrationStatus = z.enum(INTEGRATION_STATUSES);
 export type IntegrationStatus = z.infer<typeof IntegrationStatus>;
+
+/** Integrations reference the engine's named tool secrets; their values are set on the engine, not through this API. */
+export const SecretName = z.string().trim().min(1).max(128);
 
 export const SECRET_REF_STATES = ['resolved', 'missing', 'revoked'] as const;
 

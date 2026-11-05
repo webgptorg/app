@@ -66,7 +66,6 @@ export const MAX_RUN_PREVIEW_LENGTH = 200;
 export const MAX_TEST_CHAT_MESSAGES = 50;
 /** The test conversation's messages together, in UTF-16 code units, on top of the book itself. */
 export const MAX_TEST_CHAT_TRANSCRIPT_LENGTH = 256 * 1024;
-export const MAX_SECRET_VALUE_LENGTH = 64 * 1024;
 
 export const MAX_FILE_BYTES = 25 * 1024 * 1024;
 

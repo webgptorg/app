@@ -56,13 +56,6 @@ export const PAGINATION_CHECKS: readonly ConformanceCheck[] = [
                 await checkWalk(world, findings, R.listAgents, { q: tag }, agents);
             });
             await attempt(findings, async () => {
-                const secrets: string[] = [];
-                for (let index = 0; index < CREATED; index++) {
-                    secrets.push((await world.createSecret(label, randomToken(ctx.random, 32))).id);
-                }
-                await checkWalk(world, findings, R.listSecrets, { q: tag }, secrets);
-            });
-            await attempt(findings, async () => {
                 const folders: string[] = [];
                 for (let index = 0; index < CREATED; index++) folders.push((await world.createFolder(label)).id);
                 await checkWalk(world, findings, R.listFolders, {}, folders);

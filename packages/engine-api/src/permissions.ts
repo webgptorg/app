@@ -18,9 +18,10 @@ export const PERMISSIONS = [
     'chats.write',
     'files.read',
     'files.write',
-    /** Secret metadata only; no permission makes a secret value readable. */
-    'secrets.read',
-    'secrets.manage',
+    /** Wallet logins without secrets and pending requests; no permission makes a password readable. */
+    'wallet.read',
+    /** Add, update and remove logins; mark requests as seen or reject them. */
+    'wallet.manage',
     'members.read',
     /** Also covers revoking another member's passkeys and sessions. */
     'members.manage',

@@ -604,21 +604,37 @@ describe('tolerant reading', () => {
         expect(response.data.items[0]?.details).toEqual({ from: 'a0' });
     });
 
-    it('drops a value a misbehaving engine sends with secret metadata, so it never reaches the caller', async () => {
-        const metadata = {
-            id: 's1',
-            name: 'GITHUB_TOKEN',
-            scope: { kind: 'engine' },
-            status: 'active',
-            createdBy: 'm1',
-            createdAt: AT,
+    it('drops a password a misbehaving engine sends with a Wallet login, so it never reaches the caller', async () => {
+        const record = {
+            id: 'login-1',
+            label: 'github.com · ad…@example.com',
+            origin: 'https://github.com',
+            username: 'ada@example.com',
+            fields: [{ label: 'PIN', uncertain: false }],
             updatedAt: AT,
-            valueUpdatedAt: AT,
-            lastUsedAt: null,
+            lastUse: null,
+            verification: { state: 'retested', at: AT, reason: '' },
         };
-        const { client } = setup(() => json({ items: [{ ...metadata, value: SENTINEL }], nextCursor: null }));
-        const response = await client.secrets.list({}, signal());
-        expect(response).toEqual({ kind: 'ok', data: { items: [metadata], nextCursor: null } });
+        const { client } = setup(() =>
+            json({
+                state: 'ready',
+                records: [
+                    { ...record, password: SENTINEL, fields: [{ label: 'PIN', uncertain: false, value: SENTINEL }] },
+                ],
+                lockedRecords: 0,
+                pending: [],
+            }),
+        );
+        const response = await client.wallet.get(signal());
+        expect(response).toEqual({
+            kind: 'ok',
+            data: {
+                state: 'ready',
+                records: [{ ...record, verification: { ...record.verification, state: 'unknown' } }],
+                lockedRecords: 0,
+                pending: [],
+            },
+        });
         expect(JSON.stringify(response)).not.toContain(SENTINEL);
     });
 

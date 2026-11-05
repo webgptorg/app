@@ -18,12 +18,12 @@ describe('permissionsFor', () => {
         expect(admin.size).toBe(PERMISSIONS.length - 2);
     });
 
-    it('keeps members away from secrets.manage, members.manage and settings', () => {
+    it('keeps members away from wallet.manage, members.manage and settings', () => {
         const member = permissionsFor({ role: 'member' }, { permissions: null });
-        for (const permission of ['secrets.manage', 'members.manage', 'settings.manage', 'audit.read'] as const) {
+        for (const permission of ['wallet.manage', 'members.manage', 'settings.manage', 'audit.read'] as const) {
             expect(member.has(permission)).toBe(false);
         }
-        expect(member.has('secrets.read')).toBe(true);
+        expect(member.has('wallet.read')).toBe(true);
         expect(member.has('agents.write')).toBe(true);
     });
 
@@ -31,7 +31,7 @@ describe('permissionsFor', () => {
         const viewer = permissionsFor({ role: 'viewer' }, { permissions: null });
         expect(viewer.size).toBeGreaterThan(0);
         expect([...viewer].every(isReadPermission)).toBe(true);
-        expect(viewer.has('secrets.read')).toBe(false);
+        expect(viewer.has('wallet.read')).toBe(false);
     });
 
     it('lists only known permissions for every role, without duplicates', () => {
@@ -94,7 +94,7 @@ describe('decideOwnership', () => {
     });
 
     it('denies a missing permission first', () => {
-        expect(decideOwnership(member, 'secrets.manage', null)).toEqual({ kind: 'deny', reason: 'missing-permission' });
+        expect(decideOwnership(member, 'wallet.manage', null)).toEqual({ kind: 'deny', reason: 'missing-permission' });
         expect(decideOwnership(member, 'settings.manage', agent('member-a'))).toEqual({
             kind: 'deny',
             reason: 'missing-permission',

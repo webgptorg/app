@@ -3,6 +3,8 @@ import {
     ChatId,
     FileId,
     IntegrationId,
+    WalletRecordId,
+    WalletRequestId,
     RevisionId,
     RunId,
     TaskId,
@@ -171,8 +173,21 @@ const ROUTES: readonly (readonly ['GET' | 'POST' | 'PUT', RegExp, number, Call])
         200,
         (api, _, query, __, signal) => api.members.listInvites(Object.fromEntries(query), signal),
     ],
-    ['GET', /^\/secrets$/, 200, (api, _, query, __, signal) => api.secrets.list(Object.fromEntries(query), signal)],
-    ['POST', /^\/secrets$/, 201, (api, _, __, body, signal) => api.secrets.create(body as never, signal)],
+    ['GET', /^\/wallet$/, 200, (api, _, __, ___, signal) => api.wallet.get(signal)],
+    ['POST', /^\/wallet\/records$/, 200, (api, _, __, body, signal) => api.wallet.add(body as never, signal)],
+    [
+        'PUT',
+        /^\/wallet\/records\/([^/]+)$/,
+        200,
+        (api, match, _, body, signal) => api.wallet.update(WalletRecordId.parse(match[1] ?? ''), body as never, signal),
+    ],
+    [
+        'POST',
+        /^\/wallet\/requests\/([^/]+)\/seen$/,
+        200,
+        (api, match, _, body, signal) =>
+            api.wallet.markSeen(WalletRequestId.parse(match[1] ?? ''), body as never, signal),
+    ],
     [
         'GET',
         /^\/me\/passkeys$/,
@@ -666,11 +681,11 @@ function auditEntries() {
         return {
             at: new Date(Date.parse('2026-09-01T00:00:00Z') + n * 3_600_000).toISOString(),
             actor: n % 10 === 0 ? { kind: 'system' as const } : { kind: 'member' as const, memberId: 'member-jana' },
-            action: n % 2 === 0 ? ('agent.update' as const) : ('secret.replace' as const),
+            action: n % 2 === 0 ? ('agent.update' as const) : ('wallet.record.update' as const),
             target:
                 n % 2 === 0
                     ? { kind: 'agent' as const, id: FAKE_AGENT_ID, name: n === 60 ? HOSTILE_TARGET_NAME : 'Ada' }
-                    : { kind: 'secret' as const, id: 'secret-github', name: 'GITHUB_TOKEN' },
+                    : { kind: 'wallet-record' as const, id: 'login-github', name: 'github.com · ad…@example.com' },
             outcome: n % 7 === 0 ? ('denied' as const) : ('success' as const),
             client:
                 n % 10 === 0
@@ -875,28 +890,46 @@ export async function routeFakeEngineApi(
             engine: { name: 'CSP test engine', hostname: 'engine.localhost', dashboardUrl: null, mode: 'local' },
             ...(options.onboarding === undefined ? {} : { onboarding: options.onboarding }),
             security: SECURITY_OVERVIEW,
-            secrets: [
-                {
-                    id: 'secret-github',
-                    name: 'GITHUB_TOKEN',
-                    scope: { kind: 'engine' },
-                    status: 'active',
-                    createdBy: 'member-owner',
-                    createdAt: '2026-09-01T00:00:00.000Z',
-                    updatedAt: '2026-09-01T00:00:00.000Z',
-                    lastUsedAt: '2026-09-30T10:00:00.000Z',
-                },
+            integrationSecrets: [
+                { id: 'secret-github', name: 'GITHUB_TOKEN', scope: { kind: 'engine' }, status: 'active' },
                 {
                     id: 'secret-ada',
                     name: 'ADA_SEARCH_KEY',
                     scope: { kind: 'agent', agentId: FAKE_AGENT_ID },
                     status: 'revoked',
-                    createdBy: 'member-owner',
-                    createdAt: '2026-09-02T00:00:00.000Z',
-                    updatedAt: '2026-09-03T00:00:00.000Z',
-                    lastUsedAt: null,
                 },
             ],
+            wallet: {
+                records: [
+                    {
+                        id: 'login-github',
+                        label: 'github.com · ad…@example.com',
+                        origin: 'https://github.com',
+                        username: 'ada@example.com',
+                        fields: [],
+                        updatedAt: '2026-09-01T00:00:00.000Z',
+                        lastUse: { at: '2026-09-30T10:00:00.000Z', outcome: 'signed-in' },
+                        verification: null,
+                    },
+                ],
+                pending: [
+                    {
+                        id: 'walletreq-linear',
+                        origin: 'https://linear.app',
+                        account: null,
+                        problem: 'missing',
+                        fields: [],
+                        recordId: null,
+                        reason: HOSTILE_TARGET_NAME,
+                        tasks: [HOSTILE_TARGET_NAME],
+                        agents: ['Ada'],
+                        requests: 1,
+                        createdAt: '2026-09-30T09:00:00.000Z',
+                        seenAt: null,
+                        step: 0,
+                    },
+                ],
+            },
             auditEntries: auditEntries(),
             runs: fakeRuns(),
             tasks: fakeTasks(),

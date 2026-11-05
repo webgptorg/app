@@ -355,7 +355,7 @@ const FAILS: readonly Case[] = [
     [
         'a listing that leaves items out',
         'engine-api.pagination.walk',
-        { tamper: editJson(on('GET', /^\/secrets$/), (page) => ({ ...page, items: [] })) },
+        { tamper: editJson(on('GET', /^\/agents$/), (page) => ({ ...page, items: [] })) },
     ],
     [
         'a listing that never ends',
@@ -651,67 +651,166 @@ const FAILS: readonly Case[] = [
         },
     ],
     [
-        'a new secret already revoked elsewhere',
-        'engine-api.secrets.lifecycle',
+        'a new login that claims to be verified',
+        'engine-api.wallet.lifecycle',
         {
-            tamper: editJson(on('POST', /^\/secrets$/), (secret) => ({
-                ...secret,
-                status: 'revoked',
-                scope: { kind: 'agent', agentId: 'agent-x' },
+            tamper: editJson(on('POST', /^\/wallet\/records$/), (saved) => ({
+                ...saved,
+                record: {
+                    ...saved.record,
+                    verification: { state: 'verified', at: saved.record.updatedAt, reason: '' },
+                },
             })),
         },
     ],
     [
-        'a replaced secret that changed',
-        'engine-api.secrets.lifecycle',
+        'a second login for the same origin and username',
+        'engine-api.wallet.lifecycle',
         {
-            tamper: editJson(on('PUT', /\/value$/), (secret) => ({
-                ...secret,
-                name: 'other',
-                status: 'revoked',
-                createdAt: '2000-01-01T00:00:00Z',
-                updatedAt: '2000-01-01T00:00:00Z',
-            })),
-        },
-    ],
-    [
-        'a revoke that keeps it active',
-        'engine-api.secrets.lifecycle',
-        {
-            tamper: chain(
-                editJson(on('POST', /\/revoke$/), (secret) => ({ ...secret, status: 'active' })),
-                editJson(on('GET', /^\/secrets$/), (page) => ({
-                    ...page,
-                    items: page.items.map((secret: any) => ({ ...secret, status: 'active' })),
+            tamper: fromCall(
+                2,
+                editJson(on('POST', /^\/wallet\/records$/), (saved) => ({
+                    ...saved,
+                    record: { ...saved.record, id: 'login-other' },
                 })),
+                on('POST', /^\/wallet\/records$/),
             ),
         },
     ],
     [
-        'a revoked secret still replaceable',
-        'engine-api.secrets.lifecycle',
+        'an update that keeps the old label',
+        'engine-api.wallet.lifecycle',
         {
-            tamper: replace(on('PUT', /\/value$/), (_, response) =>
+            tamper: editJson(on('PUT', /^\/wallet\/records\//), (saved) => ({
+                ...saved,
+                record: { ...saved.record, label: 'unchanged' },
+            })),
+        },
+    ],
+    [
+        'a removed login still listed and still removable',
+        'engine-api.wallet.lifecycle',
+        {
+            tamper: chain(
+                fromCall(
+                    2,
+                    editJson(on('GET', /^\/wallet$/), (wallet) => ({
+                        ...wallet,
+                        records: [{ ...wallet.records[0] }, ...wallet.records],
+                    })),
+                    on('GET', /^\/wallet$/),
+                ),
+                replace(on('DELETE', /^\/wallet\/records\//), (_, response) =>
+                    response.status === 404 ? new Response(null, { status: 204 }) : response,
+                ),
+            ),
+        },
+    ],
+    [
+        'a stale step accepted',
+        'engine-api.wallet.requests',
+        {
+            tamper: replace(on('POST', /\/seen$/), (_, response) =>
                 response.status === 409 ? problem('not-found', 404) : response,
             ),
         },
     ],
     [
-        'a deleted secret still listed',
-        'engine-api.secrets.lifecycle',
+        'a request that can be rejected twice',
+        'engine-api.wallet.requests',
         {
-            tamper: chain(
-                fromCall(
-                    2,
-                    editJson(on('GET', /^\/secrets$/), (page) => ({
-                        ...page,
-                        items: [{ ...page.items[0] }, ...page.items],
-                    })),
-                    on('GET', /^\/secrets$/),
-                ),
-                replace(on('POST', /\/revoke$/), (_, response) =>
-                    response.status === 404 ? Response.json({}) : response,
-                ),
+            tamper: replace(on('POST', /\/reject$/), (_, response) =>
+                response.status === 404 ? new Response(null, { status: 204 }) : response,
+            ),
+        },
+    ],
+    [
+        'a save that resolves nothing',
+        'engine-api.wallet.requests',
+        {
+            tamper: editJson(on('POST', /^\/wallet\/records$/), (saved) => ({ ...saved, resolvedRequestIds: [] })),
+        },
+    ],
+    [
+        'a finished onboarding that still asks a question',
+        'engine-api.onboarding.state',
+        {
+            tamper: editJson(on('GET', /^\/onboarding$/), (state) => ({
+                ...state,
+                status: state.prompt === null ? 'pending' : 'completed',
+                progress: { step: 3, of: 2 },
+            })),
+        },
+    ],
+    [
+        'a choice prompt that preselects a choice it does not offer',
+        'engine-api.onboarding.state',
+        {
+            tamper: editJson(on('GET', /^\/onboarding$/), (state) => ({
+                ...state,
+                status: 'pending',
+                prompt: {
+                    id: 'prompt-choice',
+                    title: 'Harness',
+                    question: 'Which harness?',
+                    hint: null,
+                    error: null,
+                    canGoBack: false,
+                    kind: 'choice',
+                    multiple: false,
+                    choices: [{ id: 'codex', label: 'Codex', description: null, disabled: false }],
+                    initial: ['claude-code'],
+                },
+            })),
+        },
+    ],
+    [
+        'a Wallet save the engine refuses outright',
+        'engine-api.wallet.lifecycle',
+        { tamper: replace(on('POST', /^\/wallet\/records$/), () => problem('wallet-not-ready', 409)) },
+    ],
+    [
+        'a raised request that is never listed',
+        'engine-api.wallet.requests',
+        { tamper: editJson(on('GET', /^\/wallet$/), (wallet) => ({ ...wallet, pending: [] })) },
+    ],
+    [
+        'a requested save that fails',
+        'engine-api.wallet.requests',
+        { tamper: replace(on('POST', /^\/wallet\/records$/), () => problem('internal-error', 500)) },
+    ],
+    [
+        'an updated password that claims to be verified',
+        'engine-api.wallet.lifecycle',
+        {
+            tamper: editJson(on('PUT', /^\/wallet\/records\//), (saved) => ({
+                ...saved,
+                record: {
+                    ...saved.record,
+                    verification: { state: 'verified', at: saved.record.updatedAt, reason: '' },
+                },
+            })),
+        },
+    ],
+    [
+        'a new request that is already seen',
+        'engine-api.wallet.requests',
+        {
+            tamper: editJson(on('GET', /^\/wallet$/), (wallet) => ({
+                ...wallet,
+                pending: wallet.pending.map((request: any) => ({ ...request, seenAt: '2026-01-01T00:00:00Z' })),
+            })),
+        },
+    ],
+    [
+        'marking as seen twice that moves the time',
+        'engine-api.wallet.requests',
+        {
+            // The first call is the stale step, the second marks it, the third repeats it.
+            tamper: fromCall(
+                3,
+                editJson(on('POST', /\/seen$/), (request) => ({ ...request, seenAt: '2027-01-01T00:00:00Z' })),
+                on('POST', /\/seen$/),
             ),
         },
     ],
@@ -935,6 +1034,22 @@ const FAILS: readonly Case[] = [
 ];
 
 const SKIPS: readonly Case[] = [
+    [
+        'a Wallet save that wants a step-up the suite cannot give',
+        'engine-api.wallet.lifecycle',
+        { tamper: replace(on('POST', /^\/wallet\/records$/), () => problem('step-up-required', 401)) },
+    ],
+    [
+        'a canary save that wants a step-up the suite cannot give',
+        'engine-api.secrets.never-returned',
+        { tamper: replace(on('POST', /^\/wallet\/records$/), () => problem('step-up-required', 401)) },
+    ],
+    [
+        'a target that cannot raise a Wallet request',
+        'engine-api.wallet.requests',
+        {},
+        (target) => without(target, 'walletRequest'),
+    ],
     ['no engine key', 'engine-api.engine.id-matches-key', {}, (target) => without(target, 'enginePublicKey')],
     [
         'a malformed engine key',
@@ -1524,11 +1639,6 @@ const CAPABILITY_FAILS: readonly Case[] = [
                 }),
             ),
         },
-    ],
-    [
-        'a secret reference that is not resolved',
-        'engine-api.integrations.secrets-never-returned',
-        { tamper: editJson(on('POST', INTEGRATIONS), (integration) => ({ ...integration, secretRefs: [] })) },
     ],
     [
         'activity of an unknown kind and one without a valid base',

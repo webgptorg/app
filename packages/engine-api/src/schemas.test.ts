@@ -53,7 +53,7 @@ import type { RouteDefinition } from './route';
 import { ENGINE_API_ROUTE_LIST } from './routes';
 import { Member } from './members';
 import { Passkey, PasskeyPageReader } from './passkeys';
-import { CreateSecretBody, SecretMetadata } from './secrets';
+import { AddWalletRecordBody, WalletRecord } from './capabilities/wallet';
 import { RekorEntryUuid, SecurityOverview, SecurityOverviewReader, UiUpdateCheck } from './security';
 import { Session } from './sessions';
 import { SetUpdatePolicyBody } from './settings';
@@ -135,15 +135,15 @@ const agent = {
     updatedAt: NOW,
     deletedAt: null,
 };
-const secret = {
-    id: 'sec_1',
-    name: 'OPENAI_API_KEY',
-    scope: { kind: 'agent', agentId: 'agt_1' },
-    status: 'active',
-    createdBy: 'mem_1',
-    createdAt: NOW,
+const walletRecord = {
+    id: 'login_1',
+    label: 'github.com · ad…@example.com',
+    origin: 'https://github.com',
+    username: 'ada@example.com',
+    fields: [],
     updatedAt: NOW,
-    lastUsedAt: null,
+    lastUse: { at: NOW, outcome: 'signed-in' },
+    verification: null,
 };
 const problem = {
     type: 'https://ptbk.io/problems/invalid-book',
@@ -164,8 +164,8 @@ const auditEntry = {
     seq: 1,
     at: NOW,
     actor: { kind: 'api-token', apiTokenId: 'tok_1', memberId: 'mem_1' },
-    action: 'secret.replace',
-    target: { kind: 'secret', id: 'sec_1' },
+    action: 'wallet.record.update',
+    target: { kind: 'wallet-record', id: 'login_1' },
     outcome: 'success',
     client: { ip: '203.0.113.7', userAgent: 'Firefox' },
     hash: SHA,
@@ -306,15 +306,20 @@ const engineInfo = {
 
 const SAMPLES: readonly { name: string; schema: z.ZodType; sample: Record<string, unknown>; nested: string }[] = [
     { name: 'Agent', schema: Agent, sample: agent, nested: 'profile' },
-    { name: 'SecretMetadata', schema: SecretMetadata, sample: secret, nested: 'scope' },
+    { name: 'WalletRecord', schema: WalletRecord, sample: walletRecord, nested: 'lastUse' },
     { name: 'ProblemDetails', schema: ProblemDetails, sample: problem, nested: 'diagnostics.0.range' },
     { name: 'AuditEntry', schema: AuditEntry, sample: auditEntry, nested: 'actor' },
     { name: 'ReplyStreamEvent', schema: ReplyStreamEvent, sample: completedEvent, nested: 'message' },
     {
-        name: 'CreateSecretBody',
-        schema: CreateSecretBody,
-        sample: { name: 'KEY', scope: { kind: 'engine' }, value: 's3cr3t' },
-        nested: 'scope',
+        name: 'AddWalletRecordBody',
+        schema: AddWalletRecordBody,
+        sample: {
+            origin: 'https://github.com',
+            username: 'ada',
+            password: 's3cr3t',
+            fields: [{ label: 'PIN', value: '1234', uncertain: false }],
+        },
+        nested: 'fields.0',
     },
     { name: 'AgentListQuery', schema: AgentListQuery, sample: { q: 'ada', limit: '20' }, nested: '' },
     { name: 'EngineInfo', schema: EngineInfo, sample: engineInfo, nested: 'capabilities.0' },
@@ -585,7 +590,7 @@ describe('UiUpdateCheck.eligibleAt (API 1.10)', () => {
     });
 });
 
-describe('passkeys, sessions, members and secrets (API 1.3 fields)', () => {
+describe('passkeys, sessions and members (API 1.3 fields)', () => {
     const passkey = { id: 'pk_1', memberId: 'mem_1', name: 'iPhone', createdAt: NOW, lastUsedAt: null };
 
     it('reads 1.2 records with the new fields as null', () => {
@@ -611,7 +616,6 @@ describe('passkeys, sessions, members and secrets (API 1.3 fields)', () => {
         };
         expect(Member.parse(member).passkeyCount).toBeNull();
         expect(Member.safeParse({ ...member, passkeyCount: -1 }).success).toBe(false);
-        expect(SecretMetadata.parse(secret).valueUpdatedAt).toBeNull();
     });
 
     it('reads an authenticator attachment it does not know as unknown', () => {
@@ -639,7 +643,7 @@ describe('AuditEntry (API 1.4 fields)', () => {
     it('takes a target name snapshot and details within the limits', () => {
         const entry = {
             ...auditEntry,
-            target: { kind: 'secret', id: 'sec_1', name: '<img src=x onerror=alert(1)>' },
+            target: { kind: 'wallet-record', id: 'login_1', name: '<img src=x onerror=alert(1)>' },
             details: { fields: ['value'], nested: nested(MAX_AUDIT_DETAILS_DEPTH - 1) },
         };
         expect(AuditEntry.parse(entry)).toEqual(entry);
@@ -671,7 +675,7 @@ describe('AuditEntry (API 1.4 fields)', () => {
         expect(read.items[0]?.action).toBe('agent.clone');
         expect(read.items[0]).not.toHaveProperty('extra');
         expect(isAuditAction('agent.clone')).toBe(false);
-        expect(isAuditAction('secret.replace')).toBe(true);
+        expect(isAuditAction('wallet.record.update')).toBe(true);
         for (const action of ['Agent.Clone', 'agent', 'agent.', '<img>.x', 'a.' + 'b'.repeat(64)]) {
             expect(AuditPageReader.safeParse({ items: [{ ...auditEntry, action }], nextCursor: null }).success).toBe(
                 false,

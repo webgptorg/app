@@ -35,6 +35,15 @@ import {
 } from './capabilities/files';
 import { Integration, IntegrationPage, IntegrationStatus, SecretRef } from './capabilities/integrations';
 import {
+    WalletOverview,
+    WalletRecord,
+    WalletRecordId,
+    WalletRequest,
+    WalletRequestId,
+    WalletSaved,
+    WalletState,
+} from './capabilities/wallet';
+import {
     Money,
     ProjectChange,
     Run,
@@ -111,7 +120,6 @@ import { Permission, Role } from './permissions';
 import { PROBLEM_STATUS, type ProblemCode } from './problem-codes';
 import type { RouteDefinition, RouteResponse } from './route';
 import { ENGINE_API_ROUTE_LIST, commonProblems } from './routes';
-import { SecretMetadata, SecretPage, SecretScope } from './secrets';
 import { SecurityOverview, UiUpdateCheck, UnexpectedCertificate } from './security';
 import { Session, SessionPage } from './sessions';
 import { Settings, UpdatePolicy } from './settings';
@@ -205,9 +213,6 @@ const COMPONENT_SCHEMAS: Readonly<Record<string, z.ZodType>> = {
     PasskeyPage,
     Session,
     SessionPage,
-    SecretScope,
-    SecretMetadata,
-    SecretPage,
     UiUpdateCheck,
     UnexpectedCertificate,
     SecurityOverview,
@@ -250,6 +255,13 @@ const COMPONENT_SCHEMAS: Readonly<Record<string, z.ZodType>> = {
     SecretRef,
     Integration,
     IntegrationPage,
+    WalletRecordId,
+    WalletRequestId,
+    WalletState,
+    WalletRecord,
+    WalletRequest,
+    WalletOverview,
+    WalletSaved,
 };
 
 const JSON_SCHEMA_DIALECT = 'https://json-schema.org/draft/2020-12/schema';

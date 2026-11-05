@@ -19,6 +19,7 @@ const MOCK_CAPABILITIES = {
     'book-editor': KNOWN_CAPABILITIES.bookEditor,
     'agent-management': KNOWN_CAPABILITIES.agentManagement,
     onboarding: KNOWN_CAPABILITIES.onboarding,
+    wallet: KNOWN_CAPABILITIES.wallet,
 } as const satisfies Readonly<Record<string, CapabilityRef>>;
 
 export const MockCapabilityName = z.enum(
@@ -35,9 +36,9 @@ export const FULL_CAPABILITY_NAMES: readonly MockCapabilityName[] = ALL_CAPABILI
 
 /**
  * The `reborn` profile: only what the Reborn engine has (its specs/app/integration.md), so the UI shows what a real
- * engine will: its tasks, onboarding, and files for uploads during onboarding.
+ * engine will: its tasks, onboarding, files for uploads during onboarding, and its Wallet.
  */
-export const REBORN_CAPABILITY_NAMES: readonly MockCapabilityName[] = ['tasks', 'files', 'onboarding'];
+export const REBORN_CAPABILITY_NAMES: readonly MockCapabilityName[] = ['tasks', 'files', 'onboarding', 'wallet'];
 
 export const MOCK_PROFILES = ['reborn', 'full'] as const;
 export type MockProfile = (typeof MOCK_PROFILES)[number];

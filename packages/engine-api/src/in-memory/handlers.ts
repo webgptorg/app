@@ -1,6 +1,6 @@
 import { AgentPermanentId, AgentId, RevisionId } from '../common';
 import type { Agent, AgentRunState, AgentRunStatus } from '../agents';
-import { ApiTokenId, FolderId, InviteId, SecretId } from '../common';
+import { ApiTokenId, FolderId, InviteId } from '../common';
 import type { EngineEvent } from '../events';
 import type { Member } from '../members';
 import type { Passkey } from '../passkeys';
@@ -37,6 +37,7 @@ import {
     touch,
 } from './threads';
 import { TRIGGER_HANDLERS } from './triggers';
+import { WALLET_HANDLERS } from './wallet';
 import type { InMemoryState } from './state';
 
 export type { HandlerContext, HandlerResult, ReplyScript, ScriptedReply } from './kit';
@@ -561,73 +562,6 @@ export const HANDLERS: Handlers = {
     },
     revokeSession: ({ params }, ctx) => (ctx.state.sessions.delete(params.sessionId) ? ok(null) : notFound('session')),
 
-    listSecrets: ({ query }, ctx) => {
-        const needle = query.q?.toLowerCase();
-        const secrets = [...ctx.state.secrets.values()].filter((secret) => {
-            if (needle !== undefined && !secret.name.toLowerCase().includes(needle)) return false;
-            if (query.scope !== undefined && secret.scope.kind !== query.scope) return false;
-            if (
-                query.agentId !== undefined &&
-                (secret.scope.kind !== 'agent' || secret.scope.agentId !== query.agentId)
-            ) {
-                return false;
-            }
-            return query.status === undefined || secret.status === query.status;
-        });
-        return page(
-            secrets,
-            sortParam(query.sort, {
-                name: (secret) => secret.name.toLowerCase(),
-                createdAt: (secret) => time(secret.createdAt),
-                lastUsedAt: (secret) => (secret.lastUsedAt === null ? null : time(secret.lastUsedAt)),
-            }),
-            query,
-        );
-    },
-    createSecret: ({ body }, ctx) => {
-        if (body.scope.kind === 'agent' && !agentRecord(ctx, body.scope.agentId)) {
-            return invalid('body.scope.agentId', 'No such agent.');
-        }
-        const sameScope = (scope: typeof body.scope): boolean =>
-            scope.kind === body.scope.kind &&
-            (scope.kind === 'engine' || body.scope.kind === 'engine' || scope.agentId === body.scope.agentId);
-        if ([...ctx.state.secrets.values()].some((secret) => secret.name === body.name && sameScope(secret.scope))) {
-            return fail('name-taken');
-        }
-        const now = ctx.now();
-        const secret = {
-            id: ctx.newId(SecretId, 'secret'),
-            name: body.name,
-            scope: body.scope,
-            status: 'active' as const,
-            createdBy: ctx.member.id,
-            createdAt: now,
-            updatedAt: now,
-            valueUpdatedAt: now,
-            lastUsedAt: null,
-        };
-        ctx.state.secrets.set(secret.id, secret);
-        return ok(secret);
-    },
-    replaceSecretValue: ({ params }, ctx) => {
-        const secret = ctx.state.secrets.get(params.secretId);
-        if (!secret) return notFound('secret');
-        if (secret.status === 'revoked') return fail('secret-revoked');
-        const now = ctx.now();
-        const replaced = { ...secret, updatedAt: now, valueUpdatedAt: now };
-        ctx.state.secrets.set(secret.id, replaced);
-        return ok(replaced);
-    },
-    revokeSecret: ({ params }, ctx) => {
-        const secret = ctx.state.secrets.get(params.secretId);
-        if (!secret) return notFound('secret');
-        if (secret.status === 'revoked') return ok(secret);
-        const revoked = { ...secret, status: 'revoked' as const, updatedAt: ctx.now() };
-        ctx.state.secrets.set(secret.id, revoked);
-        return ok(revoked);
-    },
-    deleteSecret: ({ params }, ctx) => (ctx.state.secrets.delete(params.secretId) ? ok(null) : notFound('secret')),
-
     getSecurityOverview: (_, ctx) => ok(ctx.state.security),
 
     listAuditEntries: ({ query }, ctx) => {
@@ -658,6 +592,7 @@ export const HANDLERS: Handlers = {
     ...ACCESS_REQUEST_HANDLERS,
     ...LIVE_HANDLERS,
     ...ONBOARDING_HANDLERS,
+    ...WALLET_HANDLERS,
 };
 
 function saveAgent(ctx: HandlerContext, agent: Agent): HandlerResult<Agent> {

@@ -53,7 +53,7 @@ export const SCENARIOS: readonly Scenario[] = [
         name: 'ui',
         overlays: ['ui'],
         specs: ['ui/*.spec.ts'],
-        firefoxSpecs: ['ui/agents.spec.ts', 'ui/chat.spec.ts', 'ui/secrets.spec.ts'],
+        firefoxSpecs: ['ui/agents.spec.ts', 'ui/chat.spec.ts', 'ui/wallet.spec.ts'],
     },
 ];
 

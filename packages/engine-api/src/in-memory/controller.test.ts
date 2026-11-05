@@ -615,21 +615,22 @@ describe('in-memory files', () => {
 
 describe('in-memory integrations', () => {
     async function withSecrets() {
-        const parts = engine();
-        const { client } = parts;
-        const ada = await agentIn(client, 'Ada');
-        const bob = await agentIn(client, 'Bob');
-        ok(await client.secrets.create({ name: 'TOKEN', scope: { kind: 'engine' }, value: 'v' }, signal()));
-        ok(
-            await client.secrets.create(
-                { name: 'BOB_KEY', scope: { kind: 'agent', agentId: bob.id }, value: 'v' },
-                signal(),
-            ),
-        );
-        const revoked = ok(
-            await client.secrets.create({ name: 'OLD', scope: { kind: 'engine' }, value: 'v' }, signal()),
-        );
-        ok(await client.secrets.revoke(revoked.id, signal()));
+        const probe = engine();
+        const ada = await agentIn(probe.client, 'Ada');
+        const bob = await agentIn(probe.client, 'Bob');
+        const parts = engine({
+            seed: {
+                agents: [
+                    { id: ada.id, source: 'Ada', createdBy: 'member-owner' },
+                    { id: bob.id, source: 'Bob', createdBy: 'member-owner' },
+                ],
+                integrationSecrets: [
+                    { id: 'secret-token', name: 'TOKEN', scope: { kind: 'engine' }, status: 'active' },
+                    { id: 'secret-bob', name: 'BOB_KEY', scope: { kind: 'agent', agentId: bob.id }, status: 'active' },
+                    { id: 'secret-old', name: 'OLD', scope: { kind: 'engine' }, status: 'revoked' },
+                ],
+            },
+        });
         return { ...parts, ada, bob };
     }
 

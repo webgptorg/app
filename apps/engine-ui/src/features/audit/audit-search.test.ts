@@ -37,11 +37,11 @@ describe('auditListParams', () => {
     });
 
     it('passes every filter and the cursor, and only those set', () => {
-        const search = AuditSearch.parse({ memberId: 'm', action: 'secret.replace', targetId: 't', cursor: 'c' });
+        const search = AuditSearch.parse({ memberId: 'm', action: 'wallet.record.update', targetId: 't', cursor: 'c' });
         expect(auditListParams(search)).toEqual({
             limit: 50,
             memberId: 'm',
-            action: 'secret.replace',
+            action: 'wallet.record.update',
             targetId: 't',
             cursor: 'c',
         });

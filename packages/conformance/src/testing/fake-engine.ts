@@ -29,7 +29,7 @@ export const DEFECTS = [
     'retry-from-completed-accepted',
     'non-idempotent-pause',
     'infected-file-downloadable',
-    'secret-canary-in-integration',
+    'wallet-seen-ends-request',
     'invalid-activity-item',
     'missing-permission-check-new-route',
 ] as const;
@@ -239,6 +239,19 @@ export async function createFakeEngine(options: FakeEngineOptions = {}): Promise
                       },
                   }),
             session: (subject) => Promise.resolve({ cookie: `${COOKIE}=${signIn(subject)}` }),
+            walletRequest: (origin) =>
+                Promise.resolve(
+                    core.controller.requestWalletLogin({
+                        origin,
+                        account: null,
+                        problem: 'missing',
+                        fields: [],
+                        recordId: null,
+                        reason: 'A conformance check needs a login.',
+                        tasks: [],
+                        agents: [],
+                    }).id,
+                ),
         },
     };
 }
@@ -309,9 +322,12 @@ function createDefect(
             return {
                 ...hooks,
                 async request(request) {
-                    if (is(request, 'POST', /^\/secrets$/) || is(request, 'PUT', /^\/secrets\/[^/]+\/value$/)) {
-                        const body = (await request.clone().json()) as { readonly value?: unknown };
-                        if (typeof body.value === 'string') values.push(body.value);
+                    if (
+                        is(request, 'POST', /^\/wallet\/records$/) ||
+                        is(request, 'PUT', /^\/wallet\/records\/[^/]+$/)
+                    ) {
+                        const body = (await request.clone().json()) as { readonly password?: unknown };
+                        if (typeof body.password === 'string') values.push(body.password);
                     }
                     return request;
                 },
@@ -385,7 +401,7 @@ function createDefect(
                 ...hooks,
                 response: (request, response) =>
                     editAudit(request, response, (entries) =>
-                        entries.filter(({ action }) => action !== 'secret.revoke'),
+                        entries.filter(({ action }) => action !== 'folder.rename'),
                     ),
             };
         case 'wrong-audit-member':
@@ -454,26 +470,19 @@ function createDefect(
                             : response,
                     ),
             };
-        case 'secret-canary-in-integration': {
-            const values: string[] = [];
+        case 'wallet-seen-ends-request':
             return {
                 ...hooks,
-                async request(request) {
-                    if (is(request, 'POST', /^\/secrets$/)) {
-                        const body = (await request.clone().json()) as { readonly value?: unknown };
-                        if (typeof body.value === 'string') values.push(body.value);
-                    }
-                    return request;
-                },
                 response: (request, response) =>
-                    /^\/integrations\/[^/]+$/.test(path(request)) && values.length > 0
-                        ? editJson(response, (integration) => ({
-                              ...integration,
-                              statusDetail: `Token ${values.at(-1) ?? ''} was rejected.`,
+                    is(request, 'GET', /^\/wallet$/)
+                        ? editJson(response, (wallet) => ({
+                              ...wallet,
+                              pending: (wallet['pending'] as { readonly seenAt: unknown }[]).filter(
+                                  ({ seenAt }) => seenAt === null,
+                              ),
                           }))
                         : Promise.resolve(response),
             };
-        }
         case 'invalid-activity-item':
             return {
                 ...hooks,

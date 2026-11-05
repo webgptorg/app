@@ -124,10 +124,10 @@ describe('gateway session store', () => {
         const { store } = setup();
         const { token } = store.signIn({
             memberId: 'member-owner',
-            permissions: ['agents.read', 'agents.read', 'secrets.read'],
+            permissions: ['agents.read', 'agents.read', 'wallet.read'],
             client: CLIENT,
         });
-        expect([...signedIn(store.authenticate(token, CLIENT)).permissions]).toEqual(['agents.read', 'secrets.read']);
+        expect([...signedIn(store.authenticate(token, CLIENT)).permissions]).toEqual(['agents.read', 'wallet.read']);
     });
 
     it('applies a role change on the next request', async () => {

@@ -29,6 +29,20 @@ export function createMockEngineTarget(options: MockEngineTargetOptions): Confor
             permissions: PERMISSIONS.filter((permission) => permission !== 'members.manage'),
             agentRoutes: ['updateAgent', 'updateAgentSource', 'deleteAgent', 'restoreAgent'],
         },
+        async walletRequest(origin) {
+            const response = await options.fetch(new URL('/__mock/wallet-requests', options.controlUrl), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ origin }),
+            });
+            const data = (await response.json()) as { readonly request?: { readonly id?: unknown } };
+            if (response.status !== 201 || typeof data.request?.id !== 'string') {
+                throw new Error(
+                    `the mock control listener answered ${String(response.status)} to POST /__mock/wallet-requests`,
+                );
+            }
+            return data.request.id;
+        },
         async session(subject): Promise<SessionCredential> {
             const body =
                 subject.kind === 'owner'

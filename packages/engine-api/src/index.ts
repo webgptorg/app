@@ -17,7 +17,6 @@ export * from './api-tokens';
 export * from './settings';
 export * from './passkeys';
 export * from './sessions';
-export * from './secrets';
 export * from './security';
 export * from './audit';
 export * from './capabilities/capability';
@@ -31,6 +30,7 @@ export * from './capabilities/test-chat';
 export * from './capabilities/access-requests';
 export * from './capabilities/live';
 export * from './capabilities/onboarding';
+export * from './capabilities/wallet';
 export { stripUnknownFields, toTolerant } from './tolerant';
 
 export { createEngineApiClient, EngineApiContractError } from './client';

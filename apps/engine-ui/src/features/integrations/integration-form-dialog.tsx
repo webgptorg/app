@@ -3,10 +3,8 @@ import {
     applyServerErrors,
     Banner,
     Button,
-    Checkbox,
     ConfirmDialog,
     Dialog,
-    errorMessage,
     Form,
     FormField,
     FormSubmit,
@@ -23,8 +21,6 @@ import { classifyApiError } from '../../app/api-errors';
 import { useEngineApi } from '../../app/engine-api-context';
 import { m } from '../../paraglide/messages';
 import { agentListQueryOptions } from '../agents/agents-queries';
-import { secretListQueryOptions } from '../secrets/secrets-queries';
-import { usePermissions } from '../session/use-permissions';
 import {
     formatSecretNames,
     IntegrationFormSchema,
@@ -77,7 +73,7 @@ function titleOf(mode: IntegrationFormMode): string {
 
 /**
  * Adds an MCP server or a GitHub repository, or edits an integration's name, URL and secret references. Secrets are
- * referenced by name only (picked from secret metadata with `secrets.read`, typed without it); there is no value
+ * referenced by name only (picked from secret metadata with `wallet.read`, typed without it); there is no value
  * field, because values are entered on the Secrets page and go straight to the engine's wallet from there.
  */
 export function IntegrationFormDialog({ mode, mutations, onClose }: IntegrationFormDialogProps) {
@@ -227,82 +223,16 @@ export function IntegrationFormDialog({ mode, mutations, onClose }: IntegrationF
 
 type IntegrationForm = ReturnType<typeof useZodForm<typeof IntegrationFormSchema>>;
 
-/**
- * With `secrets.read`, the engine's secret names to tick (names already referenced but not in the wallet stay
- * listed); without it, names typed by hand. Either way only names: the metadata list carries no values.
- */
+/** Names typed by hand: the engine sets their values itself, and this API lists no tool secrets. */
 function SecretNamesField({ form }: { readonly form: IntegrationForm }) {
-    const { can } = usePermissions();
-    const canPick = can('secrets.read');
-    const secrets = useQuery({
-        ...secretListQueryOptions(useEngineApi(), { sort: 'name', limit: PICKER_LIMIT }),
-        enabled: canPick,
-    });
-    if (!canPick || secrets.isError) {
-        return (
-            <FormField
-                form={form}
-                name="secretNames"
-                label={m.integration_secret_names_label()}
-                hint={m.integration_secret_names_typed_hint({ max: MAX_SECRET_NAMES })}
-            >
-                {(control) => <Textarea {...control.text} rows={2} autoComplete="off" spellCheck={false} />}
-            </FormField>
-        );
-    }
     return (
-        <form.Subscribe selector={(state) => state.values.secretNames}>
-            {(text) => {
-                const selected = parseSecretNames(text);
-                const known = (secrets.data?.items ?? []).map(({ name, status }) => ({ name, status }));
-                const others = selected
-                    .filter((name) => !known.some((secret) => secret.name === name))
-                    .map((name) => ({ name, status: null }));
-                const toggle = (name: string, on: boolean) => {
-                    const next = on ? [...selected, name] : selected.filter((candidate) => candidate !== name);
-                    form.setFieldValue('secretNames', formatSecretNames(next));
-                };
-                return (
-                    <fieldset className="flex flex-col gap-2">
-                        <legend className="mb-1 text-sm font-medium">{m.integration_secret_names_label()}</legend>
-                        <p className="text-sm text-text-muted">{m.integration_secret_names_pick_hint()}</p>
-                        {secrets.isPending ? (
-                            <p className="text-sm text-text-muted">{m.integration_secret_names_loading()}</p>
-                        ) : known.length + others.length === 0 ? (
-                            <p className="text-sm text-text-muted">{m.integration_secret_names_none()}</p>
-                        ) : (
-                            <div className="flex flex-col gap-1">
-                                {[...known, ...others].map(({ name, status }) => (
-                                    <Checkbox
-                                        key={name}
-                                        label={
-                                            status === 'revoked'
-                                                ? m.integration_secret_option_revoked({ name })
-                                                : status === null
-                                                  ? m.integration_secret_option_missing({ name })
-                                                  : name
-                                        }
-                                        checked={selected.includes(name)}
-                                        onChange={(event) => {
-                                            toggle(name, event.target.checked);
-                                        }}
-                                    />
-                                ))}
-                            </div>
-                        )}
-                        <form.Subscribe
-                            selector={(state): readonly unknown[] => state.fieldMeta.secretNames?.errors ?? []}
-                        >
-                            {(errors) => {
-                                const message = errors.map(errorMessage).find((candidate) => candidate !== undefined);
-                                return message === undefined ? null : (
-                                    <p className="text-sm font-medium text-(--field-error)">{message}</p>
-                                );
-                            }}
-                        </form.Subscribe>
-                    </fieldset>
-                );
-            }}
-        </form.Subscribe>
+        <FormField
+            form={form}
+            name="secretNames"
+            label={m.integration_secret_names_label()}
+            hint={m.integration_secret_names_typed_hint({ max: MAX_SECRET_NAMES })}
+        >
+            {(control) => <Textarea {...control.text} rows={2} autoComplete="off" spellCheck={false} />}
+        </FormField>
     );
 }

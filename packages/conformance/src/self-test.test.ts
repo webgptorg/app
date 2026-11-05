@@ -45,7 +45,7 @@ const CAUGHT_BY: Readonly<Record<Defect, string>> = {
     'retry-from-completed-accepted': 'engine-api.runs.retry-only-failed',
     'non-idempotent-pause': 'engine-api.triggers.pause-resume-idempotent',
     'infected-file-downloadable': 'engine-api.files.infected-refused',
-    'secret-canary-in-integration': 'engine-api.integrations.secrets-never-returned',
+    'wallet-seen-ends-request': 'engine-api.wallet.requests',
     'invalid-activity-item': 'engine-api.activity.known-items',
     'missing-permission-check-new-route': 'engine-api.permissions.mutations-denied',
 };
@@ -122,14 +122,16 @@ describe('the suite against an in-process engine', () => {
             },
             suites: [ENGINE_API_SUITE],
             filter: (check) =>
-                check.id.startsWith('engine-api.secrets.') || check.id === 'engine-api.auth.unauthenticated-401',
+                check.id.startsWith('engine-api.secrets.') ||
+                check.id.startsWith('engine-api.wallet.') ||
+                check.id === 'engine-api.auth.unauthenticated-401',
             timeoutMs: 30_000,
             signal: AbortSignal.timeout(120_000),
             seed: 7,
         });
         const text = JSON.stringify(report);
         const secrets = sent
-            .flatMap((body) => [...body.matchAll(/"value":"([^"]+)"|fake_session=([^;]+)/g)])
+            .flatMap((body) => [...body.matchAll(/"(?:value|password)":"([^"]+)"|fake_session=([^;]+)/g)])
             .map((match) => match[1] ?? match[2] ?? '')
             .filter((value) => value.length >= 16 || value.startsWith('token-'));
         expect(secrets.length).toBeGreaterThan(0);

@@ -25,7 +25,7 @@ export function isMutation(route: RouteDefinition): boolean {
 const CREATED: Partial<Record<EngineApiRouteId, { readonly route: RouteDefinition; readonly param: string }>> = {
     createAgent: { route: ENGINE_API_ROUTES.deleteAgent, param: 'agentId' },
     createFolder: { route: ENGINE_API_ROUTES.deleteFolder, param: 'folderId' },
-    createSecret: { route: ENGINE_API_ROUTES.deleteSecret, param: 'secretId' },
+    addWalletRecord: { route: ENGINE_API_ROUTES.deleteWalletRecord, param: 'recordId' },
     createApiToken: { route: ENGINE_API_ROUTES.revokeApiToken, param: 'apiTokenId' },
     uploadFile: { route: ENGINE_API_ROUTES.deleteFile, param: 'fileId' },
     createTrigger: { route: ENGINE_API_ROUTES.deleteTrigger, param: 'triggerId' },
@@ -41,8 +41,12 @@ export function cleanUpUnexpected(
 ): void {
     const created = CREATED[route.id as EngineApiRouteId];
     if (result.kind !== 'ok' || created === undefined) return;
-    const data = result.data as { readonly id?: unknown; readonly apiToken?: { readonly id?: unknown } };
-    const id = data.id ?? data.apiToken?.id;
+    const data = result.data as {
+        readonly id?: unknown;
+        readonly apiToken?: { readonly id?: unknown };
+        readonly record?: { readonly id?: unknown };
+    };
+    const id = data.id ?? data.apiToken?.id ?? data.record?.id;
     if (typeof id !== 'string') return;
     ctx.resources.defer((signal) => owner.withSignal(signal).send(created.route, { params: { [created.param]: id } }));
 }

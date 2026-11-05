@@ -11,6 +11,7 @@ import { LIVE_ROUTES } from './capabilities/live';
 import { ONBOARDING_ROUTES } from './capabilities/onboarding';
 import { TEST_CHAT_ROUTES } from './capabilities/test-chat';
 import { TRIGGER_ROUTES } from './capabilities/triggers';
+import { WALLET_ROUTES } from './capabilities/wallet';
 import { CHAT_ROUTES } from './chats';
 import { ENGINE_ROUTES } from './engine';
 import { EVENT_ROUTES } from './events';
@@ -20,7 +21,6 @@ import { MEMBER_ROUTES } from './members';
 import { PASSKEY_ROUTES } from './passkeys';
 import type { ProblemCode } from './problem-codes';
 import type { RouteDefinition } from './route';
-import { SECRET_ROUTES } from './secrets';
 import { SECURITY_ROUTES } from './security';
 import { SESSION_ROUTES } from './sessions';
 import { SETTINGS_ROUTES } from './settings';
@@ -38,7 +38,6 @@ export const ENGINE_API_ROUTES = {
     ...SETTINGS_ROUTES,
     ...PASSKEY_ROUTES,
     ...SESSION_ROUTES,
-    ...SECRET_ROUTES,
     ...SECURITY_ROUTES,
     ...AUDIT_ROUTES,
     ...ACTIVITY_ROUTES,
@@ -51,6 +50,7 @@ export const ENGINE_API_ROUTES = {
     ...ACCESS_REQUEST_ROUTES,
     ...LIVE_ROUTES,
     ...ONBOARDING_ROUTES,
+    ...WALLET_ROUTES,
 } as const satisfies Readonly<Record<string, RouteDefinition>>;
 
 export type EngineApiRouteId = keyof typeof ENGINE_API_ROUTES;

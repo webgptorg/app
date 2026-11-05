@@ -10,7 +10,7 @@ import { ENGINE_API_ROUTES, ENGINE_API_ROUTE_LIST } from './routes';
 function isSelfService(route: RouteDefinition): boolean {
     return route.path === '/engine' || route.path === '/me' || route.path.startsWith('/me/');
 }
-const FORBIDDEN_RESPONSE_KEYS = new Set(['value', 'secret', 'token']);
+const FORBIDDEN_RESPONSE_KEYS = new Set(['value', 'secret', 'token', 'password']);
 
 function placeholders(path: string): string[] {
     return [...path.matchAll(/\{([^}]+)\}/g)].map((match) => match[1] ?? '').sort();
@@ -57,7 +57,7 @@ function requestSchemas(route: RouteDefinition): z.ZodType[] {
     return [route.params, route.query, route.body?.schema].filter((schema) => schema !== undefined);
 }
 
-/** Request fields too: a capability never takes a credential, it references wallet secrets by name. */
+/** Request fields too: only the Wallet's writes take a credential; everything else references secrets by name. */
 function requestCredentialKeys(route: RouteDefinition): string[] {
     const names = new Set<string>();
     for (const schema of requestSchemas(route)) {
@@ -78,6 +78,7 @@ const CAPABILITY_BY_PATH = [
     ['/chats/{chatId}/live-audio', RESERVED_CAPABILITIES.liveAudio],
     ['/browser-tab-sessions', RESERVED_CAPABILITIES.browserTab],
     ['/onboarding', KNOWN_CAPABILITIES.onboarding],
+    ['/wallet', KNOWN_CAPABILITIES.wallet],
 ] as const;
 
 /** Core features an engine may leave out: these routes share paths with core routes that stay, so they go by ID. */
@@ -168,10 +169,19 @@ describe('ENGINE_API_ROUTES', () => {
         }
     });
 
-    it('requires step-up for the update policy, API token creation and passkey revocation', () => {
+    it('requires step-up for the update policy, API token creation, passkey revocation and Wallet login writes', () => {
         expect(ENGINE_API_ROUTES.setUpdatePolicy.stepUp).toBe(true);
         expect(ENGINE_API_ROUTES.createApiToken.stepUp).toBe(true);
         expect(ENGINE_API_ROUTES.revokePasskey.stepUp).toBe(true);
+        for (const route of [
+            ENGINE_API_ROUTES.addWalletRecord,
+            ENGINE_API_ROUTES.updateWalletRecord,
+            ENGINE_API_ROUTES.deleteWalletRecord,
+        ]) {
+            expect(route.stepUp, route.id).toBe(true);
+        }
+        expect(ENGINE_API_ROUTES.markWalletRequestSeen).not.toHaveProperty('stepUp');
+        expect(ENGINE_API_ROUTES.rejectWalletRequest).not.toHaveProperty('stepUp');
     });
 
     it('never returns a value, secret or token field, except the new token from POST /api-tokens', () => {
@@ -220,12 +230,16 @@ describe('capability routes', () => {
         expect(ENGINE_API_ROUTES.checkIntegration.permission).toBe('integrations.manage');
     });
 
-    it('takes and returns no value, secret or token field anywhere but the new API token', () => {
+    it('takes a credential only in Wallet writes and returns none anywhere but the new API token', () => {
+        const walletWrites: readonly RouteDefinition[] = [
+            ENGINE_API_ROUTES.addWalletRecord,
+            ENGINE_API_ROUTES.updateWalletRecord,
+        ];
         for (const route of capabilityRoutes.filter((candidate) => candidate.id !== 'createApiToken')) {
             expect(credentialKeys(route), route.id).toEqual([]);
-            expect(requestCredentialKeys(route), route.id).toEqual([]);
+            if (!walletWrites.includes(route)) expect(requestCredentialKeys(route), route.id).toEqual([]);
         }
-        expect(requestCredentialKeys(ENGINE_API_ROUTES.createSecret)).toEqual(['value']);
+        for (const route of walletWrites) expect(requestCredentialKeys(route).sort()).toEqual(['password', 'value']);
     });
 
     it('lists chats across agents with chats.read and filters activity per item', () => {

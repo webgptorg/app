@@ -14,7 +14,7 @@ const MAIN_PAGES = [
     '/triggers',
     '/integrations',
     '/security',
-    '/secrets',
+    '/wallet',
     '/audit',
     '/members',
     '/settings',

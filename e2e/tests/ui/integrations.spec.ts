@@ -1,24 +1,14 @@
-// Flow 16: an MCP server that names a secret, whose canary value never comes back, and a connection check that shows
-// the engine's verdict.
-import { expectCanariesAbsent, newCanary } from '../../src/canary.ts';
-import { createSecret, uniqueName } from '../../src/ui-app.ts';
+// Flow 16: an MCP server that names a secret, with no field for its value, and a connection check that shows the
+// engine's verdict.
+import { uniqueName } from '../../src/ui-app.ts';
 import { expect, test } from '../../src/ui-fixtures.ts';
 
-test('adds an MCP server referencing a secret by name and checks its connection', async ({
-    page,
-    signIn,
-    appUrl,
-    responses,
-    guard,
-}) => {
+test('adds an MCP server referencing a secret by name and checks its connection', async ({ page, signIn, appUrl }) => {
     test.setTimeout(60_000);
-    const secretName = uniqueName('E2E_MCP').replace(' ', '_').toUpperCase();
-    const canary = newCanary();
+    // A named tool secret the mock seeds as available, so the connection check gets past the missing-secret state.
+    const secretName = 'OPENAI_API_KEY';
     const name = uniqueName('Search');
     await signIn();
-    await page.goto(appUrl('/secrets'));
-    await createSecret(page, secretName, canary);
-
     await page.goto(appUrl('/integrations'));
     await page.getByRole('button', { name: 'Add integration' }).click();
     await page.getByRole('menuitem', { name: 'MCP server' }).click();
@@ -27,7 +17,7 @@ test('adds an MCP server referencing a secret by name and checks its connection'
     await dialog.getByRole('textbox', { name: /^Name/ }).fill(name);
     // Only the engine would ever contact it; the browser never does (the page guard fails on any foreign request).
     await dialog.getByRole('textbox', { name: /^Server URL/ }).fill('https://mcp.example.com/mcp');
-    await dialog.getByRole('checkbox', { name: secretName }).check();
+    await dialog.getByRole('textbox', { name: /^Secrets it uses/ }).fill(secretName);
     await dialog.getByRole('button', { name: 'Add' }).click();
     await expect(page.getByText(`${name} added.`)).toBeVisible();
 
@@ -39,11 +29,4 @@ test('adds an MCP server referencing a secret by name and checks its connection'
         page.getByText(new RegExp(`^${name} (connected|still needs attention|could not connect|is disabled).*\\.$`)),
     ).toBeVisible();
     await expect(page.getByText('Connected', { exact: true }).first()).toBeVisible();
-
-    await expectCanariesAbsent([canary], {
-        page,
-        responses,
-        consoleMessages: guard.consoleMessages,
-        seenInResponses: secretName,
-    });
 });

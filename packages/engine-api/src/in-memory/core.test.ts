@@ -136,8 +136,8 @@ describe('in-memory core: per-request actor', () => {
         });
         ok(await ada.agents.create({ source: 'Ada' }, signal()));
         expect(
-            problemOf(await ada.secrets.create({ name: 'K', scope: { kind: 'engine' }, value: 'v' }, signal())),
-        ).toMatchObject({ status: 403, requiredPermission: 'secrets.manage' });
+            problemOf(await ada.wallet.add({ origin: 'https://github.com', username: 'k', password: 'v' }, signal())),
+        ).toMatchObject({ status: 403, requiredPermission: 'wallet.manage' });
         ok(await owner.folders.create({ name: 'Team' }, signal()));
         const audit = ok(await owner.audit.list({}, signal())).items;
         expect(audit.map(({ action, outcome, actor: who, client }) => [action, outcome, who, client])).toEqual([
@@ -148,7 +148,7 @@ describe('in-memory core: per-request actor', () => {
                 { ip: '198.51.100.7', userAgent: 'agent of member-owner' },
             ],
             [
-                'secret.create',
+                'wallet.record.save',
                 'denied',
                 { kind: 'member', memberId: 'member-ada' },
                 { ip: '198.51.100.7', userAgent: 'agent of member-ada' },
@@ -275,7 +275,9 @@ describe('in-memory core: authorizer', () => {
         const agent = ok(await owner.agents.create({ source: 'Ada' }, signal()));
         const chat = ok(await owner.chats.create({ agentId: agent.id, title: 'x' }, signal()));
         const sent = ok(await owner.chats.sendMessage(chat.id, { content: 'hi' }, signal()));
-        const secret = ok(await owner.secrets.create({ name: 'K', scope: { kind: 'engine' }, value: 'v' }, signal()));
+        const login = ok(
+            await owner.wallet.add({ origin: 'https://github.com', username: 'k', password: 'v' }, signal()),
+        ).record;
         const folder = ok(await owner.folders.create({ name: 'F' }, signal()));
         const token = ok(
             await owner.apiTokens.create(
@@ -311,7 +313,7 @@ describe('in-memory core: authorizer', () => {
         seen.length = 0;
         await owner.agents.getRevision(agent.id, agent.currentRevisionId, signal());
         await owner.chats.cancelReply(chat.id, replyIdOf(sent), signal());
-        await owner.secrets.revoke(secret.id, signal());
+        await owner.wallet.delete(login.id, signal());
         await owner.folders.rename(folder.id, { name: 'G' }, signal());
         await owner.apiTokens.revoke(token.apiToken.id, signal());
         await owner.members.revokeInvite(invite.invite.id, signal());
@@ -325,7 +327,7 @@ describe('in-memory core: authorizer', () => {
         expect(seen).toEqual([
             { kind: 'revision', id: agent.currentRevisionId, createdBy: 'member-owner' },
             { kind: 'message', id: replyIdOf(sent), createdBy: null },
-            { kind: 'secret', id: secret.id, createdBy: 'member-owner' },
+            { kind: 'wallet-record', id: login.id },
             { kind: 'folder', id: folder.id },
             { kind: 'api-token', id: token.apiToken.id, createdBy: 'member-owner' },
             { kind: 'invite', id: invite.invite.id, createdBy: 'member-owner' },

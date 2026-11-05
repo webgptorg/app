@@ -42,13 +42,20 @@ const BODIES: Partial<Record<EngineApiRouteId, BodyBuilder>> = {
             ? { policy: 'pinned', pinnedVersion: updatePolicy.pinnedVersion }
             : { policy: updatePolicy.policy === 'pinned' ? 'manual' : updatePolicy.policy };
     },
-    createSecret: (world) =>
+    addWalletRecord: (world) =>
         Promise.resolve({
-            name: world.name('secret'),
-            scope: { kind: 'engine' },
-            value: randomToken(world.ctx.random, 32),
+            origin: `https://refused.${world.ctx.runId}.conformance.invalid`,
+            username: world.name('login'),
+            password: randomToken(world.ctx.random, 32),
         }),
-    replaceSecretValue: (world) => Promise.resolve({ value: randomToken(world.ctx.random, 32) }),
+    updateWalletRecord: (world) =>
+        Promise.resolve({
+            origin: `https://refused.${world.ctx.runId}.conformance.invalid`,
+            username: world.name('login'),
+            password: randomToken(world.ctx.random, 32),
+        }),
+    markWalletRequestSeen: () => Promise.resolve({ step: 0 }),
+    rejectWalletRequest: () => Promise.resolve({ step: 0 }),
     uploadFile: (world) => {
         const form = new FormData();
         form.set('file', new Blob(['synthetic conformance file\n'], { type: 'text/plain' }), 'conformance.txt');

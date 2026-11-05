@@ -10,7 +10,7 @@ import { downloadUiRelease } from '../../src/ui-release.ts';
 import { UI_RELEASES } from '../../src/stack.ts';
 import { expect, test } from '../../src/ui-fixtures.ts';
 
-const WITHHELD: readonly Permission[] = ['agents.delete', 'secrets.read', 'secrets.manage', 'audit.read'];
+const WITHHELD: readonly Permission[] = ['agents.delete', 'wallet.read', 'wallet.manage', 'audit.read'];
 
 /** The sidebar entries engine-ui gates by permission (its feature registry); Home, Security and Settings are everyone's. */
 const NAV_PERMISSIONS: Readonly<Record<string, Permission>> = {
@@ -21,7 +21,7 @@ const NAV_PERMISSIONS: Readonly<Record<string, Permission>> = {
     Triggers: 'triggers.read',
     Integrations: 'integrations.read',
     Members: 'members.read',
-    Secrets: 'secrets.read',
+    Wallet: 'wallet.read',
     'Audit log': 'audit.read',
 };
 
@@ -35,7 +35,7 @@ const ROUTES = [
     '/triggers',
     '/integrations',
     '/security',
-    '/secrets',
+    '/wallet',
     '/audit',
     '/members',
     '/settings',
@@ -45,7 +45,7 @@ function navLink(page: Page, label: string) {
     return page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: label, exact: true });
 }
 
-test('a member without delete, secrets and audit permissions is offered none of them', async ({
+test('a member without delete, Wallet and audit permissions is offered none of them', async ({
     page,
     signIn,
     appUrl,
@@ -53,7 +53,7 @@ test('a member without delete, secrets and audit permissions is offered none of 
     await signIn({ kind: 'member', permissions: PERMISSIONS.filter((permission) => !WITHHELD.includes(permission)) });
     await page.goto(appUrl('/agents'));
     await expect(navLink(page, 'Agents')).toBeVisible();
-    await expect(navLink(page, 'Secrets')).toHaveCount(0);
+    await expect(navLink(page, 'Wallet')).toHaveCount(0);
     await expect(navLink(page, 'Audit log')).toHaveCount(0);
 
     const agent = required((await apiList<{ id: string; name: string }>(page, '/agents'))[0], 'agent');
@@ -65,13 +65,21 @@ test('a member without delete, secrets and audit permissions is offered none of 
         await page.keyboard.press('Escape');
     }
 
-    for (const path of ['/secrets', '/audit']) {
+    for (const path of ['/wallet', '/audit']) {
         await page.goto(appUrl(path));
         await expect(page.getByRole('heading', { name: 'No access' })).toBeVisible();
     }
     expect((await apiCall(page, 'DELETE', `/agents/${agent.id}`)).status).toBe(403);
-    expect((await apiCall(page, 'GET', '/secrets')).status).toBe(403);
-    expect((await apiCall(page, 'POST', '/secrets', { name: 'NOT_ALLOWED', value: 'x' })).status).toBe(403);
+    expect((await apiCall(page, 'GET', '/wallet')).status).toBe(403);
+    expect(
+        (
+            await apiCall(page, 'POST', '/wallet/records', {
+                origin: 'http://not-allowed.test',
+                username: 'x',
+                password: 'x',
+            })
+        ).status,
+    ).toBe(403);
     expect((await apiCall(page, 'GET', '/audit')).status).toBe(403);
 });
 
@@ -123,7 +131,7 @@ test('without a session every route leads to sign-in, no UI file is served and t
     const bundleHashes = new Set(release.manifest.files.map((file) => file.sha256));
     expect(served.filter((hash) => bundleHashes.has(hash))).toEqual([]);
 
-    for (const path of ['/engine', '/me', '/agents', '/secrets', '/audit', '/runs', '/security']) {
+    for (const path of ['/engine', '/me', '/agents', '/wallet', '/audit', '/runs', '/security']) {
         const answer = await apiCall<{ code?: string }>(page, 'GET', path);
         expect(answer.status, path).toBe(401);
     }

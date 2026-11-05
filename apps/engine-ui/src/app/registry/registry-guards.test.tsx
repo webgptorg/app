@@ -26,7 +26,7 @@ describe('registry guards', () => {
 
     it.each([
         ['/audit', 'Audit log'],
-        ['/secrets', 'Secrets'],
+        ['/wallet', 'Wallet'],
         ['/security', 'Security'],
     ])('render the stub of %s for a member with its permission', async (path, title) => {
         renderWithProviders({ path });
