@@ -87,7 +87,7 @@ describe('tasks', { timeout: TIMEOUT_MS }, () => {
         const related = screen.getByRole('region', { name: 'Related' });
         await waitFor(() => {
             expect(
-                within(related).getAllByRole('link', { name: 'Review the billing PR' })[0].getAttribute('href'),
+                within(related).getAllByRole('link', { name: 'Review the billing PR' })[0]?.getAttribute('href'),
             ).toBe('/agents/agent-ada/chat/chat-ada-1');
         });
         expect(

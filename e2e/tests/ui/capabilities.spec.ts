@@ -15,6 +15,7 @@ const WITHHELD: readonly Permission[] = ['agents.delete', 'secrets.read', 'secre
 /** The sidebar entries engine-ui gates by permission (its feature registry); Home, Security and Settings are everyone's. */
 const NAV_PERMISSIONS: Readonly<Record<string, Permission>> = {
     Agents: 'agents.read',
+    Tasks: 'tasks.read',
     Runs: 'runs.read',
     Files: 'files.read',
     Triggers: 'triggers.read',
@@ -28,6 +29,7 @@ const ROUTES = [
     '/',
     '/agents',
     '/agents/new',
+    '/tasks',
     '/runs',
     '/files',
     '/triggers',
