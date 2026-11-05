@@ -11,6 +11,7 @@ import { runsFeature } from '../features/runs/runs-feature';
 import { secretsFeature } from '../features/secrets/secrets-feature';
 import { securityFeature } from '../features/security/security-feature';
 import { settingsFeature } from '../features/settings/settings-feature';
+import { tasksFeature } from '../features/tasks/tasks-feature';
 import { triggersFeature } from '../features/triggers/triggers-feature';
 import type { FeatureDefinition } from './registry/feature';
 
@@ -23,6 +24,7 @@ export const FEATURES: readonly FeatureDefinition[] = [
     agentsFeature,
     agentWizardFeature,
     chatFeature,
+    tasksFeature,
     runsFeature,
     triggersFeature,
     filesFeature,
