@@ -39,7 +39,8 @@ async function runAgainstMock(targets: EngineTargetFactory, skips: Readonly<Reco
         // optional file scanning switched on so its checks run too.
         command: mockEngineCommand(
             'MOCK_SCENARIO=small-team MOCK_SEED=1 ' +
-                'MOCK_CAPABILITIES=runs,files,triggers,integrations,test-chat,access-requests,file-scanning',
+                'MOCK_CAPABILITIES=runs,files,triggers,integrations,test-chat,access-requests,file-scanning,' +
+                'members,api-tokens,audit,book-editor,agent-management',
         ),
         suites: [ENGINE_API_PLATFORM_SUITE],
         targets,
