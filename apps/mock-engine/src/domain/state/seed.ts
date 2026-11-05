@@ -1,6 +1,7 @@
 import { Faker, base, en } from '@faker-js/faker';
 import type { InMemorySeed } from '@ptbk/engine-api/in-memory';
 
+import { builtInAgents } from './built-in-agents';
 import { seedCapabilities } from './capability-seed';
 import type { Scenario, ScenarioSize } from './scenarios';
 import { SCENARIO_SIZES } from './scenarios';
@@ -445,7 +446,7 @@ export async function seedEngine({ seed, scenario, epoch, hostname }: SeedInput)
         },
         members,
         folders,
-        agents,
+        agents: [...builtInAgents(owner.id, iso(epochMs - 200 * DAY)), ...agents],
         chats,
         messages,
         secrets,

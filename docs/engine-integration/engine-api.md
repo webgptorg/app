@@ -129,6 +129,10 @@ Capability `access-requests@1`, since API 1.12.0. People an organization invites
 
 The fields added in API 1.3.0 default to `null` or `[]`, so a client reads a 1.2 engine's answer; an engine on 1.3 sends them all. Since API 1.10.0, `ui.lastUpdateCheck.eligibleAt` is when a delayed release becomes eligible, set exactly when `reason` is `delay-not-elapsed` (`null` otherwise and from older engines), so the owner sees when it installs. The client reads an update outcome, refusal reason, revocation reason or certificate status it does not know as `unknown`.
 
+## Agent origin
+
+Every `Agent` carries `origin` (2026-11-05), as the Reborn engine models agents ([core agents](../../packages/engine-api/src/agents.ts), Reborn `specs/agents/core-agents.md` and `system-agents.md`): `content` for the project's own agents, `core` for the roles the engine prepares as ordinary project Books (Chatter, Adam, Tasker, Router, Fixer, Teacher), `system` for agents the engine defines itself with no project Book (Expert). Origin grants nothing. `GET /agents?origin=` takes one origin or a comma-separated set; the UI lists `content` agents first and `core,system` in a quiet "Built-in" section, each with `profile.description` as its one-line role. Agents created through `POST /agents` are `content`. Expert's definition belongs to the engine, so it is listed but its Book is not editable through this API.
+
 ## Capabilities
 
 - `GET /engine` (`EngineInfo`) returns `capabilities: [{ id, version }]` (`CapabilityRef`) and `engineId`. `KNOWN_CAPABILITIES` lists `runs@1`, `tasks@1`, `files@1`, `triggers@1`, `integrations@1`, `test-chat@1`, `access-requests@1`, `file-scanning@1`, `members@1`, `api-tokens@1`, `audit@1`, `book-editor@1` and `agent-management@1` ([capability.ts](../../packages/engine-api/src/capabilities/capability.ts)).

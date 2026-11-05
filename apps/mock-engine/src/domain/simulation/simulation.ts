@@ -79,7 +79,8 @@ export function createSimulation(options: SimulationOptions): Simulation {
             () => {
                 if (stopped) return;
                 try {
-                    const agents = controller.findAgents();
+                    // Spontaneous runs are project work; the built-in agents act only when something asks them.
+                    const agents = controller.findAgents().filter(({ origin }) => origin === 'content');
                     if (agents.length > 0) {
                         const source = sequence.pick(SPONTANEOUS_SOURCES);
                         const members = controller

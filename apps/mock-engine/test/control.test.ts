@@ -136,7 +136,7 @@ describe('control listener: state', () => {
         const reset = await call('/__mock/reset', { method: 'POST', body: { scenario: 'empty', seed: 7 } });
         expect(reset).toMatchObject({
             status: 200,
-            body: { scenario: 'empty', seed: 7, counts: { members: 1, agents: 0 } },
+            body: { scenario: 'empty', seed: 7, counts: { members: 1, agents: 7 } },
         });
         expect((await call('/__mock/state')).body).toMatchObject({ scenario: 'empty', seed: 7 });
         expect((await me(harness, cookie)).status).toBe(401);

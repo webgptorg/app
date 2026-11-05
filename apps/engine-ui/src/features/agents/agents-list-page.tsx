@@ -1,4 +1,4 @@
-import { AGENT_RUN_STATES, AGENT_VISIBILITIES } from '@ptbk/engine-api';
+import { AGENT_RUN_STATES, AGENT_VISIBILITIES, KNOWN_CAPABILITIES } from '@ptbk/engine-api';
 import type { Agent } from '@ptbk/engine-api';
 import { Button, createDataTableColumnHelper, DataTable, FilterBar, RelativeTime } from '@ptbk/ui';
 import type { DataTableColumnDef, SortingState } from '@ptbk/ui';
@@ -21,6 +21,7 @@ import { useAgentActions } from './agent-actions';
 import { AgentAvatar } from './agent-avatar';
 import { AgentStatusBadge, AgentVisibilityBadge, stateLabel, visibilityLabel } from './agent-badges';
 import { AgentCreator } from './agent-creator';
+import { BuiltInAgents } from './built-in-agents';
 import { agentListParams, DEFAULT_AGENT_SORT } from './agent-list-search';
 import type { AgentListSearch } from './agent-list-search';
 import { agentListQueryOptions } from './agents-queries';
@@ -59,7 +60,8 @@ function isInvalidCursor(error: unknown): boolean {
     return failure.kind === 'problem' && failure.problem.code === 'invalid-cursor';
 }
 
-function useAgentColumns(): DataTableColumnDef<Agent>[] {
+/** Visibility only means something where agents can be shared (`agent-management@1`). */
+function useAgentColumns(withVisibility: boolean): DataTableColumnDef<Agent>[] {
     return useMemo(() => {
         const column = createDataTableColumnHelper<Agent>();
         return [
@@ -95,12 +97,16 @@ function useAgentColumns(): DataTableColumnDef<Agent>[] {
                 meta: { priority: 1 },
                 cell: ({ row }) => <AgentStatusBadge agentId={row.original.id} />,
             }),
-            column.accessor('visibility', {
-                header: m.agents_column_visibility(),
-                enableSorting: false,
-                meta: { priority: 2 },
-                cell: ({ row }) => <AgentVisibilityBadge visibility={row.original.visibility} />,
-            }),
+            ...(withVisibility
+                ? [
+                      column.accessor('visibility', {
+                          header: m.agents_column_visibility(),
+                          enableSorting: false,
+                          meta: { priority: 2 },
+                          cell: ({ row }) => <AgentVisibilityBadge visibility={row.original.visibility} />,
+                      }),
+                  ]
+                : []),
             column.accessor('createdBy', {
                 header: m.agents_column_created_by(),
                 enableSorting: false,
@@ -114,7 +120,7 @@ function useAgentColumns(): DataTableColumnDef<Agent>[] {
                 cell: ({ row }) => <RelativeTime value={new Date(row.original.updatedAt)} />,
             }),
         ];
-    }, []);
+    }, [withVisibility]);
 }
 
 export function AgentsListPage() {
@@ -123,6 +129,7 @@ export function AgentsListPage() {
     const engineApi = useEngineApi();
     const { storage } = useBrowser();
     const canCreate = useAllows(AGENT_WIZARD_REQUIREMENT);
+    const managesAgents = useAllows({ capability: KNOWN_CAPABILITIES.agentManagement });
     const searchRef = useRef<HTMLInputElement>(null);
     // The row whose menu opened the delete dialog disappears with the agent; focus then goes to the search box.
     const deletedId = useRef<string | null>(null);
@@ -131,7 +138,7 @@ export function AgentsListPage() {
             deletedId.current = agent.id;
         },
     });
-    const columns = useAgentColumns();
+    const columns = useAgentColumns(managesAgents);
     const list = useQuery({
         ...agentListQueryOptions(engineApi, agentListParams(search)),
         placeholderData: keepPreviousData,
@@ -195,20 +202,26 @@ export function AgentsListPage() {
                             update({ status: AGENT_RUN_STATES.find((state) => state === value) });
                         },
                     },
-                    {
-                        kind: 'select',
-                        id: 'visibility',
-                        label: m.agents_column_visibility(),
-                        allLabel: m.agents_filter_all_visibilities(),
-                        options: AGENT_VISIBILITIES.map((visibility) => ({
-                            value: visibility,
-                            label: visibilityLabel(visibility),
-                        })),
-                        value: search.visibility,
-                        onChange: (value) => {
-                            update({ visibility: AGENT_VISIBILITIES.find((visibility) => visibility === value) });
-                        },
-                    },
+                    ...(managesAgents
+                        ? [
+                              {
+                                  kind: 'select' as const,
+                                  id: 'visibility',
+                                  label: m.agents_column_visibility(),
+                                  allLabel: m.agents_filter_all_visibilities(),
+                                  options: AGENT_VISIBILITIES.map((visibility) => ({
+                                      value: visibility,
+                                      label: visibilityLabel(visibility),
+                                  })),
+                                  value: search.visibility,
+                                  onChange: (value: string | undefined) => {
+                                      update({
+                                          visibility: AGENT_VISIBILITIES.find((visibility) => visibility === value),
+                                      });
+                                  },
+                              },
+                          ]
+                        : []),
                 ]}
                 onClear={clear}
                 empty={!list.isPending && search.cursor === undefined && list.data?.items.length === 0}
@@ -261,12 +274,13 @@ export function AgentsListPage() {
                           }
                         : {
                               title: m.agents_empty_title(),
-                              description: m.agents_empty_body(),
+                              description: canCreate ? m.agents_empty_body() : m.agents_empty_body_chat(),
                               ...(newAgent === null ? {} : { action: newAgent }),
                           }
                 }
                 rowActions={actions.menuEntries}
             />
+            <BuiltInAgents q={search.q} />
             {actions.dialogs}
         </Page>
     );

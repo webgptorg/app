@@ -22,9 +22,13 @@ export const AgentListSearch = z.object({
 });
 export type AgentListSearch = z.output<typeof AgentListSearch>;
 
-/** Everything goes to the engine; the UI never sorts or filters agents itself. */
+/**
+ * Everything goes to the engine; the UI never sorts or filters agents itself. The table lists the member's own
+ * agents; the built-in ones have their own section below it.
+ */
 export function agentListParams(search: AgentListSearch): AgentListParams {
     return {
+        origin: 'content',
         sort: search.sort,
         ...(search.q === undefined ? {} : { q: search.q }),
         ...(search.status === undefined ? {} : { status: search.status }),

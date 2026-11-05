@@ -128,6 +128,7 @@ export const HANDLERS: Handlers = {
                 if (query.folderId !== undefined && agent.folderId !== query.folderId) return false;
                 if (query.visibility !== undefined && agent.visibility !== query.visibility) return false;
                 if (query.status !== undefined && runStatus.state !== query.status) return false;
+                if (query.origin !== undefined && !query.origin.includes(agent.origin)) return false;
                 if (needle === undefined) return true;
                 return [agent.name, agent.profile.fullname, agent.profile.description].some((text) =>
                     text.toLowerCase().includes(needle),
@@ -160,6 +161,7 @@ export const HANDLERS: Handlers = {
             permanentId: AgentPermanentId.parse(`p-${id}`),
             name: book.name,
             profile: book.profile,
+            origin: 'content',
             visibility: body.visibility ?? ctx.state.settings.defaultAgentVisibility,
             folderId: body.folderId ?? null,
             currentRevisionId: revisionId,

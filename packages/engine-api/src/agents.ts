@@ -10,6 +10,7 @@ import {
     RevisionId,
     Timestamp,
     pageOf,
+    valueSet,
 } from './common';
 import { MAX_BOOK_SOURCE_LENGTH } from './constants';
 import { KNOWN_CAPABILITIES } from './capabilities/capability';
@@ -22,6 +23,16 @@ export type AgentVisibility = z.infer<typeof AgentVisibility>;
 export const AGENT_RUN_STATES = ['idle', 'running', 'stopped', 'error'] as const;
 export const AgentRunState = z.enum(AGENT_RUN_STATES);
 export type AgentRunState = z.infer<typeof AgentRunState>;
+
+/**
+ * Who defines the agent, as the Reborn engine models it. `content`: the project's own agents, which do its work.
+ * `core`: Chatter, Adam, Tasker, Router, Fixer and Teacher, which the engine prepares but which are ordinary, editable
+ * project Books. `system`: Expert and any other agent the engine itself defines, with no project Book. Origin is
+ * descriptive: it grants no privilege and changes no permission.
+ */
+export const AGENT_ORIGINS = ['content', 'core', 'system'] as const;
+export const AgentOrigin = z.enum(AGENT_ORIGINS);
+export type AgentOrigin = z.infer<typeof AgentOrigin>;
 
 /** A `#rrggbb` colour; anything richer could smuggle CSS into the UI. */
 export const HexColor = z.string().regex(/^#[0-9a-fA-F]{6}$/);
@@ -44,7 +55,9 @@ export const Agent = z.strictObject({
     id: AgentId,
     permanentId: AgentPermanentId,
     name: z.string().min(1).max(256),
+    /** `profile.description` is the agent's one-line role, which the UI shows for built-in agents. */
     profile: AgentProfile,
+    origin: AgentOrigin,
     visibility: AgentVisibility,
     folderId: FolderId.nullable(),
     currentRevisionId: RevisionId,
@@ -65,6 +78,8 @@ export const AgentListQuery = PageQuery.extend({
     folderId: FolderId.optional(),
     visibility: AgentVisibility.optional(),
     status: AgentRunState.optional(),
+    /** One origin or a comma-separated set, e.g. `core,system` for the built-in agents. */
+    origin: valueSet(AGENT_ORIGINS).optional(),
     deleted: z.enum(AGENT_DELETED_FILTERS).default('exclude'),
     sort: z.enum(AGENT_SORTS).default('name'),
 });

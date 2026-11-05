@@ -384,7 +384,7 @@ describe('runtime reset', () => {
             runtime.reset({ seed: 2, scenario: 'empty' }),
         ]);
         expect(runtime.current()).toMatchObject({ seed: 2, scenario: 'empty' });
-        // Only the last core's simulation runs: `empty` has no agents, so nothing starts.
+        // Only the last core's simulation runs: `empty` has only the built-in agents, so nothing starts.
         advance(HOUR);
         expect(runtime.controller().findRuns()).toEqual([]);
     });

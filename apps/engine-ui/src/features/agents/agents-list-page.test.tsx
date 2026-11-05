@@ -1,8 +1,9 @@
+import { KNOWN_CAPABILITIES } from '@ptbk/engine-api';
 import { screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
 import { expectNoAxeViolations } from '../../testing/axe';
-import { createAgentsEngine, SECOND_MEMBER_NAME } from '../../testing/agents-engine';
+import { createAgentsEngine, SECOND_MEMBER_NAME, seededAgent } from '../../testing/agents-engine';
 import { renderWithProviders } from '../../testing/render-with-providers';
 import { problemResponse, TEST_NOW } from '../../testing/test-engine-api';
 import { AGENT_COLUMNS_STORAGE_KEY } from './agents-list-page';
@@ -74,7 +75,10 @@ describe('agents list', { timeout: TIMEOUT_MS }, () => {
             expect(agentLinks()).toContain('Agent 002');
         });
         expect(agentLinks()).not.toContain('Agent 001');
-        expect(engine.spies.list).toHaveBeenLastCalledWith({ sort: '-updatedAt', q: 'support' }, expect.anything());
+        expect(engine.spies.list).toHaveBeenCalledWith(
+            { origin: 'content', sort: '-updatedAt', q: 'support' },
+            expect.anything(),
+        );
 
         const href = router.state.location.href;
         await renderList(href, createAgentsEngine());
@@ -90,8 +94,8 @@ describe('agents list', { timeout: TIMEOUT_MS }, () => {
         await waitFor(() => {
             expect(router.state.location.search).toEqual({ q: 'support', status: 'stopped', visibility: 'unlisted' });
         });
-        expect(engine.spies.list).toHaveBeenLastCalledWith(
-            { sort: '-updatedAt', q: 'support', status: 'stopped', visibility: 'unlisted' },
+        expect(engine.spies.list).toHaveBeenCalledWith(
+            { origin: 'content', sort: '-updatedAt', q: 'support', status: 'stopped', visibility: 'unlisted' },
             expect.anything(),
         );
         await waitFor(() => {
@@ -118,7 +122,7 @@ describe('agents list', { timeout: TIMEOUT_MS }, () => {
     it('falls back to defaults for an unknown status or a garbage cursor instead of crashing', async () => {
         const { router, engine } = await renderList('/agents?status=sleeping&cursor=%25%25%25&visibility=secret');
         expect(router.state.location.search).toEqual({});
-        expect(engine.spies.list.mock.calls[0]?.[0]).toEqual({ sort: '-updatedAt' });
+        expect(engine.spies.list).toHaveBeenCalledWith({ origin: 'content', sort: '-updatedAt' }, expect.anything());
     });
 
     it('starts again from the first page when the engine refuses a cursor', async () => {
@@ -126,7 +130,7 @@ describe('agents list', { timeout: TIMEOUT_MS }, () => {
         await waitFor(() => {
             expect(router.state.location.search).toEqual({});
         });
-        expect(engine.spies.list).toHaveBeenLastCalledWith({ sort: '-updatedAt' }, expect.anything());
+        expect(engine.spies.list).toHaveBeenCalledWith({ origin: 'content', sort: '-updatedAt' }, expect.anything());
         expect(screen.queryByRole('alert')).toBeNull();
     });
 
@@ -137,7 +141,7 @@ describe('agents list', { timeout: TIMEOUT_MS }, () => {
         await waitFor(() => {
             expect(router.state.location.search).toEqual({ sort: 'name' });
         });
-        expect(engine.spies.list).toHaveBeenLastCalledWith({ sort: 'name' }, expect.anything());
+        expect(engine.spies.list).toHaveBeenCalledWith({ origin: 'content', sort: 'name' }, expect.anything());
         await user.click(screen.getByRole('button', { name: 'Name, Sorted ascending' }));
         await waitFor(() => {
             expect(router.state.location.search).toEqual({ sort: '-name' });
@@ -148,7 +152,7 @@ describe('agents list', { timeout: TIMEOUT_MS }, () => {
 
         const reloaded = createAgentsEngine();
         await renderList(router.state.location.href, reloaded);
-        expect(reloaded.spies.list.mock.calls[0]?.[0]).toEqual({ sort: '-name' });
+        expect(reloaded.spies.list).toHaveBeenCalledWith({ origin: 'content', sort: '-name' }, expect.anything());
     });
 
     it('names the edit-time column "Updated", since it sorts by the last save and not by activity', async () => {
@@ -211,12 +215,13 @@ describe('agents list', { timeout: TIMEOUT_MS }, () => {
         expect(engine.spies.list.mock.calls.length).toBe(listCalls);
     });
 
-    it('refetches the list when another member changes an agent', async () => {
+    it('refetches the lists when another member changes an agent', async () => {
         const { engine } = await renderList();
         const listCalls = engine.spies.list.mock.calls.length;
         engine.controller.emit({ type: 'agent.changed', agentId: 'agent-001' });
+        // The member's agents and the built-in ones.
         await waitFor(() => {
-            expect(engine.spies.list.mock.calls.length).toBe(listCalls + 1);
+            expect(engine.spies.list.mock.calls.length).toBe(listCalls + 2);
         });
     });
 
@@ -282,5 +287,46 @@ describe('agents list permissions', { timeout: TIMEOUT_MS }, () => {
     it('offers "New agent" with agents.write', async () => {
         await renderList('/agents', createAgentsEngine({ permissions: ['agents.read', 'agents.write'] }));
         expect(screen.getByRole('link', { name: 'New agent' }).getAttribute('href')).toBe('/agents/new');
+    });
+
+    it('lists the member’s agents first, then a quiet Built-in section with each agent’s role', async () => {
+        const engine = createAgentsEngine({
+            agents: [
+                seededAgent(1),
+                seededAgent(2),
+                { id: 'builtin-chatter', source: 'Chatter\nPERSONA Talks with you first.', origin: 'core' },
+                { id: 'builtin-expert', source: 'Expert\nPERSONA Knows the engine.', origin: 'system' },
+            ],
+            capabilities: [KNOWN_CAPABILITIES.files],
+        });
+        const { container } = await renderList('/agents', engine);
+        expect(agentLinks()).toEqual(['Agent 001', 'Agent 002']);
+        const builtIn = await screen.findByRole('region', { name: 'Built-in' });
+        expect(within(builtIn).getByRole('link', { name: 'Chatter' }).getAttribute('href')).toBe(
+            '/agents/builtin-chatter',
+        );
+        expect(within(builtIn).getByText('Knows the engine.')).toBeDefined();
+        // Without agent-management@1 nothing can be shared or created from a form.
+        expect(screen.queryByRole('combobox', { name: 'Visibility' })).toBeNull();
+        expect(screen.queryByRole('columnheader', { name: 'Visibility' })).toBeNull();
+        expect(screen.queryByRole('link', { name: 'New agent' })).toBeNull();
+        await expectNoAxeViolations(container);
+    });
+
+    it('narrows the built-in agents with the search, and hides the section when none match', async () => {
+        const engine = createAgentsEngine({
+            agents: [
+                seededAgent(1),
+                { id: 'builtin-chatter', source: 'Chatter\nPERSONA Talks with you first.', origin: 'core' },
+            ],
+        });
+        await renderList('/agents?q=agent', engine);
+        await waitFor(() => {
+            expect(engine.spies.list).toHaveBeenCalledWith(
+                { origin: 'core,system', sort: 'name', limit: 50, q: 'agent' },
+                expect.anything(),
+            );
+        });
+        expect(screen.queryByRole('region', { name: 'Built-in' })).toBeNull();
     });
 });

@@ -673,6 +673,16 @@
             }
           },
           {
+            "name": "origin",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 128,
+              "pattern": "^(?:content|core|system)(?:,(?:content|core|system))*$"
+            }
+          },
+          {
             "name": "deleted",
             "in": "query",
             "required": false,
@@ -15440,6 +15450,10 @@
           "profile": {
             "$ref": "#/components/schemas/AgentProfile"
           },
+          "origin": {
+            "type": "string",
+            "enum": ["content", "core", "system"]
+          },
           "visibility": {
             "$ref": "#/components/schemas/AgentVisibility"
           },
@@ -15481,6 +15495,7 @@
           "permanentId",
           "name",
           "profile",
+          "origin",
           "visibility",
           "folderId",
           "currentRevisionId",

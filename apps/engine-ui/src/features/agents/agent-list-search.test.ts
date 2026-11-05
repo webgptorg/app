@@ -12,6 +12,7 @@ describe('AgentListSearch', () => {
             cursor: 'abc_-1',
         });
         expect(agentListParams(search)).toEqual({
+            origin: 'content',
             q: 'lead',
             status: 'running',
             visibility: 'public',
@@ -29,6 +30,6 @@ describe('AgentListSearch', () => {
             cursor: '../etc',
             extra: 'kept by the router, ignored here',
         });
-        expect(agentListParams(search)).toEqual({ sort: '-updatedAt' });
+        expect(agentListParams(search)).toEqual({ origin: 'content', sort: '-updatedAt' });
     });
 });

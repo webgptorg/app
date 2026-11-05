@@ -1,7 +1,7 @@
 import type { z } from 'zod';
 
 import { Agent, AgentRunState } from './agents';
-import type { AgentVisibility } from './agents';
+import type { AgentOrigin, AgentVisibility } from './agents';
 import { ApiToken } from './api-tokens';
 import { AuditEntry } from './audit';
 import type { AuditAction, AuditActor, AuditDetails, AuditTarget } from './audit';
@@ -130,6 +130,8 @@ export interface InMemorySeedAgent {
     readonly id?: string;
     readonly createdBy?: string;
     readonly visibility?: AgentVisibility;
+    /** `content` unless given: the built-in agents are `core` or `system`. */
+    readonly origin?: AgentOrigin;
     readonly folderId?: string;
     readonly createdAt?: string;
     readonly deletedAt?: string;
@@ -1377,6 +1379,7 @@ function createState(
             permanentId: AgentPermanentId.parse(`p-${id}`),
             name: book.name,
             profile: book.profile,
+            origin: seedAgent.origin ?? 'content',
             visibility: seedAgent.visibility ?? settings.defaultAgentVisibility,
             folderId: seedAgent.folderId === undefined ? null : FolderId.parse(seedAgent.folderId),
             currentRevisionId: revisionId,
