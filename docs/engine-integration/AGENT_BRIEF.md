@@ -11,6 +11,24 @@ Before pasting, replace the two placeholders:
 
 You are implementing the engine side of the Promptbook platform protocol in the open-source Promptbook engine at `<ENGINE_DIR>`. When you are done, the engine can replace our mock engine: it registers with the dashboard, sends signed heartbeats, keeps a tunnel to every relay, ends browser TLS itself with its own ACME certificates, puts a passkey gateway in front of everything, serves the engine API v1, and serves our signed UI bundle after verifying it. It passes the conformance suite and the platform's end-to-end tests with no change on the platform side.
 
+## What changed
+
+Until the contracts freeze at publication (task E-02), the platform changes them in place, without a `v2` next to `v1`, and records every change here, newest first. At the start of every session, read the entries dated after your last session and redo what they list before you continue with the plan.
+
+Each entry has this shape. Platform authors: add yours at the top of the list, one entry per change, and keep it short; link the doc that explains the change instead of repeating it.
+
+```md
+### YYYY-MM-DD: <area>
+
+- **Changed:** what is different in the contract, conformance or docs, with links.
+- **Redo:** what the engine's agent must change, re-run or drop; "nothing" if it is inert.
+```
+
+### 2026-11-05: Change log
+
+- **Changed:** contract changes before E-02 are made in place and listed here. The engine API is being aligned with the Reborn engine (`specs/app/integration.md`); expect several entries.
+- **Redo:** nothing yet. Read this section first from now on.
+
 ## Context
 
 - The platform (relay, dashboard, UI bundle) never sees engine content. The relay only pipes TLS bytes; the dashboard only links an engine to an account and receives numbers in heartbeats. Everything you build keeps it that way.
@@ -90,6 +108,6 @@ Then write a short report for the maintainer: what you built, where it lives, th
 The contracts are shared with the relay, the dashboard and the UI. A private change on your side breaks them, so:
 
 - **Never diverge.** Do not change a wire format, add an undeclared response field, rename a path or loosen a check, even if the contract looks like a mistake.
-- **Write a proposal** for the maintainer, who raises it with the platform team: what you expected, what the contract or a check does, the check ID or file and line, why it matters, and the smallest change that would fix it. Changes go in by addition (a new optional field, a `v2` next to `v1`), never by editing `v1`.
+- **Write a proposal** for the maintainer, who raises it with the platform team: what you expected, what the contract or a check does, the check ID or file and line, why it matters, and the smallest change that would fix it. Until E-02 the platform makes the change in place and lists it under "What changed"; after E-02, changes go in by addition (a new optional field, a `v2` next to `v1`), never by editing `v1`.
 - **Keep going.** Implement the rest of the phase against the contract as it is. If you are blocked, stop that item, say so in your report, and move on to the next phase only if it does not depend on it.
 - **Ambiguity is a question, not a choice.** If the guide leaves a behaviour open and the plan gives no default, ask. Do not guess on anything security-related.
