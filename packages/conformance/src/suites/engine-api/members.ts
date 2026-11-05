@@ -161,9 +161,9 @@ export const MEMBER_CHECKS: readonly ConformanceCheck[] = [
         },
     },
     {
-        id: 'engine-api.cross-member.chat-writes',
+        id: 'engine-api.cross-member.shared-threads',
         suite: SUITE,
-        title: 'A member who may write in chats gets 403 or 404 sending or cancelling in a chat another member started',
+        title: 'Nobody owns a thread: another member who may write in chats writes in one the owner started, as the User',
         async run(ctx) {
             const world = await createWorld(ctx);
             const second = await sessionFor(
@@ -171,29 +171,28 @@ export const MEMBER_CHECKS: readonly ConformanceCheck[] = [
                 { kind: 'member', permissions: ['agents.read', 'chats.read', 'chats.write'] },
                 'members with chosen permissions',
             );
+            const { memberId } = await second.ok(R.getMe);
             const { id: chatId } = await world.chat();
-            const { replyMessageId } = await world.reply();
-            const before = (await world.owner.ok(R.getChat, { params: { chatId } })).messageCount;
             const findings = new Findings();
-            const probes = [
-                [R.sendChatMessage, { params: { chatId }, body: { content: 'conformance: not your chat' } }],
-                [R.cancelChatReply, { params: { chatId, messageId: replyMessageId } }],
-            ] as const;
-            for (const [route, request] of probes) {
-                await attempt(findings, async () => {
-                    const result = await second.call(route, request);
-                    if (result.kind === 'ok') {
-                        findings.add(`${describe(route)}: the second member got ${String(result.status)}`);
-                    } else if (result.problem.code !== 'forbidden' && result.problem.code !== 'not-found') {
-                        findings.add(
-                            `${describe(route)}: the second member got ${result.problem.code}, not 403 or 404`,
-                        );
-                    }
+            const content = 'conformance: a second member writes here';
+            await attempt(findings, async () => {
+                const result = await second.call(R.sendChatMessage, { params: { chatId }, body: { content } });
+                if (result.kind !== 'ok') {
+                    findings.add(`POST /chats/{chatId}/messages: the second member got ${result.problem.code}`);
+                    return;
+                }
+                const { message } = result.data;
+                if (message.author.kind !== 'user' || message.createdBy !== memberId) {
+                    findings.add('POST /chats/{chatId}/messages: the message does not name the member who sent it');
+                }
+                const { items } = await world.owner.ok(R.listChatEntries, {
+                    params: { chatId },
+                    query: { limit: 100 },
                 });
-            }
-            const after = (await world.owner.ok(R.getChat, { params: { chatId } })).messageCount;
-            if (after !== before)
-                findings.add('POST /chats/{chatId}/messages: the refused message was added to the chat');
+                if (!items.some((entry) => entry.id === message.id)) {
+                    findings.add("GET /chats/{chatId}/entries: the owner does not see the second member's message");
+                }
+            });
             return findings.outcome();
         },
     },

@@ -30,11 +30,13 @@ async function expectInert(page: Page): Promise<void> {
     expect(hrefs.filter((href) => href?.startsWith('https://') !== true)).toEqual([]);
 }
 
+/** Opens a thread with the agent from its Chat tab and writes the first message there. */
 async function startChat(page: Page, appUrl: (path: string) => string, agent: Agent, text: string): Promise<void> {
     await page.goto(appUrl(`/agents/${agent.id}/chat`));
-    const starter = page.getByRole('textbox', { name: 'New chat' });
-    await starter.fill(text);
-    await starter.press('Enter');
+    await page.getByRole('button', { name: `New chat with ${agent.name}` }).click();
+    const composer = page.getByRole('textbox', { name: 'Message' });
+    await composer.fill(text);
+    await composer.press('Enter');
     await expect(page.getByRole('region', { name: 'Messages' }).getByText(text, { exact: true })).toBeVisible();
 }
 
@@ -47,7 +49,9 @@ test('streams a reply, stops another mid-stream and renders markdown once comple
     await signIn();
     await page.goto(appUrl('/'));
     const agent = required(
-        (await apiList<Agent>(page, '/agents')).find((candidate) => candidate.name !== HOSTILE_AGENT),
+        (await apiList<Agent>(page, '/agents')).find(
+            (candidate) => candidate.name !== HOSTILE_AGENT && candidate.name !== 'Chatter',
+        ),
         'agent',
     );
     await startChat(page, appUrl, agent, 'Explain the retry policy');
@@ -66,8 +70,7 @@ test('streams a reply, stops another mid-stream and renders markdown once comple
     await composer.fill('And the rollback plan?');
     await composer.press('Enter');
     await expect(history.getByText('Replying…')).toBeVisible();
-    // The agent's own Stop sits in the page header; this one stops the reply.
-    await page.getByRole('tabpanel', { name: 'Chat' }).getByRole('button', { name: 'Stop' }).click();
+    await page.locator('form').getByRole('button', { name: 'Stop' }).click();
     await expect(history.getByText('Stopped', { exact: true })).toBeVisible();
     await expect(history.getByText('Replying…')).toHaveCount(0);
 });

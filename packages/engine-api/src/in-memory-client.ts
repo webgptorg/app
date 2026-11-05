@@ -16,20 +16,18 @@ import { RunDetail } from './capabilities/runs';
 import { Task, TaskLink, TaskOccurrence } from './capabilities/tasks';
 import type { Run, RunStatus } from './capabilities/runs';
 import { Trigger, TriggerFire } from './capabilities/triggers';
-import { Chat, Message } from './chats';
-import type { ChatSource, MessageRole } from './chats';
+import { ParticipantRef } from './chats';
+import type { Chat, ChatStatus } from './chats';
 import { createEngineApiClient, EngineApiContractError } from './client';
 import type { EngineApiClient, EngineApiResponse, EngineApiTransport, EngineApiTransportRequest } from './client';
 import {
     AgentId,
     AgentPermanentId,
     AuditEntryId,
-    ChatId,
     ClientInfo,
     DashboardUserId,
     FolderId,
     MemberId,
-    MessageId,
     OpaqueId,
     OrgId,
     RevisionId,
@@ -52,18 +50,10 @@ import type { HandlerContext } from './in-memory/handlers';
 import { addFile, resolveUploadPolicies, setFileScan } from './in-memory/files';
 import type { FileUploadPolicies, NewFile } from './in-memory/files';
 import { setIntegrationStatus } from './in-memory/integrations';
-import {
-    addChatMessages,
-    DEFAULT_ENGINE_CHECKS,
-    EMPTY_CHAT_SUMMARY,
-    liveAgent,
-    recordActivity,
-    summariseMessage,
-} from './in-memory/kit';
+import { DEFAULT_ENGINE_CHECKS, recordActivity } from './in-memory/kit';
 import type {
     ActivityInput,
     Actor,
-    ChatSummary,
     EngineChecks,
     EngineContext,
     ReplyProgress,
@@ -82,6 +72,18 @@ import {
 import type { RunOutcome, RunReport, StartRun } from './in-memory/runs';
 import { checkTaskSeed } from './in-memory/tasks';
 import type { FileRecord, InMemoryState } from './in-memory/state';
+import {
+    appendMessage,
+    chatView,
+    createThread,
+    join,
+    mainAgent,
+    markSeen,
+    retitle,
+    setStatus,
+    touch,
+} from './in-memory/threads';
+import type { ChatRecord } from './in-memory/threads';
 import { findTriggers, fireTrigger } from './in-memory/triggers';
 import type { FireInput } from './in-memory/triggers';
 import { withClientReading } from './reader';
@@ -209,8 +211,8 @@ export interface InMemorySeed {
     readonly onboarding?: 'pending' | 'completed';
     readonly folders?: readonly Unbranded<z.input<typeof Folder>>[];
     readonly agents?: readonly InMemorySeedAgent[];
+    /** Replayed after the agents, so joins carry their names. */
     readonly chats?: readonly InMemorySeedChat[];
-    readonly messages?: readonly Unbranded<z.input<typeof Message>>[];
     readonly secrets?: readonly Unbranded<z.input<typeof SecretMetadata>>[];
     readonly apiTokens?: readonly Unbranded<z.input<typeof ApiToken>>[];
     readonly passkeys?: readonly Unbranded<z.input<typeof Passkey>>[];
@@ -230,22 +232,36 @@ export interface InMemorySeed {
     readonly auditEntries?: readonly InMemorySeedAuditEntry[];
 }
 
-/** The summary (`messageCount`, `lastMessageAt`, `preview`) is derived from the seed's messages; `source` defaults to `web`. */
-export type InMemorySeedChat = Omit<
-    Unbranded<z.input<typeof Chat>>,
-    'source' | 'messageCount' | 'lastMessageAt' | 'preview'
-> & { readonly source?: ChatSource };
-
 /**
- * A chat no member started: by default a public visitor of a public agent (`web`); `api` for an API client. Its
- * messages (oldest first) are all `completed`, and its user messages have no member either.
+ * A thread as a script the engine replays in order, through the same operations members use: a message joins its
+ * author first, and an agent message with an active `+@User` becomes an outstanding question. Entries without `at`
+ * take the thread's `createdAt`.
  */
-export interface InMemoryVisitorChat {
-    readonly agentId: string;
-    readonly source?: ChatSource;
+export interface InMemorySeedChat {
+    readonly id: string;
+    /** Without one, the thread is titled after its first agent until a `titled` entry or the first User message. */
     readonly title?: string;
-    readonly messages?: readonly { readonly role: MessageRole; readonly content: string }[];
+    readonly createdAt: string;
+    readonly entries: readonly InMemorySeedEntry[];
+    /** Members who have read everything seeded; for the others every agent message is unread. */
+    readonly readBy?: readonly string[];
 }
+
+export type InMemorySeedEntry =
+    | { readonly type: 'joined'; readonly participant: ParticipantRef; readonly at?: string }
+    | {
+          readonly type: 'message';
+          readonly author: ParticipantRef;
+          readonly content: string;
+          /** The member who sent a User message. */
+          readonly createdBy?: string;
+          readonly choices?: readonly string[];
+          /** For a question: whether someone has displayed it already. */
+          readonly seen?: boolean;
+          readonly at?: string;
+      }
+    | { readonly type: 'titled'; readonly title: string; readonly at?: string }
+    | { readonly type: 'status'; readonly status: ChatStatus; readonly at?: string };
 
 /** `versions` (oldest first) default to one version with `content`; `versionCount` is derived from them. */
 export interface InMemorySeedFile {
@@ -409,8 +425,8 @@ export interface InMemoryEngineController {
     updateEngine(patch: Partial<Omit<Unbranded<z.input<typeof EngineInfo>>, 'capabilities'>>): EngineInfo;
     /** E.g. each relay's link state. */
     updateSecurity(patch: Partial<Unbranded<z.input<typeof SecurityOverview>>>): SecurityOverview;
-    /** Throws for an unknown or deleted agent. Announced with `chat.changed`, like a chat a member starts. */
-    addVisitorChat(chat: InMemoryVisitorChat): Chat;
+    /** A thread the engine starts itself (a report, agents talking, a question); announced with `chat.changed`. */
+    addChat(chat: InMemorySeedChat): Chat;
     /** Throws if the ID is taken. */
     addMember(member: Unbranded<z.input<typeof Member>>): Member;
     /** The gateway's join page accepted a dashboard ticket and registered a passkey; throws at the pending cap. */
@@ -673,6 +689,8 @@ export function createInMemoryEngineCore(options: InMemoryEngineCoreOptions = {}
 
     const checks: EngineChecks = { ...DEFAULT_ENGINE_CHECKS, ...options.checks };
     const system: EngineContext = { state, checks, now, newId, publish, replies };
+    // Seeded threads are history, not news: replaying them announces nothing.
+    for (const chat of options.seed?.chats ?? []) replayChat({ ...system, publish: () => undefined }, chat);
     const controller: InMemoryEngineController = {
         appendActivity: (activity) => recordActivity(system, activity as ActivityInput),
         advanceRun: (runId, outcome) => advanceRun(system, runId, outcome),
@@ -709,33 +727,10 @@ export function createInMemoryEngineCore(options: InMemoryEngineCoreOptions = {}
             state.security = SecurityOverview.parse({ ...state.security, ...patch });
             return state.security;
         },
-        addVisitorChat: (input) => {
-            const agent = liveAgent(system, input.agentId);
-            if (agent.kind === 'problem') throw new Error(`cannot add a chat: ${agent.problem.code}`);
-            const at = now();
-            const chat = Chat.parse({
-                id: newId(ChatId, 'chat'),
-                agentId: agent.data.id,
-                title: input.title ?? '',
-                source: input.source ?? 'web',
-                createdBy: null,
-                createdAt: at,
-                updatedAt: at,
-                ...EMPTY_CHAT_SUMMARY,
-            });
-            state.chats.set(chat.id, chat);
-            const messages = (input.messages ?? []).map((message) =>
-                Message.parse({
-                    id: newId(MessageId, 'message'),
-                    chatId: chat.id,
-                    role: message.role,
-                    content: message.content,
-                    status: 'completed',
-                    createdBy: null,
-                    createdAt: now(),
-                }),
-            );
-            return addChatMessages(system, chat, messages);
+        addChat: (input) => {
+            const record = replayChat(system, input);
+            touch(system, record);
+            return chatView(system, record, seedMember.id);
         },
         requestAccess: (request) => requestAccess(system, request),
         settleHarnessLogin: (outcome, diagnostic) => {
@@ -841,9 +836,6 @@ export function createInMemoryEngineCore(options: InMemoryEngineCoreOptions = {}
                     return deny(createProblem('forbidden', { requiredPermission: route.permission }));
                 }
             }
-            if (route.permission === 'chats.write' && writesInAnotherMembersChat(state, request.params, actor)) {
-                return deny(createProblem('forbidden', { requiredPermission: route.permission }));
-            }
             if (route.stepUp && !actor.stepUpFresh) return deny(createProblem('step-up-required'));
             const parsed = parseRequest(route, request);
             if (parsed.kind === 'problem') {
@@ -897,21 +889,6 @@ const PARAM_RESOURCES: Readonly<Record<string, ResourceKind>> = {
     integrationId: 'integration',
 };
 
-/**
- * A contract rule, not engine policy, so no authorizer can lift it: only the member who started a chat writes in it,
- * so nobody puts words into another member's conversation with an agent. A chat no member started is left to the
- * engine's policy, and an unknown chat answers the route's own 404.
- */
-function writesInAnotherMembersChat(
-    state: InMemoryState,
-    params: EngineApiTransportRequest['params'],
-    actor: Actor,
-): boolean {
-    const chatId = params?.['chatId'];
-    const chat = typeof chatId === 'string' ? state.chats.get(chatId) : undefined;
-    return chat !== undefined && chat.createdBy !== null && chat.createdBy !== actor.memberId;
-}
-
 /** The resource named by the route's last path parameter, before the input is parsed (so a bad ID stays a 400). */
 function resourceOf(
     state: InMemoryState,
@@ -941,7 +918,8 @@ function ownerOf(
             return agent?.revisions.find((revision) => revision.id === id)?.createdBy;
         }
         case 'chat':
-            return state.chats.get(id)?.createdBy;
+            // Nobody owns a thread: every member with `chats.write` writes in it.
+            return state.chats.has(id) ? null : undefined;
         case 'message':
             return state.messages.get(id)?.createdBy;
         case 'invite':
@@ -1184,6 +1162,7 @@ function idTaken(state: InMemoryState, id: string): boolean {
             state.agents,
             state.chats,
             state.messages,
+            state.chatEvents,
             state.secrets,
             state.apiTokens,
             state.passkeys,
@@ -1303,7 +1282,9 @@ function createState(
         folders: byId((seed.folders ?? []).map((record) => Folder.parse(record))),
         agents: new Map(),
         chats: new Map(),
-        messages: byId((seed.messages ?? []).map((record) => Message.parse(record))),
+        messages: new Map(),
+        chatEvents: new Map(),
+        chatRequestKeys: new Map(),
         replies: new Map(),
         secrets: byId(
             (seed.secrets ?? []).map((record) => SecretMetadata.parse({ valueUpdatedAt: record.createdAt, ...record })),
@@ -1370,11 +1351,6 @@ function createState(
         events: [],
         eventSeq: 0,
     };
-    const summaries = summariseSeedMessages(state.messages.values());
-    for (const record of seed.chats ?? []) {
-        const chat = Chat.parse({ source: 'web', ...record, ...(summaries.get(record.id) ?? EMPTY_CHAT_SUMMARY) });
-        state.chats.set(chat.id, chat);
-    }
     for (const [index, seedAgent] of (seed.agents ?? []).entries()) {
         const book = checkBook(seedAgent.source);
         if (book.diagnostics.some((diagnostic) => diagnostic.severity === 'error')) {
@@ -1408,15 +1384,44 @@ function createState(
     return state;
 }
 
-function summariseSeedMessages(messages: Iterable<Message>): Map<string, ChatSummary> {
-    const oldestFirst = [...messages].sort(
-        (a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt) || a.id.localeCompare(b.id),
-    );
-    const summaries = new Map<string, ChatSummary>();
-    for (const message of oldestFirst) {
-        summaries.set(message.chatId, summariseMessage(summaries.get(message.chatId) ?? EMPTY_CHAT_SUMMARY, message));
+/** Replays a seeded thread through the engine's own operations, at the entries' times. */
+function replayChat(ctx: EngineContext, seed: InMemorySeedChat): ChatRecord {
+    let at = Timestamp.parse(seed.createdAt);
+    const clock: EngineContext = { ...ctx, now: () => at };
+    const record = createThread(clock, { id: seed.id, ...(seed.title === undefined ? {} : { title: seed.title }) });
+    for (const entry of seed.entries) {
+        at = Timestamp.parse(entry.at ?? at);
+        switch (entry.type) {
+            case 'joined':
+                join(clock, record, ParticipantRef.parse(entry.participant));
+                break;
+            case 'titled':
+                retitle(clock, record, entry.title);
+                break;
+            case 'status':
+                setStatus(clock, record, entry.status);
+                break;
+            case 'message': {
+                const message = appendMessage(clock, record, {
+                    author: ParticipantRef.parse(entry.author),
+                    content: entry.content,
+                    status: 'completed',
+                    createdBy: entry.createdBy === undefined ? null : MemberId.parse(entry.createdBy),
+                    ...(entry.choices === undefined ? {} : { choices: entry.choices }),
+                });
+                if (entry.seen === true) markSeen(clock, record, [message.id]);
+                break;
+            }
+        }
     }
-    return summaries;
+    if (record.placeholderTitle && record.title === '') {
+        const main = mainAgent(record);
+        const name = main && record.members.find((member) => member.key === main.key)?.name;
+        if (name !== undefined) record.title = `Chat with ${name}`;
+    }
+    for (const memberId of seed.readBy ?? []) record.readUpTo.set(memberId, record.entryIds.length);
+    record.updatedAt = at;
+    return record;
 }
 
 async function seedAudit(state: InMemoryState, entries: readonly InMemorySeedAuditEntry[]): Promise<void> {

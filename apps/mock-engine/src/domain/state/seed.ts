@@ -3,6 +3,7 @@ import { builtInAgents } from '@ptbk/engine-api/in-memory';
 import type { InMemorySeed } from '@ptbk/engine-api/in-memory';
 
 import { seedCapabilities } from './capability-seed';
+import type { SeedChatRef, SeedMessageRef } from './capability-seed';
 import type { Scenario, ScenarioSize } from './scenarios';
 import { SCENARIO_SIZES } from './scenarios';
 import type { SeededSequence } from './seed-random';
@@ -31,7 +32,6 @@ type Item<Key extends keyof InMemorySeed> =
 type SeedMember = Item<'members'>;
 type SeedAgent = Item<'agents'>;
 type SeedChat = Item<'chats'>;
-type SeedMessage = Item<'messages'>;
 type SeedAuditEntry = Item<'auditEntries'>;
 
 const MINUTE = 60_000;
@@ -166,31 +166,70 @@ function seedMembers(generators: Generators, size: ScenarioSize, epochMs: number
     }));
 }
 
+/** The engine's default partner of a new thread, one of the built-in agents every scenario has. */
+const CHATTER = { id: 'builtin-chatter' } as const;
+
+const USER = { kind: 'user', key: 'user' } as const;
+const agentRef = (agent: Pick<SeedAgent, 'id'>) => ({ kind: 'agent', key: agent.id ?? '' }) as const;
+
+interface ChatRefs {
+    readonly chats: SeedChatRef[];
+    readonly messages: SeedMessageRef[];
+}
+
+/**
+ * Threads as the engine keeps them: the User with one agent (started from "another agent"), and one each of the kinds
+ * Reborn adds: Chatter bringing an agent in, two agents talking without the User, the one-agent `Report` feed and an
+ * agent's question waiting for the User. Message IDs follow the engine's `<chat>#<position>`.
+ */
 function seedChats(
     generators: Generators,
     size: ScenarioSize,
     epochMs: number,
     agents: readonly SeedAgent[],
     chatters: readonly SeedMember[],
-): { readonly chats: SeedChat[]; readonly messages: SeedMessage[] } {
+): { readonly chats: SeedChat[]; readonly refs: ChatRefs } {
     const { faker, sequence } = generators;
     const pools = size.longChats > 0 ? textPools(generators) : null;
     const chats: SeedChat[] = [];
-    const messages: SeedMessage[] = [];
+    const refs: ChatRefs = { chats: [], messages: [] };
     const live = agents.filter((agent) => agent.deletedAt === undefined);
-    /** `member` is `null` for a public visitor's chat: no member started it, and visitors leave it untitled. */
-    const addChat = (agent: SeedAgent, count: number, member: SeedMember | null): void => {
+    const record = (chat: SeedChat, main: SeedAgent, member: SeedMember | null): void => {
+        chats.push(chat);
+        refs.chats.push({
+            id: chat.id,
+            agentId: main.id ?? '',
+            createdBy: member?.id ?? null,
+            title: chat.title ?? '',
+        });
+        let position = 0;
+        for (const entry of chat.entries) {
+            if (entry.type !== 'message') continue;
+            position++;
+            refs.messages.push({
+                id: `${chat.id}#${String(position)}`,
+                chatId: chat.id,
+                role: entry.author.kind,
+                createdAt: entry.at ?? chat.createdAt,
+                content: entry.content,
+            });
+        }
+    };
+    const addChat = (agent: SeedAgent, count: number, member: SeedMember): void => {
         const gaps = Array.from({ length: count }, () => sequence.int(20_000, 30 * MINUTE));
         const span = gaps.reduce((total, gap) => total + gap, 0);
         let at = epochMs - span - sequence.int(HOUR, 50 * DAY);
         const chat: SeedChat = {
             id: sequence.id('chat'),
-            agentId: agent.id ?? '',
-            title: member ? capitalise(faker.company.buzzPhrase()).slice(0, 256) : '',
-            createdBy: member?.id ?? null,
+            title: capitalise(faker.company.buzzPhrase()).slice(0, 256),
             createdAt: iso(at),
-            updatedAt: iso(at),
+            entries: [
+                { type: 'joined', participant: USER },
+                { type: 'joined', participant: agentRef(agent) },
+            ],
+            readBy: chatters.map(({ id }) => id),
         };
+        const entries: SeedChat['entries'][number][] = [...chat.entries];
         for (const [index, gap] of gaps.entries()) {
             at += gap;
             const fromUser = index % 2 === 0;
@@ -199,35 +238,122 @@ function seedChats(
                 : fromUser
                   ? userText(generators)
                   : agentText(generators);
-            messages.push({
-                id: sequence.id('message'),
-                chatId: chat.id,
-                role: fromUser ? 'user' : 'agent',
-                content,
-                status: 'completed',
-                createdBy: fromUser ? (member?.id ?? null) : null,
-                createdAt: iso(at),
-            });
+            entries.push(
+                fromUser
+                    ? { type: 'message', author: USER, content, createdBy: member.id, at: iso(at) }
+                    : { type: 'message', author: agentRef(agent), content, at: iso(at) },
+            );
         }
-        chat.updatedAt = iso(at);
-        chats.push(chat);
+        record({ ...chat, entries }, agent, member);
     };
     for (const agent of live) {
         const count = sequence.int(...size.chatsPerAgent);
         for (let index = 0; index < count; index++) {
             addChat(agent, sequence.int(...size.messagesPerChat) & ~1, sequence.pick(chatters));
         }
-        if (agent.visibility === 'public' || agent.visibility === 'unlisted') {
-            const visitorChats = sequence.int(...size.visitorChatsPerAgent);
-            for (let index = 0; index < visitorChats; index++) {
-                addChat(agent, sequence.int(...size.messagesPerChat) & ~1, null);
-            }
-        }
     }
     for (let index = 0; index < size.longChats && live.length > 0; index++) {
         addChat(sequence.pick(live), sequence.int(...size.longChatMessages) & ~1, sequence.pick(chatters));
     }
-    return { chats, messages };
+    const [first, second] = live;
+    const member = chatters[0];
+    if (first && second && member) {
+        // Their turns are not runs a member started, so they stay out of the run seed.
+        chats.push(...rebornThreads(epochMs, first, second, member));
+    }
+    return { chats, refs };
+}
+
+/** One thread of each kind Reborn adds, with fixed texts so screenshots and tests can name them. */
+function rebornThreads(epochMs: number, first: SeedAgent, second: SeedAgent, member: SeedMember): readonly SeedChat[] {
+    const ago = (minutes: number): string => iso(epochMs - minutes * MINUTE);
+    const name = (agent: SeedAgent): string => agentName(agent);
+    return [
+        {
+            id: 'chat-chatter-brings-in',
+            createdAt: ago(240),
+            entries: [
+                { type: 'joined', participant: USER },
+                { type: 'joined', participant: agentRef(CHATTER) },
+                {
+                    type: 'message',
+                    author: USER,
+                    createdBy: member.id,
+                    content: `What is ${name(first)} working on this week?`,
+                },
+                { type: 'titled', title: `${name(first)}: this week`, at: ago(239) },
+                {
+                    type: 'message',
+                    author: agentRef(CHATTER),
+                    content: `I'll bring in ${name(first)} for this.`,
+                    at: ago(239),
+                },
+                { type: 'joined', participant: agentRef(first), at: ago(238) },
+                {
+                    type: 'message',
+                    author: agentRef(first),
+                    content: 'Two things: the monthly summary, and cleaning up last week’s open items.',
+                    at: ago(236),
+                },
+            ],
+            readBy: [member.id],
+        },
+        {
+            id: 'chat-agents-talking',
+            title: `${name(first)} and ${name(second)}`,
+            createdAt: ago(120),
+            entries: [
+                { type: 'joined', participant: agentRef(first) },
+                { type: 'joined', participant: agentRef(second) },
+                {
+                    type: 'message',
+                    author: agentRef(first),
+                    content: `${name(second)}, can you check the numbers before I send the summary?`,
+                },
+                {
+                    type: 'message',
+                    author: agentRef(second),
+                    content: 'Checked. Two totals were off; fixed both.',
+                    at: ago(110),
+                },
+            ],
+        },
+        {
+            id: 'Report',
+            title: 'Report',
+            createdAt: ago(60 * 24),
+            entries: [
+                { type: 'joined', participant: agentRef(CHATTER) },
+                {
+                    type: 'message',
+                    author: agentRef(CHATTER),
+                    content: 'Yesterday: 14 tasks done, none waiting on you.',
+                },
+                {
+                    type: 'message',
+                    author: agentRef(CHATTER),
+                    content: `Today: ${name(first)} is preparing the monthly summary.`,
+                    at: ago(90),
+                },
+            ],
+        },
+        {
+            id: 'chat-question-for-you',
+            title: 'Monthly summary recipients',
+            createdAt: ago(45),
+            entries: [
+                { type: 'joined', participant: agentRef(second) },
+                { type: 'message', author: agentRef(second), content: 'The monthly summary is ready to send.' },
+                {
+                    type: 'message',
+                    author: agentRef(second),
+                    content: '+@User Should the summary go to the whole team or only to the managers?',
+                    choices: ['Whole team', 'Only managers'],
+                    at: ago(44),
+                },
+            ],
+        },
+    ];
 }
 
 function seedAgents(
@@ -333,7 +459,7 @@ export async function seedEngine({ seed, scenario, epoch, hostname }: SeedInput)
         writers,
         folders.map(({ id }) => id),
     );
-    const { chats, messages } = seedChats(generators, size, epochMs, agents, writers);
+    const { chats, refs } = seedChats(generators, size, epochMs, agents, writers);
 
     const secrets = Array.from({ length: size.secrets }, (_, index) => {
         const base = SECRET_NAMES[index % SECRET_NAMES.length] ?? 'API_KEY';
@@ -426,14 +552,8 @@ export async function seedEngine({ seed, scenario, epoch, hostname }: SeedInput)
                 createdBy: agent.createdBy ?? owner.id,
                 createdAt: agent.createdAt ?? '',
             })),
-        chats: chats.map(({ id, agentId, createdBy, title }) => ({ id, agentId, createdBy, title })),
-        messages: messages.map(({ id, chatId, role, createdAt, content }) => ({
-            id,
-            chatId,
-            role,
-            createdAt,
-            content,
-        })),
+        chats: refs.chats,
+        messages: refs.messages,
         secrets,
     });
 
@@ -450,7 +570,6 @@ export async function seedEngine({ seed, scenario, epoch, hostname }: SeedInput)
         // A fresh engine waits for its owner to set it up; the seeded teams have been at work for a while.
         onboarding: scenario === 'empty' ? 'pending' : 'completed',
         chats,
-        messages,
         secrets,
         passkeys,
         sessions,

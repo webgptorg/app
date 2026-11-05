@@ -1,4 +1,4 @@
-import type { ChatId, Message, MessageId } from '@ptbk/engine-api';
+import type { ChatId, MessageId, ReadChatEntry, ReadMessage } from '@ptbk/engine-api';
 import { useToast } from '@ptbk/ui';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useReducer, useRef } from 'react';
@@ -6,41 +6,51 @@ import { useCallback, useEffect, useReducer, useRef } from 'react';
 import { useEngineApi } from '../../app/engine-api-context';
 import { useEngineEvents } from '../../app/engine-events-context';
 import { m } from '../../paraglide/messages';
-import { useCurrentMember } from '../session/use-current-member';
-import { mergeNewestPage, upsertMessages } from './chat-cache';
+import { mergeNewestPage, upsertEntries } from './chat-cache';
 import { chatKeys } from './chat-keys';
-import { MESSAGE_PAGE_SIZE } from './chat-queries';
+import { ENTRY_PAGE_SIZE } from './chat-queries';
 import { chatSessionReducer, INITIAL_CHAT_SESSION, isReplyActive } from './chat-session';
 import type { ChatSessionState } from './chat-session';
-import { checkDelivery, isRefusal, refusalTitle } from './send-delivery';
-import type { UnclearSend } from './send-delivery';
+import { isRefusal, newRequestKey, refusalTitle } from './send-delivery';
 
 export interface ChatSession {
     readonly state: ChatSessionState;
-    /** Resolves `false` when the engine did not take the message, so the composer can give the text back. */
-    readonly send: (content: string) => Promise<boolean>;
+    /**
+     * Sends as the User; `replyTo` names the question it answers. Resolves `false` when the engine did not take the
+     * message, so the composer can give the text back.
+     */
+    readonly send: (content: string, replyTo?: MessageId) => Promise<boolean>;
     /** Stops the reply in progress; does nothing unless one is streaming, so a second click is harmless. */
     readonly stop: () => void;
     /**
      * After a dropped stream, resumes it where it stopped; after a failed reply, sends the message again; after a send
-     * nobody could confirm, checks again whether it arrived.
+     * nobody could confirm, sends it again under the same request key, which cannot save it twice.
      */
     readonly retry: () => void;
 }
 
 export interface ChatSessionOptions {
     readonly chatId: ChatId;
-    /** From the chat record, which `chat.changed` events refresh; newer than the newest cached message means more. */
-    readonly lastMessageAt: string | null;
-    /** Oldest first, as cached. A reply still `streaming` there is followed once, e.g. after a reload. */
-    readonly messages: readonly Message[];
+    /** From the thread record, which `chat.changed` events refresh; a newer one means entries this panel lacks. */
+    readonly updatedAt: string;
+    /** Oldest first, as cached. A message still `streaming` there is followed, e.g. an agent answering. */
+    readonly entries: readonly ReadChatEntry[];
 }
 
+interface PendingSend {
+    readonly content: string;
+    readonly requestKey: string;
+    readonly replyTo: MessageId | undefined;
+}
+
+const isMessage = (entry: ReadChatEntry): entry is ReadMessage => entry.type === 'message';
+
 /**
- * Sending, streaming, stopping and resuming a chat's replies. The stream drives the reducer; the engine's confirmed
- * messages go into the query cache as they arrive, so the history never needs a refetch.
+ * Sending, streaming, stopping and resuming in one thread. Replies are entries of their own, from whichever agent
+ * answers, so the panel follows the newest message still streaming; the engine's confirmed entries go into the query
+ * cache as they arrive.
  */
-export function useChatSession({ chatId, lastMessageAt, messages }: ChatSessionOptions): ChatSession {
+export function useChatSession({ chatId, updatedAt, entries }: ChatSessionOptions): ChatSession {
     const engineApi = useEngineApi();
     const queryClient = useQueryClient();
     const toast = useToast();
@@ -49,13 +59,10 @@ export function useChatSession({ chatId, lastMessageAt, messages }: ChatSessionO
     const stream = useRef<AbortController | null>(null);
     const followed = useRef(new Set<string>());
     const unmounted = useRef(new AbortController());
-    const memberId = useCurrentMember().memberId;
-    const latestMessages = useRef(messages);
-    const checkAgain = useRef<(() => void) | null>(null);
+    const sendAgain = useRef<(() => void) | null>(null);
 
     useEffect(() => {
         stateRef.current = state;
-        latestMessages.current = messages;
     });
 
     useEffect(() => {
@@ -67,24 +74,24 @@ export function useChatSession({ chatId, lastMessageAt, messages }: ChatSessionO
             stream.current?.abort();
             // An effect re-run (StrictMode, Activity) has to open the stream this just closed.
             followedIds.clear();
-            // The cache never goes stale by itself and holds no row for the reply being followed, which outlives this.
+            // The cache never goes stale by itself and holds no final text for the reply being followed.
             const { phase, reply } = stateRef.current;
             if (isReplyActive(phase) || reply !== null) {
-                void queryClient.invalidateQueries({ queryKey: chatKeys.messages(chatId), refetchType: 'none' });
+                void queryClient.invalidateQueries({ queryKey: chatKeys.entries(chatId), refetchType: 'none' });
             }
         };
     }, [queryClient, chatId]);
 
     const refreshNewest = useCallback(async () => {
         try {
-            const response = await engineApi.chats.listMessages(
+            const response = await engineApi.chats.listEntries(
                 chatId,
-                { limit: MESSAGE_PAGE_SIZE },
+                { limit: ENTRY_PAGE_SIZE },
                 unmounted.current.signal,
             );
             if (response.kind === 'ok') mergeNewestPage(queryClient, chatId, response.data);
         } catch {
-            // The history stays as it was; the next event or reconnect tries again.
+            // The thread stays as it was; the next event or reconnect tries again.
         }
     }, [engineApi, queryClient, chatId]);
 
@@ -116,8 +123,10 @@ export function useChatSession({ chatId, lastMessageAt, messages }: ChatSessionO
                             dispatch({ type: 'delta', messageId, seq: event.seq, text: event.text });
                             break;
                         case 'completed':
-                            upsertMessages(queryClient, chatId, [event.message]);
+                            upsertEntries(queryClient, chatId, [event.message]);
                             dispatch({ type: 'completed', messageId });
+                            // A question, a status or another agent may follow the reply.
+                            void refreshNewest();
                             return;
                         case 'failed':
                             // A stop in progress settles through its own cancel call.
@@ -135,59 +144,23 @@ export function useChatSession({ chatId, lastMessageAt, messages }: ChatSessionO
         [engineApi, queryClient, chatId, refreshNewest],
     );
 
-    /** The send got no clear answer. The contract has no idempotency key, so only the history can say what happened. */
-    const settleUnclearSend = useCallback(
-        async (sent: UnclearSend) => {
-            const { signal } = unmounted.current;
-            let check = await checkDelivery(engineApi, chatId, sent, signal);
-            while (check.kind === 'unknown' && !signal.aborted) {
-                dispatch({ type: 'send-unconfirmed' });
-                await new Promise<void>((resolve) => {
-                    checkAgain.current = resolve;
-                    signal.addEventListener('abort', () => {
-                        resolve();
-                    });
-                });
-                check = await checkDelivery(engineApi, chatId, sent, signal);
-            }
-            if (signal.aborted || check.kind === 'unknown') return false;
-            if (check.page !== null) mergeNewestPage(queryClient, chatId, check.page);
-            if (check.kind === 'arrived') {
-                dispatch({ type: 'send-arrived' });
-                return true;
-            }
-            dispatch({ type: 'send-failed' });
-            toast.show({ tone: 'danger', title: m.chat_send_failed() });
-            return false;
-        },
-        [engineApi, queryClient, chatId, toast],
-    );
-
-    const recheckSend = useCallback(() => {
-        if (checkAgain.current === null) return;
-        dispatch({ type: 'send-recheck' });
-        const wake = checkAgain.current;
-        checkAgain.current = null;
-        wake();
-    }, []);
-
-    const send = useCallback(
-        async (content: string) => {
-            if (isReplyActive(stateRef.current.phase)) return false;
-            // A second Enter before React re-renders must not send twice.
-            stateRef.current = { ...stateRef.current, phase: 'sending' };
-            dispatch({ type: 'send', content });
-            const unclear: UnclearSend = {
-                content,
-                memberId,
-                knownIds: new Set(latestMessages.current.map((message) => message.id)),
-            };
+    /**
+     * One attempt under the send's request key. `null` when nobody knows whether it arrived (no answer, or a 5xx that
+     * may come after the engine saved it); repeating the key answers the original message, never a second one.
+     */
+    const attempt = useCallback(
+        async ({ content, requestKey, replyTo }: PendingSend): Promise<boolean | null> => {
             try {
-                const response = await engineApi.chats.sendMessage(chatId, { content }, unmounted.current.signal);
+                const response = await engineApi.chats.sendMessage(
+                    chatId,
+                    { content, requestKey, ...(replyTo === undefined ? {} : { replyTo }) },
+                    unmounted.current.signal,
+                );
                 if (response.kind === 'ok') {
-                    upsertMessages(queryClient, chatId, [response.data.userMessage]);
-                    dispatch({ type: 'sent', replyMessageId: response.data.replyMessageId });
-                    void follow(response.data.replyMessageId, 0);
+                    upsertEntries(queryClient, chatId, [response.data.message]);
+                    dispatch({ type: 'sent' });
+                    // The answer to it arrives as entries of its own.
+                    void refreshNewest();
                     return true;
                 }
                 if (isRefusal(response.problem)) {
@@ -196,12 +169,44 @@ export function useChatSession({ chatId, lastMessageAt, messages }: ChatSessionO
                     return false;
                 }
             } catch {
-                // No answer says nothing about the message, as with the 5xx above: settled below.
+                // No answer says nothing about the message, like the 5xx above.
             }
-            return settleUnclearSend(unclear);
+            return null;
         },
-        [engineApi, queryClient, chatId, memberId, follow, toast, settleUnclearSend],
+        [engineApi, queryClient, chatId, toast, refreshNewest],
     );
+
+    const send = useCallback(
+        async (content: string, replyTo?: MessageId) => {
+            if (isReplyActive(stateRef.current.phase)) return false;
+            // A second Enter before React re-renders must not send twice.
+            stateRef.current = { ...stateRef.current, phase: 'sending' };
+            dispatch({ type: 'send', content });
+            const pending: PendingSend = { content, requestKey: newRequestKey(), replyTo };
+            const { signal } = unmounted.current;
+            let outcome = await attempt(pending);
+            while (outcome === null && !signal.aborted) {
+                dispatch({ type: 'send-unconfirmed' });
+                await new Promise<void>((resolve) => {
+                    sendAgain.current = resolve;
+                    signal.addEventListener('abort', () => {
+                        resolve();
+                    });
+                });
+                outcome = await attempt(pending);
+            }
+            return outcome === true;
+        },
+        [attempt],
+    );
+
+    const recheckSend = useCallback(() => {
+        if (sendAgain.current === null) return;
+        dispatch({ type: 'send-recheck' });
+        const wake = sendAgain.current;
+        sendAgain.current = null;
+        wake();
+    }, []);
 
     const stop = useCallback(() => {
         const { phase, reply } = stateRef.current;
@@ -213,7 +218,7 @@ export function useChatSession({ chatId, lastMessageAt, messages }: ChatSessionO
             try {
                 const response = await engineApi.chats.cancelReply(chatId, reply.messageId, unmounted.current.signal);
                 if (response.kind === 'ok') {
-                    upsertMessages(queryClient, chatId, [response.data]);
+                    upsertEntries(queryClient, chatId, [response.data]);
                     dispatch({ type: 'stopped' });
                     return;
                 }
@@ -250,35 +255,37 @@ export function useChatSession({ chatId, lastMessageAt, messages }: ChatSessionO
         },
     });
 
-    const newest = messages.at(-1);
+    const streaming = entries.findLast(
+        (entry): entry is ReadMessage =>
+            isMessage(entry) && entry.status === 'streaming' && entry.author.kind !== 'user',
+    );
     useEffect(() => {
-        // A reply still generating when the history loaded (a reload, another tab, a visitor's chat, a send confirmed
-        // by the history rather than by its own answer): follow it once.
-        if (newest?.role !== 'agent' || newest.status !== 'streaming') return;
-        if (followed.current.has(newest.id) || isReplyActive(stateRef.current.phase)) return;
-        dispatch({ type: 'follow', messageId: newest.id });
-        void follow(newest.id, 0);
-    }, [newest, follow]);
+        // An agent is writing (the answer to this panel's send, another agent joining in, a reload mid-reply): follow
+        // it once. A newer one takes over from an older one.
+        if (streaming === undefined || followed.current.has(streaming.id)) return;
+        const { phase } = stateRef.current;
+        if (phase === 'sending' || phase === 'unconfirmed' || phase === 'stopping') return;
+        dispatch({ type: 'follow', messageId: streaming.id });
+        void follow(streaming.id, 0);
+    }, [streaming, follow]);
 
-    const refreshedFor = useRef<string | null>(null);
-    const newestAt = newest?.createdAt;
+    const refreshedFor = useRef(updatedAt);
     useEffect(() => {
-        // Someone else wrote in this chat (or a visitor did): fetch the newest page once per change the engine reports.
-        if (lastMessageAt === null || lastMessageAt === refreshedFor.current) return;
-        if (newestAt !== undefined && Date.parse(lastMessageAt) <= Date.parse(newestAt)) return;
-        if (isReplyActive(stateRef.current.phase)) return;
-        refreshedFor.current = lastMessageAt;
+        // Someone else wrote, an agent joined or the title changed: fetch the newest page once per change reported.
+        if (updatedAt === refreshedFor.current) return;
+        refreshedFor.current = updatedAt;
         void refreshNewest();
-    }, [lastMessageAt, newestAt, refreshNewest]);
+    }, [updatedAt, refreshNewest]);
 
     const replyId = state.reply?.messageId;
-    const replyStatus = messages.find((message) => message.id === replyId)?.status;
+    const followedEntry = entries.find((entry): entry is ReadMessage => isMessage(entry) && entry.id === replyId);
+    const settledStatus = followedEntry?.status;
     useEffect(() => {
         // The refetch after a drop shows the reply already ended: the engine's copy is the answer.
-        if (state.phase === 'interrupted' && replyStatus !== undefined && replyStatus !== 'streaming') {
+        if (state.phase === 'interrupted' && settledStatus !== undefined && settledStatus !== 'streaming') {
             dispatch({ type: 'settled' });
         }
-    }, [state.phase, replyStatus]);
+    }, [state.phase, settledStatus]);
 
     return { state, send, stop, retry };
 }

@@ -16,7 +16,6 @@ import { TestChatPanel } from '../book/test-chat/test-chat-panel';
 import { ChatPanel } from '../chat/chat-panel';
 import { chatKeys } from '../chat/chat-keys';
 import { chatQueryOptions } from '../chat/chat-queries';
-import { useCurrentMember } from '../session/use-current-member';
 import { usePermissions } from '../session/use-permissions';
 import { StepFrame } from './step-frame';
 
@@ -65,9 +64,8 @@ function ThrowawayTestChat({ agentId, agentName }: { readonly agentId: AgentId; 
     );
 }
 
-function KeptTestChat({ chatId, agentName }: { readonly chatId: ChatId; readonly agentName: string }) {
+function KeptTestChat({ chatId }: { readonly chatId: ChatId }) {
     const chat = useQuery(chatQueryOptions(useEngineApi(), chatId));
-    const me = useCurrentMember();
     const { can } = usePermissions();
     if (chat.isPending) return <Skeleton shape="block" className={`${CHAT_HEIGHT} w-full`} />;
     if (chat.isError) {
@@ -81,12 +79,7 @@ function KeptTestChat({ chatId, agentName }: { readonly chatId: ChatId; readonly
     }
     return (
         <div className={`flex flex-col ${CHAT_HEIGHT}`}>
-            <ChatPanel
-                chat={chat.data}
-                agentName={agentName}
-                canWrite={can('chats.write') && chat.data.createdBy === me.memberId}
-                fill
-            />
+            <ChatPanel chat={chat.data} canWrite={can('chats.write')} fill />
         </div>
     );
 }
@@ -103,8 +96,7 @@ export function TestStep({ agentId, agentName, chatId, headingRef, onChatCreated
         mutationFn: async () =>
             unwrap(
                 await engineApi.chats.create(
-                    agentId,
-                    { title: m.wizard_test_chat_title() },
+                    { agentId, title: m.wizard_test_chat_title() },
                     AbortSignal.timeout(CREATE_TIMEOUT_MS),
                 ),
             ),
@@ -119,7 +111,7 @@ export function TestStep({ agentId, agentName, chatId, headingRef, onChatCreated
     if (throwaway) {
         content = <ThrowawayTestChat agentId={agentId} agentName={agentName} />;
         description = m.wizard_test_body({ name: agentName });
-    } else if (chatId !== undefined) content = <KeptTestChat chatId={chatId} agentName={agentName} />;
+    } else if (chatId !== undefined) content = <KeptTestChat chatId={chatId} />;
     else if (can('chats.write')) {
         content = (
             <Button

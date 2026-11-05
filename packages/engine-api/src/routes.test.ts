@@ -148,10 +148,13 @@ describe('ENGINE_API_ROUTES', () => {
     });
 
     it('requires a non-read permission on every mutating route outside /me/**', () => {
+        // Recording what the caller read or saw changes no content: anyone who may read a thread may record it.
+        const readMarkers: ReadonlySet<string> = new Set(['markChatRead', 'markChatSeen']);
         for (const route of ENGINE_API_ROUTE_LIST.filter((candidate) => candidate.method !== 'GET')) {
             if (isSelfService(route)) continue;
             expect(route.permission, route.id).not.toBeNull();
-            if (route.permission !== null) expect(isReadPermission(route.permission), route.id).toBe(false);
+            if (route.permission === null) continue;
+            expect(isReadPermission(route.permission), route.id).toBe(readMarkers.has(route.id));
         }
     });
 

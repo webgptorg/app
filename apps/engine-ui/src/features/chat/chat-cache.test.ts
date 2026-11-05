@@ -1,29 +1,32 @@
 import { ChatId, MessageId } from '@ptbk/engine-api';
-import type { Message } from '@ptbk/engine-api';
+import type { ReadMessage } from '@ptbk/engine-api';
 import { QueryClient } from '@tanstack/react-query';
 import { describe, expect, it } from 'vitest';
 
-import { mergeNewestPage, messagesInOrder, upsertMessages } from './chat-cache';
-import type { MessagePages } from './chat-cache';
+import { entriesInOrder, mergeNewestPage, upsertEntries } from './chat-cache';
+import type { EntryPages } from './chat-cache';
 import { chatKeys } from './chat-keys';
 
 const chatId = ChatId.parse('chat-1');
 
-function message(id: string, second: number, content = id): Message {
+function message(position: number, content = `m${String(position)}`): ReadMessage {
     return {
-        id: MessageId.parse(id),
+        type: 'message',
+        id: MessageId.parse(`chat-1#${String(position)}`),
         chatId,
-        role: 'user',
+        author: { kind: 'user', key: 'user' },
         content,
         status: 'completed',
         createdBy: null,
-        createdAt: `2026-10-01T12:00:${String(second).padStart(2, '0')}Z` as Message['createdAt'],
+        createdAt: '2026-10-01T12:00:00Z' as ReadMessage['createdAt'],
+        choices: [],
     };
 }
 
-function cacheWith(pages: readonly (readonly Message[])[]): QueryClient {
+/** Pages newest first, each newest first, as the engine pages them. */
+function cacheWith(pages: readonly (readonly ReadMessage[])[]): QueryClient {
     const queryClient = new QueryClient();
-    queryClient.setQueryData<MessagePages>(chatKeys.messages(chatId), {
+    queryClient.setQueryData<EntryPages>(chatKeys.entries(chatId), {
         pages: pages.map((items, index) => ({
             items,
             nextCursor: index < pages.length - 1 ? `c${String(index)}` : null,
@@ -34,36 +37,44 @@ function cacheWith(pages: readonly (readonly Message[])[]): QueryClient {
 }
 
 const ids = (queryClient: QueryClient) =>
-    messagesInOrder(queryClient.getQueryData<MessagePages>(chatKeys.messages(chatId))).map(({ id }) => id);
+    entriesInOrder(queryClient.getQueryData<EntryPages>(chatKeys.entries(chatId))).map(({ id }) => id);
 
 describe('chat cache', () => {
-    it('replaces known messages where they are and adds new ones to the newest page, newest first', () => {
-        const queryClient = cacheWith([[message('c', 3), message('b', 2)], [message('a', 1)]]);
-        upsertMessages(queryClient, chatId, [message('a', 1, 'edited'), message('e', 5), message('d', 4)]);
-        expect(ids(queryClient)).toEqual(['a', 'b', 'c', 'd', 'e']);
-        const data = queryClient.getQueryData<MessagePages>(chatKeys.messages(chatId));
-        expect(data?.pages[1]?.items[0]?.content).toBe('edited');
-        upsertMessages(queryClient, chatId, [message('c', 3, 'again')]);
-        expect(ids(queryClient)).toEqual(['a', 'b', 'c', 'd', 'e']);
+    it('replaces a known entry in place and adds new ones as the newest', () => {
+        const queryClient = cacheWith([[message(3), message(2)], [message(1)]]);
+        upsertEntries(queryClient, chatId, [message(2, 'edited'), message(4), message(5)]);
+        expect(ids(queryClient)).toEqual(['chat-1#1', 'chat-1#2', 'chat-1#3', 'chat-1#4', 'chat-1#5']);
+        const second = entriesInOrder(queryClient.getQueryData<EntryPages>(chatKeys.entries(chatId)))[1];
+        expect(second?.type === 'message' ? second.content : null).toBe('edited');
     });
 
-    it('leaves an uncached history alone, and an empty one too', () => {
+    it('does nothing without a cached thread', () => {
         const queryClient = new QueryClient();
-        upsertMessages(queryClient, chatId, [message('a', 1)]);
-        expect(queryClient.getQueryData(chatKeys.messages(chatId))).toBeUndefined();
-        queryClient.setQueryData<MessagePages>(chatKeys.messages(chatId), { pages: [], pageParams: [] });
-        upsertMessages(queryClient, chatId, [message('a', 1)]);
-        expect(ids(queryClient)).toEqual([]);
+        upsertEntries(queryClient, chatId, [message(1)]);
+        expect(queryClient.getQueryData(chatKeys.entries(chatId))).toBeUndefined();
     });
 
-    it('merges an overlapping newest page and starts over from one that shares nothing', () => {
-        const queryClient = cacheWith([[message('b', 2)], [message('a', 1)]]);
-        mergeNewestPage(queryClient, chatId, { items: [message('c', 3), message('b', 2)], nextCursor: 'x' });
-        expect(ids(queryClient)).toEqual(['a', 'b', 'c']);
-        mergeNewestPage(queryClient, chatId, { items: [message('z', 9)], nextCursor: 'y' });
-        expect(ids(queryClient)).toEqual(['z']);
-        const fresh = new QueryClient();
-        mergeNewestPage(fresh, chatId, { items: [message('a', 1)], nextCursor: null });
-        expect(ids(fresh)).toEqual(['a']);
+    it('merges an overlapping newest page and starts over when the page shares nothing', () => {
+        const queryClient = cacheWith([[message(2), message(1)]]);
+        mergeNewestPage(queryClient, chatId, { items: [message(4), message(3), message(2)], nextCursor: 'x' });
+        expect(ids(queryClient)).toEqual(['chat-1#1', 'chat-1#2', 'chat-1#3', 'chat-1#4']);
+        mergeNewestPage(queryClient, chatId, { items: [message(9), message(8)], nextCursor: 'y' });
+        expect(ids(queryClient)).toEqual(['chat-1#8', 'chat-1#9']);
+    });
+
+    it('keeps a reply it saw finish finished when an earlier read still calls it streaming', () => {
+        const queryClient = cacheWith([[message(2), message(1)]]);
+        mergeNewestPage(queryClient, chatId, {
+            items: [{ ...message(2), status: 'streaming' }, message(1)],
+            nextCursor: null,
+        });
+        const newest = entriesInOrder(queryClient.getQueryData<EntryPages>(chatKeys.entries(chatId))).at(-1);
+        expect(newest?.type === 'message' ? newest.status : null).toBe('completed');
+    });
+
+    it('fills an empty cache from the page', () => {
+        const queryClient = new QueryClient();
+        mergeNewestPage(queryClient, chatId, { items: [message(1)], nextCursor: null });
+        expect(ids(queryClient)).toEqual(['chat-1#1']);
     });
 });

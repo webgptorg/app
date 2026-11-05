@@ -7,7 +7,12 @@ import type {
     TestChatEvent,
 } from '@ptbk/engine-api';
 import { createInMemoryEngine } from '@ptbk/engine-api/in-memory';
-import type { InMemoryEngineController, InMemorySeed, InMemorySeedChat, ReplyScript } from '@ptbk/engine-api/in-memory';
+import type {
+    InMemoryEngineController,
+    InMemorySeedChat,
+    InMemorySeedEntry,
+    ReplyScript,
+} from '@ptbk/engine-api/in-memory';
 import { vi } from 'vitest';
 import type { MockInstance } from 'vitest';
 
@@ -17,46 +22,39 @@ import { TEST_NOW } from './test-engine-api';
 export const CHAT_AGENT_ID = 'agent-ada';
 export const CHAT_AGENT_NAME = 'Ada';
 
-export type SeedMessage = NonNullable<InMemorySeed['messages']>[number];
+export const CHATTER_ID = 'builtin-chatter';
 
 const at = (minutesAgo: number, offsetMs = 0) =>
     new Date(TEST_NOW.getTime() - minutesAgo * 60_000 + offsetMs).toISOString();
 
-/** A chat of `count` messages alternating user and agent, oldest first, the user's written by `createdBy`. */
-export function seededConversation(
-    chatId: string,
-    count: number,
-    createdBy: string | null,
-): { readonly chat: InMemorySeedChat; readonly messages: SeedMessage[] } {
-    const messages = Array.from({ length: count }, (_, index): SeedMessage => {
-        const fromUser = index % 2 === 0;
-        return {
-            id: `${chatId}-m${String(index + 1).padStart(5, '0')}`,
-            chatId,
-            role: fromUser ? 'user' : 'agent',
-            content: fromUser ? `Question ${String(index + 1)}` : `Answer ${String(index + 1)}`,
-            status: 'completed',
-            createdBy: fromUser ? createdBy : null,
-            // A second apart, so the order by time is the order written.
-            createdAt: at(count, index * 1000),
-        };
-    });
+const USER = { kind: 'user', key: 'user' } as const;
+const ADA = { kind: 'agent', key: CHAT_AGENT_ID } as const;
+
+/**
+ * A thread of the User and Ada with `count` messages alternating User and Ada, oldest first, the User's written by
+ * `createdBy`. Message IDs follow the engine's `<chat>#<position>`.
+ */
+export function seededConversation(chatId: string, count: number, createdBy: string): InMemorySeedChat {
     return {
-        chat: {
-            id: chatId,
-            agentId: CHAT_AGENT_ID,
-            title: '',
-            createdBy,
-            createdAt: at(count + 1),
-            updatedAt: messages.at(-1)?.createdAt ?? at(count + 1),
-        },
-        messages,
+        id: chatId,
+        createdAt: at(count + 1),
+        entries: [
+            { type: 'joined', participant: USER },
+            { type: 'joined', participant: ADA },
+            ...Array.from({ length: count }, (_, index): InMemorySeedEntry => {
+                // A second apart, so the order by time is the order written.
+                const when = at(count, index * 1000);
+                return index % 2 === 0
+                    ? { type: 'message', author: USER, createdBy, content: `Question ${String(index + 1)}`, at: when }
+                    : { type: 'message', author: ADA, content: `Answer ${String(index + 1)}`, at: when };
+            }),
+        ],
+        readBy: [OWNER_ID, SECOND_MEMBER_ID],
     };
 }
 
 export interface ChatEngineOptions {
     readonly chats?: readonly InMemorySeedChat[];
-    readonly messages?: readonly SeedMessage[];
     readonly permissions?: readonly Permission[];
     readonly replyScript?: ReplyScript;
     /** Ada's book, for a profile the default one lacks (e.g. `INITIAL MESSAGE`); its first line must stay "Ada". */
@@ -92,13 +90,17 @@ export function createChatEngine(options: ChatEngineOptions = {}): ChatEngine {
             ],
             agents: [
                 {
+                    id: CHATTER_ID,
+                    source: 'Chatter\nPERSONA Talks with you and brings in the right agent',
+                    origin: 'core',
+                },
+                {
                     id: CHAT_AGENT_ID,
                     source: options.agentSource ?? `${CHAT_AGENT_NAME}\nPERSONA Research`,
                     visibility: 'public',
                 },
             ],
             chats: options.chats ?? [],
-            messages: options.messages ?? [],
         },
         ...(options.permissions === undefined
             ? {}
@@ -112,8 +114,10 @@ export function createChatEngine(options: ChatEngineOptions = {}): ChatEngine {
         list: vi.spyOn(chats, 'list'),
         create: vi.spyOn(chats, 'create'),
         get: vi.spyOn(chats, 'get'),
-        listMessages: vi.spyOn(chats, 'listMessages'),
+        listEntries: vi.spyOn(chats, 'listEntries'),
         sendMessage: vi.spyOn(chats, 'sendMessage'),
+        markRead: vi.spyOn(chats, 'markRead'),
+        markSeen: vi.spyOn(chats, 'markSeen'),
         streamReply: vi.spyOn(chats, 'streamReply'),
         cancelReply: vi.spyOn(chats, 'cancelReply'),
     };
@@ -197,5 +201,5 @@ export function controlReplyStreams(engine: ChatEngine) {
 
 /** The completed reply the engine would send at the end of a stream. */
 export function completedReply(base: Pick<Message, 'id' | 'chatId' | 'createdAt'>, content: string): Message {
-    return { ...base, role: 'agent', content, status: 'completed', createdBy: null };
+    return { ...base, type: 'message', author: ADA, content, status: 'completed', createdBy: null, choices: [] };
 }

@@ -28,6 +28,7 @@ const BODIES: Partial<Record<EngineApiRouteId, BodyBuilder>> = {
     renameFolder: async (world) => ({ name: (await world.folder()).name }),
     createChat: (world) => Promise.resolve({ title: world.name('chat') }),
     sendChatMessage: () => Promise.resolve({ content: CHAT_MESSAGE }),
+    markChatSeen: async (world) => ({ messageIds: [(await world.reply()).replyMessageId] }),
     createApiToken: (world) =>
         Promise.resolve({
             name: world.name('token'),

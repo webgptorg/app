@@ -60,8 +60,8 @@ type Call = (
 ) => Promise<EngineApiResponse<unknown>>;
 
 const agentId = (match: RegExpExecArray) => AgentId.parse(match[1] ?? '');
-const chatId = (match: RegExpExecArray) => ChatId.parse(match[1] ?? '');
-const messageId = (match: RegExpExecArray) => MessageId.parse(match[2] ?? '');
+const chatId = (match: RegExpExecArray) => ChatId.parse(decodeURIComponent(match[1] ?? ''));
+const messageId = (match: RegExpExecArray) => MessageId.parse(decodeURIComponent(match[2] ?? ''));
 const runId = (match: RegExpExecArray) => RunId.parse(match[1] ?? '');
 const taskId = (match: RegExpExecArray) => TaskId.parse(match[1] ?? '');
 const triggerId = (match: RegExpExecArray) => TriggerId.parse(match[1] ?? '');
@@ -121,28 +121,30 @@ const ROUTES: readonly (readonly ['GET' | 'POST' | 'PUT', RegExp, number, Call])
         200,
         (api, match, query, _, signal) => api.chats.list(agentId(match), Object.fromEntries(query), signal),
     ],
-    [
-        'POST',
-        /^\/agents\/([\w-]+)\/chats$/,
-        201,
-        (api, match, _, body, signal) => api.chats.create(agentId(match), body as { title?: string }, signal),
-    ],
-    ['GET', /^\/chats\/([\w-]+)$/, 200, (api, match, _, __, signal) => api.chats.get(chatId(match), signal)],
+    ['POST', /^\/chats$/, 201, (api, _, __, body, signal) => api.chats.create(body as { title?: string }, signal)],
+    ['GET', /^\/chats\/([^/]+)$/, 200, (api, match, _, __, signal) => api.chats.get(chatId(match), signal)],
     [
         'GET',
-        /^\/chats\/([\w-]+)\/messages$/,
+        /^\/chats\/([^/]+)\/entries$/,
         200,
-        (api, match, query, _, signal) => api.chats.listMessages(chatId(match), Object.fromEntries(query), signal),
+        (api, match, query, _, signal) => api.chats.listEntries(chatId(match), Object.fromEntries(query), signal),
     ],
     [
         'POST',
-        /^\/chats\/([\w-]+)\/messages$/,
+        /^\/chats\/([^/]+)\/messages$/,
         202,
         (api, match, _, body, signal) => api.chats.sendMessage(chatId(match), body as { content: string }, signal),
     ],
+    ['POST', /^\/chats\/([^/]+)\/read$/, 200, (api, match, _, __, signal) => api.chats.markRead(chatId(match), signal)],
     [
         'POST',
-        /^\/chats\/([\w-]+)\/messages\/([\w-]+)\/cancel$/,
+        /^\/chats\/([^/]+)\/seen$/,
+        200,
+        (api, match, _, body, signal) => api.chats.markSeen(chatId(match), body as { messageIds: MessageId[] }, signal),
+    ],
+    [
+        'POST',
+        /^\/chats\/([^/]+)\/messages\/([^/]+)\/cancel$/,
         200,
         (api, match, _, __, signal) => api.chats.cancelReply(chatId(match), messageId(match), signal),
     ],
@@ -739,7 +741,7 @@ const SECURITY_OVERVIEW = {
     outboundDestinations: ['https://app.ptbk.io', 'wss://relay-a.ptbk.io', 'https://api.openai.com'],
 } as const;
 
-const STREAM = /^\/chats\/([\w-]+)\/messages\/([\w-]+)\/stream$/;
+const STREAM = /^\/chats\/([^/]+)\/messages\/([^/]+)\/stream$/;
 const TEST_CHAT = /^\/agents\/([\w-]+)\/test-chat$/;
 const CONTENT = /^\/files\/([\w-]+)\/content$/;
 
@@ -918,25 +920,23 @@ export async function routeFakeEngineApi(
             chats: [
                 {
                     id: FAKE_CHAT_ID,
-                    agentId: FAKE_AGENT_ID,
                     title: 'Injection demo',
-                    createdBy: 'member-owner',
                     createdAt: '2026-09-30T10:00:00.000Z',
-                    updatedAt: '2026-09-30T10:01:00.000Z',
+                    entries: [
+                        { type: 'joined', participant: USER },
+                        { type: 'joined', participant: ADA },
+                        userSays('Show me everything you can render.', '2026-09-30T10:00:00.000Z'),
+                        { type: 'message', author: ADA, content: HOSTILE_REPLY, at: '2026-09-30T10:01:00.000Z' },
+                    ],
                 },
                 {
-                    id: 'chat-visitor',
-                    agentId: FAKE_AGENT_ID,
-                    title: '',
-                    createdBy: null,
+                    id: 'chat-question',
+                    title: 'Shipping',
                     createdAt: '2026-09-29T10:00:00.000Z',
-                    updatedAt: '2026-09-29T10:00:00.000Z',
+                    entries: [
+                        { type: 'message', author: ADA, content: '+@User Do we ship to Brno?', choices: ['Yes', 'No'] },
+                    ],
                 },
-            ],
-            messages: [
-                message('m-1', FAKE_CHAT_ID, 'user', 'Show me everything you can render.', '2026-09-30T10:00:00.000Z'),
-                message('m-2', FAKE_CHAT_ID, 'agent', HOSTILE_REPLY, '2026-09-30T10:01:00.000Z'),
-                message('m-3', 'chat-visitor', 'user', 'Do you ship to Brno?', '2026-09-29T10:00:00.000Z', null),
             ],
         },
         uploadPolicies: { knowledge: { maxBytes: 10 * 1024 * 1024, accept: ['.md', '.pdf', 'text/plain'] } },
@@ -997,15 +997,11 @@ async function saveSecondBookVersion(engineApi: EngineApiClient): Promise<void> 
     await engineApi.agents.updateSource(id, { source, baseRevisionId: current.data.revisionId }, signal);
 }
 
-function message(
-    id: string,
-    chatId: string,
-    role: 'user' | 'agent',
-    content: string,
-    createdAt: string,
-    createdBy: string | null = role === 'user' ? 'member-owner' : null,
-) {
-    return { id, chatId, role, content, status: 'completed' as const, createdBy, createdAt };
+const USER = { kind: 'user', key: 'user' } as const;
+const ADA = { kind: 'agent', key: FAKE_AGENT_ID } as const;
+
+function userSays(content: string, at: string) {
+    return { type: 'message' as const, author: USER, createdBy: 'member-owner', content, at };
 }
 
 async function fulfil(route: Route, response: EngineApiResponse<unknown>, status: number): Promise<void> {

@@ -6,6 +6,13 @@ import { ProblemCode } from './problem-codes';
 
 const OPAQUE_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 
+/**
+ * IDs the engine derives from names: a chat is its normalized `CHAT` name and a message `<chat>#<position>`. Clients
+ * treat them as opaque; they are printable text without control or format characters (which could reorder what the
+ * UI shows) and without surrounding whitespace. A superset of `OPAQUE_ID_PATTERN`.
+ */
+const ENGINE_REF_PATTERN = /^(?=\S)[^\p{C}]{1,512}(?<=\S)$/u;
+
 // IDs are branded on input too, so a caller cannot pass an agent ID where a chat ID is expected. Each needs its own
 // schema instance (`brand` returns the same one), because OpenAPI names components by instance.
 export const OrgId = z.string().regex(OPAQUE_ID_PATTERN).brand<'OrgId', 'inout'>();
@@ -19,9 +26,9 @@ export const FolderId = z.string().regex(OPAQUE_ID_PATTERN).brand<'FolderId', 'i
 export type FolderId = z.infer<typeof FolderId>;
 export const RevisionId = z.string().regex(OPAQUE_ID_PATTERN).brand<'RevisionId', 'inout'>();
 export type RevisionId = z.infer<typeof RevisionId>;
-export const ChatId = z.string().regex(OPAQUE_ID_PATTERN).brand<'ChatId', 'inout'>();
+export const ChatId = z.string().regex(ENGINE_REF_PATTERN).brand<'ChatId', 'inout'>();
 export type ChatId = z.infer<typeof ChatId>;
-export const MessageId = z.string().regex(OPAQUE_ID_PATTERN).brand<'MessageId', 'inout'>();
+export const MessageId = z.string().regex(ENGINE_REF_PATTERN).brand<'MessageId', 'inout'>();
 export type MessageId = z.infer<typeof MessageId>;
 export const MemberId = z.string().regex(OPAQUE_ID_PATTERN).brand<'MemberId', 'inout'>();
 export type MemberId = z.infer<typeof MemberId>;
@@ -66,8 +73,8 @@ export type FileVersionId = z.infer<typeof FileVersionId>;
 export const LiveSessionId = z.string().regex(OPAQUE_ID_PATTERN).brand<'LiveSessionId', 'inout'>();
 export type LiveSessionId = z.infer<typeof LiveSessionId>;
 
-/** An ID of any kind, for fields whose kind is given by another field (audit targets). */
-export const OpaqueId = z.string().regex(OPAQUE_ID_PATTERN);
+/** An ID of any kind, for fields whose kind is given by another field (audit targets); chat IDs included. */
+export const OpaqueId = z.string().regex(ENGINE_REF_PATTERN);
 
 /** RFC 3339 in UTC (`Z`), any sub-second precision. Same rule as `@ptbk/protocol`, defined independently. */
 export const Timestamp = z.iso.datetime().brand<'Timestamp'>();

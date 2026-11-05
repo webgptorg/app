@@ -315,12 +315,12 @@ describe('command palette', { timeout: TIMEOUT_MS }, () => {
         expect(places.slice(0, 8)).toEqual([
             'Home',
             'Agents',
+            'Chats',
             'Tasks',
             'Runs',
             'Files',
             'Triggers',
             'Integrations',
-            'Members',
         ]);
         expect(screen.getByText('Esc').closest('[aria-hidden="true"]')).not.toBeNull();
     });

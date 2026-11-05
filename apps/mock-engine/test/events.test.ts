@@ -94,7 +94,7 @@ describe('GET /events', () => {
         const agentsOnly = await subscribe(clientWith(['agents.read']));
         const [agent] = ok(await owner.agents.list({ origin: 'content', limit: 1 }, signal())).items;
         if (agent === undefined) throw new Error('no agent');
-        const chat = ok(await owner.chats.create(agent.id, { title: 'Hello' }, signal()));
+        const chat = ok(await owner.chats.create({ agentId: agent.id, title: 'Hello' }, signal()));
         ok(await owner.agents.update(agent.id, { visibility: 'public' }, signal()));
         expect((await reader.next()).event).toEqual({ type: 'chat.changed', chatId: chat.id });
         expect((await reader.next()).event).toEqual({ type: 'agent.changed', agentId: agent.id });

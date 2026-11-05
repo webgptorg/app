@@ -7,7 +7,7 @@ import type { Integration } from '../capabilities/integrations';
 import type { RunDetail } from '../capabilities/runs';
 import type { TaskRecord } from './tasks';
 import type { Trigger, TriggerFire } from '../capabilities/triggers';
-import type { Chat, Message } from '../chats';
+import type { Message } from '../chats';
 import type { OrgId } from '../common';
 import type { EngineInfo } from '../engine';
 import type { EngineEvent } from '../events';
@@ -15,6 +15,7 @@ import type { Folder } from '../folders';
 import type { Invite, Member } from '../members';
 import type { AccessRequestRecord } from './access-requests';
 import type { OnboardingRecord } from './onboarding';
+import type { ChatEvent, ChatRecord, RequestKeyRecord } from './threads';
 import type { Passkey } from '../passkeys';
 import type { SecretMetadata } from '../secrets';
 import type { SecurityOverview } from '../security';
@@ -75,8 +76,12 @@ export interface InMemoryState {
     readonly onboarding: OnboardingRecord;
     readonly folders: Map<string, Folder>;
     readonly agents: Map<string, AgentRecord>;
-    readonly chats: Map<string, Chat>;
+    readonly chats: Map<string, ChatRecord>;
     readonly messages: Map<string, Message>;
+    /** Joins, title and status changes; their order lives in each `ChatRecord`. */
+    readonly chatEvents: Map<string, ChatEvent>;
+    /** `<member> <scope> <requestKey>` to the key's first use; scope is `create` or the thread's ID. */
+    readonly chatRequestKeys: Map<string, RequestKeyRecord>;
     readonly replies: Map<string, ReplyRecord>;
     /** Values are never kept: nothing in the contract can read them back, so the fake has no reason to hold them. */
     readonly secrets: Map<string, SecretMetadata>;

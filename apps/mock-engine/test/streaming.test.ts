@@ -1,11 +1,5 @@
-import type {
-    AgentId,
-    ChatId,
-    EngineApiClient,
-    EngineApiResponse,
-    MessageId,
-    ReplyStreamEvent,
-} from '@ptbk/engine-api';
+import type { AgentId, ChatId, EngineApiClient, EngineApiResponse, ReplyStreamEvent } from '@ptbk/engine-api';
+import { MessageId } from '@ptbk/engine-api';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { HOSTILE_IMAGE, HOSTILE_LINK, HOSTILE_RAW_IMAGE, HOSTILE_SCRIPT } from '../src/domain/chat/reply-generator';
@@ -14,6 +8,10 @@ import type { ApiHarness } from '../src/testing/api-harness';
 import { createApiHarness } from '../src/testing/api-harness';
 import type { FakeClock } from '../src/testing/fake-clock';
 import { createFakeClock } from '../src/testing/fake-clock';
+
+/** The mock engine numbers messages `<chat>#<position>`, and a reply follows its User message directly. */
+const replyIdOf = (sent: { readonly message: { readonly id: string } }) =>
+    MessageId.parse(sent.message.id.replace(/#(\d+)$/, (_, position: string) => `#${String(Number(position) + 1)}`));
 
 const harnesses: ApiHarness[] = [];
 afterEach(async () => {
@@ -57,9 +55,9 @@ async function agentNamed(client: EngineApiClient, name: (agentName: string) => 
 }
 
 async function ask(client: EngineApiClient, agentId: AgentId, content = 'Show me how to deploy this') {
-    const chat = ok(await client.chats.create(agentId, { title: 'Streaming test' }, signal()));
+    const chat = ok(await client.chats.create({ agentId: agentId, title: 'Streaming test' }, signal()));
     const sent = ok(await client.chats.sendMessage(chat.id, { content }, signal()));
-    return { chatId: chat.id, messageId: sent.replyMessageId };
+    return { chatId: chat.id, messageId: replyIdOf(sent) };
 }
 
 async function readAll(client: EngineApiClient, chatId: ChatId, messageId: MessageId, lastEventId?: string) {
@@ -152,14 +150,17 @@ describe('chat replies', () => {
         reader.abort();
         await expect(pending).rejects.toThrow();
         await drain(clock);
-        const stored = ok(await client.chats.listMessages(chatId, {}, signal())).items[0];
+        const stored = ok(await client.chats.listEntries(chatId, {}, signal())).items.find(
+            ({ id }) => id === messageId,
+        );
+        if (stored?.type !== 'message') throw new Error('no reply');
         expect(stored).toMatchObject({ id: messageId, status: 'completed' });
         const lastId = seen.at(-1)?.id ?? '';
         const resumed = await readAll(client, chatId, messageId, lastId);
         const seqs = resumed.flatMap(({ event }) => (event.type === 'delta' ? [event.seq] : []));
         expect(seqs[0]).toBe(Number(lastId) + 1);
         expect(new Set(seqs).size).toBe(seqs.length);
-        expect(textOf(seen) + textOf(resumed)).toBe(stored?.content);
+        expect(textOf(seen) + textOf(resumed)).toBe(stored.content);
         await harness.recorder.settled();
         expect(harness.recorder.violations).toEqual([]);
     });
@@ -181,7 +182,10 @@ describe('chat replies', () => {
         expect(events.at(-1)?.event).toMatchObject({ type: 'failed', problem: { code: 'cancelled' } });
         const before = textOf(events);
         await drain(clock);
-        const stored = ok(await client.chats.listMessages(chatId, {}, signal())).items[0];
+        const stored = ok(await client.chats.listEntries(chatId, {}, signal())).items.find(
+            ({ id }) => id === messageId,
+        );
+        if (stored?.type !== 'message') throw new Error('no reply');
         expect(stored).toMatchObject({ id: messageId, status: 'cancelled', content: '' });
         expect(textOf(await readAll(client, chatId, messageId))).toBe('');
         expect(before.length).toBeLessThan(400);

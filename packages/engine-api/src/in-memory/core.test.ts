@@ -13,6 +13,11 @@ import type { EngineApiStreamItem } from '../route';
 import { ENGINE_API_ROUTES } from '../routes';
 import type { Actor, Sleep } from './kit';
 
+import { MessageId } from '../common';
+/** The in-memory engine numbers messages `<chat>#<position>`, and a reply follows its User message directly. */
+const replyIdOf = (sent: { readonly message: { readonly id: string } }) =>
+    MessageId.parse(sent.message.id.replace(/#(\d+)$/, (_, position: string) => `#${String(Number(position) + 1)}`));
+
 const AT = '2026-10-19T08:00:00Z';
 
 function steppingClock() {
@@ -169,7 +174,7 @@ describe('in-memory core: per-request actor', () => {
         const ownerEvents = ok(await owner.events.stream({}, controller.signal))[Symbol.asyncIterator]();
         const adaEvents = ok(await ada.events.stream({}, controller.signal))[Symbol.asyncIterator]();
         const agent = ok(await owner.agents.create({ source: 'Ada' }, signal()));
-        const chat = ok(await owner.chats.create(agent.id, { title: 'Hello' }, signal()));
+        const chat = ok(await owner.chats.create({ agentId: agent.id, title: 'Hello' }, signal()));
         ok(await owner.agents.update(agent.id, { visibility: 'public' }, signal()));
         const ownerSeen: ReadEngineEvent[] = [];
         for (let index = 0; index < 3; index++) ownerSeen.push((await next(ownerEvents)).event);
@@ -268,7 +273,7 @@ describe('in-memory core: authorizer', () => {
             },
         });
         const agent = ok(await owner.agents.create({ source: 'Ada' }, signal()));
-        const chat = ok(await owner.chats.create(agent.id, { title: 'x' }, signal()));
+        const chat = ok(await owner.chats.create({ agentId: agent.id, title: 'x' }, signal()));
         const sent = ok(await owner.chats.sendMessage(chat.id, { content: 'hi' }, signal()));
         const secret = ok(await owner.secrets.create({ name: 'K', scope: { kind: 'engine' }, value: 'v' }, signal()));
         const folder = ok(await owner.folders.create({ name: 'F' }, signal()));
@@ -305,7 +310,7 @@ describe('in-memory core: authorizer', () => {
         );
         seen.length = 0;
         await owner.agents.getRevision(agent.id, agent.currentRevisionId, signal());
-        await owner.chats.cancelReply(chat.id, sent.replyMessageId, signal());
+        await owner.chats.cancelReply(chat.id, replyIdOf(sent), signal());
         await owner.secrets.revoke(secret.id, signal());
         await owner.folders.rename(folder.id, { name: 'G' }, signal());
         await owner.apiTokens.revoke(token.apiToken.id, signal());
@@ -319,7 +324,7 @@ describe('in-memory core: authorizer', () => {
         await owner.integrations.get(integration.id, signal());
         expect(seen).toEqual([
             { kind: 'revision', id: agent.currentRevisionId, createdBy: 'member-owner' },
-            { kind: 'message', id: sent.replyMessageId, createdBy: null },
+            { kind: 'message', id: replyIdOf(sent), createdBy: null },
             { kind: 'secret', id: secret.id, createdBy: 'member-owner' },
             { kind: 'folder', id: folder.id },
             { kind: 'api-token', id: token.apiToken.id, createdBy: 'member-owner' },
@@ -339,39 +344,32 @@ describe('in-memory core: authorizer', () => {
 describe('in-memory core: chat writes', () => {
     const CHATTER: readonly Permission[] = ['agents.read', 'chats.read', 'chats.write'];
 
-    it('lets only the member who started a chat write in it, whatever the authorizer allows', async () => {
+    it('lets every member with chats.write write in any thread: nobody owns one', async () => {
         const { owner, clientFor } = team({ authorizer: { can: () => ({ kind: 'allow' }) } });
         const ada = clientFor(actor('member-ada', 'session-ada', CHATTER));
         const agent = ok(await owner.agents.create({ source: 'Grace' }, signal()));
-        const ownerChat = ok(await owner.chats.create(agent.id, { title: 'Owner only' }, signal()));
-        const sent = ok(await owner.chats.sendMessage(ownerChat.id, { content: 'private' }, signal()));
-
-        expect(ok(await ada.chats.get(ownerChat.id, signal())).id).toBe(ownerChat.id);
-        expect(problemOf(await ada.chats.sendMessage(ownerChat.id, { content: 'hijack' }, signal()))).toEqual(
-            expect.objectContaining({ status: 403, code: 'forbidden', requiredPermission: 'chats.write' }),
-        );
-        expect(problemOf(await ada.chats.cancelReply(ownerChat.id, sent.replyMessageId, signal()))).toEqual(
-            expect.objectContaining({ status: 403, code: 'forbidden', requiredPermission: 'chats.write' }),
-        );
-        expect(ok(await owner.chats.get(ownerChat.id, signal())).messageCount).toBe(2);
-
-        const adaChat = ok(await ada.chats.create(agent.id, { title: 'Ada' }, signal()));
-        ok(await ada.chats.sendMessage(adaChat.id, { content: 'mine' }, signal()));
-        expect(problemOf(await owner.chats.sendMessage(adaChat.id, { content: 'owner' }, signal())).code).toBe(
-            'forbidden',
-        );
+        const chat = ok(await owner.chats.create({ agentId: agent.id, title: 'Shared' }, signal()));
+        ok(await owner.chats.sendMessage(chat.id, { content: 'first' }, signal()));
+        const sent = ok(await ada.chats.sendMessage(chat.id, { content: 'second' }, signal()));
+        expect(sent.message).toMatchObject({ author: { kind: 'user', key: 'user' }, createdBy: 'member-ada' });
+        expect(ok(await ada.chats.cancelReply(chat.id, replyIdOf(sent), signal())).status).toBe('cancelled');
+        expect(ok(await owner.chats.get(chat.id, signal())).messageCount).toBe(4);
         expect(problemOf(await ada.chats.sendMessage('chat-unknown' as never, { content: 'x' }, signal())).code).toBe(
             'not-found',
         );
+    });
 
-        const denied = ok(await owner.audit.list({ outcome: 'denied' }, signal())).items;
-        expect(denied.map(({ action, actor: who }) => [action, who])).toEqual(
-            expect.arrayContaining([
-                ['chat.message.send', { kind: 'member', memberId: 'member-ada' }],
-                ['chat.reply.cancel', { kind: 'member', memberId: 'member-ada' }],
-                ['chat.message.send', { kind: 'member', memberId: 'member-owner' }],
-            ]),
-        );
+    it('keeps unread per member: writing or marking read clears only your own', async () => {
+        const { owner, clientFor } = team({ authorizer: { can: () => ({ kind: 'allow' }) } });
+        const ada = clientFor(actor('member-ada', 'session-ada', CHATTER));
+        const agent = ok(await owner.agents.create({ source: 'Grace' }, signal()));
+        const chat = ok(await owner.chats.create({ agentId: agent.id }, signal()));
+        const sent = ok(await owner.chats.sendMessage(chat.id, { content: 'hi' }, signal()));
+        ok(await owner.chats.cancelReply(chat.id, replyIdOf(sent), signal()));
+        expect(ok(await owner.chats.get(chat.id, signal())).unread).toBe(1);
+        expect(ok(await ada.chats.get(chat.id, signal())).unread).toBe(1);
+        expect(ok(await ada.chats.markRead(chat.id, signal())).unread).toBe(0);
+        expect(ok(await owner.chats.get(chat.id, signal())).unread).toBe(1);
     });
 });
 
@@ -437,7 +435,7 @@ describe('in-memory core: paced replies', () => {
             },
         });
         const agent = ok(await owner.agents.create({ source: 'Ada' }, signal()));
-        const chat = ok(await owner.chats.create(agent.id, { title: 'x' }, signal()));
+        const chat = ok(await owner.chats.create({ agentId: agent.id, title: 'x' }, signal()));
         const sent = ok(await owner.chats.sendMessage(chat.id, { content: 'hi' }, signal()));
         return { paced, inputs, owner, core, chat, sent };
     }
@@ -473,11 +471,11 @@ describe('in-memory core: paced replies', () => {
         expect(paced.pending()).toEqual([0]);
         await paced.step();
         expect(paced.pending()).toEqual([]);
-        const messages = ok(await owner.chats.listMessages(chat.id, {}, signal())).items;
-        expect(messages[0]).toMatchObject({ id: sent.replyMessageId, status: 'completed', content: 'abc' });
+        const messages = ok(await owner.chats.listEntries(chat.id, {}, signal())).items;
+        expect(messages[0]).toMatchObject({ id: replyIdOf(sent), status: 'completed', content: 'abc' });
         const run = ok(await owner.runs.list({}, signal())).items[0];
         expect(run?.status).toBe('completed');
-        const { iterator } = await stream(owner, chat.id, sent.replyMessageId, '1');
+        const { iterator } = await stream(owner, chat.id, replyIdOf(sent), '1');
         expect((await next(iterator)).event).toEqual({ type: 'delta', seq: 2, text: 'b' });
         expect((await next(iterator)).event).toEqual({ type: 'delta', seq: 3, text: 'c' });
         expect((await next(iterator)).event).toMatchObject({ type: 'completed', message: { content: 'abc' } });
@@ -485,7 +483,7 @@ describe('in-memory core: paced replies', () => {
 
     it('ends only the stream on a disconnect, and resumes it after Last-Event-ID', async () => {
         const { paced, owner, chat, sent } = await pacedChat();
-        const first = await stream(owner, chat.id, sent.replyMessageId);
+        const first = await stream(owner, chat.id, replyIdOf(sent));
         const pending = next(first.iterator);
         await paced.step();
         expect(await pending).toEqual({ id: '1', event: { type: 'delta', seq: 1, text: 'a' } });
@@ -493,7 +491,7 @@ describe('in-memory core: paced replies', () => {
         first.controller.abort();
         await expect(waiting).rejects.toThrow();
         await paced.step();
-        const resumed = await stream(owner, chat.id, sent.replyMessageId, '1');
+        const resumed = await stream(owner, chat.id, replyIdOf(sent), '1');
         expect((await next(resumed.iterator)).event).toEqual({ type: 'delta', seq: 2, text: 'b' });
         const last = next(resumed.iterator);
         await paced.step();
@@ -503,22 +501,22 @@ describe('in-memory core: paced replies', () => {
 
     it('stops generating only on cancel', async () => {
         const { paced, owner, chat, sent } = await pacedChat();
-        const reader = await stream(owner, chat.id, sent.replyMessageId);
+        const reader = await stream(owner, chat.id, replyIdOf(sent));
         await paced.step();
         expect((await next(reader.iterator)).event).toMatchObject({ seq: 1 });
         const waiting = next(reader.iterator);
-        expect(ok(await owner.chats.cancelReply(chat.id, sent.replyMessageId, signal())).status).toBe('cancelled');
+        expect(ok(await owner.chats.cancelReply(chat.id, replyIdOf(sent), signal())).status).toBe('cancelled');
         expect((await waiting).event).toMatchObject({ type: 'failed', problem: { code: 'cancelled' } });
         expect(paced.pending()).toEqual([]);
-        const messages = ok(await owner.chats.listMessages(chat.id, {}, signal())).items;
+        const messages = ok(await owner.chats.listEntries(chat.id, {}, signal())).items;
         expect(messages[0]).toMatchObject({ status: 'cancelled', content: '' });
-        expect(ok(await owner.chats.cancelReply(chat.id, sent.replyMessageId, signal())).status).toBe('cancelled');
+        expect(ok(await owner.chats.cancelReply(chat.id, replyIdOf(sent), signal())).status).toBe('cancelled');
     });
 
     it('ends a failed script with reply-failed', async () => {
         const { paced, owner, chat, sent } = await pacedChat('failed');
         for (let index = 0; index < 3; index++) await paced.step();
-        const { iterator } = await stream(owner, chat.id, sent.replyMessageId, '3');
+        const { iterator } = await stream(owner, chat.id, replyIdOf(sent), '3');
         expect((await next(iterator)).event).toMatchObject({ type: 'failed', problem: { code: 'reply-failed' } });
         expect(ok(await owner.runs.list({}, signal())).items[0]?.status).toBe('failed');
     });
@@ -526,9 +524,9 @@ describe('in-memory core: paced replies', () => {
     it('waits through the timer by default', async () => {
         const { owner } = team({ replyScript: () => ({ chunks: [{ text: 'x', delayMs: 1 }] }) });
         const agent = ok(await owner.agents.create({ source: 'Ada' }, signal()));
-        const chat = ok(await owner.chats.create(agent.id, { title: 'x' }, signal()));
+        const chat = ok(await owner.chats.create({ agentId: agent.id, title: 'x' }, signal()));
         const sent = ok(await owner.chats.sendMessage(chat.id, { content: 'hi' }, signal()));
-        const { iterator } = await stream(owner, chat.id, sent.replyMessageId);
+        const { iterator } = await stream(owner, chat.id, replyIdOf(sent));
         expect((await next(iterator)).event).toEqual({ type: 'delta', seq: 1, text: 'x' });
         expect((await next(iterator)).event).toMatchObject({ type: 'completed', message: { content: 'x' } });
     });

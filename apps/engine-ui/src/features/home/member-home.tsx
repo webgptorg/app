@@ -7,7 +7,7 @@ import { useEngineApi } from '../../app/engine-api-context';
 import { ButtonLink, Link } from '../../app/link';
 import { useAllows } from '../../app/registry/use-visible-features';
 import { m } from '../../paraglide/messages';
-import { chatName } from '../chat/chat-source';
+import { chatName } from '../chat/thread-list';
 import { runTitle } from '../runs/run-format';
 import { RunStatusBadge } from '../runs/run-status';
 import { useCurrentMember } from '../session/use-current-member';
@@ -99,11 +99,7 @@ function RecentChats() {
                     <ul className="flex flex-col divide-y divide-divider">
                         {page.items.map((chat) => (
                             <li key={chat.id} className="flex min-h-12 items-center justify-between gap-3 py-2">
-                                <Link
-                                    to="/agents/$agentId/chat/$chatId"
-                                    params={{ agentId: chat.agentId, chatId: chat.id }}
-                                    className="min-w-0 truncate"
-                                >
+                                <Link to="/chats/$chatId" params={{ chatId: chat.id }} className="min-w-0 truncate">
                                     {chatName(chat)}
                                 </Link>
                                 <RelativeTime

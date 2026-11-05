@@ -30,6 +30,27 @@ export interface Reply {
     readonly replyMessageId: string;
 }
 
+const REPLY_POLL_MS = 250;
+
+/**
+ * The first agent message after `sentId`: replies are entries of their own, which the engine may add a moment after
+ * the send is acknowledged. Fails after `REPLY_TIMEOUT_MS`.
+ */
+export async function replyAfter(api: EngineApi, chatId: string, sentId: string): Promise<Message> {
+    const deadline = Date.now() + REPLY_TIMEOUT_MS;
+    for (;;) {
+        const { items } = await api.ok(R.listChatEntries, { params: { chatId }, query: { limit: 100 } });
+        const sentAt = items.findIndex(({ id }) => id === sentId);
+        const after = sentAt === -1 ? [] : items.slice(0, sentAt).reverse();
+        const reply = after.find(
+            (entry): entry is Message => entry.type === 'message' && entry.author.kind === 'agent',
+        );
+        if (reply) return reply;
+        if (Date.now() > deadline) fail(`no agent answered within ${String(REPLY_TIMEOUT_MS)} ms`);
+        await new Promise((resolve) => setTimeout(resolve, REPLY_POLL_MS));
+    }
+}
+
 /**
  * The resources a check works on, created by the owner on first use and removed after the check. Everything the
  * suite creates is named `conformance-<runId>-…`.
@@ -104,20 +125,23 @@ export async function createWorld(ctx: CheckContext, api?: EngineApi): Promise<W
     const agent = memo(() => createAgent('agent'));
     const chat = memo(async () => {
         const { id } = await agent();
-        return owner.ok(R.createChat, { params: { agentId: id }, body: { title: name('chat') } });
+        return owner.ok(R.createChat, { body: { agentId: id, title: name('chat') } });
     });
     const reply = memo(async (): Promise<Reply> => {
         const { id: chatId } = await chat();
         const sent = await owner.ok(R.sendChatMessage, { params: { chatId }, body: { content: CHAT_MESSAGE } });
-        const stream = await owner.stream(
-            R.streamChatReply,
-            { params: { chatId, messageId: sent.replyMessageId } },
-            { maxMs: REPLY_TIMEOUT_MS, until: ({ event }) => event.type !== 'delta' },
-        );
-        if (!stream.items.some(({ event }) => event.type === 'completed' || event.type === 'failed')) {
-            fail(`the reply did not finish within ${String(REPLY_TIMEOUT_MS)} ms`);
+        const reply = await replyAfter(owner, chatId, sent.message.id);
+        if (reply.status === 'streaming') {
+            const stream = await owner.stream(
+                R.streamChatReply,
+                { params: { chatId, messageId: reply.id } },
+                { maxMs: REPLY_TIMEOUT_MS, until: ({ event }) => event.type !== 'delta' },
+            );
+            if (!stream.items.some(({ event }) => event.type === 'completed' || event.type === 'failed')) {
+                fail(`the reply did not finish within ${String(REPLY_TIMEOUT_MS)} ms`);
+            }
         }
-        return { userMessage: sent.userMessage, replyMessageId: sent.replyMessageId };
+        return { userMessage: sent.message, replyMessageId: reply.id };
     });
     const folder = memo(() => createFolder('folder'));
     const secret = memo(() => createSecret('secret', randomToken(ctx.random, 32)));

@@ -1,10 +1,10 @@
 import type { MessageId } from '@ptbk/engine-api';
 
 /**
- * Where the reply this panel follows stands. `sending` waits for the engine to accept the message; `stopping` waits
- * for the cancel call; `interrupted` means the stream dropped while the reply may still be generating; `error` means
- * the engine reported the reply failed; `unconfirmed` means a send got no clear answer and neither did the check for
- * it, so nobody knows whether the message arrived.
+ * Where the panel's send and the reply it follows stand. `sending` waits for the engine to accept the message;
+ * `stopping` waits for the cancel call; `interrupted` means the stream dropped while the reply may still be
+ * generating; `error` means the engine reported the reply failed; `unconfirmed` means a send got no clear answer, and
+ * neither did sending it again under the same request key, so nobody knows yet whether it arrived.
  */
 export type ReplyPhase =
     'idle' | 'sending' | 'unconfirmed' | 'streaming' | 'stopping' | 'done' | 'interrupted' | 'error';
@@ -36,7 +36,7 @@ export type ChatSessionAction =
     | { readonly type: 'send-unconfirmed' }
     | { readonly type: 'send-recheck' }
     | { readonly type: 'send-arrived' }
-    | { readonly type: 'sent'; readonly replyMessageId: MessageId }
+    | { readonly type: 'sent' }
     | { readonly type: 'follow'; readonly messageId: MessageId }
     | { readonly type: 'resume' }
     | { readonly type: 'delta'; readonly messageId: MessageId; readonly seq: number; readonly text: string }
@@ -84,12 +84,8 @@ export function chatSessionReducer(state: ChatSessionState, action: ChatSessionA
         case 'send-recheck':
             return state.phase === 'unconfirmed' ? { ...state, phase: 'sending' } : state;
         case 'sent':
-            return {
-                ...state,
-                phase: 'streaming',
-                outgoing: null,
-                reply: { messageId: action.replyMessageId, text: '', lastSeq: 0 },
-            };
+            // Replies are entries of their own, from whichever agent answers; the panel follows them as they appear.
+            return { ...state, phase: 'idle', outgoing: null };
         case 'follow':
             return isReplyActive(state.phase)
                 ? state

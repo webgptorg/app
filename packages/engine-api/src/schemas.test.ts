@@ -35,7 +35,19 @@ import {
     MAX_RUN_TEXT_BYTES,
 } from './constants';
 import { EngineInfo } from './engine';
-import { Chat, ReplyStreamEvent } from './chats';
+import {
+    Chat,
+    ChatEntryPageReader,
+    ChatReader,
+    CreateChatBody,
+    MAX_MESSAGE_CHOICES,
+    MarkSeenBody,
+    Message,
+    ParticipantRef,
+    ReplyStreamEvent,
+    SendMessageBody,
+    SendMessageResultReader,
+} from './chats';
 import { Hostname, PageQuery, ProblemDetails, SemVer, Timestamp } from './common';
 import type { RouteDefinition } from './route';
 import { ENGINE_API_ROUTE_LIST } from './routes';
@@ -162,13 +174,15 @@ const auditEntry = {
 const completedEvent = {
     type: 'completed',
     message: {
-        id: 'msg_2',
-        chatId: 'cht_1',
-        role: 'agent',
+        type: 'message',
+        id: 'Discuss CSV export — 2026-10-25 23:40:00#2',
+        chatId: 'Discuss CSV export — 2026-10-25 23:40:00',
+        author: { kind: 'agent', key: 'agent-chatter' },
         content: 'Hi',
         status: 'completed',
         createdBy: null,
         createdAt: NOW,
+        choices: [],
     },
 };
 
@@ -679,29 +693,132 @@ describe('PageQuery', () => {
 
 describe('Chat', () => {
     const chat = {
-        id: 'c1',
-        agentId: 'a1',
-        title: 'Billing',
-        source: 'web',
-        createdBy: 'm1',
+        id: 'Discuss CSV export — 2026-10-25 23:40:00',
+        title: 'Multiline CSV export',
+        status: 'waiting-for-user',
+        members: [
+            { kind: 'user', key: 'user', name: 'User' },
+            { kind: 'agent', key: 'agent-chatter', name: 'Chatter' },
+        ],
         createdAt: '2026-10-19T12:00:00Z',
         updatedAt: '2026-10-19T12:00:00Z',
-        messageCount: 0,
-        lastMessageAt: null,
-        preview: null,
+        messageCount: 3,
+        lastMessageAt: '2026-10-19T12:00:00Z',
+        preview: 'Should the export keep the column order?',
+        unread: 1,
+        questions: [
+            {
+                id: 'ping:3',
+                messageId: 'Discuss CSV export — 2026-10-25 23:40:00#3',
+                author: { kind: 'agent', key: 'agent-chatter' },
+                seen: false,
+            },
+        ],
     };
 
-    it('accepts a member chat and one no member started, and rejects unknown fields', () => {
+    it('accepts a thread with engine-assigned IDs and rejects unknown fields', () => {
         expect(Chat.safeParse(chat).error).toBeUndefined();
-        expect(Chat.safeParse({ ...chat, createdBy: null, source: 'api' }).error).toBeUndefined();
+        expect(Chat.safeParse({ ...chat, members: [], questions: [] }).error).toBeUndefined();
         expect(Chat.safeParse({ ...chat, unexpected: true }).success).toBe(false);
+        expect(Chat.safeParse({ ...chat, agentId: 'a1' }).success).toBe(false);
     });
 
-    it('takes only run sources, a whole message count and a bounded preview', () => {
-        expect(Chat.safeParse({ ...chat, source: 'kiosk' }).success).toBe(false);
+    it('takes a closed status, whole counts and a bounded preview', () => {
+        expect(Chat.safeParse({ ...chat, status: 'archived' }).success).toBe(false);
         expect(Chat.safeParse({ ...chat, messageCount: 1.5 }).success).toBe(false);
+        expect(Chat.safeParse({ ...chat, unread: -1 }).success).toBe(false);
         expect(Chat.safeParse({ ...chat, preview: 'x'.repeat(MAX_CHAT_PREVIEW_LENGTH) }).success).toBe(true);
         expect(Chat.safeParse({ ...chat, preview: 'x'.repeat(MAX_CHAT_PREVIEW_LENGTH + 1) }).success).toBe(false);
+    });
+
+    it.each([' leading', 'trailing ', 'bidi \u202E override', 'line\nbreak', '', 'x'.repeat(513)])(
+        'refuses the thread ID %j',
+        (id) => {
+            expect(Chat.safeParse({ ...chat, id }).success).toBe(false);
+        },
+    );
+
+    it('reads an unknown status or participant kind as unknown, keeping the rest', () => {
+        const read = ChatReader.parse({
+            ...chat,
+            status: 'archived',
+            members: [{ kind: 'system', key: 'fixer', name: 'Fixer', extra: 1 }],
+            questions: [{ ...chat.questions[0], author: { kind: 'system', key: 'fixer' } }],
+            later: true,
+        });
+        expect(read.status).toBe('unknown');
+        expect(read.members).toEqual([{ kind: 'unknown', key: 'fixer', name: 'Fixer' }]);
+        expect(read.questions[0]?.author.kind).toBe('unknown');
+        expect('later' in read).toBe(false);
+    });
+});
+
+describe('thread participants and entries', () => {
+    it('ties the key to the kind: the User is `user`, an agent its ID', () => {
+        expect(ParticipantRef.safeParse({ kind: 'user', key: 'user' }).success).toBe(true);
+        expect(ParticipantRef.safeParse({ kind: 'agent', key: 'agent-ada' }).success).toBe(true);
+        expect(ParticipantRef.safeParse({ kind: 'user', key: 'member-1' }).success).toBe(false);
+        expect(ParticipantRef.safeParse({ kind: 'agent', key: 'user name' }).success).toBe(false);
+        expect(ParticipantRef.safeParse({ kind: 'system', key: 'fixer' }).success).toBe(false);
+    });
+
+    it('bounds the choices an agent offers', () => {
+        const message = completedEvent.message;
+        expect(Message.safeParse({ ...message, choices: ['Yes', 'No'] }).success).toBe(true);
+        expect(Message.safeParse({ ...message, choices: [''] }).success).toBe(false);
+        expect(Message.safeParse({ ...message, choices: Array(MAX_MESSAGE_CHOICES + 1).fill('x') }).success).toBe(
+            false,
+        );
+        expect(Message.safeParse({ ...message, role: 'agent' }).success).toBe(false);
+    });
+
+    it('skips entry types a newer engine added and reads the known ones tolerantly', () => {
+        const chatId = completedEvent.message.chatId;
+        const joined = {
+            type: 'joined',
+            id: `${chatId}~1`,
+            chatId,
+            createdAt: NOW,
+            participant: { kind: 'agent', key: 'agent-ada', name: 'Ada' },
+        };
+        const page = ChatEntryPageReader.parse({
+            items: [
+                { ...completedEvent.message, extra: true },
+                { type: 'task-card', id: 'x' },
+                joined,
+                { type: 'titled', id: `${chatId}~2`, chatId, createdAt: NOW, title: 'CSV' },
+                { type: 'status', id: `${chatId}~3`, chatId, createdAt: NOW, status: 'paused' },
+            ],
+            nextCursor: null,
+        });
+        expect(page.items.map((entry) => entry.type)).toEqual(['message', 'joined', 'titled', 'status']);
+        const later = ChatEntryPageReader.parse({
+            items: [{ ...completedEvent.message, status: 'queued' }],
+            nextCursor: null,
+        });
+        expect(later.items[0]).toMatchObject({ type: 'message', status: 'unknown', content: 'Hi' });
+        expect(
+            SendMessageResultReader.parse({ message: { ...completedEvent.message, status: 'queued' } }).message,
+        ).toMatchObject({
+            status: 'unknown',
+        });
+        expect(Message.safeParse({ ...completedEvent.message, status: 'queued' }).success).toBe(false);
+        expect(page.items.at(-1)).toMatchObject({ status: 'unknown' });
+        expect(
+            ChatEntryPageReader.safeParse({ items: [{ ...joined, participant: null }], nextCursor: null }).success,
+        ).toBe(false);
+    });
+
+    it('takes request keys, a reply target and displayed messages strictly', () => {
+        expect(CreateChatBody.safeParse({}).success).toBe(true);
+        expect(CreateChatBody.safeParse({ requestKey: 'short' }).success).toBe(false);
+        expect(CreateChatBody.safeParse({ requestKey: 'k'.repeat(129) }).success).toBe(false);
+        expect(SendMessageBody.safeParse({ content: 'Yes', requestKey: 'abc-123_XYZ', replyTo: 'c#3' }).success).toBe(
+            true,
+        );
+        expect(SendMessageBody.safeParse({ content: 'Yes', role: 'user' }).success).toBe(false);
+        expect(MarkSeenBody.safeParse({ messageIds: [] }).success).toBe(false);
+        expect(MarkSeenBody.safeParse({ messageIds: Array(101).fill('c#1') }).success).toBe(false);
     });
 });
 

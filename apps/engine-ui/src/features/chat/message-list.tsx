@@ -1,13 +1,13 @@
-import type { AgentProfile, MemberId } from '@ptbk/engine-api';
+import type { MemberId } from '@ptbk/engine-api';
 import { Button, Skeleton } from '@ptbk/ui';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { ArrowDown } from 'lucide-react';
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import { m } from '../../paraglide/messages';
 import { useCurrentMember } from '../session/use-current-member';
 import { MessageRow } from './message-row';
-import type { MessageView } from './message-views';
+import type { ThreadView } from './message-views';
 
 /** A guess for rows not measured yet; measuring corrects it once a row is mounted. */
 export const ESTIMATED_ROW_PX = 120;
@@ -16,27 +16,29 @@ export const NEAR_EDGE_PX = 160;
 
 export interface MessageListProps {
     readonly label: string;
-    readonly views: readonly MessageView[];
-    readonly agentName: string;
-    /** For the avatar beside the agent's replies; without it the avatar is the name's initial. */
-    readonly agentProfile?: Pick<AgentProfile, 'avatarUrl' | 'color'>;
+    readonly views: readonly ThreadView[];
     /** Above the panel's threshold only the visible window is mounted; find-in-page then misses the rest. */
     readonly virtual: boolean;
     readonly hasOlder: boolean;
     readonly loadingOlder: boolean;
     readonly onLoadOlder: () => void;
     readonly onRetry: () => void;
+    /** Answers a question with one of its offered choices; absent for members who may not write. */
+    readonly onAnswer?: (messageId: string, choice: string) => void;
+    /** Questions actually scrolled into view, so the engine can mark them seen for everyone. */
+    readonly onSeen?: (messageIds: readonly string[]) => void;
     /** After "Jump to latest", e.g. to put focus back into the composer. */
     readonly onJumpedToLatest?: () => void;
 }
 
-const NO_PROFILE = { avatarUrl: null, color: null } as const;
+const authorOf = (view: ThreadView | undefined): string | null =>
+    view?.kind === 'message' ? `${view.author.kind}:${view.author.key}:${view.createdBy ?? ''}` : null;
 
-/** A message by someone other than the one before it starts a new turn, which names its author. */
-function turnOf(view: MessageView, before: MessageView | undefined, me: MemberId) {
-    const startsTurn = before === undefined || before.role !== view.role || before.createdBy !== view.createdBy;
+/** A message by someone other than the one before it (or after an event) starts a new turn, which names its author. */
+function turnOf(view: ThreadView, before: ThreadView | undefined, me: MemberId) {
+    const startsTurn = authorOf(before) !== authorOf(view);
     // The member's own bubble already marks the words as theirs.
-    const own = view.role === 'user' && view.createdBy === me;
+    const own = view.kind === 'message' && view.author.kind === 'user' && view.createdBy === me;
     return { startsTurn, showAuthor: startsTurn && !own };
 }
 
@@ -45,7 +47,7 @@ function turnOf(view: MessageView, before: MessageView | undefined, me: MemberId
  * keeps the reader's place when older pages arrive above, and offers "Jump to latest" when scrolled up.
  */
 export function MessageList(props: MessageListProps) {
-    const { views, virtual, agentProfile = NO_PROFILE } = props;
+    const { views, virtual, onSeen } = props;
     const me = useCurrentMember().memberId;
     const scrollRef = useRef<HTMLDivElement>(null);
     const atBottomRef = useRef(true);
@@ -74,7 +76,7 @@ export function MessageList(props: MessageListProps) {
 
     const firstId = views[0]?.id;
     const lastView = views.at(-1);
-    const sending = lastView?.state === 'pending';
+    const sending = lastView?.kind === 'message' && lastView.state === 'pending';
     const previous = useRef({ firstId, count: views.length, height: 0, sending });
     useLayoutEffect(() => {
         const element = scrollRef.current;
@@ -93,6 +95,25 @@ export function MessageList(props: MessageListProps) {
             scrollToEnd();
         }
         previous.current = { firstId, count: views.length, height: contentHeight(element), sending };
+    });
+
+    useEffect(() => {
+        // Seen means displayed: only a question that actually enters the visible area counts, never a preload.
+        const root = scrollRef.current;
+        if (root === null || onSeen === undefined || typeof IntersectionObserver === 'undefined') return;
+        const observer = new IntersectionObserver(
+            (records) => {
+                const seen = records.flatMap((record) =>
+                    record.isIntersecting ? [(record.target as HTMLElement).dataset['messageId'] ?? ''] : [],
+                );
+                if (seen.length > 0) onSeen(seen.filter((id) => id !== ''));
+            },
+            { root, threshold: 0.6 },
+        );
+        for (const element of root.querySelectorAll('[data-unseen-question]')) observer.observe(element);
+        return () => {
+            observer.disconnect();
+        };
     });
 
     const onScroll = () => {
@@ -118,10 +139,9 @@ export function MessageList(props: MessageListProps) {
                             ref={virtualizer.measureElement}
                             index={item.index}
                             view={view}
-                            agentName={props.agentName}
-                            agentProfile={agentProfile}
                             {...turnOf(view, views[item.index - 1], me)}
                             onRetry={props.onRetry}
+                            onAnswer={props.onAnswer}
                         />,
                     ];
           })
@@ -129,10 +149,9 @@ export function MessageList(props: MessageListProps) {
               <MessageRow
                   key={view.id}
                   view={view}
-                  agentName={props.agentName}
-                  agentProfile={agentProfile}
                   {...turnOf(view, views[position - 1], me)}
                   onRetry={props.onRetry}
+                  onAnswer={props.onAnswer}
               />
           ));
 

@@ -9,7 +9,7 @@ describe('AuditSearch', () => {
                 memberId: 'member-1',
                 action: 'agent.clone',
                 targetKind: 'agent',
-                targetId: '<img>',
+                targetId: 'line\nbreak',
                 outcome: 'denied',
                 from: '2026-02-29',
                 to: '2026-03-01',

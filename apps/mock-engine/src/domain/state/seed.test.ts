@@ -1,5 +1,5 @@
 import type { ActivityItem, ActivityPageRead, EngineApiClient, EngineApiResponse } from '@ptbk/engine-api';
-import { KNOWN_CAPABILITIES, MAX_RUN_TEXT_BYTES, TaskId } from '@ptbk/engine-api';
+import { ChatId, KNOWN_CAPABILITIES, MAX_RUN_TEXT_BYTES, TaskId } from '@ptbk/engine-api';
 import { createInMemoryEngine } from '@ptbk/engine-api/in-memory';
 import type { InMemorySeed } from '@ptbk/engine-api/in-memory';
 import { describe, expect, it } from 'vitest';
@@ -72,7 +72,7 @@ describe('seedEngine', () => {
     it('gives a stable small-team seed for seed 42 and a fixed epoch, including every capability', async () => {
         const data = await seedFor(42, 'small-team');
         expect(await sha256(JSON.stringify(data))).toBe(
-            '592319bb3999b54b46a8de63f463bed13c47e7b406886b8f39478fb833171ae3',
+            '53fded270e482adac280573cdf6a244236cfcdb31d3dce2d1bab84403893e475',
         );
         for (const key of ['runs', 'files', 'triggers', 'integrations', 'activity'] as const) {
             expect(data[key]?.length, key).toBeGreaterThan(0);
@@ -145,19 +145,22 @@ describe('seedEngine', () => {
         const chats = ok(await client.chats.listAll({ limit: 100 }, signal())).items;
         expect(chats.length).toBeGreaterThanOrEqual(7);
         const [chat] = chats;
-        if (chat) expect(ok(await client.chats.listMessages(chat.id, {}, signal())).items.length).toBeGreaterThan(2);
-        const visitorChats = chats.filter(({ createdBy }) => createdBy === null);
-        expect(visitorChats.length).toBeGreaterThan(0);
-        const openAgents = new Set(agents.filter(({ visibility }) => visibility !== 'private').map(({ id }) => id));
-        for (const visitorChat of visitorChats) {
-            expect(visitorChat).toMatchObject({ source: 'web', title: '' });
-            expect(visitorChat.preview).not.toBeNull();
-            expect(openAgents.has(visitorChat.agentId)).toBe(true);
-            const visitorMessages = ok(await client.chats.listMessages(visitorChat.id, {}, signal())).items;
-            expect(visitorMessages).toHaveLength(visitorChat.messageCount);
-            expect(visitorMessages.every(({ createdBy }) => createdBy === null)).toBe(true);
-        }
-        expect(chats.filter(({ createdBy }) => createdBy !== null).every(({ source }) => source === 'web')).toBe(true);
+        if (chat) expect(ok(await client.chats.listEntries(chat.id, {}, signal())).items.length).toBeGreaterThan(2);
+        const byId = new Map(chats.map((thread) => [thread.id, thread]));
+        expect(byId.get(ChatId.parse('chat-agents-talking'))?.members.map(({ kind }) => kind)).toEqual([
+            'agent',
+            'agent',
+        ]);
+        expect(byId.get(ChatId.parse('Report'))?.members.map(({ name }) => name)).toEqual(['Chatter']);
+        expect(byId.get(ChatId.parse('chat-question-for-you'))).toMatchObject({
+            status: 'waiting-for-user',
+            questions: [{ seen: false }],
+        });
+        expect(byId.get(ChatId.parse('chat-chatter-brings-in'))?.members.map(({ kind }) => kind)).toEqual([
+            'user',
+            'agent',
+            'agent',
+        ]);
         const secrets = ok(await client.secrets.list({ limit: 100 }, signal())).items;
         expect(secrets.map(({ status }) => status)).toContain('revoked');
         expect(new Set(secrets.map(({ scope }) => scope.kind))).toEqual(new Set(['engine', 'agent']));
@@ -211,9 +214,8 @@ describe('seedEngine', () => {
         expect(ok(await client.runs.list({ limit: 100 }, signal())).nextCursor).not.toBeNull();
         expect(data.members?.length).toBe(40);
         expect(new Set(data.members?.map(({ role }) => role))).toEqual(new Set(['owner', 'admin', 'member', 'viewer']));
-        const counts = new Map<string, number>();
-        for (const message of data.messages ?? []) counts.set(message.chatId, (counts.get(message.chatId) ?? 0) + 1);
-        expect([...counts.values()].filter((count) => count >= 150).length).toBeGreaterThanOrEqual(3);
+        const counts = (data.chats ?? []).map(({ entries }) => entries.filter(({ type }) => type === 'message').length);
+        expect(counts.filter((count) => count >= 150).length).toBeGreaterThanOrEqual(3);
         expect(ok(await client.agents.list({ limit: 100 }, signal())).nextCursor).not.toBeNull();
     }, 30_000);
 });
@@ -289,8 +291,9 @@ describe('seedEngine: capabilities in small-team', () => {
         const runs = await runsOf(client);
         for (const web of runs.filter(({ source }) => source === 'web')) {
             expect(web.chatId).not.toBeNull();
-            const messages = ok(await client.chats.listMessages(web.chatId as never, { limit: 100 }, signal())).items;
-            expect(messages.find(({ id }) => id === web.messageId)?.role, web.id).toBe('agent');
+            const entries = ok(await client.chats.listEntries(web.chatId as never, { limit: 100 }, signal())).items;
+            const reply = entries.find(({ id }) => id === web.messageId);
+            expect(reply?.type === 'message' ? reply.author.kind : reply?.type, web.id).toBe('agent');
         }
         const details = await Promise.all(
             runs

@@ -1,19 +1,21 @@
-import type { AgentProfile, ReadChat } from '@ptbk/engine-api';
+import { MessageId } from '@ptbk/engine-api';
+import type { ReadChat } from '@ptbk/engine-api';
 import { EmptyState, ErrorState } from '@ptbk/ui';
-import { useInfiniteQuery } from '@tanstack/react-query';
-import { useEffect, useMemo, useRef } from 'react';
+import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 
 import { cx } from '../../app/cx';
 import { useEngineApi } from '../../app/engine-api-context';
 import { m } from '../../paraglide/messages';
 import { useCurrentMember } from '../session/use-current-member';
-import { messagesInOrder } from './chat-cache';
-import { chatMessagesQueryOptions } from './chat-queries';
+import { entriesInOrder } from './chat-cache';
+import { chatKeys } from './chat-keys';
+import { chatEntriesQueryOptions } from './chat-queries';
 import { MessagesSkeleton } from './chat-route-states';
 import { isReplyActive } from './chat-session';
 import { Composer } from './composer';
 import { MessageList } from './message-list';
-import { messageViews } from './message-views';
+import { threadViews } from './message-views';
 import { useChatSession } from './use-chat-session';
 
 /** Long histories mount only the visible window; below this every message stays in the page for find-in-page. */
@@ -21,27 +23,69 @@ export const VIRTUALIZE_ABOVE = 200;
 
 export interface ChatPanelProps {
     readonly chat: ReadChat;
-    readonly agentName: string;
-    readonly agentProfile?: Pick<AgentProfile, 'avatarUrl' | 'color'>;
-    /** The member may write here: `chats.write`, and the chat is their own. */
+    /** The member may write here: `chats.write`. Nobody owns a thread. */
     readonly canWrite: boolean;
     /** Take the rest of a parent flex column's height instead of a share of the screen. */
     readonly fill?: boolean;
 }
 
+/** The agent a new message goes to unless it answers a question: the thread's first agent. */
+function mainAgentName(chat: ReadChat): string | undefined {
+    return chat.members.find((member) => member.kind === 'agent')?.name;
+}
+
 /**
- * A chat's history, its composer and the reply in progress. Reusable wherever a chat is shown (the agent's Chat tab,
- * U-04's test step); it reads and writes only through the engine API client and the query cache.
+ * A thread's entries, its composer and the reply in progress. Reusable wherever a thread is shown (the Chats page,
+ * U-04's test step); it reads and writes only through the engine API client and the query cache. Opening it marks the
+ * thread read for this member; a question counts as seen only once it is on screen.
  */
-export function ChatPanel({ chat, agentName, agentProfile, canWrite, fill = false }: ChatPanelProps) {
+export function ChatPanel({ chat, canWrite, fill = false }: ChatPanelProps) {
     const engineApi = useEngineApi();
+    const queryClient = useQueryClient();
     const me = useCurrentMember();
-    const history = useInfiniteQuery(chatMessagesQueryOptions(engineApi, chat.id));
-    const messages = useMemo(() => messagesInOrder(history.data), [history.data]);
-    const session = useChatSession({ chatId: chat.id, lastMessageAt: chat.lastMessageAt, messages });
+    const history = useInfiniteQuery(chatEntriesQueryOptions(engineApi, chat.id));
+    const entries = useMemo(() => entriesInOrder(history.data), [history.data]);
+    const session = useChatSession({ chatId: chat.id, updatedAt: chat.updatedAt, entries });
     const views = useMemo(
-        () => messageViews(messages, session.state, { memberId: me.memberId, canSendAgain: canWrite }),
-        [messages, session.state, me.memberId, canWrite],
+        () => threadViews(chat, entries, session.state, { memberId: me.memberId, canSendAgain: canWrite }),
+        [chat, entries, session.state, me.memberId, canWrite],
+    );
+    const agentName = mainAgentName(chat) ?? m.chat_agents();
+
+    const { unread } = chat;
+    useEffect(() => {
+        if (unread === 0) return;
+        void (async () => {
+            const read = await engineApi.chats.markRead(chat.id, AbortSignal.timeout(10_000)).catch(() => null);
+            if (read?.kind === 'ok') queryClient.setQueryData(chatKeys.detail(chat.id), read.data);
+            void queryClient.invalidateQueries({ queryKey: chatKeys.lists() });
+        })();
+    }, [engineApi, queryClient, chat.id, unread]);
+
+    const reportedSeen = useRef(new Set<string>());
+    const markSeen = useCallback(
+        (messageIds: readonly string[]) => {
+            const fresh = messageIds.filter((id) => !reportedSeen.current.has(id));
+            if (fresh.length === 0) return;
+            for (const id of fresh) reportedSeen.current.add(id);
+            void (async () => {
+                const seen = await engineApi.chats
+                    .markSeen(
+                        chat.id,
+                        { messageIds: fresh.map((id) => MessageId.parse(id)) },
+                        AbortSignal.timeout(10_000),
+                    )
+                    .catch(() => null);
+                if (seen?.kind === 'ok') queryClient.setQueryData(chatKeys.detail(chat.id), seen.data);
+            })();
+        },
+        [engineApi, queryClient, chat.id],
+    );
+    const answer = useCallback(
+        (messageId: string, choice: string) => {
+            void session.send(choice, MessageId.parse(messageId));
+        },
+        [session],
     );
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const active = isReplyActive(session.state.phase);
@@ -111,8 +155,6 @@ export function ChatPanel({ chat, agentName, agentProfile, canWrite, fill = fals
             <MessageList
                 label={m.chat_column_messages()}
                 views={views}
-                agentName={agentName}
-                {...(agentProfile === undefined ? {} : { agentProfile })}
                 virtual={chat.messageCount > VIRTUALIZE_ABOVE}
                 hasOlder={history.hasNextPage}
                 loadingOlder={history.isFetchingNextPage}
@@ -120,6 +162,8 @@ export function ChatPanel({ chat, agentName, agentProfile, canWrite, fill = fals
                     void history.fetchNextPage();
                 }}
                 onRetry={session.retry}
+                onSeen={markSeen}
+                {...(canWrite ? { onAnswer: answer } : {})}
                 onJumpedToLatest={() => {
                     textareaRef.current?.focus();
                 }}
@@ -145,7 +189,7 @@ export function ChatPanel({ chat, agentName, agentProfile, canWrite, fill = fals
                         : session.state.phase === 'stopping'
                           ? { stop: 'stopping' as const }
                           : {})}
-                    onSend={session.send}
+                    onSend={(content) => session.send(content)}
                     onStop={stop}
                     textareaRef={textareaRef}
                     className="mx-auto w-full max-w-3xl"

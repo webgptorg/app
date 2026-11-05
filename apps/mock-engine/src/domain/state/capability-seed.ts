@@ -112,6 +112,8 @@ interface Context {
     readonly activity: SeedActivity[];
     readonly writers: readonly SeedMemberRef[];
     readonly agentsById: ReadonlyMap<string, SeedAgentRef>;
+    /** Running runs so far: their last tool calls alternate pending and partial, so every seed shows both. */
+    running: number;
 }
 
 /** Runs, files, triggers, integrations and activity for every C-07 capability, consistent with each other. */
@@ -123,6 +125,7 @@ export async function seedCapabilities(input: CapabilitySeedInput): Promise<Capa
         activity: [],
         writers: input.members.filter((member) => member.role !== 'viewer'),
         agentsById: new Map(input.agents.map((agent) => [agent.id, agent])),
+        running: 0,
     };
     if (input.agents.length === 0) {
         return { runs: [], tasks: [], files: [], triggers: [], integrations: [], activity: [] };
@@ -237,7 +240,9 @@ function buildRun(ctx: Context, plan: RunPlan): SeedRun {
             const state: ToolCall['state'] =
                 plan.status === 'running'
                     ? last
-                        ? sequence.pick(['pending', 'partial'] as const)
+                        ? ctx.running++ % 2 === 0
+                            ? 'partial'
+                            : 'pending'
                         : 'complete'
                     : last && plan.status !== 'completed'
                       ? 'error'

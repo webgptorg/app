@@ -100,31 +100,23 @@ export function runsSeed(): InMemorySeed {
         chats: [
             {
                 id: 'chat-ada',
-                agentId: 'agent-ada',
                 title: 'Billing review',
-                createdBy: OWNER_ID,
                 createdAt: ago(70 * MINUTE),
-                updatedAt: ago(50 * MINUTE),
-            },
-        ],
-        messages: [
-            {
-                id: 'message-ask',
-                chatId: 'chat-ada',
-                role: 'user',
-                content: 'Review the billing PR',
-                status: 'completed',
-                createdBy: OWNER_ID,
-                createdAt: ago(61 * MINUTE),
-            },
-            {
-                id: 'message-reply',
-                chatId: 'chat-ada',
-                role: 'agent',
-                content: 'Done.',
-                status: 'completed',
-                createdBy: null,
-                createdAt: ago(50 * MINUTE),
+                entries: [
+                    {
+                        type: 'message',
+                        author: { kind: 'user', key: 'user' },
+                        createdBy: OWNER_ID,
+                        content: 'Review the billing PR',
+                        at: ago(61 * MINUTE),
+                    },
+                    {
+                        type: 'message',
+                        author: { kind: 'agent', key: 'agent-ada' },
+                        content: 'Done.',
+                        at: ago(50 * MINUTE),
+                    },
+                ],
             },
         ],
         runs: [
@@ -132,7 +124,7 @@ export function runsSeed(): InMemorySeed {
                 agentId: 'agent-ada',
                 source: 'web',
                 chatId: 'chat-ada',
-                messageId: 'message-reply',
+                messageId: 'chat-ada#2',
                 queuedAt: ago(61 * MINUTE),
                 startedAt: ago(61 * MINUTE),
                 completedAt: ago(50 * MINUTE),
@@ -164,7 +156,7 @@ export function runsSeed(): InMemorySeed {
                     },
                 ],
                 outputs: {
-                    messages: [{ chatId: 'chat-ada', messageId: 'message-reply' }],
+                    messages: [{ chatId: 'chat-ada', messageId: 'chat-ada#2' }],
                     files: [],
                     projectChanges: [
                         {

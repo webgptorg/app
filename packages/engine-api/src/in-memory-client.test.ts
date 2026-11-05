@@ -8,6 +8,11 @@ import { checkBook } from './in-memory/book';
 import { paginate } from './in-memory/paging';
 import { createInMemoryEngineApiClient, IN_MEMORY_CLIENT_MARKER } from './in-memory-client';
 
+import { MessageId } from './common';
+/** The in-memory engine numbers messages `<chat>#<position>`, and a reply follows its User message directly. */
+const replyIdOf = (sent: { readonly message: { readonly id: string } }) =>
+    MessageId.parse(sent.message.id.replace(/#(\d+)$/, (_, position: string) => `#${String(Number(position) + 1)}`));
+
 function ok<T>(response: EngineApiResponse<T>): T {
     if (response.kind !== 'ok') throw new Error(`Expected ok, got problem ${response.problem.code}`);
     return response.data;
@@ -89,10 +94,10 @@ describe('createInMemoryEngineApiClient', () => {
             replyScript: () => ({ chunks: ['partial'], outcome: 'failed' }),
         });
         const agent = ok(await client.agents.create({ source: 'Ada' }, signal()));
-        const chat = ok(await client.chats.create(agent.id, {}, signal()));
+        const chat = ok(await client.chats.create({ agentId: agent.id }, signal()));
         const sent = ok(await client.chats.sendMessage(chat.id, { content: 'hi' }, signal()));
         const events = [];
-        for await (const { event } of ok(await client.chats.streamReply(chat.id, sent.replyMessageId, {}, signal()))) {
+        for await (const { event } of ok(await client.chats.streamReply(chat.id, replyIdOf(sent), {}, signal()))) {
             events.push(event.type === 'failed' ? event.problem.code : event.type);
         }
         expect(events).toEqual(['delta', 'reply-failed']);

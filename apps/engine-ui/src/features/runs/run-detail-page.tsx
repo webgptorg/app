@@ -213,7 +213,7 @@ function Source({ run }: { readonly run: ReadRunDetail }) {
     const label = runSourceLabel(run.source);
     if (run.chatId !== null) {
         return (
-            <Link to="/agents/$agentId/chat/$chatId" params={{ agentId: run.agentId, chatId: run.chatId }}>
+            <Link to="/chats/$chatId" params={{ chatId: run.chatId }}>
                 {run.source === 'web' ? label : m.run_source_chat({ source: label })}
             </Link>
         );
@@ -323,10 +323,7 @@ function OutputsSection({ run }: { readonly run: ReadRunDetail }) {
                         <ul className="flex flex-col gap-1">
                             {messages.map((message) => (
                                 <li key={message.messageId}>
-                                    <Link
-                                        to="/agents/$agentId/chat/$chatId"
-                                        params={{ agentId: run.agentId, chatId: message.chatId }}
-                                    >
+                                    <Link to="/chats/$chatId" params={{ chatId: message.chatId }}>
                                         {m.run_outputs_message_link()}
                                     </Link>
                                 </li>

@@ -231,7 +231,7 @@ describe('audit log: filters', { timeout: TIMEOUT_MS }, () => {
     it('falls back to no filter for invalid params instead of failing', async () => {
         const engine = auditEngine({ count: 3 });
         renderWithProviders({
-            path: '/audit?outcome=bogus&from=2026-02-30&to=yesterday&action=agent.clone&targetId=%3Cimg%3E&cursor=%25',
+            path: '/audit?outcome=bogus&from=2026-02-30&to=yesterday&action=agent.clone&targetId=line%0Abreak&cursor=%25',
             engineApi: engine.client,
         });
         expect(await screen.findByText('Target 3')).toBeDefined();

@@ -2,9 +2,9 @@ import type { Message, ReplyStreamEvent } from '../chats';
 import type { MessageId } from '../common';
 import { createProblem } from '../problem';
 import type { EngineApiStreamItem } from '../route';
-import { touchChat } from './kit';
 import type { EngineContext, HandlerContext, ScriptedReply } from './kit';
 import { advanceRun, runForMessage } from './runs';
+import { settleMessage, touch } from './threads';
 
 /** Stores the reply's script and, for a paced one, starts generating it right away. */
 export function startReply(ctx: EngineContext, messageId: MessageId, script: ScriptedReply): void {
@@ -27,7 +27,7 @@ export function cancelReply(ctx: EngineContext, message: Message): boolean {
     ctx.state.replies.get(message.id)?.stop.abort();
     const run = runForMessage(ctx, message.id);
     if (run) advanceRun(ctx, run.id, { status: 'cancelled' });
-    touchChat(ctx, message.chatId);
+    touchThread(ctx, message.chatId);
     ctx.replies.notify(message.id);
     return true;
 }
@@ -65,8 +65,15 @@ function finish(ctx: EngineContext, messageId: MessageId): void {
                 : { status: 'completed' },
         );
     }
-    touchChat(ctx, finished.chatId);
+    const thread = ctx.state.chats.get(finished.chatId);
+    if (thread) settleMessage(ctx, thread, finished);
+    touchThread(ctx, finished.chatId);
     ctx.replies.notify(messageId);
+}
+
+function touchThread(ctx: EngineContext, chatId: string): void {
+    const thread = ctx.state.chats.get(chatId);
+    if (thread) touch(ctx, thread);
 }
 
 /**

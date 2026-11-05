@@ -13,13 +13,15 @@ const emptyDetail = {
 };
 
 /**
- * A small, believable engine for UI development and screenshots: three agents and a second member, with runs in every
+ * A small, believable engine for UI development and screenshots: the built-in agents, three agents of its own and a second member, with runs in every
  * status, files with versions and scan results, a weekly schedule, an inbound email address and integrations, all
  * stamped relative to `now`. Tests that need exact data seed their own.
  */
 export function createDemoSeed(now: Date = new Date()): InMemorySeed {
     const ago = (minutes: number): string => new Date(now.getTime() - minutes * MINUTE_MS).toISOString();
     const owner = 'member-owner';
+    const user = { kind: 'user', key: 'user' } as const;
+    const agent = (key: string) => ({ kind: 'agent', key }) as const;
     const run = (
         id: string,
         fields: Readonly<Record<string, unknown>> & { readonly agentId: string; readonly queuedAt: string },
@@ -84,31 +86,78 @@ export function createDemoSeed(now: Date = new Date()): InMemorySeed {
         chats: [
             {
                 id: 'chat-ada-1',
-                agentId: 'agent-ada',
                 title: 'Review the billing PR',
-                createdBy: owner,
                 createdAt: ago(90),
-                updatedAt: ago(80),
+                entries: [
+                    { type: 'joined', participant: user },
+                    { type: 'joined', participant: agent('builtin-chatter') },
+                    {
+                        type: 'message',
+                        author: user,
+                        createdBy: owner,
+                        content: 'Can someone review the billing pull request?',
+                    },
+                    {
+                        type: 'message',
+                        author: agent('builtin-chatter'),
+                        content: "I'll bring in Ada for this.",
+                        at: ago(89),
+                    },
+                    { type: 'joined', participant: agent('agent-ada'), at: ago(89) },
+                    {
+                        type: 'message',
+                        author: agent('agent-ada'),
+                        content: 'Done: two comments, one blocking.',
+                        at: ago(80),
+                    },
+                ],
+                readBy: [owner],
             },
-        ],
-        messages: [
             {
-                id: 'message-ada-1',
-                chatId: 'chat-ada-1',
-                role: 'user',
-                content: 'Please review the billing pull request.',
-                status: 'completed',
-                createdBy: owner,
-                createdAt: ago(90),
+                id: 'chat-iris-question',
+                title: 'Weekly report scope',
+                createdAt: ago(30),
+                entries: [
+                    { type: 'joined', participant: agent('agent-iris') },
+                    { type: 'joined', participant: agent('agent-max') },
+                    {
+                        type: 'message',
+                        author: agent('agent-iris'),
+                        content: 'Max, how many support emails came in this week?',
+                    },
+                    {
+                        type: 'message',
+                        author: agent('agent-max'),
+                        content: 'Forty-two, three of them still open.',
+                        at: ago(29),
+                    },
+                    {
+                        type: 'message',
+                        author: agent('agent-iris'),
+                        content: '+@User Should the weekly report include the three open support cases?',
+                        choices: ['Yes', 'No'],
+                        at: ago(28),
+                    },
+                ],
             },
             {
-                id: 'message-ada-2',
-                chatId: 'chat-ada-1',
-                role: 'agent',
-                content: 'Done: two comments, one blocking.',
-                status: 'completed',
-                createdBy: null,
-                createdAt: ago(89),
+                id: 'Report',
+                title: 'Report',
+                createdAt: ago(60 * 24),
+                entries: [
+                    { type: 'joined', participant: agent('builtin-chatter') },
+                    {
+                        type: 'message',
+                        author: agent('builtin-chatter'),
+                        content: 'Yesterday: Ada reviewed one pull request; Max answered 12 emails.',
+                    },
+                    {
+                        type: 'message',
+                        author: agent('builtin-chatter'),
+                        content: 'Today: Iris is drafting the weekly report.',
+                        at: ago(60),
+                    },
+                ],
             },
         ],
         secrets: [
@@ -130,7 +179,7 @@ export function createDemoSeed(now: Date = new Date()): InMemorySeed {
                 occurrenceId: 'occ-billing-review-1',
                 preview: 'Please review the billing pull request.',
                 chatId: 'chat-ada-1',
-                messageId: 'message-ada-2',
+                messageId: 'chat-ada-1#3',
                 queuedAt: ago(90),
                 startedAt: ago(90),
                 completedAt: ago(80),
@@ -152,7 +201,7 @@ export function createDemoSeed(now: Date = new Date()): InMemorySeed {
                     },
                 ],
                 outputs: {
-                    messages: [{ chatId: 'chat-ada-1', messageId: 'message-ada-2' }],
+                    messages: [{ chatId: 'chat-ada-1', messageId: 'chat-ada-1#3' }],
                     files: [],
                     projectChanges: [],
                 },

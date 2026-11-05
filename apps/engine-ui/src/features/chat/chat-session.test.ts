@@ -13,7 +13,8 @@ function run(...actions: readonly ChatSessionAction[]): ChatSessionState {
 
 const streaming = (): ChatSessionAction[] => [
     { type: 'send', content: 'Hi' },
-    { type: 'sent', replyMessageId: reply },
+    { type: 'sent' },
+    { type: 'follow', messageId: reply },
 ];
 
 describe('chatSessionReducer', () => {

@@ -29,25 +29,28 @@ const agent = {
 
 const chat = {
     id: 'c1',
-    agentId: 'a1',
     title: '',
-    source: 'web',
-    createdBy: null,
+    status: 'open',
+    members: [{ kind: 'agent', key: 'a1', name: 'Ada' }],
     createdAt: AT,
     updatedAt: AT,
     messageCount: 2,
     lastMessageAt: AT,
     preview: 'Do you ship to Brno?',
+    unread: 0,
+    questions: [],
 };
 
 const reply = {
-    id: 'msg2',
+    type: 'message',
+    id: 'c1#2',
     chatId: 'c1',
-    role: 'agent',
+    author: { kind: 'agent', key: 'a1' },
     content: 'Hello',
     status: 'completed',
     createdBy: null,
     createdAt: AT,
+    choices: [],
 };
 
 const fileMetadata = {
@@ -279,7 +282,7 @@ describe('createFetchEngineApiClient', () => {
         const { client, calls } = setup(() => sseResponse([stream.join('')]));
         const response = await client.chats.streamReply(
             ChatId.parse('c1'),
-            MessageId.parse('msg2'),
+            MessageId.parse('c1#2'),
             { lastEventId: '3' },
             signal(),
         );
@@ -290,7 +293,7 @@ describe('createFetchEngineApiClient', () => {
             { id: '5', event: { type: 'completed', message: reply } },
         ]);
         const headers = new Headers(calls[0]?.init.headers);
-        expect(calls[0]?.url).toBe(`${BASE_URL}${ENGINE_API_PREFIX}/chats/c1/messages/msg2/stream`);
+        expect(calls[0]?.url).toBe(`${BASE_URL}${ENGINE_API_PREFIX}/chats/c1/messages/c1%232/stream`);
         expect(headers.get('last-event-id')).toBe('3');
         expect(headers.get('accept')).toContain('text/event-stream');
     });
@@ -480,23 +483,37 @@ describe('tolerant reading', () => {
         expect(items[1]?.event).toEqual({ type: 'run.changed', runId: 'r1', agentId: 'a1', status: 'running' });
     });
 
-    it('reads a chat source this client does not know as unknown, in pages and single chats', async () => {
-        const kiosk = { ...chat, id: 'c2', source: 'kiosk', screen: 'lobby' };
+    it('reads a message status this client does not know as unknown, in entries and in a send result', async () => {
+        const later = { ...reply, status: 'queued', extra: true };
         const { client } = setup((call) =>
-            call.url.endsWith('/chats/c2') ? json(kiosk) : json({ items: [chat, kiosk], nextCursor: null }),
+            call.url.endsWith('/entries')
+                ? json({ items: [later, { type: 'task-card', id: 'x' }], nextCursor: null })
+                : json({ message: later }, 202),
+        );
+        const entries = await client.chats.listEntries(ChatId.parse('c1'), {}, signal());
+        if (entries.kind !== 'ok') throw new Error('expected a page');
+        expect(entries.data.items).toEqual([{ ...reply, status: 'unknown' }]);
+        const sent = await client.chats.sendMessage(ChatId.parse('c1'), { content: 'Hi' }, signal());
+        expect(sent).toMatchObject({ kind: 'ok', data: { message: { ...reply, status: 'unknown' } } });
+    });
+
+    it('reads a thread status this client does not know as unknown, in pages and single chats', async () => {
+        const later = { ...chat, id: 'c2', status: 'archived', pinned: true };
+        const { client } = setup((call) =>
+            call.url.endsWith('/chats/c2') ? json(later) : json({ items: [chat, later], nextCursor: null }),
         );
         const page = await client.chats.list(AgentId.parse('a1'), {}, signal());
         if (page.kind !== 'ok') throw new Error('expected a page');
-        expect(page.data.items).toEqual([chat, { ...chat, id: 'c2', source: 'unknown' }]);
+        expect(page.data.items).toEqual([chat, { ...chat, id: 'c2', status: 'unknown' }]);
         expect(await client.chats.get(ChatId.parse('c2'), signal())).toEqual({
             kind: 'ok',
-            data: { ...chat, id: 'c2', source: 'unknown' },
+            data: { ...chat, id: 'c2', status: 'unknown' },
         });
     });
 
     it.each([
-        ['a source that is not a string', { ...chat, source: 7 }],
-        ['a broken known field next to an unknown source', { ...chat, source: 'kiosk', messageCount: -1 }],
+        ['a status that is not a string', { ...chat, status: 7 }],
+        ['a broken known field next to an unknown status', { ...chat, status: 'archived', messageCount: -1 }],
     ])('rejects a chat with %s', async (_, body) => {
         const { client } = setup(() => json(body));
         await expect(client.chats.get(ChatId.parse('c1'), signal())).rejects.toBeInstanceOf(EngineApiContractError);

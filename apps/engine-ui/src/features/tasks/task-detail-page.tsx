@@ -117,10 +117,7 @@ function DiscussInChat({ task }: { readonly task: ReadTaskDetail }) {
     const icon = <MessageSquare aria-hidden className="size-4" />;
     if (chat.data !== undefined) {
         return (
-            <ButtonLink
-                to="/agents/$agentId/chat/$chatId"
-                params={{ agentId: chat.data.agentId, chatId: chat.data.id }}
-            >
+            <ButtonLink to="/chats/$chatId" params={{ chatId: chat.data.id }}>
                 {icon}
                 {m.task_discuss_in_chat()}
             </ButtonLink>
@@ -280,7 +277,7 @@ function LinkTarget({ target }: { readonly target: TaskLinkTarget }) {
     }
 }
 
-/** A chat by its name; the chat's agent comes from the engine, since the link carries only the chat. */
+/** A chat by its name, linked once the engine confirms the thread exists. */
 function ChatLink({ chatId, name }: { readonly chatId: ChatId | null; readonly name: string }) {
     const chatsVisible = useAllows({ permission: 'chats.read' });
     const chat = useQuery({
@@ -289,7 +286,7 @@ function ChatLink({ chatId, name }: { readonly chatId: ChatId | null; readonly n
     });
     if (chat.data === undefined) return <span>{name}</span>;
     return (
-        <Link to="/agents/$agentId/chat/$chatId" params={{ agentId: chat.data.agentId, chatId: chat.data.id }}>
+        <Link to="/chats/$chatId" params={{ chatId: chat.data.id }}>
             {name}
         </Link>
     );
