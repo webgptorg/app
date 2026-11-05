@@ -24,6 +24,11 @@ Each entry has this shape. Platform authors: add yours at the top of the list, o
 - **Redo:** what the engine's agent must change, re-run or drop; "nothing" if it is inert.
 ```
 
+### 2026-11-05: Tasks
+
+- **Changed:** a new read-only capability, `tasks@1` ([engine-api.md](engine-api.md#capabilities), [tasks.ts](../../packages/engine-api/src/capabilities/tasks.ts)): `GET /tasks`, `GET /tasks/{taskId}` and `GET /tasks/{taskId}/occurrences` report your task inventory as Reborn models it (ordinary and engine-owned tasks in one list, your readiness kinds as `state`, `TASK PARENT`, `TASK DEPENDS ON`, `TASK ORIGIN`, the directed `LINK` graph, recurrence, reopen cycles and retries as occurrences), plus the `task.changed` event and the `tasks.read` permission. `Run` gained `taskId` and `occurrenceId` (both `null` for work outside a task, such as a chat reply), and `GET /runs` a `taskId` filter. Conformance adds `engine-api.tasks.*` (ENG-111).
+- **Redo:** serve the three routes from your task views (`taskInventory`, task detail, the runs of each definition) with `Task.id` an opaque ID you derive from the normalized Book name or the engine-owned definition, and advertise `tasks@1` once they pass `--suite engine-api`. Send `taskId` and `occurrenceId` on every run. Report `allowedActions: []` until we agree which task-control operations the App may call; changes stay in chat.
+
 ### 2026-11-05: Features Reborn does not have are capabilities
 
 - **Changed:** five former core features are capabilities, so an engine without them leaves them out of `GET /engine` and answers their routes with 404 `capability-not-supported`: `members@1` (invites, role changes, removals; member reads and `/me` stay core), `api-tokens@1`, `audit@1`, `book-editor@1` (saving and validating Book source, revisions) and `agent-management@1` (visibility, folder, restore). Their conformance checks skip when not advertised. The mock starts in a `reborn` profile that advertises only what Reborn has; `MOCK_PROFILE=full` shows everything. See [engine-api.md](engine-api.md#capabilities).
