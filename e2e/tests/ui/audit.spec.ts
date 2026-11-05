@@ -15,7 +15,7 @@ test('the actions taken in the UI are audited and the filters find them', async 
     await signIn();
     await page.goto(appUrl('/agents'));
     const agent = required(
-        (await apiList<Agent>(page, '/agents')).find((candidate) => candidate.visibility === 'private'),
+        (await apiList<Agent>(page, '/agents?origin=content')).find((candidate) => candidate.visibility === 'private'),
         'private agent',
     );
     await (await openRowMenu(page, agent.name)).getByRole('menuitem', { name: 'Make public' }).click();

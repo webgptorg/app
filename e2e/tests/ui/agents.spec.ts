@@ -12,8 +12,9 @@ interface Agent {
     readonly visibility: 'public' | 'unlisted' | 'private';
 }
 
+/** The project's own agents: the table lists only those, the built-in ones sit in their own section below it. */
 async function seededAgents(page: Page): Promise<readonly Agent[]> {
-    return apiList<Agent>(page, '/agents');
+    return apiList<Agent>(page, '/agents?origin=content');
 }
 
 test.beforeEach(async ({ page, signIn, appUrl }) => {
