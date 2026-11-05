@@ -397,6 +397,8 @@ test.describe('the built bundle under the engine CSP', () => {
 
         await visit('/triggers');
         await page.setViewportSize({ width: 360, height: 740 });
+        // The table turns into cards on a media query change after the resize; a button found before that is detached.
+        await expect(page.getByRole('table')).toHaveCount(0);
         const pause = page.getByRole('button', { name: 'Pause Support inbox' });
         await pause.scrollIntoViewIfNeeded();
         await expect(pause).toBeInViewport();
