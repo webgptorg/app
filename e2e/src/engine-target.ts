@@ -21,6 +21,7 @@ export interface SessionCookie {
 export type EngineScenario = 'empty' | 'small-team' | 'large-fleet';
 export type EngineCapabilityName =
     | 'runs'
+    | 'tasks'
     | 'files'
     | 'triggers'
     | 'integrations'
@@ -35,6 +36,7 @@ export type EngineCapabilityName =
 /** The mock's `full` profile: every screen the UI has, so each flow can reach its own. */
 export const ALL_CAPABILITIES: readonly EngineCapabilityName[] = [
     'runs',
+    'tasks',
     'files',
     'triggers',
     'integrations',
