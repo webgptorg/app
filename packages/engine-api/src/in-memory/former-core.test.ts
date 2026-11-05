@@ -59,7 +59,7 @@ describe('activity of capabilities the engine does not advertise', () => {
         const all = await kinds();
         expect(all).toEqual(expect.arrayContaining(['run', 'trigger']));
         const files = await kinds([KNOWN_CAPABILITIES.files]);
-        expect(files.filter((area) => ['run', 'trigger', 'integration'].includes(area ?? ''))).toEqual([]);
+        expect(files.filter((area) => ['run', 'trigger', 'integration', 'member'].includes(area ?? ''))).toEqual([]);
         expect(files).toContain('engine');
     });
 });

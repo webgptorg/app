@@ -134,6 +134,7 @@ export const ACTIVITY_CAPABILITIES = {
     file: KNOWN_CAPABILITIES.files,
     trigger: KNOWN_CAPABILITIES.triggers,
     integration: KNOWN_CAPABILITIES.integrations,
+    member: KNOWN_CAPABILITIES.members,
 } as const satisfies Readonly<Record<string, CapabilityRef>>;
 
 export function activityCapability(kind: string): CapabilityRef | null {
