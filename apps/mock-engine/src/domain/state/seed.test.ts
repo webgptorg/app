@@ -72,7 +72,7 @@ describe('seedEngine', () => {
     it('gives a stable small-team seed for seed 42 and a fixed epoch, including every capability', async () => {
         const data = await seedFor(42, 'small-team');
         expect(await sha256(JSON.stringify(data))).toBe(
-            '8ad68d8649e7d3ce640e06833623c85992cbeefb1a0e4839dd529b5f507e579d',
+            'c1379ae7e087eb0e5c8d8cdcddf740eccd7b7060c73bd57b0b551dbead935fda',
         );
         for (const key of ['runs', 'files', 'triggers', 'integrations', 'activity'] as const) {
             expect(data[key]?.length, key).toBeGreaterThan(0);
@@ -109,7 +109,10 @@ describe('seedEngine', () => {
     it('seeds only the owner for empty', async () => {
         const data = await seedFor(1, 'empty');
         expect(data.members?.map(({ role }) => role)).toEqual(['owner']);
-        expect(data.agents).toEqual([]);
+        expect(data.agents?.map(({ origin }) => origin)).toEqual([
+            ...Array.from({ length: 6 }, () => 'core'),
+            'system',
+        ]);
         expect(data.chats).toEqual([]);
         expect(data.secrets).toEqual([]);
         expect(data.passkeys).toHaveLength(1);
@@ -198,7 +201,7 @@ describe('seedEngine', () => {
             member: { id: ownerOf(data), role: 'owner' },
             clock: { now: () => EPOCH },
         }).client;
-        expect(data.agents?.length).toBe(500);
+        expect(data.agents?.filter(({ origin }) => origin === undefined)).toHaveLength(500);
         // The same mix as small-team, scaled for paging.
         expect(data.runs?.length).toBeGreaterThan(18_000);
         expect(data.files?.length).toBeGreaterThan(2_700);
@@ -339,7 +342,9 @@ describe('seedEngine: capabilities in small-team', () => {
         expect(new Set(files.map(({ purpose }) => purpose))).toEqual(
             new Set(['knowledge', 'attachment', 'output', 'upload']),
         );
-        const live = (data.agents ?? []).filter(({ deletedAt }) => deletedAt === undefined);
+        const live = (data.agents ?? []).filter(
+            ({ deletedAt, origin }) => deletedAt === undefined && origin === undefined,
+        );
         for (const agent of live) {
             expect(
                 files.some(({ agentId, purpose }) => agentId === agent.id && purpose === 'knowledge'),

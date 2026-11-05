@@ -10,8 +10,14 @@ import { createWorld } from './world';
 
 const R = ENGINE_API_ROUTES;
 
-async function listedIds(api: EngineApi, q: string, deleted: 'exclude' | 'include' | 'only'): Promise<Set<string>> {
-    const { pages } = await walkPages(api, R.listAgents, { q, deleted, limit: 100 }, 10);
+async function listedIds(
+    api: EngineApi,
+    q: string,
+    deleted: 'exclude' | 'include' | 'only',
+    origin?: string,
+): Promise<Set<string>> {
+    const query = { q, deleted, limit: 100, ...(origin === undefined ? {} : { origin }) };
+    const { pages } = await walkPages(api, R.listAgents, query, 10);
     return new Set(pages.flat().map(({ id }) => id));
 }
 
@@ -122,6 +128,32 @@ export const AGENT_CHECKS: readonly ConformanceCheck[] = [
             await attempt(findings, async () => {
                 await world.owner.problem(R.createAgent, { body: { source: BROKEN_BOOK } }, 'invalid-book');
             });
+            return findings.outcome();
+        },
+    },
+    {
+        id: 'engine-api.agents.origin',
+        suite: SUITE,
+        title: 'A created agent is content, the origin filter lists only matching agents, and Chatter is a core agent',
+        async run(ctx) {
+            const world = await createWorld(ctx);
+            const findings = new Findings();
+            const agent = await world.createAgent('origin');
+            if (agent.origin !== 'content') findings.add(`POST /agents: a new agent has origin ${agent.origin}`);
+            if (!(await listedIds(world.owner, agent.name, 'exclude', 'content')).has(agent.id)) {
+                findings.add('GET /agents?origin=content: the new agent is missing');
+            }
+            const { pages } = await walkPages(world.owner, R.listAgents, { origin: 'core,system', limit: 100 }, 10);
+            const builtIn = pages.flat();
+            if (builtIn.some(({ id }) => id === agent.id)) {
+                findings.add('GET /agents?origin=core,system: lists a content agent');
+            }
+            const stray = builtIn.find(({ origin }) => origin !== 'core' && origin !== 'system');
+            if (stray !== undefined)
+                findings.add(`GET /agents?origin=core,system: lists ${stray.id}, a ${stray.origin} agent`);
+            if (!builtIn.some(({ name, origin }) => name === 'Chatter' && origin === 'core')) {
+                findings.add('GET /agents?origin=core,system: no core agent named Chatter');
+            }
             return findings.outcome();
         },
     },

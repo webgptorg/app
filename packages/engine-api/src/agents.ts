@@ -3,6 +3,7 @@ import { z } from 'zod';
 import {
     AgentId,
     AgentPermanentId,
+    Cursor,
     Diagnostic,
     FolderId,
     MemberId,
@@ -10,10 +11,12 @@ import {
     RevisionId,
     Timestamp,
     pageOf,
+    valueSet,
 } from './common';
 import { MAX_BOOK_SOURCE_LENGTH } from './constants';
 import { KNOWN_CAPABILITIES } from './capabilities/capability';
 import { defineRoute } from './route';
+import { toTolerant } from './tolerant';
 
 export const AGENT_VISIBILITIES = ['public', 'private', 'unlisted'] as const;
 export const AgentVisibility = z.enum(AGENT_VISIBILITIES);
@@ -22,6 +25,17 @@ export type AgentVisibility = z.infer<typeof AgentVisibility>;
 export const AGENT_RUN_STATES = ['idle', 'running', 'stopped', 'error'] as const;
 export const AgentRunState = z.enum(AGENT_RUN_STATES);
 export type AgentRunState = z.infer<typeof AgentRunState>;
+
+/**
+ * Who defines the agent, as the Reborn engine models it. `content`: the project's own agents, which do its work.
+ * `core`: Chatter, Adam, Tasker, Router, Fixer and Teacher, which the engine prepares but which are ordinary, editable
+ * project Books. `system`: Expert and any other agent the engine itself defines, with no project Book. Origin grants
+ * no privilege and changes no permission, but a `system` agent belongs to the engine: changing, deleting or restoring
+ * it, or saving its source, is 409 `agent-engine-owned`.
+ */
+export const AGENT_ORIGINS = ['content', 'core', 'system'] as const;
+export const AgentOrigin = z.enum(AGENT_ORIGINS);
+export type AgentOrigin = z.infer<typeof AgentOrigin>;
 
 /** A `#rrggbb` colour; anything richer could smuggle CSS into the UI. */
 export const HexColor = z.string().regex(/^#[0-9a-fA-F]{6}$/);
@@ -44,7 +58,9 @@ export const Agent = z.strictObject({
     id: AgentId,
     permanentId: AgentPermanentId,
     name: z.string().min(1).max(256),
+    /** `profile.description` is the agent's one-line role, which the UI shows for built-in agents. */
     profile: AgentProfile,
+    origin: AgentOrigin,
     visibility: AgentVisibility,
     folderId: FolderId.nullable(),
     currentRevisionId: RevisionId,
@@ -56,6 +72,22 @@ export const Agent = z.strictObject({
 export type Agent = z.infer<typeof Agent>;
 export const AgentPage = pageOf(Agent);
 
+/**
+ * `origin` as the client reads it: an engine that does not report it yet, or reports one this contract does not know,
+ * reads as `content`, a project's own agent, which every agent was before origins. The engine still refuses changes to
+ * its own agents, so a misread origin costs at most an action that answers 409.
+ */
+const ReadAgentOrigin = z
+    .string()
+    .max(64)
+    .optional()
+    .transform((value): AgentOrigin => AGENT_ORIGINS.find((origin) => origin === value) ?? 'content');
+
+/** Agents as the client reads them; engines still answer with the strict `Agent`. */
+export const AgentReader = toTolerant(Agent.extend({ origin: ReadAgentOrigin }));
+export type ReadAgent = z.output<typeof AgentReader>;
+export const AgentPageReader = z.object({ items: z.array(AgentReader), nextCursor: Cursor.nullable() });
+
 export const AGENT_SORTS = ['name', '-name', 'updatedAt', '-updatedAt', 'createdAt', '-createdAt'] as const;
 export const AGENT_DELETED_FILTERS = ['exclude', 'include', 'only'] as const;
 
@@ -65,6 +97,8 @@ export const AgentListQuery = PageQuery.extend({
     folderId: FolderId.optional(),
     visibility: AgentVisibility.optional(),
     status: AgentRunState.optional(),
+    /** One origin or a comma-separated set, e.g. `core,system` for the built-in agents. */
+    origin: valueSet(AGENT_ORIGINS).optional(),
     deleted: z.enum(AGENT_DELETED_FILTERS).default('exclude'),
     sort: z.enum(AGENT_SORTS).default('name'),
 });
@@ -128,7 +162,7 @@ export const AGENT_ROUTES = {
         summary: 'List agents',
         permission: 'agents.read',
         query: AgentListQuery,
-        responses: { 200: { kind: 'json', schema: AgentPage } },
+        responses: { 200: { kind: 'json', schema: AgentPage, read: AgentPageReader } },
     }),
     createAgent: defineRoute({
         id: 'createAgent',
@@ -137,7 +171,7 @@ export const AGENT_ROUTES = {
         summary: 'Create an agent from book source; a book with an error diagnostic is refused and nothing is stored',
         permission: 'agents.write',
         body: { kind: 'json', schema: CreateAgentBody },
-        responses: { 201: { kind: 'json', schema: Agent } },
+        responses: { 201: { kind: 'json', schema: Agent, read: AgentReader } },
         problems: ['invalid-book'],
     }),
     validateAgentSource: defineRoute({
@@ -157,7 +191,7 @@ export const AGENT_ROUTES = {
         summary: 'Get an agent, including a soft-deleted one',
         permission: 'agents.read',
         params: AgentParams,
-        responses: { 200: { kind: 'json', schema: Agent } },
+        responses: { 200: { kind: 'json', schema: Agent, read: AgentReader } },
     }),
     updateAgent: defineRoute({
         id: 'updateAgent',
@@ -168,8 +202,8 @@ export const AGENT_ROUTES = {
         capability: KNOWN_CAPABILITIES.agentManagement,
         params: AgentParams,
         body: { kind: 'json', schema: UpdateAgentBody },
-        responses: { 200: { kind: 'json', schema: Agent } },
-        problems: ['agent-deleted'],
+        responses: { 200: { kind: 'json', schema: Agent, read: AgentReader } },
+        problems: ['agent-deleted', 'agent-engine-owned'],
     }),
     deleteAgent: defineRoute({
         id: 'deleteAgent',
@@ -178,7 +212,8 @@ export const AGENT_ROUTES = {
         summary: 'Soft-delete an agent (idempotent)',
         permission: 'agents.delete',
         params: AgentParams,
-        responses: { 200: { kind: 'json', schema: Agent } },
+        responses: { 200: { kind: 'json', schema: Agent, read: AgentReader } },
+        problems: ['agent-engine-owned'],
     }),
     restoreAgent: defineRoute({
         id: 'restoreAgent',
@@ -188,7 +223,8 @@ export const AGENT_ROUTES = {
         permission: 'agents.delete',
         capability: KNOWN_CAPABILITIES.agentManagement,
         params: AgentParams,
-        responses: { 200: { kind: 'json', schema: Agent } },
+        responses: { 200: { kind: 'json', schema: Agent, read: AgentReader } },
+        problems: ['agent-engine-owned'],
     }),
     getAgentSource: defineRoute({
         id: 'getAgentSource',
@@ -209,7 +245,7 @@ export const AGENT_ROUTES = {
         params: AgentParams,
         body: { kind: 'json', schema: UpdateAgentSourceBody },
         responses: { 200: { kind: 'json', schema: AgentSource } },
-        problems: ['revision-conflict', 'invalid-book', 'agent-deleted'],
+        problems: ['revision-conflict', 'invalid-book', 'agent-deleted', 'agent-engine-owned'],
     }),
     listAgentRevisions: defineRoute({
         id: 'listAgentRevisions',

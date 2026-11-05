@@ -32,6 +32,7 @@ describe('createAppEngineApiClient', () => {
 
     it('swaps in the in-memory client on the dev server with VITE_ENGINE_API=memory', async () => {
         vi.stubEnv('VITE_ENGINE_API', 'memory');
+        vi.stubEnv('VITE_ENGINE_PROFILE', 'full');
         const fetch = vi.fn<typeof globalThis.fetch>();
         const client = await createAppEngineApiClient({ origin: 'https://engine.example', fetch });
 
@@ -50,5 +51,12 @@ describe('createAppEngineApiClient', () => {
             data: { name: 'Dev engine', mode: 'local' },
         });
         expect(fetch).not.toHaveBeenCalled();
+    });
+
+    it('shows only what the Reborn engine has on the in-memory client unless asked for the full profile', async () => {
+        vi.stubEnv('VITE_ENGINE_API', 'memory');
+        const client = await createAppEngineApiClient({ origin: 'https://engine.example', fetch: vi.fn() });
+        const engine = await client.engine.get(AbortSignal.timeout(1000));
+        expect(engine.kind === 'ok' && engine.data.capabilities.map(({ id }) => id)).toEqual(['files']);
     });
 });

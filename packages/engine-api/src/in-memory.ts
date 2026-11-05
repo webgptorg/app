@@ -1,3 +1,4 @@
+export { builtInAgents } from './in-memory/built-in-agents';
 export {
     createInMemoryEngine,
     createInMemoryEngineApiClient,

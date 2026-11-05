@@ -119,7 +119,7 @@ describe('the bundled CLI under Node', () => {
             '--out',
             out,
         ]);
-        expect(result.stderr).toContain('4 passed, 0 failed');
+        expect(result.stderr).toContain('5 passed, 0 failed');
         expect(result.code).toBe(0);
         expect(await readFile(out, 'utf8')).toContain(
             '<testcase classname="engine-api" name="engine-api.agents.create-and-list"',

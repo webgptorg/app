@@ -77,7 +77,7 @@ describe('createRuntimeEngineStats', () => {
         const engine = await runtime();
         const stats = createRuntimeEngineStats(engine);
         await engine.reset({ seed: 1, scenario: 'empty' });
-        expect(stats.counts()).toEqual({ agents: 0, members: 1 });
+        expect(stats.counts()).toEqual({ agents: 7, members: 1 });
     });
 
     it('reports no update until the UI loader reports one', async () => {

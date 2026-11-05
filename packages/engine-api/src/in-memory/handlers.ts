@@ -70,6 +70,10 @@ function asSeenBy(ctx: HandlerContext, session: Session): Session {
 }
 
 /** The in-memory engine's behaviour for every route, after the transport checked permission and parsed the input. */
+/** Expert and the engine's other `system` agents are defined by the engine itself; the API changes none of them. */
+const engineOwned = () =>
+    fail('agent-engine-owned', { detail: 'This agent is defined by the engine and cannot be changed here.' });
+
 export const HANDLERS: Handlers = {
     getMe: (_, ctx) =>
         ok({
@@ -128,6 +132,7 @@ export const HANDLERS: Handlers = {
                 if (query.folderId !== undefined && agent.folderId !== query.folderId) return false;
                 if (query.visibility !== undefined && agent.visibility !== query.visibility) return false;
                 if (query.status !== undefined && runStatus.state !== query.status) return false;
+                if (query.origin !== undefined && !query.origin.includes(agent.origin)) return false;
                 if (needle === undefined) return true;
                 return [agent.name, agent.profile.fullname, agent.profile.description].some((text) =>
                     text.toLowerCase().includes(needle),
@@ -160,6 +165,7 @@ export const HANDLERS: Handlers = {
             permanentId: AgentPermanentId.parse(`p-${id}`),
             name: book.name,
             profile: book.profile,
+            origin: 'content',
             visibility: body.visibility ?? ctx.state.settings.defaultAgentVisibility,
             folderId: body.folderId ?? null,
             currentRevisionId: revisionId,
@@ -184,6 +190,7 @@ export const HANDLERS: Handlers = {
     updateAgent: ({ params, body }, ctx) => {
         const found = liveAgent(ctx, params.agentId);
         if (found.kind === 'problem') return found;
+        if (found.data.origin === 'system') return engineOwned();
         if (body.folderId != null && !ctx.state.folders.has(body.folderId)) {
             return invalid('body.folderId', 'No such folder.');
         }
@@ -197,6 +204,7 @@ export const HANDLERS: Handlers = {
     deleteAgent: ({ params }, ctx) => {
         const record = agentRecord(ctx, params.agentId);
         if (!record) return notFound('agent');
+        if (record.agent.origin === 'system') return engineOwned();
         if (record.agent.deletedAt !== null) return ok(record.agent);
         const now = ctx.now();
         return saveAgent(ctx, { ...record.agent, deletedAt: now, updatedAt: now });
@@ -204,6 +212,7 @@ export const HANDLERS: Handlers = {
     restoreAgent: ({ params }, ctx) => {
         const record = agentRecord(ctx, params.agentId);
         if (!record) return notFound('agent');
+        if (record.agent.origin === 'system') return engineOwned();
         if (record.agent.deletedAt === null) return ok(record.agent);
         return saveAgent(ctx, { ...record.agent, deletedAt: null, updatedAt: ctx.now() });
     },
@@ -221,6 +230,7 @@ export const HANDLERS: Handlers = {
     updateAgentSource: ({ params, body }, ctx) => {
         const found = liveAgent(ctx, params.agentId);
         if (found.kind === 'problem') return found;
+        if (found.data.origin === 'system') return engineOwned();
         const agent = found.data;
         if (agent.currentRevisionId !== body.baseRevisionId) {
             return fail('revision-conflict', { detail: 'The source changed since this edit started.' });

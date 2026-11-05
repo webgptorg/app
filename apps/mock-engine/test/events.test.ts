@@ -52,7 +52,7 @@ async function subscribe(client: EngineApiClient, lastEventId?: string) {
 }
 
 async function renameFirstAgent(owner: EngineApiClient, name: string) {
-    const [agent] = ok(await owner.agents.list({ limit: 1 }, signal())).items;
+    const [agent] = ok(await owner.agents.list({ origin: 'content', limit: 1 }, signal())).items;
     if (agent === undefined) throw new Error('no agent');
     const source = ok(await owner.agents.getSource(agent.id, signal()));
     const rest = source.source.split('\n').slice(1).join('\n');
@@ -92,7 +92,7 @@ describe('GET /events', () => {
         const { owner, clientWith } = await start();
         const reader = await subscribe(clientWith(['agents.read', 'chats.read']));
         const agentsOnly = await subscribe(clientWith(['agents.read']));
-        const [agent] = ok(await owner.agents.list({ limit: 1 }, signal())).items;
+        const [agent] = ok(await owner.agents.list({ origin: 'content', limit: 1 }, signal())).items;
         if (agent === undefined) throw new Error('no agent');
         const chat = ok(await owner.chats.create(agent.id, { title: 'Hello' }, signal()));
         ok(await owner.agents.update(agent.id, { visibility: 'public' }, signal()));
@@ -110,7 +110,7 @@ describe('GET /events', () => {
         const firstAgent = await renameFirstAgent(owner, 'First Name');
         const seen = await first.next();
         first.close();
-        const [, second, third] = ok(await owner.agents.list({ limit: 3 }, signal())).items;
+        const [, second, third] = ok(await owner.agents.list({ origin: 'content', limit: 3 }, signal())).items;
         if (second === undefined || third === undefined) throw new Error('agents expected');
         ok(await owner.agents.update(second.id, { visibility: 'unlisted' }, signal()));
         ok(await owner.agents.update(third.id, { visibility: 'unlisted' }, signal()));

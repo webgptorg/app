@@ -102,7 +102,11 @@ describe('buildOpenApiDocument', () => {
     it('documents route-specific problems with problem+json', () => {
         const op = operation('/agents/{agentId}/source', 'PUT');
         const responses = op['responses'] as Readonly<Record<string, Readonly<Record<string, unknown>>>>;
-        expect(responses['409']?.['x-problem-codes']).toEqual(['agent-deleted', 'revision-conflict']);
+        expect(responses['409']?.['x-problem-codes']).toEqual([
+            'agent-deleted',
+            'agent-engine-owned',
+            'revision-conflict',
+        ]);
         expect(responses['422']?.['x-problem-codes']).toEqual(['invalid-book']);
         expect(responses['422']?.['content']).toEqual({
             'application/problem+json': { schema: { $ref: '#/components/schemas/ProblemDetails' } },

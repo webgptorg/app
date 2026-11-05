@@ -110,7 +110,7 @@ describe('engine runtime', () => {
         await runtime.reset({ seed: 7, scenario: 'empty' });
         expect(runtime.current()).toMatchObject({ seed: 7, scenario: 'empty' });
         expect(listened).toEqual(['reset']);
-        expect(runtime.controller().inspect().counts).toMatchObject({ members: 1, agents: 0 });
+        expect(runtime.controller().inspect().counts).toMatchObject({ members: 1, agents: 7 });
         const after = ok(await client().security.get(signal()));
         expect(after.relays).toEqual(before.relays);
         expect(after.lastHeartbeat).toEqual(heartbeat);

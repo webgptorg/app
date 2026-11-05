@@ -1,8 +1,9 @@
-import { activityPermission } from '../capabilities/activity';
+import { activityCapability, activityPermission } from '../capabilities/activity';
 import type { Activity } from '../capabilities/activity';
+import type { CapabilityRef } from '../capabilities/capability';
 import type { EngineEvent } from '../events';
 import type { Permission } from '../permissions';
-import { activityAgentName, page, sortBy, time, within } from './kit';
+import { activityAgentName, advertises, page, sortBy, time, within } from './kit';
 import type { Handlers } from './kit';
 
 /**
@@ -38,9 +39,11 @@ function references(activity: Activity, field: 'runId' | 'triggerId' | 'integrat
 export const ACTIVITY_HANDLERS: Pick<Handlers, 'listActivity'> = {
     listActivity: ({ query }, ctx) => {
         const kind = query.kind;
+        const isAdvertised = (capability: CapabilityRef | null) => capability === null || advertises(ctx, capability);
         const items = ctx.state.activity.filter(
             (activity) =>
                 canSeeActivity(ctx.permissions, activity) &&
+                isAdvertised(activityCapability(activity.kind)) &&
                 (query.agentId === undefined || activity.agentId === query.agentId) &&
                 (kind === undefined ||
                     (kind.endsWith('.') ? activity.kind.startsWith(kind) : activity.kind === kind)) &&

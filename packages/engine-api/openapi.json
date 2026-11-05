@@ -673,6 +673,16 @@
             }
           },
           {
+            "name": "origin",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 128,
+              "pattern": "^(?:content|core|system)(?:,(?:content|core|system))*$"
+            }
+          },
+          {
             "name": "deleted",
             "in": "query",
             "required": false,
@@ -1223,8 +1233,8 @@
             }
           },
           "409": {
-            "description": "Problem: `agent-deleted`.",
-            "x-problem-codes": ["agent-deleted"],
+            "description": "Problem: `agent-deleted`, `agent-engine-owned`.",
+            "x-problem-codes": ["agent-deleted", "agent-engine-owned"],
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -1338,6 +1348,17 @@
               }
             }
           },
+          "409": {
+            "description": "Problem: `agent-engine-owned`.",
+            "x-problem-codes": ["agent-engine-owned"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
           "429": {
             "description": "Problem: `rate-limited`.",
             "x-problem-codes": ["rate-limited"],
@@ -1442,6 +1463,17 @@
           "404": {
             "description": "Problem: `capability-not-supported`, `not-found`.",
             "x-problem-codes": ["capability-not-supported", "not-found"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Problem: `agent-engine-owned`.",
+            "x-problem-codes": ["agent-engine-owned"],
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -1689,8 +1721,8 @@
             }
           },
           "409": {
-            "description": "Problem: `agent-deleted`, `revision-conflict`.",
-            "x-problem-codes": ["agent-deleted", "revision-conflict"],
+            "description": "Problem: `agent-deleted`, `agent-engine-owned`, `revision-conflict`.",
+            "x-problem-codes": ["agent-deleted", "agent-engine-owned", "revision-conflict"],
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -15440,6 +15472,10 @@
           "profile": {
             "$ref": "#/components/schemas/AgentProfile"
           },
+          "origin": {
+            "type": "string",
+            "enum": ["content", "core", "system"]
+          },
           "visibility": {
             "$ref": "#/components/schemas/AgentVisibility"
           },
@@ -15481,6 +15517,7 @@
           "permanentId",
           "name",
           "profile",
+          "origin",
           "visibility",
           "folderId",
           "currentRevisionId",
@@ -17611,6 +17648,7 @@
               "not-found",
               "capability-not-supported",
               "agent-deleted",
+              "agent-engine-owned",
               "revision-conflict",
               "folder-not-empty",
               "name-taken",

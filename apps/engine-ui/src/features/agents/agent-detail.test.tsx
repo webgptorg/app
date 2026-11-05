@@ -1,4 +1,5 @@
 import { KNOWN_CAPABILITIES, PERMISSIONS } from '@ptbk/engine-api';
+import { builtInAgents } from '@ptbk/engine-api/in-memory';
 import type { AgentId, Permission } from '@ptbk/engine-api';
 import { act, screen, waitFor, within } from '@testing-library/react';
 import { useSuspenseQuery } from '@tanstack/react-query';
@@ -177,7 +178,8 @@ describe('agent overview', { timeout: TIMEOUT_MS }, () => {
     });
 
     it('shows when the agent was last active, and leaves the model out without runs', async () => {
-        const engine = createAgentsEngine({ agentCount: 2, capabilities: [] });
+        // Member activity needs members@1; the engine lists none without it.
+        const engine = createAgentsEngine({ agentCount: 2, capabilities: [KNOWN_CAPABILITIES.members] });
         engine.controller.appendActivity({
             kind: 'member.joined',
             agentId: 'agent-001',
@@ -381,6 +383,13 @@ describe('agent header', { timeout: TIMEOUT_MS }, () => {
 
     it('has no More menu for a member who may neither share nor delete', async () => {
         await renderAgent('/agents/agent-001', { permissions: allBut('agents.write', 'agents.delete') });
+        expect(within(agentHeader()).queryByRole('button', { name: 'More actions' })).toBeNull();
+    });
+
+    it('has no More menu on Expert, which the engine itself defines', async () => {
+        await renderAgent('/agents/builtin-expert', {
+            agents: builtInAgents('member-owner', '2026-09-01T00:00:00.000Z'),
+        });
         expect(within(agentHeader()).queryByRole('button', { name: 'More actions' })).toBeNull();
     });
 

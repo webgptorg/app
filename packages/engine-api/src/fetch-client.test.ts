@@ -17,6 +17,7 @@ const agent = {
     permanentId: 'p1',
     name: 'Ada',
     profile: { fullname: 'Ada', description: '', avatarUrl: null, color: null, initialMessage: null },
+    origin: 'content',
     visibility: 'private',
     folderId: null,
     currentRevisionId: 'r1',
