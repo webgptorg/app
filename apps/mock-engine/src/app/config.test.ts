@@ -520,7 +520,7 @@ describe('parseIdentityConfig', () => {
 
         it('reads the capabilities and the simulation settings (M-07)', () => {
             expect(parseMockEngineConfig(BASE)).toMatchObject({
-                capabilities: ['files'],
+                capabilities: ['tasks', 'files'],
                 simulation: { mode: 'running', speed: 1 },
             });
             expect(parseMockEngineConfig({ ...BASE, MOCK_PROFILE: 'full' }).capabilities).toEqual([

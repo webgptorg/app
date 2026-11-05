@@ -972,6 +972,14 @@ const FILES = /^\/files$/;
 const CONTENT = /^\/files\/[^/]+\/content$/;
 const INTEGRATIONS = /^\/integrations$/;
 const ACTIVITY = /^\/activity$/;
+const TASKS = /^\/tasks$/;
+const TASK = /^\/tasks\/[^/]+$/;
+const OCCURRENCES = /^\/tasks\/[^/]+\/occurrences$/;
+const RUN = /^\/runs\/[^/]+$/;
+const mapItems = (edit: (item: any, index: number) => unknown) => (page: any) => ({
+    ...page,
+    items: page.items.map(edit),
+});
 const reversed = (page: any) => ({ ...page, items: [...page.items].reverse() });
 const emptied = (page: any) => ({ ...page, items: [] });
 const firstItem = (edit: (item: any) => unknown) => (page: any) => ({
@@ -985,6 +993,143 @@ const withHeaders = (headers: Record<string, string>) => async (_: Request, resp
 };
 
 const CAPABILITY_FAILS: readonly Case[] = [
+    [
+        'an engine-owned task naming a project source',
+        'engine-api.tasks.inventory',
+        {
+            tamper: editJson(
+                on('GET', TASKS),
+                firstItem((task) => ({ ...task, kind: 'engine', sourcePath: 'x.book' })),
+            ),
+        },
+    ],
+    [
+        'a reopened task that never completed, with progress past its total',
+        'engine-api.tasks.inventory',
+        {
+            tamper: editJson(
+                on('GET', TASKS),
+                firstItem((task) => ({
+                    ...task,
+                    reopened: true,
+                    doneCount: 0,
+                    lastDoneAt: '2026-01-01T00:00:00Z',
+                    progress: { completed: 3, total: 1, summary: null },
+                    parent: { taskId: task.id, name: task.name },
+                })),
+            ),
+        },
+    ],
+    [
+        'a state filter listing another state and leaving the task out',
+        'engine-api.tasks.inventory',
+        {
+            tamper: editJson(
+                on('GET', TASKS, query('state')),
+                mapItems((task, index) => (index === 0 ? { ...task, state: 'retired' } : task)),
+            ),
+        },
+    ],
+    [
+        'a kind filter listing another kind',
+        'engine-api.tasks.inventory',
+        {
+            tamper: editJson(
+                on('GET', TASKS, query('kind')),
+                firstItem((task) => ({ ...task, kind: 'engine' === task.kind ? 'ordinary' : 'engine' })),
+            ),
+        },
+    ],
+    [
+        'an agent filter listing another agent’s task',
+        'engine-api.tasks.inventory',
+        {
+            tamper: editJson(
+                on('GET', TASKS, query('agentId')),
+                firstItem((task) => ({ ...task, agentId: 'agent-elsewhere' })),
+            ),
+        },
+    ],
+    [
+        'a task read answering another name',
+        'engine-api.tasks.inventory',
+        { tamper: editJson(on('GET', TASK), (task) => ({ ...task, name: 'Another task' })) },
+    ],
+    [
+        'parents without children and prerequisites blocking nothing',
+        'engine-api.tasks.relations',
+        { tamper: editJson(on('GET', TASK), (task) => ({ ...task, children: [], blocks: [] })) },
+    ],
+    [
+        'every dependency met and an unresolved one pending',
+        'engine-api.tasks.relations',
+        {
+            tamper: editJson(on('GET', TASK), (task) => ({
+                ...task,
+                dependsOn: task.dependsOn.map((dependency: any) => ({
+                    ...dependency,
+                    state: dependency.taskId === null ? 'pending' : 'met',
+                })),
+            })),
+        },
+    ],
+    [
+        'a child that names another parent',
+        'engine-api.tasks.relations',
+        {
+            tamper: editJson(on('GET', TASK), (task) => ({
+                ...task,
+                children: [...task.children, { taskId: 'task-engine-update', name: 'Update', state: 'not-ready' }],
+            })),
+        },
+    ],
+    [
+        'occurrences oldest first',
+        'engine-api.tasks.occurrences',
+        { tamper: editJson(on('GET', OCCURRENCES), reversed) },
+    ],
+    [
+        'an occurrence of another task, listed twice',
+        'engine-api.tasks.occurrences',
+        {
+            tamper: editJson(on('GET', OCCURRENCES), (page) => ({
+                ...page,
+                items: [...page.items, ...page.items].map((item: any) => ({ ...item, taskId: 'task-elsewhere' })),
+            })),
+        },
+    ],
+    [
+        'a retry that names nothing, and one of a completed occurrence',
+        'engine-api.tasks.occurrences',
+        {
+            tamper: editJson(
+                on('GET', OCCURRENCES),
+                mapItems((item, index) =>
+                    index === 0 ? { ...item, reason: 'retry', retryOf: null } : { ...item, state: 'completed' },
+                ),
+            ),
+        },
+    ],
+    [
+        'a newer occurrence in an earlier cycle',
+        'engine-api.tasks.occurrences',
+        {
+            tamper: editJson(
+                on('GET', OCCURRENCES),
+                mapItems((item, index) => ({ ...item, cycle: index + 1 })),
+            ),
+        },
+    ],
+    [
+        'a task run that does not link back',
+        'engine-api.tasks.occurrences',
+        { tamper: editJson(on('GET', RUN), (run) => ({ ...run, taskId: null, occurrenceId: null })) },
+    ],
+    [
+        'an unknown task answered with a server error',
+        'engine-api.tasks.unknown',
+        { tamper: replace(on('GET', /^\/tasks\/conformance-no-such-task/), () => problem('internal-error', 500)) },
+    ],
     [
         'runs paged out of order',
         'engine-api.runs.paging',
@@ -1472,6 +1617,27 @@ const CAPABILITY_FAILS: readonly Case[] = [
 ];
 
 const CAPABILITY_SKIPS: readonly Case[] = [
+    ['no task at all', 'engine-api.tasks.inventory', { tamper: editJson(on('GET', TASKS), emptied) }],
+    [
+        'no task with a parent or a dependency',
+        'engine-api.tasks.relations',
+        {
+            tamper: editJson(
+                on('GET', TASKS),
+                mapItems((task) => ({ ...task, parent: null, dependsOn: [] })),
+            ),
+        },
+    ],
+    [
+        'no task that ran or repeats',
+        'engine-api.tasks.occurrences',
+        {
+            tamper: editJson(
+                on('GET', TASKS),
+                mapItems((task) => ({ ...task, doneCount: 0, lastDoneAt: null, reopened: false, repeat: null })),
+            ),
+        },
+    ],
     [
         'no run for a chat turn',
         'engine-api.runs.cancel-idempotent',

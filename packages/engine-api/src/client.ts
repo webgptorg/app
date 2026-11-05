@@ -258,6 +258,16 @@ export interface EngineApiClient {
         cancel(runId: Param<'cancelRun', 'runId'>, signal: AbortSignal): Result<'cancelRun'>;
         retry(runId: Param<'retryRun', 'runId'>, signal: AbortSignal): Result<'retryRun'>;
     };
+    /** `tasks@1`, read-only: work changes through a conversation with Chatter. */
+    readonly tasks: {
+        list(query: Query<'listTasks'>, signal: AbortSignal): Result<'listTasks'>;
+        get(taskId: Param<'getTask', 'taskId'>, signal: AbortSignal): Result<'getTask'>;
+        listOccurrences(
+            taskId: Param<'listTaskOccurrences', 'taskId'>,
+            query: Query<'listTaskOccurrences'>,
+            signal: AbortSignal,
+        ): Result<'listTaskOccurrences'>;
+    };
     /** `test-chat@1`: a reply to an unsaved book, which the engine does not store. Abort the signal to stop it. */
     readonly testChat: {
         stream(
@@ -451,6 +461,12 @@ export function createEngineApiClient(transport: EngineApiTransport): EngineApiC
             get: (runId, signal) => call(R.getRun, { params: { runId } }, signal),
             cancel: (runId, signal) => call(R.cancelRun, { params: { runId } }, signal),
             retry: (runId, signal) => call(R.retryRun, { params: { runId } }, signal),
+        },
+        tasks: {
+            list: (query, signal) => call(R.listTasks, { query }, signal),
+            get: (taskId, signal) => call(R.getTask, { params: { taskId } }, signal),
+            listOccurrences: (taskId, query, signal) =>
+                call(R.listTaskOccurrences, { params: { taskId }, query }, signal),
         },
         testChat: {
             stream: (agentId, body, signal) => call(R.testAgentDraft, { params: { agentId }, body }, signal),

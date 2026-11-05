@@ -53,6 +53,8 @@ export function queueRun(ctx: EngineContext, input: NewRun & RunnerInfo): RunDet
         messageId: input.messageId ?? null,
         triggerId: input.triggerId ?? null,
         retryOf: input.retryOf ?? null,
+        taskId: null,
+        occurrenceId: null,
         createdBy: input.createdBy,
         queuedAt: ctx.now(),
         startedAt: null,
@@ -296,6 +298,7 @@ export const RUN_HANDLERS: Pick<Handlers, 'listRuns' | 'getRunStats' | 'getRun' 
                     (statuses === undefined || statuses.has(run.status)) &&
                     (query.source === undefined || run.source === query.source) &&
                     (query.triggerId === undefined || run.triggerId === query.triggerId) &&
+                    (query.taskId === undefined || run.taskId === query.taskId) &&
                     (query.createdBy === undefined || run.createdBy === query.createdBy) &&
                     within(run.queuedAt, query.from, query.to),
             )

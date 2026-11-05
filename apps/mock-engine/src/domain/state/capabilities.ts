@@ -6,6 +6,7 @@ import { z } from 'zod';
 /** The capabilities by their IDs, each at the version this mock serves. */
 const MOCK_CAPABILITIES = {
     runs: KNOWN_CAPABILITIES.runs,
+    tasks: KNOWN_CAPABILITIES.tasks,
     files: KNOWN_CAPABILITIES.files,
     triggers: KNOWN_CAPABILITIES.triggers,
     integrations: KNOWN_CAPABILITIES.integrations,
@@ -33,9 +34,9 @@ export const FULL_CAPABILITY_NAMES: readonly MockCapabilityName[] = ALL_CAPABILI
 
 /**
  * The `reborn` profile: only what the Reborn engine has (its specs/app/integration.md), so the UI shows what a real
- * engine will. Files stay for uploads during onboarding.
+ * engine will: its tasks, and files for uploads during onboarding.
  */
-export const REBORN_CAPABILITY_NAMES: readonly MockCapabilityName[] = ['files'];
+export const REBORN_CAPABILITY_NAMES: readonly MockCapabilityName[] = ['tasks', 'files'];
 
 export const MOCK_PROFILES = ['reborn', 'full'] as const;
 export type MockProfile = (typeof MOCK_PROFILES)[number];

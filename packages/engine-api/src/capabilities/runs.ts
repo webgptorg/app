@@ -10,6 +10,8 @@ import {
     PageQuery,
     RunId,
     Slug,
+    TaskId,
+    TaskOccurrenceId,
     Timestamp,
     ToolCallId,
     TriggerId,
@@ -90,6 +92,10 @@ export const Run = z.strictObject({
     triggerId: TriggerId.nullable(),
     /** The failed run this one retries. */
     retryOf: RunId.nullable(),
+    /** The task this run works on (`tasks@1`); `null` for work outside a task, such as a chat reply. */
+    taskId: TaskId.nullable(),
+    /** The task occurrence this run is an attempt of; set exactly when `taskId` is. */
+    occurrenceId: TaskOccurrenceId.nullable(),
     /** `null` when no member started it (email, schedule, webhook). */
     createdBy: MemberId.nullable(),
     queuedAt: Timestamp,
@@ -196,6 +202,7 @@ export const RunListQuery = PageQuery.extend({
         .optional(),
     source: RunSource.optional(),
     triggerId: TriggerId.optional(),
+    taskId: TaskId.optional(),
     createdBy: MemberId.optional(),
     /** By `queuedAt`, inclusive. */
     from: Timestamp.optional(),

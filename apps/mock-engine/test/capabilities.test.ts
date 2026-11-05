@@ -53,6 +53,12 @@ describe('capabilities through the mock HTTP server (contract)', () => {
         const retry = await okFrom('retryRun', owner.runs.retry(failed.id, signal()));
         await okFrom('cancelRun', owner.runs.cancel(retry.id, signal()));
 
+        const [task] = (await okFrom('listTasks', owner.tasks.list({ state: 'waiting-until', limit: 5 }, signal())))
+            .items;
+        if (task === undefined) throw new Error('no waiting task');
+        await okFrom('getTask', owner.tasks.get(task.id, signal()));
+        await okFrom('listTaskOccurrences', owner.tasks.listOccurrences(task.id, {}, signal()));
+
         const upload = await okFrom(
             'uploadFile',
             owner.files.upload(

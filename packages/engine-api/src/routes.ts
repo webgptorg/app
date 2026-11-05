@@ -5,6 +5,7 @@ import { ACTIVITY_ROUTES } from './capabilities/activity';
 import { FILE_ROUTES } from './capabilities/files';
 import { INTEGRATION_ROUTES } from './capabilities/integrations';
 import { RUN_ROUTES } from './capabilities/runs';
+import { TASK_ROUTES } from './capabilities/tasks';
 import { ACCESS_REQUEST_ROUTES } from './capabilities/access-requests';
 import { LIVE_ROUTES } from './capabilities/live';
 import { TEST_CHAT_ROUTES } from './capabilities/test-chat';
@@ -41,6 +42,7 @@ export const ENGINE_API_ROUTES = {
     ...AUDIT_ROUTES,
     ...ACTIVITY_ROUTES,
     ...RUN_ROUTES,
+    ...TASK_ROUTES,
     ...FILE_ROUTES,
     ...TRIGGER_ROUTES,
     ...INTEGRATION_ROUTES,

@@ -59,6 +59,7 @@ describe('supports', () => {
         expect(capabilityLabel(KNOWN_CAPABILITIES.integrations)).toBe('integrations@1');
         expect(Object.values(KNOWN_CAPABILITIES).map(capabilityLabel)).toEqual([
             'runs@1',
+            'tasks@1',
             'files@1',
             'triggers@1',
             'integrations@1',

@@ -32,6 +32,7 @@ export const PERMISSIONS = [
     'runs.read',
     /** Cancel and retry. */
     'runs.control',
+    'tasks.read',
     'triggers.read',
     'triggers.manage',
     'integrations.read',

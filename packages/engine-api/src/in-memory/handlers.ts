@@ -33,6 +33,7 @@ import {
 import type { HandlerContext, HandlerResult, Handlers } from './kit';
 import { cancelReply, startReply, streamReply } from './replies';
 import { advanceRun, queueRun, RUN_HANDLERS } from './runs';
+import { TASK_HANDLERS } from './tasks';
 import { ACCESS_REQUEST_HANDLERS, activeOwnerCount, signOutEverywhere } from './access-requests';
 import { LIVE_HANDLERS } from './live';
 import { TEST_CHAT_HANDLERS } from './test-chat';
@@ -648,6 +649,7 @@ export const HANDLERS: Handlers = {
 
     ...ACTIVITY_HANDLERS,
     ...RUN_HANDLERS,
+    ...TASK_HANDLERS,
     ...FILE_HANDLERS,
     ...TRIGGER_HANDLERS,
     ...INTEGRATION_HANDLERS,

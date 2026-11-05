@@ -20,6 +20,7 @@ import {
 import { generatePng } from './png';
 import { hex, largeFixtureDiff, unifiedDiff, usageFor } from './run-content';
 import type { ScenarioSize } from './scenarios';
+import { seedTasks } from './task-seed';
 import type { SeededSequence } from './seed-random';
 import { createSeededSequence, hashSeed } from './seed-random';
 
@@ -66,6 +67,7 @@ export interface SeedChatRef {
     readonly id: string;
     readonly agentId: string;
     readonly createdBy: string | null;
+    readonly title: string;
 }
 
 export interface SeedMessageRef {
@@ -99,7 +101,9 @@ export interface CapabilitySeedInput {
     readonly secrets: readonly SeedSecretRef[];
 }
 
-export type CapabilitySeed = Required<Pick<InMemorySeed, 'runs' | 'files' | 'triggers' | 'integrations' | 'activity'>>;
+export type CapabilitySeed = Required<
+    Pick<InMemorySeed, 'runs' | 'tasks' | 'files' | 'triggers' | 'integrations' | 'activity'>
+>;
 
 interface Context {
     readonly input: CapabilitySeedInput;
@@ -120,7 +124,9 @@ export async function seedCapabilities(input: CapabilitySeedInput): Promise<Capa
         writers: input.members.filter((member) => member.role !== 'viewer'),
         agentsById: new Map(input.agents.map((agent) => [agent.id, agent])),
     };
-    if (input.agents.length === 0) return { runs: [], files: [], triggers: [], integrations: [], activity: [] };
+    if (input.agents.length === 0) {
+        return { runs: [], tasks: [], files: [], triggers: [], integrations: [], activity: [] };
+    }
     const integrations = seedIntegrations(ctx);
     const triggers = seedTriggers(ctx);
     seedWebRuns(ctx);
@@ -128,10 +134,35 @@ export async function seedCapabilities(input: CapabilitySeedInput): Promise<Capa
     const files = await seedFiles(ctx);
     seedIntegrationUse(ctx, integrations);
     seedEngineActivity(ctx);
+    // Last, so the tasks' runs leave every other seeded value as it was.
+    const tasks = seedTaskInventory(ctx);
     for (const run of ctx.runs) runActivity(ctx, run);
     // Seeded timestamps share one format (to the second, `Z`), so text order is time order, and much cheaper.
     ctx.activity.sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
-    return { runs: ctx.runs, files, triggers, integrations, activity: ctx.activity };
+    return { runs: ctx.runs, tasks, files, triggers, integrations, activity: ctx.activity };
+}
+
+function seedTaskInventory(ctx: Context): CapabilitySeed['tasks'] {
+    const { input } = ctx;
+    const owner = input.members.find((member) => member.role === 'owner')?.id ?? null;
+    const seeded = seedTasks({
+        epochMs: input.epochMs,
+        agentIds: input.agents.map((agent) => agent.id),
+        chats: input.chats
+            .filter((chat) => chat.createdBy !== null && chat.title !== '')
+            .map(({ id, title }) => ({ id, title })),
+        buildRun: (plan) =>
+            buildRun(ctx, {
+                agentId: plan.agentId,
+                source: plan.recurring ? 'schedule' : 'member',
+                queuedAtMs: plan.queuedAtMs,
+                status: plan.status,
+                createdBy: plan.recurring ? null : owner,
+                preview: plan.preview,
+            }),
+    });
+    ctx.runs.push(...seeded.runs);
+    return seeded.tasks;
 }
 
 type DistributiveOmit<T, Key extends PropertyKey> = T extends unknown ? Omit<T, Key> : never;

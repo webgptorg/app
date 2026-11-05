@@ -1,5 +1,5 @@
 import type { ActivityItem, ActivityPageRead, EngineApiClient, EngineApiResponse } from '@ptbk/engine-api';
-import { KNOWN_CAPABILITIES, MAX_RUN_TEXT_BYTES } from '@ptbk/engine-api';
+import { KNOWN_CAPABILITIES, MAX_RUN_TEXT_BYTES, TaskId } from '@ptbk/engine-api';
 import { createInMemoryEngine } from '@ptbk/engine-api/in-memory';
 import type { InMemorySeed } from '@ptbk/engine-api/in-memory';
 import { describe, expect, it } from 'vitest';
@@ -38,8 +38,8 @@ async function core(scenario: Scenario, seed = 42) {
     return { data, ...engine };
 }
 
-/** Schedules look ahead: when they fire next, and when a one-off is due. Everything else happened already. */
-const FUTURE_KEYS = new Set(['nextFireAt', 'recurrence']);
+/** Schedules and task plans look ahead: when they fire or start next, and when work is due. The rest happened. */
+const FUTURE_KEYS = new Set(['nextFireAt', 'recurrence', 'notBefore', 'dueAt', 'nextAt', 'scheduledFor']);
 
 /** Every timestamp in the seed, wherever it sits, except a schedule's future. */
 function timestamps(value: unknown, found: string[] = []): string[] {
@@ -72,7 +72,7 @@ describe('seedEngine', () => {
     it('gives a stable small-team seed for seed 42 and a fixed epoch, including every capability', async () => {
         const data = await seedFor(42, 'small-team');
         expect(await sha256(JSON.stringify(data))).toBe(
-            'bd996f7fc1a5af859bf0dcf61976ca626dadc075444d60814ff56c6bad979d37',
+            '8ad68d8649e7d3ce640e06833623c85992cbeefb1a0e4839dd529b5f507e579d',
         );
         for (const key of ['runs', 'files', 'triggers', 'integrations', 'activity'] as const) {
             expect(data[key]?.length, key).toBeGreaterThan(0);
@@ -216,6 +216,43 @@ describe('seedEngine', () => {
 });
 
 describe('seedEngine: capabilities in small-team', () => {
+    it('seeds a task inventory with every relation the engine models, its runs linked to their occurrences', async () => {
+        const { client } = await core('small-team');
+        const tasks = ok(await client.tasks.list({ limit: 100 }, signal())).items;
+        const byKey = new Map<string, (typeof tasks)[number]>(tasks.map((task) => [task.id, task]));
+        const states = new Set(tasks.map(({ state }) => state));
+        for (const state of [
+            'active',
+            'awaiting-user',
+            'blocked',
+            'waiting-dependency',
+            'done',
+            'cancelled',
+            'retired',
+        ]) {
+            expect(states, state).toContain(state);
+        }
+        expect(tasks.filter(({ kind }) => kind === 'engine').map(({ name }) => name)).toEqual([
+            'Update Promptbook 0.119.0 → 0.120.0',
+        ]);
+        const launch = ok(await client.tasks.get(TaskId.parse('task-launch-newsletter'), signal()));
+        expect(launch.children.length).toBeGreaterThanOrEqual(4);
+        expect(launch.links.some(({ target }) => target.type === 'chat' && target.chatId !== null)).toBe(true);
+        expect(launch.origin?.kind).toBe('chat');
+        const send = byKey.get('task-send-first-issue');
+        expect(send?.dependsOn.map(({ state }) => state)).toEqual(['met', 'pending']);
+        expect(byKey.get('task-pricing-typo')?.reopened).toBe(true);
+
+        const digest = TaskId.parse('task-weekly-digest');
+        const occurrences = ok(await client.tasks.listOccurrences(digest, {}, signal())).items;
+        expect(occurrences.map(({ reason }) => reason)).toEqual(['repeat', 'retry', 'repeat', 'first']);
+        const ran = occurrences.flatMap(({ runIds }) => runIds);
+        expect(ran.length).toBe(3);
+        const runs = ok(await client.runs.list({ taskId: digest }, signal())).items;
+        expect(runs.map(({ id }) => id).sort()).toEqual([...ran].sort());
+        for (const run of runs) expect(run.occurrenceId).not.toBeNull();
+    });
+
     it('seeds about 200 runs over 14 days with every source, every status and believable failures', async () => {
         const { client } = await core('small-team');
         const runs = await runsOf(client);
