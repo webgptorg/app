@@ -3,7 +3,8 @@ import { Plus } from 'lucide-react';
 import { ButtonLink } from '../../app/link';
 import { m } from '../../paraglide/messages';
 import { useCurrentMember } from '../session/use-current-member';
-import { usePermissions } from '../session/use-permissions';
+import { useAllows } from '../../app/registry/use-visible-features';
+import { AGENT_WIZARD_REQUIREMENT } from '../agent-wizard/agent-wizard-feature';
 import { useDocumentTitle } from '../shell/document-title';
 
 export type DayPart = 'morning' | 'afternoon' | 'evening';
@@ -29,14 +30,14 @@ export function greeting(name: string, part: DayPart): string {
 /** The home's one heading, greeting the member by name, and "New agent" for those who may create one. */
 export function HomeHeader({ now }: { readonly now: Date }) {
     const { displayName } = useCurrentMember();
-    const { can } = usePermissions();
+    const canCreate = useAllows(AGENT_WIZARD_REQUIREMENT);
     useDocumentTitle(m.nav_home());
     return (
         <header className="flex flex-wrap items-center justify-between gap-3">
             <h1 id="page-title" className="font-display text-2xl font-semibold break-words md:text-3xl">
                 {greeting(displayName, dayPart(now.getHours()))}
             </h1>
-            {can('agents.write') ? (
+            {canCreate ? (
                 <ButtonLink to="/agents/new" variant="primary">
                     <Plus aria-hidden className="size-4" />
                     {m.agents_new()}

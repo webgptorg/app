@@ -22,7 +22,7 @@ import type { RateLimiter } from '../domain/rate-limit/rate-limiter';
 import type { EngineRuntime } from '../domain/state/engine-runtime';
 import { createEngineRuntime } from '../domain/state/engine-runtime';
 import type { SimulationMode } from '../domain/simulation/simulation-clock';
-import { capabilitiesFor, DEFAULT_CAPABILITY_NAMES } from '../domain/state/capabilities';
+import { capabilitiesFor, FULL_CAPABILITY_NAMES } from '../domain/state/capabilities';
 import type { MockCapabilityName } from '../domain/state/capabilities';
 import type { Scenario } from '../domain/state/scenarios';
 import type { BundleStore } from '../domain/ui/bundle-store';
@@ -193,7 +193,7 @@ export async function createApiHarness(options: ApiHarnessOptions = {}): Promise
                       version: '0.1.0',
                   },
                   clock,
-                  capabilities: capabilitiesFor(options.capabilities ?? DEFAULT_CAPABILITY_NAMES),
+                  capabilities: capabilitiesFor(options.capabilities ?? FULL_CAPABILITY_NAMES),
                   simulation: options.simulation ?? { mode: 'paused', speed: 1 },
                   passkeys: options.passkeys ?? (options.onboarding === undefined ? 'seeded' : 'none'),
                   faults: () => faults.plan(),

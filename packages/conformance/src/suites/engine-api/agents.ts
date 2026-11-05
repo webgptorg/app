@@ -1,9 +1,10 @@
-import { ENGINE_API_ROUTES } from '@ptbk/engine-api';
+import { ENGINE_API_ROUTES, KNOWN_CAPABILITIES } from '@ptbk/engine-api';
 
 import type { ConformanceCheck } from '../../check';
 import { Findings } from '../../check';
 import { BROKEN_BOOK, validBook } from '../../fixtures/books';
 import type { EngineApi } from './api';
+import { requireCapability } from './capability-support';
 import { SUITE, attempt, walkPages } from './support';
 import { createWorld } from './world';
 
@@ -47,6 +48,7 @@ export const AGENT_CHECKS: readonly ConformanceCheck[] = [
         title: 'A source update from a stale baseRevisionId is refused with 409 revision-conflict and changes nothing',
         async run(ctx) {
             const world = await createWorld(ctx);
+            await requireCapability(world, KNOWN_CAPABILITIES.bookEditor);
             const findings = new Findings();
             const agent = await world.createAgent('revisions');
             const params = { agentId: agent.id };
@@ -79,6 +81,7 @@ export const AGENT_CHECKS: readonly ConformanceCheck[] = [
         title: 'Deleting an agent hides it from the list; restoring brings it back',
         async run(ctx) {
             const world = await createWorld(ctx);
+            await requireCapability(world, KNOWN_CAPABILITIES.agentManagement);
             const findings = new Findings();
             const agent = await world.createAgent('deleted');
             const params = { agentId: agent.id };
@@ -104,6 +107,7 @@ export const AGENT_CHECKS: readonly ConformanceCheck[] = [
         title: 'Validating a broken book reports an error diagnostic, and creating from it is refused with 422',
         async run(ctx) {
             const world = await createWorld(ctx);
+            await requireCapability(world, KNOWN_CAPABILITIES.bookEditor);
             const findings = new Findings();
             const broken = await world.owner.ok(R.validateAgentSource, { body: { source: BROKEN_BOOK } });
             if (!broken.some(({ severity }) => severity === 'error')) {

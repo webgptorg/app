@@ -1,5 +1,11 @@
 import type { Permission, RouteDefinition } from '@ptbk/engine-api';
-import { ENGINE_API_PREFIX, ENGINE_API_ROUTE_LIST, ENGINE_API_ROUTES, isReservedCapability } from '@ptbk/engine-api';
+import {
+    ENGINE_API_PREFIX,
+    ENGINE_API_ROUTE_LIST,
+    ENGINE_API_ROUTES,
+    KNOWN_CAPABILITIES,
+    isReservedCapability,
+} from '@ptbk/engine-api';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { ROLE_PERMISSIONS } from '../src/domain/authorization/policy';
@@ -200,7 +206,10 @@ describe('authorisation matrix', () => {
     it('gives a viewer 403 on every mutating route', async () => {
         const cookie = harness.signIn({ memberId: memberOf('viewer') });
         const mutating = ENGINE_API_ROUTE_LIST.filter(
-            (route) => route.method !== 'GET' && route.capability === undefined && route.permission !== null,
+            (route) =>
+                route.method !== 'GET' &&
+                (route.capability === undefined || isCoreFeature(route.capability)) &&
+                route.permission !== null,
         );
         expect(mutating.length).toBeGreaterThan(25);
         for (const route of mutating) {
@@ -210,6 +219,12 @@ describe('authorisation matrix', () => {
         }
     });
 });
+
+/** Formerly core features an engine may now leave out; the harness advertises them, so they count as core here. */
+function isCoreFeature(capability: { readonly id: string }): boolean {
+    const { members, apiTokens, audit, bookEditor, agentManagement } = KNOWN_CAPABILITIES;
+    return [members, apiTokens, audit, bookEditor, agentManagement].some(({ id }) => id === capability.id);
+}
 
 describe('order of checks', () => {
     it('answers a missing permission with 403 even when the input is invalid', async () => {

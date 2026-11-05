@@ -65,6 +65,11 @@ describe('supports', () => {
             'test-chat@1',
             'access-requests@1',
             'file-scanning@1',
+            'members@1',
+            'api-tokens@1',
+            'audit@1',
+            'book-editor@1',
+            'agent-management@1',
         ]);
     });
 });

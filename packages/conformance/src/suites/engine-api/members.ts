@@ -138,6 +138,7 @@ export const MEMBER_CHECKS: readonly ConformanceCheck[] = [
             await first.agent();
             for (const id of policy.agentRoutes) {
                 const route = R[id];
+                if (!(await owner.advertises(route))) continue;
                 await attempt(findings, async () => {
                     const request = await validRequest(route, first);
                     if (request === null) fail(`${describe(route)}: the suite cannot build a request for it`);

@@ -898,6 +898,11 @@
         "summary": "Validate book source without storing it",
         "tags": ["agents"],
         "x-required-permission": "agents.write",
+        "x-capability": {
+          "id": "book-editor",
+          "version": 1,
+          "label": "book-editor@1"
+        },
         "requestBody": {
           "required": true,
           "content": {
@@ -955,6 +960,17 @@
           "403": {
             "description": "Problem: `forbidden`.",
             "x-problem-codes": ["forbidden"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem: `capability-not-supported`.",
+            "x-problem-codes": ["capability-not-supported"],
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -1110,6 +1126,11 @@
         "summary": "Change an agent's visibility or folder",
         "tags": ["agents"],
         "x-required-permission": "agents.write",
+        "x-capability": {
+          "id": "agent-management",
+          "version": 1,
+          "label": "agent-management@1"
+        },
         "parameters": [
           {
             "name": "agentId",
@@ -1191,8 +1212,8 @@
             }
           },
           "404": {
-            "description": "Problem: `not-found`.",
-            "x-problem-codes": ["not-found"],
+            "description": "Problem: `capability-not-supported`, `not-found`.",
+            "x-problem-codes": ["capability-not-supported", "not-found"],
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -1359,6 +1380,11 @@
         "summary": "Restore a soft-deleted agent (idempotent)",
         "tags": ["agents"],
         "x-required-permission": "agents.delete",
+        "x-capability": {
+          "id": "agent-management",
+          "version": 1,
+          "label": "agent-management@1"
+        },
         "parameters": [
           {
             "name": "agentId",
@@ -1414,8 +1440,8 @@
             }
           },
           "404": {
-            "description": "Problem: `not-found`.",
-            "x-problem-codes": ["not-found"],
+            "description": "Problem: `capability-not-supported`, `not-found`.",
+            "x-problem-codes": ["capability-not-supported", "not-found"],
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -1571,6 +1597,11 @@
         "summary": "Save new book source as a new revision",
         "tags": ["agents"],
         "x-required-permission": "agents.write",
+        "x-capability": {
+          "id": "book-editor",
+          "version": 1,
+          "label": "book-editor@1"
+        },
         "parameters": [
           {
             "name": "agentId",
@@ -1647,8 +1678,8 @@
             }
           },
           "404": {
-            "description": "Problem: `not-found`.",
-            "x-problem-codes": ["not-found"],
+            "description": "Problem: `capability-not-supported`, `not-found`.",
+            "x-problem-codes": ["capability-not-supported", "not-found"],
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -1721,6 +1752,11 @@
         "summary": "List revisions, newest first",
         "tags": ["agents"],
         "x-required-permission": "agents.read",
+        "x-capability": {
+          "id": "book-editor",
+          "version": 1,
+          "label": "book-editor@1"
+        },
         "parameters": [
           {
             "name": "agentId",
@@ -1797,8 +1833,8 @@
             }
           },
           "404": {
-            "description": "Problem: `not-found`.",
-            "x-problem-codes": ["not-found"],
+            "description": "Problem: `capability-not-supported`, `not-found`.",
+            "x-problem-codes": ["capability-not-supported", "not-found"],
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -1849,6 +1885,11 @@
         "summary": "Get one revision with its source",
         "tags": ["agents"],
         "x-required-permission": "agents.read",
+        "x-capability": {
+          "id": "book-editor",
+          "version": 1,
+          "label": "book-editor@1"
+        },
         "parameters": [
           {
             "name": "agentId",
@@ -1912,8 +1953,8 @@
             }
           },
           "404": {
-            "description": "Problem: `not-found`.",
-            "x-problem-codes": ["not-found"],
+            "description": "Problem: `capability-not-supported`, `not-found`.",
+            "x-problem-codes": ["capability-not-supported", "not-found"],
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -4093,6 +4134,11 @@
         "summary": "Change a member's role; the last owner cannot be demoted",
         "tags": ["members"],
         "x-required-permission": "members.manage",
+        "x-capability": {
+          "id": "members",
+          "version": 1,
+          "label": "members@1"
+        },
         "x-step-up": true,
         "parameters": [
           {
@@ -4166,8 +4212,8 @@
             }
           },
           "404": {
-            "description": "Problem: `not-found`.",
-            "x-problem-codes": ["not-found"],
+            "description": "Problem: `capability-not-supported`, `not-found`.",
+            "x-problem-codes": ["capability-not-supported", "not-found"],
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -4227,6 +4273,11 @@
         "summary": "Remove a member and end their sessions; the last owner cannot be removed",
         "tags": ["members"],
         "x-required-permission": "members.manage",
+        "x-capability": {
+          "id": "members",
+          "version": 1,
+          "label": "members@1"
+        },
         "x-step-up": true,
         "parameters": [
           {
@@ -4276,8 +4327,8 @@
             }
           },
           "404": {
-            "description": "Problem: `not-found`.",
-            "x-problem-codes": ["not-found"],
+            "description": "Problem: `capability-not-supported`, `not-found`.",
+            "x-problem-codes": ["capability-not-supported", "not-found"],
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -4339,6 +4390,11 @@
         "summary": "List pending invites",
         "tags": ["invites"],
         "x-required-permission": "members.read",
+        "x-capability": {
+          "id": "members",
+          "version": 1,
+          "label": "members@1"
+        },
         "parameters": [
           {
             "name": "cursor",
@@ -4406,6 +4462,17 @@
               }
             }
           },
+          "404": {
+            "description": "Problem: `capability-not-supported`.",
+            "x-problem-codes": ["capability-not-supported"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
           "429": {
             "description": "Problem: `rate-limited`.",
             "x-problem-codes": ["rate-limited"],
@@ -4446,6 +4513,11 @@
         "summary": "Invite a member; the invite URL is returned only in this response",
         "tags": ["invites"],
         "x-required-permission": "members.manage",
+        "x-capability": {
+          "id": "members",
+          "version": 1,
+          "label": "members@1"
+        },
         "x-step-up": true,
         "requestBody": {
           "required": true,
@@ -4511,6 +4583,17 @@
               }
             }
           },
+          "404": {
+            "description": "Problem: `capability-not-supported`.",
+            "x-problem-codes": ["capability-not-supported"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
           "429": {
             "description": "Problem: `rate-limited`.",
             "x-problem-codes": ["rate-limited"],
@@ -4553,6 +4636,11 @@
         "summary": "Revoke a pending invite",
         "tags": ["invites"],
         "x-required-permission": "members.manage",
+        "x-capability": {
+          "id": "members",
+          "version": 1,
+          "label": "members@1"
+        },
         "parameters": [
           {
             "name": "inviteId",
@@ -4601,8 +4689,8 @@
             }
           },
           "404": {
-            "description": "Problem: `not-found`.",
-            "x-problem-codes": ["not-found"],
+            "description": "Problem: `capability-not-supported`, `not-found`.",
+            "x-problem-codes": ["capability-not-supported", "not-found"],
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -4653,6 +4741,11 @@
         "summary": "List API tokens, newest first",
         "tags": ["api-tokens"],
         "x-required-permission": "api-tokens.manage",
+        "x-capability": {
+          "id": "api-tokens",
+          "version": 1,
+          "label": "api-tokens@1"
+        },
         "parameters": [
           {
             "name": "cursor",
@@ -4720,6 +4813,17 @@
               }
             }
           },
+          "404": {
+            "description": "Problem: `capability-not-supported`.",
+            "x-problem-codes": ["capability-not-supported"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
           "429": {
             "description": "Problem: `rate-limited`.",
             "x-problem-codes": ["rate-limited"],
@@ -4760,6 +4864,11 @@
         "summary": "Create an API token; the token is returned only in this response",
         "tags": ["api-tokens"],
         "x-required-permission": "api-tokens.manage",
+        "x-capability": {
+          "id": "api-tokens",
+          "version": 1,
+          "label": "api-tokens@1"
+        },
         "x-step-up": true,
         "requestBody": {
           "required": true,
@@ -4834,6 +4943,17 @@
               }
             }
           },
+          "404": {
+            "description": "Problem: `capability-not-supported`.",
+            "x-problem-codes": ["capability-not-supported"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
           "429": {
             "description": "Problem: `rate-limited`.",
             "x-problem-codes": ["rate-limited"],
@@ -4876,6 +4996,11 @@
         "summary": "Revoke an API token (idempotent)",
         "tags": ["api-tokens"],
         "x-required-permission": "api-tokens.manage",
+        "x-capability": {
+          "id": "api-tokens",
+          "version": 1,
+          "label": "api-tokens@1"
+        },
         "parameters": [
           {
             "name": "apiTokenId",
@@ -4931,8 +5056,8 @@
             }
           },
           "404": {
-            "description": "Problem: `not-found`.",
-            "x-problem-codes": ["not-found"],
+            "description": "Problem: `capability-not-supported`, `not-found`.",
+            "x-problem-codes": ["capability-not-supported", "not-found"],
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -6428,6 +6553,11 @@
         "summary": "List audit entries, newest first",
         "tags": ["audit"],
         "x-required-permission": "audit.read",
+        "x-capability": {
+          "id": "audit",
+          "version": 1,
+          "label": "audit@1"
+        },
         "parameters": [
           {
             "name": "cursor",
@@ -6572,6 +6702,17 @@
               }
             }
           },
+          "404": {
+            "description": "Problem: `capability-not-supported`.",
+            "x-problem-codes": ["capability-not-supported"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
           "429": {
             "description": "Problem: `rate-limited`.",
             "x-problem-codes": ["rate-limited"],
@@ -6614,6 +6755,11 @@
         "summary": "Re-walk the whole hash chain, so the owner can confirm nothing was removed or edited",
         "tags": ["audit"],
         "x-required-permission": "audit.read",
+        "x-capability": {
+          "id": "audit",
+          "version": 1,
+          "label": "audit@1"
+        },
         "responses": {
           "200": {
             "description": "Success.",
@@ -6639,6 +6785,17 @@
           "403": {
             "description": "Problem: `forbidden`.",
             "x-problem-codes": ["forbidden"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem: `capability-not-supported`.",
+            "x-problem-codes": ["capability-not-supported"],
             "content": {
               "application/problem+json": {
                 "schema": {

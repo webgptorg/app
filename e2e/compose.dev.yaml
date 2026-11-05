@@ -75,6 +75,7 @@ services:
       PTBK_DASHBOARD_URL: https://app.ptbk.test:8444
       MOCK_DEV_LOGIN: enabled
       MOCK_SCENARIO: small-team
+      MOCK_PROFILE: reborn
 
   host-dns:
     image: coredns/coredns:1.14.7@sha256:7efd3c635b03efd68c4e8398fc45f0d993d0e9ab016f72c1cefb0fd6d01aa286

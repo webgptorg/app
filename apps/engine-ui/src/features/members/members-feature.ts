@@ -19,7 +19,7 @@ function usePendingAccessRequests(): number {
 
 export const membersFeature = defineFeature({
     id: 'members',
-    requires: { permission: 'members.read' },
+    requires: { capability: KNOWN_CAPABILITIES.members, permission: 'members.read' },
     nav: {
         group: 'admin',
         order: 10,

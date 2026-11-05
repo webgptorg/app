@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import { DashboardUserId, InviteId, MemberId, PageQuery, Timestamp, pageOf } from './common';
 import { Role } from './permissions';
+import { KNOWN_CAPABILITIES } from './capabilities/capability';
 import { defineRoute } from './route';
 
 export const MEMBER_STATUSES = ['active', 'invited', 'disabled'] as const;
@@ -67,6 +68,7 @@ export const MEMBER_ROUTES = {
         path: '/members/{memberId}',
         summary: "Change a member's role; the last owner cannot be demoted",
         permission: 'members.manage',
+        capability: KNOWN_CAPABILITIES.members,
         params: MemberParams,
         body: { kind: 'json', schema: UpdateMemberBody },
         responses: { 200: { kind: 'json', schema: Member } },
@@ -79,6 +81,7 @@ export const MEMBER_ROUTES = {
         path: '/members/{memberId}',
         summary: 'Remove a member and end their sessions; the last owner cannot be removed',
         permission: 'members.manage',
+        capability: KNOWN_CAPABILITIES.members,
         params: MemberParams,
         responses: { 204: { kind: 'empty' } },
         problems: ['last-owner'],
@@ -90,6 +93,7 @@ export const MEMBER_ROUTES = {
         path: '/invites',
         summary: 'List pending invites',
         permission: 'members.read',
+        capability: KNOWN_CAPABILITIES.members,
         query: PageQuery,
         responses: { 200: { kind: 'json', schema: InvitePage } },
     }),
@@ -99,6 +103,7 @@ export const MEMBER_ROUTES = {
         path: '/invites',
         summary: 'Invite a member; the invite URL is returned only in this response',
         permission: 'members.manage',
+        capability: KNOWN_CAPABILITIES.members,
         body: { kind: 'json', schema: CreateInviteBody },
         responses: { 201: { kind: 'json', schema: CreateInviteResult } },
         stepUp: true,
@@ -109,6 +114,7 @@ export const MEMBER_ROUTES = {
         path: '/invites/{inviteId}',
         summary: 'Revoke a pending invite',
         permission: 'members.manage',
+        capability: KNOWN_CAPABILITIES.members,
         params: InviteParams,
         responses: { 204: { kind: 'empty' } },
     }),

@@ -1,4 +1,4 @@
-import { ENGINE_API_ROUTES } from '@ptbk/engine-api';
+import { ENGINE_API_ROUTES, KNOWN_CAPABILITIES } from '@ptbk/engine-api';
 import type { AuditAction, AuditEntry, EngineApiRouteId } from '@ptbk/engine-api';
 
 import type { ConformanceCheck } from '../../check';
@@ -6,6 +6,7 @@ import { Findings } from '../../check';
 import { CHAT_MESSAGE } from '../../fixtures/books';
 import { randomToken } from '../../random';
 import type { EngineApi } from './api';
+import { requireCapability } from './capability-support';
 import { SUITE, attempt } from './support';
 import { createWorld } from './world';
 
@@ -108,6 +109,7 @@ export const AUDIT_CHECKS: readonly ConformanceCheck[] = [
         title: 'Every mutation is in /audit with the acting member, its action and its target',
         async run(ctx) {
             const world = await createWorld(ctx);
+            await requireCapability(world, KNOWN_CAPABILITIES.audit);
             const { owner } = world;
             const { memberId } = await world.me();
             const findings = new Findings();
@@ -119,18 +121,25 @@ export const AUDIT_CHECKS: readonly ConformanceCheck[] = [
             const agent = await world.createAgent('audited');
             const agentParams = { agentId: agent.id };
             record('POST /agents', 'agent.create', 'agent', agent.id);
-            await owner.ok(R.updateAgent, { params: agentParams, body: { visibility: agent.visibility } });
-            record('PATCH /agents/{agentId}', 'agent.update', 'agent', agent.id);
-            const source = await owner.ok(R.getAgentSource, { params: agentParams });
-            await owner.ok(R.updateAgentSource, {
-                params: agentParams,
-                body: { source: `${source.source}\nNOTE Audited edit.\n`, baseRevisionId: source.revisionId },
-            });
-            record('PUT /agents/{agentId}/source', 'agent.source.update', 'agent', agent.id);
+            const manages = await world.advertises(R.updateAgent);
+            if (manages) {
+                await owner.ok(R.updateAgent, { params: agentParams, body: { visibility: agent.visibility } });
+                record('PATCH /agents/{agentId}', 'agent.update', 'agent', agent.id);
+            }
+            if (await world.advertises(R.updateAgentSource)) {
+                const source = await owner.ok(R.getAgentSource, { params: agentParams });
+                await owner.ok(R.updateAgentSource, {
+                    params: agentParams,
+                    body: { source: `${source.source}\nNOTE Audited edit.\n`, baseRevisionId: source.revisionId },
+                });
+                record('PUT /agents/{agentId}/source', 'agent.source.update', 'agent', agent.id);
+            }
             await owner.ok(R.deleteAgent, { params: agentParams });
             record('DELETE /agents/{agentId}', 'agent.delete', 'agent', agent.id);
-            await owner.ok(R.restoreAgent, { params: agentParams });
-            record('POST /agents/{agentId}/restore', 'agent.restore', 'agent', agent.id);
+            if (manages) {
+                await owner.ok(R.restoreAgent, { params: agentParams });
+                record('POST /agents/{agentId}/restore', 'agent.restore', 'agent', agent.id);
+            }
 
             const folder = await owner.ok(R.createFolder, { body: { name: world.name('audited') } });
             record('POST /folders', 'folder.create', 'folder', folder.id);
@@ -169,6 +178,7 @@ export const AUDIT_CHECKS: readonly ConformanceCheck[] = [
         title: "Within a page of /audit each entry's prevHash is the previous entry's hash, and /audit/verify is intact",
         async run(ctx) {
             const world = await createWorld(ctx);
+            await requireCapability(world, KNOWN_CAPABILITIES.audit);
             const findings = new Findings();
             await world.folder();
             await world.secret();

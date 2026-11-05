@@ -78,8 +78,31 @@ const CAPABILITY_BY_PATH = [
     ['/browser-tab-sessions', RESERVED_CAPABILITIES.browserTab],
 ] as const;
 
+/** Core features an engine may leave out: these routes share paths with core routes that stay, so they go by ID. */
+const CAPABILITY_BY_ROUTE: Readonly<Record<string, (typeof KNOWN_CAPABILITIES)[keyof typeof KNOWN_CAPABILITIES]>> = {
+    updateMember: KNOWN_CAPABILITIES.members,
+    removeMember: KNOWN_CAPABILITIES.members,
+    listInvites: KNOWN_CAPABILITIES.members,
+    createInvite: KNOWN_CAPABILITIES.members,
+    revokeInvite: KNOWN_CAPABILITIES.members,
+    listApiTokens: KNOWN_CAPABILITIES.apiTokens,
+    createApiToken: KNOWN_CAPABILITIES.apiTokens,
+    revokeApiToken: KNOWN_CAPABILITIES.apiTokens,
+    listAuditEntries: KNOWN_CAPABILITIES.audit,
+    verifyAuditLog: KNOWN_CAPABILITIES.audit,
+    validateAgentSource: KNOWN_CAPABILITIES.bookEditor,
+    updateAgentSource: KNOWN_CAPABILITIES.bookEditor,
+    listAgentRevisions: KNOWN_CAPABILITIES.bookEditor,
+    getAgentRevision: KNOWN_CAPABILITIES.bookEditor,
+    updateAgent: KNOWN_CAPABILITIES.agentManagement,
+    restoreAgent: KNOWN_CAPABILITIES.agentManagement,
+};
+
 function expectedCapability(route: RouteDefinition) {
-    return CAPABILITY_BY_PATH.find(([prefix]) => route.path === prefix || route.path.startsWith(`${prefix}/`))?.[1];
+    return (
+        CAPABILITY_BY_ROUTE[route.id] ??
+        CAPABILITY_BY_PATH.find(([prefix]) => route.path === prefix || route.path.startsWith(`${prefix}/`))?.[1]
+    );
 }
 
 const capabilityRoutes = ENGINE_API_ROUTE_LIST.filter((route) => expectedCapability(route) !== undefined);
@@ -192,8 +215,8 @@ describe('capability routes', () => {
         expect(ENGINE_API_ROUTES.checkIntegration.permission).toBe('integrations.manage');
     });
 
-    it('takes and returns no value, secret or token field anywhere', () => {
-        for (const route of capabilityRoutes) {
+    it('takes and returns no value, secret or token field anywhere but the new API token', () => {
+        for (const route of capabilityRoutes.filter((candidate) => candidate.id !== 'createApiToken')) {
             expect(credentialKeys(route), route.id).toEqual([]);
             expect(requestCredentialKeys(route), route.id).toEqual([]);
         }

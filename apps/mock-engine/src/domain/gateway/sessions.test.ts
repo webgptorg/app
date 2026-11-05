@@ -1,4 +1,4 @@
-import { OWNER_PERMISSIONS } from '@ptbk/engine-api';
+import { KNOWN_CAPABILITIES, OWNER_PERMISSIONS } from '@ptbk/engine-api';
 import { createEngineApiClient } from '@ptbk/engine-api';
 import { createInMemoryEngineCore } from '@ptbk/engine-api/in-memory';
 import { describe, expect, it } from 'vitest';
@@ -35,7 +35,7 @@ function setup() {
     const core = createInMemoryEngineCore({
         member: { id: 'member-owner', role: 'owner' },
         clock: { now: () => new Date(clock.nowMs()) },
-        capabilities: [],
+        capabilities: [KNOWN_CAPABILITIES.members],
         seed: {
             members: [member('member-owner', 'owner'), member('member-ada', 'member')],
             passkeys: [

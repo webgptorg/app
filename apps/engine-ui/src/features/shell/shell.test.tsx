@@ -127,6 +127,39 @@ describe('app shell', () => {
         expect(await sidebarLinks()).not.toContain('Audit log');
     });
 
+    it('shows only what a Reborn engine reports, and its hidden screens say so by URL and stay out of the palette', async () => {
+        const { user } = renderWithProviders({ path: '/members', capabilities: [KNOWN_CAPABILITIES.files] });
+        expect(await screen.findByRole('heading', { level: 1, name: 'Not available on this engine' })).toBeDefined();
+        expect(await sidebarLinks()).toEqual(['Home', 'Agents', 'Files', 'Security', 'Secrets', 'Settings']);
+
+        await user.click(screen.getByRole('button', { name: 'Search and commands' }));
+        const commands = within(await screen.findByRole('group', { name: 'Commands' }))
+            .getAllByRole('option')
+            .map((option) => option.textContent);
+        expect(commands).not.toContain('New agent');
+        const destinations = within(screen.getByRole('group', { name: 'Go to' }))
+            .getAllByRole('option')
+            .map((option) => option.textContent);
+        expect(destinations).not.toContain('Members');
+        expect(destinations).not.toContain('Audit log');
+    });
+
+    it.each(['/audit', '/agents/new', '/agents/agent-001/book', '/agents/agent-001/settings', '/triggers'])(
+        'answers %s on a Reborn engine with "not available on this engine"',
+        async (path) => {
+            renderWithProviders({
+                path,
+                engineApi: createTestEngineApi({
+                    capabilities: [KNOWN_CAPABILITIES.files],
+                    seed: { agents: [{ id: 'agent-001', source: 'Ada\nPERSONA Research' }] },
+                }),
+            });
+            expect(
+                await screen.findByRole('heading', { level: 1, name: 'Not available on this engine' }),
+            ).toBeDefined();
+        },
+    );
+
     it('says "no access" for an advertised capability without the permission', async () => {
         const gatedAudit: FeatureDefinition = {
             ...auditFeature,

@@ -1,3 +1,4 @@
+import { KNOWN_CAPABILITIES } from '@ptbk/engine-api';
 import type { Agent, AgentVisibility } from '@ptbk/engine-api';
 import { ConfirmDialog } from '@ptbk/ui';
 import type { MenuEntry } from '@ptbk/ui';
@@ -6,6 +7,7 @@ import { useState } from 'react';
 import type { ReactNode } from 'react';
 
 import { classifyApiError } from '../../app/api-errors';
+import { useAllows } from '../../app/registry/use-visible-features';
 import { isForbidden, isStepUpRequired } from '../../app/mutations';
 import { m } from '../../paraglide/messages';
 import { usePermissions } from '../session/use-permissions';
@@ -37,8 +39,9 @@ export function useAgentActions(options: AgentMutationOptions = {}): AgentAction
     const [pending, setPending] = useState<PendingConfirmation | null>(null);
     const [deleteError, setDeleteError] = useState<string | undefined>(undefined);
 
-    const canChangeVisibility = can('agents.write');
-    const canDelete = can('agents.delete');
+    const manages = useAllows({ capability: KNOWN_CAPABILITIES.agentManagement });
+    const canChangeVisibility = manages && can('agents.write');
+    const canDelete = manages && can('agents.delete');
     const target = (agent: Agent) => ({ id: agent.id, name: agent.name });
 
     const changeVisibility = (agent: Agent, visibility: AgentVisibility) => {

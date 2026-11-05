@@ -24,6 +24,11 @@ Each entry has this shape. Platform authors: add yours at the top of the list, o
 - **Redo:** what the engine's agent must change, re-run or drop; "nothing" if it is inert.
 ```
 
+### 2026-11-05: Features Reborn does not have are capabilities
+
+- **Changed:** five former core features are capabilities, so an engine without them leaves them out of `GET /engine` and answers their routes with 404 `capability-not-supported`: `members@1` (invites, role changes, removals; member reads and `/me` stay core), `api-tokens@1`, `audit@1`, `book-editor@1` (saving and validating Book source, revisions) and `agent-management@1` (visibility, folder, restore). Their conformance checks skip when not advertised. The mock starts in a `reborn` profile that advertises only what Reborn has; `MOCK_PROFILE=full` shows everything. See [engine-api.md](engine-api.md#capabilities).
+- **Redo:** advertise only what you serve. Reborn has none of the five yet: leave them out and answer their routes with 404 `capability-not-supported`.
+
 ### 2026-11-05: Live audio, video and the browser tab (design only)
 
 - **Changed:** engine API 1.14.0 reserves `live-audio@1`, `live-video@1` and `browser-tab@1` in `RESERVED_CAPABILITIES`, with two `draft` routes (`openLiveAudioSession`, `openBrowserTabSession`), the `browser.control` permission and a channel path; conformance adds `engine-api.live.reserved` and two registered stubs. The tunnel protocol is unchanged. Design: `<PLATFORM_DIR>/docs/engine-integration/live-sessions.md`, ADR 0019.

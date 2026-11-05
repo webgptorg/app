@@ -12,7 +12,7 @@ import { expectNoAxeViolations } from '../../testing/axe';
 import { createAgentsEngine } from '../../testing/agents-engine';
 import type { AgentsEngineOptions } from '../../testing/agents-engine';
 import { renderWithProviders } from '../../testing/render-with-providers';
-import { problemResponse, TEST_NOW } from '../../testing/test-engine-api';
+import { FORMER_CORE_CAPABILITIES, problemResponse, TEST_NOW } from '../../testing/test-engine-api';
 
 // Each test renders the whole app on the in-memory engine; a shared CI runner is several times slower than a laptop.
 const TIMEOUT_MS = 20_000;
@@ -57,8 +57,13 @@ describe('agent tabs', { timeout: TIMEOUT_MS }, () => {
         expect(screen.getByRole('tab', { name: 'Runs' }).getAttribute('href')).toBe('/agents/agent-001/runs');
     });
 
-    it('shows only Overview, Chat, Book and Settings on an engine that advertises no capability', async () => {
+    it('shows only Overview and Chat on an engine that advertises no capability', async () => {
         await renderAgent('/agents/agent-001', { features: FEATURES, capabilities: [] });
+        expect(tabNames()).toEqual(['Overview', 'Chat']);
+    });
+
+    it('adds Book and Settings for an engine that edits Books and manages agents', async () => {
+        await renderAgent('/agents/agent-001', { features: FEATURES, capabilities: FORMER_CORE_CAPABILITIES });
         expect(tabNames()).toEqual(['Overview', 'Chat', 'Book', 'Settings']);
     });
 

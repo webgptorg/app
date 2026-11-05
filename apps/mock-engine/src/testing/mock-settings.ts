@@ -1,6 +1,6 @@
 import type { MockEngineConfig } from '../app/config';
 import { NO_FAULTS } from '../domain/faults/fault-plan';
-import { DEFAULT_CAPABILITY_NAMES } from '../domain/state/capabilities';
+import { FULL_CAPABILITY_NAMES } from '../domain/state/capabilities';
 
 /**
  * The M-04 to M-07 settings at their defaults, for tests that build a `MockEngineConfig` by hand; the simulation is
@@ -25,7 +25,7 @@ export const DEFAULT_MOCK_SETTINGS: Pick<
     scenario: 'small-team',
     seedEpoch: new Date('2026-10-01T00:00:00Z'),
     faults: NO_FAULTS,
-    capabilities: DEFAULT_CAPABILITY_NAMES,
+    capabilities: FULL_CAPABILITY_NAMES,
     simulation: { mode: 'paused' as const, speed: 1 },
     devLogin: false,
     passkeys: 'seeded',

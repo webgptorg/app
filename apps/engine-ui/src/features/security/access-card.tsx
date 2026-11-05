@@ -1,3 +1,4 @@
+import { KNOWN_CAPABILITIES } from '@ptbk/engine-api';
 import { Card, Skeleton } from '@ptbk/ui';
 import { useQuery } from '@tanstack/react-query';
 import { KeyRound, MonitorSmartphone, ScrollText } from 'lucide-react';
@@ -6,7 +7,7 @@ import type { ReactNode } from 'react';
 import { useEngineApi } from '../../app/engine-api-context';
 import { ButtonLink } from '../../app/link';
 import { m } from '../../paraglide/messages';
-import { usePermissions } from '../session/use-permissions';
+import { useAllows } from '../../app/registry/use-visible-features';
 import { CREDENTIALS_PAGE_SIZE, myPasskeysQueryOptions, mySessionsQueryOptions } from './security-queries';
 
 export interface AccessRowProps {
@@ -51,7 +52,7 @@ function SessionsSummary() {
 
 /** Who can get in, for every member: their own passkeys, and the audit log for those who may read it. */
 export function AccessCard() {
-    const { can } = usePermissions();
+    const canOpenAudit = useAllows({ capability: KNOWN_CAPABILITIES.audit, permission: 'audit.read' });
     return (
         <Card title={m.security_access_title()}>
             <ul className="-my-3 flex flex-col divide-y divide-divider">
@@ -75,7 +76,7 @@ export function AccessCard() {
                         </ButtonLink>
                     }
                 />
-                {can('audit.read') ? (
+                {canOpenAudit ? (
                     <AccessRow
                         icon={<ScrollText />}
                         title={m.audit_title()}

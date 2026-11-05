@@ -9,7 +9,7 @@ import { bookText, installEditorDomGaps, replaceBook } from '../../../testing/bo
 import { createControlledStream } from '../../../testing/chat-engine';
 import type { ControlledStream } from '../../../testing/chat-engine';
 import { renderWithProviders } from '../../../testing/render-with-providers';
-import { TEST_NOW } from '../../../testing/test-engine-api';
+import { FORMER_CORE_CAPABILITIES, TEST_NOW } from '../../../testing/test-engine-api';
 
 const TIMEOUT_MS = 20_000;
 const WAIT = { timeout: 5_000 };
@@ -35,7 +35,7 @@ function setup({ permissions, noCapability, testChat }: Setup = {}) {
             engine: { name: 'Test engine', hostname: 'engine.localhost', dashboardUrl: null, mode: 'local' },
             agents: [{ id: AGENT, source: SOURCE }],
         },
-        ...(noCapability ? { capabilities: [] } : {}),
+        ...(noCapability ? { capabilities: FORMER_CORE_CAPABILITIES } : {}),
         ...(permissions === undefined ? {} : { member: { id: 'member-owner', permissions, role: 'member' } }),
     });
     const client: EngineApiClient = { ...engine.client, testChat: testChat ?? engine.client.testChat };

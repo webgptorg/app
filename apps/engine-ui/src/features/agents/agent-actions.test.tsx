@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import { createAgentsEngine } from '../../testing/agents-engine';
 import { renderWithProviders } from '../../testing/render-with-providers';
-import { problemResponse } from '../../testing/test-engine-api';
+import { FORMER_CORE_CAPABILITIES, problemResponse } from '../../testing/test-engine-api';
 
 // Each test renders the whole app on the in-memory engine; a shared CI runner is several times slower than a laptop.
 const TIMEOUT_MS = 20_000;
@@ -153,7 +153,9 @@ describe('changing visibility', { timeout: TIMEOUT_MS }, () => {
 
 describe('row menu', { timeout: TIMEOUT_MS }, () => {
     it('offers neither Start nor Stop, whatever the agent is doing', async () => {
-        const { user } = await renderList(createAgentsEngine({ agentCount: 6, capabilities: [] }));
+        const { user } = await renderList(
+            createAgentsEngine({ agentCount: 6, capabilities: FORMER_CORE_CAPABILITIES }),
+        );
         // Agent 001 runs and agent 004 is idle (index % 4).
         for (const name of ['Agent 001', 'Agent 004']) {
             const menu = await openRowMenu(user, name);

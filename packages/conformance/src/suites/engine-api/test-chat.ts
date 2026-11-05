@@ -86,6 +86,7 @@ export const TEST_CHAT_CHECKS: readonly ConformanceCheck[] = [
         async run(ctx) {
             const world = await createWorld(ctx);
             await requireCapability(world, KNOWN_CAPABILITIES.testChat);
+            await requireCapability(world, KNOWN_CAPABILITIES.bookEditor);
             const findings = new Findings();
             const agent = await world.createAgent('test-chat');
             const before = await storedState(world.owner, agent.id);
@@ -104,6 +105,7 @@ export const TEST_CHAT_CHECKS: readonly ConformanceCheck[] = [
         async run(ctx) {
             const world = await createWorld(ctx);
             await requireCapability(world, KNOWN_CAPABILITIES.testChat);
+            await requireCapability(world, KNOWN_CAPABILITIES.bookEditor);
             const findings = new Findings();
             const { id: agentId } = await world.agent();
             const problem = await world.owner.problem(
@@ -124,6 +126,7 @@ export const TEST_CHAT_CHECKS: readonly ConformanceCheck[] = [
         async run(ctx) {
             const world = await createWorld(ctx);
             await requireCapability(world, KNOWN_CAPABILITIES.testChat);
+            await requireCapability(world, KNOWN_CAPABILITIES.bookEditor);
             const findings = new Findings();
             const { id: agentId } = await world.agent();
             const book = validBook(world.name('draft'));
@@ -163,6 +166,8 @@ export const TEST_CHAT_CHECKS: readonly ConformanceCheck[] = [
         async run(ctx) {
             const world = await createWorld(ctx);
             await requireCapability(world, KNOWN_CAPABILITIES.testChat);
+            await requireCapability(world, KNOWN_CAPABILITIES.bookEditor);
+            await requireCapability(world, KNOWN_CAPABILITIES.audit);
             const findings = new Findings();
             const { memberId } = await world.me();
             const agent = await world.createAgent('test-chat-audit');

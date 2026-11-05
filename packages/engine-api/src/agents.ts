@@ -12,6 +12,7 @@ import {
     pageOf,
 } from './common';
 import { MAX_BOOK_SOURCE_LENGTH } from './constants';
+import { KNOWN_CAPABILITIES } from './capabilities/capability';
 import { defineRoute } from './route';
 
 export const AGENT_VISIBILITIES = ['public', 'private', 'unlisted'] as const;
@@ -145,6 +146,7 @@ export const AGENT_ROUTES = {
         path: '/agents/validate',
         summary: 'Validate book source without storing it',
         permission: 'agents.write',
+        capability: KNOWN_CAPABILITIES.bookEditor,
         body: { kind: 'json', schema: ValidateBookBody },
         responses: { 200: { kind: 'json', schema: Diagnostics } },
     }),
@@ -163,6 +165,7 @@ export const AGENT_ROUTES = {
         path: '/agents/{agentId}',
         summary: "Change an agent's visibility or folder",
         permission: 'agents.write',
+        capability: KNOWN_CAPABILITIES.agentManagement,
         params: AgentParams,
         body: { kind: 'json', schema: UpdateAgentBody },
         responses: { 200: { kind: 'json', schema: Agent } },
@@ -183,6 +186,7 @@ export const AGENT_ROUTES = {
         path: '/agents/{agentId}/restore',
         summary: 'Restore a soft-deleted agent (idempotent)',
         permission: 'agents.delete',
+        capability: KNOWN_CAPABILITIES.agentManagement,
         params: AgentParams,
         responses: { 200: { kind: 'json', schema: Agent } },
     }),
@@ -201,6 +205,7 @@ export const AGENT_ROUTES = {
         path: '/agents/{agentId}/source',
         summary: 'Save new book source as a new revision',
         permission: 'agents.write',
+        capability: KNOWN_CAPABILITIES.bookEditor,
         params: AgentParams,
         body: { kind: 'json', schema: UpdateAgentSourceBody },
         responses: { 200: { kind: 'json', schema: AgentSource } },
@@ -212,6 +217,7 @@ export const AGENT_ROUTES = {
         path: '/agents/{agentId}/revisions',
         summary: 'List revisions, newest first',
         permission: 'agents.read',
+        capability: KNOWN_CAPABILITIES.bookEditor,
         params: AgentParams,
         query: PageQuery,
         responses: { 200: { kind: 'json', schema: RevisionPage } },
@@ -222,6 +228,7 @@ export const AGENT_ROUTES = {
         path: '/agents/{agentId}/revisions/{revisionId}',
         summary: 'Get one revision with its source',
         permission: 'agents.read',
+        capability: KNOWN_CAPABILITIES.bookEditor,
         params: RevisionParams,
         responses: { 200: { kind: 'json', schema: Revision } },
     }),
