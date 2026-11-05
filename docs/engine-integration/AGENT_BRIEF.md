@@ -24,6 +24,16 @@ Each entry has this shape. Platform authors: add yours at the top of the list, o
 - **Redo:** what the engine's agent must change, re-run or drop; "nothing" if it is inert.
 ```
 
+### 2026-11-05: Activity follows capabilities
+
+- **Changed:** `GET /activity` lists no item of a capability the engine does not advertise (`ACTIVITY_CAPABILITIES`). See [engine-api.md](engine-api.md#capabilities).
+- **Redo:** nothing if you only write activity for what you serve; otherwise filter it.
+
+### 2026-11-05: Agent origin and the built-in agents
+
+- **Changed:** every `Agent` has `origin`: `content`, `core` (Chatter, Adam, Tasker, Router, Fixer, Teacher) or `system` (Expert), and `GET /agents` takes `origin=` with one value or a comma-separated set. `profile.description` is the one-line role the UI shows for built-in agents. New check `engine-api.agents.origin`. See [engine-api.md](engine-api.md#agent-origin).
+- **Redo:** send `origin` on every agent from the Book's definition ownership (your `ChatAgentChoice` groups map onto it), list Expert as `system`, filter by `origin`, and make each core Book's description its role.
+
 ### 2026-11-05: Tasks
 
 - **Changed:** a new read-only capability, `tasks@1` ([engine-api.md](engine-api.md#capabilities), [tasks.ts](../../packages/engine-api/src/capabilities/tasks.ts)): `GET /tasks`, `GET /tasks/{taskId}` and `GET /tasks/{taskId}/occurrences` report your task inventory as Reborn models it (ordinary and engine-owned tasks in one list, your readiness kinds as `state`, `TASK PARENT`, `TASK DEPENDS ON`, `TASK ORIGIN`, the directed `LINK` graph, recurrence, reopen cycles and retries as occurrences), plus the `task.changed` event and the `tasks.read` permission. `Run` gained `taskId` and `occurrenceId` (both `null` for work outside a task, such as a chat reply), and `GET /runs` a `taskId` filter. Conformance adds `engine-api.tasks.*` (ENG-111).

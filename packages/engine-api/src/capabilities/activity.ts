@@ -19,6 +19,8 @@ import { Role } from '../permissions';
 import type { Permission } from '../permissions';
 import { defineRoute } from '../route';
 import { toTolerant } from '../tolerant';
+import { KNOWN_CAPABILITIES } from './capability';
+import type { CapabilityRef } from './capability';
 import { FileName, FilePurpose } from './files';
 import { RunError, RunSource, RunUsage } from './runs';
 
@@ -122,6 +124,24 @@ export const ACTIVITY_PERMISSIONS = {
     member: 'members.read',
     engine: 'security.read',
 } as const satisfies Readonly<Record<string, Permission>>;
+
+/**
+ * The capability each area belongs to: an engine lists no activity of a capability it does not advertise, as it has
+ * nothing that could produce it. Areas not listed are core.
+ */
+export const ACTIVITY_CAPABILITIES = {
+    run: KNOWN_CAPABILITIES.runs,
+    file: KNOWN_CAPABILITIES.files,
+    trigger: KNOWN_CAPABILITIES.triggers,
+    integration: KNOWN_CAPABILITIES.integrations,
+} as const satisfies Readonly<Record<string, CapabilityRef>>;
+
+export function activityCapability(kind: string): CapabilityRef | null {
+    const area = kind.split('.')[0] ?? '';
+    return Object.hasOwn(ACTIVITY_CAPABILITIES, area)
+        ? ACTIVITY_CAPABILITIES[area as keyof typeof ACTIVITY_CAPABILITIES]
+        : null;
+}
 
 export function activityPermission(kind: string): Permission | null {
     const area = kind.split('.')[0] ?? '';

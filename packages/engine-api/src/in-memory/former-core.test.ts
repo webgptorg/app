@@ -4,6 +4,7 @@ import { KNOWN_CAPABILITIES } from '../capabilities/capability';
 import type { EngineApiResponse } from '../client';
 import { AgentId, InviteId, MemberId } from '../common';
 import { createInMemoryEngine } from '../in-memory-client';
+import { createDemoSeed } from './demo-seed';
 
 const signal = () => AbortSignal.timeout(5_000);
 const AGENT = AgentId.parse('agent-a');
@@ -40,5 +41,25 @@ describe('an engine without the features Reborn does not have', () => {
         expect(code(await client.members.list({}, signal()))).toBe('ok');
         expect(code(await client.me.get(signal()))).toBe('ok');
         expect(code(await client.agents.getSource(AGENT, signal()))).toBe('ok');
+    });
+});
+
+describe('activity of capabilities the engine does not advertise', () => {
+    const kinds = async (capabilities?: readonly { id: string; version: number }[]) => {
+        const { client } = createInMemoryEngine({
+            seed: createDemoSeed(),
+            ...(capabilities === undefined ? {} : { capabilities }),
+        });
+        const page = await client.activity.list({ limit: 100 }, signal());
+        if (page.kind !== 'ok') throw new Error('activity refused');
+        return page.data.items.map((item) => (item.kind === 'known' ? item.activity.kind.split('.')[0] : item.kind));
+    };
+
+    it('is not listed, while core activity is', async () => {
+        const all = await kinds();
+        expect(all).toEqual(expect.arrayContaining(['run', 'trigger']));
+        const files = await kinds([KNOWN_CAPABILITIES.files]);
+        expect(files.filter((area) => ['run', 'trigger', 'integration'].includes(area ?? ''))).toEqual([]);
+        expect(files).toContain('engine');
     });
 });

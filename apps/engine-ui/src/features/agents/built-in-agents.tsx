@@ -35,7 +35,7 @@ export function BuiltInAgents({ q }: { readonly q: string | undefined }) {
                 </h2>
                 <p className="text-sm text-text-muted">{m.agents_builtin_hint()}</p>
             </div>
-            <ul className="flex flex-col divide-y divide-border rounded-md border border-border">
+            <ul className="flex flex-col divide-y divide-divider overflow-hidden rounded-surface border border-divider bg-raised">
                 {agents.map((agent) => (
                     <BuiltInAgentRow key={agent.id} agent={agent} />
                 ))}
