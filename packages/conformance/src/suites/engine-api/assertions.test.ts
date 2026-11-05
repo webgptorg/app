@@ -743,6 +743,28 @@ const FAILS: readonly Case[] = [
         },
     ],
     [
+        'a choice prompt that preselects a choice it does not offer',
+        'engine-api.onboarding.state',
+        {
+            tamper: editJson(on('GET', /^\/onboarding$/), (state) => ({
+                ...state,
+                status: 'pending',
+                prompt: {
+                    id: 'prompt-choice',
+                    title: 'Harness',
+                    question: 'Which harness?',
+                    hint: null,
+                    error: null,
+                    canGoBack: false,
+                    kind: 'choice',
+                    multiple: false,
+                    choices: [{ id: 'codex', label: 'Codex', description: null, disabled: false }],
+                    initial: ['claude-code'],
+                },
+            })),
+        },
+    ],
+    [
         'a Wallet save the engine refuses outright',
         'engine-api.wallet.lifecycle',
         { tamper: replace(on('POST', /^\/wallet\/records$/), () => problem('wallet-not-ready', 409)) },
