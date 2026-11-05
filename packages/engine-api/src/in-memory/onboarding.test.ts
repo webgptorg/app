@@ -92,6 +92,23 @@ describe('onboarding@1 in the reference engine', () => {
         expect(next.prompt?.kind).toBe('upload');
     });
 
+    it('keeps a returned sign-in code out of the audit log, the activity feed and every chat', async () => {
+        const { client } = setup();
+        await answer(client, { kind: 'text', text: '', fileIds: [] });
+        await answer(client, { kind: 'choice', choiceIds: ['claude'] });
+        const returnCode = 'q7W9e2R4#t6Y8u0I';
+        expect((await answer(client, { kind: 'harness-login', returnCode })).prompt?.kind).toBe('upload');
+
+        const visible = JSON.stringify([
+            ok(await client.audit.list({}, signal())),
+            ok(await client.activity.list({}, signal())),
+            ok(await client.chats.listAll({}, signal())),
+            await state(client),
+        ]);
+        expect(visible).not.toContain(returnCode);
+        expect(visible).not.toContain(returnCode.split('#')[0]);
+    });
+
     it('reports a failed or expired sign-in with its reason, and starts it again with a new code', async () => {
         const { client, controller, advance } = setup();
         await answer(client, { kind: 'text', text: 'x', fileIds: [] });
