@@ -255,6 +255,7 @@ describe('operations the shared suite leaves out', () => {
                         dashboardUserId: 'user-b',
                     },
                 ],
+                onboarding: 'pending',
             },
         });
         const agent = await client.agents.create({ source: 'Ada' }, signal());
@@ -295,6 +296,18 @@ describe('operations the shared suite leaves out', () => {
         ).toBe('ok');
         expect((await client.settings.setDashboardRemovals({ enabled: false }, signal())).kind).toBe('ok');
         expect((await client.integrations.connectCalendar({ provider: 'google' }, signal())).kind).toBe('ok');
+        const onboarding = await client.onboarding.get(signal());
+        if (onboarding.kind !== 'ok' || onboarding.data.prompt === null) throw new Error('onboarding');
+        const promptId = onboarding.data.prompt.id;
+        expect(
+            (
+                await client.onboarding.answer(
+                    { promptId, action: 'answer', answer: { kind: 'text', text: 'A bakery', fileIds: [] } },
+                    signal(),
+                )
+            ).kind,
+        ).toBe('ok');
+        expect((await client.onboarding.defer(signal())).kind).toBe('ok');
     });
 });
 

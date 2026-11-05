@@ -76,6 +76,8 @@ function validBody(route: RouteDefinition): unknown {
             return { code: '123456', role: 'member' };
         case 'setDashboardRemovals':
             return { enabled: true };
+        case 'answerOnboarding':
+            return { promptId: 'matrix-prompt', action: 'back' };
         case 'testAgentDraft':
             return { book: 'Matrix', messages: [{ role: 'user', content: 'hello' }] };
         default:
