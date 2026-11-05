@@ -312,7 +312,16 @@ describe('command palette', { timeout: TIMEOUT_MS }, () => {
             expect(groupNames().slice(0, 2)).toEqual(['Agents', 'Go to']);
         });
         const places = optionsIn('Go to');
-        expect(places.slice(0, 7)).toEqual(['Home', 'Agents', 'Runs', 'Files', 'Triggers', 'Integrations', 'Members']);
+        expect(places.slice(0, 8)).toEqual([
+            'Home',
+            'Agents',
+            'Tasks',
+            'Runs',
+            'Files',
+            'Triggers',
+            'Integrations',
+            'Members',
+        ]);
         expect(screen.getByText('Esc').closest('[aria-hidden="true"]')).not.toBeNull();
     });
 

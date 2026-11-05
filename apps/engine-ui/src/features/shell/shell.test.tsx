@@ -45,6 +45,7 @@ describe('app shell', () => {
         expect(await sidebarLinks()).toEqual([
             'Home',
             'Agents',
+            'Tasks',
             'Runs',
             'Files',
             'Triggers',
