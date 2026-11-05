@@ -36,6 +36,8 @@ export const PERMISSIONS = [
     'triggers.manage',
     'integrations.read',
     'integrations.manage',
+    /** Driving an engine browser tab by hand (`browser-tab@1`); engine policy gives it to owners only. */
+    'browser.control',
 ] as const;
 export const Permission = z.enum(PERMISSIONS);
 export type Permission = z.infer<typeof Permission>;

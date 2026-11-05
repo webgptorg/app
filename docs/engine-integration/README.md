@@ -52,6 +52,7 @@ The topic files below stay normative; the kit orders them and points into them. 
 | 12  | [testing-against-the-platform.md](testing-against-the-platform.md) | Testing the engine against our stack                                    |
 | 13  | [AGENT_BRIEF.md](AGENT_BRIEF.md)                                   | The prompt for a coding agent                                           |
 | 14  | [installation.md](installation.md)                                 | Install paths, configuration, first-start output, the setup link (1, 6) |
+| 15  | [live-sessions.md](live-sessions.md)                               | Design only: live audio, video and the remote browser tab               |
 
 Interface 2 (the relay's registry lookup) is between the relay and the dashboard. The engine never calls it, but it decides which hostnames the relay routes, so [tunnel-client.md](tunnel-client.md#custom-hostnames) explains what the engine must do for it.
 
@@ -167,6 +168,10 @@ These are not decided yet. Do not build against a guess: ask, or wait for the de
 6. **ACME client.** The production ACME client is your choice. `acme-client@5.4.0`, which the mock engine's Pebble spike uses (M-03), has been unmaintained since 2024; it sits behind one port, `CertificateIssuer`, so any client fits.
 7. **Audit checkpoints.** The payload, cadence and publication of engine-signed audit checkpoints (`ptbk-audit-checkpoint-v1`, not yet in `SIGNING_CONTEXT`). C-04 adds a `checkpoint` field to `GET /audit/verify` in a later change. See [engine-api.md](engine-api.md#audit).
 8. **Who builds the engine side, and when.** An open decision for the engine team. This guide's review gate depends on it.
+
+**Live sessions** (design only, [live-sessions.md](live-sessions.md))
+
+13. **Live audio, video and the browser tab.** Reserved, not buildable yet: the capability names, the two `draft` open routes and the channel path. Open for you: the audio formats the voice harness takes, the channel's message format, the browser tab's origin allowlist (identity provider redirects included) and whether one tab of a shared browser can be screencast and driven without disturbing other engines. Do not advertise these capabilities; `engine-api.live.reserved` fails if you do.
 
 **Integration points** (raised while writing the [implementation kit](#building-the-engine-with-a-coding-agent))
 

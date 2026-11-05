@@ -58,6 +58,8 @@ export const ActivityId = z.string().regex(OPAQUE_ID_PATTERN).brand<'ActivityId'
 export type ActivityId = z.infer<typeof ActivityId>;
 export const FileVersionId = z.string().regex(OPAQUE_ID_PATTERN).brand<'FileVersionId', 'inout'>();
 export type FileVersionId = z.infer<typeof FileVersionId>;
+export const LiveSessionId = z.string().regex(OPAQUE_ID_PATTERN).brand<'LiveSessionId', 'inout'>();
+export type LiveSessionId = z.infer<typeof LiveSessionId>;
 
 /** An ID of any kind, for fields whose kind is given by another field (audit targets). */
 export const OpaqueId = z.string().regex(OPAQUE_ID_PATTERN);

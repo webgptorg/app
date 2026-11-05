@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { describe, expect, it } from 'vitest';
 
-import { KNOWN_CAPABILITIES } from './capabilities/capability';
+import { KNOWN_CAPABILITIES, RESERVED_CAPABILITIES } from './capabilities/capability';
 import { isReadPermission } from './permissions';
 import type { RouteDefinition } from './route';
 import { ENGINE_API_ROUTES, ENGINE_API_ROUTE_LIST } from './routes';
@@ -74,6 +74,8 @@ const CAPABILITY_BY_PATH = [
     ['/agents/{agentId}/test-chat', KNOWN_CAPABILITIES.testChat],
     ['/access-requests', KNOWN_CAPABILITIES.accessRequests],
     ['/settings/dashboard-removals', KNOWN_CAPABILITIES.accessRequests],
+    ['/chats/{chatId}/live-audio', RESERVED_CAPABILITIES.liveAudio],
+    ['/browser-tab-sessions', RESERVED_CAPABILITIES.browserTab],
 ] as const;
 
 function expectedCapability(route: RouteDefinition) {
@@ -155,10 +157,10 @@ describe('ENGINE_API_ROUTES', () => {
 describe('capability routes', () => {
     it('covers every capability', () => {
         const covered = new Set(capabilityRoutes.map((route) => route.capability?.id));
-        // `file-scanning` adds no route: it changes what `files@1` reports.
+        // `file-scanning` adds no route: it changes what `files@1` reports; `live-video` will extend live audio.
         expect([...covered].sort()).toEqual(
-            Object.values(KNOWN_CAPABILITIES)
-                .filter((ref) => ref !== KNOWN_CAPABILITIES.fileScanning)
+            [...Object.values(KNOWN_CAPABILITIES), ...Object.values(RESERVED_CAPABILITIES)]
+                .filter((ref) => ref !== KNOWN_CAPABILITIES.fileScanning && ref !== RESERVED_CAPABILITIES.liveVideo)
                 .map(({ id }) => id)
                 .sort(),
         );

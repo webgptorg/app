@@ -13,7 +13,7 @@ Spec: [Engine security baseline](../spec/zero-trust-spec.md#engine-security-base
 
 ## Route groups
 
-93 operations today. Every group must be served; capability groups only if the engine advertises the capability.
+95 operations today. Every group must be served; capability groups only if the engine advertises the capability.
 
 | Group                  | Paths                                                                                                                         | Ops | Source                                                                              |
 | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------- | --- | ----------------------------------------------------------------------------------- |
@@ -38,8 +38,9 @@ Spec: [Engine security baseline](../spec/zero-trust-spec.md#engine-security-base
 | `integrations@1`       | `/integrations` with `stats`, `/integrations/{integrationId}` with `enable`, `disable`, `check`; draft calendar connect       | 10  | [integrations.ts](../../packages/engine-api/src/capabilities/integrations.ts)       |
 | `test-chat@1`          | `/agents/{agentId}/test-chat` (SSE)                                                                                           | 1   | [test-chat.ts](../../packages/engine-api/src/capabilities/test-chat.ts)             |
 | `access-requests@1`    | `/access-requests`, `/access-requests/{accessRequestId}` with `approve`, `/settings/dashboard-removals`                       | 4   | [access-requests.ts](../../packages/engine-api/src/capabilities/access-requests.ts) |
+| Reserved live sessions | `/chats/{chatId}/live-audio`, `/browser-tab-sessions`: draft, design only (`live-audio@1`, `browser-tab@1`)                   | 2   | [live.ts](../../packages/engine-api/src/capabilities/live.ts)                       |
 
-`draft` routes have their shape designed but no behaviour committed: an engine may answer them with 404 `not-found`.
+`draft` routes have their shape designed but no behaviour committed: an engine may answer them with 404 `not-found`. The reserved live session routes are the exception: no engine advertises their capabilities yet, so they answer 404 `capability-not-supported` ([live-sessions.md](live-sessions.md)).
 
 ## Requests and responses
 

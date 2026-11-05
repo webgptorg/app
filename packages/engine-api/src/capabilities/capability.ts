@@ -33,6 +33,25 @@ export const KNOWN_CAPABILITIES = {
 
 export type KnownCapability = (typeof KNOWN_CAPABILITIES)[keyof typeof KNOWN_CAPABILITIES];
 
+/**
+ * Designed, not yet specified (docs/engine-integration/live-sessions.md): the names and routes are taken so nothing
+ * else claims them, but no engine may advertise them until the design is agreed, and their routes answer 404
+ * `capability-not-supported`.
+ */
+export const RESERVED_CAPABILITIES = {
+    /** Full-duplex voice in a chat (capabilities/live.ts). */
+    liveAudio: { id: 'live-audio', version: 1 },
+    /** Video next to the voice of a `live-audio@1` session; no routes of its own. */
+    liveVideo: { id: 'live-video', version: 1 },
+    /** The owner drives one engine browser tab to sign in to a site (capabilities/live.ts). */
+    browserTab: { id: 'browser-tab', version: 1 },
+} as const satisfies Readonly<Record<string, CapabilityRef>>;
+
+/** Whether `ref` is reserved, so its routes are inert on every engine for now. */
+export function isReservedCapability(ref: CapabilityRef): boolean {
+    return Object.values(RESERVED_CAPABILITIES).some(({ id, version }) => id === ref.id && version === ref.version);
+}
+
 /** `runs@1`: how capability versions are written in docs, OpenAPI and messages. */
 export function capabilityLabel(ref: CapabilityRef): string {
     return `${ref.id}@${String(ref.version)}`;
