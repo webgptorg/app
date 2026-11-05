@@ -5,6 +5,7 @@ import {
     IntegrationId,
     RevisionId,
     RunId,
+    TaskId,
     TriggerId,
     createProblem,
     encodeSseMessage,
@@ -23,7 +24,7 @@ import type {
     TestChatEvent,
 } from '@ptbk/engine-api';
 import { DEFAULT_CAPABILITIES, createInMemoryEngineApiClient } from '@ptbk/engine-api/in-memory';
-import type { InMemoryMember } from '@ptbk/engine-api/in-memory';
+import type { InMemoryMember, InMemorySeed } from '@ptbk/engine-api/in-memory';
 import { readFileSync } from 'node:fs';
 
 import type { Page, Route } from '@playwright/test';
@@ -62,6 +63,7 @@ const agentId = (match: RegExpExecArray) => AgentId.parse(match[1] ?? '');
 const chatId = (match: RegExpExecArray) => ChatId.parse(match[1] ?? '');
 const messageId = (match: RegExpExecArray) => MessageId.parse(match[2] ?? '');
 const runId = (match: RegExpExecArray) => RunId.parse(match[1] ?? '');
+const taskId = (match: RegExpExecArray) => TaskId.parse(match[1] ?? '');
 const triggerId = (match: RegExpExecArray) => TriggerId.parse(match[1] ?? '');
 const fileId = (match: RegExpExecArray) => FileId.parse(match[1] ?? '');
 const integrationId = (match: RegExpExecArray) => IntegrationId.parse(match[1] ?? '');
@@ -184,6 +186,14 @@ const ROUTES: readonly (readonly ['GET' | 'POST' | 'PUT', RegExp, number, Call])
     ['GET', /^\/runs\/([\w-]+)$/, 200, (api, match, _, __, signal) => api.runs.get(runId(match), signal)],
     ['POST', /^\/runs\/([\w-]+)\/cancel$/, 202, (api, match, _, __, signal) => api.runs.cancel(runId(match), signal)],
     ['POST', /^\/runs\/([\w-]+)\/retry$/, 201, (api, match, _, __, signal) => api.runs.retry(runId(match), signal)],
+    ['GET', /^\/tasks$/, 200, (api, _, query, __, signal) => api.tasks.list(Object.fromEntries(query), signal)],
+    ['GET', /^\/tasks\/([\w-]+)$/, 200, (api, match, _, __, signal) => api.tasks.get(taskId(match), signal)],
+    [
+        'GET',
+        /^\/tasks\/([\w-]+)\/occurrences$/,
+        200,
+        (api, match, query, _, signal) => api.tasks.listOccurrences(taskId(match), Object.fromEntries(query), signal),
+    ],
     ['GET', /^\/triggers$/, 200, (api, _, query, __, signal) => api.triggers.list(Object.fromEntries(query), signal)],
     [
         'GET',
@@ -332,6 +342,62 @@ const FAKE_ACTIVITY = [
 export const FAKE_RUN_ID = 'run-hostile';
 /** Agent output in a run: it must stay text in logs and diffs. */
 export const HOSTILE_RUN_TEXT = '<img src=x onerror=alert(1)> <script>alert(1)</script> javascript:alert(1)';
+
+/** A task whose name, explanation, note and occurrence summary carry agent-written hostile text. */
+export const FAKE_TASK_ID = 'task-hostile';
+
+function fakeTasks(): NonNullable<InMemorySeed['tasks']> {
+    return [
+        {
+            task: {
+                id: FAKE_TASK_ID,
+                name: `Review ${HOSTILE_RUN_TEXT}`,
+                kind: 'ordinary',
+                purpose: 'content',
+                core: false,
+                agentId: FAKE_AGENT_ID,
+                executor: null,
+                priority: { rank: 1, text: null },
+                state: 'blocked',
+                stateReason: HOSTILE_RUN_TEXT,
+                next: HOSTILE_RUN_TEXT,
+                conditions: [{ kind: 'dependency', met: false, text: HOSTILE_RUN_TEXT }],
+                repeat: { text: '7d', intervalSeconds: 604_800 },
+                notBefore: null,
+                dueAt: '2026-10-10T09:00:00.000Z',
+                nextAt: null,
+                progress: { completed: 1, total: 2, summary: HOSTILE_RUN_TEXT },
+                parent: null,
+                dependsOn: [{ taskId: null, name: HOSTILE_RUN_TEXT, state: 'missing' }],
+                origin: { kind: 'chat', chatId: FAKE_CHAT_ID, taskId: null, text: HOSTILE_RUN_TEXT },
+                doneCount: 1,
+                lastDoneAt: '2026-09-30T10:00:00.000Z',
+                reopened: false,
+                sourcePath: 'tasks/review.book',
+                allowedActions: [],
+                updatedAt: '2026-09-30T10:00:00.000Z',
+            },
+            links: [{ direction: 'incoming', target: { type: 'chat', chatId: FAKE_CHAT_ID, name: HOSTILE_RUN_TEXT } }],
+            notes: [HOSTILE_RUN_TEXT],
+            occurrences: [
+                {
+                    id: 'occ-hostile-1',
+                    taskId: FAKE_TASK_ID,
+                    sequence: 1,
+                    cycle: 1,
+                    reason: 'first',
+                    retryOf: null,
+                    state: 'completed',
+                    scheduledFor: null,
+                    startedAt: '2026-09-30T09:00:00.000Z',
+                    endedAt: '2026-09-30T10:00:00.000Z',
+                    summary: HOSTILE_RUN_TEXT,
+                    runIds: [FAKE_RUN_ID],
+                },
+            ],
+        },
+    ];
+}
 
 function fakeRuns() {
     const base = {
@@ -827,6 +893,7 @@ export async function routeFakeEngineApi(
             ],
             auditEntries: auditEntries(),
             runs: fakeRuns(),
+            tasks: fakeTasks(),
             triggers: fakeTriggers(),
             files: fakeFiles(),
             integrations: fakeIntegrations(),

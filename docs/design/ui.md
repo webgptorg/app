@@ -39,7 +39,7 @@ The agent detail tabs and the main sections come from the feature registry, so a
 
 ## Shell
 
-- **Sidebar** with the engine switcher at the top, sections grouped (work: Home, Agents, Chats, Runs; resources: Files, Triggers, Integrations; admin: Members, Security, Settings). Collapses to icons; becomes a drawer on mobile.
+- **Sidebar** with the engine switcher at the top, sections grouped (work: Home, Agents, Chats, Tasks, Runs; resources: Files, Triggers, Integrations; admin: Members, Security, Settings). Collapses to icons; becomes a drawer on mobile.
 - **Engine switcher, Stripe-style:** the engine's name and trust mark top-left open a menu. The full list of your engines lives in the dashboard (the engine UI may only talk to its own engine), so the menu shows the current engine plus "All engines" and "Add engine", which open the dashboard's switcher; picking an engine there navigates to its own hostname (its own origin and sign-in; synced passkeys make it quick).
 - **Command palette (⌘K):** jump to any agent, chat, run or setting; actions like "New agent", "Stop run".
 - **Trust mark** (see below) in the engine switcher only; its menu opens with "Verify this engine" (the fingerprint code, then the trust panel). A language switch ("EN ▾") beside the engine switcher and in the phone top bar; the user menu (Settings, Security, theme, sign out); and a quiet live indicator when runs are active.
@@ -52,7 +52,8 @@ The agent detail tabs and the main sections come from the feature registry, so a
 - **Create agent:** the guided wizard from the predecessor, refined: _Brief_ (describe the job in plain words) → _Book_ (AI draft, editable) → _Knowledge_ (drop files) → _Test_ (chat with the draft) → _Publish_. One click switches to the pro editor at any step.
 - **Book editor (pro):** CodeMirror with the book language, diagnostics, version history and diff, and a live test chat beside it.
 - **Chat:** streaming replies, visible progress card and tool calls while the agent works, stop, attachments, safe markdown; model output never becomes an executable control.
-- **Runs:** timeline across agents and per agent: source (chat, email, schedule, API, member, goal), status, steps, tool calls, usage and cost, errors, outputs (messages, files, project changes with changed files). Cancel and retry where permitted.
+- **Tasks** (`tasks@1`): the engine's task inventory as the engine models it, read-only and in the engine's order, sectioned into now, coming up and finished; filters by status group, agent and kind; system work muted. A task's detail shows its state and why, conditions, parent and subtasks, what it depends on and blocks, directed links to chats and agents, origin, notes and its occurrence history (work cycles, recurring slots, reopenings, retries) with their runs. No task buttons: a quiet "Discuss in chat" opens the task's conversation, because work changes through Chatter.
+- **Runs:** the run history: one run is one attempt at a task occurrence or a chat reply, so it links back to its task. Timeline across agents and per agent: source (chat, email, schedule, API, member, goal), status, steps, tool calls, usage and cost, errors, outputs (messages, files, project changes with changed files). Cancel and retry where permitted.
 - **Files:** knowledge per agent and files produced by agents, scan status, versions where available.
 - **Triggers:** inbound email addresses, schedules (once, interval, cron with next/last fire), webhooks later; fire history linked to runs; pause and resume.
 - **Integrations:** what each agent may use (MCP servers, calendar, repositories…), status and scopes, the secrets they reference by name, recent activity.

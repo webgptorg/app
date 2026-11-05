@@ -1,5 +1,5 @@
 import { KNOWN_CAPABILITIES, RunId } from '@ptbk/engine-api';
-import type { ReadRun, ReadRunDetail, TriggerId } from '@ptbk/engine-api';
+import type { ReadRun, ReadRunDetail, TaskId, TriggerId } from '@ptbk/engine-api';
 import { Banner, Card, CodeText, EmptyState, ErrorState, RelativeTime, Skeleton, useLocale } from '@ptbk/ui';
 import { useQuery } from '@tanstack/react-query';
 import { getRouteApi } from '@tanstack/react-router';
@@ -14,6 +14,7 @@ import { useAllows } from '../../app/registry/use-visible-features';
 import { m } from '../../paraglide/messages';
 import { BackLink, Page } from '../shell/page';
 import { NARROW_QUERY, useMediaQuery } from '../shell/use-media-query';
+import { taskQueryOptions } from '../tasks/tasks-queries';
 import { triggerQueryOptions } from '../triggers/triggers-queries';
 import { DiffView } from './diff-view';
 import { RunActions } from './run-actions';
@@ -180,6 +181,11 @@ function RunSummary({ run }: { readonly run: ReadRunDetail }) {
                     <RunCost cost={cost} />
                 </SummaryItem>
             )}
+            {run.taskId === null ? null : (
+                <SummaryItem label={m.run_fact_task()}>
+                    <RunTask taskId={run.taskId} />
+                </SummaryItem>
+            )}
             {run.retryOf === null ? null : (
                 <SummaryItem label={m.run_fact_retry_of()}>
                     <Link to="/runs/$runId" params={{ runId: run.retryOf }}>
@@ -188,6 +194,18 @@ function RunSummary({ run }: { readonly run: ReadRunDetail }) {
                 </SummaryItem>
             )}
         </dl>
+    );
+}
+
+/** The task this run worked on, by name; without `tasks@1` there is nothing to link to. */
+function RunTask({ taskId }: { readonly taskId: TaskId }) {
+    const allowed = useAllows({ capability: KNOWN_CAPABILITIES.tasks, permission: 'tasks.read' });
+    const task = useQuery({ ...taskQueryOptions(useEngineApi(), taskId), enabled: allowed });
+    if (!allowed) return null;
+    return (
+        <Link to="/tasks/$taskId" params={{ taskId }}>
+            {task.data?.name ?? m.run_fact_task()}
+        </Link>
     );
 }
 
