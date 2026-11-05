@@ -173,7 +173,7 @@ function prompt(ctx: EngineContext, record: OnboardingRecord): OnboardingPrompt 
                     : 'Open the link, sign in with your Claude account and paste the code it shows you here.',
                 hint: codex
                     ? 'Device-code sign-in may first need enabling in your ChatGPT security settings.'
-                    : 'Sign in on the provider’s page only. Nobody from Promptbook will ask for your password.',
+                    : 'The code works for a few minutes. If it runs out, start the sign-in again.',
                 canGoBack: true,
                 harness: HARNESSES[record.harness].label,
                 method: codex ? 'device-code' : 'return-code',
