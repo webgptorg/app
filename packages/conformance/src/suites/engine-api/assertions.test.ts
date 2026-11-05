@@ -732,6 +732,17 @@ const FAILS: readonly Case[] = [
         },
     ],
     [
+        'a finished onboarding that still asks a question',
+        'engine-api.onboarding.state',
+        {
+            tamper: editJson(on('GET', /^\/onboarding$/), (state) => ({
+                ...state,
+                status: state.prompt === null ? 'pending' : 'completed',
+                progress: { step: 3, of: 2 },
+            })),
+        },
+    ],
+    [
         'a Wallet save the engine refuses outright',
         'engine-api.wallet.lifecycle',
         { tamper: replace(on('POST', /^\/wallet\/records$/), () => problem('wallet-not-ready', 409)) },
