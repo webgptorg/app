@@ -24,6 +24,11 @@ Each entry has this shape. Platform authors: add yours at the top of the list, o
 - **Redo:** what the engine's agent must change, re-run or drop; "nothing" if it is inert.
 ```
 
+### 2026-11-05: engine API 1.15.0
+
+- **Changed:** `ENGINE_API_VERSION` is 1.15.0. It covers every 2026-11-05 entry below (breaking changes made in place before the E-02 freeze; 2.0 is reserved for the freeze).
+- **Redo:** report `engineApiVersion` 1.15.0 once the entries below are done.
+
 ### 2026-11-05: Secrets became the engine's Wallet
 
 - **Changed:** the `/secrets` routes, `SecretMetadata`, the `secrets.read` and `secrets.manage` permissions, problem `secret-revoked` and the `secret.*` audit actions are gone. In their place the capability `wallet@1` maps onto Reborn's Wallet operations (`wallet`, `wallet-save`, `wallet-remove`, `wallet-seen`, `wallet-reject`): `GET /wallet`, `POST /wallet/records`, `PUT`/`DELETE /wallet/records/{recordId}`, `POST /wallet/requests/{requestId}/seen` and `…/reject`, with permissions `wallet.read` and `wallet.manage` (adding, updating and removing a login need step-up; seen and reject do not), problems `wallet-not-ready` and `wallet-request-moved`, audit `wallet.record.*` and `wallet.request.*`. Passwords and field values are write-only; setup, recovery words, import, rotation, reset and credential tests stay off the API. Integrations keep `SecretRef` by name only. Conformance: `engine-api.secrets.never-returned` now plants canaries as a Wallet password and field value, `engine-api.secrets.lifecycle` and `engine-api.integrations.secrets-never-returned` are gone, `engine-api.wallet.lifecycle` and `engine-api.wallet.requests` are new (the latter needs the optional `ConformanceTarget.walletRequest` lever). See [engine-api.md](engine-api.md#wallet) and ENG-80.
