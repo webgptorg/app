@@ -3,30 +3,27 @@ import type { MemberId } from '@ptbk/engine-api';
 import type { MessageView } from '../../chat/message-views';
 import type { TestChatState } from './test-chat-session';
 
+const USER = { kind: 'user', key: 'user' } as const;
+
 /**
- * The test conversation as the chat's message rows show it. As in a chat, only a completed agent reply is rendered as
- * markdown; streamed, stopped and failed text stays plain.
+ * The test conversation as a chat's message rows show it: the member and the draft agent. As in a chat, only a
+ * completed agent reply is rendered as markdown.
  */
-export function testChatViews(state: TestChatState, memberId: MemberId): MessageView[] {
-    const views = state.turns.map((turn): MessageView => ({
-        id: turn.id,
-        role: turn.role,
-        createdBy: turn.role === 'user' ? memberId : null,
-        text: turn.content,
-        markdown: turn.role === 'agent' && turn.state === null,
-        state: turn.state,
+export function testChatViews(state: TestChatState, memberId: MemberId, agentName: string): MessageView[] {
+    const row = (id: string, role: 'user' | 'agent', text: string, state: MessageView['state']): MessageView => ({
+        kind: 'message',
+        id,
+        author: role === 'user' ? USER : { kind: 'agent', key: 'draft' },
+        authorName: role === 'user' ? '' : agentName,
+        createdBy: role === 'user' ? memberId : null,
+        text,
+        markdown: role === 'agent' && state === null,
+        state,
         retry: false,
-    }));
-    if (state.reply !== null) {
-        views.push({
-            id: state.reply.id,
-            role: 'agent',
-            createdBy: null,
-            text: state.reply.text,
-            markdown: false,
-            state: 'streaming',
-            retry: false,
-        });
-    }
+        question: null,
+        choices: [],
+    });
+    const views = state.turns.map((turn) => row(turn.id, turn.role, turn.content, turn.state));
+    if (state.reply !== null) views.push(row(state.reply.id, 'agent', state.reply.text, 'streaming'));
     return views;
 }

@@ -56,7 +56,18 @@ import {
     TriggerFirePage,
     TriggerPage,
 } from './capabilities/triggers';
-import { Chat, ChatPage, Message, MessagePage, ReplyStreamEvent, SendMessageResult } from './chats';
+import {
+    Chat,
+    ChatEntry,
+    ChatEntryPage,
+    ChatPage,
+    ChatQuestion,
+    Message,
+    Participant,
+    ParticipantRef,
+    ReplyStreamEvent,
+    SendMessageResult,
+} from './chats';
 import {
     ActivityId,
     AgentId,
@@ -170,10 +181,14 @@ const COMPONENT_SCHEMAS: Readonly<Record<string, z.ZodType>> = {
     EngineEvent,
     Folder,
     FolderPage,
+    ParticipantRef,
+    Participant,
+    ChatQuestion,
     Chat,
     ChatPage,
     Message,
-    MessagePage,
+    ChatEntry,
+    ChatEntryPage,
     SendMessageResult,
     ReplyStreamEvent,
     Member,

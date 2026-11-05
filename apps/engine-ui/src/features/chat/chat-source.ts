@@ -1,9 +1,9 @@
-import { RUN_SOURCES } from '@ptbk/engine-api';
-import type { ReadChat } from '@ptbk/engine-api';
+import type { ReadRun } from '@ptbk/engine-api';
 
 import { m } from '../../paraglide/messages';
 
-export type ChatSourceLabel = ReadChat['source'];
+/** What started a run; chats no longer have a source of their own. */
+export type ChatSourceLabel = ReadRun['source'];
 
 /** A source this UI does not know yet reads as `unknown` (the client's tolerant reader), never as an error. */
 export function sourceLabel(source: ChatSourceLabel): string {
@@ -25,15 +25,4 @@ export function sourceLabel(source: ChatSourceLabel): string {
         case 'unknown':
             return m.chat_source_unknown();
     }
-}
-
-export function sourceFilterOptions() {
-    return RUN_SOURCES.map((source) => ({ value: source, label: sourceLabel(source) }));
-}
-
-/** What a chat list row or the chat header calls the chat: its title, else its first message, else "Untitled". */
-export function chatName(chat: Pick<ReadChat, 'title' | 'preview'>): string {
-    if (chat.title.trim() !== '') return chat.title;
-    if (chat.preview !== null && chat.preview.trim() !== '') return chat.preview;
-    return m.chat_untitled();
 }

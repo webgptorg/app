@@ -144,30 +144,26 @@ test.describe('the built bundle under the engine CSP', () => {
         }
     });
 
-    test(`/agents/${FAKE_AGENT_ID}/chat opens a fresh conversation and meets the UX checks`, async ({
-        page,
-        visit,
-    }) => {
+    test(`/agents/${FAKE_AGENT_ID}/chat lists the agent's threads and meets the UX checks`, async ({ page, visit }) => {
         const report = await visit(`/agents/${FAKE_AGENT_ID}/chat`);
         await expect(page.getByRole('tab', { name: 'Chat' })).toHaveAttribute('aria-selected', 'true');
-        await expect(page.getByRole('textbox', { name: 'New chat' })).toBeVisible();
-        const recent = page.getByRole('navigation', { name: 'Recent chats' });
-        await expect(recent.getByRole('link', { name: /Injection demo/ })).toBeVisible();
-        await expect(recent.getByRole('link', { name: /Do you ship to Brno\?/ })).toBeVisible();
+        await expect(page.getByRole('button', { name: 'New chat with Ada' })).toBeVisible();
+        const list = page.getByRole('list', { name: 'Chats' });
+        await expect(list.getByRole('link', { name: 'Injection demo' })).toBeVisible();
+        await expect(list.getByRole('link', { name: 'Shipping' })).toBeVisible();
         expectCleanPage(report);
     });
 
-    test(`/agents/${FAKE_AGENT_ID}/chat/all lists every chat and meets the UX checks`, async ({ page, visit }) => {
-        const report = await visit(`/agents/${FAKE_AGENT_ID}/chat/all`);
-        await expect(page.getByRole('tab', { name: 'Chat' })).toHaveAttribute('aria-selected', 'true');
-        const table = page.getByRole('table');
-        await expect(table.getByRole('link', { name: 'Injection demo' })).toBeVisible();
-        await expect(table.getByRole('link', { name: 'Do you ship to Brno?' })).toBeVisible();
+    test('/chats lists every thread, marks the one that needs you and meets the UX checks', async ({ page, visit }) => {
+        const report = await visit('/chats');
+        const list = page.getByRole('list', { name: 'Chats' });
+        await expect(list.getByRole('link', { name: 'Injection demo' })).toBeVisible();
+        await expect(list.getByRole('listitem').filter({ hasText: 'Shipping' }).getByText('Needs you')).toBeVisible();
         expectCleanPage(report);
     });
 
     test('hostile agent output stays inert, before and after sending a message', async ({ page, visit }) => {
-        const report = await visit(`/agents/${FAKE_AGENT_ID}/chat/${FAKE_CHAT_ID}`);
+        const report = await visit(`/chats/${FAKE_CHAT_ID}`);
         const history = page.getByRole('region', { name: 'Messages' });
         await expect(history.getByText('Image: x').first()).toBeVisible();
         // The code block's grammar is a lazy chunk; it loads from the engine's own origin.

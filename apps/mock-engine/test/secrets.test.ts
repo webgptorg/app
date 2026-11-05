@@ -9,6 +9,11 @@ import { HARNESS_ORIGIN, createApiHarness } from '../src/testing/api-harness';
 import type { FakeClock } from '../src/testing/fake-clock';
 import { createFakeClock } from '../src/testing/fake-clock';
 
+import { MessageId } from '@ptbk/engine-api';
+/** The mock engine numbers messages `<chat>#<position>`, and a reply follows its User message directly. */
+const replyIdOf = (sent: { readonly message: { readonly id: string } }) =>
+    MessageId.parse(sent.message.id.replace(/#(\d+)$/, (_, position: string) => `#${String(Number(position) + 1)}`));
+
 let harness: ApiHarness | undefined;
 afterEach(async () => {
     await harness?.close();
@@ -82,7 +87,7 @@ describe('secret values', () => {
         }
         ok(await client.secrets.revoke(second.id, signal()));
 
-        const chat = ok(await client.chats.create(agent.id, { title: 'Canary chat' }, signal()));
+        const chat = ok(await client.chats.create({ agentId: agent.id, title: 'Canary chat' }, signal()));
         const sent = ok(await client.chats.sendMessage(chat.id, { content: 'What secrets do you hold?' }, signal()));
         await drain(clock, idleTimers);
 
@@ -94,7 +99,7 @@ describe('secret values', () => {
             agentId: agent.id,
             revisionId: agent.currentRevisionId,
             chatId: chat.id,
-            messageId: sent.replyMessageId,
+            messageId: replyIdOf(sent),
             memberId: me.memberId,
             secretId: first.id,
             passkeyId: passkey?.id,

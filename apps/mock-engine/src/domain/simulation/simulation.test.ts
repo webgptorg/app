@@ -8,6 +8,11 @@ import { createTestRuntime } from '../../testing/test-runtime';
 import { FaultPlan } from '../faults/fault-plan';
 import type { Scenario } from '../state/scenarios';
 
+import { MessageId } from '@ptbk/engine-api';
+/** The mock engine numbers messages `<chat>#<position>`, and a reply follows its User message directly. */
+const replyIdOf = (sent: { readonly message: { readonly id: string } }) =>
+    MessageId.parse(sent.message.id.replace(/#(\d+)$/, (_, position: string) => `#${String(Number(position) + 1)}`));
+
 const EPOCH = new Date('2026-10-01T00:00:00Z');
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -155,16 +160,16 @@ describe('run simulator', () => {
 
     it('gives a chat turn a linked web run that ends with the reply', async () => {
         const { client, agent, clock } = await start();
-        const chat = ok(await client.chats.create(agent.id, { title: 'Hello' }, signal()));
+        const chat = ok(await client.chats.create({ agentId: agent.id, title: 'Hello' }, signal()));
         const sent = ok(await client.chats.sendMessage(chat.id, { content: 'Hi' }, signal()));
         const [run] = ok(await client.runs.list({ source: 'web', sort: '-queuedAt', limit: 1 }, signal())).items;
-        expect(run).toMatchObject({ chatId: chat.id, messageId: sent.replyMessageId, status: 'running' });
+        expect(run).toMatchObject({ chatId: chat.id, messageId: replyIdOf(sent), status: 'running' });
         // Replies are paced on the real clock, which runs on while the simulation is paused.
         for (let second = 0; second < 600; second++) {
             clock.advance(1_000);
             await Promise.resolve();
         }
-        const stream = ok(await client.chats.streamReply(chat.id, sent.replyMessageId, {}, signal()));
+        const stream = ok(await client.chats.streamReply(chat.id, replyIdOf(sent), {}, signal()));
         for await (const item of stream) if (item.event.type !== 'delta') break;
         expect(ok(await client.runs.get(run?.id ?? ('' as never), signal())).status).toBe('completed');
     });

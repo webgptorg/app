@@ -106,7 +106,7 @@ describe('in-memory agents', () => {
                 ),
             ),
         ).toBe('invalid-book');
-        expect(code(await client.chats.create(cid.id, {}, signal()))).toBe('agent-deleted');
+        expect(code(await client.chats.create({ agentId: cid.id }, signal()))).toBe('agent-deleted');
         expect(code(await client.chats.list(missing, {}, signal()))).toBe('not-found');
     });
 
@@ -135,20 +135,21 @@ describe('in-memory folders and chats', () => {
         expect(names(ok(await client.folders.list({}, signal())).items)).toEqual(['Core', 'Ops']);
     });
 
-    it('refuses messages to missing chats and to chats of deleted agents', async () => {
+    it('refuses messages to missing chats; a deleted agent no longer answers', async () => {
         const client = engine();
         const agent = ok(await client.agents.create({ source: 'Ada' }, signal()));
-        const chat = ok(await client.chats.create(agent.id, {}, signal()));
-        expect(chat.title).toBe('');
+        const chat = ok(await client.chats.create({ agentId: agent.id }, signal()));
+        expect(chat.title).toBe('Chat with Ada');
         expect(ok(await client.chats.list(agent.id, {}, signal())).items).toEqual([chat]);
         const missing = ChatId.parse('nope');
-        expect(code(await client.chats.listMessages(missing, {}, signal()))).toBe('not-found');
+        expect(code(await client.chats.listEntries(missing, {}, signal()))).toBe('not-found');
         expect(code(await client.chats.sendMessage(missing, { content: 'hi' }, signal()))).toBe('not-found');
         expect(code(await client.chats.cancelReply(chat.id, MessageId.parse('nope'), signal()))).toBe('not-found');
         const sent = ok(await client.chats.sendMessage(chat.id, { content: 'hi' }, signal()));
-        expect(code(await client.chats.cancelReply(chat.id, sent.userMessage.id, signal()))).toBe('not-found');
+        expect(code(await client.chats.cancelReply(chat.id, sent.message.id, signal()))).toBe('not-found');
         ok(await client.agents.delete(agent.id, signal()));
-        expect(code(await client.chats.sendMessage(chat.id, { content: 'hi' }, signal()))).toBe('agent-deleted');
+        ok(await client.chats.sendMessage(chat.id, { content: 'anyone?' }, signal()));
+        expect(ok(await client.chats.get(chat.id, signal())).messageCount).toBe(3);
     });
 
     it('streams chat changes only to members who may read chats', async () => {
@@ -156,7 +157,7 @@ describe('in-memory folders and chats', () => {
         const controller = new AbortController();
         const iterator = ok(await client.events.stream({}, controller.signal))[Symbol.asyncIterator]();
         const agent = ok(await client.agents.create({ source: 'Ada' }, signal()));
-        ok(await client.chats.create(agent.id, {}, signal()));
+        ok(await client.chats.create({ agentId: agent.id }, signal()));
         ok(await client.agents.start(agent.id, signal()));
         const nextType = async () => {
             const result = await iterator.next();

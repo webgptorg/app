@@ -141,29 +141,32 @@ export interface EngineApiClient {
         delete(folderId: Param<'deleteFolder', 'folderId'>, signal: AbortSignal): Result<'deleteFolder'>;
     };
     readonly chats: {
-        /** Every chat the member can see, across agents. */
+        /** Every thread the member can see. */
         listAll(query: Query<'listChats'>, signal: AbortSignal): Result<'listChats'>;
         list(
             agentId: Param<'listAgentChats', 'agentId'>,
             query: Query<'listAgentChats'>,
             signal: AbortSignal,
         ): Result<'listAgentChats'>;
-        create(
-            agentId: Param<'createChat', 'agentId'>,
-            body: Body<'createChat'>,
-            signal: AbortSignal,
-        ): Result<'createChat'>;
+        /** A thread with Chatter, or with the agent the body names. */
+        create(body: Body<'createChat'>, signal: AbortSignal): Result<'createChat'>;
         get(chatId: Param<'getChat', 'chatId'>, signal: AbortSignal): Result<'getChat'>;
-        listMessages(
-            chatId: Param<'listChatMessages', 'chatId'>,
-            query: Query<'listChatMessages'>,
+        listEntries(
+            chatId: Param<'listChatEntries', 'chatId'>,
+            query: Query<'listChatEntries'>,
             signal: AbortSignal,
-        ): Result<'listChatMessages'>;
+        ): Result<'listChatEntries'>;
         sendMessage(
             chatId: Param<'sendChatMessage', 'chatId'>,
             body: Body<'sendChatMessage'>,
             signal: AbortSignal,
         ): Result<'sendChatMessage'>;
+        markRead(chatId: Param<'markChatRead', 'chatId'>, signal: AbortSignal): Result<'markChatRead'>;
+        markSeen(
+            chatId: Param<'markChatSeen', 'chatId'>,
+            body: Body<'markChatSeen'>,
+            signal: AbortSignal,
+        ): Result<'markChatSeen'>;
         streamReply(
             chatId: Param<'streamChatReply', 'chatId'>,
             messageId: Param<'streamChatReply', 'messageId'>,
@@ -401,10 +404,12 @@ export function createEngineApiClient(transport: EngineApiTransport): EngineApiC
         chats: {
             listAll: (query, signal) => call(R.listChats, { query }, signal),
             list: (agentId, query, signal) => call(R.listAgentChats, { params: { agentId }, query }, signal),
-            create: (agentId, body, signal) => call(R.createChat, { params: { agentId }, body }, signal),
+            create: (body, signal) => call(R.createChat, { body }, signal),
             get: (chatId, signal) => call(R.getChat, { params: { chatId } }, signal),
-            listMessages: (chatId, query, signal) => call(R.listChatMessages, { params: { chatId }, query }, signal),
+            listEntries: (chatId, query, signal) => call(R.listChatEntries, { params: { chatId }, query }, signal),
             sendMessage: (chatId, body, signal) => call(R.sendChatMessage, { params: { chatId }, body }, signal),
+            markRead: (chatId, signal) => call(R.markChatRead, { params: { chatId } }, signal),
+            markSeen: (chatId, body, signal) => call(R.markChatSeen, { params: { chatId }, body }, signal),
             streamReply: (chatId, messageId, options, signal) =>
                 call(R.streamChatReply, { params: { chatId, messageId }, ...streamRequest(options) }, signal),
             cancelReply: (chatId, messageId, signal) =>

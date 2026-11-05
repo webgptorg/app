@@ -28,11 +28,11 @@ export type {
     InMemorySeedAgent,
     InMemorySeedAuditEntry,
     InMemorySeedChat,
+    InMemorySeedEntry,
     InMemorySeedFile,
     InMemorySeedRun,
     InMemorySeedTask,
     InMemorySeedTrigger,
-    InMemoryVisitorChat,
     ResourceKind,
 } from './in-memory-client';
 export type { Actor, ReplyChunk, ReplyScript, ReplyScriptInput, ScriptedReply, Sleep } from './in-memory/kit';

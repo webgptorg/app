@@ -68,7 +68,7 @@ export function TestChatPanel({
     const me = useCurrentMember();
     const chat = useTestChat({ agentId, book, onInvalidBook });
     const { state } = chat;
-    const views = useMemo(() => testChatViews(state, me.memberId), [state, me.memberId]);
+    const views = useMemo(() => testChatViews(state, me.memberId, agentName), [state, me.memberId, agentName]);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const streaming = state.phase === 'streaming';
     // Once per finished reply, never per token; the trailing space makes a repeat count as a change.
@@ -156,7 +156,6 @@ export function TestChatPanel({
                 <MessageList
                     label={m.book_test_messages()}
                     views={views}
-                    agentName={agentName}
                     virtual={false}
                     hasOlder={false}
                     loadingOlder={false}

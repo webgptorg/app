@@ -192,7 +192,7 @@ describe('home: control center', { timeout: TIMEOUT_MS }, () => {
     });
 
     it('shows empty states when there is nothing yet, with a way to create the first agent', async () => {
-        const engine = createHomeEngine({ activity: [], seed: { agents: [], runs: [], chats: [], messages: [] } });
+        const engine = createHomeEngine({ activity: [], seed: { agents: [], runs: [], chats: [] } });
         renderWithProviders({ path: '/', engineApi: engine.client });
 
         const recent = await screen.findByRole('region', { name: 'Recent agents' });
@@ -212,7 +212,7 @@ describe('home: control center', { timeout: TIMEOUT_MS }, () => {
             requires: {},
             attention: { id: 'slow', useAttention: () => ({ count: 0, to: '/audit', pending: true }) },
         });
-        const engine = createHomeEngine({ activity: [], seed: { agents: [], runs: [], chats: [], messages: [] } });
+        const engine = createHomeEngine({ activity: [], seed: { agents: [], runs: [], chats: [] } });
         renderWithProviders({ path: '/', engineApi: engine.client, features: [...FEATURES, slow] });
 
         await waitFor(() => {
@@ -223,7 +223,7 @@ describe('home: control center', { timeout: TIMEOUT_MS }, () => {
     });
 
     it('does not report zero attention when the stats behind it fail', async () => {
-        const engine = createHomeEngine({ activity: [], seed: { agents: [], runs: [], chats: [], messages: [] } });
+        const engine = createHomeEngine({ activity: [], seed: { agents: [], runs: [], chats: [] } });
         const refused = { kind: 'problem', problem: createProblem('forbidden') } as const;
         vi.spyOn(engine.client.integrations, 'stats').mockResolvedValue(refused);
         vi.spyOn(engine.client.triggers, 'stats').mockResolvedValue(refused);
@@ -239,7 +239,7 @@ describe('home: control center', { timeout: TIMEOUT_MS }, () => {
         const engine = createHomeEngine({
             activity: [],
             capabilities: Object.values(KNOWN_CAPABILITIES).filter(({ id }) => id !== 'runs'),
-            seed: { agents: [], runs: [], chats: [], messages: [] },
+            seed: { agents: [], runs: [], chats: [] },
         });
         renderWithProviders({ path: '/', engineApi: engine.client });
 
@@ -343,7 +343,7 @@ describe('home: member', { timeout: TIMEOUT_MS }, () => {
     it('says when nothing of theirs runs and they have no chats, without offering what they may not do', async () => {
         const engine = createHomeEngine({
             permissions: ['agents.read', 'chats.read', 'runs.read'],
-            seed: { runs: [], chats: [], messages: [], agents: [] },
+            seed: { runs: [], chats: [], agents: [] },
         });
         renderWithProviders({ path: '/', engineApi: engine.client });
 
@@ -364,7 +364,7 @@ describe('home: member', { timeout: TIMEOUT_MS }, () => {
     it('leads with the agents and invites a first chat with one, where the member may chat', async () => {
         const engine = createHomeEngine({
             permissions: ['agents.read', 'chats.read', 'chats.write'],
-            seed: { chats: [], messages: [] },
+            seed: { chats: [] },
         });
         const { container } = renderWithProviders({ path: '/', engineApi: engine.client });
 
@@ -381,7 +381,7 @@ describe('home: member', { timeout: TIMEOUT_MS }, () => {
     it('offers no chat to a member who may only read chats', async () => {
         const engine = createHomeEngine({
             permissions: ['agents.read', 'chats.read'],
-            seed: { chats: [], messages: [] },
+            seed: { chats: [] },
         });
         renderWithProviders({ path: '/', engineApi: engine.client });
 

@@ -45,6 +45,7 @@ describe('app shell', () => {
         expect(await sidebarLinks()).toEqual([
             'Home',
             'Agents',
+            'Chats',
             'Tasks',
             'Runs',
             'Files',
@@ -131,7 +132,7 @@ describe('app shell', () => {
     it('shows only what a Reborn engine reports, and its hidden screens say so by URL and stay out of the palette', async () => {
         const { user } = renderWithProviders({ path: '/members', capabilities: [KNOWN_CAPABILITIES.files] });
         expect(await screen.findByRole('heading', { level: 1, name: 'Not available on this engine' })).toBeDefined();
-        expect(await sidebarLinks()).toEqual(['Home', 'Agents', 'Files', 'Security', 'Secrets', 'Settings']);
+        expect(await sidebarLinks()).toEqual(['Home', 'Agents', 'Chats', 'Files', 'Security', 'Secrets', 'Settings']);
 
         await user.click(screen.getByRole('button', { name: 'Search and commands' }));
         const commands = within(await screen.findByRole('group', { name: 'Commands' }))

@@ -1,15 +1,11 @@
 import { EmptyState, Skeleton } from '@ptbk/ui';
-import { getRouteApi } from '@tanstack/react-router';
 import { SearchX } from 'lucide-react';
 
 import { Link } from '../../app/link';
 import { m } from '../../paraglide/messages';
 
-const route = getRouteApi('/agents/$agentId/chat/$chatId');
-
-/** The engine answered 404 for this chat, or it belongs to another agent. */
+/** The engine answered 404 for this thread. */
 export function ChatNotFound() {
-    const agentId = route.useParams({ select: (params) => params.agentId });
     return (
         <div className="py-8">
             <EmptyState
@@ -18,7 +14,7 @@ export function ChatNotFound() {
                 description={m.chat_not_found_body()}
                 headingLevel={2}
                 action={
-                    <Link to="/agents/$agentId/chat/all" params={{ agentId }} variant="standalone">
+                    <Link to="/chats" variant="standalone">
                         {m.chat_back()}
                     </Link>
                 }

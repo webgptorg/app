@@ -271,7 +271,7 @@ describe('capability events', () => {
         const ids = seen.map(({ id }) => Number(id));
         expect([...ids].sort((a, b) => a - b)).toEqual(ids);
         // Something the member may see, after everything about the run: none of the run's events came first.
-        ok(await owner.chats.create(agent.id, { title: 'After the run' }, signal()));
+        ok(await owner.chats.create({ agentId: agent.id, title: 'After the run' }, signal()));
         const [first] = await blindEvents.take(1, () => true);
         expect(first?.event.type).toBe('chat.changed');
         ownerEvents.close();

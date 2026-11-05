@@ -37,6 +37,8 @@ function validBody(route: RouteDefinition): unknown {
             return { title: 'Matrix' };
         case 'sendChatMessage':
             return { content: 'hello' };
+        case 'markChatSeen':
+            return { messageIds: ['chat-unknown#1'] };
         case 'updateMember':
             return { role: 'viewer' };
         case 'createInvite':
@@ -207,11 +209,13 @@ describe('authorisation matrix', () => {
 
     it('gives a viewer 403 on every mutating route', async () => {
         const cookie = harness.signIn({ memberId: memberOf('viewer') });
+        // Marking a thread read or seen needs only `chats.read`, which a viewer has.
         const mutating = ENGINE_API_ROUTE_LIST.filter(
             (route) =>
                 route.method !== 'GET' &&
                 (route.capability === undefined || isCoreFeature(route.capability)) &&
-                route.permission !== null,
+                route.permission !== null &&
+                route.permission !== 'chats.read',
         );
         expect(mutating.length).toBeGreaterThan(25);
         for (const route of mutating) {
@@ -302,25 +306,18 @@ describe('ownership', () => {
         }
         // Reading and chatting are not changes: a member may do both on anyone's agent.
         expect((await call(harness, cookie, ENGINE_API_ROUTES.getAgent, { agentId: other.id })).status).toBe(200);
-        expect((await call(harness, cookie, ENGINE_API_ROUTES.createChat, { agentId: other.id })).status).toBe(201);
+        expect((await call(harness, cookie, ENGINE_API_ROUTES.createChat, {}, { agentId: other.id })).status).toBe(201);
     });
 
-    it('lets a member read but not write in a chat another member started', async () => {
-        const memberId = memberOf('member');
-        const cookie = harness.signIn({ memberId });
+    it('lets a member write in a thread another member started: nobody owns a thread', async () => {
+        const cookie = harness.signIn({ memberId: memberOf('member') });
         const owner = harness.signIn({ memberId: memberOf('owner') });
         const agent = (await agents()).find((candidate) => candidate.deletedAt === null);
         if (agent === undefined) throw new Error('no agent');
-        const started = await call(harness, owner, ENGINE_API_ROUTES.createChat, { agentId: agent.id });
+        const started = await call(harness, owner, ENGINE_API_ROUTES.createChat, {}, { agentId: agent.id });
         const chatId = String(started.body?.['id']);
         expect((await call(harness, cookie, ENGINE_API_ROUTES.getChat, { chatId })).status).toBe(200);
-        const sent = await call(harness, cookie, ENGINE_API_ROUTES.sendChatMessage, { chatId });
-        expect(sent).toMatchObject({ status: 403, body: { code: 'forbidden', requiredPermission: 'chats.write' } });
-        const own = await call(harness, cookie, ENGINE_API_ROUTES.createChat, { agentId: agent.id });
-        const ownChatId = String(own.body?.['id']);
-        expect((await call(harness, cookie, ENGINE_API_ROUTES.sendChatMessage, { chatId: ownChatId })).status).toBe(
-            202,
-        );
+        expect((await call(harness, cookie, ENGINE_API_ROUTES.sendChatMessage, { chatId })).status).toBe(202);
     });
 
     it("lets an admin change anyone's agent", async () => {

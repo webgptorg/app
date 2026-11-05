@@ -24,6 +24,11 @@ Each entry has this shape. Platform authors: add yours at the top of the list, o
 - **Redo:** what the engine's agent must change, re-run or drop; "nothing" if it is inert.
 ```
 
+### 2026-11-05: Chats are the engine's threads
+
+- **Changed:** [`chats.ts`](../../packages/engine-api/src/chats.ts) models a chat as the engine's `CHAT` thread ([engine-api.md, Chats](engine-api.md#chats)). `Chat` drops `agentId`, `source` and `createdBy` and gains `status`, `members`, `unread` and `questions`; `ChatId` and `MessageId` are opaque engine references (`<chat>#<position>`). `POST /agents/{agentId}/chats` became `POST /chats` (Chatter unless `agentId` is given; 409 `chatter-missing`). `GET /chats/{chatId}/messages` became `GET /chats/{chatId}/entries` (`message`, `joined`, `titled`, `status`, newest first). Every `Message` has `author: { kind, key }` and `choices` instead of `role`. Sending answers 202 `{ message }` (no `replyMessageId`); replies are entries of their own, and the stream route streams any message still `streaming`. New: `requestKey` on create and send (409 `request-key-reused`), `replyTo` on send, `POST /chats/{chatId}/read` and `POST /chats/{chatId}/seen`. The creator-only write rule is gone. Conformance adds `engine-api.chat.thread-joins`, `.authorship`, `.idempotent-send`, `.read-and-seen` and `.default-chatter`.
+- **Redo:** serve chats from the engine's chat Books: map threads, members, `CHAT TITLE`/`CHAT STATUS`/`CHAT MEMBER` and messages to the new schemas, with message IDs from `<chat>#<position>`; implement `requestKey` (per member, per thread), `replyTo`, `read` and `seen` on your attention store (`chat-read`, `chat-seen`); drop the 403 for writing in another member's chat; stream partial text for any agent message; re-run the engine-api conformance suite.
+
 ### 2026-11-05: Engine-driven onboarding
 
 - **Changed:** new capability `onboarding@1`: `GET /onboarding`, `POST /onboarding/answer`, `POST /onboarding/defer`. Your initializer presents its prompts (text or intent, choice, confirm, upload through `files@1`, harness login with URL, code and status) and the UI only renders and answers them, like your desktop client's prompt transport. New problem `onboarding-prompt-stale`, new checks `engine-api.onboarding.state` and `engine-api.onboarding.refusals` (ENG-115). See [engine-api.md](engine-api.md#onboarding).

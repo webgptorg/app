@@ -88,7 +88,7 @@ describe('tasks', { timeout: TIMEOUT_MS }, () => {
         await waitFor(() => {
             expect(
                 within(related).getAllByRole('link', { name: 'Review the billing PR' })[0]?.getAttribute('href'),
-            ).toBe('/agents/agent-ada/chat/chat-ada-1');
+            ).toBe('/chats/chat-ada-1');
         });
         expect(
             within(related)
@@ -96,7 +96,7 @@ describe('tasks', { timeout: TIMEOUT_MS }, () => {
                 .getAttribute('href'),
         ).toBe('/tasks/task-deploy-billing');
         expect((await screen.findByRole('link', { name: 'Discuss in chat' })).getAttribute('href')).toBe(
-            '/agents/agent-ada/chat/chat-ada-1',
+            '/chats/chat-ada-1',
         );
         expect(await screen.findByText('It has not run yet.')).toBeTruthy();
         await expectNoAxeViolations(container);

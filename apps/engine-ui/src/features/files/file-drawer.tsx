@@ -147,13 +147,9 @@ function Details({ file, onDeleted }: { readonly file: FileMetadata; readonly on
                 <Fact term={m.files_column_agent()}>
                     <AgentName agentId={file.agentId} />
                 </Fact>
-                {file.chatId !== null && file.agentId !== null ? (
+                {file.chatId !== null ? (
                     <Fact term={m.files_field_chat()}>
-                        <Link
-                            to="/agents/$agentId/chat/$chatId"
-                            params={{ agentId: file.agentId, chatId: file.chatId }}
-                            variant="standalone"
-                        >
+                        <Link to="/chats/$chatId" params={{ chatId: file.chatId }} variant="standalone">
                             {m.files_open_chat()}
                         </Link>
                     </Fact>

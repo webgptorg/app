@@ -1,94 +1,111 @@
 import { ChatId, MemberId, MessageId } from '@ptbk/engine-api';
-import type { Message } from '@ptbk/engine-api';
+import type { ReadChat, ReadChatEntry, ReadMessage } from '@ptbk/engine-api';
 import { describe, expect, it } from 'vitest';
 
 import { INITIAL_CHAT_SESSION } from './chat-session';
 import type { ChatSessionState } from './chat-session';
-import { messageViews } from './message-views';
+import { participantName, threadViews } from './message-views';
 
 const me = MemberId.parse('member-owner');
-const chatId = ChatId.parse('chat-1');
+const chatId = ChatId.parse('Thread — 2026-10-01 12:00:00');
+const at = '2026-10-01T12:00:00Z' as ReadMessage['createdAt'];
+const ADA = { kind: 'agent', key: 'agent-ada' } as const;
+const USER = { kind: 'user', key: 'user' } as const;
 
-function message(id: string, fields: Partial<Message> = {}): Message {
+function message(position: number, fields: Partial<ReadMessage> = {}): ReadMessage {
     return {
-        id: MessageId.parse(id),
+        type: 'message',
+        id: MessageId.parse(`${chatId}#${String(position)}`),
         chatId,
-        role: 'agent',
-        content: `Text of ${id}`,
+        author: ADA,
+        content: `Text ${String(position)}`,
         status: 'completed',
         createdBy: null,
-        createdAt: '2026-10-01T12:00:00Z' as Message['createdAt'],
+        createdAt: at,
+        choices: [],
         ...fields,
     };
 }
 
+const chat: Pick<ReadChat, 'members' | 'questions'> = {
+    members: [
+        { kind: 'user', key: 'user', name: 'User' },
+        { kind: 'agent', key: 'agent-ada', name: 'Ada' },
+    ],
+    questions: [],
+};
 const session = (fields: Partial<ChatSessionState>): ChatSessionState => ({ ...INITIAL_CHAT_SESSION, ...fields });
 const options = { memberId: me, canSendAgain: true };
 
-describe('messageViews', () => {
-    it('renders only completed agent replies as markdown and labels stored states', () => {
-        const views = messageViews(
+describe('threadViews', () => {
+    it('names authors, shows agents joining and new titles, and hides the User joining', () => {
+        const entries: ReadChatEntry[] = [
+            { type: 'joined', id: 'j1', chatId, createdAt: at, participant: { ...USER, name: 'User' } },
+            { type: 'joined', id: 'j2', chatId, createdAt: at, participant: { ...ADA, name: 'Ada' } },
+            message(1, { author: USER, createdBy: me }),
+            { type: 'titled', id: 't1', chatId, createdAt: at, title: 'Billing' },
+            { type: 'status', id: 's1', chatId, createdAt: at, status: 'open' },
+            { type: 'status', id: 's2', chatId, createdAt: at, status: 'resolved' },
+            message(2),
+        ];
+        const views = threadViews(chat, entries, INITIAL_CHAT_SESSION, options);
+        expect(views.map((view) => (view.kind === 'event' ? view.text : `${view.authorName}|${view.text}`))).toEqual([
+            'Ada joined',
+            '|Text 1',
+            'Renamed to “Billing”',
+            'Marked as resolved',
+            'Ada|Text 2',
+        ]);
+    });
+
+    it('labels stored states and lays the followed reply’s live text over its row', () => {
+        const views = threadViews(
+            chat,
             [
-                message('u', { role: 'user', createdBy: me }),
-                message('a'),
-                message('s', { status: 'cancelled', content: '' }),
-                message('f', { status: 'failed' }),
-                message('g', { status: 'streaming' }),
+                message(1, { status: 'cancelled', content: '' }),
+                message(2, { status: 'failed' }),
+                message(3, { status: 'streaming', content: '' }),
             ],
-            INITIAL_CHAT_SESSION,
+            session({
+                phase: 'interrupted',
+                reply: { messageId: message(3).id, text: 'partial', lastSeq: 2 },
+                partials: new Map([[message(1).id, 'kept']]),
+            }),
             options,
         );
-        expect(views.map(({ id, markdown, state }) => [id, markdown, state])).toEqual([
-            ['u', false, null],
-            ['a', true, null],
-            ['s', false, 'stopped'],
-            ['f', false, 'failed'],
-            ['g', false, 'streaming'],
+        expect(
+            views.map((view) => (view.kind === 'message' ? [view.state, view.text, view.retry, view.markdown] : null)),
+        ).toEqual([
+            ['stopped', 'kept', false, false],
+            ['failed', 'Text 2', false, false],
+            ['interrupted', 'partial', true, false],
         ]);
-        expect(views[2]?.text).toBe('');
-    });
-
-    it('shows the streamed text over the reply’s row, or after the history until the engine has it', () => {
-        const followed = session({
-            phase: 'streaming',
-            reply: { messageId: MessageId.parse('r'), text: 'Live', lastSeq: 1 },
-        });
-        const inHistory = messageViews([message('r', { status: 'streaming', content: '' })], followed, options);
-        expect(inHistory).toEqual([
-            expect.objectContaining({ id: 'r', text: 'Live', state: 'streaming', markdown: false }),
+        const done = threadViews(chat, [message(4), message(5, { author: USER })], INITIAL_CHAT_SESSION, options);
+        expect(done.map((view) => view.kind === 'message' && view.markdown)).toEqual([true, false]);
+        const later = threadViews(chat, [message(6, { status: 'unknown' })], INITIAL_CHAT_SESSION, options);
+        expect(later.map((view) => (view.kind === 'message' ? [view.state, view.text, view.markdown] : null))).toEqual([
+            [null, 'Text 6', false],
         ]);
-        const appended = messageViews([message('u', { role: 'user' })], followed, options);
-        expect(appended.map(({ id }) => id)).toEqual(['u', 'r']);
     });
 
-    it('prefers the engine’s copy once the stream is gone, and offers retry by state', () => {
-        const reply = { messageId: MessageId.parse('r'), text: 'Partial', lastSeq: 1 };
-        const interrupted = messageViews(
-            [message('r', { status: 'streaming', content: '' })],
-            session({ phase: 'interrupted', reply }),
+    it('marks outstanding questions with their choices, and shows the message being sent', () => {
+        const question = message(1, { choices: ['Yes', 'No'] });
+        const views = threadViews(
+            { ...chat, questions: [{ id: 'q', messageId: question.id, author: ADA, seen: false }] },
+            [question, message(2, { choices: ['Ignored'] })],
+            session({ phase: 'unconfirmed', outgoing: 'Yes' }),
             options,
         );
-        expect(interrupted[0]).toMatchObject({ text: 'Partial', state: 'interrupted', retry: true });
-        const failed = messageViews(
-            [message('r', { status: 'failed', content: 'Full text' })],
-            session({ phase: 'error', reply }),
-            options,
-        );
-        expect(failed[0]).toMatchObject({ text: 'Full text', state: 'failed', retry: true });
-        const readOnly = messageViews([message('r', { status: 'failed' })], session({ phase: 'error', reply }), {
-            ...options,
-            canSendAgain: false,
-        });
-        expect(readOnly[0]?.retry).toBe(false);
+        expect(
+            views.map((view) => (view.kind === 'message' ? [view.question, view.choices, view.state] : null)),
+        ).toEqual([
+            [{ seen: false }, ['Yes', 'No'], null],
+            [null, [], null],
+            [null, [], 'unconfirmed'],
+        ]);
     });
 
-    it('keeps the partial text of a stopped reply the engine kept empty, and shows the message being sent', () => {
-        const views = messageViews(
-            [message('s', { status: 'cancelled', content: '' })],
-            session({ partials: new Map([['s', 'Kept']]), outgoing: 'Sending this' }),
-            options,
-        );
-        expect(views[0]).toMatchObject({ text: 'Kept', state: 'stopped' });
-        expect(views[1]).toMatchObject({ role: 'user', createdBy: me, text: 'Sending this', state: 'pending' });
+    it('falls back to the key for a participant the thread does not list', () => {
+        expect(participantName(chat, { kind: 'agent', key: 'agent-gone' })).toBe('agent-gone');
     });
 });

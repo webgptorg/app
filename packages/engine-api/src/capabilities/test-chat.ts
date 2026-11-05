@@ -1,15 +1,17 @@
 import { z } from 'zod';
 
 import { AgentParams, BookSource } from '../agents';
-import { MESSAGE_ROLES } from '../chats';
 import { ProblemDetails } from '../common';
 import { MAX_MESSAGE_LENGTH, MAX_TEST_CHAT_MESSAGES, MAX_TEST_CHAT_TRANSCRIPT_LENGTH } from '../constants';
 import { defineRoute } from '../route';
 import { KNOWN_CAPABILITIES } from './capability';
 
+/** A test transcript has the member and the draft agent only, so roles stay simple. */
+export const TEST_CHAT_ROLES = ['user', 'agent'] as const;
+
 /** One turn of a test conversation, as the UI holds it; the engine keeps none of them. */
 export const TestChatTurn = z.strictObject({
-    role: z.enum(MESSAGE_ROLES),
+    role: z.enum(TEST_CHAT_ROLES),
     content: z.string().min(1).max(MAX_MESSAGE_LENGTH),
 });
 export type TestChatTurn = z.infer<typeof TestChatTurn>;

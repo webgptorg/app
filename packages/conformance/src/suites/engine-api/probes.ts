@@ -37,7 +37,11 @@ const testRun: Probe = async (owner, request) => {
 };
 const folders: Probe = (owner) => all(owner, R.listFolders);
 const chatMessages: Probe = async (owner, request) =>
-    (await owner.ok(R.listChatMessages, { params: { chatId: param(request, 'chatId') }, query: { limit: 100 } })).items;
+    (await owner.ok(R.listChatEntries, { params: { chatId: param(request, 'chatId') }, query: { limit: 100 } })).items;
+const readState: Probe = async (owner, request) => {
+    const { unread, questions } = await owner.ok(R.getChat, { params: { chatId: param(request, 'chatId') } });
+    return { unread, questions };
+};
 const apiTokens: Probe = (owner) => all(owner, R.listApiTokens);
 const settings: Probe = (owner) => owner.ok(R.getSettings);
 const secrets: Probe = (owner) => all(owner, R.listSecrets, { q: 'conformance-' });
@@ -73,11 +77,11 @@ const PROBES: Partial<Record<EngineApiRouteId, Probe>> = {
     createFolder: folders,
     renameFolder: folders,
     deleteFolder: folders,
-    createChat: async (owner, request) =>
-        (await owner.ok(R.listAgentChats, { params: { agentId: param(request, 'agentId') }, query: { limit: 100 } }))
-            .items,
+    createChat: (owner) => ids(owner, R.listChats, { q: 'conformance-' }),
     sendChatMessage: chatMessages,
     cancelChatReply: chatMessages,
+    markChatRead: readState,
+    markChatSeen: readState,
     createApiToken: apiTokens,
     revokeApiToken: apiTokens,
     updateSettings: settings,

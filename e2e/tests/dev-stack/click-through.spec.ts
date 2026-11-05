@@ -149,7 +149,8 @@ test('sign up from the dev mailbox, subscribe, link with dev:link, open the engi
     await enginePage.goto(`https://${engineHost}/agents`);
     await enginePage.getByRole('table', { name: 'Agents' }).getByRole('link').first().click();
     await enginePage.getByRole('tab', { name: 'Chat' }).click();
-    const composer = enginePage.getByRole('textbox', { name: 'New chat' });
+    await enginePage.getByRole('button', { name: /^New chat with / }).click();
+    const composer = enginePage.getByRole('textbox', { name: 'Message' });
     await composer.fill('Hello from the dev stack smoke test');
     await composer.press('Enter');
     await expect(enginePage.locator('[aria-live="polite"][aria-atomic="true"]')).toHaveText(/ replied$/, {

@@ -148,8 +148,10 @@ export const AUDIT_CHECKS: readonly ConformanceCheck[] = [
             await owner.ok(R.deleteFolder, { params: { folderId: folder.id } });
             record('DELETE /folders/{folderId}', 'folder.delete', 'folder', folder.id);
 
-            const chat = await owner.ok(R.createChat, { params: agentParams, body: { title: world.name('audited') } });
-            record('POST /agents/{agentId}/chats', 'chat.create', 'chat', chat.id);
+            const chat = await owner.ok(R.createChat, {
+                body: { agentId: agent.id, title: world.name('audited') },
+            });
+            record('POST /chats', 'chat.create', 'chat', chat.id);
             await owner.ok(R.sendChatMessage, { params: { chatId: chat.id }, body: { content: CHAT_MESSAGE } });
             record('POST /chats/{chatId}/messages', 'chat.message.send', 'chat', chat.id);
 

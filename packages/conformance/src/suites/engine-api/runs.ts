@@ -7,7 +7,7 @@ import { CHAT_MESSAGE } from '../../fixtures/books';
 import { checkFilter, checkStableWalk, requireCapability } from './capability-support';
 import { SUITE, attempt } from './support';
 import type { World } from './world';
-import { REPLY_TIMEOUT_MS, createWorld } from './world';
+import { REPLY_TIMEOUT_MS, createWorld, replyAfter } from './world';
 
 const R = ENGINE_API_ROUTES;
 const POLL_MS = 500;
@@ -24,10 +24,11 @@ async function chatRun(
         params: { chatId: chat.id },
         body: { content: CHAT_MESSAGE },
     });
+    const reply = await replyAfter(world.owner, chat.id, sent.message.id);
     const { items } = await world.owner.ok(R.listRuns, { query: { agentId: agent.id, source: 'web', limit: 100 } });
-    const run = items.find(({ messageId }) => messageId === sent.replyMessageId);
+    const run = items.find(({ messageId }) => messageId === reply.id);
     if (run === undefined) skip('the engine started no run for a chat turn');
-    return { run, chatId: chat.id, messageId: sent.replyMessageId };
+    return { run, chatId: chat.id, messageId: reply.id };
 }
 
 /** Reads the reply to its end, so the run behind it can finish. */

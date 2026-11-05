@@ -17,7 +17,7 @@ function createContext() {
 
 describe('preloadMatchedRouteChunks', () => {
     it('starts the chunks of every route the URL matches before the router has run a guard', () => {
-        const history = createMemoryHistory({ initialEntries: ['/agents/ada/chat/chat-1'] });
+        const history = createMemoryHistory({ initialEntries: ['/agents/ada/chat/'] });
         const router = createAppRouter(createContext(), { history });
         const loadRouteChunk = vi.spyOn(router, 'loadRouteChunk').mockReturnValue(Promise.reject(new Error('offline')));
 
@@ -28,7 +28,7 @@ describe('preloadMatchedRouteChunks', () => {
             '/agents',
             '/agents/$agentId',
             '/agents/$agentId/chat',
-            '/agents/$agentId/chat/$chatId',
+            '/agents/$agentId/chat/',
         ]);
         expect(router.state.status).toBe('idle');
     });

@@ -2925,7 +2925,7 @@
     "/chats": {
       "get": {
         "operationId": "listChats",
-        "summary": "List every chat the member can see, across agents, most recently updated first",
+        "summary": "List every thread the member can see, most recently updated first",
         "tags": ["chats"],
         "x-required-permission": "chats.read",
         "parameters": [
@@ -2948,14 +2948,6 @@
               "type": "integer",
               "minimum": 1,
               "maximum": 100
-            }
-          },
-          {
-            "name": "source",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "$ref": "#/components/schemas/RunSource"
             }
           },
           {
@@ -3055,12 +3047,133 @@
             }
           }
         }
+      },
+      "post": {
+        "operationId": "createChat",
+        "summary": "Start a thread with the User and one agent: Chatter unless the body names another",
+        "description": "A repeated `requestKey` answers the thread it created and creates nothing.",
+        "tags": ["chats"],
+        "x-required-permission": "chats.write",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "agentId": {
+                    "$ref": "#/components/schemas/AgentId"
+                  },
+                  "title": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  "requestKey": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_-]{8,128}$"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Chat"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Problem: `validation-failed`.",
+            "x-problem-codes": ["validation-failed"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem: `unauthenticated`.",
+            "x-problem-codes": ["unauthenticated"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem: `forbidden`.",
+            "x-problem-codes": ["forbidden"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Problem: `agent-deleted`, `chatter-missing`, `request-key-reused`.",
+            "x-problem-codes": ["agent-deleted", "chatter-missing", "request-key-reused"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Problem: `rate-limited`.",
+            "x-problem-codes": ["rate-limited"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Problem: `internal-error`.",
+            "x-problem-codes": ["internal-error"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Problem: `unavailable`.",
+            "x-problem-codes": ["unavailable"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/agents/{agentId}/chats": {
       "get": {
         "operationId": "listAgentChats",
-        "summary": "List an agent's chats, most recently updated first",
+        "summary": "List the threads an agent is a member of, most recently updated first",
         "tags": ["agents"],
         "x-required-permission": "chats.read",
         "parameters": [
@@ -3091,14 +3204,6 @@
               "type": "integer",
               "minimum": 1,
               "maximum": 100
-            }
-          },
-          {
-            "name": "source",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "$ref": "#/components/schemas/RunSource"
             }
           }
         ],
@@ -3191,145 +3296,12 @@
             }
           }
         }
-      },
-      "post": {
-        "operationId": "createChat",
-        "summary": "Start a chat with an agent",
-        "tags": ["agents"],
-        "x-required-permission": "chats.write",
-        "parameters": [
-          {
-            "name": "agentId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "$ref": "#/components/schemas/AgentId"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "title": {
-                    "type": "string",
-                    "maxLength": 256
-                  }
-                },
-                "additionalProperties": false
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Success.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Chat"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Problem: `validation-failed`.",
-            "x-problem-codes": ["validation-failed"],
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Problem: `unauthenticated`.",
-            "x-problem-codes": ["unauthenticated"],
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Problem: `forbidden`.",
-            "x-problem-codes": ["forbidden"],
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Problem: `not-found`.",
-            "x-problem-codes": ["not-found"],
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Problem: `agent-deleted`.",
-            "x-problem-codes": ["agent-deleted"],
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Problem: `rate-limited`.",
-            "x-problem-codes": ["rate-limited"],
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Problem: `internal-error`.",
-            "x-problem-codes": ["internal-error"],
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "Problem: `unavailable`.",
-            "x-problem-codes": ["unavailable"],
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          }
-        }
       }
     },
     "/chats/{chatId}": {
       "get": {
         "operationId": "getChat",
-        "summary": "Get a chat",
+        "summary": "Get a thread",
         "tags": ["chats"],
         "x-required-permission": "chats.read",
         "parameters": [
@@ -3433,10 +3405,11 @@
         }
       }
     },
-    "/chats/{chatId}/messages": {
+    "/chats/{chatId}/entries": {
       "get": {
-        "operationId": "listChatMessages",
-        "summary": "List messages, newest first",
+        "operationId": "listChatEntries",
+        "summary": "List a thread's messages and events, newest first",
+        "description": "Clients skip entry types they do not know, so engines may add types within a version.",
         "tags": ["chats"],
         "x-required-permission": "chats.read",
         "parameters": [
@@ -3476,7 +3449,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MessagePage"
+                  "$ref": "#/components/schemas/ChatEntryPage"
                 }
               }
             }
@@ -3559,10 +3532,13 @@
             }
           }
         }
-      },
+      }
+    },
+    "/chats/{chatId}/messages": {
       "post": {
         "operationId": "sendChatMessage",
-        "summary": "Send a message; the reply is streamed from its own route",
+        "summary": "Write in a thread as the User; agents answer with entries of their own",
+        "description": "The User joins first if it is not a member yet. A repeated `requestKey` answers the original message and saves nothing.",
         "tags": ["chats"],
         "x-required-permission": "chats.write",
         "parameters": [
@@ -3586,6 +3562,13 @@
                     "type": "string",
                     "minLength": 1,
                     "maxLength": 65536
+                  },
+                  "requestKey": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9_-]{8,128}$"
+                  },
+                  "replyTo": {
+                    "$ref": "#/components/schemas/MessageId"
                   }
                 },
                 "required": ["content"],
@@ -3650,8 +3633,245 @@
             }
           },
           "409": {
-            "description": "Problem: `agent-deleted`.",
-            "x-problem-codes": ["agent-deleted"],
+            "description": "Problem: `request-key-reused`.",
+            "x-problem-codes": ["request-key-reused"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Problem: `rate-limited`.",
+            "x-problem-codes": ["rate-limited"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Problem: `internal-error`.",
+            "x-problem-codes": ["internal-error"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Problem: `unavailable`.",
+            "x-problem-codes": ["unavailable"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chats/{chatId}/read": {
+      "post": {
+        "operationId": "markChatRead",
+        "summary": "Mark the thread read for the calling member, so its `unread` is 0; answers nothing",
+        "tags": ["chats"],
+        "x-required-permission": "chats.read",
+        "parameters": [
+          {
+            "name": "chatId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ChatId"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Chat"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Problem: `validation-failed`.",
+            "x-problem-codes": ["validation-failed"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem: `unauthenticated`.",
+            "x-problem-codes": ["unauthenticated"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem: `forbidden`.",
+            "x-problem-codes": ["forbidden"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem: `not-found`.",
+            "x-problem-codes": ["not-found"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Problem: `rate-limited`.",
+            "x-problem-codes": ["rate-limited"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Problem: `internal-error`.",
+            "x-problem-codes": ["internal-error"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Problem: `unavailable`.",
+            "x-problem-codes": ["unavailable"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chats/{chatId}/seen": {
+      "post": {
+        "operationId": "markChatSeen",
+        "summary": "Mark the questions in these displayed messages seen for everyone; they keep waiting for an answer",
+        "description": "Idempotent. A message that asks nothing, or is not in the thread, changes nothing.",
+        "tags": ["chats"],
+        "x-required-permission": "chats.read",
+        "parameters": [
+          {
+            "name": "chatId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ChatId"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "messageIds": {
+                    "minItems": 1,
+                    "maxItems": 100,
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/MessageId"
+                    }
+                  }
+                },
+                "required": ["messageIds"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Chat"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Problem: `validation-failed`.",
+            "x-problem-codes": ["validation-failed"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem: `unauthenticated`.",
+            "x-problem-codes": ["unauthenticated"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem: `forbidden`.",
+            "x-problem-codes": ["forbidden"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem: `not-found`.",
+            "x-problem-codes": ["not-found"],
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -3699,7 +3919,7 @@
     "/chats/{chatId}/messages/{messageId}/stream": {
       "get": {
         "operationId": "streamChatReply",
-        "summary": "Stream a reply as server-sent events; resumes after `Last-Event-ID`",
+        "summary": "Stream a message's text as server-sent events while its author writes it; resumes after `Last-Event-ID`",
         "tags": ["chats"],
         "x-required-permission": "chats.read",
         "parameters": [
@@ -6661,7 +6881,7 @@
             "required": false,
             "schema": {
               "type": "string",
-              "pattern": "^[A-Za-z0-9_-]{1,64}$"
+              "pattern": "^(?=\\S)[^\\p{C}]{1,512}(?<=\\S)$"
             }
           },
           {
@@ -14231,7 +14451,7 @@
                               "properties": {
                                 "id": {
                                   "type": "string",
-                                  "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                                  "pattern": "^(?=\\S)[^\\p{C}]{1,512}(?<=\\S)$"
                                 },
                                 "title": {
                                   "type": "string",
@@ -14318,7 +14538,7 @@
                               "properties": {
                                 "id": {
                                   "type": "string",
-                                  "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                                  "pattern": "^(?=\\S)[^\\p{C}]{1,512}(?<=\\S)$"
                                 },
                                 "title": {
                                   "type": "string",
@@ -14371,7 +14591,7 @@
                                     "properties": {
                                       "id": {
                                         "type": "string",
-                                        "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                                        "pattern": "^(?=\\S)[^\\p{C}]{1,512}(?<=\\S)$"
                                       },
                                       "label": {
                                         "type": "string",
@@ -14402,7 +14622,7 @@
                                   "type": "array",
                                   "items": {
                                     "type": "string",
-                                    "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                                    "pattern": "^(?=\\S)[^\\p{C}]{1,512}(?<=\\S)$"
                                   }
                                 }
                               },
@@ -14425,7 +14645,7 @@
                               "properties": {
                                 "id": {
                                   "type": "string",
-                                  "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                                  "pattern": "^(?=\\S)[^\\p{C}]{1,512}(?<=\\S)$"
                                 },
                                 "title": {
                                   "type": "string",
@@ -14495,7 +14715,7 @@
                               "properties": {
                                 "id": {
                                   "type": "string",
-                                  "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                                  "pattern": "^(?=\\S)[^\\p{C}]{1,512}(?<=\\S)$"
                                 },
                                 "title": {
                                   "type": "string",
@@ -14563,7 +14783,7 @@
                               "properties": {
                                 "id": {
                                   "type": "string",
-                                  "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                                  "pattern": "^(?=\\S)[^\\p{C}]{1,512}(?<=\\S)$"
                                 },
                                 "title": {
                                   "type": "string",
@@ -14788,7 +15008,7 @@
                     "properties": {
                       "promptId": {
                         "type": "string",
-                        "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                        "pattern": "^(?=\\S)[^\\p{C}]{1,512}(?<=\\S)$"
                       },
                       "action": {
                         "type": "string",
@@ -14831,7 +15051,7 @@
                                 "type": "array",
                                 "items": {
                                   "type": "string",
-                                  "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                                  "pattern": "^(?=\\S)[^\\p{C}]{1,512}(?<=\\S)$"
                                 }
                               }
                             },
@@ -14904,7 +15124,7 @@
                     "properties": {
                       "promptId": {
                         "type": "string",
-                        "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                        "pattern": "^(?=\\S)[^\\p{C}]{1,512}(?<=\\S)$"
                       },
                       "action": {
                         "type": "string",
@@ -14967,7 +15187,7 @@
                               "properties": {
                                 "id": {
                                   "type": "string",
-                                  "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                                  "pattern": "^(?=\\S)[^\\p{C}]{1,512}(?<=\\S)$"
                                 },
                                 "title": {
                                   "type": "string",
@@ -15054,7 +15274,7 @@
                               "properties": {
                                 "id": {
                                   "type": "string",
-                                  "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                                  "pattern": "^(?=\\S)[^\\p{C}]{1,512}(?<=\\S)$"
                                 },
                                 "title": {
                                   "type": "string",
@@ -15107,7 +15327,7 @@
                                     "properties": {
                                       "id": {
                                         "type": "string",
-                                        "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                                        "pattern": "^(?=\\S)[^\\p{C}]{1,512}(?<=\\S)$"
                                       },
                                       "label": {
                                         "type": "string",
@@ -15138,7 +15358,7 @@
                                   "type": "array",
                                   "items": {
                                     "type": "string",
-                                    "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                                    "pattern": "^(?=\\S)[^\\p{C}]{1,512}(?<=\\S)$"
                                   }
                                 }
                               },
@@ -15161,7 +15381,7 @@
                               "properties": {
                                 "id": {
                                   "type": "string",
-                                  "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                                  "pattern": "^(?=\\S)[^\\p{C}]{1,512}(?<=\\S)$"
                                 },
                                 "title": {
                                   "type": "string",
@@ -15231,7 +15451,7 @@
                               "properties": {
                                 "id": {
                                   "type": "string",
-                                  "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                                  "pattern": "^(?=\\S)[^\\p{C}]{1,512}(?<=\\S)$"
                                 },
                                 "title": {
                                   "type": "string",
@@ -15299,7 +15519,7 @@
                               "properties": {
                                 "id": {
                                   "type": "string",
-                                  "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                                  "pattern": "^(?=\\S)[^\\p{C}]{1,512}(?<=\\S)$"
                                 },
                                 "title": {
                                   "type": "string",
@@ -15583,7 +15803,7 @@
                               "properties": {
                                 "id": {
                                   "type": "string",
-                                  "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                                  "pattern": "^(?=\\S)[^\\p{C}]{1,512}(?<=\\S)$"
                                 },
                                 "title": {
                                   "type": "string",
@@ -15670,7 +15890,7 @@
                               "properties": {
                                 "id": {
                                   "type": "string",
-                                  "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                                  "pattern": "^(?=\\S)[^\\p{C}]{1,512}(?<=\\S)$"
                                 },
                                 "title": {
                                   "type": "string",
@@ -15723,7 +15943,7 @@
                                     "properties": {
                                       "id": {
                                         "type": "string",
-                                        "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                                        "pattern": "^(?=\\S)[^\\p{C}]{1,512}(?<=\\S)$"
                                       },
                                       "label": {
                                         "type": "string",
@@ -15754,7 +15974,7 @@
                                   "type": "array",
                                   "items": {
                                     "type": "string",
-                                    "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                                    "pattern": "^(?=\\S)[^\\p{C}]{1,512}(?<=\\S)$"
                                   }
                                 }
                               },
@@ -15777,7 +15997,7 @@
                               "properties": {
                                 "id": {
                                   "type": "string",
-                                  "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                                  "pattern": "^(?=\\S)[^\\p{C}]{1,512}(?<=\\S)$"
                                 },
                                 "title": {
                                   "type": "string",
@@ -15847,7 +16067,7 @@
                               "properties": {
                                 "id": {
                                   "type": "string",
-                                  "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                                  "pattern": "^(?=\\S)[^\\p{C}]{1,512}(?<=\\S)$"
                                 },
                                 "title": {
                                   "type": "string",
@@ -15915,7 +16135,7 @@
                               "properties": {
                                 "id": {
                                   "type": "string",
-                                  "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                                  "pattern": "^(?=\\S)[^\\p{C}]{1,512}(?<=\\S)$"
                                 },
                                 "title": {
                                   "type": "string",
@@ -17941,7 +18161,7 @@
           },
           "id": {
             "type": "string",
-            "pattern": "^[A-Za-z0-9_-]{1,64}$"
+            "pattern": "^(?=\\S)[^\\p{C}]{1,512}(?<=\\S)$"
           },
           "name": {
             "anyOf": [
@@ -18023,25 +18243,9 @@
           "id": {
             "$ref": "#/components/schemas/ChatId"
           },
-          "agentId": {
-            "$ref": "#/components/schemas/AgentId"
-          },
           "title": {
             "type": "string",
             "maxLength": 256
-          },
-          "source": {
-            "$ref": "#/components/schemas/RunSource"
-          },
-          "createdBy": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/MemberId"
-              },
-              {
-                "type": "null"
-              }
-            ]
           },
           "createdAt": {
             "$ref": "#/components/schemas/Timestamp"
@@ -18074,25 +18278,156 @@
                 "type": "null"
               }
             ]
+          },
+          "unread": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "status": {
+            "type": "string",
+            "enum": ["open", "waiting-for-user", "resolved"]
+          },
+          "members": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Participant"
+            }
+          },
+          "questions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ChatQuestion"
+            }
           }
         },
         "required": [
           "id",
-          "agentId",
           "title",
-          "source",
-          "createdBy",
           "createdAt",
           "updatedAt",
           "messageCount",
           "lastMessageAt",
-          "preview"
+          "preview",
+          "unread",
+          "status",
+          "members",
+          "questions"
         ],
+        "additionalProperties": false
+      },
+      "ChatEntry": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/Message"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "joined"
+              },
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "chatId": {
+                "$ref": "#/components/schemas/ChatId"
+              },
+              "createdAt": {
+                "$ref": "#/components/schemas/Timestamp"
+              },
+              "participant": {
+                "$ref": "#/components/schemas/Participant"
+              }
+            },
+            "required": ["type", "id", "chatId", "createdAt", "participant"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "titled"
+              },
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "chatId": {
+                "$ref": "#/components/schemas/ChatId"
+              },
+              "createdAt": {
+                "$ref": "#/components/schemas/Timestamp"
+              },
+              "title": {
+                "type": "string",
+                "maxLength": 256
+              }
+            },
+            "required": ["type", "id", "chatId", "createdAt", "title"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "status"
+              },
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "chatId": {
+                "$ref": "#/components/schemas/ChatId"
+              },
+              "createdAt": {
+                "$ref": "#/components/schemas/Timestamp"
+              },
+              "status": {
+                "type": "string",
+                "enum": ["open", "waiting-for-user", "resolved"]
+              }
+            },
+            "required": ["type", "id", "chatId", "createdAt", "status"],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "ChatEntryPage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ChatEntry"
+            }
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1024
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": ["items", "nextCursor"],
         "additionalProperties": false
       },
       "ChatId": {
         "type": "string",
-        "pattern": "^[A-Za-z0-9_-]{1,64}$"
+        "pattern": "^(?=\\S)[^\\p{C}]{1,512}(?<=\\S)$"
       },
       "ChatPage": {
         "type": "object",
@@ -18117,6 +18452,27 @@
           }
         },
         "required": ["items", "nextCursor"],
+        "additionalProperties": false
+      },
+      "ChatQuestion": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "messageId": {
+            "$ref": "#/components/schemas/MessageId"
+          },
+          "seen": {
+            "type": "boolean"
+          },
+          "author": {
+            "$ref": "#/components/schemas/ParticipantRef"
+          }
+        },
+        "required": ["id", "messageId", "seen", "author"],
         "additionalProperties": false
       },
       "ClientInfo": {
@@ -19358,15 +19714,15 @@
       "Message": {
         "type": "object",
         "properties": {
+          "type": {
+            "type": "string",
+            "const": "message"
+          },
           "id": {
             "$ref": "#/components/schemas/MessageId"
           },
           "chatId": {
             "$ref": "#/components/schemas/ChatId"
-          },
-          "role": {
-            "type": "string",
-            "enum": ["user", "agent"]
           },
           "content": {
             "type": "string"
@@ -19387,39 +19743,26 @@
           },
           "createdAt": {
             "$ref": "#/components/schemas/Timestamp"
+          },
+          "choices": {
+            "maxItems": 50,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1000
+            }
+          },
+          "author": {
+            "$ref": "#/components/schemas/ParticipantRef"
           }
         },
-        "required": ["id", "chatId", "role", "content", "status", "createdBy", "createdAt"],
+        "required": ["type", "id", "chatId", "content", "status", "createdBy", "createdAt", "choices", "author"],
         "additionalProperties": false
       },
       "MessageId": {
         "type": "string",
-        "pattern": "^[A-Za-z0-9_-]{1,64}$"
-      },
-      "MessagePage": {
-        "type": "object",
-        "properties": {
-          "items": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Message"
-            }
-          },
-          "nextCursor": {
-            "anyOf": [
-              {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 1024
-              },
-              {
-                "type": "null"
-              }
-            ]
-          }
-        },
-        "required": ["items", "nextCursor"],
-        "additionalProperties": false
+        "pattern": "^(?=\\S)[^\\p{C}]{1,512}(?<=\\S)$"
       },
       "Money": {
         "type": "object",
@@ -19439,6 +19782,43 @@
       "OrgId": {
         "type": "string",
         "pattern": "^[A-Za-z0-9_-]{1,64}$"
+      },
+      "Participant": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": ["agent", "user"]
+          },
+          "key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "required": ["kind", "key", "name"],
+        "additionalProperties": false
+      },
+      "ParticipantRef": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": ["agent", "user"]
+          },
+          "key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          }
+        },
+        "required": ["kind", "key"],
+        "additionalProperties": false
       },
       "Passkey": {
         "type": "object",
@@ -19602,6 +19982,8 @@
               "last-passkey",
               "last-owner",
               "reply-finished",
+              "chatter-missing",
+              "request-key-reused",
               "cancelled",
               "run-finished",
               "run-not-retryable",
@@ -21145,14 +21527,11 @@
       "SendMessageResult": {
         "type": "object",
         "properties": {
-          "userMessage": {
+          "message": {
             "$ref": "#/components/schemas/Message"
-          },
-          "replyMessageId": {
-            "$ref": "#/components/schemas/MessageId"
           }
         },
-        "required": ["userMessage", "replyMessageId"],
+        "required": ["message"],
         "additionalProperties": false
       },
       "Session": {

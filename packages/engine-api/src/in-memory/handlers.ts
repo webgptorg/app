@@ -1,8 +1,6 @@
 import { AgentPermanentId, AgentId, RevisionId } from '../common';
 import type { Agent, AgentRunState, AgentRunStatus } from '../agents';
-import { KNOWN_CAPABILITIES } from '../capabilities/capability';
-import { ApiTokenId, ChatId, FolderId, InviteId, MessageId, SecretId } from '../common';
-import type { Chat, Message } from '../chats';
+import { ApiTokenId, FolderId, InviteId, SecretId } from '../common';
 import type { EngineEvent } from '../events';
 import type { Member } from '../members';
 import type { Passkey } from '../passkeys';
@@ -13,31 +11,31 @@ import { verifyAuditChain } from './audit-chain';
 import { checkBook } from './book';
 import { FILE_HANDLERS } from './files';
 import { INTEGRATION_HANDLERS } from './integrations';
-import {
-    addChatMessages,
-    advertises,
-    agentRecord,
-    EMPTY_CHAT_SUMMARY,
-    fail,
-    invalid,
-    liveAgent,
-    memberActor,
-    notFound,
-    ok,
-    page,
-    sortBy,
-    sortParam,
-    time,
-    within,
-} from './kit';
+import { agentRecord, fail, invalid, liveAgent, notFound, ok, page, sortBy, sortParam, time, within } from './kit';
 import type { HandlerContext, HandlerResult, Handlers } from './kit';
 import { cancelReply, startReply, streamReply } from './replies';
-import { advanceRun, queueRun, RUN_HANDLERS } from './runs';
+import { RUN_HANDLERS } from './runs';
 import { TASK_HANDLERS } from './tasks';
 import { ACCESS_REQUEST_HANDLERS, activeOwnerCount, signOutEverywhere } from './access-requests';
 import { LIVE_HANDLERS } from './live';
 import { ONBOARDING_HANDLERS } from './onboarding';
 import { TEST_CHAT_HANDLERS } from './test-chat';
+import {
+    USER,
+    answer,
+    answeredQuestion,
+    appendMessage,
+    chatView,
+    chatter,
+    createThread,
+    entriesOf,
+    isMember,
+    join,
+    markSeen,
+    requestKeyOf,
+    respond,
+    touch,
+} from './threads';
 import { TRIGGER_HANDLERS } from './triggers';
 import type { InMemoryState } from './state';
 
@@ -332,104 +330,96 @@ export const HANDLERS: Handlers = {
     listChats: ({ query }, ctx) => {
         const needle = query.q?.toLowerCase();
         const chats = [...ctx.state.chats.values()].filter(
-            (chat) =>
-                (query.agentId === undefined || chat.agentId === query.agentId) &&
-                (query.source === undefined || chat.source === query.source) &&
-                (needle === undefined || chat.title.toLowerCase().includes(needle)),
+            (record) =>
+                (query.agentId === undefined || isMember(record, { kind: 'agent', key: query.agentId })) &&
+                (needle === undefined || record.title.toLowerCase().includes(needle)),
         );
         return page(
-            chats,
+            chats.map((record) => chatView(ctx, record, ctx.member.id)),
             sortBy('-updatedAt', (chat) => time(chat.updatedAt), true),
             query,
         );
     },
     listAgentChats: ({ params, query }, ctx) => {
         if (!agentRecord(ctx, params.agentId)) return notFound('agent');
-        const chats = [...ctx.state.chats.values()].filter(
-            (chat) => chat.agentId === params.agentId && (query.source === undefined || chat.source === query.source),
+        const chats = [...ctx.state.chats.values()].filter((record) =>
+            isMember(record, { kind: 'agent', key: params.agentId }),
         );
         return page(
-            chats,
+            chats.map((record) => chatView(ctx, record, ctx.member.id)),
             sortBy('-updatedAt', (chat) => time(chat.updatedAt), true),
             query,
         );
     },
-    createChat: ({ params, body }, ctx) => {
-        const found = liveAgent(ctx, params.agentId);
-        if (found.kind === 'problem') return found;
-        const now = ctx.now();
-        const chat: Chat = {
-            id: ctx.newId(ChatId, 'chat'),
-            agentId: params.agentId,
-            title: body.title ?? '',
-            source: 'web',
-            createdBy: ctx.member.id,
-            createdAt: now,
-            updatedAt: now,
-            ...EMPTY_CHAT_SUMMARY,
-        };
-        ctx.state.chats.set(chat.id, chat);
-        ctx.publish({ type: 'chat.changed', chatId: chat.id });
-        return ok(chat);
+    createChat: ({ body }, ctx) => {
+        const keyed = requestKeyOf(ctx, 'create', body.requestKey, { agentId: body.agentId, title: body.title });
+        if (keyed.kind === 'reused') return fail('request-key-reused');
+        if (keyed.kind === 'repeat') {
+            const earlier = ctx.state.chats.get(keyed.id);
+            return earlier ? ok(chatView(ctx, earlier, ctx.member.id)) : notFound('chat');
+        }
+        const agent = body.agentId === undefined ? chatter(ctx) : liveAgent(ctx, body.agentId);
+        if (agent.kind === 'problem') return agent;
+        const record = createThread(ctx, body.title === undefined ? {} : { title: body.title });
+        if (body.title === undefined) record.title = `Chat with ${agent.data.name}`;
+        join(ctx, record, USER);
+        join(ctx, record, { kind: 'agent', key: agent.data.id });
+        keyed.remember(record.id);
+        touch(ctx, record);
+        return ok(chatView(ctx, record, ctx.member.id));
     },
     getChat: ({ params }, ctx) => {
-        const chat = ctx.state.chats.get(params.chatId);
-        return chat ? ok(chat) : notFound('chat');
+        const record = ctx.state.chats.get(params.chatId);
+        return record ? ok(chatView(ctx, record, ctx.member.id)) : notFound('chat');
     },
-    listChatMessages: ({ params, query }, ctx) => {
-        if (!ctx.state.chats.has(params.chatId)) return notFound('chat');
-        const messages = [...ctx.state.messages.values()].filter((message) => message.chatId === params.chatId);
+    listChatEntries: ({ params, query }, ctx) => {
+        const record = ctx.state.chats.get(params.chatId);
+        if (!record) return notFound('chat');
+        const position = new Map(record.entryIds.map((id, index) => [id, index]));
         return page(
-            messages,
-            sortBy('-createdAt', (message) => time(message.createdAt), true),
+            entriesOf(ctx, record),
+            sortBy('-position', (entry) => position.get(entry.id) ?? 0, true),
             query,
         );
     },
     sendChatMessage: ({ params, body }, ctx) => {
-        const chat = ctx.state.chats.get(params.chatId);
-        if (!chat) return notFound('chat');
-        const found = liveAgent(ctx, chat.agentId);
-        if (found.kind === 'problem') return found;
-        const now = ctx.now();
-        const userMessage: Message = {
-            id: ctx.newId(MessageId, 'message'),
-            chatId: chat.id,
-            role: 'user',
+        const record = ctx.state.chats.get(params.chatId);
+        if (!record) return notFound('chat');
+        const keyed = requestKeyOf(ctx, record.id, body.requestKey, { content: body.content, replyTo: body.replyTo });
+        if (keyed.kind === 'reused') return fail('request-key-reused');
+        if (keyed.kind === 'repeat') {
+            const earlier = ctx.state.messages.get(keyed.id);
+            return earlier ? ok({ message: earlier }) : notFound('message');
+        }
+        const answered = answeredQuestion(record, body.replyTo);
+        const message = appendMessage(ctx, record, {
+            author: USER,
             content: body.content,
             status: 'completed',
             createdBy: ctx.member.id,
-            createdAt: now,
-        };
-        const reply: Message = {
-            id: ctx.newId(MessageId, 'message'),
-            chatId: chat.id,
-            role: 'agent',
-            content: '',
-            status: 'streaming',
-            createdBy: null,
-            createdAt: now,
-        };
-        const script = ctx.replyScript({
-            agent: found.data,
-            content: body.content,
-            chatId: chat.id,
-            messageIndex: chat.messageCount,
         });
-        if (advertises(ctx, KNOWN_CAPABILITIES.runs)) {
-            const run = queueRun(ctx, {
-                agentId: chat.agentId,
-                source: 'web',
-                chatId: chat.id,
-                messageId: reply.id,
-                createdBy: ctx.member.id,
-                actor: memberActor(ctx),
-                preview: body.content,
-            });
-            advanceRun(ctx, run.id);
+        keyed.remember(message.id);
+        if (answered) answer(ctx, record, answered);
+        record.readUpTo.set(ctx.member.id, record.entryIds.length);
+        const reply = respond(ctx, record, message, answered);
+        touch(ctx, record);
+        if (reply) startReply(ctx, reply.replyId, reply.script);
+        return ok({ message });
+    },
+    markChatRead: ({ params }, ctx) => {
+        const record = ctx.state.chats.get(params.chatId);
+        if (!record) return notFound('chat');
+        if ((record.readUpTo.get(ctx.member.id) ?? 0) !== record.entryIds.length) {
+            record.readUpTo.set(ctx.member.id, record.entryIds.length);
+            touch(ctx, record, false);
         }
-        addChatMessages(ctx, chat, [userMessage, reply]);
-        startReply(ctx, reply.id, script);
-        return ok({ userMessage, replyMessageId: reply.id });
+        return ok(chatView(ctx, record, ctx.member.id));
+    },
+    markChatSeen: ({ params, body }, ctx) => {
+        const record = ctx.state.chats.get(params.chatId);
+        if (!record) return notFound('chat');
+        if (markSeen(ctx, record, body.messageIds)) touch(ctx, record);
+        return ok(chatView(ctx, record, ctx.member.id));
     },
     streamChatReply: ({ params, lastEventId }, ctx) => {
         const message = ctx.state.messages.get(params.messageId);

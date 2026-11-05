@@ -46,7 +46,7 @@ describe('run detail', { timeout: TIMEOUT_MS }, () => {
         const status = screen.getByText('Status').closest('div');
         expect(status === null ? null : within(status).getByText('Completed')).not.toBeNull();
         expect(screen.getByRole('link', { name: 'Back to runs' }).getAttribute('href')).toBe('/runs');
-        expect(screen.getByRole('link', { name: 'Chat' }).getAttribute('href')).toBe('/agents/agent-ada/chat/chat-ada');
+        expect(screen.getByRole('link', { name: 'Chat' }).getAttribute('href')).toBe('/chats/chat-ada');
         expect(screen.getByRole('link', { name: 'Ada' }).getAttribute('href')).toBe('/agents/agent-ada');
         expect(screen.getByText('claude-code')).toBeDefined();
         expect(screen.getByText('claude-sonnet-4-5')).toBeDefined();

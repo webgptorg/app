@@ -66,23 +66,6 @@ function firstAnswerAgain(match: Match): Tamper {
     };
 }
 
-/** Answers a refused call with the last accepted answer to the same route, as if the engine had let it through. */
-function acceptAgain(match: Match): Tamper {
-    let accepted: { readonly status: number; readonly body: string } | undefined;
-    return async (request, response) => {
-        if (!match(request)) return response;
-        if (response.ok) {
-            accepted = { status: response.status, body: await response.clone().text() };
-            return response;
-        }
-        if (response.status !== 403 || accepted === undefined) return response;
-        return new Response(accepted.body, {
-            status: accepted.status,
-            headers: { 'content-type': 'application/json' },
-        });
-    };
-}
-
 function chain(...tampers: Tamper[]): Tamper {
     return async (request, response) => {
         let current = response;
@@ -507,17 +490,128 @@ const FAILS: readonly Case[] = [
     [
         'a reply never stored',
         'engine-api.chat.reply-stream',
-        { tamper: editJson(on('GET', /\/messages$/), (page) => ({ ...page, items: [] })) },
+        { tamper: editJson(on('GET', /\/entries$/), (page) => ({ ...page, items: [] })) },
     ],
     [
         'a stored reply that differs',
         'engine-api.chat.reply-stream',
         {
-            tamper: editJson(on('GET', /\/messages$/), (page) => ({
+            tamper: editJson(on('GET', /\/entries$/), (page) => ({
                 ...page,
-                items: page.items.map((message: any) => ({ ...message, content: 'other' })),
+                items: page.items.map((entry: any) =>
+                    entry.type === 'message' ? { ...entry, content: 'other' } : entry,
+                ),
             })),
         },
+    ],
+    [
+        'a new thread that does not list the User first',
+        'engine-api.chat.thread-joins',
+        {
+            tamper: editJson(on('POST', /^\/chats$/), (chat) => ({
+                ...chat,
+                members: [...chat.members].reverse(),
+                status: 'resolved',
+            })),
+        },
+    ],
+    [
+        'an author who writes before joining',
+        'engine-api.chat.thread-joins',
+        {
+            tamper: editJson(on('GET', /\/entries$/), (page) => ({
+                ...page,
+                items: page.items.filter((entry: any) => entry.type !== 'joined'),
+            })),
+        },
+    ],
+    [
+        'a sent message credited to nobody',
+        'engine-api.chat.authorship',
+        {
+            tamper: editJson(on('POST', /\/messages$/), (sent) => ({
+                ...sent,
+                message: { ...sent.message, createdBy: null },
+            })),
+        },
+    ],
+    [
+        'a reply by an agent outside the thread',
+        'engine-api.chat.authorship',
+        {
+            tamper: editJson(on('GET', /^\/chats\/[^/]+$/), (chat) => ({
+                ...chat,
+                members: chat.members.filter((member: any) => member.kind !== 'agent'),
+            })),
+        },
+    ],
+    [
+        'a repeated request key that saves another message',
+        'engine-api.chat.idempotent-send',
+        {
+            tamper: fromCall(
+                2,
+                editJson(on('POST', /\/messages$/), (sent) => ({
+                    ...sent,
+                    message: { ...sent.message, id: `${String(sent.message.id)}-again` },
+                })),
+                on('POST', /\/messages$/),
+            ),
+        },
+    ],
+    [
+        'a reused request key that is not refused',
+        'engine-api.chat.idempotent-send',
+        {
+            tamper: replace(on('POST', /\/messages$/), (_, response) =>
+                response.status === 409 ? problem('rate-limited', 429) : response,
+            ),
+        },
+    ],
+    [
+        'a thread still unread after marking it read',
+        'engine-api.chat.read-and-seen',
+        { tamper: editJson(on('POST', /\/read$/), (chat) => ({ ...chat, unread: 3 })) },
+    ],
+    [
+        'seeing that answers a question',
+        'engine-api.chat.read-and-seen',
+        {
+            tamper: fromCall(
+                2,
+                editJson(on('POST', /\/seen$/), (chat) => ({
+                    ...chat,
+                    status: 'resolved',
+                    questions: [
+                        ...chat.questions,
+                        {
+                            id: 'ping',
+                            messageId: `${String(chat.id)}#1`,
+                            author: { kind: 'agent', key: 'agent-x' },
+                            seen: false,
+                        },
+                    ],
+                })),
+                on('POST', /\/seen$/),
+            ),
+        },
+    ],
+    [
+        'a thread without an agent started with another one',
+        'engine-api.chat.default-chatter',
+        {
+            tamper: editJson(on('POST', /^\/chats$/), (chat) => ({
+                ...chat,
+                members: chat.members.map((member: any) =>
+                    member.kind === 'agent' ? { ...member, name: 'Ada' } : member,
+                ),
+            })),
+        },
+    ],
+    [
+        'Chatter missing refused with another problem',
+        'engine-api.chat.default-chatter',
+        { tamper: replace(on('POST', /^\/chats$/), () => problem('agent-deleted', 409)) },
     ],
     [
         'deltas out of order and without ids',
@@ -786,31 +880,18 @@ const FAILS: readonly Case[] = [
         },
     ],
     [
-        "a refusal to write in another member's chat that is a conflict",
-        'engine-api.cross-member.chat-writes',
-        {
-            tamper: replace(on('POST', /^\/chats\/[^/]+\/messages$/), (_, response) =>
-                response.status === 403 ? problem('agent-deleted', 409) : response,
-            ),
-        },
+        "a refusal to write in another member's thread",
+        'engine-api.cross-member.shared-threads',
+        { tamper: replace(on('POST', /^\/chats\/[^/]+\/messages$/), () => problem('forbidden', 403)) },
     ],
     [
-        "another member's message accepted",
-        'engine-api.cross-member.chat-writes',
-        { tamper: acceptAgain(on('POST', /^\/chats\/[^/]+\/messages$/)) },
-    ],
-    [
-        'a refused message that still lands in the chat',
-        'engine-api.cross-member.chat-writes',
+        "another member's message credited to someone else",
+        'engine-api.cross-member.shared-threads',
         {
-            tamper: fromCall(
-                2,
-                editJson(on('GET', /^\/chats\/[^/]+$/), (chat) => ({
-                    ...chat,
-                    messageCount: Number(chat.messageCount) + 1,
-                })),
-                on('GET', /^\/chats\/[^/]+$/),
-            ),
+            tamper: editJson(on('POST', /^\/chats\/[^/]+\/messages$/), (sent) => ({
+                ...sent,
+                message: { ...sent.message, createdBy: 'member-somebody-else' },
+            })),
         },
     ],
     [
@@ -946,13 +1027,6 @@ describe('each assertion bites', () => {
             })),
         );
         expect(await outcome('engine-api.activity.agent-names', { tamper })).toEqual({ kind: 'pass' });
-    });
-
-    it("passes an engine that hides another member's chat writes behind 404", async () => {
-        const tamper = replace(on('POST', /^\/chats\/[^/]+\/messages/), (_, response) =>
-            response.status === 403 ? problem('not-found', 404) : response,
-        );
-        expect(await outcome('engine-api.cross-member.chat-writes', { tamper })).toEqual({ kind: 'pass' });
     });
 
     it('runs the auth check with placeholders when there is no owner', async () => {

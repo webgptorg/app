@@ -19,12 +19,13 @@ test('a dropped reply stream shows as interrupted and resumes on retry', async (
     const faults = need(engine, 'faults');
     await signIn();
     await page.goto(appUrl('/'));
-    const agent = required((await apiList<{ id: string }>(page, '/agents'))[0], 'agent');
+    const agent = required((await apiList<{ id: string; name: string }>(page, '/agents'))[0], 'agent');
     await faults.set({ dropStreamRate: 1, routes: ['/api/v1/chats/*/messages/*/stream'] });
 
     await page.goto(appUrl(`/agents/${agent.id}/chat`));
-    await page.getByRole('textbox', { name: 'New chat' }).fill('Tell me about the deployment pipeline');
-    await page.getByRole('textbox', { name: 'New chat' }).press('Enter');
+    await page.getByRole('button', { name: `New chat with ${agent.name}` }).click();
+    await page.getByRole('textbox', { name: 'Message' }).fill('Tell me about the deployment pipeline');
+    await page.getByRole('textbox', { name: 'Message' }).press('Enter');
     const history = page.getByRole('region', { name: 'Messages' });
     await expect(history.getByText('Connection lost')).toBeVisible({ timeout: 30_000 });
 

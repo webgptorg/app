@@ -147,11 +147,9 @@ function engine(options: InMemoryEngineApiOptions = {}) {
             chats: [
                 {
                     id: 'chat-plan',
-                    agentId: 'agent-ada',
                     title: 'Plan',
-                    createdBy: 'member-owner',
                     createdAt: AT,
-                    updatedAt: AT,
+                    entries: [{ type: 'joined', participant: { kind: 'agent', key: 'agent-ada' } }],
                 },
             ],
             runs: [run('run-a'), run('run-b')],
@@ -229,11 +227,11 @@ describe('task screens, the less common cases', { timeout: TIMEOUT_MS }, () => {
         );
         expect(within(related).getByRole('link', { name: 'Ada' }).getAttribute('href')).toBe('/agents/agent-ada');
         expect((await within(related).findByRole('link', { name: 'Plan' })).getAttribute('href')).toBe(
-            '/agents/agent-ada/chat/chat-plan',
+            '/chats/chat-plan',
         );
         // The first linked chat is where to discuss it when the task did not come from one.
         expect((await screen.findByRole('link', { name: 'Discuss in chat' })).getAttribute('href')).toBe(
-            '/agents/agent-ada/chat/chat-plan',
+            '/chats/chat-plan',
         );
         const history = screen.getByRole('region', { name: 'History' });
         expect((await within(history).findByRole('link', { name: 'Run 2' })).getAttribute('href')).toBe('/runs/run-b');
@@ -256,7 +254,7 @@ describe('task screens, the less common cases', { timeout: TIMEOUT_MS }, () => {
         renderWithProviders({ path: '/tasks/task-from-chat', engineApi: engine() });
         const fromChat = await screen.findByRole('region', { name: 'Related' });
         expect((await within(fromChat).findByRole('link', { name: 'A chat' })).getAttribute('href')).toBe(
-            '/agents/agent-ada/chat/chat-plan',
+            '/chats/chat-plan',
         );
     });
 

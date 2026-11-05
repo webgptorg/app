@@ -10,6 +10,11 @@ import { PERMISSIONS } from '../permissions';
 import type { EngineApiStreamItem } from '../route';
 import { createDemoSeed } from './demo-seed';
 
+import { MessageId } from '../common';
+/** The in-memory engine numbers messages `<chat>#<position>`, and a reply follows its User message directly. */
+const replyIdOf = (sent: { readonly message: { readonly id: string } }) =>
+    MessageId.parse(sent.message.id.replace(/#(\d+)$/, (_, position: string) => `#${String(Number(position) + 1)}`));
+
 const AT = '2026-10-19T08:00:00Z';
 
 function steppingClock(start = AT) {
@@ -352,74 +357,74 @@ describe('in-memory controller: activity and events', () => {
 });
 
 describe('in-memory chats', () => {
-    it('refuses a visitor chat for an unknown or deleted agent', async () => {
-        const { client, controller } = engine();
-        expect(() => controller.addVisitorChat({ agentId: 'agent-nope' })).toThrow('not-found');
-        const agent = await agentIn(client);
-        ok(await client.agents.delete(agent.id, signal()));
-        expect(() => controller.addVisitorChat({ agentId: agent.id })).toThrow('agent-deleted');
-        expect(controller.inspect().counts.chats).toBe(0);
-    });
-
-    it('announces a visitor chat on the event stream', async () => {
+    it('announces a thread the engine starts on the event stream, and refuses an unknown participant', async () => {
         const { client, controller } = engine();
         const agent = await agentIn(client);
         const events = ok(await client.events.stream({}, signal()));
-        const chat = controller.addVisitorChat({ agentId: agent.id });
+        const chat = controller.addChat({
+            id: 'Report',
+            title: 'Report',
+            createdAt: '2026-10-19T07:00:00Z',
+            entries: [{ type: 'message', author: { kind: 'agent', key: agent.id }, content: 'All quiet today.' }],
+        });
         expect(await take(events, 1)).toEqual([{ type: 'chat.changed', chatId: chat.id }]);
+        expect(chat).toMatchObject({ title: 'Report', messageCount: 1, unread: 1, preview: 'All quiet today.' });
+        expect(chat.members.map(({ kind }) => kind)).toEqual(['agent']);
+        expect(() =>
+            controller.addChat({
+                id: 'bad',
+                createdAt: '2026-10-19T07:00:00Z',
+                entries: [{ type: 'joined', participant: { kind: 'user', key: 'someone' } as never }],
+            }),
+        ).toThrow();
     });
 
-    it('derives seeded summaries from the seeded messages, oldest first, and defaults the source to web', async () => {
-        const message = (id: string, role: 'user' | 'agent', content: string, createdAt: string) => ({
-            id,
-            chatId: 'chat-1',
-            role,
-            content,
-            status: 'completed' as const,
-            createdBy: null,
-            createdAt,
-        });
+    it('replays seeded threads at their entry times, with summaries and read markers', async () => {
         const at = (minute: number) => `2026-10-19T07:${String(minute).padStart(2, '0')}:00Z`;
+        const user = { kind: 'user', key: 'user' } as const;
+        const ada = { kind: 'agent', key: 'agent-1' } as const;
         const { client } = engine({
             seed: {
                 agents: [{ id: 'agent-1', source: 'Ada' }],
                 chats: [
                     {
                         id: 'chat-1',
-                        agentId: 'agent-1',
-                        title: '',
-                        createdBy: null,
                         createdAt: at(0),
-                        updatedAt: at(9),
+                        entries: [
+                            {
+                                type: 'message',
+                                author: user,
+                                content: 'First question',
+                                createdBy: 'member-owner',
+                                at: at(1),
+                            },
+                            { type: 'message', author: ada, content: 'Later reply', at: at(9) },
+                        ],
                     },
                     {
                         id: 'chat-2',
-                        agentId: 'agent-1',
                         title: 'Empty',
-                        source: 'email',
-                        createdBy: null,
                         createdAt: at(0),
-                        updatedAt: at(0),
+                        entries: [{ type: 'joined', participant: ada }],
+                        readBy: ['member-owner'],
                     },
-                ],
-                messages: [
-                    message('m-3', 'agent', 'Later reply', at(9)),
-                    message('m-2', 'user', 'Second question', at(5)),
-                    message('m-1', 'user', 'First question', at(1)),
                 ],
             },
         });
         expect(ok(await client.chats.get(ChatId.parse('chat-1'), signal()))).toMatchObject({
-            source: 'web',
-            messageCount: 3,
+            title: 'Chat with Ada',
+            messageCount: 2,
             lastMessageAt: at(9),
-            preview: 'First question',
+            updatedAt: at(9),
+            preview: 'Later reply',
+            unread: 1,
         });
         expect(ok(await client.chats.get(ChatId.parse('chat-2'), signal()))).toMatchObject({
-            source: 'email',
+            title: 'Empty',
             messageCount: 0,
             lastMessageAt: null,
             preview: null,
+            unread: 0,
         });
     });
 });
@@ -428,7 +433,7 @@ describe('in-memory chat runs', () => {
     async function chatWith(options: InMemoryEngineApiOptions = {}) {
         const parts = engine(options);
         const agent = await agentIn(parts.client);
-        const chat = ok(await parts.client.chats.create(agent.id, {}, signal()));
+        const chat = ok(await parts.client.chats.create({ agentId: agent.id }, signal()));
         const sent = ok(await parts.client.chats.sendMessage(chat.id, { content: 'hi' }, signal()));
         return { ...parts, chat, sent };
     }
@@ -440,25 +445,25 @@ describe('in-memory chat runs', () => {
             source: 'web',
             status: 'running',
             chatId: chat.id,
-            messageId: sent.replyMessageId,
+            messageId: replyIdOf(sent),
             createdBy: 'member-owner',
         });
-        await drain(ok(await client.chats.streamReply(chat.id, sent.replyMessageId, {}, signal())));
+        await drain(ok(await client.chats.streamReply(chat.id, replyIdOf(sent), {}, signal())));
         const detail = ok(await client.runs.get(RunId.parse(run?.id ?? ''), signal()));
         expect(detail.status).toBe('completed');
-        expect(detail.outputs.messages).toEqual([{ chatId: chat.id, messageId: sent.replyMessageId }]);
+        expect(detail.outputs.messages).toEqual([{ chatId: chat.id, messageId: replyIdOf(sent) }]);
     });
 
     it('fails the run with the reply', async () => {
         const { client, chat, sent } = await chatWith({ replyScript: () => ({ chunks: ['x'], outcome: 'failed' }) });
-        await drain(ok(await client.chats.streamReply(chat.id, sent.replyMessageId, {}, signal())));
+        await drain(ok(await client.chats.streamReply(chat.id, replyIdOf(sent), {}, signal())));
         const [run] = ok(await client.runs.list({}, signal())).items;
         expect(run).toMatchObject({ status: 'failed', error: { code: 'reply-failed' } });
     });
 
     it('cancels the run with the reply', async () => {
         const { client, chat, sent } = await chatWith();
-        ok(await client.chats.cancelReply(chat.id, sent.replyMessageId, signal()));
+        ok(await client.chats.cancelReply(chat.id, replyIdOf(sent), signal()));
         expect(ok(await client.runs.list({}, signal())).items[0]?.status).toBe('cancelled');
     });
 
@@ -489,7 +494,8 @@ describe('in-memory demo seed', () => {
         expect(ok(await client.agents.list({}, signal())).items).toHaveLength(10);
         expect(ok(await client.agents.list({ origin: 'content' }, signal())).items).toHaveLength(3);
         expect(ok(await client.chats.listAll({ q: 'billing' }, signal())).items).toHaveLength(1);
-        expect(ok(await client.chats.listAll({ agentId: AgentId.parse('agent-max') }, signal())).items).toEqual([]);
+        const withMax = ok(await client.chats.listAll({ agentId: AgentId.parse('agent-max') }, signal())).items;
+        expect(withMax.map(({ questions }) => questions.length)).toEqual([1]);
         expect(ok(await client.runs.list({}, signal())).items.length).toBeGreaterThanOrEqual(6);
         expect(ok(await client.runs.stats({}, signal()))).toMatchObject({ running: 1, queued: 1, failedLast24h: 1 });
         expect(ok(await client.files.list({ purpose: 'knowledge' }, signal())).items).toHaveLength(1);

@@ -237,7 +237,7 @@ While you build the gateway, `--no-gateway` skips the gateway check. To iterate 
 - Strict responses: an extra field anywhere fails `engine-api.schemas.responses-strict`. Build responses from the contract types, not from your database rows.
 - `engine-api.secrets.never-returned` looks for a canary value in every GET route and the event stream, raw, hex and base64. Secrets never go into audit `details`, events or errors.
 - Denials must change nothing and must be audited with outcome `denied`.
-- Chat writes belong to whoever started the chat: another member, even one with the same permissions, gets 403 or 404 on posting to it or cancelling its reply (`engine-api.cross-member.chat-writes`).
+- Nobody owns a thread: every member with `chats.write` writes in any thread, as the User, and the message names the member who sent it (`engine-api.cross-member.shared-threads`).
 
 ## Phase 8: UI loader
 

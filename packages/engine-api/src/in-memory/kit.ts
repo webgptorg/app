@@ -1,7 +1,6 @@
 import type { z } from 'zod';
 
 import type { Agent } from '../agents';
-import type { Chat, Message } from '../chats';
 import { Activity } from '../capabilities/activity';
 import type { ActivityActor } from '../capabilities/activity';
 import { supports } from '../capabilities/capability';
@@ -10,7 +9,6 @@ import type { FilePurpose, FileScanStatus } from '../capabilities/files';
 import type { Integration } from '../capabilities/integrations';
 import { ActivityId } from '../common';
 import type { AgentId, ChatId, ClientInfo, MemberId, ProblemDetails, SessionId, Timestamp } from '../common';
-import { MAX_CHAT_PREVIEW_LENGTH } from '../constants';
 import type { EngineEvent } from '../events';
 import type { Member } from '../members';
 import type { Permission } from '../permissions';
@@ -192,24 +190,6 @@ export function advertises(ctx: EngineContext, capability: CapabilityRef): boole
     return supports(ctx.state.engine, capability);
 }
 
-export type ChatSummary = Pick<Chat, 'messageCount' | 'lastMessageAt' | 'preview'>;
-
-export const EMPTY_CHAT_SUMMARY: ChatSummary = { messageCount: 0, lastMessageAt: null, preview: null };
-
-/** The summary after one more message; messages must come oldest first, so the first user message sets the preview. */
-export function summariseMessage(summary: ChatSummary, message: Message): ChatSummary {
-    return {
-        messageCount: summary.messageCount + 1,
-        lastMessageAt: message.createdAt,
-        preview: summary.preview ?? (message.role === 'user' ? chatPreview(message.content) : null),
-    };
-}
-
-/** `null` for a message with no visible text, so the next user message gets its turn. */
-export function chatPreview(content: string): string | null {
-    return previewText(content, MAX_CHAT_PREVIEW_LENGTH);
-}
-
 /** Text with whitespace runs collapsed to one space, cut to `max` code units; `null` when nothing visible is left. */
 export function previewText(content: string, max: number): string | null {
     const text = content.replace(/\s+/g, ' ').trim();
@@ -217,30 +197,6 @@ export function previewText(content: string, max: number): string | null {
     const cut = text.slice(0, max);
     // Never end on the first half of a surrogate pair.
     return /[\uD800-\uDBFF]$/.test(cut) ? cut.slice(0, -1) : cut;
-}
-
-/** Stores new messages, oldest first, and keeps the chat's summary and activity time current. */
-export function addChatMessages(ctx: EngineContext, chat: Chat, messages: readonly Message[]): Chat {
-    let summary = pickSummary(chat);
-    for (const message of messages) {
-        ctx.state.messages.set(message.id, message);
-        summary = summariseMessage(summary, message);
-    }
-    const updated: Chat = { ...chat, ...summary, updatedAt: ctx.now() };
-    ctx.state.chats.set(chat.id, updated);
-    ctx.publish({ type: 'chat.changed', chatId: chat.id });
-    return updated;
-}
-
-function pickSummary({ messageCount, lastMessageAt, preview }: ChatSummary): ChatSummary {
-    return { messageCount, lastMessageAt, preview };
-}
-
-/** A chat changed: its activity time moves and listeners are told. */
-export function touchChat(ctx: EngineContext, chatId: ChatId): void {
-    const chat = ctx.state.chats.get(chatId);
-    if (chat) ctx.state.chats.set(chatId, { ...chat, updatedAt: ctx.now() });
-    ctx.publish({ type: 'chat.changed', chatId });
 }
 
 export function memberActor(ctx: HandlerContext): ActivityActor {
