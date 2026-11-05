@@ -64,8 +64,9 @@ function isCanonicalHttpsOrigin(value: string): boolean {
  * The site the owner signs in to, as a canonical `https` origin (`https://example.com`, lowercase, no path, no default
  * port). The engine refuses its own origins, and any origin outside its allowlist, with 403.
  */
+// The message names no example URL: this schema ships in the UI bundle, which must contain no external URL.
 export const BrowserOrigin = z.string().max(300).refine(isCanonicalHttpsOrigin, {
-    message: 'Expected an https origin such as https://example.com',
+    message: 'Expected a canonical https origin: scheme and host, no path',
 });
 
 /** `browser: null` is the engine's default browser. */
