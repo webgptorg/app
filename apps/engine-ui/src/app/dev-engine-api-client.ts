@@ -23,6 +23,6 @@ export function createDevEngineApiClient(): EngineApiClient {
         },
         ...(import.meta.env.VITE_ENGINE_PROFILE === 'full'
             ? {}
-            : { capabilities: [KNOWN_CAPABILITIES.files, KNOWN_CAPABILITIES.onboarding] }),
+            : { capabilities: [KNOWN_CAPABILITIES.tasks, KNOWN_CAPABILITIES.files, KNOWN_CAPABILITIES.onboarding] }),
     });
 }

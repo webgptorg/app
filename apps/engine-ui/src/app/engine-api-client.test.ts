@@ -57,6 +57,10 @@ describe('createAppEngineApiClient', () => {
         vi.stubEnv('VITE_ENGINE_API', 'memory');
         const client = await createAppEngineApiClient({ origin: 'https://engine.example', fetch: vi.fn() });
         const engine = await client.engine.get(AbortSignal.timeout(1000));
-        expect(engine.kind === 'ok' && engine.data.capabilities.map(({ id }) => id)).toEqual(['files', 'onboarding']);
+        expect(engine.kind === 'ok' && engine.data.capabilities.map(({ id }) => id)).toEqual([
+            'tasks',
+            'files',
+            'onboarding',
+        ]);
     });
 });
