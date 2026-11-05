@@ -1,9 +1,9 @@
-import type { InMemorySeedAgent } from '@ptbk/engine-api/in-memory';
+import type { InMemorySeedAgent } from '../in-memory-client';
 
 /**
  * The agents a Reborn engine always has (its specs/agents/core-agents.md and system-agents.md): the core roles it
  * prepares as project Books, and Expert, which it defines itself. Each Book's PERSONA is the one-line role the
- * Agents list shows. Fixed IDs, so the seeded sequence and every other seeded ID stay as they were.
+ * Agents list shows. Fixed IDs, so seeds that add them keep every other ID they generate.
  */
 const BUILT_IN_AGENTS = [
     {
@@ -35,6 +35,7 @@ const BUILT_IN_AGENTS = [
     },
 ] as const;
 
+/** Chatter first, then the other core agents, then Expert: the order the UI lists them in. */
 export function builtInAgents(ownerId: string, createdAt: string): InMemorySeedAgent[] {
     return BUILT_IN_AGENTS.map(({ id, name, origin, role }) => ({
         id,

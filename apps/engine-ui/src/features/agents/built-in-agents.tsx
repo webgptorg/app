@@ -25,7 +25,7 @@ export function BuiltInAgents({ q }: { readonly q: string | undefined }) {
         }),
     );
     if (list.isPending) return <Skeleton className="h-24 w-full" />;
-    const agents = list.data?.items ?? [];
+    const agents = [...(list.data?.items ?? [])].sort((a, b) => rank(a) - rank(b));
     if (agents.length === 0) return null;
     return (
         <section aria-labelledby="built-in-agents" className="flex flex-col gap-2">
@@ -42,6 +42,12 @@ export function BuiltInAgents({ q }: { readonly q: string | undefined }) {
             </ul>
         </section>
     );
+}
+
+/** Chatter, the one to talk to, first; then the other core agents by name; then the engine's own (Expert). */
+function rank(agent: Agent): number {
+    if (agent.origin !== 'core') return 2;
+    return agent.name === 'Chatter' ? 0 : 1;
 }
 
 function BuiltInAgentRow({ agent }: { readonly agent: Agent }) {

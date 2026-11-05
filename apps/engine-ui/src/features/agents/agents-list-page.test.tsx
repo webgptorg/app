@@ -1,4 +1,5 @@
 import { KNOWN_CAPABILITIES } from '@ptbk/engine-api';
+import { builtInAgents } from '@ptbk/engine-api/in-memory';
 import { screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
@@ -291,21 +292,23 @@ describe('agents list permissions', { timeout: TIMEOUT_MS }, () => {
 
     it('lists the member’s agents first, then a quiet Built-in section with each agent’s role', async () => {
         const engine = createAgentsEngine({
-            agents: [
-                seededAgent(1),
-                seededAgent(2),
-                { id: 'builtin-chatter', source: 'Chatter\nPERSONA Talks with you first.', origin: 'core' },
-                { id: 'builtin-expert', source: 'Expert\nPERSONA Knows the engine.', origin: 'system' },
-            ],
+            agents: [seededAgent(1), seededAgent(2), ...builtInAgents('member-owner', '2026-09-01T00:00:00.000Z')],
             capabilities: [KNOWN_CAPABILITIES.files],
         });
         const { container } = await renderList('/agents', engine);
         expect(agentLinks()).toEqual(['Agent 001', 'Agent 002']);
         const builtIn = await screen.findByRole('region', { name: 'Built-in' });
-        expect(within(builtIn).getByRole('link', { name: 'Chatter' }).getAttribute('href')).toBe(
-            '/agents/builtin-chatter',
-        );
-        expect(within(builtIn).getByText('Knows the engine.')).toBeDefined();
+        expect(
+            within(builtIn)
+                .getAllByRole('link')
+                .map((link) => link.textContent),
+        ).toEqual(['CChatter', 'AAdam', 'FFixer', 'RRouter', 'TTasker', 'TTeacher', 'EExpert']);
+        expect(
+            within(builtIn)
+                .getByRole('link', { name: /Chatter/ })
+                .getAttribute('href'),
+        ).toBe('/agents/builtin-chatter');
+        expect(within(builtIn).getByText('Knows Promptbook and this engine, and sets up new projects.')).toBeDefined();
         // Without agent-management@1 nothing can be shared or created from a form.
         expect(screen.queryByRole('combobox', { name: 'Visibility' })).toBeNull();
         expect(screen.queryByRole('columnheader', { name: 'Visibility' })).toBeNull();

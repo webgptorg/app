@@ -1,4 +1,5 @@
 import type { InMemorySeed } from '../in-memory-client';
+import { builtInAgents } from './built-in-agents';
 
 const MINUTE_MS = 60_000;
 const SHA = (char: string): string => char.repeat(64);
@@ -77,19 +78,8 @@ export function createDemoSeed(now: Date = new Date()): InMemorySeed {
                 createdAt: ago(60 * 24 * 7),
                 createdBy: 'member-jana',
             },
-            // A Reborn engine always has its built-in agents; two stand for the core and the system ones.
-            {
-                id: 'agent-chatter',
-                source: 'Chatter\nPERSONA Talks with you first and brings in the right agents',
-                origin: 'core',
-                createdAt: ago(60 * 24 * 30),
-            },
-            {
-                id: 'agent-expert',
-                source: 'Expert\nPERSONA Knows Promptbook and this engine',
-                origin: 'system',
-                createdAt: ago(60 * 24 * 30),
-            },
+            // A Reborn engine always has its built-in agents.
+            ...builtInAgents(owner, ago(60 * 24 * 30)),
         ],
         chats: [
             {

@@ -27,8 +27,9 @@ export type AgentRunState = z.infer<typeof AgentRunState>;
 /**
  * Who defines the agent, as the Reborn engine models it. `content`: the project's own agents, which do its work.
  * `core`: Chatter, Adam, Tasker, Router, Fixer and Teacher, which the engine prepares but which are ordinary, editable
- * project Books. `system`: Expert and any other agent the engine itself defines, with no project Book. Origin is
- * descriptive: it grants no privilege and changes no permission.
+ * project Books. `system`: Expert and any other agent the engine itself defines, with no project Book. Origin grants
+ * no privilege and changes no permission, but a `system` agent belongs to the engine: changing, deleting or restoring
+ * it, or saving its source, is 409 `agent-engine-owned`.
  */
 export const AGENT_ORIGINS = ['content', 'core', 'system'] as const;
 export const AgentOrigin = z.enum(AGENT_ORIGINS);
@@ -184,7 +185,7 @@ export const AGENT_ROUTES = {
         params: AgentParams,
         body: { kind: 'json', schema: UpdateAgentBody },
         responses: { 200: { kind: 'json', schema: Agent } },
-        problems: ['agent-deleted'],
+        problems: ['agent-deleted', 'agent-engine-owned'],
     }),
     deleteAgent: defineRoute({
         id: 'deleteAgent',
@@ -194,6 +195,7 @@ export const AGENT_ROUTES = {
         permission: 'agents.delete',
         params: AgentParams,
         responses: { 200: { kind: 'json', schema: Agent } },
+        problems: ['agent-engine-owned'],
     }),
     restoreAgent: defineRoute({
         id: 'restoreAgent',
@@ -204,6 +206,7 @@ export const AGENT_ROUTES = {
         capability: KNOWN_CAPABILITIES.agentManagement,
         params: AgentParams,
         responses: { 200: { kind: 'json', schema: Agent } },
+        problems: ['agent-engine-owned'],
     }),
     getAgentSource: defineRoute({
         id: 'getAgentSource',
@@ -224,7 +227,7 @@ export const AGENT_ROUTES = {
         params: AgentParams,
         body: { kind: 'json', schema: UpdateAgentSourceBody },
         responses: { 200: { kind: 'json', schema: AgentSource } },
-        problems: ['revision-conflict', 'invalid-book', 'agent-deleted'],
+        problems: ['revision-conflict', 'invalid-book', 'agent-deleted', 'agent-engine-owned'],
     }),
     listAgentRevisions: defineRoute({
         id: 'listAgentRevisions',

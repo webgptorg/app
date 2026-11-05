@@ -18,6 +18,7 @@ describe('package entries', () => {
             'IN_MEMORY_CLIENT_MARKER',
             'PERMISSION_AUTHORIZER',
             'RESOURCE_KINDS',
+            'builtInAgents',
             'createDemoSeed',
             'createInMemoryEngine',
             'createInMemoryEngineApiClient',

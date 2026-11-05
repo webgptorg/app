@@ -31,8 +31,8 @@ Each entry has this shape. Platform authors: add yours at the top of the list, o
 
 ### 2026-11-05: Agent origin and the built-in agents
 
-- **Changed:** every `Agent` has `origin`: `content`, `core` (Chatter, Adam, Tasker, Router, Fixer, Teacher) or `system` (Expert), and `GET /agents` takes `origin=` with one value or a comma-separated set. `profile.description` is the one-line role the UI shows for built-in agents. New check `engine-api.agents.origin`. See [engine-api.md](engine-api.md#agent-origin).
-- **Redo:** send `origin` on every agent from the Book's definition ownership (your `ChatAgentChoice` groups map onto it), list Expert as `system`, filter by `origin`, and make each core Book's description its role.
+- **Changed:** every `Agent` has `origin`: `content`, `core` (Chatter, Adam, Tasker, Router, Fixer, Teacher) or `system` (Expert), and `GET /agents` takes `origin=` with one value or a comma-separated set. `profile.description` is the one-line role the UI shows for built-in agents. Changing, deleting, restoring or saving the source of a `system` agent is 409 `agent-engine-owned` (new problem code). New check `engine-api.agents.origin`. See [engine-api.md](engine-api.md#agent-origin).
+- **Redo:** send `origin` on every agent from the Book's definition ownership (your `ChatAgentChoice` groups map onto it), list Expert as `system` and refuse changes to it with `agent-engine-owned`, filter by `origin`, and make each core Book's description its role.
 
 ### 2026-11-05: Tasks
 

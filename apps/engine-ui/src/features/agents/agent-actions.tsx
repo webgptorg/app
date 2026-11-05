@@ -62,6 +62,8 @@ export function useAgentActions(options: AgentMutationOptions = {}): AgentAction
 
     const menuEntries = (agent: Agent): MenuEntry[] => {
         const entries: MenuEntry[] = [];
+        // The engine defines its system agents (Expert) and refuses to change them.
+        if (agent.origin === 'system') return entries;
         if (canChangeVisibility) {
             const makePublic = agent.visibility !== 'public';
             entries.push({

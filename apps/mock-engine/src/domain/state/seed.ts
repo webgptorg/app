@@ -1,7 +1,7 @@
 import { Faker, base, en } from '@faker-js/faker';
+import { builtInAgents } from '@ptbk/engine-api/in-memory';
 import type { InMemorySeed } from '@ptbk/engine-api/in-memory';
 
-import { builtInAgents } from './built-in-agents';
 import { seedCapabilities } from './capability-seed';
 import type { Scenario, ScenarioSize } from './scenarios';
 import { SCENARIO_SIZES } from './scenarios';

@@ -486,7 +486,7 @@ describe('in-memory demo seed', () => {
 
     it('answers every list route with data', async () => {
         const { client } = demo({ capabilities: SCANNING });
-        expect(ok(await client.agents.list({}, signal())).items).toHaveLength(5);
+        expect(ok(await client.agents.list({}, signal())).items).toHaveLength(10);
         expect(ok(await client.agents.list({ origin: 'content' }, signal())).items).toHaveLength(3);
         expect(ok(await client.chats.listAll({ q: 'billing' }, signal())).items).toHaveLength(1);
         expect(ok(await client.chats.listAll({ agentId: AgentId.parse('agent-max') }, signal())).items).toEqual([]);

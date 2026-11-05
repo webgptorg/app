@@ -11,6 +11,8 @@ export const PROBLEM_STATUS = {
     /** The engine does not advertise the capability this route belongs to. */
     'capability-not-supported': 404,
     'agent-deleted': 409,
+    /** The agent is a `system` agent, defined by the engine (Expert): it cannot be changed, deleted or restored. */
+    'agent-engine-owned': 409,
     'revision-conflict': 409,
     'folder-not-empty': 409,
     'name-taken': 409,
