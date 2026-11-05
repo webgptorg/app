@@ -112,7 +112,7 @@ describe('router conventions', () => {
         await waitFor(() => {
             expect(list).toHaveBeenCalledOnce();
         });
-        expect(list.mock.calls[0]?.[0]).toEqual({ sort: '-updatedAt' });
+        expect(list.mock.calls[0]?.[0]).toEqual({ origin: 'content', sort: '-updatedAt' });
         expect(router.state.location.pathname).toBe('/nowhere');
     });
 
@@ -124,7 +124,7 @@ describe('router conventions', () => {
 
         expect(await screen.findByRole('heading', { name: 'Agents' })).toBeDefined();
         expect(router.state.location.search).toEqual({});
-        expect(list.mock.calls[0]?.[0]).toEqual({ sort: '-updatedAt' });
+        expect(list.mock.calls[0]?.[0]).toEqual({ origin: 'content', sort: '-updatedAt' });
     });
 
     it('keeps a valid search param', async () => {
