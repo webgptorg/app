@@ -59,6 +59,9 @@ describe('the suite against an in-process engine', () => {
             // The fake advertises every capability, so no route can be checked for capability-not-supported.
             'engine-api.capabilities.unadvertised-404':
                 'skip: the engine advertises every capability this contract defines',
+            // Reserved capabilities are design only, so no engine advertises them.
+            'engine-api.live-audio.session': 'skip: capability-not-advertised',
+            'engine-api.browser-tab.session': 'skip: capability-not-advertised',
         });
         expect(report.engineVersion).not.toBeNull();
         expect(report.results.every(({ cleanupFailures }) => cleanupFailures === 0)).toBe(true);
@@ -86,8 +89,17 @@ describe('the suite against an in-process engine', () => {
         expect(results['engine-api.triggers.paging']).toBe('skip: capability-not-advertised');
         expect(results['engine-api.integrations.paging']).toBe('skip: capability-not-advertised');
         expect(results['engine-api.test-chat.draft-reply']).toBe('skip: capability-not-advertised');
+        expect(results['engine-api.live-audio.session']).toBe('skip: capability-not-advertised');
+        expect(results['engine-api.live.reserved']).toBe('pass');
         expect(results['engine-api.capabilities.unadvertised-404']).toBe('pass');
         expect(Object.values(results).some((outcome) => outcome.startsWith('fail'))).toBe(false);
+    });
+
+    it('fails an engine that advertises a reserved live capability', async () => {
+        const results = outcomes(
+            await run({ capabilities: [{ id: 'live-audio', version: 1 }] }, 'engine-api.live.reserved'),
+        );
+        expect(results['engine-api.live.reserved']).toMatch(/^fail: GET \/engine advertises live-audio@1/);
     });
 
     it.each(DEFECTS)('fails the matching check for %s', async (defect) => {

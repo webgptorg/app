@@ -8,7 +8,10 @@ import { OWNER_PERMISSIONS } from '@ptbk/engine-api';
  */
 export const ROLE_PERMISSIONS: Readonly<Record<Role, readonly Permission[]>> = Object.freeze({
     owner: OWNER_PERMISSIONS,
-    admin: OWNER_PERMISSIONS.filter((permission) => permission !== 'settings.manage'),
+    // Driving a browser tab signs in as the engine's own accounts, so it stays with owners.
+    admin: OWNER_PERMISSIONS.filter(
+        (permission) => permission !== 'settings.manage' && permission !== 'browser.control',
+    ),
     member: [
         'agents.read',
         'agents.write',

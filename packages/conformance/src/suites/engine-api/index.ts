@@ -12,6 +12,7 @@ import { FILE_CHECKS } from './files';
 import { GATEWAY_CHECKS } from './gateway';
 import { INPUT_CHECKS } from './input';
 import { INTEGRATION_CHECKS } from './integrations';
+import { LIVE_CHECKS } from './live';
 import { MEMBER_CHECKS } from './members';
 import { PAGINATION_CHECKS } from './pagination';
 import { PERMISSION_CHECKS } from './permissions';
@@ -39,6 +40,7 @@ export const ENGINE_API_SUITE: ConformanceSuite = {
         ...TRIGGER_CHECKS,
         ...INTEGRATION_CHECKS,
         ...TEST_CHAT_CHECKS,
+        ...LIVE_CHECKS,
         ...ACTIVITY_CHECKS,
         ...AUDIT_CHECKS,
         ...PERMISSION_CHECKS,

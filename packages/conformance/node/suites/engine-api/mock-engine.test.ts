@@ -12,9 +12,14 @@ import { ENGINE_API_PLATFORM_SUITE, createEngineApiPlatformSuite } from './index
 
 const SUITE_TIMEOUT_MS = 300_000;
 
-/** What the mock cannot show: it advertises every capability, and its member sessions come without a passkey. */
+/**
+ * What the mock cannot show: it advertises every known capability but no reserved one, and its member sessions come
+ * without a passkey.
+ */
 const MOCK_SKIPS = {
     'engine-api.capabilities.unadvertised-404': 'skip: the engine advertises every capability this contract defines',
+    'engine-api.live-audio.session': 'skip: capability-not-advertised',
+    'engine-api.browser-tab.session': 'skip: capability-not-advertised',
     'engine-api.me.own-passkeys': 'skip: the member has no passkey to revoke (listing passed)',
 };
 

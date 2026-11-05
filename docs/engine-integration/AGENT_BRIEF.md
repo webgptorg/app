@@ -24,6 +24,11 @@ Each entry has this shape. Platform authors: add yours at the top of the list, o
 - **Redo:** what the engine's agent must change, re-run or drop; "nothing" if it is inert.
 ```
 
+### 2026-11-05: Live audio, video and the browser tab (design only)
+
+- **Changed:** engine API 1.14.0 reserves `live-audio@1`, `live-video@1` and `browser-tab@1` in `RESERVED_CAPABILITIES`, with two `draft` routes (`openLiveAudioSession`, `openBrowserTabSession`), the `browser.control` permission and a channel path; conformance adds `engine-api.live.reserved` and two registered stubs. The tunnel protocol is unchanged. Design: `<PLATFORM_DIR>/docs/engine-integration/live-sessions.md`, ADR 0019.
+- **Redo:** nothing to build. Do not advertise these capabilities; let the two routes answer 404 `capability-not-supported` like any unadvertised capability; give `browser.control` to owners only. Send the open questions at the end of the design to the maintainer.
+
 ### 2026-11-05: Change log
 
 - **Changed:** contract changes before E-02 are made in place and listed here. The engine API is being aligned with the Reborn engine (`specs/app/integration.md`); expect several entries.
@@ -78,6 +83,10 @@ Work through `implementation-plan.md` one phase at a time, in order. For each ph
 6. Commit with a message that names the phase and the `ENG-xx` IDs it completes. Update your copy of the checklist.
 
 Never skip, weaken or filter out a check to get green. A check may report `skip` only for the reasons the plan allows: a capability you do not advertise yet, or a check that needs a later phase's work.
+
+## Not yet: live audio, video and the browser tab
+
+Full-duplex voice in a chat, later video, and the owner driving one engine browser tab to sign in to a site are designed but not buildable yet: read `<PLATFORM_DIR>/docs/engine-integration/live-sessions.md` once, for its open questions, and build none of it. They ride inside the browser's TLS to the engine as a WebSocket on the engine origin, so nothing in the tunnel, relay or registration changes for them.
 
 ## When you are done
 

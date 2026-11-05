@@ -5,6 +5,7 @@ import {
     AccessRequestId,
     createFetchEngineApiClient,
     ENGINE_API_ROUTE_LIST,
+    isReservedCapability,
     MemberId,
     OWNER_PERMISSIONS,
 } from '@ptbk/engine-api';
@@ -304,7 +305,12 @@ describe('every response of that run', () => {
     });
 
     it('came from every operation of the route table', () => {
-        const missing = ENGINE_API_ROUTE_LIST.map(({ id }) => id).filter((id) => !recorder.answered.has(id));
+        // Reserved routes have no client method; capabilities.test.ts checks that they answer 404.
+        const missing = ENGINE_API_ROUTE_LIST.filter(
+            (route) => route.capability === undefined || !isReservedCapability(route.capability),
+        )
+            .map(({ id }) => id)
+            .filter((id) => !recorder.answered.has(id));
         expect(missing).toEqual([]);
     });
 });

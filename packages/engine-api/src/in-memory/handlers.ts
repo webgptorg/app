@@ -34,6 +34,7 @@ import type { HandlerContext, HandlerResult, Handlers } from './kit';
 import { cancelReply, startReply, streamReply } from './replies';
 import { advanceRun, queueRun, RUN_HANDLERS } from './runs';
 import { ACCESS_REQUEST_HANDLERS, activeOwnerCount, signOutEverywhere } from './access-requests';
+import { LIVE_HANDLERS } from './live';
 import { TEST_CHAT_HANDLERS } from './test-chat';
 import { TRIGGER_HANDLERS } from './triggers';
 import type { InMemoryState } from './state';
@@ -652,6 +653,7 @@ export const HANDLERS: Handlers = {
     ...INTEGRATION_HANDLERS,
     ...TEST_CHAT_HANDLERS,
     ...ACCESS_REQUEST_HANDLERS,
+    ...LIVE_HANDLERS,
 };
 
 function saveAgent(ctx: HandlerContext, agent: Agent): HandlerResult<Agent> {

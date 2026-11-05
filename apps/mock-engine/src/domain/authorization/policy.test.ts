@@ -11,10 +11,11 @@ describe('permissionsFor', () => {
         expect(sorted(permissionsFor({ role: 'owner' }, { permissions: null }))).toEqual([...PERMISSIONS].sort());
     });
 
-    it('gives an admin everything but settings.manage', () => {
+    it('gives an admin everything but settings.manage and browser.control', () => {
         const admin = permissionsFor({ role: 'admin' }, { permissions: null });
         expect(admin.has('settings.manage')).toBe(false);
-        expect(admin.size).toBe(PERMISSIONS.length - 1);
+        expect(admin.has('browser.control')).toBe(false);
+        expect(admin.size).toBe(PERMISSIONS.length - 2);
     });
 
     it('keeps members away from secrets.manage, members.manage and settings', () => {

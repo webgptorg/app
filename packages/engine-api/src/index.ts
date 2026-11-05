@@ -28,6 +28,7 @@ export * from './capabilities/triggers';
 export * from './capabilities/integrations';
 export * from './capabilities/test-chat';
 export * from './capabilities/access-requests';
+export * from './capabilities/live';
 export { stripUnknownFields, toTolerant } from './tolerant';
 
 export { createEngineApiClient, EngineApiContractError } from './client';

@@ -1,5 +1,5 @@
 import type { EngineApiClient, EngineApiResponse, EngineApiRouteId, ReadEngineEvent } from '@ptbk/engine-api';
-import { ENGINE_API_PREFIX, ENGINE_API_ROUTE_LIST, ENGINE_API_ROUTES } from '@ptbk/engine-api';
+import { ENGINE_API_PREFIX, ENGINE_API_ROUTE_LIST, ENGINE_API_ROUTES, isReservedCapability } from '@ptbk/engine-api';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import type { ApiHarness } from '../src/testing/api-harness';
@@ -144,9 +144,9 @@ describe('capabilities through the mock HTTP server (contract)', () => {
         await okFrom('declineAccessRequest', owner.members.declineAccessRequest(declined.id, signal()));
         await okFrom('setDashboardRemovals', owner.settings.setDashboardRemovals({ enabled: true }, signal()));
 
-        const capabilityRoutes = ENGINE_API_ROUTE_LIST.filter((route) => route.capability !== undefined).map(
-            ({ id }) => id,
-        );
+        const capabilityRoutes = ENGINE_API_ROUTE_LIST.filter(
+            (route) => route.capability !== undefined && !isReservedCapability(route.capability),
+        ).map(({ id }) => id);
         expect([...answered].filter((id) => id !== 'listActivity').sort()).toEqual([...capabilityRoutes].sort());
     });
 

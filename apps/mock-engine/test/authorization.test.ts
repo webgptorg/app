@@ -1,5 +1,5 @@
 import type { Permission, RouteDefinition } from '@ptbk/engine-api';
-import { ENGINE_API_PREFIX, ENGINE_API_ROUTE_LIST, ENGINE_API_ROUTES } from '@ptbk/engine-api';
+import { ENGINE_API_PREFIX, ENGINE_API_ROUTE_LIST, ENGINE_API_ROUTES, isReservedCapability } from '@ptbk/engine-api';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { ROLE_PERMISSIONS } from '../src/domain/authorization/policy';
@@ -130,6 +130,11 @@ function expectDecision(
     expect(result.body, label).toMatchObject({ code: 'forbidden', requiredPermission: route.permission });
 }
 
+// Reserved capabilities are never advertised, so their routes answer 404 before any permission check.
+const SERVED_ROUTES = ENGINE_API_ROUTE_LIST.filter(
+    (route) => route.capability === undefined || !isReservedCapability(route.capability),
+);
+
 let harness: ApiHarness;
 const memberOf = (role: (typeof ROLES)[number]): string => {
     const found = harness
@@ -155,8 +160,7 @@ describe('authorisation matrix', () => {
         const cookie = harness.signIn({ memberId: memberOf(role) });
         const permissions = new Set(ROLE_PERMISSIONS[role]);
         expect(ENGINE_API_ROUTE_LIST.filter((route) => route.capability !== undefined).length).toBeGreaterThan(25);
-        for (const route of ENGINE_API_ROUTE_LIST)
-            expectDecision(route, permissions, await call(harness, cookie, route));
+        for (const route of SERVED_ROUTES) expectDecision(route, permissions, await call(harness, cookie, route));
     });
 
     it.each<[string, Permission[]]>([
@@ -170,8 +174,7 @@ describe('authorisation matrix', () => {
         'allows a session with an explicit permission set (%s) exactly the routes whose permission is in it',
         async (_, set) => {
             const cookie = harness.signIn({ memberId: memberOf('admin'), permissions: set });
-            for (const route of ENGINE_API_ROUTE_LIST)
-                expectDecision(route, new Set(set), await call(harness, cookie, route));
+            for (const route of SERVED_ROUTES) expectDecision(route, new Set(set), await call(harness, cookie, route));
         },
     );
 
