@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { EngineEventReader } from '../events';
+import { Run, RunDetailReader, RunReader } from './runs';
 import {
     Task,
     TaskDetail,
@@ -139,5 +140,44 @@ describe('tasks@1 schemas', () => {
         expect(EngineEventReader.parse({ type: 'task.changed', taskId: 'task-send', state: 'paused' })).toMatchObject({
             state: 'unknown',
         });
+    });
+
+    it('accepts a run without taskId and occurrenceId from an engine without tasks@1, and reads them as null', () => {
+        const run = {
+            id: 'run-1',
+            agentId: 'agent-ada',
+            agentName: 'Ada',
+            source: 'web',
+            status: 'completed',
+            chatId: null,
+            messageId: null,
+            triggerId: null,
+            retryOf: null,
+            createdBy: null,
+            queuedAt: NOW,
+            startedAt: NOW,
+            completedAt: NOW,
+            cancelRequestedAt: null,
+            attemptCount: 1,
+            runner: null,
+            model: null,
+            progress: null,
+            usage: null,
+            error: null,
+            preview: null,
+        };
+        expect(Run.safeParse(run).success).toBe(true);
+        expect(RunReader.parse(run)).toMatchObject({ taskId: null, occurrenceId: null });
+        expect(RunReader.parse({ ...run, taskId: 'task-send', occurrenceId: 'occ-1' })).toMatchObject({
+            taskId: 'task-send',
+            occurrenceId: 'occ-1',
+        });
+        const detail = RunDetailReader.parse({
+            ...run,
+            toolCalls: [],
+            outputs: { messages: [], files: [], fileNames: [], projectChanges: [] },
+            report: { touchedProjects: [], externalSources: [] },
+        });
+        expect(detail).toMatchObject({ taskId: null, occurrenceId: null });
     });
 });

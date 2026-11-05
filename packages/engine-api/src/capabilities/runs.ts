@@ -92,10 +92,13 @@ export const Run = z.strictObject({
     triggerId: TriggerId.nullable(),
     /** The failed run this one retries. */
     retryOf: RunId.nullable(),
-    /** The task this run works on (`tasks@1`); `null` for work outside a task, such as a chat reply. */
-    taskId: TaskId.nullable(),
-    /** The task occurrence this run is an attempt of; set exactly when `taskId` is. */
-    occurrenceId: TaskOccurrenceId.nullable(),
+    /**
+     * The task this run works on (`tasks@1`); `null` for work outside a task, such as a chat reply. Optional so an engine
+     * without `tasks@1` may leave it out; clients read a missing value as `null`.
+     */
+    taskId: TaskId.nullable().optional(),
+    /** The task occurrence this run is an attempt of; set exactly when `taskId` is, and optional the same way. */
+    occurrenceId: TaskOccurrenceId.nullable().optional(),
     /** `null` when no member started it (email, schedule, webhook). */
     createdBy: MemberId.nullable(),
     queuedAt: Timestamp,
@@ -231,7 +234,12 @@ export const RunParams = z.strictObject({ runId: RunId });
  * Runs as the client reads them: a `status` or `source` this contract does not know yet (a newer engine's) reads as
  * `unknown`, so the UI shows it as such instead of failing the whole list. Engines still answer with the closed enums.
  */
-const openRunFields = { status: openEnum(RUN_STATUSES), source: openEnum(RUN_SOURCES) };
+const openRunFields = {
+    status: openEnum(RUN_STATUSES),
+    source: openEnum(RUN_SOURCES),
+    taskId: TaskId.nullable().default(null),
+    occurrenceId: TaskOccurrenceId.nullable().default(null),
+};
 export const RunReader = toTolerant(Run.extend(openRunFields));
 export type ReadRun = z.output<typeof RunReader>;
 export const RunPageReader = z.object({ items: z.array(RunReader), nextCursor: Cursor.nullable() });
