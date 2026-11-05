@@ -239,11 +239,47 @@ test.describe('the built bundle under the engine CSP', () => {
         expectCleanPage(report);
 
         const filtered = await visit('/runs?status=failed&source=schedule');
-        await expect(page.getByRole('checkbox', { name: 'Failed' })).toBeChecked();
+        await expect(page.getByRole('button', { name: /^Status\s*1 selected$/ })).toBeVisible();
         await expect(page.getByRole('combobox', { name: 'Source' })).toHaveValue('schedule');
         await expect(page.getByRole('table').getByRole('link', { name: 'Write the weekly report' })).toBeVisible();
         expectCleanPage(filtered);
     });
+
+    for (const path of ['/runs', `/agents/${FAKE_AGENT_ID}/runs`]) {
+        test(`${path} puts its filters behind one button at 360 px, so the first run is in view`, async ({
+            page,
+            visit,
+        }) => {
+            await page.setViewportSize({ width: 360, height: 740 });
+            expectCleanPage(await visit(`${path}?source=api`));
+            await expect(page.getByRole('link', { name: 'Summarise open pull requests' })).toBeInViewport();
+            await expect(page.getByRole('button', { name: 'Remove Source: API' })).toBeVisible();
+
+            await page.getByRole('button', { name: /^Filters/ }).click();
+            const sheet = page.getByRole('dialog', { name: 'Filters' });
+            await expect(sheet.getByRole('checkbox', { name: 'Failed' })).toBeVisible();
+            await expect(sheet.getByRole('combobox', { name: 'Source' })).toHaveValue('api');
+            await sheet.getByRole('checkbox', { name: 'Running' }).check();
+            await sheet.getByRole('button', { name: 'Show results' }).click();
+            await expect(page).toHaveURL(/status=running/);
+            expect(await page.evaluate(() => window.__ptbkCspViolations ?? [])).toEqual([]);
+        });
+    }
+
+    for (const [path, first] of [
+        ['/triggers', 'Morning report with a long name that has to wrap on a narrow screen'],
+        ['/integrations', 'Documentation search with a rather long name that has to wrap'],
+    ] as const) {
+        test(`${path} puts its filters behind one button at 360 px, so the first item is in view`, async ({
+            page,
+            visit,
+        }) => {
+            await page.setViewportSize({ width: 360, height: 740 });
+            expectCleanPage(await visit(path));
+            await expect(page.getByRole('button', { name: 'Filters', exact: true })).toBeVisible();
+            await expect(page.getByRole('link', { name: first }).first()).toBeInViewport();
+        });
+    }
 
     test(`/agents/${FAKE_AGENT_ID}/runs shows only the agent's runs and meets the UX checks`, async ({
         page,
@@ -422,7 +458,7 @@ test.describe('the built bundle under the engine CSP', () => {
         expectCleanPage(report);
 
         const filtered = await visit('/integrations?status=needs-attention,error');
-        await expect(page.getByRole('checkbox', { name: 'Error' })).toBeChecked();
+        await expect(page.getByRole('button', { name: /^Status\s*2 selected$/ })).toBeVisible();
         await expect(page.getByRole('table').getByRole('link', { name: 'Calendar' })).toBeVisible();
         await expect(page.getByRole('table').getByRole('link', { name: /^Documentation search/ })).toHaveCount(0);
         expectCleanPage(filtered);

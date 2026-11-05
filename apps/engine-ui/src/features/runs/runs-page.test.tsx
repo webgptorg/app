@@ -48,8 +48,10 @@ describe('runs timeline', { timeout: TIMEOUT_MS }, () => {
 
     it('writes status, source, agent and dates to the URL, sends them to the engine and restores them on reload', async () => {
         const { user, engine, router } = await renderRuns();
-        await user.click(screen.getByRole('checkbox', { name: 'Failed' }));
-        await user.click(screen.getByRole('checkbox', { name: 'Queued' }));
+        await user.click(screen.getByRole('button', { name: 'Status' }));
+        await user.click(screen.getByRole('menuitemcheckbox', { name: 'Failed' }));
+        await user.click(screen.getByRole('menuitemcheckbox', { name: 'Queued' }));
+        await user.keyboard('{Escape}');
         await waitFor(() => {
             expect(router.state.location.search).toMatchObject({ status: 'queued,failed' });
         });
@@ -83,7 +85,7 @@ describe('runs timeline', { timeout: TIMEOUT_MS }, () => {
         await waitFor(() => {
             expect(reloaded.spies.list).toHaveBeenCalledWith(filtered, expect.anything());
         });
-        expect(screen.getAllByRole('checkbox', { name: 'Failed' }).at(-1)).toHaveProperty('checked', true);
+        expect(screen.getAllByRole('button', { name: /^Status\s*2 selected$/ })).not.toHaveLength(0);
     });
 
     it('falls back to no filter for invalid search params instead of failing', async () => {

@@ -353,7 +353,7 @@ function CompactFilter({ filter }: { readonly filter: FilterBarFilter }) {
         case 'date':
             return (
                 <label className="inline-flex items-center gap-2 text-sm text-(--filter-bar-label)">
-                    {filter.label}
+                    <span className="whitespace-nowrap">{filter.label}</span>
                     <Input
                         type="date"
                         value={filter.value ?? ''}

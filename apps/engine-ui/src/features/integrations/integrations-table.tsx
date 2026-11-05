@@ -1,16 +1,7 @@
 import { INTEGRATION_KINDS, INTEGRATION_STATUSES } from '@ptbk/engine-api';
 import type { AgentId, ReadIntegration } from '@ptbk/engine-api';
-import {
-    Button,
-    Checkbox,
-    ConfirmDialog,
-    createDataTableColumnHelper,
-    DataTable,
-    Field,
-    RelativeTime,
-    Select,
-} from '@ptbk/ui';
-import type { DataTableColumnDef, MenuEntry } from '@ptbk/ui';
+import { Button, ConfirmDialog, createDataTableColumnHelper, DataTable, FilterBar, RelativeTime } from '@ptbk/ui';
+import type { DataTableColumnDef, FilterBarFilter, FilterBarOption, MenuEntry } from '@ptbk/ui';
 import { useQueryClient } from '@tanstack/react-query';
 import { Pencil, Plug, PlugZap, RefreshCw, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
@@ -231,7 +222,6 @@ export function IntegrationsTable({ search, onSearchChange, agentId }: Integrati
                 agentNames={agentNames}
                 onChange={filter}
                 onClear={clear}
-                filtered={filtered}
             />
             <DataTable
                 caption={m.integrations_title()}
@@ -318,83 +308,62 @@ interface IntegrationFiltersProps {
     readonly agentNames: ReadonlyMap<AgentId, string>;
     readonly onChange: (change: Partial<IntegrationSearch>) => void;
     readonly onClear: () => void;
-    readonly filtered: boolean;
 }
 
-/** Every control reads from and writes to the search params, so a reload or a shared link restores the view. */
-function IntegrationFilters({ search, scope, agentNames, onChange, onClear, filtered }: IntegrationFiltersProps) {
-    const statuses = selectedStatuses(search);
-    const toggleStatus = (status: (typeof INTEGRATION_STATUSES)[number], on: boolean) => {
-        const next = INTEGRATION_STATUSES.filter((candidate) => (candidate === status ? on : statuses.has(candidate)));
-        onChange({ status: next.length === 0 ? undefined : next.join(',') });
-    };
-    const knownKind = search.kind === undefined || (INTEGRATION_KINDS as readonly string[]).includes(search.kind);
-    const knownAgent = search.agentId === undefined || agentNames.has(search.agentId);
-    return (
-        <div role="search" aria-label={m.integrations_filters()} className="flex flex-col gap-3">
-            <fieldset className="flex flex-wrap gap-x-4 gap-y-2">
-                <legend className="mb-1 text-sm font-medium">{m.integrations_filter_status()}</legend>
-                {INTEGRATION_STATUSES.map((status) => (
-                    <Checkbox
-                        key={status}
-                        label={integrationStatusLabel(status)}
-                        checked={statuses.has(status)}
-                        onChange={(event) => {
-                            toggleStatus(status, event.target.checked);
-                        }}
-                    />
-                ))}
-            </fieldset>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <Field label={m.integrations_filter_kind()}>
-                    {(control) => (
-                        <Select
-                            {...control}
-                            value={search.kind ?? ''}
-                            onChange={(event) => {
-                                onChange({ kind: event.target.value === '' ? undefined : event.target.value });
-                            }}
-                        >
-                            <option value="">{m.integrations_filter_all_kinds()}</option>
-                            {knownKind ? null : <option value={search.kind}>{search.kind}</option>}
-                            {INTEGRATION_KINDS.map((kind) => (
-                                <option key={kind} value={kind}>
-                                    {integrationKindLabel(kind)}
-                                </option>
-                            ))}
-                        </Select>
-                    )}
-                </Field>
-                {scope === 'global' ? (
-                    <Field label={m.integrations_filter_agent()}>
-                        {(control) => (
-                            <Select
-                                {...control}
-                                value={search.agentId ?? ''}
-                                onChange={(event) => {
-                                    const agentId = [...agentNames.keys()].find((id) => id === event.target.value);
-                                    onChange({ agentId });
-                                }}
-                            >
-                                <option value="">{m.integrations_filter_all_agents()}</option>
-                                {knownAgent ? null : <option value={search.agentId}>{search.agentId}</option>}
-                                {[...agentNames].map(([id, name]) => (
-                                    <option key={id} value={id}>
-                                        {name}
-                                    </option>
-                                ))}
-                            </Select>
-                        )}
-                    </Field>
-                ) : null}
-            </div>
-            {filtered ? (
-                <div>
-                    <Button variant="ghost" size="sm" onClick={onClear}>
-                        {m.integrations_clear_filters()}
-                    </Button>
-                </div>
-            ) : null}
-        </div>
-    );
+/** Every filter reads from and writes to the search params; on a phone they sit behind one "Filters" button. */
+function IntegrationFilters({ search, scope, agentNames, onChange, onClear }: IntegrationFiltersProps) {
+    const kind = search.kind;
+    const kindOptions: FilterBarOption[] = INTEGRATION_KINDS.map((known) => ({
+        value: known,
+        label: integrationKindLabel(known),
+    }));
+    if (kind !== undefined && !kindOptions.some((option) => option.value === kind))
+        kindOptions.unshift({ value: kind, label: kind });
+    const agentId = search.agentId;
+    const agentOptions = [...agentNames].map(([id, name]) => ({ value: id, label: name }));
+    if (agentId !== undefined && !agentNames.has(agentId)) agentOptions.unshift({ value: agentId, label: agentId });
+    const filters: FilterBarFilter[] = [
+        {
+            kind: 'multi',
+            id: 'status',
+            label: m.integrations_filter_status(),
+            options: INTEGRATION_STATUSES.map((status) => ({ value: status, label: integrationStatusLabel(status) })),
+            value: [...selectedStatuses(search)],
+            onChange: (value) => {
+                const next = INTEGRATION_STATUSES.filter((status) => value.includes(status));
+                onChange({ status: next.length === 0 ? undefined : next.join(',') });
+            },
+        },
+        {
+            kind: 'select',
+            id: 'kind',
+            label: m.integrations_filter_kind(),
+            allLabel: m.integrations_filter_all_kinds(),
+            options: kindOptions,
+            value: kind,
+            onChange: (value) => {
+                onChange({ kind: value });
+            },
+        },
+        ...(scope === 'global'
+            ? [
+                  {
+                      kind: 'select',
+                      id: 'agent',
+                      label: m.integrations_filter_agent(),
+                      allLabel: m.integrations_filter_all_agents(),
+                      options: agentOptions,
+                      value: agentId,
+                      onChange: (value) => {
+                          onChange({
+                              agentId:
+                                  [...agentNames.keys()].find((id) => id === value) ??
+                                  (value === agentId ? agentId : undefined),
+                          });
+                      },
+                  } satisfies FilterBarFilter,
+              ]
+            : []),
+    ];
+    return <FilterBar label={m.integrations_filters()} filters={filters} onClear={onClear} />;
 }

@@ -1,7 +1,7 @@
 import { TRIGGER_KINDS, TRIGGER_LIFECYCLES } from '@ptbk/engine-api';
 import type { AgentId, ReadTrigger } from '@ptbk/engine-api';
-import { Button, createDataTableColumnHelper, DataTable, Field, Select, VisuallyHidden } from '@ptbk/ui';
-import type { DataTableColumnDef, MenuEntry } from '@ptbk/ui';
+import { Button, createDataTableColumnHelper, DataTable, FilterBar, VisuallyHidden } from '@ptbk/ui';
+import type { DataTableColumnDef, FilterBarFilter, MenuEntry } from '@ptbk/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { Pause, Pencil, Play, Trash2 } from 'lucide-react';
@@ -235,7 +235,7 @@ export function TriggersTable({ search, onSearchChange, agentId }: TriggersTable
 
     return (
         <div className="flex flex-col gap-4">
-            <TriggerFilters search={search} scope={scope} onChange={filter} onClear={clear} filtered={filtered} />
+            <TriggerFilters search={search} scope={scope} onChange={filter} onClear={clear} />
             <DataTable
                 caption={m.triggers_title()}
                 columns={columns}
@@ -293,90 +293,65 @@ interface TriggerFiltersProps {
     readonly scope: 'global' | 'agent';
     readonly onChange: (change: Partial<TriggerSearch>) => void;
     readonly onClear: () => void;
-    readonly filtered: boolean;
 }
 
 function choice<T extends string>(value: string, known: readonly T[]): T | undefined {
     return known.find((candidate) => candidate === value);
 }
 
-/** Every control reads from and writes to the search params, so a reload or a shared link restores the view. */
-function TriggerFilters({ search, scope, onChange, onClear, filtered }: TriggerFiltersProps) {
-    return (
-        <div role="search" aria-label={m.triggers_filters()} className="flex flex-col gap-3">
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                <Field label={m.triggers_filter_kind()}>
-                    {(control) => (
-                        <Select
-                            {...control}
-                            value={search.kind ?? ''}
-                            onChange={(event) => {
-                                onChange({ kind: choice(event.target.value, TRIGGER_KINDS) });
-                            }}
-                        >
-                            <option value="">{m.triggers_filter_all_kinds()}</option>
-                            {TRIGGER_KINDS.map((kind) => (
-                                <option key={kind} value={kind}>
-                                    {knownKindLabel(kind)}
-                                </option>
-                            ))}
-                        </Select>
-                    )}
-                </Field>
-                <Field label={m.triggers_filter_lifecycle()}>
-                    {(control) => (
-                        <Select
-                            {...control}
-                            value={search.lifecycle ?? ''}
-                            onChange={(event) => {
-                                onChange({ lifecycle: choice(event.target.value, TRIGGER_LIFECYCLES) });
-                            }}
-                        >
-                            <option value="">{m.triggers_filter_all_lifecycles()}</option>
-                            {TRIGGER_LIFECYCLES.map((lifecycle) => (
-                                <option key={lifecycle} value={lifecycle}>
-                                    {lifecycleLabel(lifecycle)}
-                                </option>
-                            ))}
-                        </Select>
-                    )}
-                </Field>
-                {scope === 'global' ? <AgentFilter search={search} onChange={onChange} /> : null}
-            </div>
-            {filtered ? (
-                <div>
-                    <Button variant="ghost" size="sm" onClick={onClear}>
-                        {m.triggers_clear_filters()}
-                    </Button>
-                </div>
-            ) : null}
-        </div>
-    );
-}
-
-function AgentFilter({ search, onChange }: Pick<TriggerFiltersProps, 'search' | 'onChange'>) {
-    const agents = useQuery(agentListQueryOptions(useEngineApi(), { limit: AGENT_FILTER_LIMIT, sort: 'name' }));
+/** Every filter reads from and writes to the search params; on a phone they sit behind one "Filters" button. */
+function TriggerFilters({ search, scope, onChange, onClear }: TriggerFiltersProps) {
+    const agents = useQuery({
+        ...agentListQueryOptions(useEngineApi(), { limit: AGENT_FILTER_LIMIT, sort: 'name' }),
+        enabled: scope === 'global',
+    });
     const items = agents.data?.items ?? [];
-    const known = search.agentId === undefined || items.some((agent) => agent.id === search.agentId);
-    return (
-        <Field label={m.triggers_filter_agent()}>
-            {(control) => (
-                <Select
-                    {...control}
-                    value={search.agentId ?? ''}
-                    onChange={(event) => {
-                        onChange({ agentId: items.find((agent) => agent.id === event.target.value)?.id });
-                    }}
-                >
-                    <option value="">{m.triggers_filter_all_agents()}</option>
-                    {known ? null : <option value={search.agentId}>{search.agentId}</option>}
-                    {items.map((agent) => (
-                        <option key={agent.id} value={agent.id}>
-                            {agent.name}
-                        </option>
-                    ))}
-                </Select>
-            )}
-        </Field>
-    );
+    const agentId = search.agentId;
+    const agentOptions = items.map((agent) => ({ value: agent.id, label: agent.name }));
+    if (agentId !== undefined && !items.some((agent) => agent.id === agentId))
+        agentOptions.unshift({ value: agentId, label: agentId });
+    const filters: FilterBarFilter[] = [
+        {
+            kind: 'select',
+            id: 'kind',
+            label: m.triggers_filter_kind(),
+            allLabel: m.triggers_filter_all_kinds(),
+            options: TRIGGER_KINDS.map((kind) => ({ value: kind, label: knownKindLabel(kind) })),
+            value: search.kind,
+            onChange: (value) => {
+                onChange({ kind: value === undefined ? undefined : choice(value, TRIGGER_KINDS) });
+            },
+        },
+        {
+            kind: 'select',
+            id: 'lifecycle',
+            label: m.triggers_filter_lifecycle(),
+            allLabel: m.triggers_filter_all_lifecycles(),
+            options: TRIGGER_LIFECYCLES.map((lifecycle) => ({ value: lifecycle, label: lifecycleLabel(lifecycle) })),
+            value: search.lifecycle,
+            onChange: (value) => {
+                onChange({ lifecycle: value === undefined ? undefined : choice(value, TRIGGER_LIFECYCLES) });
+            },
+        },
+        ...(scope === 'global'
+            ? [
+                  {
+                      kind: 'select',
+                      id: 'agent',
+                      label: m.triggers_filter_agent(),
+                      allLabel: m.triggers_filter_all_agents(),
+                      options: agentOptions,
+                      value: agentId,
+                      onChange: (value) => {
+                          onChange({
+                              agentId:
+                                  items.find((agent) => agent.id === value)?.id ??
+                                  (value === agentId ? agentId : undefined),
+                          });
+                      },
+                  } satisfies FilterBarFilter,
+              ]
+            : []),
+    ];
+    return <FilterBar label={m.triggers_filters()} filters={filters} onClear={onClear} />;
 }

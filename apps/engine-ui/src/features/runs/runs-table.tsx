@@ -1,7 +1,7 @@
 import { RUN_SOURCES, RUN_STATUSES } from '@ptbk/engine-api';
 import type { AgentId, ReadRun } from '@ptbk/engine-api';
-import { Button, Checkbox, createDataTableColumnHelper, DataTable, Field, Input, RelativeTime, Select } from '@ptbk/ui';
-import type { DataTableColumnDef } from '@ptbk/ui';
+import { Button, createDataTableColumnHelper, DataTable, FilterBar, RelativeTime } from '@ptbk/ui';
+import type { DataTableColumnDef, FilterBarFilter } from '@ptbk/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo } from 'react';
 
@@ -172,7 +172,7 @@ export function RunsTable({ search, onSearchChange, agentId }: RunsTableProps) {
 
     return (
         <div className="flex flex-col gap-4">
-            <RunFilters search={search} scope={scope} onChange={filter} onClear={clear} filtered={filtered} />
+            <RunFilters search={search} scope={scope} onChange={filter} onClear={clear} />
             <DataTable
                 caption={m.runs_title()}
                 columns={columns}
@@ -218,116 +218,88 @@ interface RunFiltersProps {
     readonly scope: 'global' | 'agent';
     readonly onChange: (change: Partial<RunSearch>) => void;
     readonly onClear: () => void;
-    readonly filtered: boolean;
 }
 
 function choice<T extends string>(value: string, known: readonly T[]): T | undefined {
     return known.find((candidate) => candidate === value);
 }
 
-/** Every control reads from and writes to the search params, so a reload or a shared link restores the view. */
-function RunFilters({ search, scope, onChange, onClear, filtered }: RunFiltersProps) {
-    const statuses = selectedStatuses(search);
-    const toggleStatus = (status: (typeof RUN_STATUSES)[number], on: boolean) => {
-        const next = RUN_STATUSES.filter((candidate) => (candidate === status ? on : statuses.has(candidate)));
-        onChange({ status: next.length === 0 ? undefined : next.join(',') });
-    };
-    return (
-        <div role="search" aria-label={m.runs_filters()} className="flex flex-col gap-3">
-            <fieldset className="flex flex-wrap gap-x-4 gap-y-2">
-                <legend className="mb-1 text-sm font-medium">{m.runs_filter_status()}</legend>
-                {RUN_STATUSES.map((status) => (
-                    <Checkbox
-                        key={status}
-                        label={runStatusLabel(status)}
-                        checked={statuses.has(status)}
-                        onChange={(event) => {
-                            toggleStatus(status, event.target.checked);
-                        }}
-                    />
-                ))}
-            </fieldset>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                {scope === 'global' ? <AgentFilter search={search} onChange={onChange} /> : null}
-                <Field label={m.runs_filter_source()}>
-                    {(control) => (
-                        <Select
-                            {...control}
-                            value={search.source ?? ''}
-                            onChange={(event) => {
-                                onChange({ source: choice(event.target.value, RUN_SOURCES) });
-                            }}
-                        >
-                            <option value="">{m.runs_filter_all_sources()}</option>
-                            {RUN_SOURCES.map((source) => (
-                                <option key={source} value={source}>
-                                    {runSourceLabel(source)}
-                                </option>
-                            ))}
-                        </Select>
-                    )}
-                </Field>
-                <Field label={m.runs_filter_from()}>
-                    {(control) => (
-                        <Input
-                            {...control}
-                            type="date"
-                            value={search.from ?? ''}
-                            {...(search.to === undefined ? {} : { max: search.to })}
-                            onChange={(event) => {
-                                onChange({ from: event.target.value === '' ? undefined : event.target.value });
-                            }}
-                        />
-                    )}
-                </Field>
-                <Field label={m.runs_filter_to()}>
-                    {(control) => (
-                        <Input
-                            {...control}
-                            type="date"
-                            value={search.to ?? ''}
-                            {...(search.from === undefined ? {} : { min: search.from })}
-                            onChange={(event) => {
-                                onChange({ to: event.target.value === '' ? undefined : event.target.value });
-                            }}
-                        />
-                    )}
-                </Field>
-            </div>
-            {filtered ? (
-                <div>
-                    <Button variant="ghost" size="sm" onClick={onClear}>
-                        {m.runs_clear_filters()}
-                    </Button>
-                </div>
-            ) : null}
-        </div>
-    );
-}
-
-function AgentFilter({ search, onChange }: Pick<RunFiltersProps, 'search' | 'onChange'>) {
-    const agents = useQuery(agentListQueryOptions(useEngineApi(), { limit: AGENT_FILTER_LIMIT, sort: 'name' }));
+/**
+ * Every filter reads from and writes to the search params, so a reload or a shared link restores the view. On a phone
+ * they sit behind one "Filters" button, so the first runs are in view.
+ */
+function RunFilters({ search, scope, onChange, onClear }: RunFiltersProps) {
+    const agents = useQuery({
+        ...agentListQueryOptions(useEngineApi(), { limit: AGENT_FILTER_LIMIT, sort: 'name' }),
+        enabled: scope === 'global',
+    });
     const items = agents.data?.items ?? [];
-    const known = search.agentId === undefined || items.some((agent) => agent.id === search.agentId);
-    return (
-        <Field label={m.runs_filter_agent()}>
-            {(control) => (
-                <Select
-                    {...control}
-                    value={search.agentId ?? ''}
-                    onChange={(event) => {
-                        onChange({ agentId: items.find((agent) => agent.id === event.target.value)?.id });
-                    }}
-                >
-                    <option value="">{m.runs_filter_all_agents()}</option>
-                    {known ? null : <option value={search.agentId}>{search.agentId}</option>}
-                    {items.map((agent) => (
-                        <option key={agent.id} value={agent.id}>
-                            {agent.name}
-                        </option>
-                    ))}
-                </Select>
-            )}
-        </Field>
-    );
+    const agentOptions = items.map((agent) => ({ value: agent.id, label: agent.name }));
+    const agentId = search.agentId;
+    if (agentId !== undefined && !items.some((agent) => agent.id === agentId))
+        agentOptions.unshift({ value: agentId, label: agentId });
+    const filters: FilterBarFilter[] = [
+        {
+            kind: 'multi',
+            id: 'status',
+            label: m.runs_filter_status(),
+            options: RUN_STATUSES.map((status) => ({ value: status, label: runStatusLabel(status) })),
+            value: [...selectedStatuses(search)],
+            onChange: (value) => {
+                const next = RUN_STATUSES.filter((status) => value.includes(status));
+                onChange({ status: next.length === 0 ? undefined : next.join(',') });
+            },
+        },
+        ...(scope === 'global'
+            ? [
+                  {
+                      kind: 'select',
+                      id: 'agent',
+                      label: m.runs_filter_agent(),
+                      allLabel: m.runs_filter_all_agents(),
+                      options: agentOptions,
+                      value: agentId,
+                      onChange: (value) => {
+                          onChange({
+                              agentId:
+                                  items.find((agent) => agent.id === value)?.id ??
+                                  (value === agentId ? agentId : undefined),
+                          });
+                      },
+                  } satisfies FilterBarFilter,
+              ]
+            : []),
+        {
+            kind: 'select',
+            id: 'source',
+            label: m.runs_filter_source(),
+            allLabel: m.runs_filter_all_sources(),
+            options: RUN_SOURCES.map((source) => ({ value: source, label: runSourceLabel(source) })),
+            value: search.source,
+            onChange: (value) => {
+                onChange({ source: value === undefined ? undefined : choice(value, RUN_SOURCES) });
+            },
+        },
+        {
+            kind: 'date',
+            id: 'from',
+            label: m.runs_filter_from(),
+            value: search.from,
+            ...(search.to === undefined ? {} : { max: search.to }),
+            onChange: (value) => {
+                onChange({ from: value });
+            },
+        },
+        {
+            kind: 'date',
+            id: 'to',
+            label: m.runs_filter_to(),
+            value: search.to,
+            ...(search.from === undefined ? {} : { min: search.from }),
+            onChange: (value) => {
+                onChange({ to: value });
+            },
+        },
+    ];
+    return <FilterBar label={m.runs_filters()} filters={filters} onClear={onClear} />;
 }
