@@ -14,7 +14,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { expectNoAxeViolations } from '../../testing/axe';
 import { bookText, editorView, installEditorDomGaps, replaceBook } from '../../testing/book-editor';
 import { renderWithProviders } from '../../testing/render-with-providers';
-import { TEST_NOW } from '../../testing/test-engine-api';
+import { FORMER_CORE_CAPABILITIES, TEST_NOW } from '../../testing/test-engine-api';
 import { TEST_UPLOAD_POLICIES } from '../../testing/files-engine';
 import { bookTemplate } from './book-template';
 
@@ -81,7 +81,7 @@ async function createAgent(app: App) {
 }
 
 /** Engines without throwaway test chats: the test step falls back to a kept chat. */
-const NO_TEST_CHAT: readonly CapabilityRef[] = [];
+const NO_TEST_CHAT: readonly CapabilityRef[] = FORMER_CORE_CAPABILITIES;
 
 async function expectFinishedOnOverview(app: App, agentId: string) {
     // The last step only finishes: there is nothing left to finish later.

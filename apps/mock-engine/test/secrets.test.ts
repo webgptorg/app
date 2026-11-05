@@ -37,6 +37,9 @@ function spellings(value: string): string[] {
     return [value, bytes.toString('base64'), bytes.toString('base64url'), bytes.toString('hex')];
 }
 
+/** Formerly core features an engine may now leave out; the harness advertises them. */
+const CORE_FEATURES = ['members', 'api-tokens', 'audit', 'book-editor', 'agent-management'];
+
 describe('secret values', () => {
     it('never appear in any response, whatever route or stream', async () => {
         const clock = createFakeClock(Date.now());
@@ -99,7 +102,10 @@ describe('secret values', () => {
             folderId: folder?.id,
         };
         const routes = ENGINE_API_ROUTE_LIST.filter(
-            (route) => route.method === 'GET' && route.capability === undefined && route.id !== 'streamEvents',
+            (route) =>
+                route.method === 'GET' &&
+                (route.capability === undefined || CORE_FEATURES.includes(route.capability.id)) &&
+                route.id !== 'streamEvents',
         );
         for (const route of routes) {
             const path = route.path.replace(/\{(\w+)\}/g, (_, name: string) => {

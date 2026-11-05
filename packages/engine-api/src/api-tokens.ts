@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import { ApiTokenId, MemberId, PageQuery, Timestamp, pageOf } from './common';
 import { Permission } from './permissions';
+import { KNOWN_CAPABILITIES } from './capabilities/capability';
 import { defineRoute } from './route';
 
 export const API_TOKEN_STATUSES = ['active', 'revoked'] as const;
@@ -42,6 +43,7 @@ export const API_TOKEN_ROUTES = {
         path: '/api-tokens',
         summary: 'List API tokens, newest first',
         permission: 'api-tokens.manage',
+        capability: KNOWN_CAPABILITIES.apiTokens,
         query: PageQuery,
         responses: { 200: { kind: 'json', schema: ApiTokenPage } },
     }),
@@ -51,6 +53,7 @@ export const API_TOKEN_ROUTES = {
         path: '/api-tokens',
         summary: 'Create an API token; the token is returned only in this response',
         permission: 'api-tokens.manage',
+        capability: KNOWN_CAPABILITIES.apiTokens,
         body: { kind: 'json', schema: CreateApiTokenBody },
         responses: { 201: { kind: 'json', schema: CreateApiTokenResult } },
         stepUp: true,
@@ -61,6 +64,7 @@ export const API_TOKEN_ROUTES = {
         path: '/api-tokens/{apiTokenId}/revoke',
         summary: 'Revoke an API token (idempotent)',
         permission: 'api-tokens.manage',
+        capability: KNOWN_CAPABILITIES.apiTokens,
         params: ApiTokenParams,
         responses: { 200: { kind: 'json', schema: ApiToken } },
     }),

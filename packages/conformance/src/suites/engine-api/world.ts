@@ -122,6 +122,7 @@ export async function createWorld(ctx: CheckContext, api?: EngineApi): Promise<W
     const folder = memo(() => createFolder('folder'));
     const secret = memo(() => createSecret('secret', randomToken(ctx.random, 32)));
     const apiToken = memo(async () => {
+        if (!(await advertises(R.createApiToken))) return null;
         const expiresAt = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
         const result = await owner.call(R.createApiToken, {
             body: { name: name('token'), permissions: ['agents.read'], expiresAt },

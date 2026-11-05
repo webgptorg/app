@@ -1,3 +1,4 @@
+import { agentWizardFeature } from '../features/agent-wizard/agent-wizard-feature';
 import { agentsFeature } from '../features/agents/agents-feature';
 import { auditFeature } from '../features/audit/audit-feature';
 import { bookFeature } from '../features/book/book-feature';
@@ -20,6 +21,7 @@ import type { FeatureDefinition } from './registry/feature';
 export const FEATURES: readonly FeatureDefinition[] = [
     homeFeature,
     agentsFeature,
+    agentWizardFeature,
     chatFeature,
     runsFeature,
     triggersFeature,

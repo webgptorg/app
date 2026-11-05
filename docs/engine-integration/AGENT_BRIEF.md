@@ -9,6 +9,16 @@ Before pasting, replace the two placeholders:
 
 ---
 
+## What changed
+
+The contracts are being aligned with the Reborn engine. Nothing is frozen until E-02: each entry says what changed and what you redo. Newest first.
+
+### 2026-11-05: features Reborn does not have are capabilities
+
+The UI shows only what the engine reports. Five former core features became capabilities, so an engine that does not have them leaves them out of `GET /engine` and answers their routes with 404 `capability-not-supported`: `members@1` (roles, invites, role changes, removals; the member reads and `/me` stay core), `api-tokens@1`, `audit@1`, `book-editor@1` (saving and validating Book source, revisions) and `agent-management@1` (changing visibility or folder, restoring an agent). See `engine-api.md` "Capabilities".
+
+Redo: advertise only the ones you serve. Reborn has none of them yet, so advertise none and answer their routes with 404 `capability-not-supported`. Conformance skips their checks when you do not advertise them. Run the mock as you would test the UI: it starts in the `reborn` profile (`MOCK_PROFILE=full` shows everything).
+
 You are implementing the engine side of the Promptbook platform protocol in the open-source Promptbook engine at `<ENGINE_DIR>`. When you are done, the engine can replace our mock engine: it registers with the dashboard, sends signed heartbeats, keeps a tunnel to every relay, ends browser TLS itself with its own ACME certificates, puts a passkey gateway in front of everything, serves the engine API v1, and serves our signed UI bundle after verifying it. It passes the conformance suite and the platform's end-to-end tests with no change on the platform side.
 
 ## What changed

@@ -13,6 +13,7 @@ import {
     pageOf,
 } from './common';
 import { MAX_AUDIT_DETAILS_BYTES, MAX_AUDIT_DETAILS_DEPTH, MAX_AUDIT_TARGET_NAME_LENGTH } from './constants';
+import { KNOWN_CAPABILITIES } from './capabilities/capability';
 import { defineRoute } from './route';
 import { toTolerant } from './tolerant';
 
@@ -232,6 +233,7 @@ export const AUDIT_ROUTES = {
         path: '/audit',
         summary: 'List audit entries, newest first',
         permission: 'audit.read',
+        capability: KNOWN_CAPABILITIES.audit,
         query: AuditListQuery,
         responses: { 200: { kind: 'json', schema: AuditPage, read: AuditPageReader } },
     }),
@@ -241,6 +243,7 @@ export const AUDIT_ROUTES = {
         path: '/audit/verify',
         summary: 'Re-walk the whole hash chain, so the owner can confirm nothing was removed or edited',
         permission: 'audit.read',
+        capability: KNOWN_CAPABILITIES.audit,
         responses: { 200: { kind: 'json', schema: AuditVerification } },
     }),
 } as const;

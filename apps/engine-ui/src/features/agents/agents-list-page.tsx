@@ -15,7 +15,8 @@ import { ButtonLink, Link } from '../../app/link';
 import { isForbidden, isStepUpRequired } from '../../app/mutations';
 import { m } from '../../paraglide/messages';
 import { Page } from '../shell/page';
-import { usePermissions } from '../session/use-permissions';
+import { useAllows } from '../../app/registry/use-visible-features';
+import { AGENT_WIZARD_REQUIREMENT } from '../agent-wizard/agent-wizard-feature';
 import { useAgentActions } from './agent-actions';
 import { AgentAvatar } from './agent-avatar';
 import { AgentStatusBadge, AgentVisibilityBadge, stateLabel, visibilityLabel } from './agent-badges';
@@ -121,7 +122,7 @@ export function AgentsListPage() {
     const navigate = route.useNavigate();
     const engineApi = useEngineApi();
     const { storage } = useBrowser();
-    const { can } = usePermissions();
+    const canCreate = useAllows(AGENT_WIZARD_REQUIREMENT);
     const searchRef = useRef<HTMLInputElement>(null);
     // The row whose menu opened the delete dialog disappears with the agent; focus then goes to the search box.
     const deletedId = useRef<string | null>(null);
@@ -159,7 +160,7 @@ export function AgentsListPage() {
     }, [invalidCursor, navigate]);
 
     const filtered = search.q !== undefined || search.status !== undefined || search.visibility !== undefined;
-    const newAgent = can('agents.write') ? (
+    const newAgent = canCreate ? (
         <ButtonLink to="/agents/new" variant="primary">
             <Plus aria-hidden className="size-4" />
             {m.agents_new()}

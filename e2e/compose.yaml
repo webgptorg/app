@@ -219,6 +219,8 @@ services:
       MOCK_UI_TRUST_POLICY_FILE: /pki/ui-trust-policy.json
       MOCK_UI_FAKE_PROVENANCE: enabled
       MOCK_CONTROL: enabled
+      # The flows reach every screen; the dev stack shows the Reborn set (compose.dev.yaml).
+      MOCK_PROFILE: full
       MOCK_CONTROL_HOST: 0.0.0.0
       MOCK_CONTROL_PORT: '4480'
     volumes:

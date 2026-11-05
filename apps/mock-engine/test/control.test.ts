@@ -181,7 +181,19 @@ describe('control listener: simulation (M-07)', () => {
         const { harness, control } = await setup();
         const call = controlFetch(control);
         expect((await call('/__mock/state')).body).toMatchObject({
-            capabilities: ['runs@1', 'files@1', 'triggers@1', 'integrations@1', 'test-chat@1', 'access-requests@1'],
+            capabilities: [
+                'runs@1',
+                'files@1',
+                'triggers@1',
+                'integrations@1',
+                'test-chat@1',
+                'access-requests@1',
+                'members@1',
+                'api-tokens@1',
+                'audit@1',
+                'book-editor@1',
+                'agent-management@1',
+            ],
             simulation: { mode: 'paused', speed: 1, now: '2026-10-01T00:00:00.000Z' },
         });
         const reset = await call('/__mock/reset', {

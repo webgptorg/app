@@ -8,7 +8,7 @@ import { useAllows, useVisibleFeatures } from '../../app/registry/use-visible-fe
 import { m } from '../../paraglide/messages';
 import { AgentAvatar } from '../agents/agent-avatar';
 import { AgentStatusBadge } from '../agents/agent-badges';
-import { usePermissions } from '../session/use-permissions';
+import { AGENT_WIZARD_REQUIREMENT } from '../agent-wizard/agent-wizard-feature';
 import { HomeWidget } from './home-widget';
 
 export interface AgentListWidgetProps {
@@ -21,7 +21,7 @@ export interface AgentListWidgetProps {
 
 /** Agents with their picture, and their live state where a feature derives it (runs); empty, an invitation to create. */
 export function AgentListWidget({ title, query, skeletonRows, chatAction = false }: AgentListWidgetProps) {
-    const { can } = usePermissions();
+    const canCreate = useAllows(AGENT_WIZARD_REQUIREMENT);
     const liveState = useVisibleFeatures().some((feature) => feature.agentStatusProvider !== undefined);
     const canChat = useAllows({ permission: 'chats.write' }) && chatAction;
     return (
@@ -51,7 +51,7 @@ export function AgentListWidget({ title, query, skeletonRows, chatAction = false
                         title={m.home_no_agents()}
                         description={m.home_no_agents_body()}
                         headingLevel={3}
-                        {...(can('agents.write')
+                        {...(canCreate
                             ? {
                                   action: (
                                       <ButtonLink to="/agents/new" variant="primary">

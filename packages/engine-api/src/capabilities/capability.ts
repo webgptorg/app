@@ -29,6 +29,26 @@ export const KNOWN_CAPABILITIES = {
      * nothing, `byScan` counts zero, and the UI shows nothing about scanning.
      */
     fileScanning: { id: 'file-scanning', version: 1 },
+    /**
+     * Roles, invites, role changes and removals. Without it the engine has one level of access (everyone who can sign
+     * in may do everything their permissions say), `GET /members` and `GET /me` still answer, and the UI shows no
+     * members screen.
+     */
+    members: { id: 'members', version: 1 },
+    /** API tokens for programmatic access. */
+    apiTokens: { id: 'api-tokens', version: 1 },
+    /** The hash-chained audit log and its verification. */
+    audit: { id: 'audit', version: 1 },
+    /**
+     * Editing an agent's Book in the UI: saving source, validating a draft and the revision history. Reading the
+     * current source (`GET /agents/{agentId}/source`) stays in the core.
+     */
+    bookEditor: { id: 'book-editor', version: 1 },
+    /**
+     * Managing agents from forms: changing visibility or folder and restoring a deleted agent. The UI's agent wizard
+     * and Settings tab need it; without it agents are created and changed through chat with the engine's own agents.
+     */
+    agentManagement: { id: 'agent-management', version: 1 },
 } as const satisfies Readonly<Record<string, CapabilityRef>>;
 
 export type KnownCapability = (typeof KNOWN_CAPABILITIES)[keyof typeof KNOWN_CAPABILITIES];

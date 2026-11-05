@@ -1,4 +1,10 @@
-import { ENGINE_API_ROUTE_LIST, ENGINE_API_ROUTES, PERMISSIONS, isReadPermission } from '@ptbk/engine-api';
+import {
+    ENGINE_API_ROUTE_LIST,
+    ENGINE_API_ROUTES,
+    KNOWN_CAPABILITIES,
+    PERMISSIONS,
+    isReadPermission,
+} from '@ptbk/engine-api';
 import type { EngineApiRouteId, Permission, RouteDefinition } from '@ptbk/engine-api';
 
 import type { ConformanceCheck } from '../../check';
@@ -6,6 +12,7 @@ import { Findings, skip } from '../../check';
 import type { ApiRequest, EngineApi } from './api';
 import { describe } from './api';
 import { AUDIT_EXPECTATIONS, findAuditEntry } from './audit';
+import { requireCapability } from './capability-support';
 import { snapshot } from './probes';
 import { placeholderRequest, validRequest } from './requests';
 import { readRoute } from './schemas';
@@ -110,6 +117,7 @@ export const PERMISSION_CHECKS: readonly ConformanceCheck[] = [
         title: 'Each refused mutation is in /audit with outcome denied and the refused member',
         async run(ctx) {
             const world = await createWorld(ctx);
+            await requireCapability(world, KNOWN_CAPABILITIES.audit);
             const ignored = new Findings();
             const denials = await denyEveryMutation(world, ignored);
             const findings = new Findings();
