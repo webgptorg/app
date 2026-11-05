@@ -25,7 +25,8 @@ async function start(options: Parameters<typeof createApiHarness>[0] = {}) {
 }
 
 describe('capabilities through the mock HTTP server (contract)', () => {
-    it('answers every C-07 operation, each response valid against its strict schema', async () => {
+    // One request per operation of the whole route table: about 4 s alone, so the 5 s default timed out under load.
+    it('answers every C-07 operation, each response valid against its strict schema', { timeout: 30_000 }, async () => {
         const { harness, owner } = await start();
         const answered = new Set<EngineApiRouteId>();
         const okFrom = async <T>(id: EngineApiRouteId, response: Promise<EngineApiResponse<T>>): Promise<T> => {
