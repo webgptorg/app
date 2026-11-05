@@ -732,6 +732,21 @@ const FAILS: readonly Case[] = [
         },
     ],
     [
+        'a Wallet save the engine refuses outright',
+        'engine-api.wallet.lifecycle',
+        { tamper: replace(on('POST', /^\/wallet\/records$/), () => problem('wallet-not-ready', 409)) },
+    ],
+    [
+        'a raised request that is never listed',
+        'engine-api.wallet.requests',
+        { tamper: editJson(on('GET', /^\/wallet$/), (wallet) => ({ ...wallet, pending: [] })) },
+    ],
+    [
+        'a requested save that fails',
+        'engine-api.wallet.requests',
+        { tamper: replace(on('POST', /^\/wallet\/records$/), () => problem('internal-error', 500)) },
+    ],
+    [
         'an updated password that claims to be verified',
         'engine-api.wallet.lifecycle',
         {
@@ -989,6 +1004,11 @@ const SKIPS: readonly Case[] = [
     [
         'a Wallet save that wants a step-up the suite cannot give',
         'engine-api.wallet.lifecycle',
+        { tamper: replace(on('POST', /^\/wallet\/records$/), () => problem('step-up-required', 401)) },
+    ],
+    [
+        'a canary save that wants a step-up the suite cannot give',
+        'engine-api.secrets.never-returned',
         { tamper: replace(on('POST', /^\/wallet\/records$/), () => problem('step-up-required', 401)) },
     ],
     [
