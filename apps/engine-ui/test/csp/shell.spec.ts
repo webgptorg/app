@@ -26,6 +26,7 @@ const ROUTES = [
     '/secrets',
     '/audit',
     '/settings',
+    '/onboarding',
     '/security/passkeys',
     '/security/sessions',
     '/__gallery',
