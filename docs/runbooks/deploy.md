@@ -2,11 +2,13 @@
 
 How code reaches staging and production, who approves it, how to roll back, how to rotate each credential and what to do when one leaks (task I-03). Three pipelines, all GitHub Actions workflows in this repo:
 
-| What                        | Workflow                                         | Trigger                                         | Gate                                      |
-| --------------------------- | ------------------------------------------------ | ----------------------------------------------- | ----------------------------------------- |
-| Dashboard (Worker, SPA, D1) | `deploy-dashboard.yml`, `rollback-dashboard.yml` | push to `main` touching the dashboard; dispatch | `staging`, then `production` approval     |
-| Relay image                 | `release-relay.yml`                              | push to `main` touching the relay; dispatch     | `staging`, then `production` approval     |
-| Engine UI bundle (X-03)     | `ui-release.yml`                                 | push of a `ui-v*` tag                           | `release` approval by a second maintainer |
+| What                        | Workflow                                         | Trigger                                          | Gate                                      |
+| --------------------------- | ------------------------------------------------ | ------------------------------------------------ | ----------------------------------------- |
+| Dashboard (Worker, SPA, D1) | `deploy-dashboard.yml`, `rollback-dashboard.yml` | push to `main` touching the dashboard¹; dispatch | `staging`, then `production` approval     |
+| Relay image                 | `release-relay.yml`                              | push to `main` touching the relay¹; dispatch     | `staging`, then `production` approval     |
+| Engine UI bundle (X-03)     | `ui-release.yml`                                 | push of a `ui-v*` tag                            | `release` approval by a second maintainer |
+
+¹ Only while the repository variable `STAGING_DEPLOY_ENABLED` is `true`; until staging exists it is unset, and a push deploys and releases nothing ([staging runbook, Next: CI](../staging-runbook.md#next-ci)). Draft pull requests build nothing.
 
 Every workflow has `permissions: {}` at the top and grants each job only what it uses, pins actions to commit SHAs, caches nothing and passes untrusted values through `env`; zizmor audits them in CI. Pull requests only build: they never get a deploy credential, `id-token: write` or `packages: write`.
 
