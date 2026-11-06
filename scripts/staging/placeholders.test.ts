@@ -43,11 +43,8 @@ describe('fillPlaceholders on the committed files', () => {
     const result = fillPlaceholders(committed, ALL);
 
     // The Stripe IDs wait in the commented-out BILLING_PLANS while billing is off, so they are not left in the config.
-    it('leaves only the placeholders that wait on the engine team', () => {
-        assert.deepEqual(result.left.map(({ placeholder }) => placeholder).sort(), [
-            '<installer-sha256>',
-            '<installer-url>',
-        ]);
+    it('leaves no placeholder in the config', () => {
+        assert.deepEqual(result.left, []);
     });
 
     it('fills wrangler.jsonc env.staging consistently with the tfvars', () => {

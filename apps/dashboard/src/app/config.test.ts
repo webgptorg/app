@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
 
 import { syntheticStripeKey, syntheticWebhookSecret, TEST_OFF_PLAN, TEST_PLANS } from '../testing/billing-fixtures';
 import { TEST_INSTALL_VARS } from '../testing/install-fixtures';
+import { readWranglerConfig } from '../testing/wrangler-config';
 import { DEFAULT_THRESHOLDS } from '../domain/monitoring/alert-rules';
 import {
     ConfigError,
@@ -364,6 +366,18 @@ describe('parseConfig', () => {
         expect(withTabs([{ ...installer, labelKey: 'engines_new_title' }])).toEqual(['INSTALL_COMMANDS.0.labelKey']);
         expect(withTabs([{ ...installer, docsAnchor: '#Install' }])).toEqual(['INSTALL_COMMANDS.0.docsAnchor']);
         expect(withTabs([{ ...installer, html: '<b>' }])).toEqual(['INSTALL_COMMANDS.0.html']);
+    });
+
+    it("accepts every environment's committed install tabs", () => {
+        const vars = z.object({ vars: z.object({ INSTALL_COMMANDS: z.array(z.unknown()) }) });
+        const wrangler = vars.extend({ env: z.record(z.string(), vars) }).parse(readWranglerConfig());
+        for (const config of [wrangler, ...Object.values(wrangler.env)]) {
+            const { INSTALL_COMMANDS } = config.vars;
+            expect(parseConfig({ ...bindings, ...devVars, INSTALL_COMMANDS }).installCommands).toEqual(
+                INSTALL_COMMANDS,
+            );
+        }
+        expect(Object.keys(wrangler.env)).toEqual(['staging', 'production']);
     });
 
     it('still reads the single INSTALL_COMMAND as the installer tab, but not next to INSTALL_COMMANDS', () => {
