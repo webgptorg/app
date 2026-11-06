@@ -12,7 +12,7 @@ import { createTestIdentity } from '../../testing/test-identity';
 import type { DashboardApi, RegisterCall } from '../dashboard/dashboard-api';
 import type { RegistrationRetry } from './register-with-retry';
 import {
-    LINK_CODE_LIFETIME_MS,
+    REGISTRATION_RETRY_WINDOW_MS,
     REGISTRATION_RETRY_BASE_MS,
     REGISTRATION_RETRY_CAP_MS,
     registerWithRetry,
@@ -100,13 +100,13 @@ describe('registerWithRetry', () => {
         expect(logger.entries.filter(({ event }) => event === 'registration.retrying')).toHaveLength(2);
     });
 
-    it('gives up with the last reason once the link code cannot be valid any more', async () => {
+    it('gives up with the last reason once the retry window is over', async () => {
         const { clock, dashboard, retries, run } = await setup();
         dashboard.unreachable = true;
         const startedMs = clock.nowMs();
         const outcome = await settleWithClock(run(dashboard.issueLinkCode('org-a')), clock);
         expect(outcome).toEqual({ kind: 'unavailable', reason: 'no-answer' });
-        expect(clock.nowMs() - startedMs).toBeLessThan(LINK_CODE_LIFETIME_MS);
+        expect(clock.nowMs() - startedMs).toBeLessThan(REGISTRATION_RETRY_WINDOW_MS);
         const waited = retries.reduce((sum, retry) => sum + retry.delayMs, 0);
         expect(waited).toBe(clock.nowMs() - startedMs);
         expect(Math.max(...retries.map((retry) => retry.delayMs))).toBeLessThanOrEqual(REGISTRATION_RETRY_CAP_MS);

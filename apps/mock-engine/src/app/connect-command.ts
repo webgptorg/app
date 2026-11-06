@@ -148,7 +148,7 @@ async function dashboardUrlOf(
 
 /**
  * Creates the engine key if there is none, then registers with the link code, retrying while the platform is
- * unreachable and the code can still be valid, and hands the registration to an engine already running from this
+ * unreachable for a while, and hands the registration to an engine already running from this
  * data directory. The key and data are kept whatever the outcome.
  */
 export async function runConnectCommand(

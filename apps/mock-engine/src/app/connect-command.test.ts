@@ -254,7 +254,7 @@ describe('runConnectCommand', () => {
         const retries = lines.filter((line) => line.startsWith('… Cannot reach the Promptbook platform (no answer)'));
         expect(retries.length).toBeGreaterThan(5);
         expect(lines.at(-1)).toMatch(
-            /^✗ Cannot reach the Promptbook platform \(no answer\)\. The link code may have expired/,
+            /^✗ Cannot reach the Promptbook platform \(no answer\)\. Check the network and any proxy/,
         );
     });
 

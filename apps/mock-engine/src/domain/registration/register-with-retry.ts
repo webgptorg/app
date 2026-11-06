@@ -4,8 +4,11 @@ import { randomUpTo } from '../tunnel/backoff';
 import type { RegisterEngineDeps, RegistrationOutcome, UnavailableReason } from './register';
 import { registerEngine } from './register';
 
-/** How long a dashboard link code works after it is issued (D-03). Retrying past it can only meet `invalid-link-code`. */
-export const LINK_CODE_LIFETIME_MS = 30 * 60_000;
+/**
+ * How long one `connect` keeps retrying an unreachable dashboard before it hands back to the operator. A link code
+ * lives far longer (30 days), so giving up loses nothing: the same code works when they run `connect` again.
+ */
+export const REGISTRATION_RETRY_WINDOW_MS = 30 * 60_000;
 /** With equal jitter the first wait is 5 to 10 s: at least the 5 s identity-and-registration.md asks for. */
 export const REGISTRATION_RETRY_BASE_MS = 10_000;
 /** The dashboard counts attempts per minute; two minutes between tries leaves its window room to clear. */
@@ -56,12 +59,10 @@ function wait(clock: Clock, ms: number, signal: AbortSignal): Promise<void> {
 
 /**
  * Registers, retrying `unavailable` answers (no answer, a 5xx, `rate-limited`, a code this build does not know) with
- * backoff for as long as the link code can still be valid. The engine does not know when the code was issued, so the
- * window starts with the first attempt: it may outlast the code, but never gives up while the code could still work.
- * Rejections and refused answers end at once.
+ * backoff for {@link REGISTRATION_RETRY_WINDOW_MS} from the first attempt. Rejections and refused answers end at once.
  */
 export async function registerWithRetry(deps: RegisterWithRetryDeps): Promise<RegistrationOutcome> {
-    const deadlineMs = deps.clock.nowMs() + LINK_CODE_LIFETIME_MS;
+    const deadlineMs = deps.clock.nowMs() + REGISTRATION_RETRY_WINDOW_MS;
     for (let attempt = 0; ; attempt++) {
         const outcome = await registerEngine(deps);
         if (outcome.kind !== 'unavailable') return outcome;

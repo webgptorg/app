@@ -18,7 +18,7 @@ export type RegistrationOutcome =
     | { readonly kind: 'unavailable'; readonly reason: UnavailableReason };
 
 /**
- * Why the dashboard gave no usable answer; all of them are worth retrying while the link code can still be valid.
+ * Why the dashboard gave no usable answer; all of them are worth retrying.
  * `unknown-code` is a problem code newer than this build: it may be a refusal, but retrying it costs nothing.
  */
 export type UnavailableReason = 'no-answer' | 'error-status' | 'rate-limited' | 'unknown-code';
