@@ -99,7 +99,7 @@ bun run dev:stack up     # builds, creates the dev CA in .dev/pki/, starts every
 bun run dev:trust        # once per machine: trust the dev CA and resolve app.ptbk.test and *.engine.test
 ```
 
-Open `https://app.ptbk.test:8444/`, sign up (the e-mail is on `https://app.ptbk.test:8444/__dev/mailbox`), subscribe through the fake Checkout under Billing, and create a link code on "Link an engine". Codes last 30 days; unused ones are listed, and can be cancelled, on Engines.
+Open `https://app.ptbk.test:8444/`, sign up (the e-mail is on `https://app.ptbk.test:8444/__dev/mailbox`), subscribe through the fake Checkout under Billing, and create a link code on "Link an engine". Codes last 30 days; unused ones are listed, and can be revoked, on Engines.
 
 **First, watch the mock engine do it.** `bun run dev:link <code>` registers the stack's mock engine and starts it. It turns online after its first heartbeat (every 15 s in this stack); "Open" goes to `https://<engineId>.engine.test/` through relay-a. That is the behaviour your engine must reproduce. `bun run dev:stack reset` starts over with a new dashboard database and a new mock engine.
 

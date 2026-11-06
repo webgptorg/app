@@ -116,7 +116,7 @@ describe('teams list', () => {
         });
     });
 
-    it('lists unused link codes with their expiry and cancels one after asking', async () => {
+    it('lists unused link codes with their expiry and revokes one after asking', async () => {
         const formatters = createFormatters('en');
         const format = (at: number) => formatters.formatDateTime(new Date(at));
         const code = { linkCodeId: 'k1kkkkkkkkkkkkkkkkkkkkkkkk', createdAt: NOW, expiresAt: NOW + 30 * 86_400_000 };
@@ -138,11 +138,11 @@ describe('teams list', () => {
         await app.user.click(
             within(list).getByRole('button', { name: `Actions for the link code created ${created}` }),
         );
-        await app.user.click(screen.getByRole('menuitem', { name: 'Cancel code' }));
-        const dialog = await screen.findByRole('dialog', { name: 'Cancel this link code?' });
+        await app.user.click(screen.getByRole('menuitem', { name: 'Revoke code' }));
+        const dialog = await screen.findByRole('dialog', { name: 'Revoke this link code?' });
         expect(app.api.callsTo(apiRoutes.cancelLinkCode)).toEqual([]);
-        await app.user.click(within(dialog).getByRole('button', { name: 'Cancel code' }));
-        expect(await screen.findByText('Link code cancelled.')).toBeTruthy();
+        await app.user.click(within(dialog).getByRole('button', { name: 'Revoke code' }));
+        expect(await screen.findByText('Link code revoked.')).toBeTruthy();
         expect(app.api.callsTo(apiRoutes.cancelLinkCode)).toEqual([{ params: { linkCodeId: code.linkCodeId } }]);
         await waitFor(() => {
             expect(screen.queryByRole('list', { name: 'Unused link codes' })).toBeNull();
