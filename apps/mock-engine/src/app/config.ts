@@ -2,10 +2,10 @@ import type { EngineVersion, Hostname, LinkCode, RelayId } from '@ptbk/protocol'
 import {
     EngineVersion as EngineVersionSchema,
     Hostname as HostnameSchema,
-    LinkCode as LinkCodeSchema,
     MAX_RELAYS,
     RelayId as RelayIdSchema,
     TUNNEL_PATH,
+    parseLinkArgument,
 } from '@ptbk/protocol';
 import { z } from 'zod';
 
@@ -134,10 +134,28 @@ export type UiTrustConfig =
 export interface DashboardConfig {
     /** The dashboard's `https://` origin. */
     readonly url: string;
-    /** `PTBK_LINK_CODE`: taken once, for the first registration, and never logged or written down. */
+    /**
+     * `PTBK_LINK_CODE` (a bare code or a link URL): taken once, for the first registration, and never logged or
+     * written down.
+     */
     readonly linkCode: OneTimeSecret<LinkCode> | null;
     /** `MOCK_HEARTBEAT_INTERVAL_S`, default 60. */
     readonly heartbeatIntervalS: number;
+}
+
+/**
+ * What the environment says about the dashboard. `url` is `PTBK_DASHBOARD_URL`, else the origin of a link URL in
+ * `PTBK_LINK_CODE`; null when neither is set, and then the origin stored with the registration applies
+ * ({@link withStoredDashboard}).
+ */
+export interface ParsedDashboardConfig extends Omit<DashboardConfig, 'url'> {
+    readonly url: string | null;
+}
+
+/** {@link MockEngineConfig} before the stored dashboard origin is looked up. */
+export interface ParsedMockEngineConfig extends Omit<MockEngineConfig, 'dashboard'> {
+    /** Null only in the M1 dev mode: `PTBK_RELAYS` without any dashboard. */
+    readonly dashboard: ParsedDashboardConfig | null;
 }
 
 export interface IdentityConfig {
@@ -215,6 +233,21 @@ function parseDashboardUrl(text: string, problem: (message: string) => void): st
         return undefined;
     }
     return url.origin;
+}
+
+interface LinkSetting {
+    readonly linkCode: LinkCode;
+    readonly dashboardOrigin: string | null;
+}
+
+/** A bare link code, or the dashboard's link URL, which also names the dashboard. */
+function parseLinkSetting(text: string, problem: (message: string) => void): LinkSetting | undefined {
+    const link = parseLinkArgument(text);
+    if (link.kind === 'invalid') {
+        problem('must be a link code or an https:// link URL');
+        return undefined;
+    }
+    return { linkCode: link.linkCode, dashboardOrigin: link.dashboardOrigin };
 }
 
 /** An `https://` URL without credentials or fragment: ACME directories may have a path and query of their own. */
@@ -418,7 +451,7 @@ const envSchema = z.strictObject({
     PTBK_DATA_DIR: filePath,
     PTBK_RELAYS: parsed(parseRelays).optional(),
     PTBK_DASHBOARD_URL: parsed(parseDashboardUrl).optional(),
-    PTBK_LINK_CODE: value(LinkCodeSchema, 'must be a link code').optional(),
+    PTBK_LINK_CODE: parsed(parseLinkSetting).optional(),
     MOCK_HEARTBEAT_INTERVAL_S: value(
         z
             .string()
@@ -511,7 +544,7 @@ function settingsOf(env: Env, problems: string[]): Record<string, string> {
  * The only reader of the environment for the engine process. Takes `PTBK_*`, `MOCK_*`, `LOG_LEVEL` and the proxy
  * variables, treats empty values as unset, rejects unknown `PTBK_*` and `MOCK_*` names, and throws {@link ConfigError}.
  */
-export function parseMockEngineConfig(env: Env): MockEngineConfig {
+export function parseMockEngineConfig(env: Env): ParsedMockEngineConfig {
     const problems: string[] = [];
     const settings = settingsOf(env, problems);
     const result = envSchema.safeParse(settings);
@@ -522,7 +555,8 @@ export function parseMockEngineConfig(env: Env): MockEngineConfig {
     ) {
         problems.push('MOCK_DEV_CA_CERT_FILE: must be set together with MOCK_DEV_CA_KEY_FILE');
     }
-    problems.push(...dashboardProblems(settings), ...uiProblems(settings), ...certificateSourceProblems(settings));
+    problems.push(...uiProblems(settings), ...certificateSourceProblems(settings));
+    if (result.success) problems.push(...linkProblems(result.data.PTBK_DASHBOARD_URL, result.data.PTBK_LINK_CODE));
     if (result.success && result.data.NODE_ENV === 'production') {
         if (result.data.MOCK_CONTROL === 'enabled') problems.push('MOCK_CONTROL: must not be enabled in production');
         if (result.data.MOCK_DEV_LOGIN === 'enabled')
@@ -576,16 +610,19 @@ export function parseMockEngineConfig(env: Env): MockEngineConfig {
             parsedEnv.MOCK_CONTROL === 'enabled'
                 ? Object.freeze({ host: parsedEnv.MOCK_CONTROL_HOST, port: parsedEnv.MOCK_CONTROL_PORT })
                 : null,
-        dashboard:
-            parsedEnv.PTBK_DASHBOARD_URL === undefined
-                ? null
-                : Object.freeze({
-                      url: parsedEnv.PTBK_DASHBOARD_URL,
-                      linkCode: parsedEnv.PTBK_LINK_CODE === undefined ? null : oneTimeSecret(parsedEnv.PTBK_LINK_CODE),
-                      heartbeatIntervalS: parsedEnv.MOCK_HEARTBEAT_INTERVAL_S,
-                  }),
+        dashboard: dashboardConfig(parsedEnv),
         stats: parsedEnv.MOCK_STATS,
         ui: uiConfig(parsedEnv),
+    });
+}
+
+function dashboardConfig(env: z.output<typeof envSchema>): ParsedDashboardConfig | null {
+    const url = env.PTBK_DASHBOARD_URL ?? env.PTBK_LINK_CODE?.dashboardOrigin ?? null;
+    if (url === null && env.PTBK_RELAYS !== undefined) return null;
+    return Object.freeze({
+        url,
+        linkCode: env.PTBK_LINK_CODE === undefined ? null : oneTimeSecret(env.PTBK_LINK_CODE.linkCode),
+        heartbeatIntervalS: env.MOCK_HEARTBEAT_INTERVAL_S,
     });
 }
 
@@ -681,16 +718,34 @@ function certificateSourceProblems(settings: Readonly<Record<string, string>>): 
     return problems;
 }
 
-/** Which relays the engine dials depends on whether a dashboard hands it a list (M-06); judged by presence only. */
-function dashboardProblems(settings: Readonly<Record<string, string>>): string[] {
-    const problems: string[] = [];
-    const linked = settings['PTBK_DASHBOARD_URL'] !== undefined;
-    const relays = settings['PTBK_RELAYS'] !== undefined;
-    if (!linked && !relays) problems.push('PTBK_RELAYS: is required without PTBK_DASHBOARD_URL');
-    if (!linked && settings['PTBK_LINK_CODE'] !== undefined) {
-        problems.push('PTBK_LINK_CODE: needs PTBK_DASHBOARD_URL');
+/** A link URL names its dashboard; one that disagrees with `PTBK_DASHBOARD_URL` is refused rather than guessed at. */
+function linkProblems(dashboardUrl: string | undefined, link: LinkSetting | undefined): string[] {
+    if (link === undefined) return [];
+    if (link.dashboardOrigin === null) {
+        return dashboardUrl === undefined ? ['PTBK_LINK_CODE: a bare link code needs PTBK_DASHBOARD_URL'] : [];
     }
-    return problems;
+    return dashboardUrl === undefined || dashboardUrl === link.dashboardOrigin
+        ? []
+        : ['PTBK_LINK_CODE: is a link URL for another dashboard than PTBK_DASHBOARD_URL; set only one'];
+}
+
+/**
+ * The config with the dashboard origin settled: without `PTBK_DASHBOARD_URL` (or a link URL), the one `connect`
+ * stored with the registration. An engine with neither cannot start, since it would not know whom to heartbeat.
+ */
+export async function withStoredDashboard(
+    config: ParsedMockEngineConfig,
+    storedDashboardUrl: () => Promise<string | null>,
+): Promise<MockEngineConfig> {
+    const dashboard = config.dashboard;
+    if (dashboard === null) return Object.freeze({ ...config, dashboard: null });
+    const url = dashboard.url ?? (await storedDashboardUrl());
+    if (url === null) {
+        throw new ConfigError([
+            'PTBK_DASHBOARD_URL: is required until the engine is linked; run connect --link with the link URL first, or set PTBK_RELAYS',
+        ]);
+    }
+    return Object.freeze({ ...config, dashboard: Object.freeze({ ...dashboard, url }) });
 }
 
 /**

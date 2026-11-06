@@ -26,7 +26,8 @@ import { BundleStoreError } from './adapters/ui/fs-bundle-store';
 import { UpdateStateStoreError } from './adapters/ui/fs-update-state-store';
 import { createWsRelayDialer } from './adapters/ws-relay-dialer';
 import type { MockEngineConfig } from './app/config';
-import { ConfigError, parseMockEngineConfig } from './app/config';
+import type { ParsedMockEngineConfig } from './app/config';
+import { ConfigError, parseMockEngineConfig, withStoredDashboard } from './app/config';
 import {
     ConformanceSessionUsageError,
     parseConformanceSessionCommand,
@@ -88,14 +89,15 @@ function problemOf(error: unknown): string {
 }
 
 /** Registration and heartbeat go straight to the dashboard over HTTPS, through the same proxy and roots as the relays. */
+function dashboardApi(config: ParsedMockEngineConfig, ca: readonly string[] | undefined) {
+    return (baseUrl: string) =>
+        createFetchDashboardApi({ baseUrl, fetch: createHttpsFetch({ proxy: config.proxy, ca }), clock: systemClock });
+}
+
 function dashboardDeps(config: MockEngineConfig, ca: readonly string[] | undefined): DashboardDeps | undefined {
     if (config.dashboard === null) return undefined;
     return {
-        api: createFetchDashboardApi({
-            baseUrl: config.dashboard.url,
-            fetch: createHttpsFetch({ proxy: config.proxy, ca }),
-            clock: systemClock,
-        }),
+        api: dashboardApi(config, ca)(config.dashboard.url),
         registrations: createFsRegistrationStore(config.dataDir),
         seqs: createFsSeqStore(config.dataDir, { clock: systemClock }),
         systemStats: createOsSystemStats(config.dataDir),
@@ -138,7 +140,7 @@ async function certificates(
     return { source: createDevCaCertificateSource({ ca: devCa, clock: systemClock, logger }), acme: null };
 }
 
-function parseConfig(): MockEngineConfig {
+function parseConfig(): ParsedMockEngineConfig {
     const config = parseMockEngineConfig(process.env);
     // The config holds the link code now, to be taken once; the environment need not keep a copy.
     delete process.env['PTBK_LINK_CODE'];
@@ -171,10 +173,9 @@ async function connect(parse: (args: readonly string[]) => ConnectCommand, args:
     }
     try {
         const config = parseConfig();
-        const deps = dashboardDeps(config, await loadTrustedRoots(config.extraCaFile));
-        if (deps === undefined) throw new ConfigError(['PTBK_DASHBOARD_URL: is required to connect']);
         const result = await runConnectCommand(command, config, {
-            ...deps,
+            api: dashboardApi(config, await loadTrustedRoots(config.extraCaFile)),
+            registrations: createFsRegistrationStore(config.dataDir),
             identityStore: createFsIdentityStore(config.dataDir),
             logger,
             clock: systemClock,
@@ -194,8 +195,12 @@ async function connect(parse: (args: readonly string[]) => ConnectCommand, args:
 async function start(): Promise<{ readonly engine: MockEngine; readonly logger: Logger } | null> {
     let logger = createJsonLogger({ level: 'info', clock: systemClock });
     try {
-        const config = parseConfig();
-        logger = createJsonLogger({ level: config.logLevel, clock: systemClock });
+        const parsed = parseConfig();
+        logger = createJsonLogger({ level: parsed.logLevel, clock: systemClock });
+        const config = await withStoredDashboard(
+            parsed,
+            async () => (await createFsRegistrationStore(parsed.dataDir).load())?.dashboardUrl ?? null,
+        );
         const ca = await loadTrustedRoots(config.extraCaFile);
         const challenges = createAcmeChallenges();
         const tls = await certificates(config, challenges, logger);

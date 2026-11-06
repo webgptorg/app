@@ -1,5 +1,5 @@
-import type { EngineId, Hostname, LinkCode } from '@ptbk/protocol';
-import { LinkCode as LinkCodeSchema, defaultHostname } from '@ptbk/protocol';
+import type { EngineId, Hostname, LinkCode, LinkUrlProblem } from '@ptbk/protocol';
+import { defaultHostname, parseLinkArgument } from '@ptbk/protocol';
 
 import type { Clock } from '../domain/clock';
 import type { DashboardApi } from '../domain/dashboard/dashboard-api';
@@ -10,17 +10,17 @@ import type { Random } from '../domain/random';
 import type { RegistrationOutcome, UnavailableReason } from '../domain/registration/register';
 import { registerWithRetry } from '../domain/registration/register-with-retry';
 import type { RegistrationStore } from '../domain/registration/registration';
-import type { MockEngineConfig } from './config';
+import type { ParsedMockEngineConfig } from './config';
 import { ConfigError } from './config';
 import type { ExitCode } from './exit-codes';
 import type { Say } from './operator-lines';
 import { DONE, FAILED, WAITING, identityLines } from './operator-lines';
 import { registrationExitCode, registrationSentence, retrySentence } from './registration-messages';
 
-export const CONNECT_USAGE = 'usage: connect --link <code> [--json]';
-export const REGISTER_USAGE = 'usage: register --link <code>';
+export const CONNECT_USAGE = 'usage: connect --link <link URL or code> [--json]';
+export const REGISTER_USAGE = 'usage: register --link <link URL or code>';
 
-/** Messages name the argument, never its value: a mistyped link code is still close to a secret. */
+/** Messages name the argument, never its value: a mistyped link URL or code is still close to a secret. */
 export class ConnectUsageError extends Error {
     constructor(message: string) {
         super(message);
@@ -30,17 +30,28 @@ export class ConnectUsageError extends Error {
 
 export interface ConnectCommand {
     readonly linkCode: LinkCode;
+    /** The origin of a link URL; null for a bare code, which needs `PTBK_DASHBOARD_URL` or a stored registration. */
+    readonly dashboardOrigin: string | null;
     /** Print one JSON report on stdout instead of the human lines. */
     readonly json: boolean;
 }
 
-function linkCodeOf(code: string): LinkCode {
-    const linkCode = LinkCodeSchema.safeParse(code);
-    if (!linkCode.success) throw new ConnectUsageError('--link must be a link code');
-    return linkCode.data;
+const LINK_PROBLEMS: Record<LinkUrlProblem, string> = {
+    'not-a-url': '--link must be the link URL the dashboard shows, or its link code',
+    'not-https': '--link must be an https:// link URL',
+    credentials: '--link must not contain a user name or password',
+    'not-link-path': "--link must be the dashboard's /link URL",
+    query: '--link must not have a query',
+    'invalid-code': '--link has no valid link code after #',
+};
+
+function linkOf(value: string): Pick<ConnectCommand, 'linkCode' | 'dashboardOrigin'> {
+    const link = parseLinkArgument(value);
+    if (link.kind === 'invalid') throw new ConnectUsageError(LINK_PROBLEMS[link.problem]);
+    return { linkCode: link.linkCode, dashboardOrigin: link.dashboardOrigin };
 }
 
-/** `connect --link <code> [--json]`, flags in any order. */
+/** `connect --link <link URL or code> [--json]`, flags in any order. */
 export function parseConnectCommand(args: readonly string[]): ConnectCommand {
     let code: string | undefined;
     let json = false;
@@ -55,14 +66,14 @@ export function parseConnectCommand(args: readonly string[]): ConnectCommand {
         }
     }
     if (code === undefined) throw new ConnectUsageError(CONNECT_USAGE);
-    return { linkCode: linkCodeOf(code), json };
+    return { ...linkOf(code), json };
 }
 
-/** `register --link <code>`: the X-05 name for `connect`, which scripts read as JSON. */
+/** `register --link <link URL or code>`: the X-05 name for `connect`, which scripts read as JSON. */
 export function parseRegisterCommand(args: readonly string[]): ConnectCommand {
     const [flag, code, ...rest] = args;
     if (flag !== '--link' || code === undefined || rest.length > 0) throw new ConnectUsageError(REGISTER_USAGE);
-    return { linkCode: linkCodeOf(code), json: true };
+    return { ...linkOf(code), json: true };
 }
 
 export type ConnectReport =
@@ -78,7 +89,8 @@ export type ConnectReport =
 export interface ConnectCommandDeps {
     readonly identityStore: IdentityStore;
     readonly registrations: RegistrationStore;
-    readonly api: DashboardApi;
+    /** The dashboard's API at the origin this command settled on. */
+    readonly api: (dashboardUrl: string) => DashboardApi;
     readonly logger: Logger;
     readonly clock: Clock;
     readonly random: Random;
@@ -110,27 +122,54 @@ function reportOf(outcome: RegistrationOutcome): ConnectReport {
 }
 
 /**
+ * A link URL names its dashboard and overrides nothing silently: if `PTBK_DASHBOARD_URL` names another one, the
+ * operator decides. A bare code goes to `PTBK_DASHBOARD_URL`, else to the dashboard the engine registered with.
+ */
+async function dashboardUrlOf(
+    command: ConnectCommand,
+    config: ParsedMockEngineConfig,
+    registrations: RegistrationStore,
+): Promise<string> {
+    const configured = config.dashboard?.url ?? null;
+    if (command.dashboardOrigin !== null) {
+        if (configured !== null && configured !== command.dashboardOrigin) {
+            throw new ConfigError([
+                `PTBK_DASHBOARD_URL: names ${configured}, but the link URL is for ${command.dashboardOrigin}; unset PTBK_DASHBOARD_URL or use a link from that dashboard`,
+            ]);
+        }
+        return command.dashboardOrigin;
+    }
+    const url = configured ?? (await registrations.load())?.dashboardUrl ?? null;
+    if (url === null) {
+        throw new ConfigError(['--link: give the link URL the dashboard shows, or set PTBK_DASHBOARD_URL for a code']);
+    }
+    return url;
+}
+
+/**
  * Creates the engine key if there is none, then registers with the link code, retrying while the platform is
  * unreachable and the code can still be valid, and hands the registration to an engine already running from this
  * data directory. The key and data are kept whatever the outcome.
  */
 export async function runConnectCommand(
     command: ConnectCommand,
-    config: MockEngineConfig,
+    config: ParsedMockEngineConfig,
     deps: ConnectCommandDeps,
 ): Promise<ConnectResult> {
-    if (config.dashboard === null) throw new ConfigError(['PTBK_DASHBOARD_URL: is required to connect']);
+    const dashboardUrl = await dashboardUrlOf(command, config, deps.registrations);
     const identity = await deps.identityStore.loadOrCreate();
     deps.say(`${DONE} Engine key ready`);
     for (const line of identityLines(identity.engineId, defaultHostname(identity.engineId, config.engineDomain))) {
         deps.say(line);
     }
+    // Said before anything is sent, so a link pasted from somewhere shows where it goes. The origin is not a secret.
+    deps.say(`${WAITING} Linking with the Promptbook dashboard at ${dashboardUrl}`);
     const outcome = await registerWithRetry({
         store: deps.registrations,
         identity,
-        dashboardUrl: config.dashboard.url,
+        dashboardUrl,
         engineDomain: config.engineDomain,
-        api: deps.api,
+        api: deps.api(dashboardUrl),
         engineVersion: config.engineVersion,
         linkCode: command.linkCode,
         logger: deps.logger,
