@@ -430,7 +430,7 @@ describe('new engine page', () => {
             });
             expect(await screen.findByText('Too many unused link codes')).toBeTruthy();
             expect(
-                screen.getByText('Cancel one you no longer need on Engines, then come back for a new one.'),
+                screen.getByText('Revoke one you no longer need on Engines, then come back for a new one.'),
             ).toBeTruthy();
             expect(screen.getByRole('link', { name: 'Go to Engines' }).getAttribute('href')).toBe('/engines');
             expect(screen.queryByRole('button', { name: 'Create link code' })).toBeNull();

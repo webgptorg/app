@@ -26,12 +26,12 @@ function PendingLinkCodeRow(props: { readonly code: PendingLinkCode }) {
     const [open, setOpen] = useState(false);
     const { linkCodeId } = props.code;
     const created = locale.formatDateTime(new Date(props.code.createdAt));
-    const cancel = useAppMutation({
+    const revoke = useAppMutation({
         mutationFn: async () => {
             dataOrThrow(await api.call(apiRoutes.cancelLinkCode, { params: { linkCodeId } }));
         },
         invalidates: [PENDING_LINK_CODES_KEY],
-        successMessage: () => m.link_codes_cancelled(),
+        successMessage: () => m.link_codes_revoked(),
         onSuccess: () => {
             setOpen(false);
         },
@@ -49,8 +49,8 @@ function PendingLinkCodeRow(props: { readonly code: PendingLinkCode }) {
                 items={[
                     {
                         kind: 'item',
-                        id: 'cancel',
-                        label: m.link_codes_cancel(),
+                        id: 'revoke',
+                        label: m.link_codes_revoke(),
                         tone: 'danger',
                         onSelect: () => {
                             setOpen(true);
@@ -64,13 +64,13 @@ function PendingLinkCodeRow(props: { readonly code: PendingLinkCode }) {
                     setOpen(false);
                 }}
                 onConfirm={() => {
-                    cancel.mutate();
+                    revoke.mutate();
                 }}
-                title={m.link_codes_cancel_title()}
-                description={m.link_codes_cancel_body()}
-                confirmLabel={m.link_codes_cancel()}
+                title={m.link_codes_revoke_title()}
+                description={m.link_codes_revoke_body()}
+                confirmLabel={m.link_codes_revoke()}
                 tone="danger"
-                loading={cancel.isPending}
+                loading={revoke.isPending}
             />
         </li>
     );

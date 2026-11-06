@@ -93,7 +93,7 @@ Built: "Link an engine", the intro copy with the configured code lifetime, the c
 
 Also built in [D-10](../plan/tasks/D-10-live-link-progress.md):
 
-- The link code is created on page load once the person is entitled, so the command is there without an extra click. Leaving and coming back creates a new code; old ones expire after 30 days or when cancelled. At most 5 are active per organization: past that the page says "Too many unused link codes" and links to Engines, which lists the unused codes (created, works until) with "Cancel code" in a ⋯ menu. A team's new code ends its earlier one.
+- The link code is created on page load once the person is entitled, so the command is there without an extra click. Leaving and coming back creates a new code; old ones expire after 30 days or when revoked. At most 5 are active per organization: past that the page says "Too many unused link codes" and links to Engines, which lists the unused codes (created, works until) with "Revoke code" in a ⋯ menu. A team's new code ends its earlier one.
 - The expiry shown is the code's own `expiresAt`, from the configured lifetime, not a hard-coded number.
 - Below the card, the live progress panel (step 4) starts in its first state.
 
