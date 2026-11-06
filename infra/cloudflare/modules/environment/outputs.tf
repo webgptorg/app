@@ -33,3 +33,8 @@ output "email_dkim_selector" {
 output "email_return_path_domain" {
   value = cloudflare_email_sending_subdomain.dashboard.return_path_domain
 }
+
+output "ui_release_url" {
+  description = "PTBK_UI_RELEASE_URL for engines; null without ui_releases."
+  value       = var.ui_releases == null ? null : "https://${var.ui_releases.hostname}/"
+}

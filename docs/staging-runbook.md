@@ -92,14 +92,14 @@ Check that the zone is **Active** in the shared account, that it has auto-renew 
 
 Create the Cloudflare tokens under Manage Account, **Account API Tokens**, Create Token, Custom token. Account-owned tokens are not tied to a member. Scope every zone permission to **`ptbk.link` only**: the account holds other projects' zones. Cloudflare cannot scope Workers, D1 or analytics permissions below the account, so those reach the whole shared account ([Staging relaxations](#staging-relaxations-not-for-production)). The scopes are copied from [infra/cloudflare/README.md](../infra/cloudflare/README.md#api-tokens) and [docs/runbooks/observability.md](runbooks/observability.md#credentials). Store every token in the password manager, nowhere else.
 
-| Token                                  | Permissions                                                                                                                                                                                                                                                                             | Never                                                               | Used in             |
-| -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- | ------------------- |
-| `ptbk-staging-iac`                     | Account: D1 Edit, the Email Service sending permission (record its exact name in infra/cloudflare/README.md), Load Balancing: Monitors and Pools Edit, Notifications Edit. Zone, **`ptbk.link` only**: Zone Read, DNS Edit, Load Balancers Edit                                         | Workers, API tokens, members, billing; any other zone; CI; any host | Steps 7, 9          |
-| `ptbk-staging-deploy`                  | Account: Workers Scripts Edit (includes Durable Objects), D1 Edit, Account Settings Read. Zone, **`ptbk.link` only**: Workers Routes Edit. Reaches every Worker and D1 database in the shared account, so it lives only on Seb's machine, and later in the `staging` GitHub environment | Any DNS, zone or SSL permission; any other zone                     | Steps 8, 10, 12     |
-| R2 token for `ptbk-tofu-state-staging` | Created in step 3: R2, Manage API tokens, Create Account API token, **Object Read & Write**, specific bucket `ptbk-tofu-state-staging`. Gives an Access Key ID and a Secret Access Key                                                                                                  | Any other bucket                                                    | Steps 6, 7          |
-| `ptbk-staging-acme-dns`                | Zone: Zone Read, DNS Edit, on **`ptbk.link` only** (there is no challenge zone on staging). After step 6, add the relay's IPv4 and IPv6 addresses to the token's client IP filter                                                                                                       | Any other zone                                                      | Step 10 (the relay) |
-| `ptbk-staging-analytics`               | Account: Account Analytics Read, nothing else. Required: staging sets `MONITORING`, and the Worker refuses to start without `ANALYTICS_API_TOKEN` there                                                                                                                                 | Everything else                                                     | Step 8              |
-| UI release R2 token                    | Only with CI (step 11): Object Read & Write on the release bucket only (R2 offers no write-only object permission)                                                                                                                                                                      | Any other bucket                                                    | Later               |
+| Token                                  | Permissions                                                                                                                                                                                                                                                                                                                                             | Never                                                               | Used in             |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- | ------------------- |
+| `ptbk-staging-iac`                     | Account: D1 Edit, the Email Service sending permission (record its exact name in infra/cloudflare/README.md), Load Balancing: Monitors and Pools Edit, Notifications Edit, Workers R2 Storage Edit (the `ui.ptbk.link` custom domain; reaches every bucket in the shared account). Zone, **`ptbk.link` only**: Zone Read, DNS Edit, Load Balancers Edit | Workers, API tokens, members, billing; any other zone; CI; any host | Steps 7, 9          |
+| `ptbk-staging-deploy`                  | Account: Workers Scripts Edit (includes Durable Objects), D1 Edit, Account Settings Read. Zone, **`ptbk.link` only**: Workers Routes Edit. Reaches every Worker and D1 database in the shared account, so it lives only on Seb's machine, and later in the `staging` GitHub environment                                                                 | Any DNS, zone or SSL permission; any other zone                     | Steps 8, 10, 12     |
+| R2 token for `ptbk-tofu-state-staging` | Created in step 3: R2, Manage API tokens, Create Account API token, **Object Read & Write**, specific bucket `ptbk-tofu-state-staging`. Gives an Access Key ID and a Secret Access Key                                                                                                                                                                  | Any other bucket                                                    | Steps 6, 7          |
+| `ptbk-staging-acme-dns`                | Zone: Zone Read, DNS Edit, on **`ptbk.link` only** (there is no challenge zone on staging). After step 6, add the relay's IPv4 and IPv6 addresses to the token's client IP filter                                                                                                                                                                       | Any other zone                                                      | Step 10 (the relay) |
+| `ptbk-staging-analytics`               | Account: Account Analytics Read, nothing else. Required: staging sets `MONITORING`, and the Worker refuses to start without `ANALYTICS_API_TOKEN` there                                                                                                                                                                                                 | Everything else                                                     | Step 8              |
+| UI release R2 token                    | Only with CI (step 11): Object Read & Write on the release bucket only (R2 offers no write-only object permission)                                                                                                                                                                                                                                      | Any other bucket                                                    | Later               |
 
 The IaC token's load-balancing permissions are unused while staging is on `"records"`; they are kept so that staging matches production's token. Plus `HCLOUD_TOKEN` from 1.3.
 
@@ -113,7 +113,7 @@ R2, Create bucket:
 In the shared account:
 
 1. `ptbk-tofu-state-staging`, location **Automatic** (or a location hint), **no jurisdiction**. The backend's endpoint is `https://<account id>.r2.cloudflarestorage.com`, and an EU-jurisdiction bucket lives at another endpoint. OpenTofu state for both stacks lives here, under `cloudflare/terraform.tfstate` and `relay/terraform.tfstate`. Then create its R2 token (step 2).
-2. `ptbk-ui-releases-staging`, the UI release bucket (`UI_STAGING_R2_BUCKET`). The repo does not fix this name; this is the proposal. It is only needed for step 11.
+2. `ptbk-ui-releases-staging`, the UI release bucket (`UI_STAGING_R2_BUCKET`), location **Automatic**, no jurisdiction. The stack serves it as `ui.ptbk.link` (step 7), so it must exist before the first apply. Leave its public r2.dev access off.
 
 **You should see:** two empty buckets.
 **If it fails:** `tofu init` later answers 403. The R2 token is scoped to another bucket, or the account ID in the backend endpoint is wrong.
@@ -225,7 +225,7 @@ tofu apply tfplan
 tofu output                                                 # d1_database_id into staging.env, then fill again
 ```
 
-The plan should only add: the D1 database `ptbk-dashboard-staging`, the email sending subdomain, and DNS records in `ptbk.link`. The records are the wildcard `*.engines.ptbk.link` A and AAAA (TTL 30), `relay-fsn` A and AAAA, three CAA, the null MX, SPF and DMARC on `engines.ptbk.link`, and DMARC on the sending domain. No zone, no zone setting (Universal SSL, DNSSEC) and no ACME CNAME: staging has no engine zone or challenge zone. It must destroy nothing.
+The plan should only add: the D1 database `ptbk-dashboard-staging`, the email sending subdomain, the custom domain `ui.ptbk.link` on `ptbk-ui-releases-staging` with its r2.dev access off, and DNS records in `ptbk.link`. The records are the wildcard `*.engines.ptbk.link` A and AAAA (TTL 30), `relay-fsn` A and AAAA, three CAA, the null MX, SPF and DMARC on `engines.ptbk.link`, and DMARC on the sending domain. No zone, no zone setting (Universal SSL, DNSSEC) and no ACME CNAME: staging has no engine zone or challenge zone. It must destroy nothing.
 
 No NS or DS records to set: `ptbk.link` is already on Cloudflare's name servers, and staging has no DNSSEC.
 
@@ -320,9 +320,35 @@ Once Actions runs, create the GHCR machine account and its `read:packages` token
 
 ## 11. UI release: prepare now, publish with CI
 
-Now: the staging release key's public half goes into `trust-policy.staging.json` (step 4, in the values PR), and the bucket exists (step 3).
+Now: the staging release key's public half goes into `trust-policy.staging.json` (step 4, in the values PR), the bucket exists (step 3), and the stack serves it as `https://ui.ptbk.link/` (step 7, the `ui_release_url` output), which engines get as `PTBK_UI_RELEASE_URL`.
 
-A real release needs `ui-release.yml` on a pushed `ui-v*` tag: its provenance is a keyless signature through GitHub OIDC, which `release:verify` and every engine require ([development.md, UI releases](development.md#ui-releases)). Once Actions runs, create the UI release R2 token (step 2), fill in the `release` environment (step 5's last table), and push `ui-v0.0.0-dryrun.1` ([apply.md](plan/apply.md) step 3). Two more things are missing before an engine installs a staging release: a signed revocation list (the loader refuses every release without a fresh one; [mock-engine README, UI loader](../apps/mock-engine/README.md#ui-loader-m-05)), and a public read address for the bucket to give engines as `PTBK_UI_RELEASE_URL` (an r2.dev URL or a custom domain in the staging zone, not decided yet). Until then an engine's `/` answers the plain 503 page.
+A real release needs `ui-release.yml` on a pushed `ui-v*` tag: its provenance is a keyless signature through GitHub OIDC, which `release:verify` and every engine require ([development.md, UI releases](development.md#ui-releases)). Once Actions runs, create the UI release R2 token (step 2), fill in the `release` environment (step 5's last table), and push `ui-v0.0.0-dryrun.1` ([apply.md](plan/apply.md) step 3).
+
+Engines install nothing without a fresh signed revocation list, so publish the first one now, before any release, from your machine and signed with the staging release key ([development.md, Revocation list](development.md#revocation-list)):
+
+```sh
+read -rs UI_RELEASE_KEY && export UI_RELEASE_KEY   # the UI_STAGING_RELEASE_KEY seed from the password manager
+bun run --filter @ptbk/engine-ui release:revocations --first
+unset UI_RELEASE_KEY
+(cd apps/dashboard && bunx wrangler r2 object put ptbk-ui-releases-staging/release-log/revocations.json --remote \
+  --file ../engine-ui/release/revocations.json --content-type application/json --cache-control no-cache)
+```
+
+**Re-sign it every 14 days** (each list is valid for 30), and at once when a version must be revoked (`--revoke <version>="<reason>"`). From then on, fetch the published list and pass it as `--previous` instead of `--first`:
+
+```sh
+(cd apps/dashboard && bunx wrangler r2 object get ptbk-ui-releases-staging/release-log/revocations.json \
+  --remote --file /tmp/revocations.prev.json)
+read -rs UI_RELEASE_KEY && export UI_RELEASE_KEY
+bun run --filter @ptbk/engine-ui release:revocations --previous /tmp/revocations.prev.json
+unset UI_RELEASE_KEY
+# then the same wrangler r2 object put as above
+```
+
+Put the next re-sign date in the calendar: once a list expires, engines install nothing new (they keep their current UI and alert). Never upload an older list again: engines refuse it as rolled back.
+
+**You should see:** `curl -s https://ui.ptbk.link/release-log/revocations.json` returns the envelope (`"payloadType": "application/vnd.ptbk.revocation+json; v=1"`), and the command printed an `expires` 30 days after `issued`. Until a release is published, an engine's `/` answers the plain 503 page.
+**If it fails:** `release:revocations` refusing the key means the seed is not the one in `trust-policy.staging.json`. A 404 from `ui.ptbk.link` with the object in the bucket means the custom domain is not active yet (R2, the bucket's Settings, Custom Domains).
 
 ## 12. Link a mock engine
 
