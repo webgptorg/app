@@ -1,10 +1,10 @@
 # Staging runbook
 
-Bringing staging up by hand from a laptop, once, without CI: accounts, tokens, secrets, DNS, the dashboard, email, the relay host and a linked mock engine. Everything is here in order, so you need no task brief. It collects the Apply steps of I-01, I-02, I-04 and X-03 ([apply.md](plan/apply.md)) for staging, and links the module docs for detail.
+Bringing staging up by hand from a laptop, once, without CI: accounts, tokens, secrets, DNS, the dashboard, email, the relay host and a linked engine. Everything is here in order, so you need no task brief. It collects the Apply steps of I-01, I-02, I-04 and X-03 ([apply.md](plan/apply.md)) for staging, and links the module docs for detail.
 
 Decided on 2026-11-04 and changed on 2026-11-06: staging runs in an existing Cloudflare account that it shares with other projects (Pavol's), on one domain it already owns, `ptbk.link`, with subdomains ([Staging relaxations](#staging-relaxations-not-for-production) lists what that gives up), one relay on Hetzner with `relay_dns_mode = "records"` and no load balancer, and billing off (`ADAPTERS.billing = "off"`), so no Stripe. GitHub Actions does not run (billing), so every step here runs from your machine. The CI pipelines (I-03) come later.
 
-**What you have at the end:** the dashboard on `https://app.ptbk.link/` with passkey sign-up, D1 and migrations; email that passes SPF, DKIM and DMARC; engines under `engines.ptbk.link` with a DNS-only wildcard and CAA; a hardened relay host with its own certificate, registered with the dashboard; and a mock engine linked to the dashboard and sending heartbeats.
+**What you have at the end:** the dashboard on `https://app.ptbk.link/` with passkey sign-up, D1 and migrations; email that passes SPF, DKIM and DMARC; engines under `engines.ptbk.link` with a DNS-only wildcard and CAA; a hardened relay host with its own certificate, registered with the dashboard; and an engine linked to the dashboard and sending heartbeats.
 
 **What waits for GitHub Actions:** the relay itself (hosts run only images signed by `release-relay.yml`, [step 10](#10-relay-secrets-certificate-registration)), and with it browser traffic to engines; the engine UI release ([step 11](#11-ui-release-prepare-now-publish-with-ci)). The e2e suite cannot target staging yet ([step 13](#13-e2e-against-staging)).
 
@@ -22,7 +22,7 @@ Decided on 2026-11-04 and changed on 2026-11-06: staging runs in an existing Clo
 | [9. Test email](#9-test-email)                                                              | 10 min                       | 8                          |
 | [10. Relay: secrets, certificate, registration](#10-relay-secrets-certificate-registration) | 15 min                       | 8; the image waits for CI  |
 | [11. UI release](#11-ui-release-prepare-now-publish-with-ci)                                | 5 min now                    | publishing waits for CI    |
-| [12. Link a mock engine](#12-link-a-mock-engine)                                            | 10 min                       | 8                          |
+| [12. Link an engine](#12-link-an-engine)                                                    | 10 min                       | 8                          |
 | [13. e2e against staging](#13-e2e-against-staging)                                          | —                            | not supported yet          |
 | [14. Teardown and reset](#14-teardown-and-reset)                                            | as needed                    | —                          |
 
@@ -37,7 +37,7 @@ Staging runs on one domain, `ptbk.link`, in a shared account (decided by Seb on 
 - **No DNSSEC, PSL entry or engine-zone CAA hardening**: Universal SSL stays on in the shared zone (Cloudflare may add CAA records for its own CAs), and the engines' DMARC record does not cover engine hostnames, whose organizational domain is the staging zone.
 - **The shared account means Workers and D1 tokens**, which Cloudflare cannot scope to one script or database, **reach every Worker and D1 database in that account** (and the analytics token all of its analytics, the IaC token's Workers R2 Storage Edit every bucket): keep the staging deploy token only on Seb's machine and later in the `staging` GitHub environment; production gets its own account.
 
-Staging runs only mock engines with fake data. Anything that would put real engine content on staging needs these revisited first.
+Staging links only mock engines and throwaway `ptbk` projects that hold test data only: never a real project, real content or real credentials. Anything that would put real engine content on staging needs these revisited first.
 
 ## 0. Before you start
 
@@ -173,19 +173,18 @@ Strictly, plan and apply run from an up-to-date `main` ([infra/cloudflare README
 
 The domains (`ptbk.link` and the names under it) are committed values, not placeholders. Every staging placeholder:
 
-| Placeholder                                                      | File                                                                                            | `staging.env`                                       | Comes from                                                                |
-| ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- | --------------------------------------------------- | ------------------------------------------------------------------------- |
-| `<staging-account-id>`                                           | `wrangler.jsonc` (`ANALYTICS`), both staging `main.tf` (R2 backend endpoint), Cloudflare tfvars | `CLOUDFLARE_ACCOUNT_ID`                             | Step 1.1                                                                  |
-| `<security-contact>`                                             | Cloudflare tfvars (CAA `iodef`)                                                                 | `SECURITY_CONTACT`                                  | Your mailbox                                                              |
-| `<ops-email>`, `ops@<staging-ops-domain>`                        | relay tfvars (`acme_email`), `wrangler.jsonc` (`MONITORING.opsEmail`)                           | `OPS_EMAIL`                                         | Your mailbox                                                              |
-| `abuse@<staging-abuse-domain>`                                   | `wrangler.jsonc` (`ABUSE_EMAIL`)                                                                | `ABUSE_EMAIL`                                       | Your mailbox                                                              |
-| `<admin-name>`, `<admin-ssh-public-key>`, `<admin-network-cidr>` | relay tfvars (`admins`, `ssh_allowlist`)                                                        | `ADMIN_NAME`, `ADMIN_SSH_PUBLIC_KEY`, `ADMIN_CIDRS` | Step 1.3                                                                  |
-| `<staging-relay-fsn-ipv4>`, `<staging-relay-fsn-ipv6>`           | Cloudflare tfvars (`relays`)                                                                    | `RELAY_IPV4`, `RELAY_IPV6`                          | Step 6, `tofu output relays`                                              |
-| `<staging-d1-id>`                                                | `wrangler.jsonc` (`database_id`)                                                                | `D1_DATABASE_ID`                                    | Step 7, `tofu output d1_database_id`                                      |
-| `<public-install-guide-url>`                                     | `wrangler.jsonc` (`INSTALL_GUIDE_URL`)                                                          | `INSTALL_GUIDE_URL`                                 | The public install guide once it exists; the repo's guide until then      |
-| `<installer-url>`, `<installer-sha256>`                          | `wrangler.jsonc` (`INSTALL_COMMANDS`)                                                           | Left on purpose                                     | The engine team's first release ([apply.md](plan/apply.md) step 12, D-11) |
-| `<staging-standard-product-id>`, `<staging-standard-price-id>`   | `wrangler.jsonc` (`BILLING_PLANS`, commented out)                                               | Left on purpose                                     | Stripe test mode, only when billing is on                                 |
-| `UI_STAGING_RELEASE_KEY` public key                              | `apps/engine-ui/release/trust-policy.staging.json`                                              | By hand                                             | Step 4                                                                    |
+| Placeholder                                                      | File                                                                                            | `staging.env`                                       | Comes from                                                           |
+| ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- | --------------------------------------------------- | -------------------------------------------------------------------- |
+| `<staging-account-id>`                                           | `wrangler.jsonc` (`ANALYTICS`), both staging `main.tf` (R2 backend endpoint), Cloudflare tfvars | `CLOUDFLARE_ACCOUNT_ID`                             | Step 1.1                                                             |
+| `<security-contact>`                                             | Cloudflare tfvars (CAA `iodef`)                                                                 | `SECURITY_CONTACT`                                  | Your mailbox                                                         |
+| `<ops-email>`, `ops@<staging-ops-domain>`                        | relay tfvars (`acme_email`), `wrangler.jsonc` (`MONITORING.opsEmail`)                           | `OPS_EMAIL`                                         | Your mailbox                                                         |
+| `abuse@<staging-abuse-domain>`                                   | `wrangler.jsonc` (`ABUSE_EMAIL`)                                                                | `ABUSE_EMAIL`                                       | Your mailbox                                                         |
+| `<admin-name>`, `<admin-ssh-public-key>`, `<admin-network-cidr>` | relay tfvars (`admins`, `ssh_allowlist`)                                                        | `ADMIN_NAME`, `ADMIN_SSH_PUBLIC_KEY`, `ADMIN_CIDRS` | Step 1.3                                                             |
+| `<staging-relay-fsn-ipv4>`, `<staging-relay-fsn-ipv6>`           | Cloudflare tfvars (`relays`)                                                                    | `RELAY_IPV4`, `RELAY_IPV6`                          | Step 6, `tofu output relays`                                         |
+| `<staging-d1-id>`                                                | `wrangler.jsonc` (`database_id`)                                                                | `D1_DATABASE_ID`                                    | Step 7, `tofu output d1_database_id`                                 |
+| `<public-install-guide-url>`                                     | `wrangler.jsonc` (`INSTALL_GUIDE_URL`)                                                          | `INSTALL_GUIDE_URL`                                 | The public install guide once it exists; the repo's guide until then |
+| `<staging-standard-product-id>`, `<staging-standard-price-id>`   | `wrangler.jsonc` (`BILLING_PLANS`, commented out)                                               | Left on purpose                                     | Stripe test mode, only when billing is on                            |
+| `UI_STAGING_RELEASE_KEY` public key                              | `apps/engine-ui/release/trust-policy.staging.json`                                              | By hand                                             | Step 4                                                               |
 
 Later, with CI (I-03), these go into GitHub environments, not files ([deploy runbook, GitHub settings](runbooks/deploy.md#github-settings)): `staging` gets the `CLOUDFLARE_API_TOKEN` secret (the deploy token) and the variables `CLOUDFLARE_ACCOUNT_ID` and `RELAY_HOSTS` (`relay-fsn.ptbk.link`); `release` gets `UI_STAGING_RELEASE_KEY`, `UI_STAGING_R2_ACCESS_KEY_ID` and `UI_STAGING_R2_SECRET_ACCESS_KEY`, plus the variables `UI_STAGING_R2_ENDPOINT` (`https://<account id>.r2.cloudflarestorage.com`) and `UI_STAGING_R2_BUCKET`.
 
@@ -350,9 +349,23 @@ Put the next re-sign date in the calendar: once a list expires, engines install 
 **You should see:** `curl -s https://ui.ptbk.link/release-log/revocations.json` returns the envelope (`"payloadType": "application/vnd.ptbk.revocation+json; v=1"`), and the command printed an `expires` 30 days after `issued`. Until a release is published, an engine's `/` answers the plain 503 page.
 **If it fails:** `release:revocations` refusing the key means the seed is not the one in `trust-policy.staging.json`. A 404 from `ui.ptbk.link` with the object in the bucket means the custom domain is not active yet (R2, the bucket's Settings, Custom Domains).
 
-## 12. Link a mock engine
+## 12. Link an engine
 
-On your machine:
+The real engine is the engine team's `ptbk` CLI (npm `ptbk`, 0.119.0-72 or later; Node 22.13+ or 24+, npm 10+, Git and Chrome). Link only a throwaway project with test data ([Staging relaxations](#staging-relaxations-not-for-production)). Engines, New engine shows these commands with the code filled in, as its first tab:
+
+```sh
+export PTBK_DASHBOARD_URL=https://app.ptbk.link PTBK_ENGINE_DOMAIN=engines.ptbk.link
+npm install --global ptbk
+mkdir -p my-agenda && cd my-agenda
+ptbk init --path . --no-dashboard
+ptbk connect --link <code>
+```
+
+The engine must run with the same variables as `connect`; started without them (after a reboot, or from the desktop app) it refuses the link. Then `ptbk stop` and `ptbk start` from a shell with the exports.
+
+**You should see:** "Linked to the Promptbook App" with the engine ID and the fingerprint the page shows; the engine shows online within about a minute, with its relays connected. "Open" does not work yet: the engine refuses browser streams until it terminates TLS itself, and its App page says so.
+
+The mock engine checks the path through the relay end to end. On your machine:
 
 ```sh
 bun run --filter @ptbk/mock-engine build
@@ -372,9 +385,7 @@ openssl s_client -connect <relay ipv4>:443 -servername <engineId>.engines.ptbk.l
 
 The mock's certificate comes from its dev CA, so browsers warn. A CA-issued certificate through the relay is the Let's Encrypt **staging** run in [spike/acme-tls-alpn-01.md](spike/acme-tls-alpn-01.md#runbook-lets-encrypt-staging-manual) ([apply.md](plan/apply.md) step 10); never against Let's Encrypt production.
 
-A real engine links the same way with its own `connect --link <code>` against `https://app.ptbk.link`. The installer tab on the page still shows the D-11 placeholders.
-
-**If it fails:** exit 3 means the code was refused (used, or older than 30 minutes): make a new one. Exit 5 (`engine-limit`, `not-entitled`) means the organization already has `BILLING_OFF_PLAN`'s 10 engines (revoke one), or billing is not off. Exit 6 means the dashboard was unreachable.
+**If it fails:** for `ptbk`, the message names the refusal and the next step. For the mock, exit 3 means the code was refused (used, or older than 30 minutes): make a new one. Exit 5 (`engine-limit`, `not-entitled`) means the organization already has `BILLING_OFF_PLAN`'s 10 engines (revoke one), or billing is not off. Exit 6 means the dashboard was unreachable.
 
 ## 13. e2e against staging
 
@@ -382,6 +393,7 @@ Not supported yet. The e2e suite runs only against its own Docker Compose stacks
 
 ## 14. Teardown and reset
 
+- **The `ptbk` engine:** `ptbk disconnect` and `ptbk stop` in its project, then delete the engine in the dashboard.
 - **The mock engine:** stop it, `rm -rf ~/.ptbk-staging-engine`, and delete the engine in the dashboard.
 - **Dashboard data, from scratch:** `bunx wrangler delete --env staging` removes the Worker with its Durable Objects and secrets. The D1 database has `prevent_destroy`, so delete it in the Cloudflare dashboard (D1, `ptbk-dashboard-staging`, Settings), then `tofu state rm 'module.environment.cloudflare_d1_database.dashboard'` in `infra/cloudflare/environments/staging`, and plan and apply to create it again. Then put its new ID into `staging.env`, fill, open a PR, and repeat step 8, secrets included.
 - **Rebuild the relay host:** `tofu apply -replace='module.environment.hcloud_server.relay["relay-fsn"]'`, then step 10 again (the primary IPs stay, so DNS does not change; [infra/relay README, Rebuild a host](../infra/relay/README.md#rebuild-a-host)).

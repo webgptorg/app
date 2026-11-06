@@ -317,6 +317,7 @@
   "engines_new_tab_already_running": "Promptbook už mám spuštěný",
   "engines_new_tab_docker_compose": "Docker Compose",
   "engines_new_tab_docker_server": "Linuxový server s Dockerem",
+  "engines_new_tab_new_project": "Nový projekt",
   "engines_new_tabs_label": "Způsob instalace",
   "engines_new_title": "Připojit engine",
   "engines_new_trial_started": "Děkujeme, zkušební období začalo.",

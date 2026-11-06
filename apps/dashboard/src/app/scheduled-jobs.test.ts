@@ -1,5 +1,3 @@
-import { readFileSync } from 'node:fs';
-
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
@@ -11,6 +9,7 @@ import { createFakePublicFaceFetcher } from '../testing/fake-public-face-fetcher
 import { createMemoryCtStore } from '../testing/memory-ct-store';
 import { createMemoryPublicFaceStore } from '../testing/memory-public-face-store';
 import { createMemoryMonitor } from '../testing/test-monitoring';
+import { readWranglerConfig } from '../testing/wrangler-config';
 import { EVERY_15_MINUTES, EVERY_MINUTE, scheduledJobs, type AbuseJobDeps } from './scheduled-jobs';
 
 const clock = { nowMs: () => 0 };
@@ -52,26 +51,6 @@ function abuse(withFeeds: boolean): AbuseJobDeps {
     };
 }
 
-/** wrangler.jsonc without its `//` comments and trailing commas; strings are copied untouched. */
-function parseJsonc(text: string): unknown {
-    let out = '';
-    for (let index = 0; index < text.length; index++) {
-        const char = text[index] as string;
-        if (char === '"') {
-            const end = text.indexOf('"', index + 1);
-            let close = end;
-            while (text[close - 1] === '\\') close = text.indexOf('"', close + 1);
-            out += text.slice(index, close + 1);
-            index = close;
-        } else if (char === '/' && text[index + 1] === '/') {
-            index = text.indexOf('\n', index) - 1;
-        } else {
-            out += char;
-        }
-    }
-    return JSON.parse(out.replace(/,(\s*[}\]])/g, '$1'));
-}
-
 const workerConfig = z.object({
     triggers: z.object({ crons: z.array(z.string()) }),
     analytics_engine_datasets: z.array(z.object({ binding: z.string(), dataset: z.string() })),
@@ -81,9 +60,7 @@ const wranglerSchema = workerConfig.extend({ env: z.record(z.string(), workerCon
 
 describe('Cron Triggers and scheduled jobs (I-04, I-05)', () => {
     it('agree in every environment, with the monitor object and the metrics dataset bound', async () => {
-        const wrangler = wranglerSchema.parse(
-            parseJsonc(readFileSync(new URL('../../wrangler.jsonc', import.meta.url).pathname, 'utf8')),
-        );
+        const wrangler = wranglerSchema.parse(readWranglerConfig());
         const jobs = scheduledJobs({
             monitoring: {
                 relays: [],

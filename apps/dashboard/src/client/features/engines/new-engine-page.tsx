@@ -31,6 +31,7 @@ const INSTALL_PATH_LABELS: Record<InstallPathLabelKey, () => string> = {
     'docker-server': () => m.engines_new_tab_docker_server(),
     'docker-compose': () => m.engines_new_tab_docker_compose(),
     'already-running': () => m.engines_new_tab_already_running(),
+    'new-project': () => m.engines_new_tab_new_project(),
 };
 
 type InstallCommandView = LinkCodeView['installCommands'][number];

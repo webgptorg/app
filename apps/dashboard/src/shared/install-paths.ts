@@ -5,7 +5,7 @@ export const installPathIdSchema = z.enum(['installer', 'compose', 'connect']);
 export type InstallPathId = z.infer<typeof installPathIdSchema>;
 
 /** Which tab label the SPA shows; configuration picks one, so a relabelled path needs no API change. */
-export const installPathLabelKeySchema = z.enum(['docker-server', 'docker-compose', 'already-running']);
+export const installPathLabelKeySchema = z.enum(['docker-server', 'docker-compose', 'already-running', 'new-project']);
 export type InstallPathLabelKey = z.infer<typeof installPathLabelKeySchema>;
 
 /** A heading anchor in the public install guide, e.g. `2-docker-compose`. */

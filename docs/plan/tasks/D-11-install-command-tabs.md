@@ -18,7 +18,7 @@ D-03 renders one `INSTALL_COMMAND` template with a `{linkCode}` placeholder; out
 - Configuration `INSTALL_COMMANDS`: an ordered list of `{ id, labelKey, template, docsAnchor }`, at least `installer`, `compose` and `connect`. Each template contains `{linkCode}` exactly once; templates may span lines. Validated at startup like `INSTALL_COMMAND`, which it replaces (keep reading the old variable for one release, then remove it).
 - `POST /api/engines/link-codes` returns `installCommands: [{ id, command }]` instead of `installCommand`; the typed contract changes with it.
 - `/engines/new`: `@ptbk/ui` tabs (keyboard accessible), the first selected; each tab has its copy button ("Copy install command"), the one-line requirement note and a "Requirements and proxies" link to the public guide; the "Already running Promptbook" tab carries the move-from-the-predecessor line from onboarding.md Journey 2a.
-- Dev: `installer` renders `bun run dev:link {linkCode}` (X-06); `connect` renders the mock engine's `connect --link {linkCode}` from M-08 inside the stack. Staging and production keep placeholders until the engine team publishes the real commands (an Apply step).
+- Dev: `installer` renders `bun run dev:link {linkCode}` (X-06); `connect` renders the mock engine's `connect --link {linkCode}` from M-08 inside the stack. Staging and production keep placeholders until the engine team publishes the real commands (an Apply step). Since 2026-11-06 staging shows Reborn's `ptbk` CLI instead (`npm install --global ptbk`, `ptbk init`, `ptbk connect --link`, with staging's `PTBK_DASHBOARD_URL` and `PTBK_ENGINE_DOMAIN`), under the extra `new-project` label; production keeps the placeholders.
 - Strings in `en` and `cs`.
 
 ## Out of scope

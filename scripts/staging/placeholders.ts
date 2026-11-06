@@ -158,8 +158,6 @@ const REPLACEMENTS: readonly Replacement[] = [
 
 /** Placeholders deliberately left in staging, with what fills them. */
 export const LEFT_ON_PURPOSE: Readonly<Record<string, string>> = {
-    '<installer-url>': 'the engine team publishes the installer (apply.md step 12, D-11)',
-    '<installer-sha256>': 'the engine team publishes the installer (apply.md step 12, D-11)',
     '<staging-standard-product-id>': 'Stripe test mode, needed only with ADAPTERS.billing = "stripe"',
     '<staging-standard-price-id>': 'Stripe test mode, needed only with ADAPTERS.billing = "stripe"',
 };
