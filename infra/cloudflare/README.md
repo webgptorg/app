@@ -39,7 +39,7 @@ Each fails `tofu plan` before anything changes, and each has a case in `modules/
 - `relay_dns_mode = "load_balancer"` needs at least two relays (with one, the fallback pool always lists it, so a load balancer costs money and drops nothing) and `ops_email`.
 - No A, AAAA, CNAME, HTTPS or SVCB record on the bare engine domain.
 - At least one relay stays in rotation.
-- The UI release hostname is inside the dashboard zone and never under the engine domain, where Cloudflare would hold a certificate for an engine hostname.
+- The UI release hostname is inside the dashboard zone and never the engine domain or under it, where Cloudflare would hold a certificate for an engine hostname.
 - The relay health check runs every 10 to 60 seconds from at least three distinct regions.
 - Every record is inside its zone; relay hostnames are inside the engine or dashboard zone.
 - The sending domain is inside the dashboard zone and never under the engine domain.

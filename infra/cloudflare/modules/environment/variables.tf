@@ -259,14 +259,20 @@ variable "ui_releases" {
   }
 
   validation {
-    condition     = var.ui_releases == null || endswith(try(var.ui_releases.hostname, ""), ".${var.dashboard_zone}")
-    error_message = "ui_releases.hostname must be a name inside dashboard_zone."
+    condition = var.ui_releases == null || (
+      can(regex(local.domain_pattern, try(var.ui_releases.hostname, "")))
+      && endswith(try(var.ui_releases.hostname, ""), ".${var.dashboard_zone}")
+    )
+    error_message = "ui_releases.hostname must be a lower-case name inside dashboard_zone."
   }
 
-  # Cloudflare serves a custom domain itself, so under the engine domain it would hold a certificate for an engine
-  # hostname (AGENTS.md rules 1 and 3).
+  # Cloudflare serves a custom domain itself, so on or under the engine domain it would hold a certificate for an
+  # engine hostname (AGENTS.md rules 1 and 3).
   validation {
-    condition     = var.ui_releases == null || !endswith(try(var.ui_releases.hostname, ""), ".${var.engine_domain}")
-    error_message = "ui_releases.hostname must not be under the engine domain."
+    condition = var.ui_releases == null || (
+      try(var.ui_releases.hostname, "") != var.engine_domain
+      && !endswith(try(var.ui_releases.hostname, ""), ".${var.engine_domain}")
+    )
+    error_message = "ui_releases.hostname must not be the engine domain or under it."
   }
 }

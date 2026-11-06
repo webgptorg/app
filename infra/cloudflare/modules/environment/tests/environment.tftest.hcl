@@ -750,6 +750,28 @@ run "rejects_a_ui_release_hostname_under_the_engine_domain" {
   expect_failures = [var.ui_releases]
 }
 
+run "rejects_the_engine_domain_itself_as_the_ui_release_hostname" {
+  command = plan
+
+  variables {
+    engine_zone_mode = "subdomain"
+    engine_domain    = "engines.dashboard.example"
+    ui_releases      = { bucket = "ptbk-ui-releases-staging", hostname = "engines.dashboard.example" }
+  }
+
+  expect_failures = [var.ui_releases]
+}
+
+run "rejects_a_malformed_ui_release_hostname" {
+  command = plan
+
+  variables {
+    ui_releases = { bucket = "ptbk-ui-releases-staging", hostname = "UI.dashboard.example" }
+  }
+
+  expect_failures = [var.ui_releases]
+}
+
 run "rejects_an_invalid_ui_release_bucket_name" {
   command = plan
 
