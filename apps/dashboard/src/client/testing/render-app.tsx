@@ -54,6 +54,7 @@ export function renderApp(options: RenderAppOptions = {}): RenderedApp {
     api.on(apiRoutes.getSession, session === null ? problem(401, 'unauthorized') : ok(session));
     api.on(apiRoutes.listEngines, ok({ engines: [] }));
     api.on(apiRoutes.listTeams, ok({ teams: [] }));
+    api.on(apiRoutes.listLinkCodes, ok({ linkCodes: [] }));
     options.script?.(api);
     const passkeys = createFakePasskeys();
     const storage = options.storage ?? createMemoryStorage();

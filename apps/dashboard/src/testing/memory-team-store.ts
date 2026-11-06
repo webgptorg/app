@@ -419,11 +419,21 @@ export function createMemoryTeamStore(deps: {
                 });
             return Promise.resolve(new Set(ids));
         },
-        attachLinkCode(orgId, linkCodeId, teamId) {
+        attachLinkCode(orgId, linkCodeId, teamId, now) {
             const code = [...deps.registration.linkCodes.values()].find((candidate) => candidate.id === linkCodeId);
             const team = liveTeam(orgId, teamId);
             if (code?.orgId !== orgId || code.usedAt !== null || team === null || engineOf(teamId) !== null) {
                 return Promise.resolve('not-found');
+            }
+            for (const other of deps.registration.linkCodes.values()) {
+                if (
+                    other.id !== linkCodeId &&
+                    state.linkCodeTeams.get(other.id) === teamId &&
+                    other.usedAt === null &&
+                    now < other.expiresAt
+                ) {
+                    deps.registration.linkCodes.set(other.codeHash, { ...other, expiresAt: now });
+                }
             }
             state.linkCodeTeams.set(linkCodeId, teamId);
             return Promise.resolve('attached');

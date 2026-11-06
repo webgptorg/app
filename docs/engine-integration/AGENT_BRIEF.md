@@ -24,6 +24,11 @@ Each entry has this shape. Platform authors: add yours at the top of the list, o
 - **Redo:** what the engine's agent must change, re-run or drop; "nothing" if it is inert.
 ```
 
+### 2026-11-06: Link codes live 30 days
+
+- **Changed:** a dashboard link code (`connect --link <code>`) stays valid for 30 days instead of 30 minutes, because people install the engine later. It is still single use; the owner can cancel an unused one on Engines, and a team's new code ends its earlier one. The registration contract and `invalid-link-code` (unknown, expired, cancelled or used alike) are unchanged. See [installation.md](installation.md#must-report).
+- **Redo:** nothing, unless your CLI or UI says a code expires after 30 minutes; say 30 days. Keep the registration retry window short (30 minutes): a code's lifetime is no reason to retry for weeks.
+
 ### 2026-11-05: engine API 1.15.0
 
 - **Changed:** `ENGINE_API_VERSION` is 1.15.0. It covers every 2026-11-05 entry below (breaking changes made in place before the E-02 freeze; 2.0 is reserved for the freeze).

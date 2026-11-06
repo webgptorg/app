@@ -33,7 +33,7 @@ describe('the link page in Czech', () => {
                     apiRoutes.linkEligibility,
                     ok({
                         eligibility: 'allowed',
-                        linkCodeTtlS: 1800,
+                        linkCodeTtlS: 2_592_000,
                         installGuideUrl: 'https://docs.ptbk.test/engine/installation',
                     }),
                 );

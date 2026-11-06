@@ -91,9 +91,25 @@ export function bindEngineRoutes(
             case 'not-entitled':
             case 'engine-limit':
                 return { kind: 'problem', status: 403, code: outcome.reason };
+            case 'link-code-limit':
+                return { kind: 'problem', status: 409, code: 'link-code-limit' };
             case 'rate-limited':
                 return { kind: 'problem', status: 429, code: 'rate-limited' };
         }
+    });
+
+    bind(router, mount, apiRoutes.listLinkCodes, async ({ session }) => {
+        const pending = await deps.linkCodes.listPending(session.actor.orgId, deps.clock.nowMs());
+        return {
+            kind: 'ok',
+            body: {
+                linkCodes: pending.map((code) => ({
+                    linkCodeId: code.id,
+                    createdAt: code.createdAt,
+                    expiresAt: code.expiresAt,
+                })),
+            },
+        };
     });
 
     // Before `getEngine`, whose `:engineId` would otherwise claim the path.
@@ -130,6 +146,17 @@ export function bindEngineRoutes(
                     body: { status: 'linked' as const, engineId: status.engineId, hostname: status.hostname },
                 };
         }
+    });
+
+    bind(router, mount, apiRoutes.cancelLinkCode, async ({ input, session }) => {
+        const outcome = await deps.linkCodes.cancel(
+            session.actor.orgId,
+            linkCodeIdSchema.parse(input.params.linkCodeId),
+            deps.clock.nowMs(),
+        );
+        return outcome === 'cancelled'
+            ? { kind: 'ok', body: undefined, status: 204 }
+            : { kind: 'problem', status: 404, code: 'not-found' };
     });
 
     bind(router, mount, apiRoutes.listEngines, async ({ session }) => {

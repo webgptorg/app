@@ -31,7 +31,7 @@ services:
       - 127.0.0.1:${PTBK_DEV_RELAY_PORT:-443}:443
 
   # The origin carries the published port, so the WebAuthn origin, emailed links and the URLs the relays and the
-  # engine use inside the stack are one and the same. Link codes keep their default 30 minutes: a person copies them.
+  # engine use inside the stack are one and the same. Link codes keep their default 30 days: a person copies them.
   # Heartbeat timing keeps the production defaults (offline after 3 missed 60 s beats plus 15 s), so an engine on the
   # production cadence stays online; the mock engine's 15 s from compose.dashboard.yaml fits them too.
   dashboard:

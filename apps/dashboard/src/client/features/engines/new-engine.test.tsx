@@ -1,3 +1,4 @@
+import { createFormatters } from '@ptbk/ui';
 import { act, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -11,6 +12,7 @@ import {
     INSTALL_GUIDE_URL,
     LINK_CODE as CODE,
     linkCodeView as linkCode,
+    LINK_CODE_LIFETIME_MS,
     NOW,
     session,
 } from '../../testing/fixtures';
@@ -28,9 +30,9 @@ const CHECKOUT_URL = 'https://checkout.stripe.com/c/pay/cs_test_example';
 
 const WAITING_TEXT = 'Waiting for your engine to link. Run the command above; this page updates by itself.';
 const OWNER_TEXT = "Open the setup link your terminal shows to finish. This page updates when you're done.";
-const COMMAND_NOTE = 'Copy it now: it is shown only once and expires in 30:00.';
+const COMMAND_NOTE = `Copy it now: it is shown only once and works until ${createFormatters('en').formatDateTime(new Date(NOW + LINK_CODE_LIFETIME_MS))}.`;
 
-const PENDING: LinkCodeStatusView = { status: 'pending', expiresAt: NOW + 30 * 60_000 };
+const PENDING: LinkCodeStatusView = { status: 'pending', expiresAt: NOW + LINK_CODE_LIFETIME_MS };
 const LINKED: LinkCodeStatusView = {
     status: 'linked',
     engineId: ENGINE_ID as EngineView['engineId'],
@@ -44,7 +46,7 @@ const OWNER_PENDING = engineView({
     heartbeat: READY.heartbeat === null ? null : { ...READY.heartbeat, members: 0 },
 });
 
-function eligible(eligibility: 'allowed' | 'not-entitled' | 'engine-limit' = 'allowed', linkCodeTtlS = 1800) {
+function eligible(eligibility: 'allowed' | 'not-entitled' | 'engine-limit' = 'allowed', linkCodeTtlS = 2_592_000) {
     return (api: ScriptedApi) =>
         api.on(apiRoutes.linkEligibility, ok({ eligibility, linkCodeTtlS, installGuideUrl: INSTALL_GUIDE_URL }));
 }
@@ -191,7 +193,11 @@ describe('new engine page', () => {
                 script: (api) => {
                     api.once(
                         apiRoutes.linkEligibility,
-                        ok({ eligibility: 'not-entitled', linkCodeTtlS: 1800, installGuideUrl: INSTALL_GUIDE_URL }),
+                        ok({
+                            eligibility: 'not-entitled',
+                            linkCodeTtlS: 2_592_000,
+                            installGuideUrl: INSTALL_GUIDE_URL,
+                        }),
                     );
                     eligible()(api);
                     api.on(apiRoutes.getBilling, ok(billingView({ status: 'trialing' })));
@@ -411,6 +417,24 @@ describe('new engine page', () => {
             });
             expect(await screen.findByRole('link', { name: 'Go to billing' })).toBeTruthy();
             expect(screen.queryByText(CODE, { exact: false })).toBeNull();
+        });
+
+        it('sends someone at the unused-code limit to Engines to cancel one, without a retry', async () => {
+            const app = renderApp({
+                path: '/engines/new',
+                session: OWNER,
+                script: (api) => {
+                    eligible()(api);
+                    api.on(apiRoutes.createLinkCode, problem(409, 'link-code-limit'));
+                },
+            });
+            expect(await screen.findByText('Too many unused link codes')).toBeTruthy();
+            expect(
+                screen.getByText('Cancel one you no longer need on Engines, then come back for a new one.'),
+            ).toBeTruthy();
+            expect(screen.getByRole('link', { name: 'Go to Engines' }).getAttribute('href')).toBe('/engines');
+            expect(screen.queryByRole('button', { name: 'Create link code' })).toBeNull();
+            expect(app.api.callsTo(apiRoutes.createLinkCode)).toHaveLength(1);
         });
 
         it('offers a new code once the shown one has expired', async () => {

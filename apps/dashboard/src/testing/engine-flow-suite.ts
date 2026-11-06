@@ -11,10 +11,17 @@ import {
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { orgIdSchema } from '../domain/ids';
-import type { BillingView, LinkCodeView, LinkEligibilityView, SessionView } from '../shared/api/routes';
+import { LINK_CODE_TTL_MS } from '../domain/registration/issue-link-code';
+import type {
+    BillingView,
+    LinkCodeView,
+    LinkEligibilityView,
+    PendingLinkCodesView,
+    SessionView,
+} from '../shared/api/routes';
 import { TEST_INSTALL_VARS } from './install-fixtures';
 import type { AuthHarness, TestBrowser, TestResponse } from './auth-harness';
-import { problemCode, signUp } from './auth-flows';
+import { problemCode, signIn, signUp } from './auth-flows';
 import { createTestEngine, TEST_ENGINE_DOMAIN, type TestEngine } from './test-engine';
 
 const LINK_CODES = '/api/engines/link-codes';
@@ -74,6 +81,12 @@ export function describeEngineFlows(
             return harness.browser({ ip: '198.51.100.7' }).request('POST', REGISTER_PATH, request);
         }
 
+        async function pending(browser: TestBrowser): Promise<PendingLinkCodesView> {
+            const response = await browser.request('GET', LINK_CODES);
+            expect(response.status).toBe(200);
+            return response.body as PendingLinkCodesView;
+        }
+
         function expectProblem(response: TestResponse, status: number, code: string): void {
             expect(response.status).toBe(status);
             expect(response.headers.get('Content-Type')).toBe('application/problem+json');
@@ -118,7 +131,7 @@ export function describeEngineFlows(
                 expect(command.split(view.linkCode)).toHaveLength(2);
             }
             expect(view.installGuideUrl).toBe(TEST_INSTALL_VARS.INSTALL_GUIDE_URL);
-            expect(view.expiresAt).toBe(harness.clock.nowMs() + 30 * 60_000);
+            expect(view.expiresAt).toBe(harness.clock.nowMs() + LINK_CODE_TTL_MS);
             const engine = await createTestEngine();
             await expectRegistered(await register(await engine.register(LinkCode.parse(view.linkCode))), engine);
             expectProblem(
@@ -236,13 +249,97 @@ export function describeEngineFlows(
             await expectRegistered(await register(await second.register(spare)), second);
         });
 
-        it('limits active link codes per organization', async () => {
+        it('limits active link codes per organization until one is cancelled', async () => {
             const { browser } = await owner();
             for (let i = 0; i < 5; i++) {
                 await linkCode(browser);
             }
             const limited = await browser.request('POST', LINK_CODES);
-            expect([limited.status, problemCode(limited)]).toEqual([429, 'rate-limited']);
+            expect([limited.status, problemCode(limited)]).toEqual([409, 'link-code-limit']);
+            const [oldest] = (await pending(browser)).linkCodes.slice(-1);
+            expect((await browser.request('POST', `${LINK_CODES}/${oldest?.linkCodeId ?? ''}/cancel`)).status).toBe(
+                204,
+            );
+            expect((await browser.request('POST', LINK_CODES)).status).toBe(200);
+        });
+
+        describe('pending codes', () => {
+            it('lists the organization’s unused codes, newest first, without the code', async () => {
+                const { browser } = await owner();
+                expect(await pending(browser)).toEqual({ linkCodes: [] });
+                const first = issued(await browser.request('POST', LINK_CODES));
+                harness.clock.advance(1000);
+                const second = issued(await browser.request('POST', LINK_CODES));
+                const used = issued(await browser.request('POST', LINK_CODES));
+                const engine = await createTestEngine();
+                await expectRegistered(await register(await engine.register(LinkCode.parse(used.linkCode))), engine);
+                const response = await browser.request('GET', LINK_CODES);
+                expect([response.status, response.headers.get('Cache-Control')]).toEqual([200, 'no-store']);
+                expect(response.body).toEqual({
+                    linkCodes: [second, first].map((view) => ({
+                        linkCodeId: view.linkCodeId,
+                        createdAt: view.expiresAt - LINK_CODE_TTL_MS,
+                        expiresAt: view.expiresAt,
+                    })),
+                });
+                for (const view of [first, second]) {
+                    expect(JSON.stringify(response.body)).not.toContain(view.linkCode);
+                }
+                expect((await pending((await owner()).browser)).linkCodes).toEqual([]);
+            });
+
+            it('cancels a code so no engine can link with it, and the link page reads it as expired', async () => {
+                const { browser } = await owner();
+                const view = issued(await browser.request('POST', LINK_CODES));
+                const cancel = await browser.request('POST', `${LINK_CODES}/${view.linkCodeId}/cancel`);
+                expect(cancel.status).toBe(204);
+                expect((await browser.request('GET', `${LINK_CODES}/${view.linkCodeId}`)).body).toEqual({
+                    status: 'expired',
+                });
+                expect((await pending(browser)).linkCodes).toEqual([]);
+                const engine = await createTestEngine();
+                expectProblem(
+                    await register(await engine.register(LinkCode.parse(view.linkCode))),
+                    401,
+                    'invalid-link-code',
+                );
+                const again = await browser.request('POST', `${LINK_CODES}/${view.linkCodeId}/cancel`);
+                expect([again.status, problemCode(again)]).toEqual([404, 'not-found']);
+            });
+
+            it('cancels neither a used code, nor another organization’s, nor an unknown one', async () => {
+                const a = await owner();
+                const b = await owner();
+                const used = issued(await a.browser.request('POST', LINK_CODES));
+                const engine = await createTestEngine();
+                await expectRegistered(await register(await engine.register(LinkCode.parse(used.linkCode))), engine);
+                const foreign = issued(await a.browser.request('POST', LINK_CODES));
+                for (const [browser, id] of [
+                    [a.browser, used.linkCodeId],
+                    [b.browser, foreign.linkCodeId],
+                    [a.browser, OTHER_ID],
+                ] as const) {
+                    const response = await browser.request('POST', `${LINK_CODES}/${id}/cancel`);
+                    expect([response.status, problemCode(response)]).toEqual([404, 'not-found']);
+                }
+                expect((await a.browser.request('GET', `${LINK_CODES}/${foreign.linkCodeId}`)).body).toMatchObject({
+                    status: 'pending',
+                });
+                expect((await a.browser.request('POST', `${LINK_CODES}/not-an-id/cancel`)).status).toBe(400);
+            });
+
+            it('needs a session to list or cancel codes', async () => {
+                const { browser } = await owner();
+                const view = issued(await browser.request('POST', LINK_CODES));
+                const anonymous = harness.browser();
+                for (const response of [
+                    await anonymous.request('GET', LINK_CODES),
+                    await anonymous.request('POST', `${LINK_CODES}/${view.linkCodeId}/cancel`),
+                ]) {
+                    expect([response.status, problemCode(response)]).toEqual([401, 'unauthorized']);
+                }
+                expect((await pending(browser)).linkCodes).toHaveLength(1);
+            });
         });
 
         describe('link page (D-10)', () => {
@@ -260,7 +357,7 @@ export function describeEngineFlows(
                 const unsubscribed = await owner({ subscribed: false });
                 expect(await eligibility(unsubscribed.browser)).toEqual({
                     eligibility: 'not-entitled',
-                    linkCodeTtlS: 1800,
+                    linkCodeTtlS: LINK_CODE_TTL_MS / 1000,
                     installGuideUrl: TEST_INSTALL_VARS.INSTALL_GUIDE_URL,
                 });
                 const { browser } = await owner();
@@ -297,11 +394,14 @@ export function describeEngineFlows(
                 });
                 // An engine whose answer was lost retries with the spent code and is refused; the page still sees it.
                 expectProblem(await register(request), 401, 'invalid-link-code');
-                harness.clock.advance(31 * 60_000);
+                // A code outlives the session that issued it, so the owner signs in again after each wait.
+                harness.clock.advance(LINK_CODE_TTL_MS + 1000);
+                expect((await signIn(browser)).verify.status).toBe(200);
                 expect((await status(browser, view.linkCodeId)).body).toMatchObject({ status: 'linked' });
 
                 const unused = issued(await browser.request('POST', LINK_CODES));
-                harness.clock.advance(31 * 60_000);
+                harness.clock.advance(LINK_CODE_TTL_MS);
+                expect((await signIn(browser)).verify.status).toBe(200);
                 expect((await status(browser, unused.linkCodeId)).body).toEqual({ status: 'expired' });
                 for (const body of [pending.body, linked.body]) {
                     expect(JSON.stringify(body)).not.toContain(view.linkCode);

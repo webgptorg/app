@@ -17,6 +17,8 @@ import type {
 
 /** 2026-10-20T12:00:00Z, the injected "now" of every app test. */
 export const NOW = Date.UTC(2026, 9, 20, 12, 0, 0);
+/** The dashboard's default link-code lifetime, 30 days. */
+export const LINK_CODE_LIFETIME_MS = 30 * 24 * 60 * 60_000;
 const HOUR = 3_600_000;
 
 export const TOKEN = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJ0123456';
@@ -141,7 +143,7 @@ export function linkCodeView(overrides: Partial<LinkCodeView> = {}): LinkCodeVie
             },
         ],
         installGuideUrl: INSTALL_GUIDE_URL,
-        expiresAt: NOW + 30 * 60_000,
+        expiresAt: NOW + LINK_CODE_LIFETIME_MS,
         ...overrides,
     };
 }

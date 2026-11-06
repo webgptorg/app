@@ -14,6 +14,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import type {
     EngineView,
     LinkCodeView,
+    PendingLinkCodesView,
     OrgMemberView,
     PersonView,
     SessionView,
@@ -198,6 +199,34 @@ export function describeTeamFlows(name: string, makeFixture: () => TeamFlowFixtu
                 404,
                 'not-found',
             );
+        });
+
+        it('ends a team’s earlier code when the team gets a new one, and leaves other codes alone', async () => {
+            const boss = await owner();
+            const team = await createTeam(boss.browser);
+            const issue = async (path: string) => {
+                const response = await boss.browser.request('POST', path);
+                expect(response.status).toBe(200);
+                return response.body as LinkCodeView;
+            };
+            const first = await issue(`/api/teams/${team.teamId}/link-codes`);
+            const untouched = await issue('/api/engines/link-codes');
+            const second = await issue(`/api/teams/${team.teamId}/link-codes`);
+            const listed = (await boss.browser.request('GET', '/api/engines/link-codes')).body as PendingLinkCodesView;
+            expect(listed.linkCodes.map((code) => code.linkCodeId).sort()).toEqual(
+                [second.linkCodeId, untouched.linkCodeId].sort(),
+            );
+            expect((await boss.browser.request('GET', `/api/engines/link-codes/${first.linkCodeId}`)).body).toEqual({
+                status: 'expired',
+            });
+            const engine = await createTestEngine();
+            const register = async (code: string) =>
+                harness
+                    .browser({ ip: '198.51.100.7' })
+                    .request('POST', REGISTER_PATH, await engine.register(LinkCode.parse(code)));
+            expectProblem(await register(first.linkCode), 401, 'invalid-link-code');
+            expect((await register(second.linkCode)).status).toBe(200);
+            expect((await teams(boss.browser))[0]?.engineId).toBe(engine.engineId);
         });
 
         it('refuses a team link code the plan does not allow', async () => {
@@ -640,6 +669,8 @@ export function describeTeamFlows(name: string, makeFixture: () => TeamFlowFixtu
                 ['POST', `/api/teams/${team.teamId}/name`, { name: 'Renamed' }],
                 ['POST', `/api/teams/${team.teamId}/delete`],
                 ['POST', `/api/teams/${team.teamId}/link-codes`],
+                ['GET', '/api/engines/link-codes'],
+                ['POST', `/api/engines/link-codes/${'a'.repeat(26)}/cancel`],
                 ['POST', `/api/teams/${team.teamId}/members`, { userId: admin.userId }],
                 ['POST', `/api/teams/${team.teamId}/members/${admin.userId}/remove`],
                 ['GET', '/api/org/members'],

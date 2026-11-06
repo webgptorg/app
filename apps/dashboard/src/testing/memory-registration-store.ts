@@ -77,6 +77,21 @@ export function createMemoryRegistrationStores(deps: {
         countActive: (orgId, now) => Promise.resolve(codes().filter((code) => redeemable(code, orgId, now)).length),
         countIssuedSince: (orgId, since) =>
             Promise.resolve(codes().filter((code) => code.orgId === orgId && code.createdAt > since).length),
+        listPending: (orgId, now) =>
+            Promise.resolve(
+                codes()
+                    .filter((code) => redeemable(code, orgId, now))
+                    .sort((a, b) => b.createdAt - a.createdAt || (a.id < b.id ? 1 : -1))
+                    .map(({ id, createdAt, expiresAt }) => ({ id, createdAt, expiresAt })),
+            ),
+        cancel(orgId, id, now) {
+            const code = codes().find((candidate) => candidate.id === id);
+            if (!redeemable(code, orgId, now)) {
+                return Promise.resolve('not-found');
+            }
+            state.linkCodes.set(code.codeHash, { ...code, expiresAt: now });
+            return Promise.resolve('cancelled');
+        },
         findState(orgId, id, now) {
             const code = codes().find((candidate) => candidate.id === id && candidate.orgId === orgId);
             if (code === undefined) {

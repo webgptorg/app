@@ -25,7 +25,7 @@ Decided 2026-10-26 (E-05, decision 8): we publish a small MIT stylesheet with th
 - **Heartbeat:** `members` counts members with at least one passkey (0 until the owner's first one, 0 again after `owner --reset`); the first beat goes out right after registration and the first tunnel (installation.md, "What the dashboard reads").
 - **Registration fixes found in E-05:**
   - Map `not-entitled` like `engine-limit`, and `rate-limited` (429) as retryable, using C-11's codes.
-  - On `unavailable` or `rate-limited`, retry with backoff while the link code can still be valid (30 minutes), instead of exiting with code 1.
+  - On `unavailable` or `rate-limited`, retry with backoff while the link code can still be valid (30 minutes; codes live 30 days since 2026-11-06, the retry window stays 30 minutes), instead of exiting with code 1.
   - `src/testing/fake-dashboard.ts` answers `invalid-link-code` with 401, as the dashboard does, not 400.
 - Docs: `apps/mock-engine/README.md`, `docs/engine-integration/mock-engine.md` and the reference-implementation lines in installation.md and checklist.md (ENG-102 to ENG-108).
 

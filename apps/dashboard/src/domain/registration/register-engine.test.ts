@@ -90,7 +90,7 @@ describe('registerEngine', () => {
         expect(logged).not.toContain(await sha256Hex(code));
     });
 
-    it('refuses an expired code 30 minutes and 1 second after issuance', async () => {
+    it('refuses an expired code 30 days and 1 second after issuance', async () => {
         const t = setup();
         const engine = await createTestEngine();
         const code = await t.issue(testOrgId());

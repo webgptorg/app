@@ -156,8 +156,16 @@ export interface TeamStore {
 
     /** The engines of the user's teams: what a member may see. */
     engineIdsForUser(orgId: OrgId, userId: UserId): Promise<ReadonlySet<EngineId>>;
-    /** The team a link code's engine joins; the code must be the organization's and still unused. */
-    attachLinkCode(orgId: OrgId, linkCodeId: LinkCodeId, teamId: TeamId): Promise<'attached' | 'not-found'>;
+    /**
+     * The team a link code's engine joins; the code must be the organization's and still unused. A team waits for one
+     * engine, so the team's other codes still redeemable at `now` end then, as a cancelled code does.
+     */
+    attachLinkCode(
+        orgId: OrgId,
+        linkCodeId: LinkCodeId,
+        teamId: TeamId,
+        now: number,
+    ): Promise<'attached' | 'not-found'>;
     /**
      * Binds a newly registered engine to the team its link code named, or else to a new team `fallback` with the
      * code's creator in it. Idempotent: an engine already bound keeps its team.

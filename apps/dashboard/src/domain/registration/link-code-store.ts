@@ -32,6 +32,13 @@ export type LinkCodeState =
     | { readonly kind: 'expired' }
     | { readonly kind: 'linked'; readonly engineId: EngineId };
 
+/** An unused code that can still be redeemed, as the owner sees it: never the code or its hash. */
+export interface PendingLinkCode {
+    readonly id: LinkCodeId;
+    readonly createdAt: number;
+    readonly expiresAt: number;
+}
+
 /** `conflict`: the code or the engine changed since it was read; nothing was written. */
 export type Redemption = 'redeemed' | 'conflict';
 
@@ -45,6 +52,13 @@ export interface LinkCodeStore {
     /** Codes of the organization still redeemable at `now`. */
     countActive(orgId: OrgId, now: number): Promise<number>;
     countIssuedSince(orgId: OrgId, since: number): Promise<number>;
+    /** The organization's codes still redeemable at `now`, newest first. */
+    listPending(orgId: OrgId, now: number): Promise<readonly PendingLinkCode[]>;
+    /**
+     * Ends a code that is still redeemable at `now` by moving its expiry to `now`, so it reads as expired and no later
+     * registration can win it. `not-found` for a used, expired or unknown code, or one of another organization.
+     */
+    cancel(orgId: OrgId, id: LinkCodeId, now: number): Promise<'cancelled' | 'not-found'>;
     /** Null for a code of another organization, exactly as for one that does not exist. */
     findState(orgId: OrgId, id: LinkCodeId, now: number): Promise<LinkCodeState | null>;
     /** The organization a redeemable code belongs to: how registration learns the organization. */

@@ -12,12 +12,14 @@ import { dataOrThrow, enginesQuery } from '../../api/queries';
 import { Link } from '../../core/link';
 import { useAppMutation } from '../../core/mutations';
 import { EngineStatusBadge } from '../engines/engine-status-badge';
+import { PendingLinkCodes } from '../engines/pending-link-codes';
 import { useSession } from '../session/use-session';
 import { OpenTeamButton } from './open-team-button';
 import { TeamNameDialog } from './team-name-dialog';
 import { teamKeys, teamsQuery } from './team-queries';
 
 const MANAGE_PERMISSION = 'team.manage';
+const LINK_PERMISSION = 'engine.link';
 
 function TeamRow(props: { readonly team: TeamView; readonly engine: EngineView | undefined }) {
     const { team, engine } = props;
@@ -85,6 +87,7 @@ export function TeamListPage() {
     const api = useApiClient();
     const session = useSession();
     const canManage = session.activeOrg.permissions.includes(MANAGE_PERMISSION);
+    const canLink = session.activeOrg.permissions.includes(LINK_PERMISSION);
     const teams = useQuery(teamsQuery(api));
     const engines = useQuery(enginesQuery(api));
     const engineOf = (team: TeamView) => engines.data?.find((engine) => engine.engineId === team.engineId);
@@ -138,6 +141,7 @@ export function TeamListPage() {
                 {canManage && (teams.data?.length ?? 0) > 0 ? <NewTeamButton primary={false} /> : null}
             </div>
             {content()}
+            {canLink ? <PendingLinkCodes /> : null}
         </div>
     );
 }

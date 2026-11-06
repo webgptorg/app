@@ -1,3 +1,4 @@
+import { createFormatters } from '@ptbk/ui';
 import { screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
@@ -115,6 +116,52 @@ describe('teams list', () => {
         });
     });
 
+    it('lists unused link codes with their expiry and cancels one after asking', async () => {
+        const formatters = createFormatters('en');
+        const format = (at: number) => formatters.formatDateTime(new Date(at));
+        const code = { linkCodeId: 'k1kkkkkkkkkkkkkkkkkkkkkkkk', createdAt: NOW, expiresAt: NOW + 30 * 86_400_000 };
+        const app = renderApp({
+            path: '/engines',
+            session: ADMIN,
+            script: (api) => {
+                api.on(apiRoutes.listTeams, ok({ teams: [team()] }));
+                api.once(apiRoutes.listLinkCodes, ok({ linkCodes: [code] }));
+                api.on(apiRoutes.listLinkCodes, ok({ linkCodes: [] }));
+                api.on(apiRoutes.cancelLinkCode, ok(undefined));
+            },
+        });
+        const list = await screen.findByRole('list', { name: 'Unused link codes' });
+        const created = format(code.createdAt);
+        expect(within(list).getByText(`Created ${created}`)).toBeTruthy();
+        expect(within(list).getByText(`Works until ${format(code.expiresAt)}`)).toBeTruthy();
+        await expectNoAxeViolations(app.container);
+        await app.user.click(
+            within(list).getByRole('button', { name: `Actions for the link code created ${created}` }),
+        );
+        await app.user.click(screen.getByRole('menuitem', { name: 'Cancel code' }));
+        const dialog = await screen.findByRole('dialog', { name: 'Cancel this link code?' });
+        expect(app.api.callsTo(apiRoutes.cancelLinkCode)).toEqual([]);
+        await app.user.click(within(dialog).getByRole('button', { name: 'Cancel code' }));
+        expect(await screen.findByText('Link code cancelled.')).toBeTruthy();
+        expect(app.api.callsTo(apiRoutes.cancelLinkCode)).toEqual([{ params: { linkCodeId: code.linkCodeId } }]);
+        await waitFor(() => {
+            expect(screen.queryByRole('list', { name: 'Unused link codes' })).toBeNull();
+        });
+    });
+
+    it('shows no link codes to someone who cannot link engines', async () => {
+        const app = renderApp({
+            path: '/engines',
+            session: MEMBER,
+            script: (api) => {
+                api.on(apiRoutes.listTeams, ok({ teams: [team()] }));
+            },
+        });
+        expect(await screen.findByRole('list', { name: 'Engines' })).toBeTruthy();
+        expect(screen.queryByText('Unused link codes')).toBeNull();
+        expect(app.api.callsTo(apiRoutes.listLinkCodes)).toEqual([]);
+    });
+
     it('says why Open failed when the dashboard has no member key', async () => {
         const app = renderApp({
             path: '/teams',
@@ -139,7 +186,7 @@ describe('teams list', () => {
                     apiRoutes.linkEligibility,
                     ok({
                         eligibility: 'engine-limit',
-                        linkCodeTtlS: 1800,
+                        linkCodeTtlS: 2_592_000,
                         installGuideUrl: 'https://docs.example.test/install',
                     }),
                 );

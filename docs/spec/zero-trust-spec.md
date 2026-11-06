@@ -488,7 +488,7 @@ These are draft contracts to start building against. The spike confirms or chang
 
 ```json
 POST /v1/engines/register
-{ "v": 1, "linkCode": "<one-time, 30 min>", "enginePublicKey": "<Ed25519, base64url>", "engineVersion": "1.8.2", "mode": "tunnel",
+{ "v": 1, "linkCode": "<one-time, 30 days>", "enginePublicKey": "<Ed25519, base64url>", "engineVersion": "1.8.2", "mode": "tunnel",
   "sig": "<base64url Ed25519 over \"ptbk-register-v1\" | v | linkCode | enginePublicKey | engineVersion | mode>" }
 
 200 { "engineId": "<26 chars base32 of SHA-256(enginePublicKey)>",

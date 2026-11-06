@@ -157,11 +157,17 @@ export function bindTeamRoutes(
             request.signal,
         );
         if (outcome.kind === 'denied') {
-            return outcome.reason === 'rate-limited'
-                ? { kind: 'problem', status: 429, code: 'rate-limited' }
-                : { kind: 'problem', status: 403, code: outcome.reason };
+            switch (outcome.reason) {
+                case 'not-entitled':
+                case 'engine-limit':
+                    return { kind: 'problem', status: 403, code: outcome.reason };
+                case 'link-code-limit':
+                    return { kind: 'problem', status: 409, code: 'link-code-limit' };
+                case 'rate-limited':
+                    return { kind: 'problem', status: 429, code: 'rate-limited' };
+            }
         }
-        await deps.teams.attachLinkCode(session.actor.orgId, outcome.linkCodeId, team.id);
+        await deps.teams.attachLinkCode(session.actor.orgId, outcome.linkCodeId, team.id, deps.clock.nowMs());
         return {
             kind: 'ok',
             body: {
