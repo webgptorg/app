@@ -3,8 +3,6 @@
 // imports, so it runs before (and without) an install.
 import { join } from 'node:path';
 
-import { parseLinkArgument } from '@ptbk/protocol';
-
 import type { ComposeTarget } from './docker.ts';
 import { STACK_NET } from './stack.ts';
 
@@ -100,16 +98,17 @@ export function parseDevStackArgs(args: readonly string[]): DevStackCommand | nu
     }
 }
 
+// `@ptbk/protocol`'s `LinkCode`; the CLI runs under plain Node, which cannot load the workspace's TypeScript sources.
+const LINK_CODE = '[a-z2-7]{25}[aeimquy4]';
+const DEV_LINK = new RegExp(`^(?:${DEV_DASHBOARD_ORIGIN.replaceAll('.', '\\.')}/link#)?${LINK_CODE}$`);
+
 /**
  * The code from the dashboard's install command, or the dev stack's own link URL, checked before it goes anywhere near
  * a container. A link URL for another dashboard is refused here; the engine would refuse it too.
  */
 export function parseLinkCode(args: readonly string[]): string | null {
     const [value, ...rest] = args;
-    if (value === undefined || rest.length > 0) return null;
-    const link = parseLinkArgument(value);
-    const ours = link.kind === 'ok' && (link.dashboardOrigin === null || link.dashboardOrigin === DEV_DASHBOARD_ORIGIN);
-    return ours ? value : null;
+    return value !== undefined && rest.length === 0 && DEV_LINK.test(value) ? value : null;
 }
 
 /**
