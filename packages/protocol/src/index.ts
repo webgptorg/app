@@ -222,6 +222,7 @@ export {
     SECURITY_THRESHOLD,
     TrustPolicy,
     WorkflowIdentity,
+    revocationSigners,
 } from './release/trust';
 export {
     FULCIO_OID,

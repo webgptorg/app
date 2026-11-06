@@ -670,7 +670,7 @@ The work splits between two repos that share one contracts package. The engine s
 - [x] UI delivery: decided. Our closed UI bundle, verified and served by the engine; the engine stays open and holds only the loader (see Architecture).
 - [ ] Contracts package: moves to the public repo (or is published to npm) before the real engine depends on it. Pick the moment and the package name with the engine team.
 - [ ] Revocation threshold: who may sign a revocation entry? Proposal: the release key or any one maintainer, so a bad release can be stopped fast.
-- [ ] Revocation list signer and re-signing cadence, and the maximum validity of a list (proposal: re-signed weekly by the release key holder, valid 14 days).
+- [ ] Revocation list signer and re-signing cadence in production (proposal: re-signed weekly by the release key holder, valid 14 days). Maximum validity decided (30 days); staging decided (staging release key, 30-day lists re-signed every 14 days).
 - [x] **Billing: decided.** no technical enforcement against a modified engine; the terms of service cover it. Revisit only if abuse becomes a real economic problem.
 
 **Engine work this spec needs** (for the engine team)

@@ -4,7 +4,7 @@ The app UI is our closed, static bundle. The engine never loads it from us at pa
 
 Spec: [Interfaces (draft)](../spec/zero-trust-spec.md#interfaces-draft) 5, [Residual risks](../spec/zero-trust-spec.md#residual-risks-certificates-and-engine-updates) (2. Engine updates), [Security hardening](../spec/zero-trust-spec.md#security-hardening) 9 and 10. ADRs: [0003](../adr/0003-ui-as-signed-bundle.md), [0014](../adr/0014-cryptography.md). Contract: [`src/release/`](../../packages/protocol/src/release/) in `@ptbk/protocol`.
 
-Two points that shape the loader are still open: which release and signing identity carry the UI, and when the first revocation list is published. Where releases are fetched from is proposed as the [release mirror layout v1](#release-mirror-layout-v1), pending your review before the E-02 freeze. Read the release log items in the [open points](README.md#open-points) before building the fetcher.
+Two points that shape the loader are still open: which release and signing identity carry the UI, and who signs the production revocation list and how often (staging's is decided: [development.md](../development.md#revocation-list)). Where releases are fetched from is proposed as the [release mirror layout v1](#release-mirror-layout-v1), pending your review before the E-02 freeze. Read the release log items in the [open points](README.md#open-points) before building the fetcher.
 
 ## Flow
 

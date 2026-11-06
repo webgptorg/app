@@ -324,6 +324,27 @@ bun run --filter @ptbk/engine-ui release:verify <dir> [--policy <trust policy>] 
 
 It runs C-06's `verifyRelease` with the real Sigstore verifier (built on `@sigstore/verify`, exact identity, the pinned `packages/release-tools/src/trusted_root.json`, no network): the release-key signature, the provenance with its Rekor entry and trusted time, then the archive hash and every file against the manifest. The update delay is the installing engine's concern and is not checked. Put a signed revocation list next to the files as `revocations.json` to check it too; without one, the output says so.
 
+### Revocation list
+
+Engines install nothing without a fresh signed revocation list at `release-log/revocations.json` ([ui-loader.md](engine-integration/ui-loader.md#release-mirror-layout-v1)), so the first list goes up before the first release. It is signed by hand from a laptop, not in CI, because it runs on its own schedule rather than on a tag.
+
+Staging (decided 2026-11-06): the staging release key signs (the only key the staging policy's revocation rule lets sign, since the maintainer placeholders have no private halves), each list is valid for 30 days (C-06's maximum), and it is re-signed every 14 days, and at once when a version must be revoked. Production's signer and cadence are still open ([open points](engine-integration/README.md#open-points)).
+
+```sh
+# the list published now; on the very first issue skip this and pass --first instead of --previous
+(cd apps/dashboard && bunx wrangler r2 object get ptbk-ui-releases-staging/release-log/revocations.json \
+  --remote --file /tmp/revocations.prev.json)
+read -rs UI_RELEASE_KEY && export UI_RELEASE_KEY   # paste the staging release key; stays out of the shell history
+bun run --filter @ptbk/engine-ui release:revocations --previous /tmp/revocations.prev.json [--revoke 0.2.0="reason"]
+unset UI_RELEASE_KEY
+(cd apps/dashboard && bunx wrangler r2 object put ptbk-ui-releases-staging/release-log/revocations.json --remote \
+  --file ../engine-ui/release/revocations.json --content-type application/json --cache-control no-cache)
+```
+
+`release:revocations` writes `apps/engine-ui/release/revocations.json` and prints its `issuedAt`, `expiresAt`, the revoked versions and the signing key ID, never the key. It refuses a key the trust policy's revocation rule does not list (`--policy`, default the staging policy), more than 30 days (`--valid-days`), an invalid or duplicate version, a `--previous` list that does not verify, and a clock behind the previous list's `issuedAt`, because every engine that accepted that list would refuse the new one as rolled back. It carries every version the previous list revokes forward, so a routine re-sign never un-revokes one; a fix ships as a higher version. `--revoke` can be repeated. Never upload an older list again: engines refuse it as rolled back.
+
+A list past its `expiresAt` blocks every new install (engines keep their current bundle and alert the owner), so the next re-sign date goes in the calendar.
+
 ### Locally
 
 | Command                                                         | What it does                                                                                              |
@@ -331,6 +352,7 @@ It runs C-06's `verifyRelease` with the real Sigstore verifier (built on `@sigst
 | `bun run --filter @ptbk/engine-ui pack [--tag <tag>]`           | `release/engine-ui.tar.zst` and `release/manifest.json` from a clean tree (`--allow-dirty` to experiment) |
 | `bun run --filter @ptbk/engine-ui verify-reproducible`          | Two fresh builds of `HEAD`, compared byte for byte; names the first differing file                        |
 | `bun run --filter @ptbk/engine-ui release:keygen <file>`        | A staging or test release key: seed to `<file>` (0600), public key printed                                |
+| `bun run --filter @ptbk/engine-ui release:revocations …`        | The signed revocation list, see [Revocation list](#revocation-list)                                       |
 | `bun run --filter @ptbk/engine-ui release:refresh-trusted-root` | Refreshes the pinned Sigstore trusted root through TUF; the change lands in its own reviewed PR           |
 
 Reproducibility depends on the exact Node version (`.nvmrc`, which also fixes the zstd library), `bun.lock`, `SOURCE_DATE_EPOCH` (the commit time) and a deterministic tar (byte-sorted entries, fixed owner, modes and mtime).
