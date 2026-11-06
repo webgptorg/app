@@ -689,3 +689,95 @@ run "rejects_an_unknown_engine_zone_mode" {
 
   expect_failures = [var.engine_zone_mode]
 }
+
+run "serves_no_ui_release_bucket_by_default" {
+  command = plan
+
+  assert {
+    condition     = length(cloudflare_r2_custom_domain.ui_releases) == 0 && length(cloudflare_r2_managed_domain.ui_releases) == 0
+    error_message = "Without ui_releases nothing touches R2."
+  }
+}
+
+run "serves_the_ui_release_bucket_on_its_hostname_only" {
+  command = plan
+
+  variables {
+    ui_releases = { bucket = "ptbk-ui-releases-staging", hostname = "ui.dashboard.example" }
+  }
+
+  assert {
+    condition = (
+      cloudflare_r2_custom_domain.ui_releases[0].domain == "ui.dashboard.example"
+      && cloudflare_r2_custom_domain.ui_releases[0].bucket_name == "ptbk-ui-releases-staging"
+      && cloudflare_r2_custom_domain.ui_releases[0].zone_id == "22222222222222222222222222222222"
+      && cloudflare_r2_custom_domain.ui_releases[0].enabled
+      && cloudflare_r2_custom_domain.ui_releases[0].min_tls == "1.2"
+    )
+    error_message = "The bucket is served on its hostname in the dashboard zone, TLS 1.2 or later."
+  }
+
+  assert {
+    condition     = cloudflare_r2_managed_domain.ui_releases[0].enabled == false
+    error_message = "The r2.dev address stays off."
+  }
+
+  assert {
+    condition     = output.ui_release_url == "https://ui.dashboard.example/"
+    error_message = "The release URL ends in / (release mirror layout v1)."
+  }
+}
+
+run "rejects_a_ui_release_hostname_outside_the_dashboard_zone" {
+  command = plan
+
+  variables {
+    ui_releases = { bucket = "ptbk-ui-releases-staging", hostname = "ui.elsewhere.example" }
+  }
+
+  expect_failures = [var.ui_releases]
+}
+
+run "rejects_a_ui_release_hostname_under_the_engine_domain" {
+  command = plan
+
+  variables {
+    engine_zone_mode = "subdomain"
+    engine_domain    = "engines.dashboard.example"
+    ui_releases      = { bucket = "ptbk-ui-releases-staging", hostname = "ui.engines.dashboard.example" }
+  }
+
+  expect_failures = [var.ui_releases]
+}
+
+run "rejects_the_engine_domain_itself_as_the_ui_release_hostname" {
+  command = plan
+
+  variables {
+    engine_zone_mode = "subdomain"
+    engine_domain    = "engines.dashboard.example"
+    ui_releases      = { bucket = "ptbk-ui-releases-staging", hostname = "engines.dashboard.example" }
+  }
+
+  expect_failures = [var.ui_releases]
+}
+
+run "rejects_a_malformed_ui_release_hostname" {
+  command = plan
+
+  variables {
+    ui_releases = { bucket = "ptbk-ui-releases-staging", hostname = "UI.dashboard.example" }
+  }
+
+  expect_failures = [var.ui_releases]
+}
+
+run "rejects_an_invalid_ui_release_bucket_name" {
+  command = plan
+
+  variables {
+    ui_releases = { bucket = "UI_Releases", hostname = "ui.dashboard.example" }
+  }
+
+  expect_failures = [var.ui_releases]
+}

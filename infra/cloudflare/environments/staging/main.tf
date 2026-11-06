@@ -85,6 +85,9 @@ module "environment" {
   relays               = var.relays
   ops_email            = var.ops_email
   relay_dns_mode       = var.relay_dns_mode
+
+  # Created by hand (docs/staging-runbook.md step 3); engines get the ui_release_url output as PTBK_UI_RELEASE_URL.
+  ui_releases = { bucket = "ptbk-ui-releases-staging", hostname = "ui.${var.dashboard_zone}" }
 }
 
 output "staging_zone_id" {
@@ -93,6 +96,10 @@ output "staging_zone_id" {
 
 output "d1_database_id" {
   value = module.environment.d1_database_id
+}
+
+output "ui_release_url" {
+  value = module.environment.ui_release_url
 }
 
 output "relay_hostnames" {
