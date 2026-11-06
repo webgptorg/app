@@ -1,10 +1,25 @@
 import { Ed25519PublicKey, EngineId, EngineVersion, Hostname, RegistrationMode } from '@ptbk/protocol';
-import { and, asc, count, eq, exists, gt, isNull, ne, notExists, or, sql, type SQL } from 'drizzle-orm';
+import {
+    and,
+    asc,
+    count,
+    desc,
+    eq,
+    exists,
+    gt,
+    isNotNull,
+    isNull,
+    ne,
+    notExists,
+    or,
+    sql,
+    type SQL,
+} from 'drizzle-orm';
 import { z } from 'zod';
 
 import type { AdminAuditEntry } from '../../domain/auth/records';
 import type { PlatformEngineStore } from '../../domain/engines/platform-engine-store';
-import { orgIdSchema, type OrgId } from '../../domain/ids';
+import { linkCodeIdSchema, orgIdSchema, type OrgId } from '../../domain/ids';
 import {
     OWNER_REVOKED,
     PLATFORM_SUSPENDED,
@@ -80,6 +95,43 @@ export function createD1LinkCodeStore(db: Database): LinkCodeStore {
                 .where(and(eq(linkCodes.orgId, orgId), gt(linkCodes.createdAt, since)))
                 .get();
             return row?.total ?? 0;
+        },
+
+        async listPending(orgId, now) {
+            const rows = await db
+                .select({ id: linkCodes.id, createdAt: linkCodes.createdAt, expiresAt: linkCodes.expiresAt })
+                .from(linkCodes)
+                .where(
+                    and(
+                        eq(linkCodes.orgId, orgId),
+                        isNull(linkCodes.usedAt),
+                        gt(linkCodes.expiresAt, now),
+                        isNotNull(linkCodes.id),
+                    ),
+                )
+                .orderBy(desc(linkCodes.createdAt), desc(linkCodes.id))
+                .all();
+            return rows.map((row) => ({
+                id: linkCodeIdSchema.parse(row.id),
+                createdAt: row.createdAt,
+                expiresAt: row.expiresAt,
+            }));
+        },
+
+        async cancel(orgId, id, now) {
+            const rows = await db
+                .update(linkCodes)
+                .set({ expiresAt: now })
+                .where(
+                    and(
+                        eq(linkCodes.id, id),
+                        eq(linkCodes.orgId, orgId),
+                        isNull(linkCodes.usedAt),
+                        gt(linkCodes.expiresAt, now),
+                    ),
+                )
+                .returning({ id: linkCodes.id });
+            return rows.length === 1 ? 'cancelled' : 'not-found';
         },
 
         async findState(orgId, id, now) {

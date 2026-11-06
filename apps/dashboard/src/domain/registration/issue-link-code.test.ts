@@ -5,10 +5,12 @@ import { testOrgId } from '../../testing/billing-fixtures';
 import { createTestEngine, engineRecord } from '../../testing/test-engine';
 import { createTestRegistration, REGISTRATION_START_MS as NOW } from '../../testing/test-registration';
 import { sha256Hex } from '../auth/secrets';
+import type { LinkCodeId } from '../ids';
 import { LINK_CODE_LIMITS } from './engine-creation-policy';
 import { LINK_CODE_TTL_MS } from './issue-link-code';
 
 const MINUTE = 60_000;
+const HOUR = 60 * MINUTE;
 
 function setup(options: { readonly linkCodeTtlMs?: number } = {}) {
     const registration = createTestRegistration(options);
@@ -17,7 +19,7 @@ function setup(options: { readonly linkCodeTtlMs?: number } = {}) {
 }
 
 describe('issueLinkCode', () => {
-    it('returns a C-03 link code valid for 30 minutes and stores only its SHA-256', async () => {
+    it('returns a C-03 link code valid for 30 days and stores only its SHA-256', async () => {
         const t = setup();
         const outcome = await t.issue();
         if (outcome.kind !== 'issued') {
@@ -70,13 +72,22 @@ describe('issueLinkCode', () => {
         expect(t.stores.state.linkCodes.size).toBe(1);
     });
 
-    it('allows at most 5 active codes per organization', async () => {
+    it('allows at most 5 active codes per organization, until one expires or is cancelled', async () => {
         const t = setup();
+        const ids: LinkCodeId[] = [];
         for (let i = 0; i < LINK_CODE_LIMITS.active; i++) {
-            expect((await t.issue()).kind).toBe('issued');
+            const outcome = await t.issue();
+            if (outcome.kind === 'issued') {
+                ids.push(outcome.linkCodeId);
+            }
+            t.clock.advance(HOUR);
         }
-        expect(await t.issue()).toEqual({ kind: 'denied', reason: 'rate-limited' });
+        expect(ids).toHaveLength(LINK_CODE_LIMITS.active);
+        expect(await t.issue()).toEqual({ kind: 'denied', reason: 'link-code-limit' });
         expect((await t.issue(testOrgId())).kind).toBe('issued');
+        expect(await t.stores.linkCodes.cancel(t.orgId, ids[0] as LinkCodeId, t.clock.nowMs())).toBe('cancelled');
+        expect((await t.issue()).kind).toBe('issued');
+        expect(await t.issue()).toEqual({ kind: 'denied', reason: 'link-code-limit' });
         t.clock.advance(LINK_CODE_TTL_MS);
         expect((await t.issue()).kind).toBe('issued');
     });
@@ -84,9 +95,13 @@ describe('issueLinkCode', () => {
     it('allows at most 10 codes per hour per organization', async () => {
         const t = setup();
         for (let i = 0; i < LINK_CODE_LIMITS.perHour; i++) {
-            expect((await t.issue()).kind).toBe('issued');
-            // Expire each before the next, so only the hourly limit applies.
-            t.clock.advance(LINK_CODE_TTL_MS / 5);
+            const outcome = await t.issue();
+            expect(outcome.kind).toBe('issued');
+            // Cancel each before the next, so only the hourly limit applies.
+            if (outcome.kind === 'issued') {
+                await t.stores.linkCodes.cancel(t.orgId, outcome.linkCodeId, t.clock.nowMs());
+            }
+            t.clock.advance(MINUTE);
         }
         t.clock.set(NOW + 60 * MINUTE - 1);
         expect(await t.issue()).toEqual({ kind: 'denied', reason: 'rate-limited' });

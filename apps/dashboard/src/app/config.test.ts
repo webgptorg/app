@@ -72,7 +72,7 @@ describe('parseConfig', () => {
             rateLimitHmacKey: new TextEncoder().encode('dev-only-rate-limit-key-not-secret'),
             memberKeySeed: null,
             heartbeat: { intervalS: 60, missedLimit: 3, graceS: 15, perEngineLimit: 5 },
-            linkCodeTtlMs: 30 * 60_000,
+            linkCodeTtlMs: 30 * 24 * 3_600_000,
             stripeSecretKey: null,
             stripeWebhookSecret: null,
             monitoring: null,
@@ -110,11 +110,14 @@ describe('parseConfig', () => {
 
     it('takes the link code lifetime from LINK_CODE_TTL_S', () => {
         expect(parseConfig({ ...bindings, ...devVars, LINK_CODE_TTL_S: 30 }).linkCodeTtlMs).toBe(30_000);
+        expect(parseConfig({ ...bindings, ...devVars, LINK_CODE_TTL_S: 30 * 86_400 }).linkCodeTtlMs).toBe(
+            30 * 86_400_000,
+        );
     });
 
     it.each([
         ['shorter than 10 s', 9],
-        ['longer than 30 minutes', 1801],
+        ['longer than 30 days', 30 * 86_400 + 1],
         ['fractional', 30.5],
         ['a string', '30'],
     ])('refuses a LINK_CODE_TTL_S that is %s', (_, ttl) => {

@@ -176,11 +176,22 @@ export type LinkCodeView = z.infer<typeof linkCodeViewSchema>;
 export const linkEligibilityViewSchema = z.strictObject({
     eligibility: z.enum(['allowed', 'not-entitled', 'engine-limit']),
     /** The configured link-code lifetime, for the page's intro. */
-    linkCodeTtlS: z.int().min(1).max(86_400),
+    linkCodeTtlS: z
+        .int()
+        .min(1)
+        .max(30 * 86_400),
     /** The public install guide, for the progress panel's troubleshooting links, after a reload too. */
     installGuideUrl: z.url({ protocol: /^https$/ }).max(512),
 });
 export type LinkEligibilityView = z.infer<typeof linkEligibilityViewSchema>;
+
+/** The organization's unused codes still redeemable, newest first: never the code or its hash. */
+export const pendingLinkCodesViewSchema = z.strictObject({
+    linkCodes: z
+        .array(z.strictObject({ linkCodeId: idSchema, createdAt: timestampSchema, expiresAt: timestampSchema }))
+        .max(100),
+});
+export type PendingLinkCodesView = z.infer<typeof pendingLinkCodesViewSchema>;
 
 /** A link code's state; never the code or its hash. A used code stays `linked`, even past its expiry. */
 export const linkCodeStatusViewSchema = z.discriminatedUnion('status', [
@@ -771,8 +782,19 @@ export const apiRoutes = {
         rateLimit: null,
         input: NO_INPUT,
         output: linkCodeViewSchema,
-        // `rate-limited` (429) is common: at most 5 active codes and 10 per hour per organization.
-        errorCodes: ['not-entitled', 'engine-limit'],
+        // `link-code-limit` (409): 5 unused codes at most, freed by cancelling one; `rate-limited` (429): 10 per hour.
+        errorCodes: ['not-entitled', 'engine-limit', 'link-code-limit'],
+    }),
+    /** The organization's codes still waiting for an engine, so an owner can see and cancel them. */
+    listLinkCodes: defineRoute({
+        method: 'GET',
+        path: '/api/engines/link-codes',
+        auth: 'session',
+        permission: 'engine.link',
+        rateLimit: null,
+        input: NO_INPUT,
+        output: pendingLinkCodesViewSchema,
+        errorCodes: [],
     }),
     /** Entitlements only; the link-code rate limits answer at issuance. */
     linkEligibility: defineRoute({
@@ -794,6 +816,20 @@ export const apiRoutes = {
         rateLimit: null,
         input: { ...NO_INPUT, params: z.strictObject({ linkCodeId: idSchema }) },
         output: linkCodeStatusViewSchema,
+        errorCodes: [],
+    }),
+    /**
+     * Ends an unused code before its expiry; from then on it reads as `expired`. A used, expired or unknown code, or one
+     * of another organization, is `not-found`.
+     */
+    cancelLinkCode: defineRoute({
+        method: 'POST',
+        path: '/api/engines/link-codes/:linkCodeId/cancel',
+        auth: 'session',
+        permission: 'engine.link',
+        rateLimit: null,
+        input: { ...NO_INPUT, params: z.strictObject({ linkCodeId: idSchema }) },
+        output: NO_CONTENT,
         errorCodes: [],
     }),
 
@@ -943,7 +979,7 @@ export const apiRoutes = {
         rateLimit: null,
         input: { ...NO_INPUT, params: teamParams },
         output: linkCodeViewSchema,
-        errorCodes: ['not-entitled', 'engine-limit', 'team-has-engine'],
+        errorCodes: ['not-entitled', 'engine-limit', 'link-code-limit', 'team-has-engine'],
     }),
     /**
      * "Open" for someone in the team: a signed access ticket and the engine's join page to take it to. The ticket rides

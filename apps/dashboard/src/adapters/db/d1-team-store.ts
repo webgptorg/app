@@ -521,7 +521,7 @@ export function createD1TeamStore(db: Database): TeamStore {
             return new Set(rows.map((row) => EngineId.parse(row.engineId)));
         },
 
-        async attachLinkCode(orgId, linkCodeId, teamId) {
+        async attachLinkCode(orgId, linkCodeId, teamId, now) {
             const team = await find(orgId, teamId);
             if (team?.engineId !== null) {
                 return 'not-found';
@@ -531,7 +531,22 @@ export function createD1TeamStore(db: Database): TeamStore {
                 .set({ teamId })
                 .where(and(eq(linkCodes.id, linkCodeId), eq(linkCodes.orgId, orgId), isNull(linkCodes.usedAt)))
                 .returning({ id: linkCodes.id });
-            return rows.length === 1 ? 'attached' : 'not-found';
+            if (rows.length !== 1) {
+                return 'not-found';
+            }
+            await db
+                .update(linkCodes)
+                .set({ expiresAt: now })
+                .where(
+                    and(
+                        eq(linkCodes.orgId, orgId),
+                        eq(linkCodes.teamId, teamId),
+                        ne(linkCodes.id, linkCodeId),
+                        isNull(linkCodes.usedAt),
+                        gt(linkCodes.expiresAt, now),
+                    ),
+                );
+            return 'attached';
         },
 
         async bindNewEngine(engineId, fallback) {

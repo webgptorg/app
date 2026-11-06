@@ -81,7 +81,7 @@ export function describeTeamStoreContract(suite: string, makeFixture: () => Team
                 expiresAt: NOW + DAY,
             });
             if (teamId !== null) {
-                expect(await fixture.teams.attachLinkCode(orgId, id, teamId)).toBe('attached');
+                expect(await fixture.teams.attachLinkCode(orgId, id, teamId, NOW)).toBe('attached');
             }
             expect(await fixture.linkCodes.redeemForNewEngine(codeHash, engineRecord(engine, orgId))).toBe('redeemed');
             await fixture.teams.bindNewEngine(engine.engineId, {
@@ -175,12 +175,39 @@ export function describeTeamStoreContract(suite: string, makeFixture: () => Team
                 createdAt: NOW,
                 expiresAt: NOW + DAY,
             });
-            expect(await fixture.teams.attachLinkCode(owner.orgId, code.id, a)).toBe('not-found');
-            expect(await fixture.teams.attachLinkCode(other.orgId, code.id, empty)).toBe('not-found');
-            expect(await fixture.teams.attachLinkCode(owner.orgId, newLinkCodeId(cryptoRandom), empty)).toBe(
+            expect(await fixture.teams.attachLinkCode(owner.orgId, code.id, a, NOW)).toBe('not-found');
+            expect(await fixture.teams.attachLinkCode(other.orgId, code.id, empty, NOW)).toBe('not-found');
+            expect(await fixture.teams.attachLinkCode(owner.orgId, newLinkCodeId(cryptoRandom), empty, NOW)).toBe(
                 'not-found',
             );
-            expect(await fixture.teams.attachLinkCode(owner.orgId, code.id, empty)).toBe('attached');
+            expect(await fixture.teams.attachLinkCode(owner.orgId, code.id, empty, NOW)).toBe('attached');
+        });
+
+        it('ends the team’s earlier pending code when a new one is attached, and no other team’s', async () => {
+            const a = await team();
+            const b = await team('Other');
+            async function code(teamId: TeamId) {
+                const id = newLinkCodeId(cryptoRandom);
+                const codeHash = toBase64Url(cryptoRandom.bytes(32));
+                await fixture.linkCodes.insert({
+                    id,
+                    codeHash,
+                    orgId: owner.orgId,
+                    createdByUserId: owner.userId,
+                    createdAt: NOW,
+                    expiresAt: NOW + DAY,
+                });
+                expect(await fixture.teams.attachLinkCode(owner.orgId, id, teamId, NOW + 1)).toBe('attached');
+                return { id, codeHash };
+            }
+            const first = await code(a);
+            const elsewhere = await code(b);
+            const second = await code(a);
+            expect(await fixture.linkCodes.findState(owner.orgId, first.id, NOW + 1)).toEqual({ kind: 'expired' });
+            expect(await fixture.linkCodes.findRedeemable(first.codeHash, NOW + 1)).toBeNull();
+            for (const kept of [second, elsewhere]) {
+                expect(await fixture.linkCodes.findRedeemable(kept.codeHash, NOW + 1)).toBe(owner.orgId);
+            }
         });
 
         it('queues a revocation for the team’s engine when someone leaves it, and none for a team without one', async () => {

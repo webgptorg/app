@@ -104,8 +104,8 @@ const heartbeatSchema = z
     );
 
 /**
- * How long a link code can be redeemed, in seconds; 30 minutes by default (D-03). Never longer, so the countdown on
- * `/engines/new` and the spec's promise hold; the e2e stack shortens it to test expiry without a clock hook.
+ * How long a link code can be redeemed, in seconds; 30 days by default. Never longer, so the expiry the dashboard shows
+ * and the spec's promise hold; the e2e stack shortens it to test expiry without a clock hook.
  */
 const linkCodeTtlSchema = z
     .int()

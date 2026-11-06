@@ -385,7 +385,7 @@ openssl s_client -connect <relay ipv4>:443 -servername <engineId>.engines.ptbk.l
 
 The mock's certificate comes from its dev CA, so browsers warn. A CA-issued certificate through the relay is the Let's Encrypt **staging** run in [spike/acme-tls-alpn-01.md](spike/acme-tls-alpn-01.md#runbook-lets-encrypt-staging-manual) ([apply.md](plan/apply.md) step 10); never against Let's Encrypt production.
 
-**If it fails:** for `ptbk`, the message names the refusal and the next step. For the mock, exit 3 means the code was refused (used, or older than 30 minutes): make a new one. Exit 5 (`engine-limit`, `not-entitled`) means the organization already has `BILLING_OFF_PLAN`'s 10 engines (revoke one), or billing is not off. Exit 6 means the dashboard was unreachable.
+**If it fails:** for `ptbk`, the message names the refusal and the next step. For the mock, exit 3 means the code was refused (used, cancelled, or older than 30 days): make a new one. Exit 5 (`engine-limit`, `not-entitled`) means the organization already has `BILLING_OFF_PLAN`'s 10 engines (revoke one), or billing is not off. Exit 6 means the dashboard was unreachable.
 
 ## 13. e2e against staging
 

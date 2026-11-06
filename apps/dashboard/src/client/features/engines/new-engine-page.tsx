@@ -1,4 +1,15 @@
-import { Banner, Button, Card, CopyButton, ErrorState, ExternalLink, Skeleton, Tabs, useToast } from '@ptbk/ui';
+import {
+    Banner,
+    Button,
+    Card,
+    CopyButton,
+    ErrorState,
+    ExternalLink,
+    Skeleton,
+    Tabs,
+    useLocale,
+    useToast,
+} from '@ptbk/ui';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft } from 'lucide-react';
 import { useNavigate } from '@tanstack/react-router';
@@ -60,6 +71,8 @@ export function parseNewEngineSearch(search: Readonly<Record<string, unknown>>):
 
 type UpgradeReason = 'not-entitled' | 'engine-limit';
 
+const LINK_CODE_LIMIT = 'link-code-limit';
+
 function upgradeReason(error: unknown): UpgradeReason | null {
     const code = problemCode(error);
     return code === 'not-entitled' || code === 'engine-limit' ? code : null;
@@ -93,7 +106,7 @@ function upgradeCopy(billingEnabled: boolean, reason: UpgradeReason) {
     return UPGRADE_COPY[billingEnabled ? 'on' : 'off'][reason];
 }
 
-/** Ticks every second from the injected clock; the caller remounts it per code (`key`). */
+/** Ticks every second from the injected clock, so the expiry banner shows when the code runs out on an open page. */
 function useRemainingMs(until: number): number {
     const { now } = useBrowser();
     const [current, setCurrent] = useState(now);
@@ -108,11 +121,6 @@ function useRemainingMs(until: number): number {
     return Math.max(0, until - current);
 }
 
-function minutesAndSeconds(ms: number): string {
-    const seconds = Math.ceil(ms / SECOND_MS);
-    return `${String(Math.floor(seconds / 60))}:${String(seconds % 60).padStart(2, '0')}`;
-}
-
 function UpgradeBanner(props: { readonly reason: UpgradeReason }) {
     const { billingEnabled } = useSession();
     const copy = upgradeCopy(billingEnabled, props.reason);
@@ -120,6 +128,16 @@ function UpgradeBanner(props: { readonly reason: UpgradeReason }) {
         <Banner tone="warning" title={copy.title()}>
             <p>{copy.body()}</p>
             {billingEnabled ? <Link to="/billing">{m.engines_new_upgrade()}</Link> : null}
+        </Banner>
+    );
+}
+
+/** Codes live for weeks, so the way out is cancelling an unused one rather than waiting. */
+function CodeLimitBanner() {
+    return (
+        <Banner tone="warning" title={m.engines_new_code_limit_title()}>
+            <p>{m.engines_new_code_limit_body()}</p>
+            <Link to="/engines">{m.engines_new_code_limit_action()}</Link>
         </Banner>
     );
 }
@@ -177,6 +195,7 @@ function InstallCommand(props: {
     readonly renewing: boolean;
 }) {
     const api = useApiClient();
+    const locale = useLocale();
     const remaining = useRemainingMs(props.view.expiresAt);
     const paths = props.view.installCommands;
     const [selectedId, setSelectedId] = useState<string>(paths[0]?.id ?? '');
@@ -204,7 +223,7 @@ function InstallCommand(props: {
                     }))}
                 />
                 <p className="text-sm text-text-muted" aria-live="off">
-                    {m.engines_new_command_body({ time: minutesAndSeconds(remaining) })}
+                    {m.engines_new_command_body({ time: locale.formatDateTime(new Date(props.view.expiresAt)) })}
                 </p>
             </div>
         </Card>
@@ -299,6 +318,9 @@ function LinkFlow(props: { readonly search: NewEngineSearch }) {
                 ? dataOrThrow(await api.call(apiRoutes.createLinkCode, {}))
                 : dataOrThrow(await api.call(apiRoutes.createTeamLinkCode, { params: { teamId: props.search.team } })),
         errorMessage: (error) => {
+            if (problemCode(error) === LINK_CODE_LIMIT) {
+                return m.engines_new_code_limit_title();
+            }
             const reason = upgradeReason(error);
             return reason === null ? undefined : upgradeCopy(session.billingEnabled, reason).title();
         },
@@ -380,10 +402,12 @@ function LinkFlow(props: { readonly search: NewEngineSearch }) {
         );
     }
     const reason = upgradeReason(create.error);
+    const atCodeLimit = problemCode(create.error) === LINK_CODE_LIMIT;
     return (
         <>
             {steps}
             {reason === null ? null : <UpgradeBanner reason={reason} />}
+            {atCodeLimit ? <CodeLimitBanner /> : null}
             {state === undefined && eligibility.isError ? (
                 <ErrorState
                     message={m.engines_new_eligibility_failed()}
@@ -393,7 +417,7 @@ function LinkFlow(props: { readonly search: NewEngineSearch }) {
             ) : null}
             {state === 'not-entitled' && !backFromCheckout ? <PlanStep checkout={props.search.checkout} /> : null}
             {state === 'engine-limit' ? <UpgradeBanner reason="engine-limit" /> : null}
-            {eligible && create.isError && reason === null ? (
+            {eligible && create.isError && reason === null && !atCodeLimit ? (
                 <div>
                     <Button variant="primary" loading={create.isPending} onClick={renew}>
                         {m.engines_new_create()}

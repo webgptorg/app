@@ -10,6 +10,8 @@ export const LINK_CODE_LIMITS = { active: 5, perHour: 10 } as const;
 
 export type EntitlementDenial = 'not-entitled' | 'engine-limit';
 
+export type LinkCodeDenial = EntitlementDenial | 'link-code-limit' | 'rate-limited';
+
 export type EngineCreationDecision<Reason extends string> =
     { readonly kind: 'allowed' } | { readonly kind: 'denied'; readonly reason: Reason };
 
@@ -23,11 +25,11 @@ export interface EngineCreationPolicy {
      * link-code limits are left to issuance, which answers them on its own.
      */
     checkEligibility(orgId: OrgId, signal: AbortSignal): Promise<EngineCreationDecision<EntitlementDenial>>;
-    /** Before a link code is issued, so the SPA shows the upgrade path before an install command. */
-    checkLinkCode(
-        orgId: OrgId,
-        signal: AbortSignal,
-    ): Promise<EngineCreationDecision<EntitlementDenial | 'rate-limited'>>;
+    /**
+     * Before a link code is issued, so the SPA shows the upgrade path before an install command. `link-code-limit`: the
+     * organization holds as many unused codes as it may, which only cancelling one (or its expiry) frees.
+     */
+    checkLinkCode(orgId: OrgId, signal: AbortSignal): Promise<EngineCreationDecision<LinkCodeDenial>>;
     /**
      * Before a redeemed code creates an engine. The link-code limits do not apply again: the code being redeemed was
      * counted when it was issued, and counting it now would refuse the organization's own fifth code.
@@ -64,10 +66,10 @@ export function createEngineCreationPolicy(deps: {
                 return entitled;
             }
             const now = deps.clock.nowMs();
-            if (
-                (await deps.linkCodes.countActive(orgId, now)) >= LINK_CODE_LIMITS.active ||
-                (await deps.linkCodes.countIssuedSince(orgId, now - HOUR_MS)) >= LINK_CODE_LIMITS.perHour
-            ) {
+            if ((await deps.linkCodes.countActive(orgId, now)) >= LINK_CODE_LIMITS.active) {
+                return { kind: 'denied', reason: 'link-code-limit' };
+            }
+            if ((await deps.linkCodes.countIssuedSince(orgId, now - HOUR_MS)) >= LINK_CODE_LIMITS.perHour) {
                 return { kind: 'denied', reason: 'rate-limited' };
             }
             return ALLOWED;

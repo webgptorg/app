@@ -60,7 +60,7 @@ describe('engines in Czech', () => {
                 const view = linkCodeView();
                 api.on(
                     apiRoutes.linkEligibility,
-                    ok({ eligibility: 'allowed', linkCodeTtlS: 1800, installGuideUrl: view.installGuideUrl }),
+                    ok({ eligibility: 'allowed', linkCodeTtlS: 2_592_000, installGuideUrl: view.installGuideUrl }),
                 );
                 api.on(apiRoutes.createLinkCode, ok(view));
                 api.on(apiRoutes.getLinkCode, ok({ status: 'pending', expiresAt: view.expiresAt }));

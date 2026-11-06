@@ -136,6 +136,51 @@ export function describeRegistrationStoreContract(name: string, makeFixture: () 
             expect(await fixture.linkCodes.countIssuedSince(orgB, NOW - TTL - 1)).toBe(1);
         });
 
+        it('lists the organization’s redeemable codes, newest first, and only those', async () => {
+            const older = codeRecord(orgA);
+            const newer = codeRecord(orgA, { createdAt: NOW + 5, expiresAt: NOW + 5 + TTL });
+            await fixture.linkCodes.insert(older);
+            await fixture.linkCodes.insert(newer);
+            await fixture.linkCodes.insert(codeRecord(orgA, { createdAt: NOW - TTL, expiresAt: NOW }));
+            await fixture.linkCodes.insert(codeRecord(orgB));
+            await created(orgA);
+            expect(await fixture.linkCodes.listPending(orgA, NOW + 5)).toEqual([
+                { id: newer.id, createdAt: newer.createdAt, expiresAt: newer.expiresAt },
+                { id: older.id, createdAt: older.createdAt, expiresAt: older.expiresAt },
+            ]);
+            expect(await fixture.linkCodes.listPending(orgA, NOW + TTL)).toEqual([
+                { id: newer.id, createdAt: newer.createdAt, expiresAt: newer.expiresAt },
+            ]);
+        });
+
+        it('cancels a pending code of the organization so nothing can redeem it, and nothing else', async () => {
+            const code = codeRecord(orgA);
+            await fixture.linkCodes.insert(code);
+            expect(await fixture.linkCodes.cancel(orgB, code.id, NOW + 1)).toBe('not-found');
+            expect(await fixture.linkCodes.cancel(orgA, newLinkCodeId(cryptoRandom), NOW + 1)).toBe('not-found');
+            expect(await fixture.linkCodes.cancel(orgA, code.id, NOW + 1)).toBe('cancelled');
+            expect(await fixture.linkCodes.cancel(orgA, code.id, NOW + 2)).toBe('not-found');
+            expect(await fixture.linkCodes.findState(orgA, code.id, NOW + 1)).toEqual({ kind: 'expired' });
+            expect(await fixture.linkCodes.findRedeemable(code.codeHash, NOW + 1)).toBeNull();
+            expect(await fixture.linkCodes.listPending(orgA, NOW + 1)).toEqual([]);
+            expect(
+                await fixture.linkCodes.redeemForNewEngine(
+                    code.codeHash,
+                    engineRecord(engine, orgA, { createdAt: NOW + 1 }),
+                ),
+            ).toBe('conflict');
+
+            const { code: used } = await created(orgA, NOW + 2);
+            expect(await fixture.linkCodes.cancel(orgA, used.id, NOW + 3)).toBe('not-found');
+            expect(await fixture.linkCodes.findState(orgA, used.id, NOW + 3)).toEqual({
+                kind: 'linked',
+                engineId: engine.engineId,
+            });
+            const expired = codeRecord(orgA, { expiresAt: NOW });
+            await fixture.linkCodes.insert(expired);
+            expect(await fixture.linkCodes.cancel(orgA, expired.id, NOW)).toBe('not-found');
+        });
+
         it('redeems a code once, inserting the engine in the code organization', async () => {
             const { code, row } = await created();
             expect(await fixture.engines.findForRegistration(engine.engineId)).toEqual(row);

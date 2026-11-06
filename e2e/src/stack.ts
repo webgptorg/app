@@ -43,7 +43,7 @@ export const DASHBOARD_ORIGIN = `https://${DASHBOARD.hostname}`;
 
 /**
  * The dashboard stack's short timings, set in compose.dashboard.yaml: the engine beats every 15 s and counts as
- * offline after `missedLimit × intervalS + graceS` without one; link codes expire after 30 s instead of 30 minutes.
+ * offline after `missedLimit × intervalS + graceS` without one; link codes expire after 30 s instead of 30 days.
  */
 export const DASHBOARD_TIMING = {
     heartbeatIntervalS: 15,
