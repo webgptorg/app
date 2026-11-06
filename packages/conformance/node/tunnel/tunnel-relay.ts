@@ -32,6 +32,14 @@ export function relayIdsFor(count: number): RelayId[] {
     );
 }
 
+/**
+ * `PTBK_RELAYS` in the launch contract's form, `wss://<relay hostname>[:port]`. No path: the engine dials TUNNEL_PATH
+ * itself, and an engine that parses the variable as strictly as the contract writes it refuses anything else.
+ */
+export function relaysOverride(relay: Pick<FakeRelay, 'relayIds' | 'port'>): string {
+    return relay.relayIds.map((relayId) => `wss://${relayId}:${String(relay.port)}`).join(',');
+}
+
 /** The engine as the tunnel suite drives it, from what the harness knows after registration. */
 export function tunnelEngineOf(ctx: PlatformCheckContext, registered: RegisteredEngine): TunnelEngine {
     const key = decodeBase64Url(registered.identity.enginePublicKey);
@@ -61,7 +69,7 @@ export async function startTunnelRelay(
     const tunnelRelay: TunnelRelay = {
         relay,
         runtime,
-        env: { PTBK_RELAYS: relay.relayIds.map((relayId) => relay.url(relayId)).join(',') },
+        env: { PTBK_RELAYS: relaysOverride(relay) },
         async endpointFor(registered) {
             runtime.attach(tunnelEngineOf(ctx, registered));
             const hostname = defaultHostname(registered.identity.engineId, ctx.engineDomain);
