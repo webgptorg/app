@@ -65,7 +65,7 @@ The engine must:
 
 ### Link URL
 
-The dashboard hands out each link code inside a link URL, `https://<dashboard host>/link#<code>` (`formatLinkUrl`), for example `https://app.ptbk.link/link#<26 characters>`. The code is in the fragment, so a browser that opens the URL never sends it and no access log records it; the dashboard's `/link` page only tells the visitor to run the command on the engine's machine. The URL carries the dashboard's origin, so an engine linked with it needs no `PTBK_DASHBOARD_URL` (decided 2026-11-06).
+The dashboard hands out each link code inside a link URL, `https://<dashboard host>/link#<code>` (`formatLinkUrl`), for example `https://app.ptbk.io/link#<26 characters>`. The code is in the fragment, so a browser that opens the URL never sends it and no access log records it; the dashboard's `/link` page only tells the visitor to run the command on the engine's machine. The URL carries the dashboard's origin, so an engine linked with it needs no `PTBK_DASHBOARD_URL` (decided 2026-11-06).
 
 `connect --link <value>` (the engine's command; its name is the engine's) must:
 

@@ -118,7 +118,9 @@
     ],
     "env": {
         "staging": {
-            "routes": [{ "pattern": "app.ptbk.link", "custom_domain": true }],
+            // app.ptbk.io's zone is in another account, so the Worker serves it as a Cloudflare for SaaS custom hostname
+            // of ptbk.link (infra/cloudflare README, Dashboard on another account's zone), not as a custom domain.
+            "routes": [{ "pattern": "app.ptbk.io/*", "zone_name": "ptbk.link" }],
             "triggers": { "crons": ["* * * * *", "*/15 * * * *"] },
             "analytics_engine_datasets": [{ "binding": "OPS_METRICS", "dataset": "ptbk_ops_staging" }],
             "d1_databases": [
@@ -131,7 +133,7 @@
             ],
             "vars": {
                 "ENVIRONMENT": "staging",
-                "DASHBOARD_ORIGIN": "https://app.ptbk.link",
+                "DASHBOARD_ORIGIN": "https://app.ptbk.io",
                 "ENGINE_DOMAIN": "engines.ptbk.link",
                 "RELAYS": [{ "relayId": "relay-fsn.ptbk.link", "region": "eu-central" }],
                 // Reborn's `ptbk` CLI. The link URL names this dashboard, so the engine needs no PTBK_DASHBOARD_URL and
@@ -159,7 +161,7 @@
                 // I-04: alerts go to the ops mailbox; relay metrics tokens are the RELAY_METRICS_TOKENS secret and
                 // the analytics read token ANALYTICS_API_TOKEN (docs/runbooks/observability.md).
                 "MONITORING": { "opsEmail": "ops@<staging-ops-domain>" },
-                "ANALYTICS": { "accountId": "<staging-account-id>", "dataset": "ptbk_ops_staging" },
+                "ANALYTICS": { "accountId": "42b20127fa7293cb5160f22ed42ef43b", "dataset": "ptbk_ops_staging" },
                 // Staging charges nobody (Seb, 2026-11-04): billing is "off" and every organization holds BILLING_OFF_PLAN,
                 // without Stripe secrets or IDs; its quotas are config, so changing them needs no code. To charge here
                 // too, in one change: set ADAPTERS.billing to "stripe", replace BILLING_OFF_PLAN with the BILLING_PLANS
