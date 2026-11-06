@@ -154,7 +154,15 @@ export const linkCodeViewSchema = z.strictObject({
     /** Not a secret and grants nothing: the link page polls the code's state by it, and keeps it in its URL. */
     linkCodeId: idSchema,
     linkCode: LinkCode,
-    /** One per configured install path, in tab order, each with the code filled in once; may span lines. */
+    /**
+     * `<dashboard origin>/link#<code>`, which `connect --link` takes in place of the code and a dashboard setting. Null
+     * only on a plain-http dashboard (local dev), whose URL no engine would accept.
+     */
+    linkUrl: z
+        .url({ protocol: /^https$/ })
+        .max(2048)
+        .nullable(),
+    /** One per configured install path, in tab order, each with the code or link URL filled in once; may span lines. */
     installCommands: z
         .array(
             z.strictObject({

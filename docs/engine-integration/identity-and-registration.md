@@ -41,8 +41,8 @@ sequenceDiagram
     participant O as Owner
     participant E as Engine
     participant D as Dashboard API
-    O->>D: sign up, get install command with link code
-    O->>E: install, start with the link code
+    O->>D: sign up, get install command with link URL
+    O->>E: install, connect --link with the link URL
     E->>E: load or create engine key
     E->>E: signRegistration(signer, { linkCode, engineVersion, mode })
     E->>D: POST REGISTER_PATH (RegisterEngineRequest)
@@ -62,6 +62,21 @@ The engine must:
 - Store the registration (engine ID, hostname, relay list) in `PTBK_DATA_DIR` and use `relays` (1 to `MAX_RELAYS`) as its relay list.
 - Never write the link code to disk or a log, and drop it from memory after the request.
 - Pin `memberKey` from the response with the registration (since teams, [ADR 0018](../adr/0018-teams-and-member-access.md)). It is the only key that may sign access tickets and member revocations for this engine. `null` means a dashboard without teams: refuse every ticket and revocation, and keep heartbeat v1.
+
+### Link URL
+
+The dashboard hands out each link code inside a link URL, `https://<dashboard host>/link#<code>` (`formatLinkUrl`), for example `https://app.ptbk.link/link#<26 characters>`. The code is in the fragment, so a browser that opens the URL never sends it and no access log records it; the dashboard's `/link` page only tells the visitor to run the command on the engine's machine. The URL carries the dashboard's origin, so an engine linked with it needs no `PTBK_DASHBOARD_URL` (decided 2026-11-06).
+
+`connect --link <value>` (the engine's command; its name is the engine's) must:
+
+- Accept a link URL or a bare code (`parseLinkArgument`). A link URL is `https:` only, with no user name or password, no query, the path exactly `/link` and a valid `LinkCode` as its fragment (`parseLinkUrl`). Refuse anything else with a message that names the rule, never the value.
+- Take the dashboard origin from a link URL. If `PTBK_DASHBOARD_URL` is also set and names another origin, refuse with a message that names both origins; never guess.
+- Print the dashboard origin before it sends anything, so a link pasted from somewhere shows where it goes. The origin is not a secret.
+- Store the dashboard origin with the registration, and on later starts use it when `PTBK_DASHBOARD_URL` is unset. A `PTBK_DASHBOARD_URL` that names another origin than the stored one still stops startup.
+- Without `PTBK_ENGINE_DOMAIN`, take the engine domain from the answer's hostname once `checkRegistrationResponse`'s engine-ID check passes, and pin it with the registration, as today.
+- Never print, log or store the code or the full URL.
+
+A bare code goes to `PTBK_DASHBOARD_URL`, else to the dashboard of a stored registration.
 
 ### Errors and re-registration
 
@@ -111,7 +126,7 @@ Spec Interface 6 defines the engine's environment:
 | `HTTPS_PROXY`, `NO_PROXY`                   | Use them for the tunnel, registration, heartbeat and updates                                                                                         |
 | `PTBK_DATA_DIR`                             | Keep keys, certificates, database and audit log there, mode 0700                                                                                     |
 
-The spec names no variables for the link code or the dashboard URL. The launch contract below fixes them, so the conformance harness can start any engine the same way. `mock-engine register --link <code>` registers and exits.
+The spec names no variables for the link code or the dashboard URL. The launch contract below fixes them, so the conformance harness can start any engine the same way. `mock-engine register --link <link URL or code>` registers and exits.
 
 ### Launch contract
 
@@ -122,10 +137,12 @@ The conformance harness (`ptbk-conformance --engine-cmd`, [conformance.md](confo
 | `PTBK_DATA_DIR`       | Keep its state there. When the directory does not exist, create it with mode 0700                                                                                                   | Spec Interface 6                                                                                                       |
 | `PTBK_MODE`           | Run in that mode; the harness sets `tunnel`                                                                                                                                         | Spec Interface 6                                                                                                       |
 | `PTBK_ENGINE_DOMAIN`  | Use it as the engine domain: its default hostname, and the domain `checkRegistrationResponse` checks against. Without it, the production engine domain                              | The dashboard's answer is checked against it, so a wrong value only makes registration fail                            |
-| `PTBK_DASHBOARD_URL`  | Register and send heartbeats to this `https://` origin. Without it, the production dashboard                                                                                        | Operator configuration. Registration grants nothing inside the engine                                                  |
+| `PTBK_DASHBOARD_URL`  | Register and send heartbeats to this `https://` origin. Without it, the origin stored with the registration, else the production dashboard                                          | Operator configuration. Registration grants nothing inside the engine                                                  |
 | `PTBK_LINK_CODE`      | Register with it once, when the engine holds no registration. Never write it to disk or a log                                                                                       | One-time, and useless once consumed                                                                                    |
 | `PTBK_RELAYS`         | When set (comma-separated `wss://<relay hostname>[:port]` URLs), dial exactly these relays instead of the relays from the registration                                              | An operator-trusted override: the engine still verifies each relay's TLS certificate, and a relay never sees plaintext |
 | `NODE_EXTRA_CA_CERTS` | Trust this PEM CA in addition to the default roots, for the dashboard, the relays and the release store. Node does this for every TLS connection unless the code replaces the roots | It adds a root and never replaces the defaults, as for a TLS-inspecting proxy ([tunnel-client.md](tunnel-client.md))   |
+
+The harness sends `PTBK_LINK_CODE` as a bare code. The mock engine also accepts a link URL there, whose origin must equal `PTBK_DASHBOARD_URL` when that is set; an engine need not.
 
 The UI loader adds `PTBK_UI_RELEASE_URL`, `PTBK_UPDATE_POLICY` and `PTBK_PINNED_VERSION` ([ui-loader.md](ui-loader.md)).
 
@@ -162,6 +179,7 @@ Without `--engine-ca-file` the harness checks the engine's certificate only for 
 | Keys and signing    | `generateEd25519KeyPair`, `importEd25519PrivateKey`, `createWebCryptoSigner`, `Signer`                                                                                                                                     | [ed25519.ts](../../packages/protocol/src/ed25519.ts)                                                   |
 | Engine ID, hostname | `deriveEngineId`, `defaultHostname`, `engineIdFromDefaultHostname`, `EngineId`, `Hostname`, `EngineVersion`                                                                                                                | [engine-id.ts](../../packages/protocol/src/engine-id.ts), [ids.ts](../../packages/protocol/src/ids.ts) |
 | Link code           | `LinkCode`, `LINK_CODE_BYTES`                                                                                                                                                                                              | [link-code.ts](../../packages/protocol/src/link-code.ts)                                               |
+| Link URL            | `LINK_PATH`, `formatLinkUrl`, `parseLinkUrl`, `parseLinkArgument`, `LinkUrlProblem`                                                                                                                                        | [link-url.ts](../../packages/protocol/src/link-url.ts)                                                 |
 | Registration        | `REGISTER_PATH`, `RegisterEngineRequest`, `RegistrationMode`, `signRegistration`, `TolerantRegisterEngineResponse`, `checkRegistrationResponse`, `MAX_RELAYS`, `REGISTER_REQUEST_MAX_BYTES`, `REGISTER_RESPONSE_MAX_BYTES` | [registration.ts](../../packages/protocol/src/registration.ts)                                         |
 | Errors              | `ProblemDetails`, `TolerantProblemDetails`, `REGISTRATION_ERROR_CODE`                                                                                                                                                      | [problem.ts](../../packages/protocol/src/problem.ts)                                                   |
 

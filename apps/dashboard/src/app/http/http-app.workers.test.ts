@@ -38,13 +38,16 @@ describe('dashboard Worker', () => {
         expectSecurityHeaders(response);
     });
 
-    it.each(['/', '/engines/x', '/engines/x/settings?tab=billing'])('serves the SPA shell for %s', async (path) => {
-        const response = await get(path);
-        expect(response.status).toBe(200);
-        expect(response.headers.get('Content-Type')).toMatch(/^text\/html/);
-        expect(await response.text()).toContain('<div id="root"></div>');
-        expectSecurityHeaders(response);
-    });
+    it.each(['/', '/engines/x', '/engines/x/settings?tab=billing', '/link'])(
+        'serves the SPA shell for %s',
+        async (path) => {
+            const response = await get(path);
+            expect(response.status).toBe(200);
+            expect(response.headers.get('Content-Type')).toMatch(/^text\/html/);
+            expect(await response.text()).toContain('<div id="root"></div>');
+            expectSecurityHeaders(response);
+        },
+    );
 
     it('serves the public abuse page and its contact, signed out (I-05)', async () => {
         const page = await get('/abuse');

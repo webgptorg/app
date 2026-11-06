@@ -101,7 +101,9 @@ bun run dev:trust        # once per machine: trust the dev CA and resolve app.pt
 
 Open `https://app.ptbk.test:8444/`, sign up (the e-mail is on `https://app.ptbk.test:8444/__dev/mailbox`), subscribe through the fake Checkout under Billing, and create a link code on "Link an engine". Codes last 30 days; unused ones are listed, and can be cancelled, on Engines.
 
-**First, watch the mock engine do it.** `bun run dev:link <code>` registers the stack's mock engine and starts it. It turns online after its first heartbeat (every 15 s in this stack); "Open" goes to `https://<engineId>.engine.test/` through relay-a. That is the behaviour your engine must reproduce. `bun run dev:stack reset` starts over with a new dashboard database and a new mock engine.
+The page shows the code inside the dev install commands and, beside them, the link URL `https://app.ptbk.test:8444/link#<code>`.
+
+**First, watch the mock engine do it.** `bun run dev:link <code>` (or `bun run dev:link '<link URL>'`) registers the stack's mock engine and starts it. It turns online after its first heartbeat (every 15 s in this stack); "Open" goes to `https://<engineId>.engine.test/` through relay-a. That is the behaviour your engine must reproduce. `bun run dev:stack reset` starts over with a new dashboard database and a new mock engine.
 
 **Then run your engine in its place.** The stack starts the mock engine only once it is linked, so with a fresh link code your engine can take its place. Run it as a container on the stack's network, so it resolves the relays and the dashboard the way the mock does:
 
@@ -118,6 +120,8 @@ docker run --rm --name my-engine \
   -v my-engine-data:/data \
   <your engine image>
 ```
+
+To try the link URL instead ([identity-and-registration.md](identity-and-registration.md#link-url)), leave out `PTBK_DASHBOARD_URL` and `PTBK_LINK_CODE`, run your `connect --link '<link URL>'` once in a one-off container with the same network, CA and data volume, then start the engine without either variable: it must print `https://app.ptbk.test:8444` before registering and use the stored origin from then on.
 
 - `STACK_DNS` is the address of the stack's resolver (the `dns` service). It answers for `app.ptbk.test`, `relay-a.ptbk.test`, `relay-b.ptbk.test` and `releases.ptbk.test`. The dev CA signed all their certificates, so the engine trusts them through `NODE_EXTRA_CA_CERTS` added to its default roots.
 - The registration's relays are `relay-a.ptbk.test` and `relay-b.ptbk.test`. Both relays look your engine up in the dashboard's registry, so nothing else needs configuring.

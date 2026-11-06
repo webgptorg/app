@@ -3,6 +3,8 @@
 // imports, so it runs before (and without) an install.
 import { join } from 'node:path';
 
+import { parseLinkArgument } from '@ptbk/protocol';
+
 import type { ComposeTarget } from './docker.ts';
 import { STACK_NET } from './stack.ts';
 
@@ -69,8 +71,6 @@ export function staleNetwork(inspectedSubnets: string, subnet: string): string |
     return `the dev stack's network is still on ${subnets.join(', ')}, not ${subnet}; run \`bun run dev:stack down\`, then \`up\` again (your account, passkeys and linked engine stay)`;
 }
 
-const LINK_CODE = /^[a-z2-7]{26}$/;
-
 export function devTarget(e2eDir: string): ComposeTarget {
     return { project: DEV_PROJECT, e2eDir, overlays: DEV_OVERLAYS, scenario: 'dev', onDemand: [DEV_ENGINE_SERVICE] };
 }
@@ -100,10 +100,16 @@ export function parseDevStackArgs(args: readonly string[]): DevStackCommand | nu
     }
 }
 
-/** The code from the dashboard's install command, checked before it goes anywhere near a container. */
+/**
+ * The code from the dashboard's install command, or the dev stack's own link URL, checked before it goes anywhere near
+ * a container. A link URL for another dashboard is refused here; the engine would refuse it too.
+ */
 export function parseLinkCode(args: readonly string[]): string | null {
-    const [code, ...rest] = args;
-    return code !== undefined && rest.length === 0 && LINK_CODE.test(code) ? code : null;
+    const [value, ...rest] = args;
+    if (value === undefined || rest.length > 0) return null;
+    const link = parseLinkArgument(value);
+    const ours = link.kind === 'ok' && (link.dashboardOrigin === null || link.dashboardOrigin === DEV_DASHBOARD_ORIGIN);
+    return ours ? value : null;
 }
 
 /**

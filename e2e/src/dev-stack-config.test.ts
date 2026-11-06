@@ -129,13 +129,21 @@ describe('parseDevStackArgs', () => {
 });
 
 describe('parseLinkCode', () => {
-    it('takes exactly one code in the dashboard’s alphabet', () => {
-        const code = 'abcdefghijklmnopqrstuvwxy2';
+    it('takes exactly one canonical code in the dashboard’s alphabet', () => {
+        const code = 'abcdefghijklmnopqrstuvwxya';
         expect(parseLinkCode([code])).toBe(code);
+        expect(parseLinkCode(['abcdefghijklmnopqrstuvwxy2'])).toBeNull();
         expect(parseLinkCode([])).toBeNull();
         expect(parseLinkCode([code, code])).toBeNull();
         expect(parseLinkCode(['ABCDEFGHIJKLMNOPQRSTUVWXY2'])).toBeNull();
         expect(parseLinkCode([`${code}; echo`])).toBeNull();
+    });
+
+    it('takes the dev stack’s own link URL, and no other dashboard’s', () => {
+        const code = 'abcdefghijklmnopqrstuvwxya';
+        expect(parseLinkCode([`${DEV_DASHBOARD_ORIGIN}/link#${code}`])).toBe(`${DEV_DASHBOARD_ORIGIN}/link#${code}`);
+        expect(parseLinkCode([`https://app.ptbk.link/link#${code}`])).toBeNull();
+        expect(parseLinkCode([`${DEV_DASHBOARD_ORIGIN}/link#${code}'; echo`])).toBeNull();
     });
 });
 

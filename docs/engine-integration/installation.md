@@ -18,11 +18,11 @@ sequenceDiagram
     participant E as Engine
     participant R as Relays
     O->>D: sign up, subscribe, "Link an engine"
-    D-->>O: install command with a one-time link code
+    D-->>O: install command with a one-time link URL
     O->>I: run the install command on the host
     I->>I: preflight: Docker, outbound HTTPS, proxy, clock, disk
     I->>I: verify the installer and the engine image (signature, release log)
-    I->>E: connect --link <code> (one shot)
+    I->>E: connect --link '<link URL>' (one shot)
     E->>E: create the engine key in PTBK_DATA_DIR
     E->>D: POST /v1/engines/register (signed)
     D-->>E: engine ID, hostname, relays
@@ -36,7 +36,7 @@ sequenceDiagram
     O->>E: open the link, create the owner passkey
 ```
 
-The link code ties the engine to the account for routing and billing only. It grants nothing inside the engine. Only someone who can read the engine host's terminal gets the setup link, so only they can become the owner; the platform never sees it.
+The link URL, `https://<dashboard host>/link#<link code>`, names the dashboard and carries the one-time code in its fragment ([identity-and-registration.md](identity-and-registration.md#link-url)), so the engine needs no dashboard setting and stores the dashboard's origin with its registration. The link code ties the engine to the account for routing and billing only. It grants nothing inside the engine. Only someone who can read the engine host's terminal gets the setup link, so only they can become the owner; the platform never sees it.
 
 ## Requirements
 
@@ -53,25 +53,27 @@ Docker comes first: a signed multi-architecture image, a verifying installer and
 
 ### 1. The installer (recommended)
 
-The dashboard shows a command shaped like this, with the link code and the installer's hash filled in:
+The dashboard shows a command shaped like this, with the link URL and the installer's hash filled in:
 
 ```sh
 curl -fsSLo promptbook-install.sh <installer URL> \
   && echo "<sha256 of this installer>  promptbook-install.sh" | sha256sum -c - \
-  && sudo sh promptbook-install.sh --link <link code>
+  && sudo sh promptbook-install.sh --link '<link URL>'
 ```
+
+The link URL is single-quoted: zsh with `extendedglob` reads an unquoted `#` as a glob operator.
 
 Never `curl … | sh`: the script is checked against the hash in the command before it runs. The installer must:
 
 1. **Preflight**, each line with ✓ or ✗ and the fix: architecture, Docker and Compose present and recent enough, free disk and memory, outbound HTTPS to the dashboard API, the relays and the release store (naming whichever fails), proxy settings in use, a TLS-inspecting proxy (detected when the relays' certificate does not chain to a public root), clock offset. It must stop on a failure that would make a later step fail, rather than continue and fail obscurely.
 2. **Verify before running anything:** the engine image by digest, its signature against the exact release workflow identity, and its entry in the public release log, as for any engine release ([ui-loader.md](ui-loader.md) describes the same checks for the UI). An image that fails a check is not started. The image reference is always a digest, never a moving tag such as `latest`.
 3. Create the data volume, write the Compose file (for example `/opt/promptbook-engine/compose.yaml`), and pass the operator's proxy settings and any extra CA into it.
-4. Run `promptbook-engine connect --link <code>` once in a one-off container. The link code must not end up in the Compose file, the container's environment (`docker inspect` shows it forever) or a log.
+4. Run `promptbook-engine connect --link '<link URL>'` once in a one-off container. The link URL and its code must not end up in the Compose file, the container's environment (`docker inspect` shows it forever) or a log.
 5. Start the engine and its updater, and follow the engine's progress (the [first-start output](#first-start-output)) until it is ready or fails.
 6. When the address works, run `promptbook-engine setup-link` and print the setup link and its QR code ([The setup link](#the-setup-link)).
 7. Be idempotent: run again on a host that already has an engine, it checks, repairs what it can and says "This host already runs engine `<short ID>`", without creating a second identity.
 
-Flags (proposal): `--link <code>`, `--data-dir <path>` (a host directory instead of a named volume), `--extra-ca <file>`, `--proxy <url>`, `--version <x.y.z>`, `--non-interactive` (no prompts; prints the setup link as the last line and exits non-zero on any ✗), `--json` (one JSON object per step, for automation).
+Flags (proposal): `--link <link URL>`, `--data-dir <path>` (a host directory instead of a named volume), `--extra-ca <file>`, `--proxy <url>`, `--version <x.y.z>`, `--non-interactive` (no prompts; prints the setup link as the last line and exits non-zero on any ✗), `--json` (one JSON object per step, for automation).
 
 ### 2. Docker Compose
 
@@ -101,7 +103,7 @@ volumes:
 Then:
 
 ```sh
-docker compose run --rm engine promptbook-engine connect --link <link code>
+docker compose run --rm engine promptbook-engine connect --link '<link URL>'
 docker compose up -d
 docker compose exec engine promptbook-engine setup-link
 ```
@@ -113,12 +115,12 @@ The hardening lines are the spec's (Security hardening 9): non-root, read-only r
 An engine started in `local` mode, or one installed before the account existed, joins with:
 
 ```sh
-promptbook-engine connect --link <link code>
+promptbook-engine connect --link '<link URL>'
 ```
 
-It must create the engine key if there is none, register, switch to `tunnel` mode, bind its app server to localhost and print the same progress as a fresh install. Data, agents and members stay. Passkeys are bound to the hostname, so passkeys made for a previous address do not work on the new one: when an owner already exists, `connect` must print a link that adds a passkey to that owner (same rules as the setup link) instead of a link that creates a new owner.
+It must print the dashboard origin from the link URL before it registers, create the engine key if there is none, register, switch to `tunnel` mode, bind its app server to localhost and print the same progress as a fresh install. Data, agents and members stay. Passkeys are bound to the hostname, so passkeys made for a previous address do not work on the new one: when an owner already exists, `connect` must print a link that adds a passkey to that owner (same rules as the setup link) instead of a link that creates a new owner.
 
-In v0, connecting is a command on the host only, not a form in the engine UI: shell access is the trust level that changing the engine's address needs. The dashboard shows this exact command with the link code filled in.
+In v0, connecting is a command on the host only, not a form in the engine UI: shell access is the trust level that changing the engine's address needs. The dashboard shows this exact command with the link URL filled in, and the link URL on its own beside it.
 
 **Installing before you have an account** works too: without a link code the engine starts in `local` mode, listens on 127.0.0.1 only, and should print that it is not linked and how to link it ("create an account at app.ptbk.io and run `promptbook-engine connect --link <code>`"). Until then the owner reaches it through `ssh -L`.
 
@@ -126,20 +128,20 @@ In v0, connecting is a command on the host only, not a form in the engine UI: sh
 
 Interface 6 of the spec defines `PTBK_MODE`, `PTBK_UPDATE_POLICY`, `PTBK_PINNED_VERSION`, `PTBK_CUSTOM_DOMAIN`, `HTTPS_PROXY`, `NO_PROXY` and `PTBK_DATA_DIR`. The other names below match the mock engine ([mock-engine.md](mock-engine.md)); the engine should use them too, so tools that start an engine (the installer, the conformance runner, the local stack) can start any engine the same way. The conformance harness's launch contract fixes the subset it relies on ([identity-and-registration.md](identity-and-registration.md#launch-contract)), and the test harnesses' view of the same names is in [testing-against-the-platform.md](testing-against-the-platform.md#engine-settings-the-harness-uses).
 
-| Variable                                     | Default                        | The engine must                                                                                                                                                                                                  |
-| -------------------------------------------- | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `PTBK_MODE`                                  | `tunnel`                       | Accept `tunnel`, `direct` or `local`. `local` never registers and listens on 127.0.0.1 only                                                                                                                      |
-| `PTBK_DATA_DIR`                              | none, required                 | Keep keys, certificates, database, audit log and state there; refuse to start if it is not 0700 and owned by the engine's UID ([identity-and-registration.md](identity-and-registration.md#engine-key-handling)) |
-| `PTBK_DASHBOARD_URL`                         | `https://app.ptbk.io`          | Use this origin for registration and heartbeats. An `https://` origin only, no path or credentials. Changing it on a registered engine must refuse to start, not re-register silently                            |
-| `PTBK_ENGINE_DOMAIN`                         | the production engine domain   | Derive the default hostname with it and check the registration response against it (`checkRegistrationResponse`). Set only for development and staging                                                           |
-| `PTBK_LINK_CODE`                             | none                           | Use it once at first start when the engine is not registered, then drop it from memory. Never store or log it. `connect --link` is the preferred way; this variable is for automation                            |
-| `PTBK_RELAYS`                                | from the registration          | When set, dial exactly these relays instead of the registration\'s ([launch contract](identity-and-registration.md#launch-contract)). For development and tests; a production install leaves it unset            |
-| `PTBK_UPDATE_POLICY`, `PTBK_PINNED_VERSION`  | `auto`                         | Accept `auto`, `manual`, or `pinned` with a version. The owner can change it in the UI with step-up                                                                                                              |
-| `PTBK_UI_RELEASE_URL`                        | the public release store       | Fetch releases and the revocation list from there, or from a mirror for enterprise and offline installs                                                                                                          |
-| `PTBK_CUSTOM_DOMAIN`                         | none                           | Accept one subdomain; refuse an apex domain ([tunnel-client.md](tunnel-client.md#custom-hostnames))                                                                                                              |
-| `PTBK_ACME_DIRECTORY_URL`, `PTBK_ACME_EMAIL` | Let's Encrypt production, none | Use this ACME directory for certificates; the email is optional and stays on the engine and at the CA                                                                                                            |
-| `HTTPS_PROXY`, `NO_PROXY` (and lower case)   | none                           | Use them for registration, heartbeats, tunnels, ACME, release downloads and model providers                                                                                                                      |
-| `NODE_EXTRA_CA_CERTS`                        | none                           | Trust an inspecting proxy's CA in addition to the public roots, for outbound connections only. Never disable certificate verification instead                                                                    |
+| Variable                                     | Default                                       | The engine must                                                                                                                                                                                                                                                                                                         |
+| -------------------------------------------- | --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PTBK_MODE`                                  | `tunnel`                                      | Accept `tunnel`, `direct` or `local`. `local` never registers and listens on 127.0.0.1 only                                                                                                                                                                                                                             |
+| `PTBK_DATA_DIR`                              | none, required                                | Keep keys, certificates, database, audit log and state there; refuse to start if it is not 0700 and owned by the engine's UID ([identity-and-registration.md](identity-and-registration.md#engine-key-handling))                                                                                                        |
+| `PTBK_DASHBOARD_URL`                         | the stored origin, else `https://app.ptbk.io` | Use this origin for registration and heartbeats. An `https://` origin only, no path or credentials. A link URL names the origin and the engine stores it with the registration, so this is needed only for a bare code. One that differs from the link URL's or the stored origin must refuse, not re-register silently |
+| `PTBK_ENGINE_DOMAIN`                         | the production engine domain                  | Derive the default hostname with it and check the registration response against it (`checkRegistrationResponse`). Set only for development and staging                                                                                                                                                                  |
+| `PTBK_LINK_CODE`                             | none                                          | Use it once at first start when the engine is not registered, then drop it from memory. Never store or log it. `connect --link` is the preferred way; this variable is for automation                                                                                                                                   |
+| `PTBK_RELAYS`                                | from the registration                         | When set, dial exactly these relays instead of the registration\'s ([launch contract](identity-and-registration.md#launch-contract)). For development and tests; a production install leaves it unset                                                                                                                   |
+| `PTBK_UPDATE_POLICY`, `PTBK_PINNED_VERSION`  | `auto`                                        | Accept `auto`, `manual`, or `pinned` with a version. The owner can change it in the UI with step-up                                                                                                                                                                                                                     |
+| `PTBK_UI_RELEASE_URL`                        | the public release store                      | Fetch releases and the revocation list from there, or from a mirror for enterprise and offline installs                                                                                                                                                                                                                 |
+| `PTBK_CUSTOM_DOMAIN`                         | none                                          | Accept one subdomain; refuse an apex domain ([tunnel-client.md](tunnel-client.md#custom-hostnames))                                                                                                                                                                                                                     |
+| `PTBK_ACME_DIRECTORY_URL`, `PTBK_ACME_EMAIL` | Let's Encrypt production, none                | Use this ACME directory for certificates; the email is optional and stays on the engine and at the CA                                                                                                                                                                                                                   |
+| `HTTPS_PROXY`, `NO_PROXY` (and lower case)   | none                                          | Use them for registration, heartbeats, tunnels, ACME, release downloads and model providers                                                                                                                                                                                                                             |
+| `NODE_EXTRA_CA_CERTS`                        | none                                          | Trust an inspecting proxy's CA in addition to the public roots, for outbound connections only. Never disable certificate verification instead                                                                                                                                                                           |
 
 The engine must reject `NODE_TLS_REJECT_UNAUTHORIZED=0` at startup with an error that points to `NODE_EXTRA_CA_CERTS`. A configuration error names the variable and the problem, never the value.
 
@@ -260,17 +262,17 @@ The setup page is open engine code served by the gateway ([gateway.md](gateway.m
 
 Behaviour is normative where the spec or this guide depends on it; names and flags are suggestions.
 
-| Command                    | Does                                                                                                                                                                                                       |
-| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `connect --link <code>`    | Create the key if needed, register, switch to `tunnel` mode, print progress. Must                                                                                                                          |
-| `setup-link`               | Print a fresh setup link while there is no owner (or a passkey link for the owner after a move). Must                                                                                                      |
-| `status`                   | One screen: engine ID, address, fingerprint, mode, registration, each relay's state, certificate expiry, UI bundle version, update policy and state, owner set up yes or no, last heartbeat answer. Should |
-| `doctor`                   | Re-run the installer's preflight from inside the engine: clock, proxy, each destination, data directory permissions, disk. Each ✗ with its fix. Should                                                     |
-| `owner --reset`            | Revoke every passkey and session after a typed confirmation, keep all data, print a setup link. Must (spec)                                                                                                |
-| `login --local`            | A one-time link for `http://localhost:4440` through `ssh -L`. Must (spec, Operations)                                                                                                                      |
-| `reset --identity`         | After a key compromise or a refused identity: a new key and engine ID, keeping data, then `connect` with a new link code. Must warn that the address changes                                               |
-| `custom-domain <hostname>` | Print the CNAME to create and the hostname claim to send to Promptbook ([tunnel-client.md](tunnel-client.md#custom-hostnames)). Must refuse an apex                                                        |
-| `import <archive>`         | Load an export from a predecessor deployment ([below](#moving-an-existing-deployment)). Should                                                                                                             |
+| Command                     | Does                                                                                                                                                                                                       |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `connect --link <link URL>` | Create the key if needed, register with the dashboard the URL names (a bare code: `PTBK_DASHBOARD_URL`), switch to `tunnel` mode, print progress. Must ([link URL](identity-and-registration.md#link-url)) |
+| `setup-link`                | Print a fresh setup link while there is no owner (or a passkey link for the owner after a move). Must                                                                                                      |
+| `status`                    | One screen: engine ID, address, fingerprint, mode, registration, each relay's state, certificate expiry, UI bundle version, update policy and state, owner set up yes or no, last heartbeat answer. Should |
+| `doctor`                    | Re-run the installer's preflight from inside the engine: clock, proxy, each destination, data directory permissions, disk. Each ✗ with its fix. Should                                                     |
+| `owner --reset`             | Revoke every passkey and session after a typed confirmation, keep all data, print a setup link. Must (spec)                                                                                                |
+| `login --local`             | A one-time link for `http://localhost:4440` through `ssh -L`. Must (spec, Operations)                                                                                                                      |
+| `reset --identity`          | After a key compromise or a refused identity: a new key and engine ID, keeping data, then `connect` with a new link code. Must warn that the address changes                                               |
+| `custom-domain <hostname>`  | Print the CNAME to create and the hostname claim to send to Promptbook ([tunnel-client.md](tunnel-client.md#custom-hostnames)). Must refuse an apex                                                        |
+| `import <archive>`          | Load an export from a predecessor deployment ([below](#moving-an-existing-deployment)). Should                                                                                                             |
 
 Commands that change who can sign in (`owner --reset`, `reset --identity`, `login --local`) run on the host only. There is no API or UI route to them: shell access to the server is the trust level they need.
 

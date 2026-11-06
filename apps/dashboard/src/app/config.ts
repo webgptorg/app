@@ -35,15 +35,25 @@ const relaySchema = z.strictObject({
 });
 
 export const LINK_CODE_PLACEHOLDER = '{linkCode}';
+/** The link URL, `<DASHBOARD_ORIGIN>/link#<code>`: the engine learns the dashboard from it and needs no setting. */
+export const LINK_URL_PLACEHOLDER = '{linkUrl}';
+
+function occurrences(value: string, placeholder: string): number {
+    return value.split(placeholder).length - 1;
+}
 
 /**
- * A command `/engines/new` shows, with {@link LINK_CODE_PLACEHOLDER} exactly once; it may span lines. In dev they run
- * X-06's local mock engine; the real ones come from the engine team.
+ * A command `/engines/new` shows, with exactly one placeholder, {@link LINK_CODE_PLACEHOLDER} or
+ * {@link LINK_URL_PLACEHOLDER}, once; it may span lines. In dev they run X-06's local mock engine; the real ones come
+ * from the engine team.
  */
 const installCommandSchema = z
     .string()
     .max(512)
-    .refine((value) => value.split(LINK_CODE_PLACEHOLDER).length === 2, `must contain ${LINK_CODE_PLACEHOLDER} once`);
+    .refine(
+        (value) => occurrences(value, LINK_CODE_PLACEHOLDER) + occurrences(value, LINK_URL_PLACEHOLDER) === 1,
+        `must contain ${LINK_CODE_PLACEHOLDER} or ${LINK_URL_PLACEHOLDER} once`,
+    );
 
 /** The tabs of `/engines/new`, in order, each path at most once. */
 const installCommandsSchema = z
@@ -279,6 +289,16 @@ const varsSchema = z
         if (vars.INSTALL_COMMANDS !== undefined && vars.INSTALL_COMMAND !== undefined) {
             ctx.addIssue({ code: 'custom', path: ['INSTALL_COMMAND'], message: 'replaced by INSTALL_COMMANDS' });
         }
+        // Engines accept only https:// link URLs, so a plain-http dev origin can hand out codes only.
+        const templates = [...(vars.INSTALL_COMMANDS ?? []).map((path) => path.template), vars.INSTALL_COMMAND ?? ''];
+        const usesLinkUrl = templates.some((template) => template.includes(LINK_URL_PLACEHOLDER));
+        if (usesLinkUrl && !vars.DASHBOARD_ORIGIN.startsWith('https://')) {
+            ctx.addIssue({
+                code: 'custom',
+                path: ['INSTALL_COMMANDS'],
+                message: `${LINK_URL_PLACEHOLDER} needs an https DASHBOARD_ORIGIN`,
+            });
+        }
         if (vars.ADAPTERS.billing === 'off') {
             if (vars.BILLING_OFF_PLAN === undefined) {
                 ctx.addIssue({ code: 'custom', path: ['BILLING_OFF_PLAN'], message: 'required with billing off' });
@@ -381,7 +401,7 @@ export interface DashboardConfig {
     readonly dashboardOrigin: string;
     readonly engineDomain: Hostname;
     readonly relays: readonly Readonly<RelayConfig>[];
-    /** The tabs of `/engines/new`, in order; each template contains {@link LINK_CODE_PLACEHOLDER} exactly once. */
+    /** The tabs of `/engines/new`, in order; each template contains one placeholder exactly once. */
     readonly installCommands: readonly InstallCommandConfig[];
     /** The public install guide, without a fragment. */
     readonly installGuideUrl: string;

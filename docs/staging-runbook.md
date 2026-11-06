@@ -351,17 +351,21 @@ Put the next re-sign date in the calendar: once a list expires, engines install 
 
 ## 12. Link an engine
 
-The real engine is the engine team's `ptbk` CLI (npm `ptbk`, 0.119.0-72 or later; Node 22.13+ or 24+, npm 10+, Git and Chrome). Link only a throwaway project with test data ([Staging relaxations](#staging-relaxations-not-for-production)). Engines, New engine shows these commands with the code filled in, as its first tab:
+The real engine is the engine team's `ptbk` CLI (npm `ptbk`; Node 22.13+ or 24+, npm 10+, Git and Chrome). Link only a throwaway project with test data ([Staging relaxations](#staging-relaxations-not-for-production)). Engines, New engine shows these commands with the link URL filled in, as its first tab:
 
 ```sh
-export PTBK_DASHBOARD_URL=https://app.ptbk.link PTBK_ENGINE_DOMAIN=engines.ptbk.link
 npm install --global ptbk
 mkdir -p my-agenda && cd my-agenda
 ptbk init --path . --no-dashboard
-ptbk connect --link <code>
+ptbk connect --link 'https://app.ptbk.link/link#<code>'
 ```
 
-The engine must run with the same variables as `connect`; started without them (after a reboot, or from the desktop app) it refuses the link. Then `ptbk stop` and `ptbk start` from a shell with the exports.
+The link URL names the dashboard, so no variable is needed; the engine prints `https://app.ptbk.link` before it registers, keeps it with the registration and uses it after a reboot too. This needs a `ptbk` release that takes the link URL (the engine team's 2026-11-06 change). With 0.119.0-72, link with the code after `#` and the old variables instead, and start the engine from a shell that has them:
+
+```sh
+export PTBK_DASHBOARD_URL=https://app.ptbk.link PTBK_ENGINE_DOMAIN=engines.ptbk.link
+ptbk connect --link <code>
+```
 
 **You should see:** "Linked to the Promptbook App" with the engine ID and the fingerprint the page shows; the engine shows online within about a minute, with its relays connected. "Open" does not work yet: the engine refuses browser streams until it terminates TLS itself, and its App page says so.
 
@@ -370,9 +374,9 @@ The mock engine checks the path through the relay end to end. On your machine:
 ```sh
 bun run --filter @ptbk/mock-engine build
 mkdir -m 700 -p ~/.ptbk-staging-engine
-export PTBK_DATA_DIR=~/.ptbk-staging-engine PTBK_ENGINE_DOMAIN=engines.ptbk.link PTBK_DASHBOARD_URL=https://app.ptbk.link
-node apps/mock-engine/dist/main.mjs connect --link <code>      # the code from Engines, New engine
-node apps/mock-engine/dist/main.mjs                            # runs the engine: tunnels, heartbeats
+export PTBK_DATA_DIR=~/.ptbk-staging-engine PTBK_ENGINE_DOMAIN=engines.ptbk.link
+node apps/mock-engine/dist/main.mjs connect --link '<link URL>'  # from Engines, New engine
+node apps/mock-engine/dist/main.mjs                              # runs the engine: tunnels, heartbeats
 ```
 
 **You should see:** `connect` exits 0 and prints the engine ID and the fingerprint the page shows; the page's checklist moves on; the engine shows online after its first heartbeat (within about a minute). Once the relay runs (step 10), the engine reports `relays.connected`, the dashboard says "Reachable through 1 relay", and the path through the relay is end to end:

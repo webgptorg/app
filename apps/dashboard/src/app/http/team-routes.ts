@@ -30,8 +30,8 @@ import {
     type TeamActor,
 } from '../../domain/teams/teams';
 import { apiRoutes, type InviteView, type TeamView } from '../../shared/api/routes';
-import { LINK_CODE_PLACEHOLDER } from '../config';
 import type { DashboardDeps } from '../deps';
+import { issuedLinkCodeView } from './link-code-view';
 import type { RequestContext, RouteBinder } from './bind-route';
 
 const NO_CONTENT = { kind: 'ok', body: undefined, status: 204 } as const;
@@ -170,18 +170,7 @@ export function bindTeamRoutes(
         await deps.teams.attachLinkCode(session.actor.orgId, outcome.linkCodeId, team.id, deps.clock.nowMs());
         return {
             kind: 'ok',
-            body: {
-                linkCodeId: outcome.linkCodeId,
-                linkCode: outcome.linkCode,
-                installCommands: deps.config.installCommands.map((path) => ({
-                    id: path.id,
-                    labelKey: path.labelKey,
-                    command: path.template.replace(LINK_CODE_PLACEHOLDER, () => outcome.linkCode),
-                    docsAnchor: path.docsAnchor,
-                })),
-                installGuideUrl: deps.config.installGuideUrl,
-                expiresAt: outcome.expiresAt,
-            },
+            body: issuedLinkCodeView(deps.config, outcome),
         };
     });
 
