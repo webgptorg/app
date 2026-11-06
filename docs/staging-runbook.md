@@ -79,7 +79,7 @@ Staging uses an existing Cloudflare account that it shares with other projects, 
 | `*.engines.ptbk.link`                 | Engine hostnames: the DNS-only wildcard to the relay; CAA and no-mail records on `engines.ptbk.link` |
 | `_acme-challenge.relay-fsn.ptbk.link` | The TXT records lego writes for the relay's certificate, directly in `ptbk.link`                     |
 
-Check that the zone is **Active** in the shared account, that it has auto-renew and the transfer lock on (Domain Registration, if it is registered at Cloudflare), and that it has no records under these names yet. Add no records by hand; the stack adds its records and leaves the zone's others alone. Copy its zone ID (the zone's Overview, API section) for step 8.
+Check that the zone is **Active** in the shared account, that it has auto-renew and the transfer lock on (Domain Registration, if it is registered at Cloudflare), and that it has no records under these names yet. Add no records by hand; the stack adds its records and leaves the zone's others alone. Its zone ID, `c203cd9d66f14a374dbdd2df74f6380a` (the zone's Overview, API section), is committed here for steps 7 and 8.
 
 **You should see:** `ptbk.link` **Active** in the shared account, with none of the names above taken.
 **If it fails:** if `ptbk.link` is in another account, the stack cannot find it (step 7): move the zone into the shared account, or ask Seb which account to use.
@@ -243,7 +243,7 @@ dig +short AAAA anything.engines.$zone @$ns      # the relay's IPv6
 dig +short A engines.$zone @$ns                  # empty
 dig +short CAA engines.$zone @$ns                # issue "letsencrypt.org", issuewild ";", iodef, and nothing else
 curl -sS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-  "https://api.cloudflare.com/client/v4/zones/$(tofu output -raw staging_zone_id)/dns_records?proxied=true&per_page=100" \
+  "https://api.cloudflare.com/client/v4/zones/c203cd9d66f14a374dbdd2df74f6380a/dns_records?proxied=true&per_page=100" \
   | jq '[.result[].name | select(endswith(".engines.'$zone'"))]'   # []
 ```
 
@@ -280,15 +280,15 @@ node scripts/smoke-test.ts --origin https://app.ptbk.io --environment staging
 
 Deploy first and put the secrets after: on a Worker that does not exist yet, `secret put` would offer to create an empty one. Each `secret put` deploys a new version.
 
-Then check the deploy token's scope, as CI will use it ([infra/cloudflare README, API tokens](../infra/cloudflare/README.md#api-tokens)). From the repo root, with `ptbk.link`'s zone ID (`tofu output staging_zone_id` in step 7, or the zone's Overview page); it holds the engine records too:
+Then check the deploy token's scope, as CI will use it ([infra/cloudflare README, API tokens](../infra/cloudflare/README.md#api-tokens)). From the repo root, with `ptbk.link`'s zone ID (`tofu output staging_zone_id` in step 7 must print the same); it holds the engine records too:
 
 ```sh
 CLOUDFLARE_API_TOKEN=<deploy token> CLOUDFLARE_ACCOUNT_ID=42b20127fa7293cb5160f22ed42ef43b \
-  infra/cloudflare/scripts/verify-deploy-token.sh <ptbk.link zone id>
+  infra/cloudflare/scripts/verify-deploy-token.sh c203cd9d66f14a374dbdd2df74f6380a
 ```
 
 **You should see:** every migration applied; `wrangler deploy` listing `app.ptbk.io/* (zone name: ptbk.link)`; the `curl` answering `staging` with a valid certificate before the cutover; the smoke test passing (`/v1/health` answers `staging`, and `/` is the SPA shell under the production CSP); the dashboard loading in a browser; the token check reporting Workers and D1 reachable, and DNS read and write refused in the staging zone. Paste its output into the values PR.
-**If it fails:** an error resolving `zone_name` or creating the route means the deploy token needs more than Workers Routes Edit for it (likely Zone Read on `ptbk.link`, never DNS). A `curl` that gets no Worker answer means the custom hostname or its certificate is not Active yet (step 7). Record the exact permission in infra/cloudflare/README.md, add it, and rerun the token check (the README asks for this), or deploy this once after `bunx wrangler login` as yourself. If `/v1/health` answers 500, `bunx wrangler tail --env staging` shows `Invalid dashboard configuration:` with the names of the missing or invalid vars and secrets (never their values).
+**If it fails:** an error resolving `zone_name` or creating the route means the deploy token needs more than Workers Routes Edit for it (likely Zone Read on `ptbk.link`, never DNS); or replace the route's `zone_name` with `"zone_id": "c203cd9d66f14a374dbdd2df74f6380a"`, which needs no lookup. A `curl` that gets no Worker answer means the custom hostname or its certificate is not Active yet (step 7). Record the exact permission in infra/cloudflare/README.md, add it, and rerun the token check (the README asks for this), or deploy this once after `bunx wrangler login` as yourself. If `/v1/health` answers 500, `bunx wrangler tail --env staging` shows `Invalid dashboard configuration:` with the names of the missing or invalid vars and secrets (never their values).
 
 ## 9. Test email
 
