@@ -169,6 +169,9 @@ test('Journey 1: sign up, start the trial, link a fresh engine, become its owner
     const installer = page.getByRole('tab', { name: 'Linux server with Docker' });
     await expect(installer).toHaveAttribute('aria-selected', 'true');
     const linkCode = devInstallLinkCode((await page.getByRole('tabpanel').locator('code').textContent()) ?? '');
+    // The link URL names the dashboard, so the engine needs nothing else to find it.
+    const linkUrl = (await page.getByText(/^https:\/\/\S+\/link#[a-z2-7]{26}$/).textContent()) ?? '';
+    expect(linkUrl).toBe(`${DASHBOARD_ORIGIN}/link#${linkCode}`);
     const commandAt = Date.now();
     await expect(progress).toHaveAttribute('data-link-state', 'waiting');
     await expect(row('linked')).toHaveAttribute('data-step-state', 'current');
@@ -177,9 +180,11 @@ test('Journey 1: sign up, start the trial, link a fresh engine, become its owner
     const engine = await mockEngines.startUnlinked();
     await waitUntilRunning(engine);
     expect(await ownerSetUp(engine)).toBe(false);
-    const connect = await engine.exec([...ENGINE_CLI, 'connect', '--link', linkCode]);
+    const connect = await engine.exec([...ENGINE_CLI, 'connect', '--link', linkUrl]);
     expect(connect.exitCode, connect.stderr).toBe(0);
+    expect(connect.stdout).toContain(`Linking with the Promptbook dashboard at ${DASHBOARD_ORIGIN}`);
     expect(connect.stdout).toContain('✓ Linked to your Promptbook account');
+    expect(connect.stdout).not.toContain(linkCode);
     const identity = terminalIdentity(connect.stdout);
 
     await test.step('the checklist follows the engine: linked, online, reachable, waiting for the owner', async () => {
@@ -279,12 +284,12 @@ test('Journey 1: sign up, start the trial, link a fresh engine, become its owner
     expect(await onlineEmails()).toHaveLength(1);
     expect((await dashboard.emails(email)).filter((sent) => sent.template === 'engine-back-online')).toEqual([]);
 
-    await test.step("the engine's log stream carries no link code and no setup secret", async () => {
+    await test.step("the engine's log stream carries no link code, link URL or setup secret", async () => {
         const logs = await engine.logs();
         expect(logs).toMatch(/"event":"setup-link\.issued"/);
         expect(logs).toMatch(/"event":"owner\.passkey-registered"/);
         expect(logs).toMatch(/"event":"owner\.reset"/);
-        for (const secret of [linkCode, setupLink.secret, resetLink?.secret ?? '']) {
+        for (const secret of [linkCode, linkUrl, setupLink.secret, resetLink?.secret ?? '']) {
             expect(secret).not.toBe('');
             expect(logs).not.toContain(secret);
         }

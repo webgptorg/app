@@ -289,6 +289,52 @@ describe('register command and dashboard mode', () => {
     );
 
     it(
+        'links with the link URL alone, then starts again from the dashboard stored with the registration',
+        async () => {
+            const dir = await tempDir();
+            const dataDir = join(dir, 'data');
+            const { dashboard, url, caFile } = await startHttpsDashboard(dir);
+            const code = dashboard.issueLinkCode('org-a');
+            const linkUrl = `${url}/link#${code}`;
+            const env = { PTBK_DATA_DIR: dataDir, PTBK_ENGINE_DOMAIN: ENGINE_DOMAIN, MOCK_EXTRA_CA_FILE: caFile };
+
+            const unlinked = run('src/main.ts', env);
+            expect(await unlinked.exited).toBe(1);
+            expect(unlinked.stdout()).toContain('PTBK_DASHBOARD_URL: is required until the engine is linked');
+
+            const conflicting = run('src/main.ts', { ...env, PTBK_DASHBOARD_URL: 'https://localhost:1' }, [
+                'connect',
+                '--link',
+                linkUrl,
+            ]);
+            expect(await conflicting.exited).toBe(1);
+            expect(conflicting.stderr()).toContain('but the link URL is for');
+            expect(dashboard.registerRequests).toHaveLength(0);
+
+            const connect = run('src/main.ts', env, ['connect', '--link', linkUrl]);
+            expect(await connect.exited).toBe(0);
+            expect(connect.stdout()).toContain(`… Linking with the Promptbook dashboard at ${url}\n`);
+            expect(connect.stdout()).toContain('✓ Linked to your Promptbook account');
+            expect(connect.stdout() + connect.stderr() + conflicting.stderr()).not.toContain(code);
+            for (const name of await readdir(dataDir)) {
+                if (name === 'dev-ca') continue;
+                expect(await readFile(join(dataDir, name), 'utf8')).not.toContain(code);
+            }
+
+            const engine = run('src/main.ts', { ...env, MOCK_HEARTBEAT_INTERVAL_S: '1' });
+            await engine.printed('"event":"registration.already-registered"');
+            const deadline = Date.now() + 20_000;
+            while (!dashboard.heartbeats.some((beat) => beat.verification.kind === 'accepted')) {
+                if (Date.now() > deadline) throw new Error('no heartbeats');
+                await new Promise((resolve) => setTimeout(resolve, 100));
+            }
+            engine.child.kill('SIGTERM');
+            expect(await engine.exited).toBe(0);
+        },
+        PROCESS_TIMEOUT_MS * 2,
+    );
+
+    it(
         'waits unlinked, joins on connect, reports status over the operator socket and refuses a second engine',
         async () => {
             const dir = await tempDir();
@@ -367,7 +413,7 @@ describe('register command and dashboard mode', () => {
                 ['register', '--link', 'not-a-real-code'],
             );
             expect(await failed.exited).toBe(2);
-            expect(failed.stderr()).toContain('--link must be a link code');
+            expect(failed.stderr()).toContain('--link must be the link URL the dashboard shows, or its link code');
             expect(failed.stderr() + failed.stdout()).not.toContain('not-a-real-code');
         },
         PROCESS_TIMEOUT_MS,

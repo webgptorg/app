@@ -22,6 +22,7 @@ export const ENGINE_CLI = ['node', '--enable-source-maps', '/app/main.mjs'] as c
 const FRESH_DATA_DIR = '/tmp/engine';
 const OUTBOX_TIMEOUT_MS = 5_000;
 const LINK_CODE = /\b[a-z2-7]{26}\b/;
+const LINK_URL = /^https:\/\/\S+\/link#[a-z2-7]{26}$/;
 
 export interface StartOptions {
     /**
@@ -46,6 +47,8 @@ export interface MockEngines {
 export interface LinkCodeView {
     readonly installCommand: string;
     readonly linkCode: string;
+    /** `<dashboard origin>/link#<code>`, as the page shows it beside the install tabs. */
+    readonly linkUrl: string;
 }
 
 /** The dashboard as a person uses it, in the test's page. */
@@ -148,12 +151,13 @@ function dashboardSteps(page: Page, caCertificatePem: string): DashboardSteps {
         async createLinkCode() {
             // The page issues the code on load once the organization may link (D-10).
             await page.goto(`${DASHBOARD_ORIGIN}/engines/new`);
-            const command = page.getByText(LINK_CODE);
-            await expect(command).toBeVisible();
+            const command = page.getByRole('tabpanel').locator('code');
+            await expect(command).toHaveText(LINK_CODE);
             const installCommand = (await command.textContent()) ?? '';
             const linkCode = installCommand.match(LINK_CODE)?.[0];
             if (linkCode === undefined) throw new Error('no link code in the install command');
-            return { installCommand, linkCode };
+            const linkUrl = (await page.getByText(LINK_URL).textContent()) ?? '';
+            return { installCommand, linkCode, linkUrl };
         },
         async signOut() {
             await page.getByRole('button', { name: /^Account menu for / }).click();

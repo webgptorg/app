@@ -18,7 +18,7 @@ export type RegistrationOutcome =
     | { readonly kind: 'unavailable'; readonly reason: UnavailableReason };
 
 /**
- * Why the dashboard gave no usable answer; all of them are worth retrying while the link code can still be valid.
+ * Why the dashboard gave no usable answer; all of them are worth retrying.
  * `unknown-code` is a problem code newer than this build: it may be a refusal, but retrying it costs nothing.
  */
 export type UnavailableReason = 'no-answer' | 'error-status' | 'rate-limited' | 'unknown-code';
@@ -66,7 +66,7 @@ export async function loadRegistration(deps: StoredRegistrationDeps): Promise<Re
     const stored = await deps.store.load();
     if (stored === null) return null;
     if (stored.dashboardUrl !== deps.dashboardUrl) {
-        throw new StoredRegistrationError('the stored registration is for another dashboard than PTBK_DASHBOARD_URL');
+        throw new StoredRegistrationError('the stored registration is for another dashboard than this one');
     }
     const check = await checkRegistrationResponse(
         { engineId: stored.engineId, hostname: stored.hostname },

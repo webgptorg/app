@@ -20,7 +20,7 @@ import type {
     SessionView,
 } from '../shared/api/routes';
 import { TEST_INSTALL_VARS } from './install-fixtures';
-import type { AuthHarness, TestBrowser, TestResponse } from './auth-harness';
+import { ORIGIN, type AuthHarness, type TestBrowser, type TestResponse } from './auth-harness';
 import { problemCode, signIn, signUp } from './auth-flows';
 import { createTestEngine, TEST_ENGINE_DOMAIN, type TestEngine } from './test-engine';
 
@@ -131,6 +131,7 @@ export function describeEngineFlows(
                 expect(command.split(view.linkCode)).toHaveLength(2);
             }
             expect(view.installGuideUrl).toBe(TEST_INSTALL_VARS.INSTALL_GUIDE_URL);
+            expect(view.linkUrl).toBe(`${ORIGIN}/link#${view.linkCode}`);
             expect(view.expiresAt).toBe(harness.clock.nowMs() + LINK_CODE_TTL_MS);
             const engine = await createTestEngine();
             await expectRegistered(await register(await engine.register(LinkCode.parse(view.linkCode))), engine);

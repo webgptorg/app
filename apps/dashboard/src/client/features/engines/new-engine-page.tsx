@@ -174,6 +174,19 @@ function InstallPathPanel(props: { readonly path: InstallCommandView; readonly g
     );
 }
 
+/** The link URL on its own, for engines set up some other way than the tabs show; it names this dashboard. */
+function LinkUrl(props: { readonly url: string }) {
+    return (
+        <div className="flex flex-col gap-2">
+            <p className="text-sm">{m.engines_new_link_url()}</p>
+            <div className="flex items-center gap-2 rounded-control bg-(--code-text-bg) py-1 pr-2 pl-3 text-(--code-text-text)">
+                <span className="min-w-0 flex-1 font-mono text-sm wrap-anywhere">{props.url}</span>
+                <CopyButton value={props.url} label={m.engines_new_copy_link()} variant="secondary" showLabel />
+            </div>
+        </div>
+    );
+}
+
 function ExpiredBanner(props: { readonly onRenew: () => void; readonly renewing: boolean }) {
     return (
         <Banner tone="warning" title={m.engines_new_expired_title()}>
@@ -222,6 +235,7 @@ function InstallCommand(props: {
                         panel: <InstallPathPanel key={path.id} path={path} guideUrl={props.view.installGuideUrl} />,
                     }))}
                 />
+                {props.view.linkUrl === null ? null : <LinkUrl url={props.view.linkUrl} />}
                 <p className="text-sm text-text-muted" aria-live="off">
                     {m.engines_new_command_body({ time: locale.formatDateTime(new Date(props.view.expiresAt)) })}
                 </p>

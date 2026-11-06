@@ -24,6 +24,11 @@ Each entry has this shape. Platform authors: add yours at the top of the list, o
 - **Redo:** what the engine's agent must change, re-run or drop; "nothing" if it is inert.
 ```
 
+### 2026-11-06: Linking with a link URL
+
+- **Changed:** the dashboard hands out the link code inside a link URL, `https://<dashboard host>/link#<code>`, and its install commands run `connect --link '<link URL>'` with no `PTBK_DASHBOARD_URL` or `PTBK_ENGINE_DOMAIN`. `@ptbk/protocol` adds `formatLinkUrl`, `parseLinkUrl`, `parseLinkArgument` and `LINK_PATH`; the mock engine is the reference. The launch contract (`PTBK_LINK_CODE`, `PTBK_DASHBOARD_URL`) and the conformance checks are unchanged. See [identity-and-registration.md](identity-and-registration.md#link-url).
+- **Redo:** accept the link URL as well as a bare code in `ptbk connect --link`; register with the URL's dashboard origin and refuse (naming both origins) when `PTBK_DASHBOARD_URL` names another one; print that origin before registering; keep it with the registration and use it when `PTBK_DASHBOARD_URL` is unset, so a restart without the variable (after a reboot, from the service) keeps working; never print, log or store the code or the URL.
+
 ### 2026-11-06: Link codes live 30 days
 
 - **Changed:** a dashboard link code (`connect --link <code>`) stays valid for 30 days instead of 30 minutes, because people install the engine later. It is still single use; the owner can revoke an unused one on Engines, and a team's new code ends its earlier one. The registration contract and `invalid-link-code` (unknown, expired, cancelled or used alike) are unchanged. See [installation.md](installation.md#must-report).

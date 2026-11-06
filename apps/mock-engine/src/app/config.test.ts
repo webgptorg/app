@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 
 import packageJson from '../../package.json';
 import { DEFAULT_MOCK_SETTINGS } from '../testing/mock-settings';
-import { ConfigError, parseIdentityConfig, parseMockEngineConfig } from './config';
+import { ConfigError, parseIdentityConfig, parseMockEngineConfig, withStoredDashboard } from './config';
 
 const BASE = {
     PTBK_DATA_DIR: '/var/lib/ptbk',
@@ -181,12 +181,8 @@ describe('parseMockEngineConfig', () => {
         expect(problemsOf({ ...BASE, PTBK_DATA_DIR: '' })).toEqual(['PTBK_DATA_DIR: is required']);
     });
 
-    it('requires the data directory, engine domain and, without a dashboard, relays', () => {
-        expect(problemsOf({})).toEqual([
-            'PTBK_DATA_DIR: is required',
-            'PTBK_ENGINE_DOMAIN: is required',
-            'PTBK_RELAYS: is required without PTBK_DASHBOARD_URL',
-        ]);
+    it('requires the data directory and engine domain', () => {
+        expect(problemsOf({})).toEqual(['PTBK_DATA_DIR: is required', 'PTBK_ENGINE_DOMAIN: is required']);
     });
 
     describe('M-06 settings', () => {
@@ -236,7 +232,7 @@ describe('parseMockEngineConfig', () => {
             expect(problems).toEqual(
                 expect.arrayContaining([
                     'PTBK_DASHBOARD_URL: must be an https:// origin without credentials or path',
-                    'PTBK_LINK_CODE: must be a link code',
+                    'PTBK_LINK_CODE: must be a link code or an https:// link URL',
                     'MOCK_HEARTBEAT_INTERVAL_S: must be a whole number of seconds from 1 to 3600',
                     'MOCK_STATS: must be os or scenario',
                 ]),
@@ -246,8 +242,86 @@ describe('parseMockEngineConfig', () => {
             expect(problemsOf({ ...LINKED, PTBK_DASHBOARD_URL: 'https://app.ptbk.test/?x' })).toHaveLength(1);
         });
 
-        it('needs a dashboard for a link code', () => {
-            expect(problemsOf({ ...BASE, PTBK_LINK_CODE: CODE })).toEqual(['PTBK_LINK_CODE: needs PTBK_DASHBOARD_URL']);
+        it('needs a dashboard for a bare link code', () => {
+            expect(problemsOf({ ...BASE, PTBK_LINK_CODE: CODE })).toEqual([
+                'PTBK_LINK_CODE: a bare link code needs PTBK_DASHBOARD_URL',
+            ]);
+        });
+
+        it('leaves the dashboard to the stored registration without PTBK_DASHBOARD_URL or PTBK_RELAYS', () => {
+            expect(parseMockEngineConfig({ ...BASE, PTBK_RELAYS: undefined }).dashboard).toEqual({
+                url: null,
+                linkCode: null,
+                heartbeatIntervalS: 60,
+            });
+        });
+
+        describe('a link URL in PTBK_LINK_CODE', () => {
+            const LINK_URL = `https://app.ptbk.test/link#${CODE}`;
+
+            it('names the dashboard, and the code is taken once and never shown', () => {
+                const config = parseMockEngineConfig({ ...BASE, PTBK_RELAYS: undefined, PTBK_LINK_CODE: LINK_URL });
+                expect(config.dashboard?.url).toBe('https://app.ptbk.test');
+                expect(JSON.stringify(config)).not.toContain(CODE);
+                expect(inspect(config, { depth: 5 })).not.toContain(CODE);
+                expect(config.dashboard?.linkCode?.take()).toBe(CODE);
+            });
+
+            it('agrees with PTBK_DASHBOARD_URL, and a relay override keeps the dashboard', () => {
+                expect(parseMockEngineConfig({ ...LINKED, PTBK_LINK_CODE: LINK_URL }).dashboard?.url).toBe(
+                    'https://app.ptbk.test',
+                );
+                expect(parseMockEngineConfig({ ...BASE, PTBK_LINK_CODE: LINK_URL }).dashboard?.url).toBe(
+                    'https://app.ptbk.test',
+                );
+            });
+
+            it('refuses one for another dashboard than PTBK_DASHBOARD_URL', () => {
+                expect(problemsOf({ ...LINKED, PTBK_LINK_CODE: `https://app.ptbk.link/link#${CODE}` })).toEqual([
+                    'PTBK_LINK_CODE: is a link URL for another dashboard than PTBK_DASHBOARD_URL; set only one',
+                ]);
+            });
+
+            it.each([
+                `http://app.ptbk.test/link#${CODE}`,
+                `https://app.ptbk.test/engines#${CODE}`,
+                `https://app.ptbk.test/link?x#${CODE}`,
+                `https://user:pw@app.ptbk.test/link#${CODE}`,
+                'https://app.ptbk.test/link#secretish',
+            ])('refuses %s without quoting it', (text) => {
+                const problems = problemsOf({ ...LINKED, PTBK_LINK_CODE: text });
+                expect(problems).toEqual(['PTBK_LINK_CODE: must be a link code or an https:// link URL']);
+            });
+        });
+    });
+
+    describe('withStoredDashboard', () => {
+        const UNSET = { ...BASE, PTBK_RELAYS: undefined };
+        const stored = (url: string | null) => () => Promise.resolve(url);
+
+        it('takes the origin stored with the registration when nothing names a dashboard', async () => {
+            const config = await withStoredDashboard(parseMockEngineConfig(UNSET), stored('https://app.ptbk.link'));
+            expect(config.dashboard).toEqual({ url: 'https://app.ptbk.link', linkCode: null, heartbeatIntervalS: 60 });
+            expect(Object.isFrozen(config)).toBe(true);
+            expect(Object.isFrozen(config.dashboard)).toBe(true);
+        });
+
+        it('lets PTBK_DASHBOARD_URL win without reading the store, and keeps the M1 dev mode', async () => {
+            const unread = () => Promise.reject(new Error('read'));
+            const linked = await withStoredDashboard(
+                parseMockEngineConfig({ ...UNSET, PTBK_DASHBOARD_URL: 'https://app.ptbk.test' }),
+                unread,
+            );
+            expect(linked.dashboard?.url).toBe('https://app.ptbk.test');
+            expect((await withStoredDashboard(parseMockEngineConfig(BASE), unread)).dashboard).toBeNull();
+        });
+
+        it('refuses to start an engine that was never linked and names no dashboard', async () => {
+            await expect(withStoredDashboard(parseMockEngineConfig(UNSET), stored(null))).rejects.toMatchObject({
+                problems: [
+                    'PTBK_DASHBOARD_URL: is required until the engine is linked; run connect --link with the link URL first, or set PTBK_RELAYS',
+                ],
+            });
         });
     });
 

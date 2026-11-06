@@ -115,6 +115,7 @@ export function engineView(overrides: Partial<EngineView> = {}): EngineView {
 }
 
 export const LINK_CODE = 'abcdefghijklmnopqrstuvwxya';
+export const LINK_URL = `https://app.ptbk.test/link#${LINK_CODE}`;
 export const INSTALL_GUIDE_URL = 'https://docs.ptbk.test/engine/installation';
 
 /** A freshly issued code with the three dev tabs, as the API fills them in. */
@@ -122,6 +123,7 @@ export function linkCodeView(overrides: Partial<LinkCodeView> = {}): LinkCodeVie
     return {
         linkCodeId: 'lllllllllllllllllllllllllq',
         linkCode: LINK_CODE as LinkCodeView['linkCode'],
+        linkUrl: LINK_URL,
         installCommands: [
             {
                 id: 'installer',

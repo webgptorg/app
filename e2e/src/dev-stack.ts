@@ -382,7 +382,7 @@ async function dispatch(command: string, args: readonly string[], context: DevCo
         case 'link': {
             const code = parseLinkCode(args);
             if (code === null) {
-                process.stderr.write('usage: bun run dev:link <link code from the dashboard>\n');
+                process.stderr.write('usage: bun run dev:link <link code or link URL from the dashboard>\n');
                 return 2;
             }
             return link(context, code);

@@ -349,7 +349,14 @@ describe('parseConfig', () => {
 
     it('needs the link code placeholder exactly once in every install command', () => {
         const [installer, compose, connect] = TEST_INSTALL_VARS.INSTALL_COMMANDS;
-        for (const template of ['bun run dev:link', 'link {linkCode} {linkCode}', '', 'link {linkCode}\n{linkCode}']) {
+        for (const template of [
+            'bun run dev:link',
+            'link {linkCode} {linkCode}',
+            '',
+            'link {linkCode}\n{linkCode}',
+            "link '{linkUrl}' {linkCode}",
+            "link '{linkUrl}' '{linkUrl}'",
+        ]) {
             expect(
                 failedPaths({
                     ...bindings,
@@ -358,6 +365,25 @@ describe('parseConfig', () => {
                 }),
             ).toEqual(['INSTALL_COMMANDS.1.template']);
         }
+    });
+
+    it('takes the link URL placeholder in place of the code, on an https origin only', () => {
+        const [installer, compose, connect] = TEST_INSTALL_VARS.INSTALL_COMMANDS;
+        const tabs = [installer, compose, { ...connect, template: "ptbk connect --link '{linkUrl}'" }];
+        expect(parseConfig({ ...bindings, ...devVars, INSTALL_COMMANDS: tabs }).installCommands[2]?.template).toBe(
+            "ptbk connect --link '{linkUrl}'",
+        );
+        expect(
+            failedPaths({ ...bindings, ...devVars, DASHBOARD_ORIGIN: 'http://localhost:5173', INSTALL_COMMANDS: tabs }),
+        ).toEqual(['INSTALL_COMMANDS']);
+        const legacy = Object.fromEntries(
+            Object.entries({
+                ...devVars,
+                DASHBOARD_ORIGIN: 'http://localhost:5173',
+                INSTALL_COMMAND: '{linkUrl}',
+            }).filter(([key]) => key !== 'INSTALL_COMMANDS'),
+        );
+        expect(failedPaths({ ...bindings, ...legacy })).toEqual(['INSTALL_COMMANDS']);
     });
 
     it('refuses an empty tab list, an unknown or repeated path and a malformed tab', () => {

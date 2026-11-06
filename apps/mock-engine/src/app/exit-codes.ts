@@ -12,7 +12,7 @@ export const EXIT_CODE = Object.freeze({
     identityRefused: 4,
     /** `engine-limit`, `not-entitled`. */
     plan: 5,
-    /** The dashboard stayed unreachable for as long as the link code could be valid. */
+    /** The dashboard stayed unreachable for the whole retry window. */
     unreachable: 6,
     /** The dashboard's answer did not match this engine, or it refused our signature. */
     answerRefused: 7,

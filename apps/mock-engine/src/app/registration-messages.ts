@@ -52,13 +52,13 @@ export function registrationSentence(outcome: RegistrationOutcome): string {
         case 'already-registered':
             return 'Already linked to your Promptbook account';
         case 'unavailable':
-            return `Cannot reach the Promptbook platform (${UNAVAILABLE_KIND[outcome.reason]}). The link code may have expired by now; create a new one at app.ptbk.io, then run \`${ENGINE_COMMAND} connect --link <new code>\`.`;
+            return `Cannot reach the Promptbook platform (${UNAVAILABLE_KIND[outcome.reason]}). Check the network and any proxy, then run \`${ENGINE_COMMAND} connect --link\` again with the same link; it stays valid for 30 days.`;
         case 'refused-response':
             return ANSWER_REFUSED;
         case 'rejected':
             switch (outcome.reason) {
                 case 'invalid-link-code':
-                    return `The link code was not accepted. Codes work once and expire after 30 minutes. Create a new one at app.ptbk.io, then run \`${ENGINE_COMMAND} connect --link <new code>\`.`;
+                    return `The link code was not accepted. Codes work once and expire after 30 days. Create a new one at app.ptbk.io, then run \`${ENGINE_COMMAND} connect --link <new code>\`.`;
                 case 'engine-exists':
                     return 'This engine is already linked to another Promptbook organisation. Sign in to that account, or give this engine a new identity by starting it with an empty PTBK_DATA_DIR.';
                 case 'engine-suspended':

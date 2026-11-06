@@ -10,8 +10,8 @@ import { issueLinkCode } from '../../domain/registration/issue-link-code';
 import { readLinkCodeStatus } from '../../domain/registration/read-link-code-status';
 import { OWNER_REVOKED } from '../../domain/registration/engine-store';
 import { apiRoutes, type EngineView, type LinkEligibilityView } from '../../shared/api/routes';
-import { LINK_CODE_PLACEHOLDER } from '../config';
 import type { DashboardDeps } from '../deps';
+import { issuedLinkCodeView } from './link-code-view';
 import type { RouteBinder } from './bind-route';
 
 function engineView(overview: EngineOverview): EngineView {
@@ -73,18 +73,7 @@ export function bindEngineRoutes(
         if (outcome.kind === 'issued') {
             return {
                 kind: 'ok',
-                body: {
-                    linkCodeId: outcome.linkCodeId,
-                    linkCode: outcome.linkCode,
-                    installCommands: deps.config.installCommands.map((path) => ({
-                        id: path.id,
-                        labelKey: path.labelKey,
-                        command: path.template.replace(LINK_CODE_PLACEHOLDER, () => outcome.linkCode),
-                        docsAnchor: path.docsAnchor,
-                    })),
-                    installGuideUrl: deps.config.installGuideUrl,
-                    expiresAt: outcome.expiresAt,
-                },
+                body: issuedLinkCodeView(deps.config, outcome),
             };
         }
         switch (outcome.reason) {

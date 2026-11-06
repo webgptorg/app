@@ -202,7 +202,7 @@ The engine turns online after its first heartbeat (the mock engine sends one eve
 | `bun run dev:stack down`              | Stops it; the account, passkeys, linked engine and engine data stay in the project's volumes                    |
 | `bun run dev:stack reset`             | Stops it and drops every volume: a new dashboard database and a new engine key. The dev CA stays                |
 | `bun run dev:stack logs [service...]` | Service logs with timestamps                                                                                    |
-| `bun run dev:link <code>`             | Registers the stack's engine with a link code from the dashboard and (re)starts it                              |
+| `bun run dev:link <code>`             | Registers the stack's engine with a link code (or the stack's link URL) from the dashboard and (re)starts it    |
 | `bun run dev:trust [--dry-run]`       | Trusts the dev CA and adds the resolver entries; prints each command before it runs it, `--dry-run` only prints |
 | `bun run dev:untrust [--dry-run]`     | Removes both again and checks that nothing is left; `--check` only checks                                       |
 

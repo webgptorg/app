@@ -11,6 +11,7 @@ import {
     engineView,
     INSTALL_GUIDE_URL,
     LINK_CODE as CODE,
+    LINK_URL,
     linkCodeView as linkCode,
     LINK_CODE_LIFETIME_MS,
     NOW,
@@ -310,6 +311,28 @@ describe('new engine page', () => {
             ).toBe(`${INSTALL_GUIDE_URL}#moving-an-existing-deployment`);
             expect(app.api.callsTo(apiRoutes.createLinkCode)).toHaveLength(1);
             await expectNoAxeViolations(app.container);
+        });
+
+        it('shows the link URL with its own copy button, outside the tabs', async () => {
+            renderApp({ path: '/engines/new', session: OWNER, script: linking([PENDING]) });
+            expect(await screen.findByText(LINK_URL)).toBeTruthy();
+            expect(screen.getByText("Or give this address to your engine's connect command.")).toBeTruthy();
+            expect(screen.getByRole('button', { name: 'Copy address' })).toBeTruthy();
+            expect(within(screen.getByRole('tabpanel')).queryByText(LINK_URL)).toBeNull();
+        });
+
+        it('leaves the link URL out when the dashboard has none (plain-http dev)', async () => {
+            renderApp({
+                path: '/engines/new',
+                session: OWNER,
+                script: (api) => {
+                    eligible()(api);
+                    api.on(apiRoutes.createLinkCode, ok(linkCode({ linkUrl: null })));
+                    scriptProgress(api, [PENDING], []);
+                },
+            });
+            expect(await screen.findByText(`bun run dev:link ${CODE}`)).toBeTruthy();
+            expect(screen.queryByRole('button', { name: 'Copy address' })).toBeNull();
         });
 
         it('switches tabs with the keyboard and keeps a multi-line command intact', async () => {
