@@ -1,5 +1,5 @@
-# Every <...> value is a placeholder until the staging accounts, domains and keys exist (docs/plan/apply.md). The
-# modules refuse them, so a plan fails before it touches anything.
+# Every <...> value is a placeholder until the staging domain and keys exist (docs/staging-runbook.md). The modules
+# refuse them, so a plan fails before it touches anything.
 
 # One host. Staging and production differ only in the relays, the server type and the allowlists.
 relays = {
@@ -7,9 +7,10 @@ relays = {
 }
 server_type = "cx23"
 
-# Inside the staging dashboard zone, as in infra/cloudflare's staging tfvars; never under the engine domain.
+# Staging's one zone, as in infra/cloudflare's staging root: relays at its top level, engines one level down. The
+# relay hostname is never under the engine domain.
 relay_domain  = "<staging-zone>"
-engine_domain = "<staging-engine-domain>"
+engine_domain = "engines.<staging-zone>"
 registry_url  = "https://app.<staging-zone>"
 acme_email    = "<ops-email>"
 

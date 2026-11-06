@@ -104,7 +104,7 @@ resource "cloudflare_load_balancer_pool" "relays_fallback" {
 resource "cloudflare_load_balancer" "engine_wildcard" {
   count = local.load_balanced ? 1 : 0
 
-  zone_id     = cloudflare_zone.engine.id
+  zone_id     = local.engine_zone_id
   name        = local.wildcard
   description = "Managed by OpenTofu (infra/cloudflare): every healthy relay for every engine hostname"
   # Proxying would make Cloudflare terminate TLS for engine hostnames (AGENTS.md rule 1); the tests pin it.

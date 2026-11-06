@@ -1,15 +1,16 @@
 output "engine_zone_id" {
-  value = cloudflare_zone.engine.id
+  description = "The zone that holds the engine records: the engine zone, or dashboard_zone's with engine_zone_mode = \"subdomain\"."
+  value       = local.engine_zone_id
 }
 
 output "engine_name_servers" {
-  description = "Set these at the engine domain's registrar."
-  value       = cloudflare_zone.engine.name_servers
+  description = "Set these at the engine domain's registrar; null for a subdomain, which needs none."
+  value       = local.engine_own_zone ? cloudflare_zone.engine[0].name_servers : null
 }
 
 output "dnssec_ds" {
-  description = "DS record to set at the engine domain's registrar; DNSSEC is not in effect until it is."
-  value       = var.dnssec ? cloudflare_zone_dnssec.engine[0].ds : null
+  description = "DS record to set at the engine domain's registrar; DNSSEC is not in effect until it is. null without DNSSEC or for a subdomain."
+  value       = length(cloudflare_zone_dnssec.engine) > 0 ? cloudflare_zone_dnssec.engine[0].ds : null
 }
 
 output "dashboard_zone_id" {

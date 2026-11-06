@@ -1,5 +1,6 @@
-# Obtains and renews the relay's own certificate with ACME DNS-01 (ADR 0011). The DNS token can edit only the ACME
-# challenge zone, never the engine domain or the dashboard zone; _acme-challenge.<relay hostname> is a CNAME into it.
+# Obtains and renews the relay's own certificate with ACME DNS-01 (ADR 0011). In production the DNS token can edit only
+# the ACME challenge zone, never the engine domain or the dashboard zone; _acme-challenge.<relay hostname> is a CNAME
+# into it. Staging's token edits its one zone (infra/cloudflare README, Staging: one domain).
 [Unit]
 Description=Renew the Promptbook relay certificate
 Documentation=https://github.com/webgptorg/app/tree/main/infra/relay

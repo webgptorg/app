@@ -10,7 +10,7 @@ locals {
   )
 
   zone_ids = {
-    engine    = cloudflare_zone.engine.id
+    engine    = local.engine_zone_id
     dashboard = data.cloudflare_zone.dashboard.zone_id
   }
 
@@ -28,7 +28,8 @@ locals {
     } },
   )
 
-  # CAA records are not wildcard-expanded for the A/AAAA wildcard, so CAs climb to these apex records for every engine.
+  # CAA records are not wildcard-expanded for the A/AAAA wildcard, so CAs climb to these records on the engine domain
+  # for every engine.
   # Without wildcard certificates, any mis-issuance is per hostname and shows up in that engine's CT watch.
   # Per-engine accounturi pinning (RFC 8657) needs per-engine records and waits until those exist.
   engine_caa_records = {

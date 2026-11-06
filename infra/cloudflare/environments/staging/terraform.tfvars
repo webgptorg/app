@@ -1,17 +1,16 @@
-# Every <...> value is a placeholder until the team picks the staging domains and creates the staging Cloudflare
-# account (docs/plan/README.md, "Still needed"). The module's validations refuse them, so a plan fails before it
-# touches anything.
+# Every <...> value is a placeholder until the staging domain is bought (docs/staging-runbook.md, step 1). The
+# module's validations refuse them, so a plan fails before it touches anything.
 
+# The existing Cloudflare account staging shares with other projects (decided 2026-11-06): its Workers and D1 tokens
+# reach everything in it, so they stay on a maintainer's machine (README, Staging: one domain).
 account_id = "<staging-account-id>"
 
-# A registrable domain of its own, like production's, so cookie, PSL and CAA behaviour match.
-engine_domain = "<staging-engine-domain>"
-
-# Holds the staging dashboard (app.staging.<placeholder> in apps/dashboard/wrangler.jsonc), the relay hostnames and
-# the sending domain. Not ptbk.io: a zone lives in one account, and the staging token must not reach production.
+# One zone holds all of staging: the dashboard (app.<staging-zone> in apps/dashboard/wrangler.jsonc), the relay
+# hostnames, the sending domain, the relay's ACME challenge records, and the engines one level down. Not ptbk.io:
+# staging must never hold a credential for production's zones.
 dashboard_zone       = "<staging-zone>"
 relay_domain         = "<staging-zone>"
-email_sending_domain = "<staging-email-sending-domain>"
+email_sending_domain = "mail.<staging-zone>"
 dmarc_policy         = "none"
 
 security_contact = "<security-contact>"

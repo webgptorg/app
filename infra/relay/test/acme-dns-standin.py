@@ -2,10 +2,11 @@
 that lego's cloudflare provider calls, so the relay host's real certificate unit can issue against Pebble offline.
 
 The token sees only the challenge zone, as in production (ADR 0011). The relay's _acme-challenge name is a CNAME
-into that zone, so issuance succeeds only if lego follows the CNAME and writes the record where the token may.
-TXT records created through the API are served by the DNS side. Python standard library only.
+into that zone, so issuance succeeds only if lego follows the CNAME and writes the record where the token may. On
+staging the challenge zone is the relay's own zone: pass it twice and no alias. TXT records created through the API
+are served by the DNS side. Python standard library only.
 
-    acme-dns-standin.py <address> <token file> <tls cert> <tls key> <challenge zone> <relay zone> <alias>=<target>
+    acme-dns-standin.py <address> <token file> <tls cert> <tls key> <challenge zone> <relay zone> [<alias>=<target>...]
 """
 
 import itertools

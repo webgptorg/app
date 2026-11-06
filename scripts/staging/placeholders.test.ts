@@ -21,8 +21,6 @@ const committed = Object.fromEntries(
 const ALL: StagingValues = {
     CLOUDFLARE_ACCOUNT_ID: '0123456789abcdef0123456789abcdef',
     STAGING_ZONE: 'ptbk-staging.example',
-    ENGINE_DOMAIN: 'ptbk-engines.example',
-    CHALLENGE_ZONE: 'ptbk-acme.example',
     SECURITY_CONTACT: 'security@ops.example',
     OPS_EMAIL: 'ops@ops.example',
     ABUSE_EMAIL: 'abuse@ops.example',
@@ -58,13 +56,16 @@ describe('fillPlaceholders on the committed files', () => {
         assert.match(staging, /"pattern": "app\.ptbk-staging\.example", "custom_domain": true/);
         assert.match(staging, /"DASHBOARD_ORIGIN": "https:\/\/app\.ptbk-staging\.example"/);
         assert.match(staging, /"relayId": "relay-fsn\.ptbk-staging\.example"/);
-        assert.match(staging, /"ENGINE_DOMAIN": "ptbk-engines\.example"/);
+        assert.match(staging, /"ENGINE_DOMAIN": "engines\.ptbk-staging\.example"/);
         assert.match(staging, /"database_id": "01234567-89ab-cdef-0123-456789abcdef"/);
         assert.match(staging, /"EMAIL_FROM": "no-reply@mail\.ptbk-staging\.example"/);
         assert.match(staging, /"accountId": "0123456789abcdef0123456789abcdef"/);
         assert.ok(staging.includes(`"INSTALL_GUIDE_URL": "${DEFAULT_INSTALL_GUIDE_URL}"`));
         assert.match(result.files.relayTfvars, /registry_url\s+= "https:\/\/app\.ptbk-staging\.example"/);
         assert.match(result.files.cloudflareTfvars, /email_sending_domain = "mail\.ptbk-staging\.example"/);
+        assert.match(result.files.cloudflareTfvars, /dashboard_zone\s+= "ptbk-staging\.example"/);
+        assert.match(result.files.relayTfvars, /engine_domain = "engines\.ptbk-staging\.example"/);
+        assert.match(result.files.relayTfvars, /relay_domain\s+= "ptbk-staging\.example"/);
     });
 
     it('never touches production or the rest of wrangler.jsonc', () => {
@@ -73,12 +74,9 @@ describe('fillPlaceholders on the committed files', () => {
         assert.ok(result.files.wrangler.startsWith(head));
     });
 
-    it('adds the ACME challenge CNAME once', () => {
-        const cname =
-            /extra_records = \[\n {2}\{ zone = "dashboard", name = "_acme-challenge\.relay-fsn\.ptbk-staging\.example", type = "CNAME", content = "relay-fsn\.ptbk-acme\.example" \},\n\]/;
-        assert.match(result.files.cloudflareTfvars, cname);
-        const again = fillPlaceholders(result.files, ALL);
-        assert.equal(again.files.cloudflareTfvars.match(/extra_records/g)?.length, 1);
+    // lego writes the relay's challenge TXT record straight into the staging zone, so there is nothing to delegate.
+    it('adds no ACME challenge CNAME', () => {
+        assert.doesNotMatch(result.files.cloudflareTfvars, /extra_records|_acme-challenge/);
     });
 
     it('writes the admin and every allowed network into the relay tfvars', () => {
@@ -139,8 +137,13 @@ describe('parseStagingEnv', () => {
         ['ADMIN_CIDRS=203.0.113.7', 'a bare address'],
         ['RELAY_IPV6=2001:DB8::1', 'an upper-case IPv6 address'],
         ['INSTALL_GUIDE_URL=https://example.com/guide#top', 'a fragment'],
-        ['STAGING_ZONE=ptbk.example\nENGINE_DOMAIN=engines.ptbk.example', 'an engine domain inside the staging zone'],
-        ['STAGING_ZONE=ptbk.example\nCHALLENGE_ZONE=ptbk.example', 'one domain for two zones'],
+        ['ENGINE_DOMAIN=engines.ptbk.example', 'an engine domain of its own (it is engines.<STAGING_ZONE>)'],
+        ['CHALLENGE_ZONE=acme.example', 'a challenge zone (lego writes into the staging zone)'],
+        [
+            'STAGING_ZONE=ptbk.example\nEMAIL_SENDING_DOMAIN=mail.engines.ptbk.example',
+            'a sending domain among the engines',
+        ],
+        ['STAGING_ZONE=ptbk.example\nDASHBOARD_HOST=engines.ptbk.example', 'the dashboard on the engine domain'],
         ['STAGING_ZONE=ptbk.example\nDASHBOARD_HOST=app.other.example', 'a dashboard outside the staging zone'],
     ] as const) {
         it(`refuses ${why}`, () => {
