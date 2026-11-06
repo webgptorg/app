@@ -21,6 +21,7 @@
     "release:verify": "tsx scripts/release-verify.ts",
     "release:publish": "tsx scripts/publish.ts",
     "release:keygen": "tsx scripts/keygen.ts",
+    "release:revocations": "tsx scripts/revocations.ts",
     "release:refresh-trusted-root": "tsx scripts/refresh-trusted-root.ts"
   },
   "dependencies": {

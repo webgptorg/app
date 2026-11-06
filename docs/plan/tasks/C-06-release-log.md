@@ -64,6 +64,6 @@ Decided 2026-10-20 (Seb), so the engine team implements the same rules before E-
 ## Risks and open points
 
 - Revocation threshold is not in the spec. Default proposal: release key or any one maintainer (stopping a release is the safe direction), configurable in `TrustPolicy`. Rekor search by payload hash as a second revocation channel is open.
-- Open (ADR 0014 follow-ups): who signs the revocation list and how often it is re-signed, and (maximum validity and future skew decided 2026-10-20, see Context; the build trigger is pinned to `push`, so X-03's `workflow_dispatch` dry runs no longer verify); an optional torsion-free engine-key check at registration (C-03, D-03), beyond noble's small-order check.
+- Open (ADR 0014 follow-ups): who signs the production revocation list and how often it is re-signed (staging decided 2026-11-06: the staging release key, 30-day lists re-signed every 14 days, [development.md](../../development.md#revocation-list)), and (maximum validity and future skew decided 2026-10-20, see Context; the build trigger is pinned to `push`, so X-03's `workflow_dispatch` dry runs no longer verify); an optional torsion-free engine-key check at registration (C-03, D-03), beyond noble's small-order check.
 - M-05 (loader) and the engine must persist `firstSeenAt` and gain the `revocations-unverifiable` refusal; `SignedRelease` replaces `ReleaseEntry.provenance`.
 - Staged rollout (random install moment within 24 h after the delay) is the updater's job, not this function's.
