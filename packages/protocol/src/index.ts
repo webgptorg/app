@@ -83,6 +83,8 @@ export {
     ed25519SignatureToBytes,
 } from './ids';
 export { LINK_CODE_BYTES, LinkCode, generateLinkCode } from './link-code';
+export { LINK_PATH, formatLinkUrl, parseLinkArgument, parseLinkUrl } from './link-url';
+export type { LinkArgumentParse, LinkUrlParse, LinkUrlProblem } from './link-url';
 export { PROBLEM_DETAILS_MAX_BYTES, ProblemDetails, REGISTRATION_ERROR_CODE, TolerantProblemDetails } from './problem';
 export type { RegistrationErrorCode } from './problem';
 export { createCryptoRandom } from './random';
