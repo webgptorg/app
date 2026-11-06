@@ -16,19 +16,11 @@ export const DEFAULT_INSTALL_GUIDE_URL =
 const EMAIL = /^[a-z0-9._+-]+@([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,63}$/;
 const IPV4 = /^((25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])$/;
 const IPV6 = /^[0-9a-f:]+$/;
-const CIDR = /^([0-9.]+\/[0-9]{1,2}|[0-9a-f:]+\/[0-9]{1,3})$/;
 
 const VALUE_RULES = {
     SECURITY_CONTACT: { pattern: EMAIL, hint: 'an email address' },
     OPS_EMAIL: { pattern: EMAIL, hint: 'an email address' },
     ABUSE_EMAIL: { pattern: EMAIL, hint: 'an email address' },
-    ADMIN_NAME: { pattern: /^[a-z][a-z0-9-]{0,30}$/, hint: 'a lower-case user name' },
-    ADMIN_SSH_PUBLIC_KEY: {
-        pattern:
-            /^(ssh-ed25519|ecdsa-sha2-nistp256|sk-ssh-ed25519@openssh\.com|sk-ecdsa-sha2-nistp256@openssh\.com) [A-Za-z0-9+/]+={0,3}( [ -~]*)?$/,
-        hint: 'one ed25519 or ECDSA P-256 public key line',
-    },
-    ADMIN_CIDRS: { pattern: /^[0-9a-f.:/]+(,[0-9a-f.:/]+)*$/, hint: 'comma-separated CIDRs' },
     RELAY_IPV4: { pattern: IPV4, hint: 'an IPv4 address' },
     RELAY_IPV6: { pattern: IPV6, hint: 'a lower-case IPv6 address' },
     D1_DATABASE_ID: { pattern: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/, hint: 'a UUID' },
@@ -71,9 +63,6 @@ export function validateStagingValues(values: StagingValues): StagingValues {
             throw new StagingValuesError(`${key} must be ${rule.hint}`);
         }
     }
-    for (const cidr of values.ADMIN_CIDRS?.split(',') ?? []) {
-        if (!CIDR.test(cidr)) throw new StagingValuesError(`ADMIN_CIDRS: ${cidr} is not a CIDR`);
-    }
     return values;
 }
 
@@ -84,7 +73,7 @@ interface Replacement {
     readonly value: (values: Required<StagingValues>) => string;
 }
 
-/** The staging domains (ptbk.link) and the account ID are committed values, not placeholders. */
+/** The staging domains (ptbk.link), the account ID and the admin's SSH key are committed values, not placeholders. */
 const REPLACEMENTS: readonly Replacement[] = [
     { file: 'wrangler', placeholder: '<staging-d1-id>', needs: ['D1_DATABASE_ID'], value: (v) => v.D1_DATABASE_ID },
     { file: 'wrangler', placeholder: '<public-install-guide-url>', needs: [], value: (v) => v.INSTALL_GUIDE_URL },
@@ -114,21 +103,6 @@ const REPLACEMENTS: readonly Replacement[] = [
         value: (v) => v.RELAY_IPV6,
     },
     { file: 'relayTfvars', placeholder: '<ops-email>', needs: ['OPS_EMAIL'], value: (v) => v.OPS_EMAIL },
-    {
-        file: 'relayTfvars',
-        placeholder: '"<admin-name>" = ["<admin-ssh-public-key>"]',
-        needs: ['ADMIN_NAME', 'ADMIN_SSH_PUBLIC_KEY'],
-        value: (v) => `"${v.ADMIN_NAME}" = ["${v.ADMIN_SSH_PUBLIC_KEY}"]`,
-    },
-    {
-        file: 'relayTfvars',
-        placeholder: '"<admin-network-cidr>"',
-        needs: ['ADMIN_CIDRS'],
-        value: (v) =>
-            v.ADMIN_CIDRS.split(',')
-                .map((cidr) => `"${cidr}"`)
-                .join(', '),
-    },
 ];
 
 /** Placeholders deliberately left in staging, with what fills them. */

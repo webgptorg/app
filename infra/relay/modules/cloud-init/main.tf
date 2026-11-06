@@ -1,8 +1,8 @@
 locals {
   hostname = "${var.name}.${var.relay_domain}"
 
-  ssh_allow_v4 = [for cidr in var.ssh_allowlist : cidr if !strcontains(cidr, ":")]
-  ssh_allow_v6 = [for cidr in var.ssh_allowlist : cidr if strcontains(cidr, ":")]
+  ssh_allow_v4 = var.ssh_from_anywhere ? ["0.0.0.0/0"] : [for cidr in var.ssh_allowlist : cidr if !strcontains(cidr, ":")]
+  ssh_allow_v6 = var.ssh_from_anywhere ? ["::/0"] : [for cidr in var.ssh_allowlist : cidr if strcontains(cidr, ":")]
 
   reboot_hour = tonumber(split(":", var.reboot_time)[0])
   renew_time  = format("%02d:%s", (local.reboot_hour + 1) % 24, split(":", var.reboot_time)[1])

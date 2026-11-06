@@ -37,9 +37,11 @@ for tests in $(cd "$infra" && find . -type d -name tests -not -path '*/.terrafor
     tofu "${tests%/tests}" test
 done
 
-step "staging and production roots differ only in their names"
-diff <(sed 's/staging/ENV/g' "$infra/relay/environments/staging/main.tf") \
-    <(sed 's/production/ENV/g' "$infra/relay/environments/production/main.tf")
+# The state bucket's R2 endpoint names each environment's Cloudflare account, which a backend cannot take as a variable.
+step "staging and production roots differ only in their names and state accounts"
+r2_account='s|https://[^.]*\.r2\.cloudflarestorage\.com|https://ACCOUNT.r2.cloudflarestorage.com|'
+diff <(sed -e 's/staging/ENV/g' -e "$r2_account" "$infra/relay/environments/staging/main.tf") \
+    <(sed -e 's/production/ENV/g' -e "$r2_account" "$infra/relay/environments/production/main.tf")
 
 step "render the user data (test/render)"
 tofu relay/test/render apply -auto-approve -input=false -state=/work/render.tfstate >/dev/null

@@ -96,13 +96,20 @@ variable "admins" {
   }
 }
 
+variable "ssh_from_anywhere" {
+  type        = bool
+  description = "Opens SSH to every address instead of ssh_allowlist, for admins without a fixed network. Still keys only."
+  default     = false
+}
+
 variable "ssh_allowlist" {
   type        = list(string)
-  description = "Networks that may reach SSH, in canonical CIDR form."
+  description = "Networks that may reach SSH, in canonical CIDR form. Empty exactly when ssh_from_anywhere is set."
 
+  # Both ways, so an allowlist is never silently ignored and closed SSH never leaves admins locked out.
   validation {
-    condition     = length(var.ssh_allowlist) > 0
-    error_message = "ssh_allowlist must not be empty."
+    condition     = var.ssh_from_anywhere ? length(var.ssh_allowlist) == 0 : length(var.ssh_allowlist) > 0
+    error_message = "ssh_allowlist must be empty with ssh_from_anywhere and must not be empty without it."
   }
 
   validation {
@@ -114,7 +121,7 @@ variable "ssh_allowlist" {
 
   validation {
     condition     = alltrue([for cidr in var.ssh_allowlist : tonumber(split("/", cidr)[1]) >= (strcontains(cidr, ":") ? 32 : 8)])
-    error_message = "ssh_allowlist entries must be no wider than /8 (IPv4) or /32 (IPv6): SSH is never open to the world."
+    error_message = "ssh_allowlist entries must be no wider than /8 (IPv4) or /32 (IPv6); opening SSH to the world takes ssh_from_anywhere."
   }
 }
 

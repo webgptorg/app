@@ -1,7 +1,7 @@
 // Fills staging's placeholders from the local, git-ignored staging.env (docs/staging-runbook.md, Placeholders). Run it
 // again whenever staging.env gains a value; it only replaces what is still a placeholder. --check changes nothing and
-// exits 1 while a placeholder that staging.env could fill is left. staging.env holds no secret: IDs, domains,
-// addresses and an SSH public key, all of which end up committed.
+// exits 1 while a placeholder that staging.env could fill is left. staging.env holds no secret: IDs, domains and
+// addresses, all of which end up committed.
 //
 //   node scripts/staging/fill-placeholders.ts [--env-file staging.env] [--check]
 import { readFileSync, writeFileSync } from 'node:fs';

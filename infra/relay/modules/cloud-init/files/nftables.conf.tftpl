@@ -1,6 +1,7 @@
 #!/usr/sbin/nft -f
-# Relay host firewall (I-01). In: 443 from anywhere, 22 from the allowlist, ICMP. Out: what the relay, updates, DNS
-# and time sync need. Everything else is dropped. The provider firewall repeats the inbound rules in front of it.
+# Relay host firewall (I-01). In: 443 from anywhere, 22 from the allowlist (or from anywhere with ssh_from_anywhere),
+# ICMP. Out: what the relay, updates, DNS and time sync need. Everything else is dropped. The provider firewall repeats
+# the inbound rules in front of it.
 flush ruleset
 
 table inet ptbk {
