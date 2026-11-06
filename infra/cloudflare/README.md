@@ -16,7 +16,7 @@ Per environment, in that environment's Cloudflare account (production's own; sta
 | Email Service sending domain in the dashboard zone, plus its DMARC record                | Cloudflare publishes SPF, DKIM and return-path records for it; DMARC is ours          |
 | Records added to the dashboard zone (`ptbk.io` in production), which is not owned here   | Its other records (website, MX) stay outside this stack                               |
 
-The dashboard Worker, its routes and its custom domain (`app.ptbk.io`, staging `app.<staging-zone>`) are deployed by wrangler from `apps/dashboard/wrangler.jsonc` (I-03), not from here.
+The dashboard Worker, its routes and its custom domain (`app.ptbk.io`, staging `app.ptbk.link`) are deployed by wrangler from `apps/dashboard/wrangler.jsonc` (I-03), not from here.
 
 ## Layout
 
@@ -52,18 +52,17 @@ Universal SSL is off on the engine zone: with it on, Cloudflare would hold a cer
 
 Nothing can be applied yet. These wait on the decisions in the plan's "Still needed" table:
 
-| Placeholder                                       | File                                                | Decided by                                                                         |
-| ------------------------------------------------- | --------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| `<staging-account-id>`, `<production-account-id>` | `terraform.tfvars`, backend endpoint in `main.tf`   | The existing account staging shares; production's own account (team)               |
-| `<engine-domain>`                                 | `terraform.tfvars`, `apps/dashboard/wrangler.jsonc` | Engine domain name (team); staging's is `engines.<staging-zone>`                   |
-| `<staging-zone>`                                  | staging `terraform.tfvars`, `wrangler.jsonc`        | The one staging domain: `app.`, `mail.`, `relay-fsn.` and `engines.` are under it  |
-| `<relay-domain>`                                  | production `terraform.tfvars`                       | Relay hostnames under the engine domain or under `ptbk.io`                         |
-| `<email-sending-domain>`                          | production `terraform.tfvars`                       | Sending subdomain (D-02 sets the from address); staging's is `mail.<staging-zone>` |
-| `<security-contact>`                              | `terraform.tfvars`                                  | Security mailbox (with I-05's abuse address)                                       |
-| `<ops-email>`                                     | production `terraform.tfvars`                       | Ops mailbox (I-04's alerts); Cloudflare's relay health notifications go there      |
-| `psl_pull_request` (unset)                        | production `terraform.tfvars`                       | The PSL pull request, opened once the engine domain is applied (I-05's runbook)    |
-| Relay addresses                                   | `terraform.tfvars`                                  | I-01 outputs                                                                       |
-| `<staging-d1-id>`, `<production-d1-id>`           | `apps/dashboard/wrangler.jsonc`                     | `d1_database_id` output after the first apply                                      |
+| Placeholder                                       | File                                                           | Decided by                                                                      |
+| ------------------------------------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `<staging-account-id>`, `<production-account-id>` | `terraform.tfvars`, backend endpoint in `main.tf`              | The existing account staging shares; production's own account (team)            |
+| `<engine-domain>`                                 | production `terraform.tfvars`, `apps/dashboard/wrangler.jsonc` | Engine domain name (team); staging's is `engines.ptbk.link`                     |
+| `<relay-domain>`                                  | production `terraform.tfvars`                                  | Relay hostnames under the engine domain or under `ptbk.io`                      |
+| `<email-sending-domain>`                          | production `terraform.tfvars`                                  | Sending subdomain (D-02 sets the from address); staging's is `mail.ptbk.link`   |
+| `<security-contact>`                              | `terraform.tfvars`                                             | Security mailbox (with I-05's abuse address)                                    |
+| `<ops-email>`                                     | production `terraform.tfvars`                                  | Ops mailbox (I-04's alerts); Cloudflare's relay health notifications go there   |
+| `psl_pull_request` (unset)                        | production `terraform.tfvars`                                  | The PSL pull request, opened once the engine domain is applied (I-05's runbook) |
+| Relay addresses                                   | `terraform.tfvars`                                             | I-01 outputs                                                                    |
+| `<staging-d1-id>`, `<production-d1-id>`           | `apps/dashboard/wrangler.jsonc`                                | `d1_database_id` output after the first apply                                   |
 
 For staging, `scripts/staging/fill-placeholders.ts` fills all of these, and the relay stack's, from one local `staging.env` ([staging runbook](../../docs/staging-runbook.md#5-placeholders)).
 
@@ -71,7 +70,7 @@ For staging, `scripts/staging/fill-placeholders.ts` fills all of these, and the 
 
 ## Bootstrap (once per environment)
 
-1. Production: create its own Cloudflare account and harden it (below), with `ptbk.io` in it. Staging: use the existing account it shares and check that you have access, with its one zone (`<staging-zone>`) added; never `ptbk.io`, because a zone lives in one account and staging's tokens must never reach production ([Staging: one domain](#staging-one-domain)). An environment with `relay_dns_mode = "load_balancer"` (production) needs the Load Balancing add-on before its first apply (Relay DNS below has the price note); staging starts with `"records"` and needs none.
+1. Production: create its own Cloudflare account and harden it (below), with `ptbk.io` in it. Staging: use the existing account it shares and check that you have access; its zone `ptbk.link` is already there. Never `ptbk.io`, because a zone lives in one account and staging's tokens must never reach production ([Staging: one domain](#staging-one-domain)). An environment with `relay_dns_mode = "load_balancer"` (production) needs the Load Balancing add-on before its first apply (Relay DNS below has the price note); staging starts with `"records"` and needs none.
 2. Create the R2 bucket `ptbk-tofu-state-<env>` in that account and an R2 API token with Object Read & Write on that bucket only.
 3. Generate the state passphrase (at least 32 random characters) and store it in the team password manager. Losing it means rebuilding state by import.
 4. Create the IaC and deploy tokens (below).
@@ -140,7 +139,7 @@ These apply in full to production's account. Staging's shared account is run by 
 
 ## Staging: one domain
 
-Decided by Seb on 2026-11-06, for staging only: one domain in an existing, shared Cloudflare account instead of a fresh account and three registrable domains. Production is unchanged. With `<d>` the staging zone:
+Decided by Seb on 2026-11-06, for staging only: one domain, `ptbk.link`, in an existing, shared Cloudflare account instead of a fresh account and three registrable domains. Production is unchanged. With `<d>` = `ptbk.link`:
 
 | Name                            | What                                                                                                  |
 | ------------------------------- | ----------------------------------------------------------------------------------------------------- |

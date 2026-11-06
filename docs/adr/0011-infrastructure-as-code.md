@@ -39,7 +39,7 @@ The team chose OpenTofu and cloud-init on 2026-10-19 (plan, Decisions). This ADR
 
 ### Staging on one domain (amended 2026-11-06)
 
-Seb decided on 2026-11-06 that staging runs on one domain in an existing Cloudflare account it shares, instead of an account of its own and three registrable domains (staging zone, engine domain, challenge zone). Production is unchanged: its own account, its own engine domain zone with DNSSEC and the PSL entry, and a separate challenge zone.
+Seb decided on 2026-11-06 that staging runs on one domain, `ptbk.link`, in an existing Cloudflare account it shares, instead of an account of its own and three registrable domains (staging zone, engine domain, challenge zone). Production is unchanged: its own account, its own engine domain zone with DNSSEC and the PSL entry, and a separate challenge zone.
 
 - The environment module has `engine_zone_mode`. `"own_zone"` (the default) is everything above. `"subdomain"` puts the engine domain (`engines.<staging zone>`) into the dashboard zone as records, with no zone of its own and no zone-wide setting; the DNS-only, no-apex and wildcard rules still apply by name. The module refuses it in production.
 - The relay writes its ACME challenge TXT record straight into the staging zone, with no CNAME, so its token edits that whole zone, engine names included. On staging, a compromised relay could therefore obtain certificates for engine hostnames: accepted because staging runs only mock engines with fake data.

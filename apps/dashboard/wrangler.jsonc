@@ -117,7 +117,7 @@
     ],
     "env": {
         "staging": {
-            "routes": [{ "pattern": "app.<staging-zone>", "custom_domain": true }],
+            "routes": [{ "pattern": "app.ptbk.link", "custom_domain": true }],
             "triggers": { "crons": ["* * * * *", "*/15 * * * *"] },
             "analytics_engine_datasets": [{ "binding": "OPS_METRICS", "dataset": "ptbk_ops_staging" }],
             "d1_databases": [
@@ -130,9 +130,9 @@
             ],
             "vars": {
                 "ENVIRONMENT": "staging",
-                "DASHBOARD_ORIGIN": "https://app.<staging-zone>",
-                "ENGINE_DOMAIN": "engines.<staging-zone>",
-                "RELAYS": [{ "relayId": "relay-fsn.<staging-zone>", "region": "eu-central" }],
+                "DASHBOARD_ORIGIN": "https://app.ptbk.link",
+                "ENGINE_DOMAIN": "engines.ptbk.link",
+                "RELAYS": [{ "relayId": "relay-fsn.ptbk.link", "region": "eu-central" }],
                 // Placeholders until the engine team publishes the installer, its hash and the image (apply.md).
                 "INSTALL_COMMANDS": [
                     {
@@ -156,7 +156,7 @@
                 ],
                 "INSTALL_GUIDE_URL": "<public-install-guide-url>",
                 "ADAPTERS": { "email": "cloudflare", "billing": "off", "rateLimit": "workers" },
-                "EMAIL_FROM": "no-reply@mail.<staging-zone>",
+                "EMAIL_FROM": "no-reply@mail.ptbk.link",
                 "ABUSE_EMAIL": "abuse@<staging-abuse-domain>",
                 // I-04: alerts go to the ops mailbox; relay metrics tokens are the RELAY_METRICS_TOKENS secret and
                 // the analytics read token ANALYTICS_API_TOKEN (docs/runbooks/observability.md).
