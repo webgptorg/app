@@ -54,7 +54,6 @@ variable "state_passphrase" {
 # The module validates these and refuses the <...> placeholders in terraform.tfvars, so a plan fails before it
 # touches anything while any is left.
 variable "account_id" {}
-variable "engine_domain" {}
 variable "dashboard_zone" {}
 variable "relay_domain" {}
 variable "email_sending_domain" {}
@@ -65,19 +64,19 @@ variable "ops_email" {
   default = null
 }
 variable "relay_dns_mode" {}
-variable "psl_pull_request" {
-  default = null
-}
 
 # Token from CLOUDFLARE_API_TOKEN: the staging IaC token (README, API tokens).
 provider "cloudflare" {}
 
+# Staging runs on one domain (decided 2026-11-06): the engines are a subdomain of the staging zone rather than a
+# registrable domain of their own, so there is no engine zone, DNSSEC or PSL entry (README, Staging: one domain).
 module "environment" {
   source = "../../modules/environment"
 
   environment          = "staging"
   account_id           = var.account_id
-  engine_domain        = var.engine_domain
+  engine_domain        = "engines.${var.dashboard_zone}"
+  engine_zone_mode     = "subdomain"
   dashboard_zone       = var.dashboard_zone
   relay_domain         = var.relay_domain
   email_sending_domain = var.email_sending_domain
@@ -86,15 +85,10 @@ module "environment" {
   relays               = var.relays
   ops_email            = var.ops_email
   relay_dns_mode       = var.relay_dns_mode
-  psl_pull_request     = var.psl_pull_request
 }
 
-output "engine_name_servers" {
-  value = module.environment.engine_name_servers
-}
-
-output "dnssec_ds" {
-  value = module.environment.dnssec_ds
+output "staging_zone_id" {
+  value = module.environment.dashboard_zone_id
 }
 
 output "d1_database_id" {

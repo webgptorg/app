@@ -14,7 +14,7 @@ variable "environment" {
 
 variable "account_id" {
   type        = string
-  description = "The Cloudflare account of this environment. Each environment has its own, so its tokens cannot reach the other."
+  description = "The Cloudflare account of this environment. Production has its own, so no other environment's tokens reach it; staging shares an existing account (README, Staging: one domain)."
 
   validation {
     condition     = can(regex("^[0-9a-f]{32}$", var.account_id))
@@ -24,11 +24,40 @@ variable "account_id" {
 
 variable "engine_domain" {
   type        = string
-  description = "Registrable domain used for engine hostnames and nothing else. This stack creates and owns its zone."
+  description = "Domain used for engine hostnames and nothing else: a registrable domain whose zone this stack creates and owns, or on staging a subdomain of dashboard_zone (engine_zone_mode)."
 
   validation {
     condition     = can(regex(local.domain_pattern, var.engine_domain))
     error_message = "engine_domain must be a lower-case domain name; replace the <...> placeholder once the domain is chosen."
+  }
+}
+
+variable "engine_zone_mode" {
+  type        = string
+  description = "\"own_zone\": the engine domain is a zone of its own, with DNSSEC, Universal SSL off and the PSL record. \"subdomain\" (staging only): its records go into dashboard_zone, without any of those. README, Staging: one domain."
+  default     = "own_zone"
+
+  validation {
+    condition     = contains(["own_zone", "subdomain"], var.engine_zone_mode)
+    error_message = "engine_zone_mode must be own_zone or subdomain."
+  }
+
+  # Engines would share their registrable domain, DNSSEC and zone settings with the dashboard (spec, Abuse on our
+  # domains, item 1). A relaxation for staging, decided 2026-11-06; production keeps its own zone.
+  validation {
+    condition     = var.engine_zone_mode == "own_zone" || var.environment != "production"
+    error_message = "engine_zone_mode = \"subdomain\" is for staging only; production's engine domain is a zone of its own."
+  }
+
+  validation {
+    condition     = var.engine_zone_mode == "own_zone" || endswith(var.engine_domain, ".${var.dashboard_zone}")
+    error_message = "engine_zone_mode = \"subdomain\" needs engine_domain to be a subdomain of dashboard_zone, such as engines.<dashboard_zone>."
+  }
+
+  # The PSL lists registrable boundaries; a subdomain of a zone that also holds the dashboard cannot be one.
+  validation {
+    condition     = var.engine_zone_mode == "own_zone" || var.psl_pull_request == null
+    error_message = "engine_zone_mode = \"subdomain\" takes no psl_pull_request."
   }
 }
 
@@ -150,7 +179,7 @@ variable "relay_health_check" {
 
 variable "dnssec" {
   type        = bool
-  description = "Sign the engine zone. Takes effect only once the DS record from the dnssec_ds output is set at the registrar."
+  description = "Sign the engine zone. Takes effect only once the DS record from the dnssec_ds output is set at the registrar. Ignored with engine_zone_mode = \"subdomain\", where there is no engine zone to sign."
   default     = true
 }
 

@@ -62,7 +62,12 @@ run "records_dns_only_in_their_zones" {
   }
 
   assert {
-    condition     = cloudflare_universal_ssl_setting.engine.enabled == false
+    condition     = length(cloudflare_zone.engine) == 1 && cloudflare_zone.engine[0].name == "engines.example"
+    error_message = "By default the engine domain is a zone of its own, created here."
+  }
+
+  assert {
+    condition     = cloudflare_universal_ssl_setting.engine[0].enabled == false
     error_message = "Universal SSL stays off on the engine zone."
   }
 
@@ -509,4 +514,178 @@ run "records_mode_rejects_another_record_on_the_engine_wildcard" {
   }
 
   expect_failures = [cloudflare_dns_record.this]
+}
+
+# engine_zone_mode: "own_zone" is the default and production's; this pins every DNS record it plans, so the mode switch
+# leaves own-zone environments as they were.
+run "own_zone_plans_the_same_records" {
+  command = plan
+
+  variables {
+    relay_dns_mode = "records"
+  }
+
+  assert {
+    condition = toset([
+      for key, record in cloudflare_dns_record.this : "${key} ${record.zone_id} ${record.name} ${record.type} ${record.type == "CAA" ? "${record.data.tag}=${record.data.value}" : record.content} ${record.ttl}"
+      ]) == toset([
+      "engine-wildcard-a-relay-fsn 11111111111111111111111111111111 *.engines.example A 198.51.100.10 30",
+      "engine-wildcard-a-relay-hel 11111111111111111111111111111111 *.engines.example A 198.51.100.20 30",
+      "engine-wildcard-aaaa-relay-fsn 11111111111111111111111111111111 *.engines.example AAAA 2001:db8::10 30",
+      "engine-wildcard-aaaa-relay-hel 11111111111111111111111111111111 *.engines.example AAAA 2001:db8::20 30",
+      "relay-a-relay-fsn 22222222222222222222222222222222 relay-fsn.dashboard.example A 198.51.100.10 60",
+      "relay-a-relay-hel 22222222222222222222222222222222 relay-hel.dashboard.example A 198.51.100.20 60",
+      "relay-aaaa-relay-fsn 22222222222222222222222222222222 relay-fsn.dashboard.example AAAA 2001:db8::10 60",
+      "relay-aaaa-relay-hel 22222222222222222222222222222222 relay-hel.dashboard.example AAAA 2001:db8::20 60",
+      "engine-caa-issue 11111111111111111111111111111111 engines.example CAA issue=letsencrypt.org 3600",
+      "engine-caa-issuewild 11111111111111111111111111111111 engines.example CAA issuewild=; 3600",
+      "engine-caa-iodef 11111111111111111111111111111111 engines.example CAA iodef=mailto:security@dashboard.example 3600",
+      "engine-null-mx 11111111111111111111111111111111 engines.example MX . 3600",
+      "engine-spf 11111111111111111111111111111111 engines.example TXT \"v=spf1 -all\" 3600",
+      "engine-dmarc 11111111111111111111111111111111 _dmarc.engines.example TXT \"v=DMARC1; p=reject; sp=reject; adkim=s; aspf=s\" 3600",
+      "email-dmarc 22222222222222222222222222222222 _dmarc.mail.dashboard.example TXT \"v=DMARC1; p=none; sp=none; adkim=s; aspf=s\" 3600",
+    ])
+    error_message = "Own-zone mode plans exactly the records it did before engine_zone_mode existed."
+  }
+}
+
+run "subdomain_mode_puts_engine_records_into_the_dashboard_zone" {
+  command = plan
+
+  variables {
+    engine_zone_mode = "subdomain"
+    engine_domain    = "engines.dashboard.example"
+    relay_dns_mode   = "records"
+  }
+
+  assert {
+    condition = (
+      length(cloudflare_zone.engine) == 0 && length(cloudflare_universal_ssl_setting.engine) == 0
+      && length(cloudflare_zone_dnssec.engine) == 0
+    )
+    error_message = "A subdomain gets no zone, and nothing changes the shared zone's Universal SSL or DNSSEC."
+  }
+
+  assert {
+    condition     = alltrue([for record in cloudflare_dns_record.this : record.zone_id == "22222222222222222222222222222222"])
+    error_message = "Every record, the engine ones included, goes into the dashboard zone."
+  }
+
+  assert {
+    condition = toset([
+      for record in cloudflare_dns_record.this : "${record.type} ${record.content} ${record.ttl} ${record.proxied}" if record.name == "*.engines.dashboard.example"
+      ]) == toset([
+      "A 198.51.100.10 30 false", "A 198.51.100.20 30 false", "AAAA 2001:db8::10 30 false", "AAAA 2001:db8::20 30 false",
+    ])
+    error_message = "The engine wildcard is DNS-only, one A and AAAA record per relay in rotation, as in own-zone mode."
+  }
+
+  assert {
+    condition = toset([
+      for key, record in cloudflare_dns_record.this : "${record.name} ${record.type}" if startswith(key, "engine-") && !startswith(key, "engine-wildcard-")
+      ]) == toset([
+      "engines.dashboard.example CAA", "engines.dashboard.example MX", "engines.dashboard.example TXT", "_dmarc.engines.dashboard.example TXT",
+    ])
+    error_message = "CAA and the no-mail records are set on the engine subdomain itself, where CAs and mail receivers look for them."
+  }
+
+  assert {
+    condition = toset([
+      for record in cloudflare_dns_record.this : "${record.data.flags} ${record.data.tag} \"${record.data.value}\"" if record.type == "CAA"
+    ]) == toset(["0 issue \"letsencrypt.org\"", "0 issuewild \";\"", "0 iodef \"mailto:security@dashboard.example\""])
+    error_message = "The engine subdomain keeps the CAA records of an engine zone."
+  }
+
+  assert {
+    condition = (
+      output.engine_zone_id == "22222222222222222222222222222222" && output.engine_name_servers == null && output.dnssec_ds == null
+    )
+    error_message = "The engine zone ID is the dashboard zone's, and there are no name servers or DS record to set."
+  }
+}
+
+run "subdomain_mode_still_refuses_a_proxied_engine_record" {
+  command = plan
+
+  variables {
+    engine_zone_mode = "subdomain"
+    engine_domain    = "engines.dashboard.example"
+    extra_records    = [{ zone = "dashboard", name = "abc.engines.dashboard.example", type = "A", content = "198.51.100.30", proxied = true }]
+  }
+
+  expect_failures = [cloudflare_dns_record.this]
+}
+
+run "subdomain_mode_still_refuses_a_record_on_the_bare_engine_domain" {
+  command = plan
+
+  variables {
+    engine_zone_mode = "subdomain"
+    engine_domain    = "engines.dashboard.example"
+    extra_records    = [{ zone = "dashboard", name = "engines.dashboard.example", type = "A", content = "198.51.100.30" }]
+  }
+
+  expect_failures = [cloudflare_dns_record.this]
+}
+
+run "subdomain_mode_with_the_load_balancer_uses_the_dashboard_zone" {
+  command = plan
+
+  variables {
+    engine_zone_mode = "subdomain"
+    engine_domain    = "engines.dashboard.example"
+  }
+
+  assert {
+    condition = (
+      cloudflare_load_balancer.engine_wildcard[0].zone_id == "22222222222222222222222222222222"
+      && cloudflare_load_balancer.engine_wildcard[0].name == "*.engines.dashboard.example"
+      && cloudflare_load_balancer.engine_wildcard[0].proxied == false
+    )
+    error_message = "The engine wildcard's load balancer lives in the dashboard zone and stays DNS-only."
+  }
+}
+
+run "rejects_subdomain_mode_in_production" {
+  command = plan
+
+  variables {
+    environment      = "production"
+    engine_zone_mode = "subdomain"
+    engine_domain    = "engines.dashboard.example"
+  }
+
+  expect_failures = [var.engine_zone_mode]
+}
+
+run "rejects_subdomain_mode_outside_the_dashboard_zone" {
+  command = plan
+
+  variables {
+    engine_zone_mode = "subdomain"
+  }
+
+  expect_failures = [var.engine_zone_mode]
+}
+
+run "rejects_a_psl_record_in_subdomain_mode" {
+  command = plan
+
+  variables {
+    engine_zone_mode = "subdomain"
+    engine_domain    = "engines.dashboard.example"
+    psl_pull_request = "https://github.com/publicsuffix/list/pull/2345"
+  }
+
+  expect_failures = [var.engine_zone_mode]
+}
+
+run "rejects_an_unknown_engine_zone_mode" {
+  command = plan
+
+  variables {
+    engine_zone_mode = "delegated"
+  }
+
+  expect_failures = [var.engine_zone_mode]
 }

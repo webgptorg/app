@@ -1,7 +1,8 @@
 #!/bin/bash
 # Runs as ptbk-relay-cert.service (a dynamic user): issues the relay certificate once, then renews it when lego's
 # default says so (a third of its lifetime left, or the CA's renewal info), which follows shorter CA lifetimes. lego
-# follows the _acme-challenge CNAME into the challenge zone.
+# follows the _acme-challenge CNAME into the challenge zone (production), or without one writes the record into the
+# relay's own zone (staging, one domain).
 set -euo pipefail
 
 : "${STATE_DIRECTORY:?}" "${PTBK_RELAY_HOSTNAME:?}" "${PTBK_ACME_EMAIL:?}" "${PTBK_ACME_SERVER:?}"

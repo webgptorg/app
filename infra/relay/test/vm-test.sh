@@ -9,6 +9,7 @@
 # curl, openssl and python3, and /dev/kvm: without it (a laptop's Linux VM on Apple silicon) QEMU emulates the CPU,
 # which takes about ten times longer but boots the same image. Run from the repo root after
 # `bun run --filter @ptbk/relay build`. Every secret is generated here for this run and thrown away with the VM.
+# VM_TEST_ACME=direct issues the certificate the staging way, without the challenge CNAME.
 set -euo pipefail
 
 IMAGE_VERSION=20261017-2634
@@ -28,7 +29,15 @@ OUTSIDER_IP=10.231.0.20
 STANDIN_IP=10.231.0.2
 PEBBLE_IP=10.231.0.3
 RELAY_HOSTNAME=relay-ci.relays.ptbk.test
-CHALLENGE_ZONE=acme.ptbk.test
+# Production delegates _acme-challenge with a CNAME into a zone of its own; staging has one zone, so lego writes the
+# TXT record straight into the relay's zone (VM_TEST_ACME=direct).
+if [[ ${VM_TEST_ACME:-delegated} == direct ]]; then
+    CHALLENGE_ZONE=${RELAY_HOSTNAME#*.}
+    challenge_aliases=()
+else
+    CHALLENGE_ZONE=acme.ptbk.test
+    challenge_aliases=("_acme-challenge.$RELAY_HOSTNAME=${RELAY_HOSTNAME%%.*}.$CHALLENGE_ZONE")
+fi
 
 repo=$(pwd)
 work=${VM_TEST_WORK:-$(mktemp -d)}
@@ -118,7 +127,7 @@ done
 printf 'ptbk-vm-test-%s\n' "$(openssl rand -hex 16)" >"$work/acme-dns-token"
 python3 -I infra/relay/test/acme-dns-standin.py "$STANDIN_IP" "$work/acme-dns-token" "$work/$STANDIN_IP.pem" \
     "$work/$STANDIN_IP.key" "$CHALLENGE_ZONE" "${RELAY_HOSTNAME#*.}" \
-    "_acme-challenge.$RELAY_HOSTNAME=${RELAY_HOSTNAME%%.*}.$CHALLENGE_ZONE" >"$work/standin.log" 2>&1 &
+    "${challenge_aliases[@]}" >"$work/standin.log" 2>&1 &
 echo $! >"$work/standin.pid"
 cat >"$work/pebble.json" <<EOF
 {

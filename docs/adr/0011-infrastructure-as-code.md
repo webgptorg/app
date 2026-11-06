@@ -1,7 +1,7 @@
 # 0011. Infrastructure as code: OpenTofu and cloud-init
 
 - **Status:** Accepted
-- **Date:** 2026-10-19 (relay hosts added 2026-10-22; lego source changed 2026-10-23)
+- **Date:** 2026-10-19 (relay hosts added 2026-10-22; lego source changed 2026-10-23; staging on one domain 2026-11-06)
 
 ## Context
 
@@ -16,7 +16,7 @@ The team chose OpenTofu and cloud-init on 2026-10-19 (plan, Decisions). This ADR
 
 - **OpenTofu** (`~> 1.10`) with the Cloudflare provider, and the Hetzner provider for relay hosts. **cloud-init** configures hosts at first boot; hosts are rebuilt, not patched by hand.
 - **Layout.** One directory per area under `infra/` (`infra/cloudflare`, `infra/relay`). Each has `modules/` with the real configuration and `environments/<env>/` roots that only set the backend, encryption, provider and values. Staging and production use the same module, so they differ only in values, sizes and counts.
-- **One state per environment and area**, in an R2 bucket in that environment's own Cloudflare account (S3 backend, `use_lockfile` for locking). The bucket is created by hand once; each is reached with an R2 token scoped to that bucket.
+- **One state per environment and area**, in an R2 bucket in that environment's Cloudflare account (S3 backend, `use_lockfile` for locking). The bucket is created by hand once; each is reached with an R2 token scoped to that bucket.
 - **State and plans are encrypted client-side** with OpenTofu's state encryption (AES-GCM, key from a PBKDF2 passphrase), `enforced = true`. The passphrase per environment lives in the team password manager and is passed as `TF_VAR_state_passphrase`. Nobody who can read the bucket can read the state without it.
 - **Credentials only from the environment** (`CLOUDFLARE_API_TOKEN`, `AWS_*` for R2, `HCLOUD_TOKEN`), never in files. API tokens are created by hand with the scopes documented in each area's README, not by OpenTofu: managing tokens from code would need a token that can mint any token, and would put token values into state.
 - **Humans apply.** `tofu plan` and `tofu apply` run on a maintainer's machine; CI holds no IaC credential. Deploys of application code (I-03) use separate, narrower tokens.
@@ -37,6 +37,16 @@ The team chose OpenTofu and cloud-init on 2026-10-19 (plan, Decisions). This ADR
 - **Connection tracking stays on**, sized for 262,144 entries, rather than `notrack` on 443: the per-source connection limits in nftables count tracked connections.
 - **The user data is rendered by a module without a provider**, so CI renders it and checks it with cloud-init, nft, systemd-analyze, sshd and ShellCheck, then boots it in a VM, all without an account or token.
 
+### Staging on one domain (amended 2026-11-06)
+
+Seb decided on 2026-11-06 that staging runs on one domain, `ptbk.link`, in an existing Cloudflare account it shares, instead of an account of its own and three registrable domains (staging zone, engine domain, challenge zone). Production is unchanged: its own account, its own engine domain zone with DNSSEC and the PSL entry, and a separate challenge zone.
+
+- The environment module has `engine_zone_mode`. `"own_zone"` (the default) is everything above. `"subdomain"` puts the engine domain (`engines.<staging zone>`) into the dashboard zone as records, with no zone of its own and no zone-wide setting; the DNS-only, no-apex and wildcard rules still apply by name. The module refuses it in production.
+- The relay writes its ACME challenge TXT record straight into the staging zone, with no CNAME, so its token edits that whole zone, engine names included. On staging, a compromised relay could therefore obtain certificates for engine hostnames: accepted because staging runs only mock engines with fake data.
+- Staging's Workers and D1 tokens reach everything in the shared account, so "staging tokens cannot see production" still holds (production has its own account), but "the deploy token reaches only the dashboard" does not on staging.
+
+The full list of trade-offs is in the [staging runbook](../staging-runbook.md#staging-relaxations-not-for-production). Moving staging back to the production layout needs an account, domains and values, and two lines in the staging root, not module code.
+
 ## Consequences
 
 - Every DNS change, including on the engine domain, is a reviewed diff, and drift shows up as a non-empty `tofu plan`.
@@ -45,4 +55,4 @@ The team chose OpenTofu and cloud-init on 2026-10-19 (plan, Decisions). This ADR
 - A credential leak is limited by design: the deploy token cannot edit DNS, staging tokens cannot see production, and a relay holds no credential for the engine or dashboard zones, only a token for the ACME challenge zone.
 - Humans running `apply` is slower than a pipeline and depends on discipline: apply only from a merged `main`, and run `tofu plan` first. A CI plan job (no apply) can come later with a read-only token.
 - CI runs `tofu fmt -check`, `tofu validate` and `tofu test` for every module under `infra/` (`infra/relay/scripts/check.sh`, runnable locally with Docker), and boots the relay host's user data in a VM.
-- Relay hosts need a human to place their secrets after every rebuild, and an ACME challenge zone per environment.
+- Relay hosts need a human to place their secrets after every rebuild, and an ACME challenge zone in production (staging writes into its one zone).
