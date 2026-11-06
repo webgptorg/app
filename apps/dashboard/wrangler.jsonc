@@ -136,11 +136,13 @@
                 // Reborn's `ptbk` CLI, which links to production unless told otherwise. The engine that runs must see the
                 // same variables (it refuses a link made through another dashboard), so they are exported in the shell
                 // that starts it; one logical line, so an interactive `ptbk init` cannot swallow the rest of a paste.
+                // `--path .`: in an empty folder init otherwise offers the shared projects folder first, where `connect`,
+                // run here, would find no project.
                 "INSTALL_COMMANDS": [
                     {
                         "id": "installer",
                         "labelKey": "new-project",
-                        "template": "export PTBK_DASHBOARD_URL=https://app.ptbk.link PTBK_ENGINE_DOMAIN=engines.ptbk.link \\\n  && npm install --global ptbk \\\n  && mkdir -p my-agenda && cd my-agenda \\\n  && ptbk init --no-dashboard \\\n  && ptbk connect --link {linkCode}",
+                        "template": "export PTBK_DASHBOARD_URL=https://app.ptbk.link PTBK_ENGINE_DOMAIN=engines.ptbk.link \\\n  && npm install --global ptbk \\\n  && mkdir -p my-agenda && cd my-agenda \\\n  && ptbk init --path . --no-dashboard \\\n  && ptbk connect --link {linkCode}",
                         "docsAnchor": "networking",
                     },
                     {

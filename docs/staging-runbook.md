@@ -37,7 +37,7 @@ Staging runs on one domain, `ptbk.link`, in a shared account (decided by Seb on 
 - **No DNSSEC, PSL entry or engine-zone CAA hardening**: Universal SSL stays on in the shared zone (Cloudflare may add CAA records for its own CAs), and the engines' DMARC record does not cover engine hostnames, whose organizational domain is the staging zone.
 - **The shared account means Workers and D1 tokens**, which Cloudflare cannot scope to one script or database, **reach every Worker and D1 database in that account** (and the analytics token all of its analytics, the IaC token's Workers R2 Storage Edit every bucket): keep the staging deploy token only on Seb's machine and later in the `staging` GitHub environment; production gets its own account.
 
-Staging links only mock engines and throwaway `ptbk` projects with test data. Anything that would put real engine content on staging needs these revisited first.
+Staging links only mock engines and throwaway `ptbk` projects that hold test data only: never a real project, real content or real credentials. Anything that would put real engine content on staging needs these revisited first.
 
 ## 0. Before you start
 
@@ -351,13 +351,13 @@ Put the next re-sign date in the calendar: once a list expires, engines install 
 
 ## 12. Link an engine
 
-The real engine is the engine team's `ptbk` CLI (npm `ptbk`, 0.119.0-72 or later; Node 22.13+ or 24+, npm 10+, Git and Chrome). Engines, New engine shows these commands with the code filled in, as its first tab:
+The real engine is the engine team's `ptbk` CLI (npm `ptbk`, 0.119.0-72 or later; Node 22.13+ or 24+, npm 10+, Git and Chrome). Link only a throwaway project with test data ([Staging relaxations](#staging-relaxations-not-for-production)). Engines, New engine shows these commands with the code filled in, as its first tab:
 
 ```sh
 export PTBK_DASHBOARD_URL=https://app.ptbk.link PTBK_ENGINE_DOMAIN=engines.ptbk.link
 npm install --global ptbk
 mkdir -p my-agenda && cd my-agenda
-ptbk init --no-dashboard
+ptbk init --path . --no-dashboard
 ptbk connect --link <code>
 ```
 
