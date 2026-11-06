@@ -22,9 +22,6 @@ const ALL: StagingValues = {
     SECURITY_CONTACT: 'security@ops.example',
     OPS_EMAIL: 'ops@ops.example',
     ABUSE_EMAIL: 'abuse@ops.example',
-    ADMIN_NAME: 'seb',
-    ADMIN_SSH_PUBLIC_KEY: 'sk-ssh-ed25519@openssh.com AAAAGnNrLXNzaC1lZDI1NTE5QG9wZW5zc2guY29t seb@laptop',
-    ADMIN_CIDRS: '203.0.113.7/32,2001:db8::/64',
     RELAY_IPV4: '198.51.100.10',
     RELAY_IPV6: '2001:db8:1::1',
     D1_DATABASE_ID: '01234567-89ab-cdef-0123-456789abcdef',
@@ -80,9 +77,10 @@ describe('fillPlaceholders on the committed files', () => {
         assert.doesNotMatch(result.files.cloudflareTfvars, /extra_records|_acme-challenge/);
     });
 
-    it('writes the admin and every allowed network into the relay tfvars', () => {
-        assert.ok(result.files.relayTfvars.includes(`"seb" = ["${ALL.ADMIN_SSH_PUBLIC_KEY ?? ''}"]`));
-        assert.match(result.files.relayTfvars, /ssh_allowlist = \["203\.0\.113\.7\/32", "2001:db8::\/64"\]/);
+    // Admins SSH in from changing networks, so staging opens SSH to every address, keys only (decided 2026-11-06).
+    it('keeps the committed admin and SSH open to every address in the relay tfvars', () => {
+        assert.match(result.files.relayTfvars, /"seb" = \["ssh-ed25519 [A-Za-z0-9+/]+ seb@sebm\.local"\]/);
+        assert.match(result.files.relayTfvars, /ssh_from_anywhere = true\nssh_allowlist\s+= \[\]/);
     });
 
     it('is idempotent', () => {
@@ -112,8 +110,10 @@ describe('fillPlaceholders in rounds', () => {
 
 describe('parseStagingEnv', () => {
     it('reads KEY=value lines, skipping comments, blanks and empty values', () => {
-        const values = parseStagingEnv('# staging\n\nADMIN_NAME=seb\nRELAY_IPV4=\nOPS_EMAIL="ops@ops.example"\n');
-        assert.deepEqual(values, { ADMIN_NAME: 'seb', OPS_EMAIL: 'ops@ops.example' });
+        const values = parseStagingEnv(
+            '# staging\n\nRELAY_IPV4=198.51.100.10\nRELAY_IPV6=\nOPS_EMAIL="ops@ops.example"\n',
+        );
+        assert.deepEqual(values, { RELAY_IPV4: '198.51.100.10', OPS_EMAIL: 'ops@ops.example' });
     });
 
     for (const [text, why] of [
@@ -122,9 +122,9 @@ describe('parseStagingEnv', () => {
         ['SECURITY_CONTACT=<security-contact>', 'a placeholder'],
         ['CLOUDFLARE_ACCOUNT_ID=42b20127fa7293cb5160f22ed42ef43b', 'the account ID, which is committed'],
         ['OPS_EMAIL=ops@Example.COM', 'an upper-case address'],
-        ['ADMIN_SSH_PUBLIC_KEY=ssh-rsa AAAAB3Nza seb', 'an RSA key, which the relay refuses'],
-        ['ADMIN_SSH_PUBLIC_KEY=ssh-ed25519 AAAA "x"', 'a quote, which would break out of the HCL string'],
-        ['ADMIN_CIDRS=203.0.113.7', 'a bare address'],
+        ['OPS_EMAIL=ops@ops.example"x', 'a quote, which would break out of the HCL string'],
+        ['ADMIN_CIDRS=203.0.113.7/32', 'an SSH allowlist (staging SSH is open, keys only)'],
+        ['ADMIN_SSH_PUBLIC_KEY=ssh-ed25519 AAAA seb', 'an admin key (committed in the relay tfvars)'],
         ['RELAY_IPV6=2001:DB8::1', 'an upper-case IPv6 address'],
         ['INSTALL_GUIDE_URL=https://example.com/guide#top', 'a fragment'],
         ['STAGING_ZONE=ptbk.link', 'a staging domain (ptbk.link is committed, not filled in)'],

@@ -2,7 +2,7 @@
 # modules refuse them, so a plan fails before it touches anything.
 
 # Two hosts in different locations whose reboot windows never overlap. Staging and production differ only in the
-# relays, the server type and the allowlists.
+# relays, the server type and SSH access.
 relays = {
   relay-fsn = { location = "fsn1", reboot_time = "02:00" }
   relay-hel = { location = "hel1", reboot_time = "04:00" }

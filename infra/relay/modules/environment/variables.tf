@@ -79,6 +79,11 @@ variable "ssh_allowlist" {
   type = list(string)
 }
 
+variable "ssh_from_anywhere" {
+  type    = bool
+  default = false
+}
+
 variable "relay_settings" {
   type    = map(string)
   default = {}

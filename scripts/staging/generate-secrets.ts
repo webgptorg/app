@@ -30,7 +30,8 @@ lines.push(
     '',
     'Not generated here:',
     '  - SSH: use your own admin key, ideally on a hardware key (ssh-keygen -t ed25519-sk); its public half goes into',
-    '    ADMIN_SSH_PUBLIC_KEY in staging.env. A key without a hardware token: ssh-keygen -t ed25519, with a passphrase.',
+    '    admins in infra/relay/environments/staging/terraform.tfvars. Without a hardware token: ssh-keygen -t ed25519,',
+    '    with a passphrase.',
     '  - The relay registry token: minted against D1 by apps/dashboard/scripts/mint-relay-key.ts (runbook, Relay).',
     '  - Cloudflare and Hetzner API tokens: created in their dashboards (runbook, API tokens).',
 );

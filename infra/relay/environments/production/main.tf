@@ -62,6 +62,11 @@ variable "admins" {}
 variable "ssh_allowlist" {}
 variable "server_type" {}
 
+variable "ssh_from_anywhere" {
+  description = "Opens SSH to every address, keys only, instead of ssh_allowlist (which must then be empty)."
+  default     = false
+}
+
 variable "relay_settings" {
   description = "Relay limits tuned by I-05 (RELAY_* names), empty until then."
   default     = {}
@@ -83,7 +88,8 @@ module "environment" {
   ssh_allowlist = var.ssh_allowlist
   server_type   = var.server_type
 
-  relay_settings = var.relay_settings
+  ssh_from_anywhere = var.ssh_from_anywhere
+  relay_settings    = var.relay_settings
 }
 
 output "relays" {

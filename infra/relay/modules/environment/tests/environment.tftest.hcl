@@ -91,6 +91,28 @@ run "firewall_admits_only_443_ssh_from_the_allowlist_and_icmp" {
   }
 }
 
+run "ssh_from_anywhere_opens_22_in_the_provider_firewall" {
+  command = apply
+
+  variables {
+    ssh_from_anywhere = true
+    ssh_allowlist     = []
+  }
+
+  assert {
+    condition = toset([
+      for rule in hcloud_firewall.relay.rule : "${rule.protocol}/${coalesce(rule.port, "-")} ${join(",", sort(rule.source_ips))}"
+      if rule.direction == "in"
+    ]) == toset(["tcp/443 0.0.0.0/0,::/0", "tcp/22 0.0.0.0/0,::/0", "icmp/- 0.0.0.0/0,::/0"])
+    error_message = "Inbound: 443, 22 and ICMP from anywhere; nothing else."
+  }
+
+  assert {
+    condition     = alltrue([for name, _ in hcloud_server.relay : strcontains(module.cloud_init[name].user_data, "elements = { 0.0.0.0/0 }")])
+    error_message = "nftables on the hosts admits SSH from anywhere too."
+  }
+}
+
 run "addresses_survive_a_rebuild" {
   command = apply
 

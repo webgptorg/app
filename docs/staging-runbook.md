@@ -38,6 +38,7 @@ Staging runs on one domain, `ptbk.link`, in a shared account (decided by Seb on 
 - **The relay's DNS token can edit the whole staging zone** (`ptbk.link`), so a compromised relay host could change any staging DNS record and obtain certificates for staging engine hostnames, which production's separate challenge zone prevents.
 - **No DNSSEC, PSL entry or engine-zone CAA hardening**: Universal SSL stays on in the shared zone (Cloudflare may add CAA records for its own CAs), and the engines' DMARC record does not cover engine hostnames, whose organizational domain is the staging zone.
 - **The shared account means Workers and D1 tokens**, which Cloudflare cannot scope to one script or database, **reach every Worker and D1 database in that account** (and the analytics token all of its analytics, the IaC token's Workers R2 Storage Edit every bucket): keep the staging deploy token only on Seb's machine and later in the `staging` GitHub environment; production gets its own account.
+- **SSH to the relay is reachable from every address**, keys only (no root, passwords or forwarding), because admins work from changing networks (decided 2026-11-06); production allowlists it.
 - **The tokens are user-owned** (Seb's, step 2), not account-owned: they can do at most what his role can, and stop when he loses access to the account.
 
 Staging links only mock engines and throwaway `ptbk` projects that hold test data only: never a real project, real content or real credentials. Anything that would put real engine content on staging needs these revisited first.
@@ -47,7 +48,7 @@ Staging links only mock engines and throwaway `ptbk` projects that hold test dat
 - An up-to-date checkout of `main` with `bun install` done; Node 24 (`nvm use`), [OpenTofu](https://opentofu.org/docs/intro/install/) 1.10 or later, `dig` (BIND tools), `jq`, `ssh`, and `nmap` for one check.
 - Two hardware security keys, and a password manager vault for staging (one entry per secret below).
 - `ADAPTERS.billing` is `"off"` in `env.staging` of [apps/dashboard/wrangler.jsonc](../apps/dashboard/wrangler.jsonc). Every organization then holds `BILLING_OFF_PLAN` (engines, up to 10 per organization; a plain `wrangler.jsonc` value, so changing it needs no code) with no Stripe secrets or IDs; the Stripe catalogue stays commented out next to it. Stripe is needed only when billing is switched on ([apply.md](plan/apply.md) step 2).
-- Secrets never go into the repo, a PR, a chat, a log or this page. Values in `staging.env` are not secrets (IDs, domains, addresses, a public SSH key) and end up committed.
+- Secrets never go into the repo, a PR, a chat, a log or this page. Values in `staging.env` are not secrets (IDs, domains, addresses) and end up committed.
 
 ## 1. Account and domain
 
@@ -88,10 +89,10 @@ Check that the zone is **Active** in the shared account, that it has auto-renew 
 
 1. In the [Hetzner Console](https://console.hetzner.com), turn on two-factor authentication for your login, then create a project `ptbk-staging`.
 2. In the project, Security, API tokens: generate a **Read & Write** token named `ptbk-staging-tofu`. Store it as `HCLOUD_TOKEN`.
-3. Note your admin SSH public key (ideally `sk-ssh-ed25519` on a hardware key; the relay also accepts `ssh-ed25519` and ECDSA P-256, never RSA) and the networks you will SSH from (`curl -4 https://ifconfig.me` gives a `/32`; an IPv6 network as a `/64`). They go into `staging.env` as `ADMIN_NAME`, `ADMIN_SSH_PUBLIC_KEY` and `ADMIN_CIDRS`.
+3. Check the admin SSH public key committed in `infra/relay/environments/staging/terraform.tfvars` (`admins`; ideally `sk-ssh-ed25519` on a hardware key; the relay also accepts `ssh-ed25519` and ECDSA P-256, never RSA). Another admin adds theirs there in a PR. Staging sets `ssh_from_anywhere = true`, so there is no network allowlist to note.
 
 **You should see:** an empty project with one API token.
-**If it fails:** a new Hetzner account may be asked to verify its identity before it can create a server. Do this first so that step 6 is not stuck on it. Note that the allowlist and the admin keys reach the host only at first boot: changing them later means a host rebuild ([infra/relay README, Rotate secrets](../infra/relay/README.md#rotate-secrets)).
+**If it fails:** a new Hetzner account may be asked to verify its identity before it can create a server. Do this first so that step 6 is not stuck on it. Note that the admin keys and SSH access reach the host only at first boot: changing them later means a host rebuild ([infra/relay README, Rotate secrets](../infra/relay/README.md#rotate-secrets)).
 
 ## 2. API tokens
 
@@ -155,10 +156,6 @@ cat > staging.env <<'EOF'
 SECURITY_CONTACT=
 OPS_EMAIL=
 ABUSE_EMAIL=
-ADMIN_NAME=
-ADMIN_SSH_PUBLIC_KEY=
-# Comma-separated
-ADMIN_CIDRS=
 # After step 6
 RELAY_IPV4=
 RELAY_IPV6=
@@ -175,19 +172,18 @@ Run it again after steps 6 and 7. It only replaces what is still a placeholder, 
 
 Strictly, plan and apply run from an up-to-date `main` ([infra/cloudflare README, Running](../infra/cloudflare/README.md#running)). For this bootstrap, the values arrive one round at a time, so apply from this branch rebased on `origin/main`, then merge its PR in the same session, with the DNS checks, the email headers and the token check (steps 7 to 9) in its body.
 
-The domains (`ptbk.link` and the names under it) and the account ID are committed values, not placeholders. Every staging placeholder:
+The domains (`ptbk.link` and the names under it), the account ID and the admin SSH key are committed values, not placeholders. Every staging placeholder:
 
-| Placeholder                                                      | File                                                                  | `staging.env`                                       | Comes from                                                           |
-| ---------------------------------------------------------------- | --------------------------------------------------------------------- | --------------------------------------------------- | -------------------------------------------------------------------- |
-| `<security-contact>`                                             | Cloudflare tfvars (CAA `iodef`)                                       | `SECURITY_CONTACT`                                  | Your mailbox                                                         |
-| `<ops-email>`, `ops@<staging-ops-domain>`                        | relay tfvars (`acme_email`), `wrangler.jsonc` (`MONITORING.opsEmail`) | `OPS_EMAIL`                                         | Your mailbox                                                         |
-| `abuse@<staging-abuse-domain>`                                   | `wrangler.jsonc` (`ABUSE_EMAIL`)                                      | `ABUSE_EMAIL`                                       | Your mailbox                                                         |
-| `<admin-name>`, `<admin-ssh-public-key>`, `<admin-network-cidr>` | relay tfvars (`admins`, `ssh_allowlist`)                              | `ADMIN_NAME`, `ADMIN_SSH_PUBLIC_KEY`, `ADMIN_CIDRS` | Step 1.3                                                             |
-| `<staging-relay-fsn-ipv4>`, `<staging-relay-fsn-ipv6>`           | Cloudflare tfvars (`relays`)                                          | `RELAY_IPV4`, `RELAY_IPV6`                          | Step 6, `tofu output relays`                                         |
-| `<staging-d1-id>`                                                | `wrangler.jsonc` (`database_id`)                                      | `D1_DATABASE_ID`                                    | Step 7, `tofu output d1_database_id`                                 |
-| `<public-install-guide-url>`                                     | `wrangler.jsonc` (`INSTALL_GUIDE_URL`)                                | `INSTALL_GUIDE_URL`                                 | The public install guide once it exists; the repo's guide until then |
-| `<staging-standard-product-id>`, `<staging-standard-price-id>`   | `wrangler.jsonc` (`BILLING_PLANS`, commented out)                     | Left on purpose                                     | Stripe test mode, only when billing is on                            |
-| `UI_STAGING_RELEASE_KEY` public key                              | `apps/engine-ui/release/trust-policy.staging.json`                    | By hand                                             | Step 4                                                               |
+| Placeholder                                                    | File                                                                  | `staging.env`              | Comes from                                                           |
+| -------------------------------------------------------------- | --------------------------------------------------------------------- | -------------------------- | -------------------------------------------------------------------- |
+| `<security-contact>`                                           | Cloudflare tfvars (CAA `iodef`)                                       | `SECURITY_CONTACT`         | Your mailbox                                                         |
+| `<ops-email>`, `ops@<staging-ops-domain>`                      | relay tfvars (`acme_email`), `wrangler.jsonc` (`MONITORING.opsEmail`) | `OPS_EMAIL`                | Your mailbox                                                         |
+| `abuse@<staging-abuse-domain>`                                 | `wrangler.jsonc` (`ABUSE_EMAIL`)                                      | `ABUSE_EMAIL`              | Your mailbox                                                         |
+| `<staging-relay-fsn-ipv4>`, `<staging-relay-fsn-ipv6>`         | Cloudflare tfvars (`relays`)                                          | `RELAY_IPV4`, `RELAY_IPV6` | Step 6, `tofu output relays`                                         |
+| `<staging-d1-id>`                                              | `wrangler.jsonc` (`database_id`)                                      | `D1_DATABASE_ID`           | Step 7, `tofu output d1_database_id`                                 |
+| `<public-install-guide-url>`                                   | `wrangler.jsonc` (`INSTALL_GUIDE_URL`)                                | `INSTALL_GUIDE_URL`        | The public install guide once it exists; the repo's guide until then |
+| `<staging-standard-product-id>`, `<staging-standard-price-id>` | `wrangler.jsonc` (`BILLING_PLANS`, commented out)                     | Left on purpose            | Stripe test mode, only when billing is on                            |
+| `UI_STAGING_RELEASE_KEY` public key                            | `apps/engine-ui/release/trust-policy.staging.json`                    | By hand                    | Step 4                                                               |
 
 Later, with CI (I-03), these go into GitHub environments, not files ([deploy runbook, GitHub settings](runbooks/deploy.md#github-settings)): `staging` gets the `CLOUDFLARE_API_TOKEN` secret (the deploy token) and the variables `CLOUDFLARE_ACCOUNT_ID` and `RELAY_HOSTS` (`relay-fsn.ptbk.link`); `release` gets `UI_STAGING_RELEASE_KEY`, `UI_STAGING_R2_ACCESS_KEY_ID` and `UI_STAGING_R2_SECRET_ACCESS_KEY`, plus the variables `UI_STAGING_R2_ENDPOINT` (`https://<account id>.r2.cloudflarestorage.com`) and `UI_STAGING_R2_BUCKET`.
 
@@ -211,7 +207,7 @@ tofu output relays                                          # into staging.env: 
 
 Then run `node scripts/staging/fill-placeholders.ts` again, and add both addresses to the `ptbk-staging-acme-dns` token's client IP filter.
 
-**You should see:** server `relay-fsn` in `fsn1` in the Hetzner project, with an IPv4 and an IPv6 primary IP. The first boot takes a few minutes (packages, hardening, maybe a reboot). `ssh <admin>@<ipv4>` works from an allowed network.
+**You should see:** server `relay-fsn` in `fsn1` in the Hetzner project, with an IPv4 and an IPv6 primary IP. The first boot takes a few minutes (packages, hardening, maybe a reboot). `ssh seb@<ipv4>` works from any network, with the committed key.
 **If it fails:** a validation error that names a `<...>` placeholder means the fill script has not run on this branch. A 403 from `tofu init` means the R2 token or the account ID is wrong (step 3).
 
 ## 7. Cloudflare stack
@@ -322,10 +318,10 @@ ssh <admin>@$host 'sudo ls -l /etc/ptbk-relay/credentials'
 infra/relay/verify.sh <admin>@$host
 ```
 
-From a network outside the allowlist (a phone hotspot, for example), `nmap -Pn -p- $host` must show only 443.
+From outside (a phone hotspot, for example), `nmap -Pn -p- $host` must show only 22 and 443.
 
 **You should see:** lego reports a certificate for `relay-fsn.ptbk.link`; `tls.crt` and `tls.key` appear next to the three tokens, all `-rw------- root`. `verify.sh` passes every host check. Before the image runs, the relay checks fail (`ptbk-relay.service is active`, the uid, the capabilities), as the script itself says they should before the first deploy.
-**If it fails:** if lego cannot find the zone or gets a 403, the ACME token is not on `ptbk.link` (or lacks Zone Read), or the client IP filter lacks the relay's addresses. A leftover `_acme-challenge.relay-fsn` CNAME in the zone sends lego elsewhere: delete it. If SSH is refused, you are outside `ADMIN_CIDRS`; changing it needs a rebuild.
+**If it fails:** if lego cannot find the zone or gets a 403, the ACME token is not on `ptbk.link` (or lacks Zone Read), or the client IP filter lacks the relay's addresses. A leftover `_acme-challenge.relay-fsn` CNAME in the zone sends lego elsewhere: delete it. If SSH is refused, your key is not the one in `admins`; changing it needs a rebuild.
 
 **The relay image: blocked until CI runs.** A relay host runs only an image whose cosign signature names `release-relay.yml` on `main` of `webgptorg/app`, through GitHub's OIDC issuer, with a Rekor entry and a timestamp ([deploy runbook, Relay](runbooks/deploy.md#relay)). Only that workflow on GitHub Actions can produce such a signature, so there is no manual deploy that keeps the check. Until it runs, the relay service does not start, and browsers cannot reach engines. Staging waits for Actions: there is no staging exception for unsigned images (decided 2026-11-04).
 

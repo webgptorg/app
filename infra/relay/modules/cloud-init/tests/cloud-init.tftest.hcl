@@ -79,6 +79,25 @@ run "an_ipv4_only_allowlist_leaves_the_ipv6_set_empty" {
   }
 }
 
+run "ssh_from_anywhere_opens_22_to_every_address" {
+  command = apply
+
+  variables {
+    ssh_from_anywhere = true
+    ssh_allowlist     = []
+  }
+
+  assert {
+    condition     = strcontains(local.files["/etc/nftables.conf"], "elements = { 0.0.0.0/0 }") && strcontains(local.files["/etc/nftables.conf"], "elements = { ::/0 }")
+    error_message = "Both SSH sets admit every address."
+  }
+
+  assert {
+    condition     = strcontains(local.files["/etc/ssh/sshd_config.d/10-ptbk-relay.conf"], "AuthenticationMethods publickey\n") && strcontains(local.files["/etc/ssh/sshd_config.d/10-ptbk-relay.conf"], "MaxAuthTries 3\n") && strcontains(local.files["/etc/ssh/sshd_config.d/10-ptbk-relay.conf"], "LoginGraceTime 20\n")
+    error_message = "Open SSH is still keys only, with few tries and a short login window."
+  }
+}
+
 run "relay_environment_holds_no_secret" {
   command = apply
 
@@ -298,6 +317,16 @@ run "refuses_an_empty_allowlist" {
 
   variables {
     ssh_allowlist = []
+  }
+
+  expect_failures = [var.ssh_allowlist]
+}
+
+run "refuses_ssh_from_anywhere_with_an_allowlist" {
+  command = plan
+
+  variables {
+    ssh_from_anywhere = true
   }
 
   expect_failures = [var.ssh_allowlist]

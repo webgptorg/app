@@ -28,15 +28,16 @@ module "cloud_init" {
   source   = "../cloud-init"
   for_each = var.relays
 
-  name           = each.key
-  relay_domain   = var.relay_domain
-  engine_domain  = var.engine_domain
-  registry_url   = var.registry_url
-  acme_email     = var.acme_email
-  admins         = var.admins
-  ssh_allowlist  = var.ssh_allowlist
-  reboot_time    = each.value.reboot_time
-  relay_settings = var.relay_settings
+  name              = each.key
+  relay_domain      = var.relay_domain
+  engine_domain     = var.engine_domain
+  registry_url      = var.registry_url
+  acme_email        = var.acme_email
+  admins            = var.admins
+  ssh_allowlist     = var.ssh_allowlist
+  ssh_from_anywhere = var.ssh_from_anywhere
+  reboot_time       = each.value.reboot_time
+  relay_settings    = var.relay_settings
 }
 
 resource "hcloud_ssh_key" "bootstrap" {
@@ -58,11 +59,11 @@ resource "hcloud_firewall" "relay" {
   }
 
   rule {
-    description = "SSH from the allowlist"
+    description = var.ssh_from_anywhere ? "SSH from anywhere, keys only" : "SSH from the allowlist"
     direction   = "in"
     protocol    = "tcp"
     port        = "22"
-    source_ips  = var.ssh_allowlist
+    source_ips  = var.ssh_from_anywhere ? local.anywhere : var.ssh_allowlist
   }
 
   rule {
