@@ -14,7 +14,7 @@ terraform {
     bucket                      = "ptbk-tofu-state-staging"
     key                         = "cloudflare/terraform.tfstate"
     region                      = "auto"
-    endpoints                   = { s3 = "https://<staging-account-id>.r2.cloudflarestorage.com" }
+    endpoints                   = { s3 = "https://42b20127fa7293cb5160f22ed42ef43b.r2.cloudflarestorage.com" }
     use_path_style              = true
     use_lockfile                = true
     skip_credentials_validation = true
@@ -64,6 +64,7 @@ variable "ops_email" {
   default = null
 }
 variable "relay_dns_mode" {}
+variable "dashboard_custom_hostname" {}
 
 # Token from CLOUDFLARE_API_TOKEN: the staging IaC token (README, API tokens).
 provider "cloudflare" {}
@@ -85,6 +86,10 @@ module "environment" {
   relays               = var.relays
   ops_email            = var.ops_email
   relay_dns_mode       = var.relay_dns_mode
+
+  # The dashboard is app.ptbk.io, whose zone is in another account: served as a custom hostname of this zone, with no
+  # token for ptbk.io (README, Dashboard on another account's zone).
+  dashboard_custom_hostname = var.dashboard_custom_hostname
 
   # Created by hand (docs/staging-runbook.md step 3); engines get the ui_release_url output as PTBK_UI_RELEASE_URL.
   ui_releases = { bucket = "ptbk-ui-releases-staging", hostname = "ui.${var.dashboard_zone}" }
@@ -108,6 +113,11 @@ output "relay_hostnames" {
 
 output "email_dkim_selector" {
   value = module.environment.email_dkim_selector
+}
+
+# What the ptbk.io owner adds, DNS-only (docs/staging-runbook.md, DNS records for the ptbk.io owner).
+output "dashboard_owner_records" {
+  value = module.environment.dashboard_owner_records
 }
 
 output "email_return_path_domain" {

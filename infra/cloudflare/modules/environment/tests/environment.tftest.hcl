@@ -7,6 +7,18 @@ mock_provider "cloudflare" {
     }
   }
 
+  mock_data "cloudflare_dcv_delegation" {
+    defaults = {
+      uuid = "0a1b2c3d4e5f6a7b"
+    }
+  }
+
+  mock_resource "cloudflare_custom_hostname" {
+    defaults = {
+      ownership_verification = { name = "_cf-custom-hostname.app.owner.example", type = "txt", value = "5e1f2a3b-0000-4000-8000-000000000000" }
+    }
+  }
+
   mock_resource "cloudflare_zone" {
     defaults = {
       id           = "11111111111111111111111111111111"
@@ -780,4 +792,134 @@ run "rejects_an_invalid_ui_release_bucket_name" {
   }
 
   expect_failures = [var.ui_releases]
+}
+
+run "serves_no_custom_hostname_by_default" {
+  command = plan
+
+  assert {
+    condition = (
+      length(cloudflare_custom_hostname.dashboard) == 0 && length(cloudflare_custom_hostname_fallback_origin.dashboard) == 0
+      && length(data.cloudflare_dcv_delegation.dashboard) == 0 && output.dashboard_owner_records == null
+    )
+    error_message = "Without dashboard_custom_hostname nothing touches Cloudflare for SaaS."
+  }
+}
+
+run "serves_the_dashboard_as_a_custom_hostname_of_the_dashboard_zone" {
+  command = plan
+
+  variables {
+    engine_zone_mode          = "subdomain"
+    engine_domain             = "engines.dashboard.example"
+    relay_dns_mode            = "records"
+    dashboard_custom_hostname = { hostname = "app.owner.example", fallback_origin = "app-origin.dashboard.example" }
+  }
+
+  assert {
+    condition = (
+      cloudflare_dns_record.this["dashboard-fallback-origin"].name == "app-origin.dashboard.example"
+      && cloudflare_dns_record.this["dashboard-fallback-origin"].type == "AAAA"
+      && cloudflare_dns_record.this["dashboard-fallback-origin"].content == "100::"
+      && cloudflare_dns_record.this["dashboard-fallback-origin"].proxied
+      && cloudflare_dns_record.this["dashboard-fallback-origin"].ttl == 1
+      && cloudflare_dns_record.this["dashboard-fallback-origin"].zone_id == "22222222222222222222222222222222"
+    )
+    error_message = "The fallback origin is an originless, proxied AAAA record in the dashboard zone."
+  }
+
+  assert {
+    condition     = [for key, record in cloudflare_dns_record.this : key if record.proxied] == ["dashboard-fallback-origin"]
+    error_message = "The fallback origin is the only proxied record."
+  }
+
+  assert {
+    condition = (
+      cloudflare_custom_hostname_fallback_origin.dashboard[0].origin == "app-origin.dashboard.example"
+      && cloudflare_custom_hostname_fallback_origin.dashboard[0].zone_id == "22222222222222222222222222222222"
+    )
+    error_message = "The fallback origin is set on the dashboard zone."
+  }
+
+  assert {
+    condition = (
+      cloudflare_custom_hostname.dashboard[0].hostname == "app.owner.example"
+      && cloudflare_custom_hostname.dashboard[0].zone_id == "22222222222222222222222222222222"
+      && cloudflare_custom_hostname.dashboard[0].ssl.method == "txt"
+      && cloudflare_custom_hostname.dashboard[0].ssl.type == "dv"
+      && cloudflare_custom_hostname.dashboard[0].ssl.settings.min_tls_version == "1.2"
+    )
+    error_message = "The custom hostname is on the dashboard zone, with a DV certificate validated by TXT (delegated DCV) and TLS 1.2 or later."
+  }
+
+  assert {
+    condition = output.dashboard_owner_records == [
+      { when = "now", type = "CNAME", name = "_acme-challenge.app.owner.example", content = "app.owner.example.0a1b2c3d4e5f6a7b.dcv.cloudflare.com" },
+      { when = "now", type = "TXT", name = "_cf-custom-hostname.app.owner.example", content = "5e1f2a3b-0000-4000-8000-000000000000" },
+      { when = "cutover", type = "CNAME", name = "app.owner.example", content = "app-origin.dashboard.example" },
+    ]
+    error_message = "The owner gets the DCV delegation CNAME and the ownership TXT now, and the hostname's CNAME at cutover."
+  }
+}
+
+run "rejects_a_custom_hostname_inside_the_dashboard_zone" {
+  command = plan
+
+  variables {
+    dashboard_custom_hostname = { hostname = "app.dashboard.example", fallback_origin = "app-origin.dashboard.example" }
+  }
+
+  expect_failures = [var.dashboard_custom_hostname]
+}
+
+run "rejects_the_dashboard_zone_itself_as_the_custom_hostname" {
+  command = plan
+
+  variables {
+    dashboard_custom_hostname = { hostname = "dashboard.example", fallback_origin = "app-origin.dashboard.example" }
+  }
+
+  expect_failures = [var.dashboard_custom_hostname]
+}
+
+run "rejects_a_custom_hostname_under_the_engine_domain" {
+  command = plan
+
+  variables {
+    dashboard_custom_hostname = { hostname = "app.engines.example", fallback_origin = "app-origin.dashboard.example" }
+  }
+
+  expect_failures = [var.dashboard_custom_hostname]
+}
+
+run "rejects_a_fallback_origin_outside_the_dashboard_zone" {
+  command = plan
+
+  variables {
+    dashboard_custom_hostname = { hostname = "app.owner.example", fallback_origin = "app-origin.owner.example" }
+  }
+
+  expect_failures = [var.dashboard_custom_hostname]
+}
+
+run "rejects_a_fallback_origin_under_the_engine_domain" {
+  command = plan
+
+  variables {
+    engine_zone_mode          = "subdomain"
+    engine_domain             = "engines.dashboard.example"
+    dashboard_custom_hostname = { hostname = "app.owner.example", fallback_origin = "origin.engines.dashboard.example" }
+  }
+
+  expect_failures = [var.dashboard_custom_hostname]
+}
+
+run "rejects_a_malformed_custom_hostname" {
+  command = plan
+
+  variables {
+    dashboard_custom_hostname = { hostname = "<dashboard-hostname>", fallback_origin = "app-origin.dashboard.example" }
+  }
+
+  expect_failures = [var.dashboard_custom_hostname]
 }

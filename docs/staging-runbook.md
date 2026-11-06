@@ -2,9 +2,9 @@
 
 Bringing staging up by hand from a laptop, once, without CI: accounts, tokens, secrets, DNS, the dashboard, email, the relay host and a linked engine. Everything is here in order, so you need no task brief. It collects the Apply steps of I-01, I-02, I-04 and X-03 ([apply.md](plan/apply.md)) for staging, and links the module docs for detail.
 
-Decided on 2026-11-04 and changed on 2026-11-06: staging runs in an existing Cloudflare account that it shares with other projects (Pavol's), on one domain it already owns, `ptbk.link`, with subdomains ([Staging relaxations](#staging-relaxations-not-for-production) lists what that gives up), one relay on Hetzner with `relay_dns_mode = "records"` and no load balancer, and billing off (`ADAPTERS.billing = "off"`), so no Stripe. GitHub Actions does not run (billing), so every step here runs from your machine. The CI pipelines (I-03) come later.
+Decided on 2026-11-04 and changed on 2026-11-06: this is the one environment, and it gradually becomes production. It runs in an existing Cloudflare account that it shares with other projects (Pavol's), on one domain that account holds, `ptbk.link`, with subdomains. The dashboard is on `app.ptbk.io`, the URL engines have built in: `ptbk.io` is a zone in the engine team's Cloudflare account, which we hold no token for, so `app.ptbk.io` is a Cloudflare for SaaS custom hostname of `ptbk.link` and its owner adds a few DNS records for us ([DNS records for the ptbk.io owner](#dns-records-for-the-ptbkio-owner)) ([Staging relaxations](#staging-relaxations-not-for-production) lists what that gives up), one relay on Hetzner with `relay_dns_mode = "records"` and no load balancer, and billing off (`ADAPTERS.billing = "off"`), so no Stripe. GitHub Actions does not run (billing), so every step here runs from your machine. The CI pipelines (I-03) come later.
 
-**What you have at the end:** the dashboard on `https://app.ptbk.link/` with passkey sign-up, D1 and migrations; email that passes SPF, DKIM and DMARC; engines under `engines.ptbk.link` with a DNS-only wildcard and CAA; a hardened relay host with its own certificate, registered with the dashboard; and an engine linked to the dashboard and sending heartbeats.
+**What you have at the end:** the dashboard on `https://app.ptbk.io/` with passkey sign-up, D1 and migrations; email that passes SPF, DKIM and DMARC; engines under `engines.ptbk.link` with a DNS-only wildcard and CAA; a hardened relay host with its own certificate, registered with the dashboard; and an engine linked to the dashboard and sending heartbeats.
 
 **What waits for GitHub Actions:** the relay itself (hosts run only images signed by `release-relay.yml`, [step 10](#10-relay-secrets-certificate-registration)), and with it browser traffic to engines; the engine UI release ([step 11](#11-ui-release-prepare-now-publish-with-ci)). The e2e suite cannot target staging yet ([step 13](#13-e2e-against-staging)).
 
@@ -25,17 +25,20 @@ Decided on 2026-11-04 and changed on 2026-11-06: staging runs in an existing Clo
 | [12. Link an engine](#12-link-an-engine)                                                    | 10 min                       | 8                          |
 | [13. e2e against staging](#13-e2e-against-staging)                                          | —                            | not supported yet          |
 | [14. Teardown and reset](#14-teardown-and-reset)                                            | as needed                    | —                          |
+| [DNS records for the ptbk.io owner](#dns-records-for-the-ptbkio-owner)                      | his time, twice              | 7, then 8                  |
 
 About 1.5 hours of hands-on time. Each step ends with **You should see** (the check) and **If it fails** (the most likely cause).
 
 ## Staging relaxations (not for production)
 
-Staging runs on one domain, `ptbk.link`, in a shared account (decided by Seb on 2026-11-06; [ADR 0011](adr/0011-infrastructure-as-code.md), [infra/cloudflare README, Staging: one domain](../infra/cloudflare/README.md#staging-one-domain)). Production keeps its own account, its own engine domain zone, a separate ACME challenge zone, DNSSEC, CAA and the PSL entry. On staging:
+Staging runs on one domain, `ptbk.link`, in a shared account (decided by Seb on 2026-11-06; [ADR 0011](adr/0011-infrastructure-as-code.md), [infra/cloudflare README, Staging: one domain](../infra/cloudflare/README.md#staging-one-domain)). It is the one environment and gradually becomes production; the production design keeps its own account, its own engine domain zone, a separate ACME challenge zone, DNSSEC, CAA and the PSL entry, and the production root in `infra/cloudflare` stays as that design. Until this environment meets it:
 
-- **Engines share the registrable domain with the dashboard**, so `*.engines.ptbk.link` and `app.ptbk.link` are same-site; cookie tossing and same-site requests are contained because the dashboard and the engine gateway use host-only `__Host-` session cookies, which a sibling host can neither set nor shadow ([gateway.md](engine-integration/gateway.md)) and the dashboard refuses state changes that are not `Sec-Fetch-Site: same-origin`.
+- **Engines share the registrable domain `ptbk.link`** with the relay, the UI releases, the sending domain and the dashboard's fallback origin. The dashboard itself is on `app.ptbk.io`, another site. Engines' sibling hosts are contained as in production: the engine gateway uses host-only `__Host-` session cookies, which a sibling host can neither set nor shadow ([gateway.md](engine-integration/gateway.md)).
+- **The dashboard's hostname is in a zone we do not control.** The engine team's account can repoint `app.ptbk.io` or have a certificate issued for it (`ptbk.io` has no CAA), and Cloudflare for SaaS serves it from `ptbk.link`; we hold no token for `ptbk.io` and never need one. The dashboard is same-site with every other `ptbk.io` host (the website, the `*.ptbk.io` wildcard), which its host-only `__Host-` session cookies and its refusal of state changes that are not `Sec-Fetch-Site: same-origin` contain.
 - **The relay's DNS token can edit the whole staging zone** (`ptbk.link`), so a compromised relay host could change any staging DNS record and obtain certificates for staging engine hostnames, which production's separate challenge zone prevents.
 - **No DNSSEC, PSL entry or engine-zone CAA hardening**: Universal SSL stays on in the shared zone (Cloudflare may add CAA records for its own CAs), and the engines' DMARC record does not cover engine hostnames, whose organizational domain is the staging zone.
 - **The shared account means Workers and D1 tokens**, which Cloudflare cannot scope to one script or database, **reach every Worker and D1 database in that account** (and the analytics token all of its analytics, the IaC token's Workers R2 Storage Edit every bucket): keep the staging deploy token only on Seb's machine and later in the `staging` GitHub environment; production gets its own account.
+- **The tokens are user-owned** (Seb's, step 2), not account-owned: they can do at most what his role can, and stop when he loses access to the account.
 
 Staging links only mock engines and throwaway `ptbk` projects that hold test data only: never a real project, real content or real credentials. Anything that would put real engine content on staging needs these revisited first.
 
@@ -52,29 +55,31 @@ Staging links only mock engines and throwaway `ptbk` projects that hold test dat
 
 Staging uses an existing Cloudflare account that it shares with other projects, so there is nothing to create, only to check. Production gets an account of its own later ([infra/cloudflare README, Bootstrap](../infra/cloudflare/README.md#bootstrap-once-per-environment)).
 
-1. Your login reaches the account as Super Administrator or Administrator (Manage Account, Members), so it can create account API tokens, D1 databases, Workers and R2 buckets, and it has two-factor authentication on (hardware security keys if you can).
+1. Your login reaches the account with a role that covers every permission in [step 2](#2-api-tokens) (D1, Workers, R2, Email Service, analytics, and DNS, SSL and Workers routes on `ptbk.link`), and it has two-factor authentication on (hardware security keys if you can). It need not be Administrator: the tokens are your own (step 2).
 2. Workers & Pages, Plans: **Workers Paid**. The dashboard Worker uses Durable Objects, seven rate-limit bindings, two cron triggers, Analytics Engine and Email Service. If the account is on the free plan, ask its owner before upgrading: they pay for it.
 3. R2 Object Storage has been opened once and its plan accepted (the free tier is enough).
 4. **Email Service** (Cloudflare's sending service) is enabled for the account. Step 7 creates the sending domain and fails without it.
-5. Nothing in the account uses our names yet: Worker `ptbk-dashboard-staging`, D1 database `ptbk-dashboard-staging`, R2 buckets `ptbk-tofu-state-staging` and `ptbk-ui-releases-staging`.
-6. Copy the account ID (Account Home, the account's menu, Copy account ID) into `staging.env` as `CLOUDFLARE_ACCOUNT_ID` ([step 5](#5-placeholders)).
+5. **Cloudflare for SaaS** is enabled on `ptbk.link` (the zone's SSL/TLS, Custom Hostnames, Enable). Every plan includes 100 custom hostnames, then $0.10 each; we use one. Cloudflare may ask for a payment method first. Step 7 creates `app.ptbk.io` and fails without it.
+6. Nothing in the account uses our names yet: Worker `ptbk-dashboard-staging`, D1 database `ptbk-dashboard-staging`, R2 buckets `ptbk-tofu-state-staging` and `ptbk-ui-releases-staging`.
+7. The account ID (Account Home, the account's menu, Copy account ID) is `42b20127fa7293cb5160f22ed42ef43b`, committed in the staging configs (not secret).
 
-**You should see:** your role on the Members page, Workers Paid on the plan page, and Email Service enabled.
-**If it fails:** if you cannot create account API tokens, your role is too narrow: ask the account owner. Email Service may be in beta or need a request for the account. Ask for it now: it is the only thing that takes longer than this hour.
+**You should see:** your role on the Members page, Workers Paid on the plan page, Email Service enabled, and Custom Hostnames available on `ptbk.link`.
+**If it fails:** if a permission in step 2 is not offered when you create a token, your role is too narrow: ask the account owner. Email Service may be in beta or need a request for the account. Ask for it now: it is the only thing that takes longer than this hour.
 
 ### 1.2 Domain: ptbk.link
 
-`ptbk.link` holds all of staging, and is already a zone in the shared account. Its names are committed in the staging configs, not placeholders:
+`ptbk.link` holds all of staging but the dashboard's own hostname, and is already a zone in the shared account. Its names are committed in the staging configs, not placeholders:
 
 | Name                                  | What                                                                                                 |
 | ------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `app.ptbk.link`                       | The dashboard's custom domain                                                                        |
+| `app.ptbk.io`                         | The dashboard: a custom hostname of `ptbk.link`; its DNS is the `ptbk.io` owner's                    |
+| `app-origin.ptbk.link`                | The custom hostname's fallback origin (`AAAA 100::`, proxied), which `app.ptbk.io` points at         |
 | `relay-fsn.ptbk.link`                 | The relay's hostname                                                                                 |
 | `mail.ptbk.link`                      | The email sending subdomain                                                                          |
 | `*.engines.ptbk.link`                 | Engine hostnames: the DNS-only wildcard to the relay; CAA and no-mail records on `engines.ptbk.link` |
 | `_acme-challenge.relay-fsn.ptbk.link` | The TXT records lego writes for the relay's certificate, directly in `ptbk.link`                     |
 
-Check that the zone is **Active** in the shared account, that it has auto-renew and the transfer lock on (Domain Registration, if it is registered at Cloudflare), and that it has no records under these names yet. Add no records by hand; the stack adds its records and leaves the zone's others alone. Copy its zone ID (the zone's Overview, API section) for step 8.
+Check that the zone is **Active** in the shared account, that it has auto-renew and the transfer lock on (Domain Registration, if it is registered at Cloudflare), and that it has no records under these names yet. Add no records by hand; the stack adds its records and leaves the zone's others alone. Its zone ID, `c203cd9d66f14a374dbdd2df74f6380a` (the zone's Overview, API section), is committed here for steps 7 and 8.
 
 **You should see:** `ptbk.link` **Active** in the shared account, with none of the names above taken.
 **If it fails:** if `ptbk.link` is in another account, the stack cannot find it (step 7): move the zone into the shared account, or ask Seb which account to use.
@@ -90,21 +95,21 @@ Check that the zone is **Active** in the shared account, that it has auto-renew 
 
 ## 2. API tokens
 
-Create the Cloudflare tokens under Manage Account, **Account API Tokens**, Create Token, Custom token. Account-owned tokens are not tied to a member. Scope every zone permission to **`ptbk.link` only**: the account holds other projects' zones. Cloudflare cannot scope Workers, D1 or analytics permissions below the account, so those reach the whole shared account ([Staging relaxations](#staging-relaxations-not-for-production)). The scopes are copied from [infra/cloudflare/README.md](../infra/cloudflare/README.md#api-tokens) and [docs/runbooks/observability.md](runbooks/observability.md#credentials). Store every token in the password manager, nowhere else.
+Create the Cloudflare tokens as **user-owned tokens** under My Profile, **API Tokens**, Create Token, Custom token, with the account resource set to the shared account only. That is the expected path here: account-owned tokens (Manage Account, Account API Tokens) need Super Administrator or Administrator, which Seb does not have in this account. A user-owned token can do at most what its user can and stops working when that user loses access, so whoever leaves the account first rotates these ([deploy runbook, If a credential leaks](runbooks/deploy.md#if-a-credential-leaks)); production uses account-owned tokens in its own account. Scope every zone permission to **`ptbk.link` only**: the account holds other projects' zones. Cloudflare cannot scope Workers, D1 or analytics permissions below the account, so those reach the whole shared account ([Staging relaxations](#staging-relaxations-not-for-production)). The scopes are copied from [infra/cloudflare/README.md](../infra/cloudflare/README.md#api-tokens) and [docs/runbooks/observability.md](runbooks/observability.md#credentials). Store every token in the password manager, nowhere else.
 
-| Token                                  | Permissions                                                                                                                                                                                                                                                                                                                                             | Never                                                               | Used in             |
-| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- | ------------------- |
-| `ptbk-staging-iac`                     | Account: D1 Edit, the Email Service sending permission (record its exact name in infra/cloudflare/README.md), Load Balancing: Monitors and Pools Edit, Notifications Edit, Workers R2 Storage Edit (the `ui.ptbk.link` custom domain; reaches every bucket in the shared account). Zone, **`ptbk.link` only**: Zone Read, DNS Edit, Load Balancers Edit | Workers, API tokens, members, billing; any other zone; CI; any host | Steps 7, 9          |
-| `ptbk-staging-deploy`                  | Account: Workers Scripts Edit (includes Durable Objects), D1 Edit, Account Settings Read. Zone, **`ptbk.link` only**: Workers Routes Edit. Reaches every Worker and D1 database in the shared account, so it lives only on Seb's machine, and later in the `staging` GitHub environment                                                                 | Any DNS, zone or SSL permission; any other zone                     | Steps 8, 10, 12     |
-| R2 token for `ptbk-tofu-state-staging` | Created in step 3: R2, Manage API tokens, Create Account API token, **Object Read & Write**, specific bucket `ptbk-tofu-state-staging`. Gives an Access Key ID and a Secret Access Key                                                                                                                                                                  | Any other bucket                                                    | Steps 6, 7          |
-| `ptbk-staging-acme-dns`                | Zone: Zone Read, DNS Edit, on **`ptbk.link` only** (there is no challenge zone on staging). After step 6, add the relay's IPv4 and IPv6 addresses to the token's client IP filter                                                                                                                                                                       | Any other zone                                                      | Step 10 (the relay) |
-| `ptbk-staging-analytics`               | Account: Account Analytics Read, nothing else. Required: staging sets `MONITORING`, and the Worker refuses to start without `ANALYTICS_API_TOKEN` there                                                                                                                                                                                                 | Everything else                                                     | Step 8              |
-| UI release R2 token                    | Only with CI (step 11): Object Read & Write on the release bucket only (R2 offers no write-only object permission)                                                                                                                                                                                                                                      | Any other bucket                                                    | Later               |
+| Token                                  | Permissions                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | Never                                                               | Used in             |
+| -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- | ------------------- |
+| `ptbk-staging-iac`                     | Account: D1 Edit, the Email Service sending permission (record its exact name in infra/cloudflare/README.md), Load Balancing: Monitors and Pools Edit, Notifications Edit, Workers R2 Storage Edit (the `ui.ptbk.link` custom domain; reaches every bucket in the shared account). Zone, **`ptbk.link` only**: Zone Read, DNS Edit, Load Balancers Edit, SSL and Certificates Edit (the custom hostname `app.ptbk.io`, its fallback origin and DCV delegation; confirm at step 7 that it covers them and record the result in infra/cloudflare/README.md) | Workers, API tokens, members, billing; any other zone; CI; any host | Steps 7, 9          |
+| `ptbk-staging-deploy`                  | Account: Workers Scripts Edit (includes Durable Objects), D1 Edit, Account Settings Read. Zone, **`ptbk.link` only**: Workers Routes Edit (the `app.ptbk.io/*` route). Reaches every Worker and D1 database in the shared account, so it lives only on Seb's machine, and later in the `staging` GitHub environment                                                                                                                                                                                                                                       | Any DNS or SSL permission; any other zone; anything on `ptbk.io`    | Steps 8, 10, 12     |
+| R2 token for `ptbk-tofu-state-staging` | Created in step 3: R2, Manage API tokens, Create User API token, **Object Read & Write**, specific bucket `ptbk-tofu-state-staging`. Gives an Access Key ID and a Secret Access Key                                                                                                                                                                                                                                                                                                                                                                       | Any other bucket                                                    | Steps 6, 7          |
+| `ptbk-staging-acme-dns`                | Zone: Zone Read, DNS Edit, on **`ptbk.link` only** (there is no challenge zone on staging). After step 6, add the relay's IPv4 and IPv6 addresses to the token's client IP filter                                                                                                                                                                                                                                                                                                                                                                         | Any other zone                                                      | Step 10 (the relay) |
+| `ptbk-staging-analytics`               | Account: Account Analytics Read, nothing else. Required: staging sets `MONITORING`, and the Worker refuses to start without `ANALYTICS_API_TOKEN` there                                                                                                                                                                                                                                                                                                                                                                                                   | Everything else                                                     | Step 8              |
+| UI release R2 token                    | Only with CI (step 11): Object Read & Write on the release bucket only (R2 offers no write-only object permission)                                                                                                                                                                                                                                                                                                                                                                                                                                        | Any other bucket                                                    | Later               |
 
-The IaC token's load-balancing permissions are unused while staging is on `"records"`; they are kept so that staging matches production's token. Plus `HCLOUD_TOKEN` from 1.3.
+No token reaches `ptbk.io`: its owner adds our records by hand. The IaC token's load-balancing permissions are unused while staging is on `"records"`; they are kept so that staging matches production's token. Plus `HCLOUD_TOKEN` from 1.3.
 
-**You should see:** four tokens under Account API Tokens and one under R2's API tokens (after step 3); each one's summary shows exactly the permissions above.
-**If it fails:** a token created under My Profile instead of the account. It then belongs to you, not to the account, so delete it and create it again under Manage Account.
+**You should see:** four tokens under My Profile, API Tokens and one under R2's API tokens (after step 3); each one's summary shows exactly the permissions above, on the shared account and `ptbk.link` only.
+**If it fails:** a permission that the form does not offer means your role in the account lacks it: ask the account owner to widen your role, not for an Administrator token.
 
 ## 3. R2 buckets
 
@@ -147,7 +152,6 @@ Every staging value lives in one local, git-ignored file, `staging.env` at the r
 ```sh
 git fetch origin && git switch -c chore/staging-values origin/main
 cat > staging.env <<'EOF'
-CLOUDFLARE_ACCOUNT_ID=
 SECURITY_CONTACT=
 OPS_EMAIL=
 ABUSE_EMAIL=
@@ -171,24 +175,23 @@ Run it again after steps 6 and 7. It only replaces what is still a placeholder, 
 
 Strictly, plan and apply run from an up-to-date `main` ([infra/cloudflare README, Running](../infra/cloudflare/README.md#running)). For this bootstrap, the values arrive one round at a time, so apply from this branch rebased on `origin/main`, then merge its PR in the same session, with the DNS checks, the email headers and the token check (steps 7 to 9) in its body.
 
-The domains (`ptbk.link` and the names under it) are committed values, not placeholders. Every staging placeholder:
+The domains (`ptbk.link` and the names under it) and the account ID are committed values, not placeholders. Every staging placeholder:
 
-| Placeholder                                                      | File                                                                                            | `staging.env`                                       | Comes from                                                           |
-| ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- | --------------------------------------------------- | -------------------------------------------------------------------- |
-| `<staging-account-id>`                                           | `wrangler.jsonc` (`ANALYTICS`), both staging `main.tf` (R2 backend endpoint), Cloudflare tfvars | `CLOUDFLARE_ACCOUNT_ID`                             | Step 1.1                                                             |
-| `<security-contact>`                                             | Cloudflare tfvars (CAA `iodef`)                                                                 | `SECURITY_CONTACT`                                  | Your mailbox                                                         |
-| `<ops-email>`, `ops@<staging-ops-domain>`                        | relay tfvars (`acme_email`), `wrangler.jsonc` (`MONITORING.opsEmail`)                           | `OPS_EMAIL`                                         | Your mailbox                                                         |
-| `abuse@<staging-abuse-domain>`                                   | `wrangler.jsonc` (`ABUSE_EMAIL`)                                                                | `ABUSE_EMAIL`                                       | Your mailbox                                                         |
-| `<admin-name>`, `<admin-ssh-public-key>`, `<admin-network-cidr>` | relay tfvars (`admins`, `ssh_allowlist`)                                                        | `ADMIN_NAME`, `ADMIN_SSH_PUBLIC_KEY`, `ADMIN_CIDRS` | Step 1.3                                                             |
-| `<staging-relay-fsn-ipv4>`, `<staging-relay-fsn-ipv6>`           | Cloudflare tfvars (`relays`)                                                                    | `RELAY_IPV4`, `RELAY_IPV6`                          | Step 6, `tofu output relays`                                         |
-| `<staging-d1-id>`                                                | `wrangler.jsonc` (`database_id`)                                                                | `D1_DATABASE_ID`                                    | Step 7, `tofu output d1_database_id`                                 |
-| `<public-install-guide-url>`                                     | `wrangler.jsonc` (`INSTALL_GUIDE_URL`)                                                          | `INSTALL_GUIDE_URL`                                 | The public install guide once it exists; the repo's guide until then |
-| `<staging-standard-product-id>`, `<staging-standard-price-id>`   | `wrangler.jsonc` (`BILLING_PLANS`, commented out)                                               | Left on purpose                                     | Stripe test mode, only when billing is on                            |
-| `UI_STAGING_RELEASE_KEY` public key                              | `apps/engine-ui/release/trust-policy.staging.json`                                              | By hand                                             | Step 4                                                               |
+| Placeholder                                                      | File                                                                  | `staging.env`                                       | Comes from                                                           |
+| ---------------------------------------------------------------- | --------------------------------------------------------------------- | --------------------------------------------------- | -------------------------------------------------------------------- |
+| `<security-contact>`                                             | Cloudflare tfvars (CAA `iodef`)                                       | `SECURITY_CONTACT`                                  | Your mailbox                                                         |
+| `<ops-email>`, `ops@<staging-ops-domain>`                        | relay tfvars (`acme_email`), `wrangler.jsonc` (`MONITORING.opsEmail`) | `OPS_EMAIL`                                         | Your mailbox                                                         |
+| `abuse@<staging-abuse-domain>`                                   | `wrangler.jsonc` (`ABUSE_EMAIL`)                                      | `ABUSE_EMAIL`                                       | Your mailbox                                                         |
+| `<admin-name>`, `<admin-ssh-public-key>`, `<admin-network-cidr>` | relay tfvars (`admins`, `ssh_allowlist`)                              | `ADMIN_NAME`, `ADMIN_SSH_PUBLIC_KEY`, `ADMIN_CIDRS` | Step 1.3                                                             |
+| `<staging-relay-fsn-ipv4>`, `<staging-relay-fsn-ipv6>`           | Cloudflare tfvars (`relays`)                                          | `RELAY_IPV4`, `RELAY_IPV6`                          | Step 6, `tofu output relays`                                         |
+| `<staging-d1-id>`                                                | `wrangler.jsonc` (`database_id`)                                      | `D1_DATABASE_ID`                                    | Step 7, `tofu output d1_database_id`                                 |
+| `<public-install-guide-url>`                                     | `wrangler.jsonc` (`INSTALL_GUIDE_URL`)                                | `INSTALL_GUIDE_URL`                                 | The public install guide once it exists; the repo's guide until then |
+| `<staging-standard-product-id>`, `<staging-standard-price-id>`   | `wrangler.jsonc` (`BILLING_PLANS`, commented out)                     | Left on purpose                                     | Stripe test mode, only when billing is on                            |
+| `UI_STAGING_RELEASE_KEY` public key                              | `apps/engine-ui/release/trust-policy.staging.json`                    | By hand                                             | Step 4                                                               |
 
 Later, with CI (I-03), these go into GitHub environments, not files ([deploy runbook, GitHub settings](runbooks/deploy.md#github-settings)): `staging` gets the `CLOUDFLARE_API_TOKEN` secret (the deploy token) and the variables `CLOUDFLARE_ACCOUNT_ID` and `RELAY_HOSTS` (`relay-fsn.ptbk.link`); `release` gets `UI_STAGING_RELEASE_KEY`, `UI_STAGING_R2_ACCESS_KEY_ID` and `UI_STAGING_R2_SECRET_ACCESS_KEY`, plus the variables `UI_STAGING_R2_ENDPOINT` (`https://<account id>.r2.cloudflarestorage.com`) and `UI_STAGING_R2_BUCKET`.
 
-**You should see:** `git diff` touches only the five staging files (and the trust policy once you edit it); `--check` lists only the placeholders left on purpose, plus the relay addresses and the D1 ID until steps 6 and 7.
+**You should see:** `git diff` touches only the staging files (and the trust policy once you edit it); `--check` lists only the placeholders left on purpose, plus the relay addresses and the D1 ID until steps 6 and 7.
 **If it fails:** `<KEY> must be …` names the value in `staging.env` to fix.
 
 ## 6. Relay host: create
@@ -224,7 +227,9 @@ tofu apply tfplan
 tofu output                                                 # d1_database_id into staging.env, then fill again
 ```
 
-The plan should only add: the D1 database `ptbk-dashboard-staging`, the email sending subdomain, the custom domain `ui.ptbk.link` on `ptbk-ui-releases-staging` with its r2.dev access off, and DNS records in `ptbk.link`. The records are the wildcard `*.engines.ptbk.link` A and AAAA (TTL 30), `relay-fsn` A and AAAA, three CAA, the null MX, SPF and DMARC on `engines.ptbk.link`, and DMARC on the sending domain. No zone, no zone setting (Universal SSL, DNSSEC) and no ACME CNAME: staging has no engine zone or challenge zone. It must destroy nothing.
+The plan should only add: the D1 database `ptbk-dashboard-staging`, the email sending subdomain, the custom domain `ui.ptbk.link` on `ptbk-ui-releases-staging` with its r2.dev access off, the custom hostname `app.ptbk.io` with the zone's fallback origin `app-origin.ptbk.link`, and DNS records in `ptbk.link`. The records are the wildcard `*.engines.ptbk.link` A and AAAA (TTL 30), `relay-fsn` A and AAAA, three CAA, the null MX, SPF and DMARC on `engines.ptbk.link`, DMARC on the sending domain, and `app-origin` AAAA `100::`, the only proxied one. No zone, no zone setting (Universal SSL, DNSSEC) and no ACME CNAME: staging has no engine zone or challenge zone. It must destroy nothing.
+
+Then `tofu output dashboard_owner_records` lists the records for the `ptbk.io` owner. Send him the two marked `now` ([DNS records for the ptbk.io owner](#dns-records-for-the-ptbkio-owner)); the `cutover` one waits for step 8.
 
 No NS or DS records to set: `ptbk.link` is already on Cloudflare's name servers, and staging has no DNSSEC.
 
@@ -238,9 +243,11 @@ dig +short AAAA anything.engines.$zone @$ns      # the relay's IPv6
 dig +short A engines.$zone @$ns                  # empty
 dig +short CAA engines.$zone @$ns                # issue "letsencrypt.org", issuewild ";", iodef, and nothing else
 curl -sS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-  "https://api.cloudflare.com/client/v4/zones/$(tofu output -raw staging_zone_id)/dns_records?proxied=true&per_page=100" \
+  "https://api.cloudflare.com/client/v4/zones/c203cd9d66f14a374dbdd2df74f6380a/dns_records?proxied=true&per_page=100" \
   | jq '[.result[].name | select(endswith(".engines.'$zone'"))]'   # []
 ```
+
+Once the owner has added the two records, SSL/TLS, Custom Hostnames in `ptbk.link` shows `app.ptbk.io` with hostname status **Active** and certificate status **Active** (minutes to an hour), and the fallback origin **Active**. Check at this first apply, and record in [infra/cloudflare README, Dashboard on another account's zone](../infra/cloudflare/README.md#dashboard-on-another-accounts-zone): that the DCV Delegation target shown there matches the `_acme-challenge` record the output gave (`app.ptbk.io.<uuid>.dcv.cloudflare.com`), and that the certificate issued under `ptbk.link`'s settings.
 
 **You should see:** every check above as commented. If `CAA` lists more than our three records, Cloudflare added its own for Universal SSL: record it in [infra/cloudflare README, Staging: one domain](../infra/cloudflare/README.md#staging-one-domain).
 **If it fails:** an error on the email sending subdomain means Email Service is not enabled yet, or the IaC token lacks its permission. `cloudflare_zone.dashboard` not found means `ptbk.link` is not in this account, or the IaC token is not scoped to it.
@@ -254,31 +261,38 @@ cd apps/dashboard
 bun run generate
 CLOUDFLARE_ENV=staging bun run build                        # bakes the staging environment in
 export CLOUDFLARE_API_TOKEN=…                               # ptbk-staging-deploy
-export CLOUDFLARE_ACCOUNT_ID=…
+export CLOUDFLARE_ACCOUNT_ID=42b20127fa7293cb5160f22ed42ef43b
 bunx wrangler d1 migrations apply DB --env staging --remote
 bunx wrangler deploy --env staging --message "manual $(git rev-parse --short HEAD)"
 bunx wrangler secret put RATE_LIMIT_HMAC_KEY --env staging   # paste at the prompt, from the password manager
 bunx wrangler secret put MEMBER_KEY --env staging
 bunx wrangler secret put RELAY_METRICS_TOKENS --env staging
 bunx wrangler secret put ANALYTICS_API_TOKEN --env staging   # the ptbk-staging-analytics token
-node scripts/smoke-test.ts --origin https://app.ptbk.link --environment staging
+edge=$(dig +short A app-origin.ptbk.link | head -1)          # Cloudflare's edge, before app.ptbk.io points there
+curl -sS --resolve app.ptbk.io:443:$edge https://app.ptbk.io/v1/health
+```
+
+Then ask the `ptbk.io` owner for the `cutover` record ([DNS records for the ptbk.io owner](#dns-records-for-the-ptbkio-owner)), and once `dig +short CNAME app.ptbk.io` answers `app-origin.ptbk.link.`:
+
+```sh
+node scripts/smoke-test.ts --origin https://app.ptbk.io --environment staging
 ```
 
 Deploy first and put the secrets after: on a Worker that does not exist yet, `secret put` would offer to create an empty one. Each `secret put` deploys a new version.
 
-Then check the deploy token's scope, as CI will use it ([infra/cloudflare README, API tokens](../infra/cloudflare/README.md#api-tokens)). From the repo root, with `ptbk.link`'s zone ID (`tofu output staging_zone_id` in step 7, or the zone's Overview page); it holds the engine records too:
+Then check the deploy token's scope, as CI will use it ([infra/cloudflare README, API tokens](../infra/cloudflare/README.md#api-tokens)). From the repo root, with `ptbk.link`'s zone ID (`tofu output staging_zone_id` in step 7 must print the same); it holds the engine records too:
 
 ```sh
-CLOUDFLARE_API_TOKEN=<deploy token> CLOUDFLARE_ACCOUNT_ID=<account id> \
-  infra/cloudflare/scripts/verify-deploy-token.sh <ptbk.link zone id>
+CLOUDFLARE_API_TOKEN=<deploy token> CLOUDFLARE_ACCOUNT_ID=42b20127fa7293cb5160f22ed42ef43b \
+  infra/cloudflare/scripts/verify-deploy-token.sh c203cd9d66f14a374dbdd2df74f6380a
 ```
 
-**You should see:** every migration applied; `wrangler deploy` listing `app.ptbk.link (custom domain)`; the smoke test passing (`/v1/health` answers `staging`, and `/` is the SPA shell under the production CSP); the dashboard loading in a browser; the token check reporting Workers and D1 reachable, and DNS read and write refused in the staging zone. Paste its output into the values PR.
-**If it fails:** an authorization error on the custom domain means the deploy token needs more than Workers Routes Edit for it. Record the exact permission in infra/cloudflare/README.md, add it, and rerun the token check (the README asks for this), or deploy this once after `bunx wrangler login` as yourself. If `/v1/health` answers 500, `bunx wrangler tail --env staging` shows `Invalid dashboard configuration:` with the names of the missing or invalid vars and secrets (never their values).
+**You should see:** every migration applied; `wrangler deploy` listing `app.ptbk.io/* (zone name: ptbk.link)`; the `curl` answering `staging` with a valid certificate before the cutover; the smoke test passing (`/v1/health` answers `staging`, and `/` is the SPA shell under the production CSP); the dashboard loading in a browser; the token check reporting Workers and D1 reachable, and DNS read and write refused in the staging zone. Paste its output into the values PR.
+**If it fails:** an error resolving `zone_name` or creating the route means the deploy token needs more than Workers Routes Edit for it (likely Zone Read on `ptbk.link`, never DNS); or replace the route's `zone_name` with `"zone_id": "c203cd9d66f14a374dbdd2df74f6380a"`, which needs no lookup. A `curl` that gets no Worker answer means the custom hostname or its certificate is not Active yet (step 7). Record the exact permission in infra/cloudflare/README.md, add it, and rerun the token check (the README asks for this), or deploy this once after `bunx wrangler login` as yourself. If `/v1/health` answers 500, `bunx wrangler tail --env staging` shows `Invalid dashboard configuration:` with the names of the missing or invalid vars and secrets (never their values).
 
 ## 9. Test email
 
-1. Sign up at `https://app.ptbk.link/` with an outside mailbox (Gmail, for example) and finish with your passkey. With billing off, no Checkout comes next.
+1. Sign up at `https://app.ptbk.io/` with an outside mailbox (Gmail, for example) and finish with your passkey. With billing off, no Checkout comes next.
 2. In the verification email, open the original message: the headers must show `spf=pass`, `dkim=pass` and `dmarc=pass` for the sending domain. Paste the `Authentication-Results` lines into the values PR (I-02's email check, which also covers D-02 and D-05).
 3. Set `dmarc_policy = "reject"` in `infra/cloudflare/environments/staging/terraform.tfvars`, then plan (one in-place change to the DMARC TXT record) and apply as in step 7.
 
@@ -287,7 +301,7 @@ CLOUDFLARE_API_TOKEN=<deploy token> CLOUDFLARE_ACCOUNT_ID=<account id> \
 
 ## 10. Relay: secrets, certificate, registration
 
-Mint the relay's registry token in D1 (D-04). The deploy token from step 8 is still exported:
+The relay reads its registry from `https://app.ptbk.io`, so this needs step 8's cutover. Mint the relay's registry token in D1 (D-04). The deploy token from step 8 is still exported:
 
 ```sh
 cd apps/dashboard
@@ -357,13 +371,13 @@ The real engine is the engine team's `ptbk` CLI (npm `ptbk`; Node 22.13+ or 24+,
 npm install --global ptbk
 mkdir -p my-agenda && cd my-agenda
 ptbk init --path . --no-dashboard
-ptbk connect --link 'https://app.ptbk.link/link#<code>'
+ptbk connect --link 'https://app.ptbk.io/link#<code>'
 ```
 
-The link URL names the dashboard, so no variable is needed; the engine prints `https://app.ptbk.link` before it registers, keeps it with the registration and uses it after a reboot too. This needs a `ptbk` release that takes the link URL (the engine team's 2026-11-06 change). With 0.119.0-72, link with the code after `#` and the old variables instead, and start the engine from a shell that has them:
+The link URL names the dashboard, so no variable is needed; the engine prints `https://app.ptbk.io` before it registers, keeps it with the registration and uses it after a reboot too. This needs a `ptbk` release that takes the link URL (the engine team's 2026-11-06 change). With 0.119.0-72, link with the code after `#` and the old variables instead, and start the engine from a shell that has them:
 
 ```sh
-export PTBK_DASHBOARD_URL=https://app.ptbk.link PTBK_ENGINE_DOMAIN=engines.ptbk.link
+export PTBK_DASHBOARD_URL=https://app.ptbk.io PTBK_ENGINE_DOMAIN=engines.ptbk.link
 ptbk connect --link <code>
 ```
 
@@ -404,6 +418,22 @@ Not supported yet. The e2e suite runs only against its own Docker Compose stacks
 - **Remove the relay:** lift the primary IPs' delete protection in the Hetzner Console, then `tofu destroy` in `infra/relay/environments/staging`. The Cloudflare stack refuses to plan without a relay, so leave its records.
 - **Everything:** the above; delete the four account tokens, the R2 token and `HCLOUD_TOKEN`; empty and delete both buckets; delete the Hetzner project. Leave `ptbk.link` and the rest of the shared account alone; `tofu destroy` in `infra/cloudflare/environments/staging`, after the D1 database is out of its state, removes staging's records from the zone.
 - **A token or secret that leaked:** [deploy runbook, If a credential leaks](runbooks/deploy.md#if-a-credential-leaks) and [infra/relay README, Rotate secrets](../infra/relay/README.md#rotate-secrets).
+
+## DNS records for the ptbk.io owner
+
+`ptbk.io` is in the engine team's Cloudflare account (registrar Gransy). We hold no token for it; its owner adds exactly these records, all **DNS-only (grey cloud)**, nothing else. Values come from `tofu output dashboard_owner_records` after step 7. `ptbk.io` has a wildcard `*.ptbk.io` CNAME, which explicit records override.
+
+| When                | Type  | Name                                     | Value                                                     |
+| ------------------- | ----- | ---------------------------------------- | --------------------------------------------------------- |
+| After step 7        | CNAME | `_acme-challenge.app.ptbk.io`            | `app.ptbk.io.<uuid>.dcv.cloudflare.com` (from the output) |
+| After step 7        | TXT   | `_cf-custom-hostname.app.ptbk.io`        | The ownership value from the output                       |
+| Only when we say so | CNAME | `app.ptbk.io` (replaces `CNAME ptbk.io`) | `app-origin.ptbk.link`                                    |
+
+1. **Now:** the first two. The CNAME delegates certificate validation to Cloudflare, so renewals need nobody; it stays for as long as the dashboard is on `app.ptbk.io`. The TXT proves the hostname is ours before any traffic moves; he may delete it once the custom hostname is Active.
+2. **Cutover, only when we ask** (step 8, after the `curl` check): he replaces today's `app` CNAME (to `ptbk.io`, the Vercel site) with the CNAME to `app-origin.ptbk.link`. It must stay DNS-only: proxied, his zone's settings would apply first (orange-to-orange), which pre-validation does not support.
+3. **No mail records:** the dashboard sends from `mail.ptbk.link`. Cloudflare Email Service sends only from a zone in its own account, so `ptbk.io`'s MX, SPF and DMARC stay as they are.
+
+Rollback: he points `app` back to `ptbk.io`.
 
 ## Next: CI
 

@@ -8,10 +8,11 @@ relays = {
 server_type = "cx23"
 
 # Staging's one zone, as in infra/cloudflare's staging root: relays at its top level, engines one level down. The
-# relay hostname is never under the engine domain.
+# relay hostname is never under the engine domain. The dashboard is app.ptbk.io, served from ptbk.link (Cloudflare for
+# SaaS).
 relay_domain  = "ptbk.link"
 engine_domain = "engines.ptbk.link"
-registry_url  = "https://app.ptbk.link"
+registry_url  = "https://app.ptbk.io"
 acme_email    = "<ops-email>"
 
 admins = {

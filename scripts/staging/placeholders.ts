@@ -19,7 +19,6 @@ const IPV6 = /^[0-9a-f:]+$/;
 const CIDR = /^([0-9.]+\/[0-9]{1,2}|[0-9a-f:]+\/[0-9]{1,3})$/;
 
 const VALUE_RULES = {
-    CLOUDFLARE_ACCOUNT_ID: { pattern: /^[0-9a-f]{32}$/, hint: '32 lower-case hex characters' },
     SECURITY_CONTACT: { pattern: EMAIL, hint: 'an email address' },
     OPS_EMAIL: { pattern: EMAIL, hint: 'an email address' },
     ABUSE_EMAIL: { pattern: EMAIL, hint: 'an email address' },
@@ -85,7 +84,7 @@ interface Replacement {
     readonly value: (values: Required<StagingValues>) => string;
 }
 
-/** The staging domains (ptbk.link) are committed values, not placeholders. */
+/** The staging domains (ptbk.link) and the account ID are committed values, not placeholders. */
 const REPLACEMENTS: readonly Replacement[] = [
     { file: 'wrangler', placeholder: '<staging-d1-id>', needs: ['D1_DATABASE_ID'], value: (v) => v.D1_DATABASE_ID },
     { file: 'wrangler', placeholder: '<public-install-guide-url>', needs: [], value: (v) => v.INSTALL_GUIDE_URL },
@@ -96,18 +95,6 @@ const REPLACEMENTS: readonly Replacement[] = [
         value: (v) => v.ABUSE_EMAIL,
     },
     { file: 'wrangler', placeholder: 'ops@<staging-ops-domain>', needs: ['OPS_EMAIL'], value: (v) => v.OPS_EMAIL },
-    {
-        file: 'wrangler',
-        placeholder: '<staging-account-id>',
-        needs: ['CLOUDFLARE_ACCOUNT_ID'],
-        value: (v) => v.CLOUDFLARE_ACCOUNT_ID,
-    },
-    {
-        file: 'cloudflareTfvars',
-        placeholder: '<staging-account-id>',
-        needs: ['CLOUDFLARE_ACCOUNT_ID'],
-        value: (v) => v.CLOUDFLARE_ACCOUNT_ID,
-    },
     {
         file: 'cloudflareTfvars',
         placeholder: '<security-contact>',
@@ -125,18 +112,6 @@ const REPLACEMENTS: readonly Replacement[] = [
         placeholder: '<staging-relay-fsn-ipv6>',
         needs: ['RELAY_IPV6'],
         value: (v) => v.RELAY_IPV6,
-    },
-    {
-        file: 'cloudflareMain',
-        placeholder: '<staging-account-id>',
-        needs: ['CLOUDFLARE_ACCOUNT_ID'],
-        value: (v) => v.CLOUDFLARE_ACCOUNT_ID,
-    },
-    {
-        file: 'relayMain',
-        placeholder: '<staging-account-id>',
-        needs: ['CLOUDFLARE_ACCOUNT_ID'],
-        value: (v) => v.CLOUDFLARE_ACCOUNT_ID,
     },
     { file: 'relayTfvars', placeholder: '<ops-email>', needs: ['OPS_EMAIL'], value: (v) => v.OPS_EMAIL },
     {

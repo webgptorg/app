@@ -19,7 +19,6 @@ const committed = Object.fromEntries(
 ) as Files;
 
 const ALL: StagingValues = {
-    CLOUDFLARE_ACCOUNT_ID: '0123456789abcdef0123456789abcdef',
     SECURITY_CONTACT: 'security@ops.example',
     OPS_EMAIL: 'ops@ops.example',
     ABUSE_EMAIL: 'abuse@ops.example',
@@ -49,16 +48,25 @@ describe('fillPlaceholders on the committed files', () => {
 
     it('fills wrangler.jsonc env.staging consistently with the tfvars', () => {
         const staging = stagingOf(result.files.wrangler);
-        assert.match(staging, /"pattern": "app\.ptbk\.link", "custom_domain": true/);
-        assert.match(staging, /"DASHBOARD_ORIGIN": "https:\/\/app\.ptbk\.link"/);
+        assert.match(staging, /"routes": \[\{ "pattern": "app\.ptbk\.io\/\*", "zone_name": "ptbk\.link" \}\]/);
+        assert.doesNotMatch(staging, /custom_domain/);
+        // The link URL, https://app.ptbk.io/link#<code>, names the dashboard, so the tabs export nothing.
+        const tabs = staging.slice(staging.indexOf('"INSTALL_COMMANDS"'), staging.indexOf('"INSTALL_GUIDE_URL"'));
+        assert.match(tabs, /--link '\{linkUrl\}'/);
+        assert.doesNotMatch(tabs, /export |PTBK_DASHBOARD_URL|PTBK_ENGINE_DOMAIN|\{linkCode\}/);
+        assert.match(staging, /"DASHBOARD_ORIGIN": "https:\/\/app\.ptbk\.io"/);
         assert.match(staging, /"relayId": "relay-fsn\.ptbk\.link"/);
         assert.match(staging, /"ENGINE_DOMAIN": "engines\.ptbk\.link"/);
         assert.match(staging, /"database_id": "01234567-89ab-cdef-0123-456789abcdef"/);
         assert.match(staging, /"EMAIL_FROM": "no-reply@mail\.ptbk\.link"/);
-        assert.match(staging, /"accountId": "0123456789abcdef0123456789abcdef"/);
+        assert.match(staging, /"accountId": "42b20127fa7293cb5160f22ed42ef43b"/);
         assert.ok(staging.includes(`"INSTALL_GUIDE_URL": "${DEFAULT_INSTALL_GUIDE_URL}"`));
-        assert.match(result.files.relayTfvars, /registry_url\s+= "https:\/\/app\.ptbk\.link"/);
+        assert.match(result.files.relayTfvars, /registry_url\s+= "https:\/\/app\.ptbk\.io"/);
         assert.match(result.files.cloudflareTfvars, /email_sending_domain = "mail\.ptbk\.link"/);
+        assert.match(
+            result.files.cloudflareTfvars,
+            /dashboard_custom_hostname = \{ hostname = "app\.ptbk\.io", fallback_origin = "app-origin\.ptbk\.link" \}/,
+        );
     });
 
     it('never touches production or the rest of wrangler.jsonc', () => {
@@ -111,7 +119,8 @@ describe('parseStagingEnv', () => {
     for (const [text, why] of [
         ['OPS_EMAIL', 'not KEY=value'],
         ['STRIPE_SECRET_KEY=sk_test_x', 'an unknown key (no secrets belong here)'],
-        ['CLOUDFLARE_ACCOUNT_ID=<staging-account-id>', 'a placeholder'],
+        ['SECURITY_CONTACT=<security-contact>', 'a placeholder'],
+        ['CLOUDFLARE_ACCOUNT_ID=42b20127fa7293cb5160f22ed42ef43b', 'the account ID, which is committed'],
         ['OPS_EMAIL=ops@Example.COM', 'an upper-case address'],
         ['ADMIN_SSH_PUBLIC_KEY=ssh-rsa AAAAB3Nza seb', 'an RSA key, which the relay refuses'],
         ['ADMIN_SSH_PUBLIC_KEY=ssh-ed25519 AAAA "x"', 'a quote, which would break out of the HCL string'],

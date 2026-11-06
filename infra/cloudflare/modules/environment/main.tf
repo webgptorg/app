@@ -80,6 +80,7 @@ locals {
       local.engine_no_mail_records,
       local.engine_psl_records,
       local.email_records,
+      local.dashboard_saas_records,
       local.extra_records,
     ) :
     key => {

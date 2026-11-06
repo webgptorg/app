@@ -276,3 +276,46 @@ variable "ui_releases" {
     error_message = "ui_releases.hostname must not be the engine domain or under it."
   }
 }
+
+variable "dashboard_custom_hostname" {
+  type = object({
+    hostname        = string
+    fallback_origin = string
+  })
+  description = "Serves the dashboard on a hostname whose zone is in another Cloudflare account (staging: app.ptbk.io) as a Cloudflare for SaaS custom hostname of dashboard_zone. fallback_origin is the originless, proxied record in dashboard_zone that the hostname's owner points it at; the Worker route comes from wrangler. null when the hostname is in dashboard_zone and wrangler's custom domain serves it (production). README, Dashboard on another account's zone."
+  default     = null
+
+  validation {
+    condition = var.dashboard_custom_hostname == null || (
+      can(regex(local.domain_pattern, try(var.dashboard_custom_hostname.hostname, "")))
+      && can(regex(local.domain_pattern, try(var.dashboard_custom_hostname.fallback_origin, "")))
+    )
+    error_message = "dashboard_custom_hostname.hostname and .fallback_origin must be lower-case domain names."
+  }
+
+  # Cloudflare warns against a custom hostname matching the SaaS zone, and a name inside it is a plain custom domain.
+  validation {
+    condition = var.dashboard_custom_hostname == null || !(
+      try(var.dashboard_custom_hostname.hostname, "") == var.dashboard_zone
+      || endswith(try(var.dashboard_custom_hostname.hostname, ""), ".${var.dashboard_zone}")
+    )
+    error_message = "dashboard_custom_hostname.hostname must be outside dashboard_zone; inside it, use wrangler's custom domain."
+  }
+
+  validation {
+    condition = var.dashboard_custom_hostname == null || endswith(
+      try(var.dashboard_custom_hostname.fallback_origin, ""), ".${var.dashboard_zone}"
+    )
+    error_message = "dashboard_custom_hostname.fallback_origin must be a name inside dashboard_zone."
+  }
+
+  # Both are served by Cloudflare: under the engine domain they would put an engine name behind its proxy and
+  # certificates (AGENTS.md rules 1 and 3).
+  validation {
+    condition = var.dashboard_custom_hostname == null || alltrue([
+      for name in [try(var.dashboard_custom_hostname.hostname, ""), try(var.dashboard_custom_hostname.fallback_origin, "")] :
+      name != var.engine_domain && !endswith(name, ".${var.engine_domain}")
+    ])
+    error_message = "dashboard_custom_hostname.hostname and .fallback_origin must not be the engine domain or under it."
+  }
+}

@@ -14,7 +14,7 @@ terraform {
     bucket                      = "ptbk-tofu-state-staging"
     key                         = "relay/terraform.tfstate"
     region                      = "auto"
-    endpoints                   = { s3 = "https://<staging-account-id>.r2.cloudflarestorage.com" }
+    endpoints                   = { s3 = "https://42b20127fa7293cb5160f22ed42ef43b.r2.cloudflarestorage.com" }
     use_path_style              = true
     use_lockfile                = true
     skip_credentials_validation = true
