@@ -87,7 +87,7 @@ export function generateStagingSecrets(relayHostnames: readonly string[]): Stagi
                 name: 'UI_STAGING_RELEASE_KEY',
                 value: releaseSeed,
                 goesTo: [
-                    'Password manager. With CI: the `release` GitHub environment secret of the same name.',
+                    'Password manager only, never GitHub: UI releases are signed with it from your machine.',
                     'Its public key (below) replaces releaseKeys[0] in apps/engine-ui/release/trust-policy.staging.json.',
                 ],
             },

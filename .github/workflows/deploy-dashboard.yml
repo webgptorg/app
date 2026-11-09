@@ -5,8 +5,11 @@ name: Deploy dashboard
 # and rebuilds the same commit for production, because the Cloudflare Vite plugin bakes the environment in at build
 # time. Pull requests build both environments and dry-run the upload, with no credential. Application secrets (Stripe,
 # rate-limit key) are set by humans with `wrangler secret put` (docs/runbooks/deploy.md); CI never carries them.
-# Until staging exists, the repository variable STAGING_DEPLOY_ENABLED is not `true` and a push runs none of this; a
-# dispatch from main still deploys (docs/staging-runbook.md, "Next: CI"). Draft pull requests run nothing.
+# The deploy token lives in the `staging` and `production` environments, which GitHub Free does not offer in a private
+# repository (decided 2026-11-09), so nothing deploys from CI until the repository variable DASHBOARD_CI_DEPLOY is
+# `true`; until then a maintainer deploys from their machine (docs/staging-runbook.md, step 8). With it, a push deploys
+# only once STAGING_DEPLOY_ENABLED is `true` too, and a dispatch from main always does (docs/staging-runbook.md,
+# "Next: CI"). Draft pull requests run nothing.
 on:
   push:
     branches: [main]
@@ -72,10 +75,11 @@ jobs:
           CLOUDFLARE_ENV: ${{ matrix.environment }}
         run: bunx --no-install wrangler deploy --dry-run --env "$CLOUDFLARE_ENV"
 
-  # The same single `check` step as ci.yml, so the D1 drift and destructive-change guards run before any deploy.
+  # The same single `check` step as ci.yml, so the D1 drift and destructive-change guards run before any deploy. The
+  # deploy jobs need it, so its condition switches them all.
   check:
     if: >-
-      github.ref == 'refs/heads/main' &&
+      vars.DASHBOARD_CI_DEPLOY == 'true' && github.ref == 'refs/heads/main' &&
       (github.event_name == 'workflow_dispatch' || github.event_name == 'push' && vars.STAGING_DEPLOY_ENABLED == 'true')
     runs-on: ubuntu-24.04
     timeout-minutes: 20
