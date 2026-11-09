@@ -213,7 +213,7 @@ tofu apply tfplan
 tofu output                                                 # d1_database_id into staging.env, then fill again
 ```
 
-The plan should only add: the D1 database `ptbk-dashboard-staging`, the email sending subdomain, the custom domain `ui.ptbk.link` on `ptbk-ui-releases-staging` with its r2.dev access off, the custom hostname `app.ptbk.io` with the zone's fallback origin `app-origin.ptbk.link`, and DNS records in `ptbk.link`. The records are the wildcard `*.engines.ptbk.link` A and AAAA (TTL 30), `relay-fsn` A and AAAA, three CAA, the null MX, SPF and DMARC on `engines.ptbk.link`, DMARC on the sending domain, and `app-origin` AAAA `100::`, the only proxied one. No zone, no zone setting (Universal SSL, DNSSEC) and no ACME CNAME: staging has no engine zone or challenge zone. It must destroy nothing.
+The plan should only add: the D1 database `ptbk-dashboard-staging`, the email sending subdomain, the custom domain `ui.ptbk.link` on `ptbk-ui-releases-staging` with its r2.dev access off, the custom hostname `app.ptbk.io` with the zone's fallback origin `app-origin.ptbk.link`, and DNS records in `ptbk.link`. The records are the wildcard `*.engines.ptbk.link` A and AAAA (TTL 60), `relay-fsn` A and AAAA, three CAA, the null MX, SPF and DMARC on `engines.ptbk.link`, DMARC on the sending domain, and `app-origin` AAAA `100::`, the only proxied one. No zone, no zone setting (Universal SSL, DNSSEC) and no ACME CNAME: staging has no engine zone or challenge zone. It must destroy nothing.
 
 Then `tofu output dashboard_owner_records` lists the records for the `ptbk.io` owner. Send him the two marked `now` ([DNS records for the ptbk.io owner](#dns-records-for-the-ptbkio-owner)); the `cutover` one waits for step 8.
 

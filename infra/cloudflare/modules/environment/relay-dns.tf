@@ -32,15 +32,17 @@ locals {
     consecutive_up   = 3
   }
 
-  relay_dns_ttl_s = 30
-  load_balanced   = var.relay_dns_mode == "load_balancer"
+  # Plain records can't go below 60 s outside Enterprise (API error 9021); a load balancer's record can.
+  relay_dns_ttl_s        = 30
+  relay_dns_record_ttl_s = 60
+  load_balanced          = var.relay_dns_mode == "load_balancer"
 
   wildcard_records = local.load_balanced ? {} : merge(
     { for name, relay in local.relays_in_rotation : "engine-wildcard-a-${name}" => {
-      zone = "engine", name = local.wildcard, type = "A", content = relay.ipv4, ttl = local.relay_dns_ttl_s
+      zone = "engine", name = local.wildcard, type = "A", content = relay.ipv4, ttl = local.relay_dns_record_ttl_s
     } },
     { for name, relay in local.relays_in_rotation : "engine-wildcard-aaaa-${name}" => {
-      zone = "engine", name = local.wildcard, type = "AAAA", content = relay.ipv6, ttl = local.relay_dns_ttl_s
+      zone = "engine", name = local.wildcard, type = "AAAA", content = relay.ipv6, ttl = local.relay_dns_record_ttl_s
     } },
   )
 }
