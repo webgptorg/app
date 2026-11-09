@@ -154,13 +154,13 @@
                         "docsAnchor": "networking",
                     },
                 ],
-                "INSTALL_GUIDE_URL": "<public-install-guide-url>",
+                "INSTALL_GUIDE_URL": "https://github.com/webgptorg/promptbook/blob/reborn/2026-10/specs/app/connection.md",
                 "ADAPTERS": { "email": "cloudflare", "billing": "off", "rateLimit": "workers" },
                 "EMAIL_FROM": "no-reply@mail.ptbk.link",
-                "ABUSE_EMAIL": "abuse@<staging-abuse-domain>",
+                "ABUSE_EMAIL": "abuse@ptbk.link",
                 // I-04: alerts go to the ops mailbox; relay metrics tokens are the RELAY_METRICS_TOKENS secret and
                 // the analytics read token ANALYTICS_API_TOKEN (docs/runbooks/observability.md).
-                "MONITORING": { "opsEmail": "ops@<staging-ops-domain>" },
+                "MONITORING": { "opsEmail": "ops@ptbk.link" },
                 "ANALYTICS": { "accountId": "42b20127fa7293cb5160f22ed42ef43b", "dataset": "ptbk_ops_staging" },
                 // Staging charges nobody (Seb, 2026-11-04): billing is "off" and every organization holds BILLING_OFF_PLAN,
                 // without Stripe secrets or IDs; its quotas are config, so changing them needs no code. To charge here

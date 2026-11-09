@@ -10,21 +10,13 @@ export const STAGING_FILES = {
     relayMain: 'infra/relay/environments/staging/main.tf',
 } as const;
 
-export const DEFAULT_INSTALL_GUIDE_URL =
-    'https://github.com/webgptorg/app/blob/main/docs/engine-integration/installation.md';
-
-const EMAIL = /^[a-z0-9._+-]+@([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,63}$/;
 const IPV4 = /^((25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])$/;
 const IPV6 = /^[0-9a-f:]+$/;
 
 const VALUE_RULES = {
-    SECURITY_CONTACT: { pattern: EMAIL, hint: 'an email address' },
-    OPS_EMAIL: { pattern: EMAIL, hint: 'an email address' },
-    ABUSE_EMAIL: { pattern: EMAIL, hint: 'an email address' },
     RELAY_IPV4: { pattern: IPV4, hint: 'an IPv4 address' },
     RELAY_IPV6: { pattern: IPV6, hint: 'a lower-case IPv6 address' },
     D1_DATABASE_ID: { pattern: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/, hint: 'a UUID' },
-    INSTALL_GUIDE_URL: { pattern: /^https:\/\/[^\s#"\\]+$/, hint: 'an https URL without a fragment' },
 } as const;
 
 export type StagingKey = keyof typeof VALUE_RULES;
@@ -73,23 +65,12 @@ interface Replacement {
     readonly value: (values: Required<StagingValues>) => string;
 }
 
-/** The staging domains (ptbk.link), the account ID and the admin's SSH key are committed values, not placeholders. */
+/**
+ * The staging domains (ptbk.link), the account ID, the admin's SSH key, the contacts and the install guide are committed
+ * values, not placeholders; only what exists after runbook steps 6 and 7 is filled in.
+ */
 const REPLACEMENTS: readonly Replacement[] = [
     { file: 'wrangler', placeholder: '<staging-d1-id>', needs: ['D1_DATABASE_ID'], value: (v) => v.D1_DATABASE_ID },
-    { file: 'wrangler', placeholder: '<public-install-guide-url>', needs: [], value: (v) => v.INSTALL_GUIDE_URL },
-    {
-        file: 'wrangler',
-        placeholder: 'abuse@<staging-abuse-domain>',
-        needs: ['ABUSE_EMAIL'],
-        value: (v) => v.ABUSE_EMAIL,
-    },
-    { file: 'wrangler', placeholder: 'ops@<staging-ops-domain>', needs: ['OPS_EMAIL'], value: (v) => v.OPS_EMAIL },
-    {
-        file: 'cloudflareTfvars',
-        placeholder: '<security-contact>',
-        needs: ['SECURITY_CONTACT'],
-        value: (v) => v.SECURITY_CONTACT,
-    },
     {
         file: 'cloudflareTfvars',
         placeholder: '<staging-relay-fsn-ipv4>',
@@ -102,7 +83,6 @@ const REPLACEMENTS: readonly Replacement[] = [
         needs: ['RELAY_IPV6'],
         value: (v) => v.RELAY_IPV6,
     },
-    { file: 'relayTfvars', placeholder: '<ops-email>', needs: ['OPS_EMAIL'], value: (v) => v.OPS_EMAIL },
 ];
 
 /** Placeholders deliberately left in staging, with what fills them. */
@@ -130,7 +110,6 @@ function stagingSection(wrangler: string): { before: string; staging: string; af
 function withDefaults(values: StagingValues): Required<StagingValues> {
     return {
         ...Object.fromEntries(Object.keys(VALUE_RULES).map((key) => [key, ''])),
-        INSTALL_GUIDE_URL: DEFAULT_INSTALL_GUIDE_URL,
         ...values,
     } as Required<StagingValues>;
 }
@@ -142,7 +121,7 @@ export function fillPlaceholders(
     given: StagingValues,
 ): FillResult {
     const values = withDefaults(validateStagingValues(given));
-    const known = (key: StagingKey): boolean => given[key] !== undefined || key === 'INSTALL_GUIDE_URL';
+    const known = (key: StagingKey): boolean => given[key] !== undefined;
     const wrangler = stagingSection(input.wrangler);
     const files: Record<keyof typeof STAGING_FILES, string> = { ...input, wrangler: wrangler.staging };
     const filled: string[] = [];
@@ -165,5 +144,5 @@ export function fillPlaceholders(
 
 function neededFor(file: keyof typeof STAGING_FILES, placeholder: string): string {
     const replacement = REPLACEMENTS.find((r) => r.file === file && r.placeholder.includes(placeholder));
-    return replacement === undefined || replacement.needs.length === 0 ? 'a value' : replacement.needs.join(' and ');
+    return replacement === undefined ? 'a value' : replacement.needs.join(' and ');
 }
