@@ -101,6 +101,11 @@ run "records_dns_only_in_their_zones" {
   }
 
   assert {
+    condition     = cloudflare_d1_database.dashboard.read_replication.mode == "disabled"
+    error_message = "D1 read replication is set explicitly, or the provider sends null on update and the API refuses it."
+  }
+
+  assert {
     condition = one([
       for record in cloudflare_dns_record.this : record.content if record.name == "_dmarc.mail.dashboard.example"
     ]) == "\"v=DMARC1; p=none; sp=none; adkim=s; aspf=s\""
