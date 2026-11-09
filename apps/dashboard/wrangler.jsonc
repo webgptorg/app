@@ -127,7 +127,7 @@
                 {
                     "binding": "DB",
                     "database_name": "ptbk-dashboard-staging",
-                    "database_id": "<staging-d1-id>",
+                    "database_id": "663996ef-d6cd-4769-b7ff-2584301247ae",
                     "migrations_dir": "migrations",
                 },
             ],
