@@ -141,4 +141,6 @@ locals {
       ["systemctl", "start", "ptbk-relay-cert.timer", "ptbk-relay-deploy.timer"],
     ]
   }
+
+  cloud_config_text = "#cloud-config\n${yamlencode(local.cloud_config)}"
 }

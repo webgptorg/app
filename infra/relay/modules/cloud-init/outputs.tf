@@ -3,9 +3,18 @@ output "hostname" {
   value       = local.hostname
 }
 
+output "cloud_config" {
+  description = "The host's cloud-config as plain text: what user_data decodes to, for tests and readers."
+  value       = local.cloud_config_text
+}
+
 output "user_data" {
-  description = "cloud-init user data for the host. Holds no secret: those are placed on the host by hand (README)."
-  value       = "#cloud-config\n${yamlencode(local.cloud_config)}"
+  description = "cloud-init user data for the host, gzipped and base64-encoded. Holds no secret: those are placed on the host by hand (README)."
+
+  # Hetzner caps user data at 32 KiB and the plain cloud-config is well past it. cloud-init's Hetzner datasource
+  # base64-decodes user data (DataSourceHetzner.py: util.maybe_b64decode) and then gunzips it (user_data.py:
+  # convert_string), so the host ends up with the same cloud-config.
+  value = base64gzip(local.cloud_config_text)
 
   # A relay hostname under the engine domain would make the relay a TLS endpoint for an engine name (AGENTS.md
   # rule 1); the relay refuses to start with one, so this fails the plan instead.
