@@ -63,7 +63,7 @@
     "@playwright/test": "catalog:",
     "@ptbk/release-tools": "workspace:*",
     "@tailwindcss/vite": "catalog:",
-    "@tanstack/react-query-devtools": "5.105.0",
+    "@tanstack/react-query-devtools": "5.105.1",
     "@tanstack/react-router-devtools": "1.167.2",
     "@tanstack/router-cli": "catalog:",
     "@tanstack/router-plugin": "catalog:",
