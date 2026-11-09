@@ -210,7 +210,7 @@ For the I-02 acceptance criteria, after the first apply (paste the output into t
 
 ```sh
 ns=<one of engine_name_servers>
-dig +short A anything.<engine domain> @$ns       # every healthy relay's IPv4 (TTL 30)
+dig +short A anything.<engine domain> @$ns       # every healthy relay's IPv4 (TTL 30; 60 with records)
 dig +short AAAA anything.<engine domain> @$ns    # every healthy relay's IPv6
 dig +short A <engine domain> @$ns                # empty
 dig +short CAA <engine domain> @$ns              # issue, issuewild ";", iodef
