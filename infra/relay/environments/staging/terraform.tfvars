@@ -13,7 +13,7 @@ server_type = "cx23"
 relay_domain  = "ptbk.link"
 engine_domain = "engines.ptbk.link"
 registry_url  = "https://app.ptbk.io"
-acme_email    = "<ops-email>"
+acme_email    = "ops@ptbk.link"
 
 # Public keys, not secrets. SSH is open to every address because admins work from changing networks; it stays keys
 # only, with no root, passwords or forwarding (decided 2026-11-06).

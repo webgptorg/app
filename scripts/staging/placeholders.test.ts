@@ -4,7 +4,6 @@ import { join, resolve } from 'node:path';
 import { describe, it } from 'vitest';
 
 import {
-    DEFAULT_INSTALL_GUIDE_URL,
     fillPlaceholders,
     parseStagingEnv,
     STAGING_FILES,
@@ -57,7 +56,7 @@ describe('fillPlaceholders on the committed files', () => {
         assert.match(staging, /"database_id": "01234567-89ab-cdef-0123-456789abcdef"/);
         assert.match(staging, /"EMAIL_FROM": "no-reply@mail\.ptbk\.link"/);
         assert.match(staging, /"accountId": "42b20127fa7293cb5160f22ed42ef43b"/);
-        assert.ok(staging.includes(`"INSTALL_GUIDE_URL": "${DEFAULT_INSTALL_GUIDE_URL}"`));
+        assert.match(staging, /"INSTALL_GUIDE_URL": "https:\/\/[^"<>]+"/);
         assert.match(result.files.relayTfvars, /registry_url\s+= "https:\/\/app\.ptbk\.io"/);
         assert.match(result.files.cloudflareTfvars, /email_sending_domain = "mail\.ptbk\.link"/);
         assert.match(

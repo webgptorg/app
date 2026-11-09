@@ -168,7 +168,7 @@ node scripts/staging/fill-placeholders.ts           # fills what is known, lists
 node scripts/staging/fill-placeholders.ts --check   # exit 0 once nothing staging.env can fill is left
 ```
 
-Run it again after steps 6 and 7. It only replaces what is still a placeholder, never touches production, and refuses malformed values and anything that would break out of a string. For `SECURITY_CONTACT`, `OPS_EMAIL` and `ABUSE_EMAIL`, mailboxes you already read are fine for staging (for example plus-addresses of your own), so the staging zone needs no inbound mail.
+Run it again after steps 6 and 7. It only replaces what is still a placeholder, never touches production, and refuses malformed values and anything that would break out of a string. `SECURITY_CONTACT`, `OPS_EMAIL`, `ABUSE_EMAIL` and `INSTALL_GUIDE_URL` are already committed: `security@`, `ops@` and `abuse@ptbk.link` are stand-ins that receive no mail (`ptbk.link` has no MX), and the guide is the engine's App connection spec. Replace the three addresses with read mailboxes before real users arrive: until then alerts and abuse reports bounce.
 
 Strictly, plan and apply run from an up-to-date `main` ([infra/cloudflare README, Running](../infra/cloudflare/README.md#running)). For this bootstrap, the values arrive one round at a time, so apply from this branch rebased on `origin/main`, then merge its PR in the same session, with the DNS checks, the email headers and the token check (steps 7 to 9) in its body.
 

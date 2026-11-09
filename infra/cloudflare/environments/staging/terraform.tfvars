@@ -13,7 +13,7 @@ relay_domain         = "ptbk.link"
 email_sending_domain = "mail.ptbk.link"
 dmarc_policy         = "none"
 
-security_contact = "<security-contact>"
+security_contact = "security@ptbk.link"
 
 # The dashboard on app.ptbk.io, which the engines' built-in default dashboard URL names, as a Cloudflare for SaaS custom
 # hostname of ptbk.link; the Worker route is in apps/dashboard/wrangler.jsonc.
