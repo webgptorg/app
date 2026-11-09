@@ -4,6 +4,9 @@ resource "cloudflare_d1_database" "dashboard" {
   account_id            = var.account_id
   name                  = "ptbk-dashboard-${var.environment}"
   primary_location_hint = "weur"
+  # Explicit because provider 5.27 sends null on update and the API refuses it (error 7400). Disabled: replicas would
+  # need the Sessions API for read-your-writes, which the dashboard doesn't use.
+  read_replication = { mode = "disabled" }
 
   lifecycle {
     prevent_destroy = true
