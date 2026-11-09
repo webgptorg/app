@@ -112,7 +112,7 @@ run "relay_environment_holds_no_secret" {
   }
 
   assert {
-    condition     = !strcontains(output.user_data, "RELAY_REGISTRY_TOKEN=") && !strcontains(output.user_data, "ptbk_rt_") && !strcontains(output.user_data, "ptbk_mt_") && !strcontains(output.user_data, "PRIVATE KEY")
+    condition     = !strcontains(output.cloud_config, "RELAY_REGISTRY_TOKEN=") && !strcontains(output.cloud_config, "ptbk_rt_") && !strcontains(output.cloud_config, "ptbk_mt_") && !strcontains(output.cloud_config, "PRIVATE KEY")
     error_message = "No token or private key is ever part of the user data."
   }
 
@@ -239,6 +239,29 @@ run "keeps_logs_seven_days" {
   assert {
     condition     = strcontains(local.files["/etc/systemd/journald.conf.d/ptbk-relay.conf"], "Storage=persistent\nMaxRetentionSec=7day\n")
     error_message = "journald keeps engine IPs and tunnel times for at most 7 days."
+  }
+}
+
+run "user_data_fits_hetzner_limit" {
+  command = apply
+
+  variables {
+    admins = {
+      ada   = ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIODl1HFc9w2tQEYLZv2a7Q6WsBdDk0Rgoxk/YQuqGbj+ ada"]
+      grace = ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIODl1HFc9w2tQEYLZv2a7Q6WsBdDk0Rgoxk/YQuqGbj+ grace"]
+      linus = ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIODl1HFc9w2tQEYLZv2a7Q6WsBdDk0Rgoxk/YQuqGbj+ linus"]
+    }
+  }
+
+  # Hetzner rejects user data over 32,768 bytes; the margin catches growth before it fails a server create.
+  assert {
+    condition     = length(output.user_data) < 28000
+    error_message = "The user data sent to Hetzner must stay well below its 32 KiB limit."
+  }
+
+  assert {
+    condition     = can(regex("^[A-Za-z0-9+/]+=*$", output.user_data)) && startswith(output.cloud_config, "#cloud-config\n")
+    error_message = "The user data is the cloud-config, gzipped and base64-encoded."
   }
 }
 

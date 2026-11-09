@@ -108,7 +108,7 @@ run "ssh_from_anywhere_opens_22_in_the_provider_firewall" {
   }
 
   assert {
-    condition     = alltrue([for name, _ in hcloud_server.relay : strcontains(module.cloud_init[name].user_data, "elements = { 0.0.0.0/0 }")])
+    condition     = alltrue([for name, _ in hcloud_server.relay : strcontains(module.cloud_init[name].cloud_config, "elements = { 0.0.0.0/0 }")])
     error_message = "nftables on the hosts admits SSH from anywhere too."
   }
 }

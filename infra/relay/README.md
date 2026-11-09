@@ -25,6 +25,7 @@ A relay host holds no engine key, no engine certificate and no credential for th
 
 ```
 modules/cloud-init/      One host's user data, rendered from files/ (no provider); its validations refuse bad values
+                         Sent gzipped and base64-encoded: Hetzner caps user data at 32 KiB; cloud-init decodes it
 modules/cloud-init/files The host's files: units, nftables, sshd, sysctl, unbound, scripts
 modules/environment/     Hetzner resources for one environment: firewall, primary IPs, servers
 environments/<env>/      Backend, state encryption, provider; values in terraform.tfvars

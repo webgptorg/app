@@ -238,7 +238,7 @@ tofu init -backend=false -input=false -lockfile=readonly >/dev/null
 for relay in "${RELAYS[@]}"; do
     tofu apply -auto-approve -input=false -state="/work/render-$relay.tfstate" -var "name=$relay" \
         -var "admin_key=$(cat "$work/admin.pub")" >/dev/null
-    tofu output -state="/work/render-$relay.tfstate" -raw user_data >"$work/user-data-$relay"
+    tofu output -state="/work/render-$relay.tfstate" -raw user_data | base64 -d | gzip -d >"$work/user-data-$relay"
 done
 
 # What cloud-init would do on first boot, minus what a container cannot or need not do (kernel modules, sysctl,

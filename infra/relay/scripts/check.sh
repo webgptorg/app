@@ -45,7 +45,8 @@ diff <(sed -e 's/staging/ENV/g' -e "$r2_account" "$infra/relay/environments/stag
 
 step "render the user data (test/render)"
 tofu relay/test/render apply -auto-approve -input=false -state=/work/render.tfstate >/dev/null
-tofu relay/test/render output -state=/work/render.tfstate -raw user_data >"$work/user-data"
+# Decodes what Hetzner gets (gzip, base64) back to the cloud-config the host sees.
+tofu relay/test/render output -state=/work/render.tfstate -raw user_data | base64 -d | gzip -d >"$work/user-data"
 
 step "build the tools image"
 docker build --quiet --tag "$TOOLS_IMAGE" --file "$infra/relay/test/tools.Containerfile" "$infra/relay/test"

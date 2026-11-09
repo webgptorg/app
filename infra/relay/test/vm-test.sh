@@ -99,7 +99,7 @@ docker run --rm -e HOME=/tmp -v "$repo/infra:/infra" -v "$work:/work" -w /infra/
     -var "admin_key=$(cat "$work/admin.pub")" \
     -var "ssh_allowlist=[\"$HOST_IP/32\"]" -var "acme_server=https://$PEBBLE_IP/dir" >/dev/null
 docker run --rm -e HOME=/tmp -v "$repo/infra:/infra" -v "$work:/work" -w /infra/relay/test/render "$TOFU_IMAGE" \
-    output -no-color -state=/work/render.tfstate -raw user_data >"$work/user-data"
+    output -no-color -state=/work/render.tfstate -raw user_data | base64 -d | gzip -d >"$work/user-data"
 printf 'instance-id: ptbk-relay-ci\nlocal-hostname: relay-ci\n' >"$work/meta-data"
 cat >"$work/network-config" <<EOF
 version: 2
