@@ -1,13 +1,18 @@
 name: Release relay
 
 # Builds the relay image, pushes it to GHCR by digest, signs it keylessly (Rekor entry and RFC 3161 timestamp) and
-# rolls it out to the staging relays, then, after approval, to the production relays, one relay at a time (I-03).
-# Each relay pulls its image itself and verifies the signature with the exact identity of this workflow on main
-# (ADR 0014), so moving a tag cannot put anything else on a relay. Pull requests only build. A dispatch with `digest`
-# moves the tags back to an image this workflow signed before (rollback); a dispatch from another branch builds and
-# signs, and the relays refuse it. Until staging exists, the repository variable STAGING_DEPLOY_ENABLED is not `true`
-# and a push builds, signs and rolls out nothing; a dispatch still does (docs/staging-runbook.md, "Next: CI"). Draft
-# pull requests run nothing.
+# rolls it out to the staging relays, one relay at a time (I-03); a dispatch with `production` then rolls it out to the
+# production relays too. Each relay pulls its image itself and verifies the signature with the exact identity of this
+# workflow on main (ADR 0014), so moving a tag cannot put anything else on a relay. Pull requests only build. A
+# dispatch with `digest` moves the tags back to an image this workflow signed before (rollback); a dispatch from
+# another branch builds and signs, and the relays refuse it. Until staging exists, the repository variable
+# STAGING_DEPLOY_ENABLED is not `true` and a push builds, signs and rolls out nothing; a dispatch still does
+# (docs/staging-runbook.md, "Next: CI"). Draft pull requests run nothing.
+#
+# The org is on GitHub Free, which has no environments in a private repository (decided 2026-11-09). Nothing here needs
+# a secret: only the run's GITHUB_TOKEN and OIDC token. The relays come from the repository variables
+# STAGING_RELAY_HOSTS and PRODUCTION_RELAY_HOSTS, and the dispatch with `production` is the only production approval
+# (docs/runbooks/deploy.md, GitHub settings).
 on:
   push:
     branches: [main]
@@ -33,6 +38,10 @@ on:
         description: 'Roll back to (or redeploy) an image this workflow signed: sha256:<64 hex>. Empty builds HEAD.'
         required: false
         default: ''
+      production:
+        description: 'Roll out to the production relays after staging. Run from main only.'
+        type: boolean
+        default: false
 
 permissions: {}
 
@@ -246,12 +255,12 @@ jobs:
   # relay follows its own tag, `deploy-<relay hostname>`; rolling-deploy.sh moves one tag at a time, watches that relay's
   # /healthz report the new image through its deploy window, and moves the tag back and stops at the first failure.
   # Each relay verifies the signature, refuses an image much older than the one it runs, and rolls itself back if
-  # it does not answer and win back its engines. RELAY_HOSTS lists the environment's relays in rollout order.
+  # it does not answer and win back its engines. STAGING_RELAY_HOSTS and PRODUCTION_RELAY_HOSTS list the relays,
+  # space-separated, in rollout order.
   staging:
     needs: select
     runs-on: ubuntu-24.04
     timeout-minutes: 30
-    environment: staging
     concurrency:
       group: relay-deploy-staging-${{ inputs.digest != '' && 'rollback' || 'release' }}
       cancel-in-progress: false
@@ -265,20 +274,22 @@ jobs:
       - name: Roll out to the staging relays
         env:
           DIGEST: ${{ needs.select.outputs.digest }}
-          RELAY_HOSTS: ${{ vars.RELAY_HOSTS }}
+          RELAY_HOSTS: ${{ vars.STAGING_RELAY_HOSTS }}
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           export REGISTRY_AUTH_FILE="$RUNNER_TEMP/registry-auth.json"
           trap 'rm -f "$REGISTRY_AUTH_FILE"' EXIT
           printf '%s' "$GITHUB_TOKEN" | skopeo login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
           read -ra hosts <<< "$RELAY_HOSTS"
+          ((${#hosts[@]})) || { echo "::error::the repository variable STAGING_RELAY_HOSTS is empty"; exit 1; }
           infra/relay/scripts/rolling-deploy.sh "$DIGEST" "${hosts[@]}"
 
+  # Without environments there is no approval to wait for: only a dispatch that asks for production gets here.
   production:
     needs: [select, staging]
+    if: github.event_name == 'workflow_dispatch' && inputs.production
     runs-on: ubuntu-24.04
     timeout-minutes: 45
-    environment: production
     concurrency:
       group: relay-deploy-production-${{ inputs.digest != '' && 'rollback' || 'release' }}
       cancel-in-progress: false
@@ -292,11 +303,12 @@ jobs:
       - name: Roll out to the production relays
         env:
           DIGEST: ${{ needs.select.outputs.digest }}
-          RELAY_HOSTS: ${{ vars.RELAY_HOSTS }}
+          RELAY_HOSTS: ${{ vars.PRODUCTION_RELAY_HOSTS }}
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           export REGISTRY_AUTH_FILE="$RUNNER_TEMP/registry-auth.json"
           trap 'rm -f "$REGISTRY_AUTH_FILE"' EXIT
           printf '%s' "$GITHUB_TOKEN" | skopeo login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
           read -ra hosts <<< "$RELAY_HOSTS"
+          ((${#hosts[@]})) || { echo "::error::the repository variable PRODUCTION_RELAY_HOSTS is empty"; exit 1; }
           infra/relay/scripts/rolling-deploy.sh "$DIGEST" "${hosts[@]}"

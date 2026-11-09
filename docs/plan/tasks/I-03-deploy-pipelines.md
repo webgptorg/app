@@ -48,6 +48,8 @@ The engine UI bundle runs on customers' engines and sees decrypted data, so its 
 - **Private image**, pulled with a read-only token of a machine account through `LoadCredential`.
 - **cosign on hosts** is the upstream release pinned by SHA-256 (as lego in I-01), bumped like any dependency.
 
+2026-11-09 (Seb): the org stays on GitHub Free, so there are no environments and **no deploy secret goes into GitHub**. CI builds and signs keylessly with only `GITHUB_TOKEN` and OIDC and rolls the relays out; production relay rollouts need a dispatch with `production`, which is the approval. The dashboard deploy and the UI release's key signature and upload run from a maintainer's machine; their CI jobs stay, switched off by repository variables, for a paid plan ([deploy runbook, GitHub settings](../../runbooks/deploy.md#github-settings)).
+
 ## Acceptance criteria
 
 The code lands before any credential exists; everything below is verifiable in CI without one.
@@ -62,16 +64,16 @@ The code lands before any credential exists; everything below is verifiable in C
 
 ## Apply (needs credentials)
 
-Tracked in [apply.md](../apply.md). Needs the GitHub environments (blocked on the GitHub plan decision), a second maintainer account, I-02's `ptbk-<env>-deploy` token, the GHCR machine account and its read token on hosts, and I-01's and I-02's applied staging.
+Tracked in [apply.md](../apply.md). Needs a second maintainer account, I-02's `ptbk-<env>-deploy` token, the GHCR machine account and its read token on hosts, and I-01's and I-02's applied staging.
 
-- A push to `main` deploys the dashboard to staging; production waits for an approver who is not the pusher.
+- A push to `main` rolls the relay out to staging; production relays only on a dispatch with `production`. A maintainer deploys the dashboard from their machine.
 - Rolling deploy across two relays (staging can temporarily run two) keeps a browser connection test passing throughout; a deliberately broken image stops the rollout after the first host and rolls it back.
-- The UI release cannot publish without `release` approval by a second maintainer.
+- A UI release is published only from a maintainer's machine; `ui-release.yml`'s `publish` job does not run without `UI_CI_PUBLISH`.
 
 ## Risks and open points
 
-- Cloudflare has no OIDC federation for wrangler, so the deploy token is a long-lived secret; keep it environment-scoped and rotated.
+- Cloudflare has no OIDC federation for wrangler, so the deploy token is a long-lived secret; keep it in the maintainers' password manager and rotated.
 - `packages: write` is not scoped to an environment, so any workflow run that grants it can move `deploy-*` tags. The host-side signature check and the high-water guard bound that to a denial of service (no unsigned code, no downgrade). Follow-up once environment secrets exist: move tags with a dedicated environment-scoped token.
 - Relays report the image digest they run on `/healthz`; that discloses which signed release runs, nothing about engines. Tunnel counts stay on the host, so the pipeline waits out the host's window instead of reading them.
-- **GitHub plan:** environments and environment secrets in a private organization repository need GitHub Team (Pro is for personal accounts), and required reviewers with "prevent self-review" need Enterprise; the org is on Free. Until the plan's "Still needed" decision (upgrade or another approval gate) is taken, build the workflows against the environments as specified and leave the approval criteria to Apply.
+- **GitHub plan:** environments and environment secrets in a private organization repository need GitHub Team (Pro is for personal accounts), and required reviewers with "prevent self-review" need Enterprise; the org is on Free. Decided 2026-11-09: stay on Free (Decisions).
 - Release key holders and the key ceremony are a pending human decision (plan's "Still needed" table); production UI signing waits on it.

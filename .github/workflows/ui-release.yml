@@ -1,8 +1,11 @@
 name: UI release
 
 # A tag push is the only trigger: C-06 pins the Sigstore build trigger to `push`, so a dispatched run could never
-# verify (decided 2026-10-20). `ui-v<package.json version>` builds, signs and publishes to staging;
-# `ui-v0.0.0-dryrun.<n>` runs every step, including the staging signature and `release:verify`, but skips the upload.
+# verify (decided 2026-10-20). `ui-v<package.json version>` builds and signs keylessly; `ui-v0.0.0-dryrun.<n>` does the
+# same but is never uploaded. On GitHub Free there is no `release` environment to hold the release key and the R2
+# token (decided 2026-11-09), so `publish` runs only when the repository variable UI_CI_PUBLISH is `true`; until then a
+# maintainer downloads this run's `ui-bundle` and `ui-signatures` and signs, verifies and publishes from their machine
+# (docs/runbooks/deploy.md, UI releases).
 on:
   push:
     tags: ['ui-v*']
@@ -112,9 +115,11 @@ jobs:
 
   # The release environment (I-03) holds the release key and the R2 token for the release bucket only, and needs a
   # second maintainer's approval (required reviewers, no self-review, `ui-v*` tags only). Until the key ceremony it
-  # holds the staging release key, which must never be in a production trust policy.
+  # holds the staging release key, which must never be in a production trust policy. Off until the org's plan has
+  # environments: no deploy secret lives in GitHub before then.
   publish:
     needs: [build, sign]
+    if: vars.UI_CI_PUBLISH == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     environment: release

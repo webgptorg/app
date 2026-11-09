@@ -59,7 +59,7 @@ Decided 2026-10-20 (Seb): C-06 pins the Sigstore build-trigger extension (OID `1
 
 Tracked in [apply.md](../apply.md). The code is merged; these runs have not happened yet.
 
-- The first real dry run (push of `ui-v0.0.0-dryrun.<n>`) of `ui-release.yml`: it needs the `staging` GitHub environment (blocked on the GitHub plan decision in the plan's "Still needed" table), the `UI_STAGING_RELEASE_KEY` seed (regenerate it and update `apps/engine-ui/release/trust-policy.staging.json` if it was not kept) and, for real uploads, the `UI_STAGING_R2_*` bucket and token. Record the run link and the `release:verify` result.
+- The first real dry run (push of `ui-v0.0.0-dryrun.<n>`) of `ui-release.yml`: it needs GitHub Actions running; the `UI_STAGING_RELEASE_KEY` seed (regenerate it and update `apps/engine-ui/release/trust-policy.staging.json` if it was not kept) and, for real uploads, the `UI_STAGING_R2_*` bucket and token stay with a maintainer, who signs and publishes from their machine (GitHub Free, no environments, decided 2026-11-09; [deploy runbook, UI releases](../../runbooks/deploy.md#ui-releases)). Record the run link and the `release:verify` result.
 - Production signing: the release key holder, three maintainer hardware keys and the rehearsed key ceremony (plan's "Still needed" table).
 
 ## Risks and open points

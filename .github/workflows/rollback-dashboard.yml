@@ -2,7 +2,9 @@ name: Roll back dashboard
 
 # Points an environment's Worker back to an earlier version (`wrangler versions list --env <env>` lists them), behind
 # the same environment approval as a deploy (I-03). It does not undo D1 migrations; they are backward compatible by
-# rule (expand, deploy, contract), so the earlier Worker runs on the migrated schema. docs/runbooks/deploy.md.
+# rule (expand, deploy, contract), so the earlier Worker runs on the migrated schema. Like deploy-dashboard.yml, it
+# runs only once the repository variable DASHBOARD_CI_DEPLOY is `true`; until then a maintainer runs `wrangler
+# rollback` from their machine. docs/runbooks/deploy.md.
 on:
   workflow_dispatch:
     inputs:
@@ -26,7 +28,7 @@ concurrency:
 
 jobs:
   rollback:
-    if: github.ref == 'refs/heads/main'
+    if: vars.DASHBOARD_CI_DEPLOY == 'true' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     environment: ${{ inputs.environment }}
