@@ -30,7 +30,12 @@ expect() {
     fi
 }
 
-expect allowed "token is active" "$api/accounts/$CLOUDFLARE_ACCOUNT_ID/tokens/verify"
+# Account-owned tokens verify under the account, user-owned ones (the staging tokens) under /user.
+if [[ $(status "$api/accounts/$CLOUDFLARE_ACCOUNT_ID/tokens/verify") == 2* ]]; then
+    echo "ok      token is active (account-owned)"
+else
+    expect allowed "token is active (user-owned)" "$api/user/tokens/verify"
+fi
 expect allowed "list Workers scripts" "$api/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts"
 expect allowed "list D1 databases" "$api/accounts/$CLOUDFLARE_ACCOUNT_ID/d1/database"
 
