@@ -1,11 +1,13 @@
 # Every <...> value is a placeholder until the staging account and keys exist (docs/staging-runbook.md). The modules
 # refuse them, so a plan fails before it touches anything.
 
-# One host. Staging and production differ only in the relays, the server type and SSH access.
+# One host. Staging and production differ only in the relays, the server type and SSH access. cpx22 (2 vCPU, 4 GB,
+# AMD) because fsn1 had no cx23 capacity on 2026-11-09; the primary IPs are bound to fsn1, so the type moved, not the
+# location.
 relays = {
   relay-fsn = { location = "fsn1", reboot_time = "02:00" }
 }
-server_type = "cx23"
+server_type = "cpx22"
 
 # Staging's one zone, as in infra/cloudflare's staging root: relays at its top level, engines one level down. The
 # relay hostname is never under the engine domain. The dashboard is app.ptbk.io, served from ptbk.link (Cloudflare for
