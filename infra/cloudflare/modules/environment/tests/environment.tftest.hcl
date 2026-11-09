@@ -434,9 +434,9 @@ run "records_mode_lists_every_relay_in_plain_wildcard_records" {
     condition = toset([
       for record in cloudflare_dns_record.this : "${record.type} ${record.content} ${record.ttl} ${record.proxied}" if record.name == "*.engines.example"
       ]) == toset([
-      "A 198.51.100.10 30 false", "A 198.51.100.20 30 false", "AAAA 2001:db8::10 30 false", "AAAA 2001:db8::20 30 false",
+      "A 198.51.100.10 60 false", "A 198.51.100.20 60 false", "AAAA 2001:db8::10 60 false", "AAAA 2001:db8::20 60 false",
     ])
-    error_message = "Without the load balancer, the wildcard has one DNS-only A and AAAA record per relay in rotation, with the short TTL."
+    error_message = "Without the load balancer, the wildcard has one DNS-only A and AAAA record per relay in rotation, with the shortest TTL plain records allow."
   }
 
   assert {
@@ -541,10 +541,10 @@ run "own_zone_plans_the_same_records" {
     condition = toset([
       for key, record in cloudflare_dns_record.this : "${key} ${record.zone_id} ${record.name} ${record.type} ${record.type == "CAA" ? "${record.data.tag}=${record.data.value}" : record.content} ${record.ttl}"
       ]) == toset([
-      "engine-wildcard-a-relay-fsn 11111111111111111111111111111111 *.engines.example A 198.51.100.10 30",
-      "engine-wildcard-a-relay-hel 11111111111111111111111111111111 *.engines.example A 198.51.100.20 30",
-      "engine-wildcard-aaaa-relay-fsn 11111111111111111111111111111111 *.engines.example AAAA 2001:db8::10 30",
-      "engine-wildcard-aaaa-relay-hel 11111111111111111111111111111111 *.engines.example AAAA 2001:db8::20 30",
+      "engine-wildcard-a-relay-fsn 11111111111111111111111111111111 *.engines.example A 198.51.100.10 60",
+      "engine-wildcard-a-relay-hel 11111111111111111111111111111111 *.engines.example A 198.51.100.20 60",
+      "engine-wildcard-aaaa-relay-fsn 11111111111111111111111111111111 *.engines.example AAAA 2001:db8::10 60",
+      "engine-wildcard-aaaa-relay-hel 11111111111111111111111111111111 *.engines.example AAAA 2001:db8::20 60",
       "relay-a-relay-fsn 22222222222222222222222222222222 relay-fsn.dashboard.example A 198.51.100.10 60",
       "relay-a-relay-hel 22222222222222222222222222222222 relay-hel.dashboard.example A 198.51.100.20 60",
       "relay-aaaa-relay-fsn 22222222222222222222222222222222 relay-fsn.dashboard.example AAAA 2001:db8::10 60",
@@ -587,7 +587,7 @@ run "subdomain_mode_puts_engine_records_into_the_dashboard_zone" {
     condition = toset([
       for record in cloudflare_dns_record.this : "${record.type} ${record.content} ${record.ttl} ${record.proxied}" if record.name == "*.engines.dashboard.example"
       ]) == toset([
-      "A 198.51.100.10 30 false", "A 198.51.100.20 30 false", "AAAA 2001:db8::10 30 false", "AAAA 2001:db8::20 30 false",
+      "A 198.51.100.10 60 false", "A 198.51.100.20 60 false", "AAAA 2001:db8::10 60 false", "AAAA 2001:db8::20 60 false",
     ])
     error_message = "The engine wildcard is DNS-only, one A and AAAA record per relay in rotation, as in own-zone mode."
   }
