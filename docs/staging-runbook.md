@@ -132,14 +132,14 @@ Generate every self-generated secret in one go, in a terminal nobody can see. It
 node scripts/staging/generate-secrets.ts --relay relay-fsn.ptbk.link
 ```
 
-| Secret                    | Format (what parses it)                                                  | Goes to                                                                                                                                                                                                                                  |
-| ------------------------- | ------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `TF_VAR_state_passphrase` | 43 base64url characters (at least 32 random characters)                  | Password manager; `export TF_VAR_state_passphrase=…` for both stacks. Losing it means rebuilding state by import                                                                                                                         |
-| `RATE_LIMIT_HMAC_KEY`     | 32 bytes, base64url without padding (`apps/dashboard/src/app/config.ts`) | Password manager; `bunx wrangler secret put RATE_LIMIT_HMAC_KEY --env staging` (step 8)                                                                                                                                                  |
-| `MEMBER_KEY`              | 32-byte Ed25519 seed, base64url without padding                          | Password manager; `bunx wrangler secret put MEMBER_KEY --env staging`                                                                                                                                                                    |
-| Metrics token             | `ptbk_mt_` and 43 base64url characters, one per relay                    | Password manager; the relay's `/etc/ptbk-relay/credentials/metrics-token` (step 10)                                                                                                                                                      |
-| `RELAY_METRICS_TOKENS`    | `{"relay-fsn.ptbk.link":"ptbk_mt_…"}`, the same token                    | `bunx wrangler secret put RELAY_METRICS_TOKENS --env staging`                                                                                                                                                                            |
-| `UI_STAGING_RELEASE_KEY`  | 32-byte Ed25519 seed, base64url (X-03's `release:keygen` format)         | Password manager; later the `release` GitHub environment. Its printed **public** key replaces `releaseKeys[0].publicKey` in [trust-policy.staging.json](../apps/engine-ui/release/trust-policy.staging.json), in the values PR of step 5 |
+| Secret                    | Format (what parses it)                                                  | Goes to                                                                                                                                                                                                                                                   |
+| ------------------------- | ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `TF_VAR_state_passphrase` | 43 base64url characters (at least 32 random characters)                  | Password manager; `export TF_VAR_state_passphrase=…` for both stacks. Losing it means rebuilding state by import                                                                                                                                          |
+| `RATE_LIMIT_HMAC_KEY`     | 32 bytes, base64url without padding (`apps/dashboard/src/app/config.ts`) | Password manager; `bunx wrangler secret put RATE_LIMIT_HMAC_KEY --env staging` (step 8)                                                                                                                                                                   |
+| `MEMBER_KEY`              | 32-byte Ed25519 seed, base64url without padding                          | Password manager; `bunx wrangler secret put MEMBER_KEY --env staging`                                                                                                                                                                                     |
+| Metrics token             | `ptbk_mt_` and 43 base64url characters, one per relay                    | Password manager; the relay's `/etc/ptbk-relay/credentials/metrics-token` (step 10)                                                                                                                                                                       |
+| `RELAY_METRICS_TOKENS`    | `{"relay-fsn.ptbk.link":"ptbk_mt_…"}`, the same token                    | `bunx wrangler secret put RELAY_METRICS_TOKENS --env staging`                                                                                                                                                                                             |
+| `UI_STAGING_RELEASE_KEY`  | 32-byte Ed25519 seed, base64url (X-03's `release:keygen` format)         | Password manager; later the `release` GitHub environment. Its printed **public** key is `releaseKeys[0].publicKey` in [trust-policy.staging.json](../apps/engine-ui/release/trust-policy.staging.json) (committed; a new key needs a PR that replaces it) |
 
 Not generated by the script: the API tokens (step 2), the relay registry token (minted against D1 in step 10), and your SSH key (`ssh-keygen -t ed25519-sk` on a hardware key). The staging trust policy's three `maintainerKeys` matter only for `security` releases and stay as they are.
 
@@ -153,41 +153,31 @@ Every staging value lives in one local, git-ignored file, `staging.env` at the r
 ```sh
 git fetch origin && git switch -c chore/staging-values origin/main
 cat > staging.env <<'EOF'
-SECURITY_CONTACT=
-OPS_EMAIL=
-ABUSE_EMAIL=
 # After step 6
 RELAY_IPV4=
 RELAY_IPV6=
 # After step 7
 D1_DATABASE_ID=
-# Optional; the default is the engine integration guide in this repo
-INSTALL_GUIDE_URL=
 EOF
 node scripts/staging/fill-placeholders.ts           # fills what is known, lists what is left and why
 node scripts/staging/fill-placeholders.ts --check   # exit 0 once nothing staging.env can fill is left
 ```
 
-Run it again after steps 6 and 7. It only replaces what is still a placeholder, never touches production, and refuses malformed values and anything that would break out of a string. `SECURITY_CONTACT`, `OPS_EMAIL`, `ABUSE_EMAIL` and `INSTALL_GUIDE_URL` are already committed: `security@`, `ops@` and `abuse@ptbk.link` are stand-ins that receive no mail (`ptbk.link` has no MX), and the guide is the engine's App connection spec. Replace the three addresses with read mailboxes before real users arrive: until then alerts and abuse reports bounce.
+Run it again after steps 6 and 7. It only replaces what is still a placeholder, never touches production, and refuses malformed values and anything that would break out of a string. The contacts and the install guide are committed: `security@`, `ops@` and `abuse@ptbk.link` are stand-ins that receive no mail (`ptbk.link` has no MX), and the guide is the engine's App connection spec. Replace the three addresses with read mailboxes before real users arrive: until then alerts and abuse reports bounce.
 
 Strictly, plan and apply run from an up-to-date `main` ([infra/cloudflare README, Running](../infra/cloudflare/README.md#running)). For this bootstrap, the values arrive one round at a time, so apply from this branch rebased on `origin/main`, then merge its PR in the same session, with the DNS checks, the email headers and the token check (steps 7 to 9) in its body.
 
-The domains (`ptbk.link` and the names under it), the account ID and the admin SSH key are committed values, not placeholders. Every staging placeholder:
+The domains (`ptbk.link` and the names under it), the account ID, the admin SSH key, the contacts, the install guide and the UI release key are committed values, not placeholders. Every staging placeholder:
 
-| Placeholder                                                    | File                                                                  | `staging.env`              | Comes from                                                           |
-| -------------------------------------------------------------- | --------------------------------------------------------------------- | -------------------------- | -------------------------------------------------------------------- |
-| `<security-contact>`                                           | Cloudflare tfvars (CAA `iodef`)                                       | `SECURITY_CONTACT`         | Your mailbox                                                         |
-| `<ops-email>`, `ops@<staging-ops-domain>`                      | relay tfvars (`acme_email`), `wrangler.jsonc` (`MONITORING.opsEmail`) | `OPS_EMAIL`                | Your mailbox                                                         |
-| `abuse@<staging-abuse-domain>`                                 | `wrangler.jsonc` (`ABUSE_EMAIL`)                                      | `ABUSE_EMAIL`              | Your mailbox                                                         |
-| `<staging-relay-fsn-ipv4>`, `<staging-relay-fsn-ipv6>`         | Cloudflare tfvars (`relays`)                                          | `RELAY_IPV4`, `RELAY_IPV6` | Step 6, `tofu output relays`                                         |
-| `<staging-d1-id>`                                              | `wrangler.jsonc` (`database_id`)                                      | `D1_DATABASE_ID`           | Step 7, `tofu output d1_database_id`                                 |
-| `<public-install-guide-url>`                                   | `wrangler.jsonc` (`INSTALL_GUIDE_URL`)                                | `INSTALL_GUIDE_URL`        | The public install guide once it exists; the repo's guide until then |
-| `<staging-standard-product-id>`, `<staging-standard-price-id>` | `wrangler.jsonc` (`BILLING_PLANS`, commented out)                     | Left on purpose            | Stripe test mode, only when billing is on                            |
-| `UI_STAGING_RELEASE_KEY` public key                            | `apps/engine-ui/release/trust-policy.staging.json`                    | By hand                    | Step 4                                                               |
+| Placeholder                                                    | File                                              | `staging.env`              | Comes from                                |
+| -------------------------------------------------------------- | ------------------------------------------------- | -------------------------- | ----------------------------------------- |
+| `<staging-relay-fsn-ipv4>`, `<staging-relay-fsn-ipv6>`         | Cloudflare tfvars (`relays`)                      | `RELAY_IPV4`, `RELAY_IPV6` | Step 6, `tofu output relays`              |
+| `<staging-d1-id>`                                              | `wrangler.jsonc` (`database_id`)                  | `D1_DATABASE_ID`           | Step 7, `tofu output d1_database_id`      |
+| `<staging-standard-product-id>`, `<staging-standard-price-id>` | `wrangler.jsonc` (`BILLING_PLANS`, commented out) | Left on purpose            | Stripe test mode, only when billing is on |
 
 Later, with CI (I-03), these go into GitHub environments, not files ([deploy runbook, GitHub settings](runbooks/deploy.md#github-settings)): `staging` gets the `CLOUDFLARE_API_TOKEN` secret (the deploy token) and the variables `CLOUDFLARE_ACCOUNT_ID` and `RELAY_HOSTS` (`relay-fsn.ptbk.link`); `release` gets `UI_STAGING_RELEASE_KEY`, `UI_STAGING_R2_ACCESS_KEY_ID` and `UI_STAGING_R2_SECRET_ACCESS_KEY`, plus the variables `UI_STAGING_R2_ENDPOINT` (`https://<account id>.r2.cloudflarestorage.com`) and `UI_STAGING_R2_BUCKET`.
 
-**You should see:** `git diff` touches only the staging files (and the trust policy once you edit it); `--check` lists only the placeholders left on purpose, plus the relay addresses and the D1 ID until steps 6 and 7.
+**You should see:** `git diff` touches only the staging files; `--check` lists only the placeholders left on purpose, plus the relay addresses and the D1 ID until steps 6 and 7.
 **If it fails:** `<KEY> must be …` names the value in `staging.env` to fix.
 
 ## 6. Relay host: create

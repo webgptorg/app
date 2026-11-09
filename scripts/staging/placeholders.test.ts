@@ -18,9 +18,6 @@ const committed = Object.fromEntries(
 ) as Files;
 
 const ALL: StagingValues = {
-    SECURITY_CONTACT: 'security@ops.example',
-    OPS_EMAIL: 'ops@ops.example',
-    ABUSE_EMAIL: 'abuse@ops.example',
     RELAY_IPV4: '198.51.100.10',
     RELAY_IPV6: '2001:db8:1::1',
     D1_DATABASE_ID: '01234567-89ab-cdef-0123-456789abcdef',
@@ -57,6 +54,10 @@ describe('fillPlaceholders on the committed files', () => {
         assert.match(staging, /"EMAIL_FROM": "no-reply@mail\.ptbk\.link"/);
         assert.match(staging, /"accountId": "42b20127fa7293cb5160f22ed42ef43b"/);
         assert.match(staging, /"INSTALL_GUIDE_URL": "https:\/\/[^"<>]+"/);
+        assert.match(staging, /"ABUSE_EMAIL": "abuse@ptbk\.link"/);
+        assert.match(staging, /"MONITORING": \{ "opsEmail": "ops@ptbk\.link" \}/);
+        assert.match(result.files.cloudflareTfvars, /security_contact = "security@ptbk\.link"/);
+        assert.match(result.files.relayTfvars, /acme_email\s+= "ops@ptbk\.link"/);
         assert.match(result.files.relayTfvars, /registry_url\s+= "https:\/\/app\.ptbk\.io"/);
         assert.match(result.files.cloudflareTfvars, /email_sending_domain = "mail\.ptbk\.link"/);
         assert.match(
@@ -110,22 +111,26 @@ describe('fillPlaceholders in rounds', () => {
 describe('parseStagingEnv', () => {
     it('reads KEY=value lines, skipping comments, blanks and empty values', () => {
         const values = parseStagingEnv(
-            '# staging\n\nRELAY_IPV4=198.51.100.10\nRELAY_IPV6=\nOPS_EMAIL="ops@ops.example"\n',
+            '# staging\n\nRELAY_IPV4=198.51.100.10\nRELAY_IPV6=\nD1_DATABASE_ID="01234567-89ab-cdef-0123-456789abcdef"\n',
         );
-        assert.deepEqual(values, { RELAY_IPV4: '198.51.100.10', OPS_EMAIL: 'ops@ops.example' });
+        assert.deepEqual(values, {
+            RELAY_IPV4: '198.51.100.10',
+            D1_DATABASE_ID: '01234567-89ab-cdef-0123-456789abcdef',
+        });
     });
 
     for (const [text, why] of [
-        ['OPS_EMAIL', 'not KEY=value'],
+        ['RELAY_IPV4', 'not KEY=value'],
         ['STRIPE_SECRET_KEY=sk_test_x', 'an unknown key (no secrets belong here)'],
-        ['SECURITY_CONTACT=<security-contact>', 'a placeholder'],
+        ['D1_DATABASE_ID=<staging-d1-id>', 'a placeholder'],
+        ['RELAY_IPV4=198.51.100.10"x', 'a quote, which would break out of the HCL string'],
         ['CLOUDFLARE_ACCOUNT_ID=42b20127fa7293cb5160f22ed42ef43b', 'the account ID, which is committed'],
-        ['OPS_EMAIL=ops@Example.COM', 'an upper-case address'],
-        ['OPS_EMAIL=ops@ops.example"x', 'a quote, which would break out of the HCL string'],
+        ['SECURITY_CONTACT=security@ptbk.link', 'a contact (the stand-ins are committed)'],
+        ['OPS_EMAIL=ops@ptbk.link', 'the ops mailbox (committed)'],
         ['ADMIN_CIDRS=203.0.113.7/32', 'an SSH allowlist (staging SSH is open, keys only)'],
         ['ADMIN_SSH_PUBLIC_KEY=ssh-ed25519 AAAA seb', 'an admin key (committed in the relay tfvars)'],
         ['RELAY_IPV6=2001:DB8::1', 'an upper-case IPv6 address'],
-        ['INSTALL_GUIDE_URL=https://example.com/guide#top', 'a fragment'],
+        ['INSTALL_GUIDE_URL=https://example.com/guide', 'an install guide (committed)'],
         ['STAGING_ZONE=ptbk.link', 'a staging domain (ptbk.link is committed, not filled in)'],
         ['ENGINE_DOMAIN=engines.ptbk.link', 'an engine domain (it is engines.ptbk.link)'],
         ['CHALLENGE_ZONE=acme.example', 'a challenge zone (lego writes into ptbk.link)'],
