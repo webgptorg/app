@@ -1,5 +1,5 @@
 import type { UiRefusalReason, UiRevocationReason } from '@ptbk/engine-api';
-import type { TrustPolicy } from '@ptbk/protocol';
+import type { ProductionTrustPolicy } from '@ptbk/protocol';
 
 import type { BaseCheckContext, CheckOutcome, ConformanceCheck } from '../../../check';
 import { Findings } from '../../../check';
@@ -36,7 +36,7 @@ export interface RefusalCase {
     readonly publish?: PublishOptions;
     /** Publishes the candidate itself, e.g. under a version that is not the next one. */
     readonly prepare?: (bench: Bench, version: string) => Promise<void>;
-    readonly policy?: TrustPolicy;
+    readonly policy?: ProductionTrustPolicy;
     /** Leaves the revocation list as `prepare` set it, instead of publishing a fresh one. */
     readonly keepRevocations?: boolean;
     /** The version to pin; default a new one. */

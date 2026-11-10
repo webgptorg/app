@@ -1,4 +1,4 @@
-import type { TrustPolicy } from '@ptbk/protocol';
+import type { ProductionTrustPolicy } from '@ptbk/protocol';
 
 import type { ConformanceTarget } from '../../target';
 
@@ -10,7 +10,8 @@ export type UpdatePolicySetting =
 /** The conformance trust file (`PTBK_CONFORMANCE_TRUST_FILE`), honoured only by a conformance build of the engine. */
 export interface ConformanceTrust {
     readonly v: 1;
-    readonly trustPolicy: TrustPolicy;
+    /** Always a production policy: the suite checks that engines wait out the production delays. */
+    readonly trustPolicy: ProductionTrustPolicy;
     /** A Sigstore `trusted_root.json`. */
     readonly trustedRoot: unknown;
 }

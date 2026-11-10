@@ -676,6 +676,7 @@ describe('parseIdentityConfig', () => {
                     trustPolicyFile: '/etc/ptbk/trust-policy.json',
                     trustedRootFile: null,
                     fakeProvenance: false,
+                    stagingPolicyAllowed: true,
                 },
                 checkIntervalS: 3600,
             });
@@ -756,6 +757,15 @@ describe('parseIdentityConfig', () => {
             ]);
             expect(parseMockEngineConfig({ ...UI, NODE_ENV: 'production' }).ui?.trust).toMatchObject({
                 fakeProvenance: false,
+            });
+        });
+
+        it('allows a staging trust policy only outside production', () => {
+            expect(parseMockEngineConfig({ ...UI, NODE_ENV: 'production' }).ui?.trust).toMatchObject({
+                stagingPolicyAllowed: false,
+            });
+            expect(parseMockEngineConfig({ ...UI, NODE_ENV: 'development' }).ui?.trust).toMatchObject({
+                stagingPolicyAllowed: true,
             });
         });
 

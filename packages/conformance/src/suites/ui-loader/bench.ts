@@ -1,6 +1,6 @@
 import type { SecurityOverview, UiUpdateCheck } from '@ptbk/engine-api';
 import { ENGINE_API_ROUTES, ENGINE_UI_CSP } from '@ptbk/engine-api';
-import type { TrustPolicy } from '@ptbk/protocol';
+import type { ProductionTrustPolicy } from '@ptbk/protocol';
 import { REVOCATION_MAX_VALIDITY_MS } from '@ptbk/protocol';
 
 import type { BaseCheckContext } from '../../check';
@@ -51,7 +51,7 @@ export class Bench {
     readonly lab: UiLoaderLab;
     readonly keys: ReleaseKeys;
     readonly sigstore: TestSigstore;
-    readonly policy: TrustPolicy;
+    readonly policy: ProductionTrustPolicy;
     #versions = 0;
     #started = false;
     #target: ConformanceTarget | null = null;
@@ -77,7 +77,7 @@ export class Bench {
         return `1.0.${String(this.#versions)}`;
     }
 
-    settings(update: UpdatePolicySetting, policy: TrustPolicy = this.policy): EngineSettings {
+    settings(update: UpdatePolicySetting, policy: ProductionTrustPolicy = this.policy): EngineSettings {
         return { update, trust: { v: 1, trustPolicy: policy, trustedRoot: this.sigstore.trustedRoot } };
     }
 
@@ -169,7 +169,7 @@ export class Bench {
     }
 
     /** Restarts pinned to `version` and returns its startup check. */
-    async pinned(ctx: BaseCheckContext, version: string, policy?: TrustPolicy): Promise<Observation> {
+    async pinned(ctx: BaseCheckContext, version: string, policy?: ProductionTrustPolicy): Promise<Observation> {
         const startedAt = await this.start(ctx, this.settings({ policy: 'pinned', version }, policy));
         return this.awaitCheck(ctx, startedAt, MIRROR_LAYOUT_V1.release(version));
     }

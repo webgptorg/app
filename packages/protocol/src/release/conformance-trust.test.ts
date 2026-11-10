@@ -44,6 +44,16 @@ describe('ConformanceTrustFile', () => {
         expect(parses({ trustPolicy: { ...policy, extra: true } })).toBe(false);
     });
 
+    it('rejects a staging trust policy: the suite expects the production delays', () => {
+        const staging = {
+            ...testPolicy(keys),
+            profile: 'staging',
+            delays: { regularMs: 300_000, securityMs: 300_000 },
+        };
+        expect(parses({ trustPolicy: staging })).toBe(false);
+        expect(parses({ trustPolicy: { ...testPolicy(keys), profile: 'staging' } })).toBe(false);
+    });
+
     it('rejects a trusted root that is not a JSON object', () => {
         expect(parses({ trustedRoot: [] })).toBe(false);
         expect(parses({ trustedRoot: 'trusted_root.json' })).toBe(false);

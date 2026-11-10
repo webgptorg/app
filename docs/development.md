@@ -312,7 +312,7 @@ git tag ui-v0.2.0 && git push origin ui-v0.2.0
 git tag ui-v0.0.0-dryrun.4 && git push origin ui-v0.0.0-dryrun.4
 ```
 
-Then publish it from your machine with the run's artifacts ([deploy runbook, UI releases](runbooks/deploy.md#ui-releases)); a dry run stops after `release:verify`.
+Then publish it from your machine with the run's artifacts ([deploy runbook, UI releases](runbooks/deploy.md#ui-releases)); a dry run stops after `release:verify`. Engines on the staging trust policy (`"profile": "staging"`, 5-minute delays instead of 72 h and 24 h) install it about 5 minutes after publishing; a production engine refuses that policy.
 
 ### Verifying a release
 

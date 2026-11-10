@@ -2,7 +2,15 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { ed25519PublicKeyFromBytes } from '../ids';
 import type { ReleaseTestKeys } from '../testing/release';
 import { WORKFLOW_IDENTITY, releaseTestKeys, testPolicy } from '../testing/release';
-import { RELEASE_DELAYS, TrustPolicy, revocationSigners } from './trust';
+import {
+    ProductionTrustPolicy,
+    RELEASE_DELAYS,
+    STAGING_MIN_DELAY_MS,
+    StagingTrustPolicy,
+    TrustPolicy,
+    isStagingPolicy,
+    revocationSigners,
+} from './trust';
 
 let keys: ReleaseTestKeys;
 let raw: Record<string, unknown>;
@@ -104,6 +112,94 @@ describe('TrustPolicy', () => {
         expect(parses({ revocationRule: { signers: 'maintainer', threshold: 3 } })).toBe(true);
         expect(parses({ revocationRule: { signers: 'release-or-maintainer', threshold: 4 } })).toBe(true);
         expect(parses({ revocationRule: { signers: 'release-or-maintainer', threshold: 5 } })).toBe(false);
+    });
+});
+
+describe('TrustPolicy with the staging profile', () => {
+    const MINUTE_MS = 60_000;
+    const staging = (delays: Record<string, unknown>, fields: Record<string, unknown> = {}) => ({
+        ...raw,
+        profile: 'staging',
+        delays,
+        ...fields,
+    });
+    const parsesStaging = (delays: Record<string, unknown>, fields: Record<string, unknown> = {}) =>
+        TrustPolicy.safeParse(staging(delays, fields)).success;
+
+    it('accepts delays from 1 minute up to the production values', () => {
+        expect(STAGING_MIN_DELAY_MS).toBe(MINUTE_MS);
+        expect(parsesStaging({ regularMs: 5 * MINUTE_MS, securityMs: 5 * MINUTE_MS })).toBe(true);
+        expect(parsesStaging({ regularMs: MINUTE_MS, securityMs: MINUTE_MS })).toBe(true);
+        expect(parsesStaging({ regularMs: RELEASE_DELAYS.regularMs, securityMs: RELEASE_DELAYS.securityMs })).toBe(
+            true,
+        );
+        expect(parsesStaging({ regularMs: 10 * MINUTE_MS, securityMs: 2 * MINUTE_MS })).toBe(true);
+    });
+
+    it('tells a staging policy from a production one', () => {
+        const policy = TrustPolicy.parse(staging({ regularMs: 5 * MINUTE_MS, securityMs: 5 * MINUTE_MS }));
+        expect(isStagingPolicy(policy)).toBe(true);
+        expect(isStagingPolicy(TrustPolicy.parse(raw))).toBe(false);
+        expect(isStagingPolicy(testPolicy(keys))).toBe(false);
+    });
+
+    it('is never a production policy', () => {
+        expect(ProductionTrustPolicy.safeParse(staging(RELEASE_DELAYS)).success).toBe(false);
+        expect(ProductionTrustPolicy.safeParse(raw).success).toBe(true);
+        expect(StagingTrustPolicy.safeParse(raw).success).toBe(false);
+    });
+
+    it.each([
+        ['an hour regular delay', { regularMs: 3_600_000, securityMs: RELEASE_DELAYS.securityMs }],
+        ['a 5 minute security delay', { regularMs: RELEASE_DELAYS.regularMs, securityMs: 300_000 }],
+        ['5 minute delays', { regularMs: 300_000, securityMs: 300_000 }],
+    ])('rejects %s without the profile', (_, delays) => {
+        expect(parses({ delays })).toBe(false);
+    });
+
+    it.each([
+        ['a regular delay below 1 minute', { regularMs: MINUTE_MS - 1, securityMs: MINUTE_MS - 1 }],
+        ['a security delay below 1 minute', { regularMs: MINUTE_MS, securityMs: MINUTE_MS - 1 }],
+        ['zero delays', { regularMs: 0, securityMs: 0 }],
+        ['negative delays', { regularMs: -MINUTE_MS, securityMs: -MINUTE_MS }],
+        [
+            'a regular delay above production',
+            { regularMs: RELEASE_DELAYS.regularMs + 1, securityMs: RELEASE_DELAYS.securityMs },
+        ],
+        [
+            'a security delay above production',
+            { regularMs: RELEASE_DELAYS.regularMs, securityMs: RELEASE_DELAYS.securityMs + 1 },
+        ],
+        ['a security delay longer than the regular one', { regularMs: 5 * MINUTE_MS, securityMs: 5 * MINUTE_MS + 1 }],
+        ['a fractional delay', { regularMs: 300_000.5, securityMs: 300_000 }],
+        ['a delay as a string', { regularMs: '300000', securityMs: 300_000 }],
+        ['a missing security delay', { regularMs: 300_000 }],
+        ['an unknown delay field', { regularMs: 300_000, securityMs: 300_000, manualMs: 0 }],
+    ])('rejects %s', (_, delays) => {
+        expect(parsesStaging(delays)).toBe(false);
+    });
+
+    it.each(['production', 'Staging', 'dev', '', null, true])('rejects the profile %j', (profile) => {
+        expect(parses({ profile })).toBe(false);
+        expect(parsesStaging({ regularMs: 300_000, securityMs: 300_000 }, { profile })).toBe(false);
+    });
+
+    it.each([
+        ['a key that is both a release and a maintainer key', () => ({ releaseKeys: [ref(keys.maintainers[0])] })],
+        [
+            'two identical maintainer keys',
+            () => ({ maintainerKeys: [ref(keys.maintainers[0]), ref(keys.maintainers[1]), ref(keys.maintainers[0])] }),
+        ],
+        ['two identical release keys', () => ({ releaseKeys: [ref(keys.release), ref(keys.release)] })],
+        ['security threshold 1', () => ({ securityThreshold: 1 })],
+        ['another issuer', () => ({ workflowIdentity: { ...WORKFLOW_IDENTITY, issuer: 'https://gitlab.com' } })],
+        [
+            'a revocation threshold above the allowed keys',
+            () => ({ revocationRule: { signers: 'release', threshold: 2 } }),
+        ],
+        ['an unknown field', () => ({ allowUnsigned: true })],
+    ])('rejects a staging policy with %s', (_, fields) => {
+        expect(parsesStaging({ regularMs: 300_000, securityMs: 300_000 }, fields())).toBe(false);
     });
 });
 

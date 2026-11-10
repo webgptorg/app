@@ -219,11 +219,15 @@ export {
     KeyRef,
     MAINTAINER_KEY_COUNT,
     MAX_RELEASE_KEYS,
+    ProductionTrustPolicy,
     RELEASE_DELAYS,
     RevocationRule,
     SECURITY_THRESHOLD,
+    STAGING_MIN_DELAY_MS,
+    StagingTrustPolicy,
     TrustPolicy,
     WorkflowIdentity,
+    isStagingPolicy,
     revocationSigners,
 } from './release/trust';
 export {
