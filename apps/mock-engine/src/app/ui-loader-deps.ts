@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 
 import type { ProvenanceVerifier } from '@ptbk/protocol';
-import { CONFORMANCE_TRUST_FILE_ENV, ConformanceTrustFile, TrustPolicy } from '@ptbk/protocol';
+import { CONFORMANCE_TRUST_FILE_ENV, ConformanceTrustFile, TrustPolicy, isStagingPolicy } from '@ptbk/protocol';
 import { PINNED_TRUSTED_ROOT, checkTrustedRoot, createSigstoreProvenanceVerifier } from '@ptbk/release-tools';
 
 import { openFsBundleStore } from '../adapters/ui/fs-bundle-store';
@@ -35,13 +35,27 @@ async function readBounded(path: string, maxBytes: number, setting: string): Pro
     return bytes;
 }
 
-export async function readTrustPolicy(path: string): Promise<TrustPolicy> {
+/**
+ * Reads `MOCK_UI_TRUST_POLICY_FILE`. A staging policy shortens the release delay, so a production engine refuses to
+ * start with one rather than install releases early.
+ */
+export async function readTrustPolicy(
+    path: string,
+    options: { readonly stagingAllowed: boolean },
+): Promise<TrustPolicy> {
     const bytes = await readBounded(path, MAX_POLICY_BYTES, 'MOCK_UI_TRUST_POLICY_FILE');
+    let policy: TrustPolicy;
     try {
-        return TrustPolicy.parse(JSON.parse(bytes.toString('utf8')));
+        policy = TrustPolicy.parse(JSON.parse(bytes.toString('utf8')));
     } catch {
         throw new UiLoaderSetupError(`MOCK_UI_TRUST_POLICY_FILE: ${path} is not a valid TrustPolicy`);
     }
+    if (isStagingPolicy(policy) && !options.stagingAllowed) {
+        throw new UiLoaderSetupError(
+            `MOCK_UI_TRUST_POLICY_FILE: ${path} is a staging trust policy, which must not be used in production`,
+        );
+    }
+    return policy;
 }
 
 export interface UiTrust {
@@ -90,7 +104,7 @@ export async function loadUiTrust(config: UiTrustConfig): Promise<UiTrust> {
             return readConformanceTrust(config.file);
         case 'files':
             return {
-                trust: await readTrustPolicy(config.trustPolicyFile),
+                trust: await readTrustPolicy(config.trustPolicyFile, { stagingAllowed: config.stagingPolicyAllowed }),
                 provenance: await provenanceVerifier(config),
             };
     }

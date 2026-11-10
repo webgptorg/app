@@ -2,8 +2,8 @@ import { ENGINE_API_VERSION, ENGINE_UI_CSP } from '@ptbk/engine-api';
 import type {
     DsseEnvelope,
     ReleaseKind,
+    ProductionTrustPolicy,
     Signer,
-    TrustPolicy,
     UiBundleManifest,
     WorkflowIdentity,
 } from '@ptbk/protocol';
@@ -14,7 +14,7 @@ import {
     RELEASE_PAYLOAD_TYPE,
     REVOCATION_PAYLOAD_TYPE,
     SECURITY_THRESHOLD,
-    TrustPolicy as TrustPolicySchema,
+    ProductionTrustPolicy as ProductionTrustPolicySchema,
     UI_BUNDLE_ENTRY,
     UiBundleManifest as UiBundleManifestSchema,
     WorkflowIdentity as WorkflowIdentitySchema,
@@ -66,9 +66,9 @@ export async function createReleaseKeys(): Promise<ReleaseKeys> {
 /** The policy an engine under test trusts: the run's keys, the suite's workflow, the contract's delays. */
 export function trustPolicyOf(
     keys: Pick<ReleaseKeys, 'maintainers'> & { readonly releasePublicKeys: readonly Uint8Array[] },
-): TrustPolicy {
+): ProductionTrustPolicy {
     const keyRef = (publicKey: Uint8Array) => ({ publicKey: ed25519PublicKeyFromBytes(publicKey) });
-    return TrustPolicySchema.parse({
+    return ProductionTrustPolicySchema.parse({
         releaseKeys: keys.releasePublicKeys.map(keyRef),
         maintainerKeys: keys.maintainers.map((signer) => keyRef(signer.publicKey())),
         securityThreshold: SECURITY_THRESHOLD,

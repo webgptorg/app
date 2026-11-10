@@ -344,6 +344,47 @@ describe('transparency log and trusted time', () => {
     });
 });
 
+describe('staging policy delays', () => {
+    const MINUTE = 60_000;
+    const staging = () =>
+        testPolicy(keys, { profile: 'staging', delays: { regularMs: 5 * MINUTE, securityMs: 2 * MINUTE } });
+
+    // First seen shortly before NOW, so the test revocation list is still fresh at the boundary.
+    const firstSeenAt = new Date(NOW.getTime() - 10 * MINUTE);
+
+    it('a regular release waits the policy delay from the latest of publishedAt, trusted time and first-seen', async () => {
+        const release = await regular();
+        const eligibleAt = new Date(firstSeenAt.getTime() + 5 * MINUTE);
+        const at = (now: Date) => run({ release, policy: staging(), firstSeenAt, now });
+        expect(await at(eligibleAt)).toMatchObject({ kind: 'ok', eligibleAt });
+        expect(await at(new Date(eligibleAt.getTime() - 1))).toMatchObject({ kind: 'delay-not-elapsed', eligibleAt });
+    });
+
+    it('a security release waits the policy security delay', async () => {
+        const release = await security();
+        const eligibleAt = new Date(firstSeenAt.getTime() + 2 * MINUTE);
+        const at = (now: Date) => run({ release, policy: staging(), firstSeenAt, now });
+        expect(await at(eligibleAt)).toMatchObject({ kind: 'ok', eligibleAt });
+        expect(await at(new Date(eligibleAt.getTime() - 1))).toMatchObject({ kind: 'delay-not-elapsed', eligibleAt });
+    });
+
+    it('a backdated publishedAt still does not shorten the delay', async () => {
+        const release = await regular({ entry: entryJson({ publishedAt: '2020-01-01T00:00:00Z' }) });
+        const lateFirstSeen = new Date(NOW.getTime() - 2 * MINUTE);
+        expect(await run({ release, policy: staging(), firstSeenAt: lateFirstSeen })).toMatchObject({
+            kind: 'delay-not-elapsed',
+            eligibleAt: new Date(lateFirstSeen.getTime() + 5 * MINUTE),
+        });
+    });
+
+    it('throws on a staging policy with delays the schema refuses', async () => {
+        const tooShort = { ...staging(), delays: { regularMs: MINUTE - 1, securityMs: MINUTE - 1 } };
+        await expect(run({ release: await regular(), policy: tooShort })).rejects.toThrow();
+        const unprofiled = { ...testPolicy(keys), delays: { regularMs: 5 * MINUTE, securityMs: 2 * MINUTE } };
+        await expect(run({ release: await regular(), policy: unprofiled })).rejects.toThrow();
+    });
+});
+
 describe('mode', () => {
     it('manual approval skips the delay', async () => {
         const now = new Date('2026-10-02T01:00:00Z');

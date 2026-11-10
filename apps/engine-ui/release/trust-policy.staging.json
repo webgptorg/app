@@ -1,4 +1,5 @@
 {
+  "profile": "staging",
   "releaseKeys": [{ "publicKey": "2yvEnNV41TFH_fqDTZusRBwNtJA7AyAw6OPgO5aYTkM" }],
   "maintainerKeys": [
     { "publicKey": "AilxSNi4YxKfx2kapjgBMVVRsoIcPx5K46EMhUqFpiM" },
@@ -13,5 +14,5 @@
     "workflowPath": ".github/workflows/ui-release.yml"
   },
   "revocationRule": { "signers": "release-or-maintainer", "threshold": 1 },
-  "delays": { "regularMs": 259200000, "securityMs": 86400000 }
+  "delays": { "regularMs": 300000, "securityMs": 300000 }
 }

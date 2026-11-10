@@ -39,6 +39,7 @@ function fileTrust(overrides: Partial<FileTrust> = {}): FileTrust {
         trustPolicyFile: join(dir, 'policy.json'),
         trustedRootFile: null,
         fakeProvenance: false,
+        stagingPolicyAllowed: true,
         ...overrides,
     };
 }
@@ -61,17 +62,47 @@ const claims = {
 } as never;
 
 describe('readTrustPolicy', () => {
+    const anywhere = { stagingAllowed: true };
+    const staging = () => ({
+        ...keys.policy,
+        profile: 'staging',
+        delays: { regularMs: 300_000, securityMs: 300_000 },
+    });
+
     it('reads a C-06 TrustPolicy', async () => {
         await writeFile(join(dir, 'policy.json'), JSON.stringify(keys.policy));
-        expect(await readTrustPolicy(join(dir, 'policy.json'))).toEqual(keys.policy);
+        expect(await readTrustPolicy(join(dir, 'policy.json'), anywhere)).toEqual(keys.policy);
+        expect(await readTrustPolicy(join(dir, 'policy.json'), { stagingAllowed: false })).toEqual(keys.policy);
     });
 
     it('refuses a missing, oversized or invalid policy, naming the setting but not the content', async () => {
-        await expect(readTrustPolicy(join(dir, 'none.json'))).rejects.toThrow(/MOCK_UI_TRUST_POLICY_FILE: cannot read/);
+        await expect(readTrustPolicy(join(dir, 'none.json'), anywhere)).rejects.toThrow(
+            /MOCK_UI_TRUST_POLICY_FILE: cannot read/,
+        );
         await writeFile(join(dir, 'big.json'), ' '.repeat(65 * 1024));
-        await expect(readTrustPolicy(join(dir, 'big.json'))).rejects.toThrow(/too large/);
+        await expect(readTrustPolicy(join(dir, 'big.json'), anywhere)).rejects.toThrow(/too large/);
         await writeFile(join(dir, 'bad.json'), JSON.stringify({ ...keys.policy, maintainerKeys: [] }));
-        await expect(readTrustPolicy(join(dir, 'bad.json'))).rejects.toThrow(UiLoaderSetupError);
+        await expect(readTrustPolicy(join(dir, 'bad.json'), anywhere)).rejects.toThrow(UiLoaderSetupError);
+    });
+
+    it('reads a staging policy outside production', async () => {
+        await writeFile(join(dir, 'staging.json'), JSON.stringify(staging()));
+        expect(await readTrustPolicy(join(dir, 'staging.json'), anywhere)).toEqual(staging());
+    });
+
+    it('refuses a staging policy in production', async () => {
+        await writeFile(join(dir, 'staging.json'), JSON.stringify(staging()));
+        await expect(readTrustPolicy(join(dir, 'staging.json'), { stagingAllowed: false })).rejects.toThrow(
+            /^MOCK_UI_TRUST_POLICY_FILE: .*staging\.json is a staging trust policy, which must not be used in production$/,
+        );
+        await expect(
+            createUiLoaderDeps({
+                config: config(fileTrust({ trustPolicyFile: join(dir, 'staging.json'), stagingPolicyAllowed: false })),
+                dataDir: dir,
+                fetch: () => Promise.reject(new TypeError('offline')),
+                logger: createMemoryLogger(),
+            }),
+        ).rejects.toThrow(UiLoaderSetupError);
     });
 });
 
@@ -138,6 +169,9 @@ describe('readConformanceTrust', () => {
         await write({ ...(await valid()), v: 2 });
         await refused(/is not a valid conformance trust file$/);
         await write({ ...(await valid()), trustPolicy: { ...keys.policy, maintainerKeys: [] } });
+        await refused(/is not a valid conformance trust file$/);
+        const staging = { ...keys.policy, profile: 'staging', delays: { regularMs: 300_000, securityMs: 300_000 } };
+        await write({ ...(await valid()), trustPolicy: staging });
         await refused(/is not a valid conformance trust file$/);
         await write({ ...(await valid()), trustedRoot: { ...(await pinnedRoot()), timestampAuthorities: [] } });
         await refused(/trustedRoot: no timestampAuthorities$/);

@@ -24,6 +24,11 @@ Each entry has this shape. Platform authors: add yours at the top of the list, o
 - **Redo:** what the engine's agent must change, re-run or drop; "nothing" if it is inert.
 ```
 
+### 2026-11-10: Staging trust policies with short delays
+
+- **Changed:** `TrustPolicy` takes an optional `"profile": "staging"`. Without it, the delays stay exactly 72 h and 24 h; with it, both may be anywhere from 1 minute up to those values (security no longer than regular), so staging UI releases install within minutes. Keys, threshold, workflow identity and revocation rules are unchanged. `@ptbk/protocol` adds `ProductionTrustPolicy`, `StagingTrustPolicy`, `STAGING_MIN_DELAY_MS` and `isStagingPolicy`; `ConformanceTrustFile` accepts only a production policy, and the `ui-loader` checks still expect the production delays. See [ui-loader.md](ui-loader.md#what-the-engine-must-do) and the spec's Updates section.
+- **Redo:** your UI loader must accept a trust policy with `profile: "staging"` and its shorter delays only outside production, and a production build must refuse to start with one, with an error naming the policy file (the mock engine's `readTrustPolicy` is the reference). Never let anything fetched over the network choose or change the policy.
+
 ### 2026-11-06: Linking with a link URL
 
 - **Changed:** the dashboard hands out the link code inside a link URL, `https://<dashboard host>/link#<code>`, and its install commands run `connect --link '<link URL>'` with no `PTBK_DASHBOARD_URL` or `PTBK_ENGINE_DOMAIN`. `@ptbk/protocol` adds `formatLinkUrl`, `parseLinkUrl`, `parseLinkArgument` and `LINK_PATH`; the mock engine is the reference. The launch contract (`PTBK_LINK_CODE`, `PTBK_DASHBOARD_URL`) and the conformance checks are unchanged. See [identity-and-registration.md](identity-and-registration.md#link-url).

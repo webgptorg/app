@@ -120,6 +120,8 @@ export type UiTrustConfig =
            * `MOCK_UI_FAKE_PROVENANCE=enabled`: test attestations instead of Sigstore. Refused with `NODE_ENV=production`.
            */
           readonly fakeProvenance: boolean;
+          /** False with `NODE_ENV=production`: a staging-profile trust policy then refuses startup. */
+          readonly stagingPolicyAllowed: boolean;
       }
     | {
           readonly kind: 'conformance';
@@ -636,6 +638,7 @@ function uiTrustConfig(env: z.output<typeof envSchema>): UiTrustConfig | null {
         trustPolicyFile: env.MOCK_UI_TRUST_POLICY_FILE,
         trustedRootFile: env.MOCK_UI_TRUSTED_ROOT_FILE ?? null,
         fakeProvenance: env.MOCK_UI_FAKE_PROVENANCE === 'enabled',
+        stagingPolicyAllowed: env.NODE_ENV !== 'production',
     });
 }
 
