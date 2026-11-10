@@ -48,8 +48,11 @@ jobs:
         env:
           TAG: ${{ github.ref_name }}
         run: bun run release:tag "$TAG" >> "$GITHUB_OUTPUT"
-      - run: bun run check
-        working-directory: .
+      # Only the UI's own checks: the tagged commit already passed the full suite on main, and repeating it here took
+      # longer than this job's timeout.
+      - run: bun run generate
+      - run: bun run typecheck
+      - run: bun run test
       - name: Install Chromium
         run: bunx --no-install playwright install --with-deps chromium
       - run: bun run test:csp
