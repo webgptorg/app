@@ -2,7 +2,16 @@ import { ExternalLink } from '@ptbk/ui';
 import type { ComponentType } from 'react';
 
 import { m } from '../../../paraglide/messages';
-import { ClosedEyeIcon, EnvelopeIcon, KeyIcon, MagnifierIcon, PowerIcon, PulseIcon, SealIcon } from './trust-art';
+import {
+    CardIcon,
+    ClosedEyeIcon,
+    EnvelopeIcon,
+    KeyIcon,
+    MagnifierIcon,
+    PowerIcon,
+    PulseIcon,
+    SealIcon,
+} from './trust-art';
 
 /** The open-source engine, the half of the system anyone can read (spec, Transparency and verifiability). */
 const ENGINE_SOURCE = 'https://github.com/webgptorg/promptbook';
@@ -29,6 +38,7 @@ const CANNOT: readonly Point[] = [
         Icon: SealIcon,
     },
     { id: 'admit', title: () => m.trust_cannot_admit_title(), body: () => m.trust_cannot_admit_body(), Icon: KeyIcon },
+    { id: 'card', title: () => m.trust_cannot_card_title(), body: () => m.trust_cannot_card_body(), Icon: CardIcon },
 ];
 
 /** Said as plainly as the rest: what we can do is the spec's short list, so nobody has to guess at the gaps. */
@@ -85,6 +95,7 @@ export function TrustCheck() {
                 </h2>
                 <p className="text-sm">{m.trust_check_security()}</p>
                 <p className="text-sm">{m.trust_check_fingerprint()}</p>
+                <p className="text-sm">{m.trust_check_certificates()}</p>
                 <p className="text-sm">
                     {m.trust_check_source()}{' '}
                     <ExternalLink href={ENGINE_SOURCE}>{m.trust_check_source_link()}</ExternalLink>

@@ -169,6 +169,16 @@ export function KeyIcon({ className }: ArtProps) {
     );
 }
 
+export function CardIcon({ className }: ArtProps) {
+    return (
+        <Art viewBox="0 0 24 24" className={className}>
+            <rect x={2.5} y={5.5} width={19} height={13} rx={2} />
+            <path d="M2.5 9.5 H21.5" />
+            <path d="M6 14.5 H10" />
+        </Art>
+    );
+}
+
 export function PulseIcon({ className }: ArtProps) {
     return (
         <Art viewBox="0 0 24 24" className={className}>

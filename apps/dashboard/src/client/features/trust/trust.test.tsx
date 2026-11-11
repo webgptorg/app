@@ -29,11 +29,18 @@ describe('trust page', () => {
             within(cannot)
                 .getAllByRole('heading', { level: 3 })
                 .map((heading) => heading.textContent),
-        ).toEqual(['See your work', 'Open your connection', 'Change the app in secret', 'Let anyone in']);
+        ).toEqual([
+            'See your work',
+            'Open your connection',
+            'Change the app in secret',
+            'Let anyone in',
+            'See your card',
+        ]);
         expect(within(cannot).getByText(/We never store them, not even encrypted\./)).toBeTruthy();
         expect(within(cannot).getByText(/only pass it on and hold none of its keys/)).toBeTruthy();
         expect(within(cannot).getByText(/public for at least a day/)).toBeTruthy();
         expect(within(cannot).getByText(/your Promptbook account grants nothing inside it/)).toBeTruthy();
+        expect(within(cannot).getByText(/card details go straight to Stripe and never reach Promptbook/)).toBeTruthy();
 
         const can = screen.getByRole('region', { name: 'What we can do' });
         expect(within(can).getByText(/Never names or text\./)).toBeTruthy();
@@ -42,6 +49,7 @@ describe('trust page', () => {
 
         const check = screen.getByRole('region', { name: 'Check it yourself' });
         expect(within(check).getByText(/enter nothing there and open your engine from this dashboard/)).toBeTruthy();
+        expect(within(check).getByText(/checks the public certificate logs every hour/)).toBeTruthy();
         const source = within(check).getByRole('link', { name: /^read its code/ });
         expect(source.getAttribute('href')).toBe('https://github.com/webgptorg/promptbook');
         expect(source.getAttribute('rel')).toBe('noopener noreferrer');
