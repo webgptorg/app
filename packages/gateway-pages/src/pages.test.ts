@@ -163,6 +163,7 @@ describe('setup.html', () => {
             'Confirm on your device: fingerprint, face, PIN or security key.',
             'The passkey prompt was closed or timed out. Try again when you are ready.',
             'Sign in from any device with this passkey. To add a device without synced passkeys, use Security in the engine.',
+            'Setup is done. If you started on the Promptbook dashboard, its tab shows this engine as ready by itself; you can close it.',
             'This setup link has expired',
             "Setup links work for 30 minutes. On the engine's server, run {{command}} setup-link for a new one.",
             'This engine already has an owner',

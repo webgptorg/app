@@ -195,6 +195,8 @@ test('the owner sets up a passkey through /setup#<secret>, then signs in with it
     await expect(page.getByText(engine.identity.engineId, { exact: true })).toBeVisible();
     await page.locator('button[data-action="create"]').click();
     await expect(page.getByRole('heading', { name: 'You are the owner' })).toBeVisible();
+    await expect(page.getByText('Setup is done.', { exact: false })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Open your engine' })).toBeVisible();
     expect(engine.operator.status().ownerSetUp).toBe(true);
     // The dashboard's tab waits on `members`: a beat goes out at once, well before the 60 s interval.
     const decoder = new TextDecoder();
