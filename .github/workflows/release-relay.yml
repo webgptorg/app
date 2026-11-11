@@ -108,9 +108,12 @@ jobs:
       - name: SBOM
         env:
           SYFT_IMAGE: docker.io/anchore/syft:v1.54.1@sha256:3eb5379ba7b409c3f4069b686110527af0c47df993fa5c10d13e7cf34f49b1aa
+        # The syft image has no /tmp a non-root user can write, so its temporary files and cache go to the mount.
         run: |
           docker save --output "$RUNNER_TEMP/relay.tar" relay:build
-          docker run --rm --user "$(id -u):$(id -g)" -v "$RUNNER_TEMP:/work" "$SYFT_IMAGE" \
+          mkdir -p "$RUNNER_TEMP/syft"
+          docker run --rm --user "$(id -u):$(id -g)" -v "$RUNNER_TEMP:/work" \
+            -e TMPDIR=/work/syft -e SYFT_CACHE_DIR=/work/syft/cache "$SYFT_IMAGE" \
             docker-archive:/work/relay.tar --output spdx-json=/work/relay.spdx.json
       # The digest comes from the push itself, never from reading the tag back: any workflow run with
       # `packages: write` could move the tag in between, and sign would then sign someone else's image.
