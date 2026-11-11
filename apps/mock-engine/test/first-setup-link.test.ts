@@ -83,6 +83,7 @@ async function start(options: {
     readonly passkeys: 'seeded' | 'none';
     readonly terminal?: boolean;
     readonly mayOpen?: boolean;
+    readonly hyperlinks?: boolean;
 }): Promise<Started> {
     const clock = createFakeClock(Date.parse('2026-10-20T10:00:00Z'));
     const logger = createMemoryLogger();
@@ -116,6 +117,7 @@ async function start(options: {
         say: options.terminal === false ? null : (line) => lines.push(line),
         firstSetupLink: {
             mayOpen: options.mayOpen ?? true,
+            hyperlinks: options.hyperlinks ?? false,
             openBrowser: (url) => {
                 opened.push(url);
                 return Promise.resolve(true);
@@ -166,6 +168,14 @@ describe('the first setup link, shown by the engine in the foreground', () => {
         await flush(5);
         expect(started.opened).toEqual([]);
         expect(started.lines).not.toContain(OPENED_IN_BROWSER);
+    });
+
+    it('prints the link as a clickable OSC 8 hyperlink in a terminal that renders them', async () => {
+        const started = await start({ linked: true, passkeys: 'none', hyperlinks: true });
+        await reachable(started);
+        await until(() => started.opened.length > 0);
+        const [url] = started.opened;
+        expect(started.lines).toContain(`  \u001b]8;;${url ?? ''}\u001b\\${url ?? ''}\u001b]8;;\u001b\\`);
     });
 
     it('issues nothing as a service, whose stdout is a log stream', async () => {

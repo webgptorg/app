@@ -2,7 +2,12 @@ import type { OperatorClient } from '../adapters/operator-client';
 import type { AddressGap } from '../domain/onboarding/address';
 import type { SetupLinkAnswer } from '../domain/onboarding/operator-api';
 import type { BrowserOpener, BrowserSession } from '../domain/onboarding/setup-link-delivery';
-import { mayOpenBrowser, setupLinkDelivery } from '../domain/onboarding/setup-link-delivery';
+import {
+    mayOpenBrowser,
+    osc8Hyperlink,
+    setupLinkDelivery,
+    terminalHyperlinks,
+} from '../domain/onboarding/setup-link-delivery';
 import type { ExitCode } from './exit-codes';
 import { EXIT_CODE } from './exit-codes';
 import type { Say } from './operator-lines';
@@ -115,12 +120,15 @@ async function obtain(wait: boolean, deps: ShowSetupLinkDeps): Promise<Obtained>
     }
 }
 
-/** The link with its expiry and warning, for a terminal only; the engine prints the same when it shows the link. */
-export function setupLinkLines(url: string, expiresAtClock: string): readonly string[] {
+/**
+ * The link with its expiry and warning, for a terminal only; the engine prints the same when it shows the link. With
+ * `hyperlink` the URL is clickable (OSC 8) in terminals that render it.
+ */
+export function setupLinkLines(url: string, expiresAtClock: string, hyperlink: boolean): readonly string[] {
     return [
         'Make yourself the owner of this engine in your browser:',
         '',
-        `  ${url}`,
+        `  ${hyperlink ? osc8Hyperlink(url) : url}`,
         '',
         `This link makes whoever opens it the owner. It works once, until ${expiresAtClock} (30 minutes).`,
         `Do not paste it into chats or tickets. A new link: ${ENGINE_COMMAND} setup-link`,
@@ -140,7 +148,8 @@ async function report(obtained: NonNullable<Obtained>, command: SetupLinkCommand
     }
     switch (answer.outcome) {
         case 'created': {
-            for (const line of setupLinkLines(answer.url, deps.clockTime(answer.expiresAt))) deps.out(line);
+            const hyperlink = terminalHyperlinks(deps.session.env);
+            for (const line of setupLinkLines(answer.url, deps.clockTime(answer.expiresAt), hyperlink)) deps.out(line);
             const delivery = setupLinkDelivery({
                 terminal: true,
                 ownerSetUp: false,

@@ -43,6 +43,8 @@ function world(
         readonly desktop?: boolean;
         readonly browserOpens?: boolean;
         readonly ownerSetUp?: boolean;
+        /** A terminal that renders OSC 8 hyperlinks. */
+        readonly hyperlinks?: boolean;
     } = {},
 ): World {
     const opened: string[] = [];
@@ -78,7 +80,10 @@ function world(
             asked.push(prompt);
             return Promise.resolve(options.typed === undefined ? 'k5dq4tab' : options.typed);
         },
-        session: options.desktop === true ? { platform: 'darwin', env: {} } : { platform: 'linux', env: {} },
+        session: {
+            platform: options.desktop === true ? 'darwin' : 'linux',
+            env: options.hyperlinks === true ? { TERM_PROGRAM: 'iTerm.app' } : {},
+        },
         openBrowser: (url) => {
             opened.push(url);
             return Promise.resolve(options.browserOpens ?? true);
@@ -138,6 +143,15 @@ describe('setup-link', () => {
         expect(await runSetupLinkCommand({ wait: true, json: false, open: true }, deps)).toBe(EXIT_CODE.ok);
         expect(out[2]).toBe(`  ${URL_WITH_SECRET}`);
         expect(err).toEqual([NOT_OPENED]);
+    });
+
+    it('makes the link clickable in a terminal that renders OSC 8 hyperlinks, and never in --json', async () => {
+        const clickable = world({ hyperlinks: true });
+        await runSetupLinkCommand({ wait: true, json: false, open: true }, clickable.deps);
+        expect(clickable.out[2]).toBe(`  \u001b]8;;${URL_WITH_SECRET}\u001b\\${URL_WITH_SECRET}\u001b]8;;\u001b\\`);
+        const json = world({ hyperlinks: true });
+        await runSetupLinkCommand({ wait: true, json: true, open: true }, json.deps);
+        expect(json.out.map((line) => JSON.parse(line) as unknown)).toEqual([CREATED]);
     });
 
     it('opens nothing with --no-open, with --json, or without a desktop', async () => {

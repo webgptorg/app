@@ -127,7 +127,12 @@ export interface MockEngineDeps {
      * engine shows the setup link on its terminal (`say`) and opens it when `mayOpen`, unless `connect` took that over.
      * Without it, or without a terminal, the engine only points at `setup-link`.
      */
-    readonly firstSetupLink?: { readonly mayOpen: boolean; readonly openBrowser: BrowserOpener };
+    readonly firstSetupLink?: {
+        readonly mayOpen: boolean;
+        readonly openBrowser: BrowserOpener;
+        /** The terminal renders OSC 8 hyperlinks, so the printed link is clickable. */
+        readonly hyperlinks: boolean;
+    };
     /**
      * The owner's setup: the stores, WebAuthn and the reference pages. Without it the secret and passkeys live in memory
      * and no `/setup` is served, so `setup-link` waits for it (tests that need neither).
@@ -600,7 +605,7 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
             say(NO_OWNER_LINE);
         }
         if (answer.outcome !== 'created') return;
-        for (const line of setupLinkLines(answer.url, localClockTime(answer.expiresAt))) say(line);
+        for (const line of setupLinkLines(answer.url, localClockTime(answer.expiresAt), first.hyperlinks)) say(line);
         if (delivery === 'print-and-open') await openSetupLink(answer.url, first.openBrowser, say);
     }
 

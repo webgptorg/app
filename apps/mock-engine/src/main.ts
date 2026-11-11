@@ -55,7 +55,7 @@ import { startMockEngine } from './app/start-mock-engine';
 import { UiLoaderSetupError, createUiLoaderDeps } from './app/ui-loader-deps';
 import type { Logger } from './domain/logger';
 import type { BrowserSession } from './domain/onboarding/setup-link-delivery';
-import { mayOpenBrowser } from './domain/onboarding/setup-link-delivery';
+import { mayOpenBrowser, terminalHyperlinks } from './domain/onboarding/setup-link-delivery';
 import type { AcmeChallenges } from './domain/tls/acme-challenges';
 import { createAcmeChallenges } from './domain/tls/acme-challenges';
 import type { ManagedCertificateSource } from './domain/tls/certificate-source';
@@ -239,6 +239,7 @@ async function start(
             firstSetupLink: {
                 mayOpen: mayOpenBrowser(BROWSER_SESSION, !open),
                 openBrowser: createBrowserOpener(process.platform),
+                hyperlinks: terminalHyperlinks(process.env),
             },
             onboarding: {
                 setupSecrets: createFsSetupSecretStore(config.dataDir),
