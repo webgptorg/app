@@ -58,8 +58,10 @@ test('lists the seeded agents, searches and filters them, and keeps the filters 
 
 test('pages through a fleet larger than one page', async ({ page, engine, signIn, appUrl }) => {
     const reset = need(engine, 'reset');
+    // A reset ends every session: the app beforeEach opened would see its next call refused and go to sign-in, racing
+    // the navigation below (Firefox loses that race). Leave it first.
+    await page.goto('about:blank');
     await reset({ scenario: 'large-fleet', seed: UI_SEED, capabilities: ALL_CAPABILITIES });
-    // A reset ends every session.
     await signIn();
     await page.goto(appUrl('/agents'));
     const table = page.getByRole('table', { name: 'Agents' });

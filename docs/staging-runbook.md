@@ -375,19 +375,25 @@ The mock engine checks the path through the relay end to end. On your machine:
 bun run --filter @ptbk/mock-engine build
 mkdir -m 700 -p ~/.ptbk-staging-engine
 export PTBK_DATA_DIR=~/.ptbk-staging-engine PTBK_ENGINE_DOMAIN=engines.ptbk.link
-node apps/mock-engine/dist/main.mjs connect --link '<link URL>'  # from Engines, New engine
-node apps/mock-engine/dist/main.mjs                              # runs the engine: tunnels, heartbeats
+# A Let's Encrypt certificate through the relay (TLS-ALPN-01; CAA on engines.ptbk.link allows letsencrypt.org),
+# and the signed UI from the staging release store, checked against the committed staging trust policy.
+export MOCK_CERT_SOURCE=acme PTBK_ACME_DIRECTORY_URL=https://acme-v02.api.letsencrypt.org/directory
+export PTBK_UI_RELEASE_URL=https://ui.ptbk.link/ PTBK_UI_TRUST_POLICY_FILE="$PWD/apps/engine-ui/release/trust-policy.staging.json"
+node apps/mock-engine/dist/main.mjs                              # terminal 1: runs the engine, unlinked until connect
+node apps/mock-engine/dist/main.mjs connect --link '<link URL>'  # terminal 2: from Engines, New engine
 ```
 
-**You should see:** `connect` exits 0 and prints the engine ID and the fingerprint the page shows; the page's checklist moves on; the engine shows online after its first heartbeat (within about a minute). Once the relay runs (step 10), the engine reports `relays.connected`, the dashboard says "Reachable through 1 relay", and the path through the relay is end to end:
+The mock starts like a fresh real engine, without an owner (`MOCK_PASSKEYS=none` is its default; `MOCK_PASSKEYS=seeded` brings the scenario's owner, and then no setup link is shown). Over SSH, or with `--no-open` or `PTBK_NO_OPEN=1`, the link is printed but not opened; `node apps/mock-engine/dist/main.mjs setup-link` prints a fresh one at any time. Both terminals need the exports above. Running `connect` first and then the engine works too: the engine, in the foreground, then shows the link itself.
+
+**You should see:** `connect` prints the engine ID and the fingerprint the page shows and links the running engine; the page's checklist moves on; the engine shows online after its first heartbeat (within about a minute). Once the relay runs (step 10), the engine reports `relays.connected` and the dashboard says "Reachable through 1 relay"; once the certificate is issued (usually under a minute, `acme.certificate-issued` in the log), `connect` prints the setup link, opens it in your browser, says "Opened in your browser. Create your passkey there." and exits 0. Create the passkey there: the page has a publicly trusted certificate, so the browser shows no warning. The path through the relay is end to end:
 
 ```sh
-curl -sk https://<engineId>.engines.ptbk.link/__spike/whoami
+curl -s https://<engineId>.engines.ptbk.link/__spike/whoami
 openssl s_client -connect <relay ipv4>:443 -servername <engineId>.engines.ptbk.link </dev/null 2>/dev/null \
-  | openssl x509 -noout -issuer                # the engine's own dev CA, never Cloudflare's or the relay's
+  | openssl x509 -noout -issuer                # Let's Encrypt, issued to the engine; never Cloudflare's or the relay's
 ```
 
-The mock's certificate comes from its dev CA, so browsers warn. A CA-issued certificate through the relay is the Let's Encrypt **staging** run in [spike/acme-tls-alpn-01.md](spike/acme-tls-alpn-01.md#runbook-lets-encrypt-staging-manual) ([apply.md](plan/apply.md) step 10); never against Let's Encrypt production.
+The certificate comes from Let's Encrypt production, which is what staging runs on (`ptbk.link`'s CAA allows only `letsencrypt.org`): the engine holds the key and the relay only routes the validation connection by SNI ([spike/acme-tls-alpn-01.md](spike/acme-tls-alpn-01.md)). Mind Let's Encrypt's rate limits (50 certificates per registered domain a week, 5 duplicates a week): keep `PTBK_DATA_DIR` between runs, so a restart reuses the stored certificate instead of ordering a new one. Without `MOCK_CERT_SOURCE=acme` the mock falls back to its dev CA, whose certificate browsers refuse, and passkeys with it.
 
 **If it fails:** for `ptbk`, the message names the refusal and the next step. For the mock, exit 3 means the code was refused (used, cancelled, or older than 30 days): make a new one. Exit 5 (`engine-limit`, `not-entitled`) means the organization already has `BILLING_OFF_PLAN`'s 10 engines (revoke one), or billing is not off. Exit 6 means the dashboard was unreachable.
 

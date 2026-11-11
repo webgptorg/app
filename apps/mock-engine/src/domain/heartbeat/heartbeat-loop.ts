@@ -73,6 +73,12 @@ export interface HeartbeatTeams {
 export interface HeartbeatLoop {
     /** Sends the first beat now, then one every interval. */
     start(): void;
+    /**
+     * One beat now, outside the interval, for a change the dashboard waits on (the owner's first passkey). Nothing
+     * before `start` or after `stop`. A beat in flight was built before the change, so one more follows it; the
+     * interval's schedule stays as it was.
+     */
+    beatNow(): void;
     /** Stops the timer and aborts a beat in flight. */
     stop(): Promise<void>;
     status(): HeartbeatStatus;
@@ -90,6 +96,7 @@ export function createHeartbeatLoop(deps: HeartbeatLoopDeps): HeartbeatLoop {
     let status: HeartbeatStatus = Object.freeze({ lastHeartbeat: null, clockSkew: null, lastAnswer: null });
     let cancelTimer: (() => void) | null = null;
     let inFlight: Promise<void> | null = null;
+    let beatAfterInFlight = false;
     let abort = new AbortController();
 
     function setStatus(patch: Partial<HeartbeatStatus>): void {
@@ -152,12 +159,8 @@ export function createHeartbeatLoop(deps: HeartbeatLoopDeps): HeartbeatLoop {
         }
     }
 
-    function tick(): void {
-        cancelTimer = clock.setTimeout(tick, intervalMs);
-        if (inFlight !== null) {
-            logger.warn('heartbeat.skipped', {});
-            return;
-        }
+    // One beat at a time, so each takes the next `seq` only after the previous one's send settled.
+    function send(): void {
         const signal = abort.signal;
         inFlight = beat(signal)
             .catch((error: unknown) => {
@@ -166,16 +169,38 @@ export function createHeartbeatLoop(deps: HeartbeatLoopDeps): HeartbeatLoop {
             })
             .finally(() => {
                 inFlight = null;
+                if (beatAfterInFlight && cancelTimer !== null) {
+                    beatAfterInFlight = false;
+                    send();
+                }
             });
+    }
+
+    function tick(): void {
+        cancelTimer = clock.setTimeout(tick, intervalMs);
+        if (inFlight !== null) {
+            logger.warn('heartbeat.skipped', {});
+            return;
+        }
+        send();
     }
 
     return {
         start() {
             if (cancelTimer === null) tick();
         },
+        beatNow() {
+            if (cancelTimer === null) return;
+            if (inFlight !== null) {
+                beatAfterInFlight = true;
+                return;
+            }
+            send();
+        },
         async stop() {
             cancelTimer?.();
             cancelTimer = null;
+            beatAfterInFlight = false;
             abort.abort();
             await inFlight;
             abort = new AbortController();

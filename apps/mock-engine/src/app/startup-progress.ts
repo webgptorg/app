@@ -13,7 +13,20 @@ export interface StartupProgressDeps {
     readonly say: Say | null;
     readonly engineId: EngineId;
     readonly hostname: Hostname;
+    /**
+     * Who shows the setup link once the address first works without an owner, asked at that moment (a `connect` may
+     * have claimed it by then): `engine` has `show` print it after "Ready", `connect` leaves it to that command, and
+     * `operator` (the default) points at `setup-link`.
+     */
+    readonly setupLink?: {
+        readonly shownBy: () => SetupLinkShownBy;
+        readonly show: () => void;
+    };
 }
+
+export type SetupLinkShownBy = 'engine' | 'connect' | 'operator';
+
+export const NO_OWNER_LINE = `No owner yet. Run \`${ENGINE_COMMAND} setup-link\` on this host to get the setup link.`;
 
 /** The engine's state as far as the owner's next step is concerned. */
 export interface OnboardingState {
@@ -25,7 +38,7 @@ export interface OnboardingState {
  * The first-start output contract (installation.md): identity, registration, relays, certificate, UI bundle, owner
  * and ready, each as a log event and, on a terminal, as a line. Registration, certificate and UI bundle already log
  * their own events where they happen; this adds the rest. Nothing said here is secret: the setup link is only ever
- * printed by `setup-link`.
+ * printed by `setup-link`, `connect` and, on its own terminal, the engine (`setupLink`).
  */
 export interface StartupProgress {
     identity(): void;
@@ -51,13 +64,24 @@ export function createStartupProgress(deps: StartupProgressDeps): StartupProgres
     let ready = false;
     let ownerSetUp: boolean | null = null;
 
-    function owner(setUp: boolean): void {
+    function owner(setUp: boolean, shownBy: SetupLinkShownBy): void {
         if (setUp) {
             logger.info('owner.set-up', {});
             say(`${DONE} Owner set up`);
-        } else {
-            logger.info('owner.none', { command: `${ENGINE_COMMAND} setup-link` });
-            say(`No owner yet. Run \`${ENGINE_COMMAND} setup-link\` on this host to get the setup link.`);
+            return;
+        }
+        logger.info('owner.none', { command: `${ENGINE_COMMAND} setup-link` });
+        switch (shownBy) {
+            case 'engine':
+                return;
+            case 'connect':
+                say(
+                    `No owner yet. \`${ENGINE_COMMAND} connect\` shows the setup link where it runs; \`${ENGINE_COMMAND} setup-link\` makes a new one.`,
+                );
+                return;
+            case 'operator':
+                say(NO_OWNER_LINE);
+                return;
         }
     }
 
@@ -98,14 +122,17 @@ export function createStartupProgress(deps: StartupProgressDeps): StartupProgres
                 if (state.addressGaps.length > 0) return;
                 ready = true;
                 ownerSetUp = state.ownerSetUp;
-                owner(state.ownerSetUp);
+                const shownBy = deps.setupLink?.shownBy() ?? 'operator';
+                owner(state.ownerSetUp, shownBy);
                 logger.info('engine.ready', { url: `https://${hostname}/` });
                 say(`Ready: https://${hostname}/`);
+                if (!state.ownerSetUp && shownBy === 'engine') deps.setupLink?.show();
                 return;
             }
             if (state.ownerSetUp !== ownerSetUp) {
                 ownerSetUp = state.ownerSetUp;
-                owner(state.ownerSetUp);
+                // Later changes come from `owner --reset` (which prints its own link) or a new passkey: never re-issue.
+                owner(state.ownerSetUp, 'operator');
             }
         },
     };

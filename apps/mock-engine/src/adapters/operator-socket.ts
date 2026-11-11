@@ -8,6 +8,7 @@ import { z } from 'zod';
 
 import type { Logger } from '../domain/logger';
 import type { OperatorApi } from '../domain/onboarding/operator-api';
+import { LINK_QUERY } from '../domain/onboarding/operator-api';
 import { createWindowRateLimiter } from '../domain/rate-limit/rate-limiter';
 import type { Clock } from '../domain/clock';
 import type { PlainHttpServer } from './http/plain-http-server';
@@ -122,10 +123,11 @@ function operatorRoutes(api: OperatorApi): readonly HttpRoute[] {
             permission: null,
             rateLimit: 'control',
             params: null,
-            query: NO_QUERY,
+            query: LINK_QUERY,
             headers: null,
             body: null,
-            handle: async () => Response.json(await api.link()),
+            handle: async ({ query }) =>
+                Response.json(await api.link({ callerShowsSetupLink: query['setup-link'] === 'caller' })),
         }),
         defineHttpRoute({
             transport: 'http',

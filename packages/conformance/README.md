@@ -110,7 +110,7 @@ Output is one line per check (`PASS`, `FAIL`, `SKIP`, the ID, the detail) with a
 
 ```sh
 node packages/conformance/dist/ptbk-conformance.js \
-  --engine-cmd "MOCK_SCENARIO=small-team MOCK_HEARTBEAT_INTERVAL_S=2 node apps/mock-engine/dist/main.mjs" \
+  --engine-cmd "MOCK_SCENARIO=small-team MOCK_PASSKEYS=seeded MOCK_HEARTBEAT_INTERVAL_S=2 node apps/mock-engine/dist/main.mjs" \
   --heartbeat-interval-s 2 --mock-control --suite engine-api,registration,heartbeat,tunnel,ui-loader
 ```
 

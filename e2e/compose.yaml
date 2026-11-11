@@ -221,6 +221,9 @@ services:
       MOCK_CONTROL: enabled
       # The flows reach every screen; the dev stack shows the Reborn set (compose.dev.yaml).
       MOCK_PROFILE: full
+      # The scenario's owner and passkeys, which the flows and the dev stack (dev login, "no setup link to open") start
+      # from; the onboarding spec's fresh engine sets none, the mock's default.
+      MOCK_PASSKEYS: seeded
       MOCK_CONTROL_HOST: 0.0.0.0
       MOCK_CONTROL_PORT: '4480'
     volumes:

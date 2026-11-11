@@ -53,6 +53,8 @@ describe('parseMockEngineConfig', () => {
             simulation: { mode: 'running', speed: 1 },
             // Tests see every capability; a started mock shows only what the Reborn engine has.
             capabilities: ['tasks', 'files', 'onboarding', 'wallet'],
+            // Tests start with the seeded owner; a started mock is a fresh engine that waits for one.
+            passkeys: 'none',
         });
         expect(Object.isFrozen(config)).toBe(true);
         expect(Object.isFrozen(config.relays)).toBe(true);
@@ -587,9 +589,9 @@ describe('parseIdentityConfig', () => {
             if (text.length > 3) expect(problems.join(' ')).not.toContain(text);
         });
 
-        it('keeps the seeded passkeys unless told the owner is still to come (M-08)', () => {
-            expect(parseMockEngineConfig(BASE).passkeys).toBe('seeded');
-            expect(parseMockEngineConfig({ ...BASE, MOCK_PASSKEYS: 'none' }).passkeys).toBe('none');
+        it('starts without passkeys, like a fresh engine, unless told to keep the seeded owner (M-08)', () => {
+            expect(parseMockEngineConfig(BASE).passkeys).toBe('none');
+            expect(parseMockEngineConfig({ ...BASE, MOCK_PASSKEYS: 'seeded' }).passkeys).toBe('seeded');
         });
 
         it('reads the capabilities and the simulation settings (M-07)', () => {

@@ -412,6 +412,56 @@ describe('createHeartbeatLoop', () => {
         release.resolve();
     });
 
+    it('beats now on demand with the next seq, keeping the interval, and not before start or after stop', async () => {
+        const started = await setup();
+        started.loop.beatNow();
+        await flush(5);
+        expect(started.fake.heartbeats).toHaveLength(0);
+        started.loop.start();
+        await received(started, 1);
+        started.clock.advance(10_000);
+        started.loop.beatNow();
+        await received(started, 2);
+        started.clock.advance(50_000);
+        await received(started, 3);
+        const beats = started.fake.heartbeats;
+        expect(beats.map((beat) => beat.verification.kind)).toEqual(['accepted', 'accepted', 'accepted']);
+        const seqs = beats.map((beat) => seqOf(beat.rawBody));
+        expect(seqs).toEqual([...seqs].sort((a, b) => a - b));
+        expect(new Set(seqs).size).toBe(3);
+        await started.loop.stop();
+        started.loop.beatNow();
+        await flush(10);
+        expect(started.fake.heartbeats).toHaveLength(3);
+    });
+
+    it('sends one more beat after a beat in flight when asked to beat now meanwhile', async () => {
+        const release = deferred();
+        let calls = 0;
+        const started = await setup({
+            api: (fake) => ({
+                register: (request, signal) => fake.api.register(request, signal),
+                async heartbeat(engineId, rawBody, signature, signal) {
+                    calls++;
+                    if (calls === 1) await release.promise;
+                    return fake.api.heartbeat(engineId, rawBody, signature, signal);
+                },
+            }),
+        });
+        started.loop.start();
+        await until(() => calls === 1);
+        started.loop.beatNow();
+        started.loop.beatNow();
+        await flush(5);
+        expect(calls).toBe(1);
+        release.resolve();
+        await received(started, 2);
+        await flush(10);
+        expect(calls).toBe(2);
+        expect(started.fake.heartbeats.map((beat) => beat.verification.kind)).toEqual(['accepted', 'accepted']);
+        await started.loop.stop();
+    });
+
     it('can start again after stop', async () => {
         const started = await setup();
         started.loop.start();
