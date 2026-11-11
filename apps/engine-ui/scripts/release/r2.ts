@@ -1,7 +1,11 @@
 import { spawn } from 'node:child_process';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { compareEngineVersions, EngineVersion } from '@ptbk/protocol';
 import { PINNED_TRUSTED_ROOT_FILE } from '@ptbk/release-tools';
+import { z } from 'zod';
 
 import { RELEASE_FILES } from './paths.ts';
 
@@ -91,17 +95,7 @@ export async function publishRelease(
     uploads: readonly Upload[],
     curl: Curl = runCurl,
 ): Promise<PublishOutcome> {
-    if (!CREDENTIAL.test(target.accessKeyId) || !CREDENTIAL.test(target.secretAccessKey)) {
-        throw new Error('R2 credentials contain unexpected characters');
-    }
-    const config = `user = "${target.accessKeyId}:${target.secretAccessKey}"\n`;
-    const common = ['--silent', '--show-error', '--max-time', '300', '--aws-sigv4', 'aws:amz:auto:s3'];
-    const output = ['--output', '/dev/null', '--write-out', '%{http_code}'];
-    const url = (key: string): string => {
-        if (!KEY.test(key) || key.includes('..') || key.includes('//')) throw new Error(`unsafe object key: ${key}`);
-        return `${target.endpoint}/${encodeURIComponent(target.bucket)}/${key}`;
-    };
-
+    const { config, common, output, url } = requestParts(target);
     for (const { key } of uploads) {
         const status = await curl([...common, '--head', ...output, url(key)], config);
         if (status === 200) return { kind: 'exists', key };
@@ -126,4 +120,80 @@ export async function publishRelease(
         if (status !== 200) throw new Error(`PUT ${key} answered ${String(status)}`);
     }
     return { kind: 'published', keys: uploads.map(({ key }) => key) };
+}
+
+/** The unsigned latest-version hint engines read first (`MIRROR_LAYOUT_V1.latest`); whatever it names must verify. */
+export const LATEST_KEY = 'ui/latest.json';
+const LatestHint = z.strictObject({ version: EngineVersion });
+
+export type LatestOutcome =
+    | { readonly kind: 'moved'; readonly from: EngineVersion | null }
+    | { readonly kind: 'kept'; readonly current: EngineVersion };
+
+/**
+ * Points the hint at `version`, after the release is fully uploaded. The only object a publish overwrites, but never
+ * backwards: publishing an older version (a fix for an old line) must not pull engines on `auto` back to it.
+ */
+export async function pointLatestAt(
+    target: R2Target,
+    version: EngineVersion,
+    curl: Curl = runCurl,
+): Promise<LatestOutcome> {
+    const { config, common, url } = requestParts(target);
+    const work = await mkdtemp(join(tmpdir(), 'ptbk-latest-'));
+    try {
+        const current = join(work, 'current.json');
+        const status = await curl(
+            [...common, '--output', current, '--write-out', '%{http_code}', url(LATEST_KEY)],
+            config,
+        );
+        let from: EngineVersion | null = null;
+        if (status === 200) {
+            const parsed = LatestHint.safeParse(JSON.parse(await readFile(current, 'utf8')));
+            if (!parsed.success) throw new Error(`${LATEST_KEY} is not a valid hint; fix it by hand`);
+            from = parsed.data.version;
+            if (compareEngineVersions(from, version) >= 0) return { kind: 'kept', current: from };
+        } else if (status !== 404) {
+            throw new Error(`GET ${LATEST_KEY} answered ${String(status)}`);
+        }
+        const next = join(work, 'latest.json');
+        await writeFile(next, JSON.stringify({ version }));
+        const put = await curl(
+            [
+                ...common,
+                '--upload-file',
+                next,
+                '--header',
+                'Content-Type: application/json',
+                '--header',
+                'Cache-Control: no-cache',
+                '--output',
+                '/dev/null',
+                '--write-out',
+                '%{http_code}',
+                url(LATEST_KEY),
+            ],
+            config,
+        );
+        if (put !== 200) throw new Error(`PUT ${LATEST_KEY} answered ${String(put)}`);
+        return { kind: 'moved', from };
+    } finally {
+        await rm(work, { recursive: true, force: true });
+    }
+}
+
+function requestParts(target: R2Target) {
+    if (!CREDENTIAL.test(target.accessKeyId) || !CREDENTIAL.test(target.secretAccessKey)) {
+        throw new Error('R2 credentials contain unexpected characters');
+    }
+    return {
+        config: `user = "${target.accessKeyId}:${target.secretAccessKey}"\n`,
+        common: ['--silent', '--show-error', '--max-time', '300', '--aws-sigv4', 'aws:amz:auto:s3'],
+        output: ['--output', '/dev/null', '--write-out', '%{http_code}'],
+        url: (key: string): string => {
+            if (!KEY.test(key) || key.includes('..') || key.includes('//'))
+                throw new Error(`unsafe object key: ${key}`);
+            return `${target.endpoint}/${encodeURIComponent(target.bucket)}/${key}`;
+        },
+    };
 }

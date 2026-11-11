@@ -139,7 +139,7 @@ bun run --filter @ptbk/engine-ui release:publish --version <version>
 unset R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY
 ```
 
-Download each artifact on its own: `gh run download` with several `-n` puts each into a subdirectory, where the scripts do not look. `release:verify` checks everything an engine checks, against the staging trust policy, and prints the tag and `<version>`. A dry-run tag (`ui-v0.0.0-dryrun.<n>`) stops there: it is never published. `release:publish` refuses a version that already exists.
+Download each artifact on its own: `gh run download` with several `-n` puts each into a subdirectory, where the scripts do not look. `release:verify` checks everything an engine checks, against the staging trust policy, and prints the tag and `<version>`. A dry-run tag (`ui-v0.0.0-dryrun.<n>`) stops there: it is never published. `release:publish` refuses a version that already exists. It then moves `ui/latest.json`, which engines read to find the release, to `<version>`, never backwards.
 
 ## Rotating credentials
 

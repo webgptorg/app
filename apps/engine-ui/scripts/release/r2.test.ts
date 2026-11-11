@@ -5,11 +5,12 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { EngineVersion } from '@ptbk/protocol';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { RELEASE_FILES } from './paths.ts';
 import type { R2Target } from './r2.ts';
-import { publishRelease, releaseUploads, runCurl } from './r2.ts';
+import { pointLatestAt, publishRelease, releaseUploads, runCurl } from './r2.ts';
 
 interface Request {
     readonly method: string;
@@ -22,6 +23,7 @@ let dir: string;
 let requests: Request[];
 let existing: Set<string>;
 let putStatus: number;
+let latest: string | null;
 let close: () => Promise<void>;
 let target: R2Target;
 
@@ -31,6 +33,7 @@ beforeEach(async () => {
     requests = [];
     existing = new Set();
     putStatus = 200;
+    latest = null;
     const server = createServer((request, response) => {
         const chunks: Buffer[] = [];
         request.on('data', (chunk: Buffer) => {
@@ -44,6 +47,13 @@ beforeEach(async () => {
                 headers: request.headers,
                 body: Buffer.concat(chunks).toString(),
             });
+            const body = Buffer.concat(chunks).toString();
+            if (url === '/ptbk-staging/ui/latest.json' && request.method === 'GET') {
+                response.statusCode = latest === null ? 404 : 200;
+                response.end(latest ?? '');
+                return;
+            }
+            if (url === '/ptbk-staging/ui/latest.json' && request.method === 'PUT' && putStatus === 200) latest = body;
             if (request.method === 'HEAD') response.statusCode = existing.has(url) ? 200 : 404;
             else response.statusCode = putStatus;
             response.end();
@@ -129,5 +139,42 @@ describe('publishRelease with curl --aws-sigv4', { timeout: 30_000 }, () => {
         await expect(runCurl(['--silent', '--write-out', '%{http_code}', 'http://127.0.0.1:1/'], '')).rejects.toThrow(
             /curl failed/,
         );
+    });
+});
+
+describe('pointLatestAt', { timeout: 30_000 }, () => {
+    const v = (version: string): EngineVersion => EngineVersion.parse(version);
+
+    it('creates the hint the engines parse, uncached', async () => {
+        expect(await pointLatestAt(target, v('0.1.0'))).toEqual({ kind: 'moved', from: null });
+        expect(JSON.parse(latest ?? '')).toEqual({ version: '0.1.0' });
+        const put = requests.find(({ method }) => method === 'PUT');
+        expect(put?.headers['content-type']).toBe('application/json');
+        expect(put?.headers['cache-control']).toBe('no-cache');
+        expect(put?.headers['if-none-match']).toBeUndefined();
+    });
+
+    it('overwrites an older hint', async () => {
+        latest = JSON.stringify({ version: '0.1.0' });
+        expect(await pointLatestAt(target, v('0.2.0'))).toEqual({ kind: 'moved', from: '0.1.0' });
+        expect(JSON.parse(latest)).toEqual({ version: '0.2.0' });
+    });
+
+    it('never moves the hint backwards or rewrites it for the same version', async () => {
+        latest = JSON.stringify({ version: '0.2.0' });
+        expect(await pointLatestAt(target, v('0.1.1'))).toEqual({ kind: 'kept', current: '0.2.0' });
+        expect(await pointLatestAt(target, v('0.2.0'))).toEqual({ kind: 'kept', current: '0.2.0' });
+        expect(requests.filter(({ method }) => method === 'PUT')).toEqual([]);
+    });
+
+    it('refuses a hint it cannot read instead of replacing it blindly', async () => {
+        latest = JSON.stringify({ version: '0.1.0', extra: true });
+        await expect(pointLatestAt(target, v('0.2.0'))).rejects.toThrow(/not a valid hint/);
+        await expect(pointLatestAt(target, v('0.2.0'), () => Promise.resolve(403))).rejects.toThrow(
+            /GET .* answered 403/,
+        );
+        putStatus = 500;
+        latest = null;
+        await expect(pointLatestAt(target, v('0.2.0'))).rejects.toThrow(/PUT .* answered 500/);
     });
 });
