@@ -202,6 +202,15 @@ run "staggers_reboot_and_renewal" {
   }
 }
 
+run "installs_the_dnssec_root_anchor" {
+  command = apply
+
+  assert {
+    condition     = contains(local.cloud_config.packages, "dns-root-data")
+    error_message = "Without the root anchor unbound does not start, and the host resolves nothing."
+  }
+}
+
 run "installs_the_pinned_lego" {
   command = apply
 

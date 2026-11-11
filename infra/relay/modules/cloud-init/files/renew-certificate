@@ -7,7 +7,9 @@ set -euo pipefail
 
 : "${STATE_DIRECTORY:?}" "${PTBK_RELAY_HOSTNAME:?}" "${PTBK_ACME_EMAIL:?}" "${PTBK_ACME_SERVER:?}"
 
-# The timer already spreads the runs (RandomizedDelaySec), so lego's own random sleep would only delay it.
+# The timer already spreads the runs (RandomizedDelaySec), so lego's own random sleep would only delay it. Only the
+# authoritative servers are awaited, as the CA queries them: unbound caches the NXDOMAIN of lego's first look at the
+# challenge name for the zone's negative TTL, so waiting for it to see the record timed out.
 exec lego --log.format=text run \
     --accept-tos \
     --path="$STATE_DIRECTORY" \
@@ -17,4 +19,5 @@ exec lego --log.format=text run \
     --key-type=EC256 \
     --dns=cloudflare \
     --dns.resolvers=127.0.0.1:53 \
+    --dns.propagation.disable-rns \
     --no-random-sleep

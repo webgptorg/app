@@ -93,8 +93,11 @@ locals {
     package_update             = true
     package_upgrade            = true
     package_reboot_if_required = true
+    # dns-root-data holds unbound's DNSSEC root anchor: only a Recommends, which the image does not install, and without
+    # it unbound does not start and the host has no DNS at all.
     packages = [
-      "podman", "nftables", "unbound", "chrony", "unattended-upgrades", "bind9-dnsutils", "curl", "skopeo",
+      "podman", "nftables", "unbound", "dns-root-data", "chrony", "unattended-upgrades", "bind9-dnsutils", "curl",
+      "skopeo",
     ]
 
     users = concat(
