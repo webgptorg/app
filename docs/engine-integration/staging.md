@@ -39,7 +39,7 @@ export PTBK_UI_TRUST_POLICY_FILE="$PLATFORM_DIR/apps/engine-ui/release/trust-pol
 
 - `PTBK_UI_TRUST_POLICY_FILE` must be an absolute path. Use the file from the platform checkout as it is; never copy or edit it.
 - Leave `PTBK_DASHBOARD_URL`, `PTBK_RELAYS` and `NODE_EXTRA_CA_CERTS` unset. The link URL names the dashboard, the registration names the relay, and everything on staging has a public certificate.
-- The mock engine also needs `MOCK_CERT_SOURCE=acme` (it defaults to its development CA) and `MOCK_PASSKEYS=none` (it defaults to a seeded owner whose passkeys nobody holds). `MOCK_UI_CHECK_INTERVAL_S=60` makes it install a UI release a minute after the delay instead of an hour.
+- The mock engine also needs `MOCK_CERT_SOURCE=acme` (it defaults to its development CA). `MOCK_UI_CHECK_INTERVAL_S=60` makes it install a UI release a minute after the delay instead of an hour.
 
 ## Step by step
 
@@ -56,7 +56,7 @@ export PTBK_UI_TRUST_POLICY_FILE="$PLATFORM_DIR/apps/engine-ui/release/trust-pol
 
 4. **Start.** `<your engine>` with the same settings. Keep it running.
 5. **Wait.** Within about a minute: the tunnel to the relay is up, the first heartbeat arrives, and the dashboard shows the engine online, "Reachable through 1 relay". Then the engine orders its certificate through the relay; the first one takes up to a minute more.
-6. **Owner.** Run `<your engine> setup-link` on the same host, open the link it prints, and create the owner's passkey. The setup link is printed only on the terminal; the platform never sees it.
+6. **Owner.** Once the address works, the engine started in step 4 prints the setup link on its terminal and opens it in your browser ([installation.md](installation.md#the-setup-link)); create the owner's passkey there. If nothing opened, open the printed link, or run `<your engine> setup-link` on the same host for a fresh one. The setup link is printed only on the terminal; the platform never sees it.
 7. **UI.** At startup the engine sees the current release in `ui/latest.json` and records when it first saw it. With the staging policy it installs 5 minutes later, at its next update check. Restart the engine after 5 minutes if its check interval is longer. `GET /api/v1/security` → `ui.lastUpdateCheck` says `delay-not-elapsed` with `eligibleAt` until then.
 8. **Check.** Run the [staging check](#the-staging-check) until nothing fails.
 
@@ -64,10 +64,10 @@ For the mock engine, from the platform checkout:
 
 ```sh
 bun run --filter @ptbk/mock-engine build
-export MOCK_CERT_SOURCE=acme MOCK_PASSKEYS=none MOCK_UI_CHECK_INTERVAL_S=60
+export MOCK_CERT_SOURCE=acme MOCK_UI_CHECK_INTERVAL_S=60
 node apps/mock-engine/dist/main.mjs connect --link 'https://app.ptbk.io/link#<code>'
-node apps/mock-engine/dist/main.mjs              # runs the engine
-node apps/mock-engine/dist/main.mjs setup-link   # in a second shell, same settings
+node apps/mock-engine/dist/main.mjs              # runs the engine; prints and opens the setup link once reachable
+node apps/mock-engine/dist/main.mjs setup-link   # only if you need a fresh link: in a second shell, same settings
 ```
 
 ## The staging check
@@ -108,7 +108,7 @@ Every failure and skip prints its own fix line too. When the TLS check fails, th
 | The browser warns about the certificate; `staging.tls.public-certificate` names your development CA | ACME is off. Set `PTBK_ACME_DIRECTORY_URL` as above (the mock: `MOCK_CERT_SOURCE=acme`) and restart                                                                                                                                                    |
 | ACME validation fails                                                                               | The order started before a tunnel was ready, or `acme-tls/1` hellos do not reach your responder ([tunnel-client.md](tunnel-client.md)). Let's Encrypt rate-limits failed validations: fix the cause before you retry                                   |
 | Online only after a minute, or "No relay"                                                           | Without a working tunnel the first heartbeat waits a full interval. Check the engine's log for the relay the registration named                                                                                                                        |
-| `setup-link` says there is already an owner (the mock)                                              | The mock seeds an owner by default. Start it with `MOCK_PASSKEYS=none` and a fresh data directory, or run `owner --reset`                                                                                                                              |
+| `setup-link` says there is already an owner (the mock)                                              | The data directory already holds an owner's passkeys, or the mock runs with `MOCK_PASSKEYS=seeded`. Start it with a fresh data directory, or run `owner --reset`                                                                                       |
 | The engine serves its plain page, "no verified UI release"                                          | No policy: `PTBK_UI_TRUST_POLICY_FILE` is unset. Or `ui.lastUpdateCheck` says why: `delay-not-elapsed` (wait until `eligibleAt`, then restart or wait for the next check), `revocations-unverifiable` or a missing release (ours: tell the maintainer) |
 | `ui/latest.json` names a version the store does not have                                            | Ours. `curl https://ui.ptbk.link/ui/latest.json` and `curl -I https://ui.ptbk.link/release-log/ui-<version>.json` show it; tell the maintainer                                                                                                         |
 | `connect` exits with `invalid-link-code`                                                            | The code was used, cancelled or is older than 30 days. Make a new one on Engines                                                                                                                                                                       |

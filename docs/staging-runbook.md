@@ -378,7 +378,7 @@ export PTBK_DATA_DIR=~/.ptbk-staging-engine PTBK_ENGINE_DOMAIN=engines.ptbk.link
 # A Let's Encrypt certificate through the relay (TLS-ALPN-01; CAA on engines.ptbk.link allows letsencrypt.org),
 # and the signed UI from the staging release store, checked against the committed staging trust policy.
 export MOCK_CERT_SOURCE=acme PTBK_ACME_DIRECTORY_URL=https://acme-v02.api.letsencrypt.org/directory
-export PTBK_UI_RELEASE_URL=https://ui.ptbk.link/ MOCK_UI_TRUST_POLICY_FILE="$PWD/apps/engine-ui/release/trust-policy.staging.json"
+export PTBK_UI_RELEASE_URL=https://ui.ptbk.link/ PTBK_UI_TRUST_POLICY_FILE="$PWD/apps/engine-ui/release/trust-policy.staging.json"
 node apps/mock-engine/dist/main.mjs                              # terminal 1: runs the engine, unlinked until connect
 node apps/mock-engine/dist/main.mjs connect --link '<link URL>'  # terminal 2: from Engines, New engine
 ```
