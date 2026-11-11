@@ -25,5 +25,5 @@ relay_dns_mode = "records"
 
 # One staging host (I-01); addresses come from its outputs.
 relays = {
-  relay-fsn = { ipv4 = "<staging-relay-fsn-ipv4>", ipv6 = "<staging-relay-fsn-ipv6>", in_rotation = true }
+  relay-fsn = { ipv4 = "178.105.121.188", ipv6 = "2a01:4f8:c016:fd::1", in_rotation = true }
 }
