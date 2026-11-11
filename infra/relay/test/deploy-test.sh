@@ -118,6 +118,9 @@ rollout() { runner /scripts/rolling-deploy.sh "${digest[$1]}" "${RELAYS[@]/%/.$R
 point() {
     local relay=$1 image=$2
     runner skopeo copy --quiet --all --preserve-digests "docker://$image" "docker://$REPOSITORY:deploy-$relay.$RELAY_DOMAIN"
+    # A refused deploy exits 1, so back-to-back points hit systemd's start limit (5 in 10 s) and the next start
+    # would be dropped silently; resetting the counter keeps every point a real deploy attempt.
+    on "$relay" systemctl reset-failed ptbk-relay-deploy.service
     on "$relay" systemctl start ptbk-relay-deploy.service 2>/dev/null || true
 }
 point_to() { point "$1" "$REPOSITORY@${digest[$2]}"; }
