@@ -155,10 +155,10 @@ The engine alone decides who may use it. People sign in to the engine with passk
 
 1. The user signs up on our dashboard, which shows one install command with a one-time link code. The code only ties the engine to the account for routing and billing.
 2. The engine installs from a signed, pinned release, then generates its keys and registers its public key with us. It gets its hostname, obtains a certificate itself, and opens the tunnel.
-3. The engine's terminal prints a setup link and QR code: `https://<engine>.<domain>/setup#<secret>`. The secret is in the URL fragment, which the browser never sends over the network; only the engine's own page reads it, over TLS that ends on the engine.
+3. The engine's terminal prints a setup link and QR code, and on a local desktop opens it in the browser: `https://<engine>.<domain>/setup#<secret>`. The secret is in the URL fragment, which the browser never sends over the network; only the engine's own page reads it, over TLS that ends on the engine.
 4. The user opens the link and registers a passkey as owner. The engine marks setup complete and rejects the secret from then on.
 
-We never see the setup secret, so we cannot claim the owner seat. Only someone who can read the engine's terminal can.
+We never see the setup secret, so we cannot claim the owner seat. Only someone at the engine's computer can.
 
 **Devices, members and recovery**
 

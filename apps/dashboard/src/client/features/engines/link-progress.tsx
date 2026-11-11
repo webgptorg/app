@@ -225,7 +225,7 @@ function Reachability(props: { readonly engine: EngineView; readonly troubleshoo
 }
 
 /** The one sentence the live region speaks, so a screen reader hears each change once and nothing else. */
-function announcement(state: LinkState, engine: EngineView | undefined): string {
+function announcement(state: LinkState): string {
     switch (state) {
         case 'waiting':
             return m.link_progress_waiting();
@@ -234,7 +234,7 @@ function announcement(state: LinkState, engine: EngineView | undefined): string 
         case 'linked':
             return m.link_progress_linked();
         case 'owner-pending':
-            return m.link_progress_online({ version: engine?.heartbeat?.version ?? '' });
+            return m.link_progress_owner_announcement();
         case 'ready':
             return m.link_progress_ready();
     }
@@ -383,7 +383,7 @@ export function LinkProgress(props: {
             className="flex flex-col gap-4"
         >
             <p className="sr-only" aria-live="polite">
-                {announcement(state, engine.data)}
+                {announcement(state)}
             </p>
             {ready === null ? (
                 <>
