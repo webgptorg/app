@@ -1,6 +1,6 @@
 # Onboarding
 
-**Someone who runs, or wants to run, the open Promptbook engine pastes one command, opens one link and creates one passkey. After that, their engine has an address, a certificate, a tunnel, the signed UI and an owner, and we never held a key to any of it.**
+**Someone who runs, or wants to run, the open Promptbook engine pastes one command and creates one passkey in the browser window the engine opens. After that, their engine has an address, a certificate, a tunnel, the signed UI and an owner, and we never held a key to any of it.**
 
 This is the product spec for linking an engine to the platform, across every surface the person touches: our dashboard, the engine's terminal and CLI, the engine's open setup and sign-in pages, and the engine UI's first run. It fixes the steps, states, copy, errors and recovery. Visual design follows [ui.md](ui.md); the engine-side requirements behind it are in [installation.md](../engine-integration/installation.md). The spec's [Pairing and identity](../spec/zero-trust-spec.md#pairing-and-identity), [One address for users](../spec/zero-trust-spec.md#one-address-for-users) and [Moving existing deployments](../spec/zero-trust-spec.md#moving-existing-deployments) say why it works this way.
 
@@ -8,10 +8,10 @@ Copy in quotes is the English source text; Czech follows through i18n. Where the
 
 ## Principles
 
-1. **Three actions after sign-up.** Paste a command, open a link, confirm a passkey. Everything else (keys, hostname, certificate, tunnel, UI bundle) happens on its own, and each step reports itself.
+1. **Two actions after sign-up.** Paste a command, confirm a passkey. The engine opens its setup link in the browser itself; only where it cannot (a server over SSH) does the person open the link the terminal prints. Everything else (keys, hostname, certificate, tunnel, UI bundle) happens on its own, and each step reports itself.
 2. **Narrate where the person is looking.** The terminal and the dashboard tell the same story in the same order, each from what it can see. Nobody has to switch windows to find out whether something worked.
 3. **Every failure has a cause, a meaning and a next step.** An error names what failed, says whether anything is lost, and gives one command or button that fixes it. No stack traces, no "something went wrong".
-4. **Zero trust shows as craft, not friction.** The setup link appears only on the engine, because only the engine can make someone its owner. We say that once, warmly, at the moment it matters, and never as a warning wall.
+4. **Zero trust shows as craft, not friction.** The setup link appears only on the engine's computer, because only the engine can make someone its owner. We say that once, warmly, at the moment it matters, and never as a warning wall.
 5. **The dashboard says only what it can know.** It sees the link code, the registration, the heartbeat numbers and, through the relays, whether a tunnel is up. It never sees, asks for or shows anything from inside the engine, including the setup link.
 
 ## Surfaces
@@ -64,7 +64,7 @@ sequenceDiagram
     E->>E: certificate through the relay (TLS-ALPN-01), UI bundle verified
     E->>D: first heartbeat (members 0)
     D-->>P: live: "Online, waiting for the owner's passkey"
-    T-->>P: setup link and QR (only here)
+    T-->>P: setup link and QR, opened in the browser on a local desktop (only here)
     P->>E: open /setup#secret, create passkey
     E->>D: next heartbeat (members 1)
     D-->>P: "Ready", Open engine
@@ -103,14 +103,14 @@ Also built in [D-10](../plan/tasks/D-10-live-link-progress.md):
 
 The page polls a link-code status endpoint (by a link-code ID returned at issuance, never the code) every 3 seconds while visible and shows a vertical checklist. Each row is text first, with an icon that is never the only signal ([ui.md, Accessibility](ui.md#accessibility)), and the region is an `aria-live="polite"` region announcing only state changes.
 
-| #   | State                 | Copy                                                                                                                                                                                                     | Observed from              |
-| --- | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- |
-| 1   | Waiting               | "Waiting for your engine to link. Run the command above; this page updates by itself."                                                                                                                   | Code unused, not expired   |
-| 2   | Linked                | "Engine linked." Below: engine ID (short, copy full), the address, and the fingerprint at large size: "Your terminal shows the same fingerprint. Compare them: if they differ, this is not your engine." | Code consumed              |
-| 3   | Online                | "Engine online, version {version}."                                                                                                                                                                      | First heartbeat            |
-| 4   | Reachable             | "Reachable through {n} relays."                                                                                                                                                                          | Relay tunnel report (R-07) |
-| 5   | Waiting for the owner | "Finish setup on the engine: your terminal shows a setup link and a QR code. Only the engine can make you its owner, so we cannot show that link here."                                                  | Heartbeat `members` = 0    |
-| 6   | Ready                 | "Your engine is ready." Primary button "Open engine" (`https://<hostname>/`, new tab, no referrer). Secondary: "Back to engines".                                                                        | Heartbeat `members` ≥ 1    |
+| #   | State                 | Copy                                                                                                                                                                                                                                                                                                                                                                         | Observed from              |
+| --- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------- |
+| 1   | Waiting               | "Waiting for your engine to link. Run the command above; this page updates by itself."                                                                                                                                                                                                                                                                                       | Code unused, not expired   |
+| 2   | Linked                | "Engine linked." Below: engine ID (short, copy full), the address, and the fingerprint at large size: "Your terminal shows the same fingerprint. Compare them: if they differ, this is not your engine."                                                                                                                                                                     | Code consumed              |
+| 3   | Online                | "Engine online, version {version}."                                                                                                                                                                                                                                                                                                                                          | First heartbeat            |
+| 4   | Reachable             | "Reachable through {n} relays."                                                                                                                                                                                                                                                                                                                                              | Relay tunnel report (R-07) |
+| 5   | Waiting for the owner | "Finish in the browser window that opened on the engine's computer: create your passkey there. Nothing opened? Open the setup link the engine's terminal shows, or run setup-link there for a new one. This page updates when you're done." Screen readers hear "Engine online. Finish in the browser window that opened on the engine's computer, or run setup-link there." | Heartbeat `members` = 0    |
+| 6   | Ready                 | "Your engine is ready." Primary button "Open engine" (`https://<hostname>/`, new tab, no referrer). Secondary: "Back to engines".                                                                                                                                                                                                                                            | Heartbeat `members` ≥ 1    |
 
 Rules:
 
@@ -149,9 +149,13 @@ Your engine is ready. Make yourself its owner in your browser:
 
   <QR code of the same link>
 
+Opened in your browser. Create your passkey there.
+
 This link makes whoever opens it the owner. It works once, until 14:32 (30 minutes).
 Do not paste it into chats or tickets. A new link: promptbook-engine setup-link
 ```
+
+- On a local desktop the engine opens the link in the default browser, so the paste ends at the passkey prompt. Over SSH, in a container, without a display or with `--no-open` it only prints, and "Opened in your browser" is left out. Which process does this, and when, is in [installation.md](../engine-integration/installation.md#the-setup-link).
 
 - The engine UI comes with the engine: the image carries its own release's UI bundle, so "Engine UI verified" needs no download and no 72-hour wait ([installation.md, The first UI bundle](../engine-integration/installation.md#the-first-ui-bundle)).
 - Target: from paste to the setup link in **under 2 minutes** with the image download, **under 30 seconds** once the image is present. The certificate is the slowest step after the download; while it runs, the line reads "… Getting a certificate (usually under 30 s)".

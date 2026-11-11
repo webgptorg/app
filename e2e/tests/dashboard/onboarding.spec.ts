@@ -198,7 +198,7 @@ test('Journey 1: sign up, start the trial, link a fresh engine, become its owner
         await expect(row('reachable')).toContainText('Reachable through 2 relays');
         await expect(progress).toHaveAttribute('data-link-state', 'owner-pending');
         await expect(row('owner')).toHaveAttribute('data-step-state', 'current');
-        await expect(row('owner')).toContainText('setup link your terminal shows');
+        await expect(row('owner')).toContainText('browser window that opened on the engine');
     });
 
     const setupLink = parseSetupLink(await takeSetupLink(engine));

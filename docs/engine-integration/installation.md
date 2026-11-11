@@ -32,11 +32,11 @@ sequenceDiagram
     E->>D: heartbeat every 60 s
     I->>E: setup-link (once the address works)
     E-->>I: https://<engineId>.<engine domain>/setup#<secret>
-    I-->>O: setup link and QR, on the terminal only
+    I-->>O: setup link and QR on the terminal, opened in the browser on a local desktop
     O->>E: open the link, create the owner passkey
 ```
 
-The link URL, `https://<dashboard host>/link#<link code>`, names the dashboard and carries the one-time code in its fragment ([identity-and-registration.md](identity-and-registration.md#link-url)), so the engine needs no dashboard setting and stores the dashboard's origin with its registration. The link code ties the engine to the account for routing and billing only. It grants nothing inside the engine. Only someone who can read the engine host's terminal gets the setup link, so only they can become the owner; the platform never sees it.
+The link URL, `https://<dashboard host>/link#<link code>`, names the dashboard and carries the one-time code in its fragment ([identity-and-registration.md](identity-and-registration.md#link-url)), so the engine needs no dashboard setting and stores the dashboard's origin with its registration. The link code ties the engine to the account for routing and billing only. It grants nothing inside the engine. Only someone at the engine host, reading its terminal or using its desktop's browser, gets the setup link, so only they can become the owner; the platform never sees it.
 
 ## Requirements
 
@@ -70,10 +70,10 @@ Never `curl … | sh`: the script is checked against the hash in the command bef
 3. Create the data volume, write the Compose file (for example `/opt/promptbook-engine/compose.yaml`), and pass the operator's proxy settings and any extra CA into it.
 4. Run `promptbook-engine connect --link '<link URL>'` once in a one-off container. The link URL and its code must not end up in the Compose file, the container's environment (`docker inspect` shows it forever) or a log.
 5. Start the engine and its updater, and follow the engine's progress (the [first-start output](#first-start-output)) until it is ready or fails.
-6. When the address works, run `promptbook-engine setup-link` and print the setup link and its QR code ([The setup link](#the-setup-link)).
+6. When the address works, run `promptbook-engine setup-link` in the foreground, which prints the setup link and its QR code and opens it on a local desktop ([The setup link](#the-setup-link)).
 7. Be idempotent: run again on a host that already has an engine, it checks, repairs what it can and says "This host already runs engine `<short ID>`", without creating a second identity.
 
-Flags (proposal): `--link <link URL>`, `--data-dir <path>` (a host directory instead of a named volume), `--extra-ca <file>`, `--proxy <url>`, `--version <x.y.z>`, `--non-interactive` (no prompts; prints the setup link as the last line and exits non-zero on any ✗), `--json` (one JSON object per step, for automation).
+Flags (proposal): `--link <link URL>`, `--data-dir <path>` (a host directory instead of a named volume), `--extra-ca <file>`, `--proxy <url>`, `--version <x.y.z>`, `--no-open` (print the setup link, do not open it), `--non-interactive` (no prompts; prints the setup link as the last line and exits non-zero on any ✗), `--json` (one JSON object per step, for automation).
 
 ### 2. Docker Compose
 
@@ -118,7 +118,7 @@ An engine started in `local` mode, or one installed before the account existed, 
 promptbook-engine connect --link '<link URL>'
 ```
 
-It must print the dashboard origin from the link URL before it registers, create the engine key if there is none, register, switch to `tunnel` mode, bind its app server to localhost and print the same progress as a fresh install. Data, agents and members stay. Passkeys are bound to the hostname, so passkeys made for a previous address do not work on the new one: when an owner already exists, `connect` must print a link that adds a passkey to that owner (same rules as the setup link) instead of a link that creates a new owner.
+It must print the dashboard origin from the link URL before it registers, create the engine key if there is none, register, switch to `tunnel` mode, bind its app server to localhost and print the same progress as a fresh install. When the engine runs and has no owner, `connect` then waits for the address and shows the setup link as [The setup link](#the-setup-link) says, so the one command ends at the passkey prompt. Data, agents and members stay. Passkeys are bound to the hostname, so passkeys made for a previous address do not work on the new one: when an owner already exists, `connect` must print a link that adds a passkey to that owner (same rules as the setup link) instead of a link that creates a new owner.
 
 In v0, connecting is a command on the host only, not a form in the engine UI: shell access is the trust level that changing the engine's address needs. The dashboard shows this exact command with the link URL filled in, and the link URL on its own beside it.
 
@@ -183,21 +183,21 @@ Everything the engine does is outbound on TCP 443.
 The platform's onboarding depends on what the engine says, so this part is normative. The engine writes two kinds of output:
 
 - **The log stream** (stdout of the engine service, for example `docker logs`): structured, one event per line. It is collected by log services that other people can read, so it must never carry a secret.
-- **The operator's terminal**: human progress from the installer, `connect`, `status` and `setup-link`, written only when stdout is an interactive terminal, or when the operator asks with a flag.
+- **The operator's terminal**: human progress from the installer, an engine started in the foreground, `connect`, `status` and `setup-link`, written only when stdout is an interactive terminal, or when the operator asks with a flag.
 
 ### Must report
 
 In this order, as each step completes or fails, in the log stream and on the terminal:
 
-| Step         | On success                                                                                       | On failure                                                                                     |
-| ------------ | ------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------- |
-| Identity     | Engine ID, default hostname, fingerprint code (the same code the dashboard shows)                | Path and mode of a data directory or key file it refuses                                       |
-| Registration | "Linked to your Promptbook account", or "already linked"                                         | The problem code mapped to a sentence and a next step (table below)                            |
-| Relays       | Each relay's state; "Connected to n of m relays"                                                 | Per relay: dial failure kind (network, TLS, proxy, upgrade refused), reject reason, retry time |
-| Certificate  | Issued or loaded, hostnames, expiry                                                              | The stage that failed and the retry time; keeps serving a valid certificate it has             |
-| UI bundle    | Version verified and serving                                                                     | The `verifyRelease` failure kind; keeps the previous bundle                                    |
-| Owner        | "No owner yet. Run `promptbook-engine setup-link` on this host to get the setup link." (no link) | none                                                                                           |
-| Ready        | "Ready: https://<hostname>/"                                                                     | none                                                                                           |
+| Step         | On success                                                                                                                                                                                        | On failure                                                                                     |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| Identity     | Engine ID, default hostname, fingerprint code (the same code the dashboard shows)                                                                                                                 | Path and mode of a data directory or key file it refuses                                       |
+| Registration | "Linked to your Promptbook account", or "already linked"                                                                                                                                          | The problem code mapped to a sentence and a next step (table below)                            |
+| Relays       | Each relay's state; "Connected to n of m relays"                                                                                                                                                  | Per relay: dial failure kind (network, TLS, proxy, upgrade refused), reject reason, retry time |
+| Certificate  | Issued or loaded, hostnames, expiry                                                                                                                                                               | The stage that failed and the retry time; keeps serving a valid certificate it has             |
+| UI bundle    | Version verified and serving                                                                                                                                                                      | The `verifyRelease` failure kind; keeps the previous bundle                                    |
+| Owner        | "No owner yet." On a foreground terminal the setup link follows ([The setup link](#the-setup-link)); elsewhere "Run `promptbook-engine setup-link` on this host to get the setup link." (no link) | none                                                                                           |
+| Ready        | "Ready: https://<hostname>/"                                                                                                                                                                      | none                                                                                           |
 
 The fingerprint is `deriveEngineFingerprint(engineId).formatted` from `@ptbk/protocol`, five groups of four characters, the same code the dashboard and the engine UI show ([identity-and-registration.md](identity-and-registration.md#engine-fingerprint)).
 
@@ -222,7 +222,7 @@ In the log stream, on the terminal or in error messages:
 - Signatures, the link code, session tokens, cookies, API tokens, invite links, recovery or backup keys.
 - Model provider keys or any other stored secret, proxy credentials.
 - Content: agent names, books, prompts, messages, file names, member names or emails.
-- The setup secret, anywhere but the terminal of `setup-link` and the installer (next section).
+- The setup secret, anywhere but the interactive terminal and the local browser the next section names.
 
 The heartbeat body should not be logged either; the Security page shows it.
 
@@ -241,11 +241,12 @@ The owner's first passkey is registered with a one-time setup secret (spec, Pair
 
 1. Create the secret only while the engine has no owner: 128 bits from a CSPRNG, base64url without padding, valid once and for 30 minutes, stored only as a hash.
 2. Put it in the URL fragment: `https://<hostname>/setup#<secret>`. The fragment never leaves the browser; the setup page reads it, removes it from the address bar and sends it only inside the passkey registration request, over TLS that ends on the engine.
-3. Show the link only through `promptbook-engine setup-link` (and the installer, which calls it), printed to the terminal with a QR code of the same URL and its expiry time. Never in the log stream: logs get shipped, and whoever reads the link first becomes the owner.
+3. Show the link without being asked: when the engine first becomes reachable (item 4) while it has no owner, the foreground process on an interactive terminal prints it, with a QR code of the same URL and its expiry time. That process is the installer, the engine started in the foreground (`start`), or `connect --link` against a running engine. `promptbook-engine setup-link` does the same on demand and stays the fallback. Without a terminal (stdout not a TTY), nothing prints the link, and never into the log stream: logs get shipped, and whoever reads the link first becomes the owner.
 4. Print it only when the address works: the hostname resolves, a relay routes it, a valid certificate is in place and `/setup` is served. Before that, `setup-link` waits with progress, or with `--no-wait` says what is missing.
-5. Make each `setup-link` call replace the previous secret, so an old copy stops working.
-6. After the first passkey is registered, mark setup complete, reject every setup secret, and audit the event with the client IP from the tunnel.
-7. Rate-limit `/setup` per client IP and answer a wrong and an expired secret the same way.
+5. Open it in the default browser as well when the session is a local desktop: on macOS unless `SSH_CONNECTION` or `SSH_TTY` is set, on Linux only with `DISPLAY` or `WAYLAND_DISPLAY` set and not over SSH, nowhere else. Run `open` (macOS) or `xdg-open` (Linux) directly, with the URL as one argument and no shell. `--no-open` or `PTBK_NO_OPEN=1` turns this off; a browser that fails to open is not an error, since the printed link stays. The person then only confirms the passkey, and the link still never leaves the engine's computer.
+6. Make each new link replace the previous secret, so an old copy stops working.
+7. After the first passkey is registered, mark setup complete, reject every setup secret, and audit the event with the client IP from the tunnel.
+8. Rate-limit `/setup` per client IP and answer a wrong and an expired secret the same way.
 
 The setup page is open engine code served by the gateway ([gateway.md](gateway.md)), under `ENGINE_UI_CSP`, with no inline script or style. Portable MIT reference pages and a stylesheet with the platform's design tokens are published for it to copy (see [Open points](#open-points), point 4). It should show the engine ID, the address and the fingerprint before the passkey prompt, so a careful owner can compare them with the terminal. Reference implementation (M-08): the secret in [setup-secret.ts](../../apps/mock-engine/src/domain/onboarding/setup-secret.ts) (stored as a SHA-256 in `PTBK_DATA_DIR/setup-secret.json`, compared in constant time, spent in one step with the check), the ceremony in [passkey-gateway.ts](../../apps/mock-engine/src/domain/gateway/passkey-gateway.ts) (the secret is spent only once the passkey verified, so a cancelled prompt keeps the link usable), the routes in [passkey-routes.ts](../../apps/mock-engine/src/adapters/http/passkey-routes.ts) (`/setup` refuses any query string, so a secret pasted there is never read; `/setup/*` allows 10 attempts a minute per client IP) and WebAuthn with `@simplewebauthn/server` in [simplewebauthn-ceremonies.ts](../../apps/mock-engine/src/adapters/simplewebauthn-ceremonies.ts). Its states:
 
@@ -262,17 +263,17 @@ The setup page is open engine code served by the gateway ([gateway.md](gateway.m
 
 Behaviour is normative where the spec or this guide depends on it; names and flags are suggestions.
 
-| Command                     | Does                                                                                                                                                                                                       |
-| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `connect --link <link URL>` | Create the key if needed, register with the dashboard the URL names (a bare code: `PTBK_DASHBOARD_URL`), switch to `tunnel` mode, print progress. Must ([link URL](identity-and-registration.md#link-url)) |
-| `setup-link`                | Print a fresh setup link while there is no owner (or a passkey link for the owner after a move). Must                                                                                                      |
-| `status`                    | One screen: engine ID, address, fingerprint, mode, registration, each relay's state, certificate expiry, UI bundle version, update policy and state, owner set up yes or no, last heartbeat answer. Should |
-| `doctor`                    | Re-run the installer's preflight from inside the engine: clock, proxy, each destination, data directory permissions, disk. Each ✗ with its fix. Should                                                     |
-| `owner --reset`             | Revoke every passkey and session after a typed confirmation, keep all data, print a setup link. Must (spec)                                                                                                |
-| `login --local`             | A one-time link for `http://localhost:4440` through `ssh -L`. Must (spec, Operations)                                                                                                                      |
-| `reset --identity`          | After a key compromise or a refused identity: a new key and engine ID, keeping data, then `connect` with a new link code. Must warn that the address changes                                               |
-| `custom-domain <hostname>`  | Print the CNAME to create and the hostname claim to send to Promptbook ([tunnel-client.md](tunnel-client.md#custom-hostnames)). Must refuse an apex                                                        |
-| `import <archive>`          | Load an export from a predecessor deployment ([below](#moving-an-existing-deployment)). Should                                                                                                             |
+| Command                     | Does                                                                                                                                                                                                                                                                       |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `connect --link <link URL>` | Create the key if needed, register with the dashboard the URL names (a bare code: `PTBK_DASHBOARD_URL`), switch to `tunnel` mode, print progress; on a running engine without an owner, then show the setup link. Must ([link URL](identity-and-registration.md#link-url)) |
+| `setup-link`                | Print a fresh setup link while there is no owner (or a passkey link for the owner after a move) and open it on a local desktop; `--no-open` only prints. Must                                                                                                              |
+| `status`                    | One screen: engine ID, address, fingerprint, mode, registration, each relay's state, certificate expiry, UI bundle version, update policy and state, owner set up yes or no, last heartbeat answer. Should                                                                 |
+| `doctor`                    | Re-run the installer's preflight from inside the engine: clock, proxy, each destination, data directory permissions, disk. Each ✗ with its fix. Should                                                                                                                     |
+| `owner --reset`             | Revoke every passkey and session after a typed confirmation, keep all data, print a setup link. Must (spec)                                                                                                                                                                |
+| `login --local`             | A one-time link for `http://localhost:4440` through `ssh -L`. Must (spec, Operations)                                                                                                                                                                                      |
+| `reset --identity`          | After a key compromise or a refused identity: a new key and engine ID, keeping data, then `connect` with a new link code. Must warn that the address changes                                                                                                               |
+| `custom-domain <hostname>`  | Print the CNAME to create and the hostname claim to send to Promptbook ([tunnel-client.md](tunnel-client.md#custom-hostnames)). Must refuse an apex                                                                                                                        |
+| `import <archive>`          | Load an export from a predecessor deployment ([below](#moving-an-existing-deployment)). Should                                                                                                                                                                             |
 
 Commands that change who can sign in (`owner --reset`, `reset --identity`, `login --local`) run on the host only. There is no API or UI route to them: shell access to the server is the trust level they need.
 

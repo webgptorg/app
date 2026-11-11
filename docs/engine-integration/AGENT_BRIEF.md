@@ -24,6 +24,11 @@ Each entry has this shape. Platform authors: add yours at the top of the list, o
 - **Redo:** what the engine's agent must change, re-run or drop; "nothing" if it is inert.
 ```
 
+### 2026-11-11: The engine opens its setup link
+
+- **Changed:** onboarding is now "paste one command, confirm a passkey". When the engine first becomes reachable while it has no owner, the foreground process on an interactive terminal (the installer, `ptbk start` in the foreground, or `ptbk connect --link` against a running engine) prints the setup link and QR itself and, on a local desktop, opens it in the default browser. `setup-link` stays as the fallback and opens too. No contract or conformance change; the dashboard's "waiting for the owner" row now points to that browser window. See [installation.md](installation.md#the-setup-link), items 3 to 5, and ENG-116.
+- **Redo:** implement it exactly: open only on macOS without `SSH_CONNECTION`/`SSH_TTY`, or on Linux with `DISPLAY` or `WAYLAND_DISPLAY` and not over SSH; exec `open` or `xdg-open` with the URL as a single argument, never through a shell; `--no-open` and `PTBK_NO_OPEN=1` turn it off; without a TTY never print or open the link; with an owner, do nothing.
+
 ### 2026-11-10: Staging trust policies with short delays
 
 - **Changed:** `TrustPolicy` takes an optional `"profile": "staging"`. Without it, the delays stay exactly 72 h and 24 h; with it, both may be anywhere from 1 minute up to those values (security no longer than regular), so staging UI releases install within minutes. Keys, threshold, workflow identity and revocation rules are unchanged. `@ptbk/protocol` adds `ProductionTrustPolicy`, `StagingTrustPolicy`, `STAGING_MIN_DELAY_MS` and `isStagingPolicy`; `ConformanceTrustFile` accepts only a production policy, and the `ui-loader` checks still expect the production delays. See [ui-loader.md](ui-loader.md#what-the-engine-must-do) and the spec's Updates section.

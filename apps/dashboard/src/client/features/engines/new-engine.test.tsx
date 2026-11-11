@@ -30,7 +30,8 @@ const TAB_NAMES = ['Linux server with Docker', 'Docker Compose', 'Already runnin
 const CHECKOUT_URL = 'https://checkout.stripe.com/c/pay/cs_test_example';
 
 const WAITING_TEXT = 'Waiting for your engine to link. Run the command above; this page updates by itself.';
-const OWNER_TEXT = "Open the setup link your terminal shows to finish. This page updates when you're done.";
+const OWNER_TEXT =
+    "Finish in the browser window that opened on the engine's computer: create your passkey there. Nothing opened? Open the setup link the engine's terminal shows, or run setup-link there for a new one. This page updates when you're done.";
 const COMMAND_NOTE = `Copy it now: it is shown only once and works until ${createFormatters('en').formatDateTime(new Date(NOW + LINK_CODE_LIFETIME_MS))}.`;
 
 const PENDING: LinkCodeStatusView = { status: 'pending', expiresAt: NOW + LINK_CODE_LIFETIME_MS };
@@ -632,7 +633,9 @@ describe('new engine page', () => {
             await screen.findByText(OWNER_TEXT);
             const live = progress().querySelectorAll('[aria-live="polite"]');
             expect(live).toHaveLength(1);
-            expect(live[0]?.textContent).toBe('Engine online, version 1.4.2.');
+            expect(live[0]?.textContent).toBe(
+                "Engine online. Finish in the browser window that opened on the engine's computer, or run setup-link there.",
+            );
             expect(document.querySelectorAll('[aria-live="polite"] [data-step]')).toHaveLength(0);
         });
 
