@@ -241,22 +241,24 @@ While you build the gateway, `--no-gateway` skips the gateway check. To iterate 
 
 ## Phase 8: UI loader
 
-**Read:** [ui-loader.md](ui-loader.md) (the whole page, especially [Testing the loader: conformance build](ui-loader.md#testing-the-loader-conformance-build) and its [open points](ui-loader.md#open-points-decided-2026-10-26)), the release log [open points](README.md#open-points) (item 3), [cryptography.md](cryptography.md#what-the-engine-must-do).
+**Read:** [ui-loader.md](ui-loader.md) (the whole page, especially [Where the trust policy comes from](ui-loader.md#where-the-trust-policy-comes-from), [Testing the loader: conformance build](ui-loader.md#testing-the-loader-conformance-build) and its [open points](ui-loader.md#open-points-decided-2026-10-26)), the release log [open points](README.md#open-points) (item 3), [cryptography.md](cryptography.md#what-the-engine-must-do).
 
-**Build:** fetching the release record and the revocation list with timeouts and size caps, `verifyRelease` with the persisted `firstSeenAt` and `lastAcceptedRevocationIssuedAt`, the provenance adapter (use `createSigstoreProvenanceVerifier` from [`@ptbk/release-tools`](../../packages/release-tools/README.md) with its pinned trusted root rather than writing your own), the artifact's SHA-256, the safe unpacker, `verifyManifestFiles` and `satisfiesEngineApiRange`, atomic activation, keeping the previous bundle, serving only listed files with the SPA fallback outside `ENGINE_RESERVED_PATHS`, the update policy (`PTBK_UPDATE_POLICY`, `PTBK_PINNED_VERSION`), and `GET /security` → `ui`.
+**Build:** fetching the release record and the revocation list with timeouts and size caps, `verifyRelease` with the persisted `firstSeenAt` and `lastAcceptedRevocationIssuedAt`, the provenance adapter (use `createSigstoreProvenanceVerifier` from [`@ptbk/release-tools`](../../packages/release-tools/README.md) with its pinned trusted root rather than writing your own), the artifact's SHA-256, the safe unpacker, `verifyManifestFiles` and `satisfiesEngineApiRange`, atomic activation, keeping the previous bundle, serving only listed files with the SPA fallback outside `ENGINE_RESERVED_PATHS`, the update policy (`PTBK_UPDATE_POLICY`, `PTBK_PINNED_VERSION`), the trust policy from `PTBK_UI_TRUST_POLICY_FILE` (a staging one refused in production), and `GET /security` → `ui`.
 
 **Prove:**
 
 - Golden vectors: [`release/vectors.json`](../../packages/protocol/src/release/vectors.json) through your fetch-and-verify path, not only through `verifyRelease`.
 - Unit tests: a tarball with `..`, a symlink or a duplicate path is refused; an unlisted file is refused; a lost state file restarts the delay and is logged as an error; a missing, expired or rolled-back revocation list keeps the current bundle.
 - The conformance `ui-loader` suite, acting as the release store, against your conformance build: install, strict Ed25519 for every case class, the signature threshold, DSSE PAE, strict payloads, exact provenance identity and log entry, the delay from trusted time persisted across restarts, artifact hashes, manifests, unsafe archives, the `engineApi` range, downgrades, every revocation case including a revoked active bundle, an unavailable store, the update policy, served files and headers ([checklist](checklist.md#ui-loader-interface-5)). It reads `GET /security`, so it needs phase 9's command with `--suite ui-loader`. A slow engine raises the per-check timeout with `--timeout-ms`.
-- Checklist: ENG-50 to ENG-55.
+- `ui-loader.trust-policy.staging-refused-in-production` and `ui-loader.trust-policy.staging-accepted-outside-production`: add `--engine-production-cmd "NODE_ENV=production <start command of your release build>"` to the command.
+- Checklist: ENG-50 to ENG-55, ENG-116.
 
 **Reference:** [ui-update.ts](../../apps/mock-engine/src/domain/ui/ui-update.ts) (the part to port), [fs-bundle-store.ts](../../apps/mock-engine/src/adapters/ui/fs-bundle-store.ts), [bundle-unpacker.ts](../../apps/mock-engine/src/adapters/ui/bundle-unpacker.ts), [fs-update-state-store.ts](../../apps/mock-engine/src/adapters/ui/fs-update-state-store.ts), [http-release-source.ts](../../apps/mock-engine/src/adapters/ui/http-release-source.ts), [static-route.ts](../../apps/mock-engine/src/domain/ui/static-route.ts), [ui-routes.ts](../../apps/mock-engine/src/adapters/http/ui-routes.ts).
 
 **Pitfalls:**
 
 - **The conformance build** ([ui-loader.md](ui-loader.md#testing-the-loader-conformance-build), decided). The suite mints real Sigstore-format bundles under an ephemeral trust root, so the engine must be able to load a test trust policy and trusted root, and only in a build made for it: a compile-time constant (for example `PTBK_CONFORMANCE_BUILD`), false in release builds so the code path is removed, enables reading `PTBK_CONFORMANCE_TRUST_FILE` (`{ v: 1, trustPolicy, trustedRoot }`, parsed strictly), which replaces the pinned trust policy and trusted root and nothing else. A production build that sees the variable set refuses to start and names it. The engine's release workflow asserts the constant is off. Never read a trust root or key from the environment in any other way, and never build a fake-provenance mode like the mock's `MOCK_UI_FAKE_PROVENANCE`.
+- **A release build needs a trust policy** ([ui-loader.md](ui-loader.md#where-the-trust-policy-comes-from), decided 2026-11-11). Without `PTBK_UI_TRUST_POLICY_FILE` (and until production pins its own policy) the loader stays off and the engine serves the plain page. Passing the conformance suite does not show this: the suite always brings its own trust.
 - **The [release mirror layout v1](ui-loader.md#release-mirror-layout-v1)** (adopted, open for your review before the freeze): `ui/latest.json`, `release-log/ui-<version>.json`, `release-log/revocations.json` and `ui/<version>/<artifact name>` below `PTBK_UI_RELEASE_URL`. Keep the fetcher behind a port anyway.
 - **A revoked active bundle stops being served** once an accepted list names it: the previous bundle comes back if it is not revoked, otherwise the plain engine page.
 - Never read the manifest's `csp`; the engine's headers are engine code.
@@ -275,6 +277,7 @@ While you build the gateway, `--no-gateway` skips the gateway check. To iterate 
   ```sh
   node "$PLATFORM_DIR/packages/conformance/dist/ptbk-conformance.js" \
     --engine-cmd "<start command of your conformance build>" --engine-cwd "<directory to run it in>" \
+    --engine-production-cmd "NODE_ENV=production <start command of your release build>" \
     --engine-session-cmd "<your engine> conformance-session" \
     --engine-ca-file "{dataDir}/<path of its development CA certificate>" \
     --suite engine-api,registration,heartbeat,tunnel,ui-loader \
@@ -282,6 +285,8 @@ While you build the gateway, `--no-gateway` skips the gateway check. To iterate 
   ```
 
   Run it without any heartbeat interval override, so `heartbeat.cadence.interval` proves the production 60 s.
+
+- Your engine against live staging ([staging.md](staging.md)): linked on `app.ptbk.io`, a Let's Encrypt certificate through the relay, our signed UI installed with the staging trust policy, and `ptbk-conformance staging` with no failure.
 
 - The local stack with your engine in place of the mock: link with a link code, online in the dashboard, open through the relay, sign in with a passkey, no CSP violation in the browser console. Serving the UI there, and chatting with an agent in it, waits for E-03, which re-signs the stack's UI releases for a conformance build.
 - _Pending E-03:_ the full e2e suite with `ENGINE_IMPL=real`: spike network tests (NAT, 443 only, `CONNECT` and TLS-inspecting proxies, relay restart and failover, packet capture), ACME through the relay, the UI flows under the strict CSP, and the dashboard flow.

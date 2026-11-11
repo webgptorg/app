@@ -14,6 +14,7 @@ import type { EngineEndpoints, EngineRoute } from './endpoints';
 import { UI_LOADER_CHECK_TIMEOUT_MS, createUiLoaderPlatformSuite } from './index';
 import type { RegisterEngine } from './platform-lab';
 import { UI_STORE_HOSTNAME, openPlatformLab } from './platform-lab';
+import { TRUST_POLICY_CHECKS } from './trust-policy';
 
 const TRUST = { v: 1, trustPolicy: { marker: 'policy' }, trustedRoot: { marker: 'root' } } as never;
 const ENDPOINT: EngineApiEndpoint = { baseUrl: new URL('https://engine-1.engine.localhost/'), fetch };
@@ -216,11 +217,12 @@ describe('the ui-loader platform suite', () => {
             scope: (base) => ({ context: { ...ctx, ...base }, finish: () => Promise.resolve({}) }),
         });
 
-    it('keeps the check IDs and gives every check a long timeout', () => {
+    it('keeps the check IDs and gives every lab check a long timeout', () => {
         const suite = createUiLoaderPlatformSuite({ endpoints: null });
         expect(suite.id).toBe('ui-loader');
         expect(suite.checks.length).toBeGreaterThan(20);
-        for (const check of suite.checks) {
+        expect(suite.checks.slice(-TRUST_POLICY_CHECKS.length)).toEqual(TRUST_POLICY_CHECKS);
+        for (const check of suite.checks.slice(0, -TRUST_POLICY_CHECKS.length)) {
             expect(check.id.startsWith('ui-loader.')).toBe(true);
             expect(check.suite).toBe('ui-loader');
             expect(

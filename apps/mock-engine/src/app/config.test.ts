@@ -659,7 +659,7 @@ describe('parseIdentityConfig', () => {
         const UI = {
             ...BASE,
             PTBK_UI_RELEASE_URL: 'https://releases.example.test/ptbk/',
-            MOCK_UI_TRUST_POLICY_FILE: '/etc/ptbk/trust-policy.json',
+            PTBK_UI_TRUST_POLICY_FILE: '/etc/ptbk/trust-policy.json',
         } as const;
 
         it('is off without PTBK_UI_RELEASE_URL', () => {
@@ -734,6 +734,10 @@ describe('parseIdentityConfig', () => {
             ],
             [{ MOCK_UI_FAKE_PROVENANCE: 'yes' }, 'MOCK_UI_FAKE_PROVENANCE: must be enabled or disabled'],
             [
+                { PTBK_UI_TRUST_POLICY_FILE: 'trust-policy.json' },
+                'PTBK_UI_TRUST_POLICY_FILE: must be an absolute file path',
+            ],
+            [
                 { MOCK_UI_FAKE_PROVENANCE: 'enabled', MOCK_UI_TRUSTED_ROOT_FILE: '/r.json' },
                 'MOCK_UI_TRUSTED_ROOT_FILE: has no effect with MOCK_UI_FAKE_PROVENANCE enabled',
             ],
@@ -743,7 +747,7 @@ describe('parseIdentityConfig', () => {
 
         it('needs a trust policy with a release URL, and a release URL for every other loader setting', () => {
             expect(problemsOf({ ...BASE, PTBK_UI_RELEASE_URL: 'https://releases.example.test/' })).toEqual([
-                'MOCK_UI_TRUST_POLICY_FILE: is required with PTBK_UI_RELEASE_URL',
+                'PTBK_UI_TRUST_POLICY_FILE: is required with PTBK_UI_RELEASE_URL',
             ]);
             expect(problemsOf({ ...BASE, PTBK_UPDATE_POLICY: 'auto', MOCK_UI_FAKE_PROVENANCE: 'disabled' })).toEqual([
                 'PTBK_UPDATE_POLICY: needs PTBK_UI_RELEASE_URL',
@@ -758,6 +762,16 @@ describe('parseIdentityConfig', () => {
             expect(parseMockEngineConfig({ ...UI, NODE_ENV: 'production' }).ui?.trust).toMatchObject({
                 fakeProvenance: false,
             });
+        });
+
+        it('still reads the trust policy file under its old name, but not both names at once', () => {
+            const { PTBK_UI_TRUST_POLICY_FILE: policyFile, ...withoutPolicy } = UI;
+            expect(
+                parseMockEngineConfig({ ...withoutPolicy, MOCK_UI_TRUST_POLICY_FILE: policyFile }).ui?.trust,
+            ).toMatchObject({ kind: 'files', trustPolicyFile: policyFile });
+            expect(problemsOf({ ...UI, MOCK_UI_TRUST_POLICY_FILE: '/other.json' })).toEqual([
+                'MOCK_UI_TRUST_POLICY_FILE: is the old name of PTBK_UI_TRUST_POLICY_FILE; set only one',
+            ]);
         });
 
         it('allows a staging trust policy only outside production', () => {
@@ -786,12 +800,12 @@ describe('parseIdentityConfig', () => {
                 expect(
                     problemsOf({
                         ...CONFORMANCE,
-                        MOCK_UI_TRUST_POLICY_FILE: '/p.json',
+                        PTBK_UI_TRUST_POLICY_FILE: '/p.json',
                         MOCK_UI_TRUSTED_ROOT_FILE: '/r.json',
                         MOCK_UI_FAKE_PROVENANCE: 'disabled',
                     }),
                 ).toEqual([
-                    'MOCK_UI_TRUST_POLICY_FILE: cannot be set with PTBK_CONFORMANCE_TRUST_FILE',
+                    'PTBK_UI_TRUST_POLICY_FILE: cannot be set with PTBK_CONFORMANCE_TRUST_FILE',
                     'MOCK_UI_TRUSTED_ROOT_FILE: cannot be set with PTBK_CONFORMANCE_TRUST_FILE',
                     'MOCK_UI_FAKE_PROVENANCE: cannot be set with PTBK_CONFORMANCE_TRUST_FILE',
                 ]);

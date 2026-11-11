@@ -25,6 +25,7 @@ The bundle is one file that runs on Node 24 with no `node_modules`; `bin` in `pa
 ```
 Usage: ptbk-conformance --base-url <https://engine> [options]
        ptbk-conformance --engine-cmd <shell command> [options]
+       ptbk-conformance staging --engine <https://engine> [options]   (live staging, read-only; staging --help)
 
 Credentials against --base-url (one of):
   --target-module <file>      A module exporting createConformanceTarget({ baseUrl, fetch }) → ConformanceTarget
@@ -37,6 +38,9 @@ Starting the engine (the harness plays the dashboard, the relays and the release
   --engine-cmd <command>      Starts the engine under test (run by /bin/sh): one engine for the engine-api suite,
                               one or more per check of the other suites
   --engine-cwd <dir>          Its working directory (default: the current one)
+  --engine-production-cmd <command>
+                              Starts a production build of the same engine, in the same directory, for the checks
+                              that it refuses what only a test build accepts; without it they skip
   --heartbeat-interval-s <n>  The interval the engine was told to use (default 60; anything else skips the cadence check)
   --engine-session-cmd <cmd>  The engine's conformance-session command, run with --subject owner|member
                               [--permissions a,b]; it prints {"cookie"}, {"bearer"} or null as JSON. Without it
@@ -58,6 +62,47 @@ Options:
 ```
 
 The exit code is 0 only when no check failed, 1 when one did, and 2 for a usage error. Progress goes to stderr, one line per check. For an engine whose certificate comes from a development CA, pass the CA to Node with `NODE_EXTRA_CA_CERTS=<ca.pem>`.
+
+## Staging check
+
+`ptbk-conformance staging` checks from the outside what the platform promises for one engine running against our live staging: dashboard `https://app.ptbk.io`, engine domain `engines.ptbk.link`, relay `relay-fsn.ptbk.link`, UI release store `https://ui.ptbk.link/`. It hits live hosts, so it is never part of CI and the tests run it only against fakes. It is read-only: DNS lookups, TLS handshakes and `GET` requests, each with a timeout and a body size cap.
+
+```sh
+node packages/conformance/dist/ptbk-conformance.js staging --engine https://<engineId>.engines.ptbk.link
+PTBK_CONFORMANCE_OWNER_COOKIE='__Host-ptbk_session=<value>' node packages/conformance/dist/ptbk-conformance.js staging --engine https://<engineId>.engines.ptbk.link --json
+```
+
+```
+Options:
+  --engine <url>              The engine's https origin; its first DNS label is the engine ID (required)
+  --relay <hostname>          A relay the engine hostname must resolve to (repeatable; default relay-fsn.ptbk.link)
+  --release-url <url>         The UI release store, https with a trailing slash (default https://ui.ptbk.link/)
+  --timeout-ms <n>            Per DNS lookup, TLS handshake and request (default 15000)
+  --json                      Print one JSON object instead of lines
+  PTBK_CONFORMANCE_OWNER_COOKIE=<name=value>
+                              An owner session cookie for the checks that need one; without it they skip
+```
+
+| Check                            | What it shows                                                                                                                                                                                                                                                                                                                                       | Needs                 |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------- |
+| `staging.dns.via-relay`          | The engine hostname resolves (system resolver, A and AAAA) and every address is one of the `--relay` hostnames' addresses.                                                                                                                                                                                                                          |                       |
+| `staging.tls.public-certificate` | TLS to `<host>:443` with SNI verifies against Node's bundled public roots only (`NODE_EXTRA_CA_CERTS` and system stores cannot make it pass), names the host, has not expired, and is issued by Let's Encrypt. Reports issuer and expiry.                                                                                                           |                       |
+| `staging.gateway.sign-in`        | `GET /auth/sign-in` answers 200 `text/html` to an anonymous visitor.                                                                                                                                                                                                                                                                                | TLS                   |
+| `staging.gateway.setup`          | `GET /setup` answers 200 `text/html` to an anonymous visitor, before and after the owner registered (the reference gateway keeps serving it).                                                                                                                                                                                                       | TLS                   |
+| `staging.gateway.anonymous`      | An anonymous document `GET /` redirects to `/auth/sign-in` on the same origin, and an anonymous `GET /api/v1/engine` answers 401 `application/problem+json`: the gateway is in front of everything.                                                                                                                                                 | TLS                   |
+| `staging.headers.csp`            | `Content-Security-Policy` equals `ENGINE_UI_CSP` byte for byte on the sign-in page, and on `GET /` with a session.                                                                                                                                                                                                                                  | TLS                   |
+| `staging.engine.info`            | `GET /api/v1/engine` matches `EngineInfo` (read tolerantly), with `mode` `tunnel`, `engineId` equal to the hostname's first label and `hostname` equal to the engine host.                                                                                                                                                                          | TLS, session          |
+| `staging.ui.release`             | The store serves a consistent release in mirror layout v1: `ui/latest.json`, the `SignedRelease` record, the `ui` artifact matching its SHA-256 and the `manifest.json` at the head of the archive. It checks the version the engine reports in `GET /api/v1/security` with a session, otherwise the latest one. Signatures are left to the engine. |                       |
+| `staging.ui.served`              | With a session, `GET /` is the release's `index.html` and the first script and stylesheet it loads match the manifest by SHA-256; the engine's reported `ui.version` and `ui.bundleSha256` name the same release. Notes when the engine serves an older version than the latest.                                                                    | TLS, session, release |
+
+A check whose prerequisite is missing skips with a reason; without a TLS connection the public roots trust, every check on the engine skips. Every fail and skip carries a `fix:` line. The common ones:
+
+- **No tunnel** (TLS reset or timeout): the relay has no tunnel for this engine. Is the engine running, linked (`connect --link`) and connected to its relay?
+- **Development CA** (chain does not verify): enable ACME with `PTBK_ACME_DIRECTORY_URL=https://acme-v02.api.letsencrypt.org/directory` (the mock engine also needs `MOCK_CERT_SOURCE=acme`); the certificate is issued through the relay by TLS-ALPN-01.
+- **No UI** (`GET /` answers 503 or the reported version is not in the store): start the engine with `PTBK_UI_RELEASE_URL=https://ui.ptbk.link/` and `PTBK_UI_TRUST_POLICY_FILE=<absolute path to apps/engine-ui/release/trust-policy.staging.json>` outside production (`NODE_ENV` not `production`). Releases install about 5 minutes after the engine first sees them; the detail shows the engine's last update check.
+- **No session**: sign in on the engine in a browser, copy the session cookie from devtools (Application > Cookies; the mock engine names it `__Host-ptbk_session`) and set `PTBK_CONFORMANCE_OWNER_COOKIE=<name>=<value>`. The value is a credential: it is never printed or logged.
+
+Output is one line per check (`PASS`, `FAIL`, `SKIP`, the ID, the detail) with an indented `fix:` line, then a summary. `--json` prints one object instead: `{ "engine": "https://…", "ok": true, "checks": [{ "id", "status", "detail", "fix"? }] }`. The exit code is 0 when no check failed (skips do not fail), 1 when one did, and 2 for a usage error.
 
 ## Starting the engine
 
@@ -283,6 +328,8 @@ The contract fixes the action names (`AUDIT_ACTIONS`); the suite expects each mu
 ## UI loader suite
 
 The suite drives the engine through a lab (`node/suites/ui-loader/platform-lab.ts`), one per check: a registered engine from the harness, reached through an `EngineEndpoints` route (the relay), and a fake release store in the [mirror layout v1](../../docs/engine-integration/ui-loader.md#release-mirror-layout-v1) over HTTPS, and the engine restarted with `PTBK_UPDATE_POLICY`, `PTBK_PINNED_VERSION` and a `PTBK_CONFORMANCE_TRUST_FILE` for each scenario (the update check at startup is the trigger). Each run generates its release keys and an ephemeral test Sigstore (`src/suites/ui-loader/sigstore/`), so every release is signed on the fly and verified by the engine's real Sigstore adapter. It reads `GET /security` → `ui` with an owner session and fetches what the engine serves. Each refusal check also asserts that the previous bundle is still active and served. Versions within a run only increase (`1.0.<n>`).
+
+Two more checks need no lab, only the process ([trust-policy.ts](node/suites/ui-loader/trust-policy.ts)). Both write a staging `TrustPolicy` (the run's keys, 5-minute delays) to a 0600 file and give it as `PTBK_UI_TRUST_POLICY_FILE` with an empty fake store as `PTBK_UI_RELEASE_URL`. `ui-loader.trust-policy.staging-refused-in-production` starts the production build (`--engine-production-cmd`, launch contract only), linked to a fake dashboard, and passes when it exits non-zero within the start timeout, names the file in its output and never contacted the dashboard; it skips with `no-production-build` without the option. `ui-loader.trust-policy.staging-accepted-outside-production` starts the engine under test and passes once it registers and sends an accepted heartbeat. The mock engine's production build is `NODE_ENV=production node apps/mock-engine/dist/main.mjs`.
 
 The package tests run every check against an in-process fake loader built on `verifyRelease`, once correct and once per deliberate defect (`src/testing/ui-loader/fake-ui-lab.ts`), so each check is shown to pass and to fail.
 

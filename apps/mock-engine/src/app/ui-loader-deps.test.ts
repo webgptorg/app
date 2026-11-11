@@ -77,7 +77,7 @@ describe('readTrustPolicy', () => {
 
     it('refuses a missing, oversized or invalid policy, naming the setting but not the content', async () => {
         await expect(readTrustPolicy(join(dir, 'none.json'), anywhere)).rejects.toThrow(
-            /MOCK_UI_TRUST_POLICY_FILE: cannot read/,
+            /PTBK_UI_TRUST_POLICY_FILE: cannot read/,
         );
         await writeFile(join(dir, 'big.json'), ' '.repeat(65 * 1024));
         await expect(readTrustPolicy(join(dir, 'big.json'), anywhere)).rejects.toThrow(/too large/);
@@ -93,7 +93,7 @@ describe('readTrustPolicy', () => {
     it('refuses a staging policy in production', async () => {
         await writeFile(join(dir, 'staging.json'), JSON.stringify(staging()));
         await expect(readTrustPolicy(join(dir, 'staging.json'), { stagingAllowed: false })).rejects.toThrow(
-            /^MOCK_UI_TRUST_POLICY_FILE: .*staging\.json is a staging trust policy, which must not be used in production$/,
+            /^PTBK_UI_TRUST_POLICY_FILE: .*staging\.json is a staging trust policy, which must not be used in production$/,
         );
         await expect(
             createUiLoaderDeps({

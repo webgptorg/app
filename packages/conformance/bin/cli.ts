@@ -9,6 +9,7 @@ import {
     PLATFORM_SUITES,
     createEngineApiPlatformSuite,
     createMockEngineTargetFactory,
+    createNodeStagingPorts,
     createSessionCommandTargetFactory,
     runPlatformConformance,
 } from '../node/index';
@@ -21,9 +22,11 @@ import {
     writeJsonReport,
     writeJunitReport,
 } from '../src/index';
+import { runStagingCli } from './staging';
 
 export const USAGE = `Usage: ptbk-conformance --base-url <https://engine> [options]
        ptbk-conformance --engine-cmd <shell command> [options]
+       ptbk-conformance staging --engine <https://engine> [options]   (live staging, read-only; staging --help)
 
 Credentials against --base-url (one of):
   --target-module <file>      A module exporting createConformanceTarget({ baseUrl, fetch }) → ConformanceTarget
@@ -36,6 +39,9 @@ Starting the engine (the harness plays the dashboard, the relays and the release
   --engine-cmd <command>      Starts the engine under test (run by /bin/sh): one engine for the engine-api suite,
                               one or more per check of the other suites
   --engine-cwd <dir>          Its working directory (default: the current one)
+  --engine-production-cmd <command>
+                              Starts a production build of the same engine, in the same directory, for the checks
+                              that it refuses what only a test build accepts; without it they skip
   --heartbeat-interval-s <n>  The interval the engine was told to use (default 60; anything else skips the cadence check)
   --engine-session-cmd <cmd>  The engine's conformance-session command, run with --subject owner|member
                               [--permissions a,b]; it prints {"cookie"}, {"bearer"} or null as JSON. Without it
@@ -69,6 +75,10 @@ class UsageError extends Error {}
 
 /** Parses arguments, runs the suites and writes the report; resolves with the exit code. */
 export async function runCli(argv: readonly string[], io: CliIo): Promise<number> {
+    if (argv[0] === 'staging') {
+        const { fetch: fetchFn, ...streams } = io;
+        return runStagingCli(argv.slice(1), { ...streams, ports: createNodeStagingPorts(fetchFn) });
+    }
     try {
         return await run(argv, io);
     } catch (error) {
@@ -110,6 +120,7 @@ async function run(argv: readonly string[], io: CliIo): Promise<number> {
             'timeout-ms': { type: 'string', default: '120000' },
             'engine-cmd': { type: 'string' },
             'engine-cwd': { type: 'string' },
+            'engine-production-cmd': { type: 'string' },
             'heartbeat-interval-s': { type: 'string' },
             'mock-control': { type: 'boolean', default: false },
             'engine-session-cmd': { type: 'string' },
@@ -182,16 +193,20 @@ async function run(argv: readonly string[], io: CliIo): Promise<number> {
                 : values['mock-control'] === true
                   ? createMockEngineTargetFactory()
                   : undefined;
+        const productionCmd = values['engine-production-cmd'];
         result = await runPlatformConformance({
             ...common,
             command: { command: engineCmd, cwd: engineCwd },
+            ...(typeof productionCmd === 'string'
+                ? { productionCommand: { command: productionCmd, cwd: engineCwd } }
+                : {}),
             suites,
             expectations: { heartbeatIntervalMs: intervalS * 1000 },
             ...(targets === undefined ? {} : { targets }),
             parentEnv: io.env,
         });
     } else {
-        for (const flag of ['engine-cwd', 'heartbeat-interval-s'] as const) {
+        for (const flag of ['engine-cwd', 'engine-production-cmd', 'heartbeat-interval-s'] as const) {
             if (values[flag] !== undefined) throw new UsageError(`--${flag} needs --engine-cmd`);
         }
         if (values['mock-control'] === true) throw new UsageError('--mock-control needs --engine-cmd');

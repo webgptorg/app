@@ -216,7 +216,7 @@ services:
       PTBK_UI_RELEASE_URL: https://releases.ptbk.test/
       PTBK_UPDATE_POLICY: pinned
       PTBK_PINNED_VERSION: 0.0.0-dryrun.1
-      MOCK_UI_TRUST_POLICY_FILE: /pki/ui-trust-policy.json
+      PTBK_UI_TRUST_POLICY_FILE: /pki/ui-trust-policy.json
       MOCK_UI_FAKE_PROVENANCE: enabled
       MOCK_CONTROL: enabled
       # The flows reach every screen; the dev stack shows the Reborn set (compose.dev.yaml).

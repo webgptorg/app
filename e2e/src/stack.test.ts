@@ -135,7 +135,7 @@ describe('the topology in compose.yaml and the Corefile', () => {
         expect(compose).toContain(`releases:${MOUNTS.releases}:ro`);
         expect(compose).toContain(`release-store-key:${MOUNTS.releaseStoreKey}:ro`);
         expect(compose).toContain(`PTBK_UI_RELEASE_URL: https://${RELEASE_STORE.hostname}/`);
-        expect(compose).toContain(`MOCK_UI_TRUST_POLICY_FILE: ${MOUNTS.public}/${PUBLIC_FILES.uiTrustPolicy}`);
+        expect(compose).toContain(`PTBK_UI_TRUST_POLICY_FILE: ${MOUNTS.public}/${PUBLIC_FILES.uiTrustPolicy}`);
         expect(compose).toContain(`PTBK_PINNED_VERSION: ${UI_RELEASES.installed}`);
         expect(compose).toContain(`ipv4_address: ${MOCK_ENGINE_CONTROL.ip}`);
         expect(compose).toContain(`MOCK_CONTROL_PORT: '${String(MOCK_ENGINE_CONTROL.port)}'`);
