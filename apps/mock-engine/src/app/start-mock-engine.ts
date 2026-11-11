@@ -321,6 +321,7 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
     const ownerSetUpNow = (): boolean => hasOwner(runtime.controller().inspect());
     // Assigned below; the owner changes only through requests and commands that come after startup.
     let onboardingChanged = (): void => undefined;
+    let ownerWasSetUp = ownerSetUpNow();
     const onboarding = deps.onboarding;
     const setupSecrets = createSetupSecrets({
         store: onboarding?.setupSecrets ?? createInMemorySetupSecretStore(),
@@ -343,6 +344,10 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
         logger,
         onOwnerChanged: () => {
             onboardingChanged();
+            const setUp = ownerSetUpNow();
+            // The dashboard's tab waits on `members` turning non-zero: tell it now, not at the next interval.
+            if (setUp && !ownerWasSetUp) heartbeat?.beatNow();
+            ownerWasSetUp = setUp;
         },
     });
     await passkeyGateway.restore();

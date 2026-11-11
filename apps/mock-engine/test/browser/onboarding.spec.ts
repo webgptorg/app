@@ -2,7 +2,7 @@ import { createHash, X509Certificate } from 'node:crypto';
 
 import type { Browser, Page } from '@playwright/test';
 import { chromium, expect, test } from '@playwright/test';
-import { EngineVersion, Hostname, RelayId, createCryptoRandom, defaultHostname } from '@ptbk/protocol';
+import { EngineVersion, Heartbeat, Hostname, RelayId, createCryptoRandom, defaultHostname } from '@ptbk/protocol';
 
 import { createDevCa, createDevCaCertificateSource } from '../../src/adapters/dev-ca';
 import { loadGatewayPageFiles } from '../../src/adapters/http/gateway-page-files';
@@ -15,6 +15,7 @@ import { startMockEngine } from '../../src/app/start-mock-engine';
 import { createInMemoryPasskeyStore } from '../../src/domain/gateway/passkey-gateway';
 import { createInMemorySetupSecretStore } from '../../src/domain/onboarding/setup-secret';
 import { oneTimeSecret } from '../../src/domain/secret';
+import type { FakeDashboard } from '../../src/testing/fake-dashboard';
 import { createFakeDashboard } from '../../src/testing/fake-dashboard';
 import type { FakePassthrough } from '../../src/testing/fake-passthrough';
 import { startFakePassthrough } from '../../src/testing/fake-passthrough';
@@ -38,6 +39,7 @@ interface Stack {
     readonly relay: FakeRelay;
     readonly passthrough: FakePassthrough;
     readonly logger: MemoryLogger;
+    readonly dashboard: FakeDashboard;
     readonly linkCode: string;
     readonly hostname: string;
     /** The certificate's SPKI hash, which Chromium is told to trust: WebAuthn refuses pages with TLS errors. */
@@ -115,6 +117,7 @@ async function startStack(): Promise<Stack> {
         relay,
         passthrough,
         logger,
+        dashboard,
         linkCode,
         hostname,
         spki: createHash('sha256').update(spkiDer).digest('base64'),
@@ -193,6 +196,17 @@ test('the owner sets up a passkey through /setup#<secret>, then signs in with it
     await page.locator('button[data-action="create"]').click();
     await expect(page.getByRole('heading', { name: 'You are the owner' })).toBeVisible();
     expect(engine.operator.status().ownerSetUp).toBe(true);
+    // The dashboard's tab waits on `members`: a beat goes out at once, well before the 60 s interval.
+    const decoder = new TextDecoder();
+    await expect
+        .poll(
+            () =>
+                stack?.dashboard.heartbeats.some(
+                    (beat) => Heartbeat.parse(JSON.parse(decoder.decode(beat.rawBody))).members > 0,
+                ),
+            { timeout: 10_000 },
+        )
+        .toBe(true);
     expect(await meStatus(page)).toBe(200);
 
     // The link is dead now, whoever opens it.
