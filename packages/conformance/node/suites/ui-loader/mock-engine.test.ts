@@ -7,8 +7,9 @@ import { runPlatformConformance } from '../../harness/run-platform';
 import { createMockEngineTargetFactory } from '../../targets/mock-engine';
 import { SELF_TEST_HEARTBEAT_INTERVAL_S, mockEngineCommand } from '../../testing/engines';
 import { UI_LOADER_CHECK_TIMEOUT_MS, UI_LOADER_PLATFORM_SUITE } from './index';
+import { TRUST_POLICY_CHECKS } from './trust-policy';
 
-const SUITE_TIMEOUT_MS = UI_LOADER_CHECKS.length * UI_LOADER_CHECK_TIMEOUT_MS;
+const SUITE_TIMEOUT_MS = (UI_LOADER_CHECKS.length + TRUST_POLICY_CHECKS.length) * UI_LOADER_CHECK_TIMEOUT_MS;
 
 function line(result: CheckResult): string {
     const { outcome } = result;
@@ -33,6 +34,7 @@ describe('the ui-loader suite against the mock engine', () => {
             const started = Date.now();
             const report = await runPlatformConformance({
                 command: mockEngineCommand(),
+                productionCommand: mockEngineCommand('NODE_ENV=production'),
                 suites: [UI_LOADER_PLATFORM_SUITE],
                 targets: createMockEngineTargetFactory(),
                 timeoutMs: 30_000,
@@ -48,7 +50,9 @@ describe('the ui-loader suite against the mock engine', () => {
                     .map((result) => [result.id, result.outcome]),
             );
             expect(notPassed).toEqual({});
-            expect(report.results.map((result) => result.id)).toEqual(UI_LOADER_CHECKS.map((check) => check.id));
+            expect(report.results.map((result) => result.id)).toEqual(
+                [...UI_LOADER_CHECKS, ...TRUST_POLICY_CHECKS].map((check) => check.id),
+            );
         },
         SUITE_TIMEOUT_MS,
     );

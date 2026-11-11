@@ -60,6 +60,10 @@ export type { EngineEndpoints, EngineRoute, UiLoaderPlatformSuiteOptions } from 
 export { createUiLoaderPlatformSuite } from './suites/ui-loader';
 export type { EngineApiPlatformSuiteOptions } from './suites/engine-api';
 export { createEngineApiPlatformSuite } from './suites/engine-api';
+export type { StagingCheckId, StagingOptions, StagingPorts, StagingReport, StagingResult } from './staging/types';
+export { STAGING_CHECK_IDS } from './staging/types';
+export { createNodeStagingPorts } from './staging/node-ports';
+export { runStagingCheck } from './staging/run-staging';
 export {
     ENGINE_API_PLATFORM_SUITE,
     HEARTBEAT_SUITE,

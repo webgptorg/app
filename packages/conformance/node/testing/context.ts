@@ -21,6 +21,7 @@ export function createTestContext(): PlatformCheckContext & { closeAll(): Promis
             startTimeoutMs: 1000,
             quietWindowMs: 500,
         },
+        productionBuild: false,
         tempDir: () => Promise.reject(new Error('no temp dirs in unit tests')),
         engine: () => Promise.reject(new Error('no engines in unit tests')),
         use(fixture) {

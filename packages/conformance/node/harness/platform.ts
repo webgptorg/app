@@ -35,7 +35,15 @@ export interface EngineOptions {
     readonly env?: LaunchEnv;
     /** Default: a fresh path that does not exist yet, inside a private temporary directory. */
     readonly dataDir?: string;
+    /**
+     * `production` starts the run's production build (`--engine-production-cmd`) instead of the engine under test,
+     * with the launch contract only: none of the target factory's engine-specific variables, which a production build
+     * may rightly refuse. Only when `productionBuild` is true.
+     */
+    readonly build?: EngineBuild;
 }
+
+export type EngineBuild = 'under-test' | 'production';
 
 /** How the engine API of an engine the harness started is reached, once a relay routes it (C-09). */
 export interface EngineApiEndpoint {
@@ -67,6 +75,8 @@ export interface PlatformCheckContext extends BaseCheckContext {
     /** The engine domain the engine is started with (`PTBK_ENGINE_DOMAIN`). */
     readonly engineDomain: Hostname;
     readonly expectations: PlatformExpectations;
+    /** Whether the run can start a production build of the engine; checks that need one skip otherwise. */
+    readonly productionBuild: boolean;
     /** A new private (0700) directory, removed after the check. */
     tempDir(label: string): Promise<string>;
     /** A new engine, not started yet, with a fresh empty data directory unless one is given; stopped after the check. */

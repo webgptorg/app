@@ -20,6 +20,9 @@ const REPO_ROOT = resolve(import.meta.dirname, '..');
 
 /** A check ID as C-05 declares it: `id: 'engine-api.secrets.never-returned'`, at least two dots. */
 const CHECK_ID_DECLARATION = /\bid:\s*(['"`])([a-z][a-z0-9-]*(?:\.[a-z0-9-]+){2,})\1/g;
+/** A list of check IDs, as the staging check declares them: `STAGING_CHECK_IDS = ['staging.dns.via-relay', …]`. */
+const CHECK_ID_LIST = /\b[A-Z_]*CHECK_IDS\b[^=]*=\s*\[([^\]]*)\]/g;
+const QUOTED_CHECK_ID = /(['"`])([a-z][a-z0-9-]*(?:\.[a-z0-9-]+){2,})\1/g;
 const BACKTICKED_CHECK_ID = /`([a-z][a-z0-9-]*(?:\.[a-z0-9-]+){2,})`/g;
 
 /** Repo paths the guide may not link to: they are private and stay behind when the guide moves public. */
@@ -35,7 +38,11 @@ const CONTENT_RULES: readonly ContentRule[] = [
             /\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:workers\.dev|pages\.dev|r2\.dev|r2\.cloudflarestorage\.com|internal|corp|lan|home\.arpa|your-server\.de)\b/gi,
         message: 'private or infrastructure hostname',
     },
-    { pattern: /\b(?:staging|relay-fsn|relay-hel)\.[a-z0-9-]+/gi, message: 'deployment-specific hostname' },
+    // Not file names: the guide has a staging.md, and the platform's staging policy is trust-policy.staging.json.
+    {
+        pattern: /\b(?:staging|relay-fsn|relay-hel)\.(?!(?:md|json)\b)[a-z0-9-]+/gi,
+        message: 'deployment-specific hostname',
+    },
     {
         pattern: /\b(?:10\.\d{1,3}|192\.168|172\.(?:1[6-9]|2\d|3[01]))\.\d{1,3}\.\d{1,3}\b/g,
         message: 'private IPv4 address',
@@ -81,7 +88,11 @@ function declaredCheckIds(conformanceDir: string): Map<string, string> {
     const ids = new Map<string, string>();
     for (const dir of ['src', 'node', 'bin']) {
         for (const file of walk(join(conformanceDir, dir), isCheckSource)) {
-            for (const match of readFileSync(file, 'utf8').matchAll(CHECK_ID_DECLARATION)) {
+            const source = readFileSync(file, 'utf8');
+            const listed = [...source.matchAll(CHECK_ID_LIST)].flatMap((list) => [
+                ...(list[1] ?? '').matchAll(QUOTED_CHECK_ID),
+            ]);
+            for (const match of [...source.matchAll(CHECK_ID_DECLARATION), ...listed]) {
                 const id = match[2];
                 if (id !== undefined && !ids.has(id)) ids.set(id, relative(REPO_ROOT, file));
             }
@@ -188,16 +199,23 @@ function checkLinks(guideDir: string): Problem[] {
     return problems;
 }
 
-function checkContent(guideDir: string): Problem[] {
+/** The dotted name a match starts, so a check ID such as `staging.tls.public-certificate` is not taken for a host. */
+function dottedNameAt(source: string, index: number): string {
+    return (/^[a-z0-9.-]+/i.exec(source.slice(index))?.[0] ?? '').replace(/\.+$/, '');
+}
+
+function checkContent(guideDir: string, checkIds: ReadonlySet<string>): Problem[] {
     return walk(guideDir, () => true).flatMap((path) => {
         const source = readFileSync(path, 'utf8');
         const file = relative(REPO_ROOT, path);
         return CONTENT_RULES.flatMap((rule) =>
-            [...source.matchAll(rule.pattern)].map((match) => ({
-                file,
-                line: lineAt(source, match.index),
-                message: `${rule.message}: ${match[0]}`,
-            })),
+            [...source.matchAll(rule.pattern)]
+                .filter((match) => !checkIds.has(dottedNameAt(source, match.index)))
+                .map((match) => ({
+                    file,
+                    line: lineAt(source, match.index),
+                    message: `${rule.message}: ${match[0]}`,
+                })),
         );
     });
 }
@@ -212,7 +230,7 @@ const guideDir = resolve(values.guide);
 const problems = [
     ...checkChecklist(join(guideDir, 'checklist.md'), resolve(values.conformance)),
     ...checkLinks(guideDir),
-    ...checkContent(guideDir),
+    ...checkContent(guideDir, new Set(declaredCheckIds(resolve(values.conformance)).keys())),
 ];
 for (const problem of problems) console.error(`${problem.file}:${String(problem.line)}: ${problem.message}`);
 process.exit(problems.length === 0 ? 0 : 1);

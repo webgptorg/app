@@ -12,6 +12,7 @@ import type { Logger } from '../domain/logger';
 import type { UiLoaderDeps } from '../domain/ui/ui-loader';
 import type { UiLoaderConfig, UiTrustConfig } from './config';
 
+const TRUST_POLICY_SETTING = 'PTBK_UI_TRUST_POLICY_FILE';
 const MAX_POLICY_BYTES = 64 * 1024;
 const MAX_TRUSTED_ROOT_BYTES = 1024 * 1024;
 const MAX_CONFORMANCE_TRUST_BYTES = MAX_POLICY_BYTES + MAX_TRUSTED_ROOT_BYTES;
@@ -36,23 +37,23 @@ async function readBounded(path: string, maxBytes: number, setting: string): Pro
 }
 
 /**
- * Reads `MOCK_UI_TRUST_POLICY_FILE`. A staging policy shortens the release delay, so a production engine refuses to
+ * Reads `PTBK_UI_TRUST_POLICY_FILE`. A staging policy shortens the release delay, so a production engine refuses to
  * start with one rather than install releases early.
  */
 export async function readTrustPolicy(
     path: string,
     options: { readonly stagingAllowed: boolean },
 ): Promise<TrustPolicy> {
-    const bytes = await readBounded(path, MAX_POLICY_BYTES, 'MOCK_UI_TRUST_POLICY_FILE');
+    const bytes = await readBounded(path, MAX_POLICY_BYTES, TRUST_POLICY_SETTING);
     let policy: TrustPolicy;
     try {
         policy = TrustPolicy.parse(JSON.parse(bytes.toString('utf8')));
     } catch {
-        throw new UiLoaderSetupError(`MOCK_UI_TRUST_POLICY_FILE: ${path} is not a valid TrustPolicy`);
+        throw new UiLoaderSetupError(`${TRUST_POLICY_SETTING}: ${path} is not a valid TrustPolicy`);
     }
     if (isStagingPolicy(policy) && !options.stagingAllowed) {
         throw new UiLoaderSetupError(
-            `MOCK_UI_TRUST_POLICY_FILE: ${path} is a staging trust policy, which must not be used in production`,
+            `${TRUST_POLICY_SETTING}: ${path} is a staging trust policy, which must not be used in production`,
         );
     }
     return policy;

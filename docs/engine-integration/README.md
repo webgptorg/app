@@ -31,6 +31,7 @@ Three files turn this guide into a kit that a coding agent can execute end to en
 - [AGENT_BRIEF.md](AGENT_BRIEF.md): the prompt to paste into the agent. Context, the security rules it must not break, the loop "implement a phase, run the checks, fix until green", and when it is done.
 - [implementation-plan.md](implementation-plan.md): the build plan, phase by phase, each with what to read, what to build, the checks that prove it and the commands that run them, mapped onto the engine's codebase.
 - [testing-against-the-platform.md](testing-against-the-platform.md): how to test the real engine against our side without our credentials, with a troubleshooting table.
+- [staging.md](staging.md): how to run the engine against our live staging, and the read-only check that tells an agent what still fails.
 
 The topic files below stay normative; the kit orders them and points into them. The operator's installation guide, `installation.md`, is forthcoming (task E-05).
 
@@ -53,6 +54,7 @@ The topic files below stay normative; the kit orders them and points into them. 
 | 13  | [AGENT_BRIEF.md](AGENT_BRIEF.md)                                   | The prompt for a coding agent                                           |
 | 14  | [installation.md](installation.md)                                 | Install paths, configuration, first-start output, the setup link (1, 6) |
 | 15  | [live-sessions.md](live-sessions.md)                               | Design only: live audio, video and the remote browser tab               |
+| 16  | [staging.md](staging.md)                                           | Running the engine against live staging, and the staging check          |
 
 Interface 2 (the relay's registry lookup) is between the relay and the dashboard. The engine never calls it, but it decides which hostnames the relay routes, so [tunnel-client.md](tunnel-client.md#custom-hostnames) explains what the engine must do for it.
 

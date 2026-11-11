@@ -112,7 +112,7 @@ export interface UiLoaderConfig {
 export type UiTrustConfig =
     | {
           readonly kind: 'files';
-          /** `MOCK_UI_TRUST_POLICY_FILE`: C-06's `TrustPolicy` as JSON. */
+          /** `PTBK_UI_TRUST_POLICY_FILE` (or its old name `MOCK_UI_TRUST_POLICY_FILE`): C-06's `TrustPolicy` as JSON. */
           readonly trustPolicyFile: string;
           /** `MOCK_UI_TRUSTED_ROOT_FILE`; null uses the pinned Sigstore trusted root. */
           readonly trustedRootFile: string | null;
@@ -128,7 +128,7 @@ export type UiTrustConfig =
           /**
            * `PTBK_CONFORMANCE_TRUST_FILE`: the conformance suite's `ConformanceTrustFile` (trust policy and trusted
            * root, verified with the real Sigstore verifier), as a conformance build of the engine reads it. Excludes the
-           * `MOCK_UI_*` trust settings; refused with `NODE_ENV=production`.
+           * trust policy file and the `MOCK_UI_*` trust settings; refused with `NODE_ENV=production`.
            */
           readonly file: string;
       };
@@ -209,6 +209,15 @@ const filePath = value(
         .max(MAX_PATH_LENGTH)
         .regex(/^[^\0]+$/),
     'must be a file path',
+);
+
+/** The trust policy decides which code the engine serves, so it never depends on the working directory. */
+const absoluteFilePath = value(
+    z
+        .string()
+        .max(MAX_PATH_LENGTH)
+        .regex(/^\/[^\0]*$/),
+    'must be an absolute file path',
 );
 
 function parseUrl(text: string): URL | undefined {
@@ -466,7 +475,7 @@ const envSchema = z.strictObject({
     PTBK_UI_RELEASE_URL: parsed(parseReleaseUrl).optional(),
     PTBK_UPDATE_POLICY: value(z.enum(['auto', 'manual', 'pinned']), 'must be auto, manual or pinned').default('auto'),
     PTBK_PINNED_VERSION: value(EngineVersionSchema, 'must be a SemVer version').optional(),
-    MOCK_UI_TRUST_POLICY_FILE: filePath.optional(),
+    PTBK_UI_TRUST_POLICY_FILE: absoluteFilePath.optional(),
     MOCK_UI_TRUSTED_ROOT_FILE: filePath.optional(),
     MOCK_UI_CHECK_INTERVAL_S: value(
         z
@@ -523,6 +532,9 @@ function toProblems(issue: z.core.$ZodIssue): string[] {
     return [`${issue.path.join('.')}: ${issue.message}`];
 }
 
+/** Deprecated: `PTBK_UI_TRUST_POLICY_FILE` is the name the real engine reads too (ui-loader.md). */
+const OLD_TRUST_POLICY_SETTING = 'MOCK_UI_TRUST_POLICY_FILE';
+
 function settingsOf(env: Env, problems: string[]): Record<string, string> {
     const settings = Object.fromEntries(
         Object.keys(env)
@@ -538,6 +550,13 @@ function settingsOf(env: Env, problems: string[]): Record<string, string> {
         }
         const chosen = upperValue ?? lowerValue;
         if (chosen !== undefined) settings[upper] = chosen;
+    }
+    // The old name still works, so mock engines started before the rename keep their UI after a restart.
+    const oldPolicyFile = settings[OLD_TRUST_POLICY_SETTING];
+    if (oldPolicyFile !== undefined) {
+        delete settings['MOCK_UI_TRUST_POLICY_FILE'];
+        if (settings['PTBK_UI_TRUST_POLICY_FILE'] === undefined) settings['PTBK_UI_TRUST_POLICY_FILE'] = oldPolicyFile;
+        else problems.push(`${OLD_TRUST_POLICY_SETTING}: is the old name of PTBK_UI_TRUST_POLICY_FILE; set only one`);
     }
     return settings;
 }
@@ -632,10 +651,10 @@ function uiTrustConfig(env: z.output<typeof envSchema>): UiTrustConfig | null {
     if (env.PTBK_CONFORMANCE_TRUST_FILE !== undefined) {
         return Object.freeze({ kind: 'conformance', file: env.PTBK_CONFORMANCE_TRUST_FILE });
     }
-    if (env.MOCK_UI_TRUST_POLICY_FILE === undefined) return null;
+    if (env.PTBK_UI_TRUST_POLICY_FILE === undefined) return null;
     return Object.freeze({
         kind: 'files',
-        trustPolicyFile: env.MOCK_UI_TRUST_POLICY_FILE,
+        trustPolicyFile: env.PTBK_UI_TRUST_POLICY_FILE,
         trustedRootFile: env.MOCK_UI_TRUSTED_ROOT_FILE ?? null,
         fakeProvenance: env.MOCK_UI_FAKE_PROVENANCE === 'enabled',
         stagingPolicyAllowed: env.NODE_ENV !== 'production',
@@ -660,7 +679,7 @@ function uiConfig(env: z.output<typeof envSchema>): UiLoaderConfig | null {
 const UI_LOADER_SETTINGS = [
     'PTBK_UPDATE_POLICY',
     'PTBK_PINNED_VERSION',
-    'MOCK_UI_TRUST_POLICY_FILE',
+    'PTBK_UI_TRUST_POLICY_FILE',
     'MOCK_UI_TRUSTED_ROOT_FILE',
     'MOCK_UI_CHECK_INTERVAL_S',
     'MOCK_UI_FAKE_PROVENANCE',
@@ -669,7 +688,7 @@ const UI_LOADER_SETTINGS = [
 
 /** The development trust switches; the conformance trust file replaces all three, so none may be beside it. */
 const UI_TRUST_FILE_SETTINGS = [
-    'MOCK_UI_TRUST_POLICY_FILE',
+    'PTBK_UI_TRUST_POLICY_FILE',
     'MOCK_UI_TRUSTED_ROOT_FILE',
     'MOCK_UI_FAKE_PROVENANCE',
 ] as const;
@@ -687,8 +706,8 @@ function uiProblems(settings: Readonly<Record<string, string>>): string[] {
         for (const name of UI_TRUST_FILE_SETTINGS) {
             if (settings[name] !== undefined) problems.push(`${name}: cannot be set with PTBK_CONFORMANCE_TRUST_FILE`);
         }
-    } else if (settings['MOCK_UI_TRUST_POLICY_FILE'] === undefined) {
-        problems.push('MOCK_UI_TRUST_POLICY_FILE: is required with PTBK_UI_RELEASE_URL');
+    } else if (settings['PTBK_UI_TRUST_POLICY_FILE'] === undefined) {
+        problems.push('PTBK_UI_TRUST_POLICY_FILE: is required with PTBK_UI_RELEASE_URL');
     }
     if (settings['MOCK_UI_FAKE_PROVENANCE'] === 'enabled' && settings['MOCK_UI_TRUSTED_ROOT_FILE'] !== undefined) {
         problems.push('MOCK_UI_TRUSTED_ROOT_FILE: has no effect with MOCK_UI_FAKE_PROVENANCE enabled');

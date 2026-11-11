@@ -24,6 +24,8 @@ import { DEFAULT_HEARTBEAT_INTERVAL_MS, DEFAULT_QUIET_WINDOW_MS, DEFAULT_START_T
 
 export interface RunPlatformOptions {
     readonly command: EngineCommand;
+    /** A production build of the same engine, for the checks that it refuses what only a test build may accept. */
+    readonly productionCommand?: EngineCommand;
     readonly suites: readonly PlatformSuite[];
     readonly filter?: (check: PlatformCheck) => boolean;
     readonly timeoutMs: number;
@@ -87,12 +89,17 @@ export async function runPlatformConformance(options: RunPlatformOptions): Promi
             ca,
             engineDomain: HARNESS_ENGINE_DOMAIN,
             expectations,
+            productionBuild: options.productionCommand !== undefined,
             tempDir,
             async engine(engineOptions = {}) {
+                const production = engineOptions.build === 'production';
+                if (production && options.productionCommand === undefined) {
+                    throw new Error('this run has no production build of the engine');
+                }
                 const dataDir = engineOptions.dataDir ?? join(await tempDir('engine'), 'data');
-                const engineSpecific = (await options.targets?.engineEnv()) ?? {};
+                const engineSpecific = production ? {} : ((await options.targets?.engineEnv()) ?? {});
                 const engine = createEngineProcess({
-                    command: options.command,
+                    command: (production ? options.productionCommand : undefined) ?? options.command,
                     dataDir,
                     ...(options.stopGraceMs === undefined ? {} : { stopGraceMs: options.stopGraceMs }),
                     env: engineEnvironment(options.parentEnv ?? process.env, engineSpecific, {

@@ -24,6 +24,17 @@ Each entry has this shape. Platform authors: add yours at the top of the list, o
 - **Redo:** what the engine's agent must change, re-run or drop; "nothing" if it is inert.
 ```
 
+### 2026-11-11: Where a release build gets its trust policy, and live staging
+
+- **Changed:** a release build reads its trust policy from `PTBK_UI_TRUST_POLICY_FILE`: an absolute path, read once at startup before registering, parsed strictly with `TrustPolicy`, never fetched. A staging policy (`isStagingPolicy`) refuses startup in production, which means `NODE_ENV=production` at runtime or inlined at build time. Without the variable there is no policy until production pins one after the key ceremony (pending): the loader stays off and the engine serves its plain "no verified UI release" page. The conformance build is unchanged with `PTBK_CONFORMANCE_TRUST_FILE`, and behaves like a release build without it. New launch option `--engine-production-cmd` and checks `ui-loader.trust-policy.staging-refused-in-production` and `ui-loader.trust-policy.staging-accepted-outside-production` (ENG-116). New guide [staging.md](staging.md) and a read-only check, `ptbk-conformance staging` (ENG-117). The mock engine reads the same variable (its old `MOCK_UI_TRUST_POLICY_FILE` still works). See [ui-loader.md](ui-loader.md#where-the-trust-policy-comes-from).
+- **Redo:**
+  1. Read `PTBK_UI_TRUST_POLICY_FILE` in every build as above. Refuse a relative path, a file over 64 KiB, invalid JSON or an invalid `TrustPolicy`, and the variable together with `PTBK_CONFORMANCE_TRUST_FILE`: exit non-zero, error naming the variable and the path, never the contents.
+  2. In production, refuse a staging policy before you register, dial or fetch, with `PTBK_UI_TRUST_POLICY_FILE: <path> is a staging trust policy, which must not be used in production`. Find out whether your bundler inlines `NODE_ENV`; if it does, a staging run needs a build without that.
+  3. Without a policy, never fetch a release; serve the plain page. Never fall back to a policy from the release store, a mirror, the dashboard or anything else fetched.
+  4. Set `NODE_ENV=production` in your release image and service.
+  5. Re-run the `ui-loader` suite with `--engine-production-cmd "NODE_ENV=production <start command of your release build>"`; both `ui-loader.trust-policy.*` checks must pass.
+  6. Run your engine against staging as [staging.md](staging.md) says, and run `ptbk-conformance staging --engine https://<engineId>.engines.ptbk.link` until no check fails. Include its `--json` output in your report.
+
 ### 2026-11-11: The engine opens its setup link
 
 - **Changed:** onboarding is now "paste one command, confirm a passkey". When the engine first becomes reachable while it has no owner, the foreground process on an interactive terminal (the installer, `ptbk start` in the foreground, or `ptbk connect --link` against a running engine) prints the setup link and QR itself and, on a local desktop, opens it in the default browser. `setup-link` stays as the fallback and opens too. No contract or conformance change; the dashboard's "waiting for the owner" row now points to that browser window. See [installation.md](installation.md#the-setup-link), items 3 to 5, and ENG-116.
@@ -157,6 +168,7 @@ The engine is done when all of these hold. Run them on a **conformance build** o
    ```sh
    node "<PLATFORM_DIR>/packages/conformance/dist/ptbk-conformance.js" \
      --engine-cmd "<start command of your conformance build>" --engine-cwd "<ENGINE_DIR>/<package>" \
+     --engine-production-cmd "NODE_ENV=production <start command of your release build>" \
      --engine-session-cmd "<your engine> conformance-session" \
      --engine-ca-file "{dataDir}/<path of its development CA certificate>" \
      --suite engine-api,registration,heartbeat,tunnel,ui-loader \
@@ -166,11 +178,12 @@ The engine is done when all of these hold. Run them on a **conformance build** o
    Run it without any heartbeat interval override, so `heartbeat.cadence.interval` proves the production 60 s. It exits 0 only when no check failed.
 
 2. **The local dev stack works** with your engine in place of the mock (`testing-against-the-platform.md`, section "(b) The local dev stack"). Link it with a link code, see it online in the dashboard, open it through the relay and sign in with a passkey, with no CSP violation in the browser console. The UI part of this check waits for the platform's task E-03, which re-signs the stack's UI releases for a conformance build.
-3. **No skips except these:** `capability-not-advertised` for capabilities you chose not to ship, and `engine-api.cross-member.private-resources`, which needs a target module (`testing-against-the-platform.md`, section "Against a running engine").
-4. **Every `ENG-xx` row** in `checklist.md` is implemented, or is marked in the plan as not required yet.
-5. **The engine repository's tests and lint pass**, and the changes are documented the way its own instructions require.
+3. **Your engine works on live staging** (`staging.md`): linked on `app.ptbk.io`, a Let's Encrypt certificate through the relay, our signed UI installed with the staging trust policy, and `ptbk-conformance staging --engine https://<engineId>.engines.ptbk.link` with no failure.
+4. **No skips except these:** `capability-not-advertised` for capabilities you chose not to ship, and `engine-api.cross-member.private-resources`, which needs a target module (`testing-against-the-platform.md`, section "Against a running engine").
+5. **Every `ENG-xx` row** in `checklist.md` is implemented, or is marked in the plan as not required yet.
+6. **The engine repository's tests and lint pass**, and the changes are documented the way its own instructions require.
 
-Then write a short report for the maintainer: what you built, where it lives, the conformance summary (`passed`, `failed`, `skipped`), the dev stack result, and every open question or contract proposal from the next section.
+Then write a short report for the maintainer: what you built, where it lives, the conformance summary (`passed`, `failed`, `skipped`), the dev stack result, the staging check's output, and every open question or contract proposal from the next section.
 
 ## When a contract looks wrong
 

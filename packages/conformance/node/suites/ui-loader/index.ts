@@ -5,6 +5,7 @@ import { startTunnelRelay } from '../../tunnel/tunnel-relay';
 import type { EngineEndpoints } from './endpoints';
 import type { RegisterEngine } from './platform-lab';
 import { openPlatformLab } from './platform-lab';
+import { TRUST_POLICY_CHECKS } from './trust-policy';
 
 /**
  * Per check: about three times the slowest check against the mock engine (`provenance.exact-identity`, 7 s for some
@@ -41,10 +42,14 @@ function toPlatformCheck(check: UiLoaderCheck, options: UiLoaderPlatformSuiteOpt
 
 /**
  * The engine's UI loader, black-box: each check gets its own registered engine, fake release store and relay,
- * restarts the engine with the update settings it needs and reads what the engine serves and reports.
+ * restarts the engine with the update settings it needs and reads what the engine serves and reports. Then where
+ * the trust policy comes from, which only the process's start or refusal shows.
  */
 export function createUiLoaderPlatformSuite(options: UiLoaderPlatformSuiteOptions): PlatformSuite {
-    return { id: UI_LOADER_SUITE_ID, checks: UI_LOADER_CHECKS.map((check) => toPlatformCheck(check, options)) };
+    return {
+        id: UI_LOADER_SUITE_ID,
+        checks: [...UI_LOADER_CHECKS.map((check) => toPlatformCheck(check, options)), ...TRUST_POLICY_CHECKS],
+    };
 }
 
 /** The engine API through C-09's fake relay; one relay is enough, since no ui-loader check is about failover. */

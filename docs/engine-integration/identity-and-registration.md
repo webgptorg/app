@@ -144,7 +144,7 @@ The conformance harness (`ptbk-conformance --engine-cmd`, [conformance.md](confo
 
 The harness sends `PTBK_LINK_CODE` as a bare code. The mock engine also accepts a link URL there, whose origin must equal `PTBK_DASHBOARD_URL` when that is set; an engine need not.
 
-The UI loader adds `PTBK_UI_RELEASE_URL`, `PTBK_UPDATE_POLICY` and `PTBK_PINNED_VERSION` ([ui-loader.md](ui-loader.md)).
+The UI loader adds `PTBK_UI_RELEASE_URL`, `PTBK_UPDATE_POLICY`, `PTBK_PINNED_VERSION` and `PTBK_UI_TRUST_POLICY_FILE` ([ui-loader.md](ui-loader.md#where-the-trust-policy-comes-from)). For the checks that a production build refuses what a test build accepts, the harness also starts your production build, with `--engine-production-cmd` and the same variables ([conformance.md](conformance.md#an-engine-the-harness-starts)).
 
 The harness removes `HTTPS_PROXY`, `NO_PROXY` and any other `PTBK_*` variable from the engine's environment. Engine-specific settings, such as a shorter development heartbeat interval, belong in the engine command, not in this list. The engine must also:
 

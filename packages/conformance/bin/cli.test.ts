@@ -178,6 +178,10 @@ describe('runCli', () => {
         [['--engine-cmd', 'true', '--heartbeat-interval-s', '0'], '--heartbeat-interval-s must be at least 1'],
         [['--base-url', 'https://engine.test', '--mock-control'], '--mock-control needs --engine-cmd'],
         [['--base-url', 'https://engine.test', '--engine-cwd', '.'], '--engine-cwd needs --engine-cmd'],
+        [
+            ['--base-url', 'https://engine.test', '--engine-production-cmd', 'x'],
+            '--engine-production-cmd needs --engine-cmd',
+        ],
         [['--base-url', 'https://engine.test', '--engine-session-cmd', 'x'], '--engine-session-cmd needs --engine-cmd'],
         [['--engine-cmd', 'true', '--engine-ca-file', 'ca.pem'], '--engine-ca-file needs --engine-session-cmd'],
         [
@@ -285,6 +289,26 @@ describe('runCli', () => {
         expect(await runCli(argv, streams)).toBe(0);
         expect(streams.err.join('')).toContain('pass  registration.request.signature-verifies');
         expect(streams.out.join('')).toContain('<testsuite name="registration"');
+    });
+
+    it('starts a production build with --engine-production-cmd for the trust policy checks', async () => {
+        const streams = io({ env: { PATH: process.env['PATH'] ?? '/usr/bin:/bin' } });
+        const argv = [
+            '--engine-cmd',
+            mockEngineCommand().command,
+            '--engine-production-cmd',
+            mockEngineCommand('NODE_ENV=production').command,
+            '--heartbeat-interval-s',
+            String(SELF_TEST_HEARTBEAT_INTERVAL_S),
+            '--mock-control',
+            '--suite',
+            'ui-loader',
+            '--filter',
+            'ui-loader.trust-policy.',
+        ];
+        expect(await runCli(argv, streams), streams.err.join('')).toBe(0);
+        expect(streams.err.join('')).toContain('pass  ui-loader.trust-policy.staging-refused-in-production');
+        expect(streams.err.join('')).toContain('pass  ui-loader.trust-policy.staging-accepted-outside-production');
     });
 
     it.each([
