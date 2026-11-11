@@ -75,7 +75,7 @@ tofu apply tfplan
 tofu output relays                                           # addresses for infra/cloudflare's relays variable
 ```
 
-First boot takes a few minutes: packages, hardening, possibly one reboot for a new kernel. Then, as an admin:
+First boot takes a few minutes: packages, hardening, possibly one reboot for a new kernel. cloud-init reports done even when a first-boot step failed, so check `systemctl is-active unbound` and `command -v lego cosign` on the host first. Then, as an admin:
 
 1. **Place the secrets.** From a machine that holds them, never through the repo, a PR or a chat:
    ```sh
