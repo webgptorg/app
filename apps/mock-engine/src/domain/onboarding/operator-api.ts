@@ -7,8 +7,12 @@ import { z } from 'zod';
  */
 export interface OperatorApi {
     status(): OperatorStatus;
-    /** Picks up a registration that `connect` just stored, and brings an unlinked engine online. */
-    link(): Promise<LinkAnswer>;
+    /**
+     * Picks up a registration that `connect` just stored, and brings an unlinked engine online. With
+     * `callerShowsSetupLink` the command shows the first setup link, and the engine does not issue one of its own:
+     * each issue replaces the previous secret, so two would invalidate each other's link.
+     */
+    link(options: LinkOptions): Promise<LinkAnswer>;
     /**
      * A fresh setup link, replacing the previous one, once the address works and while there is no owner. The answer
      * carries the secret: it goes to the operator's terminal and nowhere else.
@@ -17,6 +21,13 @@ export interface OperatorApi {
     /** Revokes every passkey and session; data stays. */
     resetOwner(): Promise<ResetAnswer>;
 }
+
+export interface LinkOptions {
+    readonly callerShowsSetupLink: boolean;
+}
+
+/** `POST /v1/link?setup-link=caller`: the caller shows the first setup link. */
+export const LINK_QUERY = z.strictObject({ 'setup-link': z.literal('caller').optional() });
 
 const Hostname = z.string().min(1).max(253);
 const Iso = z.iso.datetime({ offset: false });

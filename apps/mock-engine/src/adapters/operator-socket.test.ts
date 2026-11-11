@@ -89,10 +89,31 @@ describe('operator socket', () => {
         expect(((await stat(operatorSocketDir(dir))).mode & 0o777).toString(8)).toBe('700');
         const client = createOperatorClient(dir);
         expect(await client.status()).toEqual(STATUS);
-        expect(await client.link()).toEqual({ outcome: 'linked', relays: 2 });
+        expect(await client.link(false)).toEqual({ outcome: 'linked', relays: 2 });
         expect(logger.entries).toEqual([
             { level: 'info', event: 'operator.listening', fields: { socket: OPERATOR_SOCKET_FILE } },
         ]);
+    });
+
+    it('tells the engine whether the caller shows the first setup link', async () => {
+        const dir = await dataDir();
+        const calls: boolean[] = [];
+        await serve(
+            dir,
+            api({
+                link: ({ callerShowsSetupLink }) => {
+                    calls.push(callerShowsSetupLink);
+                    return Promise.resolve({ outcome: 'linked', relays: 1 });
+                },
+            }),
+        );
+        const client = createOperatorClient(dir);
+        await client.link(true);
+        await client.link(false);
+        expect(calls).toEqual([true, false]);
+        expect((await raw(dir, 'POST', '/v1/link?setup-link=engine')).status).toBe(400);
+        expect((await raw(dir, 'POST', '/v1/link?setup-link=caller&x=1')).status).toBe(400);
+        expect(calls).toEqual([true, false]);
     });
 
     it('takes no input it does not declare', async () => {
@@ -164,7 +185,7 @@ describe('operator socket', () => {
         await server.close();
         cleanup.pop();
         expect(await createOperatorClient(dir).status()).toBeNull();
-        expect(await createOperatorClient(dir).link()).toBeNull();
+        expect(await createOperatorClient(dir).link(false)).toBeNull();
     });
 
     it('works for a data directory far longer than a socket path may be, at one short path per directory', async () => {

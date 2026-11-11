@@ -231,7 +231,7 @@ describe('registration and heartbeat at startup', () => {
         const info: { mode: string } = await read(engine, 'getEngine');
         expect(info.mode).toBe('local');
         expect(w.logger.entries.map(({ event }) => event)).toContain('engine.not-linked');
-        expect(await engine.operator.link()).toEqual({ outcome: 'not-registered' });
+        expect(await engine.operator.link({ callerShowsSetupLink: false })).toEqual({ outcome: 'not-registered' });
         // What `connect` does in its own process: register into the same data directory.
         await registerEngine({
             store: w.deps.registrations,
@@ -244,10 +244,13 @@ describe('registration and heartbeat at startup', () => {
             logger: w.logger,
             signal: AbortSignal.timeout(5_000),
         });
-        const [first, second] = await Promise.all([engine.operator.link(), engine.operator.link()]);
+        const [first, second] = await Promise.all([
+            engine.operator.link({ callerShowsSetupLink: false }),
+            engine.operator.link({ callerShowsSetupLink: false }),
+        ]);
         expect(first).toEqual({ outcome: 'linked', relays: 2 });
         expect(second).toEqual(first);
-        expect(await engine.operator.link()).toEqual({ outcome: 'already-linked' });
+        expect(await engine.operator.link({ callerShowsSetupLink: false })).toEqual({ outcome: 'already-linked' });
         expect(dialer.dials.map((dial) => dial.target.url)).toEqual([
             'wss://relay-x.ptbk.test/v1/tunnel',
             'wss://relay-y.ptbk.test/v1/tunnel',

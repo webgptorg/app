@@ -74,7 +74,10 @@ export interface MockEngineConfig {
     readonly simulation: { readonly mode: SimulationMode; readonly speed: number };
     /** `MOCK_DEV_LOGIN=enabled`: the sign-in page lets anyone pick a member. Refused with `NODE_ENV=production`. */
     readonly devLogin: boolean;
-    /** `MOCK_PASSKEYS`: `seeded` (the owner is set up) or `none` (a fresh engine that waits for its owner). */
+    /**
+     * `MOCK_PASSKEYS`: `none` (the default: a fresh engine that waits for its owner, as a real one does) or `seeded`
+     * (the owner is set up).
+     */
     readonly passkeys: 'seeded' | 'none';
     /** `MOCK_ONBOARDING`: `pending` or `completed`; without it `empty` is pending and the other scenarios completed. */
     readonly onboarding: 'pending' | 'completed' | null;
@@ -443,7 +446,7 @@ const envSchema = z.strictObject({
         `must be a number from ${String(MIN_SIMULATION_SPEED)} to ${String(MAX_SIMULATION_SPEED)}`,
     ).default(1),
     MOCK_DEV_LOGIN: toggle.default('disabled'),
-    MOCK_PASSKEYS: value(z.enum(['seeded', 'none']), 'must be seeded or none').default('seeded'),
+    MOCK_PASSKEYS: value(z.enum(['seeded', 'none']), 'must be seeded or none').default('none'),
     MOCK_ONBOARDING: value(z.enum(['pending', 'completed']), 'must be pending or completed').optional(),
     MOCK_CONTROL: toggle.default('disabled'),
     MOCK_CONTROL_HOST: value(

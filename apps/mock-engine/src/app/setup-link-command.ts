@@ -1,14 +1,19 @@
 import type { OperatorClient } from '../adapters/operator-client';
 import type { AddressGap } from '../domain/onboarding/address';
 import type { SetupLinkAnswer } from '../domain/onboarding/operator-api';
+import type { BrowserOpener, BrowserSession } from '../domain/onboarding/setup-link-delivery';
+import { mayOpenBrowser, setupLinkDelivery } from '../domain/onboarding/setup-link-delivery';
 import type { ExitCode } from './exit-codes';
 import { EXIT_CODE } from './exit-codes';
 import type { Say } from './operator-lines';
 import { DONE, FAILED, WAITING } from './operator-lines';
 import { ENGINE_COMMAND } from './registration-messages';
 
-export const SETUP_LINK_USAGE = 'usage: setup-link [--no-wait] [--json]';
-export const OWNER_USAGE = 'usage: owner --reset [--yes] [--no-wait] [--json]';
+export const SETUP_LINK_USAGE = 'usage: setup-link [--no-wait] [--no-open] [--json]';
+export const OWNER_USAGE = 'usage: owner --reset [--yes] [--no-wait] [--no-open] [--json]';
+/** What the terminal says once the browser took the link; the platform's onboarding copy quotes it. */
+export const OPENED_IN_BROWSER = 'Opened in your browser. Create your passkey there.';
+export const NOT_OPENED = 'Could not open a browser here; open the link above yourself.';
 /** How long `setup-link` waits for the address; the certificate usually takes under 30 s, a slow CA a few minutes. */
 export const SETUP_LINK_WAIT_MS = 10 * 60_000;
 const POLL_MS = 1_000;
@@ -25,6 +30,8 @@ export interface SetupLinkCommand {
     readonly wait: boolean;
     /** Print one JSON object, even when stdout is not a terminal: the operator asked for the link explicitly. */
     readonly json: boolean;
+    /** Open the link in the default browser on a local desktop; `--no-open` says no. */
+    readonly open: boolean;
 }
 
 export interface OwnerResetCommand extends SetupLinkCommand {
@@ -42,29 +49,36 @@ function flags(args: readonly string[], allowed: readonly string[], usage: strin
 }
 
 export function parseSetupLinkCommand(args: readonly string[]): SetupLinkCommand {
-    const set = flags(args, ['--no-wait', '--json'], SETUP_LINK_USAGE);
-    return { wait: !set.has('--no-wait'), json: set.has('--json') };
+    const set = flags(args, ['--no-wait', '--no-open', '--json'], SETUP_LINK_USAGE);
+    return { wait: !set.has('--no-wait'), json: set.has('--json'), open: !set.has('--no-open') };
 }
 
 export function parseOwnerCommand(args: readonly string[]): OwnerResetCommand {
     const [action, ...rest] = args;
     if (action !== '--reset') throw new SetupLinkUsageError(OWNER_USAGE);
-    const set = flags(rest, ['--yes', '--no-wait', '--json'], OWNER_USAGE);
-    return { yes: set.has('--yes'), wait: !set.has('--no-wait'), json: set.has('--json') };
+    const set = flags(rest, ['--yes', '--no-wait', '--no-open', '--json'], OWNER_USAGE);
+    return { yes: set.has('--yes'), wait: !set.has('--no-wait'), json: set.has('--json'), open: !set.has('--no-open') };
 }
 
-export interface SetupLinkDeps {
-    readonly client: Pick<OperatorClient, 'status' | 'setupLink' | 'resetOwner'>;
+/** What showing a setup link takes: `setup-link`, `owner --reset` and `connect` once it brought the engine online. */
+export interface ShowSetupLinkDeps {
+    readonly client: Pick<OperatorClient, 'status' | 'setupLink'>;
     /** Stdout: the link, and nothing else that could be mistaken for it. */
     readonly out: Say;
     /** Stderr: progress and problems. */
     readonly err: Say;
-    /** Whether stdout is an interactive terminal. */
-    readonly terminal: boolean;
     readonly sleep: (ms: number) => Promise<void>;
     readonly nowMs: () => number;
     /** The expiry as the operator reads a clock, e.g. `14:32`. */
     readonly clockTime: (iso: string) => string;
+    readonly session: BrowserSession;
+    readonly openBrowser: BrowserOpener;
+}
+
+export interface SetupLinkDeps extends ShowSetupLinkDeps {
+    readonly client: Pick<OperatorClient, 'status' | 'setupLink' | 'resetOwner'>;
+    /** Whether stdout is an interactive terminal. */
+    readonly terminal: boolean;
     /** Reads one line typed on an interactive stdin; `null` when stdin is not a terminal. */
     readonly ask: (prompt: string) => Promise<string | null>;
 }
@@ -85,7 +99,7 @@ const TERMINAL_ONLY = `The setup link is printed only to an interactive terminal
 type Obtained = { readonly answer: SetupLinkAnswer; readonly exitCode: ExitCode } | null;
 
 /** Asks for a link until the address works (or once with `--no-wait`), narrating the wait on stderr. */
-async function obtain(wait: boolean, deps: SetupLinkDeps): Promise<Obtained> {
+async function obtain(wait: boolean, deps: ShowSetupLinkDeps): Promise<Obtained> {
     const deadline = deps.nowMs() + SETUP_LINK_WAIT_MS;
     let said = '';
     for (;;) {
@@ -101,23 +115,40 @@ async function obtain(wait: boolean, deps: SetupLinkDeps): Promise<Obtained> {
     }
 }
 
-function report(obtained: NonNullable<Obtained>, json: boolean, deps: SetupLinkDeps): void {
+/** The link with its expiry and warning, for a terminal only; the engine prints the same when it shows the link. */
+export function setupLinkLines(url: string, expiresAtClock: string): readonly string[] {
+    return [
+        'Make yourself the owner of this engine in your browser:',
+        '',
+        `  ${url}`,
+        '',
+        `This link makes whoever opens it the owner. It works once, until ${expiresAtClock} (30 minutes).`,
+        `Do not paste it into chats or tickets. A new link: ${ENGINE_COMMAND} setup-link`,
+    ];
+}
+
+/** Hands a printed link to the browser; a failure only says so, as the link above still works. */
+export async function openSetupLink(url: string, openBrowser: BrowserOpener, say: Say): Promise<void> {
+    say((await openBrowser(url)) ? OPENED_IN_BROWSER : NOT_OPENED);
+}
+
+async function report(obtained: NonNullable<Obtained>, command: SetupLinkCommand, deps: ShowSetupLinkDeps) {
     const { answer } = obtained;
-    if (json) {
+    if (command.json) {
         deps.out(JSON.stringify(answer));
         return;
     }
     switch (answer.outcome) {
-        case 'created':
-            deps.out('Make yourself the owner of this engine in your browser:');
-            deps.out('');
-            deps.out(`  ${answer.url}`);
-            deps.out('');
-            deps.out(
-                `This link makes whoever opens it the owner. It works once, until ${deps.clockTime(answer.expiresAt)} (30 minutes).`,
-            );
-            deps.out(`Do not paste it into chats or tickets. A new link: ${ENGINE_COMMAND} setup-link`);
+        case 'created': {
+            for (const line of setupLinkLines(answer.url, deps.clockTime(answer.expiresAt))) deps.out(line);
+            const delivery = setupLinkDelivery({
+                terminal: true,
+                ownerSetUp: false,
+                mayOpen: mayOpenBrowser(deps.session, !command.open),
+            });
+            if (delivery === 'print-and-open') await openSetupLink(answer.url, deps.openBrowser, deps.err);
             return;
+        }
         case 'owner-exists':
             deps.err(
                 `${FAILED} This engine already has an owner. If you are the owner and lost every passkey, run \`${ENGINE_COMMAND} owner --reset\`.`,
@@ -145,8 +176,24 @@ export async function runSetupLinkCommand(command: SetupLinkCommand, deps: Setup
         deps.err(NOT_RUNNING);
         return EXIT_CODE.failed;
     }
-    report(obtained, command.json, deps);
+    await report(obtained, command, deps);
     return obtained.exitCode;
+}
+
+/**
+ * `connect` on a terminal, once it brought the running engine online: the engine leaves the first setup link to it,
+ * so it waits for the address like `setup-link` and shows the link, unless the engine already has an owner.
+ */
+export async function showFirstSetupLink(open: boolean, deps: ShowSetupLinkDeps): Promise<void> {
+    const status = await deps.client.status();
+    if (status === null || status.ownerSetUp) return;
+    const obtained = await obtain(true, deps);
+    if (obtained === null) {
+        deps.err(NOT_RUNNING);
+        return;
+    }
+    if (obtained.answer.outcome === 'owner-exists') return;
+    await report(obtained, { wait: true, json: false, open }, deps);
 }
 
 /**

@@ -3,6 +3,7 @@ import { createInterface } from 'node:readline';
 import { createCryptoRandom } from '@ptbk/protocol';
 
 import { AcmeSetupError, loadOrCreateAcmeAccountKey } from './adapters/acme-account-key';
+import { createBrowserOpener } from './adapters/browser-opener';
 import type { AcmeCertificateSource } from './adapters/acme-certificate-source';
 import { createAcmeCertificateSource } from './adapters/acme-certificate-source';
 import { createAcmeClientIssuer } from './adapters/acme-client-issuer';
@@ -18,6 +19,7 @@ import { PasskeyStoreError, createFsPasskeyStore } from './adapters/fs-passkey-s
 import { SetupSecretStoreError, createFsSetupSecretStore } from './adapters/fs-setup-secret-store';
 import { SpentTicketStoreError, createFsSpentTicketStore } from './adapters/fs-spent-ticket-store';
 import { gatewayPagesDir, loadGatewayPageFiles } from './adapters/http/gateway-page-files';
+import type { OperatorClient } from './adapters/operator-client';
 import { OperatorAnswerError, createOperatorClient } from './adapters/operator-client';
 import { OperatorSocketError, startOperatorSocket } from './adapters/operator-socket';
 import { createOsSystemStats } from './adapters/os-system-stats';
@@ -38,7 +40,7 @@ import { ConnectUsageError, parseConnectCommand, parseRegisterCommand, runConnec
 import { RegistrationFailedError } from './app/establish-registration';
 import { EXIT_CODE } from './app/exit-codes';
 import { FAILED } from './app/operator-lines';
-import type { SetupLinkDeps } from './app/setup-link-command';
+import type { SetupLinkDeps, ShowSetupLinkDeps } from './app/setup-link-command';
 import {
     SetupLinkUsageError,
     localClockTime,
@@ -52,12 +54,23 @@ import type { DashboardDeps, MockEngine } from './app/start-mock-engine';
 import { startMockEngine } from './app/start-mock-engine';
 import { UiLoaderSetupError, createUiLoaderDeps } from './app/ui-loader-deps';
 import type { Logger } from './domain/logger';
+import type { BrowserSession } from './domain/onboarding/setup-link-delivery';
+import { mayOpenBrowser } from './domain/onboarding/setup-link-delivery';
 import type { AcmeChallenges } from './domain/tls/acme-challenges';
 import { createAcmeChallenges } from './domain/tls/acme-challenges';
 import type { ManagedCertificateSource } from './domain/tls/certificate-source';
 import { StoredRegistrationError } from './domain/registration/register';
 
 const SHUTDOWN_TIMEOUT_MS = 10_000;
+const ENGINE_USAGE = 'usage: mock-engine [--no-open]';
+const BROWSER_SESSION: BrowserSession = { platform: process.platform, env: process.env };
+
+class EngineUsageError extends Error {
+    constructor() {
+        super(ENGINE_USAGE);
+        this.name = 'EngineUsageError';
+    }
+}
 
 // Our own startup errors name settings and paths, never values; anything else may carry values, so only its name.
 function problemOf(error: unknown): string {
@@ -72,6 +85,7 @@ function problemOf(error: unknown): string {
         error instanceof StoredRegistrationError ||
         error instanceof SeqStoreError ||
         error instanceof ConnectUsageError ||
+        error instanceof EngineUsageError ||
         error instanceof StatusUsageError ||
         error instanceof SetupLinkUsageError ||
         error instanceof SetupSecretStoreError ||
@@ -173,6 +187,7 @@ async function connect(parse: (args: readonly string[]) => ConnectCommand, args:
     }
     try {
         const config = parseConfig();
+        const operator = createOperatorClient(config.dataDir);
         const result = await runConnectCommand(command, config, {
             api: dashboardApi(config, await loadTrustedRoots(config.extraCaFile)),
             registrations: createFsRegistrationStore(config.dataDir),
@@ -182,7 +197,9 @@ async function connect(parse: (args: readonly string[]) => ConnectCommand, args:
             random: createCryptoRandom(),
             say: command.json ? stderrLine : stdoutLine,
             signal: new AbortController().signal,
-            joinRunning: () => createOperatorClient(config.dataDir).link(),
+            joinRunning: (showsSetupLink) => operator.link(showsSetupLink),
+            terminal: process.stdout.isTTY,
+            setupLink: showSetupLinkDeps(operator),
         });
         if (command.json) stdoutLine(JSON.stringify(result.report));
         process.exitCode = result.exitCode;
@@ -192,9 +209,19 @@ async function connect(parse: (args: readonly string[]) => ConnectCommand, args:
     }
 }
 
-async function start(): Promise<{ readonly engine: MockEngine; readonly logger: Logger } | null> {
+/** The engine itself takes one flag: `--no-open` keeps the first setup link out of the browser. */
+function parseEngineArgs(args: readonly string[]): { readonly open: boolean } {
+    if (args.length === 0) return { open: true };
+    if (args.length === 1 && args[0] === '--no-open') return { open: false };
+    throw new EngineUsageError();
+}
+
+async function start(
+    args: readonly string[],
+): Promise<{ readonly engine: MockEngine; readonly logger: Logger } | null> {
     let logger = createJsonLogger({ level: 'info', clock: systemClock });
     try {
+        const { open } = parseEngineArgs(args);
         const parsed = parseConfig();
         logger = createJsonLogger({ level: parsed.logLevel, clock: systemClock });
         const config = await withStoredDashboard(
@@ -208,6 +235,11 @@ async function start(): Promise<{ readonly engine: MockEngine; readonly logger: 
             logger,
             // Human progress only on a terminal: a service's stdout is a log stream that gets shipped and read by others.
             say: process.stdout.isTTY ? stdoutLine : null,
+            // In the foreground the engine shows the first setup link itself, unless `connect` takes that over.
+            firstSetupLink: {
+                mayOpen: mayOpenBrowser(BROWSER_SESSION, !open),
+                openBrowser: createBrowserOpener(process.platform),
+            },
             onboarding: {
                 setupSecrets: createFsSetupSecretStore(config.dataDir),
                 passkeys: createFsPasskeyStore(config.dataDir),
@@ -239,6 +271,10 @@ async function start(): Promise<{ readonly engine: MockEngine; readonly logger: 
         return { engine, logger };
     } catch (error) {
         logger.error('engine.start-failed', { problem: problemOf(error) });
+        if (error instanceof EngineUsageError) {
+            stderrLine(ENGINE_USAGE);
+            process.exitCode = EXIT_CODE.usage;
+        }
         if (error instanceof RegistrationFailedError) {
             if (error.sentence !== null && process.stdout.isTTY) stdoutLine(`${FAILED} ${error.sentence}`);
             process.exitCode = error.exitCode;
@@ -327,15 +363,25 @@ function ask(prompt: string): Promise<string | null> {
     });
 }
 
-function setupLinkDeps(dataDir: string): SetupLinkDeps {
+function showSetupLinkDeps(client: OperatorClient): ShowSetupLinkDeps {
     return {
-        client: createOperatorClient(dataDir),
+        client,
         out: stdoutLine,
         err: stderrLine,
-        terminal: process.stdout.isTTY,
         sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
         nowMs: () => Date.now(),
         clockTime: localClockTime,
+        session: BROWSER_SESSION,
+        openBrowser: createBrowserOpener(process.platform),
+    };
+}
+
+function setupLinkDeps(dataDir: string): SetupLinkDeps {
+    const client = createOperatorClient(dataDir);
+    return {
+        ...showSetupLinkDeps(client),
+        client,
+        terminal: process.stdout.isTTY,
         ask,
     };
 }
@@ -370,7 +416,7 @@ if (verb === 'status') {
 } else if (verb === 'conformance-session') {
     await conformanceSession(args);
 } else {
-    const started = await start();
+    const started = await start(verb === undefined ? [] : [verb, ...args]);
     if (started === null) exitAfterOutput(typeof process.exitCode === 'number' ? process.exitCode : EXIT_CODE.failed);
     else serve(started.engine, started.logger);
 }

@@ -11,7 +11,7 @@ export const SELF_TEST_HEARTBEAT_INTERVAL_S = 2;
 /** The mock engine's bundle (built by the package's test script), small and fast. */
 export function mockEngineCommand(extraEnv = ''): EngineCommand {
     return {
-        command: `MOCK_PROFILE=full MOCK_SCENARIO=empty MOCK_HEARTBEAT_INTERVAL_S=${String(SELF_TEST_HEARTBEAT_INTERVAL_S)} ${extraEnv} exec node ${JSON.stringify(MOCK_ENGINE)}`,
+        command: `MOCK_PROFILE=full MOCK_SCENARIO=empty MOCK_PASSKEYS=seeded MOCK_HEARTBEAT_INTERVAL_S=${String(SELF_TEST_HEARTBEAT_INTERVAL_S)} ${extraEnv} exec node ${JSON.stringify(MOCK_ENGINE)}`,
         cwd: process.cwd(),
     };
 }

@@ -204,13 +204,13 @@ jobs:
       - name: Run every suite, and the production heartbeat cadence, against mock engines the harness starts
         run: |
           node packages/conformance/dist/ptbk-conformance.js \
-            --engine-cmd "MOCK_SCENARIO=empty exec node $GITHUB_WORKSPACE/apps/mock-engine/dist/main.mjs" \
+            --engine-cmd "MOCK_SCENARIO=empty MOCK_PASSKEYS=seeded exec node $GITHUB_WORKSPACE/apps/mock-engine/dist/main.mjs" \
             --filter heartbeat.cadence.interval --seed 1 --report junit --out conformance-cadence-report.xml \
             > "$RUNNER_TEMP/conformance-cadence.log" 2>&1 &
           cadence=$!
           status=0
           node packages/conformance/dist/ptbk-conformance.js \
-            --engine-cmd "MOCK_PROFILE=full MOCK_SCENARIO=small-team MOCK_SEED=1 MOCK_HEARTBEAT_INTERVAL_S=2 exec node $GITHUB_WORKSPACE/apps/mock-engine/dist/main.mjs" \
+            --engine-cmd "MOCK_PROFILE=full MOCK_SCENARIO=small-team MOCK_SEED=1 MOCK_PASSKEYS=seeded MOCK_HEARTBEAT_INTERVAL_S=2 exec node $GITHUB_WORKSPACE/apps/mock-engine/dist/main.mjs" \
             --engine-production-cmd "NODE_ENV=production MOCK_SCENARIO=small-team MOCK_HEARTBEAT_INTERVAL_S=2 exec node $GITHUB_WORKSPACE/apps/mock-engine/dist/main.mjs" \
             --heartbeat-interval-s 2 --mock-control --seed 1 --report junit --out conformance-report.xml || status=$?
           wait "$cadence" || status=$?

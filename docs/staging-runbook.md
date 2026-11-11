@@ -375,11 +375,13 @@ The mock engine checks the path through the relay end to end. On your machine:
 bun run --filter @ptbk/mock-engine build
 mkdir -m 700 -p ~/.ptbk-staging-engine
 export PTBK_DATA_DIR=~/.ptbk-staging-engine PTBK_ENGINE_DOMAIN=engines.ptbk.link
-node apps/mock-engine/dist/main.mjs connect --link '<link URL>'  # from Engines, New engine
-node apps/mock-engine/dist/main.mjs                              # runs the engine: tunnels, heartbeats
+node apps/mock-engine/dist/main.mjs                              # terminal 1: runs the engine, unlinked until connect
+node apps/mock-engine/dist/main.mjs connect --link '<link URL>'  # terminal 2: from Engines, New engine
 ```
 
-**You should see:** `connect` exits 0 and prints the engine ID and the fingerprint the page shows; the page's checklist moves on; the engine shows online after its first heartbeat (within about a minute). Once the relay runs (step 10), the engine reports `relays.connected`, the dashboard says "Reachable through 1 relay", and the path through the relay is end to end:
+The mock starts like a fresh real engine, without an owner (`MOCK_PASSKEYS=none` is its default; `MOCK_PASSKEYS=seeded` brings the scenario's owner, and then no setup link is shown). Over SSH, or with `--no-open` or `PTBK_NO_OPEN=1`, the link is printed but not opened; `node apps/mock-engine/dist/main.mjs setup-link` prints a fresh one at any time. Running `connect` first and then the engine works too: the engine, in the foreground, then shows the link itself.
+
+**You should see:** `connect` prints the engine ID and the fingerprint the page shows and links the running engine; the page's checklist moves on; the engine shows online after its first heartbeat (within about a minute). Once the relay runs (step 10), the engine reports `relays.connected` and the dashboard says "Reachable through 1 relay"; `connect` then prints the setup link, opens it in your browser, says "Opened in your browser. Create your passkey there." and exits 0. Browsers refuse passkeys on a page with a certificate error, so to finish the owner step trust the mock's dev CA first (`$PTBK_DATA_DIR/dev-ca/ca-cert.pem`, name-constrained to the engine domain; see the mock engine's README, "Dev CA") and remove it again afterwards. The path through the relay is end to end:
 
 ```sh
 curl -sk https://<engineId>.engines.ptbk.link/__spike/whoami

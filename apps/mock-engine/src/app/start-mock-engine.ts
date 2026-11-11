@@ -81,6 +81,8 @@ import type { AddressGap } from '../domain/onboarding/address';
 import { addressGaps } from '../domain/onboarding/address';
 import type { LinkAnswer, OperatorApi } from '../domain/onboarding/operator-api';
 import { hasOwner } from '../domain/onboarding/owner';
+import type { BrowserOpener } from '../domain/onboarding/setup-link-delivery';
+import { setupLinkDelivery } from '../domain/onboarding/setup-link-delivery';
 import { loadRegistration } from '../domain/registration/register';
 import type { MockEngineConfig } from './config';
 import { engineStatus } from './engine-status';
@@ -88,8 +90,9 @@ import { establishRegistration } from './establish-registration';
 import type { Say } from './operator-lines';
 import { WAITING } from './operator-lines';
 import { ENGINE_COMMAND, retrySentence } from './registration-messages';
+import { localClockTime, openSetupLink, setupLinkLines } from './setup-link-command';
 import type { StartupProgress } from './startup-progress';
-import { createStartupProgress } from './startup-progress';
+import { NO_OWNER_LINE, createStartupProgress } from './startup-progress';
 
 /** Everything `@ptbk/protocol` implements, so the mock always advertises exactly the current contract. */
 export const DEFAULT_TUNNEL_OFFER: TunnelOfferConfig = Object.freeze({
@@ -119,6 +122,12 @@ export interface MockEngineDeps {
     readonly ui?: UiLoaderDeps | undefined;
     /** The operator's terminal, when the engine runs in one; never given when stdout is a log stream. */
     readonly say?: Say | null;
+    /**
+     * Given by the CLI that runs the engine in the foreground: when the address first works without an owner, the
+     * engine shows the setup link on its terminal (`say`) and opens it when `mayOpen`, unless `connect` took that over.
+     * Without it, or without a terminal, the engine only points at `setup-link`.
+     */
+    readonly firstSetupLink?: { readonly mayOpen: boolean; readonly openBrowser: BrowserOpener };
     /**
      * The owner's setup: the stores, WebAuthn and the reference pages. Without it the secret and passkeys live in memory
      * and no `/setup` is served, so `setup-link` waits for it (tests that need neither).
@@ -235,7 +244,32 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
     const startedAtMs = deps.clock.nowMs();
     const identity = await deps.identityStore.loadOrCreate();
     const hostname = defaultHostname(identity.engineId, config.engineDomain);
-    const progress = createStartupProgress({ logger, say: deps.say ?? null, engineId: identity.engineId, hostname });
+    // Set by `connect` on a terminal when it links this engine: that command shows the first setup link instead.
+    let connectShowsSetupLink = false;
+    const progress = createStartupProgress({
+        logger,
+        say: deps.say ?? null,
+        engineId: identity.engineId,
+        hostname,
+        setupLink: {
+            shownBy: () => {
+                if (connectShowsSetupLink) return 'connect';
+                const delivery = setupLinkDelivery({
+                    terminal: (deps.say ?? null) !== null && deps.firstSetupLink !== undefined,
+                    ownerSetUp: false,
+                    mayOpen: deps.firstSetupLink?.mayOpen ?? false,
+                });
+                return delivery === 'none' ? 'operator' : 'engine';
+            },
+            show: () => {
+                showFirstSetupLink().catch((error: unknown) => {
+                    logger.error('setup-link.show-failed', {
+                        problem: error instanceof Error ? error.name : 'unknown',
+                    });
+                });
+            },
+        },
+    });
     progress.identity();
     const dashboard = config.dashboard === null ? null : { config: config.dashboard, deps: dashboardDeps(deps) };
     let registration =
@@ -527,13 +561,17 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
                 heartbeat: heartbeat?.status() ?? null,
                 addressGaps: addressGapsNow(),
             }),
-        link() {
-            if (dashboard === null || registration !== null) return Promise.resolve({ outcome: 'already-linked' });
+        async link({ callerShowsSetupLink }) {
+            if (dashboard === null || registration !== null) return { outcome: 'already-linked' };
+            // Claimed before the relays are dialled, so it is settled by the time the address first works.
+            if (callerShowsSetupLink) connectShowsSetupLink = true;
             // Two `connect` calls racing share one attempt, so the engine never dials twice.
             linking ??= linkStored(dashboard).finally(() => {
                 linking = null;
             });
-            return linking;
+            const answer = await linking;
+            if (answer.outcome === 'not-registered') connectShowsSetupLink = false;
+            return answer;
         },
         async setupLink() {
             const missing = addressGapsNow();
@@ -550,6 +588,22 @@ export async function startMockEngine(config: MockEngineConfig, deps: MockEngine
         },
         resetOwner: () => passkeyGateway.resetOwner(),
     };
+    /** The engine's own terminal gets the first link, issued like `setup-link`'s and never logged. */
+    async function showFirstSetupLink(): Promise<void> {
+        const say = deps.say ?? null;
+        const first = deps.firstSetupLink;
+        if (say === null || first === undefined) return;
+        const delivery = setupLinkDelivery({ terminal: true, ownerSetUp: ownerSetUpNow(), mayOpen: first.mayOpen });
+        if (delivery === 'none') return;
+        const answer = await operator.setupLink();
+        if (answer.outcome === 'not-ready') {
+            say(NO_OWNER_LINE);
+        }
+        if (answer.outcome !== 'created') return;
+        for (const line of setupLinkLines(answer.url, localClockTime(answer.expiresAt))) say(line);
+        if (delivery === 'print-and-open') await openSetupLink(answer.url, first.openBrowser, say);
+    }
+
     let operatorChannel: { close(): Promise<void> } | null = null;
     try {
         operatorChannel = deps.operatorChannel === undefined ? null : await deps.operatorChannel(operator);

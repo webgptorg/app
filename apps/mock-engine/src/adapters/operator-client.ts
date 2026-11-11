@@ -11,7 +11,8 @@ const MAX_RESPONSE_BYTES = 64 * 1024;
 /** The running engine, as the operator's commands reach it; `null` from a call means no engine answered. */
 export interface OperatorClient {
     status(): Promise<OperatorStatus | null>;
-    link(): Promise<LinkAnswer | null>;
+    /** `showsSetupLink`: this command shows the first setup link, so the engine issues none of its own. */
+    link(showsSetupLink: boolean): Promise<LinkAnswer | null>;
     setupLink(): Promise<SetupLinkAnswer | null>;
     resetOwner(): Promise<ResetAnswer | null>;
 }
@@ -83,7 +84,15 @@ export function createOperatorClient(dataDir: string): OperatorClient {
     }
     return {
         status: () => guarded(() => call(socketPath, 'GET', OPERATOR_PATHS.status, OperatorStatus)),
-        link: () => guarded(() => call(socketPath, 'POST', OPERATOR_PATHS.link, LinkAnswer)),
+        link: (showsSetupLink) =>
+            guarded(() =>
+                call(
+                    socketPath,
+                    'POST',
+                    showsSetupLink ? `${OPERATOR_PATHS.link}?setup-link=caller` : OPERATOR_PATHS.link,
+                    LinkAnswer,
+                ),
+            ),
         setupLink: () => guarded(() => call(socketPath, 'POST', OPERATOR_PATHS.setupLink, SetupLinkAnswer)),
         resetOwner: () => guarded(() => call(socketPath, 'POST', OPERATOR_PATHS.resetOwner, ResetAnswer)),
     };

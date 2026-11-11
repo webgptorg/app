@@ -239,6 +239,20 @@ describe('a refused start', () => {
         },
         PROCESS_TIMEOUT_MS,
     );
+
+    it(
+        "takes only --no-open as the engine's own argument, and exits 2 on anything else",
+        async () => {
+            const engine = run(
+                'src/main.ts',
+                { PTBK_DATA_DIR: join(await tempDir(), 'data'), PTBK_ENGINE_DOMAIN: ENGINE_DOMAIN },
+                ['--no-open', '--verbose'],
+            );
+            expect(await engine.exited).toBe(2);
+            expect(engine.stderr()).toContain('usage: mock-engine [--no-open]');
+        },
+        PROCESS_TIMEOUT_MS,
+    );
 });
 
 describe('register command and dashboard mode', () => {

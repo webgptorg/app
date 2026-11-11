@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import { createMemoryIdentityStore } from '../adapters/memory-identity-store';
 import type { DashboardApi, RegisterCall } from '../domain/dashboard/dashboard-api';
-import type { LinkAnswer } from '../domain/onboarding/operator-api';
+import type { LinkAnswer, OperatorStatus, SetupLinkAnswer } from '../domain/onboarding/operator-api';
 import { createFakeClock, settleWithClock } from '../testing/fake-clock';
 import { createFakeDashboard } from '../testing/fake-dashboard';
 import { createMemoryLogger } from '../testing/memory-logger';
@@ -26,6 +26,7 @@ const ENGINE_DOMAIN = Hostname.parse('engines.ptbk.test');
 const RELAYS = [Hostname.parse('relay-a.ptbk.test')];
 const CODE = 'abcdefghijklmnopqrstuvwxya';
 const DASHBOARD_URL = 'https://app.ptbk.test';
+const SETUP_URL = 'https://k5dq4tabcdefghijklmnopqrst.engines.ptbk.test/setup#Zm9vYmFyYmF6cXV4cXV1eA';
 const CONFIG: ParsedMockEngineConfig = {
     mode: 'tunnel',
     dataDir: '/unused',
@@ -60,18 +61,33 @@ function usageMessage(parse: () => unknown): string {
 
 describe('parseConnectCommand', () => {
     it('takes --link with a code and an optional --json, in any order', () => {
-        expect(parseConnectCommand(['--link', CODE])).toEqual({ linkCode: CODE, dashboardOrigin: null, json: false });
+        expect(parseConnectCommand(['--link', CODE])).toEqual({
+            linkCode: CODE,
+            dashboardOrigin: null,
+            json: false,
+            open: true,
+        });
         expect(parseConnectCommand(['--json', '--link', CODE])).toEqual({
             linkCode: CODE,
             dashboardOrigin: null,
             json: true,
+            open: true,
         });
         expect(parseConnectCommand(['--link', CODE, '--json'])).toEqual({
             linkCode: CODE,
             dashboardOrigin: null,
             json: true,
+            open: true,
         });
-        for (const args of [[], ['--link'], ['--json'], ['--link', CODE, '--link', CODE], ['--link', CODE, 'x']]) {
+        expect(parseConnectCommand(['--no-open', '--link', CODE])).toMatchObject({ open: false });
+        for (const args of [
+            [],
+            ['--link'],
+            ['--json'],
+            ['--link', CODE, '--link', CODE],
+            ['--link', CODE, 'x'],
+            ['--link', CODE, '--no-open', '--no-open'],
+        ]) {
             expect(usageMessage(() => parseConnectCommand(args))).toBe(CONNECT_USAGE);
         }
     });
@@ -81,6 +97,7 @@ describe('parseConnectCommand', () => {
             linkCode: CODE,
             dashboardOrigin: 'https://app.ptbk.link',
             json: false,
+            open: true,
         });
     });
 
@@ -100,7 +117,12 @@ describe('parseConnectCommand', () => {
 
 describe('parseRegisterCommand', () => {
     it('is connect with --json, under its X-05 usage', () => {
-        expect(parseRegisterCommand(['--link', CODE])).toEqual({ linkCode: CODE, dashboardOrigin: null, json: true });
+        expect(parseRegisterCommand(['--link', CODE])).toEqual({
+            linkCode: CODE,
+            dashboardOrigin: null,
+            json: true,
+            open: false,
+        });
         for (const args of [[], ['--link'], ['--code', CODE], ['--link', CODE, '--json']]) {
             expect(usageMessage(() => parseRegisterCommand(args))).toBe(REGISTER_USAGE);
         }
@@ -114,6 +136,8 @@ describe('runConnectCommand', () => {
         const lines: string[] = [];
         const logger = createMemoryLogger();
         let running: LinkAnswer | null = null;
+        const joins: boolean[] = [];
+        const shown: string[] = [];
         const apiUrls: string[] = [];
         const deps = {
             identityStore: createMemoryIdentityStore(),
@@ -127,10 +151,37 @@ describe('runConnectCommand', () => {
             random: createSeededRandom(5),
             say: (line: string) => lines.push(line),
             signal: new AbortController().signal,
-            joinRunning: () => Promise.resolve(running),
+            joinRunning: (showsSetupLink: boolean) => {
+                joins.push(showsSetupLink);
+                return Promise.resolve(running);
+            },
+            terminal: false,
+            setupLink: {
+                client: {
+                    status: () => Promise.resolve({ ownerSetUp: false } as OperatorStatus),
+                    setupLink: () =>
+                        Promise.resolve<SetupLinkAnswer>({
+                            outcome: 'created',
+                            url: SETUP_URL,
+                            expiresAt: '2026-10-26T10:30:00Z',
+                        }),
+                },
+                out: (line: string) => shown.push(line),
+                err: (line: string) => shown.push(line),
+                sleep: () => Promise.resolve(),
+                nowMs: () => 0,
+                clockTime: () => '10:30',
+                session: { platform: 'darwin', env: {} },
+                openBrowser: (url: string) => {
+                    shown.push(`opened ${url}`);
+                    return Promise.resolve(true);
+                },
+            },
         };
         return {
             apiUrls,
+            joins,
+            shown,
             clock,
             dashboard,
             deps,
@@ -145,7 +196,11 @@ describe('runConnectCommand', () => {
     it('creates the key, links and shows the identity the dashboard shows, then reports already linked', async () => {
         const { dashboard, deps, lines } = setup();
         const code = dashboard.issueLinkCode('org-a');
-        const first = await runConnectCommand({ linkCode: code, dashboardOrigin: null, json: false }, CONFIG, deps);
+        const first = await runConnectCommand(
+            { linkCode: code, dashboardOrigin: null, json: false, open: true },
+            CONFIG,
+            deps,
+        );
         const identity = await deps.identityStore.loadOrCreate();
         expect(first).toEqual({
             exitCode: EXIT_CODE.ok,
@@ -166,7 +221,7 @@ describe('runConnectCommand', () => {
             'Start the engine to bring it online; it uses this registration.',
         ]);
         const second = await runConnectCommand(
-            { linkCode: dashboard.issueLinkCode('org-a'), dashboardOrigin: null, json: false },
+            { linkCode: dashboard.issueLinkCode('org-a'), dashboardOrigin: null, json: false, open: true },
             CONFIG,
             deps,
         );
@@ -179,32 +234,70 @@ describe('runConnectCommand', () => {
         const { dashboard, deps, lines, runEngine } = setup();
         runEngine({ outcome: 'linked', relays: 2 });
         await runConnectCommand(
-            { linkCode: dashboard.issueLinkCode('org-a'), dashboardOrigin: null, json: false },
+            { linkCode: dashboard.issueLinkCode('org-a'), dashboardOrigin: null, json: false, open: true },
             CONFIG,
             deps,
         );
         expect(lines.at(-1)).toBe('✓ The running engine is linked and connects to 2 relays');
         runEngine({ outcome: 'not-registered' });
         await runConnectCommand(
-            { linkCode: dashboard.issueLinkCode('org-a'), dashboardOrigin: null, json: false },
+            { linkCode: dashboard.issueLinkCode('org-a'), dashboardOrigin: null, json: false, open: true },
             CONFIG,
             deps,
         );
         expect(lines.at(-1)).toBe('✗ The running engine could not read this registration; restart it.');
         runEngine({ outcome: 'already-linked' });
         await runConnectCommand(
-            { linkCode: dashboard.issueLinkCode('org-a'), dashboardOrigin: null, json: false },
+            { linkCode: dashboard.issueLinkCode('org-a'), dashboardOrigin: null, json: false, open: true },
             CONFIG,
             deps,
         );
         expect(lines.at(-1)).toBe('✓ Already linked to your Promptbook account');
     });
 
+    it('on a terminal, claims the first setup link from the engine it brings online, then shows and opens it', async () => {
+        const { dashboard, deps, joins, shown, runEngine } = setup();
+        runEngine({ outcome: 'linked', relays: 1 });
+        const command = { linkCode: dashboard.issueLinkCode('org-a'), dashboardOrigin: null, json: false, open: true };
+        const result = await runConnectCommand(command, CONFIG, { ...deps, terminal: true });
+        expect(result.exitCode).toBe(EXIT_CODE.ok);
+        expect(joins).toEqual([true]);
+        expect(shown).toContain(`  ${SETUP_URL}`);
+        expect(shown.slice(-2)).toEqual([`opened ${SETUP_URL}`, 'Opened in your browser. Create your passkey there.']);
+    });
+
+    it('leaves the setup link to the engine with --json or without a terminal, and opens nothing with --no-open', async () => {
+        const { dashboard, deps, joins, shown, runEngine } = setup();
+        runEngine({ outcome: 'linked', relays: 1 });
+        const code = () => dashboard.issueLinkCode('org-a');
+        await runConnectCommand({ linkCode: code(), dashboardOrigin: null, json: false, open: true }, CONFIG, deps);
+        await runConnectCommand({ linkCode: code(), dashboardOrigin: null, json: true, open: true }, CONFIG, {
+            ...deps,
+            terminal: true,
+        });
+        expect(joins).toEqual([false, false]);
+        expect(shown).toEqual([]);
+        await runConnectCommand({ linkCode: code(), dashboardOrigin: null, json: false, open: false }, CONFIG, {
+            ...deps,
+            terminal: true,
+        });
+        expect(shown).toContain(`  ${SETUP_URL}`);
+        expect(shown.some((line) => line.startsWith('opened'))).toBe(false);
+    });
+
+    it('shows no setup link for an engine that was linked already', async () => {
+        const { dashboard, deps, shown, runEngine } = setup();
+        runEngine({ outcome: 'already-linked' });
+        const command = { linkCode: dashboard.issueLinkCode('org-a'), dashboardOrigin: null, json: false, open: true };
+        await runConnectCommand(command, CONFIG, { ...deps, terminal: true });
+        expect(shown).toEqual([]);
+    });
+
     it('exits with the class of a refusal and says what to do', async () => {
         const { dashboard, deps, lines } = setup();
         dashboard.setEngineLimit('org-a', 0);
         const result = await runConnectCommand(
-            { linkCode: dashboard.issueLinkCode('org-a'), dashboardOrigin: null, json: true },
+            { linkCode: dashboard.issueLinkCode('org-a'), dashboardOrigin: null, json: true, open: true },
             CONFIG,
             deps,
         );
@@ -226,7 +319,7 @@ describe('runConnectCommand', () => {
             heartbeat: (...args) => dashboard.api.heartbeat(...args),
         };
         const result = await runConnectCommand(
-            { linkCode: LinkCode.parse(CODE), dashboardOrigin: null, json: true },
+            { linkCode: LinkCode.parse(CODE), dashboardOrigin: null, json: true, open: true },
             CONFIG,
             { ...deps, api: () => api },
         );
@@ -241,7 +334,7 @@ describe('runConnectCommand', () => {
         dashboard.unreachable = true;
         const result = await settleWithClock(
             runConnectCommand(
-                { linkCode: dashboard.issueLinkCode('org-a'), dashboardOrigin: null, json: true },
+                { linkCode: dashboard.issueLinkCode('org-a'), dashboardOrigin: null, json: true, open: true },
                 CONFIG,
                 deps,
             ),
@@ -261,7 +354,11 @@ describe('runConnectCommand', () => {
     it('links with the dashboard a link URL names, says so first, and stores it with the registration', async () => {
         const { apiUrls, dashboard, deps, lines } = setup();
         const linkCode = dashboard.issueLinkCode('org-a');
-        const result = await runConnectCommand({ linkCode, dashboardOrigin: DASHBOARD_URL, json: false }, UNSET, deps);
+        const result = await runConnectCommand(
+            { linkCode, dashboardOrigin: DASHBOARD_URL, json: false, open: true },
+            UNSET,
+            deps,
+        );
         expect(result.exitCode).toBe(EXIT_CODE.ok);
         expect(apiUrls).toEqual([DASHBOARD_URL]);
         expect(lines.findIndex((line) => line.includes(`dashboard at ${DASHBOARD_URL}`))).toBeLessThan(
@@ -274,7 +371,7 @@ describe('runConnectCommand', () => {
     it('accepts a link URL for the dashboard PTBK_DASHBOARD_URL names', async () => {
         const { dashboard, deps } = setup();
         const result = await runConnectCommand(
-            { linkCode: dashboard.issueLinkCode('org-a'), dashboardOrigin: DASHBOARD_URL, json: true },
+            { linkCode: dashboard.issueLinkCode('org-a'), dashboardOrigin: DASHBOARD_URL, json: true, open: true },
             CONFIG,
             deps,
         );
@@ -287,6 +384,7 @@ describe('runConnectCommand', () => {
             linkCode: dashboard.issueLinkCode('org-a'),
             dashboardOrigin: 'https://app.ptbk.link',
             json: false,
+            open: true,
         };
         await expect(runConnectCommand(command, CONFIG, deps)).rejects.toThrow(ConfigError);
         await expect(runConnectCommand(command, CONFIG, deps)).rejects.toMatchObject({
@@ -301,12 +399,12 @@ describe('runConnectCommand', () => {
     it('sends a bare code to the dashboard stored with the registration', async () => {
         const { apiUrls, dashboard, deps } = setup();
         await runConnectCommand(
-            { linkCode: dashboard.issueLinkCode('org-a'), dashboardOrigin: DASHBOARD_URL, json: true },
+            { linkCode: dashboard.issueLinkCode('org-a'), dashboardOrigin: DASHBOARD_URL, json: true, open: true },
             UNSET,
             deps,
         );
         const again = await runConnectCommand(
-            { linkCode: dashboard.issueLinkCode('org-a'), dashboardOrigin: null, json: true },
+            { linkCode: dashboard.issueLinkCode('org-a'), dashboardOrigin: null, json: true, open: true },
             UNSET,
             deps,
         );
@@ -316,7 +414,7 @@ describe('runConnectCommand', () => {
 
     it('needs a link URL or PTBK_DASHBOARD_URL for a bare code on a new engine', async () => {
         const { deps } = setup();
-        const command = { linkCode: LinkCode.parse(CODE), dashboardOrigin: null, json: false };
+        const command = { linkCode: LinkCode.parse(CODE), dashboardOrigin: null, json: false, open: true };
         await expect(runConnectCommand(command, UNSET, deps)).rejects.toThrow(ConfigError);
         await expect(runConnectCommand(command, { ...CONFIG, dashboard: null }, deps)).rejects.toThrow(ConfigError);
     });

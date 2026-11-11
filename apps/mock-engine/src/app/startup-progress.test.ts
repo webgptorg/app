@@ -2,12 +2,13 @@ import { EngineId, Hostname, deriveEngineFingerprint } from '@ptbk/protocol';
 import { describe, expect, it } from 'vitest';
 
 import { createMemoryLogger } from '../testing/memory-logger';
+import type { SetupLinkShownBy } from './startup-progress';
 import { createStartupProgress } from './startup-progress';
 
 const ENGINE_ID = EngineId.parse('k5dq4tabcdefghijklmnopqrst');
 const HOSTNAME = Hostname.parse(`${ENGINE_ID}.engines.ptbk.test`);
 
-function setup(terminal = true) {
+function setup(terminal = true, shownBy?: () => SetupLinkShownBy) {
     const logger = createMemoryLogger();
     const lines: string[] = [];
     const progress = createStartupProgress({
@@ -15,6 +16,14 @@ function setup(terminal = true) {
         say: terminal ? (line) => lines.push(line) : null,
         engineId: ENGINE_ID,
         hostname: HOSTNAME,
+        ...(shownBy === undefined
+            ? {}
+            : {
+                  setupLink: {
+                      shownBy,
+                      show: () => lines.push('<setup link>'),
+                  },
+              }),
     });
     return { logger, lines, progress };
 }
@@ -74,6 +83,37 @@ describe('createStartupProgress', () => {
             'owner.none',
             'owner.set-up',
         ]);
+    });
+
+    it('has the engine show the first setup link after Ready, once, when it is the one to show it', () => {
+        const { logger, lines, progress } = setup(true, () => 'engine');
+        progress.onboarding({ addressGaps: [], ownerSetUp: false });
+        progress.onboarding({ addressGaps: [], ownerSetUp: true });
+        progress.onboarding({ addressGaps: [], ownerSetUp: false });
+        expect(lines).toEqual([
+            `Ready: https://${HOSTNAME}/`,
+            '<setup link>',
+            '✓ Owner set up',
+            'No owner yet. Run `mock-engine setup-link` on this host to get the setup link.',
+        ]);
+        expect(logger.entries.map(({ event }) => event)).toEqual([
+            'owner.none',
+            'engine.ready',
+            'owner.set-up',
+            'owner.none',
+        ]);
+    });
+
+    it('points at connect when that command shows the link, and shows none for an engine with an owner', () => {
+        const connect = setup(true, () => 'connect');
+        connect.progress.onboarding({ addressGaps: [], ownerSetUp: false });
+        expect(connect.lines).toEqual([
+            'No owner yet. `mock-engine connect` shows the setup link where it runs; `mock-engine setup-link` makes a new one.',
+            `Ready: https://${HOSTNAME}/`,
+        ]);
+        const owned = setup(true, () => 'engine');
+        owned.progress.onboarding({ addressGaps: [], ownerSetUp: true });
+        expect(owned.lines).toEqual(['✓ Owner set up', `Ready: https://${HOSTNAME}/`]);
     });
 
     it('says how to link an engine started without a link code', () => {
