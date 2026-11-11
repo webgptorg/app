@@ -7,16 +7,46 @@ import { session } from '../../testing/fixtures';
 import { renderApp } from '../../testing/render-app';
 
 describe('trust page', () => {
-    it('explains, to anyone signed out, what we keep and what we cannot see', async () => {
+    it('shows anyone signed out the promise, the path their data takes, and what we can and cannot do', async () => {
         const app = renderApp({ path: '/trust' });
         expect(await screen.findByRole('heading', { name: 'How Promptbook protects you', level: 1 })).toBeTruthy();
-        expect(screen.getByText(/It never stores engine content, not even encrypted\./)).toBeTruthy();
-        expect(screen.getByText(/the relays only pass it on, never decrypt it/)).toBeTruthy();
-        expect(screen.getByText(/It grants nothing inside the engine/)).toBeTruthy();
-        expect(screen.getByText(/Only the engine can make you its owner\./)).toBeTruthy();
-        expect(screen.getByText(/card details never reach Promptbook/)).toBeTruthy();
-        const fingerprint = screen.getByRole('heading', { name: 'Checking it is your engine' }).closest('section');
-        expect(fingerprint?.textContent).toMatch(/enter nothing there and open your engine from this dashboard/);
+        expect(
+            screen.getByText(/stay on your own server\. We connect you to them, but we can't read them\./),
+        ).toBeTruthy();
+
+        const path = screen.getByRole('region', { name: 'How you reach your engine' });
+        expect(
+            within(path)
+                .getAllByRole('heading', { level: 3 })
+                .map((heading) => heading.textContent),
+        ).toEqual(['Your browser', 'Our relay', 'Your engine', 'This dashboard']);
+        expect(within(path).getByText(/Passes the sealed traffic on to your engine\. It can't open it\./)).toBeTruthy();
+        expect(within(path).getByText(/Holds your data and its keys\./)).toBeTruthy();
+        expect(within(path).getByText(/Never what is inside them\./)).toBeTruthy();
+
+        const cannot = screen.getByRole('region', { name: "What we can't do" });
+        expect(
+            within(cannot)
+                .getAllByRole('heading', { level: 3 })
+                .map((heading) => heading.textContent),
+        ).toEqual(['See your work', 'Open your connection', 'Change the app in secret', 'Let anyone in']);
+        expect(within(cannot).getByText(/We never store them, not even encrypted\./)).toBeTruthy();
+        expect(within(cannot).getByText(/only pass it on and hold none of its keys/)).toBeTruthy();
+        expect(within(cannot).getByText(/public for at least a day/)).toBeTruthy();
+        expect(within(cannot).getByText(/your Promptbook account grants nothing inside it/)).toBeTruthy();
+
+        const can = screen.getByRole('region', { name: 'What we can do' });
+        expect(within(can).getByText(/Never names or text\./)).toBeTruthy();
+        expect(within(can).getByText(/unless your engine's owner turns that off/)).toBeTruthy();
+        expect(within(can).getByText(/your agents keep running and nothing is lost/)).toBeTruthy();
+
+        const check = screen.getByRole('region', { name: 'Check it yourself' });
+        expect(within(check).getByText(/enter nothing there and open your engine from this dashboard/)).toBeTruthy();
+        const source = within(check).getByRole('link', { name: /^read its code/ });
+        expect(source.getAttribute('href')).toBe('https://github.com/webgptorg/promptbook');
+        expect(source.getAttribute('rel')).toBe('noopener noreferrer');
+
+        expect(app.container.querySelectorAll('svg:not([aria-hidden="true"])')).toHaveLength(0);
         expect(app.api.callsTo(apiRoutes.listEngines)).toEqual([]);
         await expectNoAxeViolations(app.container);
     });
