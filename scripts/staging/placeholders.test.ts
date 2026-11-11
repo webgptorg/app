@@ -13,8 +13,22 @@ import {
 
 const root = resolve(import.meta.dirname, '..', '..');
 type Files = Record<keyof typeof STAGING_FILES, string>;
+// Staging's real values are committed now (#267); putting their placeholders back keeps these tests on the real files.
+const FILLED_STAGING_VALUES: Readonly<Record<string, string>> = {
+    '663996ef-d6cd-4769-b7ff-2584301247ae': '<staging-d1-id>',
+    '178.105.121.188': '<staging-relay-fsn-ipv4>',
+    '2a01:4f8:c016:fd::1': '<staging-relay-fsn-ipv6>',
+};
+
+function withPlaceholders(text: string): string {
+    return Object.entries(FILLED_STAGING_VALUES).reduce(
+        (out, [value, placeholder]) => out.replaceAll(value, placeholder),
+        text,
+    );
+}
+
 const committed = Object.fromEntries(
-    Object.entries(STAGING_FILES).map(([key, path]) => [key, readFileSync(join(root, path), 'utf8')]),
+    Object.entries(STAGING_FILES).map(([key, path]) => [key, withPlaceholders(readFileSync(join(root, path), 'utf8'))]),
 ) as Files;
 
 const ALL: StagingValues = {
