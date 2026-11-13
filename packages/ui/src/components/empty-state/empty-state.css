@@ -1,6 +1,5 @@
 :root {
-    --empty-state-icon-bg: var(--color-accent-soft);
-    --empty-state-icon: var(--color-accent-text);
+    --empty-state-icon: var(--color-text-subtle);
     --empty-state-title: var(--color-text);
     --empty-state-description: var(--color-text-muted);
 }

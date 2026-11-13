@@ -27,9 +27,9 @@ export interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement
 
 const VARIANT_CLASSES: Readonly<Record<ButtonVariant, string>> = {
     primary:
-        'bg-(--button-primary-bg) text-(--button-primary-text) hover:enabled:not-aria-disabled:bg-(--button-primary-bg-hover) shadow-subtle',
+        'bg-(--button-primary-bg) text-(--button-primary-text) hover:enabled:not-aria-disabled:bg-(--button-primary-bg-hover) shadow-(--button-shadow)',
     secondary:
-        'border border-(--button-secondary-border) bg-(--button-secondary-bg) text-(--button-secondary-text) hover:enabled:not-aria-disabled:bg-(--button-secondary-bg-hover)',
+        'border border-(--button-secondary-border) bg-(--button-secondary-bg) text-(--button-secondary-text) shadow-(--button-shadow) hover:enabled:not-aria-disabled:border-(--button-secondary-border-hover) hover:enabled:not-aria-disabled:bg-(--button-secondary-bg-hover)',
     ghost: 'bg-transparent text-(--button-ghost-text) hover:enabled:not-aria-disabled:bg-(--button-ghost-bg-hover)',
     danger: 'bg-(--button-danger-bg) text-(--button-danger-text) hover:enabled:not-aria-disabled:bg-(--button-danger-bg-hover)',
     'danger-ghost':
@@ -51,8 +51,8 @@ const DISABLED_CLASSES: Readonly<Record<ButtonVariant, string>> = {
 };
 
 const SIZE_CLASSES: Readonly<Record<ButtonSize, string>> = {
-    sm: 'min-h-8 gap-1.5 px-3 text-sm',
-    md: 'min-h-10 gap-2 px-4 text-sm',
+    sm: 'min-h-8 gap-1.5 px-2.5 text-xs',
+    md: 'min-h-9 gap-2 px-3.5 text-sm',
 };
 
 /** Shared by `Button` and `IconButton` so both look and behave the same. */

@@ -126,7 +126,7 @@ export function Tabs({
                             onKeyDown(event, tab.id);
                         },
                         className: cx(
-                            '-mb-px shrink-0 cursor-pointer border-b-2 px-3 py-2 text-sm font-medium whitespace-nowrap',
+                            '-mb-px shrink-0 cursor-pointer border-b-2 px-2.5 py-2 text-sm font-medium whitespace-nowrap',
                             'motion-safe:transition-colors motion-safe:duration-(--motion-state)',
                             'disabled:cursor-not-allowed disabled:opacity-50',
                             isSelected

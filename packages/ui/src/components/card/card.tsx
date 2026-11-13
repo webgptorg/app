@@ -20,14 +20,14 @@ export function Card({ as: Element = 'section', title, titleLevel = 2, actions, 
         <Element
             aria-labelledby={title === undefined ? undefined : titleId}
             className={cx(
-                'flex flex-col gap-4 rounded-(--card-radius) border border-(--card-border) bg-(--card-bg) p-5 shadow-(--card-shadow)',
+                'flex flex-col gap-4 rounded-(--card-radius) border border-(--card-border) bg-(--card-bg) p-5',
                 className,
             )}
         >
             {title === undefined && actions === undefined ? null : (
                 <header className="flex flex-wrap items-center justify-between gap-3">
                     {title === undefined ? null : (
-                        <Heading id={titleId} className="text-lg font-semibold text-(--card-title)">
+                        <Heading id={titleId} className="text-sm font-semibold text-(--card-title)">
                             {title}
                         </Heading>
                     )}

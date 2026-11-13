@@ -1,7 +1,7 @@
 :root {
     --drawer-bg: var(--color-raised);
     --drawer-text: var(--color-text);
-    --drawer-border: var(--color-divider);
+    --drawer-border: var(--color-hairline);
     --drawer-shadow: var(--shadow-overlay);
 }
 
