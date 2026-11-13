@@ -1,7 +1,7 @@
 import type { CSSProperties, MouseEvent, ReactNode } from 'react';
 
 import { cx } from '../../internal/cx';
-import { tintStyle } from '../../theme/tint';
+import { TINT_TEXT_RESET, tintStyle } from '../../theme/tint';
 import { useHovercard } from '../hovercard/hovercard';
 import type { HovercardState, HovercardTriggerProps } from '../hovercard/hovercard';
 import { StatusDot } from '../status/status';
@@ -100,7 +100,8 @@ export function EntityChip({
         acts && TONE_CLASSES[tone].hover,
         className,
     );
-    const style = tintStyle(tint);
+    // An agent label tinted by class must not inherit another agent's label colours from a tinted container.
+    const style = tintStyle(tint) ?? (tone === 'agent' ? TINT_TEXT_RESET : undefined);
     const content = (
         <>
             {leading === undefined ? null : (

@@ -32,7 +32,8 @@ describe('Avatar', () => {
         );
         expect(container.querySelector('img')?.getAttribute('alt')).toBe('');
         const spans = container.querySelectorAll('span');
-        expect(spans[0]?.getAttribute('style')).toBeNull();
+        expect(spans[0]?.style.getPropertyValue('--tint')).toBe('');
+        expect(spans[0]?.style.getPropertyValue('--tint-text-light')).toBe('initial');
         expect(spans[1]?.dataset['initial']).toBe('');
     });
 });
@@ -44,7 +45,7 @@ describe('tint', () => {
         for (const value of ['#fff', 'red', 'url(x)', 'var(--x)', 'var(--color-a); color: red', null, undefined]) {
             expect(safeTint(value)).toBeUndefined();
         }
-        expect(tintStyle('#000000')).toEqual({ '--tint': '#000000' });
+        expect(tintStyle('#000000')).toMatchObject({ '--tint': '#000000' });
         expect(tintStyle('blue')).toBeUndefined();
     });
 });

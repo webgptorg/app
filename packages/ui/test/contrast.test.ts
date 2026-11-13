@@ -7,7 +7,8 @@ import {
     relativeLuminance,
     SEMANTIC_PAIRS,
 } from '../src/theme/contrast.ts';
-import { parseTokenSheet, tokenNames } from '../src/theme/tokens.ts';
+import { TINT_SURFACE_RANGE } from '../src/theme/tint.ts';
+import { parseTokenSheet, resolveToken, tokenNames } from '../src/theme/tokens.ts';
 import { loadTokenSheet } from './theme-sources.ts';
 
 describe('contrastRatio', () => {
@@ -68,5 +69,29 @@ describe('theme contrast', () => {
                     `${result.theme}: ${result.foreground} on ${result.background} = ${result.ratio.toFixed(2)} < ${String(result.minimum)}`,
             );
         expect(failing).toEqual([]);
+    });
+});
+
+describe('tinted labels', () => {
+    it('are derived against grey levels that still bracket the surfaces they sit on', async () => {
+        const sheet = await loadTokenSheet();
+        for (const theme of ['light', 'dark'] as const) {
+            const channels = (name: string) => {
+                const value = resolveToken(sheet, name, theme) ?? '';
+                return [1, 3, 5].map((offset) => Number.parseInt(value.slice(offset, offset + 2), 16));
+            };
+            const text = channels('--color-text');
+            const raised = channels('--color-raised');
+            const hoverOverRaised = raised.map((channel, index) => channel * 0.95 + (text[index] ?? 0) * 0.05);
+            const levels = [
+                ...channels('--color-surface'),
+                ...raised,
+                ...channels('--color-sunken'),
+                ...hoverOverRaised,
+            ];
+            const [low, high] = TINT_SURFACE_RANGE[theme];
+            expect(Math.min(...levels), theme).toBeGreaterThanOrEqual(low);
+            expect(Math.max(...levels), theme).toBeLessThanOrEqual(high);
+        }
     });
 });

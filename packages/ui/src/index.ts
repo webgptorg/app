@@ -14,7 +14,7 @@ export {
     viewTransitionStyle,
     withViewTransition,
 } from './motion/view-transition';
-export { safeTint, tintStyle } from './theme/tint';
+export { readableTint, safeTint, TINT_TEXT_RESET, tintStyle } from './theme/tint';
 export type { ViewTransitionDocument } from './motion/view-transition';
 export { prefersReducedMotion, useReducedMotion } from './motion/reduced-motion';
 export type { MotionMatchMedia } from './motion/reduced-motion';

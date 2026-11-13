@@ -26,7 +26,12 @@ describe('agentColor', () => {
         },
     );
 
-    it('sets the colour as the --tint custom property', () => {
-        expect(tintStyle('#123456')).toEqual({ '--tint': '#123456' });
+    it('sets the colour as --tint, with label colours derived for each theme', () => {
+        const style = tintStyle('#123456') as Record<string, string>;
+        expect(style['--tint']).toBe('#123456');
+        expect(style['--tint-text-light']).toMatch(/^#[0-9a-f]{6}$/);
+        expect(style['--tint-text-dark']).toMatch(/^#[0-9a-f]{6}$/);
+        expect(tintStyle('var(--color-agent-2)')).toMatchObject({ '--tint': 'var(--color-agent-2)' });
+        expect(tintStyle('red')).toEqual({});
     });
 });

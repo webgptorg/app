@@ -1,3 +1,4 @@
+import { tintStyle as uiTintStyle } from '@ptbk/ui';
 import type { CSSProperties } from 'react';
 
 /** How many hues `--color-agent-<n>` offers (packages/ui semantic.css). */
@@ -26,9 +27,10 @@ export function agentColor(profileColor: string | null | undefined, agentKey: st
 }
 
 /**
- * Sets `--tint` for the `soft-surface`, `text-tint` and `bg-tint` utilities. React applies it through the CSSOM
- * (`style.setProperty`), which the engine's CSP allows, never as a style attribute string.
+ * Sets `--tint` for the `soft-surface`, `text-tint` and `bg-tint` utilities, with label colours that hold AA for any
+ * profile colour (`@ptbk/ui`'s `tintStyle`). React applies it through the CSSOM (`style.setProperty`), which the
+ * engine's CSP allows, never as a style attribute string.
  */
 export function tintStyle(color: string): CSSProperties {
-    return { '--tint': color } as CSSProperties;
+    return uiTintStyle(color) ?? {};
 }
