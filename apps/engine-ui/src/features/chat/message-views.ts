@@ -211,7 +211,8 @@ function withDays(views: readonly ThreadView[], timeZone: string): ThreadView[] 
         const at = 'createdAt' in view ? view.createdAt : null;
         if (at !== null) {
             const next = calendarDay(at, timeZone);
-            if (next !== day) out.push({ kind: 'day', id: `day:${next}`, at });
+            // Named after the row it opens: when older pages load above, the list sees a new first row.
+            if (next !== day) out.push({ kind: 'day', id: `day:${view.id}`, at });
             day = next;
         }
         out.push(view);
