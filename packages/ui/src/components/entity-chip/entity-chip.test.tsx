@@ -92,6 +92,14 @@ describe('EntityChip', () => {
         expect(link.className).toMatch(/cursor-pointer/);
     });
 
+    it('takes its tint from a class when asked, with no inline style', () => {
+        const { container } = renderUi(<EntityChip label="Digest" tintClassName="[--tint:var(--status-live)]" />);
+        const chip = container.querySelector('span') as HTMLElement;
+        expect(chip.getAttribute('style')).toBeNull();
+        expect(chip.className).toMatch(/--status-live/);
+        expect(chip.className).not.toMatch(/entity-chip-fallback-tint/);
+    });
+
     it('stays quiet when not interactive, even with a hovercard', () => {
         renderUi(<EntityChip label="Iris" interactive={false} hovercard={{ label: 'Iris', content: 'Card' }} />);
         expect(screen.queryByRole('button')).toBeNull();

@@ -21,28 +21,33 @@ export interface EntityChipProps {
     /** The entity's name; rendered as a text node only. */
     readonly label: string;
     /** A small type icon (lucide, `size-3.5`) or an `<Avatar size="2xs">`. Decorative. */
-    readonly leading?: ReactNode;
+    readonly leading?: ReactNode | undefined;
     /** A colour token (`var(--color-agent-3)`, `var(--color-danger)`) or a `#rrggbb`; anything else is ignored. */
-    readonly tint?: string | null;
+    readonly tint?: string | null | undefined;
+    /**
+     * A class that sets `--tint` instead, e.g. `STATUS_TINT_CLASSES.live`: no inline style at all, and it keeps the
+     * chip from inheriting the tint of a surface around it.
+     */
+    readonly tintClassName?: string | undefined;
     readonly tone?: EntityChipTone;
     /** A status dot after the label. */
-    readonly status?: StatusTone;
+    readonly status?: StatusTone | undefined;
     /** The status in words for screen readers (the dot alone is never the only signal). */
-    readonly statusLabel?: string;
+    readonly statusLabel?: string | undefined;
     /** In running text the chip wraps with it; elsewhere (cells, lists) it stays on one line and truncates. */
     readonly wrap?: boolean;
     /** The hovercard: its accessible name and its body, rendered only while open. Needs an interactive chip. */
-    readonly hovercard?: { readonly label: string; readonly content: ReactNode };
+    readonly hovercard?: { readonly label: string; readonly content: ReactNode } | undefined;
     /**
      * Makes the chip a button. Without `onClick` and `render`, a chip with a hovercard toggles it on click (a tap has
      * no hover); a chip without one is plain text.
      */
-    readonly onClick?: (event: MouseEvent<HTMLButtonElement>, hovercard: HovercardState) => void;
+    readonly onClick?: ((event: MouseEvent<HTMLButtonElement>, hovercard: HovercardState) => void) | undefined;
     /** Makes the chip any element, usually a link to the entity: spread the props onto it. */
-    readonly render?: (props: EntityChipTriggerProps) => ReactNode;
+    readonly render?: ((props: EntityChipTriggerProps) => ReactNode) | undefined;
     /** `false` inside another card: a quiet chip with no hovercard and no action. */
     readonly interactive?: boolean;
-    readonly className?: string;
+    readonly className?: string | undefined;
 }
 
 const BASE = 'rounded-(--entity-chip-radius) px-1 py-px font-medium';
@@ -72,6 +77,7 @@ export function EntityChip({
     label,
     leading,
     tint,
+    tintClassName,
     tone = 'neutral',
     status,
     statusLabel,
@@ -88,7 +94,7 @@ export function EntityChip({
     const classes = cx(
         BASE,
         wrap ? LAYOUT.wrap : LAYOUT.line,
-        '[--tint:var(--entity-chip-fallback-tint)]',
+        tintClassName ?? '[--tint:var(--entity-chip-fallback-tint)]',
         TONE_CLASSES[tone].rest,
         acts && INTERACTIVE,
         acts && TONE_CLASSES[tone].hover,

@@ -37,7 +37,7 @@ export function TaskHovercard({ task, canOpen }: { readonly task: ReadChatTask; 
                 <Timer task={task} />
                 {task.commit === null ? null : (
                     <span>
-                        {m.chat_ref_commit()} <span className="text-text">{task.commit.slice(0, 7)}</span>
+                        {m.chat_ref_commit()} <span className="font-mono text-text">{task.commit.slice(0, 7)}</span>
                     </span>
                 )}
             </span>
