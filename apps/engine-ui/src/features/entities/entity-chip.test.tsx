@@ -1,10 +1,24 @@
-import { PERMISSIONS } from '@ptbk/engine-api';
-import { createInMemoryEngineApiClient } from '@ptbk/engine-api/in-memory';
+import {
+    AgentId,
+    ChatId,
+    FileId,
+    IntegrationId,
+    KNOWN_CAPABILITIES,
+    MemberId,
+    PERMISSIONS,
+    RunId,
+    TaskId,
+    TriggerId,
+} from '@ptbk/engine-api';
+import { createDemoSeed, createInMemoryEngineApiClient } from '@ptbk/engine-api/in-memory';
 import type { InMemoryEngineApiOptions, InMemorySeedTask } from '@ptbk/engine-api/in-memory';
 import { screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
+import { FEATURES } from '../../app/features';
+import { defineFeature } from '../../app/registry/feature';
 import { renderWithProviders } from '../../testing/render-with-providers';
+import { EntityChip } from './entity-chip';
 import { HOSTILE } from '../../testing/runs-engine';
 import { TEST_NOW } from '../../testing/test-engine-api';
 
@@ -115,5 +129,106 @@ describe('entity chips', { timeout: TIMEOUT_MS }, () => {
         expect(within(related).getByText(HOSTILE_AGENT).closest('a, button')).toBeNull();
         // Tasks the member may read stay links.
         expect(within(related).getByRole('link', { name: HOSTILE }).getAttribute('href')).toBe('/tasks/task-hostile');
+    });
+});
+
+/** Every kind of chip at once, on a card the agent overview shows: the full app around it, the demo engine behind it. */
+function AllKinds() {
+    return (
+        <ul aria-label="All kinds">
+            <li>
+                <EntityChip kind="agent" id={AgentId.parse('agent-ada')} name="Ada" />
+            </li>
+            <li>
+                <EntityChip
+                    kind="task"
+                    id={TaskId.parse('task-ship-billing')}
+                    name="Ship billing v2 — 2026-10-30 09:00:00"
+                />
+            </li>
+            <li>
+                <EntityChip
+                    kind="run"
+                    id={RunId.parse('run-max-email')}
+                    name="Email run"
+                    status="live"
+                    statusLabel="Running"
+                />
+            </li>
+            <li>
+                <EntityChip kind="chat" id={ChatId.parse('chat-copywriter')} name="Copy chat" />
+            </li>
+            <li>
+                <EntityChip kind="file" id={FileId.parse('file-style-guide')} name="Style guide" />
+            </li>
+            <li>
+                <EntityChip kind="trigger" id={TriggerId.parse('trigger-weekly-report')} name="Weekly trigger" />
+            </li>
+            <li>
+                <EntityChip kind="integration" id={IntegrationId.parse('integration-github')} name="GitHub" />
+            </li>
+            <li>
+                <EntityChip kind="member" id={MemberId.parse('member-jana')} name="Jana" />
+            </li>
+            <li>
+                <EntityChip kind="run" id={RunId.parse('run-gone')} name="Gone run" />
+            </li>
+        </ul>
+    );
+}
+
+const allKinds = defineFeature({
+    id: 'test-all-kinds',
+    requires: {},
+    agentOverviewCards: [{ id: 'all-kinds', order: 1, component: AllKinds }],
+});
+
+describe('entity chips of every kind', { timeout: TIMEOUT_MS }, () => {
+    it('link to their entity and show its key facts on hover, or a quiet line when the engine does not know it', async () => {
+        const engineApi = createInMemoryEngineApiClient({
+            clock: { now: () => TEST_NOW },
+            seed: createDemoSeed(TEST_NOW),
+        });
+        const { user } = renderWithProviders({
+            path: '/agents/agent-ada',
+            engineApi,
+            features: [...FEATURES, allKinds],
+        });
+        const list = await screen.findByRole('list', { name: 'All kinds' });
+        const cases: readonly (readonly [string, string, RegExp | string])[] = [
+            ['Ada', '/agents/agent-ada', 'Open agent'],
+            ['Ship billing v2', '/tasks/task-ship-billing', 'Open task'],
+            ['Email run, Running', '/runs/run-max-email', 'Open run'],
+            ['Copy chat', '/chats/chat-copywriter', 'Open chat'],
+            ['Style guide', '/files?file=file-style-guide', 'Open file'],
+            ['Weekly trigger', '/triggers/trigger-weekly-report', 'Open trigger'],
+            ['GitHub', '/integrations/integration-github', 'Open integration'],
+            ['Jana', '/members', 'Open members'],
+        ];
+        for (const [name, href, open] of cases) {
+            const chip = within(list).getByRole('link', { name });
+            expect(chip.getAttribute('href')).toBe(href);
+            await user.hover(chip);
+            const card = await screen.findByRole('dialog');
+            expect(await within(card).findByRole('link', { name: open })).toBeTruthy();
+            await user.unhover(chip);
+            await user.keyboard('{Escape}');
+        }
+        const gone = within(list).getByRole('link', { name: 'Gone run' });
+        await user.hover(gone);
+        expect(await screen.findByText('Details are not available right now.')).toBeTruthy();
+    });
+
+    it('names an entity without a link where its capability is missing', async () => {
+        const engineApi = createInMemoryEngineApiClient({
+            clock: { now: () => TEST_NOW },
+            seed: createDemoSeed(TEST_NOW),
+            capabilities: [KNOWN_CAPABILITIES.tasks],
+        });
+        renderWithProviders({ path: '/agents/agent-ada', engineApi, features: [...FEATURES, allKinds] });
+        const list = await screen.findByRole('list', { name: 'All kinds' });
+        expect(within(list).queryByRole('link', { name: /^Email run/ })).toBeNull();
+        expect(within(list).getByText('Style guide').closest('a')).toBeNull();
+        expect(within(list).getByRole('link', { name: 'Ship billing v2' })).toBeTruthy();
     });
 });

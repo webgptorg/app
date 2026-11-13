@@ -120,6 +120,51 @@ describe('home', { timeout: TIMEOUT_MS }, () => {
         expect(create.mock.calls[2]?.[0].requestKey).toBe(create.mock.calls[1]?.[0].requestKey);
     });
 
+    it('keeps the words when the message is refused, and sends them again into the same new chat', async () => {
+        const engineApi = demoEngine();
+        const create = vi.spyOn(engineApi.chats, 'create');
+        const send = vi
+            .spyOn(engineApi.chats, 'sendMessage')
+            .mockImplementationOnce(() => problemResponse('forbidden'));
+        const { user, router } = renderWithProviders({ path: '/', engineApi });
+
+        const box = await screen.findByRole('textbox', { name: 'Ask Chatter' });
+        await user.type(box, 'Summarise the week{Enter}');
+        await waitFor(() => {
+            expect(send).toHaveBeenCalledTimes(1);
+        });
+        expect((box as HTMLTextAreaElement).value).toBe('Summarise the week');
+        await user.type(box, '{Enter}');
+        await waitFor(() => {
+            expect(router.state.location.pathname).toMatch(/^\/chats\/./);
+        });
+        expect(create).toHaveBeenCalledTimes(1);
+        expect(send.mock.calls[1]?.[0]).toBe(send.mock.calls[0]?.[0]);
+    });
+
+    it('keeps a failing chat list to its own section, and shows a thread with no agent by its icon', async () => {
+        const engine = createHomeEngine();
+        engine.spies.chats.mockResolvedValue({ kind: 'problem', problem: createProblem('validation-failed') });
+        const { unmount } = renderWithProviders({ path: '/', engineApi: engine.client });
+        const recent = await screen.findByRole('region', { name: 'Recent chats' });
+        expect(await within(recent).findByText('This part of the page could not load.')).toBeDefined();
+        unmount();
+
+        const lonely = createHomeEngine();
+        lonely.spies.chats.mockImplementation(async (query, signal) => {
+            const chats = await lonely.client.chats.list('agent-ada' as never, query, signal);
+            return chats.kind === 'ok'
+                ? {
+                      ...chats,
+                      data: { ...chats.data, items: chats.data.items.map((chat) => ({ ...chat, members: [] })) },
+                  }
+                : chats;
+        });
+        renderWithProviders({ path: '/', engineApi: lonely.client });
+        const list = await screen.findByRole('region', { name: 'Recent chats' });
+        expect((await within(list).findAllByRole('link')).length).toBeGreaterThan(1);
+    });
+
     it('offers no composer without chats.write, no chats without chats.read, and no feed without oversight', async () => {
         const engine = createHomeEngine({ permissions: allBut('security.read', 'chats.write') });
         const { unmount } = renderWithProviders({ path: '/', engineApi: engine.client });
