@@ -51,7 +51,7 @@ export function Banner({ tone = 'info', title, action, onDismiss, className, chi
         >
             <Icon aria-hidden="true" className={cx('mt-0.5 size-4 shrink-0', ICON_CLASSES[tone])} />
             <div className="flex min-w-0 flex-1 flex-col gap-1">
-                {title === undefined ? null : <p className="font-medium">{title}</p>}
+                {title === undefined ? null : <p className="font-semibold">{title}</p>}
                 <div className={title === undefined ? undefined : 'text-(--banner-muted)'}>{children}</div>
                 {action === undefined ? null : <div className="mt-2 flex flex-wrap gap-2">{action}</div>}
             </div>

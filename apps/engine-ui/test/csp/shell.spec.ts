@@ -78,9 +78,9 @@ test.describe('foundations in a real browser', () => {
         const loaded = await page.evaluate(() =>
             [...document.fonts].filter((face) => face.status === 'loaded').map((face) => face.family),
         );
-        expect(loaded.map((family) => family.replaceAll('"', ''))).toEqual(
-            expect.arrayContaining(['Inter Variable', 'Outfit Variable']),
-        );
+        const families = loaded.map((family) => family.replaceAll('"', ''));
+        expect(families).toEqual(expect.arrayContaining(['Inter Variable']));
+        expect(families).not.toContain('Outfit Variable');
         expect(fonts.length).toBeGreaterThan(0);
         for (const url of fonts) expect(new URL(url).origin).toBe(new URL(baseURL ?? '').origin);
     });

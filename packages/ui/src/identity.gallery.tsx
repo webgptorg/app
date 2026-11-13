@@ -18,6 +18,18 @@ const STATUS = [
     ['live', 'bg-live', 'text-text'],
 ] as const;
 
+// Literal class names, so Tailwind sees each one.
+const AGENT_TINTS = [
+    '[--tint:var(--color-agent-1)]',
+    '[--tint:var(--color-agent-2)]',
+    '[--tint:var(--color-agent-3)]',
+    '[--tint:var(--color-agent-4)]',
+    '[--tint:var(--color-agent-5)]',
+    '[--tint:var(--color-agent-6)]',
+    '[--tint:var(--color-agent-7)]',
+    '[--tint:var(--color-agent-8)]',
+] as const;
+
 /** The identity's foundations at a glance: type scale, graphite surfaces, status hues, agent colours, teal's three jobs. */
 export const identityGallery: GalleryEntry = {
     id: 'identity',
@@ -51,12 +63,9 @@ export const identityGallery: GalleryEntry = {
                 ))}
             </div>
             <div className="flex flex-wrap gap-2">
-                {[1, 2, 3, 4, 5, 6, 7, 8].map((index) => (
-                    <span
-                        key={index}
-                        className={`soft-surface px-2.5 py-1 text-xs font-medium text-tint [--tint:var(--color-agent-${String(index)})]`}
-                    >
-                        {`agent-${String(index)}`}
+                {AGENT_TINTS.map((tint, index) => (
+                    <span key={tint} className={`soft-surface px-2.5 py-1 text-xs font-medium text-tint ${tint}`}>
+                        {`agent-${String(index + 1)}`}
                     </span>
                 ))}
             </div>

@@ -55,6 +55,10 @@
     --color-danger-hover: var(--ptbk-red-600);
     --color-on-danger: var(--ptbk-graphite-0);
     --color-danger-soft: var(--ptbk-red-50);
+    /* The one filled red: the confirm step of a destructive action. White on a deep red in both themes, never salmon. */
+    --color-danger-fill: var(--ptbk-red-700);
+    --color-danger-fill-hover: var(--ptbk-red-600);
+    --color-on-danger-fill: var(--ptbk-graphite-0);
     --color-info: var(--ptbk-blue-700);
     --color-info-soft: var(--ptbk-blue-50);
 
@@ -172,6 +176,8 @@
     --color-danger-hover: var(--ptbk-red-250);
     --color-on-danger: var(--ptbk-graphite-950);
     --color-danger-soft: var(--ptbk-red-975);
+    --color-danger-fill: var(--ptbk-red-800);
+    --color-danger-fill-hover: var(--ptbk-red-700);
     --color-info: var(--ptbk-blue-350);
     --color-info-soft: var(--ptbk-blue-975);
 

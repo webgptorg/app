@@ -1,12 +1,7 @@
-import { useHovercard } from '@ptbk/ui';
+import { EntityChip } from '@ptbk/ui';
 
-import { cx } from '../../../app/cx';
-import { tintStyle } from './agent-color';
 import { AgentHovercard } from './agent-hovercard';
 import { useReferenceAgent, useThreadReferences } from './thread-references';
-
-const CHIP =
-    'inline rounded-small bg-[color-mix(in_oklab,var(--tint)_12%,transparent)] px-1 py-px font-medium text-tint [box-decoration-break:clone] [overflow-wrap:anywhere]';
 
 export interface AgentChipProps {
     /** The agent's participant key (its `AgentId`). */
@@ -27,7 +22,6 @@ export interface AgentChipProps {
 export function AgentChip({ agentKey, name, label: written, interactive = true, className }: AgentChipProps) {
     const references = useThreadReferences();
     const agent = useReferenceAgent(agentKey, name);
-    const label = written ?? `@${agent.name}`;
     const onMention = references?.onMention;
     const mention =
         onMention === undefined
@@ -35,40 +29,29 @@ export function AgentChip({ agentKey, name, label: written, interactive = true, 
             : () => {
                   onMention(agent);
               };
-    const card = useHovercard({
-        label: agent.name,
-        content:
-            references === null ? null : <AgentHovercard agent={agent} references={references} onMention={mention} />,
-    });
-    if (references === null || !interactive) {
-        return (
-            <span className={cx(CHIP, className)} style={tintStyle(agent.color)}>
-                {label}
-            </span>
-        );
-    }
     return (
-        <>
-            <button
-                type="button"
-                {...card.triggerProps}
-                onClick={(event) => {
-                    if (mention === undefined) card.show(event.currentTarget);
-                    else {
-                        card.hide();
-                        mention();
-                    }
-                }}
-                className={cx(
-                    CHIP,
-                    'cursor-pointer text-start hover:bg-[color-mix(in_oklab,var(--tint)_20%,transparent)] motion-safe:transition-colors motion-safe:duration-(--motion-state)',
-                    className,
-                )}
-                style={tintStyle(agent.color)}
-            >
-                {label}
-            </button>
-            {card.card}
-        </>
+        <EntityChip
+            wrap
+            tone="agent"
+            label={written ?? `@${agent.name}`}
+            tint={agent.color}
+            interactive={references !== null && interactive}
+            hovercard={
+                references === null
+                    ? undefined
+                    : {
+                          label: agent.name,
+                          content: <AgentHovercard agent={agent} references={references} onMention={mention} />,
+                      }
+            }
+            onClick={(event, card) => {
+                if (mention === undefined) card.show(event.currentTarget);
+                else {
+                    card.hide();
+                    mention();
+                }
+            }}
+            className={className}
+        />
     );
 }

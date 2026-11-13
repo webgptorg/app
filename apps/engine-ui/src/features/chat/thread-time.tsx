@@ -37,7 +37,7 @@ export function TurnTime({ at }: { readonly at: string }) {
     }).format(new Date(at));
     const short = useShortTime(at);
     return (
-        <time dateTime={at} title={exact} className="font-mono text-xs font-normal text-text-muted tabular-nums">
+        <time dateTime={at} title={exact} className="text-xs font-normal text-text-muted tabular-nums">
             {short}
         </time>
     );

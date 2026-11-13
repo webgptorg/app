@@ -2,7 +2,7 @@
 
 **Promptbook lets a company run its own AI agents on its own server and use them through one polished web app, while we provide the connectivity, the dashboard and the UI without ever being able to read their data.**
 
-This brief describes how the engine UI and the dashboard should work and feel. Architecture is in [ADR 0015](../adr/0015-ui-architecture-and-design-system.md) and [ADR 0016](../adr/0016-engine-capabilities.md). The visual pass (Anka) comes later and builds on the tokens; this document fixes structure, behaviour and character, not final pixels.
+This brief describes how the engine UI and the dashboard should work and feel. Architecture is in [ADR 0015](../adr/0015-ui-architecture-and-design-system.md) and [ADR 0016](../adr/0016-engine-capabilities.md). The visual identity below (U-17) is the first visual pass; it lives in the tokens, so later passes change the theme, not feature code.
 
 ## Principles
 
@@ -70,6 +70,59 @@ It carries an **engine fingerprint**: a visual pattern and a short code derived 
 ## Dashboard (app.ptbk.io)
 
 Same design system, simpler: sign-up and sign-in with passkeys, engines list with live status and fingerprints, add engine (link code and install command), billing (Stripe), account. It links into engines; it never shows engine content.
+
+## Visual identity
+
+Visual identity v1 ([U-17](../plan/tasks/U-17-visual-identity.md), decided with Seb on 2026-11-13) is **calm precision**: Linear-style, readable for technical and non-technical people alike. The tokens live in `packages/ui/src/theme/` and the gallery's "Visual identity" entry shows them at a glance.
+
+### Colour
+
+- **Graphite chrome.** Neutrals are the `--ptbk-graphite-*` scale. The page is `--color-surface`; panels and popovers are `--color-raised`. Hover and selection are quiet washes of the text colour, not fills: `--color-hover` (5%) and `--color-selected` (8%). They read the same on any surface.
+- **Primary actions** are `--color-primary` with `--color-on-primary`: near-black in light, near-white in dark. The older `--color-accent*` names now resolve to the same graphite, so nothing built on them turns teal.
+- **Colour comes from agents and status.**
+  - Agents: `--color-agent-1..8`, or the agent's profile colour.
+  - Status: `--color-success`, `--color-warning`, `--color-danger` and `--color-info`, each with a quiet `-soft` fill. `--color-live` marks running work.
+- **Teal has three jobs:** `--color-focus` (focus rings), `--color-link` (links in prose) and `--color-selection` (selected text). Nothing else is teal.
+- **Dark mode is calm, never loud.** There is no bright cyan. Neutral pills sit on `--color-neutral-soft`, never on a black slab. Status fills are a trace of their hue over graphite.
+- **Lines.** `--color-hairline` separates sections and rows. `--color-divider` is a stronger separator. `--color-border` is only for control boundaries (inputs, checkboxes), at 3:1.
+- **Contrast.** Every text pair is AA (4.5:1) and every graphic pair 3:1, in both themes. `packages/ui/test/contrast.test.ts` enforces this, including the washes composited over the page.
+
+### Type
+
+- **Inter everywhere.** Outfit is gone, and `font-display` is Inter too.
+- **Headings** (h1–h4) use `--heading-weight` (600) and tighter tracking (`--tracking-heading`, and `--tracking-display` for h1).
+- **Comfortable density:**
+  - 14px body (`text-sm`, the `body` default);
+  - 13px meta (`text-xs`);
+  - 12px (`text-2xs`) only for counts, badges and tiny labels.
+- **Numbers that change:** times, durations, sizes and counts use Inter with `tabular-nums`. The `meta` utility (13px, muted, tabular) is the default for meta lines, chat ones included.
+- **`font-mono` is deliberate and rare:** IDs, commits and hashes, file paths, code, and chat tool steps. Nothing else is mono: no times, dates, durations, counts, statuses or names. The app is for non-technical people too, and mono reads as "this is for engineers".
+
+### Surfaces and layout
+
+- **An open layout.** A `Section` is a heading over content, separated from its neighbours by space and a hairline. There are no border-plus-shadow cards; `Card` remains as a quiet hairline panel until its users move to `Section`.
+- **Soft surfaces** (`soft-surface` with `--tint`) are only for live or actionable things: running work, needs-you, errors.
+- **Empty sections** collapse to one quiet line (`EmptyState variant="inline"`) or disappear. A whole empty view gets one calm line, one action and a small monochrome icon.
+- **What floats lifts.** Menus, popovers, hovercards and dialogs keep a soft `--shadow-overlay` over a hairline border. Radii are `--radius-control` (6px), `--radius-surface` (10px) and `--radius-small` (4px).
+
+### Parts
+
+- **`EntityChip`** is the core of every entity reference: an icon or `Avatar`, the name, an optional status dot, a `--tint`, and the shared hovercard.
+  - Agents use `tone="agent"`: the name is in the agent's colour.
+  - Every other entity uses `neutral`: text colour, with the hue only in the wash.
+  - Entity-specific chips compose it in `apps/engine-ui/src/features/entities/`.
+- **`Avatar`** puts the agent's initial on a wash of its colour, so an agent looks the same everywhere.
+- **`StatusPill` and `StatusDot`** cover the tones `live`, `waiting`, `success`, `warning`, `danger`, `info` and `neutral`. The state is always in words, and the hue lives in the dot and the wash.
+- **`Combobox`** replaces native `<select>` as screens move to it. `DateInput` is the native date control, styled: it is accessible, follows the browser's locale for date order, and opens the platform picker on phones.
+- **Buttons:** primary (graphite), secondary (raised with a subtle border), ghost, danger.
+
+### Motion
+
+- **Timing:** state changes take 150–250ms, ease-out, with no bounce.
+- **Route changes:**
+  - The page crossfades (`--motion-page`).
+  - An element named the same on both pages morphs into its new place (`--motion-morph`), e.g. a list row's title into the detail page's title. Name elements with `viewTransitionStyle(scope, id)`, which goes through the CSSOM, so the CSP holds.
+- **Reduced motion:** all of it is off under `prefers-reduced-motion`.
 
 ## Patterns
 
