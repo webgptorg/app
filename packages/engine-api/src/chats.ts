@@ -172,9 +172,12 @@ const chatTaskFields = {
         .nullable(),
     /** It was reopened after an earlier completion or cancellation. */
     reopened: z.boolean(),
-    /** When it first started running; `null` before. */
+    /** When it first started running; `null` before, or when the engine no longer knows. */
     startedAt: Timestamp.nullable(),
-    /** When it reached `completed`, `failed`, `cancelled` or `retired`; `null` while it is not finished. */
+    /**
+     * When it reached `completed`, `failed`, `cancelled` or `retired`; `null` while it is not finished, or when the
+     * engine no longer knows.
+     */
     endedAt: Timestamp.nullable(),
 } as const;
 

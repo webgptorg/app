@@ -65,8 +65,9 @@ async function checkThread(world: World, findings: Findings, chat: Chat, items: 
         names.add(task.name);
         // Entries are read one page deep, so only a thread that short must show every link.
         if (items.length < 100 && !linked.has(task.name)) findings.add(`${at}: no linked entry brings it in`);
-        if (FINISHED.has(task.state) !== (task.endedAt !== null)) {
-            findings.add(`${at}: is ${task.state} with endedAt ${task.endedAt ?? 'null'}`);
+        // A finished task may have lost its times; an unfinished one never has an end.
+        if (task.endedAt !== null && !FINISHED.has(task.state)) {
+            findings.add(`${at}: is ${task.state}, yet ended at ${task.endedAt}`);
         }
         if (task.endedAt !== null && task.startedAt !== null && task.endedAt < task.startedAt) {
             findings.add(`${at}: ended before it started`);
