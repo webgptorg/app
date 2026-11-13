@@ -36,6 +36,7 @@ export const AUDIT_EXPECTATIONS: Partial<
     createChat: { action: 'chat.create', kind: 'chat', param: 'created' },
     sendChatMessage: { action: 'chat.message.send', kind: 'chat', param: 'chatId' },
     cancelChatReply: { action: 'chat.reply.cancel', kind: 'message', param: 'messageId' },
+    retryChatReply: { action: 'chat.reply.retry', kind: 'chat', param: 'chatId' },
     createApiToken: { action: 'api-token.create', kind: 'api-token', param: 'created' },
     revokeApiToken: { action: 'api-token.revoke', kind: 'api-token', param: 'apiTokenId' },
     updateSettings: { action: 'settings.update', kind: null, param: null },

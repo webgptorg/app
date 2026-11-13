@@ -92,6 +92,7 @@ Each entry has this shape. Platform authors: add yours at the top of the list, o
      - In `chat()`, send `recheck: detail.recheck ? { cause: cut to 500, nextAt, rounds } : null` (`ChatRecheckView`). It is already `null` while a recheck turn runs, which is what the contract wants.
      - Add `public chatRetry(name): 'started' | 'running' | 'none'` to `Agenda`. With no `chatRechecks` entry, it returns `none`. If the entry has no armed `timer`, the attempt is queued or running, so it returns `running`. Otherwise it calls `startChatRecheck(nameKey(name), 'asked to retry now')` and returns `started`.
      - Serve `retryChatReply` with it: an unknown chat is 404 `not-found`, `none` is 409 `nothing-to-retry`, and both other outcomes answer 200 with the chat as `getChat` builds it.
+     - Audit it as `chat.reply.retry` (new in `AUDIT_ACTIONS`), target kind `chat` with the chat's ID, exactly as you audit `chat.reply.cancel`.
   10. **`chat.changed`.** Today `eventDigest()` hashes only count, status, unread, title and pings, so none of the above is announced. Add to each chat's digest:
       - whether a live reply runs, and its sender;
       - progress content (an in-place progress save changes no count);

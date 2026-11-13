@@ -29,6 +29,7 @@ const ACTION_LABELS: Readonly<Record<AuditAction, () => string>> = {
     'chat.create': m.audit_action_chat_create,
     'chat.message.send': m.audit_action_chat_message_send,
     'chat.reply.cancel': m.audit_action_chat_reply_cancel,
+    'chat.reply.retry': m.audit_action_chat_reply_retry,
     'member.update': m.audit_action_member_update,
     'member.remove': m.audit_action_member_remove,
     'invite.create': m.audit_action_invite_create,

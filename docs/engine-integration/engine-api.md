@@ -122,7 +122,7 @@ Added 2026-11-13 (C-14). A thread shows what its agents are doing, not only what
 - **`POST /chats/{chatId}/retry`** (`retryChatReply`, permission `chats.write`, no body) attempts the thread's recheck now instead of at `nextAt`, and answers 200 with the `Chat`:
   - A second call while that attempt runs changes nothing and answers 200 too.
   - Without a recheck, and with no attempt running, it answers 409 `nothing-to-retry`.
-  - The route is not audited: like a User message, it only asks the engine to do what it would do anyway.
+  - Audit it as `chat.reply.retry` (target the `chat`), like `chat.reply.cancel`; a 409 is audited `failed` and a missing permission `denied`.
 - **`chat.changed`** fires on every change to a thread's fields or entries, including:
   - a turn starting or ending;
   - a progress message saved or updated in place;

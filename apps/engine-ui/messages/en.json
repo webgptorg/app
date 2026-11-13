@@ -719,6 +719,7 @@
   "audit_action_chat_create": "Chat started",
   "audit_action_chat_message_send": "Message sent",
   "audit_action_chat_reply_cancel": "Reply stopped",
+  "audit_action_chat_reply_retry": "Reply retried",
   "audit_action_member_update": "Member role changed",
   "audit_action_member_remove": "Member removed",
   "audit_action_invite_create": "Invitation created",

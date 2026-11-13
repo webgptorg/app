@@ -1199,6 +1199,7 @@ const AUDITED: Partial<Record<EngineApiRouteId, AuditRule>> = {
     createChat: { action: 'chat.create', kind: 'chat' },
     sendChatMessage: { action: 'chat.message.send', kind: 'chat', param: 'chatId' },
     cancelChatReply: { action: 'chat.reply.cancel', kind: 'message', param: 'messageId' },
+    retryChatReply: { action: 'chat.reply.retry', kind: 'chat', param: 'chatId' },
     updateMember: { action: 'member.update', kind: 'member', param: 'memberId' },
     removeMember: { action: 'member.remove', kind: 'member', param: 'memberId' },
     createInvite: { action: 'invite.create', kind: 'invite' },

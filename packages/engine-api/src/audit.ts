@@ -40,6 +40,7 @@ export const AUDIT_ACTIONS = [
     'chat.create',
     'chat.message.send',
     'chat.reply.cancel',
+    'chat.reply.retry',
     'member.update',
     'member.remove',
     'invite.create',
