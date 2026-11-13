@@ -135,7 +135,7 @@ Added 2026-11-13 (C-14). A thread shows what its agents are doing, not only what
 
 #### How the Reborn engine maps its data
 
-Reborn already has all of this. Its adapter (`src/app/api/engine-api.ts`) used to flatten it into message text. [AGENT_BRIEF.md](AGENT_BRIEF.md#2026-11-13-chat-activity-steps-working-agents-linked-tasks-rechecks) lists the changes step by step.
+Reborn already has all of this. Its adapter (`src/app/api/engine-api.ts`) used to flatten it into message text. Its 2026-11-13 entry in [AGENT_BRIEF.md](AGENT_BRIEF.md#what-changed) lists the changes step by step.
 
 | Contract                     | Reborn source                                                                                                                                                                                                                                                                              |
 | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |

@@ -39,7 +39,10 @@ describe('tasks', { timeout: TIMEOUT_MS }, () => {
             'Deploy billing v2 — 2026-10-30 09:06:00',
             'Update Promptbook 0.119.0 → 0.120.0',
         ]);
-        expect(sectionNames('Finished')).toEqual(['Review the billing pull request — 2026-10-30 09:05:00']);
+        expect(sectionNames('Finished')).toEqual([
+            'Marketingový text webu o agentech pro IT profesionály — 2026-11-13 12:16:54',
+            'Review the billing pull request — 2026-10-30 09:05:00',
+        ]);
         expect(screen.getByText('Dependency {Export invoices from the old system} was not found.')).toBeTruthy();
         expect(within(screen.getByRole('region', { name: 'Coming up' })).getByText('Engine')).toBeTruthy();
         expect(screen.getByRole('link', { name: 'Run history' }).getAttribute('href')).toBe('/runs');
