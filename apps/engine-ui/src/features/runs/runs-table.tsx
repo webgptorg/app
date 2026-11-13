@@ -1,8 +1,20 @@
 import { RUN_SOURCES, RUN_STATUSES } from '@ptbk/engine-api';
-import type { AgentId, ReadRun } from '@ptbk/engine-api';
-import { Button, createDataTableColumnHelper, DataTable, FilterBar, RelativeTime } from '@ptbk/ui';
-import type { DataTableColumnDef, FilterBarFilter } from '@ptbk/ui';
+import type { AgentId, ReadAgent, ReadRun } from '@ptbk/engine-api';
+import {
+    Avatar,
+    Button,
+    createDataTableColumnHelper,
+    DataTable,
+    EntityChip,
+    FilterBar,
+    filterField,
+    RelativeTime,
+    StatusDot,
+} from '@ptbk/ui';
+import type { DataTableColumnDef, FilterBarField, SortingState } from '@ptbk/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link as RouterLink } from '@tanstack/react-router';
+import { Bot, CalendarClock, CircleDot, Coins, Hash, Timer, Zap } from 'lucide-react';
 import { useEffect, useMemo } from 'react';
 
 import { useBrowser } from '../../app/browser-context';
@@ -10,56 +22,70 @@ import { useCursorPages } from '../../app/cursor-pages';
 import { useEngineApi } from '../../app/engine-api-context';
 import { Link } from '../../app/link';
 import { isInvalidCursor } from '../../app/list-errors';
+import { readListParam, readOneParam, readRangeParams, writeListParam } from '../../app/search-filters';
 import { m } from '../../paraglide/messages';
+import { safeImageSource } from '../../security/safe-url';
 import { agentListQueryOptions } from '../agents/agents-queries';
+import { agentColor } from '../chat/references/agent-color';
 import { useRunRowActions } from './run-actions';
 import { RunCost, RunDuration, runTitle } from './run-format';
-import { runSourceLabel } from './run-source';
-import { hasRunFilters, runListParams, selectedStatuses } from './run-search';
+import { hasRunFilters, runListParams } from './run-search';
 import type { RunSearch } from './run-search';
-import { RunStatusBadge, runStatusLabel } from './run-status';
+import { runSourceLabel } from './run-source';
+import { RunStatusPill, runStatusLabel, runStatusTone } from './run-status';
 import { runListQueryOptions, useRunList } from './runs-queries';
 
 const NO_RUNS: readonly ReadRun[] = [];
+const NO_AGENTS: readonly ReadAgent[] = [];
 // The first page of agents fills the agent filter; a run of another agent still shows, by its own name.
 const AGENT_FILTER_LIMIT = 100;
 export const RUN_COLUMNS_STORAGE_KEY = 'ptbk.runs.columns';
+
+const ICON = 'size-3.5';
+
+interface AgentLook {
+    readonly tint: string;
+    readonly src: string | null;
+}
+
+/** An agent's avatar and colour, from its profile when the agent list has it, else from its ID. */
+function agentLook(agentId: string, agents: ReadonlyMap<string, ReadAgent>): AgentLook {
+    const profile = agents.get(agentId)?.profile;
+    const avatarUrl = profile?.avatarUrl ?? null;
+    return {
+        tint: agentColor(profile?.color, agentId),
+        src: avatarUrl === null ? null : safeImageSource(avatarUrl),
+    };
+}
 
 interface RunColumnOptions {
     /** The global list; on an agent's tab the agent column is redundant and links return to the tab. */
     readonly acrossAgents: boolean;
     /** Off when no run on the page reports a cost, so a column of dashes does not take the room. */
     readonly cost: boolean;
+    /** The engine's agents by ID, for their faces and colours. */
+    readonly agents: ReadonlyMap<string, ReadAgent>;
 }
 
-function useRunColumns({ acrossAgents, cost }: RunColumnOptions): DataTableColumnDef<ReadRun>[] {
+function useRunColumns({ acrossAgents, cost, agents }: RunColumnOptions): DataTableColumnDef<ReadRun>[] {
     return useMemo(() => {
         const column = createDataTableColumnHelper<ReadRun>();
         const columns: DataTableColumnDef<ReadRun>[] = [
-            column.accessor('status', {
-                header: m.runs_column_status(),
-                enableSorting: false,
-                enableHiding: false,
-                meta: { priority: 0 },
-                cell: ({ row }) => (
-                    <RunStatusBadge status={row.original.status} cancelling={row.original.cancelRequestedAt !== null} />
-                ),
-            }),
             // Titles come from agents and whoever started the run: React renders them as text.
             column.accessor((run) => runTitle(run), {
                 id: 'title',
                 header: m.runs_column_title(),
                 enableSorting: false,
                 enableHiding: false,
-                meta: { priority: 1 },
+                meta: { priority: 0, icon: <Hash className={ICON} /> },
                 cell: ({ row }) => (
-                    <span className="flex flex-col items-start gap-0.5">
+                    <span className="flex min-w-0 flex-col items-start gap-0.5">
                         <Link
                             to="/runs/$runId"
                             params={{ runId: row.original.id }}
                             {...(acrossAgents ? {} : { search: { from: 'agent' } })}
                             variant="standalone"
-                            className="line-clamp-2 break-words"
+                            className="line-clamp-2 font-medium break-words text-text"
                         >
                             {runTitle(row.original)}
                         </Link>
@@ -70,6 +96,15 @@ function useRunColumns({ acrossAgents, cost }: RunColumnOptions): DataTableColum
                     </span>
                 ),
             }),
+            column.accessor('status', {
+                header: m.runs_column_status(),
+                enableSorting: false,
+                enableHiding: false,
+                meta: { priority: 1, icon: <CircleDot className={ICON} /> },
+                cell: ({ row }) => (
+                    <RunStatusPill status={row.original.status} cancelling={row.original.cancelRequestedAt !== null} />
+                ),
+            }),
         ];
         if (acrossAgents) {
             columns.push(
@@ -77,12 +112,8 @@ function useRunColumns({ acrossAgents, cost }: RunColumnOptions): DataTableColum
                     id: 'agent',
                     header: m.runs_column_agent(),
                     enableSorting: false,
-                    meta: { priority: 3 },
-                    cell: ({ row }) => (
-                        <Link to="/agents/$agentId" params={{ agentId: row.original.agentId }} className="break-words">
-                            {row.original.agentName ?? row.original.agentId}
-                        </Link>
-                    ),
+                    meta: { priority: 3, icon: <Bot className={ICON} /> },
+                    cell: ({ row }) => <RunAgent run={row.original} look={agentLook(row.original.agentId, agents)} />,
                 }),
             );
         }
@@ -90,13 +121,12 @@ function useRunColumns({ acrossAgents, cost }: RunColumnOptions): DataTableColum
             column.accessor('source', {
                 header: m.runs_column_source(),
                 enableSorting: false,
-                meta: { priority: 4 },
+                meta: { priority: 4, icon: <Zap className={ICON} /> },
                 cell: ({ row }) => runSourceLabel(row.original.source),
             }),
             column.accessor('queuedAt', {
                 header: m.runs_column_queued(),
-                enableSorting: false,
-                meta: { priority: 2 },
+                meta: { priority: 2, trailing: true, numeric: true, icon: <CalendarClock className={ICON} /> },
                 cell: ({ row }) => (
                     <RelativeTime value={new Date(row.original.queuedAt)} className="whitespace-nowrap" />
                 ),
@@ -105,7 +135,7 @@ function useRunColumns({ acrossAgents, cost }: RunColumnOptions): DataTableColum
                 id: 'duration',
                 header: m.runs_column_duration(),
                 enableSorting: false,
-                meta: { priority: 5 },
+                meta: { priority: 5, numeric: true, icon: <Timer className={ICON} /> },
                 cell: ({ row }) => <RunDuration run={row.original} />,
             }),
         );
@@ -115,13 +145,31 @@ function useRunColumns({ acrossAgents, cost }: RunColumnOptions): DataTableColum
                     id: 'cost',
                     header: m.runs_column_cost(),
                     enableSorting: false,
-                    meta: { priority: 6 },
+                    meta: { priority: 6, numeric: true, icon: <Coins className={ICON} /> },
                     cell: ({ row }) => <RunCost cost={row.original.usage?.cost} />,
                 }),
             );
         }
         return columns;
-    }, [acrossAgents, cost]);
+    }, [acrossAgents, cost, agents]);
+}
+
+/** The run's agent as a chip in its colour, linking to the agent; the name is a text node. */
+function RunAgent({ run, look }: { readonly run: ReadRun; readonly look: AgentLook }) {
+    const name = run.agentName ?? run.agentId;
+    return (
+        <EntityChip
+            label={name}
+            tone="agent"
+            tint={look.tint}
+            leading={<Avatar name={name} src={look.src} tint={look.tint} size="2xs" />}
+            render={({ children, ...props }) => (
+                <RouterLink to="/agents/$agentId" params={{ agentId: run.agentId }} {...props}>
+                    {children}
+                </RouterLink>
+            )}
+        />
+    );
 }
 
 /** What a running run's agent says it is doing, under its title, so the list shows work moving. */
@@ -133,13 +181,18 @@ function RunNow({ run }: { readonly run: ReadRun }) {
 
 export interface RunsTableProps {
     readonly search: RunSearch;
-    /** Applies a change to the URL, which is the only place the filters and page live. */
+    /** Applies a change to the URL, which is the only place the filters, order and page live. */
     readonly onSearchChange: (change: Partial<RunSearch>, options?: { readonly replace?: boolean }) => void;
     /** On an agent's tab: only that agent's runs, without the agent column and filter. */
     readonly agentId?: AgentId;
 }
 
-/** The runs timeline, global or for one agent: every filter and page is applied by the engine, newest first. */
+/** The engine's order is newest first; the URL only says so when a reader turned it around. */
+function sortingOf(search: RunSearch): SortingState {
+    return [{ id: 'queuedAt', desc: search.sort !== 'queuedAt' }];
+}
+
+/** The runs timeline, global or for one agent: every filter, the order and each page are applied by the engine. */
 export function RunsTable({ search, onSearchChange, agentId }: RunsTableProps) {
     const engineApi = useEngineApi();
     const queryClient = useQueryClient();
@@ -148,9 +201,16 @@ export function RunsTable({ search, onSearchChange, agentId }: RunsTableProps) {
     const list = useRunList(params);
     const scope = agentId === undefined ? 'global' : 'agent';
     const items = list.data?.items ?? NO_RUNS;
+    const agentList = useQuery({
+        ...agentListQueryOptions(engineApi, { limit: AGENT_FILTER_LIMIT, sort: 'name' }),
+        enabled: scope === 'global',
+    });
+    const agents = agentList.data?.items ?? NO_AGENTS;
+    const agentsById = useMemo(() => new Map(agents.map((agent) => [agent.id, agent])), [agents]);
     const columns = useRunColumns({
         acrossAgents: scope === 'global',
         cost: items.some((run) => run.usage?.cost !== null && run.usage?.cost !== undefined),
+        agents: agentsById,
     });
     const rowActions = useRunRowActions();
     const paging = useCursorPages(search.cursor, list.data?.nextCursor ?? null, (cursor) => {
@@ -169,137 +229,121 @@ export function RunsTable({ search, onSearchChange, agentId }: RunsTableProps) {
         filter({ status: undefined, source: undefined, from: undefined, to: undefined, agentId: undefined });
     };
     const clearButton = <Button onClick={clear}>{m.runs_clear_filters()}</Button>;
+    const fields = runFilterFields({ search, scope, agents, agentsById, onChange: filter });
 
     return (
-        <div className="flex flex-col gap-4">
-            <RunFilters search={search} scope={scope} onChange={filter} onClear={clear} />
-            <DataTable
-                caption={m.runs_title()}
-                columns={columns}
-                data={items}
-                getRowId={(run) => run.id}
-                getRowLabel={(run) => runTitle(run)}
-                visibilityStorage={{ storage, key: RUN_COLUMNS_STORAGE_KEY }}
-                rowActions={rowActions}
-                page={paging.page}
-                onPageChange={paging.onPageChange}
-                onPageIntent={(cursor, direction) => {
-                    if (direction !== 'next') return;
-                    queryClient.query(runListQueryOptions(engineApi, { ...params, cursor })).catch(() => undefined);
-                }}
-                loading={list.isPending}
-                fetching={list.isFetching && !list.isPending}
-                {...(list.isError && !invalidCursor
-                    ? {
-                          error: {
-                              message: m.runs_load_failed(),
-                              onRetry: () => {
-                                  void list.refetch();
-                              },
-                              retrying: list.isFetching,
+        <DataTable
+            caption={m.runs_title()}
+            columns={columns}
+            data={items}
+            getRowId={(run) => run.id}
+            getRowLabel={(run) => runTitle(run)}
+            visibilityStorage={{ storage, key: RUN_COLUMNS_STORAGE_KEY }}
+            sorting={sortingOf(search)}
+            onSortingChange={(next) => {
+                const [first] = next;
+                filter({ sort: first !== undefined && !first.desc ? 'queuedAt' : undefined });
+            }}
+            sortingRemoval={false}
+            toolbar={(view) => <FilterBar {...view} label={m.runs_filters()} fields={fields} onClear={clear} />}
+            rowActions={rowActions}
+            page={paging.page}
+            onPageChange={paging.onPageChange}
+            onPageIntent={(cursor, direction) => {
+                if (direction !== 'next') return;
+                queryClient.query(runListQueryOptions(engineApi, { ...params, cursor })).catch(() => undefined);
+            }}
+            loading={list.isPending}
+            fetching={list.isFetching && !list.isPending}
+            {...(list.isError && !invalidCursor
+                ? {
+                      error: {
+                          message: m.runs_load_failed(),
+                          onRetry: () => {
+                              void list.refetch();
                           },
+                          retrying: list.isFetching,
+                      },
+                  }
+                : {})}
+            empty={
+                filtered
+                    ? { title: m.runs_no_results(), description: m.runs_no_results_hint(), action: clearButton }
+                    : {
+                          title: m.runs_empty_title(),
+                          description: scope === 'agent' ? m.runs_empty_agent_body() : m.runs_empty_body(),
                       }
-                    : {})}
-                empty={
-                    filtered
-                        ? { title: m.runs_no_results(), description: m.runs_no_results_hint(), action: clearButton }
-                        : {
-                              title: m.runs_empty_title(),
-                              description: scope === 'agent' ? m.runs_empty_agent_body() : m.runs_empty_body(),
-                          }
-                }
-            />
-        </div>
+            }
+        />
     );
 }
 
-interface RunFiltersProps {
+interface RunFilterInput {
     readonly search: RunSearch;
     readonly scope: 'global' | 'agent';
+    readonly agents: readonly ReadAgent[];
+    readonly agentsById: ReadonlyMap<string, ReadAgent>;
     readonly onChange: (change: Partial<RunSearch>) => void;
-    readonly onClear: () => void;
 }
 
-function choice<T extends string>(value: string, known: readonly T[]): T | undefined {
-    return known.find((candidate) => candidate === value);
-}
-
-/**
- * Every filter reads from and writes to the search params, so a reload or a shared link restores the view. On a phone
- * they sit behind one "Filters" button, so the first runs are in view.
- */
-function RunFilters({ search, scope, onChange, onClear }: RunFiltersProps) {
-    const agents = useQuery({
-        ...agentListQueryOptions(useEngineApi(), { limit: AGENT_FILTER_LIMIT, sort: 'name' }),
-        enabled: scope === 'global',
-    });
-    const items = agents.data?.items ?? [];
-    const agentOptions = items.map((agent) => ({ value: agent.id, label: agent.name }));
-    const agentId = search.agentId;
-    if (agentId !== undefined && !items.some((agent) => agent.id === agentId))
-        agentOptions.unshift({ value: agentId, label: agentId });
-    const filters: FilterBarFilter[] = [
-        {
-            kind: 'multi',
+/** Every field reads from and writes to the search params, so a reload or a shared link restores the view. */
+function runFilterFields({ search, scope, agents, agentsById, onChange }: RunFilterInput): readonly FilterBarField[] {
+    return [
+        filterField.multiEnum({
             id: 'status',
             label: m.runs_filter_status(),
-            options: RUN_STATUSES.map((status) => ({ value: status, label: runStatusLabel(status) })),
-            value: [...selectedStatuses(search)],
+            icon: <CircleDot className={ICON} />,
+            options: RUN_STATUSES.map((status) => ({
+                value: status,
+                label: runStatusLabel(status),
+                icon: <StatusDot tone={runStatusTone(status)} />,
+            })),
+            value: readListParam(search.status, RUN_STATUSES),
             onChange: (value) => {
-                const next = RUN_STATUSES.filter((status) => value.includes(status));
-                onChange({ status: next.length === 0 ? undefined : next.join(',') });
+                onChange({ status: writeListParam(value, RUN_STATUSES) });
             },
-        },
+        }),
         ...(scope === 'global'
             ? [
-                  {
-                      kind: 'select',
+                  // The engine filters by one agent, so picking another replaces it.
+                  filterField.entity({
                       id: 'agent',
                       label: m.runs_filter_agent(),
-                      allLabel: m.runs_filter_all_agents(),
-                      options: agentOptions,
-                      value: agentId,
-                      onChange: (value) => {
-                          onChange({
-                              agentId:
-                                  items.find((agent) => agent.id === value)?.id ??
-                                  (value === agentId ? agentId : undefined),
-                          });
+                      icon: <Bot className={ICON} />,
+                      multiple: false,
+                      options: agents.map((agent) => {
+                          const look = agentLook(agent.id, agentsById);
+                          return {
+                              value: agent.id,
+                              label: agent.name,
+                              icon: <Avatar name={agent.name} src={look.src} tint={look.tint} size="2xs" />,
+                          };
+                      }),
+                      value: readOneParam(search.agentId),
+                      onChange: ([picked]) => {
+                          onChange({ agentId: picked === undefined ? undefined : agentsById.get(picked)?.id });
                       },
-                  } satisfies FilterBarFilter,
+                  }),
               ]
             : []),
-        {
-            kind: 'select',
+        filterField.enum({
             id: 'source',
             label: m.runs_filter_source(),
-            allLabel: m.runs_filter_all_sources(),
+            icon: <Zap className={ICON} />,
             options: RUN_SOURCES.map((source) => ({ value: source, label: runSourceLabel(source) })),
             value: search.source,
-            onChange: (value) => {
-                onChange({ source: value === undefined ? undefined : choice(value, RUN_SOURCES) });
+            onChange: (source) => {
+                onChange({ source });
             },
-        },
-        {
-            kind: 'date',
-            id: 'from',
-            label: m.runs_filter_from(),
-            value: search.from,
-            ...(search.to === undefined ? {} : { max: search.to }),
-            onChange: (value) => {
-                onChange({ from: value });
+        }),
+        filterField.dateRange({
+            id: 'queued',
+            label: m.runs_column_queued(),
+            icon: <CalendarClock className={ICON} />,
+            value: readRangeParams(search),
+            onChange: ({ from, to }) => {
+                onChange({ from, to });
             },
-        },
-        {
-            kind: 'date',
-            id: 'to',
-            label: m.runs_filter_to(),
-            value: search.to,
-            ...(search.from === undefined ? {} : { min: search.from }),
-            onChange: (value) => {
-                onChange({ to: value });
-            },
-        },
+        }),
     ];
-    return <FilterBar label={m.runs_filters()} filters={filters} onClear={onClear} />;
 }
