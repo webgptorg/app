@@ -215,3 +215,88 @@
         }
     }
 }
+
+/*
+ * Motion for things that arrive: 150–250 ms, ease-out, no bounce. Use them behind `motion-safe:`, so reduced motion
+ * shows the end state at once.
+ */
+@theme {
+    --animate-rise-in: rise-in var(--motion-enter) var(--ease-enter) both;
+    --animate-fade-in: fade-in var(--motion-enter) var(--ease-enter) both;
+    --animate-breathe: breathe var(--motion-live) var(--ease-standard) infinite;
+
+    @keyframes rise-in {
+        from {
+            opacity: 0;
+            transform: translateY(6px);
+        }
+    }
+    @keyframes fade-in {
+        from {
+            opacity: 0;
+        }
+    }
+    @keyframes breathe {
+        50% {
+            opacity: 0.4;
+        }
+    }
+}
+
+/*
+ * A faint wash of `--tint` (an agent's colour, a state's colour) with no border and no shadow: events in a thread sit
+ * on it instead of on cards. `--tint` comes from a class or the CSSOM, never from a style attribute.
+ */
+@utility soft-surface {
+    border-radius: var(--radius-surface);
+    background-color: color-mix(in oklab, var(--tint, var(--color-text-muted)) var(--soft-surface-wash), transparent);
+}
+
+/* `--tint` as text, pulled towards the text colour so an arbitrary profile colour stays readable. */
+@utility text-tint {
+    color: color-mix(in oklab, var(--tint, var(--color-text)) 72%, var(--color-text));
+}
+
+@utility bg-tint {
+    background-color: var(--tint, var(--color-text-muted));
+}
+
+/* Meta lines, timers, IDs, commits and tool steps: small, muted, tabular mono. */
+@utility meta {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    line-height: var(--text-xs--line-height);
+    font-variant-numeric: tabular-nums;
+    color: var(--color-text-muted);
+}
+
+/*
+ * A thin scrollbar that stays out of sight until the pointer is over the area or focus is in it. CSS only;
+ * `::-webkit-scrollbar` covers Safari, which ignores `scrollbar-color`.
+ */
+@utility scroll-quiet {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+    transition: scrollbar-color var(--motion-state) var(--ease-standard);
+
+    &:hover,
+    &:focus-within {
+        scrollbar-color: color-mix(in oklab, var(--color-text) 22%, transparent) transparent;
+    }
+
+    &::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+    }
+    &::-webkit-scrollbar-track {
+        background: transparent;
+    }
+    &::-webkit-scrollbar-thumb {
+        border-radius: var(--radius-pill);
+        background: transparent;
+    }
+    &:hover::-webkit-scrollbar-thumb,
+    &:focus-within::-webkit-scrollbar-thumb {
+        background: color-mix(in oklab, var(--color-text) 22%, transparent);
+    }
+}
