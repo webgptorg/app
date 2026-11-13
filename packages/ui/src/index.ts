@@ -180,9 +180,12 @@ export type {
     DataTableEmpty,
     DataTableError,
     DataTableExpansion,
+    DataTableGroup,
+    DataTableGrouping,
     DataTablePage,
     DataTableProps,
     DataTableSelection,
+    DataTableView,
 } from './components/data-table/data-table';
 export { createDataTableColumnHelper, dataTableFeatures } from './components/data-table/columns';
 export type {
