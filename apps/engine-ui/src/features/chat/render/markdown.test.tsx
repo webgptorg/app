@@ -3,7 +3,8 @@ import { describe, expect, it } from 'vitest';
 
 import { expectNoAxeViolations } from '../../../testing/axe';
 import { renderUi, TEST_ORIGIN } from '../../../testing/render-ui';
-import { MessageMarkdown, preloadMarkdown } from './lazy-markdown';
+import { MessageMarkdown } from './lazy-markdown';
+import { preloadMarkdown } from './preload-markdown';
 import { Markdown, MarkdownTree } from './markdown';
 import type { Nodes } from 'mdast';
 
