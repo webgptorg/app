@@ -14,6 +14,7 @@ import { EntityChip as ChipCore } from '@ptbk/ui';
 import type { EntityChipTriggerProps, StatusTone } from '@ptbk/ui';
 import { Link } from '@tanstack/react-router';
 import { Activity, FileText, ListTodo, MessageSquare, Plug, User, Zap } from 'lucide-react';
+import { lazy, Suspense } from 'react';
 import type { ReactNode } from 'react';
 
 import type { FeatureRequirement } from '../../app/registry/feature';
@@ -21,16 +22,19 @@ import { useAllows } from '../../app/registry/use-visible-features';
 import { AgentAvatar } from '../agents/agent-avatar';
 import { agentColor } from '../chat/references/agent-color';
 import { splitTaskName } from '../tasks/task-name';
-import {
-    AgentCard,
-    ChatCard,
-    FileCard,
-    IntegrationCard,
-    MemberCard,
-    RunCard,
-    TaskCard,
-    TriggerCard,
-} from './entity-cards';
+import { CardFallback } from './entity-card';
+
+// The cards' queries and formatting load on the first hover, not with every screen that shows a chip: Home is part
+// of the entry chunk, and a chip is there long before anyone opens its card.
+const cards = () => import('./entity-cards');
+const AgentCard = lazy(() => cards().then((module) => ({ default: module.AgentCard })));
+const TaskCard = lazy(() => cards().then((module) => ({ default: module.TaskCard })));
+const RunCard = lazy(() => cards().then((module) => ({ default: module.RunCard })));
+const ChatCard = lazy(() => cards().then((module) => ({ default: module.ChatCard })));
+const FileCard = lazy(() => cards().then((module) => ({ default: module.FileCard })));
+const TriggerCard = lazy(() => cards().then((module) => ({ default: module.TriggerCard })));
+const IntegrationCard = lazy(() => cards().then((module) => ({ default: module.IntegrationCard })));
+const MemberCard = lazy(() => cards().then((module) => ({ default: module.MemberCard })));
 
 interface Common {
     /** The entity's name as the engine reports it. Untrusted: rendered as a text node only. */
@@ -188,7 +192,13 @@ export function EntityChip(props: EntityChipProps) {
             {...(className === undefined ? {} : { className })}
             {...(target === null
                 ? { interactive: false }
-                : { render: target.link, hovercard: { label: name, content: target.card } })}
+                : {
+                      render: target.link,
+                      hovercard: {
+                          label: name,
+                          content: <Suspense fallback={<CardFallback />}>{target.card}</Suspense>,
+                      },
+                  })}
         />
     );
 }

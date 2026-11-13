@@ -106,7 +106,7 @@ export function PageHeader({ title, titleSuffix, breadcrumbs, back, actions, tit
             {back === undefined ? null : <div className="flex">{back}</div>}
             <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
                 <h1 id="page-title" className="min-w-0 text-xl font-semibold tracking-display [overflow-wrap:anywhere]">
-                    <span style={titleStyle}>{title}</span>
+                    {titleStyle === undefined ? title : <span style={titleStyle}>{title}</span>}
                     {/* A real space, so the heading's accessible name does not run the two together. */}
                     {titleSuffix === undefined ? null : ' '}
                     {titleSuffix === undefined ? null : (

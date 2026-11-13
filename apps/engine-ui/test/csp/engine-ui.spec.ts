@@ -19,14 +19,16 @@ import {
 import { expect, expectCleanPage, readBuiltIndexHtml, test } from './fixtures.ts';
 
 test.describe('the built bundle under the engine CSP', () => {
-    test("/ is the owner's control center, keeps engine text inert and meets the UX checks", async ({
+    test("/ is the owner's Chatter-first home with the feed, keeps engine text inert and meets the UX checks", async ({
         page,
         visit,
     }) => {
         const report = await visit('/');
 
         await expect(page.getByRole('heading', { level: 1, name: /, Owner$/ })).toBeVisible();
-        await expect(page.getByText('Running now', { exact: true })).toBeVisible();
+        await expect(page.getByRole('textbox', { name: 'Ask Chatter' })).toBeVisible();
+        await expect(page.getByRole('region', { name: /^Needs you/ })).toBeVisible();
+        await expect(page.getByRole('region', { name: /^Working now/ })).toBeVisible();
         const feed = page.getByRole('region', { name: 'Activity' });
         await expect(feed.getByText('deploy.started')).toBeVisible();
         await expect(feed.getByText('Jana Nováková joined')).toBeVisible();
@@ -53,7 +55,7 @@ test.describe('the built bundle under the engine CSP', () => {
         expectCleanPage(report);
     });
 
-    test("/ is a member's own home without the control center and meets the UX checks", async ({ page, visit }) => {
+    test("/ is a member's home without the activity feed and meets the UX checks", async ({ page, visit }) => {
         await routeFakeEngineApi(page, {
             member: {
                 id: 'member-jana',
@@ -65,9 +67,7 @@ test.describe('the built bundle under the engine CSP', () => {
         const report = await visit('/');
 
         await expect(page.getByRole('heading', { level: 1, name: /, Jana Nováková$/ })).toBeVisible();
-        await expect(
-            page.getByRole('region', { name: 'Agents you can use' }).getByRole('link', { name: 'Grace', exact: true }),
-        ).toBeVisible();
+        await expect(page.getByRole('textbox', { name: 'Ask Chatter' })).toBeVisible();
         await expect(page.getByRole('region', { name: 'Recent chats' })).toBeVisible();
         await expect(page.getByRole('region', { name: 'Activity' })).toHaveCount(0);
         expectCleanPage(report);
