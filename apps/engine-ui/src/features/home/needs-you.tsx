@@ -1,7 +1,7 @@
 import type { ReadChat, ReadTask } from '@ptbk/engine-api';
-import { Section, Skeleton, STATUS_TINT_CLASSES } from '@ptbk/ui';
+import { EmptyState, Section, Skeleton, STATUS_TINT_CLASSES } from '@ptbk/ui';
 import { useInfiniteQuery } from '@tanstack/react-query';
-import { CircleAlert, MessageCircleQuestion } from 'lucide-react';
+import { CircleAlert, CircleCheck, MessageCircleQuestion } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 
@@ -188,7 +188,12 @@ export function NeedsYou({ chats }: { readonly chats: readonly ReadChat[] | unde
                 loading ? (
                     <Skeleton shape="block" className="h-14 w-full" />
                 ) : (
-                    <p className="text-sm text-text-muted">{m.home_needs_you_empty()}</p>
+                    <EmptyState
+                        variant="inline"
+                        headingLevel={3}
+                        icon={<CircleCheck aria-hidden />}
+                        title={m.home_needs_you_empty()}
+                    />
                 )
             ) : (
                 <ul className="flex flex-col gap-2">

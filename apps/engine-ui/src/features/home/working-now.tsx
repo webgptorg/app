@@ -1,8 +1,8 @@
 import { KNOWN_CAPABILITIES } from '@ptbk/engine-api';
 import type { ReadChat, ReadRun, ReadTask } from '@ptbk/engine-api';
-import { Section, StatusDot } from '@ptbk/ui';
+import { EmptyState, Section } from '@ptbk/ui';
 import { useQuery } from '@tanstack/react-query';
-import { Activity, ListTodo } from 'lucide-react';
+import { Activity, CirclePause, ListTodo } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 import { useEngineApi } from '../../app/engine-api-context';
@@ -140,10 +140,12 @@ export function WorkingNow({ chats }: { readonly chats: readonly ReadChat[] | un
     return (
         <Section title={m.home_working_now()} {...(count === 0 ? {} : { count })}>
             {count === 0 ? (
-                <p className="flex items-center gap-2 text-sm text-text-muted">
-                    <StatusDot tone="neutral" />
-                    {m.home_working_none()}
-                </p>
+                <EmptyState
+                    variant="inline"
+                    headingLevel={3}
+                    icon={<CirclePause aria-hidden />}
+                    title={m.home_working_none()}
+                />
             ) : (
                 <ul className="soft-surface flex flex-col divide-y divide-hairline [--tint:var(--color-live)]">
                     {replies.map(({ chat, working }) => (

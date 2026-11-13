@@ -1,5 +1,5 @@
 import type { ReadChat } from '@ptbk/engine-api';
-import { RelativeTime, Section, Skeleton, StatusDot } from '@ptbk/ui';
+import { EmptyState, RelativeTime, Section, Skeleton, StatusDot } from '@ptbk/ui';
 import { MessageSquare } from 'lucide-react';
 
 import { Link } from '../../app/link';
@@ -100,7 +100,12 @@ export function RecentChats({
                     </div>
                 )
             ) : chats.length === 0 ? (
-                <p className="text-sm text-text-muted">{m.home_recent_chats_empty_body()}</p>
+                <EmptyState
+                    variant="inline"
+                    headingLevel={3}
+                    icon={<MessageSquare aria-hidden />}
+                    title={m.home_recent_chats_empty_body()}
+                />
             ) : (
                 <ul className="flex flex-col">
                     {chats.slice(0, RECENT_CHAT_COUNT).map((chat) => (

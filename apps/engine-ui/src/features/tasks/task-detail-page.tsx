@@ -16,7 +16,7 @@ import {
 import type { StatusTone } from '@ptbk/ui';
 import { useQuery } from '@tanstack/react-query';
 import { getRouteApi } from '@tanstack/react-router';
-import { Circle, CircleCheck, MessageSquare } from 'lucide-react';
+import { Circle, CircleCheck, History as HistoryIcon, MessageSquare } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 import { classifyApiError } from '../../app/api-errors';
@@ -474,7 +474,12 @@ function History({ task }: { readonly task: ReadTaskDetail }) {
         const items = occurrences.data.pages.flatMap((page) => page.items);
         body =
             items.length === 0 ? (
-                <p className="text-sm text-text-muted">{m.task_occurrences_empty()}</p>
+                <EmptyState
+                    variant="inline"
+                    headingLevel={3}
+                    icon={<HistoryIcon aria-hidden />}
+                    title={m.task_occurrences_empty()}
+                />
             ) : (
                 <>
                     <div className="-mx-2 overflow-x-auto">
