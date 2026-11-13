@@ -21,14 +21,20 @@ function format(locale: string, timeZone: string, kind: string, options: Intl.Da
 export function useShortTime(at: string): string {
     const { locale } = useLocale();
     const { timeZone } = useBrowser();
-    return format(locale, timeZone, 'short', { hour: '2-digit', minute: '2-digit' }).format(new Date(at));
+    return format(locale, timeZone, 'short', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(
+        new Date(at),
+    );
 }
 
 /** A turn's time, `12:16` in mono, with the exact moment on hover. */
 export function TurnTime({ at }: { readonly at: string }) {
     const { locale } = useLocale();
     const { timeZone } = useBrowser();
-    const exact = format(locale, timeZone, 'exact', { dateStyle: 'full', timeStyle: 'medium' }).format(new Date(at));
+    const exact = format(locale, timeZone, 'exact', {
+        dateStyle: 'full',
+        timeStyle: 'medium',
+        hourCycle: 'h23',
+    }).format(new Date(at));
     const short = useShortTime(at);
     return (
         <time dateTime={at} title={exact} className="font-mono text-xs font-normal text-text-muted tabular-nums">

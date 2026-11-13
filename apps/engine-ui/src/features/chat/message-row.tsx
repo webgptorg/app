@@ -4,15 +4,17 @@ import type { ReactNode, Ref } from 'react';
 
 import { cx } from '../../app/cx';
 import { m } from '../../paraglide/messages';
+import { AgentAvatar } from '../agents/agent-avatar';
 import { AgentCreator } from '../agents/agent-creator';
-import { agentTintClass } from './agent-tint';
 import type { MessageState, MessageView, StepsView, ThreadView } from './message-views';
 import { MessageMarkdown } from './render/lazy-markdown';
 import { PlainText } from './render/plain-text';
+import { tintStyle } from './references/agent-color';
+import { useReferenceAgent } from './references/thread-references';
+import type { ReferenceAgent } from './references/thread-references';
 import { RecheckCard, WaitingCard } from './reply-status-card';
 import { StepsCard } from './steps-card';
 import { TaskCard } from './task-card';
-import { ThreadAvatar } from './thread-agent';
 import { DayDivider, TurnTime } from './thread-time';
 
 /** A row this recent arrived while the thread was open; older ones (a reload, scrolling back) appear without motion. */
@@ -96,6 +98,21 @@ function Choices({
     );
 }
 
+/** The agent's picture when its profile has one, else its initial on a wash of its colour. */
+function TurnAvatar({ agent }: { readonly agent: ReferenceAgent }) {
+    if (agent.avatarUrl !== null) {
+        return <AgentAvatar name={agent.name} profile={{ avatarUrl: agent.avatarUrl, color: null }} size="xs" />;
+    }
+    return (
+        <span
+            aria-hidden="true"
+            className="inline-flex size-6 shrink-0 items-center justify-center rounded-full bg-[color-mix(in_oklab,var(--tint)_16%,var(--color-raised))] font-display text-xs font-semibold text-tint"
+        >
+            {Array.from(agent.name.trim())[0]?.toLocaleUpperCase() ?? null}
+        </span>
+    );
+}
+
 /**
  * An agent's turn: its avatar, name in its colour and time on top, then its words or steps beside a thin rail in the
  * same colour. A row that continues the turn shows only the rail; screen readers still hear who speaks.
@@ -111,17 +128,18 @@ function AgentTurn({
     readonly at: string | null;
     readonly children: ReactNode;
 }) {
+    const agent = useReferenceAgent(view.author.key, view.authorName);
     return (
-        <>
+        <div className="flex w-full min-w-0 flex-col items-start gap-1.5" style={tintStyle(agent.color)}>
             <header className={cx('flex items-center gap-2 text-sm font-medium', !showAuthor && 'sr-only')}>
-                <ThreadAvatar name={view.authorName} who={view.author} />
-                <span className="chat-agent-text">{view.authorName}</span>
+                <TurnAvatar agent={agent} />
+                <span className="text-tint">{view.authorName}</span>
                 {at === null ? null : <TurnTime at={at} />}
             </header>
-            <div className="chat-rail ms-3 flex w-[calc(100%-0.75rem)] min-w-0 flex-col gap-1.5 ps-[1.125rem]">
+            <div className="ms-3 flex w-[calc(100%-0.75rem)] min-w-0 flex-col gap-1.5 border-s-2 border-[color-mix(in_oklab,var(--tint)_40%,transparent)] ps-[1.125rem]">
                 {children}
             </div>
-        </>
+        </div>
     );
 }
 
@@ -174,9 +192,9 @@ function MessageBody({
             aria-busy={view.state === 'streaming' || view.state === 'pending' || undefined}
             className={cx(
                 'flex min-w-0 flex-col gap-1.5',
-                fromUser ? 'items-end' : cx('items-start', agentTintClass(view.author)),
+                fromUser ? 'items-end' : 'items-start',
                 startsTurn ? 'pt-5' : 'pt-1.5',
-                (fresh || view.state === 'pending') && 'chat-enter',
+                (fresh || view.state === 'pending') && 'motion-safe:animate-rise-in',
             )}
         >
             {fromUser ? (
@@ -212,15 +230,24 @@ function MessageBody({
                         // Keyed so the first words fade in where the typing dots were.
                         <div
                             key={typing ? 'typing' : 'text'}
-                            className={cx('w-full min-w-0', !typing && view.state === 'streaming' && 'chat-fade')}
+                            className={cx(
+                                'w-full min-w-0',
+                                !typing && view.state === 'streaming' && 'motion-safe:animate-fade-in',
+                            )}
                         >
                             {typing ? <Typing /> : text}
                         </div>
                     ) : (
-                        <div className="chat-soft flex w-full min-w-0 flex-col gap-1.5 px-3.5 py-2.5">
+                        <div className="flex w-full min-w-0 flex-col gap-1.5 px-3.5 py-2.5 soft-surface">
                             <p className="flex items-center gap-2 text-xs font-medium">
-                                <span className="chat-dot" data-pulse={view.question.seen ? undefined : ''} />
-                                <span className="chat-agent-text">{m.chat_asks_you()}</span>
+                                <span
+                                    aria-hidden="true"
+                                    className={cx(
+                                        'size-2 rounded-full bg-tint',
+                                        !view.question.seen && 'motion-safe:animate-breathe',
+                                    )}
+                                />
+                                <span className="text-tint">{m.chat_question_waiting()}</span>
                             </p>
                             <div className="min-w-0">{text}</div>
                             <Choices view={view} onAnswer={onAnswer} />
@@ -244,11 +271,7 @@ function StepsRow({
         <div
             ref={ref as Ref<HTMLDivElement> | undefined}
             data-index={index}
-            className={cx(
-                'flex min-w-0 flex-col items-start gap-1.5',
-                agentTintClass(view.author),
-                startsTurn ? 'pt-5' : 'pt-1.5',
-            )}
+            className={cx('flex min-w-0 flex-col items-start gap-1.5', startsTurn ? 'pt-5' : 'pt-1.5')}
         >
             <AgentTurn view={view} showAuthor={showAuthor} at={view.startedAt}>
                 <StepsCard view={view} />
@@ -273,7 +296,7 @@ function CardRow({
         <div
             ref={ref as Ref<HTMLDivElement> | undefined}
             data-index={index}
-            className={cx('flex min-w-0 flex-col items-start pt-3 ps-8', fresh && 'chat-enter')}
+            className={cx('flex min-w-0 flex-col items-start pt-3 ps-8', fresh && 'motion-safe:animate-rise-in')}
         >
             {children}
         </div>

@@ -1,14 +1,15 @@
 import { Button } from '@ptbk/ui';
-import { ChevronRight } from 'lucide-react';
 import { createContext, use, useId, useState } from 'react';
 import type { ReactNode } from 'react';
 
-import { cx } from '../../app/cx';
 import { useNow } from '../../app/ticker';
 import { m } from '../../paraglide/messages';
-import { agentTintClass } from './agent-tint';
 import type { RecheckView, WaitingView } from './message-views';
-import { clockText } from './steps-card';
+import { tintStyle } from './references/agent-color';
+import { formatClock } from './references/elapsed';
+import { StatusDot } from './references/task-status';
+import { useReferenceAgent } from './references/thread-references';
+import { Fold, FoldChevron } from './steps-card';
 import { useShortTime } from './thread-time';
 
 /** After this long without a sign of the agent, "starting" becomes "still waiting". */
@@ -56,16 +57,16 @@ function Details({ children }: { readonly children: ReactNode }) {
                 className="-mx-1 flex w-fit items-center gap-1 rounded-small px-1 text-xs text-text-muted hover:text-text"
             >
                 {m.chat_wait_details()}
-                <ChevronRight aria-hidden className="chat-chevron size-3.5" data-open={open ? '' : undefined} />
+                <FoldChevron open={open} />
             </button>
-            <div id={id} className="chat-fold" data-open={open ? '' : undefined}>
-                <div inert={!open}>
-                    <p className="text-xs text-text-muted">{children}</p>
-                </div>
-            </div>
+            <Fold id={id} open={open}>
+                <p className="text-xs text-text-muted">{children}</p>
+            </Fold>
         </div>
     );
 }
+
+const ERROR_SURFACE = 'flex w-full max-w-xl flex-col gap-2 px-3.5 py-2.5 soft-surface [--tint:var(--color-danger)]';
 
 /**
  * The member's message is in and nobody has started on it. Quiet at first ("Chatter is starting…"), then "Still
@@ -74,31 +75,34 @@ function Details({ children }: { readonly children: ReactNode }) {
 export function WaitingCard({ view }: { readonly view: WaitingView }) {
     const now = useNow();
     const retry = useRetryAction();
+    const agent = useReferenceAgent(view.agent.key, view.agentName);
     // Retry restarts the wait: the engine gets another two minutes before this turns into an error again.
     const [restartedAt, setRestartedAt] = useState<number | null>(null);
-    const since = restartedAt ?? Date.parse(view.since);
-    const waited = now - since;
-    const tint = agentTintClass(view.agent);
     const arrivedAt = useShortTime(view.since);
+    const waited = now - (restartedAt ?? Date.parse(view.since));
 
     if (waited < NO_RESPONSE_MS) {
         const still = waited >= STILL_WAITING_MS;
         return (
-            <p role="status" className={cx('chat-fade flex items-center gap-2 py-1 text-sm text-text-muted', tint)}>
-                <span className="chat-dot" data-tone={still ? 'warning' : undefined} data-pulse="" />
-                {still ? m.chat_wait_still({ name: view.agentName }) : m.chat_wait_starting({ name: view.agentName })}
+            <p
+                role="status"
+                className="flex items-center gap-2 py-1 text-sm text-text-muted motion-safe:animate-fade-in"
+                style={tintStyle(agent.color)}
+            >
+                {still ? (
+                    <StatusDot tone="waiting" />
+                ) : (
+                    <span aria-hidden="true" className="size-2 rounded-full bg-tint motion-safe:animate-breathe" />
+                )}
+                {still ? m.chat_wait_still({ name: agent.name }) : m.chat_wait_starting({ name: agent.name })}
             </p>
         );
     }
     return (
-        <section
-            role="alert"
-            aria-label={m.chat_wait_failed({ name: view.agentName })}
-            className={cx('chat-soft-danger chat-enter flex w-full max-w-xl flex-col gap-2 px-3.5 py-2.5', tint)}
-        >
+        <section role="alert" aria-label={m.chat_wait_failed({ name: agent.name })} className={ERROR_SURFACE}>
             <div className="flex flex-wrap items-center gap-2">
-                <span className="chat-dot" data-tone="danger" />
-                <span className="text-sm font-medium">{m.chat_wait_failed({ name: view.agentName })}</span>
+                <StatusDot tone="trouble" />
+                <span className="text-sm font-medium">{m.chat_wait_failed({ name: agent.name })}</span>
                 {retry.run === null ? null : (
                     <Button
                         size="sm"
@@ -126,31 +130,19 @@ export function RecheckCard({ view }: { readonly view: RecheckView }) {
     const now = useNow();
     const retry = useRetryAction();
     const left = Date.parse(view.nextAt) - now;
+    const title =
+        view.agentName === null ? m.chat_recheck_title_unnamed() : m.chat_recheck_title({ name: view.agentName });
     return (
-        <section
-            role="alert"
-            aria-label={
-                view.agentName === null
-                    ? m.chat_recheck_title_unnamed()
-                    : m.chat_recheck_title({ name: view.agentName })
-            }
-            className={cx(
-                'chat-soft-danger chat-enter flex w-full max-w-xl flex-col gap-1.5 px-3.5 py-2.5',
-                agentTintClass(view.agent),
-            )}
-        >
+        // Not a live region: the countdown would be read out every second.
+        <section aria-label={title} className={ERROR_SURFACE}>
             <div className="flex items-center gap-2">
-                <span className="chat-dot" data-tone="danger" />
-                <span className="text-sm font-medium">
-                    {view.agentName === null
-                        ? m.chat_recheck_title_unnamed()
-                        : m.chat_recheck_title({ name: view.agentName })}
-                </span>
+                <StatusDot tone="trouble" />
+                <span className="text-sm font-medium">{title}</span>
             </div>
             <p className="text-sm break-words text-text-muted">{view.cause}</p>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                <span className="font-mono text-xs text-text-muted tabular-nums">
-                    {left > 0 ? m.chat_recheck_countdown({ time: clockText(left) }) : m.chat_recheck_now()}
+                <span className="meta">
+                    {left > 0 ? m.chat_recheck_countdown({ time: formatClock(left) }) : m.chat_recheck_now()}
                 </span>
                 {retry.run === null ? null : (
                     <Button size="sm" className="ms-auto" disabled={retry.busy} onClick={retry.run}>

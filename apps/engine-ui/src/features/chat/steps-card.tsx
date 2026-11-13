@@ -2,83 +2,79 @@ import type { ReadReplyStep } from '@ptbk/engine-api';
 import { useLocale } from '@ptbk/ui';
 import { Check, ChevronRight } from 'lucide-react';
 import { useId, useState } from 'react';
+import type { ReactNode } from 'react';
 
 import { cx } from '../../app/cx';
-import { useNow } from '../../app/ticker';
 import { m } from '../../paraglide/messages';
 import type { StepsView } from './message-views';
+import { StepLine } from './references/agent-hovercard';
+import { formatClock, useElapsedMs } from './references/elapsed';
+import { StatusDot } from './references/task-status';
 
-/** `0:08`, `12:40`, `1:02:03`: a running clock, mono, for timers and countdowns. */
-export function clockText(ms: number): string {
-    const total = Math.max(0, Math.floor(ms / 1000));
-    const hours = Math.floor(total / 3600);
-    const minutes = Math.floor((total % 3600) / 60);
-    const seconds = String(total % 60).padStart(2, '0');
-    return hours > 0
-        ? `${String(hours)}:${String(minutes).padStart(2, '0')}:${seconds}`
-        : `${String(minutes)}:${seconds}`;
-}
-
-/** Counts up from `since` on the app's shared clock. */
+/** Counts up from `since` on the app's shared clock, as a mono stopwatch. */
 export function Elapsed({ since }: { readonly since: string }) {
-    const now = useNow();
-    return <span className="font-mono text-xs text-text-muted tabular-nums">{clockText(now - Date.parse(since))}</span>;
+    const elapsed = useElapsedMs(since);
+    return <span className="meta">{elapsed === null ? null : formatClock(elapsed)}</span>;
 }
 
-function StepLine({ step, current }: { readonly step: ReadReplyStep; readonly current: boolean }) {
-    const warn = step.level === 'warning' || step.level === 'error';
+/**
+ * A part that folds away: the grid row animates from `0fr` to its content's height, and while closed the content is
+ * inert, so nothing hidden in it takes focus.
+ */
+export function Fold({
+    id,
+    open,
+    children,
+}: {
+    readonly id: string;
+    readonly open: boolean;
+    readonly children: ReactNode;
+}) {
     return (
-        <li className="chat-enter flex min-w-0 items-baseline gap-2 py-0.5 text-sm">
-            <span className="flex size-3.5 shrink-0 items-center justify-center self-center">
-                {current ? (
-                    <span className="chat-dot" data-tone="live" data-pulse="" />
-                ) : (
-                    <Check aria-hidden className="size-3.5 text-text-muted" />
-                )}
-                <span className="sr-only">{current ? m.chat_step_current() : m.chat_step_done()}</span>
-            </span>
-            {step.kind === 'tool' && step.tool !== null ? (
-                <>
-                    <span className="shrink-0 font-mono text-xs font-semibold">{step.tool}</span>
-                    <span className="min-w-0 truncate font-mono text-xs text-text-muted" title={step.text}>
-                        {step.text}
-                    </span>
-                </>
-            ) : (
-                <>
-                    <span className={cx('shrink-0 text-xs font-medium', warn ? 'text-warning' : 'text-text-muted')}>
-                        {step.kind === 'reasoning' ? m.chat_step_reasoning() : m.chat_step_note()}
-                    </span>
-                    <span
-                        className={cx('min-w-0 truncate text-xs', warn ? 'text-text' : 'text-text-muted')}
-                        title={step.text}
-                    >
-                        {step.text}
-                    </span>
-                </>
-            )}
-        </li>
+        <div
+            id={id}
+            data-open={open ? '' : undefined}
+            className="grid grid-rows-[0fr] data-open:grid-rows-[1fr] motion-safe:transition-[grid-template-rows] motion-safe:duration-(--motion-enter) motion-safe:ease-enter"
+        >
+            <div inert={!open} className="min-h-0 overflow-hidden">
+                {children}
+            </div>
+        </div>
     );
 }
 
-function StepList({ steps, live }: { readonly steps: readonly ReadReplyStep[]; readonly live: boolean }) {
-    if (steps.length === 0) {
-        return live ? <p className="py-0.5 text-sm text-text-muted">{m.chat_steps_starting()}</p> : null;
-    }
+export function FoldChevron({ open }: { readonly open: boolean }) {
     return (
-        <ol aria-label={m.chat_steps_label()} className="flex flex-col">
-            {steps.map((step, index) => (
-                // Steps only ever grow at the end, so a position is a stable identity and only new ones slide in.
-                <StepLine key={index} step={step} current={live && index === steps.length - 1} />
-            ))}
-        </ol>
+        <ChevronRight
+            aria-hidden
+            data-open={open ? '' : undefined}
+            className="size-3.5 data-open:rotate-90 motion-safe:transition-transform motion-safe:duration-(--motion-state)"
+        />
+    );
+}
+
+function Step({ step, current }: { readonly step: ReadReplyStep; readonly current: boolean }) {
+    return (
+        <li className="flex min-w-0 items-center gap-2 py-0.5 motion-safe:animate-rise-in">
+            <span className="flex size-3.5 shrink-0 items-center justify-center">
+                {current ? <StatusDot tone="live" /> : <Check aria-hidden className="size-3.5 text-text-muted" />}
+                <span className="sr-only">{current ? m.chat_step_current() : m.chat_step_done()}</span>
+            </span>
+            <span className="min-w-0 flex-1">
+                {step.kind === 'reasoning' && step.text.trim() === '' ? (
+                    <span className="block text-xs text-text-muted italic">{m.chat_step_reasoning()}</span>
+                ) : (
+                    <StepLine step={step} />
+                )}
+            </span>
+        </li>
     );
 }
 
 /**
  * One agent turn's steps. Live, it ticks through them with an elapsed timer; once a reply ends the turn it folds into
- * "Worked 8 s · 3 steps", which opens again on click; a turn that ended without a reply stays open. Step text is
- * agent output: text nodes only, and nothing in the card is a link or control except its own toggle.
+ * "Worked 8 s · 3 steps", which opens again on click; a turn that ended without a reply stays open. Step text is agent
+ * output: text nodes only, and nothing in the card is a link or a control except its own toggle.
  */
 export function StepsCard({ view }: { readonly view: StepsView }) {
     const locale = useLocale();
@@ -101,14 +97,14 @@ export function StepsCard({ view }: { readonly view: StepsView }) {
             aria-label={live ? m.chat_steps_working() : summary}
             aria-busy={live || undefined}
             className={cx(
-                'w-full max-w-xl px-3 motion-safe:transition-[background-color,padding] motion-safe:duration-200 motion-safe:ease-enter',
-                open ? 'chat-soft py-2' : 'py-0.5',
-                live && 'chat-enter',
+                'w-full max-w-xl rounded-surface px-3 motion-safe:transition-[background-color,padding] motion-safe:duration-(--motion-enter) motion-safe:ease-enter',
+                open ? 'soft-surface py-2' : 'py-0.5',
+                live && 'motion-safe:animate-rise-in',
             )}
         >
             {live ? (
                 <div className="flex items-center gap-2 text-sm">
-                    <span className="chat-dot" data-pulse="" />
+                    <span aria-hidden="true" className="size-2 rounded-full bg-tint motion-safe:animate-breathe" />
                     <span className="font-medium">{m.chat_steps_working()}</span>
                     <Elapsed since={view.startedAt} />
                 </div>
@@ -120,19 +116,27 @@ export function StepsCard({ view }: { readonly view: StepsView }) {
                     onClick={() => {
                         setChosen(!open);
                     }}
-                    className="-mx-1 flex items-center gap-1.5 rounded-small px-1 font-mono text-xs text-text-muted hover:text-text"
+                    className="-mx-1 flex items-center gap-1.5 rounded-small px-1 meta hover:text-text"
                 >
-                    {view.status === 'unfinished' ? <span className="chat-dot" data-tone="warning" /> : null}
-                    <span>{summary}</span>
-                    {view.status === 'unfinished' ? <span>· {duration}</span> : null}
-                    <ChevronRight aria-hidden className="chat-chevron size-3.5" data-open={open ? '' : undefined} />
+                    {view.status === 'unfinished' ? <StatusDot tone="waiting" /> : null}
+                    <span>{view.status === 'unfinished' ? `${summary} · ${duration}` : summary}</span>
+                    <FoldChevron open={open} />
                 </button>
             )}
-            <div id={listId} className="chat-fold" data-open={open ? '' : undefined}>
-                <div inert={!open} className={open ? 'pt-1.5' : undefined}>
-                    <StepList steps={view.steps} live={live} />
+            <Fold id={listId} open={open}>
+                <div className="pt-1.5">
+                    {count === 0 ? (
+                        <p className="py-0.5 text-sm text-text-muted">{live ? m.chat_steps_starting() : null}</p>
+                    ) : (
+                        <ol aria-label={m.chat_steps_label()} className="flex flex-col">
+                            {view.steps.map((step, index) => (
+                                // Steps only grow at the end, so a position is a stable identity: only new ones slide in.
+                                <Step key={index} step={step} current={live && index === count - 1} />
+                            ))}
+                        </ol>
+                    )}
                 </div>
-            </div>
+            </Fold>
         </section>
     );
 }

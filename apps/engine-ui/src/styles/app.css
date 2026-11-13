@@ -2,7 +2,6 @@
 @import '@ptbk/ui';
 @import '../features/shell/shell.css';
 @import '../features/chat/render/code.css';
-@import '../features/chat/thread.css';
 @import '../features/runs/runs.css';
 @import '../features/home/home.css';
 @import '../features/onboarding/onboarding.css';

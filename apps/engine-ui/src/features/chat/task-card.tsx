@@ -1,111 +1,68 @@
-import { KNOWN_CAPABILITIES } from '@ptbk/engine-api';
-import type { ReadChat } from '@ptbk/engine-api';
 import { useLocale } from '@ptbk/ui';
 
 import { cx } from '../../app/cx';
 import { Link } from '../../app/link';
-import { useAllows } from '../../app/registry/use-visible-features';
 import { m } from '../../paraglide/messages';
-import { agentTintClass } from './agent-tint';
 import type { TaskView } from './message-views';
+import { AgentChip } from './references/agent-chip';
+import { CHAT_TASK_TINT_CLASSES, chatTaskTone, TaskStatus } from './references/task-status';
+import type { ReadChatTask } from './references/thread-references';
+import { useThreadReferences } from './references/thread-references';
 import { Elapsed } from './steps-card';
-import { ThreadAgent } from './thread-agent';
 
-type ChatTaskState = ReadChat['tasks'][number]['state'];
-
-const STATE_LOOK: Readonly<Record<ChatTaskState, { readonly tone: string; readonly pulse?: true }>> = {
-    queued: { tone: 'muted' },
-    running: { tone: 'live', pulse: true },
-    waiting: { tone: 'warning' },
-    blocked: { tone: 'danger' },
-    completed: { tone: 'success' },
-    failed: { tone: 'danger' },
-    cancelled: { tone: 'muted' },
-    retired: { tone: 'muted' },
-    unknown: { tone: 'muted' },
-};
-
-function stateLabel(state: ChatTaskState): string {
-    switch (state) {
-        case 'queued':
-            return m.chat_task_state_queued();
-        case 'running':
-            return m.chat_task_state_running();
-        case 'waiting':
-            return m.chat_task_state_waiting();
-        case 'blocked':
-            return m.chat_task_state_blocked();
-        case 'completed':
-            return m.chat_task_state_completed();
-        case 'failed':
-            return m.chat_task_state_failed();
-        case 'cancelled':
-            return m.chat_task_state_cancelled();
-        case 'retired':
-            return m.chat_task_state_retired();
-        case 'unknown':
-            return m.chat_task_state_unknown();
-    }
-}
-
-function TaskTimer({ task }: { readonly task: ReadChat['tasks'][number] }) {
+function TaskTimer({ task }: { readonly task: ReadChatTask }) {
     const locale = useLocale();
     if (task.startedAt === null) return null;
     if (task.endedAt === null) return <Elapsed since={task.startedAt} />;
-    return (
-        <span className="font-mono text-xs text-text-muted tabular-nums">
-            {locale.formatDuration(Date.parse(task.endedAt) - Date.parse(task.startedAt))}
-        </span>
-    );
+    return <span className="meta">{locale.formatDuration(Date.parse(task.endedAt) - Date.parse(task.startedAt))}</span>;
 }
 
 /**
  * Where a task came into the thread, with its live state from the thread record, which `chat.changed` refreshes. The
- * name, detail and commit are agent output: text only. Open task is the one link, and only when `tasks@1` is there.
+ * name, detail and commit are agent output: text only. Open task is its one link, and only where `tasks@1` leads.
  */
 export function TaskCard({ view }: { readonly view: TaskView }) {
-    const canOpen = useAllows({ capability: KNOWN_CAPABILITIES.tasks, permission: 'tasks.read' });
+    const canOpenTasks = useThreadReferences()?.canOpenTasks ?? false;
     const { task, agent } = view;
     const state = task?.state ?? 'unknown';
-    const look = STATE_LOOK[state];
     const taskId = task?.taskId ?? null;
+    const detail = task?.detail ?? '';
+    const commit = task?.commit ?? null;
+    const open = state === 'completed' && taskId !== null && canOpenTasks;
     return (
         <section
-            aria-label={`${m.chat_task_label()}: ${view.name}`}
+            aria-label={view.name}
             className={cx(
-                'chat-soft chat-enter flex w-full max-w-xl flex-col gap-1.5 px-3.5 py-2.5',
-                agentTintClass(agent === null ? null : { kind: 'agent', key: agent.key }),
+                'flex w-full max-w-xl flex-col gap-1.5 px-3.5 py-2.5 soft-surface',
+                CHAT_TASK_TINT_CLASSES[chatTaskTone(state)],
             )}
         >
-            <div className="flex min-w-0 items-center gap-2 text-sm">
-                <span className="chat-dot" data-tone={look.tone} data-pulse={look.pulse === true ? '' : undefined} />
-                <span className="shrink-0 text-xs font-medium text-text-muted">{stateLabel(state)}</span>
-                {task?.reopened === true ? (
-                    <span className="shrink-0 text-xs text-text-muted">· {m.chat_task_reopened()}</span>
-                ) : null}
+            <div className="flex min-w-0 items-center gap-2 text-xs font-medium text-text-muted">
+                <TaskStatus state={state} />
+                {task?.reopened === true ? <span>· {m.chat_ref_reopened()}</span> : null}
                 <span className="ms-auto shrink-0">{task === null ? null : <TaskTimer task={task} />}</span>
             </div>
             <p className="min-w-0 font-medium break-words">{view.name}</p>
-            {agent !== null || (task?.detail ?? '') !== '' ? (
-                <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-                    {agent === null ? null : <ThreadAgent name={agent.name} who={agent} />}
-                    {task?.detail === null || task?.detail === undefined || task.detail === '' ? null : (
-                        <span className="min-w-0 truncate text-sm text-text-muted" title={task.detail}>
-                            {task.detail}
+            {agent === null && detail === '' ? null : (
+                <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+                    {agent === null ? null : <AgentChip agentKey={agent.key} name={agent.name} interactive={false} />}
+                    {detail === '' ? null : (
+                        <span className="min-w-0 truncate text-text-muted" title={detail}>
+                            {detail}
                         </span>
                     )}
                 </div>
-            ) : null}
-            {state === 'completed' && (task?.commit !== null || (taskId !== null && canOpen)) ? (
+            )}
+            {state === 'completed' && (commit !== null || open) ? (
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-                    {task?.commit === null || task?.commit === undefined ? null : (
-                        <span className="font-mono text-text-muted">
-                            {m.chat_task_commit({ commit: task.commit.slice(0, 7) })}
+                    {commit === null ? null : (
+                        <span className="meta" title={commit}>
+                            {m.chat_ref_commit()} {commit.slice(0, 7)}
                         </span>
                     )}
-                    {taskId !== null && canOpen ? (
+                    {open ? (
                         <Link to="/tasks/$taskId" params={{ taskId }} className="font-medium">
-                            {m.chat_task_open_task()}
+                            {m.chat_ref_open_task()}
                         </Link>
                     ) : null}
                 </div>
