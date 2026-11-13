@@ -278,8 +278,9 @@ describe('FilterBar', () => {
     });
 
     it.each([
-        [{ from: '2026-11-02', to: '2026-11-09' }, /^Queued: \S+ \S+ \S+ – \S+ \S+ \S+$/],
-        [{ from: '2026-11-02', to: '2026-11-02' }, /^Queued: \S+ \S+ \S+$/],
+        [{ from: '2026-11-02', to: '2026-11-09' }, /^Queued: Nov 2(, 2026)? – Nov 9(, 2026)?$/],
+        [{ from: '2026-11-02', to: '2026-11-02' }, /^Queued: Nov 2(, 2026)?$/],
+        [{ from: '2001-01-05', to: undefined }, /^Queued: from Jan 5, 2001$/],
         [{ from: undefined, to: '2026-11-09' }, /^Queued: until /],
     ])('formats a range %o', (queued, name) => {
         renderUi(<Harness initial={{ ...NONE, queued }} />);

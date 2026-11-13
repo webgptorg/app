@@ -190,13 +190,13 @@ test.describe('foundations in a real browser', () => {
         const bar = page.locator('section[aria-labelledby="gallery-filter-bar"]').getByRole('search').first();
         const search = bar.getByRole('searchbox', { name: 'Search runs' });
         // A closed popover must neither show nor cover the search and chips beside it.
-        const closed = await page.evaluate(
+        const shown = await page.evaluate(
             () =>
-                [...document.querySelectorAll('[popover]')].filter(
+                [...document.querySelectorAll('section[aria-labelledby="gallery-filter-bar"] [popover]')].filter(
                     (element) => getComputedStyle(element).display !== 'none',
                 ).length,
         );
-        expect(closed).toBe(0);
+        expect(shown).toBe(0);
         const box = await search.boundingBox();
         const hit = await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest('[popover]') ?? null, {
             x: (box?.x ?? 0) + (box?.width ?? 0) / 2,

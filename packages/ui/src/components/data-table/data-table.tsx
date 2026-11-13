@@ -790,8 +790,8 @@ function HeaderCell<TData extends RowData>({
     );
     if (!sortable || !column.getCanSort()) {
         return (
-            <th scope="col" className={cx(cellClass, 'px-3')}>
-                <span className={cx('inline-flex items-center gap-1.5', numeric && 'flex-row-reverse')}>{content}</span>
+            <th scope="col" className={cx(cellClass, 'px-1.5')}>
+                <span className="inline-flex items-center gap-1.5 px-1.5 py-1">{content}</span>
             </th>
         );
     }
@@ -816,7 +816,6 @@ function HeaderCell<TData extends RowData>({
                     'group/sort inline-flex cursor-pointer items-center gap-1.5 rounded-small px-1.5 py-1 hover:bg-(--data-table-row-hover) hover:text-(--data-table-text)',
                     'motion-safe:transition-colors motion-safe:duration-(--motion-state)',
                     sorted !== false && 'text-(--data-table-text)',
-                    numeric && 'flex-row-reverse',
                 )}
             >
                 {content}
