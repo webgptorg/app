@@ -1,0 +1,35 @@
+/* The field uses Input's tokens (`--input-*`). */
+:root {
+    --date-input-icon: var(--color-text-muted);
+}
+
+/*
+ * Chromium's picker button lies invisible over our calendar icon, so clicking the icon still opens the native picker,
+ * themed by the page's `color-scheme`.
+ */
+input[data-ptbk-date-input]::-webkit-calendar-picker-indicator {
+    position: absolute;
+    inset-block: 0;
+    inset-inline-end: calc(var(--spacing) * 2);
+    width: calc(var(--spacing) * 6);
+    height: calc(var(--spacing) * 6);
+    margin-block: auto;
+    padding: 0;
+    opacity: 0;
+    cursor: pointer;
+}
+
+input[data-ptbk-date-input]:disabled::-webkit-calendar-picker-indicator {
+    cursor: not-allowed;
+}
+
+/* Firefox draws its own calendar button and has no hook to hide it; ours would be a second icon. */
+@supports not selector(::-webkit-calendar-picker-indicator) {
+    [data-ptbk-date-input-icon] {
+        display: none;
+    }
+
+    input[data-ptbk-date-input] {
+        padding-inline-end: calc(var(--spacing) * 3);
+    }
+}

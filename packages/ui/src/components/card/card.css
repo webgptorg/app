@@ -1,7 +1,7 @@
+/* Kept for screens not yet on `Section`: a quiet hairline panel, no shadow (U-17: no border-plus-shadow cards). */
 :root {
     --card-bg: var(--color-raised);
-    --card-border: var(--color-divider);
+    --card-border: var(--color-hairline);
     --card-radius: var(--radius-surface);
-    --card-shadow: var(--shadow-subtle);
     --card-title: var(--color-text);
 }

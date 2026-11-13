@@ -1,6 +1,8 @@
+/* Quiet: a soft wash of the tone and its icon, no edge stripe; the words carry the message. */
 :root {
     --banner-radius: var(--radius-control);
     --banner-text: var(--color-text);
+    --banner-muted: var(--color-text-muted);
     --banner-info-bg: var(--color-info-soft);
     --banner-info-border: var(--color-info);
     --banner-success-bg: var(--color-success-soft);

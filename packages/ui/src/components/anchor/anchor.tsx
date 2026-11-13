@@ -19,9 +19,11 @@ export function Anchor({ variant = 'inline', className, children, ...rest }: Anc
         <a
             {...rest}
             className={cx(
-                'rounded-small text-(--anchor-text) hover:text-(--anchor-text-hover)',
-                'motion-safe:transition-[color,background-color,border-color,text-decoration-color] motion-safe:duration-(--motion-state)',
-                variant === 'inline' ? 'underline underline-offset-2' : 'no-underline hover:underline',
+                'rounded-small motion-safe:transition-[color,background-color,border-color,text-decoration-color] motion-safe:duration-(--motion-state)',
+                // Teal and an underline mark a link in running text only; navigation reads as text, as in the brief.
+                variant === 'inline'
+                    ? 'text-(--anchor-text) underline decoration-1 underline-offset-2 hover:text-(--anchor-text-hover)'
+                    : 'text-(--anchor-standalone-text) no-underline hover:text-(--anchor-standalone-text-hover) hover:underline',
                 className,
             )}
         >

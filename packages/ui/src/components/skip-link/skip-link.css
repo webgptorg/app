@@ -1,4 +1,4 @@
 :root {
     --skip-link-bg: var(--color-raised);
-    --skip-link-text: var(--color-accent-text);
+    --skip-link-text: var(--color-text);
 }

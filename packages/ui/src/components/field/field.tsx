@@ -68,12 +68,12 @@ export function Field({
                 required,
             })}
             {hasHint ? (
-                <p id={hintId} className="text-sm text-(--field-hint)">
+                <p id={hintId} className="text-xs text-(--field-hint)">
                     {hint}
                 </p>
             ) : null}
             {hasError ? (
-                <p id={errorId} className="text-sm font-medium text-(--field-error)">
+                <p id={errorId} className="text-xs font-medium text-(--field-error)">
                     {error}
                 </p>
             ) : null}

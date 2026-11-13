@@ -2,7 +2,7 @@
     --toast-bg: var(--color-raised);
     --toast-text: var(--color-text);
     --toast-muted: var(--color-text-muted);
-    --toast-border: var(--color-divider);
+    --toast-border: var(--color-hairline);
     --toast-radius: var(--radius-surface);
     --toast-shadow: var(--shadow-overlay);
     --toast-info: var(--color-info);
