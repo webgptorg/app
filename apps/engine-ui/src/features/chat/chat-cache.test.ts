@@ -20,6 +20,8 @@ function message(position: number, content = `m${String(position)}`): ReadMessag
         createdBy: null,
         createdAt: '2026-10-01T12:00:00Z' as ReadMessage['createdAt'],
         choices: [],
+        phase: null,
+        steps: [],
     };
 }
 

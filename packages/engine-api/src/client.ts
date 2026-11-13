@@ -178,6 +178,8 @@ export interface EngineApiClient {
             messageId: Param<'cancelChatReply', 'messageId'>,
             signal: AbortSignal,
         ): Result<'cancelChatReply'>;
+        /** Attempts the thread's failed reply now instead of at its `recheck.nextAt`. */
+        retry(chatId: Param<'retryChatReply', 'chatId'>, signal: AbortSignal): Result<'retryChatReply'>;
     };
     readonly members: {
         list(query: Query<'listMembers'>, signal: AbortSignal): Result<'listMembers'>;
@@ -424,6 +426,7 @@ export function createEngineApiClient(transport: EngineApiTransport): EngineApiC
                 call(R.streamChatReply, { params: { chatId, messageId }, ...streamRequest(options) }, signal),
             cancelReply: (chatId, messageId, signal) =>
                 call(R.cancelChatReply, { params: { chatId, messageId } }, signal),
+            retry: (chatId, signal) => call(R.retryChatReply, { params: { chatId } }, signal),
         },
         members: {
             list: (query, signal) => call(R.listMembers, { query }, signal),

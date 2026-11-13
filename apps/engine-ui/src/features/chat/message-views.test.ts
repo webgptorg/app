@@ -23,6 +23,8 @@ function message(position: number, fields: Partial<ReadMessage> = {}): ReadMessa
         createdBy: null,
         createdAt: at,
         choices: [],
+        phase: null,
+        steps: [],
         ...fields,
     };
 }

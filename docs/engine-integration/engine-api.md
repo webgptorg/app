@@ -13,7 +13,7 @@ Spec: [Engine security baseline](../spec/zero-trust-spec.md#engine-security-base
 
 ## Route groups
 
-95 operations today. Every group must be served; capability groups only if the engine advertises the capability.
+96 operations today. Every group must be served; capability groups only if the engine advertises the capability.
 
 | Group                  | Paths                                                                                                                         | Ops | Source                                                                              |
 | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------- | --- | ----------------------------------------------------------------------------------- |
@@ -22,7 +22,7 @@ Spec: [Engine security baseline](../spec/zero-trust-spec.md#engine-security-base
 | Agents                 | `/agents`, `/agents/validate`, `/agents/{agentId}` with `restore`, `source`, `revisions`, and draft `status`, `start`, `stop` | 14  | [agents.ts](../../packages/engine-api/src/agents.ts)                                |
 | Events                 | `/events` (SSE)                                                                                                               | 1   | [events.ts](../../packages/engine-api/src/events.ts)                                |
 | Folders                | `/folders`, `/folders/{folderId}`                                                                                             | 4   | [folders.ts](../../packages/engine-api/src/folders.ts)                              |
-| Chats                  | `/chats`, `/agents/{agentId}/chats`, `/chats/{chatId}`, messages, reply stream (SSE), cancel                                  | 8   | [chats.ts](../../packages/engine-api/src/chats.ts)                                  |
+| Chats                  | `/chats`, `/agents/{agentId}/chats`, `/chats/{chatId}`, messages, reply stream (SSE), cancel, retry                           | 9   | [chats.ts](../../packages/engine-api/src/chats.ts)                                  |
 | Members and invites    | `/members`, `/members/{memberId}`, `/invites` (all but the reads: `members@1`)                                                | 7   | [members.ts](../../packages/engine-api/src/members.ts)                              |
 | API tokens             | `/api-tokens`, `/api-tokens/{apiTokenId}/revoke` (`api-tokens@1`)                                                             | 3   | [api-tokens.ts](../../packages/engine-api/src/api-tokens.ts)                        |
 | Settings               | `/settings`, `/settings/update-policy`                                                                                        | 3   | [settings.ts](../../packages/engine-api/src/settings.ts)                            |
@@ -71,12 +71,82 @@ A chat is the engine's thread, its `CHAT` Book (Reborn `specs/cli/chats.md`): me
 
 - **IDs are the engine's.** `ChatId` is the thread's normalized `CHAT` name and `MessageId` is `<chat>#<position>` today; both are opaque, printable, up to 512 characters, so they may hold spaces, `—` and `#`. Clients percent-encode them in paths.
 - **`Chat`**: `title` (the latest `CHAT TITLE`), `status` (`CHAT STATUS`: `open`, `waiting-for-user`, `resolved`), `members` (`{ kind, key, name }` in join order; an agent's key is its `AgentId`, the User's is `user`; the first agent is the main agent), `messageCount`, `lastMessageAt`, `preview` (the newest message as plain text, whitespace collapsed, cut to `MAX_CHAT_PREVIEW_LENGTH`), `unread` (agent messages since the calling member last marked the thread read) and `questions` (outstanding `+@User` questions: `{ id, messageId, author, seen }`). A thread may have no User: agents talking, or the one-agent `Report`.
-- **Entries**: `GET /chats/{chatId}/entries` lists the thread newest first as `message`, `joined`, `titled` and `status` entries, in the order the engine recorded them. A participant's `joined` comes before its first message. Every `Message` has `author: { kind, key }`, `createdBy` (the member who sent a User message, else `null`) and `choices` (answers an agent offers). Clients skip entry types they do not know.
+- **Entries**: `GET /chats/{chatId}/entries` lists the thread newest first as `message`, `joined`, `titled`, `status` and `linked` entries, in the order the engine recorded them. A participant's `joined` comes before its first message. Every `Message` has `author: { kind, key }`, `createdBy` (the member who sent a User message, else `null`) and `choices` (answers an agent offers). Clients skip entry types they do not know.
 - **Starting**: `POST /chats` with no `agentId` starts the thread with Chatter (409 `chatter-missing` when the engine has none; never another agent silently), or with the agent named. The User and the agent join at once.
 - **Sending**: `POST /chats/{chatId}/messages` writes as the User; the User joins first if it was not a member. `replyTo` names the question the message answers; saving it clears that question at once. Without `replyTo`, the message answers a question only when exactly one waits, and the engine routes it as Reborn does (the question's author, an agent the message brings in, else the main agent).
 - **Idempotency**: `createChat` and `sendChatMessage` take an optional `requestKey` (`[A-Za-z0-9_-]{8,128}`), scoped to the member (and the thread, for sends). A repeat with the same key and the same request answers the original result and creates nothing; the same key with a different request is 409 `request-key-reused`. The UI sends a key with every message and resends under it when an answer was lost.
 - **Read and seen**: `POST /chats/{chatId}/read` sets the caller's `unread` to 0. `POST /chats/{chatId}/seen` with `{ messageIds }` marks the questions in those displayed messages seen for everyone; it answers nothing, resolves nothing and is idempotent. Both need only `chats.read`.
 - **Attention**: `unread` is not a demand; `questions` is. A thread needs the User while it has questions, and an unseen one is the stronger signal. Seen and answered are separate: a seen question keeps waiting until a saved answer (or its agent withdrawing it) removes it.
+
+#### What agents do in a thread
+
+Added 2026-11-13 (C-14). A thread shows what its agents are doing, not only what they wrote. Every field below is required in what the engine sends; the UI's readers default each one (`null`, `[]`) for an engine that predates them.
+
+- **A turn.** An agent's turn is everything it does to answer, from the moment the engine decides it will answer until its reply is saved, fails or is cancelled. A turn that takes a while is saved as one or more `progress` messages followed by one `final` reply. A quick turn with no saved progress is one ordinary message.
+- **`Message.phase`** (`MESSAGE_PHASES`):
+  - `progress`: an interim update saved during the turn.
+  - `final`: the reply that ends a turn that saved progress.
+  - `null`: every other message, every User message among them.
+  - A `progress` message with no `final` after it from the same agent is a turn that never finished (interrupted or failed).
+- **`Message.steps`** (`ReplyStep[]`, at most `MAX_REPLY_STEPS` = 200, oldest first): what the agent did in this turn. It is empty unless `phase` is `progress`. When a turn has more steps, it spans several `progress` messages. A `ReplyStep` is:
+  - `kind`: `reasoning` (the model thinking), `tool` (a tool call the harness made) or `note` (anything else the engine reports, such as a warning or the reason a turn stopped).
+  - `tool`: the tool's name exactly as the harness reports it (`Read`, `Glob`, `mcp__ptbk__create_task`), 1 to 128 characters. It is set for a `tool` step and `null` for every other kind; the schema refuses both mismatches.
+  - `text`: one line, at most `MAX_REPLY_STEP_TEXT_LENGTH` = 500 characters, whitespace runs collapsed: the tool's main argument, a reasoning excerpt or the note. It may be empty (a reasoning step with nothing to show).
+  - `level`: `info`, `warning` or `error`.
+- **A `progress` message's `content`** stays a readable rendering of its steps, so a client that ignores `steps` still shows something sensible. One line per step: `- thinking: <text>`, `- <tool> <text>`, `- <text>` for an `info` note and `- <level>: <text>` for any other note. Streamed partial text and an unfinished note may follow after a blank line. Reborn's `ReplyProgress.render()` already writes reasoning and tool lines this way.
+- **`Chat.working`** (`ChatWorking[]`, in the order the turns started; empty when nobody works) lists the agents writing a reply now:
+  - `author`: the agent, already a member of the thread.
+  - `startedAt`: when the turn started, before the agent has done or written anything. This is what lets the UI show "Chatter is working" at once instead of nothing.
+  - `steps`: its latest steps, at most `MAX_WORKING_STEPS` = 20, oldest first.
+  - `messageId`: the `streaming` message this turn writes, once the thread lists one; `null` while the agent only works.
+
+  The entry disappears when the reply is saved, fails or is cancelled.
+
+- **`Chat.tasks`** (`ChatTask[]`, at most `MAX_CHAT_TASKS` = 100, in the order they came in): the tasks this thread created or links, with their live state.
+  - `name`: the task's Book name, 1 to 512 characters. This is what `{name}` refers to in message text and what a `linked` entry names.
+  - `taskId`: the same task's ID in `tasks@1`. `null` when the engine does not advertise `tasks@1` or the name does not resolve.
+  - `state` (`CHAT_TASK_STATES`): `queued`, `running`, `waiting`, `blocked`, `completed`, `failed`, `cancelled`, `retired`. It is the engine's own task state, never a guess from the thread.
+  - `detail`: its phase, waiting reason, blocker or result summary, in plain words, at most 500 characters, or `null`.
+  - `agentId`: the agent working on it or the one that finished it, or `null`.
+  - `commit`: the result commit of a `completed` task (7 to 64 lowercase hex), else `null`.
+  - `reopened`: it was reopened after an earlier completion or cancellation.
+  - `startedAt`: when it first ran. `endedAt`: when it reached `completed`, `failed`, `cancelled` or `retired`. Both are `null` before that, or when the engine no longer knows. An unfinished task never has an `endedAt`.
+- **The `linked` entry** `{ type: 'linked', id, chatId, createdAt, task }` marks where in the thread a task came in (the Book's `LINK {name}`). `task` is a name in `Chat.tasks`, and every task in `Chat.tasks` has one `linked` entry.
+- **`Chat.recheck`** (`ChatRecheck`, or `null`): a failed reply that the engine attempts again by itself.
+  - `cause`: the last failure, in plain words, 1 to 500 characters (never empty).
+  - `nextAt`: when the engine attempts it.
+  - `rounds`: attempts scheduled so far, at least 1.
+
+  While an attempt runs, `recheck` is `null` and the agent is in `working`. If the attempt fails, `recheck` returns with `rounds` one higher. Once it succeeds, `recheck` stays `null`.
+
+- **`POST /chats/{chatId}/retry`** (`retryChatReply`, permission `chats.write`, no body) attempts the thread's recheck now instead of at `nextAt`, and answers 200 with the `Chat`:
+  - A second call while that attempt runs changes nothing and answers 200 too.
+  - Without a recheck, and with no attempt running, it answers 409 `nothing-to-retry`.
+  - Audit it as `chat.reply.retry` (target the `chat`), like `chat.reply.cancel`; a 409 is audited `failed` and a missing permission `denied`.
+- **`chat.changed`** fires on every change to a thread's fields or entries, including:
+  - a turn starting or ending;
+  - a progress message saved or updated in place;
+  - a task's state or `detail` changing, or a new `linked` entry;
+  - a recheck appearing, disappearing or moving.
+
+  Step updates are the exception: they fire at most once a second per thread. The first one fires at once, and the latest one fires within a second, so a busy agent does not make every client refetch the thread many times a second.
+
+- **Untrusted text.** Step text, task names, `detail` and `cause` are agent or tool output. The UI renders them as text and never makes them links or controls. The engine applies the redaction it applies to harness output (bridge secrets) before a step leaves it.
+
+#### How the Reborn engine maps its data
+
+Reborn already has all of this. Its adapter (`src/app/api/engine-api.ts`) used to flatten it into message text. Its 2026-11-13 entry in [AGENT_BRIEF.md](AGENT_BRIEF.md#what-changed) lists the changes step by step.
+
+| Contract                     | Reborn source                                                                                                                                                                                                                                                                              |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `Message.phase`              | `ChatDetail.messages[].phase`, from `CHAT MESSAGE <sender> <at> progress\|final` (`chat-book.ts`)                                                                                                                                                                                          |
+| `Message.steps`              | The turn's structured steps, kept by `ReplyProgress` next to its lines and stored with the progress message. For progress saved before that, the stored `- …` lines are parsed back.                                                                                                       |
+| `Chat.working`               | `ChatDetail.live` (`LiveReply`): `sender` → `author`, `startedAt`, the structured steps (latest 20) → `steps`; `messageId` is the live entry `<chat>#<messages.length + 1>` while `live.text` is non-empty, else `null`. Set from the start of `replyInChat`, not the first harness event. |
+| `Chat.tasks`                 | `ChatDetail.tasks` (`ChatTaskCard`, from `Agenda.chatTaskCards`); `taskId` derived exactly as `tasks@1` derives task IDs; `startedAt`/`endedAt` from the running unit and the task's results                                                                                               |
+| `linked` entry               | Each `LINK {name}` of the chat Book that names a task with a card, at its position among the `CHAT MESSAGE`s                                                                                                                                                                               |
+| `Chat.recheck`               | `ChatDetail.recheck` (`ChatRecheckView`: `cause`, `nextAt`, `rounds`)                                                                                                                                                                                                                      |
+| `POST /chats/{chatId}/retry` | The agenda's `startChatRecheck`, through a new public method                                                                                                                                                                                                                               |
+| `chat.changed`               | The adapter's event digest, extended with live steps, progress, tasks, links and the recheck                                                                                                                                                                                               |
 
 ### Wallet secrets are write-only
 

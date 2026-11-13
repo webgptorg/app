@@ -7,6 +7,7 @@ import { AGENT_CHECKS } from './agents';
 import { AUDIT_CHECKS } from './audit';
 import { AUTH_CHECKS } from './auth';
 import { CHAT_CHECKS } from './chat';
+import { CHAT_ACTIVITY_CHECKS } from './chat-activity';
 import { ENGINE_CHECKS } from './engine';
 import { FILE_CHECKS } from './files';
 import { GATEWAY_CHECKS } from './gateway';
@@ -36,6 +37,7 @@ export const ENGINE_API_SUITE: ConformanceSuite = {
         ...PAGINATION_CHECKS,
         ...AGENT_CHECKS,
         ...CHAT_CHECKS,
+        ...CHAT_ACTIVITY_CHECKS,
         ...WALLET_CHECKS,
         ...RUN_CHECKS,
         ...TASK_CHECKS,

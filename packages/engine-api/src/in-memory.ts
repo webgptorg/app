@@ -35,7 +35,18 @@ export type {
     InMemorySeedTrigger,
     ResourceKind,
 } from './in-memory-client';
-export type { Actor, ReplyChunk, ReplyScript, ReplyScriptInput, ScriptedReply, Sleep } from './in-memory/kit';
+export type {
+    Actor,
+    ReplyChunk,
+    ReplyScript,
+    ReplyScriptInput,
+    ScriptedReply,
+    ScriptedStep,
+    Sleep,
+} from './in-memory/kit';
+export type { StepInput } from './in-memory/turns';
+export { RECHECK_DELAY_MS, STEP_ANNOUNCE_INTERVAL_MS } from './in-memory/turns';
+export type { ChatTaskChange, ChatTaskInput } from './in-memory/chat-tasks';
 export type { ActivityInput, EngineChecks, IntegrationProbe, ScannedFile } from './in-memory/kit';
 export type { FileUploadPolicies, NewFile } from './in-memory/files';
 export type { DashboardRevocationOutcome, NewAccessRequest } from './in-memory/access-requests';
@@ -44,3 +55,4 @@ export { runPreview, truncateRunText } from './in-memory/runs';
 export type { FireInput } from './in-memory/triggers';
 export { nextFireAt as nextScheduleFireAt } from './in-memory/schedule';
 export { createDemoSeed } from './in-memory/demo-seed';
+export { demoReplyScript } from './in-memory/demo-chats';

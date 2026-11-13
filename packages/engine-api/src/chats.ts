@@ -1,7 +1,18 @@
 import { z } from 'zod';
 
 import { AgentParams } from './agents';
-import { AgentId, ChatId, Cursor, MemberId, MessageId, PageQuery, ProblemDetails, Timestamp, pageOf } from './common';
+import {
+    AgentId,
+    ChatId,
+    Cursor,
+    MemberId,
+    MessageId,
+    PageQuery,
+    ProblemDetails,
+    TaskId,
+    Timestamp,
+    pageOf,
+} from './common';
 import { MAX_CHAT_PREVIEW_LENGTH, MAX_MESSAGE_LENGTH } from './constants';
 import { defineRoute } from './route';
 import { openEnum, toTolerant } from './tolerant';
@@ -77,6 +88,113 @@ const questionFields = {
 export const ChatQuestion = z.strictObject({ ...questionFields, author: ParticipantRef });
 export type ChatQuestion = z.infer<typeof ChatQuestion>;
 
+/** Longest summary of one reply step, and the most steps a message or a reply in progress carries. */
+export const MAX_REPLY_STEP_TEXT_LENGTH = 500;
+export const MAX_REPLY_STEPS = 200;
+/** A reply in progress carries only its latest steps; the `progress` message keeps them all. */
+export const MAX_WORKING_STEPS = 20;
+
+/** `reasoning`: the model thinking. `tool`: a tool call the harness made. `note`: anything else the engine reports. */
+export const REPLY_STEP_KINDS = ['reasoning', 'tool', 'note'] as const;
+export const REPLY_STEP_LEVELS = ['info', 'warning', 'error'] as const;
+export type ReplyStepKind = (typeof REPLY_STEP_KINDS)[number];
+export type ReplyStepLevel = (typeof REPLY_STEP_LEVELS)[number];
+
+const replyStepFields = {
+    /** The tool's name as the harness reports it (`Read`, `mcp__ptbk__create_task`); `null` unless `kind` is `tool`. */
+    tool: z.string().min(1).max(128).nullable(),
+    /** One line: the tool's main argument, a reasoning excerpt or the note. Untrusted text, rendered as text only. */
+    text: z.string().max(MAX_REPLY_STEP_TEXT_LENGTH),
+} as const;
+
+/** One thing an agent did while writing a reply. */
+export const ReplyStep = z
+    .strictObject({ kind: z.enum(REPLY_STEP_KINDS), ...replyStepFields, level: z.enum(REPLY_STEP_LEVELS) })
+    .refine((step) => (step.kind === 'tool') === (step.tool !== null), {
+        message: 'a tool step names its tool and no other step does',
+        path: ['tool'],
+    });
+export type ReplyStep = z.infer<typeof ReplyStep>;
+const ReplyStepReader = z.object({
+    kind: openEnum(REPLY_STEP_KINDS),
+    ...replyStepFields,
+    level: openEnum(REPLY_STEP_LEVELS),
+});
+export type ReadReplyStep = z.output<typeof ReplyStepReader>;
+
+const workingFields = {
+    startedAt: Timestamp,
+    /** The `streaming` message this reply writes, once the engine has one; `null` while the agent only works. */
+    messageId: MessageId.nullable(),
+} as const;
+
+/**
+ * An agent writing a reply in the thread right now, from the moment its turn starts: before any text exists, this is
+ * how the thread knows someone is working on it. `steps` are its latest steps, oldest first.
+ */
+export const ChatWorking = z.strictObject({
+    ...workingFields,
+    author: ParticipantRef,
+    steps: z.array(ReplyStep).max(MAX_WORKING_STEPS),
+});
+export type ChatWorking = z.infer<typeof ChatWorking>;
+
+/** Reborn's chat task states: the task's actual state from the engine's own task state, not a guess from the thread. */
+export const CHAT_TASK_STATES = [
+    'queued',
+    'running',
+    'waiting',
+    'blocked',
+    'completed',
+    'failed',
+    'cancelled',
+    'retired',
+] as const;
+export type ChatTaskState = (typeof CHAT_TASK_STATES)[number];
+export const MAX_CHAT_TASKS = 100;
+/** Longest `detail` of a chat task and `cause` of a recheck. */
+export const MAX_CHAT_STATE_TEXT_LENGTH = 500;
+const TaskName = z.string().min(1).max(512);
+
+const chatTaskFields = {
+    /** The task's Book name: what `{name}` refers to in message text and what a `linked` entry names. */
+    name: TaskName,
+    /** The task in `tasks@1`; `null` when the engine does not offer it or the name does not resolve. */
+    taskId: TaskId.nullable(),
+    /** Its phase, waiting reason, blocker or result summary, in plain words. Untrusted text. */
+    detail: z.string().max(MAX_CHAT_STATE_TEXT_LENGTH).nullable(),
+    /** The agent working on it, or the one that finished it. */
+    agentId: AgentId.nullable(),
+    /** The result commit of a completed task. */
+    commit: z
+        .string()
+        .regex(/^[0-9a-f]{7,64}$/)
+        .nullable(),
+    /** It was reopened after an earlier completion or cancellation. */
+    reopened: z.boolean(),
+    /** When it first started running; `null` before, or when the engine no longer knows. */
+    startedAt: Timestamp.nullable(),
+    /**
+     * When it reached `completed`, `failed`, `cancelled` or `retired`; `null` while it is not finished, or when the
+     * engine no longer knows.
+     */
+    endedAt: Timestamp.nullable(),
+} as const;
+
+/** A task this thread created or links, with its live state; a `linked` entry marks where in the thread it came in. */
+export const ChatTask = z.strictObject({ ...chatTaskFields, state: z.enum(CHAT_TASK_STATES) });
+export type ChatTask = z.infer<typeof ChatTask>;
+
+/** An agent's reply failed and the engine attempts it again by itself at `nextAt`; nobody has to ask. */
+export const ChatRecheck = z.strictObject({
+    /** The last failure, in plain words. Untrusted text. */
+    cause: z.string().min(1).max(MAX_CHAT_STATE_TEXT_LENGTH),
+    nextAt: Timestamp,
+    /** Attempts scheduled so far. */
+    rounds: z.int().min(1),
+});
+export type ChatRecheck = z.infer<typeof ChatRecheck>;
+
 const chatFields = {
     id: ChatId,
     /** The latest `CHAT TITLE`, else the thread's name. User and agent content: text only. */
@@ -109,16 +227,37 @@ export const Chat = z.strictObject({
     members: z.array(Participant),
     /** Outstanding questions to the User, oldest first. Non-empty means the thread needs the User. */
     questions: z.array(ChatQuestion),
+    /** Agents writing a reply here now, in the order they started. Empty when nobody is. */
+    working: z.array(ChatWorking),
+    /** Tasks this thread created or links, in the order they came in. */
+    tasks: z.array(ChatTask).max(MAX_CHAT_TASKS),
+    /** A failed reply waiting for the engine's next attempt; `null` when none waits. */
+    recheck: ChatRecheck.nullable(),
 });
 export type Chat = z.infer<typeof Chat>;
 export const ChatPage = pageOf(Chat);
 
+/** Fields an engine from before 2026-11-13 lacks read as nothing working, no tasks and no recheck. */
 export const ChatReader = toTolerant(
     z.object({
         ...chatFields,
         status: openEnum(CHAT_STATUSES),
         members: z.array(ParticipantReader),
         questions: z.array(z.object({ ...questionFields, author: ParticipantRefReader })),
+        working: z
+            .array(
+                z.object({
+                    ...workingFields,
+                    author: ParticipantRefReader,
+                    steps: z.array(ReplyStepReader).max(MAX_WORKING_STEPS),
+                }),
+            )
+            .default([]),
+        tasks: z
+            .array(z.object({ ...chatTaskFields, state: openEnum(CHAT_TASK_STATES) }))
+            .max(MAX_CHAT_TASKS)
+            .default([]),
+        recheck: ChatRecheck.nullable().default(null),
     }),
 );
 export type ReadChat = z.output<typeof ChatReader>;
@@ -140,6 +279,13 @@ export const CreateChatBody = z.strictObject({
 
 export const MESSAGE_STATUSES = ['streaming', 'completed', 'failed', 'cancelled'] as const;
 
+/**
+ * `progress`: an agent's interim update during one turn, saved while it works. `final`: the reply that ends a turn
+ * which had progress. An ordinary message, every User message among them, has no phase (`null`).
+ */
+export const MESSAGE_PHASES = ['progress', 'final'] as const;
+export type MessagePhase = (typeof MESSAGE_PHASES)[number];
+
 const messageFields = {
     type: z.literal('message'),
     /** Assigned by the engine (today `<chat>#<position>`); opaque. */
@@ -155,11 +301,17 @@ const messageFields = {
     choices: z.array(z.string().min(1).max(MAX_MESSAGE_CHOICE_LENGTH)).max(MAX_MESSAGE_CHOICES),
 } as const;
 
-/** Content is untrusted text from people and agents: the UI renders it as data, never as markup or code. */
+/**
+ * Content is untrusted text from people and agents: the UI renders it as data, never as markup or code. A `progress`
+ * message's `content` stays a readable rendering of its `steps`, for clients that do not show steps.
+ */
 export const Message = z.strictObject({
     ...messageFields,
     /** The real author, always a member who joined in an earlier entry. */
     author: ParticipantRef,
+    phase: z.enum(MESSAGE_PHASES).nullable(),
+    /** What the agent did in this turn so far, oldest first; empty unless `phase` is `progress`. */
+    steps: z.array(ReplyStep).max(MAX_REPLY_STEPS),
 });
 export type Message = z.infer<typeof Message>;
 
@@ -171,17 +323,24 @@ export const JoinedEntry = z.strictObject({ type: z.literal('joined'), ...eventF
 export const TitledEntry = z.strictObject({ type: z.literal('titled'), ...eventFields, title: z.string().max(256) });
 /** The status changed (`CHAT STATUS`). */
 export const StatusEntry = z.strictObject({ type: z.literal('status'), ...eventFields, status: ChatStatus });
+/** The thread created or linked a task here (`LINK {name}`); the thread's `tasks` carries its live state. */
+export const LinkedEntry = z.strictObject({ type: z.literal('linked'), ...eventFields, task: TaskName });
 
 /** One item of a thread, in the order the engine recorded it. */
-export const ChatEntry = z.discriminatedUnion('type', [Message, JoinedEntry, TitledEntry, StatusEntry]);
+export const ChatEntry = z.discriminatedUnion('type', [Message, JoinedEntry, TitledEntry, StatusEntry, LinkedEntry]);
 export type ChatEntry = z.infer<typeof ChatEntry>;
 export const ChatEntryPage = pageOf(ChatEntry);
 
-/** A status or author kind a newer engine adds reads as `unknown`, so one message never fails the whole thread. */
+/**
+ * A status or author kind a newer engine adds reads as `unknown`, so one message never fails the whole thread. An
+ * engine from before 2026-11-13 sends no phase and no steps.
+ */
 const MessageReader = z.object({
     ...messageFields,
     status: openEnum(MESSAGE_STATUSES),
     author: ParticipantRefReader,
+    phase: openEnum(MESSAGE_PHASES).nullable().default(null),
+    steps: z.array(ReplyStepReader).max(MAX_REPLY_STEPS).default([]),
 });
 export type ReadMessage = z.output<typeof MessageReader>;
 const tolerantEntry = toTolerant(
@@ -190,10 +349,11 @@ const tolerantEntry = toTolerant(
         z.object({ type: z.literal('joined'), ...eventFields, participant: ParticipantReader }),
         z.object({ type: z.literal('titled'), ...eventFields, title: z.string().max(256) }),
         z.object({ type: z.literal('status'), ...eventFields, status: openEnum(CHAT_STATUSES) }),
+        z.object({ type: z.literal('linked'), ...eventFields, task: TaskName }),
     ]),
 );
 export type ReadChatEntry = z.output<typeof tolerantEntry>;
-const KNOWN_ENTRY_TYPES: ReadonlySet<string> = new Set(['message', 'joined', 'titled', 'status']);
+const KNOWN_ENTRY_TYPES: ReadonlySet<string> = new Set(['message', 'joined', 'titled', 'status', 'linked']);
 
 /** An entry of a type a newer engine added is skipped, so it never fails the whole page. */
 export const ChatEntryPageReader = z.object({
@@ -249,6 +409,15 @@ export const ReplyStreamEvent = z.discriminatedUnion('type', [
     z.strictObject({ type: z.literal('failed'), problem: ProblemDetails }),
 ]);
 export type ReplyStreamEvent = z.infer<typeof ReplyStreamEvent>;
+/** The `completed` message of an engine from before 2026-11-13 has no phase and no steps. */
+export const ReplyStreamEventReader = toTolerant(
+    z.discriminatedUnion('type', [
+        z.object({ type: z.literal('delta'), seq: z.int().min(1), text: z.string() }),
+        z.object({ type: z.literal('completed'), message: MessageReader }),
+        z.object({ type: z.literal('failed'), problem: ProblemDetails }),
+    ]),
+);
+export type ReadReplyStreamEvent = z.output<typeof ReplyStreamEventReader>;
 
 export const ChatListQuery = PageQuery.extend({
     /** Threads this agent is a member of. */
@@ -352,7 +521,7 @@ export const CHAT_ROUTES = {
             "Stream a message's text as server-sent events while its author writes it; resumes after `Last-Event-ID`",
         permission: 'chats.read',
         params: ChatMessageParams,
-        responses: { 200: { kind: 'sse', event: ReplyStreamEvent } },
+        responses: { 200: { kind: 'sse', event: ReplyStreamEvent, read: ReplyStreamEventReader } },
     }),
     cancelChatReply: defineRoute({
         id: 'cancelChatReply',
@@ -361,7 +530,18 @@ export const CHAT_ROUTES = {
         summary: 'Stop a reply in progress (idempotent); its stream then ends with `failed` and code `cancelled`',
         permission: 'chats.write',
         params: ChatMessageParams,
-        responses: { 200: { kind: 'json', schema: Message } },
+        responses: { 200: { kind: 'json', schema: Message, read: toTolerant(MessageReader) } },
         problems: ['reply-finished'],
+    }),
+    retryChatReply: defineRoute({
+        id: 'retryChatReply',
+        method: 'POST',
+        path: '/chats/{chatId}/retry',
+        summary: "Attempt the thread's failed reply now instead of at its `recheck.nextAt`",
+        description: 'Idempotent while the attempt runs. 409 `nothing-to-retry` when the thread has no `recheck`.',
+        permission: 'chats.write',
+        params: ChatParams,
+        responses: { 200: oneChat },
+        problems: ['nothing-to-retry'],
     }),
 } as const;

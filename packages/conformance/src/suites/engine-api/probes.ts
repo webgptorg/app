@@ -42,6 +42,8 @@ const readState: Probe = async (owner, request) => {
     const { unread, questions } = await owner.ok(R.getChat, { params: { chatId: param(request, 'chatId') } });
     return { unread, questions };
 };
+const recheck: Probe = async (owner, request) =>
+    (await owner.ok(R.getChat, { params: { chatId: param(request, 'chatId') } })).recheck;
 const apiTokens: Probe = (owner) => all(owner, R.listApiTokens);
 const settings: Probe = (owner) => owner.ok(R.getSettings);
 const walletRecords: Probe = async (owner) => (await owner.ok(R.getWallet)).records;
@@ -81,6 +83,7 @@ const PROBES: Partial<Record<EngineApiRouteId, Probe>> = {
     createChat: (owner) => ids(owner, R.listChats, { q: 'conformance-' }),
     sendChatMessage: chatMessages,
     cancelChatReply: chatMessages,
+    retryChatReply: recheck,
     markChatRead: readState,
     markChatSeen: readState,
     createApiToken: apiTokens,

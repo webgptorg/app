@@ -27,6 +27,7 @@ const agent = {
     deletedAt: null,
 };
 
+// `chat` and `reply` are what an engine from before 2026-11-13 sends: no activity fields. Readers default them.
 const chat = {
     id: 'c1',
     title: '',
@@ -52,6 +53,8 @@ const reply = {
     createdAt: AT,
     choices: [],
 };
+const readChat = { ...chat, working: [], tasks: [], recheck: null };
+const readReply = { ...reply, phase: null, steps: [] };
 
 const fileMetadata = {
     id: 'f1',
@@ -290,7 +293,7 @@ describe('createFetchEngineApiClient', () => {
         expect(await collect(response.data)).toEqual([
             { id: '4', event: { type: 'delta', seq: 4, text: 'Hel' } },
             { id: '5', event: { type: 'delta', seq: 5, text: 'lo' } },
-            { id: '5', event: { type: 'completed', message: reply } },
+            { id: '5', event: { type: 'completed', message: readReply } },
         ]);
         const headers = new Headers(calls[0]?.init.headers);
         expect(calls[0]?.url).toBe(`${BASE_URL}${ENGINE_API_PREFIX}/chats/c1/messages/c1%232/stream`);
@@ -492,9 +495,9 @@ describe('tolerant reading', () => {
         );
         const entries = await client.chats.listEntries(ChatId.parse('c1'), {}, signal());
         if (entries.kind !== 'ok') throw new Error('expected a page');
-        expect(entries.data.items).toEqual([{ ...reply, status: 'unknown' }]);
+        expect(entries.data.items).toEqual([{ ...readReply, status: 'unknown' }]);
         const sent = await client.chats.sendMessage(ChatId.parse('c1'), { content: 'Hi' }, signal());
-        expect(sent).toMatchObject({ kind: 'ok', data: { message: { ...reply, status: 'unknown' } } });
+        expect(sent).toMatchObject({ kind: 'ok', data: { message: { ...readReply, status: 'unknown' } } });
     });
 
     it('reads a thread status this client does not know as unknown, in pages and single chats', async () => {
@@ -504,11 +507,62 @@ describe('tolerant reading', () => {
         );
         const page = await client.chats.list(AgentId.parse('a1'), {}, signal());
         if (page.kind !== 'ok') throw new Error('expected a page');
-        expect(page.data.items).toEqual([chat, { ...chat, id: 'c2', status: 'unknown' }]);
+        expect(page.data.items).toEqual([readChat, { ...readChat, id: 'c2', status: 'unknown' }]);
         expect(await client.chats.get(ChatId.parse('c2'), signal())).toEqual({
             kind: 'ok',
-            data: { ...chat, id: 'c2', status: 'unknown' },
+            data: { ...readChat, id: 'c2', status: 'unknown' },
         });
+    });
+
+    it('reads the cancelled message of an engine from before 2026-11-13 with no phase and no steps', async () => {
+        const { client } = setup(() => json({ ...reply, status: 'cancelled' }));
+        const cancelled = await client.chats.cancelReply(ChatId.parse('c1'), MessageId.parse('c1#2'), signal());
+        expect(cancelled).toEqual({ kind: 'ok', data: { ...readReply, status: 'cancelled' } });
+    });
+
+    it('reads what agents do in a thread, with values a newer engine adds read as unknown', async () => {
+        const step = { kind: 'tool', tool: 'Read', text: 'specs/_initial.md', level: 'info' };
+        const busy = {
+            ...readChat,
+            working: [
+                {
+                    startedAt: AT,
+                    messageId: null,
+                    author: { kind: 'agent', key: 'a1' },
+                    steps: [step, { kind: 'plan', tool: null, text: 'Outline', level: 'debug', extra: 1 }],
+                },
+            ],
+            tasks: [
+                {
+                    name: 'Write the copy',
+                    taskId: 't1',
+                    state: 'paused',
+                    detail: null,
+                    agentId: 'a1',
+                    commit: null,
+                    reopened: false,
+                    startedAt: AT,
+                    endedAt: null,
+                },
+            ],
+            recheck: { cause: 'The model was overloaded.', nextAt: AT, rounds: 2 },
+        };
+        const progress = { ...reply, id: 'c1#3', phase: 'progress', steps: [step] };
+        const linked = { type: 'linked', id: 'c1~4', chatId: 'c1', createdAt: AT, task: 'Write the copy' };
+        const { client } = setup((call) =>
+            call.url.endsWith('/entries') ? json({ items: [linked, progress], nextCursor: null }) : json(busy),
+        );
+        const read = await client.chats.get(ChatId.parse('c1'), signal());
+        if (read.kind !== 'ok') throw new Error('expected a chat');
+        expect(read.data.working[0]?.steps).toEqual([
+            step,
+            { kind: 'unknown', tool: null, text: 'Outline', level: 'unknown' },
+        ]);
+        expect(read.data.tasks[0]?.state).toBe('unknown');
+        expect(read.data.recheck).toEqual(busy.recheck);
+        const entries = await client.chats.listEntries(ChatId.parse('c1'), {}, signal());
+        if (entries.kind !== 'ok') throw new Error('expected a page');
+        expect(entries.data.items).toEqual([linked, progress]);
     });
 
     it.each([

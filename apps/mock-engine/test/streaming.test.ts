@@ -1,4 +1,4 @@
-import type { AgentId, ChatId, EngineApiClient, EngineApiResponse, ReplyStreamEvent } from '@ptbk/engine-api';
+import type { AgentId, ChatId, EngineApiClient, EngineApiResponse, ReadReplyStreamEvent } from '@ptbk/engine-api';
 import { MessageId } from '@ptbk/engine-api';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -64,12 +64,12 @@ async function readAll(client: EngineApiClient, chatId: ChatId, messageId: Messa
     const items = ok(
         await client.chats.streamReply(chatId, messageId, lastEventId === undefined ? {} : { lastEventId }, signal()),
     );
-    const events: { id: string | null; event: ReplyStreamEvent }[] = [];
+    const events: { id: string | null; event: ReadReplyStreamEvent }[] = [];
     for await (const item of items) events.push(item);
     return events;
 }
 
-function textOf(events: readonly { readonly event: ReplyStreamEvent }[]): string {
+function textOf(events: readonly { readonly event: ReadReplyStreamEvent }[]): string {
     return events.map(({ event }) => (event.type === 'delta' ? event.text : '')).join('');
 }
 
@@ -135,7 +135,7 @@ describe('chat replies', () => {
         const iterator = ok(await client.chats.streamReply(chatId, messageId, {}, reader.signal))[
             Symbol.asyncIterator
         ]();
-        const seen: { id: string | null; event: ReplyStreamEvent }[] = [];
+        const seen: { id: string | null; event: ReadReplyStreamEvent }[] = [];
         while (seen.length < 5) {
             const next = iterator.next();
             for (let step = 0; step < 50; step++) {

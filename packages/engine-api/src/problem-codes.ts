@@ -24,6 +24,8 @@ export const PROBLEM_STATUS = {
     /** Removing or demoting the engine's last owner would leave nobody to manage it. */
     'last-owner': 409,
     'reply-finished': 409,
+    /** The thread has no failed reply waiting for a recheck. */
+    'nothing-to-retry': 409,
     /** A new thread names no agent and the engine has no usable Chatter to start it with. */
     'chatter-missing': 409,
     /** A `requestKey` already used for a different request. */

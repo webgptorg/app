@@ -60,6 +60,9 @@ function eventText(entry: Exclude<ReadChatEntry, ReadMessage>): string | null {
             return m.chat_event_titled({ title: entry.title });
         case 'status':
             return entry.status === 'resolved' ? m.chat_event_resolved() : null;
+        // The thread's task cards (U-16) show linked tasks; until then a link is no row of its own.
+        case 'linked':
+            return null;
     }
 }
 

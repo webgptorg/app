@@ -24,6 +24,85 @@ Each entry has this shape. Platform authors: add yours at the top of the list, o
 - **Redo:** what the engine's agent must change, re-run or drop; "nothing" if it is inert.
 ```
 
+### 2026-11-13: Chat activity: steps, working agents, linked tasks, rechecks
+
+- **Changed:**
+  - A thread now carries what its agents are doing, field for field as [engine-api.md, What agents do in a thread](engine-api.md#what-agents-do-in-a-thread) describes. In [`chats.ts`](../../packages/engine-api/src/chats.ts):
+    - `Message.phase` (`progress` | `final` | `null`) and `Message.steps` (`ReplyStep { kind: reasoning | tool | note, tool, text, level }`; only a `tool` step names a tool).
+    - `Chat.working` (`ChatWorking { startedAt, messageId, author, steps }`), `Chat.tasks` (`ChatTask`) and `Chat.recheck` (`ChatRecheck { cause, nextAt, rounds }`).
+    - A `linked` entry `{ type: 'linked', id, chatId, createdAt, task }`.
+    - `POST /chats/{chatId}/retry` (`retryChatReply`, `chats.write`, 200 `Chat`, 409 `nothing-to-retry`).
+    - `chat.changed` for each of these changes, step updates at most once a second per thread.
+  - The new fields are required in what an engine sends (strict schemas). The UI's readers default them, so it keeps working against your engine until you ship this. `ENGINE_API_VERSION` stays 1.15.0: a UI bundle accepts only engines at or above the version it was built with, and engines without these fields stay fully usable.
+  - Conformance:
+    - New checks `engine-api.chat.reply-turn`, `engine-api.chat.activity` and `engine-api.chat.retry` (ENG-119).
+    - `engine-api.chat.*` now treats the first agent message after a send that is not `progress` as the reply.
+    - Every chat response is still checked strictly, so an engine without the new fields fails `engine-api.schemas.responses-strict`.
+- **Redo:** file and function names are those of `src/` at 0.119.0-98.
+  1. **Re-vendor the contract first.** Update `src/vendor/` (`PROVENANCE.json`, `app-platform.js`) to the platform commit with this entry. `EngineApi.dispatch` checks every answer against the vendored schemas, so a new field sent before that becomes `internal-error`. Do steps 2 to 10 in the same release: once re-vendored, a chat answer that lacks a new field fails the strict check too.
+  2. **Steps at the source (harness).** Make tool activity structured where it is produced, instead of joining it into one line. Extend `HarnessEvent`'s `activity` (`harness/types.ts`) to `{ type: 'activity'; text; tool?: string; detail?: string }`, keeping `text` for existing consumers. Then set it:
+     - `parseStreamJson` (`harness/shared.ts`, Claude Code, Gemini, Qwen Code): for an `assistant` `tool_use` block, `tool: String(block.name)` and `detail: summarizeToolInput(block.input)`; the same for a top-level `tool_use` (`event.tool_name ?? event.name`).
+     - Codex `parseLine` (`plugins/openai-codex/index.ts`):
+       - `command_execution` → tool `shell`, detail the command;
+       - `file_change` → tool `apply_patch`, detail the paths;
+       - `mcp_tool_call` → tool `mcp__<server>__<tool>` (Claude Code's naming, so the UI shows MCP calls alike), detail `summarizeToolInput(item.arguments)`;
+       - `web_search` → tool `web_search`, detail the query.
+     - OpenCode `parseLine` (`plugins/opencode/index.ts`): tool `part.tool`, detail `summarizeToolInput(toolState.input)`.
+     - GitHub Copilot reports no events, so its turns have `working` and no steps.
+     - In `summarizeToolInput`, add the keys `title` and `name` after `description`, so a `create_task` call shows its title instead of nothing.
+  3. **Steps in `ReplyProgress` (`chats/conversation.ts`).** Next to `lines`, keep `steps: ReplyStep[]`, built in `event()`:
+     - `activity` with `tool` → `{ kind: 'tool', tool, text: detail ?? '', level: 'info' }`;
+     - `activity` without `tool` → `{ kind: 'note', tool: null, text, level: 'info' }`, except Codex's `command exited with N` → `level: 'warning'`;
+     - `reasoning` → `{ kind: 'reasoning', tool: null, text, level: 'info' }`;
+     - `error` → note with `level: 'warning'`; `turn-failed` → note with `level: 'error'`;
+     - the reason passed to `unfinished(reason)` → note with `level: 'error'`.
+
+     For every step's text and tool name, apply the same bridge-secret `redact` that `sessions.observe` applies, collapse whitespace, cut the text to 500 characters and the tool name to 128. Keep `lines` and `render()` exactly as they are: a progress message's `content` stays that readable rendering.
+
+  4. **Store the steps with the progress message** so `GET /chats/{chatId}/entries` serves them after a restart. How to store them is your Book-format decision; the contract needs only that they come back. For a progress message saved before this change, parse its stored body back into steps:
+     - `- thinking: <text>` → `reasoning`;
+     - `- <name> <rest>`, where `<name>` matches `^(mcp__\S+|[A-Z][A-Za-z]+)$` → `tool` with that name, text `<rest>`;
+     - any other `- <line>` → `note`/`info`;
+     - a trailing `(unfinished reply: <reason>)` paragraph → `note`/`error`;
+     - streamed text after the blank line is not a step.
+
+     Over 200 steps, serve the rest as further `progress` messages, or keep the latest 200.
+
+  5. **`working` from the start of the turn.** In `replyInChat`, call `context.onLive(chat.name, { sender, startedAt, activity: [], steps: [] })` right after `agentReference` is known, before `resolveEffectiveAgent` and the Router turn. Take `ReplyProgress`'s `startedAt` from that moment. Give `LiveReply` a `steps` field with the latest 20 steps (today `activity` keeps 8 lines). In the adapter's `chat()`, emit `working: detail.live ? [{ startedAt, author, steps, messageId }] : []`, where `author` is `authorRef(live.sender)`.
+     - `messageId` is `<chat>#<messages.length + 1>` while `live.text` is non-empty, else `null`.
+     - In `entries()`, append the `streaming` entry only while `live.text` is non-empty, so nobody sees an empty bubble while the agent only works.
+     - `queueChatReply`'s `finally` already clears the live reply when the turn ends. Clear it under the chat's Book name, which is what `onLive` keys by.
+  6. **Phase and steps on messages.** In the adapter's `message()`, send `phase: message.phase ?? null` and `steps` (step 4) for a `progress` message, else `[]`. Message positions stay as they are: progress messages count.
+  7. **Tasks.** In `chat()`, map `ChatDetail.tasks` (`ChatTaskCard` from `Agenda.chatTaskCards`):
+     - `name`, `state` (the same 8 values) and `detail` (`?? null`, cut to 500) come straight from the card.
+     - `taskId`: derive it exactly as `tasks@1` does in `app/api/tasks.ts` `project()`: `opaqueIdOf(parseReferenceValue(card.ref)?.normalized ?? normalizeAgentName(card.name))`. Factor that key out of `project()` and use it in both places. Send `null` when the engine does not advertise `tasks@1`.
+     - `agentId`: derive it from `card.agent` the way `participant()` derives a message author's key, so it matches the thread's members; `null` without an agent.
+     - `commit`: `card.commit` when it matches `^[0-9a-f]{7,64}$`, else `null`.
+     - `reopened`: add it to `ChatTaskCard` from the task model's `reopened`, as `tasks.ts` already reads it from `taskReadSnapshot().tasks[].reopened`.
+     - `startedAt`: for a running card, the active unit's `startedAt` (`CurrentWorkView`); else the latest result's `startedAt`.
+     - `endedAt`: for `completed`, `failed`, `cancelled` or `retired`, the latest result's `endedAt` (`ResultView`), else `null`. Read results from `state.recentResults(n)`, as `tasks.ts` `occurrences()` does, not only `this.recentResults`, which keeps 20. `null` is allowed when the engine no longer knows, but never send an `endedAt` for an unfinished task.
+     - Keep `receipts` out: the contract has no field for them.
+     - `listChats` and `listAgentChats` build `Chat` without a detail today. Add a public `Agenda` method that returns live, recheck and task cards for every chat in one pass (read the inventory once), and fill `working`, `tasks` and `recheck` for list items too.
+  8. **The `linked` entry.**
+     - Make `parseChatBook` (`chats/chat-book.ts`) return each `LINK` with its position among the `CHAT MESSAGE` commitments (from the commitment's `startLine`), not only `links: string[]`.
+     - In `entries()`, emit `{ type: 'linked', id, chatId, createdAt, task }` right after the message it follows. Its `id` is `<chat>#linked:<normalized task name>` and its `task` is the task's name. A `LINK` in the header comes before the first message.
+     - Emit one only for a `LINK` that names a task with a card, and use the card's `name` so `task` matches `Chat.tasks`. Every card needs a `linked` entry: for a card that came only from `TASK ORIGIN Chat {…}`, place it before the first message after the task's creation.
+     - A `LINK` has no time of its own: `createdAt` is the preceding message's `at`, else the chat's `createdAt`.
+  9. **Recheck and retry.**
+     - In `chat()`, send `recheck: detail.recheck ? { cause: cut to 500, nextAt, rounds } : null` (`ChatRecheckView`). `cause` must not be empty: fall back to a plain "The reply failed." when the view has none. It is already `null` while a recheck turn runs, which is what the contract wants.
+     - Add `public chatRetry(name): 'started' | 'running' | 'none'` to `Agenda`. With no `chatRechecks` entry, it returns `none`. If the entry has no armed `timer`, the attempt is queued or running, so it returns `running`. Otherwise it calls `startChatRecheck(nameKey(name), 'asked to retry now')` and returns `started`.
+     - Serve `retryChatReply` with it: an unknown chat is 404 `not-found`, `none` is 409 `nothing-to-retry`, and both other outcomes answer 200 with the chat as `getChat` builds it.
+     - Audit it as `chat.reply.retry` (new in `AUDIT_ACTIONS`), target kind `chat` with the chat's ID, exactly as you audit `chat.reply.cancel`.
+  10. **`chat.changed`.** Today `eventDigest()` hashes only count, status, unread, title and pings, so none of the above is announced. Add to each chat's digest:
+      - whether a live reply runs, and its sender;
+      - progress content (an in-place progress save changes no count);
+      - each task card's `name`, `state` and `detail`, and the number of links;
+      - the recheck's `nextAt` and `rounds`.
+
+      Keep the live steps in a separate part of the digest, and remember per chat when you last emitted for them. If only that part changed less than 1 s after the last emit, keep the previous value of that part and arm a wake at last emit + 1 s, so the change goes out then. Any other change emits at once.
+
+  11. Re-run the `engine-api` suite; the three new checks and `engine-api.schemas.responses-strict` must pass. Then open the demo project's copywriter thread (`chats/2026-11-13-1201-chatter-new-chat.book`) through the UI. It should show Chatter's steps (`Glob …`, `Read …`, `mcp__ptbk__create_task …`), the task card with commit `67b252ca` and no bullet lists of tool calls. The in-memory engine's `chat-copywriter` demo thread is the reference.
+
 ### 2026-11-11: Where a release build gets its trust policy, and live staging
 
 - **Changed:** a release build reads its trust policy from `PTBK_UI_TRUST_POLICY_FILE`: an absolute path, read once at startup before registering, parsed strictly with `TrustPolicy`, never fetched. A staging policy (`isStagingPolicy`) refuses startup in production, which means `NODE_ENV=production` at runtime or inlined at build time. Without the variable there is no policy until production pins one after the key ceremony (pending): the loader stays off and the engine serves its plain "no verified UI release" page. The conformance build is unchanged with `PTBK_CONFORMANCE_TRUST_FILE`, and behaves like a release build without it. New launch option `--engine-production-cmd` and checks `ui-loader.trust-policy.staging-refused-in-production` and `ui-loader.trust-policy.staging-accepted-outside-production` (ENG-116). New guide [staging.md](staging.md) and a read-only check, `ptbk-conformance staging` (ENG-117). The mock engine reads the same variable (its old `MOCK_UI_TRUST_POLICY_FILE` still works). See [ui-loader.md](ui-loader.md#where-the-trust-policy-comes-from).

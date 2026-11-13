@@ -741,6 +741,7 @@
   "audit_action_chat_create": "Zahájení chatu",
   "audit_action_chat_message_send": "Odeslání zprávy",
   "audit_action_chat_reply_cancel": "Zastavení odpovědi",
+  "audit_action_chat_reply_retry": "Nový pokus o odpověď",
   "audit_action_member_update": "Změna role člena",
   "audit_action_member_remove": "Odebrání člena",
   "audit_action_invite_create": "Vytvoření pozvánky",

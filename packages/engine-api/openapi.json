@@ -4166,6 +4166,125 @@
         }
       }
     },
+    "/chats/{chatId}/retry": {
+      "post": {
+        "operationId": "retryChatReply",
+        "summary": "Attempt the thread's failed reply now instead of at its `recheck.nextAt`",
+        "description": "Idempotent while the attempt runs. 409 `nothing-to-retry` when the thread has no `recheck`.",
+        "tags": ["chats"],
+        "x-required-permission": "chats.write",
+        "parameters": [
+          {
+            "name": "chatId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ChatId"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Chat"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Problem: `validation-failed`.",
+            "x-problem-codes": ["validation-failed"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Problem: `unauthenticated`.",
+            "x-problem-codes": ["unauthenticated"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Problem: `forbidden`.",
+            "x-problem-codes": ["forbidden"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Problem: `not-found`.",
+            "x-problem-codes": ["not-found"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Problem: `nothing-to-retry`.",
+            "x-problem-codes": ["nothing-to-retry"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Problem: `rate-limited`.",
+            "x-problem-codes": ["rate-limited"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Problem: `internal-error`.",
+            "x-problem-codes": ["internal-error"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Problem: `unavailable`.",
+            "x-problem-codes": ["unavailable"],
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/members": {
       "get": {
         "operationId": "listMembers",
@@ -18140,6 +18259,7 @@
           "chat.create",
           "chat.message.send",
           "chat.reply.cancel",
+          "chat.reply.retry",
           "member.update",
           "member.remove",
           "invite.create",
@@ -18527,6 +18647,190 @@
             "items": {
               "$ref": "#/components/schemas/ChatQuestion"
             }
+          },
+          "working": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "startedAt": {
+                  "$ref": "#/components/schemas/Timestamp"
+                },
+                "messageId": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/MessageId"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "author": {
+                  "$ref": "#/components/schemas/ParticipantRef"
+                },
+                "steps": {
+                  "maxItems": 20,
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "enum": ["reasoning", "tool", "note"]
+                      },
+                      "tool": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 128
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "text": {
+                        "type": "string",
+                        "maxLength": 500
+                      },
+                      "level": {
+                        "type": "string",
+                        "enum": ["info", "warning", "error"]
+                      }
+                    },
+                    "required": ["kind", "tool", "text", "level"],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": ["startedAt", "messageId", "author", "steps"],
+              "additionalProperties": false
+            }
+          },
+          "tasks": {
+            "maxItems": 100,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512
+                },
+                "taskId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9_-]{1,64}$"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "detail": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "maxLength": 500
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "agentId": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/AgentId"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "commit": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "pattern": "^[0-9a-f]{7,64}$"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "reopened": {
+                  "type": "boolean"
+                },
+                "startedAt": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Timestamp"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "endedAt": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Timestamp"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "state": {
+                  "type": "string",
+                  "enum": ["queued", "running", "waiting", "blocked", "completed", "failed", "cancelled", "retired"]
+                }
+              },
+              "required": [
+                "name",
+                "taskId",
+                "detail",
+                "agentId",
+                "commit",
+                "reopened",
+                "startedAt",
+                "endedAt",
+                "state"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "recheck": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "cause": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 500
+                  },
+                  "nextAt": {
+                    "$ref": "#/components/schemas/Timestamp"
+                  },
+                  "rounds": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": ["cause", "nextAt", "rounds"],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -18540,7 +18844,10 @@
           "unread",
           "status",
           "members",
-          "questions"
+          "questions",
+          "working",
+          "tasks",
+          "recheck"
         ],
         "additionalProperties": false
       },
@@ -18624,6 +18931,33 @@
               }
             },
             "required": ["type", "id", "chatId", "createdAt", "status"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "linked"
+              },
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "chatId": {
+                "$ref": "#/components/schemas/ChatId"
+              },
+              "createdAt": {
+                "$ref": "#/components/schemas/Timestamp"
+              },
+              "task": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              }
+            },
+            "required": ["type", "id", "chatId", "createdAt", "task"],
             "additionalProperties": false
           }
         ]
@@ -19983,9 +20317,67 @@
           },
           "author": {
             "$ref": "#/components/schemas/ParticipantRef"
+          },
+          "phase": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["progress", "final"]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "steps": {
+            "maxItems": 200,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": ["reasoning", "tool", "note"]
+                },
+                "tool": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "text": {
+                  "type": "string",
+                  "maxLength": 500
+                },
+                "level": {
+                  "type": "string",
+                  "enum": ["info", "warning", "error"]
+                }
+              },
+              "required": ["kind", "tool", "text", "level"],
+              "additionalProperties": false
+            }
           }
         },
-        "required": ["type", "id", "chatId", "content", "status", "createdBy", "createdAt", "choices", "author"],
+        "required": [
+          "type",
+          "id",
+          "chatId",
+          "content",
+          "status",
+          "createdBy",
+          "createdAt",
+          "choices",
+          "author",
+          "phase",
+          "steps"
+        ],
         "additionalProperties": false
       },
       "MessageId": {
@@ -20211,6 +20603,7 @@
               "last-passkey",
               "last-owner",
               "reply-finished",
+              "nothing-to-retry",
               "chatter-missing",
               "request-key-reused",
               "cancelled",

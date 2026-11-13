@@ -1,11 +1,22 @@
 import type { Agent } from '../agents';
-import type { Chat, ChatEntry, ChatStatus, Message, Participant, ParticipantRef } from '../chats';
-import { USER_PARTICIPANT_KEY } from '../chats';
+import type {
+    Chat,
+    ChatEntry,
+    ChatStatus,
+    ChatTask,
+    Message,
+    MessagePhase,
+    Participant,
+    ParticipantRef,
+    ReplyStep,
+} from '../chats';
+import { MAX_WORKING_STEPS, USER_PARTICIPANT_KEY } from '../chats';
 import { ChatId, MessageId } from '../common';
 import type { MemberId, Timestamp } from '../common';
 import { MAX_CHAT_PREVIEW_LENGTH } from '../constants';
 import { KNOWN_CAPABILITIES } from '../capabilities/capability';
 import type { EngineContext, HandlerContext, HandlerResult, ScriptedReply } from './kit';
+import type { NewTurn } from './replies';
 import { advertises, fail, memberActor, ok, previewText } from './kit';
 import { advanceRun, queueRun } from './runs';
 
@@ -23,6 +34,29 @@ export interface QuestionRecord {
     readonly messageId: MessageId;
     readonly author: ParticipantRef;
     seenAt: Timestamp | null;
+}
+
+/** An agent's turn in a thread, from the moment it starts until its reply is saved, fails or is cancelled. */
+export interface WorkingRecord {
+    readonly startedAt: Timestamp;
+    readonly author: ParticipantRef;
+    /** The reply message once the agent writes text; `null` while it only works. */
+    messageId: MessageId | null;
+    /** Every step of the turn so far, oldest first; the thread shows the latest, the `progress` message keeps all. */
+    readonly steps: ReplyStep[];
+    /** What the turn answers, so a failed one can be attempted again. */
+    readonly prompt: string;
+    /** Failed attempts before this one: a retry carries the recheck's rounds. */
+    readonly rounds: number;
+}
+
+/** A failed reply the engine attempts again by itself at `nextAt`, with what it needs to do so. */
+export interface RecheckRecord {
+    readonly cause: string;
+    readonly nextAt: Timestamp;
+    readonly rounds: number;
+    readonly author: ParticipantRef;
+    readonly prompt: string;
 }
 
 /** A thread as the in-memory engine keeps it; members see it through `chatView`. */
@@ -43,6 +77,14 @@ export interface ChatRecord {
     readonly questions: QuestionRecord[];
     /** How many entries each member had when they last marked the thread read. */
     readonly readUpTo: Map<string, number>;
+    /** In the order the turns started. */
+    readonly working: WorkingRecord[];
+    /** In the order they were linked. */
+    readonly tasks: ChatTask[];
+    recheck: RecheckRecord | null;
+    /** When a step change was last announced (ms), and whether a later announcement is already scheduled. */
+    stepsAnnouncedAt: number | null;
+    stepsAnnouncePending: boolean;
 }
 
 /** A request key's first use: what it asked for and what it created. */
@@ -119,6 +161,18 @@ export function chatView(ctx: EngineContext, record: ChatRecord, memberId: Membe
             author,
             seen: seenAt !== null,
         })),
+        working: record.working.map(({ startedAt, messageId, author, steps }) => ({
+            startedAt,
+            messageId,
+            author,
+            steps: steps.slice(-MAX_WORKING_STEPS).map((step) => ({ ...step })),
+        })),
+        tasks: record.tasks.map((task) => ({ ...task })),
+        recheck: record.recheck && {
+            cause: record.recheck.cause,
+            nextAt: record.recheck.nextAt,
+            rounds: record.recheck.rounds,
+        },
     };
 }
 
@@ -143,6 +197,11 @@ export function createThread(ctx: EngineContext, input: { readonly title?: strin
         lastMessageAt: null,
         questions: [],
         readUpTo: new Map(),
+        working: [],
+        tasks: [],
+        recheck: null,
+        stepsAnnouncedAt: null,
+        stepsAnnouncePending: false,
     };
     ctx.state.chats.set(record.id, record);
     return record;
@@ -173,6 +232,12 @@ export function retitle(ctx: EngineContext, record: ChatRecord, title: string): 
     appendEvent(ctx, record, { type: 'titled', title });
 }
 
+/** A task this thread created or links came in here (`LINK {name}`); its live state is the thread's `tasks`. */
+export function link(ctx: EngineContext, record: ChatRecord, task: ChatTask): void {
+    record.tasks.push(task);
+    appendEvent(ctx, record, { type: 'linked', task: task.name });
+}
+
 export function setStatus(ctx: EngineContext, record: ChatRecord, status: ChatStatus): void {
     if (status === record.status) return;
     record.status = status;
@@ -185,6 +250,8 @@ export interface NewMessage {
     readonly status: Message['status'];
     readonly createdBy?: MemberId | null;
     readonly choices?: readonly string[];
+    readonly phase?: MessagePhase | null;
+    readonly steps?: readonly ReplyStep[];
 }
 
 /** The author joins first if they are not a member; IDs follow the engine's `<chat>#<position>`. */
@@ -200,6 +267,8 @@ export function appendMessage(ctx: EngineContext, record: ChatRecord, input: New
         createdBy: input.createdBy ?? null,
         createdAt: ctx.now(),
         choices: [...(input.choices ?? [])],
+        phase: input.phase ?? null,
+        steps: (input.steps ?? []).map((step) => ({ ...step })),
     };
     ctx.state.messages.set(message.id, message);
     record.entryIds.push(message.id);
@@ -282,14 +351,14 @@ function titleFrom(content: string): string | null {
 /**
  * Who answers a User message, as the engine routes it: the author of the question it answers; else an agent the
  * message brings in (the main agent says so first, then the agent joins and answers); else the main agent. Returns
- * the reply for the caller to start streaming, or nothing when no live agent answers.
+ * the turn for the caller to start, or nothing when no live agent answers.
  */
 export function respond(
     ctx: HandlerContext,
     record: ChatRecord,
     message: Message,
     answered: QuestionRecord | undefined,
-): { readonly replyId: MessageId; readonly script: ScriptedReply } | undefined {
+): NewTurn | undefined {
     const messageIndex = record.messageCount - 1;
     if (record.placeholderTitle && message.author.kind === 'user') {
         const title = titleFrom(message.content);
@@ -318,25 +387,30 @@ export function respond(
         messageIndex,
     });
     const asks = ASK_ME.test(message.content);
-    const reply = appendMessage(ctx, record, {
+    return {
         author: responder,
-        content: '',
-        status: 'streaming',
+        script: asks ? withQuestion(script) : script,
+        prompt: message.content,
         ...(asks ? { choices: QUESTION_CHOICES } : {}),
+        onReply: (reply) => {
+            trackRun(ctx, record, agent, reply, message.content);
+        },
+    };
+}
+
+/** With `runs@1`, every reply is a run of its agent, from the moment the agent writes it. */
+export function trackRun(ctx: HandlerContext, record: ChatRecord, agent: Agent, reply: Message, prompt: string): void {
+    if (!advertises(ctx, KNOWN_CAPABILITIES.runs)) return;
+    const run = queueRun(ctx, {
+        agentId: agent.id,
+        source: 'web',
+        chatId: record.id,
+        messageId: reply.id,
+        createdBy: ctx.member.id,
+        actor: memberActor(ctx),
+        preview: prompt,
     });
-    if (advertises(ctx, KNOWN_CAPABILITIES.runs)) {
-        const run = queueRun(ctx, {
-            agentId: agent.id,
-            source: 'web',
-            chatId: record.id,
-            messageId: reply.id,
-            createdBy: ctx.member.id,
-            actor: memberActor(ctx),
-            preview: message.content,
-        });
-        advanceRun(ctx, run.id);
-    }
-    return { replyId: reply.id, script: asks ? withQuestion(script) : script };
+    advanceRun(ctx, run.id);
 }
 
 function withQuestion(script: ScriptedReply): ScriptedReply {

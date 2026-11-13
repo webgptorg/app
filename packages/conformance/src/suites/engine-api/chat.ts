@@ -17,7 +17,7 @@ function terminal(item: StreamItem): boolean {
     return item.event.type === 'completed' || item.event.type === 'failed';
 }
 
-async function send(
+export async function send(
     world: World,
     body: { readonly content: string; readonly requestKey?: string } = { content: CHAT_MESSAGE },
 ): Promise<{ readonly chatId: string; readonly sent: Message; readonly reply: Message }> {
@@ -29,9 +29,12 @@ async function send(
     return { chatId, sent, reply: await replyAfter(world.owner, chatId, sent.id) };
 }
 
+/** The most entries `entries` reads: the newest page. */
+export const ENTRY_PAGE = 100;
+
 /** Oldest first, as the thread reads. */
-async function entries(world: World, chatId: string): Promise<ChatEntry[]> {
-    const page = await world.owner.ok(R.listChatEntries, { params: { chatId }, query: { limit: 100 } });
+export async function entries(world: World, chatId: string): Promise<ChatEntry[]> {
+    const page = await world.owner.ok(R.listChatEntries, { params: { chatId }, query: { limit: ENTRY_PAGE } });
     return [...page.items].reverse();
 }
 
