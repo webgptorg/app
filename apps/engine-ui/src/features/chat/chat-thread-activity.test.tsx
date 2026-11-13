@@ -92,7 +92,7 @@ describe('agent steps', { timeout: TIMEOUT_MS }, () => {
         await expectNoAxeViolations(history());
 
         engine.controller.finishReplyTurn(CHAT_ID, CHAT_AGENT_ID, { content: 'Here is the copy.' });
-        const toggle = await within(history()).findByRole('button', { name: /Worked .* · 3 steps/ });
+        const toggle = await within(history()).findByRole('button', { name: /Worked.* · 3 steps/ });
         expect(toggle.getAttribute('aria-expanded')).toBe('false');
         expect(within(history()).getByText('Here is the copy.')).toBeDefined();
         await app.user.click(toggle);
@@ -120,7 +120,7 @@ describe('agent steps', { timeout: TIMEOUT_MS }, () => {
             },
         );
         await renderThread(engine);
-        const toggle = await within(history()).findByRole('button', { name: /Stopped without a reply · 5 s/ });
+        const toggle = await within(history()).findByRole('button', { name: 'Stopped without a reply · 2 steps' });
         expect(toggle.getAttribute('aria-expanded')).toBe('true');
         expect(within(history()).getByText('Bash')).toBeDefined();
     });
@@ -239,7 +239,7 @@ describe('no response', { timeout: TIMEOUT_MS }, () => {
 
     it('reports a Retry that fails for another reason', async () => {
         const engine = engineWith();
-        engine.spies.retry.mockResolvedValueOnce({ kind: 'problem', problem: createProblem('internal') });
+        engine.spies.retry.mockResolvedValueOnce({ kind: 'problem', problem: createProblem('unavailable') });
         const app = await renderThread(engine);
         app.ticker.advance(150_000);
         await app.user.click(within(history()).getByRole('button', { name: 'Retry' }));

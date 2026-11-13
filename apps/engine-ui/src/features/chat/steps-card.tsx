@@ -1,6 +1,7 @@
 import type { ReadReplyStep } from '@ptbk/engine-api';
 import { useLocale } from '@ptbk/ui';
-import { Check, ChevronRight } from 'lucide-react';
+import type { Formatters } from '@ptbk/ui';
+import { Check, ChevronRight, CircleAlert } from 'lucide-react';
 import { useId, useState } from 'react';
 import type { ReactNode } from 'react';
 
@@ -57,7 +58,16 @@ function Step({ step, current }: { readonly step: ReadReplyStep; readonly curren
     return (
         <li className="flex min-w-0 items-center gap-2 py-0.5 motion-safe:animate-rise-in">
             <span className="flex size-3.5 shrink-0 items-center justify-center">
-                {current ? <StatusDot tone="live" /> : <Check aria-hidden className="size-3.5 text-text-muted" />}
+                {current ? (
+                    <StatusDot tone="live" />
+                ) : step.level === 'error' || step.level === 'warning' ? (
+                    <CircleAlert
+                        aria-hidden
+                        className={cx('size-3.5', step.level === 'error' ? 'text-danger' : 'text-warning')}
+                    />
+                ) : (
+                    <Check aria-hidden className="size-3.5 text-text-muted" />
+                )}
                 <span className="sr-only">{current ? m.chat_step_current() : m.chat_step_done()}</span>
             </span>
             <span className="min-w-0 flex-1">
@@ -71,6 +81,22 @@ function Step({ step, current }: { readonly step: ReadReplyStep; readonly curren
     );
 }
 
+/** "1 step", "3 kroky", "5 kroků": plural forms by the language's own rules. */
+function stepCountText(count: number, locale: Formatters): string {
+    const value = locale.formatNumber(count);
+    switch (new Intl.PluralRules(locale.locale).select(count)) {
+        case 'one':
+            return m.chat_steps_count_one();
+        case 'few':
+            return m.chat_steps_count_few({ count: value });
+        case 'zero':
+        case 'two':
+        case 'many':
+        case 'other':
+            return m.chat_steps_count({ count: value });
+    }
+}
+
 /**
  * One agent turn's steps. Live, it ticks through them with an elapsed timer; once a reply ends the turn it folds into
  * "Worked 8 s · 3 steps", which opens again on click; a turn that ended without a reply stays open. Step text is agent
@@ -82,15 +108,16 @@ export function StepsCard({ view }: { readonly view: StepsView }) {
     const [chosen, setChosen] = useState<boolean | null>(null);
     const live = view.status === 'live';
     const open = live || (chosen ?? view.status === 'unfinished');
-    const duration =
-        view.endedAt === null ? '' : locale.formatDuration(Date.parse(view.endedAt) - Date.parse(view.startedAt));
     const count = view.steps.length;
+    const stepCount = stepCountText(count, locale);
+    const elapsed = view.endedAt === null ? 0 : Date.parse(view.endedAt) - Date.parse(view.startedAt);
+    // An engine that saves its progress only with the reply gives no real duration; better none than "0 s".
     const summary =
         view.status === 'unfinished'
             ? m.chat_steps_unfinished()
-            : count === 1
-              ? m.chat_steps_worked_one({ duration })
-              : m.chat_steps_worked({ duration, count: locale.formatNumber(count) });
+            : elapsed < 1000
+              ? m.chat_steps_worked_brief({ steps: stepCount })
+              : m.chat_steps_worked({ duration: locale.formatDuration(elapsed), steps: stepCount });
 
     return (
         <section
@@ -119,7 +146,7 @@ export function StepsCard({ view }: { readonly view: StepsView }) {
                     className="-mx-1 flex items-center gap-1.5 rounded-small px-1 meta hover:text-text"
                 >
                     {view.status === 'unfinished' ? <StatusDot tone="waiting" /> : null}
-                    <span>{view.status === 'unfinished' ? `${summary} · ${duration}` : summary}</span>
+                    <span>{view.status === 'unfinished' ? `${summary} · ${stepCount}` : summary}</span>
                     <FoldChevron open={open} />
                 </button>
             )}

@@ -1,4 +1,4 @@
-import type { ReadAgent, ReadChat } from '@ptbk/engine-api';
+import type { ReadAgent, ReadChat, Timestamp } from '@ptbk/engine-api';
 import { createMemoryHistory, createRootRoute, createRouter, RouterProvider } from '@tanstack/react-router';
 import { screen, within } from '@testing-library/react';
 import type { ReactNode } from 'react';
@@ -15,7 +15,7 @@ import { TaskCard } from './task-card';
 import { DayDivider } from './thread-time';
 
 const NOW_MS = Date.parse('2026-11-13T12:16:00Z');
-const at = (seconds: number) => new Date(NOW_MS + seconds * 1000).toISOString();
+const at = (seconds: number) => new Date(NOW_MS + seconds * 1000).toISOString() as Timestamp;
 const COPY = { kind: 'agent', key: 'agent-copy' } as const;
 type ChatTask = ReadChat['tasks'][number];
 
