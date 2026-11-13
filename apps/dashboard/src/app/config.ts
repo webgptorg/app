@@ -85,7 +85,7 @@ const installGuideUrlSchema = z
 const adaptersSchema = z.strictObject({
     email: z.enum(['cloudflare', 'fake']),
     /** `off` (dev and staging): nobody is charged and every organization holds `BILLING_OFF_PLAN`; no Stripe at all. */
-    billing: z.enum(['stripe', 'fake', 'off']),
+    billing: z.enum(['stripe', 'fake', 'off', 'website']),
     rateLimit: z.enum(['workers', 'memory']),
 });
 
@@ -320,7 +320,7 @@ const varsSchema = z
                     message: 'billing off is not for production',
                 });
             }
-        } else {
+        } else if (vars.ADAPTERS.billing !== 'website') {
             if (vars.BILLING_PLANS === undefined) {
                 ctx.addIssue({ code: 'custom', path: ['BILLING_PLANS'], message: 'required with billing on' });
             }
@@ -394,6 +394,7 @@ export type AdapterSelection = z.infer<typeof adaptersSchema>;
  * plans are sold through the provider.
  */
 export type BillingConfig =
+    | { readonly adapter: 'website' }
     | { readonly adapter: 'off'; readonly grant: PlanEntitlements }
     | { readonly adapter: 'stripe' | 'fake'; readonly plans: PlanCatalogue };
 
@@ -506,6 +507,7 @@ function abuseMonitoringConfig(parsed: z.infer<typeof varsSchema>): AbuseMonitor
 
 function billingConfig(parsed: z.infer<typeof varsSchema>): BillingConfig {
     const adapter = parsed.ADAPTERS.billing;
+    if (adapter === 'website') return Object.freeze({ adapter });
     // The refinement above requires the var each adapter reads.
     return adapter === 'off'
         ? Object.freeze({ adapter, grant: createPlanEntitlements(parsed.BILLING_OFF_PLAN as PlanEntitlementsVar) })

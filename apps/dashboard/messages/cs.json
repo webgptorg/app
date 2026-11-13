@@ -348,8 +348,13 @@
   "engines_open_new_tab": "projekt {name} v nové kartě",
   "engines_reachable": [
     {
-      "declarations": ["input count", "local countPlural = count: plural"],
-      "selectors": ["countPlural"],
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countPlural"
+      ],
       "match": {
         "countPlural=one": "Dostupný přes {count} relay",
         "countPlural=few": "Dostupný přes {count} relaye",
@@ -745,8 +750,13 @@
   "ui_select_row": "Vybrat {label}",
   "ui_selected_count": [
     {
-      "declarations": ["input count", "local countPlural = count: plural"],
-      "selectors": ["countPlural"],
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countPlural"
+      ],
       "match": {
         "countPlural=one": "{count} vybraná položka",
         "countPlural=few": "{count} vybrané položky",
@@ -779,8 +789,13 @@
   "ui_technical_details": "Technické podrobnosti",
   "ui_total_items": [
     {
-      "declarations": ["input count", "local countPlural = count: plural"],
-      "selectors": ["countPlural"],
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countPlural"
+      ],
       "match": {
         "countPlural=one": "{count} položka",
         "countPlural=few": "{count} položky",
@@ -814,5 +829,6 @@
   "engines_new_open_terminal": "Na macOS otevřete Terminál z Aplikace / Utility; na Linuxu otevřete svůj terminál. Použijte počítač, na kterém mají agenti běžet.",
   "engines_new_open_powershell": "Otevřete PowerShell z nabídky Start ve Windows na počítači, na kterém mají agenti běžet.",
   "engines_new_open_ssh": "Připojte se přes SSH k serveru, na kterém mají agenti běžet. Příkaz spusťte v jeho Bash terminálu.",
-  "engines_new_run_block": "Zkopírujte celý blok tlačítkem Kopírovat příkaz, vložte jej do terminálu a potvrďte Enterem. Složku nemusíte vytvářet ani vybírat; Promptbook ji připraví sám."
+  "engines_new_run_block": "Zkopírujte celý blok tlačítkem Kopírovat příkaz, vložte jej do terminálu a potvrďte Enterem. Složku nemusíte vytvářet ani vybírat; Promptbook ji připraví sám.",
+  "website_licenses": "Licence a členství na webu"
 }

@@ -20,3 +20,9 @@ Implement the owner-approved 13 November split: the website owns trials, purchas
 ## Apply
 
 Configure one dedicated website/App server credential only after the PR is reviewed and both ends are deployed. Do not merge this PR automatically; Pavol requested review by Sebastián.
+
+## PR scope and remaining integration
+
+PR #289 provides numeric schemas, advisory heterogeneous coverage, bounded polling and identity-exchange clients, identity-linking guard, the website billing selection, and the member-area link. These helpers do not expose a new authentication route or bypass the current passkey flows.
+
+Organization-scoped persistence, typed handoff routes with normal passkey enrollment, and coverage notices remain part of D-30 and are explicitly listed in docs/design/website-licensing.md. Keep this PR draft until those changes and the actual staging integration are reviewed with the App owner. No production secrets or configuration changes are applied by this PR.

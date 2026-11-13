@@ -1,3 +1,4 @@
+import { createAdvisoryEntitlements } from '../domain/licensing/advisory-entitlements';
 import type { Hono } from 'hono';
 
 import { createFakeBillingProvider } from '../adapters/billing/fake-billing-provider';
@@ -150,6 +151,9 @@ function billingWiring(
     db: ReturnType<typeof createDatabase>,
     logger: Logger,
 ): { readonly billing: BillingService | null; readonly entitlements: Entitlements } | null {
+    if (config.billing.adapter === 'website') {
+        return { billing: null, entitlements: createAdvisoryEntitlements() };
+    }
     if (config.billing.adapter === 'off') {
         return { billing: null, entitlements: createFixedEntitlements(config.billing.grant) };
     }

@@ -1,5 +1,7 @@
 > Revision of 18 November 2026: the engine-first flow below supersedes Docker-first and mandatory card-before-install recommendations. It completes the existing Reborn onboarding; it does not introduce a second wizard or alter billing adapters. See [the current installation handoff](engine-first-installation.md).
 
+> **13 November 2026 owner revision:** The new website offer follows [website licensing](website-licensing.md) and ADR 0021. Website-first verified account handoff precedes App control. The 14-day no-card Business trial starts explicitly on the website after engine setup; no card or plan is required before linking. Missing/expired/over-capacity licenses show notices only. Preserve all security, role, ownership and rate-limit checks. The older billing-gate descriptions below describe the legacy App flow and are superseded for this offer. Current native Windows/macOS installers, npm and Ubuntu setup come from the real engine; Docker is a development-stack choice.
+
 # Onboarding
 
 **Someone who runs, or wants to run, the open Promptbook engine pastes one command and creates one passkey in the browser window the engine opens. After that, their engine has an address, a certificate, a tunnel, the signed UI and an owner, and we never held a key to any of it.**
@@ -355,3 +357,4 @@ Taken 2026-10-26. Seb decided 1, 2, 5 and 7, and delegated 3, 4, 6 and 8 with on
 6. **No engine contract change** beyond C-11's additive pieces. Progress comes from the registration, the heartbeat (`members` is 0 until the owner's first passkey, normative in installation.md) and the relays' presence reports (R-07).
 7. **First UI bundle:** the engine image carries its own release's UI bundle, with the delay counted from the release's trusted log time, and the installer pins only releases already past their delay. Until UI bundles ship inside engine releases, running the installer counts as the owner approving the first bundle by hand. This needs the engine team and the release key holders.
 8. **Gateway pages:** we publish a small MIT stylesheet with the design tokens; the mock engine's `/setup` and sign-in pages are portable, CSP-safe MIT reference pages the engine team may copy (M-08). The engine team owns and reviews what it ships.
+
