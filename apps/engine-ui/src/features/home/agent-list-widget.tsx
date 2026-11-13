@@ -66,7 +66,7 @@ export function AgentListWidget({ title, query, skeletonRows, chatAction = false
                     <ul className="flex flex-col divide-y divide-divider">
                         {page.items.map((agent) => (
                             <li key={agent.id} className="flex min-h-12 items-center gap-3 py-2">
-                                <AgentAvatar name={agent.name} profile={agent.profile} />
+                                <AgentAvatar name={agent.name} agentKey={agent.id} profile={agent.profile} />
                                 <div className="flex min-w-0 flex-1 flex-col">
                                     <Link
                                         to="/agents/$agentId"

@@ -2031,5 +2031,16 @@
   ],
   "wallet_trust_summary": "Jak jsou hesla v bezpečí",
   "wallet_trust_body": "Váš engine drží peněženku šifrovanou na vlastním serveru. Hesla a další údaje jdou rovnou do něj a nikdy se nevrací: ani na tuhle stránku, ani do chatů agentů, ani do Promptbooku. Agenti použijí přihlášení jen na webu, ke kterému patří.",
-  "wallet_resumed": "Potvrdili jste, že jste to vy. Zadejte heslo znovu a přihlášení uložte."
+  "wallet_resumed": "Potvrdili jste, že jste to vy. Zadejte heslo znovu a přihlášení uložte.",
+  "breadcrumbs": "Drobečková navigace",
+  "entity_card_unavailable": "Podrobnosti teď nejsou k dispozici.",
+  "entity_open_agent": "Otevřít agenta",
+  "entity_open_task": "Otevřít úkol",
+  "entity_open_run": "Otevřít běh",
+  "entity_open_chat": "Otevřít chat",
+  "entity_open_file": "Otevřít soubor",
+  "entity_open_trigger": "Otevřít spouštěč",
+  "entity_open_integration": "Otevřít integraci",
+  "entity_open_members": "Otevřít členy",
+  "entity_chat_with": "S: {names}"
 }

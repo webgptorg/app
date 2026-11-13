@@ -14,14 +14,14 @@ const profile = (fields: Partial<AgentProfile> = {}): AgentProfile => ({
 });
 
 describe('AgentAvatar', () => {
-    it('shows a same-origin picture with the profile colour as its ring', () => {
+    it('shows a same-origin picture', () => {
         const { container } = renderUi(
             <AgentAvatar name="Ada" profile={profile({ avatarUrl: '/avatars/ada.png', color: '#ff0000' })} size="lg" />,
         );
         const image = container.querySelector('img');
         expect(image?.getAttribute('src')).toBe('/avatars/ada.png');
         expect(image?.getAttribute('alt')).toBe('');
-        expect(image?.style.borderColor).toBe('rgb(255, 0, 0)');
+        expect(image?.style.getPropertyValue('--tint')).toBe('#ff0000');
         expect(image?.className).toContain('size-14');
     });
 
@@ -31,7 +31,26 @@ describe('AgentAvatar', () => {
         );
         expect(container.querySelector('img')).toBeNull();
         expect(container.textContent).toBe('Á');
-        expect(container.querySelector('span')?.style.borderColor).toBe('');
+        expect(container.querySelector('span')?.style.getPropertyValue('--tint')).toBe('');
+    });
+
+    it("tints the initial with the agent's colour: its profile colour, else its key's palette hue", () => {
+        const { container } = renderUi(
+            <>
+                <AgentAvatar name="Ada" agentKey="agent-ada" profile={profile({ color: '#123456' })} />
+                <AgentAvatar name="Max" agentKey="agent-max" profile={profile()} />
+            </>,
+        );
+        const [ada, max] = container.querySelectorAll('span');
+        expect(ada?.style.getPropertyValue('--tint')).toBe('#123456');
+        expect(max?.style.getPropertyValue('--tint')).toMatch(/^var\(--color-agent-[1-8]\)$/);
+    });
+
+    it('never passes a profile colour that is not #rrggbb into CSS', () => {
+        const { container } = renderUi(
+            <AgentAvatar name="Eve" profile={profile({ color: 'red;background:url(x)' })} />,
+        );
+        expect(container.querySelector('span')?.style.getPropertyValue('--tint')).toBe('');
     });
 
     it('shows nothing for a blank name', () => {

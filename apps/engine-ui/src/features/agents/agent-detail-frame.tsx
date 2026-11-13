@@ -105,7 +105,12 @@ export function AgentDetailFrame() {
                 className={cx('flex justify-between', compact ? 'items-center gap-3' : 'flex-wrap items-start gap-4')}
             >
                 <div className={cx('flex min-w-0', compact ? 'flex-1 items-center gap-3' : 'items-start gap-4')}>
-                    <AgentAvatar name={agent.name} profile={agent.profile} size={compact ? 'sm' : 'lg'} />
+                    <AgentAvatar
+                        name={agent.name}
+                        agentKey={agent.id}
+                        profile={agent.profile}
+                        size={compact ? 'sm' : 'lg'}
+                    />
                     <div
                         className={cx(
                             'flex min-w-0',

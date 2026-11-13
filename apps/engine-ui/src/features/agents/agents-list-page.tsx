@@ -76,7 +76,11 @@ function useAgentColumns(withVisibility: boolean): DataTableColumnDef<Agent>[] {
                         variant="standalone"
                         className="inline-flex max-w-full items-center gap-2 font-medium"
                     >
-                        <AgentAvatar name={row.original.name} profile={row.original.profile} />
+                        <AgentAvatar
+                            name={row.original.name}
+                            agentKey={row.original.id}
+                            profile={row.original.profile}
+                        />
                         <span className="truncate">{row.original.name}</span>
                     </Link>
                 ),

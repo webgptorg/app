@@ -1972,5 +1972,16 @@
   ],
   "wallet_trust_summary": "How passwords stay safe",
   "wallet_trust_body": "Your engine keeps the Wallet encrypted on its own server. Passwords and extra details travel straight to it and are never sent back: not to this page, not to agents' chats, not to Promptbook. Agents use a login only on the website it belongs to.",
-  "wallet_resumed": "You confirmed it is you. Type the password again to save the login."
+  "wallet_resumed": "You confirmed it is you. Type the password again to save the login.",
+  "breadcrumbs": "Breadcrumb",
+  "entity_card_unavailable": "Details are not available right now.",
+  "entity_open_agent": "Open agent",
+  "entity_open_task": "Open task",
+  "entity_open_run": "Open run",
+  "entity_open_chat": "Open chat",
+  "entity_open_file": "Open file",
+  "entity_open_trigger": "Open trigger",
+  "entity_open_integration": "Open integration",
+  "entity_open_members": "Open members",
+  "entity_chat_with": "With {names}"
 }

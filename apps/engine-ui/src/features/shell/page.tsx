@@ -1,28 +1,53 @@
 import { Anchor } from '@ptbk/ui';
 import type { AnchorProps } from '@ptbk/ui';
 import { createLink } from '@tanstack/react-router';
-import { ArrowLeft } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { ArrowLeft, ChevronRight } from 'lucide-react';
+import { Fragment } from 'react';
+import type { AnchorHTMLAttributes, CSSProperties, ReactNode } from 'react';
 
+import { cx } from '../../app/cx';
+import { m } from '../../paraglide/messages';
 import { useDocumentTitle } from './document-title';
 
 export interface PageProps {
     readonly title: string;
+    /** Quiet text after the title in the same heading, e.g. a timestamp that is part of an engine name. */
+    readonly titleSuffix?: ReactNode | undefined;
     /** One quiet line under the title saying what the screen is for. */
     readonly description?: ReactNode;
-    /** A way back to the list this screen belongs to, above the title: a `BackLink`. */
-    readonly back?: ReactNode;
+    /**
+     * Where the screen sits, outermost first, as `Crumb` links ("Tasks" on a task). They replace "Back to …" links:
+     * the trail is the way back.
+     */
+    readonly breadcrumbs?: readonly ReactNode[] | undefined;
+    /** A way back to the list this screen belongs to: a `BackLink`. Screens with `breadcrumbs` leave it out. */
+    readonly back?: ReactNode | undefined;
     /**
      * The browser tab's title before the engine name, most specific first; defaults to `title`. Add where the page
      * lives when the title alone is ambiguous, e.g. `[trigger.name, 'Triggers']`.
      */
     readonly documentTitle?: readonly string[];
-    readonly actions?: ReactNode;
+    readonly actions?: ReactNode | undefined;
+    /** CSSOM style for the title, e.g. the `view-transition-name` a list row's title morphs into. */
+    readonly titleStyle?: CSSProperties | undefined;
     readonly children: ReactNode;
 }
 
-/** The frame of every routed screen: one `h1` (the skip link and route announcements land on it) and the content. */
-export function Page({ title, description, back, documentTitle, actions, children }: PageProps) {
+/**
+ * The frame of every routed screen: a slim header that stays in view while the page scrolls (where it is, the one
+ * `h1` the skip link and route announcements land on, the primary action), then the content.
+ */
+export function Page({
+    title,
+    titleSuffix,
+    description,
+    breadcrumbs,
+    back,
+    documentTitle,
+    actions,
+    titleStyle,
+    children,
+}: PageProps) {
     useDocumentTitle(...(documentTitle ?? [title]));
     return (
         <section
@@ -30,26 +55,92 @@ export function Page({ title, description, back, documentTitle, actions, childre
             aria-describedby={description === undefined ? undefined : 'page-description'}
             className="flex flex-col gap-6"
         >
-            <header className="flex flex-col gap-3">
-                {back === undefined ? null : <div className="flex">{back}</div>}
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div className="flex min-w-0 flex-col gap-1">
-                        <h1 id="page-title" className="text-2xl font-semibold break-words">
-                            {title}
-                        </h1>
-                        {description === undefined ? null : (
-                            <p id="page-description" className="max-w-prose text-sm text-text-muted">
-                                {description}
-                            </p>
-                        )}
-                    </div>
-                    {actions}
-                </div>
-            </header>
+            <PageHeader
+                title={title}
+                titleSuffix={titleSuffix}
+                breadcrumbs={breadcrumbs}
+                back={back}
+                actions={actions}
+                titleStyle={titleStyle}
+            />
+            {description === undefined ? null : (
+                <p id="page-description" className="-mt-5 max-w-prose text-sm text-text-muted">
+                    {description}
+                </p>
+            )}
             {children}
         </section>
     );
 }
+
+type PageHeaderProps = Pick<PageProps, 'title' | 'titleSuffix' | 'breadcrumbs' | 'back' | 'actions' | 'titleStyle'>;
+
+/**
+ * The sticky bar itself. On narrow screens it scrolls away with the page: the phone's own top bar already stays, and
+ * two stuck bars would eat the screen.
+ */
+export function PageHeader({ title, titleSuffix, breadcrumbs, back, actions, titleStyle }: PageHeaderProps) {
+    const trail = breadcrumbs ?? [];
+    return (
+        <header
+            data-page-header=""
+            className={cx(
+                'z-10 -mx-4 flex flex-col gap-1 px-4 py-3 md:sticky md:top-0 md:-mx-8 md:px-8',
+                'bg-[color-mix(in_oklab,var(--color-surface)_88%,transparent)] backdrop-blur-md',
+            )}
+        >
+            {trail.length === 0 ? null : (
+                <nav aria-label={m.breadcrumbs()} className="min-w-0">
+                    <ol className="flex min-w-0 flex-wrap items-center gap-1 text-sm text-text-muted">
+                        {trail.map((crumb, index) => (
+                            <Fragment key={index}>
+                                <li className="flex min-w-0 items-center">{crumb}</li>
+                                <li aria-hidden="true" className="flex items-center">
+                                    <ChevronRight className="size-3.5 opacity-70" />
+                                </li>
+                            </Fragment>
+                        ))}
+                    </ol>
+                </nav>
+            )}
+            {back === undefined ? null : <div className="flex">{back}</div>}
+            <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+                <h1
+                    id="page-title"
+                    style={titleStyle}
+                    className="min-w-0 text-xl font-semibold tracking-tight [overflow-wrap:anywhere]"
+                >
+                    {title}
+                    {titleSuffix === undefined ? null : (
+                        <span className="ms-2 text-sm font-normal tracking-normal text-text-muted tabular-nums">
+                            {titleSuffix}
+                        </span>
+                    )}
+                </h1>
+                {actions === undefined ? null : <div className="flex shrink-0 items-center gap-2">{actions}</div>}
+            </div>
+        </header>
+    );
+}
+
+// A plain `<a>`: `Anchor`'s accent colour and hover underline are what a quiet trail must not have.
+function CrumbAnchor({ className, children, ...rest }: AnchorHTMLAttributes<HTMLAnchorElement>) {
+    return (
+        <a
+            {...rest}
+            className={cx(
+                'truncate rounded-small text-text-muted hover:text-text',
+                'motion-safe:transition-colors motion-safe:duration-(--motion-state)',
+                className,
+            )}
+        >
+            {children}
+        </a>
+    );
+}
+
+/** One step of a page's breadcrumb trail: a quiet link to a screen above this one. */
+export const Crumb = createLink(CrumbAnchor);
 
 function BackAnchor({ children, ...rest }: AnchorProps) {
     return (
@@ -61,7 +152,7 @@ function BackAnchor({ children, ...rest }: AnchorProps) {
 }
 
 /**
- * The one way back from a detail or form page to its list ("Back to runs"), placed by `Page` above the title. Name
- * where it leads, including the context the member came from ("Back to Ada's runs").
+ * A way back from a detail or form page to its list ("Back to runs"), placed by `Page` above the title. Name where
+ * it leads, including the context the member came from ("Back to Ada's runs"). New screens use `breadcrumbs`.
  */
 export const BackLink = createLink(BackAnchor);

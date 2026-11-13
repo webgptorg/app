@@ -43,7 +43,7 @@ export function AppShell() {
                 id={MAIN_ID}
                 tabIndex={-1}
                 className={cx(
-                    'min-w-0 flex-1 px-4 py-6 outline-none md:px-8 md:py-8',
+                    'min-w-0 flex-1 px-4 pt-3 pb-10 outline-none md:px-8 md:pt-4 md:pb-12',
                     '[--main-fill-height:calc(100dvh-6.5rem)] md:[--main-fill-height:calc(100dvh-4rem)]',
                 )}
             >
@@ -65,9 +65,9 @@ function WideSidebar({
     return (
         <aside
             className={cx(
-                'sticky top-0 flex h-dvh shrink-0 flex-col gap-3 border-e border-divider bg-raised p-3',
+                'sticky top-0 flex h-dvh shrink-0 flex-col gap-3 border-e border-divider bg-surface px-2 py-3',
                 'motion-safe:transition-[width] motion-safe:duration-(--motion-enter) motion-safe:ease-enter',
-                collapsed ? 'w-18' : 'w-64',
+                collapsed ? 'w-16' : 'w-60',
             )}
         >
             <div className={cx('flex gap-1', collapsed ? 'flex-col items-center' : 'items-center')}>
@@ -106,7 +106,7 @@ function NarrowShell({ onOpenPalette }: { readonly onOpenPalette: () => void }) 
     const [open, setOpen] = useState(false);
     return (
         <>
-            <header className="fixed inset-x-0 top-0 z-10 flex h-14 items-center gap-2 border-b border-divider bg-raised px-2">
+            <header className="fixed inset-x-0 top-0 z-20 flex h-14 items-center gap-2 border-b border-divider bg-surface px-2">
                 <IconButton
                     variant="ghost"
                     label={m.sidebar_open()}
