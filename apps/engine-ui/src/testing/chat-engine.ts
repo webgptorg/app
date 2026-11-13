@@ -120,6 +120,7 @@ export function createChatEngine(options: ChatEngineOptions = {}): ChatEngine {
         markSeen: vi.spyOn(chats, 'markSeen'),
         streamReply: vi.spyOn(chats, 'streamReply'),
         cancelReply: vi.spyOn(chats, 'cancelReply'),
+        retry: vi.spyOn(chats, 'retry'),
     };
     return { client: { ...engine.client, chats }, controller: engine.controller, spies, real };
 }
@@ -201,5 +202,15 @@ export function controlReplyStreams(engine: ChatEngine) {
 
 /** The completed reply the engine would send at the end of a stream. */
 export function completedReply(base: Pick<Message, 'id' | 'chatId' | 'createdAt'>, content: string): Message {
-    return { ...base, type: 'message', author: ADA, content, status: 'completed', createdBy: null, choices: [] };
+    return {
+        ...base,
+        type: 'message',
+        author: ADA,
+        content,
+        status: 'completed',
+        createdBy: null,
+        choices: [],
+        phase: null,
+        steps: [],
+    };
 }
