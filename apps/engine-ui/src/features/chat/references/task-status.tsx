@@ -71,6 +71,7 @@ export function StatusDot({ tone, className }: { readonly tone: ChatTaskTone; re
     return (
         <span
             aria-hidden="true"
+            data-tone={tone}
             className={cx('inline-block size-2 shrink-0 rounded-full', DOT_CLASSES[tone], className)}
         />
     );

@@ -1,3 +1,4 @@
+import { EngineApiContractError } from '@ptbk/engine-api';
 import type { ChatId, MessageId, ReadChatEntry, ReadMessage } from '@ptbk/engine-api';
 import { useToast } from '@ptbk/ui';
 import { useQueryClient } from '@tanstack/react-query';
@@ -12,6 +13,12 @@ import { ENTRY_PAGE_SIZE } from './chat-queries';
 import { chatSessionReducer, INITIAL_CHAT_SESSION, isReplyActive } from './chat-session';
 import type { ChatSessionState } from './chat-session';
 import { isRefusal, newRequestKey, refusalTitle } from './send-delivery';
+
+/**
+ * What Retry on a reply achieved: `nothing` when the engine had no failed reply to attempt (the agent has not started
+ * on it yet, or already answered); `unavailable` when this engine has no retry route.
+ */
+export type RetryOutcome = 'retried' | 'nothing' | 'unavailable' | 'failed';
 
 export interface ChatSession {
     readonly state: ChatSessionState;
@@ -31,7 +38,7 @@ export interface ChatSession {
      * Asks the engine to attempt the thread's failed reply now (`POST /retry`), then refreshes the thread. It never
      * sends the member's message again: that is saved, and a new request key would save it twice.
      */
-    readonly retryReply: () => Promise<void>;
+    readonly retryReply: () => Promise<RetryOutcome>;
 }
 
 export interface ChatSessionOptions {
@@ -252,19 +259,28 @@ export function useChatSession({ chatId, updatedAt, entries }: ChatSessionOption
         }
     }, [follow, send, recheckSend]);
 
-    const retryReply = useCallback(async () => {
+    const retryReply = useCallback(async (): Promise<RetryOutcome> => {
+        let outcome: RetryOutcome = 'failed';
         try {
             const response = await engineApi.chats.retry(chatId, unmounted.current.signal);
             if (response.kind === 'ok') {
                 queryClient.setQueryData(chatKeys.detail(chatId), response.data);
-            } else if (response.problem.code !== 'nothing-to-retry') {
-                toast.show({ tone: 'danger', title: m.error_mutation_failed() });
+                outcome = 'retried';
+            } else if (response.problem.code === 'nothing-to-retry') {
+                outcome = 'nothing';
+            } else if (response.problem.status === 404) {
+                outcome = 'unavailable';
             }
-        } catch {
-            if (!unmounted.current.signal.aborted) toast.show({ tone: 'danger', title: m.error_mutation_failed() });
+        } catch (error) {
+            // An engine that predates the route may answer with anything (an HTML 404, a 405): not a failure to report.
+            if (error instanceof EngineApiContractError) outcome = 'unavailable';
+        }
+        if (outcome === 'failed' && !unmounted.current.signal.aborted) {
+            toast.show({ tone: 'danger', title: m.error_mutation_failed() });
         }
         // Nothing waiting to retry means the attempt already ran or the reply came after all: check what is there now.
         await Promise.all([queryClient.invalidateQueries({ queryKey: chatKeys.detail(chatId) }), refreshNewest()]);
+        return outcome;
     }, [engineApi, queryClient, chatId, toast, refreshNewest]);
 
     useEngineEvents({

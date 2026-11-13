@@ -11,6 +11,7 @@ import { StatusDot } from './references/task-status';
 import { useReferenceAgent } from './references/thread-references';
 import { Fold, FoldChevron } from './steps-card';
 import { useShortTime } from './thread-time';
+import type { RetryOutcome } from './use-chat-session';
 
 /** After this long without a sign of the agent, "starting" becomes "still waiting". */
 export const STILL_WAITING_MS = 20_000;
@@ -18,7 +19,7 @@ export const STILL_WAITING_MS = 20_000;
 export const NO_RESPONSE_MS = 120_000;
 
 /** Asks the engine to attempt the thread's reply again, then refreshes the thread; resolves when that is done. */
-export type RetryReply = () => Promise<void>;
+export type RetryReply = () => Promise<RetryOutcome>;
 
 const RetryReplyContext = createContext<RetryReply | null>(null);
 
@@ -27,19 +28,39 @@ export function RetryReplyProvider({ retry, children }: { readonly retry: RetryR
     return <RetryReplyContext value={retry}>{children}</RetryReplyContext>;
 }
 
-function useRetryAction(): { readonly run: (() => void) | null; readonly busy: boolean } {
+interface RetryAction {
+    readonly run: ((onDone?: (outcome: RetryOutcome) => void) => void) | null;
+    readonly busy: boolean;
+    /** Set once the engine turns out to have no retry route: Retry stays in place, inert, and the card says why. */
+    readonly unavailable: boolean;
+}
+
+function useRetryAction(): RetryAction {
     const retry = use(RetryReplyContext);
     const [busy, setBusy] = useState(false);
-    if (retry === null) return { run: null, busy };
+    const [unavailable, setUnavailable] = useState(false);
+    if (retry === null) return { run: null, busy, unavailable };
     return {
         busy,
-        run: () => {
+        unavailable,
+        run: (onDone) => {
             setBusy(true);
-            void retry().finally(() => {
+            void retry().then((outcome) => {
                 setBusy(false);
+                if (outcome === 'unavailable') setUnavailable(true);
+                onDone?.(outcome);
             });
         },
     };
+}
+
+/** Visible for everyone; assistive technology hears it once, as the inert Retry's description. */
+function RetryUnavailable({ shown }: { readonly shown: boolean }) {
+    return shown ? (
+        <p aria-hidden="true" className="text-sm text-text-muted">
+            {m.chat_retry_unavailable()}
+        </p>
+    ) : null;
 }
 
 function Details({ children }: { readonly children: ReactNode }) {
@@ -76,13 +97,15 @@ export function WaitingCard({ view }: { readonly view: WaitingView }) {
     const now = useNow();
     const retry = useRetryAction();
     const agent = useReferenceAgent(view.agent.key, view.agentName);
-    // Retry restarts the wait: the engine gets another two minutes before this turns into an error again.
-    const [restartedAt, setRestartedAt] = useState<number | null>(null);
+    // Retry restarts the wait: the engine gets another two minutes before this turns into an error again. When it had
+    // nothing to retry, the message is still queued, and the quiet line says so instead of claiming a start.
+    const [restart, setRestart] = useState<{ readonly at: number; readonly queued: boolean } | null>(null);
     const arrivedAt = useShortTime(view.since);
-    const waited = now - (restartedAt ?? Date.parse(view.since));
+    const waited = now - (restart?.at ?? Date.parse(view.since));
 
     if (waited < NO_RESPONSE_MS) {
-        const still = waited >= STILL_WAITING_MS;
+        const queued = restart?.queued === true;
+        const still = queued || waited >= STILL_WAITING_MS;
         return (
             <p
                 role="status"
@@ -94,7 +117,11 @@ export function WaitingCard({ view }: { readonly view: WaitingView }) {
                 ) : (
                     <span aria-hidden="true" className="size-2 rounded-full bg-tint motion-safe:animate-breathe" />
                 )}
-                {still ? m.chat_wait_still({ name: agent.name }) : m.chat_wait_starting({ name: agent.name })}
+                {queued
+                    ? m.chat_wait_queued({ name: agent.name })
+                    : still
+                      ? m.chat_wait_still({ name: agent.name })
+                      : m.chat_wait_starting({ name: agent.name })}
             </p>
         );
     }
@@ -107,16 +134,23 @@ export function WaitingCard({ view }: { readonly view: WaitingView }) {
                     <Button
                         size="sm"
                         className="ms-auto"
-                        disabled={retry.busy}
+                        loading={retry.busy}
+                        disabled={retry.unavailable}
+                        disabledReason={m.chat_retry_unavailable()}
                         onClick={() => {
-                            setRestartedAt(now);
-                            retry.run?.();
+                            const clickedAt = now;
+                            retry.run?.((outcome) => {
+                                if (outcome === 'retried' || outcome === 'nothing') {
+                                    setRestart({ at: clickedAt, queued: outcome === 'nothing' });
+                                }
+                            });
                         }}
                     >
                         {m.chat_reply_retry()}
                     </Button>
                 )}
             </div>
+            <RetryUnavailable shown={retry.unavailable} />
             <Details>{m.chat_wait_details_text({ time: arrivedAt })}</Details>
         </section>
     );
@@ -145,11 +179,21 @@ export function RecheckCard({ view }: { readonly view: RecheckView }) {
                     {left > 0 ? m.chat_recheck_countdown({ time: formatClock(left) }) : m.chat_recheck_now()}
                 </span>
                 {retry.run === null ? null : (
-                    <Button size="sm" className="ms-auto" disabled={retry.busy} onClick={retry.run}>
+                    <Button
+                        size="sm"
+                        className="ms-auto"
+                        loading={retry.busy}
+                        disabled={retry.unavailable}
+                        disabledReason={m.chat_retry_unavailable()}
+                        onClick={() => {
+                            retry.run?.();
+                        }}
+                    >
                         {m.chat_recheck_retry_now()}
                     </Button>
                 )}
             </div>
+            <RetryUnavailable shown={retry.unavailable} />
         </section>
     );
 }

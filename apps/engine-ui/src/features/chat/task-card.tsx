@@ -1,10 +1,10 @@
 import { useLocale } from '@ptbk/ui';
 
 import { cx } from '../../app/cx';
-import { Link } from '../../app/link';
 import { m } from '../../paraglide/messages';
 import type { TaskView } from './message-views';
 import { AgentChip } from './references/agent-chip';
+import { OpenTaskLink } from './references/open-task-link';
 import { CHAT_TASK_TINT_CLASSES, chatTaskTone, TaskStatus } from './references/task-status';
 import type { ReadChatTask } from './references/thread-references';
 import { useThreadReferences } from './references/thread-references';
@@ -60,11 +60,7 @@ export function TaskCard({ view }: { readonly view: TaskView }) {
                             {m.chat_ref_commit()} {commit.slice(0, 7)}
                         </span>
                     )}
-                    {open ? (
-                        <Link to="/tasks/$taskId" params={{ taskId }} className="font-medium">
-                            {m.chat_ref_open_task()}
-                        </Link>
-                    ) : null}
+                    {open ? <OpenTaskLink taskId={taskId} className="ms-auto" /> : null}
                 </div>
             ) : null}
         </section>

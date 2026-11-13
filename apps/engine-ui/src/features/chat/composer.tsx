@@ -1,5 +1,5 @@
 import { MAX_MESSAGE_LENGTH } from '@ptbk/engine-api';
-import { Field, IconButton } from '@ptbk/ui';
+import { Field, IconButton, useLocale } from '@ptbk/ui';
 import { ArrowUp, Square, X } from 'lucide-react';
 import { useId, useLayoutEffect, useRef, useState } from 'react';
 import type { KeyboardEvent, Ref } from 'react';
@@ -34,9 +34,12 @@ export interface ComposerProps {
     readonly onStop?: () => void;
     /** What `@` offers, members of the thread first; without it `@` is just a character. */
     readonly mentionables?: readonly ComposerAgent[];
-    /** The agent the message goes to: shown as "to @Name ×", and the message goes out as `+@Name …`. */
+    /**
+     * The agent messages go to: shown as "to @Name ×", and each message goes out as `+@Name …`. It stays after a send,
+     * so a conversation with one agent needs no re-addressing; the `+@Name ` prefix counts toward the length limit.
+     */
     readonly addressee?: ComposerAgent | null;
-    /** Picking with `+@` sets it; × and Backspace at the start clear it (`null`), and so does a sent message. */
+    /** Picking with `+@` sets it; × and Backspace at the start of an empty box clear it (`null`). */
     readonly onAddresseeChange?: (agent: ComposerAgent | null) => void;
     readonly textareaRef?: Ref<HTMLTextAreaElement>;
     readonly className?: string;
@@ -44,6 +47,11 @@ export interface ComposerProps {
 
 /** Enough to pick from without scrolling a list over the thread. */
 const MAX_SUGGESTIONS = 6;
+
+/** What the engine receives: the typed text, after the address prefix when there is one. */
+export function addressedContent(addressee: ComposerAgent | null, text: string): string {
+    return addressee === null ? text : `+@${addressee.name} ${text}`;
+}
 
 function setRef<T>(ref: Ref<T> | undefined, value: T | null): void {
     if (typeof ref === 'function') ref(value);
@@ -99,6 +107,7 @@ export function Composer({
     textareaRef,
     className,
 }: ComposerProps) {
+    const locale = useLocale();
     const hintId = useId();
     const listId = useId();
     const [text, setText] = useState('');
@@ -108,7 +117,10 @@ export function Composer({
     const box = useRef<HTMLTextAreaElement | null>(null);
     const pendingCaret = useRef<number | null>(null);
     const locked = busy || sending;
-    const canSend = !locked && text.trim() !== '';
+    const maxLength = MAX_MESSAGE_LENGTH - addressedContent(addressee, '').length;
+    // Addressing after typing can push a full box past the limit; the engine would refuse it, so Send waits.
+    const overBy = text.length - maxLength;
+    const canSend = !locked && text.trim() !== '' && overBy <= 0;
     const suggestions = query === null ? [] : matchMentionCandidates(mentionables, query.text, MAX_SUGGESTIONS);
     const listOpen = suggestions.length > 0;
     const activeIndex = Math.min(active, Math.max(0, suggestions.length - 1));
@@ -149,14 +161,13 @@ export function Composer({
     const submit = async () => {
         if (!canSend) return;
         const typed = text;
-        const content = addressee === null ? typed : `+@${addressee.name} ${typed}`;
+        const content = addressedContent(addressee, typed);
         setSending(true);
         setText('');
         setQuery(null);
         const sent = await onSend(content);
         setSending(false);
         if (!sent) setText((current) => (current === '' ? typed : current));
-        else if (addressee !== null) onAddresseeChange?.(null);
     };
 
     const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -188,12 +199,7 @@ export function Composer({
                     return;
             }
         }
-        if (
-            event.key === 'Backspace' &&
-            addressee !== null &&
-            event.currentTarget.selectionStart === 0 &&
-            event.currentTarget.selectionEnd === 0
-        ) {
+        if (event.key === 'Backspace' && addressee !== null && event.currentTarget.value === '') {
             event.preventDefault();
             onAddresseeChange?.(null);
             return;
@@ -283,7 +289,7 @@ export function Composer({
                             rows={1}
                             value={text}
                             placeholder={placeholder}
-                            maxLength={MAX_MESSAGE_LENGTH}
+                            maxLength={maxLength}
                             readOnly={locked}
                             aria-disabled={locked || undefined}
                             className={cx(
@@ -325,6 +331,11 @@ export function Composer({
                     </div>
                 )}
             </Field>
+            {overBy > 0 ? (
+                <p role="status" className="px-3 pt-1 text-xs text-danger">
+                    {m.chat_composer_too_long({ count: locale.formatNumber(overBy) })}
+                </p>
+            ) : null}
             <p id={hintId} className="sr-only">
                 {m.chat_composer_hint()}
             </p>
