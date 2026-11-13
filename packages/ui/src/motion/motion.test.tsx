@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { REDUCED_MOTION, setMedia } from '../testing/dom-gaps';
 import { loadMotion, useMotion } from './lazy-motion';
 import { prefersReducedMotion, useReducedMotion } from './reduced-motion';
-import { canUseViewTransitions, withViewTransition } from './view-transition';
+import { canUseViewTransitions, viewTransitionName, viewTransitionStyle, withViewTransition } from './view-transition';
 
 describe('reduced motion', () => {
     it('follows the media query, live', () => {
@@ -54,6 +54,22 @@ describe('view transitions', () => {
         expect(canUseViewTransitions(document)).toBe(typeof document.startViewTransition === 'function');
         withViewTransition(update);
         expect(update).toHaveBeenCalledTimes(4);
+    });
+});
+
+describe('view transition names', () => {
+    it('are CSS identifiers that keep distinct ids distinct', () => {
+        expect(viewTransitionName('task-title', 'task-ship-billing')).toBe('ptbk-task-title--task-ship-billing');
+        expect(viewTransitionName('task', 'a b')).toBe('ptbk-task--a_20_b');
+        expect(viewTransitionName('task', 'a_b')).not.toBe(viewTransitionName('task', 'a b'));
+        expect(viewTransitionName('task', '1/é')).toBe('ptbk-task--1_2f__e9_');
+        expect(viewTransitionName('task', '😀')).toBe('ptbk-task--_1f600_');
+    });
+
+    it('apply through a style object, so the CSSOM sets them', () => {
+        expect(viewTransitionStyle('agent', 'ada')).toEqual({ viewTransitionName: 'ptbk-agent--ada' });
+        render(<h1 style={viewTransitionStyle('agent', 'ada')}>{'Ada'}</h1>);
+        expect(screen.getByRole('heading').style.getPropertyValue('view-transition-name')).toBe('ptbk-agent--ada');
     });
 });
 

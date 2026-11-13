@@ -29,6 +29,14 @@ describe('contrastRatio', () => {
         expect(results.map((result) => result.ratio)).toEqual([0, 0]);
     });
 
+    it('composites a wash over the page surface', () => {
+        const sheet = parseTokenSheet(
+            ':root { --color-surface: #ffffff; --ink: #000; --wash: color-mix(in oklab, var(--ink) 50%, transparent); --plain: #808080; }',
+        );
+        const [light] = checkContrast(sheet, [{ foreground: '--wash', background: '--plain', minimum: 1 }]);
+        expect(light?.ratio).toBeCloseTo(contrastRatio('#808080', '#808080'), 1);
+    });
+
     it('derives text-on-background pairs from component token names', () => {
         expect(
             componentTokenPairs([

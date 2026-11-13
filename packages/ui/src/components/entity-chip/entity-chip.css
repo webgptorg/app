@@ -1,0 +1,15 @@
+/*
+ * An entity chip is a faint wash of its tint. Agents show their colour in the label too; every other entity keeps the
+ * text colour and gets the hue only in the wash (and its status dot), so a task never reads as an agent.
+ */
+:root {
+    --entity-chip-radius: var(--radius-small);
+    --entity-chip-wash: 12%;
+    --entity-chip-wash-hover: 20%;
+    --entity-chip-neutral-wash: 6%;
+    --entity-chip-neutral-wash-hover: 12%;
+    --entity-chip-neutral-base: var(--color-neutral-soft);
+    --entity-chip-text: var(--color-text);
+    --entity-chip-icon: var(--color-text-muted);
+    --entity-chip-fallback-tint: var(--color-text-muted);
+}

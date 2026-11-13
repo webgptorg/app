@@ -8,7 +8,13 @@ export {
 } from './theme/preference';
 export type { MatchMedia, PreferenceStorage, ResolvedTheme, ThemePreference } from './theme/preference';
 
-export { canUseViewTransitions, withViewTransition } from './motion/view-transition';
+export {
+    canUseViewTransitions,
+    viewTransitionName,
+    viewTransitionStyle,
+    withViewTransition,
+} from './motion/view-transition';
+export { safeTint, tintStyle } from './theme/tint';
 export type { ViewTransitionDocument } from './motion/view-transition';
 export { prefersReducedMotion, useReducedMotion } from './motion/reduced-motion';
 export type { MotionMatchMedia } from './motion/reduced-motion';
@@ -69,6 +75,14 @@ export { ExternalLink } from './components/external-link/external-link';
 export type { ExternalLinkProps } from './components/external-link/external-link';
 export { Card } from './components/card/card';
 export type { CardProps } from './components/card/card';
+export { Section } from './components/section/section';
+export type { SectionProps } from './components/section/section';
+export { STATUS_TINT_CLASSES, StatusDot, StatusPill } from './components/status/status';
+export type { StatusDotProps, StatusPillProps, StatusTone } from './components/status/status';
+export { Avatar } from './components/avatar/avatar';
+export type { AvatarProps, AvatarSize } from './components/avatar/avatar';
+export { EntityChip } from './components/entity-chip/entity-chip';
+export type { EntityChipProps, EntityChipTone, EntityChipTriggerProps } from './components/entity-chip/entity-chip';
 export { Badge } from './components/badge/badge';
 export type { BadgeProps, BadgeTone } from './components/badge/badge';
 export { Banner } from './components/banner/banner';

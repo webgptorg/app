@@ -20,17 +20,31 @@ const SURFACES = ['--color-surface', '--color-raised'];
 
 /** The semantic pairs the components rely on. Component tokens add their own pairs (see `componentTokenPairs`). */
 export const SEMANTIC_PAIRS: readonly TokenPair[] = [
-    ...text('--color-text', ...SURFACES, '--color-sunken', '--color-hover', '--color-selected', '--color-accent-soft'),
-    ...text('--color-text-muted', ...SURFACES, '--color-sunken'),
+    ...text(
+        '--color-text',
+        ...SURFACES,
+        '--color-sunken',
+        '--color-hover',
+        '--color-selected',
+        '--color-neutral-soft',
+        '--color-accent-soft',
+        '--color-selection',
+    ),
+    ...text('--color-text-muted', ...SURFACES, '--color-sunken', '--color-hover', '--color-neutral-soft'),
+    ...text('--color-text-subtle', ...SURFACES),
     ...text('--color-accent-text', ...SURFACES, '--color-selected', '--color-accent-soft'),
+    ...text('--color-on-primary', '--color-primary', '--color-primary-hover'),
     ...text('--color-on-accent', '--color-accent', '--color-accent-hover'),
     ...text('--color-on-danger', '--color-danger', '--color-danger-hover'),
+    ...text('--color-link', ...SURFACES, '--color-sunken'),
+    ...text('--color-link-hover', ...SURFACES),
     ...text('--color-success', '--color-success-soft', ...SURFACES),
     ...text('--color-warning', '--color-warning-soft', ...SURFACES),
     ...text('--color-danger', '--color-danger-soft', ...SURFACES),
     ...text('--color-info', '--color-info-soft', ...SURFACES),
     ...graphic('--color-border', ...SURFACES, '--color-sunken'),
-    ...graphic('--color-focus', ...SURFACES),
+    ...graphic('--color-focus', ...SURFACES, '--color-sunken'),
+    ...graphic('--color-primary', ...SURFACES),
     ...graphic('--color-accent', ...SURFACES),
     ...graphic('--color-live', ...SURFACES),
     ...[1, 2, 3, 4, 5, 6].flatMap((index) => graphic(`--color-identity-${String(index)}`, ...SURFACES)),
@@ -79,12 +93,39 @@ export interface ContrastResult extends TokenPair {
     readonly ratio: number;
 }
 
+const WASH = /^color-mix\(in (?:oklab|srgb), (#[0-9a-f]{3,6}) (\d+(?:\.\d+)?)%, transparent\)$/i;
+
+function channels(hex: string): number[] {
+    const digits = hex.slice(1).length === 3 ? hex.slice(1).replace(/./g, '$&$&') : hex.slice(1);
+    return [0, 2, 4].map((offset) => Number.parseInt(digits.slice(offset, offset + 2), 16));
+}
+
+/**
+ * A wash (`color-mix(in oklab, <colour> N%, transparent)`, e.g. `--color-hover`) as the hex it shows over the page
+ * surface. Alpha-blended in sRGB: for the few percent a wash uses, the difference to oklab is far below what the
+ * ratio check can see.
+ */
+function composite(value: string, surface: string | undefined): string | undefined {
+    const match = WASH.exec(value);
+    if (match === null || surface?.startsWith('#') !== true) return value;
+    const [, colour = '', percent = '0'] = match;
+    const alpha = Number(percent) / 100;
+    const top = channels(colour);
+    const blended = channels(surface).map((base, index) => Math.round((top[index] ?? 0) * alpha + base * (1 - alpha)));
+    return `#${blended.map((channel) => channel.toString(16).padStart(2, '0')).join('')}`;
+}
+
 /** Every pair resolved in both themes. A pair whose tokens do not resolve to hex colours fails with ratio 0. */
 export function checkContrast(sheet: TokenSheet, pairs: readonly TokenPair[]): ContrastResult[] {
     return (['light', 'dark'] as const).flatMap((theme) =>
         pairs.map((pair) => {
-            const foreground = resolveToken(sheet, pair.foreground, theme);
-            const background = resolveToken(sheet, pair.background, theme);
+            const surface = resolveToken(sheet, '--color-surface', theme);
+            const resolve = (name: string) => {
+                const value = resolveToken(sheet, name, theme);
+                return value === undefined ? undefined : composite(value, surface);
+            };
+            const foreground = resolve(pair.foreground);
+            const background = resolve(pair.background);
             const ratio =
                 foreground?.startsWith('#') === true && background?.startsWith('#') === true
                     ? contrastRatio(foreground, background)
