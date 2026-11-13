@@ -321,6 +321,7 @@ function FilterChip({
                         <span aria-hidden="true" className="shrink-0 text-(--filter-bar-muted) tabular-nums">
                             {`+${String(value.hidden.length)}`}
                         </span>
+                        {/* Read out instead of the count; not an aria-label, which would drop the visible "+2". */}
                         <span className="sr-only">{`, ${value.hidden.join(', ')}`}</span>
                     </>
                 )}
