@@ -249,29 +249,35 @@ test.describe('the built bundle under the engine CSP', () => {
         expectCleanPage(report);
 
         const filtered = await visit('/runs?status=failed&source=schedule');
-        await expect(page.getByRole('button', { name: /^Status\s*1 selected$/ })).toBeVisible();
-        await expect(page.getByRole('combobox', { name: 'Source' })).toHaveValue('schedule');
+        await expect(page.getByRole('button', { name: 'Status: Failed', exact: true })).toBeVisible();
+        await expect(page.getByRole('button', { name: 'Source: Schedule', exact: true })).toBeVisible();
         await expect(page.getByRole('table').getByRole('link', { name: 'Write the weekly report' })).toBeVisible();
         expectCleanPage(filtered);
     });
 
     for (const path of ['/runs', `/agents/${FAKE_AGENT_ID}/runs`]) {
-        test(`${path} puts its filters behind one button at 360 px, so the first run is in view`, async ({
+        test(`${path} keeps its filter bar on one scrolling line at 360 px, so the first run is in view`, async ({
             page,
             visit,
         }) => {
             await page.setViewportSize({ width: 360, height: 740 });
-            expectCleanPage(await visit(`${path}?source=api`));
+            expectCleanPage(await visit(`${path}?source=api&status=failed,running`));
             await expect(page.getByRole('link', { name: 'Summarise open pull requests' })).toBeInViewport();
-            await expect(page.getByRole('button', { name: 'Remove Source: API' })).toBeVisible();
+            // The chips scroll sideways inside the bar rather than clipping or widening the page.
+            const bar = page.getByRole('search', { name: 'Filter runs' });
+            const chip = bar.getByRole('button', { name: 'Remove Source: API' });
+            await chip.scrollIntoViewIfNeeded();
+            await expect(chip).toBeInViewport();
 
-            await page.getByRole('button', { name: /^Filters/ }).click();
-            const sheet = page.getByRole('dialog', { name: 'Filters' });
-            await expect(sheet.getByRole('checkbox', { name: 'Failed' })).toBeVisible();
-            await expect(sheet.getByRole('combobox', { name: 'Source' })).toHaveValue('api');
-            await sheet.getByRole('checkbox', { name: 'Running' }).check();
-            await sheet.getByRole('button', { name: 'Show results' }).click();
-            await expect(page).toHaveURL(/status=running/);
+            await bar.getByRole('button', { name: 'Filter', exact: true }).click();
+            const dialog = page.getByRole('dialog', { name: 'Filter' });
+            await dialog.getByRole('option', { name: 'Status' }).click();
+            await page.getByRole('dialog', { name: 'Status' }).getByRole('option', { name: 'Queued' }).click();
+            await expect(page).toHaveURL(/status=queued%2Crunning%2Cfailed|status=queued,running,failed/);
+            await page.keyboard.press('Escape');
+            await expect(
+                bar.getByRole('button', { name: 'Status: Queued, Running, Failed', exact: true }),
+            ).toBeVisible();
             expect(await page.evaluate(() => window.__ptbkCspViolations ?? [])).toEqual([]);
         });
     }

@@ -1,4 +1,4 @@
-import { createProblem } from '@ptbk/engine-api';
+import { createProblem, EngineApiContractError } from '@ptbk/engine-api';
 import { screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
@@ -221,10 +221,47 @@ describe('no response', { timeout: TIMEOUT_MS }, () => {
         await waitFor(() => {
             expect(engine.spies.retry).toHaveBeenCalledTimes(1);
         });
-        // No recheck waited: a quiet 409, no error, and the wait starts over.
-        expect(await within(history()).findByText('Ada is starting…')).toBeDefined();
+        // No recheck waited: a 409 that says the message is still queued, no error, and the wait starts over.
+        const queued = await within(history()).findByText('Ada hasn’t picked this up yet. It will reply when it can.');
+        expect(queued.closest('[role="status"]')).not.toBeNull();
+        expect(within(history()).queryByRole('alert')).toBeNull();
         expect(screen.queryByText('That did not work. Please try again.')).toBeNull();
         expect(engine.spies.sendMessage.mock.calls.length).toBe(sends);
+        await expectNoAxeViolations(history());
+    });
+
+    it('starts the wait over when the engine attempts the reply', async () => {
+        const engine = engineWith();
+        engine.spies.retry.mockImplementationOnce(async (chatId, signal) => {
+            const chat = await engine.client.chats.get(chatId, signal);
+            if (chat.kind !== 'ok') throw new Error('no chat');
+            return chat;
+        });
+        const app = await renderThread(engine);
+        app.ticker.advance(150_000);
+        await app.user.click(within(history()).getByRole('button', { name: 'Retry' }));
+        expect(await within(history()).findByText('Ada is starting…')).toBeDefined();
+    });
+
+    it.each([
+        ['a 404', () => Promise.resolve({ kind: 'problem' as const, problem: createProblem('not-found') })],
+        ['a response it cannot read', () => Promise.reject(new EngineApiContractError('retryReply', '405'))],
+    ])('says Retry is not available on an engine that answers %s', async (_, answer) => {
+        const engine = engineWith();
+        engine.spies.retry.mockImplementationOnce(answer);
+        const app = await renderThread(engine);
+        app.ticker.advance(150_000);
+        const card = within(history()).getByRole('alert', { name: 'Ada didn’t respond' });
+        await app.user.click(within(card).getByRole('button', { name: 'Retry' }));
+        const note = await within(card).findByText('Retry isn’t available on this engine.', { selector: 'p' });
+        expect(note.closest('section')).toBe(card);
+        const retry = within(card).getByRole('button', { name: 'Retry' });
+        expect(retry.getAttribute('aria-disabled')).toBe('true');
+        expect(retry.getAttribute('aria-describedby')).not.toBeNull();
+        expect(screen.queryByText('That did not work. Please try again.')).toBeNull();
+        await app.user.click(within(card).getByRole('button', { name: 'Retry' }));
+        expect(engine.spies.retry).toHaveBeenCalledTimes(1);
+        await expectNoAxeViolations(history());
     });
 
     it('clears the moment the agent starts working', async () => {

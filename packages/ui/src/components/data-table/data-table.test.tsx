@@ -930,8 +930,7 @@ describe('DataTable rich rows', () => {
         await user.click(screen.getByRole('menuitemcheckbox', { name: 'ID' }));
         expect(screen.getByRole('menuitemcheckbox', { name: 'Runs' }).getAttribute('aria-disabled')).toBe('true');
 
-        rerender(table({ columns: RICH, data: AGENTS.slice(0, 1), toolbar: (view) => <FilterBar {...view} /> }));
-        expect(screen.queryByRole('button', { name: 'Sort' })).toBeNull();
+        rerender(table({ columns: RICH, toolbar: (view) => <FilterBar {...view} /> }));
         act(() => {
             setMedia(NARROW, true);
         });

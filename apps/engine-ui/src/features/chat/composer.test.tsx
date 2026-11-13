@@ -1,11 +1,12 @@
 import { screen, within } from '@testing-library/react';
 import { userEvent } from '@testing-library/user-event';
 import { useState } from 'react';
+import { MAX_MESSAGE_LENGTH } from '@ptbk/engine-api';
 import { describe, expect, it, vi } from 'vitest';
 
 import { expectNoAxeViolations } from '../../testing/axe';
 import { renderUi } from '../../testing/render-ui';
-import { Composer } from './composer';
+import { addressedContent, Composer } from './composer';
 import type { ComposerAgent } from './composer';
 
 const AGENTS: readonly ComposerAgent[] = [
@@ -17,15 +18,26 @@ const AGENTS: readonly ComposerAgent[] = [
 function Harness({ onSend }: { readonly onSend: (content: string) => Promise<boolean> }) {
     const [addressee, setAddressee] = useState<ComposerAgent | null>(null);
     return (
-        <Composer
-            label="Message"
-            placeholder={`Message ${addressee?.name ?? 'Chatter'}…`}
-            busy={false}
-            onSend={onSend}
-            mentionables={AGENTS}
-            addressee={addressee}
-            onAddresseeChange={setAddressee}
-        />
+        <>
+            {/* Stands in for an agent chip in the thread, which addresses without touching the text. */}
+            <button
+                type="button"
+                onClick={() => {
+                    setAddressee(AGENTS[1] ?? null);
+                }}
+            >
+                Address Copywriter
+            </button>
+            <Composer
+                label="Message"
+                placeholder={`Message ${addressee?.name ?? 'Chatter'}…`}
+                busy={false}
+                onSend={onSend}
+                mentionables={AGENTS}
+                addressee={addressee}
+                onAddresseeChange={setAddressee}
+            />
+        </>
     );
 }
 
@@ -77,7 +89,7 @@ describe('Composer mentions', () => {
         expect(screen.queryByRole('listbox')).toBeNull();
     });
 
-    it('addresses the agent picked with +@, sends +@Name and clears the address after sending', async () => {
+    it('addresses the agent picked with +@ and keeps sending to it as +@Name until another is picked', async () => {
         const { user, box, onSend } = setup();
         await user.click(box);
         await user.keyboard('+@Copy');
@@ -90,10 +102,19 @@ describe('Composer mentions', () => {
 
         await user.keyboard('rewrite the headline{Enter}');
         expect(onSend).toHaveBeenCalledWith('+@Copywriter rewrite the headline');
+        expect(screen.getByText('@Copywriter')).toBeTruthy();
+        expect((box as HTMLTextAreaElement).value).toBe('');
+
+        await user.keyboard('and the subhead{Enter}');
+        expect(onSend).toHaveBeenLastCalledWith('+@Copywriter and the subhead');
+
+        await user.keyboard('+@Chat{Enter}route this{Enter}');
+        expect(onSend).toHaveBeenLastCalledWith('+@Chatter route this');
         expect(screen.queryByText('@Copywriter')).toBeNull();
+        expect(screen.getByText('@Chatter')).toBeTruthy();
     });
 
-    it('drops the address with its × or Backspace at the start', async () => {
+    it('drops the address with its × or Backspace in an empty box', async () => {
         const { user, box } = setup();
         await user.click(box);
         await user.keyboard('+@Chat{Enter}');
@@ -101,12 +122,37 @@ describe('Composer mentions', () => {
         expect(screen.queryByText('@Chatter')).toBeNull();
         expect(document.activeElement).toBe(box);
 
-        await user.keyboard('+@Chat{Enter}hi');
+        await user.keyboard('+@Chat{Enter}hi{Home}{Backspace}');
         expect(screen.getByText('@Chatter')).toBeTruthy();
-        await user.keyboard('{Backspace}{Backspace}');
+        await user.keyboard('{End}{Backspace}{Backspace}');
         expect(screen.getByText('@Chatter')).toBeTruthy();
         await user.keyboard('{Backspace}');
         expect(screen.queryByText('@Chatter')).toBeNull();
+    });
+
+    it('counts the address prefix toward the limit, so a full message still fits', async () => {
+        const { user, box, onSend } = setup();
+        await user.click(box);
+        await user.keyboard('+@Copy{Enter}');
+        const prefix = addressedContent(AGENTS[1] ?? null, '').length;
+        expect(box.getAttribute('maxlength')).toBe(String(MAX_MESSAGE_LENGTH - prefix));
+
+        await user.click(screen.getByRole('button', { name: 'Stop addressing Copywriter' }));
+        expect(box.getAttribute('maxlength')).toBe(String(MAX_MESSAGE_LENGTH));
+        // A box filled to the plain limit, then addressed: Send waits and says by how much it is over.
+        await user.click(box);
+        await user.paste('x'.repeat(MAX_MESSAGE_LENGTH));
+        await user.click(screen.getByRole('button', { name: 'Address Copywriter' }));
+        expect(screen.getByText(`Over the limit by ${String(prefix)}`)).toBeTruthy();
+        expect(screen.getByRole('button', { name: 'Send' }).hasAttribute('disabled')).toBe(true);
+        await user.keyboard('{Enter}');
+        expect(onSend).not.toHaveBeenCalled();
+
+        await user.click(box);
+        await user.keyboard('{End}' + '{Backspace}'.repeat(prefix));
+        expect(screen.queryByText(/Over the limit/)).toBeNull();
+        await user.keyboard('{Enter}');
+        expect(onSend.mock.calls[0]?.[0]).toHaveLength(MAX_MESSAGE_LENGTH);
     });
 
     it('treats @ as a character when nothing can be mentioned', async () => {

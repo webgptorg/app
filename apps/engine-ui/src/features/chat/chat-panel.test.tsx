@@ -125,6 +125,47 @@ describe('thread view', { timeout: TIMEOUT_MS }, () => {
         });
     });
 
+    it('keeps the address after a send, and drops it in another thread', async () => {
+        const engine = createChatEngine({
+            chats: [seededConversation(CHAT_ID, 2, OWNER_ID), seededConversation('chat-other', 2, OWNER_ID)],
+        });
+        const control = controlReplyStreams(engine);
+        const app = await renderThread(engine);
+        await send(app, '+@Ad{Enter}First');
+        await waitFor(() => {
+            expect(engine.spies.streamReply).toHaveBeenCalledTimes(1);
+        });
+        expect(engine.spies.sendMessage.mock.calls[0]?.[1].content).toBe('+@Ada First');
+        act(() => {
+            control.latest().push({
+                type: 'completed',
+                message: completedReply(
+                    {
+                        id: MessageId.parse(`${CHAT_ID}#4`),
+                        chatId: ChatId.parse(CHAT_ID),
+                        createdAt: Timestamp.parse('2026-10-01T00:00:00.000Z'),
+                    },
+                    'Done',
+                ),
+            });
+        });
+        await waitFor(() => {
+            expect(composer().hasAttribute('readonly')).toBe(false);
+        });
+        expect(screen.getByRole('button', { name: 'Stop addressing Ada' })).toBeDefined();
+        await send(app, 'Second');
+        await waitFor(() => {
+            expect(engine.spies.sendMessage.mock.calls[1]?.[1].content).toBe('+@Ada Second');
+        });
+
+        await act(() => app.router.navigate({ to: '/chats/$chatId', params: { chatId: 'chat-other' } }));
+        await waitFor(() => {
+            expect(app.router.state.location.pathname).toBe('/chats/chat-other');
+        });
+        expect(await screen.findByRole('textbox', { name: 'Message' })).toBeDefined();
+        expect(screen.queryByRole('button', { name: 'Stop addressing Ada' })).toBeNull();
+    });
+
     it('sends again under the same request key when nobody knows whether a message arrived, and saves it once', async () => {
         const { engine } = ownChatEngine();
         engine.spies.sendMessage.mockImplementationOnce(async (chatId, body, signal) => {

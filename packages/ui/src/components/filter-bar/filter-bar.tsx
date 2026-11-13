@@ -107,6 +107,7 @@ export function FilterBar({ label, search, fields = [], onClear, sort, columns, 
     const { ref: popoverRef, open: popoverOpen, style: popoverStyle, show, hide } = useAnchoredPopover();
     const [view, setView] = useState<FilterPopoverView>(CLOSED);
     const addRef = useRef<HTMLButtonElement>(null);
+    const wasOpenRef = useRef(false);
     const scrollRef = useRef<HTMLDivElement>(null);
     const active = fields.filter(isFieldActive);
     const searching = search !== undefined && search.value !== '';
@@ -129,7 +130,7 @@ export function FilterBar({ label, search, fields = [], onClear, sort, columns, 
     const openFieldId = popoverOpen ? view.fieldId : undefined;
 
     return (
-        <div role="search" aria-label={label ?? messages.filters()} className="flex min-w-0 items-center gap-1">
+        <div role="search" aria-label={label ?? messages.filters()} className="flex min-w-0 items-start gap-1">
             <div
                 ref={scrollRef}
                 className={cx(
@@ -163,8 +164,14 @@ export function FilterBar({ label, search, fields = [], onClear, sort, columns, 
                         size="sm"
                         aria-haspopup="dialog"
                         aria-expanded={popoverOpen && openFieldId === undefined}
+                        onMouseDown={() => {
+                            // Pressing here moves focus out of an open popover, which closes it before the click.
+                            wasOpenRef.current = popoverOpen;
+                        }}
                         onClick={(event) => {
-                            if (popoverOpen) hide(false);
+                            const wasOpen = popoverOpen || wasOpenRef.current;
+                            wasOpenRef.current = false;
+                            if (wasOpen) hide(false);
                             else open(event.currentTarget, CLOSED);
                         }}
                         className="text-(--filter-bar-muted)"
@@ -198,7 +205,7 @@ export function FilterBar({ label, search, fields = [], onClear, sort, columns, 
 
 function SearchBox({ label, value, onChange, placeholder, maxLength, inputRef }: FilterBarSearch) {
     return (
-        <div className="relative w-44 shrink-0 md:w-56">
+        <div className="relative w-32 shrink-0 focus-within:w-44 md:w-56 md:focus-within:w-56 motion-safe:transition-[width] motion-safe:duration-(--motion-state)">
             <Search
                 aria-hidden="true"
                 className="pointer-events-none absolute start-2.5 top-1/2 size-4 -translate-y-1/2 text-(--filter-bar-muted)"
@@ -224,10 +231,15 @@ function SearchBox({ label, value, onChange, placeholder, maxLength, inputRef }:
     );
 }
 
-function formatDay(day: string, formatDate: (value: Date) => string): string {
+/** A chip's day: "9 Nov", with the year only when it is not this year, so a range fits on a chip. */
+function formatDay(day: string, locale: string, today: Date): string {
     const [year, month, date] = day.split('-').map(Number);
     if (year === undefined || month === undefined || date === undefined) return day;
-    return formatDate(new Date(year, month - 1, date));
+    return new Intl.DateTimeFormat(locale, {
+        day: 'numeric',
+        month: 'short',
+        ...(year === today.getFullYear() ? {} : { year: 'numeric' }),
+    }).format(new Date(year, month - 1, date));
 }
 
 interface ChipValue {
@@ -240,12 +252,12 @@ interface ChipValue {
 
 function useChipValue(field: FilterBarField): ChipValue {
     const messages = useUiMessages();
-    const locale = useLocale();
-    const formatDate = (value: Date) => locale.formatDate(value);
+    const { locale } = useLocale();
+    const today = new Date();
     if (field.kind === 'date-range') {
         const { from, to }: FilterBarDateRange = field.value;
-        const start = from === undefined ? undefined : formatDay(from, formatDate);
-        const end = to === undefined ? undefined : formatDay(to, formatDate);
+        const start = from === undefined ? undefined : formatDay(from, locale, today);
+        const end = to === undefined ? undefined : formatDay(to, locale, today);
         const shown =
             start !== undefined && end !== undefined
                 ? start === end
@@ -302,7 +314,7 @@ function FilterChip({
                         {value.icon}
                     </span>
                 )}
-                <span className="shrink-0 text-(--filter-bar-muted)">{`${field.label}:`}</span>
+                <span className="shrink-0 text-(--filter-bar-muted)">{`${field.label}:`}</span>{' '}
                 <span className="min-w-0 truncate font-medium">{value.shown}</span>
                 {value.hidden.length === 0 ? null : (
                     <>
@@ -363,11 +375,14 @@ function SortMenu({ sort }: { readonly sort: FilterBarSort }) {
             trigger={(triggerProps) => (
                 <Button {...triggerProps} variant="ghost" size="sm" className="text-(--filter-bar-muted)">
                     <Icon aria-hidden="true" className="size-4" />
+                    {/* On a phone the icon alone stays, so the chips keep the room; the name is still read out. */}
                     {current === undefined ? (
-                        messages.sort()
+                        <span className="max-md:sr-only">{messages.sort()}</span>
                     ) : (
                         <>
-                            <span aria-hidden="true">{current.label}</span>
+                            <span aria-hidden="true" className="max-md:hidden">
+                                {current.label}
+                            </span>
                             <span className="sr-only">
                                 {`${messages.sortedBy({ column: current.label })}, ${desc ? messages.sortDescending() : messages.sortAscending()}`}
                             </span>

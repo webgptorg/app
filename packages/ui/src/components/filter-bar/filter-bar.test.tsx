@@ -191,7 +191,7 @@ describe('FilterBar', () => {
 
     it('names the values a chip counts as "+N" for screen readers', () => {
         renderUi(<Harness initial={{ ...NONE, status: ['running', 'waiting', 'failed', 'stopped'] }} />);
-        const chip = screen.getByRole('button', { name: 'Status: Running, Waiting+2, Failed, Stopped' });
+        const chip = screen.getByRole('button', { name: 'Status: Running, Waiting, Failed, Stopped' });
         expect(chip.textContent).toContain('+2');
         expect(screen.getByRole('button', { name: 'Remove Status: Running, Waiting, Failed, Stopped' })).toBeDefined();
     });
@@ -278,8 +278,9 @@ describe('FilterBar', () => {
     });
 
     it.each([
-        [{ from: '2026-11-02', to: '2026-11-09' }, /^Queued: \S+ \S+ \S+ – \S+ \S+ \S+$/],
-        [{ from: '2026-11-02', to: '2026-11-02' }, /^Queued: \S+ \S+ \S+$/],
+        [{ from: '2026-11-02', to: '2026-11-09' }, /^Queued: Nov 2(, 2026)? – Nov 9(, 2026)?$/],
+        [{ from: '2026-11-02', to: '2026-11-02' }, /^Queued: Nov 2(, 2026)?$/],
+        [{ from: '2001-01-05', to: undefined }, /^Queued: from Jan 5, 2001$/],
         [{ from: undefined, to: '2026-11-09' }, /^Queued: until /],
     ])('formats a range %o', (queued, name) => {
         renderUi(<Harness initial={{ ...NONE, queued }} />);
@@ -342,9 +343,9 @@ describe('FilterBar', () => {
         expect(screen.queryByRole('dialog')).toBeNull();
         await user.click(add);
         await user.click(within(dialog()).getByRole('option', { name: 'Queued' }));
-        await user.tab();
-        await user.tab();
-        await user.tab();
+        // From the first date, back past the step's header and out of the popover.
+        await user.tab({ shift: true });
+        await user.tab({ shift: true });
         expect(screen.queryByRole('dialog')).toBeNull();
     });
 

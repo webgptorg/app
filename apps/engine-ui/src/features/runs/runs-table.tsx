@@ -58,16 +58,31 @@ function agentLook(agentId: string, agents: ReadonlyMap<string, ReadAgent>): Age
     };
 }
 
+/**
+ * The engine's first page of agents by ID, for their faces and colours and the agent filter. Cells read it themselves
+ * (one cached query), so the columns stay the same objects when it arrives and rows are not mounted again.
+ */
+function useAgents(enabled: boolean): {
+    readonly list: readonly ReadAgent[];
+    readonly byId: ReadonlyMap<string, ReadAgent>;
+} {
+    const query = useQuery({
+        ...agentListQueryOptions(useEngineApi(), { limit: AGENT_FILTER_LIMIT, sort: 'name' }),
+        enabled,
+    });
+    const list = query.data?.items ?? NO_AGENTS;
+    const byId = useMemo(() => new Map(list.map((agent) => [agent.id, agent])), [list]);
+    return { list, byId };
+}
+
 interface RunColumnOptions {
     /** The global list; on an agent's tab the agent column is redundant and links return to the tab. */
     readonly acrossAgents: boolean;
     /** Off when no run on the page reports a cost, so a column of dashes does not take the room. */
     readonly cost: boolean;
-    /** The engine's agents by ID, for their faces and colours. */
-    readonly agents: ReadonlyMap<string, ReadAgent>;
 }
 
-function useRunColumns({ acrossAgents, cost, agents }: RunColumnOptions): DataTableColumnDef<ReadRun>[] {
+function useRunColumns({ acrossAgents, cost }: RunColumnOptions): DataTableColumnDef<ReadRun>[] {
     return useMemo(() => {
         const column = createDataTableColumnHelper<ReadRun>();
         const columns: DataTableColumnDef<ReadRun>[] = [
@@ -113,7 +128,7 @@ function useRunColumns({ acrossAgents, cost, agents }: RunColumnOptions): DataTa
                     header: m.runs_column_agent(),
                     enableSorting: false,
                     meta: { priority: 3, icon: <Bot className={ICON} /> },
-                    cell: ({ row }) => <RunAgent run={row.original} look={agentLook(row.original.agentId, agents)} />,
+                    cell: ({ row }) => <RunAgent run={row.original} />,
                 }),
             );
         }
@@ -151,11 +166,12 @@ function useRunColumns({ acrossAgents, cost, agents }: RunColumnOptions): DataTa
             );
         }
         return columns;
-    }, [acrossAgents, cost, agents]);
+    }, [acrossAgents, cost]);
 }
 
 /** The run's agent as a chip in its colour, linking to the agent; the name is a text node. */
-function RunAgent({ run, look }: { readonly run: ReadRun; readonly look: AgentLook }) {
+function RunAgent({ run }: { readonly run: ReadRun }) {
+    const look = agentLook(run.agentId, useAgents(true).byId);
     const name = run.agentName ?? run.agentId;
     return (
         <EntityChip
@@ -201,16 +217,10 @@ export function RunsTable({ search, onSearchChange, agentId }: RunsTableProps) {
     const list = useRunList(params);
     const scope = agentId === undefined ? 'global' : 'agent';
     const items = list.data?.items ?? NO_RUNS;
-    const agentList = useQuery({
-        ...agentListQueryOptions(engineApi, { limit: AGENT_FILTER_LIMIT, sort: 'name' }),
-        enabled: scope === 'global',
-    });
-    const agents = agentList.data?.items ?? NO_AGENTS;
-    const agentsById = useMemo(() => new Map(agents.map((agent) => [agent.id, agent])), [agents]);
+    const agents = useAgents(scope === 'global');
     const columns = useRunColumns({
         acrossAgents: scope === 'global',
         cost: items.some((run) => run.usage?.cost !== null && run.usage?.cost !== undefined),
-        agents: agentsById,
     });
     const rowActions = useRunRowActions();
     const paging = useCursorPages(search.cursor, list.data?.nextCursor ?? null, (cursor) => {
@@ -229,7 +239,7 @@ export function RunsTable({ search, onSearchChange, agentId }: RunsTableProps) {
         filter({ status: undefined, source: undefined, from: undefined, to: undefined, agentId: undefined });
     };
     const clearButton = <Button onClick={clear}>{m.runs_clear_filters()}</Button>;
-    const fields = runFilterFields({ search, scope, agents, agentsById, onChange: filter });
+    const fields = runFilterFields({ search, scope, agents: agents.list, agentsById: agents.byId, onChange: filter });
 
     return (
         <DataTable

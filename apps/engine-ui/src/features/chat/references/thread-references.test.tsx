@@ -114,7 +114,8 @@ describe('references in a thread', { timeout: TIMEOUT_MS }, () => {
             (_content, element) => element?.tagName === 'P' && element.textContent === '@Ada Shorter, please',
         );
         expect(within(sent).getByRole('button', { name: '@Ada' })).toBeDefined();
-        expect(screen.queryByRole('button', { name: 'Stop addressing Ada' })).toBeNull();
+        // The address stays for the next message until the member drops it.
+        expect(screen.getByRole('button', { name: 'Stop addressing Ada' })).toBeDefined();
     });
 
     it('shows a task hovercard on keyboard focus with state, agent, detail, timer, commit and Open task', async () => {
@@ -130,7 +131,9 @@ describe('references in a thread', { timeout: TIMEOUT_MS }, () => {
         expect(within(card).getByText('Saved to docs/launch.md')).toBeDefined();
         expect(within(card).getByText('Took 0:21')).toBeDefined();
         expect(within(card).getByText('67b252c')).toBeDefined();
-        expect(within(card).getByRole('link', { name: 'Open task' }).getAttribute('href')).toBe('/tasks/task-launch');
+        const open = within(card).getByRole('link', { name: 'Open task' });
+        expect(open.getAttribute('href')).toBe('/tasks/task-launch');
+        expect(open.className).toMatch(/\brounded-pill\b/);
         await expectNoAxeViolations(document.body);
 
         await app.user.keyboard('{Escape}');
