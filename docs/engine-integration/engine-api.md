@@ -93,7 +93,7 @@ Added 2026-11-13 (C-14). A thread shows what its agents are doing, not only what
   - `tool`: the tool's name exactly as the harness reports it (`Read`, `Glob`, `mcp__ptbk__create_task`). It is set for a `tool` step and `null` for every other kind; the schema refuses both mismatches.
   - `text`: one line, at most `MAX_REPLY_STEP_TEXT_LENGTH` = 500 characters, whitespace runs collapsed: the tool's main argument, a reasoning excerpt or the note. It may be empty (a reasoning step with nothing to show).
   - `level`: `info`, `warning` or `error`.
-- **A `progress` message's `content`** stays a readable rendering of its steps, so a client that ignores `steps` still shows something sensible. One line per step: `- thinking: <text>`, `- <tool> <text>`, `- <text>` for an `info` note and `- <level>: <text>` for any other note. Streamed partial text and an unfinished note may follow after a blank line. This is the format Reborn writes today.
+- **A `progress` message's `content`** stays a readable rendering of its steps, so a client that ignores `steps` still shows something sensible. One line per step: `- thinking: <text>`, `- <tool> <text>`, `- <text>` for an `info` note and `- <level>: <text>` for any other note. Streamed partial text and an unfinished note may follow after a blank line. Reborn's `ReplyProgress.render()` already writes reasoning and tool lines this way.
 - **`Chat.working`** (`ChatWorking[]`, in the order the turns started; empty when nobody works) lists the agents writing a reply now:
   - `author`: the agent, already a member of the thread.
   - `startedAt`: when the turn started, before the agent has done or written anything. This is what lets the UI show "Chatter is working" at once instead of nothing.
