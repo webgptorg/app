@@ -47,7 +47,7 @@ The agent detail tabs and the main sections come from the feature registry, so a
 ## Key screens
 
 - **Home (owner/admin):** greeting; at-a-glance counts (agents, running now, needs attention); recent agents; live activity feed (runs started and finished, files produced, triggers fired, member changes, update available); quick action "New agent". **Home (member):** my agents, recent chats, my running work.
-- **Agents list:** `DataTable` with search, filters (status, folder, visibility), sort, and live status; cards on mobile.
+- **Agents list:** `DataTable` with search, filters (status, folder, visibility), sort, and live status; two-line rows on mobile.
 - **Agent overview:** identity (avatar, name, description), live status, recent runs, triggers, integrations, knowledge at a glance; primary actions Chat, Run, Edit, Stop.
 - **Create agent:** the guided wizard from the predecessor, refined: _Brief_ (describe the job in plain words) → _Book_ (AI draft, editable) → _Knowledge_ (drop files) → _Test_ (chat with the draft) → _Publish_. One click switches to the pro editor at any step.
 - **Book editor (pro):** CodeMirror with the book language, diagnostics, version history and diff, and a live test chat beside it.

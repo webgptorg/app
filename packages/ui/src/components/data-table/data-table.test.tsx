@@ -9,13 +9,16 @@ import { renderUi } from '../../testing/render';
 import { createDataTableColumnHelper } from './columns';
 import { dataTableGallery } from './data-table.gallery';
 import type { DataTableColumnDef } from './columns';
+import { FilterBar } from '../filter-bar/filter-bar';
 import {
     columnLabel,
     COLUMN_MENU_MIN_ROWS,
     DataTable,
     hasOtherPages,
     initialColumnVisibility,
+    narrowLayout,
     SORT_MIN_ROWS,
+    tableItems,
     wantsColumnMenu,
     wantsSorting,
 } from './data-table';
@@ -107,6 +110,11 @@ function memoryStorage(initial: Record<string, string> = {}): DataTableStorage &
 afterEach(() => {
     vi.restoreAllMocks();
 });
+
+/** The screen-reader labels a two-line item gives the values on its meta line. */
+function metaLabels(item: HTMLElement): (string | null)[] {
+    return [...item.querySelectorAll('.sr-only')].map((label) => label.textContent);
+}
 
 describe('DataTable in server-side mode', () => {
     it('is a captioned table with sortable headers as buttons inside th[aria-sort]', () => {
@@ -602,10 +610,7 @@ describe('DataTable on narrow screens', () => {
         if (ada === undefined) throw new Error('no card');
         expect(ada.getAttribute('aria-labelledby')).not.toBeNull();
         expect(document.getElementById(ada.getAttribute('aria-labelledby') ?? '')?.textContent).toBe('Ada');
-        const terms = within(ada)
-            .getAllByRole('term')
-            .map((term) => term.textContent);
-        expect(terms).toEqual(['Status', 'Runs']);
+        expect(metaLabels(ada)).toEqual(['Status: ', 'Runs: ']);
         expect(within(ada).getByText('Details of Ada')).toBeDefined();
         expect(within(ada).getByRole('button', { name: 'Actions for Ada' })).toBeDefined();
         await user.click(within(ada).getByRole('checkbox', { name: 'Select Ada' }));
@@ -668,7 +673,6 @@ describe('DataTable on narrow screens', () => {
         );
         const [first] = within(screen.getByRole('list', { name: 'Agents' })).getAllByRole('listitem');
         expect(first?.textContent).toBe('Agent Grace');
-        expect(first?.querySelector('dl')).toBeNull();
 
         rerender(
             <DataTable<Agent>
@@ -684,11 +688,7 @@ describe('DataTable on narrow screens', () => {
             />,
         );
         const [card] = within(screen.getByRole('list', { name: 'Agents' })).getAllByRole('listitem');
-        expect(
-            within(card ?? document.body)
-                .getAllByRole('term')
-                .map((term) => term.textContent),
-        ).toEqual(['Status', 'Runs']);
+        expect(metaLabels(card ?? document.body)).toEqual(['Status: ', 'Runs: ']);
     });
 });
 
@@ -833,5 +833,132 @@ describe('dataTableGallery', () => {
         expect(within(server).getByRole('button', { name: /^Runs, Sorted/ })).toBeDefined();
         await user.click(screen.getAllByRole('button', { name: 'Next page' })[0] as HTMLElement);
         expect(screen.getAllByText('23 items')).toHaveLength(1);
+    });
+});
+
+describe('DataTable rich rows', () => {
+    const RICH: DataTableColumnDef<Agent>[] = helper.columns([
+        helper.accessor('name', {
+            header: 'Name',
+            enableHiding: false,
+            meta: { priority: 0, icon: <svg data-testid="name-icon" /> },
+        }),
+        helper.accessor('status', { header: 'Status', enableSorting: false, meta: { priority: 1 } }),
+        helper.accessor('runs', { header: 'Runs', meta: { priority: 2, numeric: true, trailing: true } }),
+        helper.accessor('id', { header: 'ID', enableSorting: false, meta: { defaultHidden: true } }),
+    ]);
+    const GROUPS = {
+        groups: [
+            { id: 'active', label: 'Now' },
+            { id: 'later', label: 'Coming up' },
+            { id: 'paused', label: 'Done' },
+        ],
+        getGroupId: (row: Agent) => row.status,
+    };
+
+    it.each(['light', 'dark'] as const)(
+        'puts a quiet icon before a header and lines numbers up in tabular figures (%s)',
+        async (theme) => {
+            const { container } = renderUi(table({ columns: RICH, rowActions: () => [] }), { theme });
+            const name = screen.getByRole('columnheader', { name: 'Name' });
+            expect(within(name).getByTestId('name-icon').parentElement?.getAttribute('aria-hidden')).toBe('true');
+            const runs = screen.getByRole('columnheader', { name: /Runs/ });
+            expect(runs.className).toContain('text-end');
+            const [, ada] = screen.getAllByRole('row');
+            const cells = within(ada ?? document.body).getAllByRole('cell');
+            expect(cells[2]?.className).toContain('tabular-nums');
+            // An empty menu is no menu.
+            expect(screen.queryByRole('button', { name: /^Actions for/ })).toBeNull();
+            await expectNoAxeViolations(container);
+        },
+    );
+
+    it('groups rows under headers with counts, leaving out empty groups', async () => {
+        const { container } = renderUi(table({ columns: RICH, groups: GROUPS }));
+        const headers = screen.getAllByRole('rowheader').map((header) => header.textContent);
+        expect(headers).toEqual(['Now2', 'Done1']);
+        expect(screen.getAllByRole('rowheader')[0]?.getAttribute('scope')).toBe('rowgroup');
+        expect(bodyRowNames()).toEqual(['', 'Ada', 'Linus', '', 'Grace']);
+        await expectNoAxeViolations(container);
+    });
+
+    it('groups two-line items on a narrow screen too', () => {
+        setMedia(NARROW, true);
+        renderUi(table({ columns: RICH, groups: GROUPS }));
+        const items = within(screen.getByRole('list', { name: 'Agents' })).getAllByRole('listitem');
+        expect(items.map((item) => item.textContent)).toEqual([
+            'Now2',
+            'AdaRuns: 12Status: active',
+            'LinusRuns: 7Status: active',
+            'Done1',
+            'GraceRuns: 3Status: paused',
+        ]);
+    });
+
+    it('flattens rows and groups for virtualisation, and splits a narrow row by priority', () => {
+        const rows = AGENTS.map((agent) => ({ id: agent.id, original: agent }));
+        // Only `id` and `original` are read here; the full row type is TanStack Table's.
+        const items = tableItems(rows as never, GROUPS);
+        expect(
+            items.map((item) => (item.kind === 'group' ? `#${item.id}:${String(item.count)}` : item.row.id)),
+        ).toEqual(['#active:2', 'ada', 'linus', '#paused:1', 'grace']);
+        expect(tableItems(rows as never, undefined)).toHaveLength(3);
+        expect(narrowLayout([]).title).toBeUndefined();
+    });
+
+    it('hands its toolbar the sort and the columns, so a FilterBar mirrors the headers', async () => {
+        const onSortingChange = vi.fn();
+        const { user, rerender } = renderUi(
+            table({
+                columns: RICH,
+                sorting: [{ id: 'runs', desc: true }],
+                onSortingChange,
+                toolbar: (view) => <FilterBar {...view} />,
+            }),
+        );
+        expect(screen.queryByRole('button', { name: 'Columns' })).toBeNull();
+        await user.click(screen.getByRole('button', { name: 'Sorted by Runs, Sorted descending' }));
+        expect(screen.getByRole('menuitemradio', { name: 'Name' }).getAttribute('aria-checked')).toBe('false');
+        await user.click(screen.getByRole('menuitemradio', { name: 'Name' }));
+        expect(onSortingChange).toHaveBeenLastCalledWith([{ id: 'name', desc: true }]);
+
+        await user.click(screen.getByRole('button', { name: 'View options' }));
+        expect(screen.getByRole('menuitemcheckbox', { name: 'ID' }).getAttribute('aria-checked')).toBe('false');
+        await user.click(screen.getByRole('menuitemcheckbox', { name: 'ID' }));
+        expect(screen.getByRole('columnheader', { name: 'ID' })).toBeDefined();
+        await user.click(screen.getByRole('menuitemcheckbox', { name: 'Status' }));
+        await user.click(screen.getByRole('menuitemcheckbox', { name: 'ID' }));
+        expect(screen.getByRole('menuitemcheckbox', { name: 'Runs' }).getAttribute('aria-disabled')).toBe('true');
+
+        rerender(table({ columns: RICH, data: AGENTS.slice(0, 1), toolbar: (view) => <FilterBar {...view} /> }));
+        expect(screen.queryByRole('button', { name: 'Sort' })).toBeNull();
+        act(() => {
+            setMedia(NARROW, true);
+        });
+        expect(screen.queryByRole('button', { name: 'View options' })).toBeNull();
+    });
+
+    it('flips a sorted header instead of clearing it when the list always has an order', async () => {
+        const onSortingChange = vi.fn();
+        const { user } = renderUi(
+            table({ columns: RICH, sorting: [{ id: 'runs', desc: true }], onSortingChange, sortingRemoval: false }),
+        );
+        await user.click(screen.getByRole('button', { name: 'Runs, Sorted descending' }));
+        expect(onSortingChange).toHaveBeenLastCalledWith([{ id: 'runs', desc: false }]);
+    });
+
+    it('reveals row actions on hover with a mouse, yet keeps them in the tab order', async () => {
+        const { user } = renderUi(
+            table({
+                rowActions: (row) => [{ kind: 'item', id: 'a', label: `Archive ${row.name}`, onSelect: vi.fn() }],
+            }),
+        );
+        const trigger = screen.getByRole('button', { name: 'Actions for Ada' });
+        expect(trigger.className).toContain('pointer-fine:opacity-0');
+        expect(trigger.className).toContain('group-focus-within/row:opacity-100');
+        expect(trigger.closest('tr')?.className).toContain('group/row');
+        trigger.focus();
+        await user.keyboard('{Enter}');
+        expect(screen.getByRole('menuitem', { name: 'Archive Ada' })).toBeDefined();
     });
 });

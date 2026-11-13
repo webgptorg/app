@@ -94,11 +94,11 @@ export function FilterPopover({ popoverRef, open, style, onClose, fields, view, 
         <div
             ref={popoverRef}
             popover="auto"
-            role="dialog"
-            aria-label={title}
+            // Closed, it is an empty hidden box; the role and name come with the content.
+            {...(open ? { role: 'dialog', 'aria-label': title } : {})}
             style={style}
             className={cx(
-                'fixed inset-auto m-0 flex max-h-[min(24rem,calc(100dvh-var(--spacing)*4))] w-64 max-w-[calc(100vw-var(--spacing)*4)] flex-col overflow-hidden p-1',
+                'fixed inset-auto m-0 hidden max-h-[min(24rem,calc(100dvh-var(--spacing)*4))] w-64 max-w-[calc(100vw-var(--spacing)*4)] flex-col overflow-hidden p-1 [&:popover-open]:flex',
                 'rounded-(--filter-bar-popover-radius) border border-(--filter-bar-popover-border) bg-(--filter-bar-popover-bg) text-sm text-(--filter-bar-text) shadow-(--filter-bar-popover-shadow)',
                 'motion-safe:animate-[ptbk-menu-enter_var(--motion-enter)_var(--ease-enter)]',
             )}
