@@ -2009,5 +2009,19 @@
       "selectors": ["countPlural"],
       "match": { "countPlural=one": "{count} person asks to join", "countPlural=other": "{count} people ask to join" }
     }
-  ]
+  ],
+  "home_ask_label": "Ask Chatter",
+  "home_ask_placeholder": "Ask Chatter anything…",
+  "home_needs_you": "Needs you",
+  "home_needs_you_empty": "Nothing waits on you.",
+  "home_asks_you": "{name} asks you",
+  "home_reply": "Reply",
+  "home_open": "Open",
+  "home_review": "Review",
+  "home_working_now": "Working now",
+  "home_working_none": "Nothing is running right now.",
+  "home_working_in_chat": "{name} is replying in",
+  "home_all_chats": "All chats",
+  "tasks_column_name": "Task",
+  "tasks_column_updated": "Updated"
 }

@@ -11,11 +11,21 @@ export function questionQuote(content: string): string {
         .map((paragraph) => paragraph.trim())
         .filter((paragraph) => paragraph !== '');
     const asking = paragraphs.find((paragraph) => /\+@User\b/.test(paragraph)) ?? paragraphs[0] ?? '';
-    const plain = asking
+    const plain = plainText(asking);
+    return plain.length > MAX_QUOTE_LENGTH ? `${plain.slice(0, MAX_QUOTE_LENGTH - 1).trimEnd()}…` : plain;
+}
+
+/**
+ * A thread's words as one calm line: without the engine's marks (`+@User`, `{task}` braces) and the lightest markdown
+ * (list and heading markers, `*` emphasis, backticks; underscores stay, they are in tool names), whitespace collapsed. Still untrusted text: render it as a text node.
+ */
+export function plainText(text: string): string {
+    return text
         .replace(/\+@User\b:?\s*/g, '')
+        .replace(/\{([^{}\n]{1,512})\}/g, '$1')
         .replace(/^\s*(?:[-*+]|\d+\.|#{1,6}|>)\s+/gm, '')
-        .replace(/[*_`]+/g, '')
+        .replace(/(^|\s)[-*+]\s+/g, '$1')
+        .replace(/[*`]+/g, '')
         .replace(/\s+/g, ' ')
         .trim();
-    return plain.length > MAX_QUOTE_LENGTH ? `${plain.slice(0, MAX_QUOTE_LENGTH - 1).trimEnd()}…` : plain;
 }

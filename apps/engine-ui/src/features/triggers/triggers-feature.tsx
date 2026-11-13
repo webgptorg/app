@@ -51,6 +51,7 @@ export const triggersFeature = defineFeature({
         id: 'triggers.failed',
         useAttention: useFailedTriggersAttention,
         label: (count) => m.triggers_attention_failed({ count }),
+        tone: 'danger',
     },
     eventSync: { useEventSync: useTriggerEventSync },
     commands: [

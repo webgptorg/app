@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { questionQuote } from './question-text';
+import { plainText, questionQuote } from './question-text';
 
 describe('questionQuote', () => {
     it('quotes the paragraph that asks the User, without the mark or markdown', () => {
@@ -18,5 +18,11 @@ describe('questionQuote', () => {
     it('keeps hostile text as plain characters for a text node', () => {
         expect(questionQuote('+@User <img src=x onerror=alert(1)>')).toBe('<img src=x onerror=alert(1)>');
         expect(questionQuote('')).toBe('');
+    });
+
+    it('turns a preview into one calm line', () => {
+        expect(plainText('Completed {Text webu — 2026-11-13}: done')).toBe('Completed Text webu — 2026-11-13: done');
+        expect(plainText('- thinking: look - mcp__mail__search x')).toBe('thinking: look mcp__mail__search x');
+        expect(plainText('+@User Should we?')).toBe('Should we?');
     });
 });

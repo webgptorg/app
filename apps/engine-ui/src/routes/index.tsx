@@ -1,4 +1,3 @@
-import { KNOWN_CAPABILITIES } from '@ptbk/engine-api';
 import { createFileRoute, redirect } from '@tanstack/react-router';
 
 import { loadAccess } from '../app/registry/engine-access';
@@ -8,15 +7,12 @@ import { activityFeedQueryOptions } from '../features/home/activity/activity-que
 import { homeVariant } from '../features/home/home-variant';
 import { ONBOARDING_REQUIREMENT } from '../features/onboarding/onboarding-feature';
 import { onboardingQueryOptions } from '../features/onboarding/onboarding-queries';
-import { HomePage } from '../features/home/home-page';
-import {
-    memberAgentsQueryOptions,
-    recentAgentsQueryOptions,
-    recentChatsQueryOptions,
-} from '../features/home/home-queries';
+import { HOME_CHATS, HomePage } from '../features/home/home-page';
+import { AGENT_LOOK_PARAMS } from '../features/home/use-agent-look';
+import { agentListQueryOptions } from '../features/agents/agents-queries';
+import { chatListQueryOptions } from '../features/chat/chat-queries';
 import { knownPermissions } from '../features/session/permissions';
 import { meQueryOptions } from '../features/session/session-queries';
-import { runStatsQueryOptions } from '../features/runs/runs-queries';
 
 export const Route = createFileRoute('/')({
     validateSearch: HomeSearch,
@@ -37,17 +33,12 @@ export const Route = createFileRoute('/')({
             loadAccess(context),
             queryClient.query({ ...meQueryOptions(engineApi), staleTime: 'static' }),
         ]);
-        if (homeVariant(knownPermissions(me.permissions)) === 'control-center') {
-            if (access.can('agents.read')) {
+        if (access.can('chats.read')) prefetch(queryClient.query(chatListQueryOptions(engineApi, HOME_CHATS)));
+        if (access.can('agents.read')) {
+            prefetch(queryClient.query(agentListQueryOptions(engineApi, AGENT_LOOK_PARAMS)));
+            if (homeVariant(knownPermissions(me.permissions)) === 'control-center') {
                 prefetch(queryClient.infiniteQuery(activityFeedQueryOptions(engineApi, deps.area)));
-                prefetch(queryClient.query(recentAgentsQueryOptions(engineApi)));
             }
-            if (isAllowed({ capability: KNOWN_CAPABILITIES.runs, permission: 'runs.read' }, access)) {
-                prefetch(queryClient.query(runStatsQueryOptions(engineApi)));
-            }
-        } else {
-            if (access.can('agents.read')) prefetch(queryClient.query(memberAgentsQueryOptions(engineApi)));
-            if (access.can('chats.read')) prefetch(queryClient.query(recentChatsQueryOptions(engineApi)));
         }
     },
     component: HomePage,

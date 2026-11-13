@@ -5,9 +5,9 @@ import { Component } from 'react';
 import type { ReactNode } from 'react';
 
 import { cx } from '../../../app/cx';
-import { Link } from '../../../app/link';
 import type { ActivityRendererEntry, FeatureDefinition } from '../../../app/registry/feature';
 import { m } from '../../../paraglide/messages';
+import { EntityChip } from '../../entities/entity-chip';
 import { activityKind } from './activity-feed-cache';
 import { resolveActivityRenderer } from './resolve-activity-renderer';
 
@@ -51,16 +51,19 @@ export function ActivityCard({ item, features, enterClassName }: ActivityCardPro
     const fallback = <FallbackBody kind={kind} />;
     return (
         <li className={cx('flex gap-3 py-3', enterClassName)}>
-            <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-sunken text-text-muted">
+            <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-neutral-soft text-text-muted [&>svg]:size-3.5">
                 {areaIcon(kind)}
             </span>
             <div className="flex min-w-0 flex-1 flex-col gap-1">
-                <p className="flex flex-wrap items-baseline gap-x-2 text-xs text-text-muted">
-                    <RelativeTime value={new Date(base.at)} />
+                <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-text-muted">
+                    <RelativeTime value={new Date(base.at)} className="tabular-nums" />
                     {base.agentId === null ? null : (
-                        <Link to="/agents/$agentId" params={{ agentId: base.agentId }} className="break-all">
-                            {base.agentName ?? m.activity_agent_unnamed()}
-                        </Link>
+                        <EntityChip
+                            kind="agent"
+                            id={base.agentId}
+                            name={base.agentName ?? m.activity_agent_unnamed()}
+                            className="text-xs"
+                        />
                     )}
                 </p>
                 {resolved.kind === 'renderer' ? (

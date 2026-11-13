@@ -165,6 +165,8 @@ export interface FeatureDefinition {
         readonly useAttention: () => Attention;
         /** What the count counts, e.g. "3 failed runs"; without it the home shows the feature's nav label. */
         readonly label?: (count: number) => string;
+        /** `danger` for work that failed; otherwise it waits on a decision (`warning`). */
+        readonly tone?: 'warning' | 'danger';
     };
     readonly liveIndicator?: { readonly useActiveCount: () => number };
     readonly agentStatusProvider?: {

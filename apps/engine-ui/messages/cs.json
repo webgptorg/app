@@ -2073,5 +2073,19 @@
         "countPlural=other": "{count} lidí žádá o přístup"
       }
     }
-  ]
+  ],
+  "home_ask_label": "Zeptejte se Chattera",
+  "home_ask_placeholder": "Zeptejte se Chattera na cokoli…",
+  "home_needs_you": "Čeká na vás",
+  "home_needs_you_empty": "Nic na vás nečeká.",
+  "home_asks_you": "{name} se ptá",
+  "home_reply": "Odpovědět",
+  "home_open": "Otevřít",
+  "home_review": "Zkontrolovat",
+  "home_working_now": "Právě pracuje",
+  "home_working_none": "Právě nic neběží.",
+  "home_working_in_chat": "{name} odpovídá v chatu",
+  "home_all_chats": "Všechny chaty",
+  "tasks_column_name": "Úkol",
+  "tasks_column_updated": "Změněno"
 }
