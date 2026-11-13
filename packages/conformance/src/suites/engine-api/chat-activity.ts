@@ -18,7 +18,8 @@ const keyOf = (who: { readonly kind: string; readonly key: string }): string => 
 
 /**
  * Phases and steps tell one story: only a `progress` message has steps and readable text, the User's messages have
- * no phase, and a `final` reply closes a turn whose `progress` came before it, from the same agent.
+ * no phase, and a `final` reply closes a turn whose `progress` came before it, from the same agent. The strict schema
+ * already refuses a tool step without its tool.
  */
 function checkTurns(findings: Findings, where: string, items: readonly ChatEntry[]): void {
     const openTurns = new Set<string>();
@@ -28,9 +29,6 @@ function checkTurns(findings: Findings, where: string, items: readonly ChatEntry
         if (message.author.kind === 'user' && message.phase !== null) findings.add(`${at}: a User message has a phase`);
         if (message.phase !== 'progress' && message.steps.length > 0) {
             findings.add(`${at}: carries steps, but only a progress message has them`);
-        }
-        if (message.steps.some((step) => (step.kind === 'tool') !== (step.tool !== null))) {
-            findings.add(`${at}: a tool step names no tool, or another step names one`);
         }
         switch (message.phase) {
             case 'progress':

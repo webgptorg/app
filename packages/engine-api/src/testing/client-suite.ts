@@ -514,6 +514,41 @@ export function engineApiClientSuite(makeEngine: MakeEngine): void {
             expect(ok(await client.chats.get(chat.id, signal())).questions).toEqual([]);
         });
 
+        it('saves a turn with steps as progress then final, and retries a failed reply', async () => {
+            let attempts = 0;
+            const client = chatMake({
+                clock: steppingClock(),
+                replyScript: () => {
+                    attempts++;
+                    return attempts === 1
+                        ? {
+                              steps: [{ kind: 'tool', tool: 'Read', text: 'specs/_initial.md' }],
+                              chunks: ['x'],
+                              outcome: 'failed',
+                          }
+                        : { chunks: ['Done.'] };
+                },
+            });
+            const { chat, reply } = await startChat(client);
+            expect(reply.phase).toBe('final');
+            const busy = ok(await client.chats.get(chat.id, signal()));
+            expect(busy.working).toMatchObject([{ messageId: reply.id, steps: [{ kind: 'tool', tool: 'Read' }] }]);
+            expect(problem(await client.chats.retry(chat.id, signal())).code).toBe('nothing-to-retry');
+            await collect(ok(await client.chats.streamReply(chat.id, reply.id, {}, signal())));
+            const progress = (await entries(client, chat.id)).find(
+                (entry) => entry.type === 'message' && entry.phase === 'progress',
+            );
+            expect(progress).toMatchObject({ steps: [{ tool: 'Read', text: 'specs/_initial.md' }] });
+            const failed = ok(await client.chats.get(chat.id, signal()));
+            expect(failed).toMatchObject({ working: [], recheck: { rounds: 1 } });
+            const retried = ok(await client.chats.retry(chat.id, signal()));
+            expect(retried.recheck).toBeNull();
+            const again = await replyTo(client, chat.id);
+            await collect(ok(await client.chats.streamReply(chat.id, again.id, {}, signal())));
+            expect(ok(await client.chats.get(chat.id, signal()))).toMatchObject({ working: [], recheck: null });
+            expect(problem(await client.chats.retry(ChatId.parse('nope'), signal())).code).toBe('not-found');
+        });
+
         it('ends a cancelled reply with failed/cancelled, idempotently', async () => {
             const client = chatMake({ clock: steppingClock() });
             const { chat, reply } = await startChat(client);

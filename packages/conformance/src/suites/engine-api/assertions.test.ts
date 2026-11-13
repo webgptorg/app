@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-argument --
    The edits below rewrite arbitrary JSON answers; typing every shape would hide what each case breaks. */
+import { KNOWN_CAPABILITIES } from '@ptbk/engine-api';
 import { describe, expect, it } from 'vitest';
 
 import type { CheckOutcome } from '../../check';
@@ -523,6 +524,114 @@ const FAILS: readonly Case[] = [
                 ...page,
                 items: page.items.filter((entry: any) => entry.type !== 'joined'),
             })),
+        },
+    ],
+    [
+        'a finished reply still being worked on, and a final reply without progress',
+        'engine-api.chat.reply-turn',
+        {
+            tamper: chain(
+                editJson(on('GET', /^\/chats\/[^/]+$/), (chat) => ({
+                    ...chat,
+                    working: chat.members
+                        .filter((member: any) => member.kind === 'agent')
+                        .map(({ kind, key }: any) => ({
+                            startedAt: chat.createdAt,
+                            messageId: `${String(chat.id)}#2`,
+                            author: { kind, key },
+                            steps: [],
+                        })),
+                })),
+                editJson(on('GET', /\/entries$/), (page) => ({
+                    ...page,
+                    items: page.items.map((entry: any) =>
+                        entry.type === 'message' && entry.author.kind === 'agent'
+                            ? { ...entry, phase: 'final' }
+                            : entry,
+                    ),
+                })),
+            ),
+        },
+    ],
+    [
+        'tasks that contradict their links, their state and the task inventory',
+        'engine-api.chat.activity',
+        {
+            tamper: editJson(on('GET', /^\/chats\/chat-copywriter$/), (chat) => {
+                const [task] = chat.tasks;
+                return {
+                    ...chat,
+                    working: [
+                        {
+                            startedAt: chat.createdAt,
+                            messageId: null,
+                            author: { kind: 'agent', key: 'agent-ada' },
+                            steps: [],
+                        },
+                    ],
+                    tasks: [
+                        { ...task, state: 'running' },
+                        task,
+                        { ...task, name: 'Ghost', taskId: 'task-engine-update', endedAt: '2000-01-01T00:00:00Z' },
+                        { ...task, name: 'Phantom', taskId: 'conformance-no-such-task' },
+                    ],
+                };
+            }),
+        },
+    ],
+    [
+        'messages whose phase and steps tell another story, and a link to no listed task',
+        'engine-api.chat.activity',
+        {
+            tamper: editJson(on('GET', /\/chats\/chat-copywriter\/entries$/), (page) => {
+                const step = { kind: 'tool', tool: 'Read', text: 'x', level: 'info' };
+                const items = page.items.map((entry: any) => {
+                    if (entry.type !== 'message') return entry;
+                    if (entry.author.kind === 'user')
+                        return { ...entry, phase: 'progress', content: '', steps: [step] };
+                    if (entry.phase === null)
+                        return {
+                            ...entry,
+                            phase: entry.author.key === 'agent-copywriter' ? 'final' : null,
+                            steps: [step],
+                        };
+                    return entry;
+                });
+                const linked = items.find((entry: any) => entry.type === 'linked');
+                return { ...page, items: [{ ...linked, id: `${String(linked.id)}-2`, task: 'Phantom' }, ...items] };
+            }),
+        },
+    ],
+    [
+        'a task ID from an engine without tasks@1',
+        'engine-api.chat.activity',
+        {
+            capabilities: Object.values(KNOWN_CAPABILITIES).filter((ref) => ref !== KNOWN_CAPABILITIES.tasks),
+            tamper: editJson(on('GET', /^\/chats\/chat-copywriter$/), (chat) => ({
+                ...chat,
+                tasks: chat.tasks.map((task: any) => ({ ...task, taskId: 'task-copywriter-agents' })),
+            })),
+        },
+    ],
+    [
+        'a retry accepted without a recheck that starts a reply',
+        'engine-api.chat.retry',
+        {
+            tamper: chain(
+                replace(on('POST', /\/retry$/), () => problem('reply-finished', 409)),
+                editJson(on('GET', /^\/chats\/[^/]+$/), (chat) => ({
+                    ...chat,
+                    recheck: { cause: 'x', nextAt: chat.createdAt, rounds: 1 },
+                })),
+                fromCall(
+                    2,
+                    editJson(on('GET', /^\/chats\/[^/]+$/), (chat) => ({
+                        ...chat,
+                        messageCount: Number(chat.messageCount) + 1,
+                    })),
+                    on('GET', /^\/chats\/[^/]+$/),
+                ),
+            ),
         },
     ],
     [
