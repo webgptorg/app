@@ -16,11 +16,11 @@ const index = createReferenceIndex(
 describe('parseReferences', () => {
     it('finds agents, addressing, the User and tasks among text', () => {
         expect(parseReferences('+@Copywriter, rewrite {Napsat text na web} for @Chatter. +@User ok?', index)).toEqual([
-            { kind: 'agent', key: 'agent-copy', name: 'Copywriter', addressed: true },
+            { kind: 'agent', key: 'agent-copy', name: 'Copywriter', text: '@Copywriter', addressed: true },
             { kind: 'text', text: ', rewrite ' },
             { kind: 'task', name: 'Napsat text na web' },
             { kind: 'text', text: ' for ' },
-            { kind: 'agent', key: 'agent-chatter', name: 'Chatter', addressed: false },
+            { kind: 'agent', key: 'agent-chatter', name: 'Chatter', text: '@Chatter', addressed: false },
             { kind: 'text', text: '. ' },
             { kind: 'asks-user' },
             { kind: 'text', text: ' ok?' },
@@ -29,19 +29,19 @@ describe('parseReferences', () => {
 
     it('matches names case-insensitively, the longest first, and keeps the first agent of a name', () => {
         expect(parseReferences('@lead bot and @Lead', index)).toEqual([
-            { kind: 'agent', key: 'agent-lead', name: 'Lead bot', addressed: false },
+            { kind: 'agent', key: 'agent-lead', name: 'Lead bot', text: '@lead bot', addressed: false },
             { kind: 'text', text: ' and ' },
-            { kind: 'agent', key: 'agent-lead-2', name: 'Lead', addressed: false },
+            { kind: 'agent', key: 'agent-lead-2', name: 'Lead', text: '@Lead', addressed: false },
         ]);
         expect(parseReferences('@COPYWRITER', index)).toEqual([
-            { kind: 'agent', key: 'agent-copy', name: 'Copywriter', addressed: false },
+            { kind: 'agent', key: 'agent-copy', name: 'Copywriter', text: '@COPYWRITER', addressed: false },
         ]);
     });
 
     it.each([
         ['an unknown agent', '@Nobody here'],
         ['an e-mail address', 'mail copywriter@Copywriter.cz'],
-        ['a longer word', '@Copywriters and @Chattering'],
+        ['a longer word', '@Chattering, @Copywriters and @CopywriterX'],
         ['a lone @', 'a @ b'],
         ['an unknown task', '{Something else}'],
         ['a { without its }', 'if (x) { return @'],
@@ -52,6 +52,29 @@ describe('parseReferences', () => {
         const segments = parseReferences(text, index);
         expect(segments.every((segment) => segment.kind === 'text')).toBe(true);
         expect(segments.map((segment) => (segment.kind === 'text' ? segment.text : '')).join('')).toBe(text);
+    });
+
+    it('reads a declined name as the agent, keeping its ending, and prefers an exact name', () => {
+        const czech = createReferenceIndex(
+            [
+                { key: 'agent-copy', name: 'Copywriter' },
+                { key: 'agent-ada', name: 'Ada' },
+                { key: 'agent-adam', name: 'Adam' },
+            ],
+            [],
+        );
+        expect(parseReferences('úkol pro @Copywritera, díky @Copywriterovi', czech)).toEqual([
+            { kind: 'text', text: 'úkol pro ' },
+            { kind: 'agent', key: 'agent-copy', name: 'Copywriter', text: '@Copywritera', addressed: false },
+            { kind: 'text', text: ', díky ' },
+            { kind: 'agent', key: 'agent-copy', name: 'Copywriter', text: '@Copywriterovi', addressed: false },
+        ]);
+        expect(
+            parseReferences('@Adam @Adama @Ada', czech).flatMap((segment) =>
+                segment.kind === 'agent' ? [segment.key] : [],
+            ),
+        ).toEqual(['agent-adam', 'agent-adam', 'agent-ada']);
+        expect(parseReferences('@Copywriterovičky', czech)).toEqual([{ kind: 'text', text: '@Copywriterovičky' }]);
     });
 
     it('accepts a task name with padding; a name with braces of its own cannot be referenced', () => {

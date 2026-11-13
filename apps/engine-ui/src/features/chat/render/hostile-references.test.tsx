@@ -119,7 +119,7 @@ describe('references in agent output', () => {
     it('addresses the agent when its chip is clicked', () => {
         const onMention = vi.fn();
         inThread(<PlainText text="Ask @copywriter" />, onMention);
-        fireEvent.click(screen.getByRole('button', { name: '@Copywriter' }));
+        fireEvent.click(screen.getByRole('button', { name: '@copywriter' }));
         expect(onMention).toHaveBeenCalledWith(expect.objectContaining({ key: 'agent-copy', name: 'Copywriter' }));
     });
 

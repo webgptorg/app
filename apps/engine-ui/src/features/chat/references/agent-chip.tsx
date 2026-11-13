@@ -13,6 +13,8 @@ export interface AgentChipProps {
     readonly agentKey: string;
     /** Shown until the thread knows the agent; the thread's own name for it wins. */
     readonly name: string;
+    /** The mention as written (`@Copywritera`); `@` and the agent's name otherwise. */
+    readonly label?: string;
     /** `false` inside another card: a quiet chip with no hovercard and no action of its own. */
     readonly interactive?: boolean;
     readonly className?: string;
@@ -22,10 +24,10 @@ export interface AgentChipProps {
  * `@Name` in the agent's colour. In a thread, hovering or focusing it shows who the agent is and what it is doing;
  * clicking it addresses the agent in the composer. The name is a text node, never markup or a link.
  */
-export function AgentChip({ agentKey, name, interactive = true, className }: AgentChipProps) {
+export function AgentChip({ agentKey, name, label: written, interactive = true, className }: AgentChipProps) {
     const references = useThreadReferences();
     const agent = useReferenceAgent(agentKey, name);
-    const label = `@${agent.name}`;
+    const label = written ?? `@${agent.name}`;
     const onMention = references?.onMention;
     const mention =
         onMention === undefined

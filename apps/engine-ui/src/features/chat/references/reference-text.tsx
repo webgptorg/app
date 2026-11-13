@@ -22,7 +22,7 @@ export function ReferenceText({ text }: { readonly text: string }) {
             case 'text':
                 return <Fragment key={position}>{segment.text}</Fragment>;
             case 'agent':
-                return <AgentChip key={position} agentKey={segment.key} name={segment.name} />;
+                return <AgentChip key={position} agentKey={segment.key} name={segment.name} label={segment.text} />;
             case 'task':
                 return <TaskChip key={position} name={segment.name} />;
             case 'asks-user':

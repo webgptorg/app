@@ -7,8 +7,17 @@ export interface ReferenceIndex {
 
 export type ReferenceSegment =
     | { readonly kind: 'text'; readonly text: string }
-    /** `@Name`, or `+@Name` when the message addresses the agent (`addressed`). */
-    | { readonly kind: 'agent'; readonly key: string; readonly name: string; readonly addressed: boolean }
+    /**
+     * `@Name`, or `+@Name` when the message addresses the agent (`addressed`). `text` is the mention as written, `@`
+     * included: an inflected `@Copywritera` keeps its ending.
+     */
+    | {
+          readonly kind: 'agent';
+          readonly key: string;
+          readonly name: string;
+          readonly text: string;
+          readonly addressed: boolean;
+      }
     | { readonly kind: 'task'; readonly name: string }
     /** `+@User`: the agent asks the User something. */
     | { readonly kind: 'asks-user' };
@@ -20,6 +29,36 @@ const MAX_TASK_NAME_LENGTH = 512;
 
 const NAME_CHAR = /[\p{L}\p{N}_-]/u;
 const isNameChar = (char: string | undefined) => char !== undefined && NAME_CHAR.test(char);
+/**
+ * Czech declines names (`@Copywritera`, `@Copywriterovi`): a name followed by one of these case endings still refers
+ * to the agent. A closed list, so English words (`@Chattering`) and plurals stay text.
+ */
+const CASE_ENDINGS: ReadonlySet<string> = new Set([
+    'a',
+    'e',
+    'ě',
+    'i',
+    'u',
+    'y',
+    'o',
+    'em',
+    'ou',
+    'ovi',
+    'ům',
+    'ech',
+    'ové',
+    'ů',
+]);
+const LONGEST_ENDING = 3;
+
+/** Where a name followed by a case ending ends, or `null` when what follows is no such ending. */
+function inflectedEnd(text: string, from: number): number | null {
+    for (let length = LONGEST_ENDING; length >= 1; length -= 1) {
+        const end = from + length;
+        if (CASE_ENDINGS.has(text.slice(from, end).toLowerCase()) && !isNameChar(text[end])) return end;
+    }
+    return null;
+}
 
 export function createReferenceIndex(
     agents: readonly { readonly key: string; readonly name: string }[],
@@ -55,13 +94,27 @@ function matchMention(text: string, at: number, index: ReferenceIndex): Match | 
         const end = nameStart + USER_REFERENCE_NAME.length;
         if (!isNameChar(text[end])) return { segment: { kind: 'asks-user' }, end };
     }
+    let inflected: Match | null = null;
     for (const agent of index.agents) {
         if (!startsWithName(text, nameStart, agent.name)) continue;
-        const end = nameStart + agent.name.length;
-        if (isNameChar(text[end])) continue;
-        return { segment: { kind: 'agent', key: agent.key, name: agent.name, addressed }, end };
+        const nameEnd = nameStart + agent.name.length;
+        const end = isNameChar(text[nameEnd]) ? inflectedEnd(text, nameEnd) : nameEnd;
+        if (end === null) continue;
+        const match = {
+            segment: {
+                kind: 'agent',
+                key: agent.key,
+                name: agent.name,
+                text: text.slice(nameStart - 1, end),
+                addressed,
+            },
+            end,
+        } as const;
+        // An exact name wins over another agent's name with an ending: `@Adam` is Adam, not Ada declined.
+        if (end === nameEnd) return match;
+        inflected ??= match;
     }
-    return null;
+    return inflected;
 }
 
 /** `{Task name}` starting at `at`, on one line, naming a task of this thread. */
