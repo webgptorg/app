@@ -90,7 +90,7 @@ Added 2026-11-13 (C-14). A thread shows what its agents are doing, not only what
   - A `progress` message with no `final` after it from the same agent is a turn that never finished (interrupted or failed).
 - **`Message.steps`** (`ReplyStep[]`, at most `MAX_REPLY_STEPS` = 200, oldest first): what the agent did in this turn. It is empty unless `phase` is `progress`. When a turn has more steps, it spans several `progress` messages. A `ReplyStep` is:
   - `kind`: `reasoning` (the model thinking), `tool` (a tool call the harness made) or `note` (anything else the engine reports, such as a warning or the reason a turn stopped).
-  - `tool`: the tool's name exactly as the harness reports it (`Read`, `Glob`, `mcp__ptbk__create_task`). It is set for a `tool` step and `null` for every other kind; the schema refuses both mismatches.
+  - `tool`: the tool's name exactly as the harness reports it (`Read`, `Glob`, `mcp__ptbk__create_task`), 1 to 128 characters. It is set for a `tool` step and `null` for every other kind; the schema refuses both mismatches.
   - `text`: one line, at most `MAX_REPLY_STEP_TEXT_LENGTH` = 500 characters, whitespace runs collapsed: the tool's main argument, a reasoning excerpt or the note. It may be empty (a reasoning step with nothing to show).
   - `level`: `info`, `warning` or `error`.
 - **A `progress` message's `content`** stays a readable rendering of its steps, so a client that ignores `steps` still shows something sensible. One line per step: `- thinking: <text>`, `- <tool> <text>`, `- <text>` for an `info` note and `- <level>: <text>` for any other note. Streamed partial text and an unfinished note may follow after a blank line. Reborn's `ReplyProgress.render()` already writes reasoning and tool lines this way.
@@ -103,7 +103,7 @@ Added 2026-11-13 (C-14). A thread shows what its agents are doing, not only what
   The entry disappears when the reply is saved, fails or is cancelled.
 
 - **`Chat.tasks`** (`ChatTask[]`, at most `MAX_CHAT_TASKS` = 100, in the order they came in): the tasks this thread created or links, with their live state.
-  - `name`: the task's Book name. This is what `{name}` refers to in message text and what a `linked` entry names.
+  - `name`: the task's Book name, 1 to 512 characters. This is what `{name}` refers to in message text and what a `linked` entry names.
   - `taskId`: the same task's ID in `tasks@1`. `null` when the engine does not advertise `tasks@1` or the name does not resolve.
   - `state` (`CHAT_TASK_STATES`): `queued`, `running`, `waiting`, `blocked`, `completed`, `failed`, `cancelled`, `retired`. It is the engine's own task state, never a guess from the thread.
   - `detail`: its phase, waiting reason, blocker or result summary, in plain words, at most 500 characters, or `null`.
@@ -113,7 +113,7 @@ Added 2026-11-13 (C-14). A thread shows what its agents are doing, not only what
   - `startedAt`: when it first ran. `endedAt`: when it reached `completed`, `failed`, `cancelled` or `retired`. Both are `null` before that, or when the engine no longer knows. An unfinished task never has an `endedAt`.
 - **The `linked` entry** `{ type: 'linked', id, chatId, createdAt, task }` marks where in the thread a task came in (the Book's `LINK {name}`). `task` is a name in `Chat.tasks`, and every task in `Chat.tasks` has one `linked` entry.
 - **`Chat.recheck`** (`ChatRecheck`, or `null`): a failed reply that the engine attempts again by itself.
-  - `cause`: the last failure, in plain words, at most 500 characters.
+  - `cause`: the last failure, in plain words, 1 to 500 characters (never empty).
   - `nextAt`: when the engine attempts it.
   - `rounds`: attempts scheduled so far, at least 1.
 

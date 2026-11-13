@@ -4,8 +4,8 @@ import { createDemoSeed, createInMemoryEngineApiClient, demoReplyScript } from '
 
 /**
  * Offline development (`VITE_ENGINE_API=memory`): the demo engine's agents, runs, files, triggers and integrations with
- * the contract's rules, no mock engine needed. Agents reply with live steps before their text, as Reborn's do. Like the mock engine, it shows only what the Reborn engine has unless
- * `VITE_ENGINE_PROFILE=full`.
+ * the contract's rules, no mock engine needed. Agents reply with live steps before their text, as Reborn's do. Like the
+ * mock engine, it shows only what the Reborn engine has unless `VITE_ENGINE_PROFILE=full`.
  */
 export function createDevEngineApiClient(): EngineApiClient {
     const seed = createDemoSeed();

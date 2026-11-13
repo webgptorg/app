@@ -89,7 +89,7 @@ Each entry has this shape. Platform authors: add yours at the top of the list, o
      - Emit one only for a `LINK` that names a task with a card, and use the card's `name` so `task` matches `Chat.tasks`. Every card needs a `linked` entry: for a card that came only from `TASK ORIGIN Chat {…}`, place it before the first message after the task's creation.
      - A `LINK` has no time of its own: `createdAt` is the preceding message's `at`, else the chat's `createdAt`.
   9. **Recheck and retry.**
-     - In `chat()`, send `recheck: detail.recheck ? { cause: cut to 500, nextAt, rounds } : null` (`ChatRecheckView`). It is already `null` while a recheck turn runs, which is what the contract wants.
+     - In `chat()`, send `recheck: detail.recheck ? { cause: cut to 500, nextAt, rounds } : null` (`ChatRecheckView`). `cause` must not be empty: fall back to a plain "The reply failed." when the view has none. It is already `null` while a recheck turn runs, which is what the contract wants.
      - Add `public chatRetry(name): 'started' | 'running' | 'none'` to `Agenda`. With no `chatRechecks` entry, it returns `none`. If the entry has no armed `timer`, the attempt is queued or running, so it returns `running`. Otherwise it calls `startChatRecheck(nameKey(name), 'asked to retry now')` and returns `started`.
      - Serve `retryChatReply` with it: an unknown chat is 404 `not-found`, `none` is 409 `nothing-to-retry`, and both other outcomes answer 200 with the chat as `getChat` builds it.
      - Audit it as `chat.reply.retry` (new in `AUDIT_ACTIONS`), target kind `chat` with the chat's ID, exactly as you audit `chat.reply.cancel`.
