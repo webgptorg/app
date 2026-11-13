@@ -1,6 +1,6 @@
 // Flow 12: home and activity. With engine time paused, a scripted run's start and finish reach the live feed without a
-// reload; the command palette navigates to an agent and to a run by keyboard; the owner gets the control center and a
-// member their own home.
+// reload; the command palette navigates to an agent and to a run by keyboard; the owner's Chatter-first home has the
+// activity feed beside it, a member's does not.
 import type { Locator, Page } from '@playwright/test';
 
 import { apiGet, apiList, eventsConnected, required } from '../../src/ui-app.ts';
@@ -24,33 +24,28 @@ async function chooseByKeyboard(page: Page, option: Locator): Promise<void> {
     await page.keyboard.press('Enter');
 }
 
-test('the owner sees the control center with the counts the engine reports', async ({ page, signIn, appUrl }) => {
+test('the owner sees a Chatter-first home with what waits, what runs and the activity feed', async ({
+    page,
+    signIn,
+    appUrl,
+}) => {
     await signIn();
     await page.goto(appUrl('/'));
     const me = await apiGet<{ displayName: string }>(page, '/me');
     await expect(page.getByRole('heading', { level: 1, name: new RegExp(`, ${me.displayName}$`) })).toBeVisible();
-    // Tiles while anything runs or needs a look, one quiet line when everything the engine reports is zero.
-    const stats = await apiGet<{ running: number; queued: number }>(page, '/runs/stats');
-    const counts = page.getByRole('region', { name: 'Right now' });
-    if (stats.running + stats.queued > 0) {
-        await expect(counts.getByText('Running now', { exact: true })).toBeVisible();
-        await expect(counts.getByText('Queued', { exact: true })).toBeVisible();
-        await expect(counts.getByText('Needs attention', { exact: true })).toBeVisible();
-    } else {
-        await expect(
-            counts.getByText(/^(Running now|Nothing is running, and nothing needs your attention\.)$/),
-        ).toBeVisible();
-    }
+    await expect(page.getByRole('textbox', { name: 'Ask Chatter' })).toBeVisible();
+    await expect(page.getByRole('region', { name: /^Needs you/ })).toBeVisible();
+    await expect(page.getByRole('region', { name: /^Working now/ })).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Recent chats' })).toBeVisible();
     await expect(page.getByRole('region', { name: 'Activity' })).toBeVisible();
 });
 
-test('a member sees their own home, without the control center', async ({ page, signIn, appUrl }) => {
+test('a member sees their own home, without the activity feed', async ({ page, signIn, appUrl }) => {
     await signIn({ kind: 'member', role: 'member' });
     await page.goto(appUrl('/'));
-    await expect(page.getByRole('region', { name: 'Agents you can use' })).toBeVisible();
     await expect(page.getByRole('region', { name: 'Recent chats' })).toBeVisible();
+    await expect(page.getByRole('region', { name: /^Working now/ })).toBeVisible();
     await expect(page.getByRole('region', { name: 'Activity' })).toHaveCount(0);
-    await expect(page.getByText('Running now', { exact: true })).toHaveCount(0);
 });
 
 test("a scripted run's start and finish appear in the live activity feed without a reload", async ({

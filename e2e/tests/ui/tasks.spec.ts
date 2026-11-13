@@ -11,9 +11,10 @@ test('the owner reads a recurring task, its occurrences and runs, and is sent to
     await signIn();
     await page.goto(appUrl('/tasks'));
     await expect(page.getByRole('heading', { level: 1, name: 'Tasks' })).toBeVisible();
-    const now = page.getByRole('region', { name: 'Now' });
-    await expect(now.getByRole('link', { name: /^Launch the customer newsletter/ })).toBeVisible();
-    await expect(page.getByRole('region', { name: 'Coming up' }).getByText('Engine', { exact: true })).toBeVisible();
+    const table = page.getByRole('table', { name: 'Tasks' });
+    await expect(table.getByText('Now', { exact: true })).toBeVisible();
+    await expect(table.getByRole('link', { name: /^Launch the customer newsletter/ })).toBeVisible();
+    await expect(table.getByText('Engine', { exact: true })).toBeVisible();
 
     await page.getByRole('link', { name: /^Weekly analytics digest/ }).click();
     const history = page.getByRole('region', { name: 'History' });
@@ -22,11 +23,7 @@ test('the owner reads a recurring task, its occurrences and runs, and is sent to
     await expect(page.getByRole('button', { name: /cancel|retry|delete/i })).toHaveCount(0);
     await expect(page.getByRole('link', { name: 'Discuss in chat' })).toBeVisible();
 
-    await history
-        .getByRole('listitem')
-        .filter({ hasText: '#3 · Retry' })
-        .getByRole('link', { name: 'Open run' })
-        .click();
+    await history.getByRole('row').filter({ hasText: '#3 · Retry' }).getByRole('link', { name: 'Open run' }).click();
     await page.getByRole('link', { name: /^Weekly analytics digest/ }).click();
     await expect(page.getByRole('heading', { level: 1, name: /^Weekly analytics digest/ })).toBeVisible();
 
