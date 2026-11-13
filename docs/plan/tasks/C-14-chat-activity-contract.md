@@ -2,7 +2,7 @@
 
 - **Lane:** C · **Module:** `packages/engine-api`, `packages/conformance` · **Milestone:** M5
 - **Depends on:** —
-- **Status:** in progress (feat/c-14-chat-activity)
+- **Status:** done (#282)
 - **Spec:** Security hardening (5 agent output is untrusted); ADRs: [0010](../../adr/0010-protocol-design-principles.md)
 
 ## Goal
@@ -27,6 +27,6 @@ The Reborn engine already has all of this: `ChatDetail.messages[].phase`, `LiveR
 
 ## Acceptance criteria
 
-- [ ] Strict schemas reject a `tool` step without a tool, an unknown phase and an unknown entry field; readers accept a pre-change chat and message and default the new fields.
-- [ ] The in-memory engine and mock engine pass the new conformance checks; coverage thresholds hold.
-- [ ] The AGENT_BRIEF entry and engine-api.md match the schemas field for field.
+- [x] Strict schemas reject a `tool` step without a tool, an unknown phase and an unknown entry field; readers accept a pre-change chat and message and default the new fields.
+- [x] The in-memory engine and mock engine pass the new conformance checks; coverage thresholds hold.
+- [x] The AGENT_BRIEF entry and engine-api.md match the schemas field for field.
