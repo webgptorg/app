@@ -29,9 +29,12 @@ export async function send(
     return { chatId, sent, reply: await replyAfter(world.owner, chatId, sent.id) };
 }
 
+/** The most entries `entries` reads: the newest page. */
+export const ENTRY_PAGE = 100;
+
 /** Oldest first, as the thread reads. */
 export async function entries(world: World, chatId: string): Promise<ChatEntry[]> {
-    const page = await world.owner.ok(R.listChatEntries, { params: { chatId }, query: { limit: 100 } });
+    const page = await world.owner.ok(R.listChatEntries, { params: { chatId }, query: { limit: ENTRY_PAGE } });
     return [...page.items].reverse();
 }
 

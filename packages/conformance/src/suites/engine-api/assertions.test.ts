@@ -1253,6 +1253,22 @@ describe('each assertion bites', () => {
         expect(await outcome('engine-api.activity.agent-names', { tamper })).toEqual({ kind: 'pass' });
     });
 
+    it('does not judge a final reply whose progress lies beyond the page it reads', async () => {
+        const tamper = editJson(on('GET', /\/chats\/chat-copywriter\/entries$/), (page) => {
+            const firstProgress = page.items.findLastIndex((entry: any) => entry.phase === 'progress');
+            const kept = page.items.slice(0, firstProgress);
+            const filler = Array.from({ length: 100 - kept.length }, (_, index) => ({
+                type: 'titled',
+                id: `filler-${String(index)}`,
+                chatId: 'chat-copywriter',
+                createdAt: '2026-01-01T00:00:00Z',
+                title: 'Older',
+            }));
+            return { ...page, items: [...kept, ...filler] };
+        });
+        expect(await outcome('engine-api.chat.activity', { tamper })).toEqual({ kind: 'pass' });
+    });
+
     it('runs the auth check with placeholders when there is no owner', async () => {
         const result = await outcome('engine-api.auth.unauthenticated-401', {}, (target) => ({
             ...target,

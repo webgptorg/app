@@ -3,7 +3,7 @@ import type { Chat, ChatEntry, ChatTaskState, Message } from '@ptbk/engine-api';
 
 import type { ConformanceCheck } from '../../check';
 import { Findings } from '../../check';
-import { entries, send } from './chat';
+import { ENTRY_PAGE, entries, send } from './chat';
 import { SUITE } from './support';
 import type { World } from './world';
 import { REPLY_TIMEOUT_MS, createWorld } from './world';
@@ -19,12 +19,16 @@ const keyOf = (who: { readonly kind: string; readonly key: string }): string => 
 /**
  * Phases and steps tell one story: only a `progress` message has steps and readable text, the User's messages have
  * no phase, and a `final` reply closes a turn whose `progress` came before it, from the same agent. The strict schema
- * already refuses a tool step without its tool.
+ * already refuses a tool step without its tool. On a page cut short, a `final` may close a turn whose progress lies
+ * beyond it, so an agent's first message on such a page is not judged.
  */
-function checkTurns(findings: Findings, where: string, items: readonly ChatEntry[]): void {
+function checkTurns(findings: Findings, where: string, items: readonly ChatEntry[], complete: boolean): void {
     const openTurns = new Set<string>();
+    const seen = new Set<string>();
     for (const message of items.filter((entry): entry is Message => entry.type === 'message')) {
         const who = keyOf(message.author);
+        const judged = complete || seen.has(who);
+        seen.add(who);
         const at = `${where}: message ${message.id}`;
         if (message.author.kind === 'user' && message.phase !== null) findings.add(`${at}: a User message has a phase`);
         if (message.phase !== 'progress' && message.steps.length > 0) {
@@ -36,7 +40,7 @@ function checkTurns(findings: Findings, where: string, items: readonly ChatEntry
                 openTurns.add(who);
                 break;
             case 'final':
-                if (!openTurns.delete(who)) findings.add(`${at}: a final reply without progress before it`);
+                if (!openTurns.delete(who) && judged) findings.add(`${at}: a final reply without progress before it`);
                 break;
             case null:
                 openTurns.delete(who);
@@ -54,6 +58,8 @@ async function checkThread(world: World, findings: Findings, chat: Chat, items: 
             findings.add(`${where}: ${keyOf(working.author)} works on a reply, but is not an agent of the thread`);
         }
     }
+    // Entries are read one page deep, so only a thread that short is seen whole.
+    const complete = items.length < ENTRY_PAGE;
     const linked = new Set(items.flatMap((entry) => (entry.type === 'linked' ? [entry.task] : [])));
     const names = new Set<string>();
     const tasksOffered = supports(await world.engine(), KNOWN_CAPABILITIES.tasks);
@@ -61,8 +67,7 @@ async function checkThread(world: World, findings: Findings, chat: Chat, items: 
         const at = `${where}: task ${task.name}`;
         if (names.has(task.name)) findings.add(`${at}: listed twice`);
         names.add(task.name);
-        // Entries are read one page deep, so only a thread that short must show every link.
-        if (items.length < 100 && !linked.has(task.name)) findings.add(`${at}: no linked entry brings it in`);
+        if (complete && !linked.has(task.name)) findings.add(`${at}: no linked entry brings it in`);
         // A finished task may have lost its times; an unfinished one never has an end.
         if (task.endedAt !== null && !FINISHED.has(task.state)) {
             findings.add(`${at}: is ${task.state}, yet ended at ${task.endedAt}`);
@@ -84,7 +89,7 @@ async function checkThread(world: World, findings: Findings, chat: Chat, items: 
     for (const name of linked) {
         if (!names.has(name)) findings.add(`${where}: the linked task ${name} is not among the thread's tasks`);
     }
-    checkTurns(findings, where, items);
+    checkTurns(findings, where, items, complete);
 }
 
 /** The newest threads of the engine, whatever created them; this run's own threads are among them. */
