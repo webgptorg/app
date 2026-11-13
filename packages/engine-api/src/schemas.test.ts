@@ -37,8 +37,14 @@ import {
 import { EngineInfo } from './engine';
 import {
     Chat,
+    ChatEntry,
     ChatEntryPageReader,
     ChatReader,
+    ChatTask,
+    MAX_CHAT_TASKS,
+    MAX_REPLY_STEP_TEXT_LENGTH,
+    MAX_WORKING_STEPS,
+    ReplyStep,
     CreateChatBody,
     MAX_MESSAGE_CHOICES,
     MarkSeenBody,
@@ -183,6 +189,8 @@ const completedEvent = {
         createdBy: null,
         createdAt: NOW,
         choices: [],
+        phase: null,
+        steps: [],
     },
 };
 
@@ -718,6 +726,9 @@ describe('Chat', () => {
                 seen: false,
             },
         ],
+        working: [],
+        tasks: [],
+        recheck: null,
     };
 
     it('accepts a thread with engine-assigned IDs and rejects unknown fields', () => {
@@ -754,6 +765,94 @@ describe('Chat', () => {
         expect(read.members).toEqual([{ kind: 'unknown', key: 'fixer', name: 'Fixer' }]);
         expect(read.questions[0]?.author.kind).toBe('unknown');
         expect('later' in read).toBe(false);
+    });
+});
+
+/** What an engine from before a field existed sends. */
+function omit(value: object, ...keys: readonly string[]): Record<string, unknown> {
+    return Object.fromEntries(Object.entries(value).filter(([key]) => !keys.includes(key)));
+}
+
+describe('chat activity', () => {
+    const toolStep = { kind: 'tool', tool: 'Glob', text: '{specs,tasks,agents}/**/*.md*', level: 'info' };
+    const thinking = { kind: 'reasoning', tool: null, text: '', level: 'info' };
+    const task = {
+        name: 'Marketingový text webu o agentech pro IT profesionály — 2026-11-13 12:16:54',
+        taskId: 't1',
+        state: 'completed',
+        detail: 'Saved docs/marketing-agenti-it.md.',
+        agentId: 'agent-copywriter',
+        commit: '67b252ca',
+        reopened: false,
+        startedAt: NOW,
+        endedAt: NOW,
+    };
+    const message = completedEvent.message;
+    const thread = {
+        id: message.chatId,
+        title: 'Marketingový text o agentech',
+        status: 'open',
+        members: [],
+        createdAt: NOW,
+        updatedAt: NOW,
+        messageCount: 0,
+        lastMessageAt: null,
+        preview: null,
+        unread: 0,
+        questions: [],
+        working: [],
+        tasks: [],
+    };
+
+    it('names the tool of a tool step and of no other step', () => {
+        expect(ReplyStep.safeParse(toolStep).success).toBe(true);
+        expect(ReplyStep.safeParse(thinking).success).toBe(true);
+        expect(ReplyStep.safeParse({ ...toolStep, tool: null }).success).toBe(false);
+        expect(ReplyStep.safeParse({ ...thinking, tool: 'Read' }).success).toBe(false);
+        expect(ReplyStep.safeParse({ ...toolStep, level: 'debug' }).success).toBe(false);
+        expect(ReplyStep.safeParse({ ...toolStep, text: 'x'.repeat(MAX_REPLY_STEP_TEXT_LENGTH + 1) }).success).toBe(
+            false,
+        );
+        expect(ReplyStep.safeParse({ ...toolStep, input: {} }).success).toBe(false);
+    });
+
+    it('takes a known phase with steps and refuses an unknown phase or step', () => {
+        expect(Message.safeParse({ ...message, phase: 'progress', steps: [thinking, toolStep] }).success).toBe(true);
+        expect(Message.safeParse({ ...message, phase: 'final' }).success).toBe(true);
+        expect(Message.safeParse({ ...message, phase: 'draft' }).success).toBe(false);
+        expect(Message.safeParse({ ...message, steps: [{ ...toolStep, tool: null }] }).success).toBe(false);
+        expect(Message.safeParse(omit(message, 'phase', 'steps')).success).toBe(false);
+    });
+
+    it('bounds who works, their latest steps, the tasks and the recheck', () => {
+        const chat = Chat.parse({ ...thread, recheck: null });
+        const working = { startedAt: NOW, messageId: null, author: { kind: 'agent', key: 'agent-chatter' }, steps: [] };
+        expect(Chat.safeParse({ ...chat, working: [working] }).success).toBe(true);
+        const many = Array<typeof toolStep>(MAX_WORKING_STEPS + 1).fill(toolStep);
+        expect(Chat.safeParse({ ...chat, working: [{ ...working, steps: many }] }).success).toBe(false);
+        expect(Chat.safeParse({ ...chat, tasks: [task] }).success).toBe(true);
+        expect(Chat.safeParse({ ...chat, tasks: Array(MAX_CHAT_TASKS + 1).fill(task) }).success).toBe(false);
+        expect(ChatTask.safeParse({ ...task, state: 'paused' }).success).toBe(false);
+        expect(ChatTask.safeParse({ ...task, commit: 'not a sha' }).success).toBe(false);
+        const recheck = { cause: 'The model was overloaded.', nextAt: NOW, rounds: 1 };
+        expect(Chat.safeParse({ ...chat, recheck }).success).toBe(true);
+        expect(Chat.safeParse({ ...chat, recheck: { ...recheck, rounds: 0 } }).success).toBe(false);
+        expect(Chat.safeParse({ ...chat, recheck: { ...recheck, cause: '' } }).success).toBe(false);
+        expect(Chat.safeParse(omit(chat, 'working')).success).toBe(false);
+    });
+
+    it('links a task by name and refuses an unknown entry field', () => {
+        const linked = { type: 'linked', id: 'c~4', chatId: message.chatId, createdAt: NOW, task: task.name };
+        expect(ChatEntry.safeParse(linked).success).toBe(true);
+        expect(ChatEntry.safeParse({ ...linked, task: '' }).success).toBe(false);
+        expect(ChatEntry.safeParse({ ...linked, taskId: 't1' }).success).toBe(false);
+    });
+
+    it('reads a chat and a message from before 2026-11-13 with nothing working, no tasks, no recheck and no phase', () => {
+        const oldChat = omit(thread, 'working', 'tasks');
+        expect(ChatReader.parse(oldChat)).toMatchObject({ working: [], tasks: [], recheck: null });
+        const page = ChatEntryPageReader.parse({ items: [omit(message, 'phase', 'steps')], nextCursor: null });
+        expect(page.items[0]).toMatchObject({ phase: null, steps: [] });
     });
 });
 

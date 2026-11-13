@@ -17,7 +17,7 @@ import { Task, TaskLink, TaskOccurrence } from './capabilities/tasks';
 import type { Run, RunStatus } from './capabilities/runs';
 import { Trigger, TriggerFire } from './capabilities/triggers';
 import { ParticipantRef } from './chats';
-import type { Chat, ChatStatus } from './chats';
+import type { Chat, ChatStatus, Message } from './chats';
 import { WalletRecord, WalletRequest } from './capabilities/wallet';
 import type { WalletState } from './capabilities/wallet';
 import { createEngineApiClient, EngineApiContractError } from './client';
@@ -73,11 +73,28 @@ import {
 } from './in-memory/runs';
 import type { RunOutcome, RunReport, StartRun } from './in-memory/runs';
 import { checkTaskSeed } from './in-memory/tasks';
+import { changeTask, linkTask } from './in-memory/chat-tasks';
+import type { ChatTaskChange, ChatTaskInput } from './in-memory/chat-tasks';
+import { retry } from './in-memory/replies';
+import {
+    addStep,
+    beginTurn,
+    endTurn,
+    REPLY_FAILED_CAUSE,
+    renderSteps,
+    startText,
+    toStep,
+    workingOf,
+} from './in-memory/turns';
+import type { StepInput } from './in-memory/turns';
 import type { FileRecord, InMemoryState, IntegrationSecret } from './in-memory/state';
 import {
+    answer,
+    answeredQuestion,
     appendMessage,
     chatView,
     createThread,
+    entriesOf,
     join,
     mainAgent,
     markSeen,
@@ -256,6 +273,22 @@ export interface InMemorySeedChat {
     readonly entries: readonly InMemorySeedEntry[];
     /** Members who have read everything seeded; for the others every agent message is unread. */
     readonly readBy?: readonly string[];
+    /** Agents still working when the history ends, in the order they started; none has written its reply yet. */
+    readonly working?: readonly {
+        readonly author: ParticipantRef;
+        readonly startedAt: string;
+        readonly steps?: readonly StepInput[];
+    }[];
+    /**
+     * A failed reply waiting for the engine's next attempt. Its agent is `author`, else the thread's last agent to
+     * write; what it answers is the thread's last User message.
+     */
+    readonly recheck?: {
+        readonly cause: string;
+        readonly nextAt: string;
+        readonly rounds: number;
+        readonly author?: ParticipantRef;
+    };
 }
 
 export type InMemorySeedEntry =
@@ -269,8 +302,21 @@ export type InMemorySeedEntry =
           readonly choices?: readonly string[];
           /** For a question: whether someone has displayed it already. */
           readonly seen?: boolean;
+          /** A User message answering the one question waiting, as one sent without `replyTo` does. */
+          readonly answers?: boolean;
+          /** `final` for the reply that ends a turn with progress. */
+          readonly phase?: 'final';
           readonly at?: string;
       }
+    /** An agent's interim update with what it did; its text is the steps' readable form. */
+    | {
+          readonly type: 'progress';
+          readonly author: ParticipantRef;
+          readonly steps: readonly StepInput[];
+          readonly at?: string;
+      }
+    /** The thread created or linked a task, with the task's state now. */
+    | { readonly type: 'linked'; readonly task: ChatTaskInput; readonly at?: string }
     | { readonly type: 'titled'; readonly title: string; readonly at?: string }
     | { readonly type: 'status'; readonly status: ChatStatus; readonly at?: string };
 
@@ -439,6 +485,28 @@ export interface InMemoryEngineController {
     updateSecurity(patch: Partial<Unbranded<z.input<typeof SecurityOverview>>>): SecurityOverview;
     /** A thread the engine starts itself (a report, agents talking, a question); announced with `chat.changed`. */
     addChat(chat: InMemorySeedChat): Chat;
+    /**
+     * An agent starts a turn in a thread (joining it first if needed): the thread shows it working before it has done
+     * anything. `prompt` is what a failed turn is attempted again with; it defaults to the last User message. Throws
+     * if the agent already works there.
+     */
+    startReplyTurn(chatId: string, agentId: string, prompt?: string): Chat;
+    /** A step of that turn; `chat.changed` follows at most once a second per thread. Throws for an invalid step. */
+    addReplyStep(chatId: string, agentId: string, step: StepInput): Chat;
+    /** The agent writes its reply: its steps are saved as `progress` messages, then the reply, `final` after them. */
+    finishReplyTurn(
+        chatId: string,
+        agentId: string,
+        reply: { readonly content: string; readonly choices?: readonly string[] },
+    ): Message;
+    /** The turn failed before a reply: the thread gets a recheck, which the engine attempts at its `nextAt`. */
+    failReplyTurn(chatId: string, agentId: string, cause?: string): Chat;
+    /** The engine's own attempt at a thread's recheck when `nextAt` comes; throws when none waits. */
+    recheckChat(chatId: string): Chat;
+    /** The thread created or links a task: a `linked` entry and the task's live state in `tasks`. */
+    linkChatTask(chatId: string, task: ChatTaskInput): Chat;
+    /** A linked task's state changed in the engine; `startedAt`, `endedAt` and `reopened` follow the transition. */
+    updateChatTask(chatId: string, name: string, change: ChatTaskChange): Chat;
     /** Throws if the ID is taken. */
     addMember(member: Unbranded<z.input<typeof Member>>): Member;
     /** The gateway's join page accepted a dashboard ticket and registered a passkey; throws at the pending cap. */
@@ -705,6 +773,20 @@ export function createInMemoryEngineCore(options: InMemoryEngineCoreOptions = {}
 
     const checks: EngineChecks = { ...DEFAULT_ENGINE_CHECKS, ...options.checks };
     const system: EngineContext = { state, checks, now, newId, publish, replies };
+    const chatRecord = (chatId: string): ChatRecord => {
+        const record = state.chats.get(chatId);
+        if (!record) throw new Error(`No chat ${chatId}`);
+        return record;
+    };
+    const liveAgentRef = (agentId: string): ParticipantRef => {
+        if (state.agents.get(agentId)?.agent.deletedAt !== null) throw new Error(`No live agent ${agentId}`);
+        return { kind: 'agent', key: agentId };
+    };
+    const workingRecord = (record: ChatRecord, agentId: string) => {
+        const working = workingOf(record, { kind: 'agent', key: agentId });
+        if (!working) throw new Error(`${agentId} does not work in ${record.id}`);
+        return working;
+    };
     // Seeded threads are history, not news: replaying them announces nothing.
     for (const chat of options.seed?.chats ?? []) replayChat({ ...system, publish: () => undefined }, chat);
     const controller: InMemoryEngineController = {
@@ -745,6 +827,55 @@ export function createInMemoryEngineCore(options: InMemoryEngineCoreOptions = {}
         },
         addChat: (input) => {
             const record = replayChat(system, input);
+            touch(system, record);
+            return chatView(system, record, seedMember.id);
+        },
+        startReplyTurn: (chatId, agentId, prompt) => {
+            const record = chatRecord(chatId);
+            const author = liveAgentRef(agentId);
+            if (workingOf(record, author)) throw new Error(`${agentId} already works in ${chatId}`);
+            beginTurn(system, record, { author, prompt: prompt ?? lastUserMessage(system, record) });
+            touch(system, record);
+            return chatView(system, record, seedMember.id);
+        },
+        addReplyStep: (chatId, agentId, step) => {
+            const record = chatRecord(chatId);
+            addStep(system, record, workingRecord(record, agentId), toStep(step));
+            return chatView(system, record, seedMember.id);
+        },
+        finishReplyTurn: (chatId, agentId, reply) => {
+            const record = chatRecord(chatId);
+            const working = workingRecord(record, agentId);
+            const message = startText(system, record, working, {
+                content: reply.content,
+                status: 'completed',
+                ...(reply.choices === undefined ? {} : { choices: reply.choices }),
+            });
+            endTurn(system, record, working, { kind: 'completed' });
+            touch(system, record);
+            return message;
+        },
+        failReplyTurn: (chatId, agentId, cause = REPLY_FAILED_CAUSE) => {
+            const record = chatRecord(chatId);
+            endTurn(system, record, workingRecord(record, agentId), { kind: 'failed', cause });
+            touch(system, record);
+            return chatView(system, record, seedMember.id);
+        },
+        recheckChat: (chatId) => {
+            const record = chatRecord(chatId);
+            if (record.recheck === null) throw new Error(`No recheck waits in ${chatId}`);
+            retry(system, record, options.replyScript ?? DEFAULT_REPLY_SCRIPT);
+            return chatView(system, record, seedMember.id);
+        },
+        linkChatTask: (chatId, task) => {
+            const record = chatRecord(chatId);
+            linkTask(system, record, task);
+            touch(system, record);
+            return chatView(system, record, seedMember.id);
+        },
+        updateChatTask: (chatId, name, change) => {
+            const record = chatRecord(chatId);
+            changeTask(system, record, name, change);
             touch(system, record);
             return chatView(system, record, seedMember.id);
         },
@@ -1435,17 +1566,53 @@ function replayChat(ctx: EngineContext, seed: InMemorySeedChat): ChatRecord {
                 setStatus(clock, record, entry.status);
                 break;
             case 'message': {
+                const answered = entry.answers === true ? answeredQuestion(record, undefined) : undefined;
                 const message = appendMessage(clock, record, {
                     author: ParticipantRef.parse(entry.author),
                     content: entry.content,
                     status: 'completed',
                     createdBy: entry.createdBy === undefined ? null : MemberId.parse(entry.createdBy),
                     ...(entry.choices === undefined ? {} : { choices: entry.choices }),
+                    phase: entry.phase ?? null,
                 });
                 if (entry.seen === true) markSeen(clock, record, [message.id]);
+                if (answered) answer(clock, record, answered);
                 break;
             }
+            case 'progress': {
+                const steps = entry.steps.map(toStep);
+                appendMessage(clock, record, {
+                    author: ParticipantRef.parse(entry.author),
+                    content: renderSteps(steps),
+                    status: 'completed',
+                    phase: 'progress',
+                    steps,
+                });
+                break;
+            }
+            case 'linked':
+                linkTask(clock, record, entry.task);
+                break;
         }
+    }
+    for (const working of seed.working ?? []) {
+        at = Timestamp.parse(working.startedAt);
+        const turn = beginTurn(clock, record, {
+            author: ParticipantRef.parse(working.author),
+            prompt: lastUserMessage(clock, record),
+        });
+        turn.steps.push(...(working.steps ?? []).map(toStep));
+    }
+    if (seed.recheck) {
+        const author = seed.recheck.author ?? lastAgentAuthor(clock, record);
+        if (!author) throw new Error(`Seeded chat ${seed.id} has a recheck but no agent`);
+        record.recheck = {
+            cause: seed.recheck.cause,
+            nextAt: Timestamp.parse(seed.recheck.nextAt),
+            rounds: seed.recheck.rounds,
+            author: ParticipantRef.parse(author),
+            prompt: lastUserMessage(clock, record),
+        };
     }
     if (record.placeholderTitle && record.title === '') {
         const main = mainAgent(record);
@@ -1455,6 +1622,21 @@ function replayChat(ctx: EngineContext, seed: InMemorySeedChat): ChatRecord {
     for (const memberId of seed.readBy ?? []) record.readUpTo.set(memberId, record.entryIds.length);
     record.updatedAt = at;
     return record;
+}
+
+/** What a turn without a prompt of its own answers: the thread's last User message. */
+function lastUserMessage(ctx: EngineContext, record: ChatRecord): string {
+    for (const entry of entriesOf(ctx, record).reverse()) {
+        if (entry.type === 'message' && entry.author.kind === 'user') return entry.content;
+    }
+    return '';
+}
+
+function lastAgentAuthor(ctx: EngineContext, record: ChatRecord): ParticipantRef | undefined {
+    for (const entry of entriesOf(ctx, record).reverse()) {
+        if (entry.type === 'message' && entry.author.kind === 'agent') return entry.author;
+    }
+    return mainAgent(record);
 }
 
 async function seedAudit(state: InMemoryState, entries: readonly InMemorySeedAuditEntry[]): Promise<void> {

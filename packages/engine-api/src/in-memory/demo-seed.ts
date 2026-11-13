@@ -1,5 +1,6 @@
 import type { InMemorySeed } from '../in-memory-client';
 import { builtInAgents } from './built-in-agents';
+import { COPYWRITER_AGENT_ID, COPYWRITER_TASK_ID, COPYWRITER_TASK_NAME, demoActivityChats } from './demo-chats';
 
 const MINUTE_MS = 60_000;
 const SHA = (char: string): string => char.repeat(64);
@@ -80,6 +81,11 @@ export function createDemoSeed(now: Date = new Date()): InMemorySeed {
                 createdAt: ago(60 * 24 * 7),
                 createdBy: 'member-jana',
             },
+            {
+                id: COPYWRITER_AGENT_ID,
+                source: 'Copywriter\nPERSONA Writes marketing copy from what the project really has',
+                createdAt: ago(60 * 24 * 3),
+            },
             // A Reborn engine always has its built-in agents.
             ...builtInAgents(owner, ago(60 * 24 * 30)),
         ],
@@ -159,6 +165,7 @@ export function createDemoSeed(now: Date = new Date()): InMemorySeed {
                     },
                 ],
             },
+            ...demoActivityChats(now),
         ],
         integrationSecrets: [
             { id: 'secret-github', name: 'GITHUB_TOKEN', scope: { kind: 'engine' }, status: 'active' },
@@ -798,6 +805,25 @@ function demoTasks(ago: (minutes: number) => string): NonNullable<InMemorySeed['
                     scheduledFor: ago(-60 * 24 * 6),
                 }),
             ],
+        },
+        {
+            task: {
+                ...base,
+                id: COPYWRITER_TASK_ID,
+                name: COPYWRITER_TASK_NAME,
+                agentId: COPYWRITER_AGENT_ID,
+                state: 'done',
+                doneCount: 1,
+                lastDoneAt: ago(3),
+                updatedAt: ago(3),
+                origin: {
+                    kind: 'chat',
+                    chatId: 'chat-copywriter',
+                    taskId: null,
+                    text: 'Chat {Marketingový text o agentech}',
+                },
+                sourcePath: 'tasks/marketingovy-text-webu-o-agentech.book',
+            },
         },
         {
             task: {

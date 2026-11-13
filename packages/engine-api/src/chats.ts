@@ -97,6 +97,8 @@ export const MAX_WORKING_STEPS = 20;
 /** `reasoning`: the model thinking. `tool`: a tool call the harness made. `note`: anything else the engine reports. */
 export const REPLY_STEP_KINDS = ['reasoning', 'tool', 'note'] as const;
 export const REPLY_STEP_LEVELS = ['info', 'warning', 'error'] as const;
+export type ReplyStepKind = (typeof REPLY_STEP_KINDS)[number];
+export type ReplyStepLevel = (typeof REPLY_STEP_LEVELS)[number];
 
 const replyStepFields = {
     /** The tool's name as the harness reports it (`Read`, `mcp__ptbk__create_task`); `null` unless `kind` is `tool`. */
@@ -148,6 +150,7 @@ export const CHAT_TASK_STATES = [
     'cancelled',
     'retired',
 ] as const;
+export type ChatTaskState = (typeof CHAT_TASK_STATES)[number];
 export const MAX_CHAT_TASKS = 100;
 /** Longest `detail` of a chat task and `cause` of a recheck. */
 export const MAX_CHAT_STATE_TEXT_LENGTH = 500;
@@ -278,6 +281,7 @@ export const MESSAGE_STATUSES = ['streaming', 'completed', 'failed', 'cancelled'
  * which had progress. An ordinary message, every User message among them, has no phase (`null`).
  */
 export const MESSAGE_PHASES = ['progress', 'final'] as const;
+export type MessagePhase = (typeof MESSAGE_PHASES)[number];
 
 const messageFields = {
     type: z.literal('message'),
@@ -402,6 +406,15 @@ export const ReplyStreamEvent = z.discriminatedUnion('type', [
     z.strictObject({ type: z.literal('failed'), problem: ProblemDetails }),
 ]);
 export type ReplyStreamEvent = z.infer<typeof ReplyStreamEvent>;
+/** The `completed` message of an engine from before 2026-11-13 has no phase and no steps. */
+export const ReplyStreamEventReader = toTolerant(
+    z.discriminatedUnion('type', [
+        z.object({ type: z.literal('delta'), seq: z.int().min(1), text: z.string() }),
+        z.object({ type: z.literal('completed'), message: MessageReader }),
+        z.object({ type: z.literal('failed'), problem: ProblemDetails }),
+    ]),
+);
+export type ReadReplyStreamEvent = z.output<typeof ReplyStreamEventReader>;
 
 export const ChatListQuery = PageQuery.extend({
     /** Threads this agent is a member of. */
@@ -505,7 +518,7 @@ export const CHAT_ROUTES = {
             "Stream a message's text as server-sent events while its author writes it; resumes after `Last-Event-ID`",
         permission: 'chats.read',
         params: ChatMessageParams,
-        responses: { 200: { kind: 'sse', event: ReplyStreamEvent } },
+        responses: { 200: { kind: 'sse', event: ReplyStreamEvent, read: ReplyStreamEventReader } },
     }),
     cancelChatReply: defineRoute({
         id: 'cancelChatReply',
@@ -514,7 +527,7 @@ export const CHAT_ROUTES = {
         summary: 'Stop a reply in progress (idempotent); its stream then ends with `failed` and code `cancelled`',
         permission: 'chats.write',
         params: ChatMessageParams,
-        responses: { 200: { kind: 'json', schema: Message } },
+        responses: { 200: { kind: 'json', schema: Message, read: toTolerant(MessageReader) } },
         problems: ['reply-finished'],
     }),
     retryChatReply: defineRoute({

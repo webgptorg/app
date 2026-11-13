@@ -20,6 +20,7 @@ import type { ENGINE_API_ROUTES, EngineApiRouteId } from '../routes';
 import { paginate } from './paging';
 import type { SortSpec, SortValue } from './paging';
 import type { InMemoryState } from './state';
+import type { StepInput } from './turns';
 
 export type HandlerResult<T> =
     { readonly kind: 'ok'; readonly data: T } | { readonly kind: 'problem'; readonly problem: ProblemDetails };
@@ -30,7 +31,17 @@ export interface ReplyChunk {
     readonly delayMs?: number;
 }
 
+/** One thing the agent does before it writes; `delayMs` is how long it takes. */
+export interface ScriptedStep extends StepInput {
+    readonly delayMs?: number;
+}
+
 export interface ScriptedReply {
+    /**
+     * What the agent does before it writes, saved as a `progress` message ahead of the `final` reply. With a delay on
+     * any step the turn is paced like a paced reply: the thread shows the agent working through them as they happen.
+     */
+    readonly steps?: readonly ScriptedStep[];
     /**
      * A reply whose chunks carry no `delayMs` generates as it is streamed, as in C-04's in-memory client. With a delay
      * on any chunk it is paced: it generates on its own from the moment it is sent, whether or not anyone reads it,

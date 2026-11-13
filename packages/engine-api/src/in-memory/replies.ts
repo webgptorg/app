@@ -1,13 +1,69 @@
-import type { Message, ReplyStreamEvent } from '../chats';
+import type { Message, ParticipantRef, ReplyStreamEvent } from '../chats';
 import type { MessageId } from '../common';
 import { createProblem } from '../problem';
 import type { EngineApiStreamItem } from '../route';
-import type { EngineContext, HandlerContext, ScriptedReply } from './kit';
+import type { Agent } from '../agents';
+import type { EngineContext, HandlerContext, HandlerResult, ReplyScript, ScriptedReply } from './kit';
+import { fail, ok } from './kit';
 import { advanceRun, runForMessage } from './runs';
+import type { ChatRecord } from './threads';
 import { settleMessage, touch } from './threads';
+import { REPLY_FAILED_CAUSE, addStep, beginTurn, endTurn, startText, toStep, turnWriting } from './turns';
+
+export interface NewTurn {
+    readonly author: ParticipantRef;
+    readonly script: ScriptedReply;
+    /** What the turn answers; a failed turn is attempted again with it. */
+    readonly prompt: string;
+    readonly rounds?: number;
+    readonly choices?: readonly string[];
+    /** Called once the reply message exists, before any text is generated. */
+    readonly onReply?: (reply: Message) => void;
+}
+
+/**
+ * An agent's turn: it is working from now on, goes through the script's steps, then writes its reply. Without delays
+ * the steps are done at once and the reply waits to be streamed; with them the turn runs on its own. The caller
+ * announces the start.
+ */
+export function startTurn(ctx: EngineContext, record: ChatRecord, turn: NewTurn): void {
+    const working = beginTurn(ctx, record, {
+        author: turn.author,
+        prompt: turn.prompt,
+        ...(turn.rounds === undefined ? {} : { rounds: turn.rounds }),
+    });
+    const steps = (turn.script.steps ?? []).map((step) => ({ step: toStep(step), delayMs: step.delayMs }));
+    const write = (announce: boolean): void => {
+        const reply = startText(ctx, record, working, {
+            content: '',
+            status: 'streaming',
+            ...(turn.choices === undefined ? {} : { choices: turn.choices }),
+        });
+        turn.onReply?.(reply);
+        if (announce) touch(ctx, record);
+        startReply(ctx, reply.id, turn.script);
+    };
+    if (steps.every(({ delayMs }) => delayMs === undefined)) {
+        working.steps.push(...steps.map(({ step }) => step));
+        write(false);
+        return;
+    }
+    void (async () => {
+        try {
+            for (const { step, delayMs } of steps) {
+                await ctx.replies.sleep(Math.max(0, delayMs ?? 0), new AbortController().signal);
+                addStep(ctx, record, working, step);
+            }
+        } catch {
+            // The injected sleep refused; the turn stays working, as an engine whose harness hung would.
+            return;
+        }
+        write(true);
+    })();
+}
 
 /** Stores the reply's script and, for a paced one, starts generating it right away. */
-export function startReply(ctx: EngineContext, messageId: MessageId, script: ScriptedReply): void {
+function startReply(ctx: EngineContext, messageId: MessageId, script: ScriptedReply): void {
     const chunks = script.chunks.map((chunk) =>
         typeof chunk === 'string'
             ? { text: chunk, delayMs: 0 }
@@ -27,9 +83,16 @@ export function cancelReply(ctx: EngineContext, message: Message): boolean {
     ctx.state.replies.get(message.id)?.stop.abort();
     const run = runForMessage(ctx, message.id);
     if (run) advanceRun(ctx, run.id, { status: 'cancelled' });
+    endTurnOf(ctx, message, { kind: 'cancelled' });
     touchThread(ctx, message.chatId);
     ctx.replies.notify(message.id);
     return true;
+}
+
+function endTurnOf(ctx: EngineContext, message: Message, outcome: Parameters<typeof endTurn>[3]): void {
+    const thread = ctx.state.chats.get(message.chatId);
+    const working = thread && turnWriting(thread, message.id);
+    if (thread && working) endTurn(ctx, thread, working, outcome);
 }
 
 async function generate(ctx: EngineContext, messageId: MessageId): Promise<void> {
@@ -67,6 +130,11 @@ function finish(ctx: EngineContext, messageId: MessageId): void {
     }
     const thread = ctx.state.chats.get(finished.chatId);
     if (thread) settleMessage(ctx, thread, finished);
+    endTurnOf(
+        ctx,
+        finished,
+        finished.status === 'failed' ? { kind: 'failed', cause: REPLY_FAILED_CAUSE } : { kind: 'completed' },
+    );
     touchThread(ctx, finished.chatId);
     ctx.replies.notify(messageId);
 }
@@ -148,4 +216,43 @@ function terminal(message: Message, id: string | null): EngineApiStreamItem<Repl
         case 'streaming':
             return { id, event: { type: 'completed', message } };
     }
+}
+
+/**
+ * Attempts a thread's failed reply now, as the engine does by itself at `recheck.nextAt`. Asking again while the
+ * attempt runs changes nothing; without a recheck there is nothing to retry. A recheck whose agent is gone is dropped.
+ */
+export function retry(
+    ctx: EngineContext,
+    record: ChatRecord,
+    replyScript: ReplyScript,
+    onReply?: (agent: Agent, reply: Message, prompt: string) => void,
+): HandlerResult<null> {
+    const recheck = record.recheck;
+    if (recheck === null) {
+        return record.working.some(({ rounds }) => rounds > 0)
+            ? ok(null)
+            : fail('nothing-to-retry', { detail: 'No failed reply waits in this thread.' });
+    }
+    record.recheck = null;
+    const agent = recheck.author.kind === 'agent' ? ctx.state.agents.get(recheck.author.key)?.agent : undefined;
+    if (!agent || agent.deletedAt !== null) {
+        touch(ctx, record);
+        return fail('nothing-to-retry', { detail: 'The agent whose reply failed is gone.' });
+    }
+    startTurn(ctx, record, {
+        author: recheck.author,
+        script: replyScript({ agent, content: recheck.prompt, chatId: record.id, messageIndex: record.messageCount }),
+        prompt: recheck.prompt,
+        rounds: recheck.rounds,
+        ...(onReply === undefined
+            ? {}
+            : {
+                  onReply: (reply: Message) => {
+                      onReply(agent, reply, recheck.prompt);
+                  },
+              }),
+    });
+    touch(ctx, record);
+    return ok(null);
 }

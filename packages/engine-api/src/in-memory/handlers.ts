@@ -13,7 +13,7 @@ import { FILE_HANDLERS } from './files';
 import { INTEGRATION_HANDLERS } from './integrations';
 import { agentRecord, fail, invalid, liveAgent, notFound, ok, page, sortBy, sortParam, time, within } from './kit';
 import type { HandlerContext, HandlerResult, Handlers } from './kit';
-import { cancelReply, startReply, streamReply } from './replies';
+import { cancelReply, retry, startTurn, streamReply } from './replies';
 import { RUN_HANDLERS } from './runs';
 import { TASK_HANDLERS } from './tasks';
 import { ACCESS_REQUEST_HANDLERS, activeOwnerCount, signOutEverywhere } from './access-requests';
@@ -35,6 +35,7 @@ import {
     requestKeyOf,
     respond,
     touch,
+    trackRun,
 } from './threads';
 import { TRIGGER_HANDLERS } from './triggers';
 import { WALLET_HANDLERS } from './wallet';
@@ -402,9 +403,9 @@ export const HANDLERS: Handlers = {
         keyed.remember(message.id);
         if (answered) answer(ctx, record, answered);
         record.readUpTo.set(ctx.member.id, record.entryIds.length);
-        const reply = respond(ctx, record, message, answered);
+        const turn = respond(ctx, record, message, answered);
+        if (turn) startTurn(ctx, record, turn);
         touch(ctx, record);
-        if (reply) startReply(ctx, reply.replyId, reply.script);
         return ok({ message });
     },
     markChatRead: ({ params }, ctx) => {
@@ -434,6 +435,15 @@ export const HANDLERS: Handlers = {
         if (!cancelReply(ctx, message)) return fail('reply-finished');
         const cancelled = ctx.state.messages.get(message.id);
         return cancelled ? ok(cancelled) : notFound('reply');
+    },
+    retryChatReply: ({ params }, ctx) => {
+        const record = ctx.state.chats.get(params.chatId);
+        if (!record) return notFound('chat');
+        const retried = retry(ctx, record, ctx.replyScript, (agent, reply, prompt) => {
+            trackRun(ctx, record, agent, reply, prompt);
+        });
+        if (retried.kind === 'problem') return retried;
+        return ok(chatView(ctx, record, ctx.member.id));
     },
 
     listMembers: ({ query }, ctx) =>

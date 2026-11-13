@@ -491,11 +491,11 @@ describe('in-memory demo seed', () => {
 
     it('answers every list route with data', async () => {
         const { client } = demo({ capabilities: SCANNING });
-        expect(ok(await client.agents.list({}, signal())).items).toHaveLength(10);
-        expect(ok(await client.agents.list({ origin: 'content' }, signal())).items).toHaveLength(3);
+        expect(ok(await client.agents.list({}, signal())).items).toHaveLength(11);
+        expect(ok(await client.agents.list({ origin: 'content' }, signal())).items).toHaveLength(4);
         expect(ok(await client.chats.listAll({ q: 'billing' }, signal())).items).toHaveLength(1);
         const withMax = ok(await client.chats.listAll({ agentId: AgentId.parse('agent-max') }, signal())).items;
-        expect(withMax.map(({ questions }) => questions.length)).toEqual([1]);
+        expect(withMax.map(({ questions }) => questions.length)).toEqual([0, 1]);
         expect(ok(await client.runs.list({}, signal())).items.length).toBeGreaterThanOrEqual(6);
         expect(ok(await client.runs.stats({}, signal()))).toMatchObject({ running: 1, queued: 1, failedLast24h: 1 });
         expect(ok(await client.files.list({ purpose: 'knowledge' }, signal())).items).toHaveLength(1);
