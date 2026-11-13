@@ -276,7 +276,8 @@ test.describe('the built bundle under the engine CSP', () => {
             await expect(page).toHaveURL(/status=queued%2Crunning%2Cfailed|status=queued,running,failed/);
             await page.keyboard.press('Escape');
             await expect(
-                bar.getByRole('button', { name: 'Status: Queued, Running, Failed', exact: true }),
+                // The counted values are read from a visually hidden node, which Chrome sets apart with a space.
+                bar.getByRole('button', { name: /^Status: Queued, Running ?, Failed$/ }),
             ).toBeVisible();
             expect(await page.evaluate(() => window.__ptbkCspViolations ?? [])).toEqual([]);
         });
