@@ -1,6 +1,6 @@
 import { activityPermission } from '@ptbk/engine-api';
 import type { ActivityItem } from '@ptbk/engine-api';
-import { Button, Card, EmptyState, ErrorState, Skeleton, useReducedMotion } from '@ptbk/ui';
+import { Button, EmptyState, ErrorState, Section, Skeleton, useReducedMotion } from '@ptbk/ui';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { getRouteApi } from '@tanstack/react-router';
 import { ArrowUp } from 'lucide-react';
@@ -137,14 +137,14 @@ export function ActivityFeed() {
     }
 
     return (
-        <Card title={m.activity_title()} className="min-w-0">
+        <Section title={m.activity_title()} divided={false} className="min-w-0">
             <div ref={sentinelRef} data-activity-top="" />
             {/* Filters only once there is something to filter; a chosen area keeps them, so the way back stays. */}
             {areas.length > 0 && (area !== null || items.length > 0) ? (
                 <div
                     role="group"
                     aria-label={m.activity_filter_label()}
-                    className="-mx-1 flex gap-2 overflow-x-auto px-1 pt-1 pb-2"
+                    className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1 scroll-quiet"
                 >
                     {[null, ...areas].map((chip) => (
                         <button
@@ -155,10 +155,11 @@ export function ActivityFeed() {
                                 void navigate({ search: (previous) => ({ ...previous, activity: chip ?? undefined }) });
                             }}
                             className={cx(
-                                'min-h-9 shrink-0 rounded-pill border px-3 text-sm',
+                                'min-h-7 shrink-0 cursor-pointer rounded-pill px-2.5 text-xs font-medium',
+                                'motion-safe:transition-colors motion-safe:duration-(--motion-state)',
                                 chip === area
-                                    ? 'border-accent bg-selected font-medium text-accent-text'
-                                    : 'border-border text-text hover:bg-hover',
+                                    ? 'bg-selected text-text'
+                                    : 'text-text-muted hover:bg-hover hover:text-text',
                             )}
                         >
                             {chip === null ? m.activity_area_all() : AREA_LABELS[chip]()}
@@ -170,7 +171,7 @@ export function ActivityFeed() {
             <p aria-live="polite" className="sr-only">
                 {announcement}
             </p>
-        </Card>
+        </Section>
     );
 }
 

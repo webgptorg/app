@@ -1987,5 +1987,12 @@
   "task_history_column_occurrence": "Occurrence",
   "task_history_column_when": "When",
   "task_history_column_summary": "Summary",
-  "task_history_column_runs": "Runs"
+  "task_history_column_runs": "Runs",
+  "members_attention_access": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": { "countPlural=one": "{count} person asks to join", "countPlural=other": "{count} people ask to join" }
+    }
+  ]
 }
