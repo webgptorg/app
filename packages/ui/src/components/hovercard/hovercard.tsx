@@ -188,7 +188,7 @@ export function useHovercard({
                 onBlur={(event) => {
                     if (!focusStaysInside(event)) hide();
                 }}
-                className="fixed inset-auto m-0 block w-max max-w-[min(20rem,calc(100vw-1rem))] rounded-(--hovercard-radius) border border-(--hovercard-border) bg-(--hovercard-bg) p-3 text-start text-sm font-normal whitespace-normal text-(--hovercard-text) shadow-(--hovercard-shadow) motion-safe:animate-fade-in"
+                className="fixed inset-auto m-0 w-max open:block max-w-[min(20rem,calc(100vw-1rem))] rounded-(--hovercard-radius) border border-(--hovercard-border) bg-(--hovercard-bg) p-3 text-start text-sm font-normal whitespace-normal text-(--hovercard-text) shadow-(--hovercard-shadow) motion-safe:animate-fade-in"
             >
                 <HovercardHideContext value={hide}>{open ? content : null}</HovercardHideContext>
             </span>
