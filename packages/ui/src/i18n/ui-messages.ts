@@ -55,6 +55,21 @@ export interface UiMessages {
     readonly clearFilters: () => string;
     readonly removeFilter: (params: { readonly label: string }) => string;
     readonly showResults: () => string;
+    readonly addFilter: () => string;
+    readonly filterBy: () => string;
+    readonly backToFilters: () => string;
+    readonly searchOptions: (params: { readonly label: string }) => string;
+    readonly noMatches: () => string;
+    readonly rangeFrom: () => string;
+    readonly rangeTo: () => string;
+    readonly rangeSince: (params: { readonly date: string }) => string;
+    readonly rangeUntil: (params: { readonly date: string }) => string;
+    readonly done: () => string;
+    readonly sort: () => string;
+    readonly sortedBy: (params: { readonly column: string }) => string;
+    readonly ascending: () => string;
+    readonly descending: () => string;
+    readonly viewOptions: () => string;
 
     readonly trustMarkVerifying: () => string;
     readonly trustMarkVerified: () => string;

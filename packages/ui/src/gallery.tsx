@@ -1,5 +1,5 @@
 import { actionMenuGallery } from './components/action-menu/action-menu.gallery';
-import { filterBarGallery } from './components/filter-bar/filter-bar.gallery';
+import { legacyFilterBarGallery } from './components/filter-bar/legacy-filter-bar.gallery';
 import { tooltipGallery } from './components/tooltip/tooltip.gallery';
 import { hovercardGallery } from './components/hovercard/hovercard.gallery';
 import { emptyValueGallery } from './components/empty-value/empty-value.gallery';
@@ -64,12 +64,12 @@ export const GALLERY_ENTRIES: readonly GalleryEntry[] = [
     errorStateGallery,
     externalLinkGallery,
     fieldGallery,
-    filterBarGallery,
     formsGallery,
     hovercardGallery,
     iconButtonGallery,
     inputGallery,
     languageSwitchGallery,
+    legacyFilterBarGallery,
     menuGallery,
     paginationGallery,
     relativeTimeGallery,

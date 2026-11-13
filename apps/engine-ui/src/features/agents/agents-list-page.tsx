@@ -1,6 +1,6 @@
 import { AGENT_RUN_STATES, AGENT_VISIBILITIES, KNOWN_CAPABILITIES } from '@ptbk/engine-api';
 import type { Agent } from '@ptbk/engine-api';
-import { Button, createDataTableColumnHelper, DataTable, FilterBar, RelativeTime } from '@ptbk/ui';
+import { Button, createDataTableColumnHelper, DataTable, LegacyFilterBar, RelativeTime } from '@ptbk/ui';
 import type { DataTableColumnDef, SortingState } from '@ptbk/ui';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { getRouteApi } from '@tanstack/react-router';
@@ -181,7 +181,7 @@ export function AgentsListPage() {
 
     return (
         <Page title={m.agents_title()} actions={newAgent}>
-            <FilterBar
+            <LegacyFilterBar
                 search={{
                     label: m.agents_search_label(),
                     placeholder: m.agents_search_placeholder(),
