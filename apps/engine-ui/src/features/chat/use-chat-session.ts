@@ -27,6 +27,11 @@ export interface ChatSession {
      * nobody could confirm, sends it again under the same request key, which cannot save it twice.
      */
     readonly retry: () => void;
+    /**
+     * Asks the engine to attempt the thread's failed reply now (`POST /retry`), then refreshes the thread. It never
+     * sends the member's message again: that is saved, and a new request key would save it twice.
+     */
+    readonly retryReply: () => Promise<void>;
 }
 
 export interface ChatSessionOptions {
@@ -247,6 +252,21 @@ export function useChatSession({ chatId, updatedAt, entries }: ChatSessionOption
         }
     }, [follow, send, recheckSend]);
 
+    const retryReply = useCallback(async () => {
+        try {
+            const response = await engineApi.chats.retry(chatId, unmounted.current.signal);
+            if (response.kind === 'ok') {
+                queryClient.setQueryData(chatKeys.detail(chatId), response.data);
+            } else if (response.problem.code !== 'nothing-to-retry') {
+                toast.show({ tone: 'danger', title: m.error_mutation_failed() });
+            }
+        } catch {
+            if (!unmounted.current.signal.aborted) toast.show({ tone: 'danger', title: m.error_mutation_failed() });
+        }
+        // Nothing waiting to retry means the attempt already ran or the reply came after all: check what is there now.
+        await Promise.all([queryClient.invalidateQueries({ queryKey: chatKeys.detail(chatId) }), refreshNewest()]);
+    }, [engineApi, queryClient, chatId, toast, refreshNewest]);
+
     useEngineEvents({
         onEvent: () => undefined,
         onReconnect: () => {
@@ -287,5 +307,5 @@ export function useChatSession({ chatId, updatedAt, entries }: ChatSessionOption
         }
     }, [state.phase, settledStatus]);
 
-    return { state, send, stop, retry };
+    return { state, send, stop, retry, retryReply };
 }

@@ -31,8 +31,11 @@ export interface MessageListProps {
     readonly onJumpedToLatest?: () => void;
 }
 
+// An agent's steps and the reply after them are one turn, under one author header.
 const authorOf = (view: ThreadView | undefined): string | null =>
-    view?.kind === 'message' ? `${view.author.kind}:${view.author.key}:${view.createdBy ?? ''}` : null;
+    view?.kind === 'message' || view?.kind === 'steps'
+        ? `${view.author.kind}:${view.author.key}:${view.createdBy ?? ''}`
+        : null;
 
 /** A message by someone other than the one before it (or after an event) starts a new turn, which names its author. */
 function turnOf(view: ThreadView, before: ThreadView | undefined, me: MemberId) {

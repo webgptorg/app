@@ -4,6 +4,7 @@ import { EmptyState, ErrorState } from '@ptbk/ui';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import { useBrowser } from '../../app/browser-context';
 import { cx } from '../../app/cx';
 import { useEngineApi } from '../../app/engine-api-context';
 import { useAllows } from '../../app/registry/use-visible-features';
@@ -19,6 +20,7 @@ import { isReplyActive } from './chat-session';
 import { Composer } from './composer';
 import type { ComposerAgent } from './composer';
 import { MessageList } from './message-list';
+import { RetryReplyProvider } from './reply-status-card';
 import { threadViews } from './message-views';
 import { buildThreadReferences, ThreadReferencesProvider } from './references/thread-references';
 import { useChatSession } from './use-chat-session';
@@ -50,12 +52,13 @@ export function ChatPanel({ chat, canWrite, fill = false }: ChatPanelProps) {
     const engineApi = useEngineApi();
     const queryClient = useQueryClient();
     const me = useCurrentMember();
+    const { timeZone } = useBrowser();
     const history = useInfiniteQuery(chatEntriesQueryOptions(engineApi, chat.id));
     const entries = useMemo(() => entriesInOrder(history.data), [history.data]);
     const session = useChatSession({ chatId: chat.id, updatedAt: chat.updatedAt, entries });
     const views = useMemo(
-        () => threadViews(chat, entries, session.state, { memberId: me.memberId, canSendAgain: canWrite }),
-        [chat, entries, session.state, me.memberId, canWrite],
+        () => threadViews(chat, entries, session.state, { memberId: me.memberId, canSendAgain: canWrite, timeZone }),
+        [chat, entries, session.state, me.memberId, canWrite, timeZone],
     );
     const { can } = usePermissions();
     const projectAgents = useQuery({
@@ -203,7 +206,10 @@ export function ChatPanel({ chat, canWrite, fill = false }: ChatPanelProps) {
 
     return (
         <div ref={panelRef} className={cx('flex flex-col', fill ? 'min-h-0 flex-1' : 'h-[70dvh] min-h-96')}>
-            <ThreadReferencesProvider value={references}>{body}</ThreadReferencesProvider>
+            <ThreadReferencesProvider value={references}>
+                {/* Retrying a reply needs `chats.write`; without it the error cards only say what happened. */}
+                {canWrite ? <RetryReplyProvider retry={session.retryReply}>{body}</RetryReplyProvider> : body}
+            </ThreadReferencesProvider>
             <div aria-live="polite" aria-atomic="true" className="sr-only">
                 {announcement}
             </div>

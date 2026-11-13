@@ -16,6 +16,7 @@ export function testChatViews(state: TestChatState, memberId: MemberId, agentNam
         author: role === 'user' ? USER : { kind: 'agent', key: 'draft' },
         authorName: role === 'user' ? '' : agentName,
         createdBy: role === 'user' ? memberId : null,
+        createdAt: null,
         text,
         markdown: role === 'agent' && state === null,
         state,
