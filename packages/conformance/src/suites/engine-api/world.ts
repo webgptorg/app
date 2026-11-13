@@ -33,8 +33,8 @@ export interface Reply {
 const REPLY_POLL_MS = 250;
 
 /**
- * The first agent message after `sentId`: replies are entries of their own, which the engine may add a moment after
- * the send is acknowledged. Fails after `REPLY_TIMEOUT_MS`.
+ * The first agent reply after `sentId`, skipping `progress` updates: replies are entries of their own, which the engine
+ * may add a moment after the send is acknowledged. Fails after `REPLY_TIMEOUT_MS`.
  */
 export async function replyAfter(api: EngineApi, chatId: string, sentId: string): Promise<Message> {
     const deadline = Date.now() + REPLY_TIMEOUT_MS;
@@ -43,7 +43,8 @@ export async function replyAfter(api: EngineApi, chatId: string, sentId: string)
         const sentAt = items.findIndex(({ id }) => id === sentId);
         const after = sentAt === -1 ? [] : items.slice(0, sentAt).reverse();
         const reply = after.find(
-            (entry): entry is Message => entry.type === 'message' && entry.author.kind === 'agent',
+            (entry): entry is Message =>
+                entry.type === 'message' && entry.author.kind === 'agent' && entry.phase !== 'progress',
         );
         if (reply) return reply;
         if (Date.now() > deadline) fail(`no agent answered within ${String(REPLY_TIMEOUT_MS)} ms`);
