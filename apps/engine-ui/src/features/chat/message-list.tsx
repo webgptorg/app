@@ -169,7 +169,8 @@ export function MessageList(props: MessageListProps) {
                 tabIndex={0}
                 onScroll={onScroll}
                 // The last lines fade out under the floating composer, and the padding lets them scroll clear of it.
-                // "Jump to latest" sits inside that faded band, so it never hides a line the reader can still read.
+                // "Jump to latest" rests on the composer's top edge, inside that faded band, so it never hides a line the
+                // reader can still read.
                 className="scroll-quiet h-full overflow-y-auto overscroll-contain px-1 pb-16 [mask-image:linear-gradient(to_top,transparent,#000_4rem)] focus-visible:outline-2 focus-visible:outline-focus"
             >
                 <div className="mx-auto w-full max-w-3xl">
@@ -202,7 +203,7 @@ export function MessageList(props: MessageListProps) {
             {atBottom ? null : (
                 <button
                     type="button"
-                    className="absolute bottom-7 left-1/2 inline-flex h-7 -translate-x-1/2 cursor-pointer items-center gap-1.5 rounded-pill bg-raised px-3 text-xs font-medium text-text-muted shadow-raised ring-1 ring-divider hover:text-text motion-safe:animate-rise-in"
+                    className="absolute bottom-3 left-1/2 z-20 inline-flex h-7 -translate-x-1/2 cursor-pointer items-center gap-1.5 rounded-pill bg-raised px-3 text-xs font-medium text-text-muted shadow-raised ring-1 ring-divider hover:text-text motion-safe:animate-rise-in"
                     onClick={() => {
                         atBottomRef.current = true;
                         setAtBottom(true);
