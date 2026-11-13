@@ -259,9 +259,16 @@
     background-color: color-mix(in oklab, var(--tint, var(--color-text-muted)) var(--soft-surface-wash), transparent);
 }
 
-/* `--tint` as text, pulled towards the text colour so an arbitrary profile colour stays readable. */
+/*
+ * `--tint` as text. A profile colour comes with label colours derived to hold AA in each theme (`tintStyle` sets
+ * `--tint-text-light` and `--tint-text-dark`); our palette tokens fall back to the tint pulled towards the text colour.
+ */
 @utility text-tint {
-    color: color-mix(in oklab, var(--tint, var(--color-text)) 72%, var(--color-text));
+    color: var(--tint-text-light, color-mix(in oklab, var(--tint, var(--color-text)) 72%, var(--color-text)));
+
+    &:where(.dark, .dark *) {
+        color: var(--tint-text-dark, color-mix(in oklab, var(--tint, var(--color-text)) 72%, var(--color-text)));
+    }
 }
 
 @utility bg-tint {

@@ -1,5 +1,5 @@
 import { cx } from '../../internal/cx';
-import { tintStyle } from '../../theme/tint';
+import { TINT_TEXT_RESET, tintStyle } from '../../theme/tint';
 
 export type AvatarSize = '2xs' | 'xs' | 'sm' | 'md' | 'lg';
 
@@ -43,7 +43,7 @@ export function Avatar({ name, src, tint, size = 'sm', className }: AvatarProps)
         <span
             aria-hidden="true"
             data-initial={Array.from(name.trim())[0]?.toLocaleUpperCase() ?? ''}
-            style={tintStyle(tint)}
+            style={tintStyle(tint) ?? TINT_TEXT_RESET}
             className={cx(
                 classes,
                 '[--tint:var(--avatar-fallback-tint)] bg-[color-mix(in_oklab,var(--tint)_var(--avatar-wash),var(--avatar-bg))] text-tint before:content-[attr(data-initial)]',
