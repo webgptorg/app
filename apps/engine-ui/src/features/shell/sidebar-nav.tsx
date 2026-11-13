@@ -86,12 +86,12 @@ export function SidebarNav({ collapsed = false, onNavigate }: SidebarNavProps) {
                                             {...label.target(text)}
                                             className={cx(
                                                 'group/nav flex min-h-8 items-center gap-2.5 rounded-control px-2.5 text-sm text-text-muted no-underline',
-                                                'hover:bg-quiet-hover hover:text-text',
+                                                'hover:bg-hover hover:text-text',
                                                 // Inset, so the scrolling nav doesn't clip the ring.
                                                 'focus-visible:-outline-offset-2',
                                                 'motion-safe:transition-colors motion-safe:duration-(--motion-state)',
                                                 // A quiet wash and full-strength text mark the page; no accent fill.
-                                                'aria-[current=page]:bg-quiet-selected aria-[current=page]:font-medium aria-[current=page]:text-text',
+                                                'aria-[current=page]:bg-selected aria-[current=page]:font-medium aria-[current=page]:text-text',
                                                 collapsed && 'relative min-h-9 justify-center px-0',
                                             )}
                                         >

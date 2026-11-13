@@ -21,7 +21,6 @@ describe('AgentAvatar', () => {
         const image = container.querySelector('img');
         expect(image?.getAttribute('src')).toBe('/avatars/ada.png');
         expect(image?.getAttribute('alt')).toBe('');
-        expect(image?.style.getPropertyValue('--tint')).toBe('#ff0000');
         expect(image?.className).toContain('size-14');
     });
 
@@ -30,8 +29,7 @@ describe('AgentAvatar', () => {
             <AgentAvatar name=" ádam" profile={profile({ avatarUrl: 'https://attacker.example/x.png' })} />,
         );
         expect(container.querySelector('img')).toBeNull();
-        expect(container.textContent).toBe('Á');
-        expect(container.querySelector('span')?.style.getPropertyValue('--tint')).toBe('');
+        expect(container.querySelector('span')?.dataset['initial']).toBe('Á');
     });
 
     it("tints the initial with the agent's colour: its profile colour, else its key's palette hue", () => {
@@ -55,6 +53,6 @@ describe('AgentAvatar', () => {
 
     it('shows nothing for a blank name', () => {
         const { container } = renderUi(<AgentAvatar name="  " profile={profile()} />);
-        expect(container.querySelector('span')?.textContent).toBe('');
+        expect(container.querySelector('span')?.dataset['initial']).toBe('');
     });
 });

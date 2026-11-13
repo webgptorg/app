@@ -1983,5 +1983,9 @@
   "entity_open_trigger": "Open trigger",
   "entity_open_integration": "Open integration",
   "entity_open_members": "Open members",
-  "entity_chat_with": "With {names}"
+  "entity_chat_with": "With {names}",
+  "task_history_column_occurrence": "Occurrence",
+  "task_history_column_when": "When",
+  "task_history_column_summary": "Summary",
+  "task_history_column_runs": "Runs"
 }

@@ -1,8 +1,8 @@
 import type { ReadTask, ReadTaskOccurrence, TaskState } from '@ptbk/engine-api';
+import { StatusPill } from '@ptbk/ui';
+import type { StatusTone } from '@ptbk/ui';
 
 import { m } from '../../paraglide/messages';
-import { StatusPill } from '../entities/status';
-import type { EntityTone } from '../entities/status';
 
 /** A state this UI does not know yet (a newer engine's) reads as `unknown`, never as an error. */
 export type TaskStateValue = ReadTask['state'];
@@ -68,7 +68,7 @@ export function taskSectionLabel(section: TaskSection): string {
 
 interface StateLook {
     readonly label: string;
-    readonly tone: EntityTone;
+    readonly tone: StatusTone;
 }
 
 function lookOf(state: TaskStateValue): StateLook {
@@ -76,7 +76,7 @@ function lookOf(state: TaskStateValue): StateLook {
         case 'active':
             return { label: m.task_state_active(), tone: 'live' };
         case 'awaiting-user':
-            return { label: m.task_state_awaiting_user(), tone: 'attention' };
+            return { label: m.task_state_awaiting_user(), tone: 'warning' };
         case 'ready':
             return { label: m.task_state_ready(), tone: 'waiting' };
         case 'needs-assignment':
@@ -84,40 +84,44 @@ function lookOf(state: TaskStateValue): StateLook {
         case 'assigning':
             return { label: m.task_state_assigning(), tone: 'waiting' };
         case 'needs-recovery':
-            return { label: m.task_state_needs_recovery(), tone: 'attention' };
+            return { label: m.task_state_needs_recovery(), tone: 'warning' };
         case 'failed':
-            return { label: m.task_state_failed(), tone: 'trouble' };
+            return { label: m.task_state_failed(), tone: 'danger' };
         case 'incompatible':
-            return { label: m.task_state_incompatible(), tone: 'trouble' };
+            return { label: m.task_state_incompatible(), tone: 'danger' };
         case 'blocked':
-            return { label: m.task_state_blocked(), tone: 'trouble' };
+            return { label: m.task_state_blocked(), tone: 'danger' };
         case 'waiting-until':
-            return { label: m.task_state_waiting_until(), tone: 'quiet' };
+            return { label: m.task_state_waiting_until(), tone: 'waiting' };
         case 'waiting-dependency':
-            return { label: m.task_state_waiting_dependency(), tone: 'quiet' };
+            return { label: m.task_state_waiting_dependency(), tone: 'waiting' };
         case 'not-ready':
-            return { label: m.task_state_not_ready(), tone: 'quiet' };
+            return { label: m.task_state_not_ready(), tone: 'waiting' };
         case 'placeholder':
-            return { label: m.task_state_placeholder(), tone: 'quiet' };
+            return { label: m.task_state_placeholder(), tone: 'neutral' };
         case 'done':
-            return { label: m.task_state_done(), tone: 'done' };
+            return { label: m.task_state_done(), tone: 'success' };
         case 'cancelled':
-            return { label: m.task_state_cancelled(), tone: 'quiet' };
+            return { label: m.task_state_cancelled(), tone: 'neutral' };
         case 'retired':
-            return { label: m.task_state_retired(), tone: 'quiet' };
+            return { label: m.task_state_retired(), tone: 'neutral' };
         case 'unknown':
-            return { label: m.task_state_unknown(), tone: 'quiet' };
+            return { label: m.task_state_unknown(), tone: 'neutral' };
     }
 }
 
-export function taskTone(state: TaskStateValue): EntityTone {
+export function taskTone(state: TaskStateValue): StatusTone {
     return lookOf(state).tone;
 }
 
 /** The state in words with its dot, never colour alone. */
 export function TaskStateBadge({ state, className }: { readonly state: TaskStateValue; readonly className?: string }) {
     const look = lookOf(state);
-    return <StatusPill tone={look.tone} label={look.label} {...(className === undefined ? {} : { className })} />;
+    return (
+        <StatusPill tone={look.tone} {...(className === undefined ? {} : { className })}>
+            {look.label}
+        </StatusPill>
+    );
 }
 
 export function taskStateLabel(state: TaskStateValue): string {
@@ -145,12 +149,12 @@ export function occurrenceStateLabel(state: ReadTaskOccurrence['state']): string
     }
 }
 
-export function occurrenceTone(state: ReadTaskOccurrence['state']): EntityTone {
-    if (state === 'completed') return 'done';
-    if (state === 'failed' || state === 'interrupted') return 'trouble';
+export function occurrenceTone(state: ReadTaskOccurrence['state']): StatusTone {
+    if (state === 'completed') return 'success';
+    if (state === 'failed' || state === 'interrupted') return 'danger';
     if (state === 'running') return 'live';
-    if (state === 'waiting') return 'waiting';
-    return 'quiet';
+    if (state === 'waiting' || state === 'pending') return 'waiting';
+    return 'neutral';
 }
 
 export function occurrenceReasonLabel(reason: ReadTaskOccurrence['reason']): string {

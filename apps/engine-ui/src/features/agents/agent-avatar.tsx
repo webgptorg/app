@@ -1,24 +1,17 @@
 import type { AgentProfile } from '@ptbk/engine-api';
+import { Avatar } from '@ptbk/ui';
+import type { AvatarSize } from '@ptbk/ui';
 
-import { cx } from '../../app/cx';
 import { safeImageSource } from '../../security/safe-url';
-import { agentColor, tintStyle } from '../chat/references/agent-color';
+import { agentColor } from '../chat/references/agent-color';
 
-const SIZE_CLASSES = {
-    '2xs': 'size-4 text-[0.5625rem]',
-    xs: 'size-6 text-xs',
-    sm: 'size-8 text-sm',
-    lg: 'size-14 text-xl',
-} as const;
-export type AgentAvatarSize = keyof typeof SIZE_CLASSES;
-
-const HEX_COLOR = /^#[0-9a-f]{6}$/i;
+const SIZES = { '2xs': '2xs', xs: 'sm', sm: 'md', lg: 'lg' } as const satisfies Record<string, AvatarSize>;
+export type AgentAvatarSize = keyof typeof SIZES;
 
 /**
- * The agent's picture, or its initial on a wash of its colour, so an agent looks the same in lists, chips, the
- * palette and a thread. The colour is its profile colour (engine data, a validated `#rrggbb`) or the palette hue its
- * key hashes to, applied through the CSSOM as `--tint`; the initial is mixed towards the text colour, so it stays
- * readable whatever the profile says. Without `agentKey` (an agent not known by ID) only a profile colour tints it.
+ * The agent's picture, or its initial on a wash of its colour: its profile colour, else the palette hue its key hashes
+ * to, so an agent looks the same in lists, chips, the palette and a thread. Without `agentKey` (an agent not known by
+ * ID) only a profile colour tints it. `Avatar` passes only a `#rrggbb` or a colour token on to CSS.
  */
 export function AgentAvatar({
     name,
@@ -33,41 +26,13 @@ export function AgentAvatar({
     readonly size?: AgentAvatarSize;
     readonly className?: string | undefined;
 }) {
-    const source = profile.avatarUrl === null ? null : safeImageSource(profile.avatarUrl);
-    const color =
-        agentKey === undefined
-            ? profile.color !== null && HEX_COLOR.test(profile.color)
-                ? profile.color
-                : null
-            : agentColor(profile.color, agentKey);
-    const classes = cx(
-        'inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full font-semibold select-none',
-        SIZE_CLASSES[size],
-        className,
-    );
-    if (source !== null) {
-        return (
-            <img
-                src={source}
-                alt=""
-                className={cx(classes, 'object-cover outline -outline-offset-1 outline-divider')}
-                style={color === null ? undefined : tintStyle(color)}
-            />
-        );
-    }
     return (
-        <span
-            aria-hidden="true"
-            data-agent-avatar=""
-            className={cx(
-                classes,
-                color === null
-                    ? 'bg-sunken text-text-muted'
-                    : 'bg-[color-mix(in_oklab,var(--tint)_16%,var(--color-raised))] text-tint',
-            )}
-            style={color === null ? undefined : tintStyle(color)}
-        >
-            {Array.from(name.trim())[0]?.toLocaleUpperCase() ?? null}
-        </span>
+        <Avatar
+            name={name}
+            src={profile.avatarUrl === null ? null : safeImageSource(profile.avatarUrl)}
+            tint={agentKey === undefined ? profile.color : agentColor(profile.color, agentKey)}
+            size={SIZES[size]}
+            {...(className === undefined ? {} : { className })}
+        />
     );
 }

@@ -25,28 +25,3 @@
     mask-image: linear-gradient(to bottom, transparent, black 1.5rem, black calc(100% - 1.5rem), transparent);
 }
 
-/*
- * Washes of the text colour rather than fixed greys, so a hover or the current page reads the same on any surface the
- * sidebar, a list or a menu sits on, in both themes.
- */
-@utility bg-quiet-hover {
-    background-color: color-mix(in oklab, var(--color-text) 5%, transparent);
-}
-
-@utility bg-quiet-selected {
-    background-color: color-mix(in oklab, var(--color-text) 8%, transparent);
-}
-
-/*
- * A route change cross-fades in 150 ms; a list row's title morphs into the detail heading (`morphName`) a little
- * slower, so the eye can follow it. Reduced motion turns every transition off (packages/ui theme and the router).
- */
-::view-transition-old(root),
-::view-transition-new(root) {
-    animation-duration: var(--motion-state);
-}
-
-::view-transition-group(*) {
-    animation-duration: var(--motion-enter);
-    animation-timing-function: var(--ease-enter);
-}

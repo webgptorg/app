@@ -35,10 +35,11 @@ describe('task presentation', () => {
         for (const reason of [...OCCURRENCE_REASONS, 'unknown' as const]) {
             expect(occurrenceReasonLabel(reason)).not.toBe('');
         }
-        expect(occurrenceTone('completed')).toBe('done');
-        expect(occurrenceTone('interrupted')).toBe('trouble');
+        expect(occurrenceTone('completed')).toBe('success');
+        expect(occurrenceTone('interrupted')).toBe('danger');
         expect(occurrenceTone('running')).toBe('live');
-        expect(occurrenceTone('pending')).toBe('quiet');
+        expect(occurrenceTone('pending')).toBe('waiting');
+        expect(occurrenceTone('cancelled')).toBe('neutral');
     });
 
     it('reads the URL leniently and sends the engine only what is set', () => {

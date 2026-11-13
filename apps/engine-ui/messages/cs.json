@@ -2042,5 +2042,9 @@
   "entity_open_trigger": "Otevřít spouštěč",
   "entity_open_integration": "Otevřít integraci",
   "entity_open_members": "Otevřít členy",
-  "entity_chat_with": "S: {names}"
+  "entity_chat_with": "S: {names}",
+  "task_history_column_occurrence": "Výskyt",
+  "task_history_column_when": "Kdy",
+  "task_history_column_summary": "Shrnutí",
+  "task_history_column_runs": "Běhy"
 }

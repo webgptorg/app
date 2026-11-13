@@ -1,19 +1,42 @@
 import { ChatId, KNOWN_CAPABILITIES, TaskId } from '@ptbk/engine-api';
 import type { ReadTaskDetail, ReadTaskOccurrence, TaskLinkTarget } from '@ptbk/engine-api';
-import { Badge, Button, Card, EmptyState, ErrorState, RelativeTime, Skeleton, useLocale } from '@ptbk/ui';
+import {
+    Badge,
+    Button,
+    EmptyState,
+    ErrorState,
+    RelativeTime,
+    Section,
+    Skeleton,
+    STATUS_TINT_CLASSES,
+    StatusPill,
+    useLocale,
+    viewTransitionStyle,
+} from '@ptbk/ui';
+import type { StatusTone } from '@ptbk/ui';
 import { useQuery } from '@tanstack/react-query';
 import { getRouteApi } from '@tanstack/react-router';
 import { Circle, CircleCheck, MessageSquare } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 import { classifyApiError } from '../../app/api-errors';
+import { cx } from '../../app/cx';
 import { useEngineApi } from '../../app/engine-api-context';
-import { ButtonLink, Link } from '../../app/link';
+import { ButtonLink } from '../../app/link';
 import { useAllows } from '../../app/registry/use-visible-features';
 import { m } from '../../paraglide/messages';
 import { chatQueryOptions } from '../chat/chat-queries';
-import { BackLink, Page } from '../shell/page';
-import { occurrenceReasonLabel, occurrenceStateLabel, occurrenceTone, TaskStateBadge } from './task-state';
+import { EntityChip } from '../entities/entity-chip';
+import { Crumb, Page } from '../shell/page';
+import { splitTaskName } from './task-name';
+import {
+    occurrenceReasonLabel,
+    occurrenceStateLabel,
+    occurrenceTone,
+    TaskStateBadge,
+    taskStateLabel,
+    taskTone,
+} from './task-state';
 import { useTask, useTaskOccurrences } from './tasks-queries';
 
 const route = getRouteApi('/tasks/$taskId');
@@ -29,11 +52,15 @@ export function TaskDetailPage() {
     return taskId === undefined ? <TaskNotFound /> : <LoadedTask taskId={taskId} />;
 }
 
+function TasksCrumb() {
+    return <Crumb to="/tasks">{m.tasks_title()}</Crumb>;
+}
+
 function LoadedTask({ taskId }: { readonly taskId: TaskId }) {
     const task = useTask(taskId);
     if (task.isPending) {
         return (
-            <Page title={m.task_title_loading()} back={<BackToTasks />}>
+            <Page title={m.task_title_loading()} breadcrumbs={[<TasksCrumb key="tasks" />]}>
                 <Skeleton shape="block" className="h-40 w-full" />
             </Page>
         );
@@ -41,7 +68,7 @@ function LoadedTask({ taskId }: { readonly taskId: TaskId }) {
     if (task.isError) {
         if (isNotFound(task.error)) return <TaskNotFound />;
         return (
-            <Page title={m.task_title_loading()} back={<BackToTasks />}>
+            <Page title={m.task_title_loading()} breadcrumbs={[<TasksCrumb key="tasks" />]}>
                 <ErrorState
                     message={m.task_load_failed()}
                     onRetry={() => {
@@ -55,42 +82,44 @@ function LoadedTask({ taskId }: { readonly taskId: TaskId }) {
     return <TaskDetail task={task.data} />;
 }
 
-function BackToTasks() {
-    return <BackLink to="/tasks">{m.task_back_to_tasks()}</BackLink>;
-}
-
 function TaskNotFound() {
     return (
-        <Page title={m.task_not_found_title()} back={<BackToTasks />}>
+        <Page title={m.task_not_found_title()} breadcrumbs={[<TasksCrumb key="tasks" />]}>
             <EmptyState title={m.task_not_found_title()} description={m.task_not_found_body()} />
         </Page>
     );
 }
 
 function TaskDetail({ task }: { readonly task: ReadTaskDetail }) {
+    const { readable, stamp } = splitTaskName(task.name);
     return (
         <Page
-            title={task.name}
+            title={readable}
+            {...(stamp === null ? {} : { titleSuffix: stamp })}
             documentTitle={[task.name, m.tasks_title()]}
-            back={<BackToTasks />}
+            breadcrumbs={[<TasksCrumb key="tasks" />]}
+            titleStyle={viewTransitionStyle('task-title', task.id)}
             actions={<DiscussInChat task={task} />}
         >
-            <TaskSummary task={task} />
-            {task.conditions.length === 0 ? null : <ConditionsCard task={task} />}
-            <RelationsCard task={task} />
-            <OccurrencesCard task={task} />
+            <div className="flex flex-col gap-4">
+                <TaskFacts task={task} />
+                <TaskWhy task={task} />
+            </div>
+            {task.conditions.length === 0 ? null : <Conditions task={task} />}
+            <Relations task={task} />
+            <History task={task} />
             {task.notes.length === 0 ? null : (
-                <Card title={m.task_notes_title()}>
-                    <ul className="flex flex-col gap-2 text-sm">
+                <Section title={m.task_notes_title()}>
+                    <ul className="flex max-w-prose flex-col gap-2 text-sm">
                         {task.notes.map((note, index) => (
                             <li key={index} className="break-words whitespace-pre-wrap">
                                 {note}
                             </li>
                         ))}
                     </ul>
-                </Card>
+                </Section>
             )}
-            <DetailsCard task={task} />
+            <Details task={task} />
         </Page>
     );
 }
@@ -117,7 +146,7 @@ function DiscussInChat({ task }: { readonly task: ReadTaskDetail }) {
     const icon = <MessageSquare aria-hidden className="size-4" />;
     if (chat.data !== undefined) {
         return (
-            <ButtonLink to="/chats/$chatId" params={{ chatId: chat.data.id }}>
+            <ButtonLink to="/chats/$chatId" params={{ chatId: chat.data.id }} variant="primary">
                 {icon}
                 {m.task_discuss_in_chat()}
             </ButtonLink>
@@ -126,82 +155,94 @@ function DiscussInChat({ task }: { readonly task: ReadTaskDetail }) {
     if (chatId !== null && chat.isPending) return null;
     if (task.agentId === null) return null;
     return (
-        <ButtonLink to="/agents/$agentId/chat" params={{ agentId: task.agentId }}>
+        <ButtonLink to="/agents/$agentId/chat" params={{ agentId: task.agentId }} variant="primary">
             {icon}
             {m.task_discuss_in_chat()}
         </ButtonLink>
     );
 }
 
-function SummaryItem({ label, children }: { readonly label: string; readonly children: ReactNode }) {
+function Fact({ label, children }: { readonly label: string; readonly children: ReactNode }) {
     return (
         <div className="flex min-w-0 items-center">
             <dt className="sr-only">{label}</dt>
-            <dd className="min-w-0 break-words">{children}</dd>
+            <dd className="flex min-w-0 items-center">{children}</dd>
         </div>
     );
 }
 
-/** State, who does it and how urgent it is, then the engine's own words on why it stands where it does. */
-function TaskSummary({ task }: { readonly task: ReadTaskDetail }) {
+/** State, who does it, how urgent it is and how far along, in one quiet line under the title. */
+function TaskFacts({ task }: { readonly task: ReadTaskDetail }) {
+    const progress = task.progress !== null && task.progress.total > 0 ? task.progress : null;
     return (
-        <div className="-mt-3 flex flex-col gap-3">
-            <dl className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-text-muted">
-                <SummaryItem label={m.task_fact_state()}>
-                    <TaskStateBadge state={task.state} />
-                </SummaryItem>
-                {task.kind === 'engine' ? (
-                    <SummaryItem label={m.task_fact_kind()}>
-                        <Badge>{m.task_kind_engine()}</Badge>
-                    </SummaryItem>
-                ) : null}
-                {task.purpose === 'system' && task.kind !== 'engine' ? (
-                    <SummaryItem label={m.task_fact_purpose()}>
-                        <Badge>{m.task_purpose_system()}</Badge>
-                    </SummaryItem>
-                ) : null}
-                <SummaryItem label={m.task_fact_agent()}>
-                    <TaskOwner task={task} />
-                </SummaryItem>
-                {task.priority.rank > 0 || task.priority.text !== null ? (
-                    <SummaryItem label={m.task_fact_priority()}>
+        <dl className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-text-muted">
+            <Fact label={m.task_fact_state()}>
+                <TaskStateBadge state={task.state} />
+            </Fact>
+            <Fact label={m.task_fact_agent()}>
+                <TaskOwner task={task} />
+            </Fact>
+            {task.priority.rank > 0 || task.priority.text !== null ? (
+                <Fact label={m.task_fact_priority()}>
+                    <span className="tabular-nums">
                         {m.task_priority({ rank: task.priority.rank })}
                         {task.priority.text === null ? null : ` · ${task.priority.text}`}
-                    </SummaryItem>
-                ) : null}
-                {task.progress !== null && task.progress.total > 0 ? (
-                    <SummaryItem label={m.task_fact_progress()}>
-                        {m.task_meta_progress({ completed: task.progress.completed, total: task.progress.total })}
-                    </SummaryItem>
-                ) : null}
-            </dl>
-            {task.stateReason === null && task.next === null && task.progress?.summary == null ? null : (
-                <div className="flex max-w-prose flex-col gap-1 text-sm">
-                    {/* Explanations come from the engine and its agents: text only. */}
-                    {task.stateReason === null ? null : <p className="break-words">{task.stateReason}</p>}
-                    {task.progress?.summary == null ? null : (
-                        <p className="break-words text-text-muted">{task.progress.summary}</p>
-                    )}
-                    {task.next === null ? null : <p className="break-words text-text-muted">{task.next}</p>}
-                </div>
+                    </span>
+                </Fact>
+            ) : null}
+            {progress === null ? null : (
+                <Fact label={m.task_fact_progress()}>
+                    <span className="tabular-nums">
+                        {m.task_meta_progress({ completed: progress.completed, total: progress.total })}
+                    </span>
+                </Fact>
             )}
-        </div>
+            {task.kind === 'engine' ? (
+                <Fact label={m.task_fact_kind()}>
+                    <Badge>{m.task_kind_engine()}</Badge>
+                </Fact>
+            ) : null}
+            {task.purpose === 'system' && task.kind !== 'engine' ? (
+                <Fact label={m.task_fact_purpose()}>
+                    <Badge>{m.task_purpose_system()}</Badge>
+                </Fact>
+            ) : null}
+        </dl>
     );
 }
 
 function TaskOwner({ task }: { readonly task: ReadTaskDetail }) {
     if (task.kind === 'engine') return <span>{task.executor ?? m.task_owner_engine()}</span>;
     if (task.agentId === null) return <span>{m.task_owner_unassigned()}</span>;
+    return <EntityChip kind="agent" id={task.agentId} name={task.agentName ?? task.agentId} />;
+}
+
+/** Live or actionable states earn a soft surface; settled ones keep their explanation as quiet text. */
+const LOUD: ReadonlySet<StatusTone> = new Set(['live', 'warning', 'danger']);
+
+/** The engine's own words on why the task stands where it does, what it is doing and what comes next. */
+function TaskWhy({ task }: { readonly task: ReadTaskDetail }) {
+    const summary = task.progress?.summary ?? null;
+    if (task.stateReason === null && task.next === null && summary === null) return null;
+    const tone = taskTone(task.state);
     return (
-        <Link to="/agents/$agentId" params={{ agentId: task.agentId }}>
-            {task.agentName ?? task.agentId}
-        </Link>
+        <div
+            className={cx(
+                'flex max-w-prose flex-col gap-1 text-sm',
+                LOUD.has(tone) && cx('soft-surface px-4 py-3', STATUS_TINT_CLASSES[tone]),
+            )}
+        >
+            {/* Explanations come from the engine and its agents: text only. */}
+            {task.stateReason === null ? null : <p className="break-words">{task.stateReason}</p>}
+            {summary === null ? null : <p className="break-words text-text-muted">{summary}</p>}
+            {task.next === null ? null : <p className="break-words text-text-muted">{task.next}</p>}
+        </div>
     );
 }
 
-function ConditionsCard({ task }: { readonly task: ReadTaskDetail }) {
+function Conditions({ task }: { readonly task: ReadTaskDetail }) {
     return (
-        <Card title={m.task_conditions_title()}>
+        <Section title={m.task_conditions_title()}>
             <ul className="flex flex-col gap-2 text-sm">
                 {task.conditions.map((condition, index) => (
                     <li key={index} className="flex items-start gap-2">
@@ -219,92 +260,86 @@ function ConditionsCard({ task }: { readonly task: ReadTaskDetail }) {
                     </li>
                 ))}
             </ul>
-        </Card>
+        </Section>
     );
 }
 
-function TaskRefLink({ taskId, name }: { readonly taskId: TaskId | null; readonly name: string }) {
-    if (taskId === null) return <span>{name}</span>;
-    return (
-        <Link to="/tasks/$taskId" params={{ taskId }} className="break-words">
-            {name}
-        </Link>
-    );
-}
-
-function dependencyLabel(state: ReadTaskDetail['dependsOn'][number]['state']): string {
+function dependencyLook(state: ReadTaskDetail['dependsOn'][number]['state']): {
+    readonly tone: StatusTone;
+    readonly label: string;
+} {
     switch (state) {
         case 'met':
-            return m.task_dependency_met();
+            return { tone: 'success', label: m.task_dependency_met() };
         case 'pending':
-            return m.task_dependency_pending();
+            return { tone: 'waiting', label: m.task_dependency_pending() };
         case 'failed':
-            return m.task_dependency_failed();
+            return { tone: 'danger', label: m.task_dependency_failed() };
         case 'missing':
-            return m.task_dependency_missing();
+            return { tone: 'danger', label: m.task_dependency_missing() };
         case 'cycle':
-            return m.task_dependency_cycle();
+            return { tone: 'danger', label: m.task_dependency_cycle() };
         case 'unknown':
-            return m.task_state_unknown();
+            return { tone: 'neutral', label: m.task_state_unknown() };
     }
 }
 
-function Relation({ label, children }: { readonly label: string; readonly children: ReactNode }) {
-    return (
-        <div className="flex flex-col gap-1">
-            <dt className="text-xs text-text-muted">{label}</dt>
-            <dd>
-                <ul className="flex flex-col gap-1.5 text-sm">{children}</ul>
-            </dd>
-        </div>
-    );
-}
-
-function LinkTarget({ target }: { readonly target: TaskLinkTarget }) {
-    switch (target.type) {
-        case 'task':
-            return <TaskRefLink taskId={target.taskId} name={target.name} />;
-        case 'agent':
-            return target.agentId === null ? (
-                <span>{target.name}</span>
-            ) : (
-                <Link to="/agents/$agentId" params={{ agentId: target.agentId }}>
-                    {target.name}
-                </Link>
-            );
-        case 'chat':
-            return <ChatLink chatId={target.chatId} name={target.name} />;
-    }
-}
-
-/** A chat by its name, linked once the engine confirms the thread exists. */
-function ChatLink({ chatId, name }: { readonly chatId: ChatId | null; readonly name: string }) {
+/** A chat by its name, a link once the engine confirms the thread exists. */
+function ChatChip({ chatId, name }: { readonly chatId: ChatId | null; readonly name: string }) {
     const chatsVisible = useAllows({ permission: 'chats.read' });
     const chat = useQuery({
         ...chatQueryOptions(useEngineApi(), chatId ?? ChatId.parse('none')),
         enabled: chatsVisible && chatId !== null,
     });
-    if (chat.data === undefined) return <span>{name}</span>;
-    return (
-        <Link to="/chats/$chatId" params={{ chatId: chat.data.id }}>
-            {name}
-        </Link>
-    );
+    return <EntityChip kind="chat" id={chat.data?.id ?? null} name={name} />;
 }
 
-function linkKindLabel(target: TaskLinkTarget): string {
+function LinkTarget({ target }: { readonly target: TaskLinkTarget }) {
     switch (target.type) {
-        case 'chat':
-            return m.task_link_chat();
-        case 'agent':
-            return m.task_link_agent();
         case 'task':
-            return m.task_link_task();
+            return <EntityChip kind="task" id={target.taskId} name={target.name} />;
+        case 'agent':
+            return <EntityChip kind="agent" id={target.agentId} name={target.name} />;
+        case 'chat':
+            return <ChatChip chatId={target.chatId} name={target.name} />;
     }
 }
 
+function Relation({ label, children }: { readonly label: string; readonly children: ReactNode }) {
+    return (
+        <div className="grid gap-1.5 sm:grid-cols-[9rem_minmax(0,1fr)] sm:gap-x-6">
+            <dt className="pt-0.5 text-sm text-text-muted">{label}</dt>
+            <dd className="min-w-0">
+                <ul className="flex flex-col items-start gap-1.5 text-sm">{children}</ul>
+            </dd>
+        </div>
+    );
+}
+
+/** A related task with its state in words beside it, quiet, so the chips stay what the eye scans. */
+function TaskWithState({
+    taskId,
+    name,
+    tone,
+    label,
+}: {
+    readonly taskId: TaskId | null;
+    readonly name: string;
+    readonly tone: StatusTone;
+    readonly label: string;
+}) {
+    return (
+        <li className="flex max-w-full min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+            <EntityChip kind="task" id={taskId} name={name} />
+            <StatusPill tone={tone} variant="quiet" className="text-text-muted">
+                {label}
+            </StatusPill>
+        </li>
+    );
+}
+
 /** Parent and children, prerequisites and dependants, and the directed links, each from the engine's report. */
-function RelationsCard({ task }: { readonly task: ReadTaskDetail }) {
+function Relations({ task }: { readonly task: ReadTaskDetail }) {
     const outgoing = task.links.filter((link) => link.direction === 'outgoing');
     const incoming = task.links.filter((link) => link.direction === 'incoming');
     const origin = task.origin;
@@ -317,70 +352,64 @@ function RelationsCard({ task }: { readonly task: ReadTaskDetail }) {
         origin === null;
     if (empty) return null;
     return (
-        <Card title={m.task_relations_title()}>
-            <dl className="grid gap-4 sm:grid-cols-2">
+        <Section title={m.task_relations_title()}>
+            <dl className="flex flex-col gap-3">
                 {origin === null ? null : (
                     <Relation label={m.task_relation_origin()}>
-                        <li className="break-words">
+                        <li className="max-w-full">
                             <Origin task={task} origin={origin} />
                         </li>
                     </Relation>
                 )}
                 {task.parent === null ? null : (
                     <Relation label={m.task_relation_parent()}>
-                        <li>
-                            <TaskRefLink taskId={task.parent.taskId} name={task.parent.name} />
+                        <li className="max-w-full">
+                            <EntityChip kind="task" id={task.parent.taskId} name={task.parent.name} />
                         </li>
                     </Relation>
                 )}
                 {task.children.length === 0 ? null : (
                     <Relation label={m.task_relation_children()}>
                         {task.children.map((child) => (
-                            <li key={child.taskId ?? child.name} className="flex flex-wrap items-center gap-2">
-                                <TaskRefLink taskId={child.taskId} name={child.name} />
-                                <TaskStateBadge state={child.state} />
-                            </li>
+                            <TaskWithState
+                                key={child.taskId ?? child.name}
+                                taskId={child.taskId}
+                                name={child.name}
+                                tone={taskTone(child.state)}
+                                label={taskStateLabel(child.state)}
+                            />
                         ))}
                     </Relation>
                 )}
                 {task.dependsOn.length === 0 ? null : (
                     <Relation label={m.task_relation_depends_on()}>
                         {task.dependsOn.map((dependency) => (
-                            <li
+                            <TaskWithState
                                 key={dependency.taskId ?? dependency.name}
-                                className="flex flex-wrap items-center gap-2"
-                            >
-                                <TaskRefLink taskId={dependency.taskId} name={dependency.name} />
-                                <Badge
-                                    tone={
-                                        dependency.state === 'met'
-                                            ? 'success'
-                                            : dependency.state === 'pending'
-                                              ? 'neutral'
-                                              : 'danger'
-                                    }
-                                >
-                                    {dependencyLabel(dependency.state)}
-                                </Badge>
-                            </li>
+                                taskId={dependency.taskId}
+                                name={dependency.name}
+                                {...dependencyLook(dependency.state)}
+                            />
                         ))}
                     </Relation>
                 )}
                 {task.blocks.length === 0 ? null : (
                     <Relation label={m.task_relation_blocks()}>
                         {task.blocks.map((dependant) => (
-                            <li key={dependant.taskId ?? dependant.name} className="flex flex-wrap items-center gap-2">
-                                <TaskRefLink taskId={dependant.taskId} name={dependant.name} />
-                                <TaskStateBadge state={dependant.state} />
-                            </li>
+                            <TaskWithState
+                                key={dependant.taskId ?? dependant.name}
+                                taskId={dependant.taskId}
+                                name={dependant.name}
+                                tone={taskTone(dependant.state)}
+                                label={taskStateLabel(dependant.state)}
+                            />
                         ))}
                     </Relation>
                 )}
                 {outgoing.length === 0 ? null : (
                     <Relation label={m.task_relation_links_to()}>
                         {outgoing.map((link, index) => (
-                            <li key={index} className="break-words">
-                                <span className="text-text-muted">{linkKindLabel(link.target)}</span>{' '}
+                            <li key={index} className="max-w-full">
                                 <LinkTarget target={link.target} />
                             </li>
                         ))}
@@ -389,15 +418,14 @@ function RelationsCard({ task }: { readonly task: ReadTaskDetail }) {
                 {incoming.length === 0 ? null : (
                     <Relation label={m.task_relation_linked_from()}>
                         {incoming.map((link, index) => (
-                            <li key={index} className="break-words">
-                                <span className="text-text-muted">{linkKindLabel(link.target)}</span>{' '}
+                            <li key={index} className="max-w-full">
                                 <LinkTarget target={link.target} />
                             </li>
                         ))}
                     </Relation>
                 )}
             </dl>
-        </Card>
+        </Section>
     );
 }
 
@@ -412,11 +440,11 @@ function Origin({
     if (origin.chatId !== null) {
         const chatId = origin.chatId;
         const link = task.links.find(({ target }) => target.type === 'chat' && target.chatId === chatId);
-        return <ChatLink chatId={chatId} name={link?.target.name ?? m.task_origin_chat()} />;
+        return <ChatChip chatId={chatId} name={link?.target.name ?? m.task_origin_chat()} />;
     }
     if (origin.taskId !== null) {
         const name = task.parent?.taskId === origin.taskId ? task.parent.name : m.task_origin_task();
-        return <TaskRefLink taskId={origin.taskId} name={name} />;
+        return <EntityChip kind="task" id={origin.taskId} name={name} />;
     }
     if (origin.kind === 'goal') return <span>{m.task_origin_goal()}</span>;
     if (origin.kind === 'engine') return <span>{m.task_origin_engine()}</span>;
@@ -424,8 +452,10 @@ function Origin({
     return <span>{origin.text ?? m.task_state_unknown()}</span>;
 }
 
+const COLUMN = 'px-2 pb-2 text-start font-medium';
+
 /** Every occurrence newest first: work cycles, recurring slots, reopenings and retries, each with its runs. */
-function OccurrencesCard({ task }: { readonly task: ReadTaskDetail }) {
+function History({ task }: { readonly task: ReadTaskDetail }) {
     const occurrences = useTaskOccurrences(task.id);
     const runsVisible = useAllows({ capability: KNOWN_CAPABILITIES.runs, permission: 'runs.read' });
     let body: ReactNode;
@@ -447,14 +477,44 @@ function OccurrencesCard({ task }: { readonly task: ReadTaskDetail }) {
                 <p className="text-sm text-text-muted">{m.task_occurrences_empty()}</p>
             ) : (
                 <>
-                    <ol className="-my-3 flex flex-col divide-y divide-divider">
-                        {items.map((occurrence) => (
-                            <OccurrenceRow key={occurrence.id} occurrence={occurrence} runsVisible={runsVisible} />
-                        ))}
-                    </ol>
+                    <div className="-mx-2 overflow-x-auto">
+                        <table className="w-full min-w-xl border-collapse text-sm">
+                            <thead className="text-xs text-text-muted">
+                                <tr>
+                                    <th scope="col" className={COLUMN}>
+                                        {m.task_history_column_occurrence()}
+                                    </th>
+                                    <th scope="col" className={COLUMN}>
+                                        {m.task_fact_state()}
+                                    </th>
+                                    <th scope="col" className={COLUMN}>
+                                        {m.task_history_column_when()}
+                                    </th>
+                                    <th scope="col" className={cx(COLUMN, 'w-full')}>
+                                        {m.task_history_column_summary()}
+                                    </th>
+                                    {runsVisible ? (
+                                        <th scope="col" className={COLUMN}>
+                                            {m.task_history_column_runs()}
+                                        </th>
+                                    ) : null}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {items.map((occurrence) => (
+                                    <OccurrenceRow
+                                        key={occurrence.id}
+                                        occurrence={occurrence}
+                                        runsVisible={runsVisible}
+                                    />
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
                     {occurrences.hasNextPage ? (
                         <div className="flex justify-center">
                             <Button
+                                variant="ghost"
                                 onClick={() => {
                                     void occurrences.fetchNextPage();
                                 }}
@@ -467,7 +527,7 @@ function OccurrencesCard({ task }: { readonly task: ReadTaskDetail }) {
                 </>
             );
     }
-    return <Card title={m.task_occurrences_title()}>{body}</Card>;
+    return <Section title={m.task_occurrences_title()}>{body}</Section>;
 }
 
 function OccurrenceRow({
@@ -479,39 +539,54 @@ function OccurrenceRow({
 }) {
     const at = occurrence.endedAt ?? occurrence.startedAt ?? occurrence.scheduledFor;
     return (
-        <li className="flex flex-col gap-1 py-3 text-sm">
-            <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                <span className="font-medium">
-                    {m.task_occurrence_title({
-                        sequence: occurrence.sequence,
-                        reason: occurrenceReasonLabel(occurrence.reason),
-                    })}
-                </span>
-                <Badge tone={occurrenceTone(occurrence.state)}>{occurrenceStateLabel(occurrence.state)}</Badge>
-                {at === null ? null : <RelativeTime value={new Date(at)} className="text-text-muted" />}
+        <tr className="h-10 border-t border-hairline align-middle">
+            <td className="px-2 py-2 font-medium whitespace-nowrap tabular-nums">
+                {m.task_occurrence_title({
+                    sequence: occurrence.sequence,
+                    reason: occurrenceReasonLabel(occurrence.reason),
+                })}
                 {occurrence.cycle > 1 ? (
-                    <span className="text-text-muted">{m.task_occurrence_cycle({ cycle: occurrence.cycle })}</span>
+                    <span className="ms-2 font-normal text-text-muted">
+                        {m.task_occurrence_cycle({ cycle: occurrence.cycle })}
+                    </span>
                 ) : null}
-            </span>
-            {occurrence.summary === null ? null : (
-                <span className="break-words text-text-muted">{occurrence.summary}</span>
-            )}
-            {runsVisible && occurrence.runIds.length > 0 ? (
-                <span className="flex flex-wrap gap-x-3">
-                    {occurrence.runIds.map((runId, index) => (
-                        <Link key={runId} to="/runs/$runId" params={{ runId }}>
-                            {occurrence.runIds.length === 1
-                                ? m.task_occurrence_run()
-                                : m.task_occurrence_run_n({ n: index + 1 })}
-                        </Link>
-                    ))}
-                </span>
+            </td>
+            <td className="px-2 py-2">
+                <StatusPill tone={occurrenceTone(occurrence.state)} variant="quiet">
+                    {occurrenceStateLabel(occurrence.state)}
+                </StatusPill>
+            </td>
+            <td className="px-2 py-2 whitespace-nowrap text-text-muted tabular-nums">
+                {at === null ? null : <RelativeTime value={new Date(at)} />}
+            </td>
+            <td className="px-2 py-2 text-text-muted">
+                {occurrence.summary === null ? null : (
+                    <span className="line-clamp-2 break-words">{occurrence.summary}</span>
+                )}
+            </td>
+            {runsVisible ? (
+                <td className="px-2 py-2">
+                    <span className="flex flex-wrap gap-1">
+                        {occurrence.runIds.map((runId, index) => (
+                            <EntityChip
+                                key={runId}
+                                kind="run"
+                                id={runId}
+                                name={
+                                    occurrence.runIds.length === 1
+                                        ? m.task_occurrence_run()
+                                        : m.task_occurrence_run_n({ n: index + 1 })
+                                }
+                            />
+                        ))}
+                    </span>
+                </td>
             ) : null}
-        </li>
+        </tr>
     );
 }
 
-function Fact({ label, children }: { readonly label: string; readonly children: ReactNode }) {
+function DetailFact({ label, children }: { readonly label: string; readonly children: ReactNode }) {
     return (
         <div className="flex min-w-0 flex-col gap-0.5">
             <dt className="text-xs text-text-muted">{label}</dt>
@@ -522,47 +597,55 @@ function Fact({ label, children }: { readonly label: string; readonly children: 
 
 function DateTime({ at }: { readonly at: string }) {
     const locale = useLocale();
-    return <time dateTime={at}>{locale.formatDateTime(new Date(at))}</time>;
+    return (
+        <time dateTime={at} className="tabular-nums">
+            {locale.formatDateTime(new Date(at))}
+        </time>
+    );
 }
 
 /** Schedule and bookkeeping, shown only where the engine reports a value. */
-function DetailsCard({ task }: { readonly task: ReadTaskDetail }) {
+function Details({ task }: { readonly task: ReadTaskDetail }) {
     return (
-        <Card title={m.task_details_title()}>
-            <dl className="grid grid-cols-2 gap-4 text-sm sm:grid-cols-3">
+        <Section title={m.task_details_title()}>
+            <dl className="grid grid-cols-2 gap-x-6 gap-y-4 text-sm sm:grid-cols-3">
                 {task.repeat === null ? null : (
-                    <Fact label={m.task_fact_repeat()}>{m.task_repeat_every({ every: task.repeat.text })}</Fact>
+                    <DetailFact label={m.task_fact_repeat()}>
+                        {m.task_repeat_every({ every: task.repeat.text })}
+                    </DetailFact>
                 )}
                 {task.nextAt === null ? null : (
-                    <Fact label={m.task_fact_next()}>
+                    <DetailFact label={m.task_fact_next()}>
                         <DateTime at={task.nextAt} />
-                    </Fact>
+                    </DetailFact>
                 )}
                 {task.notBefore === null ? null : (
-                    <Fact label={m.task_fact_not_before()}>
+                    <DetailFact label={m.task_fact_not_before()}>
                         <DateTime at={task.notBefore} />
-                    </Fact>
+                    </DetailFact>
                 )}
                 {task.dueAt === null ? null : (
-                    <Fact label={m.task_fact_due()}>
+                    <DetailFact label={m.task_fact_due()}>
                         <DateTime at={task.dueAt} />
-                    </Fact>
+                    </DetailFact>
                 )}
-                <Fact label={m.task_fact_done_count()}>{task.doneCount}</Fact>
+                <DetailFact label={m.task_fact_done_count()}>
+                    <span className="tabular-nums">{task.doneCount}</span>
+                </DetailFact>
                 {task.lastDoneAt === null ? null : (
-                    <Fact label={m.task_fact_last_done()}>
+                    <DetailFact label={m.task_fact_last_done()}>
                         <DateTime at={task.lastDoneAt} />
-                    </Fact>
+                    </DetailFact>
                 )}
-                {task.reopened ? <Fact label={m.task_fact_reopened()}>{m.task_reopened_yes()}</Fact> : null}
-                <Fact label={m.task_fact_source()}>
+                {task.reopened ? <DetailFact label={m.task_fact_reopened()}>{m.task_reopened_yes()}</DetailFact> : null}
+                <DetailFact label={m.task_fact_source()}>
                     {task.sourcePath === null ? (
                         <span className="text-text-muted">{m.task_source_engine()}</span>
                     ) : (
                         <span className="font-mono text-xs">{task.sourcePath}</span>
                     )}
-                </Fact>
+                </DetailFact>
             </dl>
-        </Card>
+        </Section>
     );
 }

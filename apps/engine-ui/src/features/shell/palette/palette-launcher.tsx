@@ -94,8 +94,8 @@ export function PaletteButton({ onOpen, compact }: { readonly onOpen: () => void
             aria-haspopup="dialog"
             onClick={onOpen}
             className={cx(
-                'flex min-h-8 w-full cursor-pointer items-center gap-2.5 rounded-control bg-quiet-hover px-2.5 text-sm text-text-muted',
-                'hover:bg-quiet-selected hover:text-text motion-safe:transition-colors motion-safe:duration-(--motion-state)',
+                'flex min-h-8 w-full cursor-pointer items-center gap-2.5 rounded-control bg-hover px-2.5 text-sm text-text-muted',
+                'hover:bg-selected hover:text-text motion-safe:transition-colors motion-safe:duration-(--motion-state)',
             )}
         >
             <Search aria-hidden className="size-4 shrink-0" />

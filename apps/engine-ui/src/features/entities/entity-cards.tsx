@@ -2,7 +2,7 @@ import type { AgentId, ChatId, FileId, IntegrationId, MemberId, RunId, TaskId, T
 import { RelativeTime, Skeleton, useLocale } from '@ptbk/ui';
 import { useQuery } from '@tanstack/react-query';
 import type { UseQueryResult } from '@tanstack/react-query';
-import { FileText, MessageSquare, Plug, Activity, ListTodo, Zap } from 'lucide-react';
+import { Activity, FileText, ListTodo, MessageSquare, Plug, User, Zap } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 import { useEngineApi } from '../../app/engine-api-context';
@@ -27,7 +27,7 @@ import { TaskStateBadge } from '../tasks/task-state';
 import { taskQueryOptions } from '../tasks/tasks-queries';
 import { triggerKindLabel } from '../triggers/trigger-labels';
 import { triggerQueryOptions } from '../triggers/triggers-queries';
-import { EntityCard } from './entity-chip-core';
+import { EntityCard } from './entity-card';
 
 /** Loading and failure inside a card: a quiet line, never an error banner in a popover. */
 function Loaded<Data>({
@@ -248,7 +248,7 @@ export function MemberCard({ memberId, name }: { readonly memberId: MemberId; re
     const query = useQuery(memberDetailQueryOptions(useEngineApi(), memberId));
     return (
         <EntityCard
-            leading={<MemberInitial name={query.data?.displayName ?? name} />}
+            leading={<User aria-hidden />}
             title={query.data?.displayName ?? name}
             meta={query.data === undefined ? undefined : <span>{roleLabel(query.data.role)}</span>}
             action={
@@ -259,17 +259,5 @@ export function MemberCard({ memberId, name }: { readonly memberId: MemberId; re
         >
             <Loaded query={query}>{() => null}</Loaded>
         </EntityCard>
-    );
-}
-
-/** A member's initial: people are neutral, so they never read as an agent. */
-export function MemberInitial({ name }: { readonly name: string }) {
-    return (
-        <span
-            aria-hidden="true"
-            className="inline-flex size-4 shrink-0 items-center justify-center rounded-full bg-sunken text-[0.5625rem] font-semibold text-text-muted"
-        >
-            {Array.from(name.trim())[0]?.toLocaleUpperCase() ?? null}
-        </span>
     );
 }

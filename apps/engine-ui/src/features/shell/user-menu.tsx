@@ -92,7 +92,7 @@ export function UserMenu({
                     {...props}
                     type="button"
                     aria-label={compact ? `${m.user_menu()}: ${member.displayName}` : undefined}
-                    className="flex w-full min-w-0 cursor-pointer items-center gap-2.5 rounded-control px-2 py-1.5 text-start hover:bg-quiet-hover motion-safe:transition-colors motion-safe:duration-(--motion-state)"
+                    className="flex w-full min-w-0 cursor-pointer items-center gap-2.5 rounded-control px-2 py-1.5 text-start hover:bg-hover motion-safe:transition-colors motion-safe:duration-(--motion-state)"
                 >
                     <Monogram name={member.displayName} />
                     {compact ? null : (
