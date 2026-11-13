@@ -5,8 +5,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { expectNoAxeViolations } from '../../testing/axe';
 import { NARROW, setMedia } from '../../testing/dom-gaps';
 import { renderUi } from '../../testing/render';
-import { FilterBar } from './filter-bar';
-import type { FilterBarProps } from './filter-bar';
+import { LegacyFilterBar } from './legacy-filter-bar';
+import type { LegacyFilterBarProps } from './legacy-filter-bar';
 
 const STATUSES = [
     { value: 'working', label: 'Working' },
@@ -36,7 +36,7 @@ function Harness({ initial = NONE, empty = false }: { readonly initial?: State; 
     const set = (patch: Partial<State>) => {
         setState((current) => ({ ...current, ...patch }));
     };
-    const props: FilterBarProps = {
+    const props: LegacyFilterBarProps = {
         empty,
         search: {
             label: 'Search runs',
@@ -91,14 +91,14 @@ function Harness({ initial = NONE, empty = false }: { readonly initial?: State; 
             setState(NONE);
         },
     };
-    return <FilterBar {...props} />;
+    return <LegacyFilterBar {...props} />;
 }
 
 afterEach(() => {
     seen.state = NONE;
 });
 
-describe('FilterBar on a wide screen', () => {
+describe('LegacyFilterBar on a wide screen', () => {
     it.each(['light', 'dark'] as const)('is one named search row of compact controls (%s)', async (theme) => {
         const { container } = renderUi(<Harness />, { theme });
         const bar = screen.getByRole('search', { name: 'Filters' });
@@ -159,7 +159,7 @@ describe('FilterBar on a wide screen', () => {
     });
 });
 
-describe('FilterBar on a phone', () => {
+describe('LegacyFilterBar on a phone', () => {
     it.each(['light', 'dark'] as const)(
         'keeps the search and collapses the filters behind a counted button (%s)',
         async (theme) => {
@@ -224,7 +224,11 @@ describe('FilterBar on a phone', () => {
         setMedia(NARROW, true);
         const onClear = vi.fn();
         renderUi(
-            <FilterBar search={{ label: 'Search', value: '', onChange: vi.fn() }} filters={[]} onClear={onClear} />,
+            <LegacyFilterBar
+                search={{ label: 'Search', value: '', onChange: vi.fn() }}
+                filters={[]}
+                onClear={onClear}
+            />,
         );
         expect(screen.queryByRole('button', { name: 'Filters' })).toBeNull();
         act(() => {

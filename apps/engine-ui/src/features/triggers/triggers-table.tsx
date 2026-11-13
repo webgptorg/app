@@ -1,7 +1,7 @@
 import { TRIGGER_KINDS, TRIGGER_LIFECYCLES } from '@ptbk/engine-api';
 import type { AgentId, ReadTrigger } from '@ptbk/engine-api';
-import { Button, createDataTableColumnHelper, DataTable, FilterBar, VisuallyHidden } from '@ptbk/ui';
-import type { DataTableColumnDef, FilterBarFilter, MenuEntry } from '@ptbk/ui';
+import { Button, createDataTableColumnHelper, DataTable, LegacyFilterBar, VisuallyHidden } from '@ptbk/ui';
+import type { DataTableColumnDef, LegacyFilterBarFilter, MenuEntry } from '@ptbk/ui';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { Pause, Pencil, Play, Trash2 } from 'lucide-react';
@@ -310,7 +310,7 @@ function TriggerFilters({ search, scope, onChange, onClear }: TriggerFiltersProp
     const agentOptions = items.map((agent) => ({ value: agent.id, label: agent.name }));
     if (agentId !== undefined && !items.some((agent) => agent.id === agentId))
         agentOptions.unshift({ value: agentId, label: agentId });
-    const filters: FilterBarFilter[] = [
+    const filters: LegacyFilterBarFilter[] = [
         {
             kind: 'select',
             id: 'kind',
@@ -349,9 +349,9 @@ function TriggerFilters({ search, scope, onChange, onClear }: TriggerFiltersProp
                                   (value === agentId ? agentId : undefined),
                           });
                       },
-                  } satisfies FilterBarFilter,
+                  } satisfies LegacyFilterBarFilter,
               ]
             : []),
     ];
-    return <FilterBar label={m.triggers_filters()} filters={filters} onClear={onClear} />;
+    return <LegacyFilterBar label={m.triggers_filters()} filters={filters} onClear={onClear} />;
 }
