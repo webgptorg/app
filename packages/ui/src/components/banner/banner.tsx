@@ -18,10 +18,10 @@ export interface BannerProps {
 }
 
 const TONE_CLASSES: Readonly<Record<BannerTone, string>> = {
-    info: 'border-(--banner-info-border) bg-(--banner-info-bg)',
-    success: 'border-(--banner-success-border) bg-(--banner-success-bg)',
-    warning: 'border-(--banner-warning-border) bg-(--banner-warning-bg)',
-    danger: 'border-(--banner-danger-border) bg-(--banner-danger-bg)',
+    info: 'bg-(--banner-info-bg)',
+    success: 'bg-(--banner-success-bg)',
+    warning: 'bg-(--banner-warning-bg)',
+    danger: 'bg-(--banner-danger-bg)',
 };
 
 const ICON_CLASSES: Readonly<Record<BannerTone, string>> = {
@@ -44,15 +44,15 @@ export function Banner({ tone = 'info', title, action, onDismiss, className, chi
         <div
             role={tone === 'warning' || tone === 'danger' ? 'alert' : 'status'}
             className={cx(
-                'flex items-start gap-3 rounded-(--banner-radius) border-s-4 p-4 text-sm text-(--banner-text)',
+                'flex items-start gap-2.5 rounded-(--banner-radius) px-3.5 py-3 text-sm text-(--banner-text)',
                 TONE_CLASSES[tone],
                 className,
             )}
         >
-            <Icon aria-hidden="true" className={cx('mt-0.5 size-5 shrink-0', ICON_CLASSES[tone])} />
+            <Icon aria-hidden="true" className={cx('mt-0.5 size-4 shrink-0', ICON_CLASSES[tone])} />
             <div className="flex min-w-0 flex-1 flex-col gap-1">
-                {title === undefined ? null : <p className="font-semibold">{title}</p>}
-                <div>{children}</div>
+                {title === undefined ? null : <p className="font-medium">{title}</p>}
+                <div className={title === undefined ? undefined : 'text-(--banner-muted)'}>{children}</div>
                 {action === undefined ? null : <div className="mt-2 flex flex-wrap gap-2">{action}</div>}
             </div>
             {onDismiss === undefined ? null : (

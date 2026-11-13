@@ -1,4 +1,6 @@
 :root {
-    --anchor-text: var(--color-accent-text);
-    --anchor-text-hover: var(--color-text);
+    --anchor-text: var(--color-link);
+    --anchor-text-hover: var(--color-link-hover);
+    --anchor-standalone-text: var(--color-text);
+    --anchor-standalone-text-hover: var(--color-text);
 }

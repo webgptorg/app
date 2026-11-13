@@ -44,7 +44,7 @@ export function Drawer({ open, onClose, title, side = 'end', children, footer, i
             {open ? (
                 <div className="flex min-h-full flex-col">
                     <div className="flex items-center justify-between gap-4 border-b border-(--drawer-border) px-4 py-3">
-                        <h2 id={titleId} className="text-lg font-semibold">
+                        <h2 id={titleId} className="text-base font-semibold">
                             {title}
                         </h2>
                         <IconButton

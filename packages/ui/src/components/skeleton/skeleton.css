@@ -1,5 +1,5 @@
 :root {
-    --skeleton-bg: var(--color-sunken);
+    --skeleton-bg: var(--color-selected);
     --skeleton-period: var(--motion-live);
 }
 
