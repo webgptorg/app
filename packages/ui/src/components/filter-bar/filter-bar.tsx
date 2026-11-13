@@ -107,6 +107,7 @@ export function FilterBar({ label, search, fields = [], onClear, sort, columns, 
     const { ref: popoverRef, open: popoverOpen, style: popoverStyle, show, hide } = useAnchoredPopover();
     const [view, setView] = useState<FilterPopoverView>(CLOSED);
     const addRef = useRef<HTMLButtonElement>(null);
+    const wasOpenRef = useRef(false);
     const scrollRef = useRef<HTMLDivElement>(null);
     const active = fields.filter(isFieldActive);
     const searching = search !== undefined && search.value !== '';
@@ -163,8 +164,14 @@ export function FilterBar({ label, search, fields = [], onClear, sort, columns, 
                         size="sm"
                         aria-haspopup="dialog"
                         aria-expanded={popoverOpen && openFieldId === undefined}
+                        onMouseDown={() => {
+                            // Pressing here moves focus out of an open popover, which closes it before the click.
+                            wasOpenRef.current = popoverOpen;
+                        }}
                         onClick={(event) => {
-                            if (popoverOpen) hide(false);
+                            const wasOpen = popoverOpen || wasOpenRef.current;
+                            wasOpenRef.current = false;
+                            if (wasOpen) hide(false);
                             else open(event.currentTarget, CLOSED);
                         }}
                         className="text-(--filter-bar-muted)"
@@ -302,7 +309,7 @@ function FilterChip({
                         {value.icon}
                     </span>
                 )}
-                <span className="shrink-0 text-(--filter-bar-muted)">{`${field.label}:`}</span>
+                <span className="shrink-0 text-(--filter-bar-muted)">{`${field.label}:`}</span>{' '}
                 <span className="min-w-0 truncate font-medium">{value.shown}</span>
                 {value.hidden.length === 0 ? null : (
                     <>

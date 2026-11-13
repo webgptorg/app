@@ -191,7 +191,7 @@ describe('FilterBar', () => {
 
     it('names the values a chip counts as "+N" for screen readers', () => {
         renderUi(<Harness initial={{ ...NONE, status: ['running', 'waiting', 'failed', 'stopped'] }} />);
-        const chip = screen.getByRole('button', { name: 'Status: Running, Waiting+2, Failed, Stopped' });
+        const chip = screen.getByRole('button', { name: 'Status: Running, Waiting, Failed, Stopped' });
         expect(chip.textContent).toContain('+2');
         expect(screen.getByRole('button', { name: 'Remove Status: Running, Waiting, Failed, Stopped' })).toBeDefined();
     });
@@ -342,9 +342,9 @@ describe('FilterBar', () => {
         expect(screen.queryByRole('dialog')).toBeNull();
         await user.click(add);
         await user.click(within(dialog()).getByRole('option', { name: 'Queued' }));
-        await user.tab();
-        await user.tab();
-        await user.tab();
+        // From the first date, back past the step's header and out of the popover.
+        await user.tab({ shift: true });
+        await user.tab({ shift: true });
         expect(screen.queryByRole('dialog')).toBeNull();
     });
 
