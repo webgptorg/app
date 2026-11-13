@@ -10,7 +10,7 @@ import {
     RelativeTime,
     viewTransitionStyle,
 } from '@ptbk/ui';
-import type { DataTableColumnDef, FilterBarField, FilterBarProps } from '@ptbk/ui';
+import type { DataTableColumnDef, DataTableView, FilterBarField } from '@ptbk/ui';
 import { useQuery } from '@tanstack/react-query';
 import { getRouteApi, Link } from '@tanstack/react-router';
 import { Bot, CalendarClock, CircleDot, Flag, ListTodo } from 'lucide-react';
@@ -18,6 +18,7 @@ import { useCallback } from 'react';
 
 import { cx } from '../../app/cx';
 import { useDebouncedSearch } from '../../app/debounced-search';
+import { readListParam, readOneParam, writeListParam } from '../../app/search-filters';
 import { useEngineApi } from '../../app/engine-api-context';
 import { Link as AppLink } from '../../app/link';
 import { useAllows } from '../../app/registry/use-visible-features';
@@ -37,7 +38,7 @@ import {
     taskStatusGroupLabel,
 } from './task-state';
 import type { TaskStatusGroup } from './task-state';
-import { hasTaskFilters, selectedGroups, taskListParams } from './task-search';
+import { hasTaskFilters, taskListParams } from './task-search';
 import type { TaskSearch } from './task-search';
 import { useTaskList } from './tasks-queries';
 
@@ -254,7 +255,7 @@ function TaskFilters({
     onChange,
     onClear,
 }: {
-    readonly view: Pick<FilterBarProps, 'sort' | 'columns'>;
+    readonly view: DataTableView;
     readonly search: TaskSearch;
     readonly onChange: (change: Partial<TaskSearch>) => void;
     readonly onClear: () => void;
@@ -269,10 +270,9 @@ function TaskFilters({
             label: m.tasks_filter_status(),
             icon: <CircleDot className="size-3.5" />,
             options: TASK_STATUS_GROUP_IDS.map((group) => ({ value: group, label: taskStatusGroupLabel(group) })),
-            value: [...selectedGroups(search)],
+            value: readListParam(search.status, TASK_STATUS_GROUP_IDS),
             onChange: (value) => {
-                const next = TASK_STATUS_GROUP_IDS.filter((group) => value.includes(group));
-                onChange({ status: next.length === 0 ? undefined : next.join(',') });
+                onChange({ status: writeListParam(value, TASK_STATUS_GROUP_IDS) });
             },
         }),
         filterField.entity<string>({
@@ -285,7 +285,7 @@ function TaskFilters({
                 label: agent.name,
                 icon: <AgentAvatar name={agent.name} agentKey={agent.id} profile={agent.profile} size="2xs" />,
             })),
-            value: search.agentId === undefined ? [] : [search.agentId],
+            value: readOneParam(search.agentId),
             onChange: (value) => {
                 // An agent beyond the first page stays selected by its ID from the URL until it is removed.
                 const picked = value.at(-1);

@@ -541,10 +541,12 @@ function OccurrenceRow({
     return (
         <tr className="h-10 border-t border-hairline align-middle">
             <td className="px-2 py-2 font-medium whitespace-nowrap tabular-nums">
-                {m.task_occurrence_title({
-                    sequence: occurrence.sequence,
-                    reason: occurrenceReasonLabel(occurrence.reason),
-                })}
+                <span>
+                    {m.task_occurrence_title({
+                        sequence: occurrence.sequence,
+                        reason: occurrenceReasonLabel(occurrence.reason),
+                    })}
+                </span>
                 {occurrence.cycle > 1 ? (
                     <span className="ms-2 font-normal text-text-muted">
                         {m.task_occurrence_cycle({ cycle: occurrence.cycle })}

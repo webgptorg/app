@@ -83,7 +83,7 @@ function QuestionItem({ chat }: { readonly chat: ReadChat }) {
             leading={<AgentAvatar name={name} agentKey={question.author.key} profile={look.profile} size="xs" />}
             title={
                 <>
-                    {m.home_asks_you({ name })}
+                    <span>{m.home_asks_you({ name })}</span>
                     <span className="ms-1.5 font-normal text-text-muted">{chatName(chat)}</span>
                 </>
             }

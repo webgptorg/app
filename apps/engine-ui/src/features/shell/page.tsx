@@ -28,7 +28,7 @@ export interface PageProps {
      */
     readonly documentTitle?: readonly string[];
     readonly actions?: ReactNode | undefined;
-    /** CSSOM style for the title, e.g. the `view-transition-name` a list row's title morphs into. */
+    /** CSSOM style for the title's text, e.g. the `view-transition-name` a list row's title morphs into. */
     readonly titleStyle?: CSSProperties | undefined;
     readonly children: ReactNode;
 }
@@ -105,14 +105,12 @@ export function PageHeader({ title, titleSuffix, breadcrumbs, back, actions, tit
             )}
             {back === undefined ? null : <div className="flex">{back}</div>}
             <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-                <h1
-                    id="page-title"
-                    style={titleStyle}
-                    className="min-w-0 text-xl font-semibold tracking-tight [overflow-wrap:anywhere]"
-                >
-                    {title}
+                <h1 id="page-title" className="min-w-0 text-xl font-semibold tracking-display [overflow-wrap:anywhere]">
+                    <span style={titleStyle}>{title}</span>
+                    {/* A real space, so the heading's accessible name does not run the two together. */}
+                    {titleSuffix === undefined ? null : ' '}
                     {titleSuffix === undefined ? null : (
-                        <span className="ms-2 text-sm font-normal tracking-normal text-text-muted tabular-nums">
+                        <span className="ms-1 text-sm font-normal tracking-normal text-text-muted tabular-nums">
                             {titleSuffix}
                         </span>
                     )}
