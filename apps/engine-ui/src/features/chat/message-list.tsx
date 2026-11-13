@@ -165,7 +165,8 @@ export function MessageList(props: MessageListProps) {
                 // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
                 tabIndex={0}
                 onScroll={onScroll}
-                className="h-full overflow-y-auto overscroll-contain px-1 pb-4 focus-visible:outline-2 focus-visible:outline-focus"
+                // The last lines fade out under the floating composer, and the padding lets them scroll clear of it.
+                className="scroll-quiet h-full overflow-y-auto overscroll-contain px-1 pb-12 [mask-image:linear-gradient(to_top,transparent,#000_3rem)] focus-visible:outline-2 focus-visible:outline-focus"
             >
                 <div className="mx-auto w-full max-w-3xl">
                     {props.hasOlder ? (
@@ -195,9 +196,9 @@ export function MessageList(props: MessageListProps) {
                 </div>
             </div>
             {atBottom ? null : (
-                <Button
-                    size="sm"
-                    className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full! shadow-raised"
+                <button
+                    type="button"
+                    className="absolute bottom-10 left-1/2 inline-flex h-8 -translate-x-1/2 cursor-pointer items-center gap-1.5 rounded-pill bg-raised px-3 text-xs font-medium text-text-muted shadow-raised ring-1 ring-divider hover:text-text motion-safe:animate-rise-in"
                     onClick={() => {
                         atBottomRef.current = true;
                         setAtBottom(true);
@@ -205,9 +206,9 @@ export function MessageList(props: MessageListProps) {
                         props.onJumpedToLatest?.();
                     }}
                 >
-                    <ArrowDown aria-hidden className="size-4" />
+                    <ArrowDown aria-hidden className="size-3.5" />
                     {m.chat_jump_latest()}
-                </Button>
+                </button>
             )}
         </div>
     );

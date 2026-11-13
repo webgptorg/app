@@ -1,20 +1,8 @@
 import { lazy, Suspense } from 'react';
 
 import { useBrowser } from '../../../app/browser-context';
-import type { Markdown } from './markdown';
 import { PlainText } from './plain-text';
-
-interface MarkdownModule {
-    readonly Markdown: typeof Markdown;
-}
-
-let markdownModule: Promise<MarkdownModule> | undefined;
-
-/** Starts loading the markdown renderer, e.g. when a chat route loads, so finished replies render without a swap. */
-export function preloadMarkdown(): Promise<MarkdownModule> {
-    markdownModule ??= import('./markdown');
-    return markdownModule;
-}
+import { preloadMarkdown } from './preload-markdown';
 
 const LazyMarkdown = lazy(() => preloadMarkdown().then((module) => ({ default: module.Markdown })));
 

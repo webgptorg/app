@@ -1,25 +1,32 @@
-import { MessageId } from '@ptbk/engine-api';
+import { KNOWN_CAPABILITIES, MessageId } from '@ptbk/engine-api';
 import type { ReadChat } from '@ptbk/engine-api';
 import { EmptyState, ErrorState } from '@ptbk/ui';
-import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { cx } from '../../app/cx';
 import { useEngineApi } from '../../app/engine-api-context';
+import { useAllows } from '../../app/registry/use-visible-features';
 import { m } from '../../paraglide/messages';
+import { agentListQueryOptions } from '../agents/agents-queries';
 import { useCurrentMember } from '../session/use-current-member';
+import { usePermissions } from '../session/use-permissions';
 import { entriesInOrder } from './chat-cache';
 import { chatKeys } from './chat-keys';
 import { chatEntriesQueryOptions } from './chat-queries';
 import { MessagesSkeleton } from './chat-route-states';
 import { isReplyActive } from './chat-session';
 import { Composer } from './composer';
+import type { ComposerAgent } from './composer';
 import { MessageList } from './message-list';
 import { threadViews } from './message-views';
+import { buildThreadReferences, ThreadReferencesProvider } from './references/thread-references';
 import { useChatSession } from './use-chat-session';
 
 /** Long histories mount only the visible window; below this every message stays in the page for find-in-page. */
 export const VIRTUALIZE_ABOVE = 200;
+/** The project's agents `@` can name: the engine's largest page, sorted by name. */
+const MENTIONABLE_AGENTS = 100;
 
 export interface ChatPanelProps {
     readonly chat: ReadChat;
@@ -50,7 +57,31 @@ export function ChatPanel({ chat, canWrite, fill = false }: ChatPanelProps) {
         () => threadViews(chat, entries, session.state, { memberId: me.memberId, canSendAgain: canWrite }),
         [chat, entries, session.state, me.memberId, canWrite],
     );
-    const agentName = mainAgentName(chat) ?? m.chat_agents();
+    const { can } = usePermissions();
+    const projectAgents = useQuery({
+        ...agentListQueryOptions(engineApi, { sort: 'name', limit: MENTIONABLE_AGENTS }),
+        enabled: can('agents.read'),
+    });
+    const canOpenTasks = useAllows({ capability: KNOWN_CAPABILITIES.tasks, permission: 'tasks.read' });
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const [addressee, setAddressee] = useState<ComposerAgent | null>(null);
+    // Addressing an agent from a chip or a hovercard leads straight on to writing to it.
+    useEffect(() => {
+        if (addressee !== null) textareaRef.current?.focus();
+    }, [addressee]);
+    const references = useMemo(
+        () =>
+            buildThreadReferences({
+                chat,
+                agents: projectAgents.data?.items ?? [],
+                canOpenTasks,
+                onMention: canWrite ? setAddressee : undefined,
+            }),
+        [chat, projectAgents.data, canOpenTasks, canWrite],
+    );
+    const mentionables = useMemo(() => [...references.agents.values()], [references]);
+    const mainName = mainAgentName(chat) ?? m.chat_agents();
+    const agentName = addressee?.name ?? mainName;
 
     const { unread } = chat;
     useEffect(() => {
@@ -87,14 +118,13 @@ export function ChatPanel({ chat, canWrite, fill = false }: ChatPanelProps) {
         },
         [session],
     );
-    const textareaRef = useRef<HTMLTextAreaElement>(null);
     const active = isReplyActive(session.state.phase);
     const { completedCount } = session.state;
     // Once per finished reply, never per token; the trailing space makes a repeat count as a change.
     const finished =
         completedCount === 0
             ? ''
-            : `${m.chat_reply_finished({ name: agentName })}${completedCount % 2 === 0 ? ' ' : ''}`;
+            : `${m.chat_reply_finished({ name: mainName })}${completedCount % 2 === 0 ? ' ' : ''}`;
     const announcement = session.state.phase === 'unconfirmed' ? m.chat_send_unconfirmed() : finished;
 
     const stop = () => {
@@ -172,12 +202,13 @@ export function ChatPanel({ chat, canWrite, fill = false }: ChatPanelProps) {
     }
 
     return (
-        <div ref={panelRef} className={cx('flex flex-col gap-2', fill ? 'min-h-0 flex-1' : 'h-[70dvh] min-h-96')}>
-            {body}
+        <div ref={panelRef} className={cx('flex flex-col', fill ? 'min-h-0 flex-1' : 'h-[70dvh] min-h-96')}>
+            <ThreadReferencesProvider value={references}>{body}</ThreadReferencesProvider>
             <div aria-live="polite" aria-atomic="true" className="sr-only">
                 {announcement}
             </div>
             {canWrite ? (
+                // Floats over the thread's faded last lines (message-list.tsx leaves room for it).
                 <Composer
                     label={m.chat_composer_label()}
                     labelHidden
@@ -191,8 +222,11 @@ export function ChatPanel({ chat, canWrite, fill = false }: ChatPanelProps) {
                           : {})}
                     onSend={(content) => session.send(content)}
                     onStop={stop}
+                    mentionables={mentionables}
+                    addressee={addressee}
+                    onAddresseeChange={setAddressee}
                     textareaRef={textareaRef}
-                    className="mx-auto w-full max-w-3xl"
+                    className="relative z-10 mx-auto -mt-6 w-full max-w-3xl px-1 pb-1"
                 />
             ) : null}
         </div>

@@ -2,7 +2,7 @@
 
 - **Lane:** U · **Module:** `apps/engine-ui`, `packages/ui` · **Milestone:** M5
 - **Depends on:** C-14
-- **Status:** todo
+- **Status:** in progress (feat/u-16-chat-references, feat/u-16-chat-thread)
 - **Spec:** Security hardening (5 agent output is untrusted, 6 tool calls never become code); ADRs: [0015](../../adr/0015-ui-architecture-and-design-system.md)
 
 ## Goal

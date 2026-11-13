@@ -153,6 +153,35 @@ test.describe('foundations in a real browser', () => {
         await expect(dialog).toBeVisible();
     });
 
+    test('a hovercard stays out of the page until hovered, opens in the top layer and closes with Esc', async ({
+        page,
+        visit,
+    }) => {
+        expectCleanPage(await visit('/__gallery'));
+        const demo = page.locator('section[aria-labelledby="gallery-hovercard"]');
+        const trigger = demo.getByRole('button', { name: '@Copywriter' });
+        const card = page.getByRole('dialog', { name: 'Copywriter' });
+        // A closed card must neither show nor cover the text around it.
+        await expect(card).toBeHidden();
+        const box = await trigger.boundingBox();
+        const hit = await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest('[popover]') ?? null, {
+            x: (box?.x ?? 0) + 4,
+            y: (box?.y ?? 0) + (box?.height ?? 0) / 2,
+        });
+        expect(hit).toBeNull();
+
+        await trigger.hover();
+        await expect(card).toBeVisible();
+        await expect(card.getByText('Writes and edits marketing copy.')).toBeVisible();
+        await trigger.focus();
+        await page.keyboard.press('Tab');
+        await expect(card.getByRole('button', { name: 'Open agent' })).toBeFocused();
+        await page.keyboard.press('Escape');
+        await expect(card).toBeHidden();
+        await expect(trigger).toBeFocused();
+        expect(await page.evaluate(() => window.__ptbkCspViolations ?? [])).toEqual([]);
+    });
+
     test('a different primitives palette changes the rendered gallery colours', async ({ page, visit }) => {
         const sample = () =>
             page.evaluate(() => {

@@ -7,6 +7,7 @@ import type { ReactNode } from 'react';
 
 import { m } from '../../../paraglide/messages';
 import { safeLinkUrl } from '../../../security/safe-url';
+import { ReferenceText } from '../references/reference-text';
 import { CodeBlock } from './code-block';
 
 /** What a node needs from its surroundings while it renders. */
@@ -14,6 +15,8 @@ interface Context {
     readonly origin: string;
     /** Inside a tight list, paragraphs render without a block of their own. */
     readonly tight: boolean;
+    /** Inside a link: references stay text, since a chip is a control and may not sit in one. */
+    readonly inLink: boolean;
 }
 
 const HEADINGS = { 1: 'h2', 2: 'h3', 3: 'h4', 4: 'h5', 5: 'h6', 6: 'h6' } as const;
@@ -115,7 +118,7 @@ function renderNode(node: RootContent | Nodes, context: Context, key: number): R
             );
         }
         case 'text':
-            return node.value;
+            return context.inLink ? node.value : <ReferenceText key={key} text={node.value} />;
         case 'emphasis':
             return <em key={key}>{children(node, context)}</em>;
         case 'strong':
@@ -181,7 +184,7 @@ function renderNode(node: RootContent | Nodes, context: Context, key: number): R
         case 'link':
             return (
                 <SafeLink key={key} url={node.url} origin={context.origin}>
-                    {children(node, context)}
+                    {children(node, { ...context, inLink: true })}
                 </SafeLink>
             );
         case 'image': {
@@ -224,7 +227,7 @@ export function parseMarkdown(source: string) {
 export function MarkdownTree({ tree, origin }: { readonly tree: Nodes; readonly origin: string }) {
     return (
         <div className="flex min-w-0 flex-col gap-3 [overflow-wrap:anywhere]">
-            {renderNode(tree, { origin, tight: false }, 0)}
+            {renderNode(tree, { origin, tight: false, inLink: false }, 0)}
         </div>
     );
 }

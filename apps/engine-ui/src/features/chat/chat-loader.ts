@@ -4,7 +4,7 @@ import { notFound } from '@tanstack/react-router';
 import { classifyApiError } from '../../app/api-errors';
 import type { RouterContext } from '../../app/router-context';
 import { chatEntriesQueryOptions, chatQueryOptions } from './chat-queries';
-import { preloadMarkdown } from './render/lazy-markdown';
+import { preloadMarkdown } from './render/preload-markdown';
 
 /**
  * Loads a thread and its newest page of entries; hovering a link to it runs this, so the thread opens without a

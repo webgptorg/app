@@ -43,6 +43,13 @@ export type { TechnicalDetail, TechnicalDetailsProps } from './components/techni
 export { IconButton } from './components/icon-button/icon-button';
 export { Tooltip, useTooltip } from './components/tooltip/tooltip';
 export type { TooltipProps, TooltipState, TooltipTriggerProps } from './components/tooltip/tooltip';
+export { Hovercard, HOVERCARD_OPEN_DELAY_MS, useHovercard, useHovercardHide } from './components/hovercard/hovercard';
+export type {
+    HovercardOptions,
+    HovercardProps,
+    HovercardState,
+    HovercardTriggerProps,
+} from './components/hovercard/hovercard';
 export type { IconButtonProps } from './components/icon-button/icon-button';
 export { Field } from './components/field/field';
 export type { FieldControlProps, FieldProps } from './components/field/field';

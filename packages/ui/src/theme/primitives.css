@@ -64,6 +64,14 @@
     --ptbk-blue-700: #1f4fc8;
     --ptbk-blue-950: #14204a;
 
+    --ptbk-violet-300: #c3b1fa;
+    --ptbk-violet-700: #6b43c9;
+    --ptbk-pink-300: #f5a3cd;
+    --ptbk-pink-700: #b0286f;
+    --ptbk-olive-300: #c9d77a;
+    --ptbk-olive-700: #5c6a12;
+    --ptbk-orange-300: #f8b878;
+
     --ptbk-font-display: 'Outfit Variable', 'Outfit Fallback', ui-sans-serif, system-ui, sans-serif;
     --ptbk-font-text: 'Inter Variable', 'Inter Fallback', ui-sans-serif, system-ui, sans-serif;
     --ptbk-font-mono: 'JetBrains Mono Variable', 'JetBrains Mono Fallback', ui-monospace, monospace;

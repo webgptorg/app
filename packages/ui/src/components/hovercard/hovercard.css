@@ -1,0 +1,7 @@
+:root {
+    --hovercard-bg: var(--color-raised);
+    --hovercard-text: var(--color-text);
+    --hovercard-border: var(--color-divider);
+    --hovercard-radius: var(--radius-surface);
+    --hovercard-shadow: var(--shadow-overlay);
+}

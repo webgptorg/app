@@ -34,6 +34,9 @@ export const SEMANTIC_PAIRS: readonly TokenPair[] = [
     ...graphic('--color-accent', ...SURFACES),
     ...graphic('--color-live', ...SURFACES),
     ...[1, 2, 3, 4, 5, 6].flatMap((index) => graphic(`--color-identity-${String(index)}`, ...SURFACES)),
+    ...[1, 2, 3, 4, 5, 6, 7, 8].flatMap((index) =>
+        text(`--color-agent-${String(index)}`, ...SURFACES, '--color-sunken'),
+    ),
 ];
 
 /**
