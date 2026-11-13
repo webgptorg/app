@@ -103,7 +103,7 @@ export function PaletteButton({ onOpen, compact }: { readonly onOpen: () => void
                 {m.palette_open_short()}
             </span>
             <span className="sr-only">{m.palette_open()}</span>
-            <kbd aria-hidden="true" className="text-xs tabular-nums opacity-80">
+            <kbd aria-hidden="true" className="text-xs tabular-nums">
                 {shortcutHint()}
             </kbd>
         </button>

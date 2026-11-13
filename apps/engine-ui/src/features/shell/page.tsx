@@ -115,7 +115,9 @@ export function PageHeader({ title, titleSuffix, breadcrumbs, back, actions, tit
                         </span>
                     )}
                 </h1>
-                {actions === undefined ? null : <div className="flex shrink-0 items-center gap-2">{actions}</div>}
+                {actions === undefined ? null : (
+                    <div className="flex max-w-full flex-wrap items-center gap-2">{actions}</div>
+                )}
             </div>
         </header>
     );

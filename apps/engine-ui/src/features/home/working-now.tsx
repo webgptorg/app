@@ -16,10 +16,8 @@ import { chatName } from '../chat/thread-list';
 import { EntityChip } from '../entities/entity-chip';
 import { runTitle } from '../runs/run-format';
 import { runListQueryOptions } from '../runs/runs-queries';
-import { useTaskList } from '../tasks/tasks-queries';
 import { useAgentLook } from './use-agent-look';
-
-const TASK_LIMIT = 10;
+import { useHomeTasks } from './use-home-tasks';
 
 function Timer({ since }: { readonly since: string | null }) {
     const elapsed = useElapsedMs(since ?? '');
@@ -129,12 +127,11 @@ function RunWork({ run }: { readonly run: ReadRun }) {
  */
 export function WorkingNow({ chats }: { readonly chats: readonly ReadChat[] | undefined }) {
     const engineApi = useEngineApi();
-    const tasksVisible = useAllows({ capability: KNOWN_CAPABILITIES.tasks, permission: 'tasks.read' });
     const runsVisible = useAllows({ capability: KNOWN_CAPABILITIES.runs, permission: 'runs.read' });
-    const tasks = useTaskList({ limit: TASK_LIMIT, state: 'active' });
+    const { tasks } = useHomeTasks('active');
     const runs = useQuery({ ...runListQueryOptions(engineApi, { status: 'running' }), enabled: runsVisible });
     const replies = (chats ?? []).flatMap((chat) => chat.working.map((working) => ({ chat, working })));
-    const running = tasksVisible ? (tasks.data?.pages.flatMap((page) => page.items) ?? []) : [];
+    const running = tasks ?? [];
     // A run of a task or a chat reply is already shown as that task or reply.
     const loose = runsVisible
         ? (runs.data?.items ?? []).filter((run) => (run.taskId ?? null) === null && run.chatId === null)

@@ -1,4 +1,3 @@
-import { KNOWN_CAPABILITIES } from '@ptbk/engine-api';
 import type { ReadChat, ReadTask } from '@ptbk/engine-api';
 import { Section, Skeleton, STATUS_TINT_CLASSES } from '@ptbk/ui';
 import { useInfiniteQuery } from '@tanstack/react-query';
@@ -10,18 +9,16 @@ import { cx } from '../../app/cx';
 import { useEngineApi } from '../../app/engine-api-context';
 import { ButtonLink } from '../../app/link';
 import type { Attention, FeatureDefinition } from '../../app/registry/feature';
-import { useAllows, useVisibleFeatures } from '../../app/registry/use-visible-features';
+import { useVisibleFeatures } from '../../app/registry/use-visible-features';
 import { m } from '../../paraglide/messages';
 import { AgentAvatar } from '../agents/agent-avatar';
 import { chatEntriesQueryOptions } from '../chat/chat-queries';
 import { tintStyle } from '../chat/references/agent-color';
 import { chatName } from '../chat/thread-list';
 import { EntityChip } from '../entities/entity-chip';
-import { useTaskList } from '../tasks/tasks-queries';
 import { questionQuote } from './question-text';
 import { useAgentLook } from './use-agent-look';
-
-const TASK_LIMIT = 10;
+import { useHomeTasks } from './use-home-tasks';
 
 /** One thing waiting on the member: who or what, in a sentence, and the one action that answers it. */
 function NeedsYouItem({
@@ -175,12 +172,11 @@ function useAttentionItems() {
  * counts. Each item sits on a soft surface with one action. When nothing waits, the section is one quiet line.
  */
 export function NeedsYou({ chats }: { readonly chats: readonly ReadChat[] | undefined }) {
-    const tasksVisible = useAllows({ capability: KNOWN_CAPABILITIES.tasks, permission: 'tasks.read' });
-    const tasks = useTaskList({ limit: TASK_LIMIT, state: 'awaiting-user' });
-    const waitingTasks = tasksVisible ? (tasks.data?.pages.flatMap((page) => page.items) ?? []) : [];
+    const { tasks } = useHomeTasks('awaiting-user');
+    const waitingTasks = tasks ?? [];
     const asking = (chats ?? []).filter((chat) => chat.questions.length > 0);
     const { probes, items, pending } = useAttentionItems();
-    const loading = chats === undefined || (tasksVisible && tasks.isPending) || pending;
+    const loading = chats === undefined || tasks === undefined || pending;
     const empty = asking.length === 0 && waitingTasks.length === 0 && items.length === 0;
     return (
         <Section
