@@ -5,7 +5,7 @@ import type { KeyboardEvent, ReactNode } from 'react';
 import { useUiMessages } from '../../i18n/ui-provider';
 import { cx } from '../../internal/cx';
 import { Button } from '../button/button';
-import { Input } from '../input/input';
+import { DateInput } from '../date-input/date-input';
 import type { AnchoredPopover } from './anchored-popover';
 import { isMultiple, matchesQuery, selectedOptions } from './filter-fields';
 import type { FilterBarDateRangeField, FilterBarField, FilterBarOption } from './filter-fields';
@@ -375,9 +375,8 @@ function DateRangeStep({
             <div className="flex flex-col gap-2 px-1 pb-1">
                 <label className="flex items-center justify-between gap-3">
                     <span className="text-(--filter-bar-muted)">{messages.rangeFrom()}</span>
-                    <Input
+                    <DateInput
                         ref={firstRef}
-                        type="date"
                         value={from ?? ''}
                         {...(field.min === undefined ? {} : { min: field.min })}
                         {...(fromMax === undefined ? {} : { max: fromMax })}
@@ -390,8 +389,7 @@ function DateRangeStep({
                 </label>
                 <label className="flex items-center justify-between gap-3">
                     <span className="text-(--filter-bar-muted)">{messages.rangeTo()}</span>
-                    <Input
-                        type="date"
+                    <DateInput
                         value={to ?? ''}
                         {...(toMin === undefined ? {} : { min: toMin })}
                         {...(field.max === undefined ? {} : { max: field.max })}
