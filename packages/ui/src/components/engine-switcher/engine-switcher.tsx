@@ -64,7 +64,7 @@ function EngineIdentity({ engine, status }: { readonly engine: CurrentEngine; re
             </span>
             <span className="flex min-w-0 flex-1 flex-col">
                 <span className="truncate font-medium text-(--engine-switcher-text)">{engine.name}</span>
-                <span className="truncate text-xs text-(--engine-switcher-muted)">{engine.hostname}</span>
+                <span className="truncate text-2xs text-(--engine-switcher-muted)">{engine.hostname}</span>
             </span>
             {status === undefined ? null : <span className="shrink-0">{status}</span>}
         </span>

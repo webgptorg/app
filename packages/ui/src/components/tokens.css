@@ -1,5 +1,6 @@
 /* Every component module's tokens (layer 3 of 3, ADR 0015), each defaulting to semantic tokens. */
 @import './anchor/anchor.css';
+@import './avatar/avatar.css';
 @import './badge/badge.css';
 @import './banner/banner.css';
 @import './button/button.css';
@@ -15,6 +16,7 @@
 @import './empty-state/empty-state.css';
 @import './empty-value/empty-value.css';
 @import './engine-switcher/engine-switcher.css';
+@import './entity-chip/entity-chip.css';
 @import './error-state/error-state.css';
 @import './external-link/external-link.css';
 @import './field/field.css';
@@ -26,11 +28,13 @@
 @import './menu/menu.css';
 @import './pagination/pagination.css';
 @import './relative-time/relative-time.css';
+@import './section/section.css';
 @import './select/select.css';
 @import './monogram/monogram.css';
 @import './skeleton/skeleton.css';
 @import './skip-link/skip-link.css';
 @import './spinner/spinner.css';
+@import './status/status.css';
 @import './switch/switch.css';
 @import './tabs/tabs.css';
 @import './technical-details/technical-details.css';
