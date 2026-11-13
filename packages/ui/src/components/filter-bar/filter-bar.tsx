@@ -301,6 +301,8 @@ function FilterChip({
         <li className="flex min-h-7 max-w-72 shrink-0 items-stretch overflow-hidden rounded-(--filter-bar-chip-radius) border border-(--filter-bar-chip-border) bg-(--filter-bar-chip-bg) text-sm text-(--filter-bar-text)">
             <button
                 type="button"
+                // Names every value, also those the chip only counts; a hidden text node would break the name in two.
+                {...(value.hidden.length === 0 ? {} : { 'aria-label': fullText })}
                 aria-haspopup="dialog"
                 aria-expanded={expanded}
                 onClick={(event) => {
@@ -317,12 +319,9 @@ function FilterChip({
                 <span className="shrink-0 text-(--filter-bar-muted)">{`${field.label}:`}</span>{' '}
                 <span className="min-w-0 truncate font-medium">{value.shown}</span>
                 {value.hidden.length === 0 ? null : (
-                    <>
-                        <span aria-hidden="true" className="shrink-0 text-(--filter-bar-muted) tabular-nums">
-                            {`+${String(value.hidden.length)}`}
-                        </span>
-                        <span className="sr-only">{`, ${value.hidden.join(', ')}`}</span>
-                    </>
+                    <span aria-hidden="true" className="shrink-0 text-(--filter-bar-muted) tabular-nums">
+                        {`+${String(value.hidden.length)}`}
+                    </span>
                 )}
             </button>
             <button
