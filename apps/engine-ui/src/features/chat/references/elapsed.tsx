@@ -1,6 +1,6 @@
 import { useNow } from '../../../app/ticker';
 
-/** A stopwatch reading: `0:08`, `4:12`, `1:03:27`. Language-neutral, so it sits in mono meta lines as is. */
+/** A stopwatch reading: `0:08`, `4:12`, `1:03:27`. Language-neutral, so it sits in meta lines as is. */
 export function formatClock(ms: number): string {
     const total = Math.max(0, Math.floor(ms / 1000));
     const hours = Math.floor(total / 3600);

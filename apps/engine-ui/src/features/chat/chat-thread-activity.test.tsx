@@ -196,7 +196,7 @@ describe('task cards', { timeout: TIMEOUT_MS }, () => {
             commit: 'a1b2c3d4e5f6',
         });
         expect(await within(card).findByText('Completed')).toBeDefined();
-        expect(within(card).getByText('Commit a1b2c3d')).toBeDefined();
+        expect(within(card).getByText('a1b2c3d').parentElement?.textContent).toBe('Commit a1b2c3d');
         expect(within(card).getByText('Saved to copy/spring.md')).toBeDefined();
     });
 });
