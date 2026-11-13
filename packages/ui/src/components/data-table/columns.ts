@@ -16,6 +16,7 @@ import {
     tableFeatures,
 } from '@tanstack/react-table';
 import type { CellContext, ColumnDef, ColumnHelper, HeaderContext, Row, RowData } from '@tanstack/react-table';
+import type { ReactNode } from 'react';
 
 /** State shapes apps bind to search params; re-exported so apps never depend on TanStack Table directly. */
 export type {
@@ -51,9 +52,18 @@ export interface DataTableColumnMeta {
      * to the header when that is a string.
      */
     readonly label?: string;
-    /** Order on a narrow-screen card, lowest first; the first column is the card's title. Unset columns come last. */
+    /** A small monochrome icon before the header's name (lucide, `size-3.5`). Decorative. */
+    readonly icon?: ReactNode;
+    /** Times, durations, sizes, counts, money: tabular figures, lined up at the end. */
+    readonly numeric?: boolean;
+    /**
+     * Order on a narrow screen, where each row is two lines, lowest first: the first column is the row's title line,
+     * the rest its meta line. Unset columns come last.
+     */
     readonly priority?: number;
-    /** Leave the column off narrow-screen cards (e.g. a long description already in the title). */
+    /** On a narrow screen, at the end of the title line (e.g. a time or a status) rather than on the meta line. */
+    readonly trailing?: boolean;
+    /** Leave the column out on a narrow screen (e.g. a long description already in the title). */
     readonly hideOnCard?: boolean;
     /**
      * Start hidden, on cards too, until the reader turns the column on in the column menu (which a hidden column
