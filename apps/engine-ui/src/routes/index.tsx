@@ -7,8 +7,8 @@ import { activityFeedQueryOptions } from '../features/home/activity/activity-que
 import { homeVariant } from '../features/home/home-variant';
 import { ONBOARDING_REQUIREMENT } from '../features/onboarding/onboarding-feature';
 import { onboardingQueryOptions } from '../features/onboarding/onboarding-queries';
-import { HOME_CHATS, HomePage } from '../features/home/home-page';
-import { AGENT_LOOK_PARAMS } from '../features/home/use-agent-look';
+import { HOME_CHATS, HomePage, loadActivityFeed, loadHomeContent } from '../features/home/home-page';
+import { AGENT_LOOK_PARAMS } from '../features/home/agent-look-params';
 import { agentListQueryOptions } from '../features/agents/agents-queries';
 import { chatListQueryOptions } from '../features/chat/chat-queries';
 import { knownPermissions } from '../features/session/permissions';
@@ -29,6 +29,8 @@ export const Route = createFileRoute('/')({
         const prefetch = (promise: Promise<unknown>) => {
             promise.catch(() => undefined);
         };
+        // Home's content chunk loads while the engine answers, not after.
+        prefetch(loadHomeContent());
         const [access, me] = await Promise.all([
             loadAccess(context),
             queryClient.query({ ...meQueryOptions(engineApi), staleTime: 'static' }),
@@ -37,6 +39,7 @@ export const Route = createFileRoute('/')({
         if (access.can('agents.read')) {
             prefetch(queryClient.query(agentListQueryOptions(engineApi, AGENT_LOOK_PARAMS)));
             if (homeVariant(knownPermissions(me.permissions)) === 'control-center') {
+                prefetch(loadActivityFeed());
                 prefetch(queryClient.infiniteQuery(activityFeedQueryOptions(engineApi, deps.area)));
             }
         }

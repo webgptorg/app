@@ -26,7 +26,7 @@ import { m } from '../../paraglide/messages';
 import { AgentAvatar } from '../agents/agent-avatar';
 import { agentListQueryOptions } from '../agents/agents-queries';
 import { EntityChip } from '../entities/entity-chip';
-import { AGENT_LOOK_PARAMS } from '../home/use-agent-look';
+import { AGENT_LOOK_PARAMS } from '../home/agent-look-params';
 import { Page } from '../shell/page';
 import { splitTaskName } from './task-name';
 import {

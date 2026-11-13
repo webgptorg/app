@@ -5,9 +5,7 @@ import { useEngineApi } from '../../app/engine-api-context';
 import { useAllows } from '../../app/registry/use-visible-features';
 import { agentListQueryOptions } from '../agents/agents-queries';
 import { agentColor } from '../chat/references/agent-color';
-
-/** The engine's agents by name, one page: the same query the agent filters use, so Home adds no request of its own. */
-export const AGENT_LOOK_PARAMS = { limit: 100, sort: 'name' } as const;
+import { AGENT_LOOK_PARAMS } from './agent-look-params';
 
 export interface AgentLook {
     readonly profile: Pick<AgentProfile, 'avatarUrl' | 'color'>;

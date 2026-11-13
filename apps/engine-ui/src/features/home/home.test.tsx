@@ -69,7 +69,8 @@ describe('home', { timeout: TIMEOUT_MS }, () => {
         const { container } = renderWithProviders({ path: '/', engineApi: engine.client });
 
         expect(await screen.findByRole('heading', { level: 1, name: /, Owner$/ })).toBeDefined();
-        expect(screen.getByRole('textbox', { name: 'Ask Chatter' })).toBeDefined();
+        // Home's content arrives as a chunk of its own, alongside the data.
+        expect(await screen.findByRole('textbox', { name: 'Ask Chatter' })).toBeDefined();
         expect(screen.getByRole('link', { name: 'New agent' }).getAttribute('href')).toBe('/agents/new');
         const side = screen.getByRole('complementary', { name: 'Activity' });
         expect(await within(side).findAllByRole('listitem')).not.toHaveLength(0);
