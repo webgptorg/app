@@ -357,4 +357,3 @@ Taken 2026-10-26. Seb decided 1, 2, 5 and 7, and delegated 3, 4, 6 and 8 with on
 6. **No engine contract change** beyond C-11's additive pieces. Progress comes from the registration, the heartbeat (`members` is 0 until the owner's first passkey, normative in installation.md) and the relays' presence reports (R-07).
 7. **First UI bundle:** the engine image carries its own release's UI bundle, with the delay counted from the release's trusted log time, and the installer pins only releases already past their delay. Until UI bundles ship inside engine releases, running the installer counts as the owner approving the first bundle by hand. This needs the engine team and the release key holders.
 8. **Gateway pages:** we publish a small MIT stylesheet with the design tokens; the mock engine's `/setup` and sign-in pages are portable, CSP-safe MIT reference pages the engine team may copy (M-08). The engine team owns and reviews what it ships.
-

@@ -348,13 +348,8 @@
   "engines_open_new_tab": "project {name}, in a new tab",
   "engines_reachable": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "Reachable through {count} relay",
         "countPlural=other": "Reachable through {count} relays"
@@ -748,13 +743,8 @@
   "ui_select_row": "Select {label}",
   "ui_selected_count": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{count} selected",
         "countPlural=other": "{count} selected"
@@ -785,13 +775,8 @@
   "ui_technical_details": "Technical details",
   "ui_total_items": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{count} item",
         "countPlural=other": "{count} items"

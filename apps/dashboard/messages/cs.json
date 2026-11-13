@@ -348,13 +348,8 @@
   "engines_open_new_tab": "projekt {name} v nové kartě",
   "engines_reachable": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "Dostupný přes {count} relay",
         "countPlural=few": "Dostupný přes {count} relaye",
@@ -750,13 +745,8 @@
   "ui_select_row": "Vybrat {label}",
   "ui_selected_count": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{count} vybraná položka",
         "countPlural=few": "{count} vybrané položky",
@@ -789,13 +779,8 @@
   "ui_technical_details": "Technické podrobnosti",
   "ui_total_items": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{count} položka",
         "countPlural=few": "{count} položky",
