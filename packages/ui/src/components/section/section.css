@@ -1,0 +1,5 @@
+:root {
+    --section-hairline: var(--color-hairline);
+    --section-title: var(--color-text);
+    --section-muted: var(--color-text-muted);
+}

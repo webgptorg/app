@@ -158,7 +158,7 @@ export function CommandPalette<Item extends CommandPaletteItem>({
                                 onQueryChange(event.target.value);
                             }}
                             onKeyDown={onKeyDown}
-                            className="min-h-12 min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-(--command-palette-muted)"
+                            className="min-h-12 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-(--command-palette-placeholder)"
                         />
                         {loading ? <Spinner size="sm" announce={false} /> : null}
                     </div>
@@ -175,7 +175,7 @@ export function CommandPalette<Item extends CommandPaletteItem>({
                                     <div
                                         id={headingId}
                                         role="presentation"
-                                        className="px-2 py-1 text-xs font-medium text-(--command-palette-muted)"
+                                        className="px-2.5 pt-2 pb-1 text-2xs font-medium text-(--command-palette-muted)"
                                     >
                                         {group.label}
                                     </div>
@@ -202,7 +202,7 @@ export function CommandPalette<Item extends CommandPaletteItem>({
                                                     onSelect(item);
                                                 }}
                                                 className={cx(
-                                                    'flex min-h-11 cursor-pointer items-center gap-3 rounded-(--command-palette-option-radius) px-2 py-1.5',
+                                                    'flex min-h-10 cursor-pointer items-center gap-2.5 rounded-(--command-palette-option-radius) px-2.5 py-1.5',
                                                     selected && 'bg-(--command-palette-option-active-bg)',
                                                 )}
                                             >
@@ -215,9 +215,9 @@ export function CommandPalette<Item extends CommandPaletteItem>({
                                                     </span>
                                                 )}
                                                 <span className="flex min-w-0 flex-1 flex-col">
-                                                    <span className="truncate text-sm">{item.label}</span>
+                                                    <span className="truncate text-xs">{item.label}</span>
                                                     {item.detail === undefined ? null : (
-                                                        <span className="truncate text-xs text-(--command-palette-muted)">
+                                                        <span className="truncate text-2xs text-(--command-palette-muted)">
                                                             {item.detail}
                                                         </span>
                                                     )}
@@ -243,11 +243,13 @@ export function CommandPalette<Item extends CommandPaletteItem>({
                         // The combobox already tells assistive technology how it works; this is for sighted keyboard users.
                         <div
                             aria-hidden="true"
-                            className="flex flex-wrap gap-x-4 gap-y-1 border-t border-(--command-palette-border) px-4 py-2 text-xs text-(--command-palette-muted) pointer-coarse:hidden"
+                            className="flex flex-wrap gap-x-4 gap-y-1 border-t border-(--command-palette-border) px-4 py-2 text-2xs text-(--command-palette-muted) pointer-coarse:hidden"
                         >
                             {keyHints.map((hint) => (
                                 <span key={hint.keys} className="inline-flex items-center gap-1.5">
-                                    <kbd className="font-mono">{hint.keys}</kbd>
+                                    <kbd className="rounded-small bg-(--command-palette-kbd-bg) px-1 font-sans tabular-nums">
+                                        {hint.keys}
+                                    </kbd>
                                     {hint.label}
                                 </span>
                             ))}

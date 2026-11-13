@@ -31,11 +31,20 @@
     --color-sunken: var(--color-sunken);
     --color-hover: var(--color-hover);
     --color-selected: var(--color-selected);
+    --color-neutral-soft: var(--color-neutral-soft);
     --color-scrim: var(--color-scrim);
     --color-text: var(--color-text);
     --color-text-muted: var(--color-text-muted);
+    --color-text-subtle: var(--color-text-subtle);
     --color-border: var(--color-border);
     --color-divider: var(--color-divider);
+    --color-hairline: var(--color-hairline);
+    --color-primary: var(--color-primary);
+    --color-primary-hover: var(--color-primary-hover);
+    --color-on-primary: var(--color-on-primary);
+    --color-link: var(--color-link);
+    --color-link-hover: var(--color-link-hover);
+    --color-selection: var(--color-selection);
     --color-accent: var(--color-accent);
     --color-accent-hover: var(--color-accent-hover);
     --color-on-accent: var(--color-on-accent);
@@ -58,6 +67,8 @@
     --font-sans: var(--font-sans);
     --font-mono: var(--font-mono);
 
+    --text-2xs: var(--text-2xs);
+    --text-2xs--line-height: var(--text-2xs--line-height);
     --text-xs: var(--text-xs);
     --text-xs--line-height: var(--text-xs--line-height);
     --text-sm: var(--text-sm);
@@ -72,6 +83,9 @@
     --text-2xl--line-height: var(--text-2xl--line-height);
     --text-3xl: var(--text-3xl);
     --text-3xl--line-height: var(--text-3xl--line-height);
+
+    --tracking-display: var(--tracking-display);
+    --tracking-heading: var(--tracking-heading);
 
     --radius-control: var(--radius-control);
     --radius-surface: var(--radius-surface);
@@ -112,26 +126,6 @@
         U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
 }
 @font-face {
-    font-family: 'Outfit Variable';
-    font-style: normal;
-    font-display: swap;
-    font-weight: 100 900;
-    src: url('./fonts/outfit-latin-wght-normal.woff2') format('woff2-variations');
-    unicode-range:
-        U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F,
-        U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
-}
-@font-face {
-    font-family: 'Outfit Variable';
-    font-style: normal;
-    font-display: swap;
-    font-weight: 100 900;
-    src: url('./fonts/outfit-latin-ext-wght-normal.woff2') format('woff2-variations');
-    unicode-range:
-        U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF,
-        U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
-}
-@font-face {
     font-family: 'JetBrains Mono Variable';
     font-style: normal;
     font-display: swap;
@@ -160,14 +154,6 @@
     size-adjust: 107.06%;
 }
 @font-face {
-    font-family: 'Outfit Fallback';
-    src: local('Arial'), local('Helvetica Neue'), local('Helvetica');
-    ascent-override: 100.1%;
-    descent-override: 26.03%;
-    line-gap-override: 0%;
-    size-adjust: 99.9%;
-}
-@font-face {
     font-family: 'JetBrains Mono Fallback';
     src: local('Courier New'), local('Courier');
     ascent-override: 102%;
@@ -185,26 +171,47 @@
         text-rendering: optimizeLegibility;
     }
 
+    /* 14px body: the comfortable density of the brief; components size themselves from the scale, not from this. */
+    body {
+        font-size: var(--text-sm);
+        line-height: var(--text-sm--line-height);
+    }
+
     :focus-visible {
         outline: 2px solid var(--color-focus);
         outline-offset: 2px;
     }
 
     ::selection {
-        background-color: var(--color-accent-soft);
+        background-color: var(--color-selection);
         color: var(--color-text);
     }
 
     h1,
     h2,
-    h3 {
+    h3,
+    h4 {
         font-family: var(--font-display);
+        font-weight: var(--heading-weight);
+        letter-spacing: var(--tracking-heading);
     }
 
-    /* Route and layout changes cross-fade through View Transitions; under reduced motion there are none at all. */
+    h1 {
+        letter-spacing: var(--tracking-display);
+    }
+
+    /*
+     * View Transitions: a route change crossfades; an element named the same on both pages (`viewTransitionName`, e.g.
+     * a task row's title and the task page's title) morphs from one place to the other. Under reduced motion there
+     * are none at all.
+     */
     ::view-transition-old(root),
     ::view-transition-new(root) {
-        animation-duration: var(--motion-enter);
+        animation-duration: var(--motion-page);
+        animation-timing-function: var(--ease-enter);
+    }
+    ::view-transition-group(*) {
+        animation-duration: var(--motion-morph);
         animation-timing-function: var(--ease-enter);
     }
     @media (prefers-reduced-motion: reduce) {
@@ -261,9 +268,12 @@
     background-color: var(--tint, var(--color-text-muted));
 }
 
-/* Meta lines, timers, IDs, commits and tool steps: small, muted, tabular mono. */
+/*
+ * Meta lines: times, durations, sizes and counts. Small, muted Inter with tabular figures so ticking numbers do not
+ * jitter. Not mono: mono is for IDs, commits, paths, code and tool steps only (docs/design/ui.md#type).
+ */
 @utility meta {
-    font-family: var(--font-mono);
+    font-family: var(--font-sans);
     font-size: var(--text-xs);
     line-height: var(--text-xs--line-height);
     font-variant-numeric: tabular-nums;
