@@ -1,7 +1,7 @@
 import { m } from '../../../paraglide/messages';
-import { ButtonLink } from '../../../app/link';
 import { AgentChip } from './agent-chip';
 import { formatClock, useElapsedMs } from './elapsed';
+import { OpenTaskLink } from './open-task-link';
 import { TaskStatus } from './task-status';
 import type { ReadChatTask } from './thread-references';
 
@@ -41,13 +41,7 @@ export function TaskHovercard({ task, canOpen }: { readonly task: ReadChatTask; 
                     </span>
                 )}
             </span>
-            {canOpen && task.taskId !== null ? (
-                <span>
-                    <ButtonLink to="/tasks/$taskId" params={{ taskId: task.taskId }} size="sm">
-                        {m.chat_ref_open_task()}
-                    </ButtonLink>
-                </span>
-            ) : null}
+            {canOpen && task.taskId !== null ? <OpenTaskLink taskId={task.taskId} /> : null}
         </span>
     );
 }

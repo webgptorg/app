@@ -67,6 +67,7 @@ export function ChatPanel({ chat, canWrite, fill = false }: ChatPanelProps) {
     });
     const canOpenTasks = useAllows({ capability: KNOWN_CAPABILITIES.tasks, permission: 'tasks.read' });
     const textareaRef = useRef<HTMLTextAreaElement>(null);
+    // Persists across sends; ThreadPage keys this panel by thread, so it never follows the member elsewhere.
     const [addressee, setAddressee] = useState<ComposerAgent | null>(null);
     // Addressing an agent from a chip or a hovercard leads straight on to writing to it.
     useEffect(() => {

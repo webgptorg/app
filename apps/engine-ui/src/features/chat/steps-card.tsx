@@ -11,6 +11,7 @@ import type { StepsView } from './message-views';
 import { StepLine } from './references/agent-hovercard';
 import { formatClock, useElapsedMs } from './references/elapsed';
 import { StatusDot } from './references/task-status';
+import type { ChatTaskTone } from './references/task-status';
 
 /** Counts up from `since` on the app's shared clock, as a mono stopwatch. */
 export function Elapsed({ since }: { readonly since: string }) {
@@ -81,6 +82,11 @@ function Step({ step, current }: { readonly step: ReadReplyStep; readonly curren
     );
 }
 
+/** A turn that just stopped is quiet, like a cancelled task; one whose last step went wrong is trouble. */
+export function unfinishedTone(steps: readonly ReadReplyStep[]): ChatTaskTone {
+    return steps.at(-1)?.level === 'error' ? 'trouble' : 'quiet';
+}
+
 /** "1 step", "3 kroky", "5 kroků": plural forms by the language's own rules. */
 function stepCountText(count: number, locale: Formatters): string {
     const value = locale.formatNumber(count);
@@ -145,7 +151,7 @@ export function StepsCard({ view }: { readonly view: StepsView }) {
                     }}
                     className="-mx-1 flex items-center gap-1.5 rounded-small px-1 meta hover:text-text"
                 >
-                    {view.status === 'unfinished' ? <StatusDot tone="waiting" /> : null}
+                    {view.status === 'unfinished' ? <StatusDot tone={unfinishedTone(view.steps)} /> : null}
                     <span>{view.status === 'unfinished' ? `${summary} · ${stepCount}` : summary}</span>
                     <FoldChevron open={open} />
                 </button>
