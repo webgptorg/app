@@ -31,17 +31,32 @@ export { Button, buttonClassName } from './components/button/button';
 export type { ButtonProps, ButtonSize, ButtonVariant } from './components/button/button';
 export { ActionMenu } from './components/action-menu/action-menu';
 export type { ActionMenuProps } from './components/action-menu/action-menu';
-export { FilterBar } from './components/filter-bar/filter-bar';
+export { FilterBar, filterField } from './components/filter-bar/filter-bar';
 export type {
-    FilterBarDate,
-    FilterBarFilter,
-    FilterBarMulti,
+    FilterBarColumn,
+    FilterBarColumns,
+    FilterBarDateRange,
+    FilterBarDateRangeField,
+    FilterBarEntityField,
+    FilterBarEnumField,
+    FilterBarField,
+    FilterBarMultiEnumField,
     FilterBarOption,
     FilterBarProps,
     FilterBarSearch,
-    FilterBarSelect,
-    FilterBarText,
+    FilterBarSort,
+    FilterBarSortOption,
+    FilterBarSortValue,
 } from './components/filter-bar/filter-bar';
+export { LegacyFilterBar } from './components/filter-bar/legacy-filter-bar';
+export type {
+    LegacyFilterBarDate,
+    LegacyFilterBarFilter,
+    LegacyFilterBarMulti,
+    LegacyFilterBarProps,
+    LegacyFilterBarSelect,
+    LegacyFilterBarText,
+} from './components/filter-bar/legacy-filter-bar';
 export { EmptyValue } from './components/empty-value/empty-value';
 export type { EmptyValueProps } from './components/empty-value/empty-value';
 export { TechnicalDetails } from './components/technical-details/technical-details';
@@ -169,9 +184,12 @@ export type {
     DataTableEmpty,
     DataTableError,
     DataTableExpansion,
+    DataTableGroup,
+    DataTableGrouping,
     DataTablePage,
     DataTableProps,
     DataTableSelection,
+    DataTableView,
 } from './components/data-table/data-table';
 export { createDataTableColumnHelper, dataTableFeatures } from './components/data-table/columns';
 export type {

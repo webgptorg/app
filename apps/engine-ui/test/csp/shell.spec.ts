@@ -182,6 +182,42 @@ test.describe('foundations in a real browser', () => {
         expect(await page.evaluate(() => window.__ptbkCspViolations ?? [])).toEqual([]);
     });
 
+    test('a filter bar keeps its closed popover out of the page, and opens fields then values in the top layer', async ({
+        page,
+        visit,
+    }) => {
+        expectCleanPage(await visit('/__gallery'));
+        const bar = page.locator('section[aria-labelledby="gallery-filter-bar"]').getByRole('search').first();
+        const search = bar.getByRole('searchbox', { name: 'Search runs' });
+        // A closed popover must neither show nor cover the search and chips beside it.
+        const shown = await page.evaluate(
+            () =>
+                [...document.querySelectorAll('section[aria-labelledby="gallery-filter-bar"] [popover]')].filter(
+                    (element) => getComputedStyle(element).display !== 'none',
+                ).length,
+        );
+        expect(shown).toBe(0);
+        const box = await search.boundingBox();
+        const hit = await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest('[popover]') ?? null, {
+            x: (box?.x ?? 0) + (box?.width ?? 0) / 2,
+            y: (box?.y ?? 0) + (box?.height ?? 0) / 2,
+        });
+        expect(hit).toBeNull();
+
+        await bar.getByRole('button', { name: 'Filter', exact: true }).click();
+        const dialog = page.getByRole('dialog', { name: 'Filter' });
+        await expect(dialog).toBeVisible();
+        await expect(dialog.getByRole('listbox', { name: 'Filter by' })).toBeFocused();
+        await page.keyboard.press('Enter');
+        await expect(
+            page.getByRole('dialog', { name: 'Status' }).getByRole('listbox', { name: 'Status' }),
+        ).toBeFocused();
+        await page.keyboard.press('Escape');
+        await expect(page.getByRole('dialog')).toHaveCount(0);
+        await expect(bar.getByRole('button', { name: 'Filter', exact: true })).toBeFocused();
+        expect(await page.evaluate(() => window.__ptbkCspViolations ?? [])).toEqual([]);
+    });
+
     test('a different primitives palette changes the rendered gallery colours', async ({ page, visit }) => {
         const sample = () =>
             page.evaluate(() => {

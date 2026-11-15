@@ -1,20 +1,18 @@
 :root {
-    --data-table-bg: var(--color-raised);
     --data-table-text: var(--color-text);
     --data-table-muted: var(--color-text-muted);
-    --data-table-border: var(--color-divider);
-    --data-table-divider: var(--color-divider);
-    --data-table-radius: var(--radius-surface);
-    --data-table-header-bg: var(--color-sunken);
+    --data-table-divider: var(--color-hairline);
+    /* Opaque, so rows scrolling under the sticky header do not show through; the page's own background. */
+    --data-table-header-bg: var(--color-surface);
     --data-table-header-text: var(--color-text-muted);
+    --data-table-header-icon: var(--color-text-subtle);
+    --data-table-row-height: 2.5rem;
     --data-table-row-hover: var(--color-hover);
     --data-table-row-selected: var(--color-selected);
-    --data-table-expanded-bg: var(--color-surface);
-    --data-table-card-bg: var(--color-raised);
-    --data-table-card-selected-border: var(--color-accent);
+    --data-table-expanded-bg: var(--color-hover);
     /* Greyed out rather than faded while the next page loads: fading would drop text below 4.5:1. */
     --data-table-fetching-filter: saturate(0.2);
-    /* A virtualised table scrolls inside itself, so the page keeps its toolbar and pagination in view. */
+    /* The table scrolls inside itself, so its header stays in view and the page keeps its bar and paging. */
     --data-table-max-height: 70vh;
     /* How far the edge that hides columns fades out. */
     --data-table-fade: 2rem;

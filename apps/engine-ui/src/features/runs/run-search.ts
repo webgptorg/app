@@ -1,5 +1,4 @@
-import { AgentId, DEFAULT_PAGE_LIMIT, RUN_STATUSES, RunSource, RunStatus } from '@ptbk/engine-api';
-import type { RunStatus as RunStatusValue } from '@ptbk/engine-api';
+import { AgentId, DEFAULT_PAGE_LIMIT, RUN_SORTS, RUN_STATUSES, RunSource, RunStatus } from '@ptbk/engine-api';
 import { z } from 'zod';
 
 import { CalendarDay, dayRange } from '../../app/day-range';
@@ -31,6 +30,8 @@ export const RunSearch = z.object({
     source: RunSource.optional().catch(undefined),
     from: CalendarDay.optional().catch(undefined),
     to: CalendarDay.optional().catch(undefined),
+    /** Only the reversed order is written; newest first is the engine's default and needs no param. */
+    sort: z.enum(RUN_SORTS).exclude(['-queuedAt']).optional().catch(undefined),
     cursor: z
         .string()
         .regex(/^[A-Za-z0-9_-]{1,1024}$/)
@@ -45,11 +46,6 @@ export function hasRunFilters(search: RunSearch, scope: 'global' | 'agent'): boo
     return RUN_FILTER_KEYS.some((key) => (scope === 'agent' && key === 'agentId' ? false : search[key] !== undefined));
 }
 
-export function selectedStatuses(search: RunSearch): ReadonlySet<RunStatusValue> {
-    const parts = search.status?.split(',') ?? [];
-    return new Set(RUN_STATUSES.filter((status) => parts.includes(status)));
-}
-
 /** The engine's query; on an agent's tab the agent comes from the path, never from the search. */
 export function runListParams(search: RunSearch, agentId?: AgentId): RunListParams {
     const scopedAgent = agentId ?? search.agentId;
@@ -59,6 +55,7 @@ export function runListParams(search: RunSearch, agentId?: AgentId): RunListPara
         ...(search.status === undefined ? {} : { status: search.status }),
         ...(search.source === undefined ? {} : { source: search.source }),
         ...dayRange(search.from, search.to),
+        ...(search.sort === undefined ? {} : { sort: search.sort }),
         ...(search.cursor === undefined ? {} : { cursor: search.cursor }),
     };
 }

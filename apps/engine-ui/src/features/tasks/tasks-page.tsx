@@ -1,7 +1,7 @@
 import { KNOWN_CAPABILITIES, TASK_KINDS } from '@ptbk/engine-api';
 import type { ReadTask } from '@ptbk/engine-api';
-import { Badge, Button, Card, EmptyState, ErrorState, FilterBar, RelativeTime, Skeleton } from '@ptbk/ui';
-import type { FilterBarFilter } from '@ptbk/ui';
+import { Badge, Button, Card, EmptyState, ErrorState, LegacyFilterBar, RelativeTime, Skeleton } from '@ptbk/ui';
+import type { LegacyFilterBarFilter } from '@ptbk/ui';
 import { useQuery } from '@tanstack/react-query';
 import { getRouteApi } from '@tanstack/react-router';
 import { useCallback } from 'react';
@@ -228,7 +228,7 @@ function TaskFilters({
     const agentId = search.agentId;
     if (agentId !== undefined && !items.some((agent) => agent.id === agentId))
         agentOptions.unshift({ value: agentId, label: agentId });
-    const filters: FilterBarFilter[] = [
+    const filters: LegacyFilterBarFilter[] = [
         {
             kind: 'multi',
             id: 'status',
@@ -269,7 +269,7 @@ function TaskFilters({
         },
     ];
     return (
-        <FilterBar
+        <LegacyFilterBar
             label={m.tasks_filters()}
             search={{ label: m.tasks_search(), value: text, onChange: setText, maxLength: 256 }}
             filters={filters}

@@ -1,6 +1,6 @@
 import type { ReadRun } from '@ptbk/engine-api';
-import { Badge } from '@ptbk/ui';
-import type { BadgeTone } from '@ptbk/ui';
+import { Badge, StatusPill } from '@ptbk/ui';
+import type { BadgeTone, StatusTone } from '@ptbk/ui';
 import { CircleAlert, CircleCheck, CircleHelp, CircleStop, Hourglass, Play } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
@@ -87,4 +87,29 @@ export function RunStatusBadge({
             )}
         </span>
     );
+}
+
+const PILL_TONES: Readonly<Record<RunStatusValue, StatusTone>> = {
+    queued: 'waiting',
+    running: 'live',
+    completed: 'success',
+    failed: 'danger',
+    cancelled: 'neutral',
+    unknown: 'neutral',
+};
+
+export function runStatusTone(status: RunStatusValue): StatusTone {
+    return PILL_TONES[status];
+}
+
+/** The status as a quiet pill for dense rows: a dot (a running one breathes) and the word, never colour alone. */
+export function RunStatusPill({
+    status,
+    cancelling = false,
+}: {
+    readonly status: RunStatusValue;
+    readonly cancelling?: boolean;
+}) {
+    if (cancelling && !TERMINAL.has(status)) return <StatusPill tone="warning">{m.run_stopping()}</StatusPill>;
+    return <StatusPill tone={PILL_TONES[status]}>{lookOf(status).label}</StatusPill>;
 }

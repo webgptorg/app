@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 
 import type { GalleryEntry } from '../../gallery-entry';
 import { Badge } from '../badge/badge';
+import { RunsListDemo } from '../filter-bar/filter-bar.gallery';
 import { createDataTableColumnHelper } from './columns';
 import type { ColumnFiltersState, DataTableColumnDef, RowSelectionState, SortingState } from './columns';
 import { DataTable } from './data-table';
@@ -134,6 +135,7 @@ export const dataTableGallery: GalleryEntry = {
     title: 'DataTable',
     render: () => (
         <div className="flex flex-col gap-8">
+            <RunsListDemo />
             <ServerSideExample />
             <DataTable<SampleAgent>
                 caption="Loading"
