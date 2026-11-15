@@ -1810,7 +1810,6 @@
   "task_occurrences_empty": "It has not run yet.",
   "task_occurrence_title": "#{sequence} · {reason}",
   "task_occurrence_cycle": "Cycle {cycle}",
-  "task_occurrence_run": "Open run",
   "task_occurrence_run_n": "Run {n}",
   "task_occurrence_reason_first": "First run",
   "task_occurrence_reason_repeat": "Scheduled",
@@ -2074,5 +2073,8 @@
   "entity_fact_type": "Type",
   "entity_fact_role": "Role",
   "entity_fact_last_seen": "Last seen",
-  "entity_fact_joined": "Joined"
+  "entity_fact_joined": "Joined",
+  "task_priority_short": "P{rank}",
+  "task_priority_short_text": "P{rank} · {text}",
+  "task_subtasks_done": "{completed} of {total} subtasks done"
 }

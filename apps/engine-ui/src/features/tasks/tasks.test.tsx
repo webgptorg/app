@@ -119,6 +119,14 @@ describe('tasks', { timeout: TIMEOUT_MS }, () => {
         expect((await screen.findByRole('link', { name: 'Discuss in chat' })).getAttribute('href')).toBe(
             '/chats/chat-ada-1',
         );
+        // Related things are grouped rows: each subtask with its state, its agent and when it changed.
+        const subtasks = within(related).getByRole('group', { name: 'Subtasks 3' });
+        expect(within(subtasks).getAllByRole('listitem')).toHaveLength(3);
+        expect(within(subtasks).getByText('Blocked')).toBeTruthy();
+        expect((await within(subtasks).findAllByRole('link', { name: 'Ada' })).length).toBeGreaterThan(0);
+        expect(within(subtasks).getAllByText(/ago$/).length).toBeGreaterThan(0);
+        expect(screen.getByText('1 of 3 subtasks done')).toBeTruthy();
+        expect(screen.getByText('P2 · high')).toBeTruthy();
         expect(await screen.findByText('It has not run yet.')).toBeTruthy();
         await expectNoAxeViolations(container);
     });
@@ -135,7 +143,7 @@ describe('tasks', { timeout: TIMEOUT_MS }, () => {
         ]);
         expect(
             within(items[1] ?? history)
-                .getByRole('link', { name: 'Open run' })
+                .getByRole('link', { name: 'Run' })
                 .getAttribute('href'),
         ).toBe('/runs/run-iris-weekly');
 

@@ -127,12 +127,12 @@ export function AgentCard({ agentId, name }: { readonly agentId: AgentId; readon
 export function TaskCard({ taskId, name }: { readonly taskId: TaskId; readonly name: string }) {
     const query = useQuery(taskQueryOptions(useEngineApi(), taskId));
     const task = query.data;
-    const { readable, stamp } = splitTaskName(task?.name ?? name);
+    const { readable } = splitTaskName(task?.name ?? name);
     const tone = task === undefined ? null : taskTone(task.state);
     const progress = task?.progress != null && task.progress.total > 0 ? task.progress : null;
     return (
         <PeekCard
-            kind={stamp === null ? m.entity_kind_task() : `${m.entity_kind_task()} · ${stamp}`}
+            kind={m.entity_kind_task()}
             icon={<ListTodo />}
             {...(task === undefined || tone === null
                 ? {}

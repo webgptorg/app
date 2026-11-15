@@ -23,7 +23,7 @@ test('the owner reads a recurring task, its occurrences and runs, and is sent to
     await expect(page.getByRole('button', { name: /cancel|retry|delete/i })).toHaveCount(0);
     await expect(page.getByRole('link', { name: 'Discuss in chat' })).toBeVisible();
 
-    await history.getByRole('row').filter({ hasText: '#3 · Retry' }).getByRole('link', { name: 'Open run' }).click();
+    await history.getByRole('row').filter({ hasText: '#3 · Retry' }).getByRole('link', { name: 'Run' }).click();
     await page.getByRole('link', { name: /^Weekly analytics digest/ }).click();
     await expect(page.getByRole('heading', { level: 1, name: /^Weekly analytics digest/ })).toBeVisible();
 

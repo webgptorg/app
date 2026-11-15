@@ -1867,7 +1867,6 @@
   "task_occurrences_empty": "Zatím neběžel.",
   "task_occurrence_title": "#{sequence} · {reason}",
   "task_occurrence_cycle": "Cyklus {cycle}",
-  "task_occurrence_run": "Otevřít běh",
   "task_occurrence_run_n": "Běh {n}",
   "task_occurrence_reason_first": "První běh",
   "task_occurrence_reason_repeat": "Podle plánu",
@@ -2138,5 +2137,8 @@
   "entity_fact_type": "Typ",
   "entity_fact_role": "Role",
   "entity_fact_last_seen": "Naposledy",
-  "entity_fact_joined": "Připojen"
+  "entity_fact_joined": "Připojen",
+  "task_priority_short": "P{rank}",
+  "task_priority_short_text": "P{rank} · {text}",
+  "task_subtasks_done": "Hotovo {completed} z {total} podúkolů"
 }

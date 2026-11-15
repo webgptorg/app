@@ -106,7 +106,8 @@ describe('entity chips', { timeout: TIMEOUT_MS }, () => {
         await user.hover(chip);
         const card = await screen.findByRole('dialog', { name: HOSTILE_TASK });
         expect(await within(card).findByText('Blocked')).toBeTruthy();
-        expect(within(card).getByText('Task · 2026-10-30 09:00')).toBeTruthy();
+        // The type line names the type only; the instance stamp stays on the detail page.
+        expect(within(card).getByText('Task')).toBeTruthy();
         // The readable name and the engine's reason, both as text.
         expect(within(card).getAllByText(HOSTILE)).toHaveLength(2);
         expect(within(card).getByRole('link', { name: 'Open task' }).getAttribute('href')).toBe('/tasks/task-hostile');

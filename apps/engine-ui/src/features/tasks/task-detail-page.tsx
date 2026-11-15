@@ -1,8 +1,10 @@
 import { ChatId, KNOWN_CAPABILITIES, TaskId } from '@ptbk/engine-api';
-import type { ReadTaskDetail, ReadTaskOccurrence, TaskLinkTarget } from '@ptbk/engine-api';
+import type { ReadTaskDetail, ReadTaskOccurrence } from '@ptbk/engine-api';
 import {
     Badge,
     Button,
+    createDataTableColumnHelper,
+    DataTable,
     EmptyState,
     ErrorState,
     RelativeTime,
@@ -13,10 +15,21 @@ import {
     useLocale,
     viewTransitionStyle,
 } from '@ptbk/ui';
-import type { StatusTone } from '@ptbk/ui';
+import type { DataTableColumnDef, StatusTone } from '@ptbk/ui';
 import { useQuery } from '@tanstack/react-query';
 import { getRouteApi } from '@tanstack/react-router';
-import { Circle, CircleCheck, History as HistoryIcon, MessageSquare } from 'lucide-react';
+import {
+    Activity,
+    AlignLeft,
+    CalendarClock,
+    Circle,
+    CircleCheck,
+    CircleDot,
+    Flag,
+    Hash,
+    History as HistoryIcon,
+    MessageSquare,
+} from 'lucide-react';
 import type { ReactNode } from 'react';
 
 import { classifyApiError } from '../../app/api-errors';
@@ -29,14 +42,8 @@ import { chatQueryOptions } from '../chat/chat-queries';
 import { EntityChip } from '../entities/entity-chip';
 import { Crumb, Page } from '../shell/page';
 import { splitTaskName } from './task-name';
-import {
-    occurrenceReasonLabel,
-    occurrenceStateLabel,
-    occurrenceTone,
-    TaskStateBadge,
-    taskStateLabel,
-    taskTone,
-} from './task-state';
+import { TaskRelations } from './task-relations';
+import { occurrenceReasonLabel, occurrenceStateLabel, occurrenceTone, TaskStateBadge, taskTone } from './task-state';
 import { useTask, useTaskOccurrences } from './tasks-queries';
 
 const route = getRouteApi('/tasks/$taskId');
@@ -106,7 +113,7 @@ function TaskDetail({ task }: { readonly task: ReadTaskDetail }) {
                 <TaskWhy task={task} />
             </div>
             {task.conditions.length === 0 ? null : <Conditions task={task} />}
-            <Relations task={task} />
+            <TaskRelations task={task} />
             <History task={task} />
             {task.notes.length === 0 ? null : (
                 <Section title={m.task_notes_title()}>
@@ -184,16 +191,19 @@ function TaskFacts({ task }: { readonly task: ReadTaskDetail }) {
             </Fact>
             {task.priority.rank > 0 || task.priority.text !== null ? (
                 <Fact label={m.task_fact_priority()}>
-                    <span className="tabular-nums">
-                        {m.task_priority({ rank: task.priority.rank })}
-                        {task.priority.text === null ? null : ` · ${task.priority.text}`}
+                    <span className="inline-flex h-6 items-center gap-1.5 rounded-pill bg-neutral-soft px-2 text-xs font-medium text-text tabular-nums">
+                        <Flag aria-hidden className="size-3 text-text-muted" />
+                        {task.priority.text === null
+                            ? m.task_priority_short({ rank: task.priority.rank })
+                            : m.task_priority_short_text({ rank: task.priority.rank, text: task.priority.text })}
                     </span>
                 </Fact>
             ) : null}
             {progress === null ? null : (
                 <Fact label={m.task_fact_progress()}>
-                    <span className="tabular-nums">
-                        {m.task_meta_progress({ completed: progress.completed, total: progress.total })}
+                    <span className="inline-flex items-center gap-2 tabular-nums">
+                        <SubtaskMeter completed={progress.completed} total={progress.total} />
+                        {m.task_subtasks_done({ completed: progress.completed, total: progress.total })}
                     </span>
                 </Fact>
             )}
@@ -215,6 +225,17 @@ function TaskOwner({ task }: { readonly task: ReadTaskDetail }) {
     if (task.kind === 'engine') return <span>{task.executor ?? m.task_owner_engine()}</span>;
     if (task.agentId === null) return <span>{m.task_owner_unassigned()}</span>;
     return <EntityChip kind="agent" id={task.agentId} name={task.agentName ?? task.agentId} />;
+}
+
+/** How far the subtasks are, as a short quiet bar; the words beside it say the same for everyone. */
+function SubtaskMeter({ completed, total }: { readonly completed: number; readonly total: number }) {
+    const share = Math.min(1, Math.max(0, completed / total));
+    return (
+        <span aria-hidden="true" className="inline-flex h-1 w-12 overflow-hidden rounded-pill bg-neutral-soft">
+            {/* Width through the CSSOM, which the engine's CSP allows; never a style attribute string. */}
+            <span className="h-full rounded-pill bg-text-muted" style={{ width: `${String(share * 100)}%` }} />
+        </span>
+    );
 }
 
 /** Live or actionable states earn a soft surface; settled ones keep their explanation as quiet text. */
@@ -264,200 +285,97 @@ function Conditions({ task }: { readonly task: ReadTaskDetail }) {
     );
 }
 
-function dependencyLook(state: ReadTaskDetail['dependsOn'][number]['state']): {
-    readonly tone: StatusTone;
-    readonly label: string;
-} {
-    switch (state) {
-        case 'met':
-            return { tone: 'success', label: m.task_dependency_met() };
-        case 'pending':
-            return { tone: 'waiting', label: m.task_dependency_pending() };
-        case 'failed':
-            return { tone: 'danger', label: m.task_dependency_failed() };
-        case 'missing':
-            return { tone: 'danger', label: m.task_dependency_missing() };
-        case 'cycle':
-            return { tone: 'danger', label: m.task_dependency_cycle() };
-        case 'unknown':
-            return { tone: 'neutral', label: m.task_state_unknown() };
-    }
+const history = createDataTableColumnHelper<ReadTaskOccurrence>();
+
+function historyColumns(runsVisible: boolean): DataTableColumnDef<ReadTaskOccurrence>[] {
+    return [
+        history.accessor('sequence', {
+            header: m.task_history_column_occurrence(),
+            enableSorting: false,
+            meta: { icon: <Hash className="size-3.5" />, priority: 0 },
+            cell: ({ row }) => (
+                <span className="flex min-w-0 items-baseline gap-2">
+                    <span className="font-medium whitespace-nowrap tabular-nums">
+                        {m.task_occurrence_title({
+                            sequence: row.original.sequence,
+                            reason: occurrenceReasonLabel(row.original.reason),
+                        })}
+                    </span>
+                    {row.original.cycle > 1 ? (
+                        <span className="text-xs whitespace-nowrap text-text-muted tabular-nums">
+                            {m.task_occurrence_cycle({ cycle: row.original.cycle })}
+                        </span>
+                    ) : null}
+                </span>
+            ),
+        }),
+        history.accessor('state', {
+            header: m.task_fact_state(),
+            enableSorting: false,
+            meta: { icon: <CircleDot className="size-3.5" />, priority: 1, trailing: true },
+            cell: ({ row }) => (
+                <StatusPill tone={occurrenceTone(row.original.state)}>
+                    {occurrenceStateLabel(row.original.state)}
+                </StatusPill>
+            ),
+        }),
+        history.accessor((occurrence) => occurrence.endedAt ?? occurrence.startedAt ?? occurrence.scheduledFor, {
+            id: 'when',
+            header: m.task_history_column_when(),
+            enableSorting: false,
+            meta: { icon: <CalendarClock className="size-3.5" />, priority: 2, numeric: true },
+            cell: ({ row }) => {
+                const at = row.original.endedAt ?? row.original.startedAt ?? row.original.scheduledFor;
+                return at === null ? null : (
+                    <RelativeTime value={new Date(at)} className="whitespace-nowrap text-text-muted" />
+                );
+            },
+        }),
+        history.accessor('summary', {
+            header: m.task_history_column_summary(),
+            enableSorting: false,
+            meta: { icon: <AlignLeft className="size-3.5" />, priority: 3 },
+            cell: ({ row }) => {
+                const summary = row.original.summary;
+                // Agent and engine words: text only.
+                return summary === null ? null : (
+                    <span className="line-clamp-2 break-words text-text-muted">{summary}</span>
+                );
+            },
+        }),
+        ...(runsVisible
+            ? [
+                  history.accessor('runIds', {
+                      header: m.task_history_column_runs(),
+                      enableSorting: false,
+                      meta: { icon: <Activity className="size-3.5" />, priority: 4 },
+                      cell: ({ row }) => (
+                          <span className="flex flex-wrap gap-1">
+                              {row.original.runIds.map((runId, index) => (
+                                  <EntityChip
+                                      key={runId}
+                                      kind="run"
+                                      id={runId}
+                                      name={
+                                          row.original.runIds.length === 1
+                                              ? m.activity_run_chip()
+                                              : m.task_occurrence_run_n({ n: index + 1 })
+                                      }
+                                  />
+                              ))}
+                          </span>
+                      ),
+                  }),
+              ]
+            : []),
+    ];
 }
 
-/** A chat by its name, a link once the engine confirms the thread exists. */
-function ChatChip({ chatId, name }: { readonly chatId: ChatId | null; readonly name: string }) {
-    const chatsVisible = useAllows({ permission: 'chats.read' });
-    const chat = useQuery({
-        ...chatQueryOptions(useEngineApi(), chatId ?? ChatId.parse('none')),
-        enabled: chatsVisible && chatId !== null,
-    });
-    return <EntityChip kind="chat" id={chat.data?.id ?? null} name={name} />;
-}
-
-function LinkTarget({ target }: { readonly target: TaskLinkTarget }) {
-    switch (target.type) {
-        case 'task':
-            return <EntityChip kind="task" id={target.taskId} name={target.name} />;
-        case 'agent':
-            return <EntityChip kind="agent" id={target.agentId} name={target.name} />;
-        case 'chat':
-            return <ChatChip chatId={target.chatId} name={target.name} />;
-    }
-}
-
-function Relation({ label, children }: { readonly label: string; readonly children: ReactNode }) {
-    return (
-        <div className="grid gap-1.5 sm:grid-cols-[9rem_minmax(0,1fr)] sm:gap-x-6">
-            <dt className="pt-0.5 text-sm text-text-muted">{label}</dt>
-            <dd className="min-w-0">
-                <ul className="flex flex-col items-start gap-1.5 text-sm">{children}</ul>
-            </dd>
-        </div>
-    );
-}
-
-/** A related task with its state in words beside it, quiet, so the chips stay what the eye scans. */
-function TaskWithState({
-    taskId,
-    name,
-    tone,
-    label,
-}: {
-    readonly taskId: TaskId | null;
-    readonly name: string;
-    readonly tone: StatusTone;
-    readonly label: string;
-}) {
-    return (
-        <li className="flex max-w-full min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-            <EntityChip kind="task" id={taskId} name={name} />
-            <StatusPill tone={tone} variant="quiet" className="text-text-muted">
-                {label}
-            </StatusPill>
-        </li>
-    );
-}
-
-/** Parent and children, prerequisites and dependants, and the directed links, each from the engine's report. */
-function Relations({ task }: { readonly task: ReadTaskDetail }) {
-    const outgoing = task.links.filter((link) => link.direction === 'outgoing');
-    const incoming = task.links.filter((link) => link.direction === 'incoming');
-    const origin = task.origin;
-    const empty =
-        task.parent === null &&
-        task.children.length === 0 &&
-        task.dependsOn.length === 0 &&
-        task.blocks.length === 0 &&
-        task.links.length === 0 &&
-        origin === null;
-    if (empty) return null;
-    return (
-        <Section title={m.task_relations_title()}>
-            <dl className="flex flex-col gap-3">
-                {origin === null ? null : (
-                    <Relation label={m.task_relation_origin()}>
-                        <li className="max-w-full">
-                            <Origin task={task} origin={origin} />
-                        </li>
-                    </Relation>
-                )}
-                {task.parent === null ? null : (
-                    <Relation label={m.task_relation_parent()}>
-                        <li className="max-w-full">
-                            <EntityChip kind="task" id={task.parent.taskId} name={task.parent.name} />
-                        </li>
-                    </Relation>
-                )}
-                {task.children.length === 0 ? null : (
-                    <Relation label={m.task_relation_children()}>
-                        {task.children.map((child) => (
-                            <TaskWithState
-                                key={child.taskId ?? child.name}
-                                taskId={child.taskId}
-                                name={child.name}
-                                tone={taskTone(child.state)}
-                                label={taskStateLabel(child.state)}
-                            />
-                        ))}
-                    </Relation>
-                )}
-                {task.dependsOn.length === 0 ? null : (
-                    <Relation label={m.task_relation_depends_on()}>
-                        {task.dependsOn.map((dependency) => (
-                            <TaskWithState
-                                key={dependency.taskId ?? dependency.name}
-                                taskId={dependency.taskId}
-                                name={dependency.name}
-                                {...dependencyLook(dependency.state)}
-                            />
-                        ))}
-                    </Relation>
-                )}
-                {task.blocks.length === 0 ? null : (
-                    <Relation label={m.task_relation_blocks()}>
-                        {task.blocks.map((dependant) => (
-                            <TaskWithState
-                                key={dependant.taskId ?? dependant.name}
-                                taskId={dependant.taskId}
-                                name={dependant.name}
-                                tone={taskTone(dependant.state)}
-                                label={taskStateLabel(dependant.state)}
-                            />
-                        ))}
-                    </Relation>
-                )}
-                {outgoing.length === 0 ? null : (
-                    <Relation label={m.task_relation_links_to()}>
-                        {outgoing.map((link, index) => (
-                            <li key={index} className="max-w-full">
-                                <LinkTarget target={link.target} />
-                            </li>
-                        ))}
-                    </Relation>
-                )}
-                {incoming.length === 0 ? null : (
-                    <Relation label={m.task_relation_linked_from()}>
-                        {incoming.map((link, index) => (
-                            <li key={index} className="max-w-full">
-                                <LinkTarget target={link.target} />
-                            </li>
-                        ))}
-                    </Relation>
-                )}
-            </dl>
-        </Section>
-    );
-}
-
-function Origin({
-    task,
-    origin,
-}: {
-    readonly task: ReadTaskDetail;
-    readonly origin: NonNullable<ReadTaskDetail['origin']>;
-}) {
-    // `text` is the Book's own wording (`Chat {…}`); the chat or task is named as the links and parent name it.
-    if (origin.chatId !== null) {
-        const chatId = origin.chatId;
-        const link = task.links.find(({ target }) => target.type === 'chat' && target.chatId === chatId);
-        return <ChatChip chatId={chatId} name={link?.target.name ?? m.task_origin_chat()} />;
-    }
-    if (origin.taskId !== null) {
-        const name = task.parent?.taskId === origin.taskId ? task.parent.name : m.task_origin_task();
-        return <EntityChip kind="task" id={origin.taskId} name={name} />;
-    }
-    if (origin.kind === 'goal') return <span>{m.task_origin_goal()}</span>;
-    if (origin.kind === 'engine') return <span>{m.task_origin_engine()}</span>;
-    if (origin.kind === 'user') return <span>{origin.text ?? m.task_origin_user()}</span>;
-    return <span>{origin.text ?? m.task_state_unknown()}</span>;
-}
-
-const COLUMN = 'px-2 pb-2 text-start font-medium';
-
-/** Every occurrence newest first: work cycles, recurring slots, reopenings and retries, each with its runs. */
+/** Every occurrence newest first, in the shared table: work cycles, recurring slots, reopenings and retries, each with its runs. */
 function History({ task }: { readonly task: ReadTaskDetail }) {
     const occurrences = useTaskOccurrences(task.id);
     const runsVisible = useAllows({ capability: KNOWN_CAPABILITIES.runs, permission: 'runs.read' });
+    const items = occurrences.data?.pages.flatMap((page) => page.items) ?? [];
     let body: ReactNode;
     if (occurrences.isPending) body = <Skeleton shape="block" className="h-16 w-full" />;
     else if (occurrences.isError) {
@@ -470,134 +388,55 @@ function History({ task }: { readonly task: ReadTaskDetail }) {
                 retrying={occurrences.isFetching}
             />
         );
+    } else if (items.length === 0) {
+        body = (
+            <EmptyState
+                variant="inline"
+                headingLevel={3}
+                icon={<HistoryIcon aria-hidden />}
+                title={m.task_occurrences_empty()}
+            />
+        );
     } else {
-        const items = occurrences.data.pages.flatMap((page) => page.items);
-        body =
-            items.length === 0 ? (
-                <EmptyState
-                    variant="inline"
-                    headingLevel={3}
-                    icon={<HistoryIcon aria-hidden />}
-                    title={m.task_occurrences_empty()}
+        body = (
+            <>
+                <DataTable<ReadTaskOccurrence>
+                    caption={m.task_occurrences_title()}
+                    columns={historyColumns(runsVisible)}
+                    data={items}
+                    getRowId={(occurrence) => occurrence.id}
+                    getRowLabel={(occurrence) =>
+                        m.task_occurrence_title({
+                            sequence: occurrence.sequence,
+                            reason: occurrenceReasonLabel(occurrence.reason),
+                        })
+                    }
                 />
-            ) : (
-                <>
-                    <div className="-mx-2 overflow-x-auto">
-                        <table className="w-full min-w-xl border-collapse text-sm">
-                            <thead className="text-xs text-text-muted">
-                                <tr>
-                                    <th scope="col" className={COLUMN}>
-                                        {m.task_history_column_occurrence()}
-                                    </th>
-                                    <th scope="col" className={COLUMN}>
-                                        {m.task_fact_state()}
-                                    </th>
-                                    <th scope="col" className={COLUMN}>
-                                        {m.task_history_column_when()}
-                                    </th>
-                                    <th scope="col" className={cx(COLUMN, 'w-full')}>
-                                        {m.task_history_column_summary()}
-                                    </th>
-                                    {runsVisible ? (
-                                        <th scope="col" className={COLUMN}>
-                                            {m.task_history_column_runs()}
-                                        </th>
-                                    ) : null}
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {items.map((occurrence) => (
-                                    <OccurrenceRow
-                                        key={occurrence.id}
-                                        occurrence={occurrence}
-                                        runsVisible={runsVisible}
-                                    />
-                                ))}
-                            </tbody>
-                        </table>
+                {occurrences.hasNextPage ? (
+                    <div className="flex justify-center">
+                        <Button
+                            variant="ghost"
+                            onClick={() => {
+                                void occurrences.fetchNextPage();
+                            }}
+                            loading={occurrences.isFetchingNextPage}
+                        >
+                            {m.tasks_show_more()}
+                        </Button>
                     </div>
-                    {occurrences.hasNextPage ? (
-                        <div className="flex justify-center">
-                            <Button
-                                variant="ghost"
-                                onClick={() => {
-                                    void occurrences.fetchNextPage();
-                                }}
-                                loading={occurrences.isFetchingNextPage}
-                            >
-                                {m.tasks_show_more()}
-                            </Button>
-                        </div>
-                    ) : null}
-                </>
-            );
+                ) : null}
+            </>
+        );
     }
     return <Section title={m.task_occurrences_title()}>{body}</Section>;
 }
 
-function OccurrenceRow({
-    occurrence,
-    runsVisible,
-}: {
-    readonly occurrence: ReadTaskOccurrence;
-    readonly runsVisible: boolean;
-}) {
-    const at = occurrence.endedAt ?? occurrence.startedAt ?? occurrence.scheduledFor;
+/** One property: its name quiet on the left, the value beside it. */
+function Property({ label, children }: { readonly label: string; readonly children: ReactNode }) {
     return (
-        <tr className="h-10 border-t border-hairline align-middle">
-            <td className="px-2 py-2 font-medium whitespace-nowrap tabular-nums">
-                <span>
-                    {m.task_occurrence_title({
-                        sequence: occurrence.sequence,
-                        reason: occurrenceReasonLabel(occurrence.reason),
-                    })}
-                </span>
-                {occurrence.cycle > 1 ? (
-                    <span className="ms-2 font-normal text-text-muted">
-                        {m.task_occurrence_cycle({ cycle: occurrence.cycle })}
-                    </span>
-                ) : null}
-            </td>
-            <td className="px-2 py-2">
-                <StatusPill tone={occurrenceTone(occurrence.state)} variant="quiet">
-                    {occurrenceStateLabel(occurrence.state)}
-                </StatusPill>
-            </td>
-            <td className="px-2 py-2 whitespace-nowrap text-text-muted tabular-nums">
-                {at === null ? null : <RelativeTime value={new Date(at)} />}
-            </td>
-            <td className="px-2 py-2 text-text-muted">
-                {occurrence.summary === null ? null : (
-                    <span className="line-clamp-2 break-words">{occurrence.summary}</span>
-                )}
-            </td>
-            {runsVisible ? (
-                <td className="px-2 py-2">
-                    <span className="flex flex-wrap gap-1">
-                        {occurrence.runIds.map((runId, index) => (
-                            <EntityChip
-                                key={runId}
-                                kind="run"
-                                id={runId}
-                                name={
-                                    occurrence.runIds.length === 1
-                                        ? m.task_occurrence_run()
-                                        : m.task_occurrence_run_n({ n: index + 1 })
-                                }
-                            />
-                        ))}
-                    </span>
-                </td>
-            ) : null}
-        </tr>
-    );
-}
-
-function DetailFact({ label, children }: { readonly label: string; readonly children: ReactNode }) {
-    return (
-        <div className="flex min-w-0 flex-col gap-0.5">
-            <dt className="text-xs text-text-muted">{label}</dt>
-            <dd className="min-w-0 break-words">{children}</dd>
+        <div className="grid grid-cols-[9rem_minmax(0,1fr)] items-baseline gap-x-6 py-1.5 sm:grid-cols-[11rem_minmax(0,1fr)]">
+            <dt className="text-sm text-text-subtle">{label}</dt>
+            <dd className="min-w-0 text-sm break-words">{children}</dd>
         </div>
     );
 }
@@ -611,47 +450,45 @@ function DateTime({ at }: { readonly at: string }) {
     );
 }
 
-/** Schedule and bookkeeping, shown only where the engine reports a value. */
+/** Schedule and bookkeeping as quiet property rows, shown only where the engine reports a value. */
 function Details({ task }: { readonly task: ReadTaskDetail }) {
     return (
         <Section title={m.task_details_title()}>
-            <dl className="grid grid-cols-2 gap-x-6 gap-y-4 text-sm sm:grid-cols-3">
+            <dl className="flex max-w-2xl flex-col">
                 {task.repeat === null ? null : (
-                    <DetailFact label={m.task_fact_repeat()}>
-                        {m.task_repeat_every({ every: task.repeat.text })}
-                    </DetailFact>
+                    <Property label={m.task_fact_repeat()}>{m.task_repeat_every({ every: task.repeat.text })}</Property>
                 )}
                 {task.nextAt === null ? null : (
-                    <DetailFact label={m.task_fact_next()}>
+                    <Property label={m.task_fact_next()}>
                         <DateTime at={task.nextAt} />
-                    </DetailFact>
+                    </Property>
                 )}
                 {task.notBefore === null ? null : (
-                    <DetailFact label={m.task_fact_not_before()}>
+                    <Property label={m.task_fact_not_before()}>
                         <DateTime at={task.notBefore} />
-                    </DetailFact>
+                    </Property>
                 )}
                 {task.dueAt === null ? null : (
-                    <DetailFact label={m.task_fact_due()}>
+                    <Property label={m.task_fact_due()}>
                         <DateTime at={task.dueAt} />
-                    </DetailFact>
+                    </Property>
                 )}
-                <DetailFact label={m.task_fact_done_count()}>
+                <Property label={m.task_fact_done_count()}>
                     <span className="tabular-nums">{task.doneCount}</span>
-                </DetailFact>
+                </Property>
                 {task.lastDoneAt === null ? null : (
-                    <DetailFact label={m.task_fact_last_done()}>
+                    <Property label={m.task_fact_last_done()}>
                         <DateTime at={task.lastDoneAt} />
-                    </DetailFact>
+                    </Property>
                 )}
-                {task.reopened ? <DetailFact label={m.task_fact_reopened()}>{m.task_reopened_yes()}</DetailFact> : null}
-                <DetailFact label={m.task_fact_source()}>
+                {task.reopened ? <Property label={m.task_fact_reopened()}>{m.task_reopened_yes()}</Property> : null}
+                <Property label={m.task_fact_source()}>
                     {task.sourcePath === null ? (
                         <span className="text-text-muted">{m.task_source_engine()}</span>
                     ) : (
                         <span className="font-mono text-xs">{task.sourcePath}</span>
                     )}
-                </DetailFact>
+                </Property>
             </dl>
         </Section>
     );

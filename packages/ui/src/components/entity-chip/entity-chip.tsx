@@ -61,7 +61,8 @@ const TONE_CLASSES: Readonly<Record<EntityChipTone, { readonly rest: string; rea
         hover: 'hover:bg-[color-mix(in_oklab,var(--tint)_var(--entity-chip-wash-hover),transparent)]',
     },
     neutral: {
-        rest: 'bg-[color-mix(in_oklab,var(--tint)_var(--entity-chip-neutral-wash),var(--entity-chip-neutral-base))] text-(--entity-chip-text)',
+        // An inset ring, not a border, so the hairline adds nothing to the chip's size in running text.
+        rest: 'bg-[color-mix(in_oklab,var(--tint)_var(--entity-chip-neutral-wash),var(--entity-chip-neutral-base))] text-(--entity-chip-text) shadow-[inset_0_0_0_1px_var(--entity-chip-neutral-border)]',
         hover: 'hover:bg-[color-mix(in_oklab,var(--tint)_var(--entity-chip-neutral-wash-hover),var(--entity-chip-neutral-base))]',
     },
 };

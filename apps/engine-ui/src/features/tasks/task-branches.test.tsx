@@ -219,7 +219,7 @@ describe('task screens, the less common cases', { timeout: TIMEOUT_MS }, () => {
         renderWithProviders({ path: '/tasks/task-busy', engineApi: engine() });
         await screen.findByRole('heading', { level: 1, name: 'Busy task' });
         expect(screen.getByText('agent-ghost')).toBeTruthy();
-        expect(screen.getByText('Priority 3')).toBeTruthy();
+        expect(screen.getByText('P3')).toBeTruthy();
         expect(screen.getByText('Met:')).toBeTruthy();
         const related = screen.getByRole('region', { name: 'Related' });
         expect(within(related).getByText('Did not succeed')).toBeTruthy();
