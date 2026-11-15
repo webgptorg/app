@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 
 import { TickerProvider } from '../../app/ticker';
 import { createManualTicker } from '../../testing/manual-ticker';
+import { expectNoAxeViolations } from '../../testing/axe';
 import { renderUi } from '../../testing/render-ui';
 import { MessageRow } from './message-row';
 import type { StepsView, TaskView, ThreadView } from './message-views';
@@ -100,7 +101,12 @@ describe('TaskCard', () => {
                 .getByText(/a1b2c3d$/)
                 .getAttribute('title'),
         ).toBe('a1b2c3d4e5');
-        expect(within(card).getByRole('link', { name: 'Open task' }).getAttribute('href')).toBe('/tasks/task-1');
+        const open = within(card).getByRole('link', { name: 'Open task' });
+        expect(open.getAttribute('href')).toBe('/tasks/task-1');
+        // A quiet chip on the card's wash, not an underlined text link.
+        expect(open.className).toMatch(/\brounded-pill\b/);
+        expect(open.className).not.toMatch(/(^|\s)underline\b/);
+        await expectNoAxeViolations(card);
     });
 
     it('offers no Open task without tasks@1, and reads a task the thread no longer lists as unknown', async () => {
@@ -153,6 +159,26 @@ describe('StepsCard', () => {
         expect(await screen.findByText('Thinking')).toBeDefined();
         expect(screen.getByText('<b>Disk full</b>')).toBeDefined();
         expect(document.querySelector('b')).toBeNull();
+    });
+
+    it('marks a turn that stopped without a reply neutral, or as trouble when its last step failed', async () => {
+        const toneOf = async (level: 'info' | 'warning' | 'error') => {
+            const { unmount } = render(
+                <StepsCard
+                    view={steps({
+                        status: 'unfinished',
+                        steps: [{ kind: 'tool', tool: 'Bash', text: 'ls', level }],
+                    })}
+                />,
+            );
+            const toggle = await screen.findByRole('button', { name: 'Stopped without a reply · 1 step' });
+            const tone = toggle.querySelector('[data-tone]')?.getAttribute('data-tone');
+            unmount();
+            return tone;
+        };
+        expect(await toneOf('info')).toBe('quiet');
+        expect(await toneOf('warning')).toBe('quiet');
+        expect(await toneOf('error')).toBe('trouble');
     });
 });
 
