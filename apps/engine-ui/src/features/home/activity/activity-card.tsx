@@ -68,7 +68,7 @@ export function ActivityCard({ item, features, enterClassName }: ActivityCardPro
             </div>
             <RelativeTime
                 value={new Date(base.at)}
-                className="flex h-6 items-center text-xs whitespace-nowrap text-text-muted tabular-nums"
+                className="flex h-6 min-w-20 items-center justify-end text-xs whitespace-nowrap text-text-muted tabular-nums"
             />
         </li>
     );

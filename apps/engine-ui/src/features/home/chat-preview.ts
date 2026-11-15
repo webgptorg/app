@@ -6,9 +6,13 @@ import { plainText } from './question-text';
 /** What a recent chat's row says under its title. */
 export type ChatPreview = { readonly kind: 'text'; readonly text: string } | { readonly kind: 'working' } | null;
 
-/** A collapsed preview of an agent's steps ("- thinking: … - mcp__mail__search …") read back into lines. */
+/**
+ * A collapsed preview of an agent's steps ("- thinking: … - mcp__mail__search …"), read back into lines. Its first
+ * line decides: the preview is cut short and its later lines may be notes ("- Claude Code stopped: …") no step reads.
+ */
 function looksLikeSteps(preview: string): boolean {
-    return parseFlattenedSteps(preview.replace(/ (?=- )/g, '\n')) !== null;
+    const [first = ''] = preview.trim().split(/ (?=- )/);
+    return parseFlattenedSteps(first) !== null;
 }
 
 /** The newest finished message that is a person's or an agent's words, not a turn's progress or its steps. */

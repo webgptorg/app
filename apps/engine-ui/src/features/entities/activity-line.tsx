@@ -41,7 +41,9 @@ export function ActivityLine({
                 {description}
             </span>
             {facts === undefined || facts === null ? null : (
-                <span className="min-w-0 truncate text-xs text-text-muted tabular-nums sm:max-w-64">{facts}</span>
+                <span className="min-w-0 truncate text-xs text-text-muted tabular-nums max-sm:order-last max-sm:flex-1 sm:max-w-64">
+                    {facts}
+                </span>
             )}
             {outcome === undefined ? null : (
                 <StatusPill tone={outcome.tone} className="shrink-0">
