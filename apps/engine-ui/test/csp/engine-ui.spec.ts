@@ -27,9 +27,9 @@ test.describe('the built bundle under the engine CSP', () => {
 
         await expect(page.getByRole('heading', { level: 1, name: /, Owner$/ })).toBeVisible();
         await expect(page.getByRole('textbox', { name: 'Ask Chatter' })).toBeVisible();
-        await expect(page.getByRole('region', { name: /^Needs you/ })).toBeVisible();
-        await expect(page.getByRole('region', { name: /^Working now/ })).toBeVisible();
-        const feed = page.getByRole('region', { name: /^Recent activity/ });
+        await expect(page.getByRole('region', { name: /^Needs you( \d+)?$/ })).toBeVisible();
+        await expect(page.getByRole('region', { name: /^Working now( \d+)?$/ })).toBeVisible();
+        const feed = page.getByRole('region', { name: 'Recent activity' });
         await expect(feed.getByText('deploy.started')).toBeVisible();
         await expect(feed.getByText('Jana Nováková', { exact: true })).toBeVisible();
         await expect(feed.getByRole('link', { name: HOSTILE_AGENT_NAME })).toHaveAttribute(
@@ -69,7 +69,7 @@ test.describe('the built bundle under the engine CSP', () => {
         await expect(page.getByRole('heading', { level: 1, name: /, Jana Nováková$/ })).toBeVisible();
         await expect(page.getByRole('textbox', { name: 'Ask Chatter' })).toBeVisible();
         await expect(page.getByRole('region', { name: 'Recent chats' })).toBeVisible();
-        await expect(page.getByRole('region', { name: /^Recent activity/ })).toHaveCount(0);
+        await expect(page.getByRole('region', { name: 'Recent activity' })).toHaveCount(0);
         expectCleanPage(report);
     });
 

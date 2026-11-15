@@ -80,7 +80,7 @@ describe('tasks', { timeout: TIMEOUT_MS }, () => {
         await waitFor(() => {
             expect(Object.keys(groups())).toEqual(['Now']);
         });
-        expect(screen.getByRole('button', { name: /^Status:\s?Blocked or failed$/ })).toBeTruthy();
+        expect(screen.getByRole('button', { name: 'Status: Blocked or failed' })).toBeTruthy();
     });
 
     it('offers to clear a filter that leaves nothing', async () => {

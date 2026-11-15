@@ -182,7 +182,7 @@ describe('task screens, the less common cases', { timeout: TIMEOUT_MS }, () => {
         const { user, router } = renderWithProviders({ path: '/tasks?agentId=agent-gone', engineApi: engine() });
         await screen.findByText('No task matches');
         // An agent the first page of agents does not list still shows, by its ID from the URL.
-        await user.click(screen.getByRole('button', { name: /^Agent:\s?agent-gone$/ }));
+        await user.click(screen.getByRole('button', { name: 'Agent: agent-gone' }));
         const agents = within(screen.getByRole('dialog')).getByRole('listbox', { name: 'Agent' });
         await user.click(await within(agents).findByRole('option', { name: 'Ada' }));
         await waitFor(() => {
@@ -200,7 +200,7 @@ describe('task screens, the less common cases', { timeout: TIMEOUT_MS }, () => {
     it('drops the status filter when its last group is unchecked', async () => {
         const { user, router } = renderWithProviders({ path: '/tasks?status=ready', engineApi: engine() });
         await screen.findByRole('link', { name: 'Bare task' });
-        await user.click(screen.getByRole('button', { name: /^Status:\s?Ready$/ }));
+        await user.click(screen.getByRole('button', { name: 'Status: Ready' }));
         await user.click(within(screen.getByRole('dialog')).getByRole('option', { name: 'Ready' }));
         await waitFor(() => {
             expect(router.state.location.search).not.toHaveProperty('status');

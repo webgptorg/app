@@ -23,7 +23,7 @@ afterEach(() => {
     setMedia(REDUCED_MOTION, false);
 });
 
-const feed = () => screen.findByRole('region', { name: /^Recent activity/ });
+const feed = () => screen.findByRole('region', { name: 'Recent activity' });
 
 /** Opens the whole feed in place: Home shows its newest rows until the reader asks for all of it. */
 async function openAll(user: { readonly click: (element: Element) => Promise<void> }, region: HTMLElement) {
@@ -64,9 +64,9 @@ function demoEngine(options: InMemoryEngineApiOptions = {}): EngineApiClient {
     });
 }
 
-// A section's name is its title and, when it has one, its count.
-const needsYou = () => screen.findByRole('region', { name: /^Needs you/ });
-const workingNow = () => screen.findByRole('region', { name: /^Working now/ });
+// A section's name is its title, then its count when it has one ("Needs you 5").
+const needsYou = () => screen.findByRole('region', { name: /^Needs you( \d+)?$/ });
+const workingNow = () => screen.findByRole('region', { name: /^Working now( \d+)?$/ });
 
 describe('home', { timeout: TIMEOUT_MS }, () => {
     it('greets the owner, leads with Ask Chatter, ends with recent activity and meets axe', async () => {
@@ -197,7 +197,7 @@ describe('home', { timeout: TIMEOUT_MS }, () => {
         const { unmount } = renderWithProviders({ path: '/', engineApi: engine.client });
         await screen.findByRole('region', { name: 'Recent chats' });
         expect(screen.queryByRole('textbox', { name: 'Ask Chatter' })).toBeNull();
-        expect(screen.queryByRole('region', { name: /^Recent activity/ })).toBeNull();
+        expect(screen.queryByRole('region', { name: 'Recent activity' })).toBeNull();
         unmount();
 
         const reader = createHomeEngine({ permissions: ['agents.read', 'runs.read'] });

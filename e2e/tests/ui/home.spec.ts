@@ -34,18 +34,18 @@ test('the owner sees a Chatter-first home with what waits, what runs and the act
     const me = await apiGet<{ displayName: string }>(page, '/me');
     await expect(page.getByRole('heading', { level: 1, name: new RegExp(`, ${me.displayName}$`) })).toBeVisible();
     await expect(page.getByRole('textbox', { name: 'Ask Chatter' })).toBeVisible();
-    await expect(page.getByRole('region', { name: /^Needs you/ })).toBeVisible();
-    await expect(page.getByRole('region', { name: /^Working now/ })).toBeVisible();
+    await expect(page.getByRole('region', { name: /^Needs you( \d+)?$/ })).toBeVisible();
+    await expect(page.getByRole('region', { name: /^Working now( \d+)?$/ })).toBeVisible();
     await expect(page.getByRole('region', { name: 'Recent chats' })).toBeVisible();
-    await expect(page.getByRole('region', { name: /^Recent activity/ })).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Recent activity' })).toBeVisible();
 });
 
 test('a member sees their own home, without the activity feed', async ({ page, signIn, appUrl }) => {
     await signIn({ kind: 'member', role: 'member' });
     await page.goto(appUrl('/'));
     await expect(page.getByRole('region', { name: 'Recent chats' })).toBeVisible();
-    await expect(page.getByRole('region', { name: /^Working now/ })).toBeVisible();
-    await expect(page.getByRole('region', { name: /^Recent activity/ })).toHaveCount(0);
+    await expect(page.getByRole('region', { name: /^Working now( \d+)?$/ })).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Recent activity' })).toHaveCount(0);
 });
 
 test("a scripted run's start and finish appear in the live activity feed without a reload", async ({
@@ -60,7 +60,7 @@ test("a scripted run's start and finish appear in the live activity feed without
     await signIn();
     const live = eventsConnected(page);
     await page.goto(appUrl('/'));
-    const feed = page.getByRole('region', { name: /^Recent activity/ });
+    const feed = page.getByRole('region', { name: 'Recent activity' });
     await expect(feed).toBeVisible();
     await live;
     const agent = required((await apiList<Agent>(page, '/agents'))[0], 'agent');
