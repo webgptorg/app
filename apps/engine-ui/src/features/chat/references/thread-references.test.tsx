@@ -133,7 +133,8 @@ describe('references in a thread', { timeout: TIMEOUT_MS }, () => {
         expect(within(card).getByText('67b252c')).toBeDefined();
         const open = within(card).getByRole('link', { name: 'Open task' });
         expect(open.getAttribute('href')).toBe('/tasks/task-launch');
-        expect(open.className).toMatch(/\brounded-pill\b/);
+        // The peek card's footer action, which Enter anywhere in the card also opens.
+        expect(open.getAttribute('aria-keyshortcuts')).toBe('Enter');
         await expectNoAxeViolations(document.body);
 
         await app.user.keyboard('{Escape}');

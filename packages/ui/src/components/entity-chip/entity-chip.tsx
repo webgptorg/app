@@ -39,8 +39,8 @@ export interface EntityChipProps {
     /** The hovercard: its accessible name and its body, rendered only while open. Needs an interactive chip. */
     readonly hovercard?: { readonly label: string; readonly content: ReactNode } | undefined;
     /**
-     * Makes the chip a button. Without `onClick` and `render`, a chip with a hovercard toggles it on click (a tap has
-     * no hover); a chip without one is plain text.
+     * Makes the chip a button. Without `onClick` and `render`, a chip with a hovercard opens it on click (a tap has no
+     * hover; Esc, blur or a tap elsewhere closes it); a chip without one is plain text.
      */
     readonly onClick?: ((event: MouseEvent<HTMLButtonElement>, hovercard: HovercardState) => void) | undefined;
     /** Makes the chip any element, usually a link to the entity: spread the props onto it. */
@@ -148,8 +148,8 @@ export function EntityChip({
                 className={classes}
                 style={style}
                 onClick={(event) => {
+                    // Opens, never toggles: focus may have opened the card a moment before the click lands.
                     if (onClick !== undefined) onClick(event, card);
-                    else if (card.open) card.hide();
                     else card.show(event.currentTarget);
                 }}
             >
