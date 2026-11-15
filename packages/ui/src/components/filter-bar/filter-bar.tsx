@@ -3,6 +3,7 @@ import { useRef, useState } from 'react';
 import type { KeyboardEvent, ReactNode, Ref } from 'react';
 
 import { useLocale, useUiMessages } from '../../i18n/ui-provider';
+import { controlClassName } from '../../internal/control';
 import { cx } from '../../internal/cx';
 import { useScrollEdges } from '../../internal/scroll-edges';
 import { Button } from '../button/button';
@@ -221,11 +222,7 @@ function SearchBox({ label, value, onChange, placeholder, maxLength, inputRef }:
                 onChange={(event) => {
                     onChange(event.target.value);
                 }}
-                className={cx(
-                    'block min-h-8 w-full rounded-(--filter-bar-chip-radius) bg-transparent ps-8 pe-2 text-sm text-(--filter-bar-text)',
-                    'placeholder:text-(--filter-bar-placeholder) hover:bg-(--filter-bar-hover) focus:bg-(--filter-bar-search-bg) focus-visible:outline-offset-0',
-                    'motion-safe:transition-colors motion-safe:duration-(--motion-state)',
-                )}
+                className={controlClassName('min-h-8 ps-8 pe-2')}
             />
         </div>
     );
@@ -314,8 +311,14 @@ function FilterChip({
                         {value.icon}
                     </span>
                 )}
-                <span className="shrink-0 text-(--filter-bar-muted)">{`${field.label}:`}</span>{' '}
-                <span className="min-w-0 truncate font-medium">{value.shown}</span>
+                {/*
+                 * One inline run, not flex items: a space between flex items is dropped, and browsers then name the
+                 * chip "Status:Ready". The run truncates at its end, so the field's name stays and its value gives way.
+                 */}
+                <span data-chip-text="" className="min-w-0 truncate">
+                    <span className="text-(--filter-bar-muted)">{`${field.label}:`}</span>{' '}
+                    <span className="font-medium">{value.shown}</span>
+                </span>
                 {value.hidden.length === 0 ? null : (
                     <>
                         <span aria-hidden="true" className="shrink-0 text-(--filter-bar-muted) tabular-nums">

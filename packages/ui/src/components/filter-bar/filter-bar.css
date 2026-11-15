@@ -1,9 +1,7 @@
 :root {
     --filter-bar-text: var(--color-text);
     --filter-bar-muted: var(--color-text-muted);
-    --filter-bar-placeholder: var(--color-text-muted);
     --filter-bar-hover: var(--color-hover);
-    --filter-bar-search-bg: var(--color-sunken);
     --filter-bar-chip-bg: var(--color-raised);
     --filter-bar-chip-border: var(--color-divider);
     --filter-bar-chip-radius: var(--radius-small);

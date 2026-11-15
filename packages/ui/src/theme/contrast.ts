@@ -37,6 +37,8 @@ export const SEMANTIC_PAIRS: readonly TokenPair[] = [
     ...text('--color-on-accent', '--color-accent', '--color-accent-hover'),
     ...text('--color-on-danger', '--color-danger', '--color-danger-hover'),
     ...text('--color-on-danger-fill', '--color-danger-fill', '--color-danger-fill-hover'),
+    ...text('--color-text', '--color-wash-strong', '--color-wash-strong-hover', '--color-wash-strong-active'),
+    ...text('--color-danger', '--color-danger-wash', '--color-danger-wash-hover', '--color-danger-wash-active'),
     ...text('--color-link', ...SURFACES, '--color-sunken'),
     ...text('--color-link-hover', ...SURFACES),
     ...text('--color-success', '--color-success-soft', ...SURFACES),

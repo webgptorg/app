@@ -185,6 +185,8 @@ describe('FilterBar', () => {
         expect(screen.queryByRole('dialog')).toBeNull();
         expect(document.activeElement).toBe(add);
         const chip = screen.getByRole('button', { name: 'Status: Running, Waiting' });
+        // The space after the colon is rendered text, not whitespace a flex box drops, so browsers name it the same.
+        expect(chip.querySelector('[data-chip-text]')?.textContent).toBe('Status: Running, Waiting');
         expect(chip.getAttribute('aria-haspopup')).toBe('dialog');
         expect(screen.getByRole('button', { name: 'Remove Status: Running, Waiting' })).toBeDefined();
     });

@@ -12,4 +12,5 @@
     --input-border-focus: var(--color-focus);
     --input-border-invalid: var(--color-danger);
     --input-shadow: var(--shadow-subtle);
+    --input-ring: color-mix(in oklab, var(--color-focus) 28%, transparent);
 }
