@@ -23,7 +23,12 @@ afterEach(() => {
     setMedia(REDUCED_MOTION, false);
 });
 
-const feed = () => screen.findByRole('region', { name: 'Activity' });
+const feed = () => screen.findByRole('region', { name: /^Recent activity/ });
+
+/** Opens the whole feed in place: Home shows its newest rows until the reader asks for all of it. */
+async function openAll(user: { readonly click: (element: Element) => Promise<void> }, region: HTMLElement) {
+    await user.click(await within(region).findByRole('button', { name: 'All activity' }));
+}
 const liveRegion = () => document.querySelector('[aria-live="polite"].sr-only');
 
 function memberJoined(n: number) {
@@ -64,7 +69,7 @@ const needsYou = () => screen.findByRole('region', { name: /^Needs you/ });
 const workingNow = () => screen.findByRole('region', { name: /^Working now/ });
 
 describe('home', { timeout: TIMEOUT_MS }, () => {
-    it('greets the owner, leads with Ask Chatter, keeps the feed to its side and meets axe', async () => {
+    it('greets the owner, leads with Ask Chatter, ends with recent activity and meets axe', async () => {
         const engine = createHomeEngine();
         const { container } = renderWithProviders({ path: '/', engineApi: engine.client });
 
@@ -72,8 +77,7 @@ describe('home', { timeout: TIMEOUT_MS }, () => {
         // Home's content arrives as a chunk of its own, alongside the data.
         expect(await screen.findByRole('textbox', { name: 'Ask Chatter' })).toBeDefined();
         expect(screen.getByRole('link', { name: 'New agent' }).getAttribute('href')).toBe('/agents/new');
-        const side = screen.getByRole('complementary', { name: 'Activity' });
-        expect(await within(side).findAllByRole('listitem')).not.toHaveLength(0);
+        expect(await within(await feed()).findAllByRole('listitem')).not.toHaveLength(0);
         expect(await screen.findByRole('region', { name: 'Recent chats' })).toBeDefined();
         await expectNoAxeViolations(container);
     });
@@ -170,7 +174,7 @@ describe('home', { timeout: TIMEOUT_MS }, () => {
         const { unmount } = renderWithProviders({ path: '/', engineApi: engine.client });
         await screen.findByRole('region', { name: 'Recent chats' });
         expect(screen.queryByRole('textbox', { name: 'Ask Chatter' })).toBeNull();
-        expect(screen.queryByRole('region', { name: 'Activity' })).toBeNull();
+        expect(screen.queryByRole('region', { name: /^Recent activity/ })).toBeNull();
         unmount();
 
         const reader = createHomeEngine({ permissions: ['agents.read', 'runs.read'] });
@@ -422,7 +426,7 @@ describe('home: activity feed', { timeout: TIMEOUT_MS }, () => {
         });
         const items = await within(region).findAllByRole('listitem');
         await waitFor(() => {
-            expect(within(region).getAllByRole('listitem')[0]?.textContent).toContain('Live member 1 joined');
+            expect(within(region).getAllByRole('listitem')[0]?.textContent).toContain('Live member 1');
         });
         expect(items.length).toBeGreaterThan(1);
         expect(engine.spies.activity.mock.calls.length).toBe(calls);
@@ -432,7 +436,9 @@ describe('home: activity feed', { timeout: TIMEOUT_MS }, () => {
         const engine = createHomeEngine();
         const { user } = renderWithProviders({ path: '/', engineApi: engine.client });
         const region = await feed();
-        const before = (await within(region).findAllByRole('listitem')).length;
+        await within(region).findAllByRole('listitem');
+        await openAll(user, region);
+        const before = within(region).getAllByRole('listitem').length;
         const sentinel = region.querySelector('[data-activity-top]') as HTMLElement;
         sentinel.getBoundingClientRect = () => ({ top: -400 }) as DOMRect;
         act(() => {
@@ -445,11 +451,11 @@ describe('home: activity feed', { timeout: TIMEOUT_MS }, () => {
         });
         const more = await within(region).findByRole('button', { name: '2 new items' });
         expect(within(region).getAllByRole('listitem')).toHaveLength(before);
-        expect(within(region).queryByText('Live member 2 joined')).toBeNull();
+        expect(within(region).queryByText('Live member 2')).toBeNull();
 
         await user.click(more);
         expect(within(region).getAllByRole('listitem')).toHaveLength(before + 2);
-        expect(within(region).getAllByRole('listitem')[0]?.textContent).toContain('Live member 2 joined');
+        expect(within(region).getAllByRole('listitem')[0]?.textContent).toContain('Live member 2');
     });
 
     it('announces a batch of arrivals once, in one polite live region', async () => {
@@ -492,14 +498,14 @@ describe('home: activity feed', { timeout: TIMEOUT_MS }, () => {
         act(() => {
             engine.controller.appendActivity(memberJoined(1));
         });
-        await within(region).findByText('Live member 1 joined');
+        await within(region).findByText('Live member 1');
         expect(within(region).getAllByRole('listitem')[0]?.className).toMatch(/ptbk-activity-enter/);
 
         act(() => {
             setMedia(REDUCED_MOTION, true);
             engine.controller.appendActivity(memberJoined(2));
         });
-        await within(region).findByText('Live member 2 joined');
+        await within(region).findByText('Live member 2');
         const first = within(region).getAllByRole('listitem')[0]?.className ?? '';
         expect(first).toMatch(/ptbk-activity-fade/);
         expect(first).not.toMatch(/ptbk-activity-enter/);
@@ -509,6 +515,8 @@ describe('home: activity feed', { timeout: TIMEOUT_MS }, () => {
         const engine = createHomeEngine();
         const { user, router } = renderWithProviders({ path: '/', engineApi: engine.client });
         const region = await feed();
+        expect(within(region).queryByRole('group', { name: 'Show activity of' })).toBeNull();
+        await openAll(user, region);
         const chips = within(await within(region).findByRole('group', { name: 'Show activity of' })).getAllByRole(
             'button',
         );
@@ -535,7 +543,7 @@ describe('home: activity feed', { timeout: TIMEOUT_MS }, () => {
         act(() => {
             engine.controller.appendActivity(memberJoined(4));
         });
-        expect(await within(region).findByText('Live member 4 joined')).toBeDefined();
+        expect(await within(region).findByText('Live member 4')).toBeDefined();
         await user.click(within(region).getByRole('button', { name: 'All' }));
         await waitFor(() => {
             expect(router.state.location.search).toEqual({});
@@ -565,7 +573,7 @@ describe('home: activity feed', { timeout: TIMEOUT_MS }, () => {
         renderWithProviders({ path: '/', engineApi: engine.client });
         const region = await feed();
 
-        expect(await within(region).findByText('Live member 9 joined')).toBeDefined();
+        expect(await within(region).findByText('Live member 9')).toBeDefined();
         expect(within(region).getAllByRole('listitem')).toHaveLength(1);
         expect(within(region).queryByRole('button', { name: 'Runs' })).toBeNull();
     });
@@ -575,8 +583,10 @@ describe('home: activity feed', { timeout: TIMEOUT_MS }, () => {
         const { user } = renderWithProviders({ path: '/', engineApi: engine.client });
         const region = await feed();
         await waitFor(() => {
-            expect(within(region).getAllByRole('listitem')).toHaveLength(20);
+            expect(within(region).getAllByRole('listitem')).toHaveLength(8);
         });
+        await openAll(user, region);
+        expect(within(region).getAllByRole('listitem')).toHaveLength(20);
 
         await user.click(within(region).getByRole('button', { name: 'Load older' }));
         await waitFor(() => {
@@ -592,8 +602,10 @@ describe('home: older activity', { timeout: TIMEOUT_MS }, () => {
         const { user } = renderWithProviders({ path: '/', engineApi: engine.client });
         const region = await feed();
         await waitFor(() => {
-            expect(within(region).getAllByRole('listitem')).toHaveLength(20);
+            expect(within(region).getAllByRole('listitem')).toHaveLength(8);
         });
+        await openAll(user, region);
+        expect(within(region).getAllByRole('listitem')).toHaveLength(20);
         engine.spies.activity.mockImplementationOnce(() =>
             Promise.resolve({ kind: 'problem', problem: createProblem('forbidden') }),
         );

@@ -22,7 +22,7 @@ import { useAllows } from '../../app/registry/use-visible-features';
 import { AgentAvatar } from '../agents/agent-avatar';
 import { agentColor } from '../chat/references/agent-color';
 import { splitTaskName } from '../tasks/task-name';
-import { CardFallback } from './entity-card';
+import { CardFallback } from './card-fallback';
 
 // The cards' queries and formatting load on the first hover, not with every screen that shows a chip: Home is part
 // of the entry chunk, and a chip is there long before anyone opens its card.
@@ -44,6 +44,8 @@ interface Common {
     readonly statusLabel?: string | undefined;
     /** In running text the chip wraps with it; elsewhere it stays on one line and truncates. */
     readonly wrap?: boolean | undefined;
+    /** `false` inside another card: a quiet chip with no link and no hovercard of its own. */
+    readonly interactive?: boolean | undefined;
     readonly className?: string | undefined;
 }
 
@@ -166,7 +168,7 @@ export function EntityChip(props: EntityChipProps) {
     const { name, status, statusLabel, wrap, className } = props;
     // A task's instance stamp stays on its card and detail page; in a chip only the readable name matters.
     const label = props.kind === 'task' ? splitTaskName(name).readable : name;
-    const target = allowed ? targetOf(props) : null;
+    const target = allowed && props.interactive !== false ? targetOf(props) : null;
     const look =
         props.kind === 'agent'
             ? {

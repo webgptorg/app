@@ -279,16 +279,17 @@ describe('file activity renderers', { timeout: TIMEOUT_MS }, () => {
             features: [...FEATURES, feed],
         });
         const list = await screen.findByRole('list', { name: 'Feed' });
-        expect(within(list).getByText(`${HOSTILE_FILE_NAME} added (Output)`)).toBeDefined();
-        expect(within(list).getByText(`${HOSTILE_FILE_NAME} deleted`)).toBeDefined();
-        expect(within(list).getByText(`The virus scan of ${HOSTILE_FILE_NAME} failed`)).toBeDefined();
-        const links = within(list).getAllByRole('link');
-        expect(links.map((link) => link.textContent)).toEqual([
-            `${HOSTILE_FILE_NAME} added (Output)`,
-            `The virus scan of ${HOSTILE_FILE_NAME} failed`,
-        ]);
+        // One table-like line each: the file as a chip, what it is for, and the outcome in words.
+        expect(within(list).getAllByText(HOSTILE_FILE_NAME)).toHaveLength(3);
+        expect(within(list).getByText('Output')).toBeDefined();
+        for (const outcome of ['Added', 'Deleted', 'Scan failed'])
+            expect(within(list).getByText(outcome)).toBeDefined();
+        const links = within(list)
+            .getAllByRole('link')
+            .filter((link) => link.getAttribute('href')?.startsWith('/files') === true);
+        expect(links.map((link) => link.textContent)).toEqual([HOSTILE_FILE_NAME, HOSTILE_FILE_NAME]);
         for (const link of links) expect(link.getAttribute('href')).toBe(`/files?file=${FILE_IDS.photo}`);
-        expect(within(list).getByText(`${HOSTILE_FILE_NAME} deleted`).closest('a')).toBeNull();
+        expect(within(list).getAllByText(HOSTILE_FILE_NAME)[1]?.closest('a')).toBeNull();
         expect(container.querySelector('img[src="x"]')).toBeNull();
         expect(ACTIVITIES.map((activity) => renderer.summary(activity))).toEqual([
             `${HOSTILE_FILE_NAME} added (Output)`,

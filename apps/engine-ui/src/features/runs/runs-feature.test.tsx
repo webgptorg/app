@@ -178,14 +178,13 @@ describe('run activity renderers', { timeout: TIMEOUT_MS }, () => {
             features: [...FEATURES, feed],
         });
         const list = await screen.findByRole('list', { name: 'Feed' });
-        expect(within(list).getByText('A run from an email was queued')).toBeDefined();
-        expect(within(list).getByText('A run from an email started')).toBeDefined();
-        expect(within(list).getByText('A run from an email completed')).toBeDefined();
-        expect(within(list).getByText('Took 1 min 5 s. Cost $0.0042.')).toBeDefined();
-        expect(within(list).getByText('A run from an email failed')).toBeDefined();
+        // One table-like line each: the run as a chip, its outcome in words, what it took or why it failed.
+        for (const outcome of ['Queued', 'Running', 'Completed', 'Failed', 'Stopped']) {
+            expect(within(list).getByText(outcome)).toBeDefined();
+        }
+        expect(within(list).getByText('1 min 5 s · $0.0042')).toBeDefined();
         expect(within(list).getByText('Too many requests')).toBeDefined();
-        expect(within(list).getByText('A run from an email was stopped')).toBeDefined();
-        const links = within(list).getAllByRole('link', { name: /^A run from an email/ });
+        const links = within(list).getAllByRole('link', { name: 'Email run' });
         expect(links).toHaveLength(5);
         for (const link of links) expect(link.getAttribute('href')).toBe(`/runs/${RUN_IDS.completed}`);
         expect(ACTIVITIES.map((activity) => renderer.summary(activity))).toEqual([

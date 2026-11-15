@@ -1,43 +1,49 @@
 import type { AgentId, ChatId, FileId, IntegrationId, MemberId, RunId, TaskId, TriggerId } from '@ptbk/engine-api';
-import { RelativeTime, Skeleton, useLocale } from '@ptbk/ui';
-import { useQuery } from '@tanstack/react-query';
+import { PeekCard, RelativeTime, Skeleton, STATUS_TINT_CLASSES, useLocale } from '@ptbk/ui';
+import type { PeekCardFact, StatusTone } from '@ptbk/ui';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import type { UseQueryResult } from '@tanstack/react-query';
+import { Link } from '@tanstack/react-router';
 import { Activity, FileText, ListTodo, MessageSquare, Plug, User, Zap } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 import { useEngineApi } from '../../app/engine-api-context';
-import { ButtonLink } from '../../app/link';
 import { m } from '../../paraglide/messages';
 import { AgentAvatar } from '../agents/agent-avatar';
 import { AgentStatusBadge } from '../agents/agent-badges';
 import { agentDetailQueryOptions } from '../agents/agents-queries';
-import { chatQueryOptions } from '../chat/chat-queries';
+import { chatEntriesQueryOptions, chatQueryOptions } from '../chat/chat-queries';
+import { agentColor } from '../chat/references/agent-color';
 import { threadMembers } from '../chat/thread-list';
+import { purposeLabel } from '../files/file-labels';
 import { formatBytes } from '../files/file-size';
 import { fileDetailQueryOptions } from '../files/files-queries';
-import { integrationStatusLabel } from '../integrations/integration-status';
+import { chatPreview } from '../home/chat-preview';
+import { integrationKindLabel, integrationStatusLabel, kindNameOf } from '../integrations/integration-status';
 import { integrationQueryOptions } from '../integrations/integrations-queries';
 import { memberDetailQueryOptions } from '../members/members-queries';
-import { runTitle } from '../runs/run-format';
+import { finishedDurationMs, formatDuration, runTitle } from '../runs/run-format';
+import { runSourceLabel } from '../runs/run-source';
 import { runStatusLabel } from '../runs/run-status';
 import { runQueryOptions } from '../runs/runs-queries';
 import { roleLabel } from '../shell/role-label';
 import { splitTaskName } from '../tasks/task-name';
-import { TaskStateBadge } from '../tasks/task-state';
+import { taskStateLabel, taskTone } from '../tasks/task-state';
 import { taskQueryOptions } from '../tasks/tasks-queries';
-import { triggerKindLabel } from '../triggers/trigger-labels';
+import { lifecycleLabel, triggerKindLabel } from '../triggers/trigger-labels';
+import { useTriggerSummary } from '../triggers/trigger-summary';
 import { triggerQueryOptions } from '../triggers/triggers-queries';
-import { EntityCard } from './entity-card';
+import { EntityChip } from './entity-chip';
 
-/** Loading and failure inside a card: a quiet line, never an error banner in a popover. */
-function Loaded<Data>({
-    query,
-    children,
-}: {
-    readonly query: UseQueryResult<Data>;
-    readonly children: (data: Data) => ReactNode;
-}) {
-    if (query.data !== undefined) return children(query.data);
+/** States loud enough to tint the whole card; the others keep the neutral wash and say it in the pill. */
+const TINTED: ReadonlySet<StatusTone> = new Set(['danger', 'warning']);
+
+function stateTint(tone: StatusTone): { readonly tintClassName?: string } {
+    return TINTED.has(tone) ? { tintClassName: STATUS_TINT_CLASSES[tone] } : {};
+}
+
+/** While a card's query runs, its fact rows' shape; when it fails, one quiet line instead of an error in a popover. */
+function Pending({ query }: { readonly query: UseQueryResult }) {
     if (query.isError) return <span className="text-xs text-text-muted">{m.entity_card_unavailable()}</span>;
     return (
         <span aria-busy="true" className="flex flex-col gap-1.5">
@@ -47,178 +53,300 @@ function Loaded<Data>({
     );
 }
 
-function Clamp({ children }: { readonly children: ReactNode }) {
-    return <span className="line-clamp-3 text-text-muted [overflow-wrap:anywhere]">{children}</span>;
+function Time({ at }: { readonly at: string }) {
+    return <RelativeTime value={new Date(at)} />;
+}
+
+/** The fact rows a card has values for, in order. */
+function facts(...rows: readonly (PeekCardFact | null)[]): PeekCardFact[] {
+    return rows.filter((row): row is PeekCardFact => row !== null);
+}
+
+/** An agent inside a card: a quiet chip, since the card is already a popover and needs no second one. */
+function AgentFact({ agentId, name }: { readonly agentId: AgentId | null; readonly name: string | null }): ReactNode {
+    if (agentId === null) return <span className="text-text-muted">—</span>;
+    return <EntityChip kind="agent" id={agentId} name={name ?? agentId} interactive={false} />;
 }
 
 export function AgentCard({ agentId, name }: { readonly agentId: AgentId; readonly name: string }) {
     const query = useQuery(agentDetailQueryOptions(useEngineApi(), agentId));
-    const profile = query.data?.profile ?? { avatarUrl: null, color: null };
+    const agent = query.data;
+    const profile = agent?.profile ?? { avatarUrl: null, color: null };
     return (
-        <EntityCard
-            leading={<AgentAvatar name={query.data?.name ?? name} agentKey={agentId} profile={profile} size="xs" />}
-            title={query.data?.name ?? name}
-            meta={<AgentStatusBadge agentId={agentId} />}
-            action={
-                <ButtonLink to="/agents/$agentId" params={{ agentId }} size="sm">
-                    {m.entity_open_agent()}
-                </ButtonLink>
+        <PeekCard
+            kind={m.entity_kind_agent()}
+            icon={<AgentAvatar name={agent?.name ?? name} agentKey={agentId} profile={profile} size="xs" />}
+            tint={agentColor(profile.color, agentId)}
+            title={agent?.name ?? name}
+            description={
+                agent === undefined || agent.profile.description === '' ? undefined : agent.profile.description
             }
+            facts={facts(
+                { label: m.entity_fact_status(), value: <AgentStatusBadge agentId={agentId} /> },
+                agent === undefined ? null : { label: m.entity_fact_updated(), value: <Time at={agent.updatedAt} /> },
+            )}
+            action={{
+                label: m.entity_open_agent(),
+                render: (props) => <Link {...props} to="/agents/$agentId" params={{ agentId }} />,
+            }}
         >
-            <Loaded query={query}>
-                {(agent) => (agent.profile.description === '' ? null : <Clamp>{agent.profile.description}</Clamp>)}
-            </Loaded>
-        </EntityCard>
+            {agent === undefined ? <Pending query={query} /> : null}
+        </PeekCard>
     );
 }
 
 export function TaskCard({ taskId, name }: { readonly taskId: TaskId; readonly name: string }) {
     const query = useQuery(taskQueryOptions(useEngineApi(), taskId));
-    const { readable, stamp } = splitTaskName(query.data?.name ?? name);
+    const task = query.data;
+    const { readable, stamp } = splitTaskName(task?.name ?? name);
+    const tone = task === undefined ? null : taskTone(task.state);
+    const progress = task?.progress != null && task.progress.total > 0 ? task.progress : null;
     return (
-        <EntityCard
-            leading={<ListTodo aria-hidden />}
+        <PeekCard
+            kind={stamp === null ? m.entity_kind_task() : `${m.entity_kind_task()} · ${stamp}`}
+            icon={<ListTodo />}
+            {...(task === undefined || tone === null
+                ? {}
+                : { status: { tone, label: taskStateLabel(task.state) }, ...stateTint(tone) })}
             title={readable}
-            meta={stamp === null ? undefined : <span className="tabular-nums">{stamp}</span>}
-            action={
-                <ButtonLink to="/tasks/$taskId" params={{ taskId }} size="sm">
-                    {m.entity_open_task()}
-                </ButtonLink>
+            description={task?.stateReason ?? undefined}
+            facts={
+                task === undefined
+                    ? []
+                    : facts(
+                          {
+                              label: m.entity_fact_agent(),
+                              value:
+                                  task.kind === 'engine' ? (
+                                      (task.executor ?? m.task_owner_engine())
+                                  ) : (
+                                      <AgentFact agentId={task.agentId} name={task.agentName} />
+                                  ),
+                          },
+                          task.priority.rank > 0 || task.priority.text !== null
+                              ? { label: m.task_fact_priority(), value: m.task_priority({ rank: task.priority.rank }) }
+                              : null,
+                          progress === null
+                              ? null
+                              : {
+                                    label: m.entity_fact_subtasks(),
+                                    value: m.task_meta_progress({
+                                        completed: progress.completed,
+                                        total: progress.total,
+                                    }),
+                                },
+                          { label: m.entity_fact_updated(), value: <Time at={task.updatedAt} /> },
+                      )
             }
+            action={{
+                label: m.entity_open_task(),
+                render: (props) => <Link {...props} to="/tasks/$taskId" params={{ taskId }} />,
+            }}
         >
-            <Loaded query={query}>
-                {(task) => (
-                    <span className="flex flex-col gap-2">
-                        <span className="flex flex-wrap items-center gap-2 text-xs text-text-muted">
-                            <TaskStateBadge state={task.state} />
-                            {task.agentName === null ? null : <span>{task.agentName}</span>}
-                            {task.progress !== null && task.progress.total > 0 ? (
-                                <span className="tabular-nums">
-                                    {m.task_meta_progress({
-                                        completed: task.progress.completed,
-                                        total: task.progress.total,
-                                    })}
-                                </span>
-                            ) : null}
-                        </span>
-                        {task.stateReason === null ? null : <Clamp>{task.stateReason}</Clamp>}
-                    </span>
-                )}
-            </Loaded>
-        </EntityCard>
+            {task === undefined ? <Pending query={query} /> : null}
+        </PeekCard>
     );
 }
 
+const RUN_TONES = {
+    queued: 'waiting',
+    running: 'live',
+    completed: 'success',
+    failed: 'danger',
+    cancelled: 'neutral',
+    unknown: 'neutral',
+} as const satisfies Readonly<Record<string, StatusTone>>;
+
 export function RunCard({ runId, name }: { readonly runId: RunId; readonly name: string }) {
     const query = useQuery(runQueryOptions(useEngineApi(), runId));
+    const locale = useLocale();
+    const run = query.data;
+    const tone = run === undefined ? null : RUN_TONES[run.status];
+    const duration = run === undefined ? null : finishedDurationMs(run);
+    const cost = run?.usage?.cost ?? null;
+    const took = [
+        duration === null ? null : formatDuration(duration, (value) => locale.formatNumber(value)),
+        cost === null ? null : locale.formatCurrency(cost.amount, cost.currency),
+    ].filter((part) => part !== null);
     return (
-        <EntityCard
-            leading={<Activity aria-hidden />}
-            title={query.data === undefined ? name : runTitle(query.data)}
-            meta={query.data === undefined ? undefined : <span>{runStatusLabel(query.data.status)}</span>}
-            action={
-                <ButtonLink to="/runs/$runId" params={{ runId }} size="sm">
-                    {m.entity_open_run()}
-                </ButtonLink>
+        <PeekCard
+            kind={m.entity_kind_run()}
+            icon={<Activity />}
+            {...(run === undefined || tone === null
+                ? {}
+                : { status: { tone, label: runStatusLabel(run.status) }, ...stateTint(tone) })}
+            title={run === undefined ? name : runTitle(run)}
+            description={run?.error?.summary ?? undefined}
+            facts={
+                run === undefined
+                    ? []
+                    : facts(
+                          {
+                              label: m.entity_fact_agent(),
+                              value: <AgentFact agentId={run.agentId} name={run.agentName} />,
+                          },
+                          { label: m.entity_fact_source(), value: runSourceLabel(run.source) },
+                          { label: m.entity_fact_started(), value: <Time at={run.startedAt ?? run.queuedAt} /> },
+                          took.length === 0 ? null : { label: m.entity_fact_took(), value: took.join(' · ') },
+                      )
             }
+            action={{
+                label: m.entity_open_run(),
+                render: (props) => <Link {...props} to="/runs/$runId" params={{ runId }} />,
+            }}
         >
-            <Loaded query={query}>
-                {(run) => (
-                    <span className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-text-muted tabular-nums">
-                        {run.agentName === null ? null : <span>{run.agentName}</span>}
-                        <RelativeTime value={new Date(run.startedAt ?? run.queuedAt)} />
-                    </span>
-                )}
-            </Loaded>
-        </EntityCard>
+            {run === undefined ? <Pending query={query} /> : null}
+        </PeekCard>
     );
 }
 
 export function ChatCard({ chatId, name }: { readonly chatId: ChatId; readonly name: string }) {
-    const query = useQuery(chatQueryOptions(useEngineApi(), chatId));
+    const engineApi = useEngineApi();
+    const locale = useLocale();
+    const query = useQuery(chatQueryOptions(engineApi, chatId));
+    // Only entries the member already loaded: a card never fetches a thread's history.
+    const cached = useInfiniteQuery({ ...chatEntriesQueryOptions(engineApi, chatId), enabled: false }).data;
+    const chat = query.data;
+    const preview =
+        chat === undefined
+            ? null
+            : chatPreview(
+                  chat,
+                  cached?.pages.flatMap((page) => page.items),
+              );
+    const status =
+        chat === undefined
+            ? undefined
+            : chat.questions.length > 0
+              ? { tone: 'warning' as const, label: m.chat_needs_you() }
+              : chat.working.length > 0
+                ? { tone: 'live' as const, label: m.home_chat_working() }
+                : undefined;
+    const members = chat === undefined ? '' : threadMembers(chat);
     return (
-        <EntityCard
-            leading={<MessageSquare aria-hidden />}
-            title={query.data?.title.trim() || name}
-            meta={
-                query.data === undefined ? undefined : (
-                    <RelativeTime value={new Date(query.data.updatedAt)} className="tabular-nums" />
-                )
+        <PeekCard
+            kind={m.entity_kind_chat()}
+            icon={<MessageSquare />}
+            {...(status === undefined ? {} : { status, ...stateTint(status.tone) })}
+            title={chat?.title.trim() || name}
+            description={
+                preview === null ? undefined : preview.kind === 'working' ? m.home_chat_working() : preview.text
             }
-            action={
-                <ButtonLink to="/chats/$chatId" params={{ chatId }} size="sm">
-                    {m.entity_open_chat()}
-                </ButtonLink>
+            facts={
+                chat === undefined
+                    ? []
+                    : facts(
+                          members === '' ? null : { label: m.entity_fact_with(), value: members },
+                          { label: m.entity_fact_messages(), value: locale.formatNumber(chat.messageCount) },
+                          { label: m.entity_fact_updated(), value: <Time at={chat.updatedAt} /> },
+                      )
             }
+            action={{
+                label: m.entity_open_chat(),
+                render: (props) => <Link {...props} to="/chats/$chatId" params={{ chatId }} />,
+            }}
         >
-            <Loaded query={query}>
-                {(chat) => (
-                    <span className="flex flex-col gap-1.5">
-                        {threadMembers(chat) === '' ? null : (
-                            <span className="text-xs text-text-muted">
-                                {m.entity_chat_with({ names: threadMembers(chat) })}
-                            </span>
-                        )}
-                        {chat.preview === null ? null : <Clamp>{chat.preview}</Clamp>}
-                    </span>
-                )}
-            </Loaded>
-        </EntityCard>
+            {chat === undefined ? <Pending query={query} /> : null}
+        </PeekCard>
     );
 }
 
 export function FileCard({ fileId, name }: { readonly fileId: FileId; readonly name: string }) {
     const query = useQuery(fileDetailQueryOptions(useEngineApi(), fileId));
     const locale = useLocale();
+    const file = query.data;
+    const scanFailed = file?.scan?.status === 'infected' || file?.scan?.status === 'failed';
     return (
-        <EntityCard
-            leading={<FileText aria-hidden />}
-            title={query.data?.name ?? name}
-            meta={
-                query.data === undefined ? undefined : (
-                    <span className="tabular-nums">{formatBytes(locale, query.data.sizeBytes)}</span>
-                )
+        <PeekCard
+            kind={m.entity_kind_file()}
+            icon={<FileText />}
+            {...(scanFailed
+                ? {
+                      status: { tone: 'danger' as const, label: m.activity_outcome_scan_failed() },
+                      ...stateTint('danger'),
+                  }
+                : {})}
+            title={file?.name ?? name}
+            facts={
+                file === undefined
+                    ? []
+                    : facts(
+                          { label: m.entity_fact_size(), value: formatBytes(locale, file.sizeBytes) },
+                          { label: m.entity_fact_purpose(), value: purposeLabel(file.purpose) },
+                          file.agentId === null
+                              ? null
+                              : {
+                                    label: m.entity_fact_agent(),
+                                    value: <AgentFact agentId={file.agentId} name={null} />,
+                                },
+                          { label: m.entity_fact_added(), value: <Time at={file.createdAt} /> },
+                      )
             }
-            action={
-                <ButtonLink to="/files" search={{ file: fileId }} size="sm">
-                    {m.entity_open_file()}
-                </ButtonLink>
-            }
+            action={{
+                label: m.entity_open_file(),
+                render: (props) => <Link {...props} to="/files" search={{ file: fileId }} />,
+            }}
         >
-            <Loaded query={query}>
-                {(file) => (
-                    <span className="text-xs text-text-muted tabular-nums">
-                        <RelativeTime value={new Date(file.createdAt)} />
-                    </span>
-                )}
-            </Loaded>
-        </EntityCard>
+            {file === undefined ? <Pending query={query} /> : null}
+        </PeekCard>
     );
 }
 
+const TRIGGER_TONES = {
+    active: 'success',
+    paused: 'neutral',
+    ended: 'neutral',
+    failed: 'danger',
+    unknown: 'neutral',
+} as const satisfies Readonly<Record<string, StatusTone>>;
+
 export function TriggerCard({ triggerId, name }: { readonly triggerId: TriggerId; readonly name: string }) {
     const query = useQuery(triggerQueryOptions(useEngineApi(), triggerId));
+    const summary = useTriggerSummary();
+    const trigger = query.data;
+    const lifecycle = trigger === undefined || trigger.lifecycle === 'unknown' ? null : trigger.lifecycle;
     return (
-        <EntityCard
-            leading={<Zap aria-hidden />}
-            title={query.data?.name ?? name}
-            meta={query.data === undefined ? undefined : <span>{triggerKindLabel(query.data)}</span>}
-            action={
-                <ButtonLink to="/triggers/$triggerId" params={{ triggerId }} size="sm">
-                    {m.entity_open_trigger()}
-                </ButtonLink>
+        <PeekCard
+            kind={trigger === undefined ? m.entity_kind_trigger() : triggerKindLabel(trigger)}
+            icon={<Zap />}
+            {...(lifecycle === null
+                ? {}
+                : {
+                      status: { tone: TRIGGER_TONES[lifecycle], label: lifecycleLabel(lifecycle) },
+                      ...stateTint(TRIGGER_TONES[lifecycle]),
+                  })}
+            title={trigger?.name ?? name}
+            description={trigger === undefined ? undefined : summary(trigger)}
+            facts={
+                trigger === undefined
+                    ? []
+                    : facts(
+                          {
+                              label: m.entity_fact_agent(),
+                              value: <AgentFact agentId={trigger.agentId} name={trigger.agentName} />,
+                          },
+                          trigger.nextFireAt === null
+                              ? null
+                              : { label: m.entity_fact_next(), value: <Time at={trigger.nextFireAt} /> },
+                      )
             }
+            action={{
+                label: m.entity_open_trigger(),
+                render: (props) => <Link {...props} to="/triggers/$triggerId" params={{ triggerId }} />,
+            }}
         >
-            <Loaded query={query}>
-                {(trigger) =>
-                    trigger.agentName === null ? null : (
-                        <span className="text-xs text-text-muted">{trigger.agentName}</span>
-                    )
-                }
-            </Loaded>
-        </EntityCard>
+            {trigger === undefined ? <Pending query={query} /> : null}
+        </PeekCard>
     );
 }
+
+const INTEGRATION_TONES = {
+    connected: 'success',
+    'needs-attention': 'warning',
+    disconnected: 'neutral',
+    error: 'danger',
+    unknown: 'neutral',
+} as const satisfies Readonly<Record<string, StatusTone>>;
 
 export function IntegrationCard({
     integrationId,
@@ -228,36 +356,59 @@ export function IntegrationCard({
     readonly name: string;
 }) {
     const query = useQuery(integrationQueryOptions(useEngineApi(), integrationId));
+    const integration = query.data;
+    const tone = integration === undefined ? null : INTEGRATION_TONES[integration.status];
     return (
-        <EntityCard
-            leading={<Plug aria-hidden />}
-            title={query.data?.name ?? name}
-            meta={query.data === undefined ? undefined : <span>{integrationStatusLabel(query.data.status)}</span>}
-            action={
-                <ButtonLink to="/integrations/$integrationId" params={{ integrationId }} size="sm">
-                    {m.entity_open_integration()}
-                </ButtonLink>
+        <PeekCard
+            kind={m.entity_kind_integration()}
+            icon={<Plug />}
+            {...(integration === undefined || tone === null
+                ? {}
+                : { status: { tone, label: integrationStatusLabel(integration.status) }, ...stateTint(tone) })}
+            title={integration?.name ?? name}
+            facts={
+                integration === undefined
+                    ? []
+                    : facts(
+                          { label: m.entity_fact_type(), value: integrationKindLabel(kindNameOf(integration)) },
+                          {
+                              label: m.entity_fact_agent(),
+                              value: <AgentFact agentId={integration.agentId} name={null} />,
+                          },
+                      )
             }
+            action={{
+                label: m.entity_open_integration(),
+                render: (props) => <Link {...props} to="/integrations/$integrationId" params={{ integrationId }} />,
+            }}
         >
-            <Loaded query={query}>{() => null}</Loaded>
-        </EntityCard>
+            {integration === undefined ? <Pending query={query} /> : null}
+        </PeekCard>
     );
 }
 
 export function MemberCard({ memberId, name }: { readonly memberId: MemberId; readonly name: string }) {
     const query = useQuery(memberDetailQueryOptions(useEngineApi(), memberId));
+    const member = query.data;
     return (
-        <EntityCard
-            leading={<User aria-hidden />}
-            title={query.data?.displayName ?? name}
-            meta={query.data === undefined ? undefined : <span>{roleLabel(query.data.role)}</span>}
-            action={
-                <ButtonLink to="/members" size="sm">
-                    {m.entity_open_members()}
-                </ButtonLink>
+        <PeekCard
+            kind={m.entity_kind_member()}
+            icon={<User />}
+            title={member?.displayName ?? name}
+            facts={
+                member === undefined
+                    ? []
+                    : facts(
+                          { label: m.entity_fact_role(), value: roleLabel(member.role) },
+                          member.lastSeenAt === null
+                              ? null
+                              : { label: m.entity_fact_last_seen(), value: <Time at={member.lastSeenAt} /> },
+                          { label: m.entity_fact_joined(), value: <Time at={member.createdAt} /> },
+                      )
             }
+            action={{ label: m.entity_open_members(), render: (props) => <Link {...props} to="/members" /> }}
         >
-            <Loaded query={query}>{() => null}</Loaded>
-        </EntityCard>
+            {member === undefined ? <Pending query={query} /> : null}
+        </PeekCard>
     );
 }

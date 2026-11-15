@@ -172,12 +172,13 @@ describe('integration activity renderer', { timeout: TIMEOUT_MS }, () => {
             features: [...FEATURES, feed],
         });
         const list = await screen.findByRole('list', { name: 'Feed' });
-        expect(within(list).getByText('Docs search connected')).toBeDefined();
-        expect(within(list).getByText('Docs search needs attention')).toBeDefined();
+        // One table-like line each: the integration as a chip, the tool and its run, the outcome in words.
+        for (const outcome of ['Connected', 'Error', 'Tool used'])
+            expect(within(list).getByText(outcome)).toBeDefined();
         expect(within(list).getByText('Token expired.')).toBeDefined();
-        expect(within(list).getByText('Docs search: tool search used')).toBeDefined();
-        expect(within(list).getByRole('link', { name: 'Open run' }).getAttribute('href')).toBe('/runs/run-1');
-        const integrationLinks = within(list).getAllByRole('link', { name: /^Docs search/ });
+        expect(within(list).getByText('search')).toBeDefined();
+        expect(within(list).getByRole('link', { name: 'Run' }).getAttribute('href')).toBe('/runs/run-1');
+        const integrationLinks = within(list).getAllByRole('link', { name: 'Docs search' });
         expect(integrationLinks).toHaveLength(3);
         for (const link of integrationLinks) {
             expect(link.getAttribute('href')).toBe(`/integrations/${INTEGRATION_IDS.docs}`);

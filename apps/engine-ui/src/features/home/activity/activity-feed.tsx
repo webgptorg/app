@@ -66,7 +66,8 @@ export function ActivityFeed() {
     // A link to a filtered feed opens it whole.
     const expanded = opened || area !== null;
     const shown = expanded ? current : current.slice(0, RECENT_ACTIVITY_ROWS);
-    const more = !expanded && (current.length > RECENT_ACTIVITY_ROWS || feed.hasNextPage);
+    // The way to filters and older pages, so it shows whenever there is any activity at all.
+    const more = !expanded && items.length > 0;
 
     let content;
     if (feed.data === undefined && feed.isError) {

@@ -152,8 +152,11 @@ describe('integration detail', { timeout: TIMEOUT_MS }, () => {
         });
         await renderDetail(INTEGRATION_IDS.docs, engine);
         const activity = await screen.findByRole('list', { name: 'Recent activity' });
-        expect(within(activity).getByText('Docs search: tool search used')).toBeDefined();
-        expect(within(activity).getByText('Docs search connected')).toBeDefined();
+        // On its own page the integration is named, not linked; the tool and the outcome say what happened.
+        expect(within(activity).getByText('search')).toBeDefined();
+        expect(within(activity).getByText('Tool used')).toBeDefined();
+        expect(within(activity).getAllByText('Connected').length).toBeGreaterThan(0);
+        expect(within(activity).queryByRole('link', { name: 'Docs search' })).toBeNull();
         expect(within(activity).getByText('Activity: integration.rotated')).toBeDefined();
         expect(engine.spies.activity).toHaveBeenCalledWith(
             { integrationId: INTEGRATION_IDS.docs, limit: 20 },
@@ -207,6 +210,9 @@ describe('integration actions', { timeout: TIMEOUT_MS }, () => {
                 }),
         );
         const { user } = await renderDetail(INTEGRATION_IDS.docs, engine);
+        // The status, and the activity lines that say "Connected" as their outcome.
+        await screen.findAllByText('Connected');
+        const connected = screen.getAllByText('Connected').length;
         await user.click(screen.getByRole('button', { name: 'Disable' }));
         expect(await screen.findByText('Disabled')).toBeDefined();
         act(() => {
@@ -216,7 +222,7 @@ describe('integration actions', { timeout: TIMEOUT_MS }, () => {
         await waitFor(() => {
             expect(screen.queryByText('Disabled')).toBeNull();
         });
-        expect(screen.getByText('Connected')).toBeDefined();
+        expect(screen.getAllByText('Connected')).toHaveLength(connected);
     });
 
     it('enables a disabled integration and rolls back on error', async () => {
