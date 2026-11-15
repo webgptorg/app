@@ -220,22 +220,24 @@ describe('entity chips of every kind', { timeout: TIMEOUT_MS }, () => {
             features: [...FEATURES, allKinds],
         });
         const list = await screen.findByRole('list', { name: 'All kinds' });
-        const cases: readonly (readonly [string, string, RegExp | string])[] = [
-            ['Ada', '/agents/agent-ada', 'Open agent'],
-            ['Ship billing v2', '/tasks/task-ship-billing', 'Open task'],
-            ['Email run, Running', '/runs/run-max-email', 'Open run'],
-            ['Copy chat', '/chats/chat-copywriter', 'Open chat'],
-            ['Style guide', '/files?file=file-style-guide', 'Open file'],
-            ['Weekly trigger', '/triggers/trigger-weekly-report', 'Open trigger'],
-            ['GitHub', '/integrations/integration-github', 'Open integration'],
-            ['Jana', '/members', 'Open members'],
+        // Each card's action, and a fact only its loaded data fills in.
+        const cases: readonly (readonly [string, string, string, string])[] = [
+            ['Ada', '/agents/agent-ada', 'Open agent', 'Updated'],
+            ['Ship billing v2', '/tasks/task-ship-billing', 'Open task', 'Subtasks'],
+            ['Email run, Running', '/runs/run-max-email', 'Open run', 'Source'],
+            ['Copy chat', '/chats/chat-copywriter', 'Open chat', 'Messages'],
+            ['Style guide', '/files?file=file-style-guide', 'Open file', 'Size'],
+            ['Weekly trigger', '/triggers/trigger-weekly-report', 'Open trigger', 'Next'],
+            ['GitHub', '/integrations/integration-github', 'Open integration', 'Type'],
+            ['Jana', '/members', 'Open members', 'Role'],
         ];
-        for (const [name, href, open] of cases) {
+        for (const [name, href, open, fact] of cases) {
             const chip = within(list).getByRole('link', { name });
             expect(chip.getAttribute('href')).toBe(href);
             await user.hover(chip);
             const card = await screen.findByRole('dialog');
             expect(await within(card).findByRole('link', { name: open })).toBeTruthy();
+            expect(await within(card).findByText(fact)).toBeTruthy();
             await user.unhover(chip);
             await user.keyboard('{Escape}');
         }
