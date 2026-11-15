@@ -13,14 +13,14 @@ import {
 import type { DataTableColumnDef, DataTableView, FilterBarField } from '@ptbk/ui';
 import { useQuery } from '@tanstack/react-query';
 import { getRouteApi, Link } from '@tanstack/react-router';
-import { Bot, CalendarClock, CircleDot, Flag, ListTodo } from 'lucide-react';
+import { Bot, CalendarClock, CircleDot, Flag, History, ListTodo } from 'lucide-react';
 import { useCallback } from 'react';
 
 import { cx } from '../../app/cx';
 import { useDebouncedSearch } from '../../app/debounced-search';
 import { readListParam, readOneParam, writeListParam } from '../../app/search-filters';
 import { useEngineApi } from '../../app/engine-api-context';
-import { Link as AppLink } from '../../app/link';
+import { ButtonLink } from '../../app/link';
 import { useAllows } from '../../app/registry/use-visible-features';
 import { m } from '../../paraglide/messages';
 import { AgentAvatar } from '../agents/agent-avatar';
@@ -72,9 +72,10 @@ export function TasksPage() {
             {...(runsVisible
                 ? {
                       actions: (
-                          <AppLink to="/runs" variant="standalone" className="text-sm text-text-muted">
+                          <ButtonLink to="/runs" variant="ghost" size="sm">
+                              <History aria-hidden className="size-4" />
                               {m.tasks_run_history()}
-                          </AppLink>
+                          </ButtonLink>
                       ),
                   }
                 : {})}

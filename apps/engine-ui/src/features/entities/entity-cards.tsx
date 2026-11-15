@@ -1,5 +1,5 @@
 import type { AgentId, ChatId, FileId, IntegrationId, MemberId, RunId, TaskId, TriggerId } from '@ptbk/engine-api';
-import { PeekCard, RelativeTime, Skeleton, STATUS_TINT_CLASSES, useLocale } from '@ptbk/ui';
+import { PeekCard, RelativeTime, Skeleton, STATUS_TINT_CLASSES, StatusPill, useLocale } from '@ptbk/ui';
 import type { PeekCardFact, StatusTone } from '@ptbk/ui';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import type { UseQueryResult } from '@tanstack/react-query';
@@ -10,7 +10,8 @@ import type { ReactNode } from 'react';
 import { useEngineApi } from '../../app/engine-api-context';
 import { m } from '../../paraglide/messages';
 import { AgentAvatar } from '../agents/agent-avatar';
-import { AgentStatusBadge } from '../agents/agent-badges';
+import { stateLabel } from '../agents/agent-badges';
+import { AgentLiveState } from '../agents/agent-live-state';
 import { agentDetailQueryOptions } from '../agents/agents-queries';
 import { chatEntriesQueryOptions, chatQueryOptions } from '../chat/chat-queries';
 import { agentColor } from '../chat/references/agent-color';
@@ -68,6 +69,34 @@ function AgentFact({ agentId, name }: { readonly agentId: AgentId | null; readon
     return <EntityChip kind="agent" id={agentId} name={name ?? agentId} interactive={false} />;
 }
 
+const AGENT_TONES: Readonly<Record<string, StatusTone>> = {
+    idle: 'neutral',
+    running: 'live',
+    working: 'live',
+    waiting: 'waiting',
+    stopped: 'warning',
+    error: 'danger',
+    failed: 'danger',
+};
+
+/** The agent's live state as a quiet pill, as every state reads in a card; a state this UI does not know is a dash. */
+function AgentStatusPill({ agentId }: { readonly agentId: AgentId }) {
+    return (
+        <AgentLiveState agentId={agentId}>
+            {(status) => {
+                if (status.kind === 'pending') return <Skeleton className="h-3 w-16" />;
+                const tone = status.kind === 'state' ? AGENT_TONES[status.state] : undefined;
+                if (status.kind !== 'state' || tone === undefined) return <span className="text-text-muted">—</span>;
+                return (
+                    <StatusPill tone={tone} variant="quiet">
+                        {stateLabel(status.state as Parameters<typeof stateLabel>[0])}
+                    </StatusPill>
+                );
+            }}
+        </AgentLiveState>
+    );
+}
+
 export function AgentCard({ agentId, name }: { readonly agentId: AgentId; readonly name: string }) {
     const query = useQuery(agentDetailQueryOptions(useEngineApi(), agentId));
     const agent = query.data;
@@ -82,7 +111,7 @@ export function AgentCard({ agentId, name }: { readonly agentId: AgentId; readon
                 agent === undefined || agent.profile.description === '' ? undefined : agent.profile.description
             }
             facts={facts(
-                { label: m.entity_fact_status(), value: <AgentStatusBadge agentId={agentId} /> },
+                { label: m.entity_fact_status(), value: <AgentStatusPill agentId={agentId} /> },
                 agent === undefined ? null : { label: m.entity_fact_updated(), value: <Time at={agent.updatedAt} /> },
             )}
             action={{
