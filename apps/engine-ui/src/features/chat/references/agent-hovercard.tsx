@@ -1,11 +1,10 @@
-import { Button, useHovercardHide } from '@ptbk/ui';
+import { Button, PeekCard, useHovercardHide } from '@ptbk/ui';
+import { Link } from '@tanstack/react-router';
 import { AtSign } from 'lucide-react';
 
-import { ButtonLink } from '../../../app/link';
 import { m } from '../../../paraglide/messages';
 import { AgentAvatar } from '../../agents/agent-avatar';
 import { formatClock, useElapsedMs } from './elapsed';
-import { StatusDot } from './task-status';
 import { TaskChip } from './task-chip';
 import type { ReadChatTask, ReadChatWorking, ReferenceAgent, ThreadReferences } from './thread-references';
 
@@ -28,8 +27,7 @@ function WorkingNow({ working }: { readonly working: ReadChatWorking }) {
     const latest = working.steps.at(-1);
     return (
         <span className="flex flex-col gap-1">
-            <span className="flex items-center gap-1.5 meta">
-                <StatusDot tone="live" />
+            <span className="meta">
                 {m.chat_ref_working({ elapsed: elapsed === null ? '' : formatClock(elapsed) })}
             </span>
             {latest === undefined ? null : <StepLine step={latest} />}
@@ -41,7 +39,6 @@ function OnTask({ task }: { readonly task: ReadChatTask }) {
     return (
         <span className="flex flex-col gap-1">
             <span className="flex flex-wrap items-center gap-1.5 text-xs text-text-muted">
-                <StatusDot tone="live" />
                 {m.chat_ref_working_on()}
                 <TaskChip name={task.name} interactive={false} />
             </span>
@@ -79,32 +76,29 @@ export function AgentHovercard({
     const activity = activityOf(agent, references);
     const hide = useHovercardHide();
     return (
-        <span className="flex w-72 max-w-full flex-col gap-3">
-            <span className="flex items-start gap-2.5">
+        <PeekCard
+            kind={m.chat_ref_kind_agent()}
+            icon={
                 <AgentAvatar
                     name={agent.name}
                     profile={{ avatarUrl: agent.avatarUrl, color: agent.profileColor }}
-                    size="sm"
+                    size="xs"
                 />
-                <span className="flex min-w-0 flex-col">
-                    <span className="truncate font-medium">{agent.name}</span>
-                    {agent.description === null ? null : (
-                        <span className="line-clamp-2 text-xs text-text-muted">{agent.description}</span>
-                    )}
-                </span>
-            </span>
-            {activity === null ? (
-                <span className="text-xs text-text-muted">{m.chat_ref_idle()}</span>
-            ) : activity.kind === 'working' ? (
-                <WorkingNow working={activity.working} />
-            ) : (
-                <OnTask task={activity.task} />
-            )}
-            <span className="flex flex-wrap gap-2">
-                <ButtonLink to="/agents/$agentId" params={{ agentId: agent.key }} size="sm">
-                    {m.chat_ref_open_agent()}
-                </ButtonLink>
-                {onMention === undefined ? null : (
+            }
+            status={
+                activity === null
+                    ? { tone: 'neutral', label: m.chat_ref_status_idle() }
+                    : { tone: 'live', label: m.chat_ref_status_working() }
+            }
+            title={agent.name}
+            description={agent.description ?? undefined}
+            tint={agent.color}
+            action={{
+                label: m.chat_ref_open_agent(),
+                render: (props) => <Link to="/agents/$agentId" params={{ agentId: agent.key }} {...props} />,
+            }}
+            secondary={
+                onMention === undefined ? undefined : (
                     <Button
                         size="sm"
                         variant="ghost"
@@ -116,8 +110,16 @@ export function AgentHovercard({
                         <AtSign aria-hidden className="size-3.5" />
                         {m.chat_ref_mention()}
                     </Button>
-                )}
-            </span>
-        </span>
+                )
+            }
+        >
+            {activity === null ? (
+                <span className="text-xs text-text-muted">{m.chat_ref_idle()}</span>
+            ) : activity.kind === 'working' ? (
+                <WorkingNow working={activity.working} />
+            ) : (
+                <OnTask task={activity.task} />
+            )}
+        </PeekCard>
     );
 }

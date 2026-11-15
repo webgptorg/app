@@ -78,7 +78,7 @@ Visual identity v1 ([U-17](../plan/tasks/U-17-visual-identity.md), decided with 
 ### Colour
 
 - **Graphite chrome.** Neutrals are the `--ptbk-graphite-*` scale. The page is `--color-surface`; panels and popovers are `--color-raised`. Hover and selection are quiet washes of the text colour, not fills: `--color-hover` (5%) and `--color-selected` (8%). They read the same on any surface.
-- **Primary actions** are `--color-primary` with `--color-on-primary`: near-black in light, near-white in dark. The older `--color-accent*` names now resolve to the same graphite, so nothing built on them turns teal.
+- **No inverted fills.** Buttons are soft (see Parts); nothing is a near-black slab in light or a near-white one in dark. `--color-primary` (graphite) is left for small marks that need weight: a checked box, a switch that is on, a tab's indicator. The older `--color-accent*` names resolve to it, so nothing built on them turns teal.
 - **Colour comes from agents and status.**
   - Agents: `--color-agent-1..8`, or the agent's profile colour.
   - Status: `--color-success`, `--color-warning`, `--color-danger` and `--color-info`, each with a quiet `-soft` fill. `--color-live` marks running work.
@@ -114,7 +114,20 @@ Visual identity v1 ([U-17](../plan/tasks/U-17-visual-identity.md), decided with 
 - **`Avatar`** puts the agent's initial on a wash of its colour, so an agent looks the same everywhere.
 - **`StatusPill` and `StatusDot`** cover the tones `live`, `waiting`, `success`, `warning`, `danger`, `info` and `neutral`. The state is always in words, and the hue lives in the dot and the wash.
 - **`Combobox`** replaces native `<select>` as screens move to it. `DateInput` is the native date control, styled: it is accessible, follows the browser's locale for date order, and opens the platform picker on phones.
-- **Buttons:** primary (graphite), secondary (raised with a subtle border), ghost, danger.
+- **Buttons are soft:** a text-coloured label on a quiet wash or a hairline.
+  - `primary`, the main action, stands out only by a slightly stronger wash (`--color-wash-strong`), medium weight and its place.
+  - `secondary` is the hairline without the wash; `ghost` has neither.
+  - `danger` is a soft red wash (`--color-danger-wash`) with red text; `danger-ghost` is red text alone.
+  - Hover and press deepen the wash (`-hover`, `-active`).
+  - `danger-solid`, a deep red fill (`--color-danger-fill`), is the one filled button: only the confirm dialog's destructive action (see Patterns).
+- **Inputs** (`Input`, `Textarea`, `Select`, `Combobox`, `DateInput` and the filter bar's search boxes) all have a 1px border at 3:1, so a field is findable without its label. Focus turns it teal with a soft halo that hugs the field (`--input-ring`).
+- **`PeekCard`** is the hovercard body for every entity, Linear-style:
+  - a header with the icon or avatar, the type in small text ("Task") and a `StatusPill`;
+  - the name, large and semibold, with one quiet line under it;
+  - two to four facts (label → value, values may be chips);
+  - behind a hairline, the "Open …" action with an ↵ hint. Enter anywhere in the card opens it.
+
+  It sits on a soft wash of the agent's or the state's colour, about 320px wide.
 
 ### Motion
 

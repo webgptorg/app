@@ -4,8 +4,13 @@ import { cx } from '../../internal/cx';
 import { mergeTooltipHandlers, useTooltip } from '../tooltip/tooltip';
 import { Spinner } from '../spinner/spinner';
 
-/** `danger-ghost` is for a destructive action that is not the point of the screen; its confirm step uses `danger`. */
-export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'danger-ghost';
+/**
+ * Every button is soft: a text-coloured label on a quiet wash or a hairline, never an inverted fill. `primary` is the
+ * main action (a stronger wash, medium weight); `secondary` has the hairline only; `ghost` neither. `danger` is a soft
+ * red wash for a destructive action in place; `danger-ghost` is one that is not the point of the screen.
+ * `danger-solid`, the one filled button, is only the confirm step that names what it destroys (ConfirmDialog).
+ */
+export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'danger-ghost' | 'danger-solid';
 export type ButtonSize = 'sm' | 'md';
 
 export interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'disabled'> {
@@ -27,27 +32,30 @@ export interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement
 
 const VARIANT_CLASSES: Readonly<Record<ButtonVariant, string>> = {
     primary:
-        'bg-(--button-primary-bg) text-(--button-primary-text) hover:enabled:not-aria-disabled:bg-(--button-primary-bg-hover) shadow-(--button-shadow)',
+        'border border-(--button-primary-border) bg-(--button-primary-bg) font-medium text-(--button-primary-text) hover:enabled:not-aria-disabled:bg-(--button-primary-bg-hover) active:enabled:not-aria-disabled:bg-(--button-primary-bg-active)',
     secondary:
-        'border border-(--button-secondary-border) bg-(--button-secondary-bg) text-(--button-secondary-text) shadow-(--button-shadow) hover:enabled:not-aria-disabled:border-(--button-secondary-border-hover) hover:enabled:not-aria-disabled:bg-(--button-secondary-bg-hover)',
-    ghost: 'bg-transparent text-(--button-ghost-text) hover:enabled:not-aria-disabled:bg-(--button-ghost-bg-hover)',
-    danger: 'bg-(--button-danger-bg) text-(--button-danger-text) hover:enabled:not-aria-disabled:bg-(--button-danger-bg-hover)',
+        'border border-(--button-secondary-border) bg-transparent text-(--button-secondary-text) hover:enabled:not-aria-disabled:bg-(--button-secondary-bg-hover) active:enabled:not-aria-disabled:bg-(--button-secondary-bg-active)',
+    ghost: 'bg-transparent text-(--button-ghost-text) hover:enabled:not-aria-disabled:bg-(--button-ghost-bg-hover) active:enabled:not-aria-disabled:bg-(--button-ghost-bg-active)',
+    danger: 'border border-(--button-danger-border) bg-(--button-danger-bg) font-medium text-(--button-danger-text) hover:enabled:not-aria-disabled:bg-(--button-danger-bg-hover) active:enabled:not-aria-disabled:bg-(--button-danger-bg-active)',
     'danger-ghost':
-        'bg-transparent text-(--button-danger-ghost-text) hover:enabled:not-aria-disabled:bg-(--button-danger-ghost-bg-hover)',
+        'bg-transparent text-(--button-danger-ghost-text) hover:enabled:not-aria-disabled:bg-(--button-danger-ghost-bg-hover) active:enabled:not-aria-disabled:bg-(--button-danger-ghost-bg-active)',
+    'danger-solid':
+        'bg-(--button-danger-solid-bg) font-medium text-(--button-danger-solid-text) hover:enabled:not-aria-disabled:bg-(--button-danger-solid-bg-hover)',
 };
 
 /**
- * Inert in both themes through its own tokens, not opacity: a half-transparent accent fill still reads as a live
- * button on a dark surface. Ghost buttons keep no fill, so a disabled one never looks raised.
+ * Inert in both themes through its own tokens, not opacity: no wash, a hairline and muted text, so a disabled button
+ * never reads as live. Ghost buttons keep no frame at all.
  */
+const FRAMED_DISABLED =
+    'disabled:border-(--button-disabled-border) disabled:bg-transparent aria-disabled:border-(--button-disabled-border) aria-disabled:bg-transparent';
 const DISABLED_CLASSES: Readonly<Record<ButtonVariant, string>> = {
-    primary:
-        'disabled:border disabled:border-(--button-disabled-border) disabled:bg-(--button-disabled-bg) disabled:shadow-none aria-disabled:border aria-disabled:border-(--button-disabled-border) aria-disabled:bg-(--button-disabled-bg) aria-disabled:shadow-none',
-    secondary:
-        'disabled:border-(--button-disabled-border) disabled:bg-(--button-disabled-bg) aria-disabled:border-(--button-disabled-border) aria-disabled:bg-(--button-disabled-bg)',
+    primary: FRAMED_DISABLED,
+    secondary: FRAMED_DISABLED,
+    danger: FRAMED_DISABLED,
     ghost: '',
     'danger-ghost': '',
-    danger: 'disabled:border disabled:border-(--button-disabled-border) disabled:bg-(--button-disabled-bg) aria-disabled:border aria-disabled:border-(--button-disabled-border) aria-disabled:bg-(--button-disabled-bg)',
+    'danger-solid': `border border-transparent ${FRAMED_DISABLED}`,
 };
 
 const SIZE_CLASSES: Readonly<Record<ButtonSize, string>> = {
@@ -58,7 +66,7 @@ const SIZE_CLASSES: Readonly<Record<ButtonSize, string>> = {
 /** Shared by `Button` and `IconButton` so both look and behave the same. */
 export function buttonClassName(variant: ButtonVariant, size: ButtonSize, className?: string): string {
     return cx(
-        'inline-flex shrink-0 cursor-pointer items-center justify-center rounded-(--button-radius) font-medium whitespace-nowrap select-none',
+        'inline-flex shrink-0 cursor-pointer items-center justify-center rounded-(--button-radius) whitespace-nowrap select-none',
         // Not `transition-colors`: it includes outline-color, so the focus ring would fade in from the text colour.
         'motion-safe:transition-[color,background-color,border-color] motion-safe:duration-(--motion-state) motion-safe:ease-standard',
         'aria-busy:cursor-progress',

@@ -18,9 +18,9 @@ describe('Section', () => {
             </Section>,
             { theme },
         );
-        const region = screen.getByRole('region', { name: /Working now/ });
+        const region = screen.getByRole('region', { name: 'Working now' });
         expect(region.className).toMatch(/border-t/);
-        expect(screen.getByRole('heading', { level: 2 }).textContent).toBe('Working now3');
+        expect(screen.getByRole('heading', { level: 2, name: 'Working now 3' })).toBeDefined();
         expect(screen.getByText('3').className).toMatch(/tabular-nums/);
         expect(screen.getByText('Live steps.')).toBeDefined();
         expect(screen.getByRole('button', { name: 'All' })).toBeDefined();

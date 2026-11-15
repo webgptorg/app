@@ -2,7 +2,7 @@ import type { GalleryEntry } from '../../gallery-entry';
 import { Button } from './button';
 import type { ButtonVariant } from './button';
 
-const VARIANTS: readonly ButtonVariant[] = ['primary', 'secondary', 'ghost', 'danger', 'danger-ghost'];
+const VARIANTS: readonly ButtonVariant[] = ['primary', 'secondary', 'ghost', 'danger', 'danger-ghost', 'danger-solid'];
 
 export const buttonGallery: GalleryEntry = {
     id: 'button',

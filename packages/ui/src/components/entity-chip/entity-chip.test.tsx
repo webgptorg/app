@@ -41,7 +41,7 @@ describe('EntityChip', () => {
         await expectNoAxeViolations(container);
     });
 
-    it('opens its hovercard on hover and toggles it on click', async () => {
+    it('opens its hovercard on hover and on click', async () => {
         const { container } = renderUi(
             <p>
                 <EntityChip
@@ -62,6 +62,8 @@ describe('EntityChip', () => {
         expect(isOpen(card())).toBe(true);
         expect(screen.getByText('Writes copy.')).toBeDefined();
         fireEvent.click(chip);
+        expect(isOpen(card())).toBe(true);
+        fireEvent.keyDown(document, { key: 'Escape' });
         expect(isOpen(card())).toBe(false);
         fireEvent.click(chip);
         expect(isOpen(card())).toBe(true);

@@ -18,6 +18,18 @@
     /* Quiet washes of the text colour, so hover and selection read the same on the page, a raised panel or a wash. */
     --color-hover: color-mix(in oklab, var(--color-text) 5%, transparent);
     --color-selected: color-mix(in oklab, var(--color-text) 8%, transparent);
+
+    /*
+     * Soft buttons: the main action is a slightly stronger wash of the text colour, a destructive one a wash of the
+     * danger colour; hover and press deepen them. Washes, so they sit on any surface (U-17 rev 1: no inverted fills).
+     */
+    --color-wash-strong: color-mix(in oklab, var(--color-text) 7%, transparent);
+    --color-wash-strong-hover: color-mix(in oklab, var(--color-text) 10%, transparent);
+    --color-wash-strong-active: color-mix(in oklab, var(--color-text) 14%, transparent);
+    --color-danger-wash: color-mix(in oklab, var(--color-danger) 8%, transparent);
+    --color-danger-wash-hover: color-mix(in oklab, var(--color-danger) 12%, transparent);
+    --color-danger-wash-active: color-mix(in oklab, var(--color-danger) 16%, transparent);
+    --color-danger-hairline: color-mix(in oklab, var(--color-danger) 28%, transparent);
     --color-neutral-soft: var(--ptbk-graphite-100);
     --color-scrim: var(--ptbk-scrim);
 
@@ -148,6 +160,18 @@
     /* Repeated so a `.dark` subtree mixes its own text colour, not the one inherited from `:root`. */
     --color-hover: color-mix(in oklab, var(--color-text) 5%, transparent);
     --color-selected: color-mix(in oklab, var(--color-text) 8%, transparent);
+
+    /*
+     * Soft buttons: the main action is a slightly stronger wash of the text colour, a destructive one a wash of the
+     * danger colour; hover and press deepen them. Washes, so they sit on any surface (U-17 rev 1: no inverted fills).
+     */
+    --color-wash-strong: color-mix(in oklab, var(--color-text) 7%, transparent);
+    --color-wash-strong-hover: color-mix(in oklab, var(--color-text) 10%, transparent);
+    --color-wash-strong-active: color-mix(in oklab, var(--color-text) 14%, transparent);
+    --color-danger-wash: color-mix(in oklab, var(--color-danger) 8%, transparent);
+    --color-danger-wash-hover: color-mix(in oklab, var(--color-danger) 12%, transparent);
+    --color-danger-wash-active: color-mix(in oklab, var(--color-danger) 16%, transparent);
+    --color-danger-hairline: color-mix(in oklab, var(--color-danger) 28%, transparent);
     --color-neutral-soft: var(--ptbk-graphite-825);
     --color-scrim: var(--ptbk-scrim-dark);
 

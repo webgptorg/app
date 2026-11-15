@@ -51,13 +51,16 @@ export function Section({
                 <header className="flex min-h-8 flex-wrap items-center justify-between gap-x-3 gap-y-1">
                     <div className="flex min-w-0 flex-col gap-0.5">
                         {title === undefined ? null : (
-                            <Heading
-                                id={titleId}
-                                className="flex items-baseline gap-2 text-sm font-semibold text-(--section-title)"
-                            >
-                                <span className="truncate">{title}</span>
+                            <Heading className="truncate text-sm font-semibold text-(--section-title)">
+                                {/* The region is named by the title alone; the heading reads "Needs you 5". */}
+                                <span id={titleId}>{title}</span>
                                 {count === undefined ? null : (
-                                    <span className="font-medium text-(--section-muted) tabular-nums">{count}</span>
+                                    <>
+                                        {' '}
+                                        <span className="ms-1 font-medium text-(--section-muted) tabular-nums">
+                                            {count}
+                                        </span>
+                                    </>
                                 )}
                             </Heading>
                         )}

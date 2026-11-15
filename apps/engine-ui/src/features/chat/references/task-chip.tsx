@@ -1,19 +1,9 @@
 import { EntityChip, STATUS_TINT_CLASSES } from '@ptbk/ui';
-import type { StatusTone } from '@ptbk/ui';
 import { ListTodo } from 'lucide-react';
 
-import { chatTaskTone } from './task-status';
-import type { ChatTaskTone } from './task-status';
+import { CHAT_TASK_STATUS_TONES, chatTaskTone } from './task-status';
 import { TaskHovercard } from './task-hovercard';
 import { useThreadReferences } from './thread-references';
-
-const STATUS_TONES: Readonly<Record<ChatTaskTone, StatusTone>> = {
-    live: 'live',
-    waiting: 'waiting',
-    trouble: 'danger',
-    done: 'success',
-    quiet: 'neutral',
-};
 
 export interface TaskChipProps {
     /** The task's Book name, as `{name}` and `Chat.tasks` carry it. */
@@ -30,7 +20,7 @@ export interface TaskChipProps {
 export function TaskChip({ name, interactive = true, className }: TaskChipProps) {
     const references = useThreadReferences();
     const task = references?.tasks.get(name);
-    const tone = STATUS_TONES[task === undefined ? 'quiet' : chatTaskTone(task.state)];
+    const tone = CHAT_TASK_STATUS_TONES[task === undefined ? 'quiet' : chatTaskTone(task.state)];
     return (
         <EntityChip
             wrap

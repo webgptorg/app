@@ -3,6 +3,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import type { KeyboardEvent, ReactNode } from 'react';
 
 import { useUiMessages } from '../../i18n/ui-provider';
+import { controlClassName } from '../../internal/control';
 import { cx } from '../../internal/cx';
 import { Button } from '../button/button';
 import { DateInput } from '../date-input/date-input';
@@ -337,7 +338,7 @@ function OptionList({ label, options, selected, multiple, searchable, onPick, on
                             setActive(0);
                         }}
                         onKeyDown={onKeyDown}
-                        className="block min-h-8 w-full rounded-(--filter-bar-item-radius) bg-(--filter-bar-search-bg) px-2 text-sm text-(--filter-bar-text) placeholder:text-(--filter-bar-placeholder) focus-visible:outline-offset-0"
+                        className={controlClassName('min-h-8 px-2')}
                     />
                 </div>
             ) : null}

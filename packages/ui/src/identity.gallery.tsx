@@ -7,7 +7,8 @@ const SURFACES = [
     ['hover', 'bg-hover'],
     ['selected', 'bg-selected'],
     ['neutral-soft', 'bg-neutral-soft'],
-    ['primary', 'bg-primary'],
+    ['wash-strong', 'bg-(--color-wash-strong)'],
+    ['primary (marks)', 'bg-primary'],
 ] as const;
 
 const STATUS = [
