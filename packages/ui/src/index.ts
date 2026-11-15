@@ -100,6 +100,13 @@ export { STATUS_TINT_CLASSES, StatusDot, StatusPill } from './components/status/
 export type { StatusDotProps, StatusPillProps, StatusTone } from './components/status/status';
 export { Avatar } from './components/avatar/avatar';
 export type { AvatarProps, AvatarSize } from './components/avatar/avatar';
+export { PeekCard } from './components/peek-card/peek-card';
+export type {
+    PeekCardAction,
+    PeekCardActionProps,
+    PeekCardFact,
+    PeekCardProps,
+} from './components/peek-card/peek-card';
 export { EntityChip } from './components/entity-chip/entity-chip';
 export type { EntityChipProps, EntityChipTone, EntityChipTriggerProps } from './components/entity-chip/entity-chip';
 export { Badge } from './components/badge/badge';

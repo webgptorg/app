@@ -48,6 +48,7 @@ import { entityChipGallery } from './components/entity-chip/entity-chip.gallery'
 import { sectionGallery } from './components/section/section.gallery';
 import { statusGallery } from './components/status/status.gallery';
 import { identityGallery } from './identity.gallery';
+import { peekCardGallery } from './components/peek-card/peek-card.gallery';
 import type { GalleryEntry } from './gallery-entry';
 
 /** The identity overview first, then every component module's gallery entry, in alphabetical order. */
@@ -86,6 +87,7 @@ export const GALLERY_ENTRIES: readonly GalleryEntry[] = [
     legacyFilterBarGallery,
     menuGallery,
     paginationGallery,
+    peekCardGallery,
     relativeTimeGallery,
     sectionGallery,
     selectGallery,
