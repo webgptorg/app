@@ -60,9 +60,9 @@ function EngineIdentity({ engine, status }: { readonly engine: CurrentEngine; re
     return (
         <span className="flex min-w-0 flex-1 items-center gap-2">
             <span aria-hidden="true" className="inline-flex shrink-0">
-                <TrustMark fingerprint={engine.fingerprint} state="verified" size="sm" showCode={false} />
+                <TrustMark fingerprint={engine.fingerprint} state="verified" size="xs" showCode={false} />
             </span>
-            <span className="flex min-w-0 flex-1 flex-col">
+            <span className="flex min-w-0 flex-1 flex-col leading-tight">
                 <span className="truncate font-medium text-(--engine-switcher-text)">{engine.name}</span>
                 <span className="truncate text-2xs text-(--engine-switcher-muted)">{engine.hostname}</span>
             </span>
@@ -134,21 +134,21 @@ export function EngineSwitcher({
                     {...trigger}
                     aria-label={compact ? `${messages.engineSwitcher()}: ${current.name}` : undefined}
                     className={cx(
-                        'flex max-w-full min-w-0 cursor-pointer items-center gap-2 rounded-(--engine-switcher-radius) p-2 text-start text-sm hover:bg-(--engine-switcher-hover)',
+                        'flex max-w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-(--engine-switcher-radius) px-2 py-1.5 text-start text-sm hover:bg-(--engine-switcher-hover)',
                         'motion-safe:transition-colors motion-safe:duration-(--motion-state)',
                         compact ? 'justify-center' : 'w-full',
                     )}
                 >
                     {compact ? (
                         <span aria-hidden="true" className="inline-flex">
-                            <TrustMark fingerprint={current.fingerprint} state="verified" size="sm" showCode={false} />
+                            <TrustMark fingerprint={current.fingerprint} state="verified" size="xs" showCode={false} />
                         </span>
                     ) : (
                         <>
                             <EngineIdentity engine={current} />
                             <ChevronsUpDown
                                 aria-hidden="true"
-                                className="size-4 shrink-0 text-(--engine-switcher-muted)"
+                                className="size-3.5 shrink-0 text-(--engine-switcher-muted)"
                             />
                         </>
                     )}

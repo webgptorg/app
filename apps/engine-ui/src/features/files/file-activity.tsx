@@ -1,6 +1,8 @@
 import type { Activity } from '@ptbk/engine-api';
 
-import { Link } from '../../app/link';
+import { ActivityLine } from '../entities/activity-line';
+import type { ActivityOutcome } from '../entities/activity-line';
+import { EntityChip } from '../entities/entity-chip';
 import { m } from '../../paraglide/messages';
 import { purposeLabel } from './file-labels';
 
@@ -23,18 +25,32 @@ export function fileActivitySummary(activity: Activity): string {
     }
 }
 
-/** The home feed's card body for a file event, linking to the file (a deleted one has nothing to open). */
+function fileOutcome(activity: FileActivity): ActivityOutcome {
+    switch (activity.kind) {
+        case 'file.created':
+            return { tone: 'success', label: m.activity_outcome_added() };
+        case 'file.deleted':
+            return { tone: 'neutral', label: m.activity_outcome_deleted() };
+        case 'file.scan-failed':
+            return { tone: 'danger', label: m.activity_outcome_scan_failed() };
+    }
+}
+
+/** A file event as an activity line: the file as a chip (a deleted one has nothing to open), what it is for, the outcome. */
 export function FileActivityItem({ activity }: { readonly activity: Activity }) {
     if (!isFileActivity(activity)) return null;
     return (
-        <div className="flex flex-col gap-1 text-sm">
-            {activity.kind === 'file.deleted' ? (
-                <p className="break-words">{fileActivitySummary(activity)}</p>
-            ) : (
-                <Link to="/files" search={{ file: activity.fileId }} variant="standalone" className="break-words">
-                    {fileActivitySummary(activity)}
-                </Link>
-            )}
-        </div>
+        <ActivityLine
+            activity={activity}
+            description={
+                <EntityChip
+                    kind="file"
+                    id={activity.kind === 'file.deleted' ? null : activity.fileId}
+                    name={activity.name}
+                />
+            }
+            outcome={fileOutcome(activity)}
+            facts={activity.kind === 'file.created' ? purposeLabel(activity.purpose) : null}
+        />
     );
 }

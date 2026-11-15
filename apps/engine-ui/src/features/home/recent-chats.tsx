@@ -1,12 +1,15 @@
 import type { ReadChat } from '@ptbk/engine-api';
 import { EmptyState, RelativeTime, Section, Skeleton, StatusDot } from '@ptbk/ui';
+import { useInfiniteQuery } from '@tanstack/react-query';
 import { MessageSquare } from 'lucide-react';
 
 import { Link } from '../../app/link';
 import { m } from '../../paraglide/messages';
 import { AgentAvatar } from '../agents/agent-avatar';
+import { useEngineApi } from '../../app/engine-api-context';
+import { chatEntriesQueryOptions } from '../chat/chat-queries';
 import { chatName } from '../chat/thread-list';
-import { plainText } from './question-text';
+import { chatPreview } from './chat-preview';
 import { useAgentLook } from './use-agent-look';
 
 export const RECENT_CHAT_COUNT = 6;
@@ -39,6 +42,12 @@ function ChatAvatars({ chat }: { readonly chat: ReadChat }) {
 }
 
 function ChatRow({ chat }: { readonly chat: ReadChat }) {
+    // Only what the thread already has in the cache: Home never fetches every thread's entries for a preview.
+    const cached = useInfiniteQuery({ ...chatEntriesQueryOptions(useEngineApi(), chat.id), enabled: false }).data;
+    const preview = chatPreview(
+        chat,
+        cached?.pages.flatMap((page) => page.items),
+    );
     const waiting = chat.questions.length > 0;
     const unread = chat.unread > 0;
     return (
@@ -59,8 +68,10 @@ function ChatRow({ chat }: { readonly chat: ReadChat }) {
                             <StatusDot tone="info" label={m.chat_unread({ count: chat.unread })} />
                         ) : null}
                     </span>
-                    {chat.preview === null ? null : (
-                        <span className="truncate text-xs text-text-muted">{plainText(chat.preview)}</span>
+                    {preview === null ? null : preview.kind === 'working' ? (
+                        <span className="truncate text-xs text-text-muted italic">{m.home_chat_working()}</span>
+                    ) : (
+                        <span className="truncate text-xs text-text-muted">{preview.text}</span>
                     )}
                 </span>
                 <RelativeTime

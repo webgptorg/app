@@ -1,6 +1,7 @@
 import type { Activity } from '@ptbk/engine-api';
 
-import { Link } from '../../app/link';
+import { ActivityLine } from '../entities/activity-line';
+import type { ActivityOutcome } from '../entities/activity-line';
 import { m } from '../../paraglide/messages';
 
 type EngineActivity = Extract<Activity, { readonly kind: `engine.${string}` }>;
@@ -22,13 +23,25 @@ export function engineActivitySummary(activity: Activity): string {
     }
 }
 
-/** The home feed's card body for an engine event, linking to the security panel where updates and relays live. */
+function engineOutcome(activity: EngineActivity): ActivityOutcome {
+    switch (activity.kind) {
+        case 'engine.update-available':
+            return { tone: 'info', label: m.activity_outcome_update_available() };
+        case 'engine.updated':
+            return { tone: 'success', label: m.activity_outcome_updated() };
+        case 'engine.relay-disconnected':
+            return { tone: 'warning', label: m.activity_outcome_relay_disconnected() };
+    }
+}
+
+/** An engine event as an activity line: what happened in words, with its outcome. Updates and relays live in Security. */
 export function EngineActivityItem({ activity }: { readonly activity: Activity }) {
+    if (!isEngineActivity(activity)) return null;
     return (
-        <div className="flex flex-col gap-1 text-sm">
-            <Link to="/security" variant="standalone" className="break-words">
-                {engineActivitySummary(activity)}
-            </Link>
-        </div>
+        <ActivityLine
+            activity={activity}
+            description={<span className="min-w-0 break-words">{engineActivitySummary(activity)}</span>}
+            outcome={engineOutcome(activity)}
+        />
     );
 }

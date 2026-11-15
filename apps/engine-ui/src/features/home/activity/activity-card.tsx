@@ -1,4 +1,4 @@
-import type { Activity as ActivityRecord, ActivityItem } from '@ptbk/engine-api';
+import type { ActivityBase, Activity as ActivityRecord, ActivityItem } from '@ptbk/engine-api';
 import { CodeText, RelativeTime } from '@ptbk/ui';
 import { Activity, CircleHelp, FileText, PlugZap, Server, Users, Zap } from 'lucide-react';
 import { Component } from 'react';
@@ -7,7 +7,7 @@ import type { ReactNode } from 'react';
 import { cx } from '../../../app/cx';
 import type { ActivityRendererEntry, FeatureDefinition } from '../../../app/registry/feature';
 import { m } from '../../../paraglide/messages';
-import { EntityChip } from '../../entities/entity-chip';
+import { ActivityLine } from '../../entities/activity-line';
 import { activityKind } from './activity-feed-cache';
 import { resolveActivityRenderer } from './resolve-activity-renderer';
 
@@ -41,31 +41,23 @@ export interface ActivityCardProps {
 }
 
 /**
- * One feed item: its area icon, time and agent around the body its renderer draws. Everything from the engine is
- * text, and the only link out is built from the agent ID by the typed router.
+ * One feed item as a table-like row: its area icon, the line its feature's renderer draws (agent and entity chips,
+ * outcome, facts) and the time at the end. Everything from the engine is text.
  */
 export function ActivityCard({ item, features, enterClassName }: ActivityCardProps) {
     const base = item.kind === 'known' ? item.activity : item.base;
     const kind = activityKind(item);
     const resolved = resolveActivityRenderer(item, features);
-    const fallback = <FallbackBody kind={kind} />;
+    const fallback = <FallbackBody base={base} kind={kind} />;
     return (
-        <li className={cx('flex gap-3 py-3', enterClassName)}>
-            <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-neutral-soft text-text-muted [&>svg]:size-3.5">
-                {areaIcon(kind)}
-            </span>
-            <div className="flex min-w-0 flex-1 flex-col gap-1">
-                <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-text-muted">
-                    <RelativeTime value={new Date(base.at)} className="tabular-nums" />
-                    {base.agentId === null ? null : (
-                        <EntityChip
-                            kind="agent"
-                            id={base.agentId}
-                            name={base.agentName ?? m.activity_agent_unnamed()}
-                            className="text-xs"
-                        />
-                    )}
-                </p>
+        <li
+            className={cx(
+                'grid min-h-11 grid-cols-[1.25rem_minmax(0,1fr)_auto] items-start gap-x-3 py-2.5 sm:items-center',
+                enterClassName,
+            )}
+        >
+            <span className="flex h-6 items-center text-text-muted [&>svg]:size-4">{areaIcon(kind)}</span>
+            <div className="min-w-0">
                 {resolved.kind === 'renderer' ? (
                     <RendererBoundary fallback={fallback}>
                         <resolved.entry.component activity={resolved.activity} />
@@ -74,16 +66,25 @@ export function ActivityCard({ item, features, enterClassName }: ActivityCardPro
                     fallback
                 )}
             </div>
+            <RelativeTime
+                value={new Date(base.at)}
+                className="flex h-6 items-center text-xs whitespace-nowrap text-text-muted tabular-nums"
+            />
         </li>
     );
 }
 
-/** What any item can show, however little the client understands it: its raw kind, never its payload. */
-function FallbackBody({ kind }: { readonly kind: string }) {
+/** What any item can show, however little the client understands it: its agent and raw kind, never its payload. */
+function FallbackBody({ base, kind }: { readonly base: ActivityBase; readonly kind: string }) {
     return (
-        <p className="text-sm">
-            {m.activity_generic()} <CodeText value={kind} />
-        </p>
+        <ActivityLine
+            activity={base}
+            description={
+                <span className="text-text-muted">
+                    {m.activity_generic()} <CodeText value={kind} />
+                </span>
+            }
+        />
     );
 }
 
