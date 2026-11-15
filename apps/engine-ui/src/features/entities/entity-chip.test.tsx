@@ -175,6 +175,27 @@ function AllKinds() {
                 <EntityChip kind="run" id={RunId.parse('run-gone')} name="Gone run" />
             </li>
             <li>
+                <EntityChip kind="agent" id={AgentId.parse('agent-gone')} name="Gone agent" />
+            </li>
+            <li>
+                <EntityChip kind="task" id={TaskId.parse('task-gone')} name="Gone task" />
+            </li>
+            <li>
+                <EntityChip kind="chat" id={ChatId.parse('chat-gone')} name="Gone chat" />
+            </li>
+            <li>
+                <EntityChip kind="file" id={FileId.parse('file-gone')} name="Gone file" />
+            </li>
+            <li>
+                <EntityChip kind="trigger" id={TriggerId.parse('trigger-gone')} name="Gone trigger" />
+            </li>
+            <li>
+                <EntityChip kind="integration" id={IntegrationId.parse('integration-gone')} name="Gone integration" />
+            </li>
+            <li>
+                <EntityChip kind="member" id={MemberId.parse('member-gone')} name="Gone member" />
+            </li>
+            <li>
                 <EntityChip kind="run" id={RunId.parse('run-iris-weekly-failed')} name="Failed run" />
             </li>
             <li>
@@ -241,9 +262,26 @@ describe('entity chips of every kind', { timeout: TIMEOUT_MS }, () => {
             await user.unhover(chip);
             await user.keyboard('{Escape}');
         }
-        const gone = within(list).getByRole('link', { name: 'Gone run' });
-        await user.hover(gone);
-        expect(await screen.findByText('Details are not available right now.')).toBeTruthy();
+        // An entity the engine no longer knows keeps its name and says so quietly, whatever its kind.
+        for (const name of [
+            'Gone run',
+            'Gone agent',
+            'Gone task',
+            'Gone chat',
+            'Gone file',
+            'Gone trigger',
+            'Gone integration',
+            'Gone member',
+        ]) {
+            const gone = within(list).getByRole('link', { name });
+            await user.hover(gone);
+            const card = await screen.findByRole('dialog');
+            expect(
+                await within(card).findByText('Details are not available right now.', {}, { timeout: 5000 }),
+            ).toBeTruthy();
+            await user.unhover(gone);
+            await user.keyboard('{Escape}');
+        }
     });
 
     it('says the loud states in their cards: failed, blocked, asking, working, needing attention', async () => {
