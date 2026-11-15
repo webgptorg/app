@@ -173,6 +173,30 @@ function AllKinds() {
             <li>
                 <EntityChip kind="run" id={RunId.parse('run-gone')} name="Gone run" />
             </li>
+            <li>
+                <EntityChip kind="run" id={RunId.parse('run-iris-weekly-failed')} name="Failed run" />
+            </li>
+            <li>
+                <EntityChip kind="task" id={TaskId.parse('task-migrate-invoices')} name="Blocked task" />
+            </li>
+            <li>
+                <EntityChip kind="task" id={TaskId.parse('task-engine-update')} name="Engine task" />
+            </li>
+            <li>
+                <EntityChip kind="chat" id={ChatId.parse('chat-iris-question')} name="Asking chat" />
+            </li>
+            <li>
+                <EntityChip kind="chat" id={ChatId.parse('chat-working')} name="Busy chat" />
+            </li>
+            <li>
+                <EntityChip kind="file" id={FileId.parse('file-invoice-scan')} name="Infected file" />
+            </li>
+            <li>
+                <EntityChip kind="integration" id={IntegrationId.parse('integration-docs-mcp')} name="Docs MCP" />
+            </li>
+            <li>
+                <EntityChip kind="member" id={MemberId.parse('member-owner')} name="Owner" />
+            </li>
         </ul>
     );
 }
@@ -217,6 +241,37 @@ describe('entity chips of every kind', { timeout: TIMEOUT_MS }, () => {
         const gone = within(list).getByRole('link', { name: 'Gone run' });
         await user.hover(gone);
         expect(await screen.findByText('Details are not available right now.')).toBeTruthy();
+    });
+
+    it('says the loud states in their cards: failed, blocked, asking, working, needing attention', async () => {
+        const engineApi = createInMemoryEngineApiClient({
+            clock: { now: () => TEST_NOW },
+            seed: createDemoSeed(TEST_NOW),
+        });
+        const { user } = renderWithProviders({
+            path: '/agents/agent-ada',
+            engineApi,
+            features: [...FEATURES, allKinds],
+        });
+        const list = await screen.findByRole('list', { name: 'All kinds' });
+        const cases: readonly (readonly [string, string])[] = [
+            ['Failed run', 'Failed'],
+            ['Blocked task', 'Blocked'],
+            ['Engine task', 'Promptbook engine (deterministic update, no agent)'],
+            ['Asking chat', 'Needs you'],
+            ['Busy chat', 'Working…'],
+            ['Infected file', 'Attachment'],
+            ['Docs MCP', 'Needs attention'],
+            ['Owner', 'Owner'],
+        ];
+        for (const [name, fact] of cases) {
+            const chip = within(list).getByRole('link', { name });
+            await user.hover(chip);
+            const card = await screen.findByRole('dialog');
+            expect((await within(card).findAllByText(fact)).length).toBeGreaterThan(0);
+            await user.unhover(chip);
+            await user.keyboard('{Escape}');
+        }
     });
 
     it('names an entity without a link where its capability is missing', async () => {

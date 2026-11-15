@@ -169,6 +169,29 @@ describe('home', { timeout: TIMEOUT_MS }, () => {
         expect((await within(list).findAllByRole('link')).length).toBeGreaterThan(1);
     });
 
+    it('tries a start the engine may have done again under the same key, and says a refused message plainly', async () => {
+        const engineApi = demoEngine();
+        const create = vi.spyOn(engineApi.chats, 'create').mockImplementationOnce(() => problemResponse('unavailable'));
+        const send = vi
+            .spyOn(engineApi.chats, 'sendMessage')
+            .mockImplementationOnce(() => problemResponse('unavailable'));
+        const { user, router } = renderWithProviders({ path: '/', engineApi });
+
+        const box = await screen.findByRole('textbox', { name: 'Ask Chatter' });
+        await user.type(box, 'Plan the week{Enter}');
+        expect(await screen.findByText('The chat didn’t start. Try again.')).toBeDefined();
+        await user.type(box, '{Enter}');
+        await waitFor(() => {
+            expect(send).toHaveBeenCalledTimes(1);
+        });
+        await user.type(box, '{Enter}');
+        await waitFor(() => {
+            expect(router.state.location.pathname).toMatch(/^\/chats\/./);
+        });
+        expect(create.mock.calls[1]?.[0].requestKey).toBe(create.mock.calls[0]?.[0].requestKey);
+        expect(send.mock.calls[1]?.[1].requestKey).toBe(send.mock.calls[0]?.[1].requestKey);
+    });
+
     it('offers no composer without chats.write, no chats without chats.read, and no feed without oversight', async () => {
         const engine = createHomeEngine({ permissions: allBut('security.read', 'chats.write') });
         const { unmount } = renderWithProviders({ path: '/', engineApi: engine.client });
