@@ -37,7 +37,7 @@ test('the owner sees a Chatter-first home with what waits, what runs and the act
     await expect(page.getByRole('region', { name: /^Needs you/ })).toBeVisible();
     await expect(page.getByRole('region', { name: /^Working now/ })).toBeVisible();
     await expect(page.getByRole('region', { name: 'Recent chats' })).toBeVisible();
-    await expect(page.getByRole('region', { name: 'Activity' })).toBeVisible();
+    await expect(page.getByRole('region', { name: /^Recent activity/ })).toBeVisible();
 });
 
 test('a member sees their own home, without the activity feed', async ({ page, signIn, appUrl }) => {
@@ -45,7 +45,7 @@ test('a member sees their own home, without the activity feed', async ({ page, s
     await page.goto(appUrl('/'));
     await expect(page.getByRole('region', { name: 'Recent chats' })).toBeVisible();
     await expect(page.getByRole('region', { name: /^Working now/ })).toBeVisible();
-    await expect(page.getByRole('region', { name: 'Activity' })).toHaveCount(0);
+    await expect(page.getByRole('region', { name: /^Recent activity/ })).toHaveCount(0);
 });
 
 test("a scripted run's start and finish appear in the live activity feed without a reload", async ({
@@ -60,7 +60,7 @@ test("a scripted run's start and finish appear in the live activity feed without
     await signIn();
     const live = eventsConnected(page);
     await page.goto(appUrl('/'));
-    const feed = page.getByRole('region', { name: 'Activity' });
+    const feed = page.getByRole('region', { name: /^Recent activity/ });
     await expect(feed).toBeVisible();
     await live;
     const agent = required((await apiList<Agent>(page, '/agents'))[0], 'agent');
@@ -75,9 +75,11 @@ test("a scripted run's start and finish appear in the live activity feed without
         steps: [{ text: 'Read the inbox' }, { text: 'Reply' }],
     });
     await advanceTime(2_000);
-    await expect(feed.getByText('A run from the API started').first()).toBeVisible();
+    // Each run event is a row: the run as a chip and its outcome as a pill.
+    const runRows = feed.getByRole('listitem').filter({ hasText: 'API run' });
+    await expect(runRows.filter({ hasText: 'Running' }).first()).toBeVisible();
     await advanceTime(30_000);
-    await expect(feed.getByText('A run from the API completed').first()).toBeVisible();
+    await expect(runRows.filter({ hasText: 'Completed' }).first()).toBeVisible();
     expect(navigations).toBe(0);
 });
 
