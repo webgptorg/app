@@ -50,8 +50,6 @@ const PREVIEW_COUNT = 5;
 /** Monday first, as both languages write a week. */
 const WEEK_ORDER = [...WEEKDAYS.slice(1), WEEKDAYS[0]];
 const CRON_EXAMPLE = '0 8 * * 1-5';
-// Text inputs match the 40px combobox and date controls they sit beside.
-const CONTROL = 'min-h-10';
 
 /** Every IANA zone the browser knows, with the given ones kept even if it does not list them (`UTC` in some). */
 function timeZones(keep: readonly string[]): readonly string[] {
@@ -225,7 +223,7 @@ export function TriggerForm({ trigger, agentId, fromAgent = false }: TriggerForm
                     />
                 </div>
                 <FormField form={form} name="name" label={m.trigger_form_name()} required>
-                    {(control) => <Input {...control.text} autoComplete="off" maxLength={128} className={CONTROL} />}
+                    {(control) => <Input {...control.text} autoComplete="off" maxLength={128} />}
                 </FormField>
                 <form.Subscribe selector={(state) => state.values.kind}>
                     {(kind) =>
@@ -340,7 +338,7 @@ function ChoiceField({
 function TimeField({ form }: { readonly form: TriggerZodForm }) {
     return (
         <FormField form={form} name="atTime" label={m.trigger_form_time()} required>
-            {(control) => <Input {...control.text} type="time" className={cx(CONTROL, 'tabular-nums')} />}
+            {(control) => <Input {...control.text} type="time" className="tabular-nums" />}
         </FormField>
     );
 }
@@ -403,7 +401,7 @@ function ScheduleFields({ form, zones }: { readonly form: TriggerZodForm; readon
                                                 type="number"
                                                 inputMode="numeric"
                                                 min={1}
-                                                className={cx(CONTROL, 'tabular-nums')}
+                                                className="tabular-nums"
                                             />
                                         )}
                                     </FormField>
@@ -444,7 +442,7 @@ function ScheduleFields({ form, zones }: { readonly form: TriggerZodForm; readon
                                             autoComplete="off"
                                             spellCheck={false}
                                             maxLength={128}
-                                            className={cx(CONTROL, 'font-mono')}
+                                            className="font-mono"
                                         />
                                     )}
                                 </FormField>
@@ -482,13 +480,7 @@ function ScheduleFields({ form, zones }: { readonly form: TriggerZodForm; readon
                     hint={m.trigger_form_max_runs_hint()}
                 >
                     {(control) => (
-                        <Input
-                            {...control.text}
-                            type="number"
-                            inputMode="numeric"
-                            min={1}
-                            className={cx(CONTROL, 'tabular-nums')}
-                        />
+                        <Input {...control.text} type="number" inputMode="numeric" min={1} className="tabular-nums" />
                     )}
                 </FormField>
             </div>
