@@ -173,6 +173,25 @@ describe('agents grid', { timeout: TIMEOUT_MS }, () => {
         expect(engine.spies.listRuns).not.toHaveBeenCalled();
     });
 
+    it('offers no Chat in the panel without chats.write, and keeps the way to the agent', async () => {
+        const { user } = await renderGrid(
+            '/agents',
+            demoEngine(PERMISSIONS.filter((permission) => permission !== 'chats.write')),
+        );
+        await user.click(card('Max'));
+        const panel = await screen.findByRole('dialog', { name: 'Max' });
+        expect(within(panel).queryByRole('button', { name: 'Chat' })).toBeNull();
+        expect(within(panel).getByRole('link', { name: 'Open agent' })).toBeDefined();
+    });
+
+    it('keeps the member’s group with one quiet line when only built-in agents match the search', async () => {
+        renderWithProviders({ path: '/agents?q=Chatter', engineApi: demoEngine().client });
+        const builtIn = await screen.findByRole('list', { name: 'Built-in' });
+        expect(within(builtIn).getByRole('button', { name: 'Chatter' })).toBeDefined();
+        const own = screen.getByRole('region', { name: 'Your agents' });
+        expect(within(own).getByText('No agents yet')).toBeDefined();
+    });
+
     it('says "no access" without agents.read and asks the engine for no agents', async () => {
         const engine = demoEngine(PERMISSIONS.filter((permission) => permission !== 'agents.read'));
         renderWithProviders({ path: '/agents', engineApi: engine.client });
