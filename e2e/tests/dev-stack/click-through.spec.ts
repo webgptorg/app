@@ -174,7 +174,11 @@ test('sign up from the dev mailbox, subscribe, link with dev:link, open the engi
     expect(up.output).toContain(`engine       https://${engineHost}/`);
     await page.goto(`${DEV_DASHBOARD_ORIGIN}/signin`);
     await page.getByLabel('Email').fill(email);
-    await page.getByRole('button', { name: 'Continue' }).click();
+    // The passkey autofill may sign in before Continue can be clicked (see e2e/src/dashboard.ts).
+    await page
+        .getByRole('button', { name: 'Continue' })
+        .click({ timeout: 5_000 })
+        .catch(() => undefined);
     await expect(page.getByRole('heading', { name: 'Engines', level: 1 })).toBeVisible();
     await page.goto(`${DEV_DASHBOARD_ORIGIN}/engines/all`);
     await expectEngineOnline(page);
