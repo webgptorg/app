@@ -1,4 +1,5 @@
 :root {
-    --code-text-bg: var(--color-sunken);
+    /* The neutral pill fill: `--color-sunken` is darker than the page in dark mode, which made every chip a black slab. */
+    --code-text-bg: var(--color-neutral-soft);
     --code-text-text: var(--color-text);
 }
