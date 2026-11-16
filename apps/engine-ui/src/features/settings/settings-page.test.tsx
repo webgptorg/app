@@ -17,22 +17,33 @@ function renderSettings(options: Parameters<typeof createSecurityEngine>[0] = {}
     return { ...renderWithProviders({ path: '/settings', engineApi: engine.client }), engine };
 }
 
+type User = ReturnType<typeof renderWithProviders>['user'];
+
+/** Picks an option the way a member does: open the combobox, click the option. */
+async function choose(user: User, name: string, option: string | RegExp) {
+    await user.click(await screen.findByRole('combobox', { name }));
+    await user.click(await screen.findByRole('option', { name: option }));
+}
+
 const updatesCard = () => screen.getByRole('heading', { name: 'Updates' }).closest('section') as HTMLElement;
 
 describe('settings', { timeout: TIMEOUT_MS }, () => {
     it('changes language and theme for this device, to any member', async () => {
         const { user, storage, container } = renderWithProviders({ path: '/settings', permissions: [] });
 
-        await user.selectOptions(await screen.findByRole('combobox', { name: 'Theme' }), 'dark');
+        await choose(user, 'Theme', 'Dark');
         expect(storage.getItem(THEME_STORAGE_KEY)).toBe('dark');
         await waitFor(() => {
             expect(document.documentElement.classList.contains('dark')).toBe(true);
         });
 
-        await user.selectOptions(screen.getByRole('combobox', { name: 'Language' }), 'cs');
+        await choose(user, 'Language', 'Čeština');
         expect(await screen.findByRole('heading', { level: 1, name: 'Nastavení' })).toBeDefined();
         expect(storage.getItem(LOCALE_STORAGE_KEY)).toBe('cs');
-        expect(screen.getByRole('option', { name: 'English' })).toBeDefined();
+        // Each language keeps its own name, so the way back reads the same in any language.
+        expect(screen.getByRole('combobox', { name: 'Jazyk' }).textContent).toBe('Čeština');
+        await user.click(screen.getByRole('combobox', { name: 'Jazyk' }));
+        expect(await screen.findByRole('option', { name: 'English' })).toBeDefined();
         expect(screen.queryByRole('heading', { name: 'Aktualizace' })).toBeNull();
         await expectNoAxeViolations(container);
     });
@@ -41,11 +52,11 @@ describe('settings', { timeout: TIMEOUT_MS }, () => {
 describe('settings: updates', { timeout: TIMEOUT_MS }, () => {
     it('shows the running version and changes the policy', async () => {
         const { user, container } = renderSettings();
-        const policy = await screen.findByRole('combobox', { name: 'Policy' });
+        await screen.findByRole('combobox', { name: 'Policy' });
         expect(within(updatesCard()).getByText('Up to date')).toBeDefined();
         await expectNoAxeViolations(container);
 
-        await user.selectOptions(policy, 'pinned');
+        await choose(user, 'Policy', 'Pinned to a version');
         const version = screen.getByRole('textbox', { name: /^Version/ });
         expect((version as HTMLInputElement).value).toBe('1.0.0');
         expect(version.getAttribute('placeholder')).toBeNull();
@@ -63,9 +74,20 @@ describe('settings: updates', { timeout: TIMEOUT_MS }, () => {
         expect(screen.getByText(/recorded in the audit log/)).toBeDefined();
     });
 
+    it('offers the save only once the policy changed, and not again after changing it back', async () => {
+        const { user } = renderSettings();
+        await screen.findByRole('combobox', { name: 'Policy' });
+        const save = screen.getByRole('button', { name: 'Save policy' });
+        expect(save.hasAttribute('disabled')).toBe(true);
+        await choose(user, 'Policy', 'Manual');
+        expect(save.hasAttribute('disabled')).toBe(false);
+        await choose(user, 'Policy', 'Automatic');
+        expect(save.hasAttribute('disabled')).toBe(true);
+    });
+
     it('asks for a fresh passkey when the engine wants step-up, and changes nothing', async () => {
         const { user, engine } = renderSettings({ stepUp: 'required' });
-        await user.selectOptions(await screen.findByRole('combobox', { name: 'Policy' }), 'manual');
+        await choose(user, 'Policy', 'Manual');
         await user.click(screen.getByRole('button', { name: 'Save policy' }));
         expect(await screen.findByRole('dialog', { name: 'Confirm it is you' })).toBeDefined();
         const overview = await engine.client.security.get(AbortSignal.timeout(1000));
@@ -76,7 +98,7 @@ describe('settings: updates', { timeout: TIMEOUT_MS }, () => {
         const storage = createMemoryStorage();
         const engine = createSecurityEngine({ stepUp: 'required' });
         const first = renderWithProviders({ path: '/settings', engineApi: engine.client, storage });
-        await first.user.selectOptions(await screen.findByRole('combobox', { name: 'Policy' }), 'pinned');
+        await choose(first.user, 'Policy', 'Pinned to a version');
         await first.user.click(screen.getByRole('button', { name: 'Save policy' }));
         const dialog = await screen.findByRole('dialog', { name: 'Confirm it is you' });
         await first.user.click(within(dialog).getByRole('button', { name: 'Continue with passkey' }));
@@ -88,7 +110,7 @@ describe('settings: updates', { timeout: TIMEOUT_MS }, () => {
         expect(
             await screen.findByText('You confirmed it is you. Check the change and save it once more.'),
         ).toBeDefined();
-        expect(screen.getByRole<HTMLSelectElement>('combobox', { name: 'Policy' }).value).toBe('pinned');
+        expect(screen.getByRole('combobox', { name: 'Policy' }).textContent).toBe('Pinned to a version');
         expect(screen.getByRole<HTMLInputElement>('textbox', { name: /^Version/ }).value).toBe('1.0.0');
         expect(save).not.toHaveBeenCalled();
     });
@@ -96,7 +118,7 @@ describe('settings: updates', { timeout: TIMEOUT_MS }, () => {
     it('reports a refused change', async () => {
         const { user, engine } = renderSettings();
         vi.spyOn(engine.client.settings, 'setUpdatePolicy').mockImplementation(() => problemResponse('internal-error'));
-        await user.selectOptions(await screen.findByRole('combobox', { name: 'Policy' }), 'manual');
+        await choose(user, 'Policy', 'Manual');
         await user.click(screen.getByRole('button', { name: 'Save policy' }));
         expect(await screen.findByText('The update policy could not be changed.')).toBeDefined();
     });

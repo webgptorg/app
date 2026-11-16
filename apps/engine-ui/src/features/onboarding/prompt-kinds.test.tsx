@@ -1,4 +1,5 @@
-import { KNOWN_CAPABILITIES } from '@ptbk/engine-api';
+import { KNOWN_CAPABILITIES, OWNER_PERMISSIONS } from '@ptbk/engine-api';
+import type { Permission } from '@ptbk/engine-api';
 import type { EngineApiClient, OnboardingAnswer, OnboardingPrompt, OnboardingState } from '@ptbk/engine-api';
 import { createInMemoryEngine } from '@ptbk/engine-api/in-memory';
 import { screen, waitFor } from '@testing-library/react';
@@ -18,7 +19,10 @@ function pending(prompt: OnboardingPrompt): OnboardingState {
 const DONE: OnboardingState = { status: 'completed', deferred: false, progress: null, prompt: null };
 
 /** The in-memory engine for everything else, with an onboarding that serves `states` in turn and records answers. */
-function scripted(states: readonly OnboardingState[], options: { readonly withChatter?: boolean } = {}) {
+function scripted(
+    states: readonly OnboardingState[],
+    options: { readonly withChatter?: boolean; readonly permissions?: readonly Permission[] } = {},
+) {
     const engine = createInMemoryEngine({
         clock: { now: () => TEST_NOW },
         seed: {
@@ -29,6 +33,9 @@ function scripted(states: readonly OnboardingState[], options: { readonly withCh
                     : [{ id: 'builtin-chatter', source: 'Chatter\nPERSONA Talks with you first.', origin: 'core' }],
         },
         capabilities: [KNOWN_CAPABILITIES.files, KNOWN_CAPABILITIES.onboarding],
+        ...(options.permissions === undefined
+            ? {}
+            : { member: { permissions: options.permissions, role: 'member' as const } }),
     });
     let index = 0;
     let deferred = false;
@@ -113,6 +120,44 @@ describe('onboarding prompt kinds', { timeout: TIMEOUT_MS }, () => {
             { kind: 'choice', choiceIds: ['b'] },
             { kind: 'text', text: 'Bakery', fileIds: [] },
         ]);
+    });
+
+    it('asks as Chatter, keeps Enter for new lines in a long answer, and continues on Ctrl+Enter', async () => {
+        const { client, answers } = scripted([
+            pending({
+                ...base,
+                id: 'p1',
+                kind: 'text',
+                question: 'What are you working on?',
+                multiline: true,
+                required: true,
+                placeholder: null,
+                initial: '',
+                attachments: false,
+            }),
+            DONE,
+        ]);
+        const { user } = renderWithProviders({ path: '/onboarding', engineApi: client });
+        const answer = await screen.findByRole('textbox', { name: 'What are you working on?' });
+        expect(screen.getByText('Chatter')).toBeDefined();
+        expect(screen.getByText('Step 1 of 2')).toBeDefined();
+        await user.type(answer, 'Bread{Enter}Cakes');
+        expect(answers).toEqual([]);
+        await user.keyboard('{Control>}{Enter}{/Control}');
+        await screen.findByRole('heading', { level: 1, name: 'Your engine is set up' });
+        expect(answers).toEqual([{ kind: 'text', text: 'Bread\nCakes', fileIds: [] }]);
+    });
+
+    it('shows Chatter by its initial without agents.read, and never asks for the agent list', async () => {
+        const { client } = scripted(
+            [pending({ ...base, id: 'p1', kind: 'confirm', question: 'Go?', confirmLabel: 'Yes', declineLabel: 'No' })],
+            { permissions: OWNER_PERMISSIONS.filter((permission) => permission !== 'agents.read') },
+        );
+        const list = vi.spyOn(client.agents, 'list');
+        renderWithProviders({ path: '/onboarding', engineApi: client });
+        expect(await screen.findByRole('button', { name: 'Yes' })).toBeDefined();
+        expect(screen.getByText('Chatter')).toBeDefined();
+        expect(list).not.toHaveBeenCalled();
     });
 
     it('uploads files with the files capability, lets one go again, and names the file it could not add', async () => {

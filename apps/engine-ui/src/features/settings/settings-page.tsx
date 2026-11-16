@@ -1,6 +1,4 @@
-import { THEME_PREFERENCES } from '@ptbk/ui';
-import type { ThemePreference } from '@ptbk/ui';
-import { Card, Field, Select } from '@ptbk/ui';
+import { Combobox, Section, THEME_PREFERENCES } from '@ptbk/ui';
 import { useQuery } from '@tanstack/react-query';
 
 import { useEngineApi } from '../../app/engine-api-context';
@@ -13,9 +11,13 @@ import { securityOverviewQueryOptions } from '../security/security-queries';
 import { usePermissions } from '../session/use-permissions';
 import { Page } from '../shell/page';
 import { localeLabel, themeLabel } from './preference-labels';
-import { UpdatesCard } from './updates-card';
+import { PropertyList, PropertyRow } from './property-row';
+import { UpdatesSection } from './updates-section';
 
-/** What a member changes: this device's language and theme, and the engine's update policy for those who see it. */
+/**
+ * What a member changes: this device's language and theme, and the engine's update policy for those who see it.
+ * Language and theme apply the moment they are picked, so they have no save button.
+ */
 export function SettingsPage() {
     const { locale, locales, changeLocale } = useAppLocale();
     const { preference, setPreference } = useThemePreference();
@@ -27,47 +29,41 @@ export function SettingsPage() {
     });
     return (
         <Page title={m.settings_title()}>
-            <Card title={m.settings_appearance()}>
-                <div className="flex max-w-md flex-col gap-4">
-                    <p className="text-sm text-text-muted">{m.settings_appearance_hint()}</p>
-                    <Field label={m.language_label()}>
-                        {(control) => (
-                            <Select
-                                {...control}
+            <Section title={m.settings_appearance()} description={m.settings_appearance_hint()} divided={false}>
+                <PropertyList>
+                    <PropertyRow label={m.language_label()}>
+                        {({ labelId }) => (
+                            <Combobox
+                                aria-labelledby={labelId}
+                                className="w-full sm:w-56"
                                 value={locale}
-                                onChange={(event) => {
-                                    if (isLocale(event.target.value)) changeLocale(event.target.value);
+                                options={locales.map((option) => ({ value: option, label: localeLabel(option) }))}
+                                onChange={(value) => {
+                                    if (isLocale(value)) changeLocale(value);
                                 }}
-                            >
-                                {locales.map((option) => (
-                                    <option key={option} value={option} lang={option}>
-                                        {localeLabel(option)}
-                                    </option>
-                                ))}
-                            </Select>
+                            />
                         )}
-                    </Field>
-                    <Field label={m.theme_label()}>
-                        {(control) => (
-                            <Select
-                                {...control}
+                    </PropertyRow>
+                    <PropertyRow label={m.theme_label()}>
+                        {({ labelId }) => (
+                            <Combobox
+                                aria-labelledby={labelId}
+                                className="w-full sm:w-56"
                                 value={preference}
-                                onChange={(event) => {
-                                    const next = THEME_PREFERENCES.find((option) => option === event.target.value);
+                                options={THEME_PREFERENCES.map((option) => ({
+                                    value: option,
+                                    label: themeLabel(option),
+                                }))}
+                                onChange={(value) => {
+                                    const next = THEME_PREFERENCES.find((option) => option === value);
                                     if (next !== undefined) setPreference(next);
                                 }}
-                            >
-                                {THEME_PREFERENCES.map((option: ThemePreference) => (
-                                    <option key={option} value={option}>
-                                        {themeLabel(option)}
-                                    </option>
-                                ))}
-                            </Select>
+                            />
                         )}
-                    </Field>
-                </div>
-            </Card>
-            {can('security.read') ? <UpdatesCard query={overview} /> : null}
+                    </PropertyRow>
+                </PropertyList>
+            </Section>
+            {can('security.read') ? <UpdatesSection query={overview} /> : null}
         </Page>
     );
 }
