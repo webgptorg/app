@@ -79,7 +79,7 @@ export function authLinks(dashboardOrigin: string): AuthLinks {
     return {
         signup: (token) => `${dashboardOrigin}/signup#${token}`,
         recovery: (token) => `${dashboardOrigin}/recover#${token}`,
-        signIn: () => `${dashboardOrigin}/signin`,
+        signIn: () => `${dashboardOrigin}/continue`,
         recover: () => `${dashboardOrigin}/recover`,
         invite: (token) => `${dashboardOrigin}/invites#${token}`,
     };

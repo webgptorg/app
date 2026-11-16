@@ -16,7 +16,7 @@ const SECOND_MS = 1000;
 /** Stands in for the address in a translated sentence, so the address can be set apart wherever the language puts it. */
 const ADDRESS_SLOT = '\u0000';
 
-type Purpose = 'signup' | 'recovery';
+type Purpose = 'continue' | 'recovery';
 
 type Sent =
     | { readonly kind: 'form'; readonly failure: string | null }
@@ -33,7 +33,7 @@ type Outcome = { readonly kind: 'sent' } | { readonly kind: 'failed'; readonly m
 function useSendLink(purpose: Purpose): (email: string) => Promise<Outcome> {
     const api = useApiClient();
     return async (email) => {
-        const route = purpose === 'signup' ? apiRoutes.signupStart : apiRoutes.recoveryRequest;
+        const route = purpose === 'continue' ? apiRoutes.signupStart : apiRoutes.recoveryRequest;
         const outcome = await api.call(route, { body: { email } });
         if (outcome.kind === 'ok') {
             return { kind: 'sent' };
@@ -80,7 +80,7 @@ function Address(props: { readonly email: string }) {
 }
 
 function SentMessage(props: { readonly purpose: Purpose; readonly email: string }) {
-    const sentence = props.purpose === 'signup' ? m.email_sent_signup : m.email_sent_recovery;
+    const sentence = props.purpose === 'continue' ? m.email_sent_continue : m.email_sent_recovery;
     const [before = '', after = ''] = sentence({ email: ADDRESS_SLOT }).split(ADDRESS_SLOT);
     return (
         <p>
@@ -117,7 +117,9 @@ function SentState(props: {
     readonly state: Extract<Sent, { readonly kind: 'sent' }>;
     readonly onResend: () => Promise<void>;
     readonly onUseAnother: () => void;
+    readonly retry: { readonly label: string; readonly onRetry: () => Promise<void> } | undefined;
 }) {
+    const [retrying, setRetrying] = useState(false);
     const headingRef = useRef<HTMLHeadingElement>(null);
     // The form that had focus is gone; the new heading takes it, so keyboard and screen reader users land on the news.
     useEffect(() => {
@@ -136,6 +138,20 @@ function SentState(props: {
             {props.state.failure === null ? null : <Banner tone="danger">{props.state.failure}</Banner>}
             <p className="text-sm text-text-muted">{m.email_sent_hint()}</p>
             <div className="flex flex-wrap gap-3">
+                {props.retry === undefined ? null : (
+                    <Button
+                        variant="primary"
+                        loading={retrying}
+                        onClick={() => {
+                            setRetrying(true);
+                            void props.retry?.onRetry().finally(() => {
+                                setRetrying(false);
+                            });
+                        }}
+                    >
+                        {props.retry.label}
+                    </Button>
+                )}
                 <ResendButton key={props.state.sentAt} sentAt={props.state.sentAt} onResend={props.onResend} />
                 <Button variant="ghost" onClick={props.onUseAnother}>
                     {m.email_use_another()}
@@ -146,7 +162,7 @@ function SentState(props: {
 }
 
 /**
- * The email step of sign-up and recovery, heading included, so the sent state replaces the whole card. The API answers
+ * The email step of Continue and recovery, heading included, so the sent state replaces the whole card. The API answers
  * the same for every address, and so does this screen: it never says whether an account exists. Only failures that
  * are about the request itself (rate limit, network) show.
  */
@@ -156,6 +172,20 @@ export function EmailStep(props: {
     readonly intro: ReactNode;
     readonly submitLabel: string;
     readonly footer: ReactNode;
+    /** Under the email field, e.g. what a passkey is. */
+    readonly hint?: ReactNode;
+    /**
+     * Runs before any email is sent, with the address typed; `signed-in` ends the step there. Continue tries a passkey
+     * first, so someone who has one gets no email.
+     */
+    readonly beforeSend?: () => Promise<'signed-in' | 'send'>;
+    /** Rendered with the form only, so whatever it starts (the passkey autofill) lives exactly as long as the field. */
+    readonly formAddon?: ReactNode;
+    /** A second way out of the sent state, next to resending (Continue: try a passkey again); resolves to a failure. */
+    readonly retry?: { readonly label: string; readonly onRetry: () => Promise<string | null> };
+    readonly autoComplete?: string;
+    /** A calm picture above the title, as on the other auth screens. Decorative. */
+    readonly illustration?: ReactNode;
 }) {
     const { now } = useBrowser();
     const sendLink = useSendLink(props.purpose);
@@ -176,6 +206,9 @@ export function EmailStep(props: {
         schema,
         defaultValues: { email: '' },
         onSubmit: async ({ email }) => {
+            if ((await props.beforeSend?.()) === 'signed-in') {
+                return;
+            }
             const outcome = await sendLink(email);
             setState(
                 outcome.kind === 'sent'
@@ -202,6 +235,19 @@ export function EmailStep(props: {
                     form.reset();
                     setState({ kind: 'form', failure: null });
                 }}
+                retry={
+                    props.retry === undefined
+                        ? undefined
+                        : {
+                              label: props.retry.label,
+                              onRetry: async () => {
+                                  const failure = await props.retry?.onRetry();
+                                  if (failure !== null && failure !== undefined) {
+                                      setState({ ...state, resent: false, failure });
+                                  }
+                              },
+                          }
+                }
             />
         );
     }
@@ -209,14 +255,23 @@ export function EmailStep(props: {
     return (
         <div className="flex flex-col gap-6">
             <div className="flex flex-col gap-2 text-sm">
+                {props.illustration === undefined ? null : (
+                    <div aria-hidden="true" className="mb-2 flex">
+                        {props.illustration}
+                    </div>
+                )}
                 <h1 className="text-2xl font-semibold tracking-display">{props.title}</h1>
                 {props.intro}
             </div>
             <Form form={form} className="flex flex-col gap-4">
                 {state.failure === null ? null : <Banner tone="danger">{state.failure}</Banner>}
                 <FormField form={form} name="email" label={m.email_label()} required>
-                    {({ text }) => <Input {...text} type="email" autoComplete="email" inputMode="email" />}
+                    {({ text }) => (
+                        <Input {...text} type="email" autoComplete={props.autoComplete ?? 'email'} inputMode="email" />
+                    )}
                 </FormField>
+                {props.hint}
+                {props.formAddon}
                 <FormSubmit form={form} size="lg">
                     {props.submitLabel}
                 </FormSubmit>

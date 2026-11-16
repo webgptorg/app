@@ -19,7 +19,7 @@ export async function requireSession(
     const session = await currentSession(context);
     if (session === null) {
         const returnTo = safeReturnTo(location.href);
-        throw redirect({ to: '/signin', search: returnTo === undefined ? {} : { returnTo }, replace: true });
+        throw redirect({ to: '/continue', search: returnTo === undefined ? {} : { returnTo }, replace: true });
     }
     return { session };
 }

@@ -9,7 +9,7 @@ const MESSAGES: readonly Omit<EmailMessage, 'locale'>[] = [
     {
         template: 'account-exists',
         to: 'a@example.test',
-        signInLink: 'https://app.ptbk.test/signin',
+        signInLink: 'https://app.ptbk.test/continue',
         recoveryLink: 'https://app.ptbk.test/recover',
     },
     { template: 'recovery-link', to: 'a@example.test', link: 'https://app.ptbk.test/recover#tok' },
@@ -18,7 +18,7 @@ const MESSAGES: readonly Omit<EmailMessage, 'locale'>[] = [
         to: 'a@example.test',
         recoveredAt: RECOVERED_AT,
         cooldownEndsAt: RECOVERED_AT + 72 * 3600_000,
-        signInLink: 'https://app.ptbk.test/signin',
+        signInLink: 'https://app.ptbk.test/continue',
     },
     {
         template: 'engine-offline',

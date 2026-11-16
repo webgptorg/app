@@ -99,9 +99,9 @@ test('sign up from the dev mailbox, subscribe, link with dev:link, open the engi
     await addPasskeyAuthenticator(page);
     const email = `x06-smoke-${String(Date.now())}@example.test`;
 
-    await page.goto(`${DEV_DASHBOARD_ORIGIN}/signup`);
+    await page.goto(`${DEV_DASHBOARD_ORIGIN}/continue`);
     await page.getByLabel('Email').fill(email);
-    await page.getByRole('button', { name: 'Send the link' }).click();
+    await page.getByRole('button', { name: 'Continue' }).click();
     await expect(page.getByRole('heading', { name: 'Check your email' })).toBeVisible();
 
     await page.goto(`${DEV_DASHBOARD_ORIGIN}/__dev/mailbox`);
@@ -166,14 +166,15 @@ test('sign up from the dev mailbox, subscribe, link with dev:link, open the engi
     await page.goto(`${DEV_DASHBOARD_ORIGIN}/engines/all`);
     await page.getByRole('button', { name: /^Account menu for / }).click();
     await page.getByRole('menuitem', { name: 'Sign out' }).click();
-    await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Sign in or create an account' })).toBeVisible();
     const down = await bunRun('dev:stack', 'down');
     expect(down.exitCode, down.output).toBe(0);
     const up = await bunRun('dev:stack', 'up', '--no-system');
     expect(up.exitCode, up.output).toBe(0);
     expect(up.output).toContain(`engine       https://${engineHost}/`);
     await page.goto(`${DEV_DASHBOARD_ORIGIN}/signin`);
-    await page.getByRole('button', { name: 'Sign in with a passkey' }).click();
+    await page.getByLabel('Email').fill(email);
+    await page.getByRole('button', { name: 'Continue' }).click();
     await expect(page.getByRole('heading', { name: 'Engines', level: 1 })).toBeVisible();
     await page.goto(`${DEV_DASHBOARD_ORIGIN}/engines/all`);
     await expectEngineOnline(page);

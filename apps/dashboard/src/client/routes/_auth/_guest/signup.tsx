@@ -4,6 +4,7 @@ import { SignUpPage } from '../../../features/auth/signup-page';
 import { takeFragment } from '../../../features/auth/take-fragment';
 import { useFragmentToken, useFragmentArrivals } from '../../../features/auth/use-fragment-token';
 
+/** An emailed `/signup#<token>` link creates the passkey here; without a token, the page sends people to Continue. */
 export const Route = createFileRoute('/_auth/_guest/signup')({
     beforeLoad: ({ context, location }) => {
         takeFragment(context, location, 'signup', '/signup');

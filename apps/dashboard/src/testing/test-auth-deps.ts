@@ -77,7 +77,7 @@ export function createTestAuthDeps(
         links: {
             signup: (token) => `https://app.ptbk.test/signup#${token}`,
             recovery: (token) => `https://app.ptbk.test/recover#${token}`,
-            signIn: () => 'https://app.ptbk.test/signin',
+            signIn: () => 'https://app.ptbk.test/continue',
             recover: () => 'https://app.ptbk.test/recover',
             invite: (token) => `https://app.ptbk.test/invites#${token}`,
         },

@@ -39,7 +39,7 @@ export function RecoverPage(props: { readonly initialToken: FragmentToken }) {
                     submitLabel={m.recover_email_action()}
                     footer={
                         <p className="border-t border-hairline pt-5 text-sm text-text-muted">
-                            {m.recover_remembered()} <Link to="/signin">{m.signup_sign_in()}</Link>
+                            {m.recover_remembered()} <Link to="/continue">{m.signup_sign_in()}</Link>
                         </p>
                     }
                 />

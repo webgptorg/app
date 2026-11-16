@@ -1,6 +1,6 @@
 const BASE = 'https://return-to.invalid';
 /** Where a sign-in never returns to: it would loop, or land on a page that redirects a signed-in person anyway. */
-const AUTH_PATHS = ['/signin', '/signup', '/recover'];
+const AUTH_PATHS = ['/continue', '/signin', '/signup', '/recover'];
 const MAX_LENGTH = 2048;
 
 /**

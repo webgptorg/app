@@ -72,7 +72,7 @@ sequenceDiagram
 
 ### Step 1. Sign up (dashboard, built in D-09)
 
-- `/signup`: "Create your account" → email → "Check your email" → link (15 min, single use) → "Create your passkey". Lands on `/engines`.
+- `/continue` (D-32; `/signin` and `/signup` redirect here): "Sign in or create an account" → email → Continue tries a passkey this device has; without one, "Check your email" → link (15 min, single use) → "Create your passkey". Lands on `/engines`.
 - Target: under 2 minutes. The email round trip dominates.
 - The empty state already says: "No engines yet" / "Link an engine to this organization to see it here with its status, fingerprint and address. Linking ties it to the organization for routing and billing only; it grants nothing inside the engine." Action: "Link an engine".
 

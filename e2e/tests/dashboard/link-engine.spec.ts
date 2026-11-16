@@ -88,7 +88,8 @@ test('sign up with a passkey, link the engine, see it online, open it through a 
 }) => {
     test.setTimeout(240_000);
 
-    await dashboard.signUp(uniqueEmail('link'));
+    const email = uniqueEmail('link');
+    await dashboard.signUp(email);
     await dashboard.subscribe();
     const { installCommand, linkCode } = await dashboard.createLinkCode();
     expect(installCommand).toContain(linkCode);
@@ -161,6 +162,6 @@ test('sign up with a passkey, link the engine, see it online, open it through a 
     await enginePage.close();
 
     await dashboard.signOut();
-    await dashboard.signIn();
+    await dashboard.signIn(email);
     await expect((await dashboard.reloadEngineRows()).getByText(engineHost, { exact: true })).toBeVisible();
 });

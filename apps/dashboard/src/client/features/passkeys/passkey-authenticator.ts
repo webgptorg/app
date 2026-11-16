@@ -30,6 +30,13 @@ export type PasskeyOutcome<Response> =
 export interface PasskeyAuthenticator {
     register(options: RegistrationOptions): Promise<PasskeyOutcome<RegistrationResponse>>;
     authenticate(options: AuthenticationOptions): Promise<PasskeyOutcome<AuthenticationResponse>>;
+    /** Whether the browser can offer passkeys in an email field's autofill (WebAuthn conditional mediation). */
+    supportsAutofill(): Promise<boolean>;
+    /**
+     * Waits, without a prompt, until the person picks a passkey from the autofill of the field marked
+     * `autocomplete="username webauthn"`. Any other ceremony started meanwhile aborts it, as `cancelled`.
+     */
+    autofill(options: AuthenticationOptions): Promise<PasskeyOutcome<AuthenticationResponse>>;
 }
 
 const BY_LIBRARY_CODE: Readonly<Record<string, PasskeyFailure>> = {
