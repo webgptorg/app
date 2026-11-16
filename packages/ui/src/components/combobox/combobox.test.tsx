@@ -84,6 +84,22 @@ describe('Combobox', () => {
         },
     );
 
+    it('marks a label in another language with its lang, on the option and the trigger', async () => {
+        const options = [
+            { value: 'en', label: 'English', lang: 'en' },
+            { value: 'cs', label: 'Čeština', lang: 'cs' },
+        ];
+        const { trigger, user } = setup({ options, initial: 'cs' });
+        expect(trigger.querySelector('[lang="cs"]')?.textContent).toBe('Čeština');
+        await user.click(trigger);
+        expect(screen.getByRole('option', { name: 'English' }).querySelector('[lang="en"]')?.textContent).toBe(
+            'English',
+        );
+        expect(screen.getByRole('option', { name: 'Čeština' }).querySelector('[lang]')?.getAttribute('lang')).toBe(
+            'cs',
+        );
+    });
+
     it('shows the placeholder until something is chosen, and toggles on click', async () => {
         const { trigger, user } = setup({ placeholder: 'Pick someone' });
         expect(trigger.textContent).toBe('Pick someone');
