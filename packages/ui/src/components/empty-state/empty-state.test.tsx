@@ -53,4 +53,12 @@ describe('EmptyState', () => {
         renderUi(<EmptyState title="No access" headingLevel={1} />);
         expect(screen.getByRole('heading', { level: 1, name: 'No access' })).toBeDefined();
     });
+
+    it('shows an illustration in place of the icon', () => {
+        const { container } = renderUi(
+            <EmptyState title="No engines yet" icon={<Inbox />} illustration={<svg data-testid="robot" />} />,
+        );
+        expect(screen.getByTestId('robot').closest('[aria-hidden="true"]')).not.toBeNull();
+        expect(container.querySelectorAll('svg')).toHaveLength(1);
+    });
 });

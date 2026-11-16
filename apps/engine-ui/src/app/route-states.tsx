@@ -1,4 +1,4 @@
-import { Button, EmptyState, ErrorState, Skeleton } from '@ptbk/ui';
+import { BrandRobot, Button, EmptyState, ErrorState, Skeleton } from '@ptbk/ui';
 import { useQueryErrorResetBoundary } from '@tanstack/react-query';
 import { useRouter } from '@tanstack/react-router';
 import type { ErrorComponentProps } from '@tanstack/react-router';
@@ -77,6 +77,7 @@ export function RouteError({ error, reset }: ErrorComponentProps) {
             <ErrorState
                 title={m.error_title()}
                 message={m.error_body()}
+                illustration={<BrandRobot pose="thinking" />}
                 onRetry={() => {
                     reset();
                     void router.invalidate();
@@ -133,6 +134,7 @@ export function RouteNotFound() {
         <div className="py-8">
             <EmptyState
                 icon={<SearchX aria-hidden />}
+                illustration={<BrandRobot pose="thinking" />}
                 title={m.not_found_title()}
                 description={m.not_found_body()}
                 headingLevel={1}

@@ -1,6 +1,7 @@
 import { AgentId, INTEGRATION_KINDS, INTEGRATION_STATUSES } from '@ptbk/engine-api';
 import type { ReadAgent, ReadIntegration } from '@ptbk/engine-api';
 import {
+    BrandRobot,
     Button,
     ConfirmDialog,
     createDataTableColumnHelper,
@@ -322,6 +323,7 @@ export function IntegrationsTable({ search, onSearchChange, agentId }: Integrati
                           }
                         : {
                               icon: <Plug />,
+                              ...(scope === 'agent' ? {} : { illustration: <BrandRobot pose="assembling" /> }),
                               title: m.integrations_empty_title(),
                               description:
                                   scope === 'agent' ? m.integrations_empty_agent_body() : m.integrations_empty_body(),

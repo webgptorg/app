@@ -1,4 +1,4 @@
-import { Drawer, IconButton, SkipLink } from '@ptbk/ui';
+import { BrandLockup, BrandMark, Drawer, IconButton, SkipLink } from '@ptbk/ui';
 import { Outlet } from '@tanstack/react-router';
 import { Menu as MenuIcon, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { useState } from 'react';
@@ -20,9 +20,9 @@ import { UserMenu } from './user-menu';
 const MAIN_ID = 'main-content';
 
 /**
- * The authenticated frame around every route: the sidebar (engine switcher with the trust mark, the language switch,
- * navigation from the feature registry, live indicator, user menu), which collapses to icons on wide screens and becomes a drawer below
- * 768 px.
+ * The authenticated frame around every route: the sidebar (the Promptbook lockup, the engine switcher with the trust
+ * mark, the language switch, navigation from the feature registry, live indicator, user menu), which collapses to icons
+ * on wide screens and becomes a drawer below 768 px.
  */
 export function AppShell() {
     const narrow = useMediaQuery(NARROW_QUERY);
@@ -70,6 +70,9 @@ function WideSidebar({
                 collapsed ? 'w-16' : 'w-60',
             )}
         >
+            <div className={cx('flex', collapsed && 'justify-center')}>
+                {collapsed ? <BrandMark /> : <BrandLockup />}
+            </div>
             <div className={cx('flex gap-1', collapsed ? 'flex-col items-center' : 'items-center')}>
                 <div className={cx(!collapsed && 'min-w-0 flex-1')}>
                     <ShellEngineSwitcher compact={collapsed} />
@@ -132,6 +135,7 @@ function NarrowShell({ onOpenPalette }: { readonly onOpenPalette: () => void }) 
                 side="start"
             >
                 <div className="flex flex-col gap-4">
+                    <BrandLockup />
                     <SidebarNav
                         onNavigate={() => {
                             setOpen(false);

@@ -2,6 +2,7 @@ import { AgentId, KNOWN_CAPABILITIES, TASK_KINDS } from '@ptbk/engine-api';
 import type { ReadTask, TaskKind } from '@ptbk/engine-api';
 import {
     Badge,
+    BrandRobot,
     Button,
     createDataTableColumnHelper,
     DataTable,
@@ -224,7 +225,12 @@ function TaskInventory({
                               description: m.tasks_no_results_hint(),
                               action: <Button onClick={clear}>{m.tasks_clear_filters()}</Button>,
                           }
-                        : { icon: <ListTodo />, title: m.tasks_empty_title(), description: m.tasks_empty_body() }
+                        : {
+                              icon: <ListTodo />,
+                              illustration: <BrandRobot pose="resting" />,
+                              title: m.tasks_empty_title(),
+                              description: m.tasks_empty_body(),
+                          }
                 }
                 groups={{
                     groups: TASK_SECTIONS.map((section) => ({ id: section, label: taskSectionLabel(section) })),

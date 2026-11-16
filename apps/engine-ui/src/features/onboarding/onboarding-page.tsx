@@ -1,19 +1,16 @@
 import type { OnboardingAnswer, OnboardingPrompt, OnboardingState } from '@ptbk/engine-api';
-import { Banner, Button, ErrorState, Skeleton, Spinner } from '@ptbk/ui';
+import { Banner, BrandRobot, Button, ErrorState, RobotGuide, Skeleton, Spinner } from '@ptbk/ui';
+import type { RobotPose } from '@ptbk/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CircleCheck } from 'lucide-react';
 import { useState } from 'react';
-import type { ReactNode } from 'react';
 
 import { classifyApiError, unwrap } from '../../app/api-errors';
 import { useEngineApi } from '../../app/engine-api-context';
 import { ButtonLink } from '../../app/link';
 import { m } from '../../paraglide/messages';
-import { AgentAvatar } from '../agents/agent-avatar';
 import { useDocumentTitle } from '../shell/document-title';
 import { onboardingKeys, onboardingQueryOptions } from './onboarding-queries';
 import { PromptForm } from './prompt-form';
-import { useChatterLook } from './use-chatter-look';
 import { useOpenChatter } from './use-open-chatter';
 
 type Submit = { readonly action: 'answer'; readonly answer: OnboardingAnswer } | { readonly action: 'back' };
@@ -75,6 +72,7 @@ export function OnboardingPage() {
                         {m.onboarding_title()}
                     </h1>
                     <ErrorState
+                        illustration={<BrandRobot pose="resting" />}
                         message={m.onboarding_load_failed()}
                         onRetry={() => {
                             void state.refetch();
@@ -113,25 +111,31 @@ export function OnboardingPage() {
     );
 }
 
-/** Chatter as the one asking: its avatar and name, like the author line of a chat message. */
-function ChatterLine({ children }: { readonly children?: ReactNode }) {
-    const look = useChatterLook();
-    return (
-        <div className="flex min-h-7 flex-wrap items-center gap-x-3 gap-y-1">
-            <span className="flex items-center gap-2">
-                <AgentAvatar name={m.onboarding_chatter()} agentKey={look.key} profile={look.profile} size="xs" />
-                <span className="text-sm font-medium">{m.onboarding_chatter()}</span>
-            </span>
-            {children}
-        </div>
-    );
+/** The robot's line for each step: what this step is for, in Promptbook's voice; the engine's prompt says the rest. */
+function guideFor(prompt: OnboardingPrompt | null): { readonly pose: RobotPose; readonly line: string } {
+    switch (prompt?.kind) {
+        case undefined:
+            return { pose: 'assembling', line: m.onboarding_guide_working() };
+        case 'text':
+            return { pose: 'thinking', line: m.onboarding_guide_text() };
+        case 'choice':
+            return { pose: 'thinking', line: m.onboarding_guide_choice() };
+        case 'confirm':
+            return { pose: 'working', line: m.onboarding_guide_confirm() };
+        case 'upload':
+            return { pose: 'assembling', line: m.onboarding_guide_upload() };
+        case 'harness-login':
+            return { pose: 'working', line: m.onboarding_guide_login() };
+        default:
+            return { pose: 'working', line: m.onboarding_guide_other() };
+    }
 }
 
 /** Where setup stands, quietly: "Step 2 of 4" in tabular figures beside a thin line that fills as it goes. */
 function StepProgress({ step, of }: { readonly step: number; readonly of: number }) {
     const label = m.onboarding_step({ step, of });
     return (
-        <span className="ms-auto flex items-center gap-2.5">
+        <span className="ms-auto flex items-center gap-2.5 self-start">
             <span className="text-xs text-text-muted tabular-nums">{label}</span>
             <progress className="onboarding-progress h-1 w-20" value={step} max={of} aria-label={label} />
         </span>
@@ -150,10 +154,9 @@ function OnboardingBody({
     if (state.status === 'completed') {
         return (
             <div className="flex flex-col gap-5">
-                <ChatterLine />
+                <RobotGuide pose="finished">{m.onboarding_guide_done()}</RobotGuide>
                 <div className="flex flex-col gap-2">
-                    <h1 id="page-title" className="flex items-center gap-2 text-xl font-semibold tracking-display">
-                        <CircleCheck aria-hidden className="size-5 shrink-0 text-success" />
+                    <h1 id="page-title" className="text-xl font-semibold tracking-display">
                         {m.onboarding_done_title()}
                     </h1>
                     <p className="text-sm text-text-muted">{m.onboarding_done_body()}</p>
@@ -167,11 +170,15 @@ function OnboardingBody({
         );
     }
     const prompt = state.prompt;
+    const guide = guideFor(prompt);
     return (
         <div className="flex flex-col gap-5">
-            <ChatterLine>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                <RobotGuide pose={guide.pose} className="min-w-0 flex-1 basis-64">
+                    {guide.line}
+                </RobotGuide>
                 {state.progress === null ? null : <StepProgress step={state.progress.step} of={state.progress.of} />}
-            </ChatterLine>
+            </div>
             {/* Prompt titles are the engine's words: a text node. */}
             <h1 id="page-title" className="text-xl font-semibold tracking-display [overflow-wrap:anywhere]">
                 {prompt === null ? m.onboarding_title() : prompt.title}

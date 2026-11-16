@@ -7,6 +7,11 @@ export interface EmptyStateProps {
     readonly description?: ReactNode;
     /** A small monochrome icon (lucide); decorative. */
     readonly icon?: ReactNode;
+    /**
+     * A larger picture in place of the icon, for the block variant only: the brand robot (`BrandRobot`) where the app
+     * speaks as Promptbook itself, such as a main list that is still empty. Decorative.
+     */
+    readonly illustration?: ReactNode;
     /** The one next step, e.g. a "New agent" button. */
     readonly action?: ReactNode;
     /**
@@ -21,11 +26,12 @@ export interface EmptyStateProps {
 
 const HEADING_TAGS = { 1: 'h1', 2: 'h2', 3: 'h3' } as const;
 
-/** What a view shows when there is nothing yet: one calm line, one action and a small monochrome icon. */
+/** What a view shows when there is nothing yet: one calm line, one action and a small monochrome icon or the robot. */
 export function EmptyState({
     title,
     description,
     icon,
+    illustration,
     action,
     variant = 'block',
     className,
@@ -55,7 +61,15 @@ export function EmptyState({
     }
     return (
         <div className={cx('flex flex-col items-center gap-2 px-6 py-12 text-center', className)}>
-            {glyph === null ? null : <span className="mb-1 inline-flex">{glyph}</span>}
+            {illustration === undefined ? (
+                glyph === null ? null : (
+                    <span className="mb-1 inline-flex">{glyph}</span>
+                )
+            ) : (
+                <span aria-hidden="true" className="mb-2 inline-flex">
+                    {illustration}
+                </span>
+            )}
             <Title className="text-sm font-medium text-(--empty-state-title)">{title}</Title>
             {description === undefined ? null : (
                 <p className="max-w-prose text-sm text-(--empty-state-description)">{description}</p>

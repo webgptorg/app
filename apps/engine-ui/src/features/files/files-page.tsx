@@ -1,5 +1,5 @@
 import type { FileMetadata } from '@ptbk/engine-api';
-import { Button, Dialog } from '@ptbk/ui';
+import { BrandRobot, Button, Dialog } from '@ptbk/ui';
 import type { ColumnFiltersState, MenuEntry } from '@ptbk/ui';
 import { useQueryClient } from '@tanstack/react-query';
 import { getRouteApi } from '@tanstack/react-router';
@@ -180,7 +180,12 @@ export function FilesPage() {
                               description: m.files_no_results_hint(),
                               action: <Button onClick={clear}>{m.files_clear_filters()}</Button>,
                           }
-                        : { icon: <Files />, title: m.files_empty_title(), description: m.files_empty_body() }
+                        : {
+                              icon: <Files />,
+                              illustration: <BrandRobot pose="working" />,
+                              title: m.files_empty_title(),
+                              description: m.files_empty_body(),
+                          }
                 }
                 rowActions={rowActions}
             />

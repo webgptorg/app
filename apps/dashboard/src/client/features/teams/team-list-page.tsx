@@ -1,7 +1,7 @@
-import { Button, EmptyState, ErrorState, Skeleton } from '@ptbk/ui';
+import { BrandRobot, Button, EmptyState, ErrorState, Skeleton } from '@ptbk/ui';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
-import { Plus, UsersRound } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { useState } from 'react';
 
 import { m } from '../../../paraglide/messages';
@@ -128,7 +128,7 @@ export function TeamListPage() {
         if (teams.data.length === 0) {
             return (
                 <EmptyState
-                    icon={<UsersRound aria-hidden className="size-6" />}
+                    illustration={<BrandRobot pose="assembling" size="md" />}
                     title={canManage ? m.teams_empty_title() : m.teams_empty_member_title()}
                     headingLevel={2}
                     description={canManage ? m.teams_empty_body() : m.teams_empty_member_body()}

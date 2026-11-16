@@ -16,11 +16,18 @@ export function CeremonyPanel(props: {
     readonly state: CeremonyState;
     readonly onStart: () => void;
     readonly footer?: ReactNode;
+    /** A calm picture above the title, e.g. the brand robot on sign-in. Decorative. */
+    readonly illustration?: ReactNode;
 }) {
     const failed = props.state.kind === 'failed';
     return (
         <div className="flex flex-col gap-6">
             <div className="flex flex-col gap-2">
+                {props.illustration === undefined ? null : (
+                    <div aria-hidden="true" className="mb-2 flex">
+                        {props.illustration}
+                    </div>
+                )}
                 <h1 className="text-2xl font-semibold tracking-display">{props.title}</h1>
                 <div className="flex flex-col gap-2 text-sm text-text-muted">{props.description}</div>
             </div>

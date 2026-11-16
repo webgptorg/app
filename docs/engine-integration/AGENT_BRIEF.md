@@ -24,6 +24,11 @@ Each entry has this shape. Platform authors: add yours at the top of the list, o
 - **Redo:** what the engine's agent must change, re-run or drop; "nothing" if it is inert.
 ```
 
+### 2026-11-16: Gateway pages carry the Promptbook brand kit
+
+- **Changed:** [`gateway.css`](../../packages/gateway-pages/pages/gateway.css) takes the brand kit's ink blue for links and focus, Exo 2 for headings (system fallback, no font file), and the pages' masthead shows the official lockup as inline SVG. Endpoints, script and CSP are unchanged.
+- **Redo:** optional. Copy `pages/` again if you want the same look.
+
 ### 2026-11-16: UI loader checks again when a delayed release becomes eligible
 
 - **Changed:** [ui-loader.md, Fetch](ui-loader.md#what-the-engine-must-do): after a `delay-not-elapsed` refusal, the engine schedules one extra check at `eligibleAt` plus a few seconds of jitter, on top of the periodic check (at most 1 hour apart). Each check replaces the pending one; it is not persisted. Checklist ENG-120. No conformance check: the harness triggers checks by restarting the engine.

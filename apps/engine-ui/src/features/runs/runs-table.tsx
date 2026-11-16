@@ -2,6 +2,7 @@ import { RUN_SOURCES, RUN_STATUSES } from '@ptbk/engine-api';
 import type { AgentId, ReadAgent, ReadRun } from '@ptbk/engine-api';
 import {
     Avatar,
+    BrandRobot,
     Button,
     createDataTableColumnHelper,
     DataTable,
@@ -286,6 +287,7 @@ export function RunsTable({ search, onSearchChange, agentId }: RunsTableProps) {
                     ? { title: m.runs_no_results(), description: m.runs_no_results_hint(), action: clearButton }
                     : {
                           icon: <Activity />,
+                          ...(scope === 'agent' ? {} : { illustration: <BrandRobot pose="resting" /> }),
                           title: m.runs_empty_title(),
                           description: scope === 'agent' ? m.runs_empty_agent_body() : m.runs_empty_body(),
                       }

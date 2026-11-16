@@ -1,3 +1,4 @@
+import { BrandRobot } from '@ptbk/ui';
 import { useCallback } from 'react';
 
 import { m } from '../../../paraglide/messages';
@@ -23,6 +24,7 @@ export function SignInPage(props: { readonly returnTo: string | undefined }) {
     const { state, start } = useCeremony(ceremony, onSignedIn);
     return (
         <CeremonyPanel
+            illustration={<BrandRobot pose="working" size="md" />}
             title={m.signin_title()}
             description={<p>{m.signin_body()}</p>}
             actionLabel={m.signin_action()}
