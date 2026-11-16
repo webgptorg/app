@@ -6,24 +6,29 @@ import type {
     DataTableColumnDef,
     DataTableEmpty,
     DataTablePage,
+    DataTableView,
     MenuEntry,
     SortingState,
 } from '@ptbk/ui';
+import { Bot, CalendarClock, File as FileIcon, HardDrive, ShieldCheck, Tag, Type, UserRound } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useMemo } from 'react';
 
+import { useBrowser } from '../../app/browser-context';
 import { SoftBreaks } from '../../app/soft-breaks';
 import { m } from '../../paraglide/messages';
 import { AgentCreator } from '../agents/agent-creator';
 import { PurposeBadge, purposeFilterOptions, ScanBadge, scanFilterOptions } from './file-labels';
-import { useFileScanning } from './use-file-scanning';
-import { AgentName } from './file-origin';
+import { FileAgent } from './file-origin';
 import { formatBytes } from './file-size';
+import { FileTypeIcon } from './file-type-icon';
 import { DEFAULT_FILE_SORT } from './files-search';
 import type { FileSort } from './files-search';
+import { useFileScanning } from './use-file-scanning';
 
 const NO_FILES: readonly FileMetadata[] = [];
 const SORTABLE: ReadonlySet<string> = new Set(['name', 'sizeBytes', 'createdAt']);
+const ICON = 'size-3.5';
 
 export function sortingOf(sort: FileSort): SortingState {
     const desc = sort.startsWith('-');
@@ -49,7 +54,12 @@ interface ColumnOptions {
     readonly nameCell: (file: FileMetadata) => ReactNode;
 }
 
-function useFileColumns({ global, nameCell }: ColumnOptions): DataTableColumnDef<FileMetadata>[] {
+interface ColumnSetup extends ColumnOptions {
+    /** A `FilterBar` above the table owns the filters, so the columns offer none of their own. */
+    readonly filterBar: boolean;
+}
+
+function useFileColumns({ global, nameCell, filterBar }: ColumnSetup): DataTableColumnDef<FileMetadata>[] {
     const formatters = useLocale();
     const scanning = useFileScanning();
     return useMemo(() => {
@@ -58,15 +68,31 @@ function useFileColumns({ global, nameCell }: ColumnOptions): DataTableColumnDef
             column.accessor('name', {
                 header: m.files_column_name(),
                 enableHiding: false,
-                meta: { priority: 0 },
-                cell: ({ row }) => nameCell(row.original),
+                meta: { priority: 0, icon: <FileIcon className={ICON} /> },
+                cell: ({ row }) => (
+                    <span className="flex min-w-0 items-start gap-2.5">
+                        <FileTypeIcon contentType={row.original.contentType} className="mt-0.5" />
+                        <span className="min-w-0">{nameCell(row.original)}</span>
+                    </span>
+                ),
             }),
+            ...(global
+                ? [
+                      column.accessor('agentId', {
+                          header: m.files_column_agent(),
+                          enableSorting: false,
+                          meta: { priority: 2, icon: <Bot className={ICON} /> },
+                          cell: ({ row }) => <FileAgent agentId={row.original.agentId} />,
+                      }),
+                  ]
+                : []),
             column.accessor('purpose', {
                 header: m.files_column_purpose(),
                 enableSorting: false,
                 meta: {
-                    priority: 2,
-                    ...(global
+                    priority: 3,
+                    icon: <Tag className={ICON} />,
+                    ...(global && !filterBar
                         ? {
                               filter: {
                                   kind: 'select' as const,
@@ -78,36 +104,6 @@ function useFileColumns({ global, nameCell }: ColumnOptions): DataTableColumnDef
                 },
                 cell: ({ row }) => <PurposeBadge purpose={row.original.purpose} />,
             }),
-            ...(global
-                ? [
-                      column.accessor('agentId', {
-                          header: m.files_column_agent(),
-                          enableSorting: false,
-                          meta: { priority: 3 },
-                          cell: ({ row }) => <AgentName agentId={row.original.agentId} />,
-                      }),
-                  ]
-                : []),
-            column.accessor('sizeBytes', {
-                header: m.files_column_size(),
-                sortDescFirst: true,
-                meta: { priority: 4 },
-                cell: ({ row }) => (
-                    <span className="whitespace-nowrap tabular-nums">
-                        {formatBytes(formatters, row.original.sizeBytes)}
-                    </span>
-                ),
-            }),
-            column.accessor('contentType', {
-                header: m.files_column_type(),
-                enableSorting: false,
-                meta: { priority: 6 },
-                cell: ({ row }) => (
-                    <span className="text-sm text-text-muted">
-                        <SoftBreaks text={row.original.contentType} after="/+" />
-                    </span>
-                ),
-            }),
             ...(scanning
                 ? [
                       column.accessor((file) => file.scan?.status ?? null, {
@@ -116,31 +112,61 @@ function useFileColumns({ global, nameCell }: ColumnOptions): DataTableColumnDef
                           enableSorting: false,
                           meta: {
                               priority: 1,
-                              filter: {
-                                  kind: 'select',
-                                  allLabel: m.files_filter_all_scans(),
-                                  options: scanFilterOptions(),
-                              },
+                              icon: <ShieldCheck className={ICON} />,
+                              ...(filterBar
+                                  ? {}
+                                  : {
+                                        filter: {
+                                            kind: 'select' as const,
+                                            allLabel: m.files_filter_all_scans(),
+                                            options: scanFilterOptions(),
+                                        },
+                                    }),
                           },
                           cell: ({ row }) =>
                               row.original.scan === null ? null : <ScanBadge status={row.original.scan.status} />,
                       }),
                   ]
                 : []),
+            column.accessor('sizeBytes', {
+                header: m.files_column_size(),
+                sortDescFirst: true,
+                meta: { priority: 4, numeric: true, icon: <HardDrive className={ICON} /> },
+                cell: ({ row }) => (
+                    <span className="whitespace-nowrap text-text-muted tabular-nums">
+                        {formatBytes(formatters, row.original.sizeBytes)}
+                    </span>
+                ),
+            }),
+            column.accessor('contentType', {
+                header: m.files_column_type(),
+                enableSorting: false,
+                meta: { priority: 6, defaultHidden: true, icon: <Type className={ICON} /> },
+                cell: ({ row }) => (
+                    <span className="text-sm text-text-muted">
+                        <SoftBreaks text={row.original.contentType} after="/+" />
+                    </span>
+                ),
+            }),
             column.accessor('createdBy', {
                 header: m.files_column_created_by(),
                 enableSorting: false,
-                meta: { priority: 7 },
+                meta: { priority: 7, defaultHidden: true, icon: <UserRound className={ICON} /> },
                 cell: ({ row }) => <AgentCreator memberId={row.original.createdBy} />,
             }),
             column.accessor('createdAt', {
                 header: m.files_column_created(),
                 sortDescFirst: true,
-                meta: { priority: 5 },
-                cell: ({ row }) => <RelativeTime value={new Date(row.original.createdAt)} />,
+                meta: { priority: 5, trailing: true, numeric: true, icon: <CalendarClock className={ICON} /> },
+                cell: ({ row }) => (
+                    <RelativeTime
+                        value={new Date(row.original.createdAt)}
+                        className="whitespace-nowrap text-text-muted"
+                    />
+                ),
             }),
         ];
-    }, [formatters, global, nameCell, scanning]);
+    }, [filterBar, formatters, global, nameCell, scanning]);
 }
 
 export interface FileTableProps extends ColumnOptions {
@@ -158,11 +184,18 @@ export interface FileTableProps extends ColumnOptions {
     readonly error: { readonly onRetry: () => void; readonly retrying: boolean } | null;
     readonly empty: DataTableEmpty;
     readonly rowActions?: (file: FileMetadata) => readonly MenuEntry[];
+    /** A `FilterBar` above the rows; with it the columns drop their own filter controls. */
+    readonly toolbar?: (view: DataTableView) => ReactNode;
 }
 
-/** The one file list, server-side: the engine filters, sorts and pages; cards below 768 px come with `DataTable`. */
+/** The one file list, server-side: the engine filters, sorts and pages; two-line rows below 768 px come with `DataTable`. */
 export function FileTable(props: FileTableProps) {
-    const columns = useFileColumns({ global: props.global, nameCell: props.nameCell });
+    const { storage } = useBrowser();
+    const columns = useFileColumns({
+        global: props.global,
+        nameCell: props.nameCell,
+        filterBar: props.toolbar !== undefined,
+    });
     return (
         <DataTable
             caption={props.caption}
@@ -170,15 +203,18 @@ export function FileTable(props: FileTableProps) {
             data={props.files ?? NO_FILES}
             getRowId={(file) => file.id}
             getRowLabel={(file) => file.name}
+            visibilityStorage={{ storage, key: props.global ? 'ptbk.files.columns' : 'ptbk.agent-files.columns' }}
             sorting={sortingOf(props.sort)}
             onSortingChange={(sorting) => {
                 props.onSortChange(sortOf(sorting));
             }}
+            sortingRemoval={false}
             columnFilters={props.filters}
             onColumnFiltersChange={props.onFiltersChange}
             page={props.page}
             onPageChange={props.onPageChange}
             {...(props.onPageIntent === undefined ? {} : { onPageIntent: props.onPageIntent })}
+            {...(props.toolbar === undefined ? {} : { toolbar: props.toolbar })}
             loading={props.loading}
             fetching={props.fetching}
             {...(props.error === null

@@ -1,8 +1,8 @@
 import { FILE_PURPOSES, FILE_SCAN_STATUSES } from '@ptbk/engine-api';
 import type { FilePurpose, FileScanStatus } from '@ptbk/engine-api';
-import { Badge } from '@ptbk/ui';
-import type { BadgeTone } from '@ptbk/ui';
-import { CircleHelp, Hourglass, ShieldAlert, ShieldCheck, ShieldX } from 'lucide-react';
+import { StatusDot, StatusPill } from '@ptbk/ui';
+import type { StatusTone } from '@ptbk/ui';
+import { BookOpen, Paperclip, Sparkles, Upload } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 import { m } from '../../paraglide/messages';
@@ -21,14 +21,29 @@ export function purposeLabel(purpose: FilePurpose): string {
     }
 }
 
-export function PurposeBadge({ purpose }: { readonly purpose: FilePurpose }) {
-    return <Badge tone={purpose === 'knowledge' ? 'accent' : 'neutral'}>{purposeLabel(purpose)}</Badge>;
+export function purposeIcon(purpose: FilePurpose): ReactNode {
+    switch (purpose) {
+        case 'knowledge':
+            return <BookOpen />;
+        case 'attachment':
+            return <Paperclip />;
+        case 'output':
+            return <Sparkles />;
+        case 'upload':
+            return <Upload />;
+    }
 }
 
-interface ScanLook {
-    readonly label: string;
-    readonly tone: BadgeTone;
-    readonly icon: ReactNode;
+/** What a file is for, as a neutral pill: a kind, not a state, so it takes no status hue. */
+export function PurposeBadge({ purpose }: { readonly purpose: FilePurpose }) {
+    return (
+        <span className="inline-flex h-6 max-w-full items-center gap-1.5 rounded-pill bg-neutral-soft px-2 text-xs font-medium whitespace-nowrap text-text">
+            <span aria-hidden="true" className="flex text-text-muted [&>svg]:size-3">
+                {purposeIcon(purpose)}
+            </span>
+            {purposeLabel(purpose)}
+        </span>
+    );
 }
 
 const KNOWN_SCANS: ReadonlySet<string> = new Set<string>(FILE_SCAN_STATUSES);
@@ -37,48 +52,57 @@ function isKnownScan(status: string): status is FileScanStatus {
     return KNOWN_SCANS.has(status);
 }
 
-function scanLook(status: FileScanStatus): ScanLook {
+export function scanLabel(status: FileScanStatus): string {
     switch (status) {
         case 'pending':
-            return { label: m.files_scan_pending(), tone: 'info', icon: <Hourglass /> };
+            return m.files_scan_pending();
         case 'clean':
-            return { label: m.files_scan_clean(), tone: 'success', icon: <ShieldCheck /> };
+            return m.files_scan_clean();
         case 'infected':
-            return { label: m.files_scan_infected(), tone: 'danger', icon: <ShieldX /> };
+            return m.files_scan_infected();
         case 'failed':
-            return { label: m.files_scan_failed(), tone: 'warning', icon: <ShieldAlert /> };
+            return m.files_scan_failed();
     }
 }
 
-export function scanLabel(status: FileScanStatus): string {
-    return scanLook(status).label;
+export function scanTone(status: FileScanStatus): StatusTone {
+    switch (status) {
+        case 'pending':
+            return 'waiting';
+        case 'clean':
+            return 'success';
+        case 'infected':
+            return 'danger';
+        case 'failed':
+            return 'warning';
+    }
 }
 
-/** Always text with the icon, never colour alone; a status from a newer engine shows as "unknown" with its value. */
+/** Always in words beside the dot, never colour alone; a status from a newer engine shows as "unknown" with its value. */
 export function ScanBadge({ status }: { readonly status: string }) {
     if (!isKnownScan(status)) {
-        return (
-            <Badge tone="neutral" icon={<CircleHelp />}>
-                {m.files_scan_unknown({ value: status })}
-            </Badge>
-        );
+        return <StatusPill tone="neutral">{m.files_scan_unknown({ value: status })}</StatusPill>;
     }
-    const look = scanLook(status);
-    return (
-        <Badge tone={look.tone} icon={look.icon}>
-            {look.label}
-        </Badge>
-    );
+    return <StatusPill tone={scanTone(status)}>{scanLabel(status)}</StatusPill>;
 }
 
 export function purposeFilterOptions() {
     return FILE_PURPOSES.map((purpose) => ({ value: purpose, label: purposeLabel(purpose) }));
 }
 
-/** Each status, plus the set the attention item links to. */
+/** Each status, plus the set the attention item links to; for the column filter an agent's Files tab still shows. */
 export function scanFilterOptions() {
     return [
         { value: SCAN_PROBLEMS, label: m.files_scan_problems() },
         ...FILE_SCAN_STATUSES.map((status) => ({ value: status, label: scanLabel(status) })),
     ];
+}
+
+/** The scan statuses for `FilterBar`, each led by its dot. */
+export function scanFieldOptions() {
+    return FILE_SCAN_STATUSES.map((status) => ({
+        value: status,
+        label: scanLabel(status),
+        icon: <StatusDot tone={scanTone(status)} />,
+    }));
 }

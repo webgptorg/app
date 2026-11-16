@@ -1,56 +1,50 @@
 import type { AgentId } from '@ptbk/engine-api';
-import { Field, Select } from '@ptbk/ui';
+import { Combobox, Field } from '@ptbk/ui';
 import { useQuery } from '@tanstack/react-query';
 
 import { useEngineApi } from '../../app/engine-api-context';
+import { AgentAvatar } from '../agents/agent-avatar';
 import { agentListQueryOptions } from '../agents/agents-queries';
-import { usePermissions } from '../session/use-permissions';
+import { useAllows } from '../../app/registry/use-visible-features';
 
-/** The first page of agents names the choices; an agent beyond it can still be filtered by from its own Files tab. */
-const AGENT_CHOICES = 100;
+/** The first page of agents names the choices; an agent beyond it can still be reached from its own Files tab. */
+export const AGENT_CHOICES = { sort: 'name', limit: 100 } as const;
 
-/** Agents by name for a filter or a target; absent without `agents.read`. */
+/** The agent a file goes to, by name and face; absent without `agents.read`. */
 export function AgentSelect({
     label,
-    allLabel,
+    placeholder,
     value,
     onChange,
-    required = false,
 }: {
     readonly label: string;
-    readonly allLabel: string;
+    readonly placeholder: string;
     readonly value: AgentId | undefined;
     readonly onChange: (agentId: AgentId | undefined) => void;
-    readonly required?: boolean;
 }) {
-    const { can } = usePermissions();
-    const agents = useQuery({
-        ...agentListQueryOptions(useEngineApi(), { sort: 'name', limit: AGENT_CHOICES }),
-        enabled: can('agents.read'),
-    });
-    if (!can('agents.read')) return null;
+    const allowed = useAllows({ permission: 'agents.read' });
+    const agents = useQuery({ ...agentListQueryOptions(useEngineApi(), AGENT_CHOICES), enabled: allowed });
+    if (!allowed) return null;
     const items = agents.data?.items ?? [];
     return (
-        <Field label={label} required={required} className="w-full sm:max-w-xs">
+        <Field label={label} required className="w-full sm:max-w-xs">
             {(control) => (
-                <Select
+                <Combobox
                     {...control}
-                    value={value ?? ''}
-                    onChange={(event) => {
-                        const chosen = items.find((agent) => agent.id === event.target.value);
-                        onChange(chosen?.id);
+                    searchable={items.length > 7}
+                    placeholder={placeholder}
+                    value={value ?? null}
+                    options={items.map((agent) => ({
+                        value: agent.id,
+                        label: agent.name,
+                        leading: (
+                            <AgentAvatar name={agent.name} agentKey={agent.id} profile={agent.profile} size="2xs" />
+                        ),
+                    }))}
+                    onChange={(chosen) => {
+                        onChange(items.find((agent) => agent.id === chosen)?.id);
                     }}
-                >
-                    <option value="">{allLabel}</option>
-                    {value !== undefined && !items.some((agent) => agent.id === value) ? (
-                        <option value={value}>{value}</option>
-                    ) : null}
-                    {items.map((agent) => (
-                        <option key={agent.id} value={agent.id}>
-                            {agent.name}
-                        </option>
-                    ))}
-                </Select>
+                />
             )}
         </Field>
     );

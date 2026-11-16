@@ -69,13 +69,16 @@ function stateText(state: ItemState, maxSize: string): string {
     }
 }
 
+/** What did not reach the engine, in the danger colour; the words say it too. */
+const FAILED: ReadonlySet<ItemState['kind']> = new Set(['too-large', 'wrong-type', 'bad-name', 'failed']);
+
 export interface KnowledgeUploadProps {
     /** The agent the knowledge belongs to. */
     readonly agentId: AgentId;
 }
 
 /**
- * Adds knowledge files to an agent: a drop zone and a keyboard-operable file picker, the engine's size and type limits
+ * Adds knowledge files to an agent: a quiet one-line drop area with a keyboard-operable file picker, the engine's size and type limits
  * checked before anything is sent, and per-file progress with cancel. Only names and sizes are ever shown; file
  * content is never read into the page. Shared with the create-agent wizard (U-04).
  */
@@ -97,7 +100,7 @@ export function KnowledgeUpload({ agentId }: KnowledgeUploadProps) {
         };
     }, []);
 
-    if (policy.isPending) return <Skeleton shape="block" className="h-32 w-full" />;
+    if (policy.isPending) return <Skeleton shape="block" className="h-12 w-full" />;
     if (policy.isError) {
         return (
             <ErrorState
@@ -169,11 +172,12 @@ export function KnowledgeUpload({ agentId }: KnowledgeUploadProps) {
 
     const accept = limits.accept.join(',');
     return (
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-2">
             <div
                 className={cx(
-                    'flex flex-col items-center gap-3 rounded-surface border border-dashed p-6 text-center',
-                    dragging ? 'border-accent bg-accent-soft' : 'border-border',
+                    'flex min-h-12 flex-wrap items-center gap-x-3 gap-y-1 rounded-control border border-dashed px-3 py-2 text-sm',
+                    'motion-safe:transition-colors motion-safe:duration-(--motion-state)',
+                    dragging ? 'border-text-muted bg-selected' : 'border-divider',
                 )}
                 onDragOver={(event) => {
                     event.preventDefault();
@@ -184,9 +188,10 @@ export function KnowledgeUpload({ agentId }: KnowledgeUploadProps) {
                 }}
                 onDrop={onDrop}
             >
-                <Upload aria-hidden className="size-6 text-text-muted" />
-                <p className="text-sm">{m.files_upload_drop()}</p>
+                <Upload aria-hidden className="size-4 shrink-0 text-text-muted" />
+                <p className="text-text-muted">{m.files_upload_drop()}</p>
                 <Button
+                    size="sm"
                     aria-describedby={hintId}
                     onClick={() => {
                         inputRef.current?.click();
@@ -205,22 +210,28 @@ export function KnowledgeUpload({ agentId }: KnowledgeUploadProps) {
                         event.target.value = '';
                     }}
                 />
-                <p id={hintId} className="text-xs text-text-muted">
+                <p id={hintId} className="text-xs text-text-subtle sm:ms-auto">
                     {limits.accept.length === 0
                         ? m.files_upload_limits_any({ max: maxSize })
                         : m.files_upload_limits({ max: maxSize, types: limits.accept.join(', ') })}
                 </p>
             </div>
             {items.length === 0 ? null : (
-                <ul aria-label={m.files_upload_list()} className="flex flex-col gap-2">
+                <ul aria-label={m.files_upload_list()} className="flex flex-col divide-y divide-hairline">
                     {items.map((item) => (
-                        <li key={item.key} className="flex flex-col gap-1 rounded-control border border-border p-3">
-                            <div className="flex flex-wrap items-center justify-between gap-2">
-                                <span className="min-w-0 font-medium break-all">{item.name}</span>
-                                <span className="text-xs text-text-muted">{formatBytes(formatters, item.size)}</span>
-                            </div>
-                            <div className="flex flex-wrap items-center justify-between gap-2">
-                                <span role="status" className="text-sm text-text-muted">
+                        <li key={item.key} className="flex flex-col gap-1.5 py-2">
+                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+                                <span className="min-w-0 flex-1 font-medium break-all">{item.name}</span>
+                                <span className="text-xs text-text-muted tabular-nums">
+                                    {formatBytes(formatters, item.size)}
+                                </span>
+                                <span
+                                    role="status"
+                                    className={cx(
+                                        'text-xs',
+                                        FAILED.has(item.state.kind) ? 'text-danger' : 'text-text-muted',
+                                    )}
+                                >
                                     {stateText(item.state, maxSize)}
                                 </span>
                                 {item.state.kind === 'uploading' ? (
@@ -239,7 +250,7 @@ export function KnowledgeUpload({ agentId }: KnowledgeUploadProps) {
                             </div>
                             {item.state.kind === 'uploading' ? (
                                 <progress
-                                    className="h-2 w-full"
+                                    className="h-1 w-full"
                                     max={Math.max(item.state.total, 1)}
                                     value={item.state.loaded}
                                     aria-label={m.files_upload_progress_named({ name: item.name })}

@@ -1,10 +1,10 @@
-import { FILE_PURPOSES } from '@ptbk/engine-api';
-import type { FileMetadata } from '@ptbk/engine-api';
-import { Button, Dialog, Field, Input } from '@ptbk/ui';
-import type { ColumnFiltersState, MenuEntry } from '@ptbk/ui';
-import { useQueryClient } from '@tanstack/react-query';
+import { AgentId, FILE_PURPOSES, FILE_SCAN_STATUSES } from '@ptbk/engine-api';
+import type { FileMetadata, FilePurpose } from '@ptbk/engine-api';
+import { Button, Dialog, FilterBar, filterField } from '@ptbk/ui';
+import type { ColumnFiltersState, DataTableView, FilterBarField, MenuEntry } from '@ptbk/ui';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { getRouteApi } from '@tanstack/react-router';
-import { Trash2, Upload } from 'lucide-react';
+import { Bot, PanelRightOpen, ShieldCheck, Tag, Trash2, Upload } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 
 import { useCursorPages } from '../../app/cursor-pages';
@@ -12,27 +12,30 @@ import { useDebouncedSearch } from '../../app/debounced-search';
 import { useEngineApi } from '../../app/engine-api-context';
 import { Link } from '../../app/link';
 import { isInvalidCursor } from '../../app/list-errors';
+import { useAllows } from '../../app/registry/use-visible-features';
+import { readListParam, readOneParam, writeListParam } from '../../app/search-filters';
 import { SoftBreaks } from '../../app/soft-breaks';
 import { m } from '../../paraglide/messages';
+import { AgentAvatar } from '../agents/agent-avatar';
+import { agentListQueryOptions } from '../agents/agents-queries';
 import { usePermissions } from '../session/use-permissions';
 import { Page } from '../shell/page';
-import { AgentSelect } from './agent-filter';
+import { AGENT_CHOICES, AgentSelect } from './agent-filter';
 import { useFileDelete } from './file-delete';
 import { FileDrawer } from './file-drawer';
-import { filterValue, FileTable } from './file-table';
+import { purposeIcon, purposeLabel, scanFieldOptions } from './file-labels';
+import { FileTable } from './file-table';
 import { fileListQueryOptions, useFiles } from './files-queries';
 import { fileListParams, hasFileFilters } from './files-search';
 import type { FilesSearch } from './files-search';
 import { KnowledgeUpload } from './knowledge-upload';
+import { useFileScanning } from './use-file-scanning';
 
 const route = getRouteApi('/files');
-
-function filtersOf(search: FilesSearch): ColumnFiltersState {
-    return [
-        ...(search.purpose === undefined ? [] : [{ id: 'purpose', value: search.purpose }]),
-        ...(search.scan === undefined ? [] : [{ id: 'scan', value: search.scan }]),
-    ];
-}
+const ICON = 'size-3.5';
+// The filter bar owns every filter; the columns have none of their own to report.
+const NO_COLUMN_FILTERS: ColumnFiltersState = [];
+const NO_FILTERS = { q: undefined, purpose: undefined, scan: undefined, agentId: undefined } as const;
 
 function UploadKnowledgeDialog({ onClose }: { readonly onClose: () => void }) {
     const [agentId, setAgentId] = useState<FileMetadata['agentId']>(null);
@@ -41,12 +44,11 @@ function UploadKnowledgeDialog({ onClose }: { readonly onClose: () => void }) {
             <div className="flex flex-col gap-4">
                 <AgentSelect
                     label={m.files_upload_agent()}
-                    allLabel={m.files_upload_pick_agent()}
+                    placeholder={m.files_upload_pick_agent()}
                     value={agentId ?? undefined}
                     onChange={(chosen) => {
                         setAgentId(chosen ?? null);
                     }}
-                    required
                 />
                 {agentId === null ? (
                     <p className="text-sm text-text-muted">{m.files_upload_pick_agent_first()}</p>
@@ -69,12 +71,12 @@ export function FilesPage() {
     const list = useFiles(params);
     const deletion = useFileDelete();
 
-    const update = (change: Partial<FilesSearch>, replace = false) => {
-        void navigate({ search: (previous) => ({ ...previous, cursor: undefined, ...change }), replace });
-    };
-    const [text, setText] = useDebouncedSearch(search.q, (q) => {
-        update({ q }, true);
-    });
+    const update = useCallback(
+        (change: Partial<FilesSearch>, replace = false) => {
+            void navigate({ search: (previous) => ({ ...previous, cursor: undefined, ...change }), replace });
+        },
+        [navigate],
+    );
     const paging = useCursorPages(search.cursor, list.data?.nextCursor ?? null, (cursor) => {
         void navigate({ search: (previous) => ({ ...previous, cursor }) });
     });
@@ -84,8 +86,10 @@ export function FilesPage() {
     }, [invalidCursor, navigate]);
 
     const clear = () => {
-        setText('');
-        update({ q: undefined, purpose: undefined, scan: undefined, agentId: undefined });
+        update(NO_FILTERS);
+    };
+    const openFile = (file: FileMetadata) => {
+        void navigate({ search: (previous) => ({ ...previous, file: file.id }) });
     };
     const nameCell = useCallback(
         (file: FileMetadata) => (
@@ -93,7 +97,7 @@ export function FilesPage() {
                 to="/files"
                 search={{ ...search, file: file.id }}
                 variant="standalone"
-                className="line-clamp-2 max-w-md font-medium break-words"
+                className="line-clamp-2 font-medium break-words text-text"
             >
                 <SoftBreaks text={file.name} after="_" />
             </Link>
@@ -104,14 +108,28 @@ export function FilesPage() {
     const rowActions = (file: FileMetadata): readonly MenuEntry[] => [
         {
             kind: 'item',
-            id: 'delete',
-            label: m.files_delete(),
-            icon: <Trash2 />,
-            tone: 'danger',
+            id: 'details',
+            label: m.files_detail_title(),
+            icon: <PanelRightOpen />,
             onSelect: () => {
-                deletion.request(file);
+                openFile(file);
             },
         },
+        ...(writable
+            ? ([
+                  { kind: 'separator', id: 'danger' },
+                  {
+                      kind: 'item',
+                      id: 'delete',
+                      label: m.files_delete(),
+                      icon: <Trash2 />,
+                      tone: 'danger',
+                      onSelect: () => {
+                          deletion.request(file);
+                      },
+                  },
+              ] satisfies MenuEntry[])
+            : []),
     ];
 
     return (
@@ -131,31 +149,6 @@ export function FilesPage() {
                 ) : null
             }
         >
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
-                <Field label={m.files_search_label()} className="w-full sm:max-w-sm">
-                    {(control) => (
-                        <Input
-                            {...control}
-                            type="search"
-                            value={text}
-                            placeholder={m.files_search_placeholder()}
-                            autoComplete="off"
-                            maxLength={255}
-                            onChange={(event) => {
-                                setText(event.target.value);
-                            }}
-                        />
-                    )}
-                </Field>
-                <AgentSelect
-                    label={m.files_filter_agent()}
-                    allLabel={m.files_filter_all_agents()}
-                    value={search.agentId}
-                    onChange={(agentId) => {
-                        update({ agentId });
-                    }}
-                />
-            </div>
             <FileTable
                 caption={m.files_title()}
                 global
@@ -165,14 +158,9 @@ export function FilesPage() {
                 onSortChange={(sort) => {
                     update({ sort });
                 }}
-                filters={filtersOf(search)}
-                onFiltersChange={(filters) => {
-                    const purpose = filterValue(filters, 'purpose');
-                    update({
-                        purpose: FILE_PURPOSES.find((candidate) => candidate === purpose),
-                        scan: filterValue(filters, 'scan'),
-                    });
-                }}
+                filters={NO_COLUMN_FILTERS}
+                onFiltersChange={() => undefined}
+                toolbar={(view) => <FileFilters view={view} search={search} onChange={update} onClear={clear} />}
                 page={paging.page}
                 onPageChange={paging.onPageChange}
                 onPageIntent={(cursor, direction) => {
@@ -200,7 +188,7 @@ export function FilesPage() {
                           }
                         : { title: m.files_empty_title(), description: m.files_empty_body() }
                 }
-                {...(writable ? { rowActions } : {})}
+                rowActions={rowActions}
             />
             {search.file === undefined ? null : (
                 <FileDrawer
@@ -219,5 +207,98 @@ export function FilesPage() {
             ) : null}
             {deletion.dialog}
         </Page>
+    );
+}
+
+/** Every filter reads from and writes to the search params, so a reload or a shared link restores the view. */
+function FileFilters({
+    view,
+    search,
+    onChange,
+    onClear,
+}: {
+    readonly view: DataTableView;
+    readonly search: FilesSearch;
+    readonly onChange: (change: Partial<FilesSearch>, replace?: boolean) => void;
+    readonly onClear: () => void;
+}) {
+    const scanning = useFileScanning();
+    const [text, setText] = useDebouncedSearch(search.q, (q) => {
+        onChange({ q }, true);
+    });
+    const agentsVisible = useAllows({ permission: 'agents.read' });
+    const agents = useQuery({
+        ...agentListQueryOptions(useEngineApi(), AGENT_CHOICES),
+        enabled: agentsVisible,
+    });
+    const fields: FilterBarField[] = [
+        filterField.enum<FilePurpose>({
+            id: 'purpose',
+            label: m.files_column_purpose(),
+            icon: <Tag className={ICON} />,
+            options: FILE_PURPOSES.map((purpose) => ({
+                value: purpose,
+                label: purposeLabel(purpose),
+                icon: <span className="flex [&>svg]:size-3.5">{purposeIcon(purpose)}</span>,
+            })),
+            value: search.purpose,
+            onChange: (purpose) => {
+                onChange({ purpose });
+            },
+        }),
+        ...(agentsVisible
+            ? [
+                  filterField.entity<string>({
+                      id: 'agent',
+                      label: m.files_filter_agent(),
+                      icon: <Bot className={ICON} />,
+                      multiple: false,
+                      options: (agents.data?.items ?? []).map((agent) => ({
+                          value: agent.id,
+                          label: agent.name,
+                          icon: (
+                              <AgentAvatar name={agent.name} agentKey={agent.id} profile={agent.profile} size="2xs" />
+                          ),
+                      })),
+                      value: readOneParam(search.agentId),
+                      onChange: (value) => {
+                          // An agent beyond the first page stays selected by its ID from the URL until it is removed.
+                          const picked = value.at(-1);
+                          onChange({ agentId: picked === undefined ? undefined : AgentId.safeParse(picked).data });
+                      },
+                  }),
+              ]
+            : []),
+        ...(scanning
+            ? [
+                  filterField.multiEnum({
+                      id: 'scan',
+                      label: m.files_column_scan(),
+                      icon: <ShieldCheck className={ICON} />,
+                      options: scanFieldOptions(),
+                      value: readListParam(search.scan, FILE_SCAN_STATUSES),
+                      onChange: (value) => {
+                          onChange({ scan: writeListParam(value, FILE_SCAN_STATUSES) });
+                      },
+                  }),
+              ]
+            : []),
+    ];
+    return (
+        <FilterBar
+            {...view}
+            label={m.files_filters()}
+            search={{
+                label: m.files_search_label(),
+                value: text,
+                onChange: setText,
+                maxLength: 255,
+            }}
+            fields={fields}
+            onClear={() => {
+                setText('');
+                onClear();
+            }}
+        />
     );
 }
