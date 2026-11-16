@@ -24,6 +24,11 @@ Each entry has this shape. Platform authors: add yours at the top of the list, o
 - **Redo:** what the engine's agent must change, re-run or drop; "nothing" if it is inert.
 ```
 
+### 2026-11-16: Agent illustrations
+
+- **Changed:** `AgentProfile.illustration` in [`agents.ts`](../../packages/engine-api/src/agents.ts): optional and nullable, an ID from the UI's curated set (`^[a-z][a-z0-9-]{0,47}$`, e.g. `analyst`, `support`), never markup. Engines MAY send it once the owner can choose one later; it is read-only and in no update body. Without it, or with an ID the UI does not know, the UI picks an illustration itself from the agent's origin, name and role. `ENGINE_API_VERSION` is unchanged.
+- **Redo:** nothing for now.
+
 ### 2026-11-13: Chat activity: steps, working agents, linked tasks, rechecks
 
 - **Changed:**

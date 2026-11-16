@@ -18115,6 +18115,17 @@
                 "type": "null"
               }
             ]
+          },
+          "illustration": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,47}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": ["fullname", "description", "avatarUrl", "color", "initialMessage"],

@@ -36,6 +36,46 @@ describe('Avatar', () => {
         expect(spans[0]?.style.getPropertyValue('--tint-text-light')).toBe('initial');
         expect(spans[1]?.dataset['initial']).toBe('');
     });
+
+    it.each(['light', 'dark'] as const)(
+        'draws a picture instead of the initial, on the same tint (%s)',
+        async (theme) => {
+            const { container } = renderUi(
+                <p>
+                    <Avatar
+                        name="Ada"
+                        tint="#123456"
+                        size="xl"
+                        picture={<svg viewBox="0 0 64 64" data-testid="picture" />}
+                    />
+                    {'Ada'}
+                </p>,
+                { theme },
+            );
+            const avatar = container.querySelector('span');
+            expect(avatar?.querySelector('[data-testid="picture"]')).not.toBeNull();
+            expect(avatar?.dataset['initial']).toBeUndefined();
+            expect(avatar?.className).not.toContain('before:content');
+            expect(avatar?.className).toContain('size-18');
+            expect(avatar?.className).toContain('text-tint');
+            expect(avatar?.getAttribute('aria-hidden')).toBe('true');
+            expect(avatar?.style.getPropertyValue('--tint')).toBe('#123456');
+            expect(avatar?.style.getPropertyValue('--tint-text-light')).toMatch(/^#[0-9a-f]{6}$/);
+            await expectNoAxeViolations(container);
+        },
+    );
+
+    it('prefers a picture URL to a drawn picture, and the initial to an empty one', () => {
+        const { container } = renderUi(
+            <>
+                <Avatar name="Ada" src="/ada.png" picture={<svg data-testid="picture" />} />
+                <Avatar name="Max" picture={null} />
+            </>,
+        );
+        expect(container.querySelector('img')?.getAttribute('src')).toBe('/ada.png');
+        expect(container.querySelector('[data-testid="picture"]')).toBeNull();
+        expect(container.querySelector('span')?.dataset['initial']).toBe('M');
+    });
 });
 
 describe('tint', () => {

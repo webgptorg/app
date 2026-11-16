@@ -26,6 +26,8 @@ const agent = {
     updatedAt: AT,
     deletedAt: null,
 };
+// An engine from before 2026-11-16 sends no `profile.illustration`; the reader defaults it.
+const readAgent = { ...agent, profile: { ...agent.profile, illustration: null } };
 
 // `chat` and `reply` are what an engine from before 2026-11-13 sends: no activity fields. Readers default them.
 const chat = {
@@ -160,7 +162,7 @@ describe('createFetchEngineApiClient', () => {
     it('sends a same-origin request and returns validated data', async () => {
         const { client, calls } = setup(() => json(agent));
         const response = await client.agents.get(AgentId.parse('a1'), signal());
-        expect(response).toEqual({ kind: 'ok', data: agent });
+        expect(response).toEqual({ kind: 'ok', data: readAgent });
         expect(calls).toHaveLength(1);
         const [call] = calls;
         expect(call?.url).toBe(`${BASE_URL}${ENGINE_API_PREFIX}/agents/a1`);
@@ -204,7 +206,7 @@ describe('createFetchEngineApiClient', () => {
 
     it('drops fields it does not know, at every depth', async () => {
         const { client } = setup(() => json({ ...agent, added: SENTINEL, profile: { ...agent.profile, mood: 'x' } }));
-        expect(await client.agents.get(AgentId.parse('a1'), signal())).toEqual({ kind: 'ok', data: agent });
+        expect(await client.agents.get(AgentId.parse('a1'), signal())).toEqual({ kind: 'ok', data: readAgent });
     });
 
     it.each([
