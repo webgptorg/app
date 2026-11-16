@@ -1,5 +1,6 @@
 import type { AgentProfile } from '@ptbk/engine-api';
 import type { ReactElement } from 'react';
+import { waitFor } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
 import { renderUi } from '../../testing/render-ui';
@@ -36,12 +37,15 @@ describe('AgentAvatar', () => {
         expect(image?.className).toContain('size-14');
     });
 
-    it('falls back to the illustration for a picture from another origin', () => {
+    it('falls back to the illustration for a picture from another origin', async () => {
         const { container } = renderUi(
             <AgentAvatar name=" ádam" profile={profile({ avatarUrl: 'https://attacker.example/x.png' })} />,
         );
         expect(container.querySelector('img')).toBeNull();
-        expect(container.querySelector('span svg.agent-art')).not.toBeNull();
+        // The drawings are a chunk of their own; the first avatar waits for it, every later one draws at once.
+        await waitFor(() => {
+            expect(container.querySelector('span svg.agent-art')).not.toBeNull();
+        });
     });
 
     it('draws the illustration the engine chose, else one from the built-in name, the name or the role', () => {

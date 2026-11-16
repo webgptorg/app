@@ -10,7 +10,7 @@ import { m } from '../../paraglide/messages';
 import { agentColor } from '../chat/references/agent-color';
 import { StepLine } from '../chat/references/agent-hovercard';
 import { formatClock, useElapsedMs } from '../chat/references/elapsed';
-import { chatName } from '../chat/thread-list';
+import { chatName } from '../chat/chat-name';
 import { useNewChat } from '../chat/use-new-chat';
 import { EntityChip } from '../entities/entity-chip';
 import { chatPreview } from '../home/chat-preview';

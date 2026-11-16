@@ -1,11 +1,18 @@
 import type { AgentOrigin, AgentProfile } from '@ptbk/engine-api';
 import { Avatar } from '@ptbk/ui';
+import { lazy, Suspense } from 'react';
 import type { AvatarSize } from '@ptbk/ui';
 
 import { safeImageSource } from '../../security/safe-url';
 import { agentColor } from '../chat/references/agent-color';
-import { AgentIllustration } from './illustrations/illustrations';
 import { resolveIllustration } from './illustrations/resolve-illustration';
+
+// Twenty drawings would cost the entry about 3 kB, and every screen shows an avatar: they load as a chunk of their own,
+// asked for as soon as this module runs, so they are in before the first avatar needs them. Until then the circle
+// shows its tinted wash.
+const loadIllustrations = () => import('./illustrations/illustrations');
+void loadIllustrations().catch(() => undefined);
+const AgentIllustration = lazy(() => loadIllustrations().then((module) => ({ default: module.AgentIllustration })));
 
 const SIZES = { '2xs': '2xs', xs: 'sm', sm: 'md', lg: 'lg', xl: 'xl' } as const satisfies Record<string, AvatarSize>;
 export type AgentAvatarSize = keyof typeof SIZES;
@@ -40,7 +47,11 @@ export function AgentAvatar({
             name={name}
             src={profile.avatarUrl === null ? null : safeImageSource(profile.avatarUrl)}
             tint={agentKey === undefined ? profile.color : agentColor(profile.color, agentKey)}
-            picture={<AgentIllustration id={resolveIllustration({ name, origin, profile })} className="size-[84%]" />}
+            picture={
+                <Suspense fallback={null}>
+                    <AgentIllustration id={resolveIllustration({ name, origin, profile })} className="size-[84%]" />
+                </Suspense>
+            }
             size={SIZES[size]}
             {...(className === undefined ? {} : { className })}
         />

@@ -1,35 +1,8 @@
 import type { ReactElement } from 'react';
 
-/** The curated set, in the order the product owner approved it; an engine may name one in `profile.illustration`. */
-export const ILLUSTRATION_IDS = [
-    'chatter',
-    'adam',
-    'tasker',
-    'router',
-    'fixer',
-    'teacher',
-    'expert',
-    'copywriter',
-    'developer',
-    'lawyer',
-    'planner',
-    'agent',
-    'support',
-    'analyst',
-    'designer',
-    'mail',
-    'finance',
-    'marketing',
-    'security',
-    'launch',
-] as const;
-export type IllustrationId = (typeof ILLUSTRATION_IDS)[number];
-
-const KNOWN: ReadonlySet<string> = new Set(ILLUSTRATION_IDS);
-
-export function isIllustrationId(value: string): value is IllustrationId {
-    return KNOWN.has(value);
-}
+export { ILLUSTRATION_IDS, isIllustrationId } from './illustration-ids';
+export type { IllustrationId } from './illustration-ids';
+import type { IllustrationId } from './illustration-ids';
 
 function Body() {
     return <path className="art-body" d="M32 20c10.5 0 17 7.6 17 16.5S42.5 52 32 52s-17-6.6-17-15.5S21.5 20 32 20z" />;

@@ -1,7 +1,7 @@
 import type { AgentOrigin } from '@ptbk/engine-api';
 
-import { isIllustrationId } from './illustrations';
-import type { IllustrationId } from './illustrations';
+import { isIllustrationId } from './illustration-ids';
+import type { IllustrationId } from './illustration-ids';
 
 export interface IllustratedAgent {
     readonly name: string;
