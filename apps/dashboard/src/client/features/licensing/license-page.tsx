@@ -120,15 +120,15 @@ function AccountSection(props: { readonly license: LicenseView }) {
     );
 }
 
-function Usage(props: { readonly label: string; readonly value: string; readonly covered: boolean }) {
+function Usage(props: { readonly label: string; readonly value: string; readonly shortfall: string | null }) {
     return (
         <div className="soft-surface flex flex-wrap items-center justify-between gap-2 p-4">
             <div className="flex flex-col gap-0.5">
                 <span className="text-sm text-text-muted">{props.label}</span>
                 <span className="text-lg font-medium tabular-nums">{props.value}</span>
             </div>
-            <StatusPill tone={props.covered ? 'success' : 'warning'}>
-                {props.covered ? m.license_covered() : m.license_not_covered()}
+            <StatusPill tone={props.shortfall === null ? 'success' : 'warning'}>
+                {props.shortfall ?? m.license_covered()}
             </StatusPill>
         </div>
     );
@@ -148,7 +148,13 @@ function CoverageSection(props: { readonly coverage: NonNullable<LicenseView['co
                             ? m.license_coverage_used_unlimited({ used })
                             : m.license_coverage_used({ used, total: formatters.formatNumber(engines.capacity) })
                     }
-                    covered={engines.covered >= engines.used}
+                    shortfall={
+                        engines.covered >= engines.used
+                            ? null
+                            : m.license_engines_uncovered({
+                                  count: formatters.formatNumber(engines.used - engines.covered),
+                              })
+                    }
                 />
                 <Usage
                     label={m.license_coverage_people()}
@@ -160,7 +166,7 @@ function CoverageSection(props: { readonly coverage: NonNullable<LicenseView['co
                                   limit: formatters.formatNumber(people.limit),
                               })
                     }
-                    covered={people.limit === null || people.used <= people.limit}
+                    shortfall={people.limit === null || people.used <= people.limit ? null : m.license_not_covered()}
                 />
             </div>
             <p className="text-sm text-text-muted">{m.license_unknown_usage()}</p>

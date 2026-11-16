@@ -831,8 +831,8 @@
   "license_coverage_title": "Pokrytí",
   "license_coverage_engines": "Enginy",
   "license_coverage_people": "Lidé",
-  "license_coverage_used": "{used} z {total}",
-  "license_coverage_used_unlimited": "{used}, bez omezení",
+  "license_coverage_used": "{used} · pokryto {total}",
+  "license_coverage_used_unlimited": "{used} · bez omezení",
   "license_coverage_people_limit": "{used} · až {limit} na engine",
   "license_coverage_people_unlimited": "{used} · bez omezení",
   "license_covered": "Pokryto",
@@ -885,5 +885,6 @@
   "website_access_try_link": "Zkusit znovu",
   "website_access_done_title": "Propojeno",
   "website_access_done_body": "{org} teď ukazuje licence účtu ptbk.io {email}.",
-  "website_access_done_action": "Zobrazit licenci"
+  "website_access_done_action": "Zobrazit licenci",
+  "license_engines_uncovered": "Nepokryto: {count}"
 }

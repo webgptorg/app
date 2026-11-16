@@ -87,9 +87,9 @@ describe('license page', () => {
             'https://www.ptbk.io/cs/pricing/predplatne',
         );
         expect(screen.getByText('Last checked')).toBeTruthy();
-        expect(screen.getByText('3, unlimited')).toBeTruthy();
+        expect(screen.getByText('3 · unlimited')).toBeTruthy();
         expect(screen.getByText('2 · unlimited')).toBeTruthy();
-        const grants = screen.getAllByLabelText(/^Licence valid /);
+        const grants = screen.getAllByLabelText(/^License valid /);
         expect(grants).toHaveLength(2);
         expect(within(grants[1] as HTMLElement).getAllByText('Unlimited')).toHaveLength(5);
         expect(within(grants[1] as HTMLElement).getByText('Not included')).toBeTruthy();
@@ -117,13 +117,13 @@ describe('license page', () => {
         });
         await app.user.click(await screen.findByRole('button', { name: 'Link your ptbk.io account' }));
         expect(app.navigations).toEqual(['/api/website-access/start']);
-        expect(screen.queryByRole('heading', { name: 'Licences' })).toBeNull();
+        expect(screen.queryByRole('heading', { name: 'Licenses' })).toBeNull();
     });
 
     it('says calmly when the website did not answer, showing the last snapshot', async () => {
         renderApp({ path: '/license', session: MANAGER, script: withLicense(licenseView({ state: 'stale' })) });
         expect(await screen.findByText('ptbk.io didn’t answer just now')).toBeTruthy();
-        expect(screen.getAllByLabelText(/^Licence valid /)).toHaveLength(1);
+        expect(screen.getAllByLabelText(/^License valid /)).toHaveLength(1);
     });
 
     it('says when a linked organization’s licence is not known yet, and who linked it once they left', async () => {
@@ -152,7 +152,7 @@ describe('license page', () => {
             session: MANAGER,
             script: (api) => api.on(apiRoutes.getLicense, problem(500, 'internal')),
         });
-        expect(await screen.findByText('The licence couldn’t be loaded.', {}, { timeout: 5000 })).toBeTruthy();
+        expect(await screen.findByText('The license couldn’t be loaded.', {}, { timeout: 5000 })).toBeTruthy();
         app.api.on(apiRoutes.getLicense, ok(licenseView()));
         await app.user.click(screen.getByRole('button', { name: 'Try again' }));
         expect(await screen.findByText(/^Linked by /)).toBeTruthy();
@@ -171,8 +171,9 @@ describe('license page', () => {
             ),
         });
         expect(await screen.findByText('Expired')).toBeTruthy();
-        expect(screen.getAllByText('Not covered')).toHaveLength(2);
-        expect(screen.getByText('2 of 0')).toBeTruthy();
+        expect(screen.getByText('2 not covered')).toBeTruthy();
+        expect(screen.getByText('Not covered')).toBeTruthy();
+        expect(screen.getByText('2 · 0 covered')).toBeTruthy();
         expect(screen.getByText('6 · up to 0 per engine')).toBeTruthy();
     });
 
@@ -190,10 +191,10 @@ describe('license page', () => {
 
 describe('engines notice', () => {
     it.each([
-        ['exceeded', 'You use more than your licences cover. Nothing is stopped.'],
-        ['expired', 'Your licence has expired. Your engines keep running; renew it on ptbk.io.'],
-        ['missing', 'No active licence covers your engines. They keep running.'],
-        ['unlinked', 'Link your ptbk.io account to see which engines your licences cover.'],
+        ['exceeded', 'You use more than your licenses cover. Nothing is stopped.'],
+        ['expired', 'Your license has expired. Your engines keep running; renew it on ptbk.io.'],
+        ['missing', 'No active license covers your engines. They keep running.'],
+        ['unlinked', 'Link your ptbk.io account to see which engines your licenses cover.'],
     ] as const)('says %s quietly, with a way to the license page', async (notice, text) => {
         renderApp({ path: '/engines', session: MANAGER, script: withLicense(licenseView({ notice })) });
         expect(await screen.findByText(text)).toBeTruthy();
