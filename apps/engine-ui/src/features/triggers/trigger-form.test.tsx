@@ -386,8 +386,9 @@ describe('trigger form', { timeout: TIMEOUT_MS }, () => {
         expect(agentList).not.toHaveBeenCalled();
     });
 
+    // axe walks every Combobox, DateInput and field of the full form: ~4 s locally, ~26 s on a 2-core CI runner.
     it('has no axe violations', async () => {
         const { container } = await renderForm();
         await expectNoAxeViolations(container);
-    });
+    }, 60_000);
 });
