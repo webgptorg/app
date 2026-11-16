@@ -34,6 +34,8 @@ function demoEngine(permissions?: readonly Permission[]) {
 }
 
 const card = (name: string) => screen.getByRole('button', { name });
+/** The whole card: only the name is the button, its role and state sit beside it. */
+const cardText = (name: string) => card(name).closest('li')?.textContent ?? '';
 
 async function renderGrid(path = '/agents', engine = demoEngine(), storage = createMemoryStorage()) {
     const app = renderWithProviders({ path, engineApi: engine.client, storage });
@@ -55,12 +57,12 @@ describe('agents grid', { timeout: TIMEOUT_MS }, () => {
     it('says what each agent is doing from three lists, never one request per card', async () => {
         const { engine } = await renderGrid();
         await waitFor(() => {
-            expect(card('Max').textContent).toContain('Working · 1 run');
+            expect(cardText('Max')).toContain('Working · 1 run');
         });
-        expect(card('Ada').textContent).toContain('Working · 1 task');
-        expect(card('Chatter').textContent).toContain('Working · 1 chat');
-        expect(card('Iris').textContent).toContain('Idle');
-        expect(card('Copywriter').textContent).toContain('Idle');
+        expect(cardText('Ada')).toContain('Working · 1 task');
+        expect(cardText('Chatter')).toContain('Working · 1 chat');
+        expect(cardText('Iris')).toContain('Idle');
+        expect(cardText('Copywriter')).toContain('Idle');
         expect(engine.spies.listAllChats).toHaveBeenCalledTimes(1);
         expect(engine.spies.listAgentChats).not.toHaveBeenCalled();
         expect(engine.spies.listRuns.mock.calls.map(([query]) => query)).toEqual([{ status: 'running' }]);
@@ -166,9 +168,9 @@ describe('agents grid', { timeout: TIMEOUT_MS }, () => {
             demoEngine(PERMISSIONS.filter((permission) => permission !== 'chats.read' && permission !== 'runs.read')),
         );
         await waitFor(() => {
-            expect(card('Ada').textContent).toContain('Working · 1 task');
+            expect(cardText('Ada')).toContain('Working · 1 task');
         });
-        expect(card('Max').textContent).toContain('Idle');
+        expect(cardText('Max')).toContain('Idle');
         expect(engine.spies.listAllChats).not.toHaveBeenCalled();
         expect(engine.spies.listRuns).not.toHaveBeenCalled();
     });
@@ -202,7 +204,7 @@ describe('agents grid', { timeout: TIMEOUT_MS }, () => {
     it('has no axe violations, with the panel closed and open', async () => {
         const { container, user } = await renderGrid();
         await waitFor(() => {
-            expect(card('Max').textContent).toContain('Working');
+            expect(cardText('Max')).toContain('Working');
         });
         await expectNoAxeViolations(container);
         await user.click(card('Max'));
