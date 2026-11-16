@@ -15,6 +15,7 @@
     "integrations/index.tsx": 52000,
     "triggers/$triggerId/index.tsx": 51000,
     "triggers/index.tsx": 54000,
-    "chats/index.tsx": 50500
+    "chats/index.tsx": 50500,
+    "agents/index.tsx": 70000
   }
 }
