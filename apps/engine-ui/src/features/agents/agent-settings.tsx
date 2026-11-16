@@ -13,6 +13,7 @@ import { useAgentActions } from './agent-actions';
 import { VisibilityIcon, visibilityLabel } from './agent-badges';
 import { useAgentIdParam } from './agent-detail-route';
 import { useAgentTabs } from './agent-tabs';
+import { AgentAvatar } from './agent-avatar';
 import { agentDetailQueryOptions } from './agents-queries';
 
 function visibilityHint(visibility: AgentVisibility): string {
@@ -45,6 +46,33 @@ export function AgentSettings() {
     return (
         // The tabs' line already separates the first section from the header.
         <div className="flex max-w-3xl flex-col gap-6 [&>*:first-child]:border-t-0 [&>*:first-child]:pt-1">
+            <Section title={m.agent_settings_picture()}>
+                <div className="flex flex-wrap items-center gap-5">
+                    <AgentAvatar
+                        name={agent.name}
+                        agentKey={agent.id}
+                        profile={agent.profile}
+                        origin={agent.origin}
+                        size="xl"
+                    />
+                    <div className="flex min-w-0 flex-1 flex-col items-start gap-2">
+                        <p className="text-sm text-text-muted">
+                            {agent.profile.avatarUrl !== null
+                                ? m.agent_settings_picture_own()
+                                : agent.profile.illustration === null
+                                  ? m.agent_settings_picture_auto()
+                                  : m.agent_settings_picture_chosen()}
+                        </p>
+                        {/* Choosing comes later (the contract already carries the choice); the place is shown now. */}
+                        <Button size="sm" disabled aria-describedby="agent-picture-later">
+                            {m.agent_settings_picture_change()}
+                        </Button>
+                        <p id="agent-picture-later" className="text-xs text-text-subtle">
+                            {m.agent_settings_picture_later()}
+                        </p>
+                    </div>
+                </div>
+            </Section>
             {bookTab === undefined || !canEditBook ? null : (
                 <Section
                     title={m.agent_settings_identity()}
