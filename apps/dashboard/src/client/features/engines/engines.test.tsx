@@ -491,6 +491,58 @@ describe('engine name', () => {
         expect(screen.queryByRole('button', { name: 'Name it' })).toBeNull();
     });
 
+    it('invites people to the engine from its page, with its team ticked and the others still offered', async () => {
+        const other: TeamView = { ...teamWith('Contoso'), teamId: 'uuuuuuuuuuuuuuuuuuuuuuuuuu', engineId: null };
+        const app = renderApp({
+            path: `/engines/${ENGINE_ID}`,
+            session: session({ permissions: ['engine.read', 'team.read', 'org.members.manage'] }),
+            script: (api) => {
+                engine(engineView())(api);
+                api.on(apiRoutes.listTeams, ok({ teams: [teamWith('Northwind'), other] }));
+                api.on(
+                    apiRoutes.createInvites,
+                    ok({ results: [{ email: 'eve@example.test', outcome: 'invited' as const }] }),
+                );
+            },
+        });
+        await app.user.click(await screen.findByRole('button', { name: 'Invite to this engine' }));
+        const dialog = await screen.findByRole('dialog', { name: 'Invite people to Northwind' });
+        expect(within(dialog).getByRole('checkbox', { name: 'Northwind' })).toHaveProperty('checked', true);
+        expect(within(dialog).getByRole('checkbox', { name: 'Contoso' })).toHaveProperty('checked', false);
+        await expectNoAxeViolations(app.container);
+        await app.user.type(within(dialog).getByLabelText('Email addresses'), 'eve@example.test');
+        await app.user.click(within(dialog).getByRole('button', { name: 'Send invitations' }));
+        expect(await screen.findByText('Invitations sent: 1')).toBeTruthy();
+        expect(app.api.callsTo(apiRoutes.createInvites)).toEqual([
+            { body: { emails: ['eve@example.test'], role: 'member', teamIds: ['tttttttttttttttttttttttttt'] } },
+        ]);
+    });
+
+    it('offers no invitation without org.members.manage, nor for a suspended engine', async () => {
+        const app = renderApp({
+            path: `/engines/${ENGINE_ID}`,
+            session: session({ permissions: ['engine.read', 'team.read'] }),
+            script: (api) => {
+                engine(engineView())(api);
+                api.on(apiRoutes.listTeams, ok({ teams: [teamWith('Northwind')] }));
+            },
+        });
+        expect(await screen.findByRole('heading', { name: 'Northwind', level: 1 })).toBeTruthy();
+        expect(screen.queryByRole('button', { name: 'Invite to this engine' })).toBeNull();
+        app.unmount();
+
+        renderApp({
+            path: `/engines/${ENGINE_ID}`,
+            session: session({ permissions: ['engine.read', 'team.read', 'org.members.manage'] }),
+            script: (api) => {
+                engine(engineView({ status: 'suspended', suspendedBy: 'owner' }))(api);
+                api.on(apiRoutes.listTeams, ok({ teams: [teamWith('Northwind')] }));
+            },
+        });
+        expect(await screen.findByRole('heading', { name: 'Northwind', level: 1 })).toBeTruthy();
+        expect(screen.queryByRole('button', { name: 'Invite to this engine' })).toBeNull();
+    });
+
     it('opens through an access ticket for someone in the engine’s team, as the list does', async () => {
         const ticket = `https://${ENGINE_ID}.${ENGINE_DOMAIN}/auth/join#ticket`;
         const app = renderApp({

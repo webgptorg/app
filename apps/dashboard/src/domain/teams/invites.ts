@@ -5,7 +5,7 @@ import { newInviteId, newOrgAuditEntryId, type InviteId, type OrgId, type TeamId
 import type { Locale } from '../locale';
 import type { EmailMessage, EmailSender } from '../ports/email-sender';
 import type { OrgRole } from '../roles';
-import type { InvitePreview, InviteRecord } from './team-store';
+import type { InvitePreview, InviteRecord, TeamStore } from './team-store';
 import { teamAudit, type TeamActor, type TeamDeps } from './teams';
 
 /** How long an emailed invitation works (teams spec): long enough for a colleague on holiday, then it lapses. */
@@ -170,7 +170,7 @@ export type AcceptOutcome =
     | { readonly kind: 'email-mismatch' };
 
 export async function acceptInvite(
-    deps: Pick<InviteDeps, 'teams' | 'clock' | 'random'>,
+    deps: Pick<InviteDeps, 'clock' | 'random'> & { readonly teams: Pick<TeamStore, 'previewInvite' | 'acceptInvite'> },
     actor: { readonly userId: UserId; readonly email: string },
     token: string,
 ): Promise<AcceptOutcome> {

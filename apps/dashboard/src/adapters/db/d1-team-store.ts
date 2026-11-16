@@ -28,6 +28,7 @@ import { REFUSED_REMOVAL_OUTCOMES } from '../../domain/teams/team-store';
 import { localeSchema } from '../../domain/locale';
 import { teamNameSchema } from '../../shared/team-name';
 import type { Database } from './client';
+import { isUniqueViolation } from './d1-auth-store';
 import {
     accessTickets,
     engines,
@@ -37,6 +38,8 @@ import {
     memberships,
     orgAuditLog,
     organizations,
+    passkeys,
+    sessions,
     teamMembers,
     teams,
     users,
@@ -95,6 +98,55 @@ function toInvite(row: typeof invites.$inferSelect): InviteRecord {
 }
 
 const pending = (now: number) => and(isNull(invites.acceptedAt), isNull(invites.revokedAt), gt(invites.expiresAt, now));
+
+/**
+ * Spends a pending invitation (optionally only one of `orgId`) and makes `userId` a member of its organization and of
+ * its teams that still exist. Every statement after the update selects the row it spent, so a spent, revoked or expired
+ * invitation changes nothing.
+ */
+function acceptStatements(
+    tokenHash: string,
+    userId: UserId,
+    entry: Omit<TeamAudit, 'actorUserId'>,
+    orgId: OrgId | null,
+): (SQL | { toSQL(): { readonly sql: string; readonly params: unknown[] } })[] {
+    const spent = and(eq(invites.tokenHash, tokenHash), eq(invites.acceptedAt, entry.at));
+    return [
+        spendInvite(tokenHash, entry.at, orgId),
+        sql`
+            INSERT INTO ${memberships} (org_id, user_id, role, created_at)
+            SELECT ${invites.orgId}, ${userId}, ${invites.role}, ${entry.at} FROM ${invites} WHERE ${spent}
+            ON CONFLICT DO NOTHING`,
+        sql`
+            INSERT INTO ${teamMembers} (team_id, user_id, created_at)
+            SELECT ${teams.id}, ${userId}, ${entry.at}
+            FROM ${invites}, json_each(${invites.teamIds}) AS invited
+            INNER JOIN ${teams} ON ${teams.id} = invited.value
+            WHERE ${spent} AND ${teams.orgId} = ${invites.orgId} AND ${teams.deletedAt} IS NULL
+            ON CONFLICT DO NOTHING`,
+        sql`
+            INSERT INTO ${orgAuditLog} (id, org_id, actor_user_id, action, target_type, target_id, created_at)
+            SELECT ${entry.id}, ${invites.orgId}, ${userId}, 'invite.accept', 'invite', ${invites.id}, ${entry.at}
+            FROM ${invites} WHERE ${spent}`,
+    ];
+}
+
+function spendInvite(tokenHash: string, at: number, orgId: OrgId | null): SQL {
+    const scope = orgId === null ? sql`` : sql` AND ${invites.orgId} = ${orgId}`;
+    return sql`
+        UPDATE ${invites} SET accepted_at = ${at}
+        WHERE ${invites.tokenHash} = ${tokenHash} AND ${pending(at)}${scope}
+        RETURNING org_id`;
+}
+
+function acceptedOrg(
+    result: D1Result | undefined,
+): { readonly kind: 'accepted'; readonly orgId: OrgId } | { readonly kind: 'invalid' } {
+    const [row] = result?.results ?? [];
+    return row === undefined
+        ? { kind: 'invalid' }
+        : { kind: 'accepted', orgId: orgIdSchema.parse((row as { readonly org_id: unknown }).org_id) };
+}
 
 /** Teams, their people and invitations in D1 (ADR 0018); see {@link TeamStore} for the rules each method keeps. */
 export function createD1TeamStore(db: Database): TeamStore {
@@ -782,33 +834,49 @@ export function createD1TeamStore(db: Database): TeamStore {
         },
 
         async acceptInvite(tokenHash, userId, entry) {
+            const [accepted] = await transaction(db, acceptStatements(tokenHash, userId, entry, null));
+            return acceptedOrg(accepted);
+        },
+
+        async acceptInviteAsNewUser(tokenHash, account, entry) {
+            const { user, passkey, session } = account;
             const spent = and(eq(invites.tokenHash, tokenHash), eq(invites.acceptedAt, entry.at));
-            const [accepted] = await transaction(db, [
-                db
-                    .update(invites)
-                    .set({ acceptedAt: entry.at })
-                    .where(and(eq(invites.tokenHash, tokenHash), pending(entry.at)))
-                    .returning({ orgId: invites.orgId }),
-                sql`
-                    INSERT INTO ${memberships} (org_id, user_id, role, created_at)
-                    SELECT ${invites.orgId}, ${userId}, ${invites.role}, ${entry.at} FROM ${invites} WHERE ${spent}
-                    ON CONFLICT DO NOTHING`,
-                sql`
-                    INSERT INTO ${teamMembers} (team_id, user_id, created_at)
-                    SELECT ${teams.id}, ${userId}, ${entry.at}
-                    FROM ${invites}, json_each(${invites.teamIds}) AS invited
-                    INNER JOIN ${teams} ON ${teams.id} = invited.value
-                    WHERE ${spent} AND ${teams.orgId} = ${invites.orgId} AND ${teams.deletedAt} IS NULL
-                    ON CONFLICT DO NOTHING`,
-                sql`
-                    INSERT INTO ${orgAuditLog} (id, org_id, actor_user_id, action, target_type, target_id, created_at)
-                    SELECT ${entry.id}, ${invites.orgId}, ${userId}, 'invite.accept', 'invite', ${invites.id}, ${entry.at}
-                    FROM ${invites} WHERE ${spent}`,
-            ]);
-            const [row] = accepted?.results ?? [];
-            return row === undefined
-                ? { kind: 'invalid' }
-                : { kind: 'accepted', orgId: orgIdSchema.parse((row as { readonly org_id: unknown }).org_id) };
+            const [update, ...rest] = acceptStatements(tokenHash, user.id, entry, session.activeOrgId);
+            if (update === undefined) {
+                throw new Error('accepting an invitation takes an update first');
+            }
+            try {
+                // Every insert selects from the invitation it just spent, so an invitation that was not pending writes
+                // nothing at all: no account without the membership it was made for.
+                const [accepted] = await transaction(db, [
+                    update,
+                    sql`
+                        INSERT INTO ${users} (id, email, email_verified_at, locale, platform_role, recovered_at, created_at, webauthn_user_id)
+                        SELECT ${user.id}, ${invites.email}, ${user.emailVerifiedAt}, ${user.locale}, ${user.platformRole},
+                            ${user.recoveredAt}, ${user.createdAt}, ${user.webauthnUserId}
+                        FROM ${invites} WHERE ${spent}`,
+                    sql`
+                        INSERT INTO ${passkeys} (credential_id, user_id, public_key, counter, transports, backed_up, aaguid,
+                            added_via, created_at, last_used_at, counter_regressed_at)
+                        SELECT ${passkey.credentialId}, ${user.id}, ${passkey.publicKey}, ${passkey.counter},
+                            ${JSON.stringify(passkey.transports)}, ${passkey.backedUp ? 1 : 0}, ${passkey.aaguid},
+                            ${passkey.addedVia}, ${passkey.createdAt}, ${passkey.lastUsedAt}, ${passkey.counterRegressedAt}
+                        FROM ${invites} WHERE ${spent}`,
+                    sql`
+                        INSERT INTO ${sessions} (id_hash, user_id, active_org_id, created_at, last_seen_at, expires_at,
+                            stepped_up_at, revoked_at)
+                        SELECT ${session.idHash}, ${user.id}, ${invites.orgId}, ${session.createdAt}, ${session.lastSeenAt},
+                            ${session.expiresAt}, ${session.steppedUpAt}, ${session.revokedAt}
+                        FROM ${invites} WHERE ${spent}`,
+                    ...rest,
+                ]);
+                return acceptedOrg(accepted);
+            } catch (error) {
+                if (isUniqueViolation(error)) {
+                    return { kind: 'conflict' };
+                }
+                throw error;
+            }
         },
     };
 }

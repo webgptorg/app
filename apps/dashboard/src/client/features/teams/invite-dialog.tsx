@@ -27,9 +27,13 @@ export function InviteDialog(props: {
     readonly onClose: () => void;
     /** Teams ticked when the dialog opens, e.g. the team page it was opened from. */
     readonly teamIds?: readonly string[];
+    /** The engine it was opened for, which then names the dialog. */
+    readonly engineName?: string;
 }) {
+    const title =
+        props.engineName === undefined ? m.invite_title() : m.invite_title_engine({ engine: props.engineName });
     return (
-        <Dialog open={props.open} onClose={props.onClose} title={m.invite_title()} description={m.invite_body()}>
+        <Dialog open={props.open} onClose={props.onClose} title={title} description={m.invite_body()}>
             <InviteForm {...props} />
         </Dialog>
     );

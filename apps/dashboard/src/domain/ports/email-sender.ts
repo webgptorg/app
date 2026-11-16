@@ -57,16 +57,23 @@ export type EmailMessage =
           readonly link: string;
       })
     | (Envelope & {
-          /** Someone opened a team and waits for an engine admin's approval; no secret, only where to look. */
+          /**
+           * Someone opened an engine of the organization and waits for approval there. Names, the engine's hostname and
+           * a link to it only: never a secret, never anything from inside the engine.
+           */
           readonly template: 'access-waiting';
           readonly requesterEmail: string;
+          /** The team's name, which the screens call the engine's. */
           readonly teamName: string;
+          /** `https://<engine hostname>/members`, where the engine lists its access requests. */
           readonly link: string;
       })
     | (Envelope & {
           /** The team's engine approved the recipient's access request. */
           readonly template: 'access-granted';
           readonly teamName: string;
+          readonly hostname: string;
+          /** `https://<hostname>/`: the engine itself. */
           readonly link: string;
       })
     | (Envelope & {

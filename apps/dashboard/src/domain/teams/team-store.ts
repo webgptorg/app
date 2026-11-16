@@ -1,6 +1,7 @@
 import type { EngineId } from '@ptbk/protocol';
 
 import type { TeamName } from '../../shared/team-name';
+import type { PasskeyRecord, SessionRecord, UserRecord } from '../auth/records';
 import type { InviteId, LinkCodeId, OrgAuditEntryId, OrgId, TeamId, UserId } from '../ids';
 import type { Locale } from '../locale';
 import type { OrgRole } from '../roles';
@@ -229,4 +230,21 @@ export interface TeamStore {
         userId: UserId,
         audit: Omit<TeamAudit, 'actorUserId'>,
     ): Promise<{ readonly kind: 'accepted'; readonly orgId: OrgId } | { readonly kind: 'invalid' }>;
+    /**
+     * {@link acceptInvite} for someone without an account: creates the user with the invitation's address, their
+     * passkey, and a session in the invitation's organization, in the same transaction. Nothing is written unless the
+     * invitation is still pending and of `session.activeOrgId`; `conflict` when the address or passkey is taken.
+     */
+    acceptInviteAsNewUser(
+        tokenHash: string,
+        account: NewInvitedAccount,
+        audit: Omit<TeamAudit, 'actorUserId'>,
+    ): Promise<{ readonly kind: 'accepted'; readonly orgId: OrgId } | { readonly kind: 'invalid' | 'conflict' }>;
+}
+
+/** The account an invitation creates; its address is the invitation's, so it is not given here. */
+export interface NewInvitedAccount {
+    readonly user: Omit<UserRecord, 'email'>;
+    readonly passkey: PasskeyRecord;
+    readonly session: SessionRecord;
 }
