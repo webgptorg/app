@@ -45,5 +45,8 @@ test('creates an agent through every wizard step', async ({ page, signIn, appUrl
     const agentId = new URL(page.url()).pathname.split('/')[2];
     expect(await apiList(page, `/agents/${String(agentId)}/chats`)).toEqual([]);
     await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Agents', exact: true }).click();
-    await expect(page.getByRole('table', { name: 'Agents' }).getByRole('link', { name, exact: true })).toBeVisible();
+    // The grid, the default view: the new agent is a card among the member's own.
+    await expect(
+        page.getByRole('list', { name: 'Your agents' }).getByRole('button', { name, exact: true }),
+    ).toBeVisible();
 });

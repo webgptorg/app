@@ -51,7 +51,7 @@ test('a member without delete, Wallet and audit permissions is offered none of t
     appUrl,
 }) => {
     await signIn({ kind: 'member', permissions: PERMISSIONS.filter((permission) => !WITHHELD.includes(permission)) });
-    await page.goto(appUrl('/agents'));
+    await page.goto(appUrl('/agents?view=table'));
     await expect(navLink(page, 'Agents')).toBeVisible();
     await expect(navLink(page, 'Wallet')).toHaveCount(0);
     await expect(navLink(page, 'Audit log')).toHaveCount(0);

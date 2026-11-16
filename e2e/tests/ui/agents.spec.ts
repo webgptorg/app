@@ -12,14 +12,15 @@ interface Agent {
     readonly visibility: 'public' | 'unlisted' | 'private';
 }
 
-/** The project's own agents: the table lists only those, the built-in ones sit in their own section below it. */
+/** The project's own agents: the table's first group; the built-in ones are a group of their own below them. */
 async function seededAgents(page: Page): Promise<readonly Agent[]> {
     return apiList<Agent>(page, '/agents?origin=content');
 }
 
+// The table view: the grid, the default, is covered by the unit tests (agents-grid.test.tsx).
 test.beforeEach(async ({ page, signIn, appUrl }) => {
     await signIn();
-    await page.goto(appUrl('/agents'));
+    await page.goto(appUrl('/agents?view=table'));
     await expect(page.getByRole('heading', { level: 1, name: 'Agents' })).toBeVisible();
 });
 
@@ -42,18 +43,21 @@ test('lists the seeded agents, searches and filters them, and keeps the filters 
 
     await page.getByRole('searchbox', { name: 'Search agents' }).fill('');
     await expect(page).toHaveURL((url) => !url.searchParams.has('q'));
-    await page.getByRole('combobox', { name: 'Visibility' }).selectOption('private');
+    await page.getByRole('button', { name: 'Filter', exact: true }).click();
+    await page.getByRole('dialog').getByRole('option', { name: 'Visibility' }).click();
+    await page.getByRole('dialog').getByRole('option', { name: 'Private' }).click();
     await expect(page).toHaveURL((url) => url.searchParams.get('visibility') === 'private');
-    const privateAgents = agents.filter((agent) => agent.visibility === 'private');
-    for (const agent of agents) {
-        await expect(table.getByRole('link', { name: agent.name, exact: true })).toHaveCount(
-            agent.visibility === 'private' ? 1 : 0,
-        );
-    }
+    const shownWhenPrivate = async () => {
+        for (const agent of agents) {
+            await expect(table.getByRole('link', { name: agent.name, exact: true })).toHaveCount(
+                agent.visibility === 'private' ? 1 : 0,
+            );
+        }
+    };
+    await shownWhenPrivate();
 
-    await page.goto(appUrl('/agents?visibility=private'));
-    await expect(page.getByRole('combobox', { name: 'Visibility' })).toHaveValue('private');
-    await expect(table.getByRole('link')).toHaveCount(privateAgents.length);
+    await page.goto(appUrl('/agents?view=table&visibility=private'));
+    await shownWhenPrivate();
 });
 
 test('pages through a fleet larger than one page', async ({ page, engine, signIn, appUrl }) => {
@@ -63,7 +67,7 @@ test('pages through a fleet larger than one page', async ({ page, engine, signIn
     await page.goto('about:blank');
     await reset({ scenario: 'large-fleet', seed: UI_SEED, capabilities: ALL_CAPABILITIES });
     await signIn();
-    await page.goto(appUrl('/agents'));
+    await page.goto(appUrl('/agents?view=table'));
     const table = page.getByRole('table', { name: 'Agents' });
     const firstLink = table.getByRole('link').first();
     await expect(firstLink).toBeVisible();
