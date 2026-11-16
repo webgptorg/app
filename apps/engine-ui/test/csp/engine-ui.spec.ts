@@ -19,17 +19,19 @@ import {
 import { expect, expectCleanPage, readBuiltIndexHtml, test } from './fixtures.ts';
 
 test.describe('the built bundle under the engine CSP', () => {
-    test("/ is the owner's control center, keeps engine text inert and meets the UX checks", async ({
+    test("/ is the owner's Chatter-first home with the feed, keeps engine text inert and meets the UX checks", async ({
         page,
         visit,
     }) => {
         const report = await visit('/');
 
         await expect(page.getByRole('heading', { level: 1, name: /, Owner$/ })).toBeVisible();
-        await expect(page.getByText('Running now', { exact: true })).toBeVisible();
-        const feed = page.getByRole('region', { name: 'Activity' });
+        await expect(page.getByRole('textbox', { name: 'Ask Chatter' })).toBeVisible();
+        await expect(page.getByRole('region', { name: /^Needs you( \d+)?$/ })).toBeVisible();
+        await expect(page.getByRole('region', { name: /^Working now( \d+)?$/ })).toBeVisible();
+        const feed = page.getByRole('region', { name: 'Recent activity' });
         await expect(feed.getByText('deploy.started')).toBeVisible();
-        await expect(feed.getByText('Jana Nováková joined')).toBeVisible();
+        await expect(feed.getByText('Jana Nováková', { exact: true })).toBeVisible();
         await expect(feed.getByRole('link', { name: HOSTILE_AGENT_NAME })).toHaveAttribute(
             'href',
             `/agents/${FAKE_AGENT_ID}`,
@@ -53,7 +55,7 @@ test.describe('the built bundle under the engine CSP', () => {
         expectCleanPage(report);
     });
 
-    test("/ is a member's own home without the control center and meets the UX checks", async ({ page, visit }) => {
+    test("/ is a member's home without the activity feed and meets the UX checks", async ({ page, visit }) => {
         await routeFakeEngineApi(page, {
             member: {
                 id: 'member-jana',
@@ -65,11 +67,9 @@ test.describe('the built bundle under the engine CSP', () => {
         const report = await visit('/');
 
         await expect(page.getByRole('heading', { level: 1, name: /, Jana Nováková$/ })).toBeVisible();
-        await expect(
-            page.getByRole('region', { name: 'Agents you can use' }).getByRole('link', { name: 'Grace', exact: true }),
-        ).toBeVisible();
+        await expect(page.getByRole('textbox', { name: 'Ask Chatter' })).toBeVisible();
         await expect(page.getByRole('region', { name: 'Recent chats' })).toBeVisible();
-        await expect(page.getByRole('region', { name: 'Activity' })).toHaveCount(0);
+        await expect(page.getByRole('region', { name: 'Recent activity' })).toHaveCount(0);
         expectCleanPage(report);
     });
 
@@ -249,29 +249,36 @@ test.describe('the built bundle under the engine CSP', () => {
         expectCleanPage(report);
 
         const filtered = await visit('/runs?status=failed&source=schedule');
-        await expect(page.getByRole('button', { name: /^Status\s*1 selected$/ })).toBeVisible();
-        await expect(page.getByRole('combobox', { name: 'Source' })).toHaveValue('schedule');
+        await expect(page.getByRole('button', { name: 'Status: Failed', exact: true })).toBeVisible();
+        await expect(page.getByRole('button', { name: 'Source: Schedule', exact: true })).toBeVisible();
         await expect(page.getByRole('table').getByRole('link', { name: 'Write the weekly report' })).toBeVisible();
         expectCleanPage(filtered);
     });
 
     for (const path of ['/runs', `/agents/${FAKE_AGENT_ID}/runs`]) {
-        test(`${path} puts its filters behind one button at 360 px, so the first run is in view`, async ({
+        test(`${path} keeps its filter bar on one scrolling line at 360 px, so the first run is in view`, async ({
             page,
             visit,
         }) => {
             await page.setViewportSize({ width: 360, height: 740 });
-            expectCleanPage(await visit(`${path}?source=api`));
+            expectCleanPage(await visit(`${path}?source=api&status=failed,running`));
             await expect(page.getByRole('link', { name: 'Summarise open pull requests' })).toBeInViewport();
-            await expect(page.getByRole('button', { name: 'Remove Source: API' })).toBeVisible();
+            // The chips scroll sideways inside the bar rather than clipping or widening the page.
+            const bar = page.getByRole('search', { name: 'Filter runs' });
+            const chip = bar.getByRole('button', { name: 'Remove Source: API' });
+            await chip.scrollIntoViewIfNeeded();
+            await expect(chip).toBeInViewport();
 
-            await page.getByRole('button', { name: /^Filters/ }).click();
-            const sheet = page.getByRole('dialog', { name: 'Filters' });
-            await expect(sheet.getByRole('checkbox', { name: 'Failed' })).toBeVisible();
-            await expect(sheet.getByRole('combobox', { name: 'Source' })).toHaveValue('api');
-            await sheet.getByRole('checkbox', { name: 'Running' }).check();
-            await sheet.getByRole('button', { name: 'Show results' }).click();
-            await expect(page).toHaveURL(/status=running/);
+            await bar.getByRole('button', { name: 'Filter', exact: true }).click();
+            const dialog = page.getByRole('dialog', { name: 'Filter' });
+            await dialog.getByRole('option', { name: 'Status' }).click();
+            await page.getByRole('dialog', { name: 'Status' }).getByRole('option', { name: 'Queued' }).click();
+            await expect(page).toHaveURL(/status=queued%2Crunning%2Cfailed|status=queued,running,failed/);
+            await page.keyboard.press('Escape');
+            await expect(
+                // The counted values are read from a visually hidden node, which Chrome sets apart with a space.
+                bar.getByRole('button', { name: /^Status: Queued, Running ?, Failed$/ }),
+            ).toBeVisible();
             expect(await page.evaluate(() => window.__ptbkCspViolations ?? [])).toEqual([]);
         });
     }

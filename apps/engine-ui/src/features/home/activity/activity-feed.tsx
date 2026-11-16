@@ -1,9 +1,9 @@
 import { activityPermission } from '@ptbk/engine-api';
 import type { ActivityItem } from '@ptbk/engine-api';
-import { Button, Card, EmptyState, ErrorState, Skeleton, useReducedMotion } from '@ptbk/ui';
+import { Button, EmptyState, ErrorState, Section, Skeleton, useReducedMotion } from '@ptbk/ui';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { getRouteApi } from '@tanstack/react-router';
-import { ArrowUp } from 'lucide-react';
+import { Activity as ActivityIcon, ArrowUp, ChevronRight } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 import { cx } from '../../../app/cx';
@@ -29,15 +29,20 @@ const AREA_LABELS: Readonly<Record<ActivityArea, () => string>> = {
     engine: m.activity_area_engine,
 };
 
+/** Home shows this many rows until the reader asks for all of it (or arrives filtered by area). */
+export const RECENT_ACTIVITY_ROWS = 8;
+
 const ENTER_SLIDE = 'animate-[ptbk-activity-enter_var(--motion-enter)_var(--ease-enter)]';
 const ENTER_FADE = 'animate-[ptbk-activity-fade_var(--motion-enter)_linear]';
 
 /**
  * The live activity feed: the first page from `GET /activity`, then whatever the event stream brings, on top and
- * without a refetch. While the reader is scrolled into the feed, new items wait behind an "N new" button instead of
- * pushing the list down, and a polite live region sums them up at most once per 10 s.
+ * without a refetch. Home shows the newest rows as "Recent activity"; "All activity" opens the whole feed in place,
+ * with area filters and older pages. While the reader is scrolled into the feed, new items wait behind an "N new"
+ * button instead of pushing the list down, and a polite live region sums them up at most once per 10 s.
  */
 export function ActivityFeed() {
+    const [opened, setOpened] = useState(false);
     const area = route.useSearch({ select: (search) => search.activity ?? null });
     const navigate = route.useNavigate();
     const features = useVisibleFeatures();
@@ -57,7 +62,12 @@ export function ActivityFeed() {
     const reducedMotion = useReducedMotion();
     const { sentinelRef, heldFrom, release } = useHoldWhileAway(topId);
     const heldIndex = heldFrom === null ? -1 : items.findIndex((item) => activityId(item) === heldFrom);
-    const shown = heldIndex > 0 ? items.slice(heldIndex) : items;
+    const current = heldIndex > 0 ? items.slice(heldIndex) : items;
+    // A link to a filtered feed opens it whole.
+    const expanded = opened || area !== null;
+    const shown = expanded ? current : current.slice(0, RECENT_ACTIVITY_ROWS);
+    // The way to filters and older pages, so it shows whenever there is any activity at all.
+    const more = !expanded && items.length > 0;
 
     let content;
     if (feed.data === undefined && feed.isError) {
@@ -75,9 +85,15 @@ export function ActivityFeed() {
     } else if (items.length === 0) {
         content =
             area === null ? (
-                <EmptyState title={m.activity_empty()} description={m.activity_empty_body()} headingLevel={3} />
+                <EmptyState
+                    variant="inline"
+                    icon={<ActivityIcon aria-hidden />}
+                    title={m.activity_empty()}
+                    description={m.activity_empty_body()}
+                    headingLevel={3}
+                />
             ) : (
-                <p className="py-4 text-text-muted">{m.activity_empty_area()}</p>
+                <p className="text-sm text-text-muted">{m.activity_empty_area()}</p>
             );
     } else {
         content = (
@@ -96,7 +112,7 @@ export function ActivityFeed() {
                         </Button>
                     </div>
                 ) : null}
-                <ul className="flex flex-col divide-y divide-divider">
+                <ul className="flex flex-col divide-y divide-hairline border-y border-hairline">
                     {shown.map((item) => {
                         const id = activityId(item);
                         return (
@@ -119,7 +135,7 @@ export function ActivityFeed() {
                         }}
                         retrying={feed.isFetchingNextPage}
                     />
-                ) : feed.hasNextPage ? (
+                ) : expanded && feed.hasNextPage ? (
                     <div className="flex justify-center pt-2">
                         <Button
                             variant="secondary"
@@ -137,15 +153,31 @@ export function ActivityFeed() {
     }
 
     return (
-        <Card title={m.activity_title()} className="min-w-0">
+        <Section
+            title={m.home_recent_activity()}
+            className="min-w-0"
+            {...(more
+                ? {
+                      actions: (
+                          <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                  setOpened(true);
+                              }}
+                          >
+                              {m.home_all_activity()}
+                              <ChevronRight aria-hidden className="size-3.5" />
+                          </Button>
+                      ),
+                  }
+                : {})}
+        >
             <div ref={sentinelRef} data-activity-top="" />
-            {/* Filters only once there is something to filter; a chosen area keeps them, so the way back stays. */}
-            {areas.length > 0 && (area !== null || items.length > 0) ? (
-                <div
-                    role="group"
-                    aria-label={m.activity_filter_label()}
-                    className="-mx-1 flex gap-2 overflow-x-auto px-1 pt-1 pb-2"
-                >
+            {/* Filters once the whole feed is open and there is something to filter; a chosen area keeps them, so the
+                way back stays. They wrap rather than scroll, so no area hides off the edge of a phone. */}
+            {expanded && areas.length > 0 && (area !== null || items.length > 0) ? (
+                <div role="group" aria-label={m.activity_filter_label()} className="flex flex-wrap gap-1">
                     {[null, ...areas].map((chip) => (
                         <button
                             key={chip ?? 'all'}
@@ -155,10 +187,11 @@ export function ActivityFeed() {
                                 void navigate({ search: (previous) => ({ ...previous, activity: chip ?? undefined }) });
                             }}
                             className={cx(
-                                'min-h-9 shrink-0 rounded-pill border px-3 text-sm',
+                                'min-h-7 shrink-0 cursor-pointer rounded-pill px-2.5 text-xs font-medium',
+                                'motion-safe:transition-colors motion-safe:duration-(--motion-state)',
                                 chip === area
-                                    ? 'border-accent bg-selected font-medium text-accent-text'
-                                    : 'border-border text-text hover:bg-hover',
+                                    ? 'bg-selected text-text'
+                                    : 'text-text-muted hover:bg-hover hover:text-text',
                             )}
                         >
                             {chip === null ? m.activity_area_all() : AREA_LABELS[chip]()}
@@ -170,20 +203,18 @@ export function ActivityFeed() {
             <p aria-live="polite" className="sr-only">
                 {announcement}
             </p>
-        </Card>
+        </Section>
     );
 }
 
 function FeedSkeleton() {
     return (
-        <ul aria-busy="true" className="flex flex-col divide-y divide-divider">
+        <ul aria-busy="true" className="flex flex-col divide-y divide-hairline">
             {[0, 1, 2, 3].map((row) => (
-                <li key={row} className="flex gap-3 py-3">
-                    <Skeleton shape="circle" className="size-8" />
-                    <div className="flex flex-1 flex-col gap-2">
-                        <Skeleton className="h-3 w-32" />
-                        <Skeleton className="h-4 w-3/4" />
-                    </div>
+                <li key={row} className="flex items-center gap-3 py-3">
+                    <Skeleton shape="circle" className="size-4" />
+                    <Skeleton className="h-4 flex-1" />
+                    <Skeleton className="h-4 w-16" />
                 </li>
             ))}
         </ul>

@@ -302,7 +302,7 @@ describe('agents list permissions', { timeout: TIMEOUT_MS }, () => {
             within(builtIn)
                 .getAllByRole('link')
                 .map((link) => link.textContent),
-        ).toEqual(['CChatter', 'AAdam', 'FFixer', 'RRouter', 'TTasker', 'TTeacher', 'EExpert']);
+        ).toEqual(['Chatter', 'Adam', 'Fixer', 'Router', 'Tasker', 'Teacher', 'Expert']);
         expect(
             within(builtIn)
                 .getByRole('link', { name: /Chatter/ })

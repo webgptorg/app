@@ -324,7 +324,10 @@ export function Menu({ label, trigger, items, align = 'start', matchTriggerWidth
         const body = (
             <>
                 {entry.icon === undefined ? null : (
-                    <span aria-hidden="true" className="flex size-4 shrink-0 items-center justify-center">
+                    <span
+                        aria-hidden="true"
+                        className="flex size-4 shrink-0 items-center justify-center text-(--menu-icon)"
+                    >
                         {entry.icon}
                     </span>
                 )}
@@ -347,8 +350,8 @@ export function Menu({ label, trigger, items, align = 'start', matchTriggerWidth
                 setActiveIndex(itemIndex);
             },
             className: cx(
-                'flex w-full items-center gap-2 rounded-(--menu-item-radius) px-3 py-2 text-start text-sm outline-none',
-                'focus-visible:bg-(--menu-item-active) hover:bg-(--menu-item-active)',
+                'flex min-h-8 w-full items-center gap-2 rounded-(--menu-item-radius) px-2.5 py-1.5 text-start text-xs outline-none',
+                'hover:bg-(--menu-item-hover) focus-visible:bg-(--menu-item-active)',
                 'motion-safe:transition-colors motion-safe:duration-(--motion-state)',
             ),
         } as const;
@@ -389,7 +392,7 @@ export function Menu({ label, trigger, items, align = 'start', matchTriggerWidth
             >
                 {body}
                 {entry.checked === true ? (
-                    <Check aria-hidden="true" className="ms-auto size-4 shrink-0 text-(--menu-check)" />
+                    <Check aria-hidden="true" className="ms-auto size-3.5 shrink-0 text-(--menu-check)" />
                 ) : null}
             </button>
         );
@@ -426,7 +429,7 @@ export function Menu({ label, trigger, items, align = 'start', matchTriggerWidth
                                 <div
                                     id={headingId}
                                     role="presentation"
-                                    className="px-3 pt-2 pb-1 text-xs font-medium text-(--menu-muted)"
+                                    className="px-2.5 pt-2 pb-1 text-2xs font-medium text-(--menu-muted)"
                                 >
                                     {section.heading.label}
                                 </div>

@@ -132,18 +132,17 @@ describe('trigger activity renderers', { timeout: TIMEOUT_MS }, () => {
     it('renders every v1 trigger kind with links to the trigger and, for a fire, its run', async () => {
         renderInApp(createTriggersEngine(), feed);
         const list = await screen.findByRole('list', { name: 'Feed' }, { timeout: APP_READY_MS });
-        expect(within(list).getByText('<b>Morning</b> report started a run')).toBeDefined();
-        expect(within(list).getByText('<b>Morning</b> report failed')).toBeDefined();
+        // One table-like line each: the trigger as a chip, the run a fire started, the outcome in words.
+        for (const outcome of ['Fired', 'Failed', 'Paused', 'Resumed'])
+            expect(within(list).getByText(outcome)).toBeDefined();
         expect(within(list).getByText('Nothing ran.')).toBeDefined();
-        expect(within(list).getByText('<b>Morning</b> report was paused')).toBeDefined();
-        expect(within(list).getByText('<b>Morning</b> report was resumed')).toBeDefined();
         expect(list.querySelector('b')).toBeNull();
-        for (const link of within(list).getAllByRole('link', { name: /^<b>Morning<\/b> report/ })) {
-            expect(link.getAttribute('href')).toBe(`/triggers/${TRIGGER_IDS.weekday}`);
-        }
+        const triggers = within(list).getAllByRole('link', { name: '<b>Morning</b> report' });
+        expect(triggers).toHaveLength(4);
+        for (const link of triggers) expect(link.getAttribute('href')).toBe(`/triggers/${TRIGGER_IDS.weekday}`);
         expect(
             within(list)
-                .getAllByRole('link', { name: 'Open run' })
+                .getAllByRole('link', { name: 'Run' })
                 .map((link) => link.getAttribute('href')),
         ).toEqual(['/runs/run-morning']);
         expect(ACTIVITIES.map((activity) => renderer.summary(activity))).toEqual([
@@ -158,7 +157,7 @@ describe('trigger activity renderers', { timeout: TIMEOUT_MS }, () => {
         renderInApp(createTriggersEngine({ capabilities: WITHOUT_RUNS }), feed);
         const list = await screen.findByRole('list', { name: 'Feed' }, { timeout: APP_READY_MS });
         expect(within(list).getAllByRole('link', { name: /^<b>Morning<\/b> report/ })).toHaveLength(4);
-        expect(within(list).queryByRole('link', { name: 'Open run' })).toBeNull();
+        expect(within(list).queryByRole('link', { name: 'Run' })).toBeNull();
     });
 });
 

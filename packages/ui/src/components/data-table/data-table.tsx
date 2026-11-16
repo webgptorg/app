@@ -12,7 +12,7 @@ import type {
     Updater,
 } from '@tanstack/react-table';
 import { ArrowDown, ArrowUp, ArrowUpDown, ChevronRight, Columns3, Ellipsis } from 'lucide-react';
-import { Fragment, useCallback, useId, useRef, useState } from 'react';
+import { useCallback, useId, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 
 import { useUiMessages } from '../../i18n/ui-provider';
@@ -21,6 +21,7 @@ import { useScrollEdges } from '../../internal/scroll-edges';
 import { Button } from '../button/button';
 import { Checkbox } from '../checkbox/checkbox';
 import { EmptyState } from '../empty-state/empty-state';
+import type { FilterBarColumns, FilterBarSort } from '../filter-bar/filter-bar';
 import { ErrorState } from '../error-state/error-state';
 import { Field } from '../field/field';
 import { IconButton } from '../icon-button/icon-button';
@@ -113,6 +114,33 @@ export interface DataTableProps<TData extends RowData> {
     /** Estimated row height in px, for virtualisation and skeleton rows. */
     readonly rowHeight?: number;
     readonly skeletonRows?: number;
+    /**
+     * The bar above the rows, usually a `FilterBar`: it gets the table's sort and column visibility to mirror, so
+     * `toolbar={(view) => <FilterBar {...view} fields={…} />}` puts Sort and Columns in the bar instead of a row of
+     * their own.
+     */
+    readonly toolbar?: (view: DataTableView) => ReactNode;
+    /** Splits the rows under group headers (e.g. Now, Coming up, Done) with counts, keeping their order within a group. */
+    readonly groups?: DataTableGrouping<TData>;
+    /** `false` for a list that always has an order (e.g. newest first): a sorted header then flips instead of clearing. */
+    readonly sortingRemoval?: boolean;
+}
+
+/** What `DataTable` hands its toolbar: present only when the table has something to offer. */
+export interface DataTableView {
+    readonly sort?: FilterBarSort;
+    readonly columns?: FilterBarColumns;
+}
+
+export interface DataTableGroup {
+    readonly id: string;
+    readonly label: string;
+}
+
+export interface DataTableGrouping<TData extends RowData> {
+    /** In display order; a group without rows is left out. */
+    readonly groups: readonly DataTableGroup[];
+    readonly getGroupId: (row: TData) => string;
 }
 
 const DEFAULT_VIRTUALIZE_ABOVE = 100;
@@ -120,7 +148,7 @@ const DEFAULT_VIRTUALIZE_ABOVE = 100;
 export const COLUMN_MENU_MIN_ROWS = 6;
 /** One or two rows have no order worth choosing; sort buttons there are only noise and extra Tab stops. */
 export const SORT_MIN_ROWS = 3;
-const DEFAULT_ROW_HEIGHT = 48;
+const DEFAULT_ROW_HEIGHT = 40;
 const NO_SORTING: SortingState = [];
 const NO_FILTERS: ColumnFiltersState = [];
 
@@ -212,10 +240,33 @@ export function wantsColumnMenu({ hideableColumns, hiddenColumns, rows, paged, f
     return hiddenColumns > 0 || paged || filtered || rows >= COLUMN_MENU_MIN_ROWS;
 }
 
+type TableItem<TData extends RowData> =
+    | { readonly kind: 'group'; readonly id: string; readonly label: string; readonly count: number }
+    | { readonly kind: 'row'; readonly row: TableRow<TData> };
+
+/** The rows as one flat list, with a header item before each non-empty group, so virtualisation sees one sequence. */
+export function tableItems<TData extends RowData>(
+    rows: readonly TableRow<TData>[],
+    grouping: DataTableGrouping<TData> | undefined,
+): readonly TableItem<TData>[] {
+    if (grouping === undefined) return rows.map((row) => ({ kind: 'row', row }));
+    const byGroup = new Map<string, TableRow<TData>[]>(grouping.groups.map((group) => [group.id, []]));
+    for (const row of rows) byGroup.get(grouping.getGroupId(row.original))?.push(row);
+    return grouping.groups.flatMap((group): TableItem<TData>[] => {
+        const members = byGroup.get(group.id) ?? [];
+        if (members.length === 0) return [];
+        return [
+            { kind: 'group', id: group.id, label: group.label, count: members.length },
+            ...members.map((row): TableItem<TData> => ({ kind: 'row', row })),
+        ];
+    });
+}
+
 /**
  * The one table for every list (ADR 0007): real `<table>` semantics with sortable headers, filters, column visibility,
- * selection, expansion, row actions and cursor paging, built-in loading, empty, no-results and error states,
- * virtualisation for long lists, and cards below 768 px so a table never scrolls the page sideways.
+ * selection, expansion, row actions, group headers and cursor paging, built-in loading, empty, no-results and error
+ * states, and virtualisation for long lists. Rows are quiet: hairlines, no zebra, actions on hover. Below 768 px each
+ * row becomes a two-line item, so a table never scrolls the page sideways.
  */
 export function DataTable<TData extends RowData>(props: DataTableProps<TData>) {
     const {
@@ -240,6 +291,9 @@ export function DataTable<TData extends RowData>(props: DataTableProps<TData>) {
         rowHeight = DEFAULT_ROW_HEIGHT,
         skeletonRows = 5,
         visibilityStorage,
+        toolbar,
+        groups,
+        sortingRemoval = true,
     } = props;
     const messages = useUiMessages();
     const narrow = useNarrow();
@@ -309,17 +363,20 @@ export function DataTable<TData extends RowData>(props: DataTableProps<TData>) {
         onExpandedChange: setExpanded,
         manualSorting: mode === 'server',
         manualFiltering: mode === 'server',
+        enableSortingRemoval: sortingRemoval,
         enableRowSelection: selection === undefined ? false : (row) => canSelect?.(row.original) ?? true,
         getRowCanExpand: (row) => expansion !== undefined && (canExpand?.(row.original) ?? true),
     });
 
     const rows = table.getRowModel().rows;
+    const items = tableItems(rows, groups);
     const visibleColumns = table.getVisibleLeafColumns();
     const filterColumns = table.getAllLeafColumns().flatMap((column) => {
         const filter = column.columnDef.meta?.filter;
         return filter === undefined ? [] : [{ column, filter }];
     });
     const hideableColumns = table.getAllLeafColumns().filter((column) => column.getCanHide());
+    const sortableColumns = table.getAllLeafColumns().filter((column) => column.getCanSort());
     const paged = hasOtherPages(page);
     const columnMenuWanted = wantsColumnMenu({
         hideableColumns: hideableColumns.length,
@@ -333,7 +390,7 @@ export function DataTable<TData extends RowData>(props: DataTableProps<TData>) {
     if (columnMenuWanted && !columnMenuShown) setColumnMenuShown(true);
     const showColumnMenu = hideableColumns.length > 0 && !narrow && (columnMenuWanted || columnMenuShown);
     const sortingWanted = wantsSorting({
-        sortableColumns: table.getAllLeafColumns().filter((column) => column.getCanSort()).length,
+        sortableColumns: sortableColumns.length,
         rows: data.length,
         paged,
         sorted: sorting.length > 0,
@@ -350,11 +407,14 @@ export function DataTable<TData extends RowData>(props: DataTableProps<TData>) {
     const showSkeleton = loading && rows.length === 0;
 
     const rowWindow = useRowWindow({
-        count: rows.length,
-        enabled: !showSkeleton && rows.length > virtualizeAbove,
+        count: items.length,
+        enabled: !showSkeleton && items.length > virtualizeAbove,
         rowHeight,
         scrollRef,
-        getKey: (index) => rows[index]?.id ?? String(index),
+        getKey: (index) => {
+            const item = items[index];
+            return item === undefined ? String(index) : item.kind === 'group' ? `group:${item.id}` : item.row.id;
+        },
     });
 
     const edges = useScrollEdges(
@@ -375,6 +435,38 @@ export function DataTable<TData extends RowData>(props: DataTableProps<TData>) {
         rowHeight: rowWindow.virtual ? rowHeight : undefined,
     };
 
+    const visibleCount = hideableColumns.filter((column) => column.getIsVisible()).length;
+    const firstSort = sorting[0];
+    const view: DataTableView = {
+        ...(showSorting && sortableColumns.length > 0
+            ? {
+                  sort: {
+                      options: sortableColumns.map((column) => ({ id: column.id, label: columnLabel(column) })),
+                      value: firstSort === undefined ? undefined : { id: firstSort.id, desc: firstSort.desc },
+                      onChange: (next) => {
+                          setSorting([{ id: next.id, desc: next.desc }]);
+                      },
+                  },
+              }
+            : {}),
+        ...(hideableColumns.length > 0 && !narrow
+            ? {
+                  columns: {
+                      items: hideableColumns.map((column) => ({
+                          id: column.id,
+                          label: columnLabel(column),
+                          visible: column.getIsVisible(),
+                          // The last visible column stays: a table without columns explains nothing.
+                          disabled: visibleCount === 1 && column.getIsVisible(),
+                      })),
+                      onToggle: (id) => {
+                          table.getColumn(id)?.toggleVisibility();
+                      },
+                  },
+              }
+            : {}),
+    };
+
     const emptyContent = (() => {
         if (showSkeleton || rows.length > 0 || error !== undefined) return null;
         return hasActiveFilter(columnFilters) ? (
@@ -388,19 +480,24 @@ export function DataTable<TData extends RowData>(props: DataTableProps<TData>) {
         );
     })();
 
+    const selectionStatus =
+        selection === undefined ? null : (
+            <p aria-live="polite" className="min-h-5 text-xs text-(--data-table-muted) tabular-nums">
+                {selectedCount > 0 ? messages.selectedCount({ count: selectedCount }) : null}
+            </p>
+        );
+    const legacyControls = filterColumns.length > 0 || (toolbar === undefined && showColumnMenu);
+
     return (
-        <div className="flex min-w-0 flex-col gap-3">
-            {filterColumns.length > 0 || showColumnMenu || selection !== undefined ? (
+        <div className="flex min-w-0 flex-col gap-2">
+            {toolbar === undefined ? null : toolbar(view)}
+            {legacyControls || selection !== undefined ? (
                 <div className="flex flex-wrap items-end gap-3">
                     {filterColumns.map(({ column, filter }) => (
                         <ColumnFilterControl key={column.id} column={column} filter={filter} />
                     ))}
-                    {selection === undefined ? null : (
-                        <p aria-live="polite" className="min-h-5 text-sm text-(--data-table-muted)">
-                            {selectedCount > 0 ? messages.selectedCount({ count: selectedCount }) : null}
-                        </p>
-                    )}
-                    {showColumnMenu ? (
+                    {selectionStatus}
+                    {toolbar === undefined && showColumnMenu ? (
                         <div className="ms-auto">
                             <ColumnVisibilityMenu columns={hideableColumns} />
                         </div>
@@ -424,27 +521,37 @@ export function DataTable<TData extends RowData>(props: DataTableProps<TData>) {
                     )}
                 >
                     {showSkeleton ? (
-                        <ul aria-label={caption} className="flex flex-col gap-3">
+                        <ul aria-label={caption} className="flex flex-col">
                             {Array.from({ length: skeletonRows }, (_, index) => (
-                                <li key={index} className="rounded-(--data-table-radius) bg-(--data-table-card-bg) p-4">
-                                    <Skeleton shape="text" className="h-5 w-1/2" />
-                                    <Skeleton shape="text" className="mt-3 h-4 w-3/4" />
+                                <li key={index} className="border-b border-(--data-table-divider) py-3">
+                                    <Skeleton shape="text" className="h-4 w-1/2" />
+                                    <Skeleton shape="text" className="mt-2 h-3 w-3/4" />
                                 </li>
                             ))}
                         </ul>
                     ) : rows.length === 0 ? (
                         emptyContent
                     ) : (
-                        <ul aria-label={caption} className="flex flex-col gap-3">
+                        <ul aria-label={caption} className="flex flex-col">
                             {rowWindow.paddingBefore > 0 ? (
                                 <li aria-hidden="true" style={{ height: rowWindow.paddingBefore }} />
                             ) : null}
                             {rowWindow.indices.map((index) => {
-                                const row = rows[index];
-                                return row === undefined ? null : (
-                                    <RowCard
-                                        key={row.id}
-                                        row={row}
+                                const item = items[index];
+                                if (item === undefined) return null;
+                                return item.kind === 'group' ? (
+                                    <li
+                                        key={`group:${item.id}`}
+                                        data-index={index}
+                                        ref={rowWindow.measure}
+                                        className="flex items-baseline gap-2 border-b border-(--data-table-divider) pt-4 pb-1.5 text-xs font-medium text-(--data-table-header-text)"
+                                    >
+                                        <GroupLabel label={item.label} count={item.count} />
+                                    </li>
+                                ) : (
+                                    <RowItem
+                                        key={item.row.id}
+                                        row={item.row}
                                         index={index}
                                         context={rowContext}
                                         measureRef={rowWindow.measure}
@@ -458,120 +565,121 @@ export function DataTable<TData extends RowData>(props: DataTableProps<TData>) {
                     )}
                 </div>
             ) : (
-                <div className="overflow-hidden rounded-(--data-table-radius) border border-(--data-table-border) bg-(--data-table-bg)">
-                    <div
-                        ref={scrollRef}
-                        aria-busy={busy || undefined}
-                        // Scrolled content without a control in it is out of a keyboard's reach unless the box takes focus.
-                        {...(rowWindow.virtual || overflowing
-                            ? { role: 'region', 'aria-labelledby': captionId, tabIndex: 0 }
-                            : {})}
+                <div
+                    ref={scrollRef}
+                    aria-busy={busy || undefined}
+                    // Scrolled content without a control in it is out of a keyboard's reach unless the box takes focus.
+                    {...(rowWindow.virtual || overflowing
+                        ? { role: 'region', 'aria-labelledby': captionId, tabIndex: 0 }
+                        : {})}
+                    className={cx(
+                        // The box scrolls itself, so the header stays in view above the rows.
+                        'max-h-(--data-table-max-height) overflow-auto focus-visible:-outline-offset-2',
+                        fade !== null && FADE_CLASSES[fade],
+                    )}
+                >
+                    <table
                         className={cx(
-                            'overflow-x-auto focus-visible:-outline-offset-2',
-                            rowWindow.virtual && 'max-h-(--data-table-max-height) overflow-y-auto',
-                            fade !== null && FADE_CLASSES[fade],
+                            'w-full border-separate border-spacing-0 text-left text-sm text-(--data-table-text)',
+                            'motion-safe:transition-opacity motion-safe:duration-(--motion-state) motion-safe:ease-standard',
+                            fetching && '[filter:var(--data-table-fetching-filter)]',
                         )}
                     >
-                        <table
-                            className={cx(
-                                'w-full border-collapse text-left text-sm text-(--data-table-text)',
-                                'motion-safe:transition-opacity motion-safe:duration-(--motion-state) motion-safe:ease-standard',
-                                fetching && '[filter:var(--data-table-fetching-filter)]',
-                            )}
+                        <caption
+                            id={captionId}
+                            className={showCaption ? 'pb-2 text-left text-base font-semibold' : 'sr-only'}
                         >
-                            <caption
-                                id={captionId}
-                                className={
-                                    showCaption ? 'pb-2 text-left font-display text-lg font-semibold' : 'sr-only'
-                                }
-                            >
-                                {caption}
-                            </caption>
-                            <thead className="sticky top-0 z-10 bg-(--data-table-header-bg)">
-                                {table.getHeaderGroups().map((group) => (
-                                    <tr key={group.id}>
-                                        {selection === undefined ? null : (
-                                            <th scope="col" className="w-10 px-3 py-2">
-                                                <Checkbox
-                                                    aria-label={messages.selectAllOnPage()}
-                                                    checked={table.getIsAllPageRowsSelected()}
-                                                    indeterminate={table.getIsSomePageRowsSelected()}
-                                                    disabled={rows.length === 0}
-                                                    onChange={table.getToggleAllPageRowsSelectedHandler()}
-                                                />
-                                            </th>
-                                        )}
-                                        {expansion === undefined ? null : <td className="w-10 px-1 py-2" />}
-                                        {group.headers.map((header) => (
-                                            <HeaderCell
-                                                key={header.id}
-                                                header={header}
-                                                table={table}
-                                                sortable={showSorting}
+                            {caption}
+                        </caption>
+                        <thead className="sticky top-0 z-10 bg-(--data-table-header-bg)">
+                            {table.getHeaderGroups().map((group) => (
+                                <tr key={group.id}>
+                                    {selection === undefined ? null : (
+                                        <th scope="col" className={cx(HEADER_CELL, 'w-10 px-3')}>
+                                            <Checkbox
+                                                aria-label={messages.selectAllOnPage()}
+                                                checked={table.getIsAllPageRowsSelected()}
+                                                indeterminate={table.getIsSomePageRowsSelected()}
+                                                disabled={rows.length === 0}
+                                                onChange={table.getToggleAllPageRowsSelectedHandler()}
                                             />
+                                        </th>
+                                    )}
+                                    {expansion === undefined ? null : <td className={cx(HEADER_CELL, 'w-10 px-1')} />}
+                                    {group.headers.map((header) => (
+                                        <HeaderCell
+                                            key={header.id}
+                                            header={header}
+                                            table={table}
+                                            sortable={showSorting}
+                                        />
+                                    ))}
+                                    {rowActions === undefined ? null : <td className={cx(HEADER_CELL, 'w-10 px-1')} />}
+                                </tr>
+                            ))}
+                        </thead>
+                        {showSkeleton ? (
+                            <tbody>
+                                {Array.from({ length: skeletonRows }, (_, index) => (
+                                    <tr key={index} style={{ height: rowHeight }}>
+                                        {Array.from({ length: columnCount }, (_, cell) => (
+                                            <td key={cell} className={BODY_CELL}>
+                                                <Skeleton shape="text" />
+                                            </td>
                                         ))}
-                                        {rowActions === undefined ? null : <td className="w-12 px-1 py-2" />}
                                     </tr>
                                 ))}
-                            </thead>
-                            {showSkeleton ? (
-                                <tbody>
-                                    {Array.from({ length: skeletonRows }, (_, index) => (
-                                        <tr
-                                            key={index}
-                                            style={{ height: rowHeight }}
-                                            className="border-t border-(--data-table-divider)"
-                                        >
-                                            {Array.from({ length: columnCount }, (_, cell) => (
-                                                <td key={cell} className="px-3 py-2">
-                                                    <Skeleton shape="text" />
-                                                </td>
-                                            ))}
+                            </tbody>
+                        ) : rows.length === 0 ? (
+                            <tbody>
+                                <tr>
+                                    <td colSpan={columnCount}>{emptyContent}</td>
+                                </tr>
+                            </tbody>
+                        ) : (
+                            <>
+                                {rowWindow.paddingBefore > 0 ? (
+                                    <tbody aria-hidden="true">
+                                        <tr>
+                                            <td colSpan={columnCount} style={{ height: rowWindow.paddingBefore }} />
                                         </tr>
-                                    ))}
-                                </tbody>
-                            ) : rows.length === 0 ? (
-                                <tbody>
-                                    <tr>
-                                        <td colSpan={columnCount}>{emptyContent}</td>
-                                    </tr>
-                                </tbody>
-                            ) : (
-                                <>
-                                    {rowWindow.paddingBefore > 0 ? (
-                                        <tbody aria-hidden="true">
-                                            <tr>
-                                                <td colSpan={columnCount} style={{ height: rowWindow.paddingBefore }} />
-                                            </tr>
-                                        </tbody>
-                                    ) : null}
-                                    {rowWindow.virtual ? (
-                                        rowWindow.indices.map((index) => {
-                                            const row = rows[index];
-                                            return row === undefined ? null : (
-                                                <tbody key={row.id} data-index={index} ref={rowWindow.measure}>
-                                                    <TableRow row={row} context={rowContext} />
-                                                </tbody>
-                                            );
-                                        })
-                                    ) : (
-                                        <tbody>
-                                            {rows.map((row) => (
-                                                <TableRow key={row.id} row={row} context={rowContext} />
-                                            ))}
-                                        </tbody>
-                                    )}
-                                    {rowWindow.paddingAfter > 0 ? (
-                                        <tbody aria-hidden="true">
-                                            <tr>
-                                                <td colSpan={columnCount} style={{ height: rowWindow.paddingAfter }} />
-                                            </tr>
-                                        </tbody>
-                                    ) : null}
-                                </>
-                            )}
-                        </table>
-                    </div>
+                                    </tbody>
+                                ) : null}
+                                {rowWindow.virtual ? (
+                                    rowWindow.indices.map((index) => {
+                                        const item = items[index];
+                                        if (item === undefined) return null;
+                                        return (
+                                            <tbody
+                                                key={item.kind === 'group' ? `group:${item.id}` : item.row.id}
+                                                data-index={index}
+                                                ref={rowWindow.measure}
+                                            >
+                                                <TableItemRow item={item} context={rowContext} />
+                                            </tbody>
+                                        );
+                                    })
+                                ) : (
+                                    <tbody>
+                                        {items.map((item) => (
+                                            <TableItemRow
+                                                key={item.kind === 'group' ? `group:${item.id}` : item.row.id}
+                                                item={item}
+                                                context={rowContext}
+                                            />
+                                        ))}
+                                    </tbody>
+                                )}
+                                {rowWindow.paddingAfter > 0 ? (
+                                    <tbody aria-hidden="true">
+                                        <tr>
+                                            <td colSpan={columnCount} style={{ height: rowWindow.paddingAfter }} />
+                                        </tr>
+                                    </tbody>
+                                ) : null}
+                            </>
+                        )}
+                    </table>
                 </div>
             )}
 
@@ -603,6 +711,10 @@ export function DataTable<TData extends RowData>(props: DataTableProps<TData>) {
     );
 }
 
+/** Header cells: quiet small labels over one hairline; cells carry the borders, which stay put under a sticky header. */
+const HEADER_CELL = 'h-9 border-b border-(--data-table-divider) align-middle';
+const BODY_CELL = 'h-(--data-table-row-height) border-b border-(--data-table-divider) px-3 py-1.5 align-middle';
+
 type DataTableInstance<TData extends RowData> = ReturnType<typeof useTable<DataTableFeatures, TData>>;
 
 interface RowContext<TData extends RowData> {
@@ -616,6 +728,38 @@ interface RowContext<TData extends RowData> {
     readonly rowHeight: number | undefined;
 }
 
+function GroupLabel({ label, count }: { readonly label: string; readonly count: number }) {
+    return (
+        <>
+            <span className="text-(--data-table-text)">{label}</span>
+            <span className="text-(--data-table-muted) tabular-nums">{count}</span>
+        </>
+    );
+}
+
+function TableItemRow<TData extends RowData>({
+    item,
+    context,
+}: {
+    readonly item: TableItem<TData>;
+    readonly context: RowContext<TData>;
+}) {
+    if (item.kind === 'row') return <TableRow row={item.row} context={context} />;
+    return (
+        <tr>
+            <th
+                scope="rowgroup"
+                colSpan={context.columnCount}
+                className="h-9 border-b border-(--data-table-divider) px-3 pt-3 text-left align-bottom text-xs font-medium"
+            >
+                <span className="inline-flex items-baseline gap-2">
+                    <GroupLabel label={item.label} count={item.count} />
+                </span>
+            </th>
+        </tr>
+    );
+}
+
 function HeaderCell<TData extends RowData>({
     header,
     table,
@@ -627,11 +771,27 @@ function HeaderCell<TData extends RowData>({
 }) {
     const messages = useUiMessages();
     const { column } = header;
-    const content = header.isPlaceholder ? null : <table.FlexRender header={header} />;
+    const meta = column.columnDef.meta;
+    const numeric = meta?.numeric === true;
+    const content = header.isPlaceholder ? null : (
+        <>
+            {meta?.icon === undefined ? null : (
+                <span aria-hidden="true" className="flex shrink-0 items-center text-(--data-table-header-icon)">
+                    {meta.icon}
+                </span>
+            )}
+            <table.FlexRender header={header} />
+        </>
+    );
+    const cellClass = cx(
+        HEADER_CELL,
+        'text-2xs font-medium whitespace-nowrap text-(--data-table-header-text)',
+        numeric && 'text-end',
+    );
     if (!sortable || !column.getCanSort()) {
         return (
-            <th scope="col" className="px-3 py-2 font-medium whitespace-nowrap text-(--data-table-header-text)">
-                {content}
+            <th scope="col" className={cx(cellClass, 'px-1.5')}>
+                <span className="inline-flex items-center gap-1.5 px-1.5 py-1">{content}</span>
             </th>
         );
     }
@@ -646,16 +806,28 @@ function HeaderCell<TData extends RowData>({
         <th
             scope="col"
             aria-sort={sorted === 'asc' ? 'ascending' : sorted === 'desc' ? 'descending' : 'none'}
-            className="px-1 py-1 font-medium whitespace-nowrap text-(--data-table-header-text)"
+            className={cx(cellClass, 'px-1.5')}
         >
             <button
                 type="button"
                 aria-label={name}
                 onClick={column.getToggleSortingHandler()}
-                className="inline-flex cursor-pointer items-center gap-1 rounded-small px-2 py-1 hover:bg-(--data-table-row-hover) motion-safe:transition-colors motion-safe:duration-(--motion-state)"
+                className={cx(
+                    'group/sort inline-flex cursor-pointer items-center gap-1.5 rounded-small px-1.5 py-1 hover:bg-(--data-table-row-hover) hover:text-(--data-table-text)',
+                    'motion-safe:transition-colors motion-safe:duration-(--motion-state)',
+                    sorted !== false && 'text-(--data-table-text)',
+                )}
             >
                 {content}
-                <Icon aria-hidden="true" className={cx('size-3.5', sorted === false && 'text-(--data-table-muted)')} />
+                <Icon
+                    aria-hidden="true"
+                    className={cx(
+                        'size-3.5 shrink-0',
+                        // An unsorted column shows its arrows only on hover or focus, so the header row stays quiet.
+                        sorted === false &&
+                            'opacity-0 group-hover/sort:opacity-100 group-focus-visible/sort:opacity-100',
+                    )}
+                />
             </button>
         </th>
     );
@@ -715,12 +887,18 @@ function ExpandButton<TData extends RowData>({
     );
 }
 
+/**
+ * The row's ⋯ menu. With a mouse it appears on row hover; it stays in the tab order and shows on focus, and on touch
+ * screens (no hover) it is always visible.
+ */
 function RowActionsMenu<TData extends RowData>({
     row,
     context,
+    reveal,
 }: {
     readonly row: TableRow<TData>;
     readonly context: RowContext<TData>;
+    readonly reveal: boolean;
 }) {
     const messages = useUiMessages();
     if (context.rowActions === undefined) return null;
@@ -739,6 +917,10 @@ function RowActionsMenu<TData extends RowData>({
                     size="sm"
                     label={label}
                     icon={<Ellipsis aria-hidden="true" className="size-4" />}
+                    className={cx(
+                        reveal &&
+                            'pointer-fine:opacity-0 pointer-fine:group-hover/row:opacity-100 pointer-fine:group-focus-within/row:opacity-100 pointer-fine:aria-expanded:opacity-100',
+                    )}
                 />
             )}
         />
@@ -761,34 +943,40 @@ function TableRow<TData extends RowData>({
                 aria-selected={selection === undefined ? undefined : row.getIsSelected()}
                 style={context.rowHeight === undefined ? undefined : { height: context.rowHeight }}
                 className={cx(
-                    'border-t border-(--data-table-divider) hover:bg-(--data-table-row-hover)',
+                    'group/row hover:bg-(--data-table-row-hover)',
                     row.getIsSelected() && 'bg-(--data-table-row-selected)',
                 )}
             >
                 {selection === undefined ? null : (
-                    <td className="px-3 py-2">
+                    <td className={BODY_CELL}>
                         <SelectRowCheckbox row={row} context={context} />
                     </td>
                 )}
                 {expansion === undefined ? null : (
-                    <td className="px-1 py-2">
+                    <td className={cx(BODY_CELL, 'px-1')}>
                         <ExpandButton row={row} context={context} detailId={detailId} />
                     </td>
                 )}
                 {row.getVisibleCells().map((cell) => (
-                    <td key={cell.id} className="px-3 py-2 align-middle">
+                    <td
+                        key={cell.id}
+                        className={cx(
+                            BODY_CELL,
+                            cell.column.columnDef.meta?.numeric === true && 'text-end tabular-nums',
+                        )}
+                    >
                         <table.FlexRender cell={cell} />
                     </td>
                 ))}
                 {rowActions === undefined ? null : (
-                    <td className="px-1 py-2 text-right">
-                        <RowActionsMenu row={row} context={context} />
+                    <td className={cx(BODY_CELL, 'px-1 text-end')}>
+                        <RowActionsMenu row={row} context={context} reveal />
                     </td>
                 )}
             </tr>
             {isExpanded ? (
                 <tr id={detailId} className="bg-(--data-table-expanded-bg)">
-                    <td colSpan={context.columnCount} className="px-4 py-3">
+                    <td colSpan={context.columnCount} className="border-b border-(--data-table-divider) px-4 py-3">
                         {expansion.renderExpanded(row.original)}
                     </td>
                 </tr>
@@ -797,8 +985,17 @@ function TableRow<TData extends RowData>({
     );
 }
 
-function cardColumns<TData extends RowData>(cells: readonly Cell<DataTableFeatures, TData>[]) {
-    return cells
+interface NarrowLayout<TData extends RowData> {
+    readonly title: Cell<DataTableFeatures, TData> | undefined;
+    readonly trailing: readonly Cell<DataTableFeatures, TData>[];
+    readonly meta: readonly Cell<DataTableFeatures, TData>[];
+}
+
+/** Splits a row's cells for the two-line item: a title, what trails it, and the meta line, by column priority. */
+export function narrowLayout<TData extends RowData>(
+    cells: readonly Cell<DataTableFeatures, TData>[],
+): NarrowLayout<TData> {
+    const ordered = cells
         .filter((cell) => cell.column.columnDef.meta?.hideOnCard !== true)
         .map((cell, order) => ({
             cell,
@@ -807,9 +1004,19 @@ function cardColumns<TData extends RowData>(cells: readonly Cell<DataTableFeatur
         }))
         .sort((a, b) => a.priority - b.priority || a.order - b.order)
         .map(({ cell }) => cell);
+    const [title, ...rest] = ordered;
+    return {
+        title,
+        trailing: rest.filter((cell) => cell.column.columnDef.meta?.trailing === true),
+        meta: rest.filter((cell) => cell.column.columnDef.meta?.trailing !== true),
+    };
 }
 
-function RowCard<TData extends RowData>({
+/**
+ * A row on a narrow screen: the title with what trails it on the first line, the other cells as a quiet meta line of
+ * chips and values under it. Each value is labelled for screen readers, so nothing depends on its position.
+ */
+function RowItem<TData extends RowData>({
     row,
     index,
     context,
@@ -823,7 +1030,7 @@ function RowCard<TData extends RowData>({
     const detailId = useId();
     const titleId = useId();
     const { selection, expansion, table } = context;
-    const [title, ...rest] = cardColumns(row.getVisibleCells());
+    const { title, trailing, meta } = narrowLayout(row.getVisibleCells());
     const isExpanded = expansion !== undefined && row.getIsExpanded();
     return (
         <li
@@ -831,36 +1038,46 @@ function RowCard<TData extends RowData>({
             ref={measureRef}
             aria-labelledby={titleId}
             className={cx(
-                'flex flex-col gap-3 rounded-(--data-table-radius) border border-(--data-table-border) bg-(--data-table-card-bg) p-4',
-                row.getIsSelected() && 'border-(--data-table-card-selected-border) bg-(--data-table-row-selected)',
+                'flex flex-col gap-1 border-b border-(--data-table-divider) py-2.5',
+                row.getIsSelected() && 'bg-(--data-table-row-selected)',
             )}
         >
-            <div className="flex items-start gap-2">
+            <div className="flex min-h-6 items-center gap-2">
                 {selection === undefined ? null : (
-                    <span className="flex min-h-6 items-center">
+                    <span className="flex items-center">
                         <SelectRowCheckbox row={row} context={context} />
                     </span>
                 )}
                 <div id={titleId} className="min-w-0 flex-1 font-medium break-words">
                     {title === undefined ? context.getRowLabel(row.original) : <table.FlexRender cell={title} />}
                 </div>
+                {trailing.map((cell) => (
+                    <span key={cell.id} className="shrink-0 text-xs text-(--data-table-muted) tabular-nums">
+                        <span className="sr-only">{`${columnLabel(cell.column)}: `}</span>
+                        <table.FlexRender cell={cell} />
+                    </span>
+                ))}
                 {expansion === undefined ? null : <ExpandButton row={row} context={context} detailId={detailId} />}
-                <RowActionsMenu row={row} context={context} />
+                <RowActionsMenu row={row} context={context} reveal={false} />
             </div>
-            {rest.length === 0 ? null : (
-                <dl className="grid grid-cols-[minmax(0,auto)_minmax(0,1fr)] gap-x-4 gap-y-1 text-sm">
-                    {rest.map((cell) => (
-                        <Fragment key={cell.id}>
-                            <dt className="text-(--data-table-muted)">{columnLabel(cell.column)}</dt>
-                            <dd className="min-w-0 break-words">
-                                <table.FlexRender cell={cell} />
-                            </dd>
-                        </Fragment>
+            {meta.length === 0 ? null : (
+                <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-(--data-table-muted)">
+                    {meta.map((cell) => (
+                        <span
+                            key={cell.id}
+                            className={cx(
+                                'inline-flex min-w-0 items-center',
+                                cell.column.columnDef.meta?.numeric === true && 'tabular-nums',
+                            )}
+                        >
+                            <span className="sr-only">{`${columnLabel(cell.column)}: `}</span>
+                            <table.FlexRender cell={cell} />
+                        </span>
                     ))}
-                </dl>
+                </div>
             )}
             {isExpanded ? (
-                <div id={detailId} className="border-t border-(--data-table-divider) pt-3">
+                <div id={detailId} className="pt-2">
                     {expansion.renderExpanded(row.original)}
                 </div>
             ) : null}
@@ -935,7 +1152,7 @@ function ColumnVisibilityMenu<TData extends RowData>({ columns }: { readonly col
             align="end"
             items={items}
             trigger={(triggerProps) => (
-                <Button {...triggerProps} size="sm">
+                <Button {...triggerProps} size="sm" variant="ghost">
                     <Columns3 aria-hidden="true" className="size-4" />
                     {messages.columns()}
                 </Button>

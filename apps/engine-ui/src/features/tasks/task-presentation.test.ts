@@ -37,8 +37,9 @@ describe('task presentation', () => {
         }
         expect(occurrenceTone('completed')).toBe('success');
         expect(occurrenceTone('interrupted')).toBe('danger');
-        expect(occurrenceTone('running')).toBe('accent');
-        expect(occurrenceTone('pending')).toBe('neutral');
+        expect(occurrenceTone('running')).toBe('live');
+        expect(occurrenceTone('pending')).toBe('waiting');
+        expect(occurrenceTone('cancelled')).toBe('neutral');
     });
 
     it('reads the URL leniently and sends the engine only what is set', () => {

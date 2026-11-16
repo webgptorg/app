@@ -7,7 +7,8 @@ import {
     relativeLuminance,
     SEMANTIC_PAIRS,
 } from '../src/theme/contrast.ts';
-import { parseTokenSheet, tokenNames } from '../src/theme/tokens.ts';
+import { TINT_SURFACE_RANGE } from '../src/theme/tint.ts';
+import { parseTokenSheet, resolveToken, tokenNames } from '../src/theme/tokens.ts';
 import { loadTokenSheet } from './theme-sources.ts';
 
 describe('contrastRatio', () => {
@@ -27,6 +28,14 @@ describe('contrastRatio', () => {
         const sheet = parseTokenSheet(':root { --a: #000; --b: var(--missing); }');
         const results = checkContrast(sheet, [{ foreground: '--a', background: '--b', minimum: 4.5 }]);
         expect(results.map((result) => result.ratio)).toEqual([0, 0]);
+    });
+
+    it('composites a wash over the page surface', () => {
+        const sheet = parseTokenSheet(
+            ':root { --color-surface: #ffffff; --ink: #000; --wash: color-mix(in oklab, var(--ink) 50%, transparent); --plain: #808080; }',
+        );
+        const [light] = checkContrast(sheet, [{ foreground: '--wash', background: '--plain', minimum: 1 }]);
+        expect(light?.ratio).toBeCloseTo(contrastRatio('#808080', '#808080'), 1);
     });
 
     it('derives text-on-background pairs from component token names', () => {
@@ -60,5 +69,29 @@ describe('theme contrast', () => {
                     `${result.theme}: ${result.foreground} on ${result.background} = ${result.ratio.toFixed(2)} < ${String(result.minimum)}`,
             );
         expect(failing).toEqual([]);
+    });
+});
+
+describe('tinted labels', () => {
+    it('are derived against grey levels that still bracket the surfaces they sit on', async () => {
+        const sheet = await loadTokenSheet();
+        for (const theme of ['light', 'dark'] as const) {
+            const channels = (name: string) => {
+                const value = resolveToken(sheet, name, theme) ?? '';
+                return [1, 3, 5].map((offset) => Number.parseInt(value.slice(offset, offset + 2), 16));
+            };
+            const text = channels('--color-text');
+            const raised = channels('--color-raised');
+            const hoverOverRaised = raised.map((channel, index) => channel * 0.95 + (text[index] ?? 0) * 0.05);
+            const levels = [
+                ...channels('--color-surface'),
+                ...raised,
+                ...channels('--color-sunken'),
+                ...hoverOverRaised,
+            ];
+            const [low, high] = TINT_SURFACE_RANGE[theme];
+            expect(Math.min(...levels), theme).toBeGreaterThanOrEqual(low);
+            expect(Math.max(...levels), theme).toBeLessThanOrEqual(high);
+        }
     });
 });

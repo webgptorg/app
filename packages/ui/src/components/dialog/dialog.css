@@ -2,7 +2,7 @@
     --dialog-bg: var(--color-raised);
     --dialog-text: var(--color-text);
     --dialog-muted: var(--color-text-muted);
-    --dialog-border: var(--color-divider);
+    --dialog-border: var(--color-hairline);
     --dialog-radius: var(--radius-surface);
     --dialog-shadow: var(--shadow-overlay);
     --dialog-backdrop: var(--color-scrim);

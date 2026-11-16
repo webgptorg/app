@@ -56,8 +56,11 @@ export function TaskCard({ view }: { readonly view: TaskView }) {
             {state === 'completed' && (commit !== null || open) ? (
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
                     {commit === null ? null : (
-                        <span className="meta" title={commit}>
-                            {m.chat_ref_commit()} {commit.slice(0, 7)}
+                        <span className="meta">
+                            {m.chat_ref_commit()}{' '}
+                            <span className="font-mono" title={commit}>
+                                {commit.slice(0, 7)}
+                            </span>
                         </span>
                     )}
                     {open ? <OpenTaskLink taskId={taskId} className="ms-auto" /> : null}

@@ -1,8 +1,9 @@
 import type { Activity } from '@ptbk/engine-api';
 
-import { Link } from '../../app/link';
+import { ActivityLine } from '../entities/activity-line';
+import type { ActivityOutcome } from '../entities/activity-line';
+import { EntityChip } from '../entities/entity-chip';
 import { m } from '../../paraglide/messages';
-import { useRunLinks } from './use-run-links';
 
 type TriggerActivity = Extract<Activity, { readonly kind: `trigger.${string}` }>;
 
@@ -25,28 +26,35 @@ export function triggerActivitySummary(activity: Activity): string {
     }
 }
 
-/** The home feed's card body for a trigger event; a fire links to its run where the engine serves runs and the member may read them. */
+function triggerOutcome(activity: TriggerActivity): ActivityOutcome {
+    switch (activity.kind) {
+        case 'trigger.fired':
+            return { tone: 'info', label: m.activity_outcome_fired() };
+        case 'trigger.failed':
+            return { tone: 'danger', label: m.activity_outcome_failed() };
+        case 'trigger.paused':
+            return { tone: 'neutral', label: m.activity_outcome_paused() };
+        case 'trigger.resumed':
+            return { tone: 'success', label: m.activity_outcome_resumed() };
+    }
+}
+
+/** A trigger event as an activity line: the trigger and, for a fire, the run it started, as chips. */
 export function TriggerActivityItem({ activity }: { readonly activity: Activity }) {
-    const linkRuns = useRunLinks();
     if (!isTriggerActivity(activity)) return null;
     const runId = activity.kind === 'trigger.fired' ? activity.runId : null;
     const error = activity.kind === 'trigger.failed' ? activity.error : null;
     return (
-        <div className="flex flex-col gap-1 text-sm">
-            <Link
-                to="/triggers/$triggerId"
-                params={{ triggerId: activity.triggerId }}
-                variant="standalone"
-                className="break-words"
-            >
-                {triggerActivitySummary(activity)}
-            </Link>
-            {error === null ? null : <p className="break-words text-text-muted">{error.summary}</p>}
-            {runId !== null && linkRuns ? (
-                <Link to="/runs/$runId" params={{ runId }} className="self-start">
-                    {m.trigger_activity_open_run()}
-                </Link>
-            ) : null}
-        </div>
+        <ActivityLine
+            activity={activity}
+            description={
+                <>
+                    <EntityChip kind="trigger" id={activity.triggerId} name={activity.name} />
+                    {runId === null ? null : <EntityChip kind="run" id={runId} name={m.activity_run_chip()} />}
+                </>
+            }
+            outcome={triggerOutcome(activity)}
+            facts={error?.summary ?? null}
+        />
     );
 }

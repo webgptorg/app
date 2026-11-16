@@ -1,12 +1,30 @@
 :root {
+    --filter-bar-text: var(--color-text);
+    --filter-bar-muted: var(--color-text-muted);
+    --filter-bar-hover: var(--color-hover);
+    --filter-bar-chip-bg: var(--color-raised);
+    --filter-bar-chip-border: var(--color-divider);
+    --filter-bar-chip-radius: var(--radius-small);
+    --filter-bar-popover-bg: var(--color-raised);
+    --filter-bar-popover-border: var(--color-divider);
+    --filter-bar-popover-radius: var(--radius-control);
+    --filter-bar-popover-shadow: var(--shadow-raised);
+    --filter-bar-item-radius: var(--radius-small);
+    --filter-bar-item-active: var(--color-hover);
+    --filter-bar-check-border: var(--color-border);
+    --filter-bar-check-bg: var(--color-text);
+    --filter-bar-check-text: var(--color-surface);
+    --filter-bar-check-mark: var(--color-text);
+    /* How far the edge that hides chips fades out on a narrow screen. */
+    --filter-bar-fade: 1.5rem;
+
+    /* The first filter pattern (LegacyFilterBar), until the remaining lists move over. */
     --filter-bar-icon: var(--color-text-muted);
     --filter-bar-label: var(--color-text-muted);
     --filter-bar-active-border: var(--color-accent);
     --filter-bar-count-bg: var(--color-accent-soft);
     --filter-bar-count-text: var(--color-accent-text);
-    --filter-bar-chip-bg: var(--color-raised);
     --filter-bar-chip-hover: var(--color-hover);
-    --filter-bar-chip-border: var(--color-divider);
     --filter-bar-chip-text: var(--color-text);
 }
 

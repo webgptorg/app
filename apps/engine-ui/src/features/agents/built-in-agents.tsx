@@ -59,7 +59,7 @@ function BuiltInAgentRow({ agent }: { readonly agent: Agent }) {
                 variant="standalone"
                 className="inline-flex shrink-0 items-center gap-2 font-medium sm:w-40"
             >
-                <AgentAvatar name={agent.name} profile={agent.profile} />
+                <AgentAvatar name={agent.name} agentKey={agent.id} profile={agent.profile} />
                 <span className="truncate">{agent.name}</span>
             </Link>
             <span className="min-w-0 text-sm break-words text-text-muted">{agent.profile.description}</span>

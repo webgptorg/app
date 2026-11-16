@@ -1,0 +1,20 @@
+/*
+ * An entity chip is a faint wash of its tint. Agents show their colour in the label too; every other entity keeps the
+ * text colour and gets the hue only in the wash (and its status dot), so a task never reads as an agent.
+ */
+:root {
+    --entity-chip-radius: var(--radius-small);
+    --entity-chip-wash: 12%;
+    --entity-chip-wash-hover: 20%;
+    --entity-chip-neutral-wash: 6%;
+    --entity-chip-neutral-wash-hover: 12%;
+    /*
+     * Like a soft button: a light wash of the text colour with a hairline, rather than a filled grey slab, which read
+     * as a heavy block in dark mode. Washes of the text colour stay as light in both themes.
+     */
+    --entity-chip-neutral-base: color-mix(in oklab, var(--color-text) 4%, transparent);
+    --entity-chip-neutral-border: var(--color-hairline);
+    --entity-chip-text: var(--color-text);
+    --entity-chip-icon: var(--color-text-muted);
+    --entity-chip-fallback-tint: var(--color-text-muted);
+}

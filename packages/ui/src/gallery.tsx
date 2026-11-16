@@ -1,5 +1,6 @@
 import { actionMenuGallery } from './components/action-menu/action-menu.gallery';
 import { filterBarGallery } from './components/filter-bar/filter-bar.gallery';
+import { legacyFilterBarGallery } from './components/filter-bar/legacy-filter-bar.gallery';
 import { tooltipGallery } from './components/tooltip/tooltip.gallery';
 import { hovercardGallery } from './components/hovercard/hovercard.gallery';
 import { emptyValueGallery } from './components/empty-value/empty-value.gallery';
@@ -9,6 +10,8 @@ import { fieldGallery } from './components/field/field.gallery';
 import { inputGallery } from './components/input/input.gallery';
 import { textareaGallery } from './components/textarea/textarea.gallery';
 import { selectGallery } from './components/select/select.gallery';
+import { comboboxGallery } from './components/combobox/combobox.gallery';
+import { dateInputGallery } from './components/date-input/date-input.gallery';
 import { checkboxGallery } from './components/checkbox/checkbox.gallery';
 import { switchGallery } from './components/switch/switch.gallery';
 import { anchorGallery } from './components/anchor/anchor.gallery';
@@ -40,27 +43,38 @@ import { spinnerGallery } from './components/spinner/spinner.gallery';
 import { trustMarkGallery } from './components/trust-mark/trust-mark.gallery';
 import { visuallyHiddenGallery } from './components/visually-hidden/visually-hidden.gallery';
 import { formsGallery } from './forms/forms.gallery';
+import { avatarGallery } from './components/avatar/avatar.gallery';
+import { entityChipGallery } from './components/entity-chip/entity-chip.gallery';
+import { sectionGallery } from './components/section/section.gallery';
+import { statusGallery } from './components/status/status.gallery';
+import { identityGallery } from './identity.gallery';
+import { peekCardGallery } from './components/peek-card/peek-card.gallery';
 import type { GalleryEntry } from './gallery-entry';
 
-/** Every component module's gallery entry, in alphabetical order. */
+/** The identity overview first, then every component module's gallery entry, in alphabetical order. */
 export const GALLERY_ENTRIES: readonly GalleryEntry[] = [
+    identityGallery,
     actionMenuGallery,
     anchorGallery,
+    avatarGallery,
     badgeGallery,
     bannerGallery,
     buttonGallery,
     cardGallery,
     checkboxGallery,
     codeTextGallery,
+    comboboxGallery,
     commandPaletteGallery,
     confirmDialogGallery,
     dataTableGallery,
+    dateInputGallery,
     copyButtonGallery,
     dialogGallery,
     drawerGallery,
     emptyStateGallery,
     emptyValueGallery,
     engineSwitcherGallery,
+    entityChipGallery,
     errorStateGallery,
     externalLinkGallery,
     fieldGallery,
@@ -70,14 +84,18 @@ export const GALLERY_ENTRIES: readonly GalleryEntry[] = [
     iconButtonGallery,
     inputGallery,
     languageSwitchGallery,
+    legacyFilterBarGallery,
     menuGallery,
     paginationGallery,
+    peekCardGallery,
     relativeTimeGallery,
+    sectionGallery,
     selectGallery,
     monogramGallery,
     skeletonGallery,
     skipLinkGallery,
     spinnerGallery,
+    statusGallery,
     switchGallery,
     tabsGallery,
     technicalDetailsGallery,
@@ -97,7 +115,7 @@ export function Gallery() {
         <div data-ptbk-gallery="" className="flex flex-col gap-10">
             {GALLERY_ENTRIES.map((entry) => (
                 <section key={entry.id} aria-labelledby={`gallery-${entry.id}`} className="flex flex-col gap-4">
-                    <h2 id={`gallery-${entry.id}`} className="text-xl font-semibold">
+                    <h2 id={`gallery-${entry.id}`} className="text-lg font-semibold">
                         {entry.title}
                     </h2>
                     {entry.render()}

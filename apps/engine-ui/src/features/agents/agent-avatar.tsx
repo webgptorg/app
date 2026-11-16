@@ -1,35 +1,38 @@
 import type { AgentProfile } from '@ptbk/engine-api';
+import { Avatar } from '@ptbk/ui';
+import type { AvatarSize } from '@ptbk/ui';
 
-import { cx } from '../../app/cx';
 import { safeImageSource } from '../../security/safe-url';
+import { agentColor } from '../chat/references/agent-color';
 
-const SIZE_CLASSES = { xs: 'size-6 text-xs', sm: 'size-8 text-sm', lg: 'size-14 text-xl' } as const;
+const SIZES = { '2xs': '2xs', xs: 'sm', sm: 'md', lg: 'lg' } as const satisfies Record<string, AvatarSize>;
+export type AgentAvatarSize = keyof typeof SIZES;
 
 /**
- * The agent's picture, or its initial. The profile colour is engine data (a validated `#rrggbb`), applied through
- * the CSSOM as a ring so text contrast never depends on it.
+ * The agent's picture, or its initial on a wash of its colour: its profile colour, else the palette hue its key hashes
+ * to, so an agent looks the same in lists, chips, the palette and a thread. Without `agentKey` (an agent not known by
+ * ID) only a profile colour tints it. `Avatar` passes only a `#rrggbb` or a colour token on to CSS.
  */
 export function AgentAvatar({
     name,
     profile,
+    agentKey,
     size = 'sm',
+    className,
 }: {
     readonly name: string;
     readonly profile: Pick<AgentProfile, 'avatarUrl' | 'color'>;
-    readonly size?: keyof typeof SIZE_CLASSES;
+    readonly agentKey?: string | undefined;
+    readonly size?: AgentAvatarSize;
+    readonly className?: string | undefined;
 }) {
-    const source = profile.avatarUrl === null ? null : safeImageSource(profile.avatarUrl);
-    const ring = profile.color === null ? undefined : { borderColor: profile.color };
-    const className = cx(
-        'inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-divider bg-raised font-display font-semibold',
-        SIZE_CLASSES[size],
-    );
-    if (source !== null) {
-        return <img src={source} alt="" className={cx(className, 'object-cover')} style={ring} />;
-    }
     return (
-        <span aria-hidden="true" className={className} style={ring}>
-            {Array.from(name.trim())[0]?.toLocaleUpperCase() ?? null}
-        </span>
+        <Avatar
+            name={name}
+            src={profile.avatarUrl === null ? null : safeImageSource(profile.avatarUrl)}
+            tint={agentKey === undefined ? profile.color : agentColor(profile.color, agentKey)}
+            size={SIZES[size]}
+            {...(className === undefined ? {} : { className })}
+        />
     );
 }

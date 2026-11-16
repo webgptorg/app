@@ -4,26 +4,30 @@
  * semantic.css's mappings, never a component.
  */
 :root {
-    --ptbk-white: #ffffff;
-    --ptbk-black: #000000;
-
-    --ptbk-neutral-25: #fbfcfd;
-    --ptbk-neutral-50: #f4f6f8;
-    --ptbk-neutral-100: #eaeef2;
-    --ptbk-neutral-200: #d9dfe6;
-    --ptbk-neutral-300: #c1cad4;
-    --ptbk-neutral-400: #96a1ae;
-    --ptbk-neutral-500: #6c7785;
-    --ptbk-neutral-600: #525c69;
-    --ptbk-neutral-700: #3a434f;
-    --ptbk-neutral-800: #262d37;
-    --ptbk-neutral-900: #161b22;
-
-    --ptbk-ink-600: #2a3644;
-    --ptbk-ink-700: #1d2733;
-    --ptbk-ink-800: #141c26;
-    --ptbk-ink-900: #0d131b;
-    --ptbk-ink-950: #080c12;
+    /* Graphite: a near-neutral grey with a trace of blue, the chrome of both themes (U-17). */
+    --ptbk-graphite-0: #ffffff;
+    --ptbk-graphite-25: #fbfbfc;
+    --ptbk-graphite-50: #f6f6f7;
+    --ptbk-graphite-75: #f1f1f3;
+    --ptbk-graphite-100: #ececee;
+    --ptbk-graphite-150: #e6e6e9;
+    --ptbk-graphite-200: #dfdfe3;
+    --ptbk-graphite-300: #cacacf;
+    --ptbk-graphite-400: #a0a0a8;
+    --ptbk-graphite-450: #8a8a93;
+    --ptbk-graphite-500: #74747d;
+    --ptbk-graphite-550: #696972;
+    --ptbk-graphite-600: #5d5d66;
+    --ptbk-graphite-700: #45454d;
+    --ptbk-graphite-750: #38383f;
+    --ptbk-graphite-800: #2c2c32;
+    --ptbk-graphite-825: #26262b;
+    --ptbk-graphite-850: #212125;
+    --ptbk-graphite-875: #1c1c20;
+    --ptbk-graphite-900: #18181b;
+    --ptbk-graphite-925: #141416;
+    --ptbk-graphite-950: #111113;
+    --ptbk-graphite-975: #0c0c0e;
 
     --ptbk-cyan-50: #ecfdff;
     --ptbk-cyan-100: #cff8fc;
@@ -37,32 +41,48 @@
     --ptbk-cyan-900: #134a59;
     --ptbk-cyan-950: #072f3b;
 
+    --ptbk-teal-100: #d3eff3;
+    --ptbk-teal-300: #6cc5d2;
+    --ptbk-teal-400: #49b3c3;
+    --ptbk-teal-900: #1a4249;
+
     --ptbk-mint-300: #74e6c6;
     --ptbk-mint-400: #3ad2a7;
+    --ptbk-mint-450: #45b994;
     --ptbk-mint-500: #14b88c;
     --ptbk-mint-600: #079572;
     --ptbk-mint-700: #06765b;
 
-    --ptbk-green-50: #effcf3;
+    /*
+     * Status hues. The light 50s and the dark 975s are the quiet soft fills: a trace of the hue over graphite, never a
+     * saturated slab. The dark 350s are the readable text and dot colours, a step calmer than the 300s agents use.
+     */
+    --ptbk-green-50: #edf7f0;
     --ptbk-green-300: #86e8a8;
+    --ptbk-green-350: #79c895;
     --ptbk-green-700: #17733c;
-    --ptbk-green-950: #06291a;
+    --ptbk-green-975: #142019;
 
-    --ptbk-amber-50: #fff9eb;
+    --ptbk-amber-50: #fbf4e6;
     --ptbk-amber-300: #fcd364;
+    --ptbk-amber-350: #e0b25c;
     --ptbk-amber-700: #a14b08;
-    --ptbk-amber-950: #3a1a04;
+    --ptbk-amber-975: #231d12;
 
-    --ptbk-red-50: #fff2f2;
+    --ptbk-red-50: #fcf0f0;
+    --ptbk-red-250: #f5b0b0;
     --ptbk-red-300: #fda4a4;
+    --ptbk-red-350: #ee8f8f;
     --ptbk-red-600: #d42a2a;
     --ptbk-red-700: #b11f1f;
-    --ptbk-red-950: #3f0c0c;
+    --ptbk-red-800: #8f2424;
+    --ptbk-red-975: #2a1718;
 
-    --ptbk-blue-50: #eff5ff;
+    --ptbk-blue-50: #eef3fc;
     --ptbk-blue-300: #9cc3fd;
+    --ptbk-blue-350: #8fb3f2;
     --ptbk-blue-700: #1f4fc8;
-    --ptbk-blue-950: #14204a;
+    --ptbk-blue-975: #161c2a;
 
     --ptbk-violet-300: #c3b1fa;
     --ptbk-violet-700: #6b43c9;
@@ -72,40 +92,50 @@
     --ptbk-olive-700: #5c6a12;
     --ptbk-orange-300: #f8b878;
 
-    --ptbk-font-display: 'Outfit Variable', 'Outfit Fallback', ui-sans-serif, system-ui, sans-serif;
     --ptbk-font-text: 'Inter Variable', 'Inter Fallback', ui-sans-serif, system-ui, sans-serif;
     --ptbk-font-mono: 'JetBrains Mono Variable', 'JetBrains Mono Fallback', ui-monospace, monospace;
 
-    --ptbk-font-size-xs: 0.75rem;
+    --ptbk-font-size-2xs: 0.75rem;
+    --ptbk-font-size-xs: 0.8125rem;
     --ptbk-font-size-sm: 0.875rem;
     --ptbk-font-size-md: 1rem;
     --ptbk-font-size-lg: 1.125rem;
     --ptbk-font-size-xl: 1.25rem;
     --ptbk-font-size-2xl: 1.5rem;
     --ptbk-font-size-3xl: 1.875rem;
-    --ptbk-line-height-tight: 1.25;
-    --ptbk-line-height-normal: 1.5;
+    --ptbk-line-height-2xs: 1rem;
+    --ptbk-line-height-xs: 1.125rem;
+    --ptbk-line-height-sm: 1.25rem;
+    --ptbk-line-height-md: 1.5rem;
+    --ptbk-line-height-lg: 1.625rem;
+    --ptbk-line-height-xl: 1.75rem;
+    --ptbk-line-height-2xl: 2rem;
+    --ptbk-line-height-3xl: 2.25rem;
+    --ptbk-tracking-display: -0.02em;
+    --ptbk-tracking-heading: -0.011em;
+    --ptbk-weight-display: 600;
 
     --ptbk-space-unit: 0.25rem;
 
-    --ptbk-radius-sm: 0.375rem;
-    --ptbk-radius-md: 0.5rem;
-    --ptbk-radius-lg: 0.875rem;
+    --ptbk-radius-sm: 0.25rem;
+    --ptbk-radius-md: 0.375rem;
+    --ptbk-radius-lg: 0.625rem;
     --ptbk-radius-full: 9999px;
 
-    --ptbk-shadow-1: 0 1px 2px rgb(13 19 27 / 0.06), 0 1px 1px rgb(13 19 27 / 0.04);
-    --ptbk-shadow-2: 0 2px 4px rgb(13 19 27 / 0.06), 0 8px 24px -6px rgb(13 19 27 / 0.12);
-    --ptbk-shadow-3: 0 4px 8px rgb(13 19 27 / 0.08), 0 24px 48px -12px rgb(13 19 27 / 0.24);
-    --ptbk-shadow-dark-1: 0 1px 2px rgb(0 0 0 / 0.4);
-    --ptbk-shadow-dark-2: 0 2px 4px rgb(0 0 0 / 0.4), 0 8px 24px -6px rgb(0 0 0 / 0.5);
-    --ptbk-shadow-dark-3: 0 4px 8px rgb(0 0 0 / 0.45), 0 24px 48px -12px rgb(0 0 0 / 0.6);
-    --ptbk-scrim: rgb(8 12 18 / 0.48);
-    --ptbk-scrim-dark: rgb(0 0 0 / 0.64);
+    --ptbk-shadow-1: 0 1px 1px rgb(17 17 19 / 0.04);
+    --ptbk-shadow-2: 0 1px 2px rgb(17 17 19 / 0.04), 0 6px 16px -4px rgb(17 17 19 / 0.1);
+    --ptbk-shadow-3: 0 2px 4px rgb(17 17 19 / 0.04), 0 16px 40px -8px rgb(17 17 19 / 0.16);
+    --ptbk-shadow-dark-1: 0 1px 1px rgb(0 0 0 / 0.3);
+    --ptbk-shadow-dark-2: 0 1px 2px rgb(0 0 0 / 0.35), 0 6px 16px -4px rgb(0 0 0 / 0.45);
+    --ptbk-shadow-dark-3: 0 2px 4px rgb(0 0 0 / 0.35), 0 16px 40px -8px rgb(0 0 0 / 0.55);
+    --ptbk-scrim: rgb(17 17 19 / 0.32);
+    --ptbk-scrim-dark: rgb(0 0 0 / 0.56);
 
     --ptbk-duration-0: 0s;
     --ptbk-duration-100: 100ms;
     --ptbk-duration-150: 150ms;
     --ptbk-duration-200: 200ms;
+    --ptbk-duration-250: 250ms;
     --ptbk-duration-300: 300ms;
     --ptbk-duration-600: 600ms;
     --ptbk-duration-900: 900ms;

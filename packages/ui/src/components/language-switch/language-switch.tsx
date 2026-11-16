@@ -56,10 +56,10 @@ export function LanguageSwitch<Code extends string>({
                     type="button"
                     // The visible code starts the name, so voice control finds the button by what it shows (WCAG 2.5.3).
                     aria-label={`${code}, ${messages.languageCurrent({ language: currentName })}`}
-                    className="inline-flex min-h-8 min-w-8 shrink-0 cursor-pointer items-center justify-center gap-0.5 rounded-control px-2 text-sm font-medium text-(--language-switch-text) hover:bg-(--language-switch-bg-hover) motion-safe:transition-colors motion-safe:duration-(--motion-state)"
+                    className="inline-flex min-h-7 min-w-7 shrink-0 cursor-pointer items-center justify-center gap-0.5 rounded-control px-1.5 text-xs font-medium text-(--language-switch-text) hover:bg-(--language-switch-bg-hover) motion-safe:transition-colors motion-safe:duration-(--motion-state)"
                 >
                     <span aria-hidden="true">{code}</span>
-                    <ChevronDown aria-hidden className="size-3.5 text-(--language-switch-muted)" />
+                    <ChevronDown aria-hidden className="size-3 text-(--language-switch-muted)" />
                 </button>
             )}
         />

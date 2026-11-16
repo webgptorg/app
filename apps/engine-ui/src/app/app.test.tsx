@@ -13,7 +13,7 @@ describe('engine-ui app', () => {
         expect(
             await screen.findByRole('heading', { level: 1, name: /^Good (morning|afternoon|evening), Owner$/ }),
         ).toBeDefined();
-        expect(await screen.findByRole('link', { name: 'Ada' })).toBeDefined();
+        expect(await screen.findByRole('region', { name: 'Recent chats' })).toBeDefined();
         expect(router.state.location.pathname).toBe('/');
         await expectNoAxeViolations(container);
     });

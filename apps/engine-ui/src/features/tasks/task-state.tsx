@@ -1,17 +1,6 @@
 import type { ReadTask, ReadTaskOccurrence, TaskState } from '@ptbk/engine-api';
-import { Badge } from '@ptbk/ui';
-import type { BadgeTone } from '@ptbk/ui';
-import {
-    CircleAlert,
-    CircleCheck,
-    CircleHelp,
-    CircleStop,
-    Clock,
-    Hourglass,
-    MessageCircleQuestion,
-    Play,
-} from 'lucide-react';
-import type { ReactNode } from 'react';
+import { StatusPill } from '@ptbk/ui';
+import type { StatusTone } from '@ptbk/ui';
 
 import { m } from '../../paraglide/messages';
 
@@ -79,56 +68,59 @@ export function taskSectionLabel(section: TaskSection): string {
 
 interface StateLook {
     readonly label: string;
-    readonly tone: BadgeTone;
-    readonly icon: ReactNode;
+    readonly tone: StatusTone;
 }
 
 function lookOf(state: TaskStateValue): StateLook {
     switch (state) {
         case 'active':
-            return { label: m.task_state_active(), tone: 'accent', icon: <Play /> };
+            return { label: m.task_state_active(), tone: 'live' };
         case 'awaiting-user':
-            return { label: m.task_state_awaiting_user(), tone: 'warning', icon: <MessageCircleQuestion /> };
+            return { label: m.task_state_awaiting_user(), tone: 'warning' };
         case 'ready':
-            return { label: m.task_state_ready(), tone: 'info', icon: <Hourglass /> };
+            return { label: m.task_state_ready(), tone: 'waiting' };
         case 'needs-assignment':
-            return { label: m.task_state_needs_assignment(), tone: 'info', icon: <Hourglass /> };
+            return { label: m.task_state_needs_assignment(), tone: 'waiting' };
         case 'assigning':
-            return { label: m.task_state_assigning(), tone: 'info', icon: <Hourglass /> };
+            return { label: m.task_state_assigning(), tone: 'waiting' };
         case 'needs-recovery':
-            return { label: m.task_state_needs_recovery(), tone: 'warning', icon: <CircleAlert /> };
+            return { label: m.task_state_needs_recovery(), tone: 'warning' };
         case 'failed':
-            return { label: m.task_state_failed(), tone: 'danger', icon: <CircleAlert /> };
+            return { label: m.task_state_failed(), tone: 'danger' };
         case 'incompatible':
-            return { label: m.task_state_incompatible(), tone: 'danger', icon: <CircleAlert /> };
+            return { label: m.task_state_incompatible(), tone: 'danger' };
         case 'blocked':
-            return { label: m.task_state_blocked(), tone: 'danger', icon: <CircleAlert /> };
+            return { label: m.task_state_blocked(), tone: 'danger' };
         case 'waiting-until':
-            return { label: m.task_state_waiting_until(), tone: 'neutral', icon: <Clock /> };
+            return { label: m.task_state_waiting_until(), tone: 'waiting' };
         case 'waiting-dependency':
-            return { label: m.task_state_waiting_dependency(), tone: 'neutral', icon: <Clock /> };
+            return { label: m.task_state_waiting_dependency(), tone: 'waiting' };
         case 'not-ready':
-            return { label: m.task_state_not_ready(), tone: 'neutral', icon: <Clock /> };
+            return { label: m.task_state_not_ready(), tone: 'waiting' };
         case 'placeholder':
-            return { label: m.task_state_placeholder(), tone: 'neutral', icon: <Clock /> };
+            return { label: m.task_state_placeholder(), tone: 'neutral' };
         case 'done':
-            return { label: m.task_state_done(), tone: 'success', icon: <CircleCheck /> };
+            return { label: m.task_state_done(), tone: 'success' };
         case 'cancelled':
-            return { label: m.task_state_cancelled(), tone: 'neutral', icon: <CircleStop /> };
+            return { label: m.task_state_cancelled(), tone: 'neutral' };
         case 'retired':
-            return { label: m.task_state_retired(), tone: 'neutral', icon: <CircleStop /> };
+            return { label: m.task_state_retired(), tone: 'neutral' };
         case 'unknown':
-            return { label: m.task_state_unknown(), tone: 'neutral', icon: <CircleHelp /> };
+            return { label: m.task_state_unknown(), tone: 'neutral' };
     }
 }
 
-/** The state as text with an icon, never colour alone. */
-export function TaskStateBadge({ state }: { readonly state: TaskStateValue }) {
+export function taskTone(state: TaskStateValue): StatusTone {
+    return lookOf(state).tone;
+}
+
+/** The state in words with its dot, never colour alone. */
+export function TaskStateBadge({ state, className }: { readonly state: TaskStateValue; readonly className?: string }) {
     const look = lookOf(state);
     return (
-        <Badge tone={look.tone} icon={look.icon}>
+        <StatusPill tone={look.tone} {...(className === undefined ? {} : { className })}>
             {look.label}
-        </Badge>
+        </StatusPill>
     );
 }
 
@@ -157,10 +149,11 @@ export function occurrenceStateLabel(state: ReadTaskOccurrence['state']): string
     }
 }
 
-export function occurrenceTone(state: ReadTaskOccurrence['state']): BadgeTone {
+export function occurrenceTone(state: ReadTaskOccurrence['state']): StatusTone {
     if (state === 'completed') return 'success';
     if (state === 'failed' || state === 'interrupted') return 'danger';
-    if (state === 'running') return 'accent';
+    if (state === 'running') return 'live';
+    if (state === 'waiting' || state === 'pending') return 'waiting';
     return 'neutral';
 }
 

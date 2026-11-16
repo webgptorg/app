@@ -2,7 +2,7 @@
 
 **Promptbook lets a company run its own AI agents on its own server and use them through one polished web app, while we provide the connectivity, the dashboard and the UI without ever being able to read their data.**
 
-This brief describes how the engine UI and the dashboard should work and feel. Architecture is in [ADR 0015](../adr/0015-ui-architecture-and-design-system.md) and [ADR 0016](../adr/0016-engine-capabilities.md). The visual pass (Anka) comes later and builds on the tokens; this document fixes structure, behaviour and character, not final pixels.
+This brief describes how the engine UI and the dashboard should work and feel. Architecture is in [ADR 0015](../adr/0015-ui-architecture-and-design-system.md) and [ADR 0016](../adr/0016-engine-capabilities.md). The visual identity below (U-17) is the first visual pass; it lives in the tokens, so later passes change the theme, not feature code.
 
 ## Principles
 
@@ -41,13 +41,14 @@ The agent detail tabs and the main sections come from the feature registry, so a
 
 - **Sidebar** with the engine switcher at the top, sections grouped (work: Home, Agents, Chats, Tasks, Runs; resources: Files, Triggers, Integrations; admin: Members, Security, Settings). Collapses to icons; becomes a drawer on mobile.
 - **Engine switcher, Stripe-style:** the engine's name and trust mark top-left open a menu. The full list of your engines lives in the dashboard (the engine UI may only talk to its own engine), so the menu shows the current engine plus "All engines" and "Add engine", which open the dashboard's switcher; picking an engine there navigates to its own hostname (its own origin and sign-in; synced passkeys make it quick).
+- **Page header:** every screen has a slim header that stays in view on wide screens: breadcrumbs (Tasks › Ship billing v2) instead of "Back to …" links, the title and the primary action. A list row's title morphs into the detail page's title through a View Transition; route changes cross-fade. Both are off under reduced motion.
 - **Command palette (⌘K):** jump to any agent, chat, run or setting; actions like "New agent", "Stop run".
 - **Trust mark** (see below) in the engine switcher only; its menu opens with "Verify this engine" (the fingerprint code, then the trust panel). A language switch ("EN ▾") beside the engine switcher and in the phone top bar; the user menu (Settings, Security, theme, sign out); and a quiet live indicator when runs are active.
 
 ## Key screens
 
-- **Home (owner/admin):** greeting; at-a-glance counts (agents, running now, needs attention); recent agents; live activity feed (runs started and finished, files produced, triggers fired, member changes, update available); quick action "New agent". **Home (member):** my agents, recent chats, my running work.
-- **Agents list:** `DataTable` with search, filters (status, folder, visibility), sort, and live status; cards on mobile.
+- **Home, Chatter-first, for every member:** a greeting and a large "Ask Chatter anything…" composer that starts a chat with Chatter and opens it; then **Needs you** (agents' questions quoted with Reply, tasks waiting on the member, and every feature's attention count, such as failed runs, login requests or people asking to join, each with one action, on soft surfaces); **Working now** (agents replying with their latest step and a timer, running tasks, runs that belong to neither); **Recent chats** (agent avatars, title, preview, time). Members who oversee the engine also get the update notice and the live activity feed, in a quiet side column on wide screens and after everything else on narrow ones. Empty sections are one quiet line.
+- **Agents list:** `DataTable` with search, filters (status, folder, visibility), sort, and live status; two-line rows on mobile.
 - **Agent overview:** identity (avatar, name, description), live status, recent runs, triggers, integrations, knowledge at a glance; primary actions Chat, Run, Edit, Stop.
 - **Create agent:** the guided wizard from the predecessor, refined: _Brief_ (describe the job in plain words) → _Book_ (AI draft, editable) → _Knowledge_ (drop files) → _Test_ (chat with the draft) → _Publish_. One click switches to the pro editor at any step.
 - **Book editor (pro):** CodeMirror with the book language, diagnostics, version history and diff, and a live test chat beside it.
@@ -69,6 +70,72 @@ It carries an **engine fingerprint**: a visual pattern and a short code derived 
 ## Dashboard (app.ptbk.io)
 
 Same design system, simpler: sign-up and sign-in with passkeys, engines list with live status and fingerprints, add engine (link code and install command), billing (Stripe), account. It links into engines; it never shows engine content.
+
+## Visual identity
+
+Visual identity v1 ([U-17](../plan/tasks/U-17-visual-identity.md), decided with Seb on 2026-11-13) is **calm precision**: Linear-style, readable for technical and non-technical people alike. The tokens live in `packages/ui/src/theme/` and the gallery's "Visual identity" entry shows them at a glance.
+
+### Colour
+
+- **Graphite chrome.** Neutrals are the `--ptbk-graphite-*` scale. The page is `--color-surface`; panels and popovers are `--color-raised`. Hover and selection are quiet washes of the text colour, not fills: `--color-hover` (5%) and `--color-selected` (8%). They read the same on any surface.
+- **No inverted fills.** Buttons are soft (see Parts); nothing is a near-black slab in light or a near-white one in dark. `--color-primary` (graphite) is left for small marks that need weight: a checked box, a switch that is on, a tab's indicator. The older `--color-accent*` names resolve to it, so nothing built on them turns teal.
+- **Colour comes from agents and status.**
+  - Agents: `--color-agent-1..8`, or the agent's profile colour.
+  - Status: `--color-success`, `--color-warning`, `--color-danger` and `--color-info`, each with a quiet `-soft` fill. `--color-live` marks running work.
+- **Teal has three jobs:** `--color-focus` (focus rings), `--color-link` (links in prose) and `--color-selection` (selected text). Nothing else is teal.
+- **Dark mode is calm, never loud.** There is no bright cyan. Neutral pills sit on `--color-neutral-soft`, never on a black slab. Status fills are a trace of their hue over graphite.
+- **Lines.** `--color-hairline` separates sections and rows. `--color-divider` is a stronger separator. `--color-border` is only for control boundaries (inputs, checkboxes), at 3:1.
+- **Contrast.** Every text pair is AA (4.5:1) and every graphic pair 3:1, in both themes. `packages/ui/test/contrast.test.ts` enforces this, including the washes composited over the page.
+
+### Type
+
+- **Inter everywhere.** Outfit is gone, and `font-display` is Inter too.
+- **Headings** (h1–h4) use `--heading-weight` (600) and tighter tracking (`--tracking-heading`, and `--tracking-display` for h1).
+- **Comfortable density:**
+  - 14px body (`text-sm`, the `body` default);
+  - 13px meta (`text-xs`);
+  - 12px (`text-2xs`) only for counts, badges and tiny labels.
+- **Numbers that change:** times, durations, sizes and counts use Inter with `tabular-nums`. The `meta` utility (13px, muted, tabular) is the default for meta lines, chat ones included.
+- **`font-mono` is deliberate and rare:** IDs, commits and hashes, file paths, code, and chat tool steps. Nothing else is mono: no times, dates, durations, counts, statuses or names. The app is for non-technical people too, and mono reads as "this is for engineers".
+
+### Surfaces and layout
+
+- **An open layout.** A `Section` is a heading over content, separated from its neighbours by space and a hairline. There are no border-plus-shadow cards; `Card` remains as a quiet hairline panel until its users move to `Section`.
+- **Soft surfaces** (`soft-surface` with `--tint`) are only for live or actionable things: running work, needs-you, errors.
+- **Empty sections** collapse to one quiet line (`EmptyState variant="inline"`) or disappear. A whole empty view gets one calm line, one action and a small monochrome icon.
+- **What floats lifts.** Menus, popovers, hovercards and dialogs keep a soft `--shadow-overlay` over a hairline border. Radii are `--radius-control` (6px), `--radius-surface` (10px) and `--radius-small` (4px).
+
+### Parts
+
+- **`EntityChip`** is the core of every entity reference: an icon or `Avatar`, the name, an optional status dot, a `--tint`, and the shared hovercard.
+  - Agents use `tone="agent"`: the name is in the agent's colour.
+  - Every other entity uses `neutral`: text colour, with the hue only in the wash.
+  - Entity-specific chips compose it in `apps/engine-ui/src/features/entities/`.
+- **`Avatar`** puts the agent's initial on a wash of its colour, so an agent looks the same everywhere.
+- **`StatusPill` and `StatusDot`** cover the tones `live`, `waiting`, `success`, `warning`, `danger`, `info` and `neutral`. The state is always in words, and the hue lives in the dot and the wash.
+- **`Combobox`** replaces native `<select>` as screens move to it. `DateInput` is the native date control, styled: it is accessible, follows the browser's locale for date order, and opens the platform picker on phones.
+- **Buttons are soft:** a text-coloured label on a quiet wash or a hairline.
+  - `primary`, the main action, stands out only by a slightly stronger wash (`--color-wash-strong`), medium weight and its place.
+  - `secondary` is the hairline without the wash; `ghost` has neither.
+  - `danger` is a soft red wash (`--color-danger-wash`) with red text; `danger-ghost` is red text alone.
+  - Hover and press deepen the wash (`-hover`, `-active`).
+  - `danger-solid`, a deep red fill (`--color-danger-fill`), is the one filled button: only the confirm dialog's destructive action (see Patterns).
+- **Inputs** (`Input`, `Textarea`, `Select`, `Combobox`, `DateInput` and the filter bar's search boxes) all have a 1px border at 3:1, so a field is findable without its label. Focus turns it teal with a soft halo that hugs the field (`--input-ring`).
+- **`PeekCard`** is the hovercard body for every entity, Linear-style:
+  - a header with the icon or avatar, the type in small text ("Task") and a `StatusPill`;
+  - the name, large and semibold, with one quiet line under it;
+  - two to four facts (label → value, values may be chips);
+  - behind a hairline, the "Open …" action with an ↵ hint. Enter anywhere in the card opens it.
+
+  It sits on a soft wash of the agent's or the state's colour, about 320px wide.
+
+### Motion
+
+- **Timing:** state changes take 150–250ms, ease-out, with no bounce.
+- **Route changes:**
+  - The page crossfades (`--motion-page`).
+  - An element named the same on both pages morphs into its new place (`--motion-morph`), e.g. a list row's title into the detail page's title. Name elements with `viewTransitionStyle(scope, id)`, which goes through the CSSOM, so the CSP holds.
+- **Reduced motion:** all of it is off under `prefers-reduced-motion`.
 
 ## Patterns
 

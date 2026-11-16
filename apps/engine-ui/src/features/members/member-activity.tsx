@@ -1,6 +1,8 @@
 import type { Activity } from '@ptbk/engine-api';
 
-import { Link } from '../../app/link';
+import { ActivityLine } from '../entities/activity-line';
+import type { ActivityOutcome } from '../entities/activity-line';
+import { EntityChip } from '../entities/entity-chip';
 import { m } from '../../paraglide/messages';
 import { roleLabel } from '../shell/role-label';
 
@@ -28,13 +30,36 @@ export function memberActivitySummary(activity: Activity): string {
     }
 }
 
-/** The home feed's card body for a member event, linking to the member list. */
+function memberOutcome(activity: MemberActivity): ActivityOutcome {
+    switch (activity.kind) {
+        case 'member.joined':
+            return { tone: 'success', label: m.activity_outcome_joined() };
+        case 'member.role-changed':
+            return { tone: 'info', label: m.activity_outcome_role_changed() };
+        case 'member.removed':
+            return { tone: 'neutral', label: m.activity_outcome_removed() };
+    }
+}
+
+/** A member event as an activity line: the member as a chip (a removed one has nowhere to go), a new role as a fact. */
 export function MemberActivityItem({ activity }: { readonly activity: Activity }) {
+    if (!isMemberActivity(activity)) return null;
     return (
-        <div className="flex flex-col gap-1 text-sm">
-            <Link to="/members" variant="standalone" className="break-words">
-                {memberActivitySummary(activity)}
-            </Link>
-        </div>
+        <ActivityLine
+            activity={activity}
+            description={
+                <EntityChip
+                    kind="member"
+                    id={activity.kind === 'member.removed' ? null : activity.memberId}
+                    name={activity.displayName}
+                />
+            }
+            outcome={memberOutcome(activity)}
+            facts={
+                activity.kind === 'member.role-changed'
+                    ? m.activity_role_change({ from: roleLabel(activity.previousRole), to: roleLabel(activity.role) })
+                    : null
+            }
+        />
     );
 }

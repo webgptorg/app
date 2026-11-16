@@ -65,7 +65,7 @@ export function ConfirmDialog({
                         {messages.cancel()}
                     </Button>
                     <Button
-                        variant={tone}
+                        variant={tone === 'danger' ? 'danger-solid' : 'primary'}
                         loading={loading}
                         disabled={!confirmed}
                         onClick={() => {

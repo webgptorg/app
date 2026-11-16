@@ -94,8 +94,8 @@ export function PaletteButton({ onOpen, compact }: { readonly onOpen: () => void
             aria-haspopup="dialog"
             onClick={onOpen}
             className={cx(
-                'flex min-h-10 w-full items-center gap-3 rounded-control border border-border bg-surface px-3 text-sm text-text-muted',
-                'hover:bg-hover motion-safe:transition-colors motion-safe:duration-(--motion-state)',
+                'flex min-h-8 w-full cursor-pointer items-center gap-2.5 rounded-control bg-hover px-2.5 text-sm text-text-muted',
+                'hover:bg-selected hover:text-text motion-safe:transition-colors motion-safe:duration-(--motion-state)',
             )}
         >
             <Search aria-hidden className="size-4 shrink-0" />
@@ -103,7 +103,7 @@ export function PaletteButton({ onOpen, compact }: { readonly onOpen: () => void
                 {m.palette_open_short()}
             </span>
             <span className="sr-only">{m.palette_open()}</span>
-            <kbd aria-hidden="true" className="font-mono text-xs">
+            <kbd aria-hidden="true" className="text-xs tabular-nums">
                 {shortcutHint()}
             </kbd>
         </button>

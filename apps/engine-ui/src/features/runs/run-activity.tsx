@@ -1,10 +1,13 @@
 import type { Activity } from '@ptbk/engine-api';
 import { useLocale } from '@ptbk/ui';
 
-import { Link } from '../../app/link';
 import { m } from '../../paraglide/messages';
 import { formatDuration } from './run-format';
-import { runOrigin } from './run-source';
+import { ActivityLine } from '../entities/activity-line';
+import type { ActivityOutcome } from '../entities/activity-line';
+import { EntityChip } from '../entities/entity-chip';
+import { runStatusLabel } from './run-status';
+import { runOrigin, runSourceLabel } from './run-source';
 
 type RunActivity = Extract<Activity, { readonly kind: `run.${string}` }>;
 
@@ -33,30 +36,44 @@ export function runActivitySummary(activity: Activity): string {
     }
 }
 
-/** The home feed's card body for a run event: its summary is the link to the run. */
+function runOutcome(activity: RunActivity): ActivityOutcome {
+    switch (activity.kind) {
+        case 'run.queued':
+            return { tone: 'waiting', label: runStatusLabel('queued') };
+        case 'run.started':
+            return { tone: 'live', label: runStatusLabel('running') };
+        case 'run.completed':
+            return { tone: 'success', label: runStatusLabel('completed') };
+        case 'run.failed':
+            return { tone: 'danger', label: runStatusLabel('failed') };
+        case 'run.cancelled':
+            return { tone: 'neutral', label: runStatusLabel('cancelled') };
+    }
+}
+
+/** A run event as an activity line: the agent and the run as chips, its outcome, and what it took or why it failed. */
 export function RunActivityItem({ activity }: { readonly activity: Activity }) {
     const locale = useLocale();
     if (!isRunActivity(activity)) return null;
     const usage = activity.kind === 'run.completed' ? activity.usage : null;
     const error = activity.kind === 'run.failed' ? activity.error : null;
+    const facts = [
+        usage?.durationMs == null ? null : formatDuration(usage.durationMs, (value) => locale.formatNumber(value)),
+        usage?.cost == null ? null : locale.formatCurrency(usage.cost.amount, usage.cost.currency),
+        error?.summary ?? null,
+    ].filter((fact) => fact !== null);
     return (
-        <div className="flex flex-col gap-1 text-sm">
-            <Link to="/runs/$runId" params={{ runId: activity.runId }} variant="standalone">
-                {runActivitySummary(activity)}
-            </Link>
-            {usage === null ? null : (
-                <p className="text-text-muted">
-                    {usage.durationMs === null
-                        ? null
-                        : m.run_activity_duration({
-                              duration: formatDuration(usage.durationMs, (value) => locale.formatNumber(value)),
-                          })}{' '}
-                    {usage.cost === null
-                        ? null
-                        : m.run_activity_cost({ cost: locale.formatCurrency(usage.cost.amount, usage.cost.currency) })}
-                </p>
-            )}
-            {error === null ? null : <p className="break-words text-text-muted">{error.summary}</p>}
-        </div>
+        <ActivityLine
+            activity={activity}
+            description={
+                <EntityChip
+                    kind="run"
+                    id={activity.runId}
+                    name={m.activity_run_label({ source: runSourceLabel(activity.source) })}
+                />
+            }
+            outcome={runOutcome(activity)}
+            facts={facts.length === 0 ? null : facts.join(' · ')}
+        />
     );
 }

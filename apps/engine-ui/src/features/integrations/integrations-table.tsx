@@ -1,7 +1,7 @@
 import { INTEGRATION_KINDS, INTEGRATION_STATUSES } from '@ptbk/engine-api';
 import type { AgentId, ReadIntegration } from '@ptbk/engine-api';
-import { Button, ConfirmDialog, createDataTableColumnHelper, DataTable, FilterBar, RelativeTime } from '@ptbk/ui';
-import type { DataTableColumnDef, FilterBarFilter, FilterBarOption, MenuEntry } from '@ptbk/ui';
+import { Button, ConfirmDialog, createDataTableColumnHelper, DataTable, LegacyFilterBar, RelativeTime } from '@ptbk/ui';
+import type { DataTableColumnDef, LegacyFilterBarFilter, FilterBarOption, MenuEntry } from '@ptbk/ui';
 import { useQueryClient } from '@tanstack/react-query';
 import { Pencil, Plug, PlugZap, RefreshCw, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
@@ -322,7 +322,7 @@ function IntegrationFilters({ search, scope, agentNames, onChange, onClear }: In
     const agentId = search.agentId;
     const agentOptions = [...agentNames].map(([id, name]) => ({ value: id, label: name }));
     if (agentId !== undefined && !agentNames.has(agentId)) agentOptions.unshift({ value: agentId, label: agentId });
-    const filters: FilterBarFilter[] = [
+    const filters: LegacyFilterBarFilter[] = [
         {
             kind: 'multi',
             id: 'status',
@@ -361,9 +361,9 @@ function IntegrationFilters({ search, scope, agentNames, onChange, onClear }: In
                                   (value === agentId ? agentId : undefined),
                           });
                       },
-                  } satisfies FilterBarFilter,
+                  } satisfies LegacyFilterBarFilter,
               ]
             : []),
     ];
-    return <FilterBar label={m.integrations_filters()} filters={filters} onClear={onClear} />;
+    return <LegacyFilterBar label={m.integrations_filters()} filters={filters} onClear={onClear} />;
 }

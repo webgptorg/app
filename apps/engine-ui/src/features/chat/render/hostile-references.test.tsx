@@ -54,15 +54,18 @@ function inThread(ui: ReactNode, onMention?: (agent: ReferenceAgent) => void) {
     return renderUi(<ThreadReferencesProvider value={value}>{ui}</ThreadReferencesProvider>).container;
 }
 
-/** Nothing loads or runs, and the only inline style is the `--tint` custom property a chip sets through the CSSOM. */
+/** Nothing loads or runs, and the only inline styles are the tint custom properties a chip sets through the CSSOM. */
 function expectInert(container: HTMLElement) {
     expect(
         container.querySelector('img, script, iframe, object, embed, style, form, a[href^="javascript"]'),
     ).toBeNull();
     for (const element of container.querySelectorAll<HTMLElement>('[style]')) {
-        expect(element.style.length).toBe(1);
-        expect(element.style.item(0)).toBe('--tint');
+        const properties = Array.from({ length: element.style.length }, (_, index) => element.style.item(index));
+        expect(properties.sort()).toEqual(['--tint', '--tint-text-dark', '--tint-text-light']);
         expect(element.style.getPropertyValue('--tint')).toMatch(/^(#[0-9a-f]{6}|var\(--color-agent-[1-8]\))$/i);
+        for (const label of ['--tint-text-light', '--tint-text-dark']) {
+            expect(element.style.getPropertyValue(label)).toMatch(/^(#[0-9a-f]{6}|initial)$/i);
+        }
     }
 }
 

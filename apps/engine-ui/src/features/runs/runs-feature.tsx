@@ -56,6 +56,7 @@ export const runsFeature = defineFeature({
         id: 'runs.failed',
         useAttention: useFailedRunsAttention,
         label: (count) => m.runs_attention_failed({ count }),
+        tone: 'danger',
     },
     liveIndicator: { useActiveCount: useRunningCount },
     agentStatusProvider: { useAgentLiveState: useRunAgentLiveState, useAgentStop: useRunAgentStop },

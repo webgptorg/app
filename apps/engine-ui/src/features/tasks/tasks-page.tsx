@@ -1,20 +1,34 @@
-import { KNOWN_CAPABILITIES, TASK_KINDS } from '@ptbk/engine-api';
-import type { ReadTask } from '@ptbk/engine-api';
-import { Badge, Button, Card, EmptyState, ErrorState, FilterBar, RelativeTime, Skeleton } from '@ptbk/ui';
-import type { FilterBarFilter } from '@ptbk/ui';
+import { AgentId, KNOWN_CAPABILITIES, TASK_KINDS } from '@ptbk/engine-api';
+import type { ReadTask, TaskKind } from '@ptbk/engine-api';
+import {
+    Badge,
+    Button,
+    createDataTableColumnHelper,
+    DataTable,
+    FilterBar,
+    filterField,
+    RelativeTime,
+    viewTransitionStyle,
+} from '@ptbk/ui';
+import type { DataTableColumnDef, DataTableView, FilterBarField } from '@ptbk/ui';
 import { useQuery } from '@tanstack/react-query';
-import { getRouteApi } from '@tanstack/react-router';
+import { getRouteApi, Link } from '@tanstack/react-router';
+import { Bot, CalendarClock, CircleDot, Flag, History, ListTodo } from 'lucide-react';
 import { useCallback } from 'react';
-import type { ReactNode } from 'react';
 
 import { cx } from '../../app/cx';
 import { useDebouncedSearch } from '../../app/debounced-search';
+import { readListParam, readOneParam, writeListParam } from '../../app/search-filters';
 import { useEngineApi } from '../../app/engine-api-context';
-import { Link } from '../../app/link';
+import { ButtonLink } from '../../app/link';
 import { useAllows } from '../../app/registry/use-visible-features';
 import { m } from '../../paraglide/messages';
+import { AgentAvatar } from '../agents/agent-avatar';
 import { agentListQueryOptions } from '../agents/agents-queries';
+import { EntityChip } from '../entities/entity-chip';
+import { AGENT_LOOK_PARAMS } from '../home/agent-look-params';
 import { Page } from '../shell/page';
+import { splitTaskName } from './task-name';
 import {
     TASK_SECTIONS,
     TASK_STATUS_GROUP_IDS,
@@ -23,19 +37,19 @@ import {
     taskSectionLabel,
     taskStatusGroupLabel,
 } from './task-state';
-import type { TaskSection } from './task-state';
-import { hasTaskFilters, selectedGroups, taskListParams } from './task-search';
+import type { TaskStatusGroup } from './task-state';
+import { hasTaskFilters, taskListParams } from './task-search';
 import type { TaskSearch } from './task-search';
 import { useTaskList } from './tasks-queries';
 
 const route = getRouteApi('/tasks/');
-// The first page of agents fills the agent filter; a task of another agent still shows, by its own name.
-const AGENT_FILTER_LIMIT = 100;
 
 /** Supporting work (engine-owned, or system purpose) is muted, as the engine's own views show it. */
 export function isSupportingWork(task: Pick<ReadTask, 'kind' | 'purpose'>): boolean {
     return task.kind === 'engine' || task.purpose === 'system';
 }
+
+const NO_FILTERS = { q: undefined, status: undefined, agentId: undefined, kind: undefined } as const;
 
 /**
  * The engine's task inventory, read-only, in the engine's own order and grouped into what needs a decision now, what
@@ -58,82 +72,170 @@ export function TasksPage() {
             {...(runsVisible
                 ? {
                       actions: (
-                          <Link to="/runs" variant="standalone" className="text-sm">
+                          <ButtonLink to="/runs" variant="ghost" size="sm">
+                              <History aria-hidden className="size-4" />
                               {m.tasks_run_history()}
-                          </Link>
+                          </ButtonLink>
                       ),
                   }
                 : {})}
         >
-            <div className="flex flex-col gap-4">
-                <TaskFilters search={search} onChange={onChange} />
-                <TaskInventory
-                    search={search}
-                    onClear={() => {
-                        onChange({ q: undefined, status: undefined, agentId: undefined, kind: undefined });
-                    }}
-                />
-            </div>
+            <TaskInventory search={search} onChange={onChange} />
         </Page>
     );
 }
 
-function TaskInventory({ search, onClear }: { readonly search: TaskSearch; readonly onClear: () => void }) {
+const helper = createDataTableColumnHelper<ReadTask>();
+
+/** The name as a person reads it, the engine's instance stamp quiet beside it, and why it waits when it does. */
+function TaskTitle({ task }: { readonly task: ReadTask }) {
+    const { readable, stamp } = splitTaskName(task.name);
+    const supporting = isSupportingWork(task);
+    const why = task.state === 'blocked' || task.state === 'awaiting-user' ? task.stateReason : null;
+    return (
+        <span className="flex min-w-0 flex-col gap-0.5">
+            <span className="flex min-w-0 items-baseline gap-2">
+                {/* Names come from Books and agents: React renders them as text. */}
+                <Link
+                    to="/tasks/$taskId"
+                    params={{ taskId: task.id }}
+                    title={stamp === null ? undefined : task.name}
+                    className={cx(
+                        'min-w-0 truncate font-medium hover:underline',
+                        supporting ? 'text-text-muted' : 'text-text',
+                    )}
+                >
+                    <span style={viewTransitionStyle('task-title', task.id)}>{readable}</span>
+                </Link>
+                {stamp === null ? null : (
+                    <span className="hidden shrink-0 text-xs text-text-muted tabular-nums sm:inline">{stamp}</span>
+                )}
+                {task.progress !== null && task.progress.total > 0 ? (
+                    <span className="shrink-0 text-xs text-text-muted tabular-nums">
+                        {m.task_meta_progress({ completed: task.progress.completed, total: task.progress.total })}
+                    </span>
+                ) : null}
+                {task.kind === 'engine' ? <Badge>{m.task_kind_engine()}</Badge> : null}
+                {task.kind !== 'engine' && task.purpose === 'system' ? <Badge>{m.task_purpose_system()}</Badge> : null}
+            </span>
+            {why === null ? null : <span className="line-clamp-1 text-xs break-words text-text-muted">{why}</span>}
+        </span>
+    );
+}
+
+function TaskOwnerCell({ task }: { readonly task: ReadTask }) {
+    if (task.kind === 'engine') {
+        const executor = task.executor ?? m.task_owner_engine();
+        return (
+            <span title={executor} className="block max-w-48 truncate text-text-muted">
+                {executor}
+            </span>
+        );
+    }
+    if (task.agentId === null) return <span className="text-text-muted">{m.task_owner_unassigned()}</span>;
+    return <EntityChip kind="agent" id={task.agentId} name={task.agentName ?? task.agentId} />;
+}
+
+function priorityText(task: ReadTask): string | null {
+    if (task.priority.rank === 0 && task.priority.text === null) return null;
+    const rank = `P${String(task.priority.rank)}`;
+    return task.priority.text === null ? rank : `${rank} · ${task.priority.text}`;
+}
+
+function columns(): DataTableColumnDef<ReadTask>[] {
+    return [
+        helper.accessor('name', {
+            header: m.tasks_column_name(),
+            enableSorting: false,
+            meta: { icon: <ListTodo className="size-3.5" />, priority: 0 },
+            cell: ({ row }) => <TaskTitle task={row.original} />,
+        }),
+        helper.accessor('state', {
+            header: m.task_fact_state(),
+            enableSorting: false,
+            meta: { icon: <CircleDot className="size-3.5" />, priority: 1, trailing: true },
+            cell: ({ row }) => <TaskStateBadge state={row.original.state} />,
+        }),
+        helper.accessor('agentName', {
+            id: 'agent',
+            header: m.task_fact_agent(),
+            enableSorting: false,
+            meta: { icon: <Bot className="size-3.5" />, priority: 2 },
+            cell: ({ row }) => <TaskOwnerCell task={row.original} />,
+        }),
+        helper.accessor('priority', {
+            header: m.task_fact_priority(),
+            enableSorting: false,
+            meta: { icon: <Flag className="size-3.5" />, priority: 3 },
+            cell: ({ row }) => {
+                const text = priorityText(row.original);
+                return text === null ? null : <span className="text-text-muted tabular-nums">{text}</span>;
+            },
+        }),
+        helper.accessor('updatedAt', {
+            header: m.tasks_column_updated(),
+            enableSorting: false,
+            meta: { icon: <CalendarClock className="size-3.5" />, priority: 4, numeric: true },
+            cell: ({ row }) => (
+                <RelativeTime value={new Date(row.original.updatedAt)} className="whitespace-nowrap text-text-muted" />
+            ),
+        }),
+    ];
+}
+
+function TaskInventory({
+    search,
+    onChange,
+}: {
+    readonly search: TaskSearch;
+    readonly onChange: (change: Partial<TaskSearch>) => void;
+}) {
     const list = useTaskList(taskListParams(search));
-    if (list.isPending) {
-        return (
-            <div className="flex flex-col gap-3" aria-busy="true">
-                <Skeleton shape="block" className="h-20 w-full" />
-                <Skeleton shape="block" className="h-20 w-full" />
-            </div>
-        );
-    }
-    if (list.isError) {
-        return (
-            <ErrorState
-                message={m.tasks_load_failed()}
-                onRetry={() => {
-                    void list.refetch();
-                }}
-                retrying={list.isFetching}
-            />
-        );
-    }
-    const tasks = list.data.pages.flatMap((page) => page.items);
-    if (tasks.length === 0) {
-        return hasTaskFilters(search) ? (
-            <EmptyState
-                title={m.tasks_no_results()}
-                description={m.tasks_no_results_hint()}
-                action={<Button onClick={onClear}>{m.tasks_clear_filters()}</Button>}
-            />
-        ) : (
-            <EmptyState title={m.tasks_empty_title()} description={m.tasks_empty_body()} />
-        );
-    }
-    const sections = new Map<TaskSection, ReadTask[]>();
-    for (const task of tasks) {
-        const section = taskSection(task.state);
-        sections.set(section, [...(sections.get(section) ?? []), task]);
-    }
+    const tasks = list.data?.pages.flatMap((page) => page.items) ?? [];
+    const filtered = hasTaskFilters(search);
+    const clear = () => {
+        onChange(NO_FILTERS);
+    };
     return (
         <div className="flex flex-col gap-4">
-            {TASK_SECTIONS.map((section) => {
-                const items = sections.get(section);
-                if (items === undefined) return null;
-                return (
-                    <Card key={section} title={taskSectionLabel(section)}>
-                        <ul className="-my-3 flex flex-col divide-y divide-divider">
-                            {items.map((task) => (
-                                <TaskRow key={task.id} task={task} />
-                            ))}
-                        </ul>
-                    </Card>
-                );
-            })}
+            <DataTable<ReadTask>
+                caption={m.tasks_title()}
+                columns={columns()}
+                data={tasks}
+                getRowId={(task) => task.id}
+                getRowLabel={(task) => splitTaskName(task.name).readable}
+                loading={list.isPending}
+                fetching={list.isFetching && !list.isPending && !list.isFetchingNextPage}
+                {...(list.isError
+                    ? {
+                          error: {
+                              message: m.tasks_load_failed(),
+                              onRetry: () => {
+                                  void list.refetch();
+                              },
+                              retrying: list.isFetching,
+                          },
+                      }
+                    : {})}
+                empty={
+                    filtered
+                        ? {
+                              title: m.tasks_no_results(),
+                              description: m.tasks_no_results_hint(),
+                              action: <Button onClick={clear}>{m.tasks_clear_filters()}</Button>,
+                          }
+                        : { title: m.tasks_empty_title(), description: m.tasks_empty_body() }
+                }
+                groups={{
+                    groups: TASK_SECTIONS.map((section) => ({ id: section, label: taskSectionLabel(section) })),
+                    getGroupId: (task) => taskSection(task.state),
+                }}
+                toolbar={(view) => <TaskFilters view={view} search={search} onChange={onChange} onClear={clear} />}
+            />
             {list.hasNextPage ? (
                 <div className="flex justify-center">
                     <Button
+                        variant="ghost"
                         onClick={() => {
                             void list.fetchNextPage();
                         }}
@@ -147,135 +249,74 @@ function TaskInventory({ search, onClear }: { readonly search: TaskSearch; reado
     );
 }
 
-/** Name, state and the few facts that decide what to do next; everything else waits on the detail page. */
-function TaskRow({ task }: { readonly task: ReadTask }) {
-    const supporting = isSupportingWork(task);
-    return (
-        <li className="flex flex-col gap-2 py-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-            <div className={cx('flex min-w-0 flex-col gap-1', supporting && 'text-text-muted')}>
-                {/* Names come from Books and agents: React renders them as text. */}
-                <Link
-                    to="/tasks/$taskId"
-                    params={{ taskId: task.id }}
-                    variant="standalone"
-                    className={cx('font-medium break-words', supporting && 'text-text-muted')}
-                >
-                    {task.name}
-                </Link>
-                <TaskMeta task={task} />
-                {task.stateReason !== null && (task.state === 'blocked' || task.state === 'awaiting-user') ? (
-                    <span className="line-clamp-2 text-sm break-words text-text-muted">{task.stateReason}</span>
-                ) : null}
-            </div>
-            <div className="flex shrink-0 flex-wrap items-center gap-2">
-                {task.kind === 'engine' ? <Badge>{m.task_kind_engine()}</Badge> : null}
-                {task.kind !== 'engine' && task.purpose === 'system' ? <Badge>{m.task_purpose_system()}</Badge> : null}
-                <TaskStateBadge state={task.state} />
-            </div>
-        </li>
-    );
-}
-
-function TaskMeta({ task }: { readonly task: ReadTask }) {
-    const parts: ReactNode[] = [];
-    if (task.kind === 'engine' && task.executor !== null) parts.push(task.executor);
-    else if (task.agentName !== null) parts.push(task.agentName);
-    if (task.parent !== null) parts.push(m.task_meta_part_of({ name: task.parent.name }));
-    if (task.progress !== null && task.progress.total > 0) {
-        parts.push(m.task_meta_progress({ completed: task.progress.completed, total: task.progress.total }));
-    }
-    if (task.repeat !== null) parts.push(m.task_meta_repeats({ every: task.repeat.text }));
-    if (task.nextAt !== null && task.state !== 'done') {
-        parts.push(
-            <span key="next">
-                {m.task_meta_next()} <RelativeTime value={new Date(task.nextAt)} />
-            </span>,
-        );
-    }
-    if (task.dueAt !== null) {
-        parts.push(
-            <span key="due">
-                {m.task_meta_due()} <RelativeTime value={new Date(task.dueAt)} />
-            </span>,
-        );
-    }
-    if (parts.length === 0) return null;
-    return (
-        <span className="flex flex-wrap gap-x-3 gap-y-0.5 text-sm text-text-muted">
-            {parts.map((part, index) => (
-                <span key={index} className="break-words">
-                    {part}
-                </span>
-            ))}
-        </span>
-    );
-}
-
 /** Every filter lives in the URL, so a reload or a shared link restores the view. */
 function TaskFilters({
+    view,
     search,
     onChange,
+    onClear,
 }: {
+    readonly view: DataTableView;
     readonly search: TaskSearch;
     readonly onChange: (change: Partial<TaskSearch>) => void;
+    readonly onClear: () => void;
 }) {
     const [text, setText] = useDebouncedSearch(search.q, (q) => {
         onChange({ q });
     });
-    const agents = useQuery(agentListQueryOptions(useEngineApi(), { limit: AGENT_FILTER_LIMIT, sort: 'name' }));
-    const items = agents.data?.items ?? [];
-    const agentOptions = items.map((agent) => ({ value: agent.id, label: agent.name }));
-    const agentId = search.agentId;
-    if (agentId !== undefined && !items.some((agent) => agent.id === agentId))
-        agentOptions.unshift({ value: agentId, label: agentId });
-    const filters: FilterBarFilter[] = [
-        {
-            kind: 'multi',
+    const agentsVisible = useAllows({ permission: 'agents.read' });
+    const agents = useQuery({ ...agentListQueryOptions(useEngineApi(), AGENT_LOOK_PARAMS), enabled: agentsVisible });
+    const fields: FilterBarField[] = [
+        filterField.multiEnum<TaskStatusGroup>({
             id: 'status',
             label: m.tasks_filter_status(),
+            icon: <CircleDot className="size-3.5" />,
             options: TASK_STATUS_GROUP_IDS.map((group) => ({ value: group, label: taskStatusGroupLabel(group) })),
-            value: [...selectedGroups(search)],
+            value: readListParam(search.status, TASK_STATUS_GROUP_IDS),
             onChange: (value) => {
-                const next = TASK_STATUS_GROUP_IDS.filter((group) => value.includes(group));
-                onChange({ status: next.length === 0 ? undefined : next.join(',') });
+                onChange({ status: writeListParam(value, TASK_STATUS_GROUP_IDS) });
             },
-        },
-        {
-            kind: 'select',
+        }),
+        filterField.entity<string>({
             id: 'agent',
             label: m.tasks_filter_agent(),
-            allLabel: m.tasks_filter_all_agents(),
-            options: agentOptions,
-            value: agentId,
+            icon: <Bot className="size-3.5" />,
+            multiple: false,
+            options: (agents.data?.items ?? []).map((agent) => ({
+                value: agent.id,
+                label: agent.name,
+                icon: <AgentAvatar name={agent.name} agentKey={agent.id} profile={agent.profile} size="2xs" />,
+            })),
+            value: readOneParam(search.agentId),
             onChange: (value) => {
-                onChange({
-                    agentId: items.find((agent) => agent.id === value)?.id ?? (value === agentId ? agentId : undefined),
-                });
+                // An agent beyond the first page stays selected by its ID from the URL until it is removed.
+                const picked = value.at(-1);
+                onChange({ agentId: picked === undefined ? undefined : AgentId.safeParse(picked).data });
             },
-        },
-        {
-            kind: 'select',
+        }),
+        filterField.enum<TaskKind>({
             id: 'kind',
             label: m.tasks_filter_kind(),
-            allLabel: m.tasks_filter_all_kinds(),
+            icon: <ListTodo className="size-3.5" />,
             options: TASK_KINDS.map((kind) => ({
                 value: kind,
                 label: kind === 'engine' ? m.tasks_filter_kind_engine() : m.tasks_filter_kind_ordinary(),
             })),
             value: search.kind,
             onChange: (value) => {
-                onChange({ kind: TASK_KINDS.find((kind) => kind === value) });
+                onChange({ kind: value });
             },
-        },
+        }),
     ];
     return (
         <FilterBar
+            {...view}
             label={m.tasks_filters()}
             search={{ label: m.tasks_search(), value: text, onChange: setText, maxLength: 256 }}
-            filters={filters}
+            fields={fields}
             onClear={() => {
                 setText('');
-                onChange({ q: undefined, status: undefined, agentId: undefined, kind: undefined });
+                onClear();
             }}
         />
     );

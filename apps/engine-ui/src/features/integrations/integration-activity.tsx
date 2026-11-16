@@ -2,7 +2,9 @@ import type { Activity } from '@ptbk/engine-api';
 
 import { useParams } from '@tanstack/react-router';
 
-import { Link } from '../../app/link';
+import { ActivityLine } from '../entities/activity-line';
+import type { ActivityOutcome } from '../entities/activity-line';
+import { EntityChip } from '../entities/entity-chip';
 import { m } from '../../paraglide/messages';
 
 type IntegrationActivity = Extract<Activity, { readonly kind: `integration.${string}` }>;
@@ -24,34 +26,43 @@ export function integrationActivitySummary(activity: Activity): string {
     }
 }
 
-/** The card body for an integration event, linking to the integration and, for a tool call, to its run. */
+function integrationOutcome(activity: IntegrationActivity): ActivityOutcome {
+    switch (activity.kind) {
+        case 'integration.connected':
+            return { tone: 'success', label: m.activity_outcome_connected() };
+        case 'integration.error':
+            return { tone: 'danger', label: m.activity_outcome_error() };
+        case 'integration.used':
+            return { tone: 'neutral', label: m.activity_outcome_used() };
+    }
+}
+
+/**
+ * An integration event as an activity line: the integration as a chip (plain text on its own page, where a link would
+ * lead nowhere), the tool a run called and that run, the outcome and the engine's detail on an error.
+ */
 export function IntegrationActivityItem({ activity }: { readonly activity: Activity }) {
     const openIntegrationId = useParams({ strict: false, select: (params) => params.integrationId });
     if (!isIntegrationActivity(activity)) return null;
-    // On the integration's own page a link to it would lead nowhere.
-    const linkIntegration = openIntegrationId !== activity.integrationId;
+    const own = openIntegrationId === activity.integrationId;
     return (
-        <div className="flex flex-col gap-1 text-sm">
-            {linkIntegration ? (
-                <Link
-                    to="/integrations/$integrationId"
-                    params={{ integrationId: activity.integrationId }}
-                    variant="standalone"
-                    className="break-words"
-                >
-                    {integrationActivitySummary(activity)}
-                </Link>
-            ) : (
-                <p className="break-words">{integrationActivitySummary(activity)}</p>
-            )}
-            {activity.kind === 'integration.error' && activity.statusDetail !== null ? (
-                <p className="break-words text-text-muted">{activity.statusDetail}</p>
-            ) : null}
-            {activity.kind === 'integration.used' && activity.runId !== null ? (
-                <Link to="/runs/$runId" params={{ runId: activity.runId }} className="self-start">
-                    {m.integration_activity_open_run()}
-                </Link>
-            ) : null}
-        </div>
+        <ActivityLine
+            activity={activity}
+            description={
+                <>
+                    <EntityChip kind="integration" id={own ? null : activity.integrationId} name={activity.name} />
+                    {activity.kind === 'integration.used' ? (
+                        <>
+                            <span className="font-mono text-xs text-text-muted">{activity.toolName}</span>
+                            {activity.runId === null ? null : (
+                                <EntityChip kind="run" id={activity.runId} name={m.activity_run_chip()} />
+                            )}
+                        </>
+                    ) : null}
+                </>
+            }
+            outcome={integrationOutcome(activity)}
+            facts={activity.kind === 'integration.error' ? activity.statusDetail : null}
+        />
     );
 }

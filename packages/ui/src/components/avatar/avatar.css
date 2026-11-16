@@ -1,0 +1,9 @@
+:root {
+    --avatar-wash: 16%;
+    --avatar-fallback-tint: var(--color-text-muted);
+    --avatar-bg: var(--color-raised);
+}
+
+.dark {
+    --avatar-wash: 22%;
+}

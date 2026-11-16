@@ -1,6 +1,6 @@
 import { AGENT_RUN_STATES, AGENT_VISIBILITIES, KNOWN_CAPABILITIES } from '@ptbk/engine-api';
 import type { Agent } from '@ptbk/engine-api';
-import { Button, createDataTableColumnHelper, DataTable, FilterBar, RelativeTime } from '@ptbk/ui';
+import { Button, createDataTableColumnHelper, DataTable, LegacyFilterBar, RelativeTime } from '@ptbk/ui';
 import type { DataTableColumnDef, SortingState } from '@ptbk/ui';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { getRouteApi } from '@tanstack/react-router';
@@ -76,7 +76,11 @@ function useAgentColumns(withVisibility: boolean): DataTableColumnDef<Agent>[] {
                         variant="standalone"
                         className="inline-flex max-w-full items-center gap-2 font-medium"
                     >
-                        <AgentAvatar name={row.original.name} profile={row.original.profile} />
+                        <AgentAvatar
+                            name={row.original.name}
+                            agentKey={row.original.id}
+                            profile={row.original.profile}
+                        />
                         <span className="truncate">{row.original.name}</span>
                     </Link>
                 ),
@@ -181,7 +185,7 @@ export function AgentsListPage() {
 
     return (
         <Page title={m.agents_title()} actions={newAgent}>
-            <FilterBar
+            <LegacyFilterBar
                 search={{
                     label: m.agents_search_label(),
                     placeholder: m.agents_search_placeholder(),

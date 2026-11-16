@@ -7,7 +7,7 @@ import { FINGERPRINT_GRID_SIZE, fingerprintColour } from './fingerprint';
 import type { TrustMarkFingerprint } from './fingerprint';
 
 export type TrustMarkState = 'verifying' | 'verified';
-export type TrustMarkSize = 'sm' | 'md' | 'lg';
+export type TrustMarkSize = 'xs' | 'sm' | 'md' | 'lg';
 
 export interface TrustMarkProps {
     /**
@@ -63,6 +63,8 @@ const FP_FILL = [
 ] as const;
 
 const SIZE_CLASSES: Readonly<Record<TrustMarkSize, { readonly seal: string; readonly code: string }>> = {
+    // Beside 16 px navigation icons: the seal's outline and fingerprint grid still read at this size.
+    xs: { seal: 'size-5', code: 'text-xs' },
     sm: { seal: 'size-6', code: 'text-xs' },
     md: { seal: 'size-10', code: 'text-sm' },
     lg: { seal: 'size-20', code: 'text-base' },

@@ -33,13 +33,13 @@ function NavBadge({
     const text = m.nav_badge_waiting({ count });
     if (collapsed) {
         return (
-            <span className="absolute top-1.5 right-1.5 size-2 rounded-pill bg-accent">
+            <span className="absolute top-1 right-1 size-1.5 rounded-pill bg-text-muted">
                 <span className="sr-only">{text}</span>
             </span>
         );
     }
     return (
-        <span className="ms-auto rounded-pill bg-accent-soft px-1.5 text-xs font-semibold text-accent-text tabular-nums">
+        <span className="ms-auto text-xs font-medium text-text-muted tabular-nums">
             <span aria-hidden="true">{count}</span>
             <span className="sr-only">{text}</span>
         </span>
@@ -54,7 +54,7 @@ export function SidebarNav({ collapsed = false, onNavigate }: SidebarNavProps) {
     const sections = navSections(useVisibleFeatures());
     const label = useCollapsedNavLabel(collapsed);
     return (
-        <nav aria-label={m.nav_main()} className={cx('flex flex-col', collapsed ? 'gap-2' : 'gap-3')}>
+        <nav aria-label={m.nav_main()} className={cx('flex flex-col', collapsed ? 'gap-2' : 'gap-5')}>
             {sections.map((section, index) => {
                 const headingId = `nav-group-${section.group}`;
                 return (
@@ -67,14 +67,11 @@ export function SidebarNav({ collapsed = false, onNavigate }: SidebarNavProps) {
                     >
                         <span
                             id={headingId}
-                            className={cx(
-                                'px-3 pb-0.5 text-xs font-semibold tracking-wide text-text-muted uppercase',
-                                collapsed && 'sr-only',
-                            )}
+                            className={cx('px-2.5 pb-1 text-xs font-medium text-text-muted', collapsed && 'sr-only')}
                         >
                             {GROUP_LABELS[section.group]()}
                         </span>
-                        <ul aria-labelledby={headingId} className="flex flex-col gap-0.5">
+                        <ul aria-labelledby={headingId} className="flex flex-col gap-px">
                             {section.items.map((item) => {
                                 const Icon = item.icon;
                                 const text = item.label();
@@ -88,15 +85,20 @@ export function SidebarNav({ collapsed = false, onNavigate }: SidebarNavProps) {
                                             onClick={onNavigate}
                                             {...label.target(text)}
                                             className={cx(
-                                                'flex min-h-9 items-center gap-3 rounded-control px-3 text-sm font-medium text-text no-underline hover:bg-hover',
+                                                'group/nav flex min-h-8 items-center gap-2.5 rounded-control px-2.5 text-sm text-text-muted no-underline',
+                                                'hover:bg-hover hover:text-text',
                                                 // Inset, so the scrolling nav doesn't clip the ring.
                                                 'focus-visible:-outline-offset-2',
                                                 'motion-safe:transition-colors motion-safe:duration-(--motion-state)',
-                                                'aria-[current=page]:bg-selected aria-[current=page]:text-accent-text',
-                                                collapsed && 'relative justify-center px-0',
+                                                // A quiet wash and full-strength text mark the page; no accent fill.
+                                                'aria-[current=page]:bg-selected aria-[current=page]:font-medium aria-[current=page]:text-text',
+                                                collapsed && 'relative min-h-9 justify-center px-0',
                                             )}
                                         >
-                                            <Icon aria-hidden className="size-5 shrink-0" />
+                                            <Icon
+                                                aria-hidden
+                                                className="size-4 shrink-0 opacity-80 group-aria-[current=page]/nav:opacity-100"
+                                            />
                                             <span className={collapsed ? 'sr-only' : 'truncate'}>{text}</span>
                                             {item.useBadge === undefined ? null : (
                                                 <NavBadge useBadge={item.useBadge} collapsed={collapsed} />

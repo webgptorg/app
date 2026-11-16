@@ -21,30 +21,40 @@ function demoEngine(options: InMemoryEngineApiOptions = {}): EngineApiClient {
     });
 }
 
-const sectionNames = (name: string) =>
-    within(screen.getByRole('region', { name }))
-        .getAllByRole('link')
-        .map((link) => link.textContent);
+/** The list's groups in order, each with its tasks' names as the rows show them. */
+function groups(): Record<string, (string | null)[]> {
+    const table = screen.getByRole('table', { name: 'Tasks' });
+    const result: Record<string, (string | null)[]> = {};
+    let current: (string | null)[] = [];
+    for (const row of within(table).getAllByRole('row').slice(1)) {
+        const header = row.querySelector('th[scope="rowgroup"]');
+        if (header !== null) {
+            current = [];
+            // The header is the group's name followed by its count.
+            result[header.textContent.replace(/\d+$/, '')] = current;
+            continue;
+        }
+        current.push(row.querySelector('a[href^="/tasks/"]')?.textContent ?? null);
+    }
+    return result;
+}
+
+const firstRow = () => screen.findByRole('link', { name: 'Ship billing v2' });
 
 describe('tasks', { timeout: TIMEOUT_MS }, () => {
     it("groups the engine's tasks into now, coming up and finished, in the engine's order", async () => {
         const { container } = renderWithProviders({ path: '/tasks', engineApi: demoEngine() });
-        await screen.findByRole('region', { name: 'Now' });
-        expect(sectionNames('Now')).toEqual([
-            'Ship billing v2 — 2026-10-30 09:00:00',
-            'Migrate the old invoices — 2026-10-30 09:07:00',
-        ]);
-        expect(sectionNames('Coming up')).toEqual([
-            'Weekly report — 2026-10-01 08:00:00',
-            'Deploy billing v2 — 2026-10-30 09:06:00',
-            'Update Promptbook 0.119.0 → 0.120.0',
-        ]);
-        expect(sectionNames('Finished')).toEqual([
-            'Marketingový text webu o agentech pro IT profesionály — 2026-11-13 12:16:54',
-            'Review the billing pull request — 2026-10-30 09:05:00',
-        ]);
+        await firstRow();
+        // Readable names; Reborn's instance stamps stay beside them as quiet text.
+        expect(groups()).toEqual({
+            Now: ['Ship billing v2', 'Migrate the old invoices'],
+            'Coming up': ['Weekly report', 'Deploy billing v2', 'Update Promptbook 0.119.0 → 0.120.0'],
+            Finished: ['Marketingový text webu o agentech pro IT profesionály', 'Review the billing pull request'],
+        });
+        expect(screen.getAllByText('2026-10-30 09:00').length).toBeGreaterThan(0);
         expect(screen.getByText('Dependency {Export invoices from the old system} was not found.')).toBeTruthy();
-        expect(within(screen.getByRole('region', { name: 'Coming up' })).getByText('Engine')).toBeTruthy();
+        expect(screen.getByText('Engine')).toBeTruthy();
+        expect(screen.getAllByRole('link', { name: 'Ada' })[0]?.getAttribute('href')).toBe('/agents/agent-ada');
         expect(screen.getByRole('link', { name: 'Run history' }).getAttribute('href')).toBe('/runs');
         expect(screen.queryByRole('button', { name: /cancel|retry|delete/i })).toBeNull();
         await expectNoAxeViolations(container);
@@ -54,9 +64,10 @@ describe('tasks', { timeout: TIMEOUT_MS }, () => {
         const engineApi = demoEngine();
         const list = vi.spyOn(engineApi.tasks, 'list');
         const { user, router } = renderWithProviders({ path: '/tasks', engineApi });
-        await screen.findByRole('region', { name: 'Now' });
-        await user.click(screen.getByRole('button', { name: 'Status' }));
-        await user.click(screen.getByRole('menuitemcheckbox', { name: 'Blocked or failed' }));
+        await firstRow();
+        await user.click(screen.getByRole('button', { name: 'Filter' }));
+        await user.click(within(screen.getByRole('dialog')).getByRole('option', { name: 'Status' }));
+        await user.click(within(screen.getByRole('dialog')).getByRole('option', { name: 'Blocked or failed' }));
         await user.keyboard('{Escape}');
         await waitFor(() => {
             expect(router.state.location.search).toMatchObject({ status: 'blocked' });
@@ -67,8 +78,9 @@ describe('tasks', { timeout: TIMEOUT_MS }, () => {
             });
         });
         await waitFor(() => {
-            expect(screen.queryByRole('region', { name: 'Coming up' })).toBeNull();
+            expect(Object.keys(groups())).toEqual(['Now']);
         });
+        expect(screen.getByRole('button', { name: 'Status: Blocked or failed' })).toBeTruthy();
     });
 
     it('offers to clear a filter that leaves nothing', async () => {
@@ -77,7 +89,7 @@ describe('tasks', { timeout: TIMEOUT_MS }, () => {
         const [, emptyStateClear] = screen.getAllByRole('button', { name: 'Clear filters' });
         if (emptyStateClear === undefined) throw new Error('no clear action in the empty state');
         await user.click(emptyStateClear);
-        await screen.findByRole('region', { name: 'Finished' });
+        await firstRow();
         expect(router.state.location.search).not.toHaveProperty('status');
     });
 
@@ -86,7 +98,13 @@ describe('tasks', { timeout: TIMEOUT_MS }, () => {
             path: '/tasks/task-ship-billing',
             engineApi: demoEngine(),
         });
-        await screen.findByRole('heading', { level: 1, name: 'Ship billing v2 — 2026-10-30 09:00:00' });
+        await screen.findByRole('heading', { level: 1, name: 'Ship billing v2 2026-10-30 09:00' });
+        expect(
+            within(screen.getByRole('navigation', { name: 'Breadcrumb' }))
+                .getByRole('link', { name: 'Tasks' })
+                .getAttribute('href'),
+        ).toBe('/tasks');
+        expect(screen.queryByRole('link', { name: 'Back to tasks' })).toBeNull();
         const related = screen.getByRole('region', { name: 'Related' });
         await waitFor(() => {
             expect(
@@ -101,6 +119,14 @@ describe('tasks', { timeout: TIMEOUT_MS }, () => {
         expect((await screen.findByRole('link', { name: 'Discuss in chat' })).getAttribute('href')).toBe(
             '/chats/chat-ada-1',
         );
+        // Related things are grouped rows: each subtask with its state, its agent and when it changed.
+        const subtasks = within(related).getByRole('group', { name: 'Subtasks 3' });
+        expect(within(subtasks).getAllByRole('listitem')).toHaveLength(3);
+        expect(within(subtasks).getByText('Blocked')).toBeTruthy();
+        expect((await within(subtasks).findAllByRole('link', { name: 'Ada' })).length).toBeGreaterThan(0);
+        expect(within(subtasks).getAllByText(/ago$/).length).toBeGreaterThan(0);
+        expect(screen.getByText('1 of 3 subtasks done')).toBeTruthy();
+        expect(screen.getByText('P2 · high')).toBeTruthy();
         expect(await screen.findByText('It has not run yet.')).toBeTruthy();
         await expectNoAxeViolations(container);
     });
@@ -109,7 +135,7 @@ describe('tasks', { timeout: TIMEOUT_MS }, () => {
         const { user } = renderWithProviders({ path: '/tasks/task-weekly-report', engineApi: demoEngine() });
         const history = await screen.findByRole('region', { name: 'History' });
         await within(history).findByText('#2 · Retry');
-        const items = within(history).getAllByRole('listitem');
+        const items = within(history).getAllByRole('row').slice(1);
         expect(items.map((item) => item.textContent)).toEqual([
             expect.stringContaining('#3 · Scheduled'),
             expect.stringContaining('#2 · Retry'),
@@ -117,11 +143,13 @@ describe('tasks', { timeout: TIMEOUT_MS }, () => {
         ]);
         expect(
             within(items[1] ?? history)
-                .getByRole('link', { name: 'Open run' })
+                .getByRole('link', { name: 'Run' })
                 .getAttribute('href'),
         ).toBe('/runs/run-iris-weekly');
 
-        await user.click(screen.getByRole('link', { name: 'Back to tasks' }));
+        await user.click(
+            within(screen.getByRole('navigation', { name: 'Breadcrumb' })).getByRole('link', { name: 'Tasks' }),
+        );
         await user.click(await screen.findByRole('link', { name: /^Deploy billing v2/ }));
         const related = await screen.findByRole('region', { name: 'Related' });
         expect(within(related).getByText('Done')).toBeTruthy();
@@ -178,6 +206,20 @@ describe('tasks', { timeout: TIMEOUT_MS }, () => {
         expect(screen.queryByRole('link', { name: 'Tasks' })).toBeNull();
     });
 
+    it('asks for no agents without agents.read, and still lists the tasks', async () => {
+        const engineApi = demoEngine({
+            member: {
+                id: 'member-owner',
+                role: 'member',
+                permissions: PERMISSIONS.filter((permission) => permission !== 'agents.read'),
+            },
+        });
+        const agents = vi.spyOn(engineApi.agents, 'list');
+        renderWithProviders({ path: '/tasks', engineApi });
+        await firstRow();
+        expect(agents).not.toHaveBeenCalled();
+    });
+
     it('pages the inventory and the history on with "Show more"', async () => {
         const seed = createDemoSeed(TEST_NOW);
         const tasks = seed.tasks ?? [];
@@ -217,7 +259,7 @@ describe('tasks', { timeout: TIMEOUT_MS }, () => {
             },
         });
         const { user, unmount } = renderWithProviders({ path: '/tasks', engineApi });
-        await screen.findByRole('region', { name: 'Finished' });
+        await firstRow();
         expect(screen.queryByRole('link', { name: 'Filler 54' })).toBeNull();
         await user.click(screen.getByRole('button', { name: 'Show more' }));
         await screen.findByRole('link', { name: 'Filler 54' });

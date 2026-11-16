@@ -1,9 +1,9 @@
-import type { AgentId } from '@ptbk/engine-api';
+import type { AgentId, AgentProfile } from '@ptbk/engine-api';
 import { CommandPalette } from '@ptbk/ui';
 import type { CommandPaletteGroup, CommandPaletteItem } from '@ptbk/ui';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useNavigate, useRouter } from '@tanstack/react-router';
-import { Bot, CornerDownRight } from 'lucide-react';
+import { CornerDownRight } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import { useBrowser } from '../../../app/browser-context';
@@ -18,6 +18,7 @@ import type {
 } from '../../../app/registry/feature';
 import { useAllows, useVisibleFeatures } from '../../../app/registry/use-visible-features';
 import { m } from '../../../paraglide/messages';
+import { AgentAvatar } from '../../agents/agent-avatar';
 import { agentListQueryOptions } from '../../agents/agents-queries';
 import { useCurrentMember } from '../../session/use-current-member';
 import { navSections } from '../nav-groups';
@@ -241,18 +242,24 @@ function useAgentResults(query: string): { readonly items: PaletteItem[]; readon
     const items = (search.data?.items ?? [])
         .filter((agent) => matchesQuery(text, [agent.name, agent.profile.fullname, agent.profile.description]))
         .map((agent) => ({
-            ...agentItem(router, agent.id, agent.name),
+            ...agentItem(router, agent.id, agent.name, agent.profile),
             ...(agent.profile.description === '' ? {} : { detail: agent.profile.description }),
         }));
     return { items, loading: text !== settled || search.isFetching };
 }
 
-function agentItem(router: ReturnType<typeof useRouter>, agentId: AgentId, name: string): PaletteItem {
+function agentItem(
+    router: ReturnType<typeof useRouter>,
+    agentId: AgentId,
+    name: string,
+    profile: Pick<AgentProfile, 'avatarUrl' | 'color'> = { avatarUrl: null, color: null },
+): PaletteItem {
     const target = { to: '/agents/$agentId', params: { agentId } } as const;
     return {
         id: `agent:${agentId}`,
         label: name,
-        icon: <Bot aria-hidden className="size-4" />,
+        // The agent's own avatar and colour, as in lists and chips; a recent pick without its profile keeps its hue.
+        icon: <AgentAvatar name={name} agentKey={agentId} profile={profile} size="xs" />,
         select: () => {
             void router.navigate(target);
         },

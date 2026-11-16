@@ -1,3 +1,5 @@
+import type { StatusTone } from '@ptbk/ui';
+
 import { cx } from '../../../app/cx';
 import { m } from '../../../paraglide/messages';
 import type { ReadChatTask } from './thread-references';
@@ -25,6 +27,15 @@ export function chatTaskTone(state: ChatTaskState): ChatTaskTone {
             return 'quiet';
     }
 }
+
+/** The shared `@ptbk/ui` status tone for a task's state, for pills, dots and tints. */
+export const CHAT_TASK_STATUS_TONES: Readonly<Record<ChatTaskTone, StatusTone>> = {
+    live: 'live',
+    waiting: 'waiting',
+    trouble: 'danger',
+    done: 'success',
+    quiet: 'neutral',
+};
 
 export function chatTaskStateLabel(state: ChatTaskState): string {
     switch (state) {

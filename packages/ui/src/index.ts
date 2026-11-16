@@ -8,7 +8,13 @@ export {
 } from './theme/preference';
 export type { MatchMedia, PreferenceStorage, ResolvedTheme, ThemePreference } from './theme/preference';
 
-export { canUseViewTransitions, withViewTransition } from './motion/view-transition';
+export {
+    canUseViewTransitions,
+    viewTransitionName,
+    viewTransitionStyle,
+    withViewTransition,
+} from './motion/view-transition';
+export { readableTint, safeTint, TINT_TEXT_RESET, tintStyle } from './theme/tint';
 export type { ViewTransitionDocument } from './motion/view-transition';
 export { prefersReducedMotion, useReducedMotion } from './motion/reduced-motion';
 export type { MotionMatchMedia } from './motion/reduced-motion';
@@ -25,17 +31,32 @@ export { Button, buttonClassName } from './components/button/button';
 export type { ButtonProps, ButtonSize, ButtonVariant } from './components/button/button';
 export { ActionMenu } from './components/action-menu/action-menu';
 export type { ActionMenuProps } from './components/action-menu/action-menu';
-export { FilterBar } from './components/filter-bar/filter-bar';
+export { FilterBar, filterField } from './components/filter-bar/filter-bar';
 export type {
-    FilterBarDate,
-    FilterBarFilter,
-    FilterBarMulti,
+    FilterBarColumn,
+    FilterBarColumns,
+    FilterBarDateRange,
+    FilterBarDateRangeField,
+    FilterBarEntityField,
+    FilterBarEnumField,
+    FilterBarField,
+    FilterBarMultiEnumField,
     FilterBarOption,
     FilterBarProps,
     FilterBarSearch,
-    FilterBarSelect,
-    FilterBarText,
+    FilterBarSort,
+    FilterBarSortOption,
+    FilterBarSortValue,
 } from './components/filter-bar/filter-bar';
+export { LegacyFilterBar } from './components/filter-bar/legacy-filter-bar';
+export type {
+    LegacyFilterBarDate,
+    LegacyFilterBarFilter,
+    LegacyFilterBarMulti,
+    LegacyFilterBarProps,
+    LegacyFilterBarSelect,
+    LegacyFilterBarText,
+} from './components/filter-bar/legacy-filter-bar';
 export { EmptyValue } from './components/empty-value/empty-value';
 export type { EmptyValueProps } from './components/empty-value/empty-value';
 export { TechnicalDetails } from './components/technical-details/technical-details';
@@ -59,6 +80,10 @@ export { Textarea } from './components/textarea/textarea';
 export type { TextareaProps } from './components/textarea/textarea';
 export { Select } from './components/select/select';
 export type { SelectProps } from './components/select/select';
+export { Combobox } from './components/combobox/combobox';
+export type { ComboboxOption, ComboboxProps } from './components/combobox/combobox';
+export { DateInput } from './components/date-input/date-input';
+export type { DateInputProps } from './components/date-input/date-input';
 export { Checkbox } from './components/checkbox/checkbox';
 export type { CheckboxProps } from './components/checkbox/checkbox';
 export { Switch } from './components/switch/switch';
@@ -69,6 +94,21 @@ export { ExternalLink } from './components/external-link/external-link';
 export type { ExternalLinkProps } from './components/external-link/external-link';
 export { Card } from './components/card/card';
 export type { CardProps } from './components/card/card';
+export { Section } from './components/section/section';
+export type { SectionProps } from './components/section/section';
+export { STATUS_TINT_CLASSES, StatusDot, StatusPill } from './components/status/status';
+export type { StatusDotProps, StatusPillProps, StatusTone } from './components/status/status';
+export { Avatar } from './components/avatar/avatar';
+export type { AvatarProps, AvatarSize } from './components/avatar/avatar';
+export { PeekCard } from './components/peek-card/peek-card';
+export type {
+    PeekCardAction,
+    PeekCardActionProps,
+    PeekCardFact,
+    PeekCardProps,
+} from './components/peek-card/peek-card';
+export { EntityChip } from './components/entity-chip/entity-chip';
+export type { EntityChipProps, EntityChipTone, EntityChipTriggerProps } from './components/entity-chip/entity-chip';
 export { Badge } from './components/badge/badge';
 export type { BadgeProps, BadgeTone } from './components/badge/badge';
 export { Banner } from './components/banner/banner';
@@ -151,9 +191,12 @@ export type {
     DataTableEmpty,
     DataTableError,
     DataTableExpansion,
+    DataTableGroup,
+    DataTableGrouping,
     DataTablePage,
     DataTableProps,
     DataTableSelection,
+    DataTableView,
 } from './components/data-table/data-table';
 export { createDataTableColumnHelper, dataTableFeatures } from './components/data-table/columns';
 export type {

@@ -1,0 +1,16 @@
+/* A peek card is a soft wash of its entity's tint (agent colour or status) over the hovercard's raised surface. */
+:root {
+    --peek-card-wash: 6%;
+    --peek-card-fallback-tint: var(--color-text-muted);
+    --peek-card-kind: var(--color-text-muted);
+    --peek-card-title: var(--color-text);
+    --peek-card-muted: var(--color-text-muted);
+    /* A wash of the text colour, so the line shows on any tint in both themes. */
+    --peek-card-hairline: color-mix(in oklab, var(--color-text) 10%, transparent);
+    --peek-card-action-hover: var(--color-hover);
+    --peek-card-key-bg: var(--color-neutral-soft);
+}
+
+.dark {
+    --peek-card-wash: 9%;
+}

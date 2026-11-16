@@ -1,7 +1,8 @@
 import { KNOWN_CAPABILITIES, PERMISSIONS, RunId } from '@ptbk/engine-api';
 import type { Permission } from '@ptbk/engine-api';
 import { screen, waitFor, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import type { UserEvent } from '@testing-library/user-event';
+import { describe, expect, it, vi } from 'vitest';
 
 import { expectNoAxeViolations } from '../../testing/axe';
 import { renderWithProviders } from '../../testing/render-with-providers';
@@ -21,6 +22,12 @@ async function renderRuns(path = '/runs', engine: RunsEngine = createRunsEngine(
 }
 
 const table = () => screen.getByRole('table');
+const dialog = () => screen.getByRole('dialog');
+/** "+ Filter", then a field; the dialog then lists the field's values. */
+async function addFilter(user: UserEvent, field: string) {
+    await user.click(screen.getByRole('button', { name: 'Filter' }));
+    await user.click(within(dialog()).getByRole('option', { name: field }));
+}
 const rowTitles = () =>
     within(table())
         .queryAllByRole('row')
@@ -48,9 +55,9 @@ describe('runs timeline', { timeout: TIMEOUT_MS }, () => {
 
     it('writes status, source, agent and dates to the URL, sends them to the engine and restores them on reload', async () => {
         const { user, engine, router } = await renderRuns();
-        await user.click(screen.getByRole('button', { name: 'Status' }));
-        await user.click(screen.getByRole('menuitemcheckbox', { name: 'Failed' }));
-        await user.click(screen.getByRole('menuitemcheckbox', { name: 'Queued' }));
+        await addFilter(user, 'Status');
+        await user.click(within(dialog()).getByRole('option', { name: 'Failed' }));
+        await user.click(within(dialog()).getByRole('option', { name: 'Queued' }));
         await user.keyboard('{Escape}');
         await waitFor(() => {
             expect(router.state.location.search).toMatchObject({ status: 'queued,failed' });
@@ -60,12 +67,15 @@ describe('runs timeline', { timeout: TIMEOUT_MS }, () => {
         });
         expect(lastListQuery(engine)).toMatchObject({ status: 'queued,failed' });
 
-        await user.selectOptions(screen.getByRole('combobox', { name: 'Source' }), 'schedule');
+        await addFilter(user, 'Source');
+        await user.click(within(dialog()).getByRole('option', { name: 'Schedule' }));
         await waitFor(() => {
             expect(rowTitles()).toEqual(['Write the weekly report']);
         });
-        await user.selectOptions(await screen.findByRole('combobox', { name: 'Agent' }), 'agent-iris');
-        await user.type(screen.getByLabelText('Queued from'), '2026-10-01');
+        await addFilter(user, 'Agent');
+        await user.click(await within(dialog()).findByRole('option', { name: 'Iris' }));
+        await addFilter(user, 'Queued');
+        await user.type(within(dialog()).getByLabelText('From'), '2026-10-01');
         await waitFor(() => {
             expect(router.state.location.search).toEqual({
                 status: 'queued,failed',
@@ -78,14 +88,29 @@ describe('runs timeline', { timeout: TIMEOUT_MS }, () => {
         expect(filtered).toMatchObject({ agentId: 'agent-iris', source: 'schedule', status: 'queued,failed' });
         expect(filtered?.from).toBe(new Date(2026, 9, 1).toISOString());
 
-        // A reload: a fresh app at the same URL asks the engine the same question and shows the same controls.
+        // A reload: a fresh app at the same URL asks the engine the same question and shows the same chips.
         const href = router.state.location.href;
         const reloaded = createRunsEngine();
         renderWithProviders({ path: href, engineApi: reloaded.client });
         await waitFor(() => {
             expect(reloaded.spies.list).toHaveBeenCalledWith(filtered, expect.anything());
         });
-        expect(screen.getAllByRole('button', { name: /^Status\s*2 selected$/ })).not.toHaveLength(0);
+        expect(screen.getAllByRole('button', { name: 'Status: Queued, Failed' })).not.toHaveLength(0);
+        expect(await screen.findAllByRole('button', { name: 'Agent: Iris' })).not.toHaveLength(0);
+    });
+
+    it('turns the order around from the header and the Sort menu, in the URL', async () => {
+        const { user, engine, router } = await renderRuns();
+        await user.click(screen.getByRole('button', { name: 'Queued, Sorted descending' }));
+        await waitFor(() => {
+            expect(router.state.location.search).toEqual({ sort: 'queuedAt' });
+        });
+        expect(lastListQuery(engine)).toEqual({ limit: 50, sort: 'queuedAt' });
+        await user.click(screen.getByRole('button', { name: 'Sorted by Queued, Sorted ascending' }));
+        await user.click(screen.getByRole('menuitemradio', { name: 'Descending' }));
+        await waitFor(() => {
+            expect(router.state.location.search).toEqual({});
+        });
     });
 
     it('falls back to no filter for invalid search params instead of failing', async () => {
@@ -108,7 +133,7 @@ describe('runs timeline', { timeout: TIMEOUT_MS }, () => {
     });
 
     it('shows only the agent’s own runs on its tab, without the agent column or filter', async () => {
-        const { engine } = await renderRuns('/agents/agent-ada/runs');
+        const { engine, user } = await renderRuns('/agents/agent-ada/runs');
         await within(table()).findByText('Summarise open pull requests');
         expect(rowTitles()).toEqual([
             'Summarise open pull requests',
@@ -117,7 +142,8 @@ describe('runs timeline', { timeout: TIMEOUT_MS }, () => {
         ]);
         expect(lastListQuery(engine)).toEqual({ limit: 50, agentId: 'agent-ada' });
         expect(within(table()).queryByRole('columnheader', { name: 'Agent' })).toBeNull();
-        expect(screen.queryByRole('combobox', { name: 'Agent' })).toBeNull();
+        await user.click(screen.getByRole('button', { name: 'Filter' }));
+        expect(within(dialog()).queryByRole('option', { name: 'Agent' })).toBeNull();
         expect(within(table()).getByRole('link', { name: 'Summarise open pull requests' }).getAttribute('href')).toBe(
             `/runs/${RUN_IDS.running}?from=agent`,
         );
@@ -221,6 +247,14 @@ describe('runs access', { timeout: TIMEOUT_MS }, () => {
         expect(await screen.findByRole('heading', { level: 1, name: 'Not available on this engine' })).toBeDefined();
         const nav = screen.getByRole('navigation', { name: 'Main' });
         expect(within(nav).queryByRole('link', { name: 'Runs' })).toBeNull();
+    });
+
+    it('asks for no agents without agents.read', async () => {
+        const engine = createRunsEngine({ permissions: allBut('agents.read') });
+        const agents = vi.spyOn(engine.client.agents, 'list');
+        await renderRuns('/runs', engine);
+        await within(table()).findByText('Refund for order 1042');
+        expect(agents).not.toHaveBeenCalled();
     });
 
     it('offers no stop or retry in the row menu without runs.control', async () => {
