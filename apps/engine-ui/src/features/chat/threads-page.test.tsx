@@ -170,6 +170,8 @@ describe('threads page', { timeout: TIMEOUT_MS }, () => {
         await app.user.click(await screen.findByRole('button', { name: 'New chat with Ada' }));
         expect(await screen.findByRole('heading', { level: 1, name: 'Chat with Ada' })).toBeDefined();
         expect(engine.spies.create.mock.calls[0]?.[0]).toMatchObject({ agentId: CHAT_AGENT_ID });
+        // The new thread offers "New chat with Ada" in its own header too.
+        app.unmount();
 
         const reader = createChatEngine({ permissions: ['agents.read', 'chats.read', 'members.read'] });
         renderWithProviders({ path: `/agents/${CHAT_AGENT_ID}/chat`, engineApi: reader.client });
