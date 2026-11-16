@@ -1,6 +1,7 @@
 import { KNOWN_CAPABILITIES } from '@ptbk/engine-api';
 import type { Member } from '@ptbk/engine-api';
 import {
+    Avatar,
     Badge,
     Button,
     ConfirmDialog,
@@ -8,12 +9,13 @@ import {
     DataTable,
     EmptyState,
     RelativeTime,
+    Section,
     useLocale,
 } from '@ptbk/ui';
 import type { DataTableColumnDef, MenuEntry } from '@ptbk/ui';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { getRouteApi } from '@tanstack/react-router';
-import { UserMinus, UserPlus, UserRoundCog } from 'lucide-react';
+import { CalendarClock, Clock, KeyRound, Shield, UserMinus, UserPlus, UserRound, UserRoundCog } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
 import { classifyApiError } from '../../app/api-errors';
@@ -38,13 +40,14 @@ const route = getRouteApi('/members');
 
 export const MEMBER_COLUMNS_STORAGE_KEY = 'ptbk.members.columns';
 const NO_MEMBERS: readonly Member[] = [];
+const ICON = 'size-3.5';
 
 function PasskeyCount({ count }: { readonly count: number | null }) {
     const locale = useLocale();
     return count === null ? (
         <span className="text-text-muted">{m.security_not_reported()}</span>
     ) : (
-        <span className="tabular-nums">{locale.formatNumber(count)}</span>
+        <span className="text-text-muted tabular-nums">{locale.formatNumber(count)}</span>
     );
 }
 
@@ -56,13 +59,19 @@ function useMemberColumns(myId: string): DataTableColumnDef<Member>[] {
                 header: m.members_column_name(),
                 enableSorting: false,
                 enableHiding: false,
-                meta: { priority: 0 },
+                meta: { icon: <UserRound className={ICON} />, priority: 0 },
                 cell: ({ row }) => (
-                    <span className="inline-flex flex-wrap items-center gap-2 font-medium">
-                        {row.original.displayName}
-                        {row.original.id === myId ? <Badge tone="accent">{m.members_you()}</Badge> : null}
+                    <span className="flex min-w-0 items-center gap-2.5">
+                        <Avatar name={row.original.displayName} size="sm" />
+                        {/* Display names are whatever the person or their organization chose: text only. */}
+                        <span className="min-w-0 truncate font-medium">{row.original.displayName}</span>
+                        {row.original.id === myId ? (
+                            <span className="shrink-0 text-xs text-text-muted">{m.members_you()}</span>
+                        ) : null}
                         {row.original.dashboardUserId === null ? null : (
-                            <span className="text-xs font-normal text-text-muted">{m.members_via_organization()}</span>
+                            <span className="hidden shrink-0 text-xs text-text-muted sm:inline">
+                                {m.members_via_organization()}
+                            </span>
                         )}
                     </span>
                 ),
@@ -70,31 +79,39 @@ function useMemberColumns(myId: string): DataTableColumnDef<Member>[] {
             column.accessor('role', {
                 header: m.members_column_role(),
                 enableSorting: false,
-                meta: { priority: 1 },
-                cell: ({ row }) => roleLabel(row.original.role),
+                meta: { icon: <Shield className={ICON} />, priority: 1, trailing: true },
+                cell: ({ row }) => <Badge>{roleLabel(row.original.role)}</Badge>,
             }),
             column.accessor('passkeyCount', {
                 header: m.members_column_passkeys(),
                 enableSorting: false,
-                meta: { priority: 3 },
+                meta: { icon: <KeyRound className={ICON} />, priority: 4, numeric: true, hideOnCard: true },
                 cell: ({ row }) => <PasskeyCount count={row.original.passkeyCount} />,
             }),
             column.accessor('lastSeenAt', {
                 header: m.members_column_last_seen(),
                 enableSorting: false,
-                meta: { priority: 2 },
+                meta: { icon: <Clock className={ICON} />, priority: 2, numeric: true },
                 cell: ({ row }) =>
                     row.original.lastSeenAt === null ? (
                         <span className="text-text-muted">{m.members_never_seen()}</span>
                     ) : (
-                        <RelativeTime value={new Date(row.original.lastSeenAt)} />
+                        <RelativeTime
+                            value={new Date(row.original.lastSeenAt)}
+                            className="whitespace-nowrap text-text-muted"
+                        />
                     ),
             }),
             column.accessor('createdAt', {
                 header: m.members_column_joined(),
                 enableSorting: false,
-                meta: { priority: 4 },
-                cell: ({ row }) => <RelativeTime value={new Date(row.original.createdAt)} />,
+                meta: { icon: <CalendarClock className={ICON} />, priority: 3, numeric: true, hideOnCard: true },
+                cell: ({ row }) => (
+                    <RelativeTime
+                        value={new Date(row.original.createdAt)}
+                        className="whitespace-nowrap text-text-muted"
+                    />
+                ),
             }),
         ];
     }, [myId]);
@@ -193,37 +210,40 @@ export function MembersPage() {
     else if (invitesUnsupported) intro = m.members_intro_no_invites();
     else intro = m.members_intro();
 
+    // A quiet heading over the people only once something sits above them, so the list reads as its own section.
+    const requestsWaiting = requestsSupported && (accessRequests.data?.items.length ?? 0) > 0;
     return (
-        <Page title={m.members_title()} actions={inviteButton}>
-            <p className="text-sm text-text-muted">{intro}</p>
+        <Page title={m.members_title()} description={intro} actions={inviteButton}>
             {requestsSupported ? (
                 <AccessRequests query={accessRequests} canManage={canManage} mutations={mutations} />
             ) : null}
-            <DataTable
-                caption={m.members_title()}
-                columns={columns}
-                data={list.data?.items ?? NO_MEMBERS}
-                getRowId={(member) => member.id}
-                getRowLabel={(member) => member.displayName}
-                visibilityStorage={{ storage, key: MEMBER_COLUMNS_STORAGE_KEY }}
-                page={paging.page}
-                onPageChange={paging.onPageChange}
-                loading={list.isPending}
-                fetching={list.isFetching && !list.isPending}
-                {...(list.isError && !invalidCursor
-                    ? {
-                          error: {
-                              message: m.members_load_failed(),
-                              onRetry: () => {
-                                  void list.refetch();
+            <Section {...(requestsWaiting ? { title: m.members_people() } : {})} divided={requestsWaiting}>
+                <DataTable
+                    caption={m.members_title()}
+                    columns={columns}
+                    data={list.data?.items ?? NO_MEMBERS}
+                    getRowId={(member) => member.id}
+                    getRowLabel={(member) => member.displayName}
+                    visibilityStorage={{ storage, key: MEMBER_COLUMNS_STORAGE_KEY }}
+                    page={paging.page}
+                    onPageChange={paging.onPageChange}
+                    loading={list.isPending}
+                    fetching={list.isFetching && !list.isPending}
+                    {...(list.isError && !invalidCursor
+                        ? {
+                              error: {
+                                  message: m.members_load_failed(),
+                                  onRetry: () => {
+                                      void list.refetch();
+                                  },
+                                  retrying: list.isFetching,
                               },
-                              retrying: list.isFetching,
-                          },
-                      }
-                    : {})}
-                empty={{ title: m.members_empty_title(), description: m.members_empty_body() }}
-                {...(managing ? { rowActions } : {})}
-            />
+                          }
+                        : {})}
+                    empty={{ title: m.members_empty_title(), description: m.members_empty_body() }}
+                    {...(managing ? { rowActions } : {})}
+                />
+            </Section>
             {invitesUnsupported ? null : <PendingInvites query={invites} canManage={canManage} mutations={mutations} />}
             {managing && alone && noInvites ? (
                 <EmptyState

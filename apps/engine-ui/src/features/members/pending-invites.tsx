@@ -1,9 +1,9 @@
 import type { Invite, MemberId } from '@ptbk/engine-api';
-import { Card, ConfirmDialog, ErrorState, IconButton, Menu, RelativeTime } from '@ptbk/ui';
+import { ActionMenu, ConfirmDialog, ErrorState, RelativeTime, Section } from '@ptbk/ui';
 import type { MenuEntry } from '@ptbk/ui';
 import { useQuery } from '@tanstack/react-query';
 import type { UseQueryResult } from '@tanstack/react-query';
-import { Ban, Ellipsis, Link2 } from 'lucide-react';
+import { Ban, Link2 } from 'lucide-react';
 import { useState } from 'react';
 
 import { useEngineApi } from '../../app/engine-api-context';
@@ -19,7 +19,6 @@ function CreatorName({ memberId }: { readonly memberId: MemberId }) {
 
 function InviteRow({ invite, onRevoke }: { readonly invite: Invite; readonly onRevoke: (() => void) | null }) {
     const title = m.invites_row_title({ role: roleLabel(invite.role) });
-    const menuLabel = m.invites_actions_for({ invite: title });
     const items: MenuEntry[] =
         onRevoke === null
             ? []
@@ -34,33 +33,20 @@ function InviteRow({ invite, onRevoke }: { readonly invite: Invite; readonly onR
                   },
               ];
     return (
-        <li className="flex items-start gap-3 py-3 first:pt-0 last:pb-0">
-            <Link2 aria-hidden className="mt-0.5 size-5 shrink-0 text-text-muted" />
-            <div className="flex min-w-0 flex-1 flex-col gap-1">
-                <span className="font-medium">{title}</span>
-                <span className="text-sm break-words text-text-muted">
+        <li className="flex min-h-12 items-center gap-3 py-2">
+            <span className="flex size-8 shrink-0 items-center justify-center rounded-pill bg-hover text-text-muted">
+                <Link2 aria-hidden className="size-4" />
+            </span>
+            <div className="flex min-w-0 flex-1 flex-col">
+                <span className="text-sm font-medium">{title}</span>
+                <span className="text-xs break-words text-text-muted tabular-nums">
                     {m.invites_created_by()} <CreatorName memberId={invite.createdBy} />{' '}
                     <RelativeTime value={new Date(invite.createdAt)} />
                     {' · '}
                     {m.invites_expires()} <RelativeTime value={new Date(invite.expiresAt)} />
                 </span>
             </div>
-            {items.length === 0 ? null : (
-                <Menu
-                    label={menuLabel}
-                    align="end"
-                    items={items}
-                    trigger={(triggerProps) => (
-                        <IconButton
-                            {...triggerProps}
-                            variant="ghost"
-                            size="sm"
-                            label={menuLabel}
-                            icon={<Ellipsis aria-hidden className="size-4" />}
-                        />
-                    )}
-                />
-            )}
+            <ActionMenu items={items} label={m.invites_actions_for({ invite: title })} size="sm" variant="ghost" />
         </li>
     );
 }
@@ -79,7 +65,7 @@ export function PendingInvites({ query, canManage, mutations }: PendingInvitesPr
     };
     if (query.isError) {
         return (
-            <Card title={m.invites_pending()}>
+            <Section title={m.invites_pending()}>
                 <ErrorState
                     message={m.section_load_failed()}
                     onRetry={() => {
@@ -87,14 +73,14 @@ export function PendingInvites({ query, canManage, mutations }: PendingInvitesPr
                     }}
                     retrying={query.isFetching}
                 />
-            </Card>
+            </Section>
         );
     }
     const invites = query.data?.items ?? [];
     if (invites.length === 0) return null;
     return (
-        <Card title={m.invites_pending()}>
-            <ul className="flex flex-col divide-y divide-divider">
+        <Section title={m.invites_pending()} count={invites.length}>
+            <ul className="flex flex-col divide-y divide-hairline">
                 {invites.map((invite) => (
                     <InviteRow
                         key={invite.id}
@@ -123,6 +109,6 @@ export function PendingInvites({ query, canManage, mutations }: PendingInvitesPr
                     }}
                 />
             )}
-        </Card>
+        </Section>
     );
 }

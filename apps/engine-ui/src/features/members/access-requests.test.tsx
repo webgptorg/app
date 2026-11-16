@@ -30,6 +30,12 @@ function engineWithRequest(options: { permissions?: readonly Permission[]; stepU
 
 type User = ReturnType<typeof renderWithProviders>['user'];
 
+/** Picks an option from a `Combobox`: open its list, then choose by the option's name. */
+async function pick(user: User, combobox: HTMLElement, option: string | RegExp) {
+    await user.click(combobox);
+    await user.click(screen.getByRole('option', { name: option }));
+}
+
 async function openApprove(user: User) {
     const section = await screen.findByRole('region', { name: 'Access requests' });
     await user.click(within(section).getByRole('button', { name: 'Approve' }));
@@ -49,7 +55,7 @@ describe('access requests', { timeout: TIMEOUT_MS }, () => {
         const dialog = await openApprove(user);
         expect(dialog.textContent).toContain('6-digit code');
         await user.type(within(dialog).getByRole('textbox', { name: /Code/ }), CODE);
-        await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Role' }), 'viewer');
+        await pick(user, within(dialog).getByRole('combobox', { name: 'Role' }), 'Viewer');
         await expectNoAxeViolations(container);
         await user.click(within(dialog).getByRole('button', { name: 'Approve' }));
 
@@ -107,6 +113,25 @@ describe('access requests', { timeout: TIMEOUT_MS }, () => {
         await waitFor(() => {
             expect(screen.queryByRole('dialog')).toBeNull();
         });
+    });
+
+    it('shows who asks and the role they would get, with Approve as the one action and Decline in the menu', async () => {
+        const { user } = renderWithProviders({ path: '/members', engineApi: engineWithRequest().client });
+        const section = await screen.findByRole('region', { name: 'Access requests' });
+        const row = within(section).getByText('Petr Svoboda').closest('li') as HTMLElement;
+        expect(within(row).getByText('Suggested role: Member')).toBeDefined();
+        expect(within(row).getByText(/petr@example\.com/)).toBeDefined();
+        expect(
+            within(row)
+                .getAllByRole('button')
+                .map((button) => button.getAttribute('aria-label') ?? button.textContent),
+        ).toEqual(['Approve', 'More actions for Petr Svoboda']);
+        const dialog = await openApprove(user);
+        const code = within(dialog).getByRole('textbox', { name: /Code/ });
+        expect(code.getAttribute('inputmode')).toBe('numeric');
+        expect(code.getAttribute('aria-describedby')).toContain(
+            within(dialog).getByText('The 6 digits they read out to you.').id,
+        );
     });
 
     it('asks for the 6 digits before calling the engine', async () => {
